@@ -326,6 +326,11 @@ extern "C"
     unsigned int bt_num_splits;
     unsigned int bt_num_merges;
     unsigned int bt_num_get_stats;
+    unsigned int bt_copy_leaf_nolatch_success_cnt;
+    unsigned int bt_copy_leaf_nolatch_fails_cnt;
+    unsigned int bt_copy_leaf_nolatch_retries_cnt;
+    unsigned int bt_acquire_tran_bcb_area_success_cnt;
+    unsigned int bt_acquire_tran_bcb_area_fails_cnt;
 
     /* Execution statistics for the heap manager */
     unsigned int heap_num_stats_sync_bestspace;
@@ -413,6 +418,11 @@ extern "C"
     unsigned int heap_rel_vacuums;
     unsigned int heap_insid_vacuums;
     unsigned int heap_remove_vacuums;
+    unsigned int heap_copy_nolatch_success_cnt;
+    unsigned int heap_copy_nolatch_fails_cnt;
+    unsigned int heap_copy_nolatch_retries_cnt;
+    unsigned int heap_acquire_tran_bcb_area_success_cnt;
+    unsigned int heap_acquire_tran_bcb_area_success_fails_cnt;
     unsigned int heap_next_ver_vacuums;
 
     /* Track heap modify. */

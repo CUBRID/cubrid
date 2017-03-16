@@ -93,8 +93,8 @@ static int overflow_flush_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 int
 overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes, FILE_TYPE file_type)
 {
-  OVERFLOW_FIRST_PART *first_part;
-  OVERFLOW_REST_PART *rest_parts;
+  OVERFLOW_FIRST_PART *first_part = NULL;
+  OVERFLOW_REST_PART *rest_parts = NULL;
   char *copyto;
   int length, copy_length;
   INT32 npages = 0;
@@ -105,6 +105,9 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
   VPID vpids_buffer[OVERFLOW_ALLOCVPID_ARRAY_SIZE + 1];
   bool is_sysop_started = false;
   PAGE_TYPE ptype = PAGE_OVERFLOW;
+#if defined (SERVER_MODE)
+  bool modification_started = false;
+#endif
 
   int error_code = NO_ERROR;
 
@@ -189,13 +192,15 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 	  goto exit_on_error;
 	}
       (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+#if defined (SERVER_MODE)
+      pgbuf_start_modification (addr.pgptr, &modification_started);
+#endif /* SERVER_MODE */
 
       /* Is this the first page ? */
       if (i == 0)
 	{
 	  /* This is the first part */
 	  first_part = (OVERFLOW_FIRST_PART *) addr.pgptr;
-
 	  first_part->next_vpid = vpids[i + 1];
 	  first_part->length = length;
 	  copyto = (char *) first_part->data;
@@ -215,7 +220,6 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
       else
 	{
 	  rest_parts = (OVERFLOW_REST_PART *) addr.pgptr;
-
 	  rest_parts->next_vpid = vpids[i + 1];
 	  copyto = (char *) rest_parts->data;
 
@@ -236,6 +240,14 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 
       data += copy_length;
       length -= copy_length;
+
+#if defined (SERVER_MODE)
+      if (modification_started)
+	{
+	  pgbuf_end_modification (addr.pgptr);
+	  modification_started = false;
+	}
+#endif
 
       pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
     }
@@ -397,6 +409,9 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
   bool isnewpage = false;
   PAGE_TYPE ptype = PAGE_OVERFLOW;
   int error_code = NO_ERROR;
+#if defined (SERVER_MODE)
+  bool modification_started = false;
+#endif /* SERVER_MODE */
 
   assert (ovf_vfid != NULL && !VFID_ISNULL (ovf_vfid));
 
@@ -424,6 +439,9 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	}
       (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
 
+#if defined (SERVER_MODE)
+      pgbuf_start_modification (addr.pgptr, &modification_started);
+#endif /* SERVER_MODE */
       addr_vpid_ptr = pgbuf_get_vpid_ptr (addr.pgptr);
 
       /* Log before and after images */
@@ -541,6 +559,14 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 		  rest_parts->next_vpid = next_vpid;
 		}
 	    }
+
+#if defined (SERVER_MODE)
+	  if (modification_started)
+	    {
+	      pgbuf_end_modification (addr.pgptr);
+	      modification_started = false;
+	    }
+#endif
 	  pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 	}
       else
@@ -561,6 +587,14 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	      /* This is part of rest part */
 	      VPID_SET_NULL (&rest_parts->next_vpid);
 	    }
+
+#if defined (SERVER_MODE)
+	  if (modification_started)
+	    {
+	      pgbuf_end_modification (addr.pgptr);
+	      modification_started = false;
+	    }
+#endif
 	  pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 
 	  while (!(VPID_ISNULL (&next_vpid)))
@@ -571,6 +605,9 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 		  ASSERT_ERROR_AND_SET (error_code);
 		  goto exit_on_error;
 		}
+#if defined (SERVER_MODE)
+	      pgbuf_start_modification (addr.pgptr, &modification_started);
+#endif /* SERVER_MODE */
 
 	      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
 
@@ -578,6 +615,13 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	      rest_parts = (OVERFLOW_REST_PART *) addr.pgptr;
 	      next_vpid = rest_parts->next_vpid;
 
+#if defined (SERVER_MODE)
+	      if (modification_started)
+		{
+		  pgbuf_end_modification (addr.pgptr);
+		  modification_started = false;
+		}
+#endif
 	      pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
 	      error_code = file_dealloc (thread_p, ovf_vfid, &tmp_vpid, file_type);

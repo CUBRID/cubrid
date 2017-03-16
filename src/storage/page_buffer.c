@@ -167,6 +167,33 @@ static int rv;
 			+ offsetof(PGBUF_IOPAGE_BUFFER, iopage.page))); \
   } while (0)
 
+#if defined(SERVER_MODE)
+/* Macros for page modifications */
+#define PGBUF_BCB_START_MODIFICATION(bufptr)                        \
+  do {                                                              \
+    assert (bufptr != NULL);					    \
+    ATOMIC_INC_64 (&bufptr->count_modifications, 1LL);		    \
+    assert ((bufptr->count_modifications & 1) != 0);		    \
+  } while (0)
+
+#define PGBUF_BCB_END_MODIFICATION(bufptr)                          \
+  do {                                                              \
+    assert (bufptr != NULL);					    \
+    ATOMIC_INC_64 (&bufptr->count_modifications, 1LL);		    \
+    assert ((bufptr->count_modifications & 1) == 0);		    \
+  } while (0)
+
+#define PGBUF_BCB_RESET_MODIFICATION(bufptr)                         \
+  do {                                                              \
+  assert (bufptr != NULL);					    \
+  ATOMIC_TAS_64 (&bufptr->count_modifications, 0LL);		    \
+  } while (0)
+#else
+#define PGBUF_BCB_START_MODIFICATION(bufptr)
+#define PGBUF_BCB_END_MODIFICATION(bufptr)
+#define PGBUF_BCB_RESET_MODIFICATION(bufptr)
+#endif
+
 /* check whether the given volume is auxiliary volume */
 #define PGBUF_IS_AUXILIARY_VOLUME(volid)                                 \
   ((volid) < LOG_DBFIRST_VOLID ? true : false)
@@ -371,6 +398,9 @@ struct pgbuf_bcb
   int ain_tick;			/* age of AIN when this BCB was inserted into AIN list */
   int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid dellocation; decrement after latch is
 				 * obtained */
+#if defined(SERVER_MODE)
+  UINT64 count_modifications;	/* Count modifications. The value is increased before and after page modification. */
+#endif
   volatile bool dirty;		/* Is page dirty ? */
   bool avoid_victim;
   bool async_flush_request;
@@ -644,6 +674,7 @@ static PGBUF_BUFFER_POOL pgbuf_Pool;	/* The buffer Pool */
 static PGBUF_BATCH_FLUSH_HELPER pgbuf_Flush_helper;
 
 HFID *pgbuf_ordered_null_hfid = NULL;
+bool pgbuf_copy_logging = false;
 
 #if defined(CUBRID_DEBUG)
 /* A buffer guard to detect over runs .. */
@@ -753,6 +784,7 @@ static int pgbuf_relocate_top_ain (PGBUF_BCB * bufptr);
 static void pgbuf_remove_from_lru_list (PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list);
 static void pgbuf_remove_from_ain_list (PGBUF_BCB * bufptr);
 static void pgbuf_move_from_ain_to_lru (PGBUF_BCB * bufptr);
+static void pgbuf_relocate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 
 static int pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
@@ -1024,6 +1056,7 @@ pgbuf_initialize (void)
 
   pgbuf_Pool.dirties_cnt = 0;
 
+  pgbuf_copy_logging = prm_get_bool_value (PRM_ID_PAGE_COPY_LOGGING);
   return NO_ERROR;
 
 error:
@@ -1228,6 +1261,130 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fet
 #endif
 #endif
 
+#if defined(SERVER_MODE)
+#if !defined(NDEBUG)
+/*
+ * pgbuf_copy_to_bcb_area_debug () - copy page to bcb area, debug version
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   vpid(in): complete Page identifier
+ *   size(in): size to copy
+ *   bcb_area_copied(in/out): true, if BCB area is successfully copied
+ *   caller_file(in): caller file
+ *   caller_line(in): caller line
+ */
+int
+pgbuf_copy_to_bcb_area_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
+			      bool * bcb_area_copied, const char *caller_file, int caller_line)
+#else
+/*
+ * pgbuf_copy_to_bcb_area_release () - copy page to bcb area, release version
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   vpid(in): complete Page identifier
+ *   size(in): size to copy
+ *   bcb_area_copied(in/out): true, if BCB area is successfully copied
+ */
+int
+pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
+				bool * bcb_area_copied)
+#endif
+{
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BCB *src_bufptr = NULL, *dest_bufptr = NULL;
+  PAGE_PTR src_pgptr = NULL;
+  UINT64 count_modifications = 0;
+  int err = NO_ERROR;
+  PAGE_TYPE page_type;
+
+  assert (vpid != NULL && !VPID_ISNULL (vpid) && bcb_area != NULL && bcb_area_copied != NULL);
+  assert (size >= 0 && size <= DB_PAGESIZE);
+
+  *bcb_area_copied = false;
+  /* interrupt check */
+  if (thread_get_check_interrupt (thread_p) == true)
+    {
+      if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  goto exit_on_error;
+	}
+    }
+
+  hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)];
+
+  src_bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
+  if (src_bufptr == NULL)
+    {
+      /* not in memory, I can't get the page. The caller is holding only hash_anchor->hash_mutex. */
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+      goto exit_on_error;
+    }
+
+  if (pgbuf_check_bcb_page_vpid (thread_p, src_bufptr) != true)
+    {
+      goto exit_on_error;
+    }
+
+  CAST_BFPTR_TO_PGPTR (src_pgptr, src_bufptr);
+  count_modifications = ATOMIC_INC_64 (&src_bufptr->count_modifications, 0LL);
+  if (count_modifications & 1)
+    {
+      /*
+       * There is a concurrent writer that modify the page. The current transaction can retry, or decide to use
+       * the S-latch.
+       */
+      pthread_mutex_unlock (&src_bufptr->BCB_mutex);
+      return NO_ERROR;
+    }
+  page_type = src_bufptr->iopage_buffer->iopage.prv.ptype;
+  memcpy (bcb_area, src_pgptr, size);
+  if (count_modifications != ATOMIC_INC_64 (&src_bufptr->count_modifications, 0LL))
+    {
+      /*
+       * A concurrent writer has modified the page. The copy is not atomic. The current transaction can retry,
+       * or decide to use the S-latch.
+       */
+      pthread_mutex_unlock (&src_bufptr->BCB_mutex);
+      return NO_ERROR;
+    }
+
+  assert (VPID_EQ (vpid, &src_bufptr->vpid));
+  if ((src_bufptr->fcnt == 0) && (pgbuf_is_exist_blocked_reader_writer (src_bufptr) == false))
+    {
+      /* An alternative would be to relocate BCB only if there is no latch on page. */
+      pgbuf_relocate_bcb (thread_p, src_bufptr);
+    }
+
+  pthread_mutex_unlock (&src_bufptr->BCB_mutex);
+
+  CAST_PGPTR_TO_BFPTR (dest_bufptr, bcb_area);
+  VPID_COPY (&dest_bufptr->vpid, vpid);
+  dest_bufptr->iopage_buffer->iopage.prv.pageid = NULL_PAGEID;
+  dest_bufptr->iopage_buffer->iopage.prv.volid = NULL_VOLID;
+  pgbuf_set_page_ptype (thread_p, bcb_area, page_type);
+  *bcb_area_copied = true;
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  err = er_errid ();
+  if (err == NO_ERROR)
+    {
+      err = ER_FAILED;
+    }
+
+  pgbuf_copy_log ("pgbuf_copy_page: error %d, can't copy the page (%d, %d) \n", err, vpid->volid, vpid->pageid);
+  if (src_bufptr)
+    {
+      pthread_mutex_unlock (&src_bufptr->BCB_mutex);
+    }
+
+  return err;
+}
+#endif
+
 /*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
@@ -1415,6 +1572,7 @@ try_again:
 	}
 
       /* Currently, caller has one allocated BCB and is holding BCB_mutex */
+      PGBUF_BCB_START_MODIFICATION (bufptr);
 
       /* initialize the BCB */
       bufptr->vpid = *vpid;
@@ -1471,6 +1629,7 @@ try_again:
 		}
 #endif /* ENABLE_SYSTEMTAP */
 
+	      PGBUF_BCB_END_MODIFICATION (bufptr);
 	      return NULL;
 	    }
 
@@ -1541,6 +1700,7 @@ try_again:
 	      perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
 	    }
 	}
+      PGBUF_BCB_END_MODIFICATION (bufptr);
       buf_lock_acquired = true;
     }
 
@@ -4631,7 +4791,7 @@ pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
-  /* Set Page identifier iff needed */
+  /* Set Page identifier if needed */
   (void) pgbuf_set_bcb_page_vpid (thread_p, bufptr);
 
   if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
@@ -4762,6 +4922,7 @@ pgbuf_initialize_bcb_table (void)
 
       bufptr->dirty = false;
       bufptr->avoid_dealloc_cnt = 0;
+      PGBUF_BCB_RESET_MODIFICATION (bufptr);
       bufptr->avoid_victim = false;
       bufptr->async_flush_request = false;
       bufptr->victim_candidate = false;
@@ -5909,7 +6070,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 #endif				/* NDEBUG */
 {
   PAGE_PTR pgptr;
-  int ain_age;
 
   assert (holder_status == NO_ERROR);
 
@@ -5956,50 +6116,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
        * performance. */
       if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
 	{
-	  switch (bufptr->zone)
-	    {
-	    case PGBUF_LRU_1_ZONE:
-	      /* do nothing in this case */
-	      break;
-
-	    case PGBUF_AIN_ZONE:
-	      ain_age = pgbuf_Pool.buf_AIN_list.tick - bufptr->ain_tick;
-	      ain_age = (ain_age > 0) ? (ain_age) : (DB_INT32_MAX);
-
-	      if (ain_age > pgbuf_Pool.buf_AIN_list.max_count / 2)
-		{
-		  /* Correlated references are contrainted to half of the AIN list. If a page in AIN is referenced
-		   * again and is older than half the AIN size, we consider it hot and relocate it to LRU. This aims to 
-		   * avoid discarding soon-to-become hot pages: in classic 2Q, a page is discarded from AIN only when
-		   * removed from page buffer, it becomes hot page (put in LRU) only after is loaded a second time and
-		   * still resides in AOUT list. */
-		  pgbuf_move_from_ain_to_lru (bufptr);
-		}
-	      break;
-
-	    case PGBUF_VOID_ZONE:
-	      if (!PGBUF_IS_2Q_ENABLED || pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid))
-		{
-		  /* Put BCB in "middle" of LRU if VPID is in Aout list or is the first reference and 2Q is disabled.
-		   * The page is not yet hot. */
-		  pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_2_ZONE);
-		}
-	      else
-		{
-		  /* 2Q enabled and is first time the page is referenced: we put it in AIN to filter out correlated
-		   * references */
-		  pgbuf_relocate_top_ain (bufptr);
-		}
-	      break;
-
-	    case PGBUF_LRU_2_ZONE:
-	      (void) pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_1_ZONE);
-	      break;
-
-	    default:
-	      assert (false);
-	      break;
-	    }
+	  pgbuf_relocate_bcb (thread_p, bufptr);
 	}
 
       if (bufptr->latch_mode != PGBUF_LATCH_FLUSH && bufptr->latch_mode != PGBUF_LATCH_VICTIM)
@@ -12352,4 +12469,267 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
 	}
     }
   return error_code;
+}
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_start_modification () - Starting page modifications.
+ *
+ * return     : nothing.
+ * pgptr (in) : Page pointer.
+ * modification_started (out): true, if the modification is started
+ */
+void
+pgbuf_start_modification (PAGE_PTR pgptr, bool * modification_started)
+{
+  PGBUF_BCB *bufptr = NULL;
+  assert (pgptr != NULL && modification_started != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  if (bufptr->count_modifications & 1)
+    {
+      /* Modification already started, nothing to do. */
+      *modification_started = false;
+    }
+  else
+    {
+      PGBUF_BCB_START_MODIFICATION (bufptr);
+      *modification_started = true;
+    }
+}
+
+/*
+ * pgbuf_is_modification_started () - Is modification started?
+ *
+ * return     : true, if modification is started.
+ * pgptr (in) : Page pointer.
+ */
+bool
+pgbuf_is_modification_started (PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr = NULL;
+  assert (pgptr != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  return ((bufptr->count_modifications & 1) != 0);
+}
+
+/*
+ * pgbuf_end_modification () - Ending page modifications.
+ *
+ * return     : nothing.
+ * pgptr (in) : Page pointer.
+ */
+void
+pgbuf_end_modification (PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr = NULL;
+  assert (pgptr != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  PGBUF_BCB_END_MODIFICATION (bufptr);
+}
+
+
+/*
+ * pgbuf_reset_modification () - Reset page modifications.
+ *
+ * return     : nothing.
+ * pgptr (in) : Page pointer.
+ */
+void
+pgbuf_reset_modification (PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr = NULL;
+  assert (pgptr != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  PGBUF_BCB_RESET_MODIFICATION (bufptr);
+}
+
+/*
+ * pgbuf_acquire_tran_bcb_area () - Acquires transaction BCB area
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   bcb_area (out): transaction BCB area
+ */
+int
+pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
+{
+  PGBUF_BCB *bufptr = NULL;
+  PGBUF_IOPAGE_BUFFER *ioptr = NULL;
+
+  assert (bcb_area != NULL);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  *bcb_area = NULL;
+  if (thread_p->tran_bcb_used)
+    {
+      /* The transaction BCB already used for another page. In future, we can extend to have many transaction BCBs. */
+      assert (thread_p->tran_bcb != NULL);
+      return NO_ERROR;
+    }
+
+  bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
+  if (bufptr == NULL)
+    {
+      bufptr = (PGBUF_BCB *) malloc ((size_t) PGBUF_BCB_SIZE);
+      if (bufptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) PGBUF_BCB_SIZE);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      ioptr = (PGBUF_IOPAGE_BUFFER *) malloc ((size_t) PGBUF_IOPAGE_BUFFER_SIZE);
+      if (ioptr == NULL)
+	{
+	  free_and_init (bufptr);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) PGBUF_IOPAGE_BUFFER_SIZE);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      pthread_mutex_init (&bufptr->BCB_mutex, NULL);
+      bufptr->ipool = -1;
+      VPID_SET_NULL (&bufptr->vpid);
+      bufptr->fcnt = 0;
+      bufptr->latch_mode = PGBUF_LATCH_INVALID;
+      bufptr->next_wait_thrd = NULL;
+      bufptr->hash_next = NULL;
+      bufptr->prev_BCB = NULL;
+      bufptr->next_BCB = NULL;
+      bufptr->dirty = false;
+      bufptr->avoid_dealloc_cnt = 0;
+      PGBUF_BCB_RESET_MODIFICATION (bufptr);
+      bufptr->avoid_victim = false;
+      bufptr->async_flush_request = false;
+      bufptr->victim_candidate = false;
+      bufptr->zone = PGBUF_INVALID_ZONE;
+      LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+
+      /* link BCB and iopage buffer */
+      LSA_SET_NULL (&ioptr->iopage.prv.lsa);
+      /* Init Page identifier */
+      ioptr->iopage.prv.pageid = -1;
+      ioptr->iopage.prv.volid = -1;
+#if 1				/* do not delete me */
+      ioptr->iopage.prv.ptype = '\0';
+      ioptr->iopage.prv.pflag_reserve_1 = '\0';
+      ioptr->iopage.prv.p_reserve_2 = 0;
+      ioptr->iopage.prv.p_reserve_3 = 0;
+#endif
+      bufptr->iopage_buffer = ioptr;
+      ioptr->bcb = bufptr;
+#if defined(CUBRID_DEBUG)
+      /* Reinitialize the buffer */
+      pgbuf_scramble (&bufptr->iopage_buffer->iopage);
+      memcpy (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard));
+#endif /* CUBRID_DEBUG */
+      thread_p->tran_bcb = bufptr;
+    }
+
+  CAST_BFPTR_TO_PGPTR (*bcb_area, bufptr);
+  thread_p->tran_bcb_used = true;
+
+  assert (*bcb_area != NULL);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_release_tran_bcb_area () - Release transaction BCB area
+ *   return: error code
+ *   thread_p(in): thread entry 
+ */
+void
+pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  thread_p->tran_bcb_used = false;
+}
+
+/*
+ * pgbuf_finalize_tran_bcb () - Finalize transaction BCB
+ *   return: error code
+ *   thread_p(in): thread entry
+ */
+void
+pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p)
+{
+  PGBUF_BCB *bufptr;
+  assert (thread_p != NULL);
+
+  bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
+  if (bufptr)
+    {
+      pthread_mutex_destroy (&bufptr->BCB_mutex);
+      if (bufptr->iopage_buffer)
+	{
+	  free_and_init (bufptr->iopage_buffer);
+	}
+      free_and_init (thread_p->tran_bcb);
+    }
+}
+#endif
+
+/*
+ * pgbuf_relocate_bcb () - Relocate BCB
+ * return : void
+ * thread_p (in) : thread entry
+ * bufptr (in) : BCB
+ *
+ * Note: The caller must hold the BCB mutex.
+ */
+static void
+pgbuf_relocate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+{
+  int ain_age;
+  switch (bufptr->zone)
+    {
+    case PGBUF_LRU_1_ZONE:
+      /* do nothing in this case */
+      break;
+
+    case PGBUF_AIN_ZONE:
+      ain_age = pgbuf_Pool.buf_AIN_list.tick - bufptr->ain_tick;
+      ain_age = (ain_age > 0) ? (ain_age) : (DB_INT32_MAX);
+
+      if (ain_age > pgbuf_Pool.buf_AIN_list.max_count / 2)
+	{
+	  /* Correlated references are constrainted to half of the AIN list. If a page in AIN is referenced
+	   * again and is older than half the AIN size, we consider it hot and relocate it to LRU. This aims to 
+	   * avoid discarding soon-to-become hot pages: in classic 2Q, a page is discarded from AIN only when
+	   * removed from page buffer, it becomes hot page (put in LRU) only after is loaded a second time and
+	   * still resides in AOUT list. */
+	  pgbuf_move_from_ain_to_lru (bufptr);
+	}
+      break;
+
+    case PGBUF_VOID_ZONE:
+      if (!PGBUF_IS_2Q_ENABLED || pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid))
+	{
+	  /* Put BCB in "middle" of LRU if VPID is in Aout list or is the first reference and 2Q is disabled.
+	   * The page is not yet hot. */
+	  pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_2_ZONE);
+	}
+      else
+	{
+	  /* 2Q enabled and is first time the page is referenced: we put it in AIN to filter out correlated
+	   * references */
+	  pgbuf_relocate_top_ain (bufptr);
+	}
+      break;
+
+    case PGBUF_LRU_2_ZONE:
+      (void) pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_1_ZONE);
+      break;
+
+    default:
+      assert (false);
+      break;
+    }
 }
