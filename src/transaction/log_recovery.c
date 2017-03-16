@@ -3092,6 +3092,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		  /* Reset vacuum recover LSA */
 		  vacuum_notify_server_crashed (&null_lsa);
+
+		  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo: RVVAC_COMPLETE| log_lsa:%d,%d\n", log_lsa.pageid, log_lsa.offset);
 		}
 
 	      /* 

@@ -2939,6 +2939,10 @@ restart:
 
   log_append_redo_data2 (thread_p, RVVAC_COMPLETE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
 			 sizeof (log_Gl.hdr.mvcc_next_id), &log_Gl.hdr.mvcc_next_id);
+
+  _er_log_debug (ARG_FILE_LINE, "log_append_redo_data2 RVVAC_COMPLETE\n");
+
+  
   vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
   logpb_flush_pages_direct (thread_p);
 
@@ -2983,6 +2987,8 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vacuum_reset_log_header_cache ();
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  _er_log_debug (ARG_FILE_LINE, "vacuum_rv_redo_vacuum_complete| rcv->reference_lsa:%d,%d\n", rcv->reference_lsa.pageid, rcv->reference_lsa.offset);
 
   return NO_ERROR;
 }
@@ -5346,6 +5352,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	      redo = (LOG_REC_REDO *) (log_page_p->area + copy_lsa.offset);
 	      if (redo->data.rcvindex == RVVAC_COMPLETE)
 		{
+		  _er_log_debug (ARG_FILE_LINE, "vacuum_recover_lost_block_data: RVVAC_COMPLETE log_lsa:%d,%d\n", log_lsa.pageid, log_lsa.offset);
+
 		  /* stop looking */
 		  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 				 "VACUUM: vacuum_recover_lost_block_data, complete vacuum \n");

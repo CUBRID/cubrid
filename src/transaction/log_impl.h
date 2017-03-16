@@ -1297,14 +1297,6 @@ enum log_repl_flush
    || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
    || ((rcvindex) == RVES_NOTIFY_VACUUM))
 
-/* Is log record for a change on vacuum data */
-#define LOG_IS_VACUUM_DATA_RECOVERY(rcvindex) \
-  ((rcvindex) == RVVAC_LOG_BLOCK_APPEND	\
-   || (rcvindex) == RVVAC_LOG_BLOCK_REMOVE \
-   || (rcvindex) == RVVAC_LOG_BLOCK_SAVE \
-   || (rcvindex) == RVVAC_START_OR_END_JOB \
-   || (rcvindex) == RVVAC_COMPLETE)
-
 #define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
   (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
    && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
