@@ -270,11 +270,6 @@ extern "C"
     unsigned int pb_num_dirties;
     unsigned int pb_num_ioreads;
     unsigned int pb_num_iowrites;
-    /* TODO: Temporary dummy stats to make build work. Revert when CM server can fetch last develop version */
-    /* ===> */
-    unsigned int pb_num_victims;
-    unsigned int pb_num_replacements;
-    /* <=== */
     unsigned int pb_num_hash_anchor_waits;
     unsigned int pb_time_hash_anchor_wait;
     /* peeked stats */

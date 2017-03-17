@@ -175,11 +175,6 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_DIRTIES, "Num_data_page_dirties"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_IOREADS, "Num_data_page_ioreads"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_IOWRITES, "Num_data_page_iowrites"),
-  /* TODO: Temporary dummy stats to make build work. Revert when CM server can fetch last develop version */
-  /* ===> */
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_VICTIMS, "Num_data_page_victims"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_REPLACEMENTS, "Num_data_page_iowrites_for_replacement"),
-  /* <=== */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_FLUSHED, "Num_data_page_flushed"),
   /* peeked stats */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_PRIVATE_QUOTA, "Num_data_page_private_quota"),
