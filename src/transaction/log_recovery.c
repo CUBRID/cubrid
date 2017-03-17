@@ -4059,10 +4059,16 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       return;
     }
 
-  if (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa) || LSA_GE (&tdes->rcv.atomic_sysop_start_lsa, &tdes->undo_nxlsa))
+  if (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa))
     {
       /* no atomic system operation */
       return;
+    }
+  if (LSA_GE (&tdes->rcv.atomic_sysop_start_lsa, &tdes->undo_nxlsa))
+    {
+      /* nothing after tdes->rcv.atomic_sysop_start_lsa */
+      assert (LSA_EQ (&tdes->rcv.atomic_sysop_start_lsa, &tdes->undo_nxlsa));
+      LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
     }
   assert (tdes->topops.last <= 0);
 
