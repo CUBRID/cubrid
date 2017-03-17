@@ -505,3 +505,42 @@ define pgbuf_read_bcb_flags
     printf "BCB is in lru list with index %d \n", $flags & 0xFFFF
     end
   end
+  
+# pgbuf_flush_select_victims
+# No args
+#
+# designed to be called from pgbuf_flush_victim_candidates, will try to simulate the victim selection algorithm
+#
+define pgbuf_flush_select_victims
+  set pagination off
+  set $i = 0
+  printf "check_count_lru = %d, lru_sum_flush_priority = %.4f \n", check_count_lru, lru_sum_flush_priority
+  set $total_vict_cand = 0
+  while $i < 32 + 152
+    printf "%5d: flush_target = %.4f, ", $i, pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[$i] / lru_sum_flush_priority
+    if pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[$i] <= 0
+      printf "check=%7d \n", 0
+    else
+      set $check_cnt = (int) (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[$i] * (float) check_count_lru / lru_sum_flush_priority)
+      if $check_cnt < 1
+        set $check_cnt = 1
+        end
+      printf "check=%7d, ", $check_cnt
+      set $bcb = pgbuf_Pool.buf_LRU_list[$i].bottom
+      set $bcb_count = 0
+      set $vict_count = 0
+      while $bcb != 0 && ($bcb->flags & 0x30000) == 0x30000 && $bcb_count < $check_cnt
+        if ($bcb->flags & 0x80000000) != 0
+          set $vict_count = $vict_count + 1
+          end
+        set $bcb_count = $bcb_count + 1
+        set $bcb = $bcb->prev_BCB
+        end
+      printf "vict_count=%7d \n", $vict_count
+      set $total_vict_cand = $total_vict_cand + $vict_count
+      end
+    set $i = $i + 1
+    end
+    printf "total victims = %d \n", $total_vict_cand
+  set pagination on
+  end
