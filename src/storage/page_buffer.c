@@ -8328,6 +8328,12 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       return NULL;
     }
 
+  if (!pgbuf_bcb_is_dirty (lru_list->bottom) && lru_list->victim_hint != lru_list->bottom)
+    {
+      /* update hint to bottom. sometimes it may be out of sync. */
+      (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, lru_list->bottom);
+    }
+
   /* we will search */
   found_victim_cnt = 0;
   bufptr_victimizable = NULL;
