@@ -4109,7 +4109,8 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   assert (tdes->topops.last <= 0);
 
-  /* this is it */
+  /* this is it. reset tdes->rcv.atomic_sysop_start_lsa and we're done. */
+  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 }
 
 /*
