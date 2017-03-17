@@ -1055,11 +1055,6 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Num_data_page_dirties", offsetof (T_CM_DB_EXEC_STAT, pb_num_dirties)},
   {"Num_data_page_ioreads", offsetof (T_CM_DB_EXEC_STAT, pb_num_ioreads)},
   {"Num_data_page_iowrites", offsetof (T_CM_DB_EXEC_STAT, pb_num_iowrites)},
-  /* TODO: Temporary dummy stats to make build work. Revert when CM server can fetch last develop version */
-  /* ===> */
-  {"Num_data_page_victims", offsetof (T_CM_DB_EXEC_STAT, pb_num_victims)},
-  {"Num_data_page_iowrites_for_replacement", offsetof (T_CM_DB_EXEC_STAT, pb_num_replacements)},
-  /* <=== */
   {"Num_data_page_hash_anchor_waits", offsetof (T_CM_DB_EXEC_STAT, pb_num_hash_anchor_waits)},
   {"Time_data_page_hash_anchor_wait", offsetof (T_CM_DB_EXEC_STAT, pb_time_hash_anchor_wait)},
   {"Num_data_page_fixed", offsetof (T_CM_DB_EXEC_STAT, pb_fixed_cnt)},
