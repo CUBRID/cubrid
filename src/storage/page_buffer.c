@@ -3161,7 +3161,6 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   int check_count_lru;
   int cfg_check_cnt;
   int total_flushed_count;
-  int lru_idx, start_lru_idx;
   int error = NO_ERROR;
   float lru_miss_rate;
   float lru_dynamic_flush_adj = 1.0f;
@@ -3404,14 +3403,72 @@ end:
 
   pgbuf_Pool.is_flushing_victims = false;
 
+#if !defined (NDEBUG)
   /* safe-guard: when the system really needs victims, we must make sure flush does something. otherwise, we probably
    * messed something here.
    * note: sometimes the post-flush thread may be behind (however, it should catch up quickly). when that happens,
    *       flush thread may not be able to find victims. that's ok, the purpose of this safe-guard is to avoid dead
    *       scenarios when threads are waiting for direct victims but system flushes nothing. if there are flushed
    *       waiting for assignment, then we are not in this kind of scenario. */
-  assert (total_flushed_count > 0 || !pgbuf_is_any_thread_waiting_for_direct_victim () || !empty_flushed_bcb_queue
-	  || count_need_wal > 0);
+  if (total_flushed_count == 0 && pgbuf_is_any_thread_waiting_for_direct_victim () && empty_flushed_bcb_queue
+      && count_need_wal == 0)
+    {
+      /* so, we have not flushed anything, but threads are waiting to direct victims. and:
+       * - post-flush thread is not behind.
+       * - log-flush thread is not behind.
+       * so what can it be?
+       *
+       * we know of one more possible scenario. the waiting threads have no victims in their private lists, and their
+       * private lists are over quota. there are enough victims in other lists, so enough that flush could not find
+       * any viable candidates to flush. let's confirm this scenario. */
+      THREAD_ENTRY *thrd_iter;
+      PGBUF_LRU_LIST *lru_list = NULL;
+      int lru_idx;
+      int count_check_this_lru;
+
+      assert (check_count_lru > 0);
+
+      for (thrd_iter = thread_iterate (NULL); thrd_iter != NULL; thrd_iter = thread_iterate (thrd_iter))
+	{
+	  if (thrd_iter->resume_status != THREAD_ALLOC_BCB_SUSPENDED)
+	    {
+	      continue;
+	    }
+	  if (!PGBUF_THREAD_HAS_PRIVATE_LRU (thrd_iter))
+	    {
+	      continue;
+	    }
+	  lru_list = PGBUF_GET_LRU_LIST (PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thrd_iter)));
+	  if (lru_list->count_vict_cand > 0)
+	    {
+	      /* should have found victim candidate */
+	      assert (false);
+	    }
+	  if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
+	    {
+	      /* should be over quota */
+	      assert (false);
+	    }
+	}
+
+      /* now, let's double check that not finding flush candidates is possible (enough victim candidates as it is). */
+      for (lru_idx = 0; lru_idx < PGBUF_TOTAL_LRU_COUNT; lru_idx++)
+	{
+	  if (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx] <= 0)
+	    {
+	      continue;
+	    }
+	  count_check_this_lru =
+	    (int) (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx] * (float) check_count_lru
+		   / lru_sum_flush_priority);
+	  lru_list = PGBUF_GET_LRU_LIST (lru_idx);
+	  if (lru_list->count_vict_cand < check_count_lru)
+	    {
+	      assert (false);
+	    }
+	}
+    }
+#endif /* !NDEBUG */
 #endif /* SERVER_MODE */
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: flush %d pages from lru lists. Found LRU:%d/%d",

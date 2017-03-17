@@ -544,3 +544,38 @@ define pgbuf_flush_select_victims
     printf "total victims = %d \n", $total_vict_cand
   set pagination on
   end
+
+# pgbuf_flush_show_all
+# No arguments
+# 
+# Print all information relevant to the safe guard in pgbuf_flush_victim_candidates. Function is designed to be called in pgbuf_flush_victim_candidates.
+#
+# Prerequisite:
+# pgbuf_lru_print_victim_status
+# pgbuf_flush_select_victims
+#
+define pgbuf_flush_show_all
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_high_priority
+  set $i = $lfcq->consume_cursor
+  set $thrar = (THREAD_ENTRY **) $lfcq->data
+  while $i < $lfcq->produce_cursor
+    printf "thread %d \n", $thrar[$i % $lfcq->capacity]->index
+    set $plru = $thrar[$i % $lfcq->capacity]->private_lru_index
+    pgbuf_lru_print $plru
+    set $i = $i + 1
+    end
+    
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
+  set $i = $lfcq->consume_cursor
+  set $thrar = (THREAD_ENTRY **) $lfcq->data
+  while $i < $lfcq->produce_cursor
+    printf "thread %d \n", $thrar[$i % $lfcq->capacity]->index
+    set $plru = $thrar[$i % $lfcq->capacity]->private_lru_index
+    pgbuf_lru_print $plru
+    set $i = $i + 1
+    end
+  
+  pgbuf_lru_print_victim_status
+  pgbuf_flush_select_victims
+  end
+  

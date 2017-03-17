@@ -6430,3 +6430,27 @@ thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon)
     }
   pthread_mutex_unlock (&daemon->lock);
 }
+
+#if !defined (NDEBUG)
+/*
+ * thread_iterate () - thread iterator
+ *
+ * return        : next thread entry
+ * thread_p (in) : current thread entry
+ */
+THREAD_ENTRY *
+thread_iterate (THREAD_ENTRY * thread_p)
+{
+  int index = 0;
+  if (thread_p != NULL)
+    {
+      index = thread_p->index + 1;
+    }
+  if (index >= thread_Manager.num_total)
+    {
+      assert (index == thread_Manager.num_total);
+      return NULL;
+    }
+  return thread_Manager.thread_array + index;
+}
+#endif /* !NDEBUG */
