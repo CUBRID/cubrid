@@ -5138,8 +5138,8 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
     }
   else
     {
-      /* start a nested system operation. we will end it with commit & undo */
-      log_sysop_start (thread_p);
+      /* start a nested system operation. we will end it with commit & undo. this must be atomic. */
+      log_sysop_start_atomic (thread_p);
       is_sysop_started = true;
 
       /* allocate page */
@@ -6000,7 +6000,7 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
 
   /* so, we do need a system operation here. the system operation will end, based on context, with commit & compensate
    * or with commit & run postpone. */
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   is_sysop_started = true;
 
   /* clear page bit by calling file_perm_dealloc */
