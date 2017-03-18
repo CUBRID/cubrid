@@ -14878,8 +14878,7 @@ pgbuf_bcb_mark_is_flushing (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
     }
   else
     {
-      pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_FLUSHING_TO_DISK_FLAG,
-			      PGBUF_BCB_ASYNC_FLUSH_REQ);
+      pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_FLUSHING_TO_DISK_FLAG, PGBUF_BCB_ASYNC_FLUSH_REQ);
       return false;
     }
 }
