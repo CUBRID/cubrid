@@ -1163,7 +1163,7 @@ STATIC_INLINE PGBUF_ZONE pgbuf_bcb_get_zone (const PGBUF_BCB * bcb) __attribute_
 STATIC_INLINE int pgbuf_bcb_get_lru_index (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_mark_is_flushing (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
+STATIC_INLINE bool pgbuf_bcb_mark_is_flushing (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_flushing (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_direct_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
@@ -1176,7 +1176,7 @@ STATIC_INLINE void pgbuf_bcb_set_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb
 STATIC_INLINE void pgbuf_bcb_clear_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_mark_was_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
+STATIC_INLINE void pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, bool mark_dirty)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
@@ -9702,6 +9702,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
   QUERY_ID query_id = NULL_QUERY_ID;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
+  bool was_dirty = false;
 
   /* the caller is holding bufptr->mutex */
   *is_bcb_locked = true;
@@ -9735,7 +9736,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
       return ER_FAILED;
     }
 
-  pgbuf_bcb_mark_is_flushing (thread_p, bufptr);
+  was_dirty = pgbuf_bcb_mark_is_flushing (thread_p, bufptr);
 
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
@@ -9777,7 +9778,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
     {
       PGBUF_BCB_LOCK (bufptr);
       *is_bcb_locked = true;
-      pgbuf_bcb_mark_was_not_flushed (thread_p, bufptr);
+      pgbuf_bcb_mark_was_not_flushed (thread_p, bufptr, was_dirty);
       LSA_COPY (&bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
       error = ER_FAILED;
 
@@ -14865,14 +14866,21 @@ pgbuf_bcb_clear_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
  * return   : void
  * bcb (in) : bcb
  */
-STATIC_INLINE void
+STATIC_INLINE bool
 pgbuf_bcb_mark_is_flushing (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
-  assert (pgbuf_bcb_is_dirty (bcb));
-
-  /* set flushing flag and clear dirty */
-  pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_FLUSHING_TO_DISK_FLAG,
-			  PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_ASYNC_FLUSH_REQ);
+  if (pgbuf_bcb_is_dirty (bcb))
+    {
+      /* set flushing flag and clear dirty */
+      pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_FLUSHING_TO_DISK_FLAG,
+			      PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_ASYNC_FLUSH_REQ);
+      return true;
+    }
+  else
+    {
+      pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_FLUSHING_TO_DISK_FLAG, PGBUF_BCB_ASYNC_FLUSH_REQ);
+      return false;
+    }
 }
 
 /*
@@ -14893,12 +14901,13 @@ pgbuf_bcb_mark_was_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
  *
  * return   : void
  * bcb (in) : bcb
+ * mark_dirty(in): true if BCB needs to be marked dirty
  */
 STATIC_INLINE void
-pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
+pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, bool mark_dirty)
 {
   /* set dirty flag and clear flushing */
-  pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_DIRTY_FLAG, PGBUF_BCB_FLUSHING_TO_DISK_FLAG);
+  pgbuf_bcb_update_flags (thread_p, bcb, mark_dirty ? PGBUF_BCB_DIRTY_FLAG : 0, PGBUF_BCB_FLUSHING_TO_DISK_FLAG);
 }
 
 /*
