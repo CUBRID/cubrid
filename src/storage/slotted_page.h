@@ -212,6 +212,6 @@ extern SCAN_CODE spage_slots_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_
 					void *ctx);
 extern int spage_slots_end_scan (THREAD_ENTRY * thread_p, void **ctx);
 
-extern int spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bool reusable);
+extern void spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bool reusable);
 extern bool spage_need_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 #endif /* _SLOTTED_PAGE_H_ */

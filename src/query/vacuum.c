@@ -1222,9 +1222,9 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	    {
 	      pgbuf_unfix_and_init (thread_p, helper.forward_page);
 	    }
-	  er_clear ();
-	  error_code = NO_ERROR;
-	  continue;
+
+	  /* release build will give up */
+	  goto end;
 	}
       /* Safe guard. */
       assert (helper.home_page != NULL);
@@ -1263,9 +1263,15 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 
 	      /* Debug should hit assert. Release should continue. */
 	      assert_release (false);
-	      er_clear ();
-	      error_code = NO_ERROR;
-	      continue;
+
+	      if (helper.home_page == NULL)
+		{
+		  goto end;
+		}
+	      else
+		{
+		  continue;
+		}
 	    }
 	  break;
 
@@ -1363,20 +1369,21 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  goto end;
 	}
 
-      if (pgbuf_has_any_non_vacuum_waiters (helper.home_page))
+      if (pgbuf_has_any_non_vacuum_waiters (helper.home_page) && obj_index < n_heap_objects - 1)
 	{
 	  /* release latch to favor other threads */
 	  vacuum_heap_page_log_and_reset (thread_p, &helper, false, true);
+	  assert (helper.home_page == NULL);
+	  assert (helper.forward_page == NULL);
 
 	  helper.home_page =
 	    pgbuf_fix (thread_p, &helper.home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (helper.home_page == NULL)
 	    {
-	      ASSERT_ERROR_AND_SET (error_code);
+	      assert (false);
 	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page %d|%d.\n",
 			     helper.home_vpid.volid, helper.home_vpid.pageid);
-	      assert (helper.forward_page == NULL);
-	      return error_code;
+	      goto end;
 	    }
 	  (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
 	}
@@ -1872,14 +1879,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
     }
 
   /* Vacuum REC_HOME/REC_RELOCATION/REC_BIGONE */
-  if (spage_vacuum_slot (thread_p, helper->home_page, helper->crt_slotid, helper->reusable) != NO_ERROR)
-    {
-      if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE)
-	{
-	  log_sysop_abort (thread_p);
-	}
-      return ER_FAILED;
-    }
+  spage_vacuum_slot (thread_p, helper->home_page, helper->crt_slotid, helper->reusable);
 
   if (helper->reusable)
     {
@@ -1909,11 +1909,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
-      if (spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true) != NO_ERROR)
-	{
-	  log_sysop_abort (thread_p);
-	  return ER_FAILED;
-	}
+      spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true);
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
@@ -2282,11 +2278,7 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	{
 	  /* Record was removed completely */
 	  slotids[i] = -slotids[i];
-	  if (spage_vacuum_slot (thread_p, page_p, slotids[i], reusable) != NO_ERROR)
-	    {
-	      assert_release (false);
-	      return ER_FAILED;
-	    }
+	  spage_vacuum_slot (thread_p, page_p, slotids[i], reusable);
 	}
       else
 	{
@@ -7291,11 +7283,7 @@ vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   slotid = (rcv->offset & (~VACUUM_LOG_VACUUM_HEAP_MASK));
   reusable = (rcv->offset & VACUUM_LOG_VACUUM_HEAP_REUSABLE) != 0;
 
-  if (spage_vacuum_slot (thread_p, rcv->pgptr, slotid, reusable) != NO_ERROR)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
+  spage_vacuum_slot (thread_p, rcv->pgptr, slotid, reusable);
 
   if (spage_need_compact (thread_p, rcv->pgptr) == true)
     {
