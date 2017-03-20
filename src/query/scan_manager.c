@@ -4882,6 +4882,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LOG_LSA ref_lsa;
   int is_peeking;
   OBJECT_GET_STATUS object_get_status;
+  REGU_VARIABLE_LIST p;
 
   hsidp = &scan_id->s.hsid;
   if (scan_id->mvcc_select_lock_needed)
@@ -4901,6 +4902,17 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   if (scan_id->grouped)
     {
       is_peeking = PEEK;
+    }
+
+  if (data_filter.val_list)
+    {
+      for (p = data_filter.scan_pred->regu_list; p; p = p->next)
+	{
+	  if (DB_NEED_CLEAR (p->value.vfetch_to))
+	    {
+	      pr_clear_value (p->value.vfetch_to);
+	    }
+	}
     }
 
   while (1)
