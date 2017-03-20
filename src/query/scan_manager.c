@@ -2287,12 +2287,12 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
     }
   else
     {
-  /* Clear output val list to avoid memory leak. */
+      /* Clear output val list to avoid memory leak. */
       REGU_VARIABLE_LIST p;
-  for (p = iscan_id->indx_cov.regu_val_list; p; p = p->next)
-    {
-      pr_clear_value (p->value.vfetch_to);
-    }
+      for (p = iscan_id->indx_cov.regu_val_list; p; p = p->next)
+	{
+	  pr_clear_value (p->value.vfetch_to);
+	}
     }
 
   switch (indx_infop->range_type)
