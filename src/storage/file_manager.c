@@ -3980,9 +3980,9 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
 
-  if (is_temp)
+  if (!is_temp)
     {
-      /* first remove from tracker */
+      /* permanent files are first removed from tracker */
       error_code = file_tracker_unregister (thread_p, vfid);
       if (error_code != NO_ERROR)
 	{
