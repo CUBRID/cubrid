@@ -14321,7 +14321,6 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
   THREAD_ENTRY *thrd_blocked = NULL;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool not_empty = false;
-
   /* invalidation flag for direct victim assignment: any flag invalidating victim candidates, except is flushing flag */
   int invalidate_flag = (PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK & (~PGBUF_BCB_FLUSHING_TO_DISK_FLAG));
 
