@@ -4830,7 +4830,7 @@ spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id)
 /*
  * spage_vacuum_slot () - Vacuum the slot of an invisible object version.
  *
- * return	     : Error code.
+ * return	     : void.
  * thread_p (in)     : Thread entry.
  * page_p (in)	     : Page pointer.
  * slotid (in)	     : Record slot id.
@@ -4846,7 +4846,7 @@ spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id)
  *	    slot and this version is invisible, there is no point in keeping
  *	    links to newer versions.
  */
-int
+void
 spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bool reusable)
 {
   SPAGE_HEADER *page_header_p = (SPAGE_HEADER *) page_p;
@@ -4864,7 +4864,6 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bo
       /* Vacuum error log */
       vacuum_er_log (VACUUM_ER_LOG_ERROR, "VACUUM: Object (%d, %d, %d) was already vacuumed",
 		     pgbuf_get_vpid_ptr (page_p)->volid, pgbuf_get_vpid_ptr (page_p)->pageid, slotid);
-      return NO_ERROR;
     }
 
   /* Slot is deleted */
@@ -4887,8 +4886,6 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bo
 #ifdef SPAGE_DEBUG
   spage_check (thread_p, page_p);
 #endif
-
-  return NO_ERROR;
 }
 
 /*
