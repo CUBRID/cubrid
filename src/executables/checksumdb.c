@@ -2190,7 +2190,7 @@ begin:
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       error = ER_FAILED;
@@ -2208,7 +2208,7 @@ begin:
   db_set_isolation (TRAN_REPEATABLE_READ);
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       (void) db_shutdown ();
 

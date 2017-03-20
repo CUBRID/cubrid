@@ -707,6 +707,8 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
   int nreq;
   bool log_cs_own = false;
 
+  PERF_UTIME_TRACKER time_tracker = PERF_UTIME_TRACKER_INITIALIZER;
+
   if (tb == NULL)
     {
       return NO_ERROR;
@@ -757,11 +759,15 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
 	  return NO_ERROR;
 	}
 
+      PERF_UTIME_TRACKER_START (thread_p, &time_tracker);
+
       /* Wait for signal */
       rv = pthread_cond_wait (&tb->waiter_cond, &tb->token_mutex);
 
       pthread_mutex_unlock (&tb->token_mutex);
       retry_count++;
+
+      PERF_UTIME_TRACKER_BULK_TIME (thread_p, &time_tracker, PSTAT_PB_COMPENSATE_FLUSH, nreq);
     }
 
   /* I am very very unlucky (unlikely to happen) */
@@ -4401,6 +4407,9 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
 {
   int success = NO_ERROR;
   APPLY_ARG arg = { 0 };
+  PERF_UTIME_TRACKER time_track;
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 
   arg.vol_id = NULL_VOLID;
 
@@ -4419,6 +4428,8 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
     }
 
   er_stack_pop ();
+
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_FILE_IOSYNC_ALL);
 
   return success;
 }

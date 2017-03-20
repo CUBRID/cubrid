@@ -580,8 +580,8 @@ extern TP_DOMAIN *btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid);
 extern int btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid);
 extern void btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level);
 /* Recovery routines */
-extern int btree_rv_util_save_page_records (PAGE_PTR page_ptr, INT16 first_slotid, int rec_cnt, INT16 ins_slotid,
-					    char *data, int *length);
+extern int btree_rv_util_save_page_records (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, INT16 first_slotid, int rec_cnt,
+					    INT16 ins_slotid, char *data, int *length);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * Rec);
 extern void btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * Rec);

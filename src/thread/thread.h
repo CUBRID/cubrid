@@ -105,6 +105,8 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
 #define thread_start_scan (NULL)
 
+#define thread_is_page_flush_thread_available()	(false)
+
 #else /* !SERVER_MODE */
 
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) \
@@ -137,7 +139,9 @@ enum
   THREAD_LOCK_SUSPENDED = 17,
   THREAD_LOCK_RESUMED = 18,
   THREAD_LOGWR_SUSPENDED = 19,
-  THREAD_LOGWR_RESUMED = 20
+  THREAD_LOGWR_RESUMED = 20,
+  THREAD_ALLOC_BCB_SUSPENDED = 21,
+  THREAD_ALLOC_BCB_RESUMED = 22,
 };
 
 typedef enum
@@ -279,6 +283,7 @@ struct thread_entry
 				 * thread */
   int client_id;		/* client id whom this thread is responding */
   int tran_index;		/* tran index to which this thread belongs */
+  int private_lru_index;	/* private lru index when transaction quota is used */
   pthread_mutex_t tran_index_lock;
   unsigned int rid;		/* request id which this thread is processing */
   int status;			/* thread status */
@@ -374,8 +379,6 @@ typedef void *CSS_THREAD_ARG;
 
 typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
-extern DAEMON_THREAD_MONITOR thread_Log_flush_thread;
-
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 #endif /* not HPUX */
@@ -438,13 +441,12 @@ extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 
-/* is thread functions */
-extern bool thread_is_checkpoint_thread (THREAD_ENTRY * thread_p);
-
 /* wakeup functions */
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_page_flush_thread (void);
+extern void thread_wakeup_page_buffer_maintenance_thread (void);
+extern void thread_wakeup_page_post_flush_thread (void);
 extern void thread_wakeup_flush_control_thread (void);
 extern void thread_wakeup_checkpoint_thread (void);
 extern void thread_wakeup_purge_archive_logs_thread (void);
@@ -455,6 +457,8 @@ extern void thread_wakeup_vacuum_worker_threads (int n_workers);
 
 /* is available functions */
 extern bool thread_is_page_flush_thread_available (void);
+extern bool thread_is_page_post_flush_thread_available (void);
+extern bool thread_is_log_flush_thread_available (void);
 
 /* is running tunfions */
 extern bool thread_auto_volume_expansion_thread_is_running (void);
@@ -527,6 +531,9 @@ extern int thread_first_vacuum_worker_thread_index (void);
 
 extern bool thread_is_auto_volume_expansion_thread_available (void);
 
+#if !defined (NDEBUG)
+extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
+#endif /* !NDEBUG */
 #endif /* SERVER_MODE */
 
 #endif /* _THREAD_H_ */

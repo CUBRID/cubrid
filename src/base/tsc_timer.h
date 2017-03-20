@@ -47,6 +47,8 @@ union tsc_ticks
   struct timeval tv;		/* microseconds */
 };
 
+/* todo: inline functions */
+
 extern void tsc_init (void);
 extern void tsc_getticks (TSC_TICKS * tck);
 extern void tsc_elapsed_time_usec (TSCTIMEVAL * tv, TSC_TICKS end_tick, TSC_TICKS start_tick);

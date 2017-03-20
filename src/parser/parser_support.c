@@ -9266,8 +9266,6 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'data_page_dirties' as [variable] , exec_stats('Num_data_page_dirties') as [value])"
     "UNION ALL (SELECT 'data_page_ioreads' as [variable] , exec_stats('Num_data_page_ioreads') as [value])"
     "UNION ALL (SELECT 'data_page_iowrites' as [variable] , exec_stats('Num_data_page_iowrites') as [value])"
-    "UNION ALL (SELECT 'data_page_victims' as [variable] , exec_stats('Num_data_page_victims') as [value])"
-    "UNION ALL (SELECT 'data_page_iowrites_for_replacement' as [variable] , exec_stats('Num_data_page_iowrites_for_replacement') as [value])"
     "UNION ALL (SELECT 'log_page_ioreads' as [variable] , exec_stats('Num_log_page_ioreads') as [value])"
     "UNION ALL (SELECT 'log_page_iowrites' as [variable] , exec_stats('Num_log_page_iowrites') as [value])"
     "UNION ALL (SELECT 'log_append_records' as [variable] , exec_stats('Num_log_append_records') as [value])"

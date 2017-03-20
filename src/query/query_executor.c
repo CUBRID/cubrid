@@ -15531,7 +15531,9 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	    {
 	      if (recursive_iterations++ >= sys_prm_cte_max_recursions)
 		{
-		  break;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CTE_MAX_RECURSION_REACHED, 1,
+			  sys_prm_cte_max_recursions);
+		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
 	  if (qexec_execute_mainblock (thread_p, recursive_part, xasl_state, NULL) != NO_ERROR)
@@ -18857,7 +18859,7 @@ query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p, XASL_NODE * x
 	{
 	  /* REGUs didn't match, at least disable the optimization */
 	  multi_range_opt->use = false;
-	  goto exit_on_error;
+	  goto exit;
 	}
       multi_range_opt->is_desc_order[index] = (orderby_list->s_order == S_DESC) ? true : false;
       multi_range_opt->sort_att_idx[index] = sort_index_pos;

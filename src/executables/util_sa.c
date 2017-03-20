@@ -346,7 +346,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       goto error_exit;
@@ -3720,7 +3720,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   char *master_host_name;
   BO_RESTART_ARG restart_arg;
 
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       goto error_exit;
