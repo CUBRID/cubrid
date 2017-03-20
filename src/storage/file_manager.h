@@ -168,7 +168,7 @@ extern int file_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_t
 				  VFID * vfid);
 
 extern void file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp);
 extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid);
 
@@ -242,6 +242,7 @@ extern int file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_tracker_unregister_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
 extern int file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_tracker_reuse_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
