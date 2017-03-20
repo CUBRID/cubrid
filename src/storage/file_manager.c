@@ -7900,6 +7900,8 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   PAGE_PTR page_extdata = NULL;
   bool was_empty = false;
   bool is_full = false;
+  /* we don't have rollback, so don't interrupt */
+  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
   int error_code = NO_ERROR;
 
   file_header_sanity_check (thread_p, fhead);
@@ -7936,7 +7938,8 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	pgbuf_fix (thread_p, &fhead->vpid_last_temp_alloc, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
+	  assert_release (false);
+	  error_code = ER_FAILED;
 	  goto exit;
 	}
       extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
@@ -7952,7 +7955,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	disk_reserve_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE, fhead->volid_last_expand, 1, &partsect_new.vsid);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  assert_release (false);
 	  goto exit;
 	}
 
@@ -7976,7 +7979,8 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	  page_ftab_new = pgbuf_fix (thread_p, &vpid_ftab_new, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (page_ftab_new == NULL)
 	    {
-	      ASSERT_ERROR_AND_SET (error_code);
+	      assert_release (false);
+	      error_code = ER_FAILED;
 
 	      /* todo: unreserve sector */
 	      goto exit;
@@ -8057,7 +8061,8 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       page_ftab = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
+	  assert (false);
+	  error_code = ER_FAILED;
 	  goto exit;
 	}
       extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
@@ -8119,6 +8124,7 @@ exit:
     {
       pgbuf_unfix_and_init (thread_p, page_ftab);
     }
+  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
   return error_code;
 }
 
