@@ -9925,8 +9925,9 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 
   /* now we need to make sure the file is protected. most types are not mutable (cannot be created or destroyed during
    * run-time), but b-tree and heap files must be protected by lock. */
-  if ((FILE_TYPE) item->type == FILE_HEAP)
+  switch ((FILE_TYPE) item->type)
     {
+    case FILE_HEAP:
       /* these files may be marked for delete. check this is not a deleted file */
       if (item->metadata.heap.is_marked_deleted)
 	{
@@ -9934,13 +9935,14 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 	  return NO_ERROR;
 	}
       /* we need to protect with lock. fall through */
-    }
-  else if ((FILE_TYPE) item->type == FILE_HEAP_REUSE_SLOTS || (FILE_TYPE) item->type == FILE_BTREE)
-    {
+      break;
+    case FILE_HEAP_REUSE_SLOTS:
+    case FILE_BTREE:
+    case FILE_MULTIPAGE_OBJECT_HEAP:
+    case FILE_BTREE_OVERFLOW_KEY:
       /* we need to protect with lock. fall through */
-    }
-  else
-    {
+      break;
+    default:
       /* immutable file types. no protection required */
       *stop = true;
       return NO_ERROR;
@@ -9959,13 +9961,24 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
   file_header_sanity_check (thread_p, fhead);
 
   /* read class OID */
-  if ((FILE_TYPE) item->type == FILE_BTREE)
+  switch ((FILE_TYPE) item->type)
     {
+    case FILE_BTREE:
       *class_oid = fhead->descriptor.btree.class_oid;
-    }
-  else
-    {
+      break;
+    case FILE_HEAP:
+    case FILE_HEAP_REUSE_SLOTS:
       *class_oid = fhead->descriptor.heap.class_oid;
+      break;
+    case FILE_MULTIPAGE_OBJECT_HEAP:
+      *class_oid = fhead->descriptor.heap_overflow.class_oid;
+      break;
+    case FILE_BTREE_OVERFLOW_KEY:
+      *class_oid = fhead->descriptor.btree_key_overflow.class_oid;
+      break;
+    default:
+      assert (false);
+      break;
     }
   pgbuf_unfix (thread_p, page_fhead);
 

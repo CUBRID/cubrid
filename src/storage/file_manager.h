@@ -90,6 +90,7 @@ typedef struct file_ovf_heap_des FILE_OVF_HEAP_DES;
 struct file_ovf_heap_des
 {
   HFID hfid;
+  OID class_oid;
 };
 
 /* Btree file descriptor */
@@ -105,6 +106,7 @@ typedef struct file_ovf_btree_des FILE_OVF_BTREE_DES;
 struct file_ovf_btree_des
 {
   BTID btid;
+  OID class_oid;
 };
 
 /* Extensible Hash file descriptor */
