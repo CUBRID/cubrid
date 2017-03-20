@@ -2148,7 +2148,6 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
   RANGE range, saved_range;
   int ret = NO_ERROR;
   int curr_key_prefix_length = 0;
-  REGU_VARIABLE_LIST p;
 
   /* pointer to INDX_SCAN_ID structure */
   iscan_id = &s_id->s.isid;
@@ -2281,16 +2280,19 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
       iscan_id->multi_range_opt.cnt = 0;
     }
 
-  /* Clear output val list to avoid memory leak. */
-  for (p = iscan_id->indx_cov.regu_val_list; p; p = p->next)
-    {
-      pr_clear_value (p->value.vfetch_to);
-    }
-
   /* if the end of this scan */
   if (iscan_id->curr_keyno > key_cnt)
     {
       return NO_ERROR;
+    }
+  else
+    {
+  /* Clear output val list to avoid memory leak. */
+      REGU_VARIABLE_LIST p;
+  for (p = iscan_id->indx_cov.regu_val_list; p; p = p->next)
+    {
+      pr_clear_value (p->value.vfetch_to);
+    }
     }
 
   switch (indx_infop->range_type)
@@ -4880,6 +4882,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LOG_LSA ref_lsa;
   int is_peeking;
   OBJECT_GET_STATUS object_get_status;
+  REGU_VARIABLE_LIST p;
 
   hsidp = &scan_id->s.hsid;
   if (scan_id->mvcc_select_lock_needed)
@@ -4899,6 +4902,17 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   if (scan_id->grouped)
     {
       is_peeking = PEEK;
+    }
+
+  if (data_filter.val_list)
+    {
+      for (p = data_filter.scan_pred->regu_list; p; p = p->next)
+	{
+	  if (DB_NEED_CLEAR (p->value.vfetch_to))
+	    {
+	      pr_clear_value (p->value.vfetch_to);
+	    }
+	}
     }
 
   while (1)

@@ -11406,6 +11406,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
+
 	      start = buf->ptr;
 
 	      rc = pr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
