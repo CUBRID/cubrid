@@ -1267,9 +1267,9 @@ STATIC_INLINE void btree_set_mvcc_delid (RECDES * rec, int mvcc_delid_offset, MV
 static void btree_record_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 					BTREE_NODE_TYPE node_type, BTREE_OBJECT_INFO * object_info,
 					char **rv_undo_data_ptr, char **rv_redo_data_ptr);
-static void btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_OBJECT_INFO * object_info,
-						char **rv_undo_data_ptr, char **rv_redo_data_ptr,
-						int *offset_to_objptr);
+static void btree_insert_object_ordered_by_oid (THREAD_ENTRY * thread_p, RECDES * record, BTID_INT * btid_int,
+						BTREE_OBJECT_INFO * object_info, char **rv_undo_data_ptr,
+						char **rv_redo_data_ptr, int *offset_to_objptr);
 static int btree_start_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_OBJECT_INFO * object_info,
 				      VPID * first_overflow_vpid, VPID * near_vpid, VPID * new_vpid,
 				      PAGE_PTR * new_page_ptr);
@@ -1400,8 +1400,8 @@ static INLINE short btree_record_object_get_mvcc_flags (char *data) __attribute_
 static INLINE bool btree_record_object_is_flagged (char *data, short mvcc_flag) __attribute__ ((ALWAYS_INLINE));
 static void btree_leaf_rebuild_mvccids_in_record (RECDES * recp, int offset, int mvcc_old_oid_mvcc_flags, int oid_size,
 						  MVCC_REC_HEADER * p_mvcc_rec_header);
-static void btree_leaf_record_handle_first_overflow (RECDES * recp, BTID_INT * btid_int, char **rv_undo_data_ptr,
-						     char **rv_redo_data_ptr);
+static void btree_leaf_record_handle_first_overflow (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid_int,
+						     char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 static int btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * rec, int offset,
 				      BTREE_NODE_TYPE node_type);
 static int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
@@ -2303,7 +2303,7 @@ btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid
 	}
 
       /* First object must be fixed size to provide enough space if objects are swapped from overflow. */
-      btree_leaf_record_handle_first_overflow (leaf_record, btid_int, rv_undo_data_ptr, rv_redo_data_ptr);
+      btree_leaf_record_handle_first_overflow (thread_p, leaf_record, btid_int, rv_undo_data_ptr, rv_redo_data_ptr);
     }
 
 #if !defined (NDEBUG)
@@ -2665,6 +2665,7 @@ btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
  * btree_leaf_change_first_object () - Replace first object in record with given object.
  *
  * return		  : Void
+ * thread_p (in)          : thread entry
  * recp (in/out)	  : B-tree leaf record.
  * btid (in)		  : B-tree info.
  * oidp (in)		  : Replacing instance OID.
@@ -2675,7 +2676,7 @@ btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
  * rv_redo_data_ptr (out) : If not NULL, output redo logging of this change.
  */
 void
-btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid, OID * oidp, OID * class_oidp,
+btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid, OID * oidp, OID * class_oidp,
 				BTREE_MVCC_INFO * mvcc_info, int *key_offset, char **rv_undo_data_ptr,
 				char **rv_redo_data_ptr)
 {
@@ -2845,7 +2846,7 @@ btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid, OID * oidp, OID 
 	  || btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_CLASS_OID));
 
 #if !defined (NDEBUG)
-  (void) btree_check_valid_record (NULL, btid, recp, BTREE_LEAF_NODE, NULL);
+  (void) btree_check_valid_record (thread_p, btid, recp, BTREE_LEAF_NODE, NULL);
 #endif
 
   /* Redo log changes of first object. */
@@ -2860,14 +2861,15 @@ btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid, OID * oidp, OID 
  * btree_leaf_record_handle_first_overflow () - Set fixed size for first object and update record.
  *
  * return		  : Void.
+ * thread_p (in)          : Thread entry
  * recp (in)		  : Leaf record.
  * btid_int (in)	  : B-tree info.
  * rv_undo_data_ptr (out) : If not null, outputs undo recovery data for the changes made to record.
  * rv_redo_data_ptr (out) : If not null, outputs redo recovery data for the changes made to record.
  */
 static void
-btree_leaf_record_handle_first_overflow (RECDES * recp, BTID_INT * btid_int, char **rv_undo_data_ptr,
-					 char **rv_redo_data_ptr)
+btree_leaf_record_handle_first_overflow (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid_int,
+					 char **rv_undo_data_ptr, char **rv_redo_data_ptr)
 {
   int old_mvcc_flags;
   int old_object_size = OR_OID_SIZE;
@@ -2927,7 +2929,7 @@ btree_leaf_record_handle_first_overflow (RECDES * recp, BTID_INT * btid_int, cha
       btree_leaf_set_flag (recp, BTREE_LEAF_RECORD_OVERFLOW_OIDS);
 
 #if !defined (NDEBUG)
-      (void) btree_check_valid_record (NULL, btid_int, recp, BTREE_LEAF_NODE, NULL);
+      (void) btree_check_valid_record (thread_p, btid_int, recp, BTREE_LEAF_NODE, NULL);
 #endif
 
       /* Log redo setting flag. */
@@ -2983,7 +2985,7 @@ btree_leaf_record_handle_first_overflow (RECDES * recp, BTID_INT * btid_int, cha
   btree_record_object_set_mvcc_flags (recp->data, BTREE_OID_HAS_MVCC_INSID_AND_DELID);
 
 #if !defined (NDEBUG)
-  (void) btree_check_valid_record (NULL, btid_int, recp, BTREE_LEAF_NODE, NULL);
+  (void) btree_check_valid_record (thread_p, btid_int, recp, BTREE_LEAF_NODE, NULL);
 #endif
 
   /* Redo logging. */
@@ -3675,6 +3677,7 @@ btree_record_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
  * btree_insert_object_ordered_by_oid () - Insert in record by keeping objects ordered by OID's.
  *
  * return		  : Error code.
+ * thread_p (in)          : Thread entry
  * record (in)		  : B-tree (overflow) record.
  * btid_int (in)	  : B-tree info.
  * object_info (in)	  : Object & info being inserted.
@@ -3683,8 +3686,9 @@ btree_record_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
  * offset_to_objptr (out) : Output offset to inserted object.
  */
 static void
-btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_OBJECT_INFO * object_info,
-				    char **rv_undo_data_ptr, char **rv_redo_data_ptr, int *offset_to_objptr)
+btree_insert_object_ordered_by_oid (THREAD_ENTRY * thread_p, RECDES * record, BTID_INT * btid_int,
+				    BTREE_OBJECT_INFO * object_info, char **rv_undo_data_ptr, char **rv_redo_data_ptr,
+				    int *offset_to_objptr)
 {
   OID *oid = NULL;
   char *oid_ptr = NULL;
@@ -3751,7 +3755,7 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
   (void) btree_pack_object (oid_ptr, btid_int, BTREE_OVERFLOW_NODE, record, object_info);
 
 #if !defined (NDEBUG)
-  (void) btree_check_valid_record (NULL, btid_int, record, BTREE_OVERFLOW_NODE, NULL);
+  (void) btree_check_valid_record (thread_p, btid_int, record, BTREE_OVERFLOW_NODE, NULL);
 #endif
 
   /* Log redo changes. */
@@ -9180,7 +9184,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				    BTREE_RV_DEBUG_ID_SWAP_LEAF);
 #endif /* !NDEBUG */
   LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
-  btree_leaf_change_first_object (leaf_rec, btid, &last_ovf_object.oid, &last_ovf_object.class_oid,
+  btree_leaf_change_first_object (thread_p, leaf_rec, btid, &last_ovf_object.oid, &last_ovf_object.class_oid,
 				  &last_ovf_object.mvcc_info, NULL, &rv_undo_data_ptr,
 				  &delete_helper->rv_redo_data_ptr);
   if (spage_update (thread_p, leaf_page, search_key->slotid, leaf_rec) != SP_SUCCESS)
@@ -10779,7 +10783,8 @@ btree_key_append_object_to_overflow (THREAD_ENTRY * thread_p, BTID_INT * btid_in
 
   /* Object must have fixed size. */
   BTREE_MVCC_INFO_SET_FIXED_SIZE (&object_info->mvcc_info);
-  btree_insert_object_ordered_by_oid (&ovfl_rec, btid_int, object_info, &rv_undo_data_ptr, &rv_redo_data_ptr, NULL);
+  btree_insert_object_ordered_by_oid (thread_p, &ovfl_rec, btid_int, object_info, &rv_undo_data_ptr, &rv_redo_data_ptr,
+				      NULL);
 
   if (spage_update (thread_p, ovfl_page, 1, &ovfl_rec) != SP_SUCCESS)
     {
@@ -27877,7 +27882,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
   btree_record_append_object (thread_p, btid_int, leaf_record, BTREE_LEAF_NODE, first_object, NULL,
 			      &insert_helper->rv_redo_data_ptr);
   /* Replace first object with new object. */
-  btree_leaf_change_first_object (leaf_record, btid_int, BTREE_INSERT_OID (insert_helper),
+  btree_leaf_change_first_object (thread_p, leaf_record, btid_int, BTREE_INSERT_OID (insert_helper),
 				  BTREE_INSERT_CLASS_OID (insert_helper), BTREE_INSERT_MVCC_INFO (insert_helper), NULL,
 				  NULL, &insert_helper->rv_redo_data_ptr);
 
@@ -30729,7 +30734,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
     }
 
   /* Replace inserted object with second visible object. */
-  btree_leaf_change_first_object (&leaf_record, btid_int, &delete_helper->second_object_info.oid,
+  btree_leaf_change_first_object (thread_p, &leaf_record, btid_int, &delete_helper->second_object_info.oid,
 				  &delete_helper->second_object_info.class_oid,
 				  &delete_helper->second_object_info.mvcc_info, NULL, &rv_undo_data_ptr,
 				  &rv_redo_data_ptr);
@@ -30845,7 +30850,7 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, BTID_INT * b
   btree_record_remove_last_object (thread_p, btid_int, leaf_record, BTREE_LEAF_NODE, offset_to_last_object,
 				   &rv_undo_data_ptr, &delete_helper->rv_redo_data_ptr);
   /* Replace first. */
-  btree_leaf_change_first_object (leaf_record, btid_int, last_oid, last_class_oid, last_mvcc_info, NULL,
+  btree_leaf_change_first_object (thread_p, leaf_record, btid_int, last_oid, last_class_oid, last_mvcc_info, NULL,
 				  &rv_undo_data_ptr, &delete_helper->rv_redo_data_ptr);
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
@@ -32055,8 +32060,9 @@ btree_remove_delete_mvccid_unique_internal (THREAD_ENTRY * thread_p, BTID_INT * 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   /* Replace first object. */
-  btree_leaf_change_first_object (leaf_record, btid_int, BTREE_DELETE_OID (helper), BTREE_DELETE_CLASS_OID (helper),
-				  BTREE_DELETE_MVCC_INFO (helper), NULL, rv_undo_data, rv_redo_data);
+  btree_leaf_change_first_object (thread_p, leaf_record, btid_int, BTREE_DELETE_OID (helper),
+				  BTREE_DELETE_CLASS_OID (helper), BTREE_DELETE_MVCC_INFO (helper), NULL, rv_undo_data,
+				  rv_redo_data);
 
   btree_delete_log (helper, "successfully moved object and removed its delete MVCCID %llu (logging is postponed) \n"
 		    BTREE_DELETE_HELPER_MSG ("\t") "\t" PGBUF_PAGE_STATE_MSG ("leaf page") "\n\t" BTREE_ID_MSG,
@@ -32573,7 +32579,7 @@ btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDE
       if (offset_to_replaced == 0)
 	{
 	  /* First in leaf record. */
-	  btree_leaf_change_first_object (record, btid_int, &replacement->oid, &replacement->class_oid,
+	  btree_leaf_change_first_object (thread_p, record, btid_int, &replacement->oid, &replacement->class_oid,
 					  &replacement->mvcc_info, NULL, rv_undo_data, rv_redo_data);
 	  return;
 	}
@@ -32661,7 +32667,7 @@ btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDE
 	  /* Remove old object and insert new ordered by OID. */
 	  btree_record_remove_object_internal (thread_p, btid_int, record, node_type, offset_to_replaced, rv_undo_data,
 					       rv_redo_data, NULL);
-	  btree_insert_object_ordered_by_oid (record, btid_int, replacement, rv_undo_data, rv_redo_data,
+	  btree_insert_object_ordered_by_oid (thread_p, record, btid_int, replacement, rv_undo_data, rv_redo_data,
 					      offset_to_replaced_inout);
 	}
     }
