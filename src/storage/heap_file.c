@@ -6250,7 +6250,6 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 	  /* Initialize description of overflow heap file */
 	  HFID_COPY (&hfdes_ovf.hfid, hfid);
 	  hfdes_ovf.class_oid = heap_hdr->class_oid;
-	  assert (!OID_ISNULL (&hfdes_ovf.class_oid));
 	  if (file_create_with_npages (thread_p, FILE_MULTIPAGE_OBJECT_HEAP, 1, (FILE_DESCRIPTORS *) (&hfdes_ovf),
 				       ovf_vfid) == NO_ERROR)
 	    {
