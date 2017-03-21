@@ -4715,8 +4715,19 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
       assert (classname != NULL);
       assert (strlen (classname) < 255);
 #endif
-
+      if (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK) != LK_GRANTED)
+	{
+	  /* we do the checks by best-effort. we need the lock to avoid all kind of inconsistencies from doing checks on
+	   * incomplete changes. doing an unconditional lock here is too complicated and unnecessary, since it is
+	   * unusual to do checkdb and schema changes concurrently. */
+	  er_log_debug (ARG_FILE_LINE,
+			"Skipping checking catalog for class %d|%d|%d because conditional lock failed. \n",
+			OID_AS_ARGS (&class_oid));
+	}
+      /* check catalog consistency */
       ct_valid = catalog_check_class_consistency (thread_p, &class_oid);
+      /* remove lock */
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
       if (ct_valid != DISK_VALID)
 	{
 	  break;
