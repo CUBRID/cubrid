@@ -3106,7 +3106,9 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   int check_count_this_lru;
   float victim_flush_priority_this_lru;
   int count_checked_lists = 0;
+#if defined (SERVER_MODE)
   bool has_post_flush = thread_is_page_post_flush_thread_available ();
+#endif /* SERVER_MODE */
 
   /* init */
   victim_cand_count = 0;
@@ -3137,6 +3139,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 	      pgbuf_Pool.victim_cand_list[victim_cand_count].vpid = bufptr->vpid;
 	      victim_cand_count++;
 	    }
+#if defined (SERVER_MODE)
 	  else if (has_post_flush && pgbuf_is_any_thread_waiting_for_direct_victim ()
 		   && pgbuf_is_bcb_victimizable (bufptr, false)
 		   && lf_circular_queue_produce (pgbuf_Pool.flushed_bcbs, &bufptr))
@@ -3148,6 +3151,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 		  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_SEND_NOT_DIRTY_TO_POST_FLUSH);
 		}
 	    }
+#endif /* SERVER_MODE */
 	}
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
     }
