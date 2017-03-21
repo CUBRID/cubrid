@@ -10065,6 +10065,15 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     }
   pgbuf_unfix (thread_p, page_fhead);
 
+  /* TODO FILE_MANAGER_COMPATIBILITY: ===> */
+  if (class_oid->pageid == 0 && class_oid->volid == 0 && class_oid->slotid == 0)
+    {
+      /* for older databases, the class_oid for FILE_MULTIPAGE_OBJECT_HEAP and FILE_BTREE_OVERFLOW_KEY is 0|0|0. */
+      *stop = true;
+      return NO_ERROR;
+    }
+  /* TODO FILE_MANAGER_COMPATIBILITY: <=== */
+
   if (OID_ISNULL (class_oid))
     {
       /* this must be boot_Db_parm file; cannot be deleted so we don't need lock. */
