@@ -1044,8 +1044,8 @@ STATIC_INLINE void pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bc
 static void pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 static void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 
-STATIC_INLINE int pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is_bcb_locked)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread,
+					    bool * is_bcb_locked) __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null);
@@ -3106,6 +3106,11 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   int check_count_this_lru;
   float victim_flush_priority_this_lru;
   int count_checked_lists = 0;
+#if defined (SERVER_MODE)
+  /* as part of handling a rare case when there are rare direct victim waiters although there are plenty victims, flush
+   * thread assigns one bcb per iteration directly. this will add only a little overhead in general cases. */
+  bool try_direct_assign = true;
+#endif /* SERVER_MODE */
 
   /* init */
   victim_cand_count = 0;
@@ -3136,6 +3141,19 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 	      pgbuf_Pool.victim_cand_list[victim_cand_count].vpid = bufptr->vpid;
 	      victim_cand_count++;
 	    }
+#if defined (SERVER_MODE)
+	  else if (try_direct_assign && pgbuf_is_any_thread_waiting_for_direct_victim ()
+		   && pgbuf_is_bcb_victimizable (bufptr, false) && PGBUF_BCB_TRYLOCK (bufptr))
+	    {
+	      if (pgbuf_is_bcb_victimizable (bufptr, true) && pgbuf_assign_direct_victim (thread_p, bufptr))
+		{
+		  /* assigned directly. don't try any other. */
+		  try_direct_assign = false;
+		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_SEARCH_FOR_FLUSH);
+		}
+	      PGBUF_BCB_UNLOCK (bufptr);
+	    }
+#endif /* SERVER_MODE */
 	}
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
     }
@@ -3351,7 +3369,7 @@ repeat:
 	}
       else
 	{
-	  error = pgbuf_bcb_flush_with_wal (thread_p, bufptr, &is_bcb_locked);
+	  error = pgbuf_bcb_flush_with_wal (thread_p, bufptr, true, &is_bcb_locked);
 	  if (is_bcb_locked)
 	    {
 	      PGBUF_BCB_UNLOCK (bufptr);
@@ -7900,7 +7918,7 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int 
 	  || (bufptr->latch_mode == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL)))
     {
       /* don't have to wait for writer/flush */
-      return pgbuf_bcb_flush_with_wal (thread_p, bufptr, locked);
+      return pgbuf_bcb_flush_with_wal (thread_p, bufptr, false, locked);
     }
 
   /* page is write latched. notify the holder to flush it on unfix. */
@@ -9677,22 +9695,16 @@ pgbuf_remove_private_from_aout_list (const int lru_idx)
 }
 
 /*
- * pgbuf_bcb_flush_with_wal () - Writes the buffer image into the disk
- *   return: NO_ERROR, or ER_code
- *   bufptr(in): pointer to buffer page
+ * pgbuf_bcb_flush_with_wal () - write a buffer page to disk.
  *
- * note: before copying to disk, we must make sure all log records up to page LSA are flushed first.
- *
- * note: careful when calling this function. you must make sure that bcb is not write latched and that no other thread
- *       is already flushing. consider calling pgbuf_bcb_safe_flush functions.
- *
- * note: do not rely on bcb remaining in the same state before this is called. bcb is not locked while being written to
- *       disk. many things can happen after requesting flush. bcb can be latched, can be assigned as victim, so on.
- *       we don't even always lock bcb again. therefore, if caller wants to do a post-flush processing, it must have
- *       that in mind.
+ * return                    : error code
+ * thread_p (in)             : thread entry
+ * bufptr (in)               : bcb
+ * is_page_flush_thread (in) : true if caller is page flush thread. false otherwise.
+ * is_bcb_locked (out)       : output whether bcb remains locked or not.
  */
 STATIC_INLINE int
-pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is_bcb_locked)
+pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread, bool * is_bcb_locked)
 {
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
@@ -9703,6 +9715,8 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
   bool was_dirty = false;
+
+  PGBUF_BCB_CHECK_OWN (bufptr);
 
   /* the caller is holding bufptr->mutex */
   *is_bcb_locked = true;
@@ -9729,6 +9743,20 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
       assert (holder != NULL);
     }
 #endif /* !NDEBUG */
+
+  /* how this works:
+   *
+   * caller should already have bcb locked. we don't do checks of opportunity or correctness here (that's up to the
+   * caller).
+   *
+   * we copy the page and save oldest_unflush_lsa and then we try to write the page to disk. if writing fails, we
+   * "revert" changes (restore dirty flag and oldest_unflush_lsa).
+   *
+   * if successful, we choose one of the paths:
+   * 1. send the page to post-flush to process it and assign it directly (if this is page flush thread and victimization
+   *    system is stressed).
+   * 2. lock bcb again, clear is flushing status, wake up of threads waiting for flush and return.
+   */
 
   if (pgbuf_check_bcb_page_vpid (bufptr) != true)
     {
@@ -9806,14 +9834,15 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
 
 #if defined (SERVER_MODE)
   /* if the flush thread is under pressure, we'll move some of the workload to post-flush thread. */
-  if (thread_is_page_post_flush_thread_available () && pgbuf_is_any_thread_waiting_for_direct_victim ()
+  if (is_page_flush_thread && thread_is_page_post_flush_thread_available ()
+      && pgbuf_is_any_thread_waiting_for_direct_victim ()
       && lf_circular_queue_produce (pgbuf_Pool.flushed_bcbs, &bufptr))
     {
       /* page buffer maintenance thread will try to assign this bcb directly as victim. */
       thread_wakeup_page_post_flush_thread ();
       if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_SEND_FOR_DIRECT_VICTIM);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_SEND_DIRTY_TO_POST_FLUSH);
 	}
     }
   else
@@ -9822,10 +9851,6 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
       PGBUF_BCB_LOCK (bufptr);
       *is_bcb_locked = true;
       pgbuf_bcb_mark_was_flushed (thread_p, bufptr);
-      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_MARK_FLUSHED);
-	}
 
 #if defined (SERVER_MODE)
       if (bufptr->next_wait_thrd != NULL)
@@ -9833,6 +9858,11 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
 	  pgbuf_wake_flush_waiters (thread_p, bufptr);
 	}
 #endif
+    }
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+    {
+      perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_PAGE_FLUSHED);
     }
 
   return NO_ERROR;
@@ -11386,7 +11416,7 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
     }
 
   /* flush even if it is not dirty. todo: is this necessary? */
-  error = pgbuf_bcb_flush_with_wal (thread_p, bufptr, &is_bcb_locked);
+  error = pgbuf_bcb_flush_with_wal (thread_p, bufptr, true, &is_bcb_locked);
   if (is_bcb_locked)
     {
       PGBUF_BCB_UNLOCK (bufptr);
@@ -14297,12 +14327,8 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
   THREAD_ENTRY *thrd_blocked = NULL;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool not_empty = false;
-
-  /* invalidation flag for direct victim assignment:
-   * 1. any flag invalidating victim candidates, except is flushing flag
-   * 2. to vacuum flag. */
-  int invalidate_flag =
-    ((PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK & (~PGBUF_BCB_FLUSHING_TO_DISK_FLAG)) | PGBUF_BCB_TO_VACUUM_FLAG);
+  /* invalidation flag for direct victim assignment: any flag invalidating victim candidates, except is flushing flag */
+  int invalidate_flag = (PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK & (~PGBUF_BCB_FLUSHING_TO_DISK_FLAG));
 
   /* consume all flushed bcbs queue */
   while (lf_circular_queue_consume (pgbuf_Pool.flushed_bcbs, &bcb_flushed))
@@ -14314,7 +14340,7 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 
       if ((bcb_flushed->flags & invalidate_flag) != 0)
 	{
-	  /* dirty bcb is not a valid victim or will be accessed by vacuum. */
+	  /* dirty bcb is not a valid victim */
 	}
       else if (pgbuf_is_bcb_fixed_by_any (bcb_flushed, true))
 	{
