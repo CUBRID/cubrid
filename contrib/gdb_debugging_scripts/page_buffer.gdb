@@ -195,6 +195,145 @@ define pgbuf_cast_ptob
   set $arg1 = ((PGBUF_IOPAGE_BUFFER *) (((PAGE_PTR) $arg0) - sizeof (FILEIO_PAGE_RESERVED) - sizeof (PGBUF_BCB *)))->bcb
   end
 
+# pgbuf_print_alloc_bcb_waits
+# No arguments
+#
+# Print direct victim systems (allocated bcb's and waiter threads)
+#
+define pgbuf_print_alloc_bcb_waits
+
+  set $i = 0
+  
+  printf "Direct victim array: \n"
+  while $i < thread_Manager.num_total
+    if pgbuf_Pool.direct_victims.bcb_victims[$i] != 0
+      printf "(thr = %d, bcb = %p) \n", $i, pgbuf_Pool.direct_victims.bcb_victims[$i]
+      end
+    set $i = $i + 1
+    end
+  printf "\n"
+
+  printf "waiter_threads_high_priority: "
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_high_priority
+  set $i = $lfcq->consume_cursor
+  set $thrar = (THREAD_ENTRY **) $lfcq->data
+  printf "%d \n", $lfcq->produce_cursor - $i
+  while $i < $lfcq->produce_cursor
+    printf "%d ", $thrar[$i % $lfcq->capacity]->index
+    set $i = $i + 1
+    end
+  printf "\n"
+
+  printf "waiter_threads_low_priority: "
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
+  set $i = $lfcq->consume_cursor
+  set $thrar = (THREAD_ENTRY **) $lfcq->data
+  printf "%d \n", $lfcq->produce_cursor - $i
+  while $i < $lfcq->produce_cursor
+    printf "%d ", $thrar[$i % $lfcq->capacity]->index
+    set $i = $i + 1
+    end
+  printf "\n"
+  end
+  
+define pgbuf_find_alloc_bcb_wait_thread
+  printf "bcb = %p \n", pgbuf_Pool.direct_victims.bcb_victims[$arg0]
+  
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_high_priority
+  set $i = $lfcq->consume_cursor
+  set $thrar = (THREAD_ENTRY **) $lfcq->data
+  set $found = 0
+  set $dist = 0
+  while $i < $lfcq->produce_cursor
+    if $thrar[$i % $lfcq->capacity]->index == $arg0
+      printf "waiter_threads_high_priority, cursor = %d, distance = %d, thread_p = %p \n", $i, $dist, $thrar[$i % $lfcq->capacity]
+      set $found = 1
+      loop_break
+      end
+    set $i = $i + 1
+    set $dist = $dist + 1
+    end
+
+  if !$found
+    set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
+    set $i = $lfcq->consume_cursor
+    set $thrar = (THREAD_ENTRY **) $lfcq->data
+    set $found = 0
+    while $i < $lfcq->produce_cursor
+      if $thrar[$i % $lfcq->capacity]->index == $arg0
+        printf "waiter_threads_low_priority, cursor = %d, distance = %d, thread_p = %p \n", $i, $dist, $thrar[$i % $lfcq->capacity]
+        set $found = 1
+        loop_break
+        end
+      set $i = $i + 1
+      set $dist = $dist + 1
+      end
+    end
+
+  if !$found
+    printf "not found \n"
+    end
+  end
+
+# pgbuf_read_bcb_flags
+# $arg0 - bcb flags
+#
+# Print all information obtined from bcb flags
+#
+define pgbuf_read_bcb_flags
+  set $flags = $arg0
+  set $dirty_flag = (int) 0x80000000
+  set $flushing_flag = (int) 0x40000000
+  set $victim_direct_flag = (int) 0x20000000
+  set $invalid_direct_victim_flag = (int) 0x10000000
+  set $mov_to_bot_flag = (int) 0x08000000
+  set $to_vacuum_flag = (int) 0x04000000
+  set $async_flush_flag = (int) 0x02000000
+  
+  printf "Flags: %x \n", ($flags & 0xF0000000)
+  if $flags & $dirty_flag
+    printf "BCB is dirty \n"
+    end
+  if $flags & $flushing_flag
+    printf "BCB is being flushed to disk \n"
+    end
+  if $flags & $victim_direct_flag
+    printf "BCB is direct victim \n"
+    end
+  if $flags & $invalid_direct_victim_flag
+    printf "BCB is invalid direct victim \n"
+    end
+  if $flags & $to_vacuum_flag
+    printf "BCB will be fixed by vacuum \n"
+    end
+  if $flags & $mov_to_bot_flag
+    printf "BCB must be moved to bottom \n"
+    end
+  if $flags & $async_flush_flag
+    printf "BCB must be flushed \n"
+    end
+  
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_1_ZONE
+    printf "BCB is in lru 1 \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_2_ZONE
+    printf "BCB is in lru 2 \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_3_ZONE
+    printf "BCB is in lru 3 \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_VOID_ZONE
+    printf "BCB is in void zone \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_INVALID_ZONE
+    printf "BCB is in invalid zone \n"
+    end
+  
+  if $flags & PGBUF_LRU_ZONE_MASK
+    printf "BCB is in lru list with index %d \n", $flags & 0xFFFF
+    end
+  end
+
 # pgbuf_lru_print
 # $arg0 - lru index
 #
@@ -366,146 +505,7 @@ define pgbuf_lru_print_victim_status
   printf "Candidates in over quota: lists = %d, bcb's = %d \n", $oq_with_vc, $oq_with_vc_bcbs
   printf "\n"
   end
-  
-# pgbuf_print_alloc_bcb_waits
-# No arguments
-#
-# Print direct victim systems (allocated bcb's and waiter threads)
-#
-define pgbuf_print_alloc_bcb_waits
-
-  set $i = 0
-  
-  printf "Direct victim array: \n"
-  while $i < thread_Manager.num_total
-    if pgbuf_Pool.direct_victims.bcb_victims[$i] != 0
-      printf "(thr = %d, bcb = %p) \n", $i, pgbuf_Pool.direct_victims.bcb_victims[$i]
-      end
-    set $i = $i + 1
-    end
-  printf "\n"
-
-  printf "waiter_threads_high_priority: "
-  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_high_priority
-  set $i = $lfcq->consume_cursor
-  set $thrar = (THREAD_ENTRY **) $lfcq->data
-  printf "%d \n", $lfcq->produce_cursor - $i
-  while $i < $lfcq->produce_cursor
-    printf "%d ", $thrar[$i % $lfcq->capacity]->index
-    set $i = $i + 1
-    end
-  printf "\n"
-
-  printf "waiter_threads_low_priority: "
-  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
-  set $i = $lfcq->consume_cursor
-  set $thrar = (THREAD_ENTRY **) $lfcq->data
-  printf "%d \n", $lfcq->produce_cursor - $i
-  while $i < $lfcq->produce_cursor
-    printf "%d ", $thrar[$i % $lfcq->capacity]->index
-    set $i = $i + 1
-    end
-  printf "\n"
-  end
-  
-define pgbuf_find_alloc_bcb_wait_thread
-  printf "bcb = %p \n", pgbuf_Pool.direct_victims.bcb_victims[$arg0]
-  
-  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_high_priority
-  set $i = $lfcq->consume_cursor
-  set $thrar = (THREAD_ENTRY **) $lfcq->data
-  set $found = 0
-  set $dist = 0
-  while $i < $lfcq->produce_cursor
-    if $thrar[$i % $lfcq->capacity]->index == $arg0
-      printf "waiter_threads_high_priority, cursor = %d, distance = %d, thread_p = %p \n", $i, $dist, $thrar[$i % $lfcq->capacity]
-      set $found = 1
-      loop_break
-      end
-    set $i = $i + 1
-    set $dist = $dist + 1
-    end
-
-  if !$found
-    set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
-    set $i = $lfcq->consume_cursor
-    set $thrar = (THREAD_ENTRY **) $lfcq->data
-    set $found = 0
-    while $i < $lfcq->produce_cursor
-      if $thrar[$i % $lfcq->capacity]->index == $arg0
-        printf "waiter_threads_low_priority, cursor = %d, distance = %d, thread_p = %p \n", $i, $dist, $thrar[$i % $lfcq->capacity]
-        set $found = 1
-        loop_break
-        end
-      set $i = $i + 1
-      set $dist = $dist + 1
-      end
-    end
-
-  if !$found
-    printf "not found \n"
-    end
-  end
-
-# pgbuf_read_bcb_flags
-# $arg0 - bcb flags
-#
-# Print all information obtined from bcb flags
-#
-define pgbuf_read_bcb_flags
-  set $flags = $arg0
-  set $dirty_flag = (int) 0x80000000
-  set $flushing_flag = (int) 0x40000000
-  set $victim_direct_flag = (int) 0x20000000
-  set $invalid_direct_victim_flag = (int) 0x10000000
-  set $mov_to_bot_flag = (int) 0x08000000
-  set $to_vacuum_flag = (int) 0x04000000
-  set $async_flush_flag = (int) 0x02000000
-  
-  printf "Flags: %x \n", ($flags & 0xF0000000)
-  if $flags & $dirty_flag
-    printf "BCB is dirty \n"
-    end
-  if $flags & $flushing_flag
-    printf "BCB is being flushed to disk \n"
-    end
-  if $flags & $victim_direct_flag
-    printf "BCB is direct victim \n"
-    end
-  if $flags & $invalid_direct_victim_flag
-    printf "BCB is invalid direct victim \n"
-    end
-  if $flags & $to_vacuum_flag
-    printf "BCB will be fixed by vacuum \n"
-    end
-  if $flags & $mov_to_bot_flag
-    printf "BCB must be moved to bottom \n"
-    end
-  if $flags & $async_flush_flag
-    printf "BCB must be flushed \n"
-    end
-  
-  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_1_ZONE
-    printf "BCB is in lru 1 \n"
-    end
-  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_2_ZONE
-    printf "BCB is in lru 2 \n"
-    end
-  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_3_ZONE
-    printf "BCB is in lru 3 \n"
-    end
-  if ($flags & PGBUF_ZONE_MASK) == PGBUF_VOID_ZONE
-    printf "BCB is in void zone \n"
-    end
-  if ($flags & PGBUF_ZONE_MASK) == PGBUF_INVALID_ZONE
-    printf "BCB is in invalid zone \n"
-    end
-  
-  if $flags & PGBUF_LRU_ZONE_MASK
-    printf "BCB is in lru list with index %d \n", $flags & 0xFFFF
-    end
-  end
-  
+    
 # pgbuf_flush_select_victims
 # No args
 #
@@ -553,6 +553,7 @@ define pgbuf_flush_select_victims
 # Prerequisite:
 # pgbuf_lru_print_victim_status
 # pgbuf_flush_select_victims
+# pgbuf_lru_print
 #
 define pgbuf_flush_show_all
   set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_high_priority
@@ -560,7 +561,7 @@ define pgbuf_flush_show_all
   set $thrar = (THREAD_ENTRY **) $lfcq->data
   while $i < $lfcq->produce_cursor
     printf "thread %d \n", $thrar[$i % $lfcq->capacity]->index
-    set $plru = $thrar[$i % $lfcq->capacity]->private_lru_index
+    set $plru = $thrar[$i % $lfcq->capacity]->private_lru_index + pgbuf_Pool.num_LRU_list
     pgbuf_lru_print $plru
     set $i = $i + 1
     end
@@ -570,7 +571,7 @@ define pgbuf_flush_show_all
   set $thrar = (THREAD_ENTRY **) $lfcq->data
   while $i < $lfcq->produce_cursor
     printf "thread %d \n", $thrar[$i % $lfcq->capacity]->index
-    set $plru = $thrar[$i % $lfcq->capacity]->private_lru_index
+    set $plru = $thrar[$i % $lfcq->capacity]->private_lru_index + pgbuf_Pool.num_LRU_list
     pgbuf_lru_print $plru
     set $i = $i + 1
     end
