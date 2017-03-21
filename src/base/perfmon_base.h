@@ -7,8 +7,13 @@
 
 #include <system.h>
 #include <thread.h>
-#include "system_parameter.h"
-
+#ifdef __cplusplus
+extern "C" {
+#endif
+    #include "system_parameter.h"
+#ifdef __cplusplus
+}
+#endif
 #define PSTAT_METADATA_INIT_SINGLE_ACC(id, name) { id, name, PSTAT_ACCUMULATE_SINGLE_VALUE, 0, 0, NULL, NULL, NULL, NULL }
 #define PSTAT_METADATA_INIT_SINGLE_PEEK(id, name) \
   { id, name, PSTAT_PEEK_SINGLE_VALUE, 0, 0, NULL, NULL, NULL, NULL}

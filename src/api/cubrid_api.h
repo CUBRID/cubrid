@@ -129,6 +129,29 @@ typedef enum
   CUBRID_MAX_STMT_TYPE
 } CUBRID_STMT_TYPE;
 
+enum ci_type
+{
+    CI_TYPE_NULL = 0,
+    CI_TYPE_INT = 1,
+    CI_TYPE_SHORT,
+    CI_TYPE_FLOAT,
+    CI_TYPE_DOUBLE,
+    CI_TYPE_CHAR,
+    CI_TYPE_VARCHAR,
+    CI_TYPE_NCHAR,
+    CI_TYPE_VARNCHAR,
+    CI_TYPE_BIT,
+    CI_TYPE_VARBIT,
+    CI_TYPE_TIME,
+    CI_TYPE_DATE,
+    CI_TYPE_TIMESTAMP,
+    CI_TYPE_MONETARY,
+    CI_TYPE_NUMERIC,
+    CI_TYPE_OID,
+    CI_TYPE_COLLECTION,
+    CI_TYPE_BIGINT,
+    CI_TYPE_DATETIME
+};
 typedef enum ci_type CI_TYPE;
 typedef UINT64 CI_CONNECTION;
 typedef UINT64 CI_STATEMENT;
@@ -151,13 +174,6 @@ struct ci_time_s
   short millisecond;
 };
 
-typedef enum ci_conn_option CI_CONNECTION_OPTION;
-typedef enum ci_stmt_option CI_STATEMENT_OPTION;
-typedef enum ci_fetch_position CI_FETCH_POSITION;
-typedef enum ci_rmeta_info_type CI_RMETA_INFO_TYPE;
-typedef enum ci_pmeta_info_type CI_PMETA_INFO_TYPE;
-typedef enum ci_param_mode CI_PARAMETER_MODE;
-
 struct ci_oid_s
 {
   int d1;
@@ -170,30 +186,6 @@ enum ci_fetch_position
   CI_FETCH_POSITION_FIRST = 1,
   CI_FETCH_POSITION_CURRENT = 2,
   CI_FETCH_POSITION_LAST = 3
-};
-
-enum ci_type
-{
-  CI_TYPE_NULL = 0,
-  CI_TYPE_INT = 1,
-  CI_TYPE_SHORT,
-  CI_TYPE_FLOAT,
-  CI_TYPE_DOUBLE,
-  CI_TYPE_CHAR,
-  CI_TYPE_VARCHAR,
-  CI_TYPE_NCHAR,
-  CI_TYPE_VARNCHAR,
-  CI_TYPE_BIT,
-  CI_TYPE_VARBIT,
-  CI_TYPE_TIME,
-  CI_TYPE_DATE,
-  CI_TYPE_TIMESTAMP,
-  CI_TYPE_MONETARY,
-  CI_TYPE_NUMERIC,
-  CI_TYPE_OID,
-  CI_TYPE_COLLECTION,
-  CI_TYPE_BIGINT,
-  CI_TYPE_DATETIME
 };
 
 enum ci_conn_option
@@ -242,6 +234,13 @@ enum ci_param_mode
   CI_PARAM_MODE_IN = 0,
   CI_PARAM_MODE_OUT = 1
 };
+
+typedef enum ci_conn_option CI_CONNECTION_OPTION;
+typedef enum ci_stmt_option CI_STATEMENT_OPTION;
+typedef enum ci_fetch_position CI_FETCH_POSITION;
+typedef enum ci_rmeta_info_type CI_RMETA_INFO_TYPE;
+typedef enum ci_pmeta_info_type CI_PMETA_INFO_TYPE;
+typedef enum ci_param_mode CI_PARAMETER_MODE;
 
 extern int ci_create_connection (CI_CONNECTION * conn);
 extern int ci_conn_connect (CI_CONNECTION conn, const char *host, unsigned short port, const char *databasename,

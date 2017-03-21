@@ -670,33 +670,32 @@ typedef DB_COLLECTION DB_MULTISET;
 typedef DB_COLLECTION DB_SEQ;
 typedef DB_COLLECTION DB_SET;
 
-typedef enum special_column_type MIN_MAX_COLUMN_TYPE;
 enum special_column_type
 {
-  MIN_COLUMN = 0,
-  MAX_COLUMN = 1
+    MIN_COLUMN = 0,
+    MAX_COLUMN = 1
 };
+typedef enum special_column_type MIN_MAX_COLUMN_TYPE;
 
 /* Used in btree_coerce_key and btree_ils_adjust_range to represent
  * min or max values, necessary in index search comparisons
  */
-typedef struct special_column MIN_MAX_COLUMN_INFO;
 struct special_column
 {
-  int position;			/* position in the list of columns */
-  MIN_MAX_COLUMN_TYPE type;	/* MIN or MAX column */
+    int position;			/* position in the list of columns */
+    MIN_MAX_COLUMN_TYPE type;	/* MIN or MAX column */
 };
+typedef struct special_column MIN_MAX_COLUMN_INFO;
 
-typedef struct db_midxkey DB_MIDXKEY;
 struct db_midxkey
 {
-  int size;			/* size of buf */
-  int ncolumns;			/* # of elements */
-  DB_DOMAIN *domain;		/* MIDXKEY domain */
-  char *buf;			/* key structure */
-  MIN_MAX_COLUMN_INFO min_max_val;	/* info about coerced column */
+    int size;			/* size of buf */
+    int ncolumns;			/* # of elements */
+    DB_DOMAIN *domain;		/* MIDXKEY domain */
+    char *buf;			/* key structure */
+    MIN_MAX_COLUMN_INFO min_max_val;	/* info about coerced column */
 };
-
+typedef struct db_midxkey DB_MIDXKEY;
 
 /*
  * DB_ELO
@@ -705,12 +704,13 @@ struct db_midxkey
  * directly by the API.
  */
 
-typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
 struct vpid
 {
-  INT32 pageid;			/* Page identifier */
-  INT16 volid;			/* Volume identifier where the page resides */
+    INT32 pageid;			/* Page identifier */
+    INT16 volid;			/* Volume identifier where the page resides */
 };
+typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
+
 #define VPID_INITIALIZER \
   { NULL_PAGEID, NULL_VOLID }
 
@@ -736,23 +736,22 @@ struct vfid
 
 #define VFID_AS_ARGS(vfidp) (vfidp)->volid, (vfidp)->fileid
 
-typedef enum db_elo_type DB_ELO_TYPE;
-typedef struct db_elo DB_ELO;
-
 enum db_elo_type
 {
-  ELO_NULL,			/* do we need this anymore? */
-  ELO_FBO
+    ELO_NULL,			/* do we need this anymore? */
+    ELO_FBO
 };
+typedef enum db_elo_type DB_ELO_TYPE;
 
 struct db_elo
 {
-  INT64 size;
-  char *locator;
-  char *meta_data;
-  DB_ELO_TYPE type;
-  int es_type;
+    INT64 size;
+    char *locator;
+    char *meta_data;
+    DB_ELO_TYPE type;
+    int es_type;
 };
+typedef struct db_elo DB_ELO;
 
 /* This is the memory representation of an internal object
  * identifier.  It is in the API only for a few functions that
@@ -762,13 +761,13 @@ struct db_elo
  * across transaction boundaries.  API programs are not allowed
  * to make assumptions about the contents of this structure.
  */
-typedef struct db_identifier DB_IDENTIFIER;
 struct db_identifier
 {
-  int pageid;
-  short slotid;
-  short volid;
+    int pageid;
+    short slotid;
+    short volid;
 };
+typedef struct db_identifier DB_IDENTIFIER;
 
 typedef DB_IDENTIFIER OID;
 
@@ -778,7 +777,6 @@ typedef struct db_large_string DB_LARGE_STRING;
 /* db_char.sm was formerly db_char.small.  small is an (undocumented)
  * reserved word on NT. */
 
-typedef union db_char DB_CHAR;
 union db_char
 {
   struct
@@ -817,6 +815,7 @@ union db_char
     DB_LARGE_STRING *str;
   } large;
 };
+typedef union db_char DB_CHAR;
 
 typedef DB_CHAR DB_NCHAR;
 typedef DB_CHAR DB_BIT;
@@ -824,97 +823,96 @@ typedef DB_CHAR DB_BIT;
 typedef int DB_RESULTSET;
 
 /* Structure for an ENUMERATION element */
-typedef struct db_enum_element DB_ENUM_ELEMENT;
 struct db_enum_element
 {
   unsigned short short_val;	/* element index */
   DB_CHAR str_val;		/* element string */
 };
+typedef struct db_enum_element DB_ENUM_ELEMENT;
 
 /* Structure for an ENUMERATION */
-typedef struct db_enumeration DB_ENUMERATION;
 struct db_enumeration
 {
   DB_ENUM_ELEMENT *elements;	/* array of enumeration elements */
   int collation_id;		/* collation */
   unsigned short count;		/* count of enumeration elements */
 };
+typedef struct db_enumeration DB_ENUMERATION;
 
 /* A union of all of the possible basic type values.  This is used in the
  * definition of the DB_VALUE which is the fundamental structure used
  * in passing data in and out of the db_ function layer.
  */
-
-typedef union db_data DB_DATA;
 union db_data
 {
-  int i;
-  short sh;
-  DB_BIGINT bigint;
-  float f;
-  double d;
-  void *p;
-  DB_OBJECT *op;
-  DB_TIME time;
-  DB_TIMETZ timetz;
-  DB_DATE date;
-  DB_TIMESTAMP utime;
-  DB_TIMESTAMPTZ timestamptz;
-  DB_DATETIME datetime;
-  DB_DATETIMETZ datetimetz;
-  DB_MONETARY money;
-  DB_COLLECTION *set;
-  DB_COLLECTION *collect;
-  DB_MIDXKEY midxkey;
-  DB_ELO elo;
-  int error;
-  DB_IDENTIFIER oid;
-  DB_NUMERIC num;
-  DB_CHAR ch;
-  DB_RESULTSET rset;
-  DB_ENUM_ELEMENT enumeration;
+    int i;
+    short sh;
+    DB_BIGINT bigint;
+    float f;
+    double d;
+    void *p;
+    DB_OBJECT *op;
+    DB_TIME time;
+    DB_TIMETZ timetz;
+    DB_DATE date;
+    DB_TIMESTAMP utime;
+    DB_TIMESTAMPTZ timestamptz;
+    DB_DATETIME datetime;
+    DB_DATETIMETZ datetimetz;
+    DB_MONETARY money;
+    DB_COLLECTION *set;
+    DB_COLLECTION *collect;
+    DB_MIDXKEY midxkey;
+    DB_ELO elo;
+    int error;
+    DB_IDENTIFIER oid;
+    DB_NUMERIC num;
+    DB_CHAR ch;
+    DB_RESULTSET rset;
+    DB_ENUM_ELEMENT enumeration;
 };
+typedef union db_data DB_DATA;
 
 /* This is the primary structure used for passing values in and out of
  * the db_ function layer. Values are always tagged with a datatype
  * so that they can be identified and type checking can be performed.
  */
 
-typedef struct db_value DB_VALUE;
 struct db_value
 {
   DB_DOMAIN_INFO domain;
   DB_DATA data;
   bool need_clear;
 };
+typedef struct db_value DB_VALUE;
 
 /* This is used to chain DB_VALUEs into a list. */
-typedef struct db_value_list DB_VALUE_LIST;
 struct db_value_list
 {
   struct db_value_list *next;
   DB_VALUE val;
 };
+typedef struct db_value_list DB_VALUE_LIST;
 
 /* This is used to chain DB_VALUEs into a list.  It is used as an argument
    to db_send_arglist. */
-typedef struct db_value_array DB_VALUE_ARRAY;
 struct db_value_array
 {
   int size;
   DB_VALUE *vals;
 };
+typedef struct db_value_array DB_VALUE_ARRAY;
 
 /* This is used to gather stats about the workspace.
  * It contains the number of object descriptors used and
  * total number of object descriptors allocated
  */
-typedef struct db_workspace_stats DB_WORKSPACE_STATS;
 struct db_workspace_stats
 {
   int obj_desc_used;		/* number of object descriptors used */
   int obj_desc_total;		/* total # of object descriptors allocated */
 };
+typedef struct db_workspace_stats DB_WORKSPACE_STATS;
 
 /* This defines the C language type identifier constants.
  * These are used to describe the types of values used for setting
