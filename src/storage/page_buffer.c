@@ -3107,7 +3107,9 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   float victim_flush_priority_this_lru;
   int count_checked_lists = 0;
 #if defined (SERVER_MODE)
-  bool has_post_flush = thread_is_page_post_flush_thread_available ();
+  /* as part of handling a rare case when there are rare direct victim waiters although there are plenty victims, flush
+   * thread assigns one bcb per iteration directly. this will add only a little overhead in general cases. */
+  bool try_direct_assign = true;
 #endif /* SERVER_MODE */
 
   /* init */
@@ -3140,16 +3142,16 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 	      victim_cand_count++;
 	    }
 #if defined (SERVER_MODE)
-	  else if (has_post_flush && pgbuf_is_any_thread_waiting_for_direct_victim ()
-		   && pgbuf_is_bcb_victimizable (bufptr, false)
-		   && lf_circular_queue_produce (pgbuf_Pool.flushed_bcbs, &bufptr))
+	  else if (try_direct_assign && pgbuf_is_any_thread_waiting_for_direct_victim ()
+		   && pgbuf_is_bcb_victimizable (bufptr, false) && PGBUF_BCB_TRYLOCK (bufptr))
 	    {
-	      /* even though the bcb was not really flushed, we send it to post-flush thread to process it. */
-	      thread_wakeup_page_post_flush_thread ();
-	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+	      if (pgbuf_is_bcb_victimizable (bufptr, true) && pgbuf_assign_direct_victim (thread_p, bufptr))
 		{
-		  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_SEND_NOT_DIRTY_TO_POST_FLUSH);
+		  /* assigned directly. don't try any other. */
+		  try_direct_assign = false;
+		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_SEARCH_FOR_FLUSH);
 		}
+	      PGBUF_BCB_UNLOCK (bufptr);
 	    }
 #endif /* SERVER_MODE */
 	}
