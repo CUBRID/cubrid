@@ -2318,7 +2318,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	  load_args->curr_rec_obj_count = 1;
 
 #if !defined (NDEBUG)
-	  btree_check_valid_record (NULL, load_args->btid, load_args->out_recdes, BTREE_LEAF_NODE, NULL);
+	  btree_check_valid_record (thread_p, load_args->btid, load_args->out_recdes, BTREE_LEAF_NODE, NULL);
 #endif
 	}
       else
@@ -2384,8 +2384,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 
 			  /* replace with current OID (might move memory in record) */
 			  btree_mvcc_info_from_heap_mvcc_header (&mvcc_header, &mvcc_info);
-			  btree_leaf_change_first_object (&load_args->leaf_nleaf_recdes, load_args->btid, &this_oid,
-							  &this_class_oid, &mvcc_info, &offset, NULL, NULL);
+			  btree_leaf_change_first_object (thread_p, &load_args->leaf_nleaf_recdes, load_args->btid,
+							  &this_oid, &this_class_oid, &mvcc_info, &offset, NULL, NULL);
 			  if (ret != NO_ERROR)
 			    {
 			      goto error;
@@ -2399,7 +2399,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 
 			  assert (load_args->leaf_nleaf_recdes.length <= load_args->leaf_nleaf_recdes.area_size);
 #if !defined (NDEBUG)
-			  btree_check_valid_record (NULL, load_args->btid, &load_args->leaf_nleaf_recdes,
+			  btree_check_valid_record (thread_p, load_args->btid, &load_args->leaf_nleaf_recdes,
 						    BTREE_LEAF_NODE, NULL);
 #endif
 
@@ -2529,7 +2529,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 
 	      assert (load_args->out_recdes->length <= load_args->out_recdes->area_size);
 #if !defined (NDEBUG)
-	      btree_check_valid_record (NULL, load_args->btid, load_args->out_recdes,
+	      btree_check_valid_record (thread_p, load_args->btid, load_args->out_recdes,
 					(load_args->overflowing ? BTREE_OVERFLOW_NODE : BTREE_LEAF_NODE), NULL);
 #endif
 	    }			/* same key */
@@ -2628,7 +2628,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	      load_args->curr_rec_obj_count = 1;
 
 #if !defined (NDEBUG)
-	      btree_check_valid_record (NULL, load_args->btid, load_args->out_recdes, BTREE_LEAF_NODE, NULL);
+	      btree_check_valid_record (thread_p, load_args->btid, load_args->out_recdes, BTREE_LEAF_NODE, NULL);
 #endif
 	    }			/* different key */
 	}
