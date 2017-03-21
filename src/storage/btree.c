@@ -29667,6 +29667,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   RECDES left_recdes, right_recdes;	/* Record descriptors to read links to left/right pages. */
   NON_LEAF_REC non_leaf_rec_info;	/* Non-leaf record info used to read links to left/right pages. */
   PGBUF_LATCH_MODE child_latch = PGBUF_LATCH_READ;	/* Latch mode for children of current node. */
+  PAGE_FETCH_MODE neighbor_fetch_mode = OLD_PAGE;	/* fetch mode for neighbors checked on merge. */
   PGBUF_PROMOTE_CONDITION promote_cond;	/* Promote condition when write latch is required on nodes. */
   VPID child_vpid;		/* VPID of next child by following key argument. */
   VPID child_vpid_after_merge;	/* VPID of next by following key argument after merge is done. */
@@ -30047,8 +30048,18 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
       btree_read_fixed_portion_of_non_leaf_record (&right_recdes, &non_leaf_rec_info);
       /* Fix right page. */
       VPID_COPY (&right_vpid, &non_leaf_rec_info.pnt);
-      right_page = pgbuf_fix (thread_p, &right_vpid, pgbuf_is_io_stressful ()? OLD_PAGE_IF_IN_BUFFER : OLD_PAGE,
-			      child_latch, PGBUF_UNCONDITIONAL_LATCH);
+#if defined (SERVER_MODE)
+      if (pgbuf_is_io_stressful () && spage_get_free_space (thread_p, child_page) < (int) (DB_PAGESIZE * 0.75f))
+	{
+	  /* avoid fetching "cold" neighbor pages, that are not in page buffer. at the same time, we should avoid doing
+	   * zero merges. so if we have a strong indicator that merge is possible (e.g. current page is almost empty)
+	   * force fixing the page.
+	   * I set an experimental value of 75% free space to try the merge. I don't know what a good value is (or if
+	   * there is any). */
+	  neighbor_fetch_mode = OLD_PAGE_IF_IN_BUFFER;
+	}
+#endif /* SERVER_MODE */
+      right_page = pgbuf_fix (thread_p, &right_vpid, neighbor_fetch_mode, child_latch, PGBUF_UNCONDITIONAL_LATCH);
       if (right_page == NULL)
 	{
 	  error_code = er_errid ();
