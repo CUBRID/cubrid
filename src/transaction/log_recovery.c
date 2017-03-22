@@ -3128,6 +3128,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
+		  er_print_callstack (ARG_FILE_LINE, "log_recovery_redo: rcvindex:%d end_redo_lsa:%p (%d,%d); "
+		    "rcv_page_lsaptr:%p (%d,%d)\n", 
+		    rcvindex,
+		    end_redo_lsa, end_redo_lsa ? end_redo_lsa->pageid : -1,
+		    end_redo_lsa ? end_redo_lsa->offset : -1,
+		    rcv_page_lsaptr, rcv_page_lsaptr ? rcv_page_lsaptr->pageid : -1,
+		    rcv_page_lsaptr ? rcv_page_lsaptr->offset : -1);
+
 		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
