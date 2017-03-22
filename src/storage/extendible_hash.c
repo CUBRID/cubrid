@@ -1155,7 +1155,7 @@ exit_on_error:
       if (is_tmp)
 	{
 	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
-	  if (file_destroy (thread_p, &bucket_vfid) != NO_ERROR)
+	  if (file_destroy (thread_p, &bucket_vfid, is_tmp) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
@@ -1171,7 +1171,7 @@ exit_on_error:
       if (is_tmp)
 	{
 	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
-	  if (file_destroy (thread_p, &dir_vfid) != NO_ERROR)
+	  if (file_destroy (thread_p, &dir_vfid, is_tmp) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
@@ -1253,13 +1253,13 @@ ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset, PG
 }
 
 /*
- * xehash_destroy () - Destroy the given extendible hashing instance
- *   return: NO_ERROR, or ER_FAILED
- *   ehid(in): extendible hashing structure to destroy
+ * xehash_destroy () - destroy the extensible hash table
  *
- * Note: Destroys the specified extendible hashing structure. All of
- * bucket and directory pages of this structure are deallocated
- * by this function.
+ * return        : error code
+ * thread_p (in) : thread entry
+ * ehid_p (in)   : extensible hash identifier
+ *
+ * note: only temporary extensible hash tables can be destroyed.
  */
 int
 xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
@@ -1284,12 +1284,12 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
-  if (file_destroy (thread_p, &(dir_header_p->bucket_file)) != NO_ERROR)
+  if (file_destroy (thread_p, &(dir_header_p->bucket_file), true) != NO_ERROR)
     {
       assert_release (false);
     }
   pgbuf_unfix (thread_p, dir_page_p);
-  if (file_destroy (thread_p, &ehid_p->vfid) != NO_ERROR)
+  if (file_destroy (thread_p, &ehid_p->vfid, true) != NO_ERROR)
     {
       assert_release (false);
     }
