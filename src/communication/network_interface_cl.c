@@ -67,6 +67,7 @@
   do \
     { \
       db_on_server++; \
+      er_clear (); \
       if (private_heap_id == 0) \
         { \
 	  assert (db_on_server == 1); \
