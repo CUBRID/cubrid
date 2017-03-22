@@ -3213,6 +3213,8 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
     }
 #endif
 
+  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+
   pgbuf_compute_lru_vict_target (&lru_sum_flush_priority);
 
   victim_cand_list = pgbuf_Pool.victim_cand_list;
@@ -8453,16 +8455,13 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		}
 #endif /* SERVER_MODE */
 
-	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom))
+	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom)
+		  && thread_is_page_flush_thread_available ())
 		{
 		  /* new bottom is dirty... make sure that flush will wake up */
-		  pthread_mutex_unlock (&lru_list->mutex);
 		  pgbuf_wakeup_flush_thread (thread_p);
 		}
-	      else
-		{
-		  pthread_mutex_unlock (&lru_list->mutex);
-		}
+	      pthread_mutex_unlock (&lru_list->mutex);
 
 	      pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
 
