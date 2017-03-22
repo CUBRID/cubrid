@@ -15086,8 +15086,10 @@ pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb)
 #endif /* !NDEBUG */
     ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, -1);
   assert (newval >= 0);
-  assert ((newval & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0xFFFF) assert (bcb->count_fix_and_avoid_dealloc >= 0);
-assert ((bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0xFFFF)}
+  assert ((newval & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0xFFFF);
+  assert (bcb->count_fix_and_avoid_dealloc >= 0);
+  assert ((bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0xFFFF);
+}
 
 /*
  * pgbuf_bcb_should_avoid_deallocation () - should avoid deallocating page?
