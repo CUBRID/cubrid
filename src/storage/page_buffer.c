@@ -8456,9 +8456,13 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom))
 		{
 		  /* new bottom is dirty... make sure that flush will wake up */
+		  pthread_mutex_unlock (&lru_list->mutex);
 		  pgbuf_wakeup_flush_thread (thread_p);
 		}
-	      pthread_mutex_unlock (&lru_list->mutex);
+	      else
+		{
+		  pthread_mutex_unlock (&lru_list->mutex);
+		}
 
 	      pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
 
