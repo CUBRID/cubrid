@@ -453,13 +453,13 @@ struct sysprm_assign_value
   SYSPRM_ASSIGN_VALUE *next;
 };
 
-typedef enum sysprm_load_flag SYSPRM_LOAD_FLAG;
 enum sysprm_load_flag
 {
   SYSPRM_LOAD_ALL = 0x0,
   SYSPRM_IGNORE_HA = 0x1,
   SYSPRM_IGNORE_INTL_PARAMS = 0x2
 };
+typedef enum sysprm_load_flag SYSPRM_LOAD_FLAG;
 
 #define SYSPRM_LOAD_IS_IGNORE_HA(flags) ((flags) & SYSPRM_IGNORE_HA)
 #define SYSPRM_LOAD_IS_IGNORE_INTL(flags) ((flags) & SYSPRM_IGNORE_INTL_PARAMS)
