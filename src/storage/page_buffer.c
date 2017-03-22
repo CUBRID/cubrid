@@ -3273,12 +3273,15 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
       goto end;
     }
 
-#if defined (SERVER_MODE)
   /* wake up log flush thread. we need log up to date to be able to flush pages */
-  thread_wakeup_log_flush_thread ();
-#else
-  logpb_flush_pages_direct (thread_p);
-#endif /* SERVER_MODE */
+  if (thread_is_log_flush_thread_available ())
+    {
+      thread_wakeup_log_flush_thread ();
+    }
+  else
+    {
+      logpb_flush_pages_direct (thread_p);
+    }
 
   if (prm_get_bool_value (PRM_ID_PB_SEQUENTIAL_VICTIM_FLUSH) == true)
     {
