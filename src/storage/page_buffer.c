@@ -7077,6 +7077,7 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       curr_bufptr->hash_next = NULL;
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
       VPID_SET_NULL (&(bufptr->vpid));
+      assert ((bufptr->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) == 0);
       bufptr->count_fix_and_avoid_dealloc = 0;
 
       return NO_ERROR;
@@ -7591,6 +7592,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   assert (!pgbuf_bcb_avoid_victim (bufptr));
   bufptr->latch_mode = PGBUF_NO_LATCH;
   pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);	/* todo: why this?? */
+  assert ((bufptr->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) == 0);
   bufptr->count_fix_and_avoid_dealloc = 0;
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
@@ -8022,6 +8024,7 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   bufptr->latch_mode = PGBUF_LATCH_INVALID;
   assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0);
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_INVALID_ZONE);
+  assert ((bufptr->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) == 0);
   bufptr->count_fix_and_avoid_dealloc = 0;
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
@@ -15067,7 +15070,12 @@ pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb)
 {
-  (void) ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1);
+#if !defined (NDEBUG)
+  int newval =
+#endif /* !NDEBUG */
+    ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1);
+  assert (newval > 0);
+  assert ((newval & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0);
   assert (bcb->count_fix_and_avoid_dealloc > 0);
   assert ((bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0);
 }
@@ -15081,8 +15089,14 @@ pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb)
 {
-  (void) ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, -1);
+#if !defined (NDEBUG)
+  int newval =
+#endif /* !NDEBUG */
+    ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, -1);
+  assert (newval >= 0);
+  assert ((newval & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0xFFFF);
   assert (bcb->count_fix_and_avoid_dealloc >= 0);
+  assert ((bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0xFFFF);
 }
 
 /*
@@ -15110,7 +15124,11 @@ pgbuf_bcb_register_fix (PGBUF_BCB * bcb)
   /* note: we only register to detect hot pages. once we hit the threshold, we are no longer required to fix it. */
   if (bcb->count_fix_and_avoid_dealloc < (PGBUF_FIX_COUNT_THRESHOLD << PGBUF_BCB_COUNT_FIX_SHIFT_BITS))
     {
-      ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1 << PGBUF_BCB_COUNT_FIX_SHIFT_BITS);
+#if !defined (NDEBUG)
+      int newval =
+#endif /* !NDEBUG */
+	ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1 << PGBUF_BCB_COUNT_FIX_SHIFT_BITS);
+      assert (newval >= (1 << PGBUF_BCB_COUNT_FIX_SHIFT_BITS));
       assert (bcb->count_fix_and_avoid_dealloc >= (1 << PGBUF_BCB_COUNT_FIX_SHIFT_BITS));
     }
 }
