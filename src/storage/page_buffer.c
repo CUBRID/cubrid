@@ -3143,7 +3143,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 	    }
 #if defined (SERVER_MODE)
 	  else if (try_direct_assign && pgbuf_is_any_thread_waiting_for_direct_victim ()
-		   && pgbuf_is_bcb_victimizable (bufptr, false) && PGBUF_BCB_TRYLOCK (bufptr))
+		   && pgbuf_is_bcb_victimizable (bufptr, false) && PGBUF_BCB_TRYLOCK (bufptr) == 0)
 	    {
 	      if (pgbuf_is_bcb_victimizable (bufptr, true) && pgbuf_assign_direct_victim (thread_p, bufptr))
 		{
