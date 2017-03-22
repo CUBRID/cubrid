@@ -473,7 +473,7 @@ f_load_Num_mvcc_snapshot_ext (void)
 int
 f_load_Time_obj_lock_acquire_time (void)
 {
-    return PERF_OBJ_LOCK_STAT_COUNTERS;
+    return AUX_PERF_OBJ_LOCK_STAT_COUNTERS;
 }
 
 

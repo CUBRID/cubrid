@@ -5,14 +5,15 @@
 #ifndef CUBRID_PERFMON_BASE_H
 #define CUBRID_PERFMON_BASE_H
 
-#include <system.h>
-#include <thread.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
+    #include <system.h>
+    #include <error_manager.h>
 #ifdef __cplusplus
 }
 #endif
+
 #define PSTAT_METADATA_INIT_SINGLE_ACC(id, name) { id, name, PSTAT_ACCUMULATE_SINGLE_VALUE, 0, 0, NULL, NULL, NULL, NULL }
 #define PSTAT_METADATA_INIT_SINGLE_PEEK(id, name) \
   { id, name, PSTAT_PEEK_SINGLE_VALUE, 0, 0, NULL, NULL, NULL, NULL}
@@ -621,7 +622,7 @@ struct pstat_metadata
   ((snapshot) * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT \
    + (rec_type) * PERF_SNAPSHOT_VISIBILITY_CNT + (visibility))
 
-#define PERF_OBJ_LOCK_STAT_COUNTERS (SCH_M_LOCK + 1)
+#define AUX_PERF_OBJ_LOCK_STAT_COUNTERS (PERF_SCH_M_LOCK + 1)
 
 #define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
 
@@ -733,6 +734,6 @@ typedef enum
     PERF_U_LOCK = 8,			/* Update lock */
     PERF_X_LOCK = 9,			/* Exclusive lock */
     PERF_SCH_M_LOCK = 10		/* Schema Modification Lock */
-} LOCK;
+} PERF_LOCK;
 
 #endif //CUBRID_PERFMON_BASE_H
