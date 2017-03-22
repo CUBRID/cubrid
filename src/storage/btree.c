@@ -1875,6 +1875,8 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 
   /* initialize description of overflow heap file */
   btdes_ovf.btid = *btid->sys_btid;	/* structure copy */
+  btdes_ovf.class_oid = btid->topclass_oid;
+  assert (!OID_ISNULL (&btdes_ovf.class_oid));
   /* create file with at least 3 pages */
   return file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, (FILE_DESCRIPTORS *) (&btdes_ovf),
 				  &btid->ovfid);

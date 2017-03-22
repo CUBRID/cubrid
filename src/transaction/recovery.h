@@ -180,7 +180,9 @@ typedef enum
   RVPGBUF_DEALLOC = 123,
   RVPGBUF_COMPENSATE_DEALLOC = 124,
 
-  RV_LAST_LOGID = RVPGBUF_COMPENSATE_DEALLOC,
+  RVFL_TRACKER_UNREGISTER,
+
+  RV_LAST_LOGID = RVFL_TRACKER_UNREGISTER,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -236,7 +238,8 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVFL_ALLOC \
    || (idx) == RVFL_USER_PAGE_MARK_DELETE \
    || (idx) == RVPGBUF_DEALLOC \
-   || (idx) == RVFL_TRACKER_HEAP_REUSE)
+   || (idx) == RVFL_TRACKER_HEAP_REUSE \
+   || (idx) == RVFL_TRACKER_UNREGISTER)
 #define RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL(idx) \
   ((idx) == RVFL_DEALLOC \
    || (idx) == RVHF_MARK_DELETED \
@@ -255,7 +258,8 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVPGBUF_DEALLOC \
    || (idx) == RVES_NOTIFY_VACUUM \
    || (idx) == RVHF_MARK_DELETED \
-   || (idx) == RVFL_TRACKER_HEAP_REUSE)
+   || (idx) == RVFL_TRACKER_HEAP_REUSE \
+   || (idx) == RVFL_TRACKER_UNREGISTER)
 
 #define RCV_IS_NEW_PAGE_INIT(idx) \
   ((idx) == RVPGBUF_NEW_PAGE \

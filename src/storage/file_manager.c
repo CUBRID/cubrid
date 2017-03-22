@@ -768,6 +768,8 @@ STATIC_INLINE void file_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE
 static int file_tracker_init_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 static int file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE ftype,
 				  FILE_TRACK_METADATA * metadata);
+static int file_tracker_register_internal (THREAD_ENTRY * thread_p, PAGE_PTR page_track_head,
+					   const FILE_TRACK_ITEM * item);
 static int file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid);
 static int file_tracker_apply_to_file (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE mode,
 				       FILE_TRACK_ITEM_FUNC func, void *args);
@@ -3962,9 +3964,11 @@ file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, b
  * return	 : Error code
  * thread_p (in) : Thread entry
  * vfid (in)	 : File identifier
+ * is_temp (in)  : True for temporary, false otherwise. Caller must know. It relevant information before fixing the file
+ *                 header page, whe, if not temporary, we need to remove from file tracker.
  */
 int
-file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
+file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead;
@@ -3975,6 +3979,17 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   int error_code = NO_ERROR;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
+
+  if (!is_temp)
+    {
+      /* permanent files are first removed from tracker */
+      error_code = file_tracker_unregister (thread_p, vfid);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  goto exit;
+	}
+    }
 
   vsid_collector.vsids = NULL;
   ftab_collector.partsect_ftab = NULL;
@@ -3990,6 +4005,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   fhead = (FILE_HEADER *) page_fhead;
 
+  assert (is_temp == FILE_IS_TEMPORARY (fhead));
   assert (FILE_IS_TEMPORARY (fhead) || log_check_system_op_is_started (thread_p));
 
   error_code = file_table_collect_all_vsids (thread_p, page_fhead, &vsid_collector);
@@ -4083,17 +4099,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
       pgbuf_unfix_and_init (thread_p, page_fhead);
     }
 
-  if (volpurpose == DB_PERMANENT_DATA_PURPOSE)
-    {
-      /* first remove from tracker */
-      error_code = file_tracker_unregister (thread_p, vfid);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  goto exit;
-	}
-    }
-
   /* release occupied sectors on disk */
   error_code = disk_unreserve_ordered_sectors (thread_p, volpurpose, vsid_collector.n_vsids, vsid_collector.vsids);
   if (error_code != NO_ERROR)
@@ -4143,7 +4148,7 @@ file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   assert (log_check_system_op_is_started (thread_p));
 
-  error_code = file_destroy (thread_p, vfid);
+  error_code = file_destroy (thread_p, vfid, false);
   if (error_code != NO_ERROR)
     {
       /* Not acceptable. */
@@ -4268,7 +4273,7 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
   /* was not cached. destroy */
   /* don't allow interrupt to avoid file leak */
   save_interrupt = thread_set_check_interrupt (thread_p, false);
-  error_code = file_destroy (thread_p, vfid);
+  error_code = file_destroy (thread_p, vfid, true);
   thread_set_check_interrupt (thread_p, save_interrupt);
   if (error_code != NO_ERROR)
     {
@@ -8896,7 +8901,7 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 	  /* was not cached. destroy the file */
 	  file_log ("file_tempcache_cache_or_drop_entries",
 		    "drop entry " FILE_TEMPCACHE_ENTRY_MSG, FILE_TEMPCACHE_ENTRY_AS_ARGS (temp_file));
-	  if (file_destroy (thread_p, &temp_file->vfid) != NO_ERROR)
+	  if (file_destroy (thread_p, &temp_file->vfid, true) != NO_ERROR)
 	    {
 	      /* file is leaked */
 	      assert_release (false);
@@ -9149,13 +9154,7 @@ static int
 file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE ftype, FILE_TRACK_METADATA * metadata)
 {
   FILE_TRACK_ITEM item;
-  FILE_EXTENSIBLE_DATA *extdata = NULL;
   PAGE_PTR page_track_head = NULL;
-  PAGE_PTR page_track_other = NULL;
-  PAGE_PTR page_extdata = NULL;
-  bool found;
-  int pos;
-  LOG_LSA save_lsa;
   int error_code = NO_ERROR;
 
   assert (vfid != NULL);
@@ -9184,8 +9183,44 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  extdata = (FILE_EXTENSIBLE_DATA *) page_track_head;
 
+  error_code = file_tracker_register_internal (thread_p, page_track_head, &item);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  /* unfix head */
+  pgbuf_unfix (thread_p, page_track_head);
+
+  /* return error code */
+  return error_code;
+}
+
+/*
+ * file_tracker_register_internal () - register new file in file tracker internal function. called by register and
+ *                                     unregister undo.
+ *
+ * return               : error code
+ * thread_p (in)        : thread entry
+ * page_track_head (in) : tracker header page
+ * item (in)            : item (with file data)
+ */
+static int
+file_tracker_register_internal (THREAD_ENTRY * thread_p, PAGE_PTR page_track_head, const FILE_TRACK_ITEM * item)
+{
+  FILE_EXTENSIBLE_DATA *extdata = NULL;
+  PAGE_PTR page_track_other = NULL;
+  PAGE_PTR page_extdata = NULL;
+  bool found;
+  int pos;
+  LOG_LSA save_lsa;
+  int error_code = NO_ERROR;
+
+  assert (log_check_system_op_is_started (thread_p));
+
+  /* find a space to add new item */
+  extdata = (FILE_EXTENSIBLE_DATA *) page_track_head;
   error_code = file_extdata_find_not_full (thread_p, &extdata, &page_track_other, &found);
   if (error_code != NO_ERROR)
     {
@@ -9235,7 +9270,7 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
   assert (extdata == (FILE_EXTENSIBLE_DATA *) page_extdata);
   assert (!file_extdata_is_full (extdata));
 
-  file_extdata_find_ordered (extdata, &item, file_compare_track_items, &found, &pos);
+  file_extdata_find_ordered (extdata, item, file_compare_track_items, &found, &pos);
   if (found)
     {
       /* impossible */
@@ -9245,28 +9280,19 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
     }
 
   save_lsa = *pgbuf_get_lsa (page_extdata);
-  file_extdata_insert_at (extdata, pos, 1, &item);
-  file_log_extdata_add (thread_p, extdata, page_extdata, pos, 1, &item);
+  file_extdata_insert_at (extdata, pos, 1, item);
+  file_log_extdata_add (thread_p, extdata, page_extdata, pos, 1, item);
   pgbuf_set_dirty (thread_p, page_extdata, DONT_FREE);
 
-  file_log ("file_tracker_register", "added " FILE_TRACK_ITEM_MSG ", to page %d|%d, prev_lsa = %lld|%d, "
-	    "crt_lsa = %lld|%d, at pos %d ", FILE_TRACK_ITEM_AS_ARGS (&item),
+  file_log ("file_tracker_register_internal", "added " FILE_TRACK_ITEM_MSG ", to page %d|%d, prev_lsa = %lld|%d, "
+	    "crt_lsa = %lld|%d, at pos %d ", FILE_TRACK_ITEM_AS_ARGS (item),
 	    PGBUF_PAGE_MODIFY_ARGS (page_extdata, &save_lsa), pos);
-
-  /* success */
-  assert (error_code == NO_ERROR);
 
 exit:
   if (page_track_other != NULL)
     {
       pgbuf_unfix (thread_p, page_track_other);
     }
-
-  if (page_track_head != NULL)
-    {
-      pgbuf_unfix (thread_p, page_track_head);
-    }
-
   return error_code;
 }
 
@@ -9282,7 +9308,7 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   PAGE_PTR page_track_head = NULL;
   FILE_EXTENSIBLE_DATA *extdata = NULL;
-  FILE_TRACK_ITEM item_search;
+  FILE_TRACK_ITEM item_inout;
   VPID vpid_merged = VPID_INITIALIZER;
   int error_code = NO_ERROR;
 
@@ -9297,11 +9323,14 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
     }
   extdata = (FILE_EXTENSIBLE_DATA *) page_track_head;
 
-  item_search.volid = vfid->volid;
-  item_search.fileid = vfid->fileid;
+  /* we still need to start a system op. */
+  log_sysop_start (thread_p);
 
-  error_code = file_extdata_find_and_remove_item (thread_p, extdata, page_track_head, &item_search,
-						  file_compare_track_items, true, NULL, &vpid_merged);
+  item_inout.volid = vfid->volid;
+  item_inout.fileid = vfid->fileid;
+
+  error_code = file_extdata_find_and_remove_item (thread_p, extdata, page_track_head, &item_inout,
+						  file_compare_track_items, true, &item_inout, &vpid_merged);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -9325,10 +9354,64 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
   assert (error_code == NO_ERROR);
 
 exit:
+  if (error_code != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+    }
+  else
+    {
+      log_sysop_end_logical_undo (thread_p, RVFL_TRACKER_UNREGISTER, NULL, sizeof (item_inout), (char *) &item_inout);
+    }
   if (page_track_head != NULL)
     {
       pgbuf_unfix (thread_p, page_track_head);
     }
+  return error_code;
+}
+
+/*
+ * file_rv_tracker_unregister_undo () - undo the unregister of file. may happen if file_destroy is only partially
+ *                                      executed. since data inside tracker moved from page to page, the unregister
+ *                                      operation is logged using system ops with logical undo/compensate.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+file_rv_tracker_unregister_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  PAGE_PTR page_track_head;
+  int error_code = NO_ERROR;
+
+  assert (rcv->length == sizeof (FILE_TRACK_ITEM));
+
+  page_track_head = pgbuf_fix (thread_p, &file_Tracker_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_track_head == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  log_sysop_start (thread_p);
+
+  /* undo unregister => register the logged item */
+  error_code = file_tracker_register_internal (thread_p, page_track_head, (FILE_TRACK_ITEM *) rcv->data);
+  if (error_code != NO_ERROR)
+    {
+      /* not expected */
+      assert (false);
+
+      log_sysop_abort (thread_p);
+    }
+  else
+    {
+      /* need to finish system op while holding latch on header */
+      log_sysop_end_logical_compensate (thread_p, &rcv->reference_lsa);
+    }
+
+  pgbuf_unfix_and_init (thread_p, page_track_head);
+
   return error_code;
 }
 
@@ -9759,7 +9842,7 @@ file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
 	      /* destroy file */
 	      vfid.volid = item->volid;
 	      vfid.fileid = item->fileid;
-	      error_code = file_destroy (thread_p, &vfid);
+	      error_code = file_destroy (thread_p, &vfid, false);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -9925,8 +10008,9 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 
   /* now we need to make sure the file is protected. most types are not mutable (cannot be created or destroyed during
    * run-time), but b-tree and heap files must be protected by lock. */
-  if ((FILE_TYPE) item->type == FILE_HEAP)
+  switch ((FILE_TYPE) item->type)
     {
+    case FILE_HEAP:
       /* these files may be marked for delete. check this is not a deleted file */
       if (item->metadata.heap.is_marked_deleted)
 	{
@@ -9934,13 +10018,14 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 	  return NO_ERROR;
 	}
       /* we need to protect with lock. fall through */
-    }
-  else if ((FILE_TYPE) item->type == FILE_HEAP_REUSE_SLOTS || (FILE_TYPE) item->type == FILE_BTREE)
-    {
+      break;
+    case FILE_HEAP_REUSE_SLOTS:
+    case FILE_BTREE:
+    case FILE_MULTIPAGE_OBJECT_HEAP:
+    case FILE_BTREE_OVERFLOW_KEY:
       /* we need to protect with lock. fall through */
-    }
-  else
-    {
+      break;
+    default:
       /* immutable file types. no protection required */
       *stop = true;
       return NO_ERROR;
@@ -9959,15 +10044,35 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
   file_header_sanity_check (thread_p, fhead);
 
   /* read class OID */
-  if ((FILE_TYPE) item->type == FILE_BTREE)
+  switch ((FILE_TYPE) item->type)
     {
+    case FILE_BTREE:
       *class_oid = fhead->descriptor.btree.class_oid;
-    }
-  else
-    {
+      break;
+    case FILE_HEAP:
+    case FILE_HEAP_REUSE_SLOTS:
       *class_oid = fhead->descriptor.heap.class_oid;
+      break;
+    case FILE_MULTIPAGE_OBJECT_HEAP:
+      *class_oid = fhead->descriptor.heap_overflow.class_oid;
+      break;
+    case FILE_BTREE_OVERFLOW_KEY:
+      *class_oid = fhead->descriptor.btree_key_overflow.class_oid;
+      break;
+    default:
+      assert (false);
+      break;
     }
   pgbuf_unfix (thread_p, page_fhead);
+
+  /* TODO FILE_MANAGER_COMPATIBILITY: ===> */
+  if (class_oid->pageid == 0 && class_oid->volid == 0 && class_oid->slotid == 0)
+    {
+      /* for older databases, the class_oid for FILE_MULTIPAGE_OBJECT_HEAP and FILE_BTREE_OVERFLOW_KEY is 0|0|0. */
+      *stop = true;
+      return NO_ERROR;
+    }
+  /* TODO FILE_MANAGER_COMPATIBILITY: <=== */
 
   if (OID_ISNULL (class_oid))
     {
