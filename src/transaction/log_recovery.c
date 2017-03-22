@@ -2405,6 +2405,10 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	}
 
+
+	  _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: after logpb_fetch_page log_lsa:%d,%d; end_redo_lsa:%d,%d\n",
+		log_lsa.pageid, log_lsa.offset, end_redo_lsa->pageid, end_redo_lsa->offset);
+
       /* Check all log records in this phase */
       while (!LSA_ISNULL (&lsa) && lsa.pageid == log_lsa.pageid)
 	{
@@ -2447,7 +2451,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  LSA_COPY (&lsa, &log_rec->forw_lsa);
 
 
-	      _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: log_lsa:%d,%d; end_redo_lsa:%d,%d; log_rec_type\n",
+	  _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: log_lsa:%d,%d; end_redo_lsa:%d,%d; log_rec_type:%d\n",
 		log_lsa.pageid, log_lsa.offset, end_redo_lsa->pageid, end_redo_lsa->offset, log_rec->type);
 
 	  /* 
@@ -2533,6 +2537,11 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &checkpoint_lsa, &prev_lsa,
 				  start_lsa, start_redo_lsa, is_media_crash, stop_at, did_incom_recovery,
 				  &may_use_checkpoint, &may_need_synch_checkpoint_2pc);
+
+	  _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: after log_rv_analysis_record log_lsa:%d,%d; end_redo_lsa:%d,%d; log_rec_type:%d\n",
+		log_lsa.pageid, log_lsa.offset, end_redo_lsa->pageid, end_redo_lsa->offset, log_rec->type);
+
+
 	  if (*did_incom_recovery == true)
 	    {
 	      LSA_SET_NULL (&lsa);
