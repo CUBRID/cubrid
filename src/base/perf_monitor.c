@@ -2287,17 +2287,6 @@ perfmon_server_calc_stats (UINT64 * stats)
 	}
     }
 }
-
-      assert (pstat_Metadata[idx].psid == (PERF_STAT_ID) idx);
-  pstat_Global.initialized = true;
-  return NO_ERROR;
-#else
-#endif /* SERVER_MODE || SA_MODE */
-
-/*
- * Watcher section.
- */
-
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * perfmon_start_watch () - Start watching performance statistics.
@@ -2622,16 +2611,16 @@ perfmon_initialize (int num_trans)
     memset (pstat_Global.is_watching, 0, memsize);
 
     pstat_Global.n_watchers = 0;
-    goto exit;
+    pstat_Global.initialized = true;
+    return NO_ERROR;
 
     error:
     perfmon_finalize ();
     return ER_OUT_OF_VIRTUAL_MEMORY;
-#endif /* SERVER_MODE || SA_MODE */
-
-    exit:
+#else
     pstat_Global.initialized = true;
     return NO_ERROR;
+#endif /* SERVER_MODE || SA_MODE */
 }
 
 
