@@ -2447,8 +2447,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  LSA_COPY (&lsa, &log_rec->forw_lsa);
 
 
-	      _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: log_lsa:%d,%d; end_redo_lsa:%d,%d\n",
-		log_lsa.pageid, log_lsa.offset, end_redo_lsa->pageid, end_redo_lsa->offset);
+	      _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: log_lsa:%d,%d; end_redo_lsa:%d,%d; log_rec_type\n",
+		log_lsa.pageid, log_lsa.offset, end_redo_lsa->pageid, end_redo_lsa->offset, log_rec->type);
 
 	  /* 
 	   * If the next page is NULL_PAGEID and the current page is an archive
@@ -2469,7 +2469,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      && (lsa.pageid < log_lsa.pageid || (lsa.pageid == log_lsa.pageid && lsa.offset <= log_lsa.offset)))
 	    {
 	      /* It seems to be a system error. Maybe a loop in the log */
-	      er_log_debug (ARG_FILE_LINE,
+	      _er_log_debug (ARG_FILE_LINE,
 			    "log_recovery_analysis: ** System error: It seems to be a loop in the log\n."
 			    " Current log_rec at %lld|%d. Next log_rec at %lld|%d\n", (long long int) log_lsa.pageid,
 			    log_lsa.offset, (long long int) lsa.pageid, lsa.offset);
@@ -2536,12 +2536,14 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  if (*did_incom_recovery == true)
 	    {
 	      LSA_SET_NULL (&lsa);
+	     _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: did_incom_recovery break\n");
 	      break;
 	    }
 	  if (LSA_EQ (end_redo_lsa, &lsa))
 	    {
 	      assert_release (!LSA_EQ (end_redo_lsa, &lsa));
 	      LSA_SET_NULL (&lsa);
+	      _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: end_redo_lsa EQ LSA break\n");
 	      break;
 	    }
 
