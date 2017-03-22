@@ -9132,7 +9132,6 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
    */
 
   assert (zone != PGBUF_LRU_1_ZONE);
-  assert (zone != PGBUF_LRU_2_ZONE || PGBUF_IS_BCB_OLD_ENOUGH (bcb, lru_list));
 
   /* we'll boost. collect stats */
   if (zone == PGBUF_LRU_2_ZONE)
