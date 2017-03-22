@@ -9315,9 +9315,6 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
   assert (vfid != NULL && !VFID_ISNULL (vfid));
   assert (log_check_system_op_is_started (thread_p));
 
-  /* we still need to start a system op. */
-  log_sysop_start (thread_p);
-
   page_track_head = pgbuf_fix (thread_p, &file_Tracker_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_track_head == NULL)
     {
@@ -9325,6 +9322,9 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
       return error_code;
     }
   extdata = (FILE_EXTENSIBLE_DATA *) page_track_head;
+
+  /* we still need to start a system op. */
+  log_sysop_start (thread_p);
 
   item_inout.volid = vfid->volid;
   item_inout.fileid = vfid->fileid;

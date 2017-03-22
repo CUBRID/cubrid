@@ -4723,6 +4723,7 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
 	  er_log_debug (ARG_FILE_LINE,
 			"Skipping checking catalog for class %d|%d|%d because conditional lock failed. \n",
 			OID_AS_ARGS (&class_oid));
+	  continue;
 	}
       /* check catalog consistency */
       ct_valid = catalog_check_class_consistency (thread_p, &class_oid);
