@@ -906,6 +906,7 @@ struct perf_utime_tracker
 /*
  * Statistics at file io level
  */
+int perfmon_get_module_type (THREAD_ENTRY * thread_p);
 extern bool perfmon_server_is_stats_on (THREAD_ENTRY * thread_p);
 
 extern UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);

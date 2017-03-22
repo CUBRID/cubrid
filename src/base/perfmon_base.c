@@ -2,11 +2,8 @@
 // Created by paul on 15.03.2017.
 //
 
-#include <storage_common.h>
 #include <assert.h>
-#include <vacuum.h>
 #include "perfmon_base.h"
-#include "memory_alloc.h"
 
 PSTAT_GLOBAL pstat_Global;
 
@@ -972,7 +969,7 @@ f_dump_diff_in_file_Time_obj_lock_acquire_time_in_table_form (FILE * stream, con
 
 	assert (stream != NULL);
 
-	for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
+	for (lock_mode = PERF_NA_LOCK; lock_mode <= PERF_SCH_M_LOCK; lock_mode++)
 	{
 	    counter1 = stats1[lock_mode];
 	    counter2 = stats2[lock_mode];
@@ -1824,7 +1821,7 @@ perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char 
     assert (s != NULL);
     if (*s != NULL)
     {
-	for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
+	for (lock_mode = PERF_NA_LOCK; lock_mode <= PERF_SCH_M_LOCK; lock_mode++)
 	{
 	    counter = stats_ptr[lock_mode];
 	    if (counter == 0)
@@ -1859,7 +1856,7 @@ perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * sta
 
     assert (stream != NULL);
 
-    for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
+    for (lock_mode = PERF_NA_LOCK; lock_mode <= PERF_SCH_M_LOCK; lock_mode++)
     {
 	counter = stats_ptr[lock_mode];
 	if (counter == 0)
@@ -2012,54 +2009,6 @@ perfmon_stat_module_name (const int module)
 	    break;
     }
     return "ERROR";
-}
-
-/*
- * perfmon_get_module_type () -
- */
-int
-perfmon_get_module_type (THREAD_ENTRY * thread_p)
-{
-    int thread_index;
-    int module_type;
-    static int first_vacuum_worker_idx = 0;
-    static int num_worker_threads = 0;
-
-#if defined (SERVER_MODE)
-    if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  thread_index = thread_p->index;
-
-  if (first_vacuum_worker_idx == 0)
-    {
-      first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
-    }
-  if (num_worker_threads == 0)
-    {
-      num_worker_threads = thread_num_worker_threads ();
-    }
-#else
-    thread_index = 0;
-    first_vacuum_worker_idx = 100;
-#endif
-
-    if (thread_index >= 1 && thread_index <= num_worker_threads)
-    {
-	module_type = PERF_MODULE_USER;
-    }
-    else if (thread_index >= first_vacuum_worker_idx && thread_index < first_vacuum_worker_idx + VACUUM_MAX_WORKER_COUNT)
-    {
-	module_type = PERF_MODULE_VACUUM;
-    }
-    else
-    {
-	module_type = PERF_MODULE_SYSTEM;
-    }
-
-    return module_type;
 }
 
 /*
@@ -2237,27 +2186,27 @@ perfmon_stat_lock_mode_name (const int lock_mode)
 {
     switch (lock_mode)
     {
-	case NA_LOCK:
+	case PERF_NA_LOCK:
 	    return "NA_LOCK";
-	case INCON_NON_TWO_PHASE_LOCK:
+	case PERF_INCON_NON_TWO_PHASE_LOCK:
 	    return "INCON_2PL";
-	case NULL_LOCK:
+	case PERF_NULL_LOCK:
 	    return "NULL_LOCK";
-	case SCH_S_LOCK:
+	case PERF_SCH_S_LOCK:
 	    return "SCH_S_LOCK";
-	case IS_LOCK:
+	case PERF_IS_LOCK:
 	    return "IS_LOCK";
-	case S_LOCK:
+	case PERF_S_LOCK:
 	    return "S_LOCK";
-	case IX_LOCK:
+	case PERF_IX_LOCK:
 	    return "IX_LOCK";
-	case SIX_LOCK:
+	case PERF_SIX_LOCK:
 	    return "SIX_LOCK";
-	case U_LOCK:
+	case PERF_U_LOCK:
 	    return "U_LOCK";
-	case X_LOCK:
+	case PERF_X_LOCK:
 	    return "X_LOCK";
-	case SCH_M_LOCK:
+	case PERF_SCH_M_LOCK:
 	    return "SCH_M_LOCK";
 	default:
 	    break;

@@ -10,7 +10,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-    #include "system_parameter.h"
 #ifdef __cplusplus
 }
 #endif
@@ -704,7 +703,6 @@ void
 f_dump_diff_in_file_Time_obj_lock_acquire_time_in_table_form (FILE * stream, const UINT64 * stats1, const UINT64 *stats2);
 
 const char *perfmon_stat_module_name (const int module);
-int perfmon_get_module_type (THREAD_ENTRY * thread_p);
 const char *perfmon_stat_page_type_name (const int page_type);
 const char *perfmon_stat_page_mode_name (const int page_mode);
 const char *perfmon_stat_holder_latch_name (const int holder_latch);
@@ -719,5 +717,22 @@ void perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT
 int metadata_initialize ();
 
 long long difference (long long var1, long long var2);
+
+typedef enum
+{
+    /* Don't change the initialization since they reflect the elements of lock_Conv and lock_Comp */
+    /* this is a clone, the original being in storage_common.h and we should fix that!*/
+    PERF_NA_LOCK = 0,			/* N/A lock */
+    PERF_INCON_NON_TWO_PHASE_LOCK = 1,	/* Incompatible 2 phase lock. */
+    PERF_NULL_LOCK = 2,		/* NULL LOCK */
+    PERF_SCH_S_LOCK = 3,		/* Schema Stability Lock */
+    PERF_IS_LOCK = 4,			/* Intention Shared lock */
+    PERF_S_LOCK = 5,			/* Shared lock */
+    PERF_IX_LOCK = 6,			/* Intention exclusive lock */
+    PERF_SIX_LOCK = 7,			/* Shared and intention exclusive lock */
+    PERF_U_LOCK = 8,			/* Update lock */
+    PERF_X_LOCK = 9,			/* Exclusive lock */
+    PERF_SCH_M_LOCK = 10		/* Schema Modification Lock */
+} LOCK;
 
 #endif //CUBRID_PERFMON_BASE_H
