@@ -8518,10 +8518,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   /* we need more victims */
   pgbuf_wakeup_flush_thread (thread_p);
 
-  /* failed finding victim in singe-threaded, although the number of victim candidates is positive? impossible!
+  /* failed finding victim in single-threaded, although the number of victim candidates is positive? impossible!
    * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
    * NULL. */
-  assert (thread_is_page_flush_thread_available () || bufptr_victimizable != NULL);
+  assert (thread_is_page_flush_thread_available () || bufptr_victimizable != NULL || search_cnt == MAX_DEPTH);
   return NULL;
 
 #undef PERF
