@@ -5782,6 +5782,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
       /* not in partial table. */
       FILE_PARTIAL_SECTOR partsect_new;
       VPID vpid_merged = VPID_INITIALIZER;
+      bool is_merged_page_from_sector = false;
 
       assert (page_ftab == NULL);
 
@@ -5798,11 +5799,23 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 	}
       if (!VPID_ISNULL (&vpid_merged))
 	{
-	  error_code = file_perm_dealloc (thread_p, page_fhead, &vpid_merged, FILE_ALLOC_TABLE_PAGE);
-	  if (error_code != NO_ERROR)
+	  /* full table page was merged. we need to deallocate the merged page too, unless it belong to the same sector
+	   * as deallocated page. in that case, we only need to remove its bit from the sector we are moving to partial
+	   * table. */
+	  if (VSID_IS_SECTOR_OF_VPID (&vsid_dealloc, &vpid_merged))
 	    {
-	      ASSERT_ERROR ();
-	      return error_code;
+	      is_merged_page_from_sector = true;
+	      /* we'll deal with it below */
+	    }
+	  else
+	    {
+	      /* deallocate page. */
+	      error_code = file_perm_dealloc (thread_p, page_fhead, &vpid_merged, FILE_ALLOC_TABLE_PAGE);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
 	    }
 	}
 
@@ -5814,6 +5827,16 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
       partsect_new.page_bitmap = FILE_FULL_PAGE_BITMAP;
       offset_to_dealloc_bit = file_partsect_pageid_to_offset (&partsect_new, vpid_dealloc->pageid);
       file_partsect_clear_bit (&partsect_new, offset_to_dealloc_bit);
+      if (is_merged_page_from_sector)
+	{
+	  /* we also need to remove merged page from this sector. */
+	  offset_to_dealloc_bit = file_partsect_pageid_to_offset (&partsect_new, vpid_merged.pageid);
+	  file_partsect_clear_bit (&partsect_new, offset_to_dealloc_bit);
+
+	  file_log ("file_perm_dealloc",
+		    "merged full table page %d|%d also belongs to sector being moved to partial table \n",
+		    VPID_AS_ARGS (&vpid_merged));
+	}
 
       /* find free space */
       error_code = file_extdata_find_not_full (thread_p, &extdata_part_ftab, &page_ftab, &found);
