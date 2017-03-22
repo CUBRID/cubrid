@@ -528,6 +528,9 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 
   if (rcv->pgptr != NULL)
     {
+     er_print_callstack (ARG_FILE_LINE, "pgbuf_set_lsa: rcvindex:%d ; addr->pgptr:%p; LSA (%d,%d)\n",
+    -1, rcv->pgptr, rcv_lsa_ptr->pageid, rcv_lsa_ptr->offset);
+
       (void) pgbuf_set_lsa (thread_p, rcv->pgptr, rcv_lsa_ptr);
     }
 
