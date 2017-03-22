@@ -152,12 +152,12 @@ struct lf_tran_entry
 
 #define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1, false }
 
+typedef enum lf_bitmap_style LF_BITMAP_STYLE;
 enum lf_bitmap_style
 {
-    LF_BITMAP_ONE_CHUNK = 0,
-    LF_BITMAP_LIST_OF_CHUNKS
+  LF_BITMAP_ONE_CHUNK = 0,
+  LF_BITMAP_LIST_OF_CHUNKS
 };
-typedef enum lf_bitmap_style LF_BITMAP_STYLE;
 
 typedef struct lf_bitmap LF_BITMAP;
 struct lf_bitmap

@@ -69,6 +69,8 @@ typedef enum
   PRM_ERR_BAD_PARAM = 31
 } SYSPRM_ERR;
 
+typedef enum compat_mode COMPAT_MODE;
+
 enum compat_mode
 {
   COMPAT_CUBRID,
@@ -77,18 +79,18 @@ enum compat_mode
     /* 
      * COMPAT_ANSI, COMPAT_DB2, COMPAT_MAXDB, COMPAT_MSSQL, COMPAT_POSTGRESQL */
 };
-typedef enum compat_mode COMPAT_MODE;
 
+typedef enum query_trace_format QUERY_TRACE_FORMAT;
 enum query_trace_format
 {
-    QUERY_TRACE_TEXT = 1,
-    QUERY_TRACE_JSON
+  QUERY_TRACE_TEXT = 1,
+  QUERY_TRACE_JSON
 };
-typedef enum query_trace_format QUERY_TRACE_FORMAT;
 
 /* NOTE:
  * System parameter ids must respect the order in prm_Def array
  */
+typedef enum param_id PARAM_ID;
 enum param_id
 {
   PRM_FIRST_ID = 0,
@@ -407,7 +409,6 @@ enum param_id
   /* change PRM_LAST_ID when adding new system parameters */
   PRM_LAST_ID = PRM_ID_CTE_MAX_RECURSIONS
 };
-typedef enum param_id PARAM_ID;
 
 /*
  *  System parameter data types
@@ -453,13 +454,13 @@ struct sysprm_assign_value
   SYSPRM_ASSIGN_VALUE *next;
 };
 
+typedef enum sysprm_load_flag SYSPRM_LOAD_FLAG;
 enum sysprm_load_flag
 {
   SYSPRM_LOAD_ALL = 0x0,
   SYSPRM_IGNORE_HA = 0x1,
   SYSPRM_IGNORE_INTL_PARAMS = 0x2
 };
-typedef enum sysprm_load_flag SYSPRM_LOAD_FLAG;
 
 #define SYSPRM_LOAD_IS_IGNORE_HA(flags) ((flags) & SYSPRM_IGNORE_HA)
 #define SYSPRM_LOAD_IS_IGNORE_INTL(flags) ((flags) & SYSPRM_IGNORE_INTL_PARAMS)
