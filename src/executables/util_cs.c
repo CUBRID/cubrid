@@ -104,7 +104,8 @@ static void intr_handler (int sig_no);
 
 static void backupdb_sig_interrupt_handler (int sig_no);
 STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
-static void print_timestamp (FILE * outfp);
+static void print_timestamp (FILE * outfp, struct tm *result);
+static void get_timestamp (struct tm *timestamp);
 static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level);
 static int tranlist_cmp_f (const void *p1, const void *p2);
 static OID *util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_name, BTID * index_btid);
@@ -2235,7 +2236,7 @@ error_exit:
 }
 
 static void
-print_timestamp (FILE * outfp)
+print_timestamp (FILE * outfp, struct tm *result)
 {
   time_t tloc;
   struct tm tmloc;
@@ -2243,8 +2244,17 @@ print_timestamp (FILE * outfp)
 
   tloc = time (NULL);
   utility_localtime (&tloc, &tmloc);
+    memcpy(result, &tmloc, sizeof(struct tm));
   strftime (str, 80, "%a %B %d %H:%M:%S %Z %Y", &tmloc);
   fprintf (outfp, "\n\t%s\n", str);
+}
+
+void get_timestamp (struct tm *timestamp)
+{
+    time_t tloc;
+
+    tloc = time (NULL);
+    utility_localtime (&tloc, timestamp);
 }
 
 /*
@@ -2259,12 +2269,14 @@ statdump (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
+    char bin_output_file[PATH_MAX];
   int interval;
   bool cumulative;
   const char *substr;
   FILE *outfp = NULL;
+    FILE *bin_out_fp = NULL;
 
-  if (utility_get_option_string_table_size (arg_map) != 1)
+    if (utility_get_option_string_table_size (arg_map) != 1)
     {
       goto print_statdump_usage;
     }
@@ -2292,10 +2304,13 @@ statdump (UTIL_FUNCTION_ARG * arg)
   if (output_file == NULL)
     {
       outfp = stdout;
+	bin_out_fp = fopen("statistics.bin", "wb");
     }
   else
     {
       outfp = fopen (output_file, "w");
+	snprintf(bin_output_file, PATH_MAX, "%s.bin", output_file);
+	bin_out_fp = fopen(bin_output_file, "wb");
       if (outfp == NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
@@ -2339,11 +2354,15 @@ statdump (UTIL_FUNCTION_ARG * arg)
       os_set_signal_handler (SIGINT, intr_handler);
 #endif
     }
+    struct tm current_timestamp;
+    get_timestamp(&current_timestamp);
+    fwrite(&current_timestamp, sizeof(struct tm), 1, bin_out_fp);
 
   do
     {
-      print_timestamp (outfp);
-      if (histo_print_global_stats (outfp, cumulative, substr) != NO_ERROR)
+      print_timestamp (outfp, &current_timestamp);
+      fwrite(&current_timestamp, sizeof(struct tm), 1, bin_out_fp);
+      if (histo_print_global_stats (outfp, bin_out_fp, cumulative, substr) != NO_ERROR)
 	{
 	  histo_stop ();
 	  goto error_exit;
@@ -2362,6 +2381,8 @@ statdump (UTIL_FUNCTION_ARG * arg)
       fclose (outfp);
     }
 
+    fclose(bin_out_fp);
+
   return EXIT_SUCCESS;
 
 print_statdump_usage:
@@ -2374,6 +2395,7 @@ error_exit:
     {
       fclose (outfp);
     }
+    fclose(bin_out_fp);
   return EXIT_FAILURE;
 #else /* CS_MODE */
   PRINT_AND_LOG_ERR_MSG (msgcat_message

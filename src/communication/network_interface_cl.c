@@ -8775,14 +8775,14 @@ histo_print (FILE * stream)
 }
 
 int
-histo_print_global_stats (FILE * stream, bool cumulative, const char *substr)
+histo_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, const char *substr)
 {
   int err = NO_ERROR;
 
 #if defined (CS_MODE)
-  err = net_histo_print_global_stats (stream, cumulative, substr);
+  err = net_histo_print_global_stats (stream, bin_stream, cumulative, substr);
 #else /* CS_MODE */
-  err = perfmon_print_global_stats (stream, cumulative, substr);
+  err = perfmon_print_global_stats (stream, bin_stream, cumulative, substr);
 #endif /* !CS_MODE */
 
   return err;

@@ -61,6 +61,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/object_representation_sr.c
   ${BASE_DIR}/perf.c
   ${BASE_DIR}/perf_monitor.c
+  ${BASE_DIR}/perfmon_base.c
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/sha1.c

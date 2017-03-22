@@ -58,6 +58,22 @@ if(UNIX)
   add_dependencies(csql ${EP_TARGETS})
 endif(UNIX)
 
+set(STATISTICS_ANALYZER_SOURCES
+        ${EXECUTABLES_DIR}/statistics_analyzer.c
+        ${BASE_DIR}/perfmon_base.c
+)
+add_executable(statanalyzer ${STATISTICS_ANALYZER_SOURCES})
+target_compile_definitions(statanalyzer PRIVATE ${COMMON_DEFS})
+target_include_directories(statanalyzer PRIVATE ${EP_INCLUDES})
+if(UNIX)
+    target_link_libraries(statanalyzer LINK_PRIVATE ${CMAKE_DL_LIBS})
+else(UNIX)
+    target_compile_definitions(statanalyzer PRIVATE _CONSOLE)
+    target_link_libraries(statanalyzer LINK_PRIVATE ws2_32)
+endif(UNIX)
+if(UNIX)
+    add_dependencies(statanalyzer ${EP_TARGETS})
+endif(UNIX)
 
 set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master.c
@@ -302,6 +318,7 @@ install(TARGETS
   cub_admin
   cubrid_esql
   convert_password
+  statanalyzer
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header

@@ -150,7 +150,6 @@ static int
 set_server_error (int error)
 {
   int server_error;
-
   switch (error)
     {
     case CANT_ALLOC_BUFFER:
@@ -742,13 +741,13 @@ net_histo_print (FILE * stream)
  * Note:
  */
 int
-net_histo_print_global_stats (FILE * stream, bool cumulative, const char *substr)
+net_histo_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, const char *substr)
 {
   int err = NO_ERROR;
 
   if (net_Histo_setup_mnt)
     {
-      err = perfmon_print_global_stats (stream, cumulative, substr);
+      err = perfmon_print_global_stats (stream, bin_stream, cumulative, substr);
     }
   return err;
 }
