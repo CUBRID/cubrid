@@ -8513,10 +8513,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	}
     }
 
+  pthread_mutex_unlock (&lru_list->mutex);
+
   /* we need more victims */
   pgbuf_wakeup_flush_thread (thread_p);
-
-  pthread_mutex_unlock (&lru_list->mutex);
 
   /* failed finding victim in singe-threaded, although the number of victim candidates is positive? impossible!
    * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
