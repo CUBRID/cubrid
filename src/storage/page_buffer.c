@@ -9788,7 +9788,6 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
       er_log_debug (ARG_FILE_LINE, "flushing page %d|%d to disk without logging.\n", VPID_AS_ARGS (&bufptr->vpid));
     }
 
-  printf ("Increment io_writes in pgbuf_bcb_flush_with_wal\n");
   /* Record number of writes in statistics */
   perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 
