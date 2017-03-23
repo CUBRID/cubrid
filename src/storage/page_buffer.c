@@ -4088,6 +4088,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 		}
 	    }
 
+	  printf ("Increment io reads in pgbuf_copy_to_area!\n");
 	  /* Record number of reads in statistics */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
 
@@ -4184,6 +4185,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 		}
 	    }
 
+	  printf ("Increment io writes in pgbuf_copy_from_area!\n");
 	  /* Record number of reads in statistics */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 
@@ -7589,6 +7591,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
   if (fetch_mode != NEW_PAGE)
     {
+      printf ("Increment io reads in pgbuf_claim_bcb_for_fix!\n");
       /* Record number of reads in statistics */
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
 
@@ -9788,6 +9791,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
       er_log_debug (ARG_FILE_LINE, "flushing page %d|%d to disk without logging.\n", VPID_AS_ARGS (&bufptr->vpid));
     }
 
+  printf ("Increment io_writes in pgbuf_bcb_flush_with_wal\n");
   /* Record number of writes in statistics */
   perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 
@@ -10387,6 +10391,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 	  return consistent;
 	}
 
+      printf ("Increment ioreads in pgbuf_is_consistent!\n");
       perfmon_inc_stat_to_global (PSTAT_PB_NUM_IOREADS);
       /* Read the disk page into local page area */
       if (fileio_read (NULL, fileio_get_volume_descriptor (bufptr->vpid.volid), malloc_io_pgptr, bufptr->vpid.pageid,
