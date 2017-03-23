@@ -11107,14 +11107,12 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
       assert (match_mvccinfo != NULL && BTREE_MVCC_INFO_IS_DELID_VALID (match_mvccinfo));
       if (BTREE_MVCC_INFO_HAS_DELID (mvcc_info) && mvcc_info->delete_mvccid == match_mvccinfo->delete_mvccid)
 	{
-	  /* This is the object to be vacuumed. */
+	  /* This is the object to be vacuumed/deleted. */
 	  *is_match = true;
 	}
       else
 	{
 	  /* Not a match. */
-	  /* This is acceptable only for vacuum. Postpone delete expects to find an exact match. */
-	  assert (purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
 	}
       return NO_ERROR;
 
