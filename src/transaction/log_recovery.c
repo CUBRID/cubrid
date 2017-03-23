@@ -3762,21 +3762,7 @@ log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  /* rollback. simulate a new system op */
 
 	  log_sysop_start (thread_p);
-
-	  /* now we don't really know where to stop the rollback, however we can estimate. the postpone phase should be
-	   * only populated with run postpone log records and logical run postpone system operations.
-	   * if last log record before this system op is a logical run postpone, its LSA is stored in
-	   * tdes->tail_topresult_lsa. if it is a run postpone, we won't know, but rollback skips them. so we can set
-	   * this system op parent to either tail_topresult_lsa or to sysop_start_postpone_lsa, whichever comes last.
-	   */
-	  if (!LSA_ISNULL (&tdes->tail_topresult_lsa) && LSA_GT (&tdes->tail_topresult_lsa, &sysop_start_postpone_lsa))
-	    {
-	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->tail_topresult_lsa;
-	    }
-	  else
-	    {
-	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone_lsa;
-	    }
+	  tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone_lsa;
 	  /* rollback */
 	  log_sysop_abort (thread_p);
 	  assert (tdes->topops.last == 0);
@@ -3887,17 +3873,8 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  assert (tdes->topops.last == -1);
 	  log_sysop_start (thread_p);
 
-	  /* same as with the system op case, we need to set last parent to tail_topresult_lsa or
-	   * tran_start_postpone_lsa, whichever is last. */
-	  if (!LSA_ISNULL (&tdes->tail_topresult_lsa)
-	      && LSA_GT (&tdes->tail_topresult_lsa, &tdes->rcv.tran_start_postpone_lsa))
-	    {
-	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->tail_topresult_lsa;
-	    }
-	  else
-	    {
-	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.tran_start_postpone_lsa;
-	    }
+	  /* same as with the system op case, tran_start_postpone_lsa. */
+	  tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.tran_start_postpone_lsa;
 	  log_sysop_abort (thread_p);
 	  /* no more undo */
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
