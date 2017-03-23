@@ -1,6 +1,9 @@
 #include <iostream>
 #include "Utils.h"
 #include "StatisticsFile.h"
+#if defined (WINDOWS)
+#include <windows.h>
+#endif
 
 extern "C" {
     #include <perfmon_base.h>
@@ -71,7 +74,6 @@ int main (int argc, char **argv) {
 	} else if (strcmp(str, "print") == 0) {
 	    char *argument, *output_filename;
 	    FILE *out_fp = NULL;
-	    char strTime[80];
 	    StatisticsFile::Snapshot *snapshot;
 
 	    argument = strtok(NULL, " ");
@@ -101,6 +103,82 @@ int main (int argc, char **argv) {
 	    }
 	} else if (strcmp(str, "quit") == 0) {
 	    quit = true;
+	}else if (strcmp(str, "plot") == 0) {
+	    int index1 = -1, index2 = -1;
+	    char *argument = NULL, *plottedVariable = NULL;
+	    StatisticsFile *statisticsFile = NULL;
+	    FILE *gnuplotPipe;
+
+	    std::string cmd = "";
+
+	    argument = strtok(NULL, " ");
+	    plottedVariable = strtok(NULL, " " );
+
+	    if (!argument || !plottedVariable) {
+		printf("Usage: plot <alias(minutes1-minutes2)> <wanted variable to plot>\n");
+		continue;
+	    }
+	    for (unsigned int i = 0; i < files.size(); i++) {
+		files[i]->getIndicesOfSnapshotsByArgument(argument, index1, index2);
+		if (index1 != -1 && index2 != -1) {
+		    statisticsFile = files[i];
+		    break;
+		}
+	    }
+
+	    if (statisticsFile == NULL) {
+		printf("You must provide an existing alias!\n");
+		continue;
+	    }
+
+	    #if !defined (WINDOWS)
+	    gnuplotPipe = popen("gnuplot", "w");
+	    #else
+	    gnuplotPipe = _popen("gnuplot.exe", "w");
+	    #endif
+	    if (gnuplotPipe == NULL) {
+		printf("Unable to open pipe!\n");
+		continue;
+	    }
+
+	    cmd += "set xlabel \"Time(s)\"";
+	    fprintf(gnuplotPipe, "%s\n", cmd.c_str());
+	    cmd = "";
+	    cmd += "set ylabel \"";
+	    cmd += plottedVariable;
+	    cmd += "\"";
+	    fprintf(gnuplotPipe, "%s\n", cmd.c_str());
+	    cmd = "";
+	    fprintf(gnuplotPipe, "set key outside\n");
+	    fprintf(gnuplotPipe, "set terminal png size 1080, 640\n");
+	    cmd += "set output \"./";
+	    cmd += argument;
+	    cmd += "_";
+	    cmd += plottedVariable;
+	    cmd += ".png\"\n";
+	    fprintf(gnuplotPipe, "%s\n", cmd.c_str());
+	    cmd = "";
+	    cmd += "plot '-' with lines ";
+	    cmd += "title \"";
+	    cmd += argument;
+	    cmd += "_";
+	    cmd += plottedVariable;
+	    cmd += "\"";
+	    fprintf(gnuplotPipe, "%s\n", cmd.c_str());
+
+	    for (int i = index1; i < index2; i++) {
+		time_t seconds = mktime(&statisticsFile->getSnapshots()[i]->timestamp) -
+				 mktime(statisticsFile->getRelativeTimestamp());
+		UINT64 value = statisticsFile->getSnapshots()[i]->getStatusValueFromName(plottedVariable);
+		fprintf(gnuplotPipe, "%ld %lld\n", seconds, (long long) value);
+	    }
+
+	    fprintf(gnuplotPipe, "e\n");
+	    #if !defined (WINDOWS)
+		pclose(gnuplotPipe);
+	    #else
+	    _pclose(gnuplotPipe);
+	    #endif
 	} else {
 	    printf("Invalid command!\n");
 	}

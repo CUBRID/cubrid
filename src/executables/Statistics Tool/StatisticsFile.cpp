@@ -56,6 +56,63 @@ StatisticsFile::Snapshot *StatisticsFile::getSnapshotByMinutes(unsigned int minu
     return snapshots[j];
 }
 
+int StatisticsFile::getSnapshotIndexByMinutes(unsigned int minutes) {
+    unsigned int seconds = minutes * 60;
+    unsigned int i, j, mid;
+
+    i = 0;
+    j = (unsigned int)snapshots.size() - 1;
+
+    if ((mktime(&snapshots[0]->timestamp) - relativeEpochSeconds) >= seconds) {
+	return 0;
+    }
+
+    while (j-i > 1) {
+	mid = (i+j) / 2;
+	time_t sec = (mktime(&snapshots[mid]->timestamp) - relativeEpochSeconds);
+	if (sec > seconds) {
+	    j = mid;
+	} else if (sec < seconds) {
+	    i = mid;
+	} else if (sec == seconds) {
+	    return mid;
+	}
+    }
+
+    return j;
+}
+
+void StatisticsFile::getIndicesOfSnapshotsByArgument(char *argument, int& index1, int& index2) {
+    char diffArgument[32];
+    char alias[MAX_FILE_NAME_SIZE];
+    unsigned int  minutes1, minutes2;
+    int tmp;
+
+    index1 = 0;
+    index2 = (int)snapshots.size();
+
+    sscanf(argument, "%[^(]%[^)]", alias, diffArgument);
+
+    if (strcmp(alias, this->alias.c_str()) != 0) {
+	index1 = -1;
+	index2 = -1;
+	return;
+    }
+
+    if (strchr(diffArgument, '-') != NULL) {
+	sscanf(diffArgument, "(%d-%d", &minutes1, &minutes2);
+	index1 = getSnapshotIndexByMinutes(minutes1);
+	index2 = getSnapshotIndexByMinutes(minutes2);
+
+	if (index1 > index2) {
+	    tmp = index2;
+	    index2 = index1;
+	    index1 = tmp;
+	}
+	return;
+    }
+}
+
 StatisticsFile::Snapshot *StatisticsFile::getSnapshotByArgument(char *argument) {
     char diffArgument[32];
     char alias[MAX_FILE_NAME_SIZE];
@@ -81,8 +138,12 @@ StatisticsFile::Snapshot *StatisticsFile::getSnapshotByArgument(char *argument) 
 
 void StatisticsFile::printInTableForm(StatisticsFile::Snapshot *s1, StatisticsFile::Snapshot *s2, FILE *stream) {
     int i;
-    const char *s;
     char timestamp1[20], timestamp2[20];
+
+    if (s1 == NULL && s2 == NULL) {
+	printf("You must provide two existing aliases!\n");
+	return;
+    }
 
     UINT64 *stats1 = s1->rawStats;
     UINT64 *stats2 = s2->rawStats;
