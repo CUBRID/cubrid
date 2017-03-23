@@ -5,7 +5,12 @@
 #include <assert.h>
 #include "perfmon_base.h"
 
-PSTAT_GLOBAL pstat_Global;
+#if defined (SERVER_MODE) || defined (SA_MODE) || defined (CS_MODE)
+#include "error_manager.h"
+#include "porting.h"
+#else
+#define snprintf _sprintf_p
+#endif
 
 PSTAT_METADATA pstat_Metadata[] = {
 	/* Execution statistics for the file io */
@@ -895,52 +900,46 @@ f_dump_diff_in_file_Time_data_page_fix_acquire_time_in_table_form (FILE * stream
 void
 f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 {
-    if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
-    {
-	perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (f, stat_vals);
-    }
+    perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (f, stat_vals);
 }
 
 void
 f_dump_diff_in_file_Num_mvcc_snapshot_ext_in_table_form (FILE * stream, const UINT64 * stats1, const UINT64 *stats2)
 {
-    if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+  PERF_SNAPSHOT_TYPE snapshot;
+  PERF_SNAPSHOT_RECORD_TYPE rec_type;
+  PERF_SNAPSHOT_VISIBILITY visibility;
+  int offset;
+  UINT64 counter1 = 0, counter2 = 0;
+
+  assert (stream != NULL);
+  for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < PERF_SNAPSHOT_CNT; snapshot++)
     {
-	PERF_SNAPSHOT_TYPE snapshot;
-	PERF_SNAPSHOT_RECORD_TYPE rec_type;
-	PERF_SNAPSHOT_VISIBILITY visibility;
-	int offset;
-	UINT64 counter1 = 0, counter2 = 0;
+    for (rec_type = PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED; rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
+      {
+      for (visibility = PERF_SNAPSHOT_INVISIBLE; visibility < PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
+        {
+        offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
 
-	assert (stream != NULL);
-	for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < PERF_SNAPSHOT_CNT; snapshot++)
-	{
-	    for (rec_type = PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED; rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
-	    {
-		for (visibility = PERF_SNAPSHOT_INVISIBLE; visibility < PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
-		{
-		    offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
+        assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
 
-		    assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
+        counter1 = stats1[offset];
+        counter2 = stats2[offset];
+        if (counter1 == 0 && counter2 == 0)
+          {
+          continue;
+          }
 
-		    counter1 = stats1[offset];
-		    counter2 = stats2[offset];
-		    if (counter1 == 0 && counter2 == 0)
-		    {
-			continue;
-		    }
-
-		    fprintf (stream, "%-8s,%-18s,%-9s | %10lld | %10lld | %10lld\n", perfmon_stat_snapshot_name (snapshot),
-			     perfmon_stat_snapshot_record_type (rec_type),
-			     (visibility == PERF_SNAPSHOT_INVISIBLE) ? "INVISIBLE" : "VISIBLE",
-			     (long long) counter1,
-			     (long long) counter2,
-			     difference((long long)counter1, (long long)counter2));
-		}
-	    }
-	}
+        fprintf (stream, "%-8s,%-18s,%-9s | %10lld | %10lld | %10lld\n", perfmon_stat_snapshot_name (snapshot),
+          perfmon_stat_snapshot_record_type (rec_type),
+          (visibility == PERF_SNAPSHOT_INVISIBLE) ? "INVISIBLE" : "VISIBLE",
+          (long long) counter1,
+          (long long) counter2,
+          difference((long long)counter1, (long long)counter2));
+        }
+      }
     }
-    fprintf(stream, "\n");
+  fprintf(stream, "\n");
 }
 
 /*
@@ -953,17 +952,12 @@ f_dump_diff_in_file_Num_mvcc_snapshot_ext_in_table_form (FILE * stream, const UI
 void
 f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
-    if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
-    {
-	perfmon_stat_dump_in_file_obj_lock_array_stat (f, stat_vals);
-    }
+    perfmon_stat_dump_in_file_obj_lock_array_stat (f, stat_vals);
 }
 
 void
 f_dump_diff_in_file_Time_obj_lock_acquire_time_in_table_form (FILE * stream, const UINT64 * stats1, const UINT64 *stats2)
 {
-    if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
-    {
 	int lock_mode;
 	UINT64 counter1 = 0, counter2 = 0;
 
@@ -984,7 +978,6 @@ f_dump_diff_in_file_Time_obj_lock_acquire_time_in_table_form (FILE * stream, con
 		     (long long) counter2,
 		     difference((long long)counter1, (long long)counter2));
 	}
-    }
     fprintf(stream, "\n");
 }
 
@@ -1100,10 +1093,7 @@ f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_
 void
 f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-    if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
-    {
-	perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (stat_vals, s, remaining_size);
-    }
+   perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (stat_vals, s, remaining_size);
 }
 
 /*
@@ -1117,10 +1107,7 @@ f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int 
 void
 f_dump_in_buffer_Time_obj_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-    if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
-    {
-	perfmon_stat_dump_in_buffer_obj_lock_array_stat (stat_vals, s, remaining_size);
-    }
+    perfmon_stat_dump_in_buffer_obj_lock_array_stat (stat_vals, s, remaining_size);
 }
 
 
@@ -2279,9 +2266,6 @@ perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * 
 {
     int offset = pstat_Metadata[stat_index].start_offset;
 
-    assert (pstat_Metadata[stat_index].valtype == PSTAT_COUNTER_TIMER_VALUE);
-    fprintf (stream, "The timer values for %s are:\n", pstat_Metadata[stat_index].stat_name);
-
     long long timer_count1 = (long long) stats1[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)];
     long long timer_count2 = (long long) stats2[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)];
 
@@ -2293,6 +2277,9 @@ perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * 
 
     long long timer_avg1 = (long long) stats1[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)];
     long long timer_avg2 = (long long) stats2[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)];
+
+    assert (pstat_Metadata[stat_index].valtype == PSTAT_COUNTER_TIMER_VALUE);
+    fprintf (stream, "The timer values for %s are:\n", pstat_Metadata[stat_index].stat_name);
 
     if (timer_count1 != 0 || timer_count2 != 0) {
 

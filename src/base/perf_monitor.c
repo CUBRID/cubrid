@@ -88,6 +88,7 @@ static int rv;
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
 
+PSTAT_GLOBAL pstat_Global;
 #define PERFMON_VALUES_MEMSIZE (pstat_Global.n_stat_values * sizeof (UINT64))
 
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
@@ -96,6 +97,8 @@ STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STA
 					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 
 static void perfmon_server_calc_stats (UINT64 * stats);
+
+STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 

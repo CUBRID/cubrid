@@ -164,6 +164,30 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #endif
 #endif
 
+/* All globals on statistics will be here. */
+typedef struct pstat_global PSTAT_GLOBAL;
+struct pstat_global
+{
+    int n_stat_values;
+
+    UINT64 *global_stats;
+
+    int n_trans;
+    UINT64 **tran_stats;
+
+    bool *is_watching;
+#if !defined (HAVE_ATOMIC_BUILTINS)
+    pthread_mutex_t watch_lock;
+#endif				/* !HAVE_ATOMIC_BUILTINS */
+
+    INT32 n_watchers;
+
+    bool initialized;
+    int activation_flag;
+};
+
+extern PSTAT_GLOBAL pstat_Global;
+
 typedef struct diag_sys_config DIAG_SYS_CONFIG;
 struct diag_sys_config
 {
@@ -256,6 +280,8 @@ extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buf
 extern void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
 
 extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
+extern int perfmon_initialize (int num_trans);
+extern void perfmon_finalize (void);
 extern int perfmon_get_number_of_statistic_values (void);
 extern UINT64 *perfmon_allocate_values (void);
 extern char *perfmon_allocate_packed_values_buffer (void);
@@ -906,7 +932,6 @@ struct perf_utime_tracker
 /*
  * Statistics at file io level
  */
-int perfmon_get_module_type (THREAD_ENTRY * thread_p);
 extern bool perfmon_server_is_stats_on (THREAD_ENTRY * thread_p);
 
 extern UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
@@ -928,10 +953,6 @@ extern void perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_typ
 extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 					  int cond_type, UINT64 amount);
 extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
-
-void perfmon_finalize (void);
-int
-perfmon_initialize (int num_trans);
 
 #endif /* SERVER_MODE || SA_MODE */
 

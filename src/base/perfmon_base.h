@@ -8,8 +8,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
     #include <system.h>
-    #include <error_manager.h>
+
 #ifdef __cplusplus
 }
 #endif
@@ -22,8 +23,6 @@ extern "C" {
   { id, name, PSTAT_COMPUTED_RATIO_VALUE, 0, 0, NULL, NULL, NULL, NULL }
 #define PSTAT_METADATA_INIT_COMPLEX(id, name, f_dump_in_file, f_dump_in_buffer, f_load, f_dump_diff) \
   { id, name, PSTAT_COMPLEX_VALUE, 0, 0, f_dump_in_file, f_dump_in_buffer, f_load, f_dump_diff }
-
-#define PERFMON_VALUES_MEMSIZE (pstat_Global.n_stat_values * sizeof (UINT64))
 
 typedef enum
 {
@@ -474,28 +473,6 @@ typedef enum
     PSTAT_COUNT = PSTAT_OBJ_LOCK_TIME_COUNTERS + 1
 } PERF_STAT_ID;
 
-/* All globals on statistics will be here. */
-typedef struct pstat_global PSTAT_GLOBAL;
-struct pstat_global
-{
-    int n_stat_values;
-
-    UINT64 *global_stats;
-
-    int n_trans;
-    UINT64 **tran_stats;
-
-    bool *is_watching;
-#if !defined (HAVE_ATOMIC_BUILTINS)
-    pthread_mutex_t watch_lock;
-#endif				/* !HAVE_ATOMIC_BUILTINS */
-
-    INT32 n_watchers;
-
-    bool initialized;
-    int activation_flag;
-};
-
 typedef enum
 {
     PSTAT_ACCUMULATE_SINGLE_VALUE,	/* A single accumulator value. */
@@ -632,7 +609,6 @@ struct pstat_metadata
 #define PSTAT_COUNTER_TIMER_MAX_TIME_VALUE(startvalp) ((startvalp) + 2)
 #define PSTAT_COUNTER_TIMER_AVG_TIME_VALUE(startvalp) ((startvalp) + 3)
 
-extern PSTAT_GLOBAL pstat_Global;
 extern PSTAT_METADATA pstat_Metadata[];
 
 int f_load_Num_data_page_fix_ext (void);
