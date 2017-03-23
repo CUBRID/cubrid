@@ -35,7 +35,6 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/util_cs.c
-  ${EXECUTABLES_DIR}/statistics_analyzer.c
 )
 
 set(COMPAT_SOURCES
