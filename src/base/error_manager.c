@@ -2646,8 +2646,6 @@ er_restore_last_error (void)
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL || er_entry_p->stack == NULL)
     {
-      assert (er_entry_p != NULL);
-
       /* When no pushed entry exists, keep using the current entry. */
       return;
     }
