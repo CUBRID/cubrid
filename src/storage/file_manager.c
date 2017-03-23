@@ -1809,6 +1809,7 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
   PAGE_PTR page_extdata = NULL;	/* extensible data page */
   PGBUF_LATCH_MODE latch_mode = for_write ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ;
   int error_code = NO_ERROR;
+  VPID vpid_next = VPID_INITIALIZER;
 
   if (page_out != NULL)
     {
@@ -1859,13 +1860,14 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
 	  /* end of extensible data. */
 	  break;
 	}
+      vpid_next = extdata_in->vpid_next;
 
       /* advance to next page */
       if (page_extdata != NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, page_extdata);
 	}
-      page_extdata = pgbuf_fix (thread_p, &extdata_in->vpid_next, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+      page_extdata = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
       if (page_extdata == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
