@@ -2559,7 +2559,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
   /* restore from backup should be prevented from other changes of the database (includes vacuum) */
-  if (r_args->is_restore_from_backup == false && prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
+  if ((r_args == NULL || r_args->is_restore_from_backup == false) && prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
       /* load and recovery vacuum data and dropped files */
       error_code = vacuum_data_load_and_recover (thread_p);
@@ -2786,7 +2786,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
 #if defined (SA_MODE)
   /* Completely vacuum database. */
-  if (r_args->is_restore_from_backup == false)
+  if (r_args == NULL || r_args->is_restore_from_backup == false)
     {
       xvacuum (thread_p);
     }
