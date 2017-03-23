@@ -4045,6 +4045,7 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   assert (data_page != NULL);
   /* Save last_page. */
   vacuum_Data.last_page = data_page;
+  data_page = NULL;
   /* Get last_blockid. */
   if (vacuum_Data.last_page->index_unvacuumed == vacuum_Data.last_page->index_free)
     {
@@ -4089,7 +4090,10 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 
 end:
 
-  vacuum_unfix_data_page (thread_p, data_page);
+  if (data_page != NULL)
+    {
+      vacuum_unfix_data_page (thread_p, data_page);
+    }
   vacuum_unfix_first_and_last_data_page (thread_p);
   vacuum_Data.is_loaded = false;
 
