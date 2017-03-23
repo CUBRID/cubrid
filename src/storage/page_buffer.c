@@ -7594,6 +7594,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
       printf ("Increment io reads in pgbuf_claim_bcb_for_fix!\n");
       /* Record number of reads in statistics */
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
+      printf ("The new value for io reads is %lld\n", perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS));
 
 #if defined(ENABLE_SYSTEMTAP)
       query_id = qmgr_get_current_query_id (thread_p);
