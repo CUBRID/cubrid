@@ -2430,10 +2430,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   logtb_define_trantable (thread_p, -1, -1);
 
     {
-      LOG_TDES *tdes;
-      tdes = LOG_FIND_TDES (tran_index);
-
-      _er_log_debug (ARG_FILE_LINE, "start LSA (%d,%d)\n",  tdes->tail_lsa.pageid, tdes->tail_lsa.offset );
+      _er_log_debug (ARG_FILE_LINE, "start LSA (%d,%d)\n",  log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset );
     }
 
   /* 
@@ -2875,10 +2872,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif
 
       {
-      LOG_TDES *tdes;
-      tdes = LOG_FIND_TDES (tran_index);
-
-      _er_log_debug (ARG_FILE_LINE, "final LSA (%d,%d)\n",  tdes->tail_lsa.pageid, tdes->tail_lsa.offset );
+       _er_log_debug (ARG_FILE_LINE, "end LSA (%d,%d)\n",  log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset );
     }
 
 
