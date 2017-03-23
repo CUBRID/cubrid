@@ -4645,10 +4645,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
-  if (trace_ioreads)
-    {
-      printf ("Sql trace io reads is activated!\n");
-    }
 
   if (trace_slow_msec >= 0 || trace_ioreads > 0)
     {

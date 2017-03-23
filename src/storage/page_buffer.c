@@ -4088,7 +4088,6 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 		}
 	    }
 
-	  printf ("Increment io reads in pgbuf_copy_to_area!\n");
 	  /* Record number of reads in statistics */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
 
@@ -7591,10 +7590,8 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
   if (fetch_mode != NEW_PAGE)
     {
-      printf ("Increment io reads in pgbuf_claim_bcb_for_fix!\n");
       /* Record number of reads in statistics */
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
-      printf ("The new value for io reads is %lld\n", perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS));
 
 #if defined(ENABLE_SYSTEMTAP)
       query_id = qmgr_get_current_query_id (thread_p);
@@ -10392,7 +10389,6 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 	  return consistent;
 	}
 
-      printf ("Increment ioreads in pgbuf_is_consistent!\n");
       perfmon_inc_stat_to_global (PSTAT_PB_NUM_IOREADS);
       /* Read the disk page into local page area */
       if (fileio_read (NULL, fileio_get_volume_descriptor (bufptr->vpid.volid), malloc_io_pgptr, bufptr->vpid.pageid,
