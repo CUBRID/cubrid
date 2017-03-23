@@ -566,6 +566,7 @@ struct bo_restart_arg
   bool restore_upto_bktime;
 
   bool restore_slave;		/* restore slave */
+  bool is_restore_from_backup;
   INT64 db_creation;		/* database creation time */
   LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
 };
