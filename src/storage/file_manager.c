@@ -659,7 +659,6 @@ static int file_rv_partsect_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool
 /* Utility functions.                                                   */
 /************************************************************************/
 
-static int file_compare_vsids (const void *a, const void *b);
 static int file_compare_vpids (const void *first, const void *second);
 static int file_compare_vfids (const void *first, const void *second);
 static int file_compare_track_items (const void *first, const void *second);
@@ -1810,6 +1809,7 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
   PAGE_PTR page_extdata = NULL;	/* extensible data page */
   PGBUF_LATCH_MODE latch_mode = for_write ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ;
   int error_code = NO_ERROR;
+  VPID vpid_next = VPID_INITIALIZER;
 
   if (page_out != NULL)
     {
@@ -1860,13 +1860,14 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
 	  /* end of extensible data. */
 	  break;
 	}
+      vpid_next = extdata_in->vpid_next;
 
       /* advance to next page */
       if (page_extdata != NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, page_extdata);
 	}
-      page_extdata = pgbuf_fix (thread_p, &extdata_in->vpid_next, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+      page_extdata = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
       if (page_extdata == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -2862,30 +2863,6 @@ file_rv_partsect_clear (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 /************************************************************************/
 
 /*
- * file_compare_vsids () - Compare two sector identifiers.
- *
- * return      : 1 if first sector is bigger, -1 if first sector is smaller and 0 if sector ids are equal
- * first (in)  : first sector id
- * second (in) : second sector id
- */
-static int
-file_compare_vsids (const void *first, const void *second)
-{
-  VSID *first_vsid = (VSID *) first;
-  VSID *second_vsid = (VSID *) second;
-
-  if (first_vsid->volid > second_vsid->volid)
-    {
-      return 1;
-    }
-  else if (first_vsid->volid < second_vsid->volid)
-    {
-      return -1;
-    }
-  return (int) (first_vsid->sectid - second_vsid->sectid);
-}
-
-/*
  * file_compare_vpids () - Compare two page identifiers.
  *
  * return      : 1 if first page is bigger, -1 if first page is smaller and 0 if page ids are equal
@@ -3343,7 +3320,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 
   /* sort sectors by VSID. but before sorting, remember last volume ID used for reservations. */
   volid_last_expand = vsids_reserved[n_sectors - 1].volid;
-  qsort (vsids_reserved, n_sectors, sizeof (VSID), file_compare_vsids);
+  qsort (vsids_reserved, n_sectors, sizeof (VSID), disk_compare_vsids);
 
   /* decide on what page to use as file header page (which is going to decide the VFID also). */
 #if defined (SERVER_MODE)
@@ -3793,7 +3770,7 @@ exit:
 	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
 	  /* make sure sectors are sorted */
-	  qsort (vsids_reserved, n_sectors, sizeof (VSID), file_compare_vsids);
+	  qsort (vsids_reserved, n_sectors, sizeof (VSID), disk_compare_vsids);
 	  if (disk_unreserve_ordered_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE, n_sectors, vsids_reserved)
 	      != NO_ERROR)
 	    {
@@ -3894,7 +3871,7 @@ file_table_collect_all_vsids (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE
       return ER_FAILED;
     }
 
-  qsort (collector_out->vsids, fhead->n_sector_total, sizeof (VSID), file_compare_vsids);
+  qsort (collector_out->vsids, fhead->n_sector_total, sizeof (VSID), disk_compare_vsids);
 
   return NO_ERROR;
 }
@@ -4468,7 +4445,7 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
     }
 
   /* sort VSID's. */
-  qsort (vsids_reserved, expand_size_in_sectors, sizeof (VSID), file_compare_vsids);
+  qsort (vsids_reserved, expand_size_in_sectors, sizeof (VSID), disk_compare_vsids);
 
   /* save in file header partial table. all sectors will be empty */
   partsect.page_bitmap = FILE_EMPTY_PAGE_BITMAP;
@@ -4759,7 +4736,7 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
   page_extdata = page_ftab != NULL ? page_ftab : page_fhead;
 
   /* add the new VSID to full table. note that we keep sectors ordered. */
-  file_extdata_find_ordered (extdata_full_ftab, vsid, file_compare_vsids, &found, &pos);
+  file_extdata_find_ordered (extdata_full_ftab, vsid, disk_compare_vsids, &found, &pos);
   if (found)
     {
       /* ups, duplicate! */
@@ -5736,7 +5713,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 
   /* search partial table. */
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
-  error_code = file_extdata_search_item (thread_p, &extdata_part_ftab, &vsid_dealloc, file_compare_vsids, true, true,
+  error_code = file_extdata_search_item (thread_p, &extdata_part_ftab, &vsid_dealloc, disk_compare_vsids, true, true,
 					 &found, &position, &page_ftab);
   if (error_code != NO_ERROR)
     {
@@ -5782,6 +5759,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
       /* not in partial table. */
       FILE_PARTIAL_SECTOR partsect_new;
       VPID vpid_merged = VPID_INITIALIZER;
+      bool is_merged_page_from_sector = false;
 
       assert (page_ftab == NULL);
 
@@ -5790,7 +5768,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
       was_full = true;
       FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
       error_code = file_extdata_find_and_remove_item (thread_p, extdata_full_ftab, page_fhead, &vsid_dealloc,
-						      file_compare_vsids, true, NULL, &vpid_merged);
+						      disk_compare_vsids, true, NULL, &vpid_merged);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5798,11 +5776,23 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 	}
       if (!VPID_ISNULL (&vpid_merged))
 	{
-	  error_code = file_perm_dealloc (thread_p, page_fhead, &vpid_merged, FILE_ALLOC_TABLE_PAGE);
-	  if (error_code != NO_ERROR)
+	  /* full table page was merged. we need to deallocate the merged page too, unless it belong to the same sector
+	   * as deallocated page. in that case, we only need to remove its bit from the sector we are moving to partial
+	   * table. */
+	  if (VSID_IS_SECTOR_OF_VPID (&vsid_dealloc, &vpid_merged))
 	    {
-	      ASSERT_ERROR ();
-	      return error_code;
+	      is_merged_page_from_sector = true;
+	      /* we'll deal with it below */
+	    }
+	  else
+	    {
+	      /* deallocate page. */
+	      error_code = file_perm_dealloc (thread_p, page_fhead, &vpid_merged, FILE_ALLOC_TABLE_PAGE);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
 	    }
 	}
 
@@ -5814,6 +5804,16 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
       partsect_new.page_bitmap = FILE_FULL_PAGE_BITMAP;
       offset_to_dealloc_bit = file_partsect_pageid_to_offset (&partsect_new, vpid_dealloc->pageid);
       file_partsect_clear_bit (&partsect_new, offset_to_dealloc_bit);
+      if (is_merged_page_from_sector)
+	{
+	  /* we also need to remove merged page from this sector. */
+	  offset_to_dealloc_bit = file_partsect_pageid_to_offset (&partsect_new, vpid_merged.pageid);
+	  file_partsect_clear_bit (&partsect_new, offset_to_dealloc_bit);
+
+	  file_log ("file_perm_dealloc",
+		    "merged full table page %d|%d also belongs to sector being moved to partial table \n",
+		    VPID_AS_ARGS (&vpid_merged));
+	}
 
       /* find free space */
       error_code = file_extdata_find_not_full (thread_p, &extdata_part_ftab, &page_ftab, &found);
@@ -5830,7 +5830,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 	  /* found free space in table */
 
 	  /* find the correct position for new partial sector to keep the table ordered */
-	  file_extdata_find_ordered (extdata_part_ftab, &vsid_dealloc, file_compare_vsids, &found, &position);
+	  file_extdata_find_ordered (extdata_part_ftab, &vsid_dealloc, disk_compare_vsids, &found, &position);
 	  if (found)
 	    {
 	      /* ups, duplicate! */
@@ -6190,7 +6190,7 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
   VSID_FROM_VPID (&vsid_lookup, vpid_lookup);
 
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
-  if (file_extdata_search_item (thread_p, &extdata_part_ftab, &vsid_lookup, file_compare_vsids, true, false, &found,
+  if (file_extdata_search_item (thread_p, &extdata_part_ftab, &vsid_lookup, disk_compare_vsids, true, false, &found,
 				&pos, &page_ftab) != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -6223,7 +6223,7 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
 	  pgbuf_unfix_and_init (thread_p, page_ftab);
 	}
       FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
-      if (file_extdata_search_item (thread_p, &extdata_full_ftab, &vsid_lookup, file_compare_vsids, true, false,
+      if (file_extdata_search_item (thread_p, &extdata_full_ftab, &vsid_lookup, disk_compare_vsids, true, false,
 				    &found, &pos, &page_ftab) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -6476,7 +6476,7 @@ file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_
       /* find in collected sectors */
       for (idx_sect = 0; idx_sect < collect->nsects; idx_sect++)
 	{
-	  if (file_compare_vsids (&vsid_this, &collect->partsect_ftab->vsid) == 0)
+	  if (disk_compare_vsids (&vsid_this, &collect->partsect_ftab->vsid) == 0)
 	    {
 	      break;
 	    }
@@ -7804,7 +7804,7 @@ file_table_check_page_is_in_sectors (THREAD_ENTRY * thread_p, const void *data, 
   FILE_USER_PAGE_CLEAR_MARK_DELETED (&vpid);
   VSID_FROM_VPID (&vsid_of_vpid, &vpid);
 
-  if (bsearch (&vsid_of_vpid, collector->vsids, collector->n_vsids, sizeof (VSID), file_compare_vsids) == NULL)
+  if (bsearch (&vsid_of_vpid, collector->vsids, collector->n_vsids, sizeof (VSID), disk_compare_vsids) == NULL)
     {
       /* not found! */
       assert_release (false);
@@ -8268,7 +8268,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
 	  found = false;
 	  for (idx_sect = 0; idx_sect < collector.nsects; idx_sect++)
 	    {
-	      if (file_compare_vsids (&partsect->vsid, &collector.partsect_ftab[idx_sect].vsid) == 0)
+	      if (disk_compare_vsids (&partsect->vsid, &collector.partsect_ftab[idx_sect].vsid) == 0)
 		{
 		  /* get bitmap from collector */
 		  partsect->page_bitmap = collector.partsect_ftab[idx_sect].page_bitmap;

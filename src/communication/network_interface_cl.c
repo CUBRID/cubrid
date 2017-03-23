@@ -67,7 +67,7 @@
   do \
     { \
       db_on_server++; \
-      er_clear (); \
+      er_stack_push_if_exists (); \
       if (private_heap_id == 0) \
         { \
 	  assert (db_on_server == 1); \
@@ -83,6 +83,7 @@
         { \
           db_clear_private_heap (NULL, private_heap_id); \
         } \
+      er_restore_last_error (); \
       db_on_server--; \
     } \
   while (0)

@@ -11107,14 +11107,12 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
       assert (match_mvccinfo != NULL && BTREE_MVCC_INFO_IS_DELID_VALID (match_mvccinfo));
       if (BTREE_MVCC_INFO_HAS_DELID (mvcc_info) && mvcc_info->delete_mvccid == match_mvccinfo->delete_mvccid)
 	{
-	  /* This is the object to be vacuumed. */
+	  /* This is the object to be vacuumed/deleted. */
 	  *is_match = true;
 	}
       else
 	{
 	  /* Not a match. */
-	  /* This is acceptable only for vacuum. Postpone delete expects to find an exact match. */
-	  assert (purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
 	}
       return NO_ERROR;
 
@@ -24721,7 +24719,7 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 end:
   /* End scan or end one iteration or maybe an error case. */
   assert (bts->end_scan || bts->end_one_iteration || error_code != NO_ERROR);
-  if (bts->end_scan)
+  if (bts->end_scan || error_code != NO_ERROR)
     {
       /* Scan is ended. Reset current page VPID and is_scan_started flag */
       VPID_SET_NULL (&bts->C_vpid);
