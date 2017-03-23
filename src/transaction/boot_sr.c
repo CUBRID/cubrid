@@ -2179,6 +2179,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
 
+
+
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
     {
@@ -2426,6 +2428,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
+
+    {
+      LOG_TDES *tdes;
+      tdes = LOG_FIND_TDES (tran_index);
+
+      _er_log_debug (ARG_FILE_LINE, "start LSA (%d,%d)\n",  tdes->tail_lsa.pageid, tdes->tail_lsa.offset );
+    }
 
   /* 
    * How to restart the system ?
@@ -2864,6 +2873,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if !defined(SA_MODE)
   json_set_alloc_funcs (malloc, free);
 #endif
+
+      {
+      LOG_TDES *tdes;
+      tdes = LOG_FIND_TDES (tran_index);
+
+      _er_log_debug (ARG_FILE_LINE, "final LSA (%d,%d)\n",  tdes->tail_lsa.pageid, tdes->tail_lsa.offset );
+    }
+
 
   return NO_ERROR;
 
