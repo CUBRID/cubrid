@@ -4184,7 +4184,6 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 		}
 	    }
 
-	  printf ("Increment io writes in pgbuf_copy_from_area!\n");
 	  /* Record number of reads in statistics */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 
