@@ -136,6 +136,7 @@ struct session_state
   int trace_format;
   int ref_count;
   TZ_REGION session_tz_region;
+  int private_lru_index;
 };
 
 /* session state manipulation functions */
@@ -266,6 +267,7 @@ session_state_init (void *st)
   session_p->plan_string = NULL;
   session_p->ref_count = 0;
   session_p->trace_format = QUERY_TRACE_TEXT;
+  session_p->private_lru_index = -1;
 
   return NO_ERROR;
 }
@@ -326,6 +328,9 @@ session_state_uninit (void *st)
     {
       sysprm_free_session_parameters (&session->session_parameters);
     }
+
+  (void) pgbuf_release_private_lru (thread_p, session->private_lru_index);
+  session->private_lru_index = -1;
 
 #if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "session_free_session closed %d queries for %d\n", cnt, session->id);
@@ -615,6 +620,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   /* initialize the timeout */
   if (gettimeofday (&(session_p->session_timeout), NULL) != 0)
     {
+      session_p->private_lru_index = -1;
       pthread_mutex_unlock (&session_p->mutex);
       return ER_FAILED;
     }
@@ -626,6 +632,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   /* increase reference count of new session_p */
   session_state_increase_ref_count (thread_p, session_p);
 
+  session_p->private_lru_index = pgbuf_assign_private_lru (thread_p, false, (int) session_p->id);
   /* set as thread session */
   session_set_conn_entry_data (thread_p, session_p);
 
@@ -2621,6 +2628,7 @@ session_set_conn_entry_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
       thread_p->conn_entry->session_p = session_p;
       thread_p->conn_entry->session_id = session_p->id;
     }
+  thread_p->private_lru_index = session_p->private_lru_index;
 #endif
 }
 
@@ -2988,12 +2996,26 @@ session_state_decrease_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * state
 
 /*
  * session_get_number_of_holdable_cursors () - return the number of holdable cursors
- *	                              
+ *
  * return : the number of holdable cursors
- * 
+ *
  */
 int
 session_get_number_of_holdable_cursors (void)
 {
   return sessions.num_holdable_cursors;
+}
+
+/*
+ * session_get_private_lru_idx () - returns the LRU index of this session
+ *
+ *
+ * return : LRU index
+ * session_p (in) : session
+ *
+ */
+int
+session_get_private_lru_idx (const void *session_p)
+{
+  return ((SESSION_STATE *) session_p)->private_lru_index;
 }

@@ -803,6 +803,13 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    NULL},
+
+  {RVFL_TRACKER_UNREGISTER,
+   "RVFL_TRACKER_UNREGISTER",
+   file_rv_tracker_unregister_undo,
+   NULL,
+   NULL,
+   NULL},
 };
 
 /*

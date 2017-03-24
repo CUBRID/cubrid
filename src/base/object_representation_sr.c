@@ -338,7 +338,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
 	      (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
 
-	      root_header = btree_get_root_header (root);
+	      root_header = btree_get_root_header (thread_p, root);
 	      if (root_header == NULL)
 		{
 		  pgbuf_unfix_and_init (thread_p, root);

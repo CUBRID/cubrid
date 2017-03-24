@@ -848,7 +848,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
     {
       assert (false);
       pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
-      (void) pgbuf_flush (thread_p, addr.pgptr, FREE);
+      pgbuf_flush (thread_p, addr.pgptr, FREE);
     }
   else if (flush == DISK_FLUSH_AND_INVALIDATE)
     {
@@ -985,7 +985,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
     }
   else
     {
-      (void) pgbuf_flush (thread_p, addr.pgptr, FREE);
+      pgbuf_flush (thread_p, addr.pgptr, FREE);
     }
   addr.pgptr = NULL;
 
@@ -3947,6 +3947,26 @@ error:
   /* abort any changes */
   log_sysop_abort (thread_p);
 
+  if (purpose == DB_TEMPORARY_DATA_PURPOSE)
+    {
+      /* nothing was logged. we need to revert any partial allocations we may have made. */
+      int nreserved = context.vsidp - reserved_sectors;
+      if (nreserved > 0)
+	{
+	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+	  qsort (reserved_sectors, nreserved, sizeof (VSID), disk_compare_vsids);
+	  if (disk_unreserve_ordered_sectors (thread_p, purpose, nreserved, reserved_sectors) != NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+	}
+    }
+  else
+    {
+      /* changes reverted by log_sysop_abort */
+    }
+
   /* undo cache reserve */
   disk_cache_free_reserved (&context);
 
@@ -5590,6 +5610,30 @@ exit:
     }
 
   return error_code;
+}
+
+/*
+ * disk_compare_vsids () - Compare two sector identifiers.
+ *
+ * return      : 1 if first sector is bigger, -1 if first sector is smaller and 0 if sector ids are equal
+ * first (in)  : first sector id
+ * second (in) : second sector id
+ */
+int
+disk_compare_vsids (const void *first, const void *second)
+{
+  VSID *first_vsid = (VSID *) first;
+  VSID *second_vsid = (VSID *) second;
+
+  if (first_vsid->volid > second_vsid->volid)
+    {
+      return 1;
+    }
+  else if (first_vsid->volid < second_vsid->volid)
+    {
+      return -1;
+    }
+  return (int) (first_vsid->sectid - second_vsid->sectid);
 }
 
 /************************************************************************/

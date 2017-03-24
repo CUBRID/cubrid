@@ -1139,7 +1139,7 @@ opțiuni valide:\n\
                         sa se asigure compatibilitatea cu datele din tabele; Daca e necesar, atunci cand prima\n\
                         faza a operatiei de extend nu reuseste sa faca toate datele compatibile o actualizare\n\
                         a tabelelor care contin coloane cu tipuri timezone este realizata.\n
-                  
+
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 ID-ul de zonă introdus este în afara intervalului acceptat. Folosește -z\n\
  pentru afișare timezeone-uri și ID-uri valide\n

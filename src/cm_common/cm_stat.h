@@ -270,8 +270,6 @@ extern "C"
     unsigned int pb_num_dirties;
     unsigned int pb_num_ioreads;
     unsigned int pb_num_iowrites;
-    unsigned int pb_num_victims;
-    unsigned int pb_num_replacements;
     unsigned int pb_num_hash_anchor_waits;
     unsigned int pb_time_hash_anchor_wait;
     /* peeked stats */
@@ -279,7 +277,7 @@ extern "C"
     unsigned int pb_dirty_cnt;
     unsigned int pb_lru1_cnt;
     unsigned int pb_lru2_cnt;
-    unsigned int pb_ain_cnt;
+    unsigned int pb_lru3_cnt;
     unsigned int pb_avoid_dealloc_cnt;
     unsigned int pb_avoid_victim_cnt;
     unsigned int pb_victim_cand_cnt;

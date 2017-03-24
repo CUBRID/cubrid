@@ -274,8 +274,10 @@ extern void _er_log_debug (const char *file_name, const int line_no, const char 
 extern void *er_get_area_error (void *buffer, int *length);
 extern int er_set_area_error (void *server_area);
 extern int er_stack_push (void);
+extern int er_stack_push_if_exists (void);
 extern int er_stack_pop (void);
 extern void er_stack_clear (void);
+extern void er_restore_last_error (void);
 extern void er_stack_clearall (void);
 extern void *db_default_malloc_handler (void *arg, const char *filename, int line_no, size_t size);
 extern int er_event_restart (void);

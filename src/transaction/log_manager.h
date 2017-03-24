@@ -208,6 +208,7 @@ extern SCAN_CODE log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_pa
 				      RECDES * recdes);
 
 extern void log_sysop_start (THREAD_ENTRY * thread_p);
+extern void log_sysop_start_atomic (THREAD_ENTRY * thread_p);
 extern void log_sysop_abort (THREAD_ENTRY * thread_p);
 extern void log_sysop_attach_to_outer (THREAD_ENTRY * thread_p);
 extern void log_sysop_commit (THREAD_ENTRY * thread_p);

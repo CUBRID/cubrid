@@ -580,8 +580,8 @@ extern TP_DOMAIN *btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid);
 extern int btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid);
 extern void btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level);
 /* Recovery routines */
-extern int btree_rv_util_save_page_records (PAGE_PTR page_ptr, INT16 first_slotid, int rec_cnt, INT16 ins_slotid,
-					    char *data, int *length);
+extern int btree_rv_util_save_page_records (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, INT16 first_slotid, int rec_cnt,
+					    INT16 ins_slotid, char *data, int *length);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * Rec);
 extern void btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * Rec);
@@ -650,9 +650,9 @@ extern int xbtree_get_key_type (THREAD_ENTRY * thread_p, BTID btid, TP_DOMAIN **
 
 extern int btree_leaf_get_first_object (BTID_INT * btid, RECDES * recp, OID * oidp, OID * class_oid,
 					BTREE_MVCC_INFO * mvcc_info);
-extern void btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid, OID * oidp, OID * class_oidp,
-					    BTREE_MVCC_INFO * mvcc_info, int *key_offset, char **rv_undo_data_ptr,
-					    char **rv_redo_data_ptr);
+extern void btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid, OID * oidp,
+					    OID * class_oidp, BTREE_MVCC_INFO * mvcc_info, int *key_offset,
+					    char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 extern int btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid, OID * oid, int op_type,
 			 BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,

@@ -1950,6 +1950,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 }
 
 /*
@@ -2045,6 +2046,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 }
 
 /*
@@ -2919,31 +2921,6 @@ logtb_find_wait_msecs (int tran_index)
   else
     {
       assert (false);
-      return 0;
-    }
-}
-
-/*
- * logtb_find_current_wait_msecs - find waiting times for current transaction
- *
- * return : wait_msecs...
- *
- * Note: Find the waiting time for the current transaction.
- */
-int
-logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
-    {
-      return tdes->wait_msecs;
-    }
-  else
-    {
       return 0;
     }
 }
