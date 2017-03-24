@@ -27549,6 +27549,11 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	  num_visible =
 	    btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, leaf_record, offset_after_key, &leaf_info,
 						     NULL, &mvcc_snapshot_dirty);
+	  if (num_visible < 0)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
 	}
 
       /* Should we consider this a unique constraint violation? */
@@ -28242,6 +28247,11 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
       num_visible =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_info, NULL,
 						 &snapshot_dirty);
+      if (num_visible < 0)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
       /* Even though multiple visible objects are allowed, they cannot exceed two visible objects (insert does not
        * allow it). Also, there should be at least one object to delete. */
       assert (num_visible > 0);
@@ -30470,8 +30480,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 						 &max_visible_oids, &mvcc_snapshot_dirty);
       if (num_visible_oids < 0)
 	{
-	  ASSERT_ERROR ();
-	  error_code = num_visible_oids;
+	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
       else if (num_visible_oids > 0)
