@@ -273,7 +273,7 @@ perfmon_get_global_stats (void)
 
   if (perfmon_Iscollecting_stats != true)
     {
-    er_log_debug(ARG_FILE_LINE, "aici100\n");
+      er_log_debug (ARG_FILE_LINE, "aici100\n");
       return ER_FAILED;
     }
 
@@ -285,7 +285,7 @@ perfmon_get_global_stats (void)
   err = perfmon_server_copy_global_stats (perfmon_Stat_info.current_global_stats);
   if (err != NO_ERROR)
     {
-    er_log_debug(ARG_FILE_LINE, "aici10\n");
+      er_log_debug (ARG_FILE_LINE, "aici10\n");
       ASSERT_ERROR ();
     }
   return err;
@@ -388,7 +388,10 @@ perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, c
     }
   if (cumulative)
     {
-	fwrite(perfmon_Stat_info.current_global_stats, sizeof(UINT64), (size_t)pstat_Global.n_stat_values, bin_stream);
+      char *packed_stats = (char *) malloc (sizeof (UINT64) * pstat_Global.n_stat_values);
+      perfmon_pack_stats (packed_stats, perfmon_Stat_info.current_global_stats);
+
+      fwrite (packed_stats, sizeof (UINT64), (size_t) pstat_Global.n_stat_values, bin_stream);
       perfmon_server_dump_stats (perfmon_Stat_info.current_global_stats, stream, substr);
     }
   else
@@ -2290,6 +2293,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 	}
     }
 }
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * perfmon_start_watch () - Start watching performance statistics.
@@ -2435,59 +2439,6 @@ perfmon_copy_values (UINT64 * dest, UINT64 * src)
 }
 
 /*
- * perfmon_pack_stats - Pack the statistic values in the buffer
- *
- * return:
- *
- *   buf (in):
- *   stats (in):
- *
- *
- */
-char *
-perfmon_pack_stats (char *buf, UINT64 * stats)
-{
-  char *ptr;
-  int i;
-
-  ptr = buf;
-
-  for (i = 0; i < pstat_Global.n_stat_values; i++)
-    {
-      OR_PUT_INT64 (ptr, &(stats[i]));
-      ptr += OR_INT64_SIZE;
-    }
-
-  return (ptr);
-}
-
-/*
- * perfmon_unpack_stats - Unpack the values from the buffer in the statistics array
- *
- * return:
- *
- *   buf (in):
- *   stats (out):
- *
- */
-char *
-perfmon_unpack_stats (char *buf, UINT64 * stats)
-{
-  char *ptr;
-  int i;
-
-  ptr = buf;
-
-  for (i = 0; i < pstat_Global.n_stat_values; i++)
-    {
-      OR_GET_INT64 (ptr, &(stats[i]));
-      ptr += OR_INT64_SIZE;
-    }
-
-  return (ptr);
-}
-
-/*
  * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics
  *		         
  * return: void
@@ -2551,78 +2502,84 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
 int
 perfmon_initialize (int num_trans)
 {
-    int idx = 0;
-    int memsize = 0;
+  int idx = 0;
+  int memsize = 0;
+  int rc;
 
-    pstat_Global.n_stat_values = 0;
-    pstat_Global.global_stats = NULL;
-    pstat_Global.n_trans = 0;
-    pstat_Global.tran_stats = NULL;
-    pstat_Global.is_watching = NULL;
-    pstat_Global.n_watchers = 0;
-    pstat_Global.initialized = false;
-    pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
+  pstat_Global.n_stat_values = 0;
+  pstat_Global.global_stats = NULL;
+  pstat_Global.n_trans = 0;
+  pstat_Global.tran_stats = NULL;
+  pstat_Global.is_watching = NULL;
+  pstat_Global.n_watchers = 0;
+  pstat_Global.initialized = false;
+  pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
 
-    pstat_Global.n_stat_values = metadata_initialize();
+  rc = metadata_initialize ();
+  if (rc != 0)
+    {
+      return rc;
+    }
+
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
 #if !defined (HAVE_ATOMIC_BUILTINS)
-    (void) pthread_mutex_init (&pstat_Global.watch_lock, NULL);
+  (void) pthread_mutex_init (&pstat_Global.watch_lock, NULL);
 #endif /* !HAVE_ATOMIC_BUILTINS */
 
-    /* Allocate global stats. */
-    pstat_Global.global_stats = (UINT64 *) malloc (PERFMON_VALUES_MEMSIZE);
-    if (pstat_Global.global_stats == NULL)
+  /* Allocate global stats. */
+  pstat_Global.global_stats = (UINT64 *) malloc (PERFMON_VALUES_MEMSIZE);
+  if (pstat_Global.global_stats == NULL)
     {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
-	goto error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
+      goto error;
     }
-    memset (pstat_Global.global_stats, 0, PERFMON_VALUES_MEMSIZE);
+  memset (pstat_Global.global_stats, 0, PERFMON_VALUES_MEMSIZE);
 
-    assert (num_trans > 0);
+  assert (num_trans > 0);
 
-    pstat_Global.n_trans = num_trans + 1;	/* 1 more for easier indexing with tran_index */
-    memsize = pstat_Global.n_trans * sizeof (UINT64 *);
-    pstat_Global.tran_stats = (UINT64 **) malloc (memsize);
-    if (pstat_Global.tran_stats == NULL)
+  pstat_Global.n_trans = num_trans + 1;	/* 1 more for easier indexing with tran_index */
+  memsize = pstat_Global.n_trans * sizeof (UINT64 *);
+  pstat_Global.tran_stats = (UINT64 **) malloc (memsize);
+  if (pstat_Global.tran_stats == NULL)
     {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-	goto error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      goto error;
     }
-    memsize = pstat_Global.n_trans * PERFMON_VALUES_MEMSIZE;
-    pstat_Global.tran_stats[0] = (UINT64 *) malloc (memsize);
-    if (pstat_Global.tran_stats[0] == NULL)
+  memsize = pstat_Global.n_trans * PERFMON_VALUES_MEMSIZE;
+  pstat_Global.tran_stats[0] = (UINT64 *) malloc (memsize);
+  if (pstat_Global.tran_stats[0] == NULL)
     {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-	goto error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      goto error;
     }
-    memset (pstat_Global.tran_stats[0], 0, memsize);
+  memset (pstat_Global.tran_stats[0], 0, memsize);
 
-    for (idx = 1; idx < pstat_Global.n_trans; idx++)
+  for (idx = 1; idx < pstat_Global.n_trans; idx++)
     {
-	pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + pstat_Global.n_stat_values * idx;
+      pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + pstat_Global.n_stat_values * idx;
     }
 
-    memsize = pstat_Global.n_trans * sizeof (bool);
-    pstat_Global.is_watching = (bool *) malloc (memsize);
-    if (pstat_Global.is_watching == NULL)
+  memsize = pstat_Global.n_trans * sizeof (bool);
+  pstat_Global.is_watching = (bool *) malloc (memsize);
+  if (pstat_Global.is_watching == NULL)
     {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-	goto error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      goto error;
     }
-    memset (pstat_Global.is_watching, 0, memsize);
+  memset (pstat_Global.is_watching, 0, memsize);
 
-    pstat_Global.n_watchers = 0;
-    pstat_Global.initialized = true;
-    return NO_ERROR;
+  pstat_Global.n_watchers = 0;
+  pstat_Global.initialized = true;
+  return NO_ERROR;
 
-    error:
-    perfmon_finalize ();
-    return ER_OUT_OF_VIRTUAL_MEMORY;
+error:
+  perfmon_finalize ();
+  return ER_OUT_OF_VIRTUAL_MEMORY;
 #else
-    pstat_Global.initialized = true;
-    return NO_ERROR;
+  pstat_Global.initialized = true;
+  return NO_ERROR;
 #endif /* SERVER_MODE || SA_MODE */
 }
 
@@ -2636,25 +2593,25 @@ perfmon_initialize (int num_trans)
 void
 perfmon_finalize (void)
 {
-    if (pstat_Global.tran_stats != NULL)
+  if (pstat_Global.tran_stats != NULL)
     {
-	if (pstat_Global.tran_stats[0] != NULL)
+      if (pstat_Global.tran_stats[0] != NULL)
 	{
-	    free_and_init (pstat_Global.tran_stats[0]);
+	  free_and_init (pstat_Global.tran_stats[0]);
 	}
-	free_and_init (pstat_Global.tran_stats);
+      free_and_init (pstat_Global.tran_stats);
     }
-    if (pstat_Global.is_watching != NULL)
+  if (pstat_Global.is_watching != NULL)
     {
-	free_and_init (pstat_Global.is_watching);
+      free_and_init (pstat_Global.is_watching);
     }
-    if (pstat_Global.global_stats != NULL)
+  if (pstat_Global.global_stats != NULL)
     {
-	free_and_init (pstat_Global.global_stats);
+      free_and_init (pstat_Global.global_stats);
     }
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #if !defined (HAVE_ATOMIC_BUILTINS)
-    pthread_mutex_destroy (&pstat_Global.watch_lock);
+  pthread_mutex_destroy (&pstat_Global.watch_lock);
 #endif /* !HAVE_ATOMIC_BUILTINS */
 #endif /* SERVER_MODE || SA_MODE */
 }
@@ -2665,44 +2622,44 @@ perfmon_finalize (void)
 int
 perfmon_get_module_type (THREAD_ENTRY * thread_p)
 {
-    int thread_index;
-    int module_type;
-    static int first_vacuum_worker_idx = 0;
-    static int num_worker_threads = 0;
+  int thread_index;
+  int module_type;
+  static int first_vacuum_worker_idx = 0;
+  static int num_worker_threads = 0;
 
 #if defined (SERVER_MODE)
-    if (thread_p == NULL)
+  if (thread_p == NULL)
     {
-	thread_p = thread_get_thread_entry_info ();
+      thread_p = thread_get_thread_entry_info ();
     }
 
-    thread_index = thread_p->index;
+  thread_index = thread_p->index;
 
-    if (first_vacuum_worker_idx == 0)
+  if (first_vacuum_worker_idx == 0)
     {
-	first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
+      first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
     }
-    if (num_worker_threads == 0)
+  if (num_worker_threads == 0)
     {
-	num_worker_threads = thread_num_worker_threads ();
+      num_worker_threads = thread_num_worker_threads ();
     }
 #else
-    thread_index = 0;
-    first_vacuum_worker_idx = 100;
+  thread_index = 0;
+  first_vacuum_worker_idx = 100;
 #endif
 
-    if (thread_index >= 1 && thread_index <= num_worker_threads)
+  if (thread_index >= 1 && thread_index <= num_worker_threads)
     {
-	module_type = PERF_MODULE_USER;
+      module_type = PERF_MODULE_USER;
     }
-    else if (thread_index >= first_vacuum_worker_idx && thread_index < first_vacuum_worker_idx + VACUUM_MAX_WORKER_COUNT)
+  else if (thread_index >= first_vacuum_worker_idx && thread_index < first_vacuum_worker_idx + VACUUM_MAX_WORKER_COUNT)
     {
-	module_type = PERF_MODULE_VACUUM;
+      module_type = PERF_MODULE_VACUUM;
     }
-    else
+  else
     {
-	module_type = PERF_MODULE_SYSTEM;
+      module_type = PERF_MODULE_SYSTEM;
     }
 
-    return module_type;
+  return module_type;
 }

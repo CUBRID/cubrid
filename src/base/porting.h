@@ -326,15 +326,15 @@ extern "C"
 #else				/* WINDOWS */
 
 #if !defined (HAVE_CTIME_R)
-#  error "HAVE_CTIME_R"
+#error "HAVE_CTIME_R"
 #endif
 
 #if !defined (HAVE_LOCALTIME_R)
-#  error "HAVE_LOCALTIME_R"
+#error "HAVE_LOCALTIME_R"
 #endif
 
 #if !defined (HAVE_DRAND48_R)
-#  error "HAVE_DRAND48_R"
+#error "HAVE_DRAND48_R"
 #endif
 
 
@@ -881,6 +881,38 @@ extern time_t mktime_for_win32 (struct tm *tm);
 #define PRId64 "lld"
 #define PRIx64 "llx"
 #endif
+
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+
+#define swap64(x)  \
+  ((((unsigned long long) (x) & (0x00000000000000FFULL)) << 56) \
+   | (((unsigned long long) (x) & (0xFF00000000000000ULL)) >> 56) \
+   | (((unsigned long long) (x) & (0x000000000000FF00ULL)) << 40) \
+   | (((unsigned long long) (x) & (0x00FF000000000000ULL)) >> 40) \
+   | (((unsigned long long) (x) & (0x0000000000FF0000ULL)) << 24) \
+   | (((unsigned long long) (x) & (0x0000FF0000000000ULL)) >> 24) \
+   | (((unsigned long long) (x) & (0x00000000FF000000ULL)) << 8) \
+   | (((unsigned long long) (x) & (0x000000FF00000000ULL)) >> 8))
+
+#else /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
+#define swap64(x)        (x)
+#endif /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
+
+#define OR_GET_INT64(ptr, val) \
+  do { \
+    INT64 packed_value; \
+    memcpy (&packed_value, ptr, OR_INT64_SIZE); \
+    *((INT64*) (val)) = ((INT64) swap64 (packed_value)); \
+  } while (0)
+
+#define OR_PUT_INT64(ptr, val) \
+  do { \
+    INT64 packed_value; \
+    packed_value = ((INT64) swap64 (*(INT64*) val)); \
+    memcpy (ptr, &packed_value, OR_INT64_SIZE);\
+  } while (0)
+
+#define OR_INT64_SIZE           8
 
 extern int msleep (const long msec);
 

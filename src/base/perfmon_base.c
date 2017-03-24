@@ -10,6 +10,8 @@
 #include "error_manager.h"
 #endif
 
+PSTAT_GLOBAL pstat_Global;
+
 PSTAT_METADATA pstat_Metadata[] = {
   /* Execution statistics for the file io */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_FILE_NUM_CREATES, "Num_file_creates"),
@@ -1937,11 +1939,10 @@ int
 metadata_initialize ()
 {
   int idx;
-  int n_stat_values = 0;
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {
-      pstat_Metadata[idx].start_offset = n_stat_values;
+      pstat_Metadata[idx].start_offset = pstat_Global.n_stat_values;
       switch (pstat_Metadata[idx].valtype)
 	{
 	case PSTAT_ACCUMULATE_SINGLE_VALUE:
@@ -1978,10 +1979,10 @@ metadata_initialize ()
 	  assert (pstat_Metadata[idx].f_dump_in_file != NULL);
 	  assert (pstat_Metadata[idx].f_dump_in_buffer != NULL);
 	}
-      n_stat_values += pstat_Metadata[idx].n_vals;
+      pstat_Global.n_stat_values += pstat_Metadata[idx].n_vals;
     }
 
-  return n_stat_values;
+  return 0;
 }
 
 /*
@@ -2314,4 +2315,57 @@ long long
 difference (long long var1, long long var2)
 {
   return (var1 - var2);
+}
+
+/*
+ * perfmon_pack_stats - Pack the statistic values in the buffer
+ *
+ * return:
+ *
+ *   buf (in):
+ *   stats (in):
+ *
+ *
+ */
+char *
+perfmon_pack_stats (char *buf, UINT64 * stats)
+{
+  char *ptr;
+  int i;
+
+  ptr = buf;
+
+  for (i = 0; i < pstat_Global.n_stat_values; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  return (ptr);
+}
+
+/*
+ * perfmon_unpack_stats - Unpack the values from the buffer in the statistics array
+ *
+ * return:
+ *
+ *   buf (in):
+ *   stats (out):
+ *
+ */
+char *
+perfmon_unpack_stats (char *buf, UINT64 * stats)
+{
+  char *ptr;
+  int i;
+
+  ptr = buf;
+
+  for (i = 0; i < pstat_Global.n_stat_values; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  return (ptr);
 }

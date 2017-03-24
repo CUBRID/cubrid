@@ -164,30 +164,6 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #endif
 #endif
 
-/* All globals on statistics will be here. */
-typedef struct pstat_global PSTAT_GLOBAL;
-struct pstat_global
-{
-    int n_stat_values;
-
-    UINT64 *global_stats;
-
-    int n_trans;
-    UINT64 **tran_stats;
-
-    bool *is_watching;
-#if !defined (HAVE_ATOMIC_BUILTINS)
-    pthread_mutex_t watch_lock;
-#endif				/* !HAVE_ATOMIC_BUILTINS */
-
-    INT32 n_watchers;
-
-    bool initialized;
-    int activation_flag;
-};
-
-extern PSTAT_GLOBAL pstat_Global;
-
 typedef struct diag_sys_config DIAG_SYS_CONFIG;
 struct diag_sys_config
 {
@@ -313,8 +289,6 @@ STATIC_INLINE void perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int off
 STATIC_INLINE void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int perfmon_get_activation_flag (void) __attribute__ ((ALWAYS_INLINE));
-extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
-extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
 /*
  *  Add/set stats section.

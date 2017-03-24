@@ -8,6 +8,7 @@
 extern "C" {
     #include <perfmon_base.h>
     #include <string.h>
+    #include <porting.h>
 }
 
 int main (int argc, char **argv) {
@@ -15,7 +16,8 @@ int main (int argc, char **argv) {
     char command[MAX_COMMAND_SIZE];
     char *str;
     std::vector<StatisticsFile*> files;
-    Utils::setNStatValues(metadata_initialize());
+    metadata_initialize();
+    Utils::setNStatValues(pstat_Global.n_stat_values);
 
     do {
 	fgets(command, MAX_COMMAND_SIZE, stdin);
@@ -167,8 +169,7 @@ int main (int argc, char **argv) {
 	    fprintf(gnuplotPipe, "%s\n", cmd.c_str());
 
 	    for (int i = index1; i < index2; i++) {
-		time_t seconds = mktime(&statisticsFile->getSnapshots()[i]->timestamp) -
-				 mktime(statisticsFile->getRelativeTimestamp());
+		time_t seconds = mktime(&statisticsFile->getSnapshots()[i]->timestamp)-statisticsFile->getRelativeSeconds();
 		UINT64 value = statisticsFile->getSnapshots()[i]->getStatusValueFromName(plottedVariable);
 		fprintf(gnuplotPipe, "%ld %lld\n", seconds, (long long) value);
 	    }
