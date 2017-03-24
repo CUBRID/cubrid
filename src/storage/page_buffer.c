@@ -736,7 +736,6 @@ struct pgbuf_direct_victim
   PGBUF_BCB **bcb_victims;
   LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_high_priority;
   LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_low_priority;
-  int waiter_threads_preparing;
 };
 #define PGBUF_FLUSHED_BCBS_BUFFER_SIZE (8 * 1024)	/* 8k */
 #endif /* SERVER_MODE */
@@ -1002,7 +1001,7 @@ static int pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB *
 
 STATIC_INLINE int pgbuf_get_shared_lru_index_for_add (void) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count,
-						 float lru_sum_flush_priority);
+						 float lru_sum_flush_priority, bool * assigned_directly);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p);
 STATIC_INLINE PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   __attribute__ ((ALWAYS_INLINE));
@@ -1434,8 +1433,6 @@ pgbuf_initialize (void)
       ASSERT_ERROR ();
       goto error;
     }
-
-  pgbuf_Pool.direct_victims.waiter_threads_preparing = 0;
 
   pgbuf_Pool.flushed_bcbs = lf_circular_queue_create (PGBUF_FLUSHED_BCBS_BUFFER_SIZE, sizeof (PGBUF_BCB *));
   if (pgbuf_Pool.flushed_bcbs == NULL)
@@ -3093,13 +3090,15 @@ pgbuf_compare_victim_list (const void *p1, const void *p2)
 
 /*
  * pgbuf_get_victim_candidates_from_lru () - get victim candidates from LRU list
- * return : number of victims found
- * thread_p (in)     : thread entry
- * check_count (in)  : number of items to verify before abandoning search
- * flush_ratio (in)  : flush ratio
+ * return                  : number of victims found
+ * thread_p (in)           : thread entry
+ * check_count (in)        : number of items to verify before abandoning search
+ * flush_ratio (in)        : flush ratio
+ * assigned_directly (out) : output true if a bcb was assigned directly.
  */
 static int
-pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, float lru_sum_flush_priority)
+pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, float lru_sum_flush_priority,
+				      bool * assigned_directly)
 {
   int lru_idx, victim_cand_count, i;
   PGBUF_BCB *bufptr;
@@ -3149,6 +3148,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 		{
 		  /* assigned directly. don't try any other. */
 		  try_direct_assign = false;
+		  *assigned_directly = true;
 		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_SEARCH_FOR_FLUSH);
 		}
 	      PGBUF_BCB_UNLOCK (bufptr);
@@ -3170,8 +3170,18 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
  *   return: NO_ERROR, or ER_code
  *
  */
+/*
+ * pgbuf_flush_victim_candidates () - collect & flush victim candidates
+ *
+ * return                : error code
+ * thread_p (in)         : thread entry
+ * flush_ratio (in)      : desired flush ratio
+ * perf_tracker (in/out) : time tracker for performance statistics
+ * stop (out)            : output to stop looping
+ */
 int
-pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_UTIME_TRACKER * perf_tracker)
+pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_UTIME_TRACKER * perf_tracker,
+			       bool * stop)
 {
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
@@ -3193,8 +3203,10 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   bool is_bcb_locked = false;
   bool repeated = false;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
+  bool assigned_directly = false;
 #if !defined (NDEBUG) && defined (SERVER_MODE)
   bool empty_flushed_bcb_queue = false;
+  bool direct_victim_waiters = false;
 #endif /* DEBUG && SERVER_MODE */
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
@@ -3214,6 +3226,8 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 #endif
 
   PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+
+  *stop = false;
 
   pgbuf_compute_lru_vict_target (&lru_sum_flush_priority);
 
@@ -3260,16 +3274,21 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 
 #if !defined (NDEBUG) && defined (SERVER_MODE)
   empty_flushed_bcb_queue = lf_circular_queue_is_empty (pgbuf_Pool.flushed_bcbs);
+  direct_victim_waiters = pgbuf_is_any_thread_waiting_for_direct_victim ();
 #endif /* DEBUG && SERVER_MODE */
 
   if (check_count_lru > 0 && lru_sum_flush_priority > 0)
     {
-      victim_count = pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, lru_sum_flush_priority);
+      victim_count =
+	pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, lru_sum_flush_priority, assigned_directly);
     }
   if (victim_count == 0)
     {
       /* We didn't find any victims */
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, perf_tracker, PSTAT_PB_FLUSH_COLLECT);
+      /* if pgbuf_get_victim_candidates_from_lru failed to provide candidates, it means we already flushed enough.
+       * give threads looking for victims a chance to find them before looping again. output hint to stop looping. */
+      *stop = check_count_lru > 0 && lru_sum_flush_priority > 0;
       goto end;
     }
 
@@ -3435,7 +3454,7 @@ end:
    *       flush thread may not be able to find victims. that's ok, the purpose of this safe-guard is to avoid dead
    *       scenarios when threads are waiting for direct victims but system flushes nothing. if there are flushed
    *       waiting for assignment, then we are not in this kind of scenario. */
-  if (total_flushed_count == 0 && pgbuf_is_any_thread_waiting_for_direct_victim () && empty_flushed_bcb_queue
+  if (total_flushed_count == 0 && direct_victim_waiters && empty_flushed_bcb_queue && !assigned_directly
       && count_need_wal == 0)
     {
       /* so, we have not flushed anything, but threads are waiting to direct victims. and:
@@ -7354,24 +7373,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   if (thread_is_page_flush_thread_available ())
     {
     retry:
-
-      /* make sure at least flush will feed us with bcb's.
-       * note: page flush thread has an early-out check to decide if flush is really needed. one of them is if any
-       *       thread is waiting in one of the queues for direct victims. however, this was not enough in some limit
-       *       cases when having only one active thread (which is not unusual in our testing environments). the thread
-       *       does not find a bcb, wakes flush thread and then gets preempted before adding itself to the waiting
-       *       queues. flush thread wakes up, maybe does even some flushing (but bcb's are not assigned directly,
-       *       because our thread is not yet in the queue) and then goes back to sleep. no one wakes the flush thread
-       *       again (if it is not set to wake periodically) and our waiting thread waits forever (or for 5 minutes
-       *       until we time it out and hit assert).
-       *       long story short, we use a counter to track threads preparing to wait for direct victims. flush thread
-       *       does not go to sleep if the counter is not 0.
-       */
-      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, 1);
-      if (!pgbuf_Pool.is_flushing_victims)
-	{
-	  pgbuf_wakeup_flush_thread (thread_p);
-	}
       high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
       /* add to waiters thread list to be assigned victim directly */
@@ -7393,7 +7394,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    {
 	      assert (false);
 	      thread_unlock_entry (thread_p);
-	      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
 	      return NULL;
 	    }
 	  pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
@@ -7416,7 +7416,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 		{
 		  assert (false);
 		  thread_unlock_entry (thread_p);
-		  ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
 		  goto end;
 		}
 	      pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
@@ -7426,7 +7425,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	      pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO;
 	    }
 	}
-      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
+
+      /* make sure at least flush will feed us with bcb's. */
+      thread_try_wakeup_page_flush_thread ();
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
 
@@ -10945,6 +10946,7 @@ static void
 pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
 {
   PERF_UTIME_TRACKER dummy_time_tracker;
+  bool stop = false;
 
 #if defined(SERVER_MODE)
   if (thread_is_page_flush_thread_available ())
@@ -10956,7 +10958,9 @@ pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
 
   /* single-threaded environment. do flush on our own. */
   dummy_time_tracker.is_perf_tracking = false;
-  pgbuf_flush_victim_candidates (thread_p, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &dummy_time_tracker);
+  pgbuf_flush_victim_candidates (thread_p, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &dummy_time_tracker,
+				 &stop);
+  assert (!stop);
 }
 
 /*
@@ -14252,8 +14256,7 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
 bool
 pgbuf_keep_victim_flush_thread_running (void)
 {
-  return (pgbuf_Pool.direct_victims.waiter_threads_preparing != 0 || pgbuf_is_any_thread_waiting_for_direct_victim ()
-	  || pgbuf_is_hit_ratio_low ());
+  return (pgbuf_is_any_thread_waiting_for_direct_victim () || pgbuf_is_hit_ratio_low ());
 }
 #endif /* SERVER_MDOE */
 

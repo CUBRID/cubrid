@@ -445,6 +445,7 @@ extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_page_flush_thread (void);
+extern void thread_try_wakeup_page_flush_thread (void);
 extern void thread_wakeup_page_buffer_maintenance_thread (void);
 extern void thread_wakeup_page_post_flush_thread (void);
 extern void thread_wakeup_flush_control_thread (void);
