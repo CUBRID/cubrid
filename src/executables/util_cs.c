@@ -2244,17 +2244,18 @@ print_timestamp (FILE * outfp, struct tm *result)
 
   tloc = time (NULL);
   utility_localtime (&tloc, &tmloc);
-    memcpy(result, &tmloc, sizeof(struct tm));
+  memcpy (result, &tmloc, sizeof (struct tm));
   strftime (str, 80, "%a %B %d %H:%M:%S %Z %Y", &tmloc);
   fprintf (outfp, "\n\t%s\n", str);
 }
 
-void get_timestamp (struct tm *timestamp)
+void
+get_timestamp (struct tm *timestamp)
 {
-    time_t tloc;
+  time_t tloc;
 
-    tloc = time (NULL);
-    utility_localtime (&tloc, timestamp);
+  tloc = time (NULL);
+  utility_localtime (&tloc, timestamp);
 }
 
 /*
@@ -2269,14 +2270,14 @@ statdump (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
-    char bin_output_file[PATH_MAX];
+  char bin_output_file[PATH_MAX];
   int interval;
   bool cumulative;
   const char *substr;
   FILE *outfp = NULL;
-    FILE *bin_out_fp = NULL;
+  FILE *bin_out_fp = NULL;
 
-    if (utility_get_option_string_table_size (arg_map) != 1)
+  if (utility_get_option_string_table_size (arg_map) != 1)
     {
       goto print_statdump_usage;
     }
@@ -2304,13 +2305,13 @@ statdump (UTIL_FUNCTION_ARG * arg)
   if (output_file == NULL)
     {
       outfp = stdout;
-	bin_out_fp = fopen("statistics.bin", "wb");
+      bin_out_fp = fopen ("statistics.bin", "wb");
     }
   else
     {
       outfp = fopen (output_file, "w");
-	snprintf(bin_output_file, PATH_MAX, "%s.bin", output_file);
-	bin_out_fp = fopen(bin_output_file, "wb");
+      snprintf (bin_output_file, PATH_MAX, "%s.bin", output_file);
+      bin_out_fp = fopen (bin_output_file, "wb");
       if (outfp == NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
@@ -2354,14 +2355,14 @@ statdump (UTIL_FUNCTION_ARG * arg)
       os_set_signal_handler (SIGINT, intr_handler);
 #endif
     }
-    struct tm current_timestamp;
-    get_timestamp(&current_timestamp);
-    fwrite(&current_timestamp, sizeof(struct tm), 1, bin_out_fp);
+  struct tm current_timestamp;
+  get_timestamp (&current_timestamp);
+  fwrite (&current_timestamp, sizeof (struct tm), 1, bin_out_fp);
 
   do
     {
       print_timestamp (outfp, &current_timestamp);
-      fwrite(&current_timestamp, sizeof(struct tm), 1, bin_out_fp);
+      fwrite (&current_timestamp, sizeof (struct tm), 1, bin_out_fp);
       if (histo_print_global_stats (outfp, bin_out_fp, cumulative, substr) != NO_ERROR)
 	{
 	  histo_stop ();
@@ -2381,7 +2382,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
       fclose (outfp);
     }
 
-    fclose(bin_out_fp);
+  fclose (bin_out_fp);
 
   return EXIT_SUCCESS;
 
@@ -2395,7 +2396,7 @@ error_exit:
     {
       fclose (outfp);
     }
-    fclose(bin_out_fp);
+  fclose (bin_out_fp);
   return EXIT_FAILURE;
 #else /* CS_MODE */
   PRINT_AND_LOG_ERR_MSG (msgcat_message

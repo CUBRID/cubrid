@@ -487,7 +487,7 @@ typedef int TRANID;		/* Transaction identifier */
 typedef enum
 {
   /* Don't change the initialization since they reflect the elements of lock_Conv and lock_Comp */
-  /* there is a clone in perfmon_base.h and we should fix that!*/
+  /* there is a clone in perfmon_base.h and we should fix that! */
   NA_LOCK = 0,			/* N/A lock */
   INCON_NON_TWO_PHASE_LOCK = 1,	/* Incompatible 2 phase lock. */
   NULL_LOCK = 2,		/* NULL LOCK */
