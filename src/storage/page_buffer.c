@@ -3280,7 +3280,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   if (check_count_lru > 0 && lru_sum_flush_priority > 0)
     {
       victim_count =
-	pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, lru_sum_flush_priority, assigned_directly);
+	pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, lru_sum_flush_priority, &assigned_directly);
     }
   if (victim_count == 0)
     {
