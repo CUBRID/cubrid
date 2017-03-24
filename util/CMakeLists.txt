@@ -64,6 +64,7 @@ set(STATISTICS_TOOL_SOURCES
         ../src/executables/Statistics\ Tool/Utils.cpp
         ../src/executables/Statistics\ Tool/FileNotFoundException.cpp
         ${BASE_DIR}/perfmon_base.c
+        ${BASE_DIR}/porting.c
 )
 add_executable(stattool ${STATISTICS_TOOL_SOURCES})
 target_compile_definitions(stattool PRIVATE ${COMMON_DEFS})
