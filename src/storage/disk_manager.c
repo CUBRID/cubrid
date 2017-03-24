@@ -409,6 +409,8 @@ static int disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinf
 STATIC_INLINE void disk_reserve_from_cache_volume (VOLID volid, DISK_RESERVE_CONTEXT * context)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void disk_cache_free_reserved (DISK_RESERVE_CONTEXT * context) __attribute__ ((ALWAYS_INLINE));
+static int disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, int nsects,
+							 VSID * vsids);
 static int disk_unreserve_sectors_from_volume (THREAD_ENTRY * thread_p, VOLID volid, DISK_RESERVE_CONTEXT * context);
 static int disk_stab_unit_unreserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args);
 static DISK_ISVALID disk_check_sectors_are_reserved_in_volume (THREAD_ENTRY * thread_p, VOLID volid,
@@ -3955,7 +3957,7 @@ error:
 	{
 	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
 	  qsort (reserved_sectors, nreserved, sizeof (VSID), disk_compare_vsids);
-	  if (disk_unreserve_ordered_sectors (thread_p, purpose, nreserved, reserved_sectors) != NO_ERROR)
+	  if (disk_unreserve_ordered_sectors_without_csect (thread_p, purpose, nreserved, reserved_sectors) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
@@ -4227,11 +4229,6 @@ disk_reserve_from_cache_volume (VOLID volid, DISK_RESERVE_CONTEXT * context)
 int
 disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, int nsects, VSID * vsids)
 {
-  int start_index = 0;
-  int end_index = 0;
-  int index;
-  VOLID volid = NULL_VOLID;
-  DISK_RESERVE_CONTEXT context;
   int error_code = NO_ERROR;
 
   error_code = csect_enter_as_reader (thread_p, CSECT_DISK_CHECK, INF_WAIT);
@@ -4240,6 +4237,36 @@ disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
       ASSERT_ERROR ();
       return error_code;
     }
+
+  error_code = disk_unreserve_ordered_sectors_without_csect (thread_p, purpose, nsects, vsids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  csect_exit (thread_p, CSECT_DISK_CHECK);
+  return error_code;
+}
+
+/*
+ * disk_unreserve_ordered_sectors_without_csect () - un-reserve given list of sectors from disk volumes. the list must
+ *                                                   be ordered. caller must make sure to lock CSECT_DISK_CHECK.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * purpose (in)  : the purpose of reserved sectors
+ * nsects (in)   : number of sectors
+ * vsids (in)    : array of sectors
+ */
+static int
+disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, int nsects, VSID * vsids)
+{
+  int start_index = 0;
+  int end_index = 0;
+  int index;
+  VOLID volid = NULL_VOLID;
+  DISK_RESERVE_CONTEXT context;
+  int error_code = NO_ERROR;
 
   context.nsect_total = nsects;
 
@@ -4274,12 +4301,9 @@ disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  csect_exit (thread_p, CSECT_DISK_CHECK);
 	  return error_code;
 	}
     }
-
-  csect_exit (thread_p, CSECT_DISK_CHECK);
 
   return NO_ERROR;
 }
