@@ -254,6 +254,8 @@ STATIC_INLINE void thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_E
 					THREAD_TYPE thread_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void thread_daemon_stop (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_wakeup (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_try_wakeup (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
 
 #if !defined(NDEBUG)
@@ -3383,20 +3385,21 @@ thread_page_flush_thread (void *arg_p)
 }
 
 /*
- * thread_wakeup_page_flush_thread() -
- *   return:
+ * thread_wakeup_page_flush_thread() - wakeup page flush no matter what
  */
 void
 thread_wakeup_page_flush_thread (void)
 {
-  int rv;
+  thread_daemon_wakeup (&thread_Page_flush_thread);
+}
 
-  rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
-  if (!thread_Page_flush_thread.is_running)
-    {
-      pthread_cond_signal (&thread_Page_flush_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Page_flush_thread.lock);
+/*
+ * thread_try_wakeup_page_flush_thread () - wakeup page flush thread by trying to lock it
+ */
+void
+thread_try_wakeup_page_flush_thread (void)
+{
+  thread_daemon_try_wakeup (&thread_Page_flush_thread);
 }
 
 /*
@@ -6410,6 +6413,46 @@ thread_daemon_stop (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p)
 
   er_final (ER_THREAD_FINAL);
   thread_p->status = TS_DEAD;
+}
+
+/*
+ * thread_daemon_wakeup () - Wakeup daemon thread.
+ *
+ * return      : void
+ * daemon (in) : daemon thread monitor
+ */
+STATIC_INLINE void
+thread_daemon_wakeup (DAEMON_THREAD_MONITOR * daemon)
+{
+  pthread_mutex_lock (&daemon->lock);
+  if (!daemon->is_running)
+    {
+      /* signal wakeup */
+      pthread_cond_signal (&daemon->cond);
+    }
+  pthread_mutex_unlock (&daemon->lock);
+}
+
+/*
+ * thread_daemon_try_wakeup () - Wakeup daemon thread if lock is conditionally obtained
+ *
+ * return      : void
+ * daemon (in) : daemon thread monitor
+ */
+STATIC_INLINE void
+thread_daemon_try_wakeup (DAEMON_THREAD_MONITOR * daemon)
+{
+  if (pthread_mutex_trylock (&daemon->lock) != 0)
+    {
+      /* give up */
+      return;
+    }
+  if (!daemon->is_running)
+    {
+      /* signal wakeup */
+      pthread_cond_signal (&daemon->cond);
+    }
+  pthread_mutex_unlock (&daemon->lock);
 }
 
 /*

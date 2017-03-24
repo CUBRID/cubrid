@@ -736,7 +736,6 @@ struct pgbuf_direct_victim
   PGBUF_BCB **bcb_victims;
   LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_high_priority;
   LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_low_priority;
-  int waiter_threads_preparing;
 };
 #define PGBUF_FLUSHED_BCBS_BUFFER_SIZE (8 * 1024)	/* 8k */
 #endif /* SERVER_MODE */
@@ -1434,8 +1433,6 @@ pgbuf_initialize (void)
       ASSERT_ERROR ();
       goto error;
     }
-
-  pgbuf_Pool.direct_victims.waiter_threads_preparing = 0;
 
   pgbuf_Pool.flushed_bcbs = lf_circular_queue_create (PGBUF_FLUSHED_BCBS_BUFFER_SIZE, sizeof (PGBUF_BCB *));
   if (pgbuf_Pool.flushed_bcbs == NULL)
@@ -7374,24 +7371,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   if (thread_is_page_flush_thread_available ())
     {
     retry:
-
-      /* make sure at least flush will feed us with bcb's.
-       * note: page flush thread has an early-out check to decide if flush is really needed. one of them is if any
-       *       thread is waiting in one of the queues for direct victims. however, this was not enough in some limit
-       *       cases when having only one active thread (which is not unusual in our testing environments). the thread
-       *       does not find a bcb, wakes flush thread and then gets preempted before adding itself to the waiting
-       *       queues. flush thread wakes up, maybe does even some flushing (but bcb's are not assigned directly,
-       *       because our thread is not yet in the queue) and then goes back to sleep. no one wakes the flush thread
-       *       again (if it is not set to wake periodically) and our waiting thread waits forever (or for 5 minutes
-       *       until we time it out and hit assert).
-       *       long story short, we use a counter to track threads preparing to wait for direct victims. flush thread
-       *       does not go to sleep if the counter is not 0.
-       */
-      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, 1);
-      if (!pgbuf_Pool.is_flushing_victims)
-	{
-	  pgbuf_wakeup_flush_thread (thread_p);
-	}
       high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
       /* add to waiters thread list to be assigned victim directly */
@@ -7413,7 +7392,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    {
 	      assert (false);
 	      thread_unlock_entry (thread_p);
-	      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
 	      return NULL;
 	    }
 	  pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
@@ -7436,7 +7414,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 		{
 		  assert (false);
 		  thread_unlock_entry (thread_p);
-		  ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
 		  goto end;
 		}
 	      pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
@@ -7446,7 +7423,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	      pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO;
 	    }
 	}
-      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
+
+      /* make sure at least flush will feed us with bcb's. */
+      thread_try_wakeup_page_flush_thread ();
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
 
@@ -14275,8 +14254,7 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
 bool
 pgbuf_keep_victim_flush_thread_running (void)
 {
-  return (pgbuf_Pool.direct_victims.waiter_threads_preparing != 0 || pgbuf_is_any_thread_waiting_for_direct_victim ()
-	  || pgbuf_is_hit_ratio_low ());
+  return (pgbuf_is_any_thread_waiting_for_direct_victim () || pgbuf_is_hit_ratio_low ());
 }
 #endif /* SERVER_MDOE */
 
