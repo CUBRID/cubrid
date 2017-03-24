@@ -10397,7 +10397,6 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 	  return consistent;
 	}
 
-      perfmon_inc_stat_to_global (PSTAT_PB_NUM_IOREADS);
       /* Read the disk page into local page area */
       if (fileio_read (NULL, fileio_get_volume_descriptor (bufptr->vpid.volid), malloc_io_pgptr, bufptr->vpid.pageid,
 		       IO_PAGESIZE) == NULL)
