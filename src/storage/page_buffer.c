@@ -3227,6 +3227,8 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 
   PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 
+  *stop = false;
+
   pgbuf_compute_lru_vict_target (&lru_sum_flush_priority);
 
   victim_cand_list = pgbuf_Pool.victim_cand_list;
