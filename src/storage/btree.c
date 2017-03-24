@@ -24719,7 +24719,14 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 end:
   /* End scan or end one iteration or maybe an error case. */
   assert (bts->end_scan || bts->end_one_iteration || error_code != NO_ERROR);
-  if (bts->end_scan || error_code != NO_ERROR)
+
+  if (error_code != NO_ERROR)
+    {
+      /* Clear current key (if not already cleared). */
+      btree_scan_clear_key (bts);
+    }
+
+  if (bts->end_scan)
     {
       /* Scan is ended. Reset current page VPID and is_scan_started flag */
       VPID_SET_NULL (&bts->C_vpid);
