@@ -4,8 +4,10 @@
 
 #include "FileNotFoundException.h"
 
-FileNotFoundException::FileNotFoundException(const std::string& message) : runtime_error("file not found"), message(message){}
+FileNotFoundException::FileNotFoundException (const std::string &message) : runtime_error ("file not found"),
+  message (message) {}
 
-const char *FileNotFoundException::what() const throw() {
-    return message.c_str();
+const char *FileNotFoundException::what() const throw()
+{
+  return message.c_str();
 }

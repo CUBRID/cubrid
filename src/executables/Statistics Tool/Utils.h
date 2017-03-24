@@ -9,11 +9,12 @@
 #define MAX_FILE_NAME_SIZE 128
 
 
-class Utils {
-public:
+class Utils
+{
+  public:
     static int getNStatValues();
-    static void setNStatValues(int n);
-private:
+    static void setNStatValues (int n);
+  private:
     static int nStatValues;
 };
 

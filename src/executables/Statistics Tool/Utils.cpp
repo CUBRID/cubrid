@@ -6,10 +6,12 @@
 
 int Utils::nStatValues;
 
-int Utils::getNStatValues() {
-    return Utils::nStatValues;
+int Utils::getNStatValues()
+{
+  return Utils::nStatValues;
 }
 
-void Utils::setNStatValues(int n) {
-    Utils::nStatValues = n;
+void Utils::setNStatValues (int n)
+{
+  Utils::nStatValues = n;
 }

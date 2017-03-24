@@ -9,12 +9,13 @@
 #include <stdexcept>
 #include <string>
 
-class FileNotFoundException : public std::runtime_error{
-public:
-    FileNotFoundException(const std::string& message);
+class FileNotFoundException : public std::runtime_error
+{
+  public:
+    FileNotFoundException (const std::string &message);
     virtual const char *what() const throw();
-    ~FileNotFoundException() throw(){}
-private:
+    ~FileNotFoundException() throw() {}
+  private:
     std::string message;
 };
 
