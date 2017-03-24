@@ -3325,6 +3325,7 @@ thread_page_flush_thread (void *arg_p)
   int wakeup_interval;
   PERF_UTIME_TRACKER perf_track;
   bool force_one_run = false;
+  bool stop_iteration = false;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   thread_daemon_start (&thread_Page_flush_thread, tsd_ptr, TT_DAEMON);
@@ -3335,8 +3336,13 @@ thread_page_flush_thread (void *arg_p)
       /* flush pages as long as necessary */
       while (!tsd_ptr->shutdown && (force_one_run || pgbuf_keep_victim_flush_thread_running ()))
 	{
-	  pgbuf_flush_victim_candidates (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &perf_track);
+	  pgbuf_flush_victim_candidates (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &perf_track,
+					 &stop_iteration);
 	  force_one_run = false;
+	  if (stop_iteration)
+	    {
+	      break;
+	    }
 	}
 
       /* wait */
