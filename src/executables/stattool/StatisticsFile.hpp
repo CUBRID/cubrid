@@ -8,10 +8,9 @@
 #include <vector>
 #include <string>
 #include <ctime>
-#include "Utils.h"
+#include "Utils.hpp"
 #include <iostream>
 #include <assert.h>
-#include "FileNotFoundException.h"
 
 extern "C"
 {
@@ -168,10 +167,11 @@ class StatisticsFile
     };
 
     StatisticsFile (const std::string &filename, const std::string &alias);
-    Snapshot *getSnapshotByMinutes (unsigned int minutes);
+    bool readFileAndInit ();
+    Snapshot *getSnapshotBySeconds (unsigned int minutes);
     Snapshot *getSnapshotByArgument (char *argument);
     void getIndicesOfSnapshotsByArgument (char *argument, int &minutes1, int &minutes2);
-    int getSnapshotIndexByMinutes (unsigned int minutes);
+    int getSnapshotIndexBySeconds (unsigned int minutes);
     static void printInTableForm (Snapshot *s1, Snapshot *s2, FILE *stream);
 
     std::vector < Snapshot * > &getSnapshots ()

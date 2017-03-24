@@ -1,6 +1,6 @@
 #include <iostream>
-#include "Utils.h"
-#include "StatisticsFile.h"
+#include "Utils.hpp"
+#include "StatisticsFile.hpp"
 #if defined (WINDOWS)
 #include <windows.h>
 #endif
@@ -43,15 +43,12 @@ int main (int argc, char **argv)
           else
             {
               StatisticsFile *newFile;
-              try
-                {
-                  newFile = new StatisticsFile (std::string (filename), std::string (alias));
-                  files.push_back (newFile);
-                }
-              catch (FileNotFoundException &e)
-                {
-                  std::cout << e.what() << std::endl;
-                }
+              newFile = new StatisticsFile (std::string (filename), std::string (alias));
+              bool hasSucceded = newFile->readFileAndInit();
+              if (hasSucceded)
+              {
+                files.push_back (newFile);
+              }
             }
         }
       else if (strcmp (str, "compare") == 0)
@@ -137,7 +134,7 @@ int main (int argc, char **argv)
       else if (strcmp (str, "plot") == 0)
         {
           int index1 = -1, index2 = -1;
-          char *argument = NULL, *plottedVariable = NULL;
+          char *argument = NULL, *plottedVariable = NULL, *plot_filename = NULL;
           StatisticsFile *statisticsFile = NULL;
           FILE *gnuplotPipe;
 
@@ -145,6 +142,7 @@ int main (int argc, char **argv)
 
           argument = strtok (NULL, " ");
           plottedVariable = strtok (NULL, " " );
+	  plot_filename = strtok (NULL, " ");
 
           if (!argument || !plottedVariable)
             {
@@ -188,11 +186,20 @@ int main (int argc, char **argv)
           cmd = "";
           fprintf (gnuplotPipe, "set key outside\n");
           fprintf (gnuplotPipe, "set terminal png size 1080, 640\n");
-          cmd += "set output \"./";
-          cmd += argument;
-          cmd += "_";
-          cmd += plottedVariable;
-          cmd += ".png\"\n";
+	  if (plot_filename == NULL)
+	    {
+	      cmd += "set output \"./";
+	      cmd += argument;
+	      cmd += "_";
+	      cmd += plottedVariable;
+	      cmd += ".png\"";
+	    }
+	  else
+	    {
+	      cmd += "set output \"";
+	      cmd += plot_filename;
+	      cmd += ".png\"";
+	    }
           fprintf (gnuplotPipe, "%s\n", cmd.c_str());
           cmd = "";
           cmd += "plot '-' with lines ";
@@ -203,7 +210,7 @@ int main (int argc, char **argv)
           cmd += "\"";
           fprintf (gnuplotPipe, "%s\n", cmd.c_str());
 
-          for (int i = index1; i < index2; i++)
+          for (int i = index1; i <= index2; i++)
             {
               time_t seconds = mktime (&statisticsFile->getSnapshots()[i]->timestamp)-statisticsFile->getRelativeSeconds();
               UINT64 value = statisticsFile->getSnapshots()[i]->getStatusValueFromName (plottedVariable);

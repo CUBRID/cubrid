@@ -59,10 +59,9 @@ if(UNIX)
 endif(UNIX)
 
 set(STATISTICS_TOOL_SOURCES
-        ../src/executables/Statistics\ Tool/Main.cpp
-        ../src/executables/Statistics\ Tool/StatisticsFile.cpp
-        ../src/executables/Statistics\ Tool/Utils.cpp
-        ../src/executables/Statistics\ Tool/FileNotFoundException.cpp
+        ../src/executables/stattool/Main.cpp
+        ../src/executables/stattool/StatisticsFile.cpp
+        ../src/executables/stattool/Utils.cpp
         ${BASE_DIR}/perfmon_base.c
         ${BASE_DIR}/porting.c
 )

@@ -2,10 +2,14 @@
 // Created by paul on 21.03.2017.
 //
 
-#include "StatisticsFile.h"
+#include "StatisticsFile.hpp"
 
 StatisticsFile::StatisticsFile (const std::string &filename, const std::string &alias) : filename (filename),
   alias (alias)
+{
+}
+
+bool StatisticsFile::readFileAndInit ()
 {
   FILE *binary_fp = NULL;
   struct tm *timestamp;
@@ -15,37 +19,40 @@ StatisticsFile::StatisticsFile (const std::string &filename, const std::string &
 
   binary_fp = fopen (filename.c_str(), "rb");
   if (binary_fp == NULL)
-    {
-      throw FileNotFoundException ("The provided file doesn't exist or I don't have permission to open it!");
-    }
-  else
-    {
-      fread (&seconds, sizeof (INT64), 1, binary_fp);
-      OR_GET_INT64 (&seconds, &unpacked_seconds);
-      relativeEpochSeconds = (time_t)unpacked_seconds;
-      relativeTimestamp = *localtime (&relativeEpochSeconds);
-    }
+  {
+    return false;
+  }
+
+  fread (&seconds, sizeof (INT64), 1, binary_fp);
+  OR_GET_INT64 (&seconds, &unpacked_seconds);
+  relativeEpochSeconds = (time_t)unpacked_seconds;
+  timestamp = localtime (&relativeEpochSeconds);
+  if (timestamp == NULL)
+  {
+    return false;
+  }
+  relativeTimestamp = *timestamp;
 
   strftime (strTime, 80, "%a %B %d %H:%M:%S %Y", &relativeTimestamp);
   printf ("Relative Timestamp = %s\n", strTime);
 
   while (fread (&seconds, sizeof (INT64), 1, binary_fp) > 0)
-    {
-      char *unpacked_stats = (char *)malloc (sizeof (UINT64) * (size_t)Utils::getNStatValues());
-      OR_GET_INT64 (&seconds, &unpacked_seconds);
-      epochSeconds = (time_t)unpacked_seconds;
-      Snapshot *snapshot = new Snapshot (epochSeconds);
-      fread (unpacked_stats, sizeof (UINT64), (size_t)Utils::getNStatValues(), binary_fp);
-      perfmon_unpack_stats (unpacked_stats, snapshot->rawStats);
-      snapshots.push_back (snapshot);
-    }
+  {
+    char *unpacked_stats = (char *)malloc (sizeof (UINT64) * (size_t)Utils::getNStatValues());
+    OR_GET_INT64 (&seconds, &unpacked_seconds);
+    epochSeconds = (time_t)unpacked_seconds;
+    Snapshot *snapshot = new Snapshot (epochSeconds);
+    fread (unpacked_stats, sizeof (UINT64), (size_t)Utils::getNStatValues(), binary_fp);
+    perfmon_unpack_stats (unpacked_stats, snapshot->rawStats);
+    snapshots.push_back (snapshot);
+  }
 
   fclose (binary_fp);
+  return true;
 }
 
-StatisticsFile::Snapshot *StatisticsFile::getSnapshotByMinutes (unsigned int minutes)
+StatisticsFile::Snapshot *StatisticsFile::getSnapshotBySeconds (unsigned int seconds)
 {
-  unsigned int seconds = minutes * 60;
   unsigned int i, j, mid;
 
   i = 0;
@@ -77,9 +84,8 @@ StatisticsFile::Snapshot *StatisticsFile::getSnapshotByMinutes (unsigned int min
   return snapshots[j];
 }
 
-int StatisticsFile::getSnapshotIndexByMinutes (unsigned int minutes)
+int StatisticsFile::getSnapshotIndexBySeconds (unsigned int seconds)
 {
-  unsigned int seconds = minutes * 60;
   unsigned int i, j, mid;
 
   i = 0;
@@ -115,11 +121,11 @@ void StatisticsFile::getIndicesOfSnapshotsByArgument (char *argument, int &index
 {
   char diffArgument[32];
   char alias[MAX_FILE_NAME_SIZE];
-  unsigned int  minutes1, minutes2;
+  unsigned int seconds1, seconds2;
   int tmp;
 
   index1 = 0;
-  index2 = (int)snapshots.size();
+  index2 = (int)snapshots.size() - 1;
 
   sscanf (argument, "%[^(]%[^)]", alias, diffArgument);
 
@@ -132,9 +138,9 @@ void StatisticsFile::getIndicesOfSnapshotsByArgument (char *argument, int &index
 
   if (strchr (diffArgument, '-') != NULL)
     {
-      sscanf (diffArgument, "(%d-%d", &minutes1, &minutes2);
-      index1 = getSnapshotIndexByMinutes (minutes1);
-      index2 = getSnapshotIndexByMinutes (minutes2);
+      sscanf (diffArgument, "(%d-%d", &seconds1, &seconds2);
+      index1 = getSnapshotIndexBySeconds (seconds1);
+      index2 = getSnapshotIndexBySeconds (seconds2);
 
       if (index1 > index2)
         {
@@ -163,14 +169,14 @@ StatisticsFile::Snapshot *StatisticsFile::getSnapshotByArgument (char *argument)
   if (strchr (diffArgument, '-') != NULL)
     {
       sscanf (diffArgument, "(%d-%d", &minutes1, &minutes2);
-      Snapshot *s1 = getSnapshotByMinutes (minutes1);
-      Snapshot *s2 = getSnapshotByMinutes (minutes2);
+      Snapshot *s1 = getSnapshotBySeconds (minutes1);
+      Snapshot *s2 = getSnapshotBySeconds (minutes2);
       return s1->difference (s2);
     }
   else
     {
       sscanf (diffArgument, "(%d", &minutes1);
-      return getSnapshotByMinutes (minutes1);
+      return getSnapshotBySeconds (minutes1);
     }
 }
 

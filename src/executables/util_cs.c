@@ -104,7 +104,7 @@ static void intr_handler (int sig_no);
 
 static void backupdb_sig_interrupt_handler (int sig_no);
 STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
-static void print_timestamp (FILE * outfp, struct tm *result);
+static void print_timestamp (FILE * outfp, time_t * result);
 static void get_timestamp (struct tm *timestamp);
 static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level);
 static int tranlist_cmp_f (const void *p1, const void *p2);
@@ -2236,15 +2236,15 @@ error_exit:
 }
 
 static void
-print_timestamp (FILE * outfp, struct tm *result)
+print_timestamp (FILE * outfp, time_t * result)
 {
   time_t tloc;
   struct tm tmloc;
   char str[80];
 
   tloc = time (NULL);
+  memcpy (result, &tloc, sizeof (time_t));
   utility_localtime (&tloc, &tmloc);
-  memcpy (result, &tmloc, sizeof (struct tm));
   strftime (str, 80, "%a %B %d %H:%M:%S %Z %Y", &tmloc);
   fprintf (outfp, "\n\t%s\n", str);
 }
@@ -2355,14 +2355,20 @@ statdump (UTIL_FUNCTION_ARG * arg)
       os_set_signal_handler (SIGINT, intr_handler);
 #endif
     }
-  struct tm current_timestamp;
-  get_timestamp (&current_timestamp);
-  fwrite (&current_timestamp, sizeof (struct tm), 1, bin_out_fp);
 
+  time_t current_time = time (NULL);
+  INT64 portable_time, swapped_time;
+  portable_time = (INT64) current_time;
+
+  OR_PUT_INT64 (&swapped_time, &portable_time);
+  fwrite (&swapped_time, sizeof (INT64), 1, bin_out_fp);
   do
     {
-      print_timestamp (outfp, &current_timestamp);
-      fwrite (&current_timestamp, sizeof (struct tm), 1, bin_out_fp);
+      print_timestamp (outfp, &current_time);
+      portable_time = (INT64) current_time;
+
+      OR_PUT_INT64 (&swapped_time, &portable_time);
+      fwrite (&swapped_time, sizeof (INT64), 1, bin_out_fp);
       if (histo_print_global_stats (outfp, bin_out_fp, cumulative, substr) != NO_ERROR)
 	{
 	  histo_stop ();
