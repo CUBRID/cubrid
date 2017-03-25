@@ -293,6 +293,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
       return TRAN_UNACTIVE_UNKNOWN;
     }
 
+  er_stack_push ();
   switch (result)
     {
     case LOG_RESULT_TOPOP_COMMIT:
@@ -327,6 +328,8 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
       state = tdes->state;
       break;
     }
+
+  er_stack_pop ();
   return state;
 }
 

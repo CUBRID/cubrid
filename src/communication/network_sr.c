@@ -1177,6 +1177,7 @@ loop:
 		case THREAD_CSS_QUEUE_SUSPENDED:
 		case THREAD_HEAP_CLSREPR_SUSPENDED:
 		case THREAD_LOGWR_SUSPENDED:
+		case THREAD_ALLOC_BCB_SUSPENDED:
 		  wakeup_now = true;
 		  break;
 
@@ -1192,6 +1193,7 @@ loop:
 		case THREAD_HEAP_CLSREPR_RESUMED:
 		case THREAD_LOCK_RESUMED:
 		case THREAD_LOGWR_RESUMED:
+		case THREAD_ALLOC_BCB_RESUMED:
 		  /* thread is in resumed status, we don't need to wake up */
 		  wakeup_now = false;
 		  break;

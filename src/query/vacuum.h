@@ -289,7 +289,6 @@ extern int vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p);
 extern void vacuum_notify_server_crashed (LOG_LSA * recovery_lsa);
 extern void vacuum_notify_server_shutdown (void);
-extern void vacuum_notify_need_flush (int need_flush);
 extern int vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_redo_initialize_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 /* TODO VACUUM_DATA_COMPATIBILITY: ===> */
@@ -336,4 +335,5 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_
 							  MVCC_REC_HEADER * rec_header, int btree_node_type);
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
+
 #endif /* _VACUUM_H_ */

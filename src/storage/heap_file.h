@@ -43,45 +43,47 @@
 #include "perf_monitor.h"
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
-  ((hfid_ptr1) == (hfid_ptr2) || \
-   ((hfid_ptr1)->hpgid == (hfid_ptr2)->hpgid && \
-    VFID_EQ(&((hfid_ptr1)->vfid), &((hfid_ptr2)->vfid))))
+  ((hfid_ptr1) == (hfid_ptr2) \
+   || ((hfid_ptr1)->hpgid == (hfid_ptr2)->hpgid && VFID_EQ (&((hfid_ptr1)->vfid), &((hfid_ptr2)->vfid))))
 
-#define HEAP_SET_RECORD(recdes, record_area_size, record_length, record_type, \
-			record_data)	\
-  do  {	\
-  (recdes)->area_size = record_area_size;  \
-  (recdes)->length    = record_length;  \
-  (recdes)->type      = record_type; \
-  (recdes)->data      = (char *)record_data; \
-  }while(0)
+#define HEAP_SET_RECORD(recdes, record_area_size, record_length, record_type, record_data) \
+  do \
+    { \
+      (recdes)->area_size = (record_area_size); \
+      (recdes)->length    = (record_length); \
+      (recdes)->type      = (record_type); \
+      (recdes)->data      = (char *) (record_data); \
+    } \
+  while (0)
 
 #define HEAP_HEADER_AND_CHAIN_SLOTID  0	/* Slot for chain and header */
 
 #define HEAP_MAX_ALIGN INT_ALIGNMENT	/* maximum alignment for heap record */
 
 #define HEAP_ISJUNK_OID(oid) \
-  ((oid)->slotid == HEAP_HEADER_AND_CHAIN_SLOTID || \
-   (oid)->slotid < 0 || (oid)->volid < 0 || (oid)->pageid < 0)
+  ((oid)->slotid == HEAP_HEADER_AND_CHAIN_SLOTID \
+   || (oid)->slotid < 0 || (oid)->volid < 0 || (oid)->pageid < 0)
 
 #if defined (NDEBUG)
-#define HEAP_ISVALID_OID(oid) \
-  (HEAP_ISJUNK_OID(oid)       \
-   ? DISK_INVALID             \
+#define HEAP_ISVALID_OID(thread_p, oid) \
+  (HEAP_ISJUNK_OID (oid) \
+   ? DISK_INVALID \
    : DISK_VALID)
 #else
 /* todo: fix me */
-#define HEAP_ISVALID_OID(oid) \
-  (HEAP_ISJUNK_OID(oid)       \
-   ? DISK_INVALID             \
-   : disk_is_page_sector_reserved (NULL, (oid)->volid, (oid)->pageid))
+#define HEAP_ISVALID_OID(thread_p, oid) \
+  (HEAP_ISJUNK_OID (oid) \
+   ? DISK_INVALID \
+   : disk_is_page_sector_reserved ((thread_p), (oid)->volid, (oid)->pageid))
 #endif
 
 #define HEAP_SCANCACHE_SET_NODE(scan_cache, class_oid_p, hfid_p) \
-  do  {	\
-  COPY_OID (&(scan_cache)->node.class_oid, class_oid_p); \
-  HFID_COPY (&(scan_cache)->node.hfid, hfid_p); \
-  }while(0)
+  do \
+    { \
+      COPY_OID (&(scan_cache)->node.class_oid, class_oid_p); \
+      HFID_COPY (&(scan_cache)->node.hfid, hfid_p); \
+    } \
+  while (0)
 
 /*
  * Heap scan structures
@@ -603,8 +605,8 @@ extern SCAN_CODE heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid,
 				 DB_VALUE ** cache_pageinfo);
 extern SCAN_CODE heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfid, VPID * next_vpid,
 				 DB_VALUE ** cache_pageinfo);
-extern int heap_vpid_next (const HFID * hfid, PAGE_PTR pgptr, VPID * next_vpid);
-extern int heap_vpid_prev (const HFID * hfid, PAGE_PTR pgptr, VPID * prev_vpid);
+extern int heap_vpid_next (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID * next_vpid);
+extern int heap_vpid_prev (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID * prev_vpid);
 extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 				       MVCC_REC_HEADER * mvcc_header);
 extern int heap_get_mvcc_rec_header_from_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header,
@@ -675,4 +677,5 @@ extern int heap_get_best_space_num_stats_entries (void);
 
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
+extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 #endif /* _HEAP_FILE_H_ */

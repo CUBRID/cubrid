@@ -322,6 +322,8 @@ static void er_call_stack_final (void);
 
 static void _er_log_debug_internal (const char *file_name, const int line_no, const char *fmt, va_list * ap);
 
+static int er_stack_push_internal (THREAD_ENTRY * thread_p, ER_MSG * er_entry_p);
+
 /* vector of functions to call when an error is set */
 static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
   er_log,			/* ER_FATAL_ERROR_SEVERITY */
@@ -2453,6 +2455,36 @@ er_set_area_error (void *server_area)
   return er_entry_p->err_id;
 }
 
+static int
+er_stack_push_internal (THREAD_ENTRY * thread_p, ER_MSG * er_entry_p)
+{
+  ER_MSG *new_er_entry_p;
+
+  assert (er_entry_p != NULL);
+
+  new_er_entry_p = (ER_MSG *) ER_MALLOC (sizeof (ER_MSG));
+  if (new_er_entry_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* Initialize the new message gadget. */
+  new_er_entry_p->err_id = NO_ERROR;
+  new_er_entry_p->severity = ER_WARNING_SEVERITY;
+  new_er_entry_p->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
+  new_er_entry_p->line_no = -1;
+  new_er_entry_p->msg_area_size = 0;
+  new_er_entry_p->msg_area = NULL;
+  new_er_entry_p->stack = er_entry_p;
+  new_er_entry_p->args = NULL;
+  new_er_entry_p->nargs = 0;
+
+  /* Now make the error entry be the new thing. */
+  er_register_er_entry (thread_p, new_er_entry_p);
+
+  return NO_ERROR;
+}
+
 /*
  * er_stack_push - Save the current error onto the stack
  *   return: NO_ERROR or ER_FAILED
@@ -2482,27 +2514,39 @@ er_stack_push (void)
       return ER_FAILED;
     }
 
-  new_er_entry_p = (ER_MSG *) ER_MALLOC (sizeof (ER_MSG));
-  if (new_er_entry_p == NULL)
+  return er_stack_push_internal (thread_p, er_entry_p);
+}
+
+/*
+ * er_stack_push_if_exists - Save the last error if exists onto the stack 
+ *   return: NO_ERROR or ER_FAILED
+ *
+ * Note: Please notice the difference from er_stack_push.
+ *       This function only pushes when an error was set, while er_stack_push always makes a room 
+ *       and pushes the current entry. It will be used in conjuction with er_restore_last_error. 
+ */
+int
+er_stack_push_if_exists (void)
+{
+  THREAD_ENTRY *thread_p;
+  ER_MSG *new_er_entry_p;
+  ER_MSG *er_entry_p;
+
+  thread_p = thread_get_thread_entry_info ();
+
+  er_entry_p = er_get_er_entry (thread_p);
+  if (er_entry_p == NULL)
     {
       return ER_FAILED;
     }
 
-  /* Initialize the new message gadget. */
-  new_er_entry_p->err_id = NO_ERROR;
-  new_er_entry_p->severity = ER_WARNING_SEVERITY;
-  new_er_entry_p->file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
-  new_er_entry_p->line_no = -1;
-  new_er_entry_p->msg_area_size = 0;
-  new_er_entry_p->msg_area = NULL;
-  new_er_entry_p->stack = er_entry_p;
-  new_er_entry_p->args = NULL;
-  new_er_entry_p->nargs = 0;
+  if (er_entry_p->err_id == NO_ERROR)
+    {
+      /* When no error was set, keep using the current error entry. */
+      return NO_ERROR;
+    }
 
-  /* Now make the error entry be the new thing. */
-  er_register_er_entry (thread_p, new_er_entry_p);
-
-  return NO_ERROR;
+  return er_stack_push_internal (thread_p, er_entry_p);
 }
 
 /*
@@ -2583,6 +2627,42 @@ er_stack_clear (void)
 }
 
 /*
+ * er_restore_last_error - Restore the last error between the current entry and the pushed one.
+ *                         If the current entry has an error, clear the pushed entry which is no longer needed.
+ *                         Otherwise, pop the current entry and restore the saved one.
+ *
+ *   return: none
+ *
+ * Note: Please see also er_stack_push_if_exists
+ */
+void
+er_restore_last_error (void)
+{
+  THREAD_ENTRY *thread_p;
+  ER_MSG *er_entry_p;
+
+  thread_p = thread_get_thread_entry_info ();
+
+  er_entry_p = er_get_er_entry (thread_p);
+  if (er_entry_p == NULL || er_entry_p->stack == NULL)
+    {
+      /* When no pushed entry exists, keep using the current entry. */
+      return;
+    }
+
+  if (er_entry_p->err_id == NO_ERROR)
+    {
+      /* restore the pushed error */
+      er_stack_pop ();
+    }
+  else
+    {
+      /* keep the current error and clear the pushed one */
+      er_stack_clear ();
+    }
+}
+
+/*
  * er_stack_clearall - Clear all saved error messages
  *   return: none
  */
@@ -2600,6 +2680,7 @@ er_stack_clearall (void)
       er_stack_clear ();
     }
 }
+
 
 /*
  * er_study_spec -

@@ -2702,7 +2702,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* If there is an existing query area, delete it. */
   if (boot_Db_parm->query_vfid.volid != NULL_VOLID)
     {
-      (void) file_destroy (thread_p, &boot_Db_parm->query_vfid);
+      (void) file_destroy (thread_p, &boot_Db_parm->query_vfid, true);
       boot_Db_parm->query_vfid.fileid = NULL_FILEID;
       boot_Db_parm->query_vfid.volid = NULL_VOLID;
 

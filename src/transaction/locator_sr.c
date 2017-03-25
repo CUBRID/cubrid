@@ -3920,7 +3920,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
   /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
    * removed with one of the refactoring issues anyway.
    */
-  if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+  if (HEAP_ISVALID_OID (thread_p, oid) != DISK_VALID)
     {
       return LC_DOESNOT_EXIST;
     }
@@ -5443,7 +5443,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  if (error_code == ER_FAILED)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
-	      assert (false);
+	      /* FIXME: better to make functions to return ER_INTERRUPTED rather than ER_FAILED for the case */
+	      assert (error_code == ER_INTERRUPTED);
 	    }
 	  else
 	    {
@@ -12838,7 +12839,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	      else if (scan == S_END)
 		{
 		  /* move to next page */
-		  error = heap_vpid_next (&hfid, scan_cache.page_watcher.pgptr, &vpid);
+		  error = heap_vpid_next (thread_p, &hfid, scan_cache.page_watcher.pgptr, &vpid);
 		  if (error != NO_ERROR)
 		    {
 		      goto exit;

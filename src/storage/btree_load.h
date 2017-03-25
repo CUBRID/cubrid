@@ -148,8 +148,8 @@
 #define BTREE_MAX_OIDCOUNT_IN_OVERFLOW_RECORD(btid) \
   (BTREE_MAX_OIDCOUNT_IN_SIZE (btid, BTREE_MAX_OVERFLOW_RECORD_SIZE))
 
-extern int btree_node_number_of_keys (PAGE_PTR page_ptr);
-extern int btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid);
+extern int btree_node_number_of_keys (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
+extern int btree_get_next_overflow_vpid (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, VPID * vpid);
 
 #define BTREE_GET_KEY_LEN_IN_PAGE(key_len) \
   (((key_len) >= BTREE_MAX_KEYLEN_INPAGE) ? DISK_VPID_SIZE : (key_len))
@@ -264,9 +264,9 @@ extern int btree_init_node_header (THREAD_ENTRY * thread_p, const VFID * vfid, P
 				   BTREE_NODE_HEADER * header, bool redo);
 extern int btree_init_root_header (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
 				   BTREE_ROOT_HEADER * root_header, TP_DOMAIN * key_type);
-extern BTREE_NODE_HEADER *btree_get_node_header (PAGE_PTR page_ptr);
-extern BTREE_ROOT_HEADER *btree_get_root_header (PAGE_PTR page_ptr);
-extern BTREE_OVERFLOW_HEADER *btree_get_overflow_header (PAGE_PTR page_ptr);
+extern BTREE_NODE_HEADER *btree_get_node_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
+extern BTREE_ROOT_HEADER *btree_get_root_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
+extern BTREE_OVERFLOW_HEADER *btree_get_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 extern int btree_node_header_undo_log (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr);
 extern int btree_node_header_redo_log (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr);
 extern int btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, int null_delta,
@@ -291,6 +291,6 @@ extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx
 
 extern void btree_dump_key (FILE * fp, DB_VALUE * key);
 
-extern int btree_get_perf_btree_page_type (PAGE_PTR page_ptr);
+extern int btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 
 #endif /* _BTREE_LOAD_H_ */

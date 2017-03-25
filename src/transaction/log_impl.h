@@ -1231,6 +1231,8 @@ enum log_rectype
   LOG_MVCC_UNDO_DATA = 47,	/* Undo for MVCC operations */
   LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
   LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
+  LOG_SYSOP_ATOMIC_START = 50,	/* Log marker to start atomic operations that need to be rollbacked immediately after
+				 * redo phase of recovery and before finishing postpones */
 
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
@@ -1513,11 +1515,12 @@ struct log_info_chkpt_trans
 
 };
 
-typedef struct log_info_chkpt_sysop_start_postpone LOG_INFO_CHKPT_SYSOP_START_POSTPONE;
-struct log_info_chkpt_sysop_start_postpone
+typedef struct log_info_chkpt_sysop LOG_INFO_CHKPT_SYSOP;
+struct log_info_chkpt_sysop
 {
   TRANID trid;			/* Transaction identifier */
   LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
+  LOG_LSA atomic_sysop_start_lsa;	/* saved lsa of atomic system op start */
 };
 
 typedef struct log_rec_savept LOG_REC_SAVEPT;
@@ -1585,6 +1588,10 @@ struct log_rcv_tdes
   LOG_LSA sysop_start_postpone_lsa;
   /* we need to know where transaction postpone has started. */
   LOG_LSA tran_start_postpone_lsa;
+  /* we need to know if file_perm_alloc or file_perm_dealloc operations have been interrupted. these operation must be
+   * executed atomically (all changes applied or all rollbacked) before executing finish all postpones. to know what
+   * to abort, we remember the starting LSA of such operation. */
+  LOG_LSA atomic_sysop_start_lsa;
 };
 
 typedef struct log_tdes LOG_TDES;
@@ -2230,7 +2237,7 @@ extern char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
-extern int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p);
+STATIC_INLINE int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
@@ -2329,4 +2336,32 @@ extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
+/************************************************************************/
+/* Inline functions:                                                    */
+/************************************************************************/
+
+/*
+ * logtb_find_current_wait_msecs - find waiting times for current transaction
+ *
+ * return : wait_msecs...
+ *
+ * Note: Find the waiting time for the current transaction.
+ */
+STATIC_INLINE int
+logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      return tdes->wait_msecs;
+    }
+  else
+    {
+      return 0;
+    }
+}
 #endif /* _LOG_IMPL_H_ */
