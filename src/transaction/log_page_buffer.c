@@ -3726,6 +3726,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
        * protection.
        * at the same time, tdes->rcv.atomic_sysop_start_lsa must be reset if it was inside this system op. */
       LOG_REC_SYSOP_START_POSTPONE *sysop_start_postpone = NULL;
+
+      assert (LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa));
       tdes->rcv.sysop_start_postpone_lsa = start_lsa;
 
       sysop_start_postpone = (LOG_REC_SYSOP_START_POSTPONE *) node->data_header;
@@ -3737,15 +3739,22 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
     }
   else if (node->log_header.type == LOG_SYSOP_END)
     {
-      /* reset tdes->rcv.sysop_start_postpone_lsa and, eventually, tdes->rcv.atomic_sysop_start_lsa */
+      /* reset tdes->rcv.sysop_start_postpone_lsa and tdes->rcv.atomic_sysop_start_lsa, if this system op is not nested.
+       * we'll use lastparent_lsa to check if system op is nested or not. */
       LOG_REC_SYSOP_END *sysop_end = NULL;
-      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 
       sysop_end = (LOG_REC_SYSOP_END *) node->data_header;
-      if (LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+      if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)
+	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
 	{
 	  /* atomic system operation finished. */
 	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+	}
+      if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
+	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+	{
+	  /* atomic system operation finished. */
+	  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 	}
     }
   else if (node->log_header.type == LOG_COMMIT_WITH_POSTPONE)
