@@ -2179,8 +2179,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
 
-
-
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
     {

@@ -2513,7 +2513,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      && (lsa.pageid < log_lsa.pageid || (lsa.pageid == log_lsa.pageid && lsa.offset <= log_lsa.offset)))
 	    {
 	      /* It seems to be a system error. Maybe a loop in the log */
-	      _er_log_debug (ARG_FILE_LINE,
+	      er_log_debug (ARG_FILE_LINE,
 			    "log_recovery_analysis: ** System error: It seems to be a loop in the log\n."
 			    " Current log_rec at %lld|%d. Next log_rec at %lld|%d\n", (long long int) log_lsa.pageid,
 			    log_lsa.offset, (long long int) lsa.pageid, lsa.offset);
@@ -2577,7 +2577,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &checkpoint_lsa, &prev_lsa,
 				  start_lsa, start_redo_lsa, is_media_crash, stop_at, did_incom_recovery,
 				  &may_use_checkpoint, &may_need_synch_checkpoint_2pc);
-
 	  if (*did_incom_recovery == true)
 	    {
 	      LSA_SET_NULL (&lsa);
@@ -3174,7 +3173,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-
 		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
