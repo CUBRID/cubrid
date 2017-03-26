@@ -2346,12 +2346,6 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
    */
   if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
     {
-      if (rcvindex == RVVAC_COMPLETE)
-	{
-	_er_log_debug (ARG_FILE_LINE, "pgbuf_set_lsa: RVVAC_COMPLETE ; start_lsa: (%d,%d)\n",
-    (int) start_lsa.pageid, (int) start_lsa.offset);
-
-	}
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
 	  assert (false);

@@ -532,9 +532,6 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 
   if (rcv->pgptr != NULL)
     {
-     er_print_callstack (ARG_FILE_LINE, "pgbuf_set_lsa: rcvindex:%d ; addr->pgptr:%p; LSA (%d,%d)\n",
-    -1, rcv->pgptr, rcv_lsa_ptr->pageid, rcv_lsa_ptr->offset);
-
       (void) pgbuf_set_lsa (thread_p, rcv->pgptr, rcv_lsa_ptr);
     }
 
@@ -2456,10 +2453,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	}
 
-
-	  _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: after logpb_fetch_page log_lsa:%d,%d; end_redo_lsa:%d,%d\n",
-		log_lsa.pageid, log_lsa.offset, end_redo_lsa->pageid, end_redo_lsa->offset);
-
       /* Check all log records in this phase */
       while (!LSA_ISNULL (&lsa) && lsa.pageid == log_lsa.pageid)
 	{
@@ -2500,10 +2493,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
 	  LSA_COPY (end_redo_lsa, &lsa);
 	  LSA_COPY (&lsa, &log_rec->forw_lsa);
-
-
-	  _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: log_lsa:%d,%d; end_redo_lsa:%d,%d; log_rec_type:%d\n",
-		log_lsa.pageid, log_lsa.offset, end_redo_lsa->pageid, end_redo_lsa->offset, log_rec->type);
 
 	  /* 
 	   * If the next page is NULL_PAGEID and the current page is an archive
@@ -2589,21 +2578,15 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 				  start_lsa, start_redo_lsa, is_media_crash, stop_at, did_incom_recovery,
 				  &may_use_checkpoint, &may_need_synch_checkpoint_2pc);
 
-	  _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: after log_rv_analysis_record log_lsa:%d,%d; end_redo_lsa:%d,%d; log_rec_type:%d\n",
-		log_lsa.pageid, log_lsa.offset, end_redo_lsa->pageid, end_redo_lsa->offset, log_rec->type);
-
-
 	  if (*did_incom_recovery == true)
 	    {
 	      LSA_SET_NULL (&lsa);
-	     _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: did_incom_recovery break\n");
 	      break;
 	    }
 	  if (LSA_EQ (end_redo_lsa, &lsa))
 	    {
 	      assert_release (!LSA_EQ (end_redo_lsa, &lsa));
 	      LSA_SET_NULL (&lsa);
-	      _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: end_redo_lsa EQ LSA break\n");
 	      break;
 	    }
 
@@ -3161,8 +3144,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		  /* Reset vacuum recover LSA */
 		  vacuum_notify_server_crashed (&null_lsa);
-
-		  er_print_callstack (ARG_FILE_LINE, "log_recovery_redo: RVVAC_COMPLETE| log_lsa:%d,%d\n", log_lsa.pageid, log_lsa.offset);
 		}
 
 	      /* 
@@ -3193,13 +3174,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-		  er_print_callstack (ARG_FILE_LINE, "log_recovery_redo: rcvindex:%d end_redo_lsa:%p (%d,%d); "
-		    "rcv_page_lsaptr:%p (%d,%d)\n", 
-		    rcvindex,
-		    end_redo_lsa, end_redo_lsa ? end_redo_lsa->pageid : -1,
-		    end_redo_lsa ? end_redo_lsa->offset : -1,
-		    rcv_page_lsaptr, rcv_page_lsaptr ? rcv_page_lsaptr->pageid : -1,
-		    rcv_page_lsaptr ? rcv_page_lsaptr->offset : -1);
 
 		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))

@@ -2429,10 +2429,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-    {
-      _er_log_debug (ARG_FILE_LINE, "start LSA (%d,%d)\n",  log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset );
-    }
-
   /* 
    * How to restart the system ?
    */
@@ -2870,11 +2866,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if !defined(SA_MODE)
   json_set_alloc_funcs (malloc, free);
 #endif
-
-      {
-       _er_log_debug (ARG_FILE_LINE, "end LSA (%d,%d)\n",  log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset );
-    }
-
 
   return NO_ERROR;
 
