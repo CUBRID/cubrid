@@ -4785,10 +4785,10 @@ file_rv_dump_vfid_and_vpid (FILE * fp, int length, void *data)
   int offset = 0;
 
   vfid = (VFID *) (rcv_data + offset);
-  offset += sizeof (vfid);
+  offset += sizeof (*vfid);
 
   vpid = (VPID *) (rcv_data + offset);
-  offset += sizeof (vpid);
+  offset += sizeof (*vpid);
 
   assert (offset == length);
 
