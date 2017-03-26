@@ -2085,9 +2085,6 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  er_print_callstack (ARG_FILE_LINE, "pgbuf_set_lsa: rcvindex:%d ; addr->pgptr:%p; LSA (%d,%d)\n",
-    rcvindex, addr->pgptr, start_lsa.pageid, start_lsa.offset);
-
   if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
     {
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
@@ -2211,9 +2208,6 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
     }
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-
- er_print_callstack (ARG_FILE_LINE, "pgbuf_set_lsa: rcvindex:%d ; addr->pgptr:%p; LSA (%d,%d)\n",
-    rcvindex, addr->pgptr, start_lsa.pageid, start_lsa.offset);
 
   if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
     {
@@ -2350,11 +2344,14 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
    * Make sure that I should log. Page operational logging is not done for
    * temporary data of temporary files and volumes
    */
- er_print_callstack (ARG_FILE_LINE, "pgbuf_set_lsa: rcvindex:%d ; addr->pgptr:%p; LSA (%d,%d)\n",
-    rcvindex, addr->pgptr, start_lsa.pageid, start_lsa.offset);
-
   if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
     {
+      if (rcvindex == RVVAC_COMPLETE)
+	{
+	_er_log_debug (ARG_FILE_LINE, "pgbuf_set_lsa: RVVAC_COMPLETE ; start_lsa: (%d,%d)\n",
+    (int) start_lsa.pageid, (int) start_lsa.offset);
+
+	}
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
 	  assert (false);
@@ -2894,9 +2891,6 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
        * Set the LSA on the data page of the corresponding log record for page operation logging.
        * Make sure that I should log. Page operational logging is not done for temporary data of temporary files/volumes
        */
- er_print_callstack (ARG_FILE_LINE, "pgbuf_set_lsa: rcvindex:%d ; addr->pgptr:%p; LSA (%d,%d)\n",
-    rcvindex, addr->pgptr, start_lsa.pageid, start_lsa.offset);
-
       if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
 	{
 	  if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)

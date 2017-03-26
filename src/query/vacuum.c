@@ -2903,11 +2903,7 @@ restart:
 	  /* Find tdes in transaction table. */
 	  tdes = LOG_FIND_TDES (tran_index);
 	}
-
-
-      er_print_callstack (ARG_FILE_LINE, "log_append_redo_data2 RVVAC_COMPLETE : tdes->tail_lsa:%d,%d\n", tdes->tail_lsa.pageid, tdes->tail_lsa.offset);
     }
-
   
   vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
   logpb_flush_pages_direct (thread_p);
