@@ -3816,7 +3816,7 @@ detect_dst:
 	  applying_ds_rule = &(tzd->ds_rules[applying_ds_id + ds_ruleset->index_start]);
 
 	  /* check if provided DS specifier matches the offset rule format */
-	  if (tz_info->zone.dst_str[0] != '\0' && curr_off_rule->var_format != NULL
+	  if (tz_info->zone.dst_str[0] != '\0'
 	      && tz_check_ds_match_string (curr_off_rule, applying_ds_rule, tz_info->zone.dst_str,
 					   ds_ruleset->default_abrev) == false)
 	    {
@@ -3833,7 +3833,7 @@ detect_dst:
 		  goto detect_dst;
 		}
 	    }
-	  else if (tz_info->zone.dst_str[0] != '\0' && curr_off_rule->var_format != NULL
+	  else if (tz_info->zone.dst_str[0] != '\0'
 		   && tz_check_ds_match_string (curr_off_rule, applying_ds_rule, tz_info->zone.dst_str,
 						ds_ruleset->default_abrev) == true && try_offset_rule_overlap == true)
 	    {
