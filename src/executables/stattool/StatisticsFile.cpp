@@ -19,33 +19,33 @@ bool StatisticsFile::readFileAndInit ()
 
   binary_fp = fopen (filename.c_str(), "rb");
   if (binary_fp == NULL)
-  {
-    return false;
-  }
+    {
+      return false;
+    }
 
   fread (&seconds, sizeof (INT64), 1, binary_fp);
   OR_GET_INT64 (&seconds, &unpacked_seconds);
   relativeEpochSeconds = (time_t)unpacked_seconds;
   timestamp = localtime (&relativeEpochSeconds);
   if (timestamp == NULL)
-  {
-    return false;
-  }
+    {
+      return false;
+    }
   relativeTimestamp = *timestamp;
 
   strftime (strTime, 80, "%a %B %d %H:%M:%S %Y", &relativeTimestamp);
   printf ("Relative Timestamp = %s\n", strTime);
 
   while (fread (&seconds, sizeof (INT64), 1, binary_fp) > 0)
-  {
-    char *unpacked_stats = (char *)malloc (sizeof (UINT64) * (size_t)Utils::getNStatValues());
-    OR_GET_INT64 (&seconds, &unpacked_seconds);
-    epochSeconds = (time_t)unpacked_seconds;
-    Snapshot *snapshot = new Snapshot (epochSeconds);
-    fread (unpacked_stats, sizeof (UINT64), (size_t)Utils::getNStatValues(), binary_fp);
-    perfmon_unpack_stats (unpacked_stats, snapshot->rawStats);
-    snapshots.push_back (snapshot);
-  }
+    {
+      char *unpacked_stats = (char *)malloc (sizeof (UINT64) * (size_t)Utils::getNStatValues());
+      OR_GET_INT64 (&seconds, &unpacked_seconds);
+      epochSeconds = (time_t)unpacked_seconds;
+      Snapshot *snapshot = new Snapshot (epochSeconds);
+      fread (unpacked_stats, sizeof (UINT64), (size_t)Utils::getNStatValues(), binary_fp);
+      perfmon_unpack_stats (unpacked_stats, snapshot->rawStats);
+      snapshots.push_back (snapshot);
+    }
 
   fclose (binary_fp);
   return true;
@@ -117,7 +117,7 @@ int StatisticsFile::getSnapshotIndexBySeconds (unsigned int seconds)
   return j;
 }
 
-void StatisticsFile::getIndicesOfSnapshotsByArgument (char *argument, int &index1, int &index2)
+void StatisticsFile::getIndicesOfSnapshotsByArgument (const char *argument, int &index1, int &index2)
 {
   char diffArgument[32];
   char alias[MAX_FILE_NAME_SIZE];
@@ -128,6 +128,10 @@ void StatisticsFile::getIndicesOfSnapshotsByArgument (char *argument, int &index
   index2 = (int)snapshots.size() - 1;
 
   sscanf (argument, "%[^(]%[^)]", alias, diffArgument);
+  if (strlen (diffArgument) == 0)
+    {
+      return;
+    }
 
   if (strcmp (alias, this->alias.c_str()) != 0)
     {
@@ -138,7 +142,7 @@ void StatisticsFile::getIndicesOfSnapshotsByArgument (char *argument, int &index
 
   if (strchr (diffArgument, '-') != NULL)
     {
-      sscanf (diffArgument, "(%d-%d", &seconds1, &seconds2);
+      sscanf (diffArgument, "(%d-%d)", &seconds1, &seconds2);
       index1 = getSnapshotIndexBySeconds (seconds1);
       index2 = getSnapshotIndexBySeconds (seconds2);
 
@@ -148,6 +152,13 @@ void StatisticsFile::getIndicesOfSnapshotsByArgument (char *argument, int &index
           index2 = index1;
           index1 = tmp;
         }
+      return;
+    }
+  else
+    {
+      sscanf (diffArgument, "(%d", &seconds1);
+      index1 = 0;
+      index2 = getSnapshotIndexBySeconds (seconds1);
       return;
     }
 }

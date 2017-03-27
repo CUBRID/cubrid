@@ -67,12 +67,31 @@ class StatisticsFile
         return newSnapshot;
       }
 
+      Snapshot *divide (Snapshot *other)
+      {
+        Snapshot *newSnapshot = new Snapshot (this->getSeconds (), other->getSeconds ());
+
+        for (int i = 0; i < Utils::getNStatValues (); i++)
+          {
+            if (other->rawStats[i] == 0)
+              {
+                newSnapshot->rawStats[i] = 0;
+              }
+            else
+              {
+                newSnapshot->rawStats[i] = (UINT64) (100.0f * (float)this->rawStats[i] / (float)other->rawStats[i]);
+              }
+          }
+
+        return newSnapshot;
+      }
+
       time_t getSeconds ()
       {
         return mktime (&this->timestamp);
       }
 
-      UINT64 getStatusValueFromName (char *stat_name)
+      UINT64 getStatusValueFromName (const char *stat_name)
       {
         int i;
 
@@ -120,43 +139,12 @@ class StatisticsFile
             printf ("Timestamp = %s\n", strTime);
           }
 
-        for (i = 0; i < PSTAT_COUNT; i++)
+        for (i = 0; i < total_num_stat_vals; i++)
           {
-            if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
+            if (stats_ptr[i] != 0)
               {
-                break;
+                fprintf (stream, "%s = %lld\n", pstat_Nameoffset[i].name, (long long)stats_ptr[i]);
               }
-
-            int offset = pstat_Metadata[i].start_offset;
-
-            if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
-              {
-                if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
-                  {
-                    if (stats_ptr[offset] != 0)
-                      {
-                        fprintf (stream, "%-29s = %10lld\n", pstat_Metadata[i].stat_name, (long long) stats_ptr[offset]);
-                      }
-                  }
-                else
-                  {
-                    perfmon_print_timer_to_file (stream, i, stats_ptr);
-                  }
-              }
-            else
-              {
-                if (stats_ptr[offset] != 0)
-                  {
-                    fprintf (stream, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name,
-                             (long long) stats_ptr[offset] / 100.0f);
-                  }
-              }
-          }
-
-        for (; i < PSTAT_COUNT; i++)
-          {
-            fprintf (stream, "%s:\n", pstat_Metadata[i].stat_name);
-            pstat_Metadata[i].f_dump_in_file (stream, & (stats_ptr[pstat_Metadata[i].start_offset]));
           }
       }
 
@@ -170,7 +158,7 @@ class StatisticsFile
     bool readFileAndInit ();
     Snapshot *getSnapshotBySeconds (unsigned int minutes);
     Snapshot *getSnapshotByArgument (char *argument);
-    void getIndicesOfSnapshotsByArgument (char *argument, int &minutes1, int &minutes2);
+    void getIndicesOfSnapshotsByArgument (const char *argument, int &minutes1, int &minutes2);
     int getSnapshotIndexBySeconds (unsigned int minutes);
     static void printInTableForm (Snapshot *s1, Snapshot *s2, FILE *stream);
 

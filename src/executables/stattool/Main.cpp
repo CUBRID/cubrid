@@ -11,6 +11,15 @@ extern "C" {
 #include <porting.h>
 }
 
+void print_plot_usage ()
+{
+  printf ("usage: plot <OPTIONS>\n\nvalid options:\n");
+  printf ("\t-a <alias1, alias2...>\n");
+  printf ("\t-i <INTERVAL>\n");
+  printf ("\t-v <VARIABLE>\n");
+  printf ("\t-f <PLOT FILENAME>\n");
+}
+
 int main (int argc, char **argv)
 {
   bool quit = false;
@@ -18,6 +27,7 @@ int main (int argc, char **argv)
   char *str;
   std::vector<StatisticsFile *> files;
   metadata_initialize();
+  init_name_offset_assoc();
   Utils::setNStatValues (pstat_Global.n_stat_values);
 
   do
@@ -46,9 +56,9 @@ int main (int argc, char **argv)
               newFile = new StatisticsFile (std::string (filename), std::string (alias));
               bool hasSucceded = newFile->readFileAndInit();
               if (hasSucceded)
-              {
-                files.push_back (newFile);
-              }
+                {
+                  files.push_back (newFile);
+                }
             }
         }
       else if (strcmp (str, "compare") == 0)
@@ -131,37 +141,162 @@ int main (int argc, char **argv)
         {
           quit = true;
         }
+      else if (strcmp (str, "show") == 0)
+        {
+          int end = total_num_stat_vals;
+          char *argument;
+          std::vector<StatisticsFile::Snapshot *> snapshots;
+
+          argument = strtok (NULL, " ");
+          if (argument != NULL && strcmp (argument, "-c") == 0)
+            {
+              end = pstat_Metadata[PSTAT_PBX_FIX_COUNTERS].start_offset;
+              argument = strtok (NULL, " ");
+            }
+          printf ("%-50s", " ");
+          while (argument != NULL)
+            {
+              printf ("%15s", argument);
+              if (strchr (argument, '/') != 0)
+                {
+                  StatisticsFile::Snapshot *snapshot1 = NULL, *snapshot2 = NULL;
+                  char splitAliases[MAX_COMMAND_SIZE];
+                  char *firstAlias, *secondAlias, *savePtr;
+
+                  strcpy (splitAliases, argument);
+                  firstAlias = strtok_r (splitAliases, "/", &savePtr);
+                  secondAlias = strtok_r (NULL, " ", &savePtr);
+                  for (unsigned int i = 0; i < files.size(); i++)
+                    {
+                      if ((snapshot1 = files[i]->getSnapshotByArgument (firstAlias)) != NULL)
+                        {
+                          break;
+                        }
+                    }
+
+                  for (unsigned int i = 0; i < files.size(); i++)
+                    {
+                      if ((snapshot2 = files[i]->getSnapshotByArgument (secondAlias)) != NULL)
+                        {
+                          break;
+                        }
+                    }
+
+                  if (snapshot1 && snapshot2)
+                    {
+                      snapshots.push_back (snapshot1->divide (snapshot2));
+                    }
+
+                }
+              else
+                {
+                  StatisticsFile::Snapshot *snapshot;
+                  for (unsigned int i = 0; i < files.size(); i++)
+                    {
+                      if ((snapshot = files[i]->getSnapshotByArgument (argument)) != NULL)
+                        {
+                          snapshots.push_back (snapshot);
+                          break;
+                        }
+                    }
+                }
+              argument = strtok (NULL, " ");
+            }
+          printf ("\n");
+          for (int i = 0; i < end; i++)
+            {
+              bool show = false;
+              for (unsigned int j = 0; j < snapshots.size(); j++)
+                {
+                  if (snapshots[j]->rawStats[i] != 0)
+                    {
+                      show = true;
+                    }
+                }
+
+              if (show)
+                {
+                  printf ("%-50s", pstat_Nameoffset[i].name);
+                  for (unsigned int j = 0; j < snapshots.size (); j++)
+                    {
+                      printf ("%15lld", (long long) snapshots[j]->rawStats[i]);
+                    }
+                  printf ("\n");
+                }
+            }
+        }
       else if (strcmp (str, "plot") == 0)
         {
           int index1 = -1, index2 = -1;
-          char *argument = NULL, *plottedVariable = NULL, *plot_filename = NULL;
-          StatisticsFile *statisticsFile = NULL;
+          char *argument = NULL;
           FILE *gnuplotPipe;
-
           std::string cmd = "";
+          std::string plotCmd = "";
+          bool advance;
+          std::vector<std::pair<int, std::pair<int, int> > > plotData;
+          std::vector<std::string> aliases;
+          std::string interval = "";
+          std::string variable = "";
+          std::string plotFilename = "";
 
           argument = strtok (NULL, " ");
-          plottedVariable = strtok (NULL, " " );
-	  plot_filename = strtok (NULL, " ");
-
-          if (!argument || !plottedVariable)
+          while (argument != NULL)
             {
-              printf ("Usage: plot <alias(minutes1-minutes2)> <wanted variable to plot>\n");
-              continue;
-            }
-          for (unsigned int i = 0; i < files.size(); i++)
-            {
-              files[i]->getIndicesOfSnapshotsByArgument (argument, index1, index2);
-              if (index1 != -1 && index2 != -1)
+              advance = true;
+              if (strcmp (argument, "-a") == 0)
                 {
-                  statisticsFile = files[i];
-                  break;
+                  do
+                    {
+                      argument = strtok (NULL, " ");
+                      if (argument == NULL || strcmp (argument, "-i") == 0 || strcmp (argument, "-v") == 0 ||
+                          strcmp (argument, "-f") == 0)
+                        {
+                          advance = false;
+                          break;
+                        }
+                      aliases.push_back (std::string (argument));
+                    }
+                  while (1);
+                }
+              else if (strcmp (argument, "-v") == 0)
+                {
+                  argument = strtok (NULL, " ");
+                  if (argument == NULL)
+                    {
+                      print_plot_usage ();
+                      break;
+                    }
+                  variable = std::string (argument);
+                }
+              else if (strcmp (argument, "-i") == 0)
+                {
+                  argument = strtok (NULL, " ");
+                  if (argument == NULL)
+                    {
+                      print_plot_usage ();
+                      break;
+                    }
+                  interval = std::string (argument);
+                }
+              else if (strcmp (argument, "-f") == 0)
+                {
+                  argument = strtok (NULL, " ");
+                  if (argument == NULL)
+                    {
+                      print_plot_usage ();
+                      break;
+                    }
+                  plotFilename = std::string (argument);
+                }
+              if (advance)
+                {
+                  argument = strtok (NULL, " ");
                 }
             }
 
-          if (statisticsFile == NULL)
+          if (variable.length () == 0 || aliases.size() == 0)
             {
-              printf ("You must provide an existing alias!\n");
+              print_plot_usage ();
               continue;
             }
 
@@ -180,44 +315,66 @@ int main (int argc, char **argv)
           fprintf (gnuplotPipe, "%s\n", cmd.c_str());
           cmd = "";
           cmd += "set ylabel \"";
-          cmd += plottedVariable;
+          cmd += variable;
           cmd += "\"";
           fprintf (gnuplotPipe, "%s\n", cmd.c_str());
-          cmd = "";
           fprintf (gnuplotPipe, "set key outside\n");
           fprintf (gnuplotPipe, "set terminal png size 1080, 640\n");
-	  if (plot_filename == NULL)
-	    {
-	      cmd += "set output \"./";
-	      cmd += argument;
-	      cmd += "_";
-	      cmd += plottedVariable;
-	      cmd += ".png\"";
-	    }
-	  else
-	    {
-	      cmd += "set output \"";
-	      cmd += plot_filename;
-	      cmd += ".png\"";
-	    }
-          fprintf (gnuplotPipe, "%s\n", cmd.c_str());
-          cmd = "";
-          cmd += "plot '-' with lines ";
-          cmd += "title \"";
-          cmd += argument;
-          cmd += "_";
-          cmd += plottedVariable;
-          cmd += "\"";
-          fprintf (gnuplotPipe, "%s\n", cmd.c_str());
-
-          for (int i = index1; i <= index2; i++)
+          if (plotFilename.length () == 0)
             {
-              time_t seconds = mktime (&statisticsFile->getSnapshots()[i]->timestamp)-statisticsFile->getRelativeSeconds();
-              UINT64 value = statisticsFile->getSnapshots()[i]->getStatusValueFromName (plottedVariable);
-              fprintf (gnuplotPipe, "%ld %lld\n", seconds, (long long) value);
+              fprintf (gnuplotPipe, "set output \"plot.png\"\n");
+            }
+          else
+            {
+              fprintf (gnuplotPipe, "set output \"");
+              fprintf (gnuplotPipe, "%s", plotFilename.c_str());
+              fprintf (gnuplotPipe, ".png\"\n");
             }
 
-          fprintf (gnuplotPipe, "e\n");
+          for (unsigned int i = 0; i < aliases.size(); i++)
+            {
+              std::string arg = "";
+              arg += aliases[i] + interval;
+
+              if (i == 0)
+                {
+                  plotCmd += "plot '-' with lines title \"";
+                  plotCmd += arg;
+                  plotCmd += "\", ";
+                }
+              else
+                {
+                  plotCmd += "'-' with lines title \"";
+                  plotCmd += arg;
+                  plotCmd += "\", ";
+                }
+
+              for (unsigned int j = 0; j < files.size(); j++)
+                {
+                  files[j]->getIndicesOfSnapshotsByArgument (arg.c_str (), index1, index2);
+
+                  if (index1 != -1 && index2 != -1)
+                    {
+                      plotData.push_back (std::make_pair (j, std::make_pair (index1, index2)));
+                    }
+                }
+            }
+
+          fprintf (gnuplotPipe, "%s\n", plotCmd.c_str ());
+
+          for (unsigned int i = 0; i < plotData.size(); i++)
+            {
+              for (int j = plotData[i].second.first; j <= plotData[i].second.second; j++)
+                {
+                  time_t seconds = files[plotData[i].first]->getSnapshots()[j]->getSeconds ()
+                                   -files[plotData[i].first]->getRelativeSeconds();
+                  UINT64 value = files[plotData[i].first]->getSnapshots()[j]->getStatusValueFromName (variable.c_str ());
+                  fprintf (gnuplotPipe, "%ld %lld\n", seconds, (long long) value);
+                }
+
+              fprintf (gnuplotPipe, "e\n");
+            }
+
 #if !defined (WINDOWS)
           pclose (gnuplotPipe);
 #else
@@ -235,6 +392,7 @@ int main (int argc, char **argv)
     {
       delete (files[i]);
     }
+  free (pstat_Nameoffset);
 
   return 0;
 }
