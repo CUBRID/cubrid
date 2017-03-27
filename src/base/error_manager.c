@@ -2540,9 +2540,13 @@ er_stack_push_if_exists (void)
       return ER_FAILED;
     }
 
-  if (er_entry_p->err_id == NO_ERROR)
+  if (er_entry_p->err_id == NO_ERROR && er_entry_p->stack == NULL)
     {
-      /* When no error was set, keep using the current error entry. */
+      /* If neither an error was set nor pushed, keep using the current error entry.
+       *
+       * If this is not a base error entry,
+       * we have to push one since it means that caller pushed one and latest entry will be soon popped.
+       */
       return NO_ERROR;
     }
 

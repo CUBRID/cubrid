@@ -918,6 +918,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   restart_arg.newvolpath = utility_get_option_bool_value (arg_map, RESTORE_USE_DATABASE_LOCATION_PATH_S);
   restart_arg.restore_upto_bktime = false;
   restart_arg.restore_slave = false;
+  restart_arg.is_restore_from_backup = true;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -3759,6 +3760,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   restart_arg.newvolpath = utility_get_option_bool_value (arg_map, RESTORESLAVE_USE_DATABASE_LOCATION_PATH_S);
   restart_arg.restore_upto_bktime = false;
   restart_arg.stopat = time (NULL);
+  restart_arg.is_restore_from_backup = false;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {

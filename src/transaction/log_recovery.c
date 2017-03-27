@@ -1624,6 +1624,11 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       /* reset tdes->rcv.atomic_sysop_start_lsa */
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
     }
+  if (LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+    {
+      /* reset tdes->rcv.atomic_sysop_start_lsa */
+      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+    }
 
   return NO_ERROR;
 }
@@ -4013,6 +4018,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 		     tdes->trid, tdes->state, tdes->topops.last);
 
       log_recovery_abort_atomic_sysop (thread_p, tdes);
+      worker->state = VACUUM_WORKER_STATE_RECOVERY;
 
       /* Restore thread */
       VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
@@ -4063,7 +4069,8 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
        * I am not sure this really happens. It might, and it might be risky to allow it. However, I assume this nested
        * operation will not do other complicated operations to mess with other logical operations. I hope at least. */
       /* finish postpone of nested system op. */
-      er_log_debug (ARG_FILE_LINE, "Nested sysop start pospone (%lld|%d) inside atomic sysop (%lld|%d). \n",
+      er_log_debug (ARG_FILE_LINE,
+		    "(trid = %d) Nested sysop start pospone (%lld|%d) inside atomic sysop (%lld|%d). \n", tdes->trid,
 		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa), LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
       log_recovery_finish_sysop_postpone (thread_p, tdes);
     }
@@ -4077,7 +4084,8 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
        * 4. crash.
        *
        * we first have to abort atomic system op. postpone will be finished later. */
-      er_log_debug (ARG_FILE_LINE, "Nested atomic sysop  (%lld|%d) after sysop start postpone (%lld|%d). \n",
+      er_log_debug (ARG_FILE_LINE,
+		    "(trid = %d) Nested atomic sysop  (%lld|%d) after sysop start postpone (%lld|%d). \n", tdes->trid,
 		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa), LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
     }
 
