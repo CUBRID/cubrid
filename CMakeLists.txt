@@ -44,13 +44,16 @@ option(WITH_JDBC "Build JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 
 # options for external libraries (BUNDLED or path)
-set(WITH_LIBREGEX "BUNDLED" CACHE STRING "Build with regex library (default: BUNDLED)")
-set(WITH_LIBEXPAT "BUNDLED" CACHE STRING "Build with expat library (default: BUNDLED)")
-set(WITH_LIBJANSSON "BUNDLED" CACHE STRING "Build with jansson library (default: BUNDLED)")
-set(WITH_LIBEDIT "BUNDLED" CACHE STRING "Build with editline library (default: BUNDLED)")
-set(WITH_LIBLZO "BUNDLED" CACHE STRING "Build with lzo library (default: BUNDLED)")
-set(WITH_LIBGPGERROR "BUNDLED" CACHE STRING "Build with gpg-error library (default: BUNDLED)")
-set(WITH_LIBGCRYPT "BUNDLED" CACHE STRING "Build with gcrypt library (default: BUNDLED)")
+
+set(WITH_EXTERNAL_PREFIX "BUNDLED" CACHE STRING "External library prefix (default: BUNDLED)")
+
+set(WITH_LIBREGEX     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with regex library (default: BUNDLED)")
+set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: BUNDLED)")
+set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: BUNDLED)")
+set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: BUNDLED)")
+set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: BUNDLED)")
+set(WITH_LIBGPGERROR  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: BUNDLED)")
+set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: BUNDLED)")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -770,7 +773,7 @@ if(WITH_LIBEDIT STREQUAL "BUNDLED")
 endif(WITH_LIBEDIT STREQUAL "BUNDLED")
 
 if(WITH_LIBLZO MATCHES "^BUNDLED")
-  string(SUBSTRING ${WITH_LIBLZO} 7 -1 LZO_PATH)
+  string(SUBSTRING "${WITH_LIBLZO}" 7 -1 LZO_PATH)
   
   if(LZO_PATH STREQUAL "")
     set(LZO_PATH "lzo-2.03")
@@ -795,9 +798,29 @@ if(WITH_LIBLZO MATCHES "^BUNDLED")
     endif(TARGET_PLATFORM_BITS EQUAL 32)
     set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/lzo)
   endif(UNIX)
+elseif(WITH_LIBLZO MATCHES "^http")
+  if(UNIX)
+    set(LIBLZO_TARGET liblzo)
+    externalproject_add(${LIBLZO_TARGET}
+      URL ${WITH_LIBLZO}
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      )
+    set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
+    set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/lzo)
+    list(APPEND EP_TARGETS ${LIBLZO_TARGET})
+  else(UNIX)
+  endif(UNIX)
 else()
-  # TODO: support system or user provided library
+  set(LZO_ROOT ${WITH_LIBLZO})
+  find_package(LZO REQUIRED)
+  if(LZO_FOUND)
+    set(LIBLZO_LIBS     ${LZO_LIBRARIES})
+    set(LIBLZO_INCLUDES ${LZO_INCLUDE_DIR})
+  endif()
 endif()
+
 list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
 list(APPEND EP_LIBS ${LIBLZO_LIBS})
 
