@@ -3953,11 +3953,17 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   FILE_VSID_COLLECTOR vsid_collector;
   FILE_FTAB_COLLECTOR ftab_collector;
   DB_VOLPURPOSE volpurpose;
+  bool save_check_interrupt = false;
   int error_code = NO_ERROR;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
 
-  if (!is_temp)
+  if (is_temp)
+    {
+      /* do not interrupt destroying temporary files. it will leak pages. */
+      save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+    }
+  else
     {
       /* permanent files are first removed from tracker */
       error_code = file_tracker_unregister (thread_p, vfid);
@@ -4100,6 +4106,10 @@ exit:
     {
       db_private_free (thread_p, ftab_collector.partsect_ftab);
     }
+  if (is_temp)
+    {
+      (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+    }
   return error_code;
 }
 
@@ -4216,6 +4226,8 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
   bool save_interrupt;
   int error_code = NO_ERROR;
 
+  save_interrupt = thread_set_check_interrupt (thread_p, false);
+
   if (was_preserved)
     {
       file_tempcache_lock ();
@@ -4244,14 +4256,13 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
   if (entry != NULL && file_tempcache_put (thread_p, entry))
     {
       /* cached */
+      (void) thread_set_check_interrupt (thread_p, save_interrupt);
       return NO_ERROR;
     }
 
   /* was not cached. destroy */
   /* don't allow interrupt to avoid file leak */
-  save_interrupt = thread_set_check_interrupt (thread_p, false);
   error_code = file_destroy (thread_p, vfid, true);
-  thread_set_check_interrupt (thread_p, save_interrupt);
   if (error_code != NO_ERROR)
     {
       /* we should not have errors */
@@ -4263,6 +4274,7 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
       file_tempcache_retire_entry (entry);
     }
 
+  (void) thread_set_check_interrupt (thread_p, save_interrupt);
   return error_code;
 }
 
