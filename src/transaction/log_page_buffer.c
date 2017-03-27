@@ -9426,8 +9426,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
     }
 
   /* rename logactive tmp to logactive */
-  if ((start_level != FILEIO_BACKUP_FULL_LEVEL || stat (log_Name_active, &stat_buf) != 0)
-       && lgat_tmpname[0] != '\0' && stat (lgat_tmpname, &stat_buf) == 0)
+  if (stat (log_Name_active, &stat_buf) != 0 && lgat_tmpname[0] != '\0' && stat (lgat_tmpname, &stat_buf) == 0)
     {
       if (lgat_vdes != NULL_VOLDES)
 	{
