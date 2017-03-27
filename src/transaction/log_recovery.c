@@ -1624,6 +1624,11 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       /* reset tdes->rcv.atomic_sysop_start_lsa */
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
     }
+  if (LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+    {
+      /* reset tdes->rcv.atomic_sysop_start_lsa */
+      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+    }
 
   return NO_ERROR;
 }
