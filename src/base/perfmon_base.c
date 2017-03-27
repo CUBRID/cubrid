@@ -11,6 +11,8 @@
 #endif
 
 PSTAT_GLOBAL pstat_Global;
+PSTAT_NAMEOFFSET *pstat_Nameoffset;
+int total_num_stat_vals;
 
 PSTAT_METADATA pstat_Metadata[] = {
   /* Execution statistics for the file io */
@@ -398,6 +400,8 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_load_Time_obj_lock_acquire_time,
 			       &f_dump_diff_in_file_Time_obj_lock_acquire_time_in_table_form)
 };
+
+
 
 /*
  * f_load_Num_data_page_fix_ext () - Get the number of values for Num_data_page_fix_ext statistic
@@ -2368,4 +2372,316 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
     }
 
   return (ptr);
+}
+
+void
+init_name_offset_assoc ()
+{
+  int vals = 0;
+  int realI = 0;
+  for (unsigned int i = 0; i < PSTAT_COUNT; i++)
+    {
+      vals += pstat_Metadata[i].n_vals;
+    }
+
+  total_num_stat_vals = vals;
+
+  pstat_Nameoffset = (PSTAT_NAMEOFFSET *) malloc (sizeof (PSTAT_NAMEOFFSET) * vals);
+
+  for (unsigned int i = 0; i < PSTAT_COUNT; i++)
+    {
+      int offset = pstat_Metadata[i].start_offset;
+      if (pstat_Metadata[i].valtype == PSTAT_ACCUMULATE_SINGLE_VALUE ||
+	  pstat_Metadata[i].valtype == PSTAT_PEEK_SINGLE_VALUE ||
+	  pstat_Metadata[i].valtype == PSTAT_COMPUTED_RATIO_VALUE)
+	{
+	  strcpy (pstat_Nameoffset[realI].name, pstat_Metadata[i].stat_name);
+	}
+      else if (pstat_Metadata[i].valtype == PSTAT_COUNTER_TIMER_VALUE)
+	{
+	  char num[128], total[128], max[128], avg[128];
+	  strcpy (num, "Num_");
+	  strcat (num, pstat_Metadata[i].stat_name);
+	  strcpy (total, "Total_time_");
+	  strcat (total, pstat_Metadata[i].stat_name);
+	  strcpy (max, "Max_time_");
+	  strcat (max, pstat_Metadata[i].stat_name);
+	  strcpy (avg, "Avg_time_");
+	  strcat (avg, pstat_Metadata[i].stat_name);
+
+	  strcpy (pstat_Nameoffset[realI].name, num);
+	  strcpy (pstat_Nameoffset[realI + 1].name, total);
+	  strcpy (pstat_Nameoffset[realI + 2].name, max);
+	  strcpy (pstat_Nameoffset[realI + 3].name, avg);
+	}
+      else if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
+	{
+	  if (pstat_Metadata[i].psid == PSTAT_PBX_FIX_COUNTERS)
+	    {
+	      int module;
+	      int page_type;
+	      int page_mode;
+	      int latch_mode;
+	      int cond_type;
+	      int current_offset;
+
+	      for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+		{
+		  for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
+		    {
+		      for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT; page_mode < PERF_PAGE_MODE_CNT; page_mode++)
+			{
+			  for (latch_mode = PERF_HOLDER_LATCH_READ; latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
+			    {
+			      for (cond_type = PERF_CONDITIONAL_FIX; cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
+				{
+				  current_offset =
+				    offset + PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode, latch_mode,
+									cond_type);
+				  snprintf (pstat_Nameoffset[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
+					    perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
+					    perfmon_stat_page_mode_name (page_mode),
+					    perfmon_stat_holder_latch_name (latch_mode),
+					    perfmon_stat_cond_type_name (cond_type));
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	  else if (pstat_Metadata[i].psid == PSTAT_PBX_PROMOTE_COUNTERS)
+	    {
+	      int module;
+	      int page_type;
+	      int promote_cond;
+	      int holder_latch;
+	      int success;
+	      int current_offset;
+
+	      for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+		{
+		  for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
+		    {
+		      for (promote_cond = PERF_PROMOTE_ONLY_READER; promote_cond < PERF_PROMOTE_CONDITION_CNT;
+			   promote_cond++)
+			{
+			  for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT;
+			       holder_latch++)
+			    {
+			      for (success = 0; success < 2; success++)
+				{
+				  current_offset =
+				    offset + PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond,
+									    holder_latch, success);
+				  snprintf (pstat_Nameoffset[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
+					    perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
+					    perfmon_stat_promote_cond_name (promote_cond),
+					    perfmon_stat_holder_latch_name (holder_latch),
+					    (success ? "SUCCESS" : "FAILED"));
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	  else if (pstat_Metadata[i].psid == PSTAT_PBX_PROMOTE_TIME_COUNTERS)
+	    {
+	      int module;
+	      int page_type;
+	      int promote_cond;
+	      int holder_latch;
+	      int success;
+	      int current_offset;
+
+	      for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+		{
+		  for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
+		    {
+		      for (promote_cond = PERF_PROMOTE_ONLY_READER; promote_cond < PERF_PROMOTE_CONDITION_CNT;
+			   promote_cond++)
+			{
+			  for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT;
+			       holder_latch++)
+			    {
+			      for (success = 0; success < 2; success++)
+				{
+				  current_offset =
+				    offset + PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond,
+									    holder_latch, success);
+				  snprintf (pstat_Nameoffset[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
+					    perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
+					    perfmon_stat_promote_cond_name (promote_cond),
+					    perfmon_stat_holder_latch_name (holder_latch),
+					    (success ? "SUCCESS" : "FAILED"));
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	  else if (pstat_Metadata[i].psid == PSTAT_PBX_UNFIX_COUNTERS)
+	    {
+	      int module;
+	      int page_type;
+	      int buf_dirty;
+	      int holder_dirty;
+	      int holder_latch;
+	      int current_offset;
+
+	      for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+		{
+		  for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
+		    {
+		      for (buf_dirty = 0; buf_dirty <= 1; buf_dirty++)
+			{
+			  for (holder_dirty = 0; holder_dirty <= 1; holder_dirty++)
+			    {
+			      for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT;
+				   holder_latch++)
+				{
+				  current_offset =
+				    offset + PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, holder_dirty,
+									  holder_latch);
+				  snprintf (pstat_Nameoffset[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
+					    perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
+					    buf_dirty ? "BUF_DIRTY" : "BUF_NON_DIRTY",
+					    holder_dirty ? "HOLDER_DIRTY" : "HOLDER_NON_DIRTY",
+					    perfmon_stat_holder_latch_name (holder_latch));
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	  else if (pstat_Metadata[i].psid == PSTAT_PBX_LOCK_TIME_COUNTERS)
+	    {
+	      int module;
+	      int page_type;
+	      int page_mode;
+	      int latch_mode;
+	      int cond_type;
+	      int current_offset;
+
+	      for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+		{
+		  for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
+		    {
+		      for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT; page_mode < PERF_PAGE_MODE_CNT; page_mode++)
+			{
+			  for (latch_mode = PERF_HOLDER_LATCH_READ; latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
+			    {
+			      for (cond_type = PERF_CONDITIONAL_FIX; cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
+				{
+				  current_offset =
+				    offset + PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode, latch_mode,
+									cond_type);
+				  snprintf (pstat_Nameoffset[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
+					    perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
+					    perfmon_stat_page_mode_name (page_mode),
+					    perfmon_stat_holder_latch_name (latch_mode),
+					    perfmon_stat_cond_type_name (cond_type));
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	  else if (pstat_Metadata[i].psid == PSTAT_PBX_HOLD_TIME_COUNTERS)
+	    {
+	      int module;
+	      int page_type;
+	      int page_mode;
+	      int latch_mode;
+	      int current_offset;
+
+	      for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+		{
+		  for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
+		    {
+		      for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT; page_mode < PERF_PAGE_MODE_CNT; page_mode++)
+			{
+			  for (latch_mode = PERF_HOLDER_LATCH_READ; latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
+			    {
+			      current_offset =
+				offset + PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_mode, latch_mode);
+			      snprintf (pstat_Nameoffset[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s",
+					perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
+					perfmon_stat_page_mode_name (page_mode),
+					perfmon_stat_holder_latch_name (latch_mode));
+			    }
+			}
+		    }
+		}
+	    }
+	  else if (pstat_Metadata[i].psid == PSTAT_PBX_FIX_TIME_COUNTERS)
+	    {
+	      int module;
+	      int page_type;
+	      int page_mode;
+	      int latch_mode;
+	      int cond_type;
+	      int current_offset;
+
+	      for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+		{
+		  for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
+		    {
+		      for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT; page_mode < PERF_PAGE_MODE_CNT; page_mode++)
+			{
+			  for (latch_mode = PERF_HOLDER_LATCH_READ; latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
+			    {
+			      for (cond_type = PERF_CONDITIONAL_FIX; cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
+				{
+				  current_offset =
+				    offset + PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode, latch_mode,
+									cond_type);
+				  snprintf (pstat_Nameoffset[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
+					    perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
+					    perfmon_stat_page_mode_name (page_mode),
+					    perfmon_stat_holder_latch_name (latch_mode),
+					    perfmon_stat_cond_type_name (cond_type));
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	  else if (pstat_Metadata[i].psid == PSTAT_MVCC_SNAPSHOT_COUNTERS)
+	    {
+	      PERF_SNAPSHOT_TYPE snapshot;
+	      PERF_SNAPSHOT_RECORD_TYPE rec_type;
+	      PERF_SNAPSHOT_VISIBILITY visibility;
+	      int current_offset;
+
+	      for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < PERF_SNAPSHOT_CNT; snapshot++)
+		{
+		  for (rec_type = PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED; rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT;
+		       rec_type++)
+		    {
+		      for (visibility = PERF_SNAPSHOT_INVISIBLE; visibility < PERF_SNAPSHOT_VISIBILITY_CNT;
+			   visibility++)
+			{
+			  current_offset = offset + PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
+			  snprintf (pstat_Nameoffset[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s",
+				    perfmon_stat_snapshot_name (snapshot), perfmon_stat_snapshot_record_type (rec_type),
+				    (visibility == PERF_SNAPSHOT_INVISIBLE) ? "INVISIBLE" : "VISIBLE");
+			}
+		    }
+		}
+	    }
+	  else if (pstat_Metadata[i].psid == PSTAT_OBJ_LOCK_TIME_COUNTERS)
+	    {
+	      int lock_mode;
+	      int current_offset;
+
+	      for (lock_mode = PERF_NA_LOCK; lock_mode <= PERF_SCH_M_LOCK; lock_mode++)
+		{
+		  current_offset = offset + lock_mode;
+		  snprintf (pstat_Nameoffset[current_offset].name, STAT_NAME_MAX_SIZE, "%s",
+			    perfmon_stat_lock_mode_name (lock_mode));
+		}
+	    }
+	}
+      realI += pstat_Metadata[i].n_vals;
+    }
 }

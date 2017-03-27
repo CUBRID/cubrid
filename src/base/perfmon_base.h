@@ -26,6 +26,8 @@ extern "C"
 #define PSTAT_METADATA_INIT_COMPLEX(id, name, f_dump_in_file, f_dump_in_buffer, f_load, f_dump_diff) \
   { id, name, PSTAT_COMPLEX_VALUE, 0, 0, f_dump_in_file, f_dump_in_buffer, f_load, f_dump_diff }
 
+#define STAT_NAME_MAX_SIZE 64
+
 typedef enum
 {
   PERF_MODULE_SYSTEM = 0,
@@ -695,6 +697,7 @@ void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_
 void perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * stats2);
 
 int metadata_initialize ();
+void init_name_offset_assoc ();
 
 long long difference (long long var1, long long var2);
 
@@ -740,6 +743,15 @@ struct pstat_global
   int activation_flag;
 };
 
+struct PSTAT_NameOffsetAssoc
+{
+  char name[STAT_NAME_MAX_SIZE];
+};
+
+typedef struct PSTAT_NameOffsetAssoc PSTAT_NAMEOFFSET;
+
+extern int total_num_stat_vals;
+extern PSTAT_NAMEOFFSET *pstat_Nameoffset;
 extern PSTAT_GLOBAL pstat_Global;
 
 #endif //CUBRID_PERFMON_BASE_H
