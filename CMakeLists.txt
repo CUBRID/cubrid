@@ -769,11 +769,17 @@ if(WITH_LIBEDIT STREQUAL "BUNDLED")
   # TODO: support system or user provided library
 endif(WITH_LIBEDIT STREQUAL "BUNDLED")
 
-if(WITH_LIBLZO STREQUAL "BUNDLED")
+if(WITH_LIBLZO MATCHES "^BUNDLED")
+  string(SUBSTRING ${WITH_LIBLZO} 7 -1 LZO_PATH)
+  
+  if(LZO_PATH STREQUAL "")
+    set(LZO_PATH "lzo-2.03")
+  endif()
+  
   if(UNIX)
     set(LIBLZO_TARGET liblzo)
     externalproject_add(${LIBLZO_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/lzo-2.03
+      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/${LZO_PATH}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -789,8 +795,9 @@ if(WITH_LIBLZO STREQUAL "BUNDLED")
     endif(TARGET_PLATFORM_BITS EQUAL 32)
     set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/lzo)
   endif(UNIX)
+else()
   # TODO: support system or user provided library
-endif(WITH_LIBLZO STREQUAL "BUNDLED")
+endif()
 list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
 list(APPEND EP_LIBS ${LIBLZO_LIBS})
 
