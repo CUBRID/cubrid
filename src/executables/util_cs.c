@@ -2276,6 +2276,8 @@ statdump (UTIL_FUNCTION_ARG * arg)
   const char *substr;
   FILE *outfp = NULL;
   FILE *bin_out_fp = NULL;
+  time_t current_time = time (NULL);
+  INT64 portable_time, swapped_time;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2356,8 +2358,6 @@ statdump (UTIL_FUNCTION_ARG * arg)
 #endif
     }
 
-  time_t current_time = time (NULL);
-  INT64 portable_time, swapped_time;
   portable_time = (INT64) current_time;
 
   OR_PUT_INT64 (&swapped_time, &portable_time);
