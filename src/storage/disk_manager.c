@@ -3966,12 +3966,31 @@ error:
       if (nreserved > 0)
 	{
 	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+	  int iter_vsid;
+
 	  qsort (reserved_sectors, nreserved, sizeof (VSID), disk_compare_vsids);
 	  if (disk_unreserve_ordered_sectors_without_csect (thread_p, purpose, nreserved, reserved_sectors) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
 	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+
+	  /* we'll need to remove reservations for the rest of sectors (that were not allocated from disk). but first,
+	   * let's avoid removing the reservations for the ones we allocated from disk and rollbacked (they have been
+	   * removed from cache too */
+	  for (iter_vsid = 0; iter_vsid < nreserved; iter_vsid++)
+	    {
+	      /* search vsid in volumes */
+	      for (iter = 0; iter < context.n_cache_vol_reserve; iter++)
+		{
+		  if (reserved_sectors[iter_vsid].volid == context.cache_vol_reserve[iter].volid)
+		    {
+		      context.cache_vol_reserve[iter].nsect--;
+		      break;
+		    }
+		}
+	      assert (iter < context.n_cache_vol_reserve);
+	    }
 	}
     }
   else
