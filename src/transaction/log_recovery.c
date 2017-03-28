@@ -102,6 +102,9 @@ static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
 			       time_t * stopat);
+static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+						  const LOG_LSA * postpone_start_lsa);
+static void log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p);
 static void log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -3736,6 +3739,110 @@ exit:
 }
 
 /*
+ * log_recovery_abort_interrupted_sysop () - find and abort interruped system operation during postpones.
+ *
+ * return                  : void
+ * thread_p (in)           : thread entry
+ * tdes (in)               : transaction descriptor
+ * postpone_start_lsa (in) : LSA of start postpone (system op or transaction)
+ */
+static void
+log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * postpone_start_lsa)
+{
+  LOG_LSA iter_lsa, prev_lsa;
+  LOG_RECORD_HEADER logrec_head;
+  LOG_PAGE *log_page = NULL;
+  char buffer_log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_LSA last_parent_lsa = LSA_INITIALIZER;
+
+  assert (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
+	  || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
+  assert (!LSA_ISNULL (postpone_start_lsa));
+
+  if (LSA_ISNULL (&tdes->undo_nxlsa) || LSA_LE (&tdes->undo_nxlsa, postpone_start_lsa))
+    {
+      /* nothing to abort */
+      return;
+    }
+
+  log_page = (LOG_PAGE *) PTR_ALIGN (buffer_log_page, MAX_ALIGNMENT);
+
+  /* how it works:
+   * we can have so-called logical run postpone system operation for some complex cases (e.g. file destroy or
+   * deallocate). if these operations are interrupted by crash, we must abort them first before finishing the postpone
+   * phase of system operation or transaction.
+   *
+   * normally, all records during the postpone execution are run postpones - physical or logical system operations.
+   * so to rollback a logical system op during postpone we have to stop at previous run postpone (or at the start of
+   * postpone if this system op is first). we need to manually search it.
+   */
+
+  for (iter_lsa = tdes->undo_nxlsa; LSA_GT (&iter_lsa, postpone_start_lsa); iter_lsa = prev_lsa)
+    {
+      if (logpb_fetch_page (thread_p, &iter_lsa, LOG_CS_FORCE_USE, log_page) != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_abort_interrupted_sysop");
+	  return;
+	}
+      logrec_head = *(LOG_RECORD_HEADER *) (log_page->area + iter_lsa.offset);
+      assert (logrec_head.trid == tdes->trid);
+
+      if (logrec_head.type == LOG_RUN_POSTPONE)
+	{
+	  /* found run postpone, stop */
+	  last_parent_lsa = iter_lsa;
+	  break;
+	}
+      else if (logrec_head.type == LOG_SYSOP_END)
+	{
+	  /* we need to see why type of system op. */
+	  LOG_LSA read_lsa = iter_lsa;
+	  LOG_REC_SYSOP_END *sysop_end;
+
+	  /* skip header */
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (logrec_head), &read_lsa, log_page);
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*sysop_end), &read_lsa, log_page);
+
+	  sysop_end = (LOG_REC_SYSOP_END *) (log_page->area + read_lsa.offset);
+	  if (sysop_end->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+	    {
+	      /* found run postpone, stop */
+	      last_parent_lsa = iter_lsa;
+	      break;
+	    }
+	  else
+	    {
+	      /* go to last parent */
+	      prev_lsa = sysop_end->lastparent_lsa;
+	    }
+	}
+      else
+	{
+	  /* safe-guard: we do not expect postpone starts */
+	  assert (logrec_head.type != LOG_COMMIT_WITH_POSTPONE && logrec_head.type != LOG_SYSOP_START_POSTPONE);
+
+	  /* move to previous */
+	  prev_lsa = logrec_head.prev_tranlsa;
+	}
+      assert (!LSA_ISNULL (&prev_lsa) && !LSA_EQ (&prev_lsa, &iter_lsa));
+    }
+
+  if (LSA_ISNULL (&last_parent_lsa))
+    {
+      /* no run postpones before system op. stop at start postpone. */
+      assert (LSA_EQ (&iter_lsa, postpone_start_lsa));
+      last_parent_lsa = *postpone_start_lsa;
+    }
+
+  /* simulate system op */
+  log_sysop_start (thread_p);
+  /* hack last parent lsa */
+  tdes->topops.stack[tdes->topops.last].lastparent_lsa = last_parent_lsa;
+  /* rollback */
+  log_sysop_abort (thread_p);
+}
+
+/*
  * log_recovery_finish_sysop_postpone () - Finish postpone during recovery for one system operation.
  *
  * return        : void
@@ -3762,16 +3869,8 @@ log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       LSA_SET_NULL (&first_postpone_to_apply);
 
       /* first verify it didn't crash in the middle of a run postpone system op */
-      if (!LSA_ISNULL (&tdes->undo_nxlsa) && LSA_LT (&sysop_start_postpone_lsa, &tdes->undo_nxlsa))
-	{
-	  /* rollback. simulate a new system op */
-
-	  log_sysop_start (thread_p);
-	  tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone_lsa;
-	  /* rollback */
-	  log_sysop_abort (thread_p);
-	  assert (tdes->topops.last == 0);
-	}
+      log_recovery_abort_interrupted_sysop (thread_p, tdes, &sysop_start_postpone_lsa);
+      assert (tdes->topops.last == 0);
 
       /* find first postpone */
       log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
@@ -3871,16 +3970,12 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* 
        * The transaction was the one that was committing
        */
-      if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE && !LSA_ISNULL (&tdes->undo_nxlsa)
-	  && LSA_GT (&tdes->undo_nxlsa, &tdes->rcv.tran_start_postpone_lsa))
+      if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
 	{
-	  /* Transaction stopped in the middle of a logical postpone. We must rollback it. */
+	  /* make sure to abort interrupted logical postpone. */
 	  assert (tdes->topops.last == -1);
-	  log_sysop_start (thread_p);
-
-	  /* same as with the system op case, tran_start_postpone_lsa. */
-	  tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.tran_start_postpone_lsa;
-	  log_sysop_abort (thread_p);
+	  log_recovery_abort_interrupted_sysop (thread_p, tdes, &tdes->rcv.tran_start_postpone_lsa);
+	  assert (tdes->topops.last == -1);
 	  /* no more undo */
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
 	}
