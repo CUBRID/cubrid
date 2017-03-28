@@ -4226,8 +4226,6 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
   bool save_interrupt;
   int error_code = NO_ERROR;
 
-  save_interrupt = thread_set_check_interrupt (thread_p, false);
-
   if (was_preserved)
     {
       file_tempcache_lock ();
@@ -4256,7 +4254,6 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
   if (entry != NULL && file_tempcache_put (thread_p, entry))
     {
       /* cached */
-      (void) thread_set_check_interrupt (thread_p, save_interrupt);
       return NO_ERROR;
     }
 
@@ -4273,8 +4270,6 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
     {
       file_tempcache_retire_entry (entry);
     }
-
-  (void) thread_set_check_interrupt (thread_p, save_interrupt);
   return error_code;
 }
 
@@ -8912,7 +8907,6 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 {
   FILE_TEMPCACHE_ENTRY *temp_file;
   FILE_TEMPCACHE_ENTRY *next = NULL;
-  bool save_interrupt = thread_set_check_interrupt (thread_p, false);
 
   for (temp_file = *entries; temp_file != NULL; temp_file = next)
     {
@@ -8934,8 +8928,6 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 	}
     }
   *entries = NULL;
-
-  (void) thread_set_check_interrupt (thread_p, save_interrupt);
 }
 
 /*

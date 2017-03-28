@@ -3942,16 +3942,6 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
 
-#if 0
-  if (purpose == DB_TEMPORARY_DATA_PURPOSE)
-    {
-      if (disk_check (thread_p, false) == DISK_INVALID)
-	{
-	  assert (false);
-	}
-    }
-#endif
-
   return NO_ERROR;
 
 error:
@@ -4002,16 +3992,6 @@ error:
   disk_cache_free_reserved (&context);
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
-
-  if (purpose == DB_TEMPORARY_DATA_PURPOSE)
-    {
-      bool save = thread_set_check_interrupt (thread_p, false);
-      if (disk_check (thread_p, false) == DISK_INVALID)
-	{
-	  assert (false);
-	}
-      (void) thread_set_check_interrupt (thread_p, save);
-    }
 
   return error_code;
 }
@@ -4284,16 +4264,6 @@ disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
     }
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
-
-  if (purpose == DB_TEMPORARY_DATA_PURPOSE)
-    {
-      bool save = thread_set_check_interrupt (thread_p, false);
-      if (disk_check (thread_p, false) == DISK_INVALID)
-	{
-	  assert (false);
-	}
-      (void) thread_set_check_interrupt (thread_p, save);
-    }
   return error_code;
 }
 
