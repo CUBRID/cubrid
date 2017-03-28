@@ -3953,11 +3953,17 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   FILE_VSID_COLLECTOR vsid_collector;
   FILE_FTAB_COLLECTOR ftab_collector;
   DB_VOLPURPOSE volpurpose;
+  bool save_check_interrupt = false;
   int error_code = NO_ERROR;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
 
-  if (!is_temp)
+  if (is_temp)
+    {
+      /* do not interrupt destroying temporary files. it will leak pages. */
+      save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+    }
+  else
     {
       /* permanent files are first removed from tracker */
       error_code = file_tracker_unregister (thread_p, vfid);
@@ -4099,6 +4105,10 @@ exit:
   if (ftab_collector.partsect_ftab != NULL)
     {
       db_private_free (thread_p, ftab_collector.partsect_ftab);
+    }
+  if (is_temp)
+    {
+      (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
     }
   return error_code;
 }
@@ -4249,9 +4259,7 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
 
   /* was not cached. destroy */
   /* don't allow interrupt to avoid file leak */
-  save_interrupt = thread_set_check_interrupt (thread_p, false);
   error_code = file_destroy (thread_p, vfid, true);
-  thread_set_check_interrupt (thread_p, save_interrupt);
   if (error_code != NO_ERROR)
     {
       /* we should not have errors */
@@ -4262,7 +4270,6 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
     {
       file_tempcache_retire_entry (entry);
     }
-
   return error_code;
 }
 
@@ -8900,7 +8907,6 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 {
   FILE_TEMPCACHE_ENTRY *temp_file;
   FILE_TEMPCACHE_ENTRY *next = NULL;
-  bool save_interrupt = thread_set_check_interrupt (thread_p, false);
 
   for (temp_file = *entries; temp_file != NULL; temp_file = next)
     {
@@ -8922,8 +8928,6 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 	}
     }
   *entries = NULL;
-
-  (void) thread_set_check_interrupt (thread_p, save_interrupt);
 }
 
 /*

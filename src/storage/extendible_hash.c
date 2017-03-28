@@ -1154,12 +1154,10 @@ exit_on_error:
     {
       if (is_tmp)
 	{
-	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
 	  if (file_destroy (thread_p, &bucket_vfid, is_tmp) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
-	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 	}
       else
 	{
@@ -1170,12 +1168,10 @@ exit_on_error:
     {
       if (is_tmp)
 	{
-	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
 	  if (file_destroy (thread_p, &dir_vfid, is_tmp) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
-	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 	}
       else
 	{
@@ -1280,7 +1276,6 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
     }
 
   log_sysop_start (thread_p);
-  save_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
@@ -1294,7 +1289,6 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
       assert_release (false);
     }
 
-  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
   log_sysop_commit (thread_p);
 
   return NO_ERROR;
