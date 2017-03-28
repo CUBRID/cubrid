@@ -3967,7 +3967,7 @@ error:
 
 	  /* we'll need to remove reservations for the rest of sectors (that were not allocated from disk). but first,
 	   * let's avoid removing the reservations for the ones we allocated from disk and rollbacked (they have been
-	   * removed from cache too */
+	   * removed from cache too) */
 	  for (iter_vsid = 0; iter_vsid < nreserved; iter_vsid++)
 	    {
 	      /* search vsid in volumes */
