@@ -3823,7 +3823,6 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
 
 	  /* move to previous */
 	  prev_lsa = logrec_head.prev_tranlsa;
-	  break;
 	}
       assert (!LSA_ISNULL (&prev_lsa) && !LSA_EQ (&prev_lsa, &iter_lsa));
     }
