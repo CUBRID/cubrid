@@ -588,7 +588,8 @@ typedef enum
 {
   STATDUMP_MSG_BAD_OUTPUT = 11,
   STATDUMP_MSG_NOT_IN_STANDALONE = 59,
-  STATDUMP_MSG_USAGE = 60
+  STATDUMP_MSG_USAGE = 60,
+  STATDUMP_MSG_BAD_BINARY_OUTPUT = 61
 } MSGCAT_STATDUMP_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_APPLYINFO */
@@ -1433,6 +1434,8 @@ typedef struct _ha_config
 #define STATDUMP_CUMULATIVE_L                   "cumulative"
 #define STATDUMP_SUBSTR_S			's'
 #define STATDUMP_SUBSTR_L			"substr"
+#define STATDUMP_BINARY_OUTPUT_FILE_S		'b'
+#define STATDUMP_BINARY_OUTPUT_FILE_L		"binary-output-file"
 
 /* acl option list */
 #define ACLDB_RELOAD_S                          'r'

@@ -59,9 +59,13 @@ if(UNIX)
 endif(UNIX)
 
 set(STATISTICS_TOOL_SOURCES
-        ../src/executables/stattool/Main.cpp
-        ../src/executables/stattool/StatisticsFile.cpp
-        ../src/executables/stattool/Utils.cpp
+        ${EXECUTABLES_DIR}/stattool/Main.cpp
+        ${EXECUTABLES_DIR}/stattool/StatisticsFile.cpp
+        ${EXECUTABLES_DIR}/stattool/Utils.cpp
+        ${EXECUTABLES_DIR}/stattool/CommandExecutor.cpp
+        ${EXECUTABLES_DIR}/stattool/PlotExecutor.cpp
+        ${EXECUTABLES_DIR}/stattool/ShowExecutor.cpp
+        ${EXECUTABLES_DIR}/stattool/LoadExecutor.cpp
         ${BASE_DIR}/perfmon_base.c
         ${BASE_DIR}/porting.c
 )

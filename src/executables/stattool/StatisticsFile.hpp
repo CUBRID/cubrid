@@ -95,25 +95,11 @@ class StatisticsFile
       {
         int i;
 
-        for (i = 0; i < PSTAT_COUNT; i++)
+        for (i = 0; i < total_num_stat_vals; i++)
           {
-            if (strcmp (pstat_Metadata[i].stat_name, stat_name) == 0)
+            if (strcmp (pstat_Nameoffset[i].name, stat_name) == 0)
               {
-                int offset = pstat_Metadata[i].start_offset;
-
-                switch (pstat_Metadata[i].valtype)
-                  {
-                  case PSTAT_ACCUMULATE_SINGLE_VALUE:
-                  case PSTAT_PEEK_SINGLE_VALUE:
-                  case PSTAT_COMPUTED_RATIO_VALUE:
-                    return rawStats[offset];
-                  case PSTAT_COUNTER_TIMER_VALUE:
-                    return rawStats[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)];
-                  case PSTAT_COMPLEX_VALUE:
-                  default:
-                    assert (false);
-                    break;
-                  }
+                return rawStats[i];
               }
           }
         return 0;
@@ -157,7 +143,7 @@ class StatisticsFile
     StatisticsFile (const std::string &filename, const std::string &alias);
     bool readFileAndInit ();
     Snapshot *getSnapshotBySeconds (unsigned int minutes);
-    Snapshot *getSnapshotByArgument (char *argument);
+    Snapshot *getSnapshotByArgument (const char *argument);
     void getIndicesOfSnapshotsByArgument (const char *argument, int &minutes1, int &minutes2);
     int getSnapshotIndexBySeconds (unsigned int minutes);
     static void printInTableForm (Snapshot *s1, Snapshot *s2, FILE *stream);

@@ -1,0 +1,21 @@
+//
+// Created by paul on 28.03.2017.
+//
+
+#include "CommandExecutor.hpp"
+
+CommandExecutor::CommandExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files) : files (files)
+{
+  std::istringstream ss (wholeCommand);
+  std::string token;
+
+  while (std::getline (ss, token, ' '))
+    {
+      arguments.push_back (token);
+    }
+}
+
+CommandExecutor::~CommandExecutor()
+{
+
+}

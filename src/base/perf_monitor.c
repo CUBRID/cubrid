@@ -386,12 +386,14 @@ perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, c
     }
   if (cumulative)
     {
-      char *packed_stats = (char *) malloc (sizeof (UINT64) * pstat_Global.n_stat_values);
-      perfmon_pack_stats (packed_stats, perfmon_Stat_info.current_global_stats);
-
-      fwrite (packed_stats, sizeof (UINT64), (size_t) pstat_Global.n_stat_values, bin_stream);
+      if (bin_stream != NULL)
+	{
+	  char *packed_stats = (char *) malloc (sizeof (UINT64) * pstat_Global.n_stat_values);
+	  perfmon_pack_stats (packed_stats, perfmon_Stat_info.current_global_stats);
+	  fwrite (packed_stats, sizeof (UINT64), (size_t) pstat_Global.n_stat_values, bin_stream);
+	  free (packed_stats);
+	}
       perfmon_server_dump_stats (perfmon_Stat_info.current_global_stats, stream, substr);
-      free (packed_stats);
     }
   else
     {

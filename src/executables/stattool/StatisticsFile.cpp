@@ -163,7 +163,7 @@ void StatisticsFile::getIndicesOfSnapshotsByArgument (const char *argument, int 
     }
 }
 
-StatisticsFile::Snapshot *StatisticsFile::getSnapshotByArgument (char *argument)
+StatisticsFile::Snapshot *StatisticsFile::getSnapshotByArgument (const char *argument)
 {
   char diffArgument[32];
   char alias[MAX_FILE_NAME_SIZE];

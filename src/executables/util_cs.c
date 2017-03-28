@@ -2270,7 +2270,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
-  char bin_output_file[PATH_MAX];
+  const char *binary_output_file = NULL;
   int interval;
   bool cumulative;
   const char *substr;
@@ -2291,7 +2291,9 @@ statdump (UTIL_FUNCTION_ARG * arg)
     }
 
   output_file = utility_get_option_string_value (arg_map, STATDUMP_OUTPUT_FILE_S, 0);
+  binary_output_file = utility_get_option_string_value (arg_map, STATDUMP_BINARY_OUTPUT_FILE_S, 0);
   interval = utility_get_option_int_value (arg_map, STATDUMP_INTERVAL_S);
+
   if (interval < 0)
     {
       goto print_statdump_usage;
@@ -2307,18 +2309,27 @@ statdump (UTIL_FUNCTION_ARG * arg)
   if (output_file == NULL)
     {
       outfp = stdout;
-      bin_out_fp = fopen ("statistics.bin", "wb");
     }
   else
     {
       outfp = fopen (output_file, "w");
-      snprintf (bin_output_file, PATH_MAX, "%s.bin", output_file);
-      bin_out_fp = fopen (bin_output_file, "wb");
       if (outfp == NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP, STATDUMP_MSG_BAD_OUTPUT),
 				 output_file);
+	  goto error_exit;
+	}
+    }
+
+  if (binary_output_file != NULL)
+    {
+      bin_out_fp = fopen (binary_output_file, "wb");
+      if (bin_out_fp == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP, STATDUMP_MSG_BAD_BINARY_OUTPUT),
+				 binary_output_file);
 	  goto error_exit;
 	}
     }
@@ -2358,17 +2369,22 @@ statdump (UTIL_FUNCTION_ARG * arg)
 #endif
     }
 
-  portable_time = (INT64) current_time;
-
-  OR_PUT_INT64 (&swapped_time, &portable_time);
-  fwrite (&swapped_time, sizeof (INT64), 1, bin_out_fp);
+  if (bin_out_fp != NULL)
+    {
+      portable_time = (INT64) current_time;
+      OR_PUT_INT64 (&swapped_time, &portable_time);
+      fwrite (&swapped_time, sizeof (INT64), 1, bin_out_fp);
+    }
   do
     {
       print_timestamp (outfp, &current_time);
-      portable_time = (INT64) current_time;
 
-      OR_PUT_INT64 (&swapped_time, &portable_time);
-      fwrite (&swapped_time, sizeof (INT64), 1, bin_out_fp);
+      if (bin_out_fp != NULL)
+	{
+	  portable_time = (INT64) current_time;
+	  OR_PUT_INT64 (&swapped_time, &portable_time);
+	  fwrite (&swapped_time, sizeof (INT64), 1, bin_out_fp);
+	}
       if (histo_print_global_stats (outfp, bin_out_fp, cumulative, substr) != NO_ERROR)
 	{
 	  histo_stop ();
@@ -2402,7 +2418,10 @@ error_exit:
     {
       fclose (outfp);
     }
-  fclose (bin_out_fp);
+  if (bin_out_fp != NULL)
+    {
+      fclose (bin_out_fp);
+    }
   return EXIT_FAILURE;
 #else /* CS_MODE */
   PRINT_AND_LOG_ERR_MSG (msgcat_message
