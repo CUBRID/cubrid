@@ -3772,7 +3772,7 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
    * deallocate). if these operations are interrupted by crash, we must abort them first before finishing the postpone
    * phase of system operation or transaction.
    *
-   * normally, all records during the postpone execution run postpones - physical or logical system operations. 
+   * normally, all records during the postpone execution are run postpones - physical or logical system operations.
    * so to rollback a logical system op during postpone we have to stop at previous run postpone (or at the start of
    * postpone if this system op is first). we need to manually search it.
    */
