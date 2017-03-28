@@ -4797,10 +4797,10 @@ file_rv_dump_vfid_and_vpid (FILE * fp, int length, void *data)
   int offset = 0;
 
   vfid = (VFID *) (rcv_data + offset);
-  offset += sizeof (vfid);
+  offset += sizeof (*vfid);
 
   vpid = (VPID *) (rcv_data + offset);
-  offset += sizeof (vpid);
+  offset += sizeof (*vpid);
 
   assert (offset == length);
 
@@ -5825,6 +5825,17 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 	  file_log ("file_perm_dealloc",
 		    "merged full table page %d|%d also belongs to sector being moved to partial table \n",
 		    VPID_AS_ARGS (&vpid_merged));
+
+	  /* need to update file header */
+	  file_header_dealloc (fhead, FILE_ALLOC_TABLE_PAGE, false, false);
+	  save_page_lsa = *pgbuf_get_lsa (page_fhead);
+	  file_log_fhead_dealloc (thread_p, page_fhead, FILE_ALLOC_TABLE_PAGE, false, false);
+
+	  file_log ("file_perm_dealloc",
+		    "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
+		    "after simulating the deallocation of full table page \n"
+		    FILE_HEAD_ALLOC_MSG, VFID_AS_ARGS (&fhead->self),
+		    PGBUF_PAGE_MODIFY_ARGS (page_fhead, &save_page_lsa));
 	}
 
       /* find free space */

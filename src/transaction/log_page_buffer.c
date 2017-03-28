@@ -7639,7 +7639,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int ntops;			/* Number of total active top actions */
   int length_all_chkpt_trans;
   size_t length_all_tops = 0;
-  int i, j;
+  int i;
   const char *catmsg;
   VOLID volid;
   int error_code = NO_ERROR;
@@ -9426,9 +9426,15 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
     }
 
   /* rename logactive tmp to logactive */
-  if (stat (log_Name_active, &stat_buf) != 0 && stat (lgat_tmpname, &stat_buf) == 0)
+  if (stat (log_Name_active, &stat_buf) != 0 && lgat_tmpname[0] != '\0' && stat (lgat_tmpname, &stat_buf) == 0)
     {
-      rename (lgat_tmpname, log_Name_active);
+      if (lgat_vdes != NULL_VOLDES)
+	{
+	  fileio_dismount (thread_p, lgat_vdes);
+	  lgat_vdes = NULL_VOLDES;
+	}
+
+      os_rename_file (lgat_tmpname, log_Name_active);
     }
 
   unlink (lgat_tmpname);
