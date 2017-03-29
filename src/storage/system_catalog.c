@@ -1506,6 +1506,7 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
       return ER_FAILED;
     }
 
+  btree_stats_p->keys = 0;
   btree_stats_p->pkeys_size = 0;
   btree_stats_p->pkeys = NULL;
 
