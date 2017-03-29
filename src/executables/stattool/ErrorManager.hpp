@@ -30,7 +30,6 @@ class ErrorManager
    * so just add here pair error codes <> error messages. message id is the error code.
    */
 
-
   public:
     enum ErrorCode
     {

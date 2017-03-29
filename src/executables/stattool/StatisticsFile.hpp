@@ -22,6 +22,8 @@ extern "C"
 }
 class StatisticsFile
 {
+  /* TODO: Get snapshot out */
+
   public:
     struct Snapshot
     {

@@ -15,11 +15,16 @@ extern "C" {
 #include <porting.h>
 }
 
+/* TODO: add a prefix to all files and classes that are part of StatTool. STAT_TOOL_ something.
+ *
+ * and please refactor using the code convention I sent in email :).
+ */
+
 int main (int argc, char **argv)
 {
   bool quit = false;
   char command[MAX_COMMAND_SIZE];
-  std::vector<StatisticsFile *> files;
+  std::vector<StatisticsFile *> files;    /* TODO: this should be global */
   metadata_initialize();
   init_name_offset_assoc();
   Utils::setNStatValues (pstat_Global.n_stat_values);
@@ -33,7 +38,7 @@ int main (int argc, char **argv)
       std::string arguments;
 
       fgets (command, MAX_COMMAND_SIZE, stdin);
-      command[strlen (command) - 1] = '\0';
+      command[strlen (command) - 1] = '\0';   /* TODO: what does this do? */
       if (strlen (command) == 0)
         {
           continue;
