@@ -8858,7 +8858,8 @@ pgbuf_lru_add_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU
       bcb->next_BCB = NULL;
 
       /* set tick_lru3 smaller that current bottom's */
-      bcb->tick_lru3 = lru_list->bottom->tick_lru3 - 1;
+      bcb->tick_lru3 =
+	PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom) ? lru_list->bottom->tick_lru3 - 1 : lru_list->tick_lru3 - 1;
 
       /* update bottom */
       lru_list->bottom = bcb;
