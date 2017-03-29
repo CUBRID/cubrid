@@ -24,6 +24,13 @@ using namespace std::tr1;
 
 class ErrorManager
 {
+  /* TODO: let's give up taking the messages from an external file, like cubrid error manager does. we can give up
+   *       internationalization for now. we may extend it later if we really want.
+   *
+   * so just add here pair error codes <> error messages. message id is the error code.
+   */
+
+
   public:
     enum ErrorCode
     {
