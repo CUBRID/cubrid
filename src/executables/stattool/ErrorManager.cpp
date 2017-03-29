@@ -27,7 +27,13 @@ std::vector<unordered_map<unsigned int, std::string>* > ErrorManager::initMessag
       else
         {
           sscanf (buf, "%d \"%[^\"]\"", &index, msg);
-          msgMap[currentHashmap]->insert (std::make_pair<unsigned int, std::string> (index, std::string (msg)));
+          /* msgMap[currentHashmap]->insert (std::make_pair<unsigned int, std::string> (index, std::string (msg)));
+           *
+           * does not compile with C++11
+           *
+           * http://en.cppreference.com/w/cpp/utility/pair/make_pair
+           *
+           * let's avoid using make_pair. */
         }
     }
   return msgMap;

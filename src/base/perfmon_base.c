@@ -2379,7 +2379,9 @@ init_name_offset_assoc ()
 {
   int vals = 0;
   int realI = 0;
-  for (unsigned int i = 0; i < PSTAT_COUNT; i++)
+  unsigned int i;
+
+  for (i = 0; i < PSTAT_COUNT; i++)
     {
       vals += pstat_Metadata[i].n_vals;
     }
@@ -2388,7 +2390,7 @@ init_name_offset_assoc ()
 
   pstat_Nameoffset = (PSTAT_NAMEOFFSET *) malloc (sizeof (PSTAT_NAMEOFFSET) * vals);
 
-  for (unsigned int i = 0; i < PSTAT_COUNT; i++)
+  for (i = 0; i < PSTAT_COUNT; i++)
     {
       int offset = pstat_Metadata[i].start_offset;
       if (pstat_Metadata[i].valtype == PSTAT_ACCUMULATE_SINGLE_VALUE ||

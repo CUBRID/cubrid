@@ -9,7 +9,11 @@
 #define MESSAGES_PATH "~/cubrid/error_messages/en_US"
 
 #include <vector>
+#if defined (WINDOWS)
+#include <unordered_map>
+#else /* !WINDOWS */
 #include <tr1/unordered_map>
+#endif /* !WINDOWS */
 #include <string>
 #include <string.h>
 #include <stdio.h>
