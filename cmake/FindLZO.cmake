@@ -23,6 +23,7 @@ else (LZO_INCLUDE_DIR AND LZO_LIBRARIES)
   if(WIN32)
     FIND_LIBRARY(LZO_LIBRARIES NAMES lzo2.lib lzo2
       PATHS
+      ${LZO_ROOT}/lib
       $ENV{ProgramFiles}/lzo/*/lib
       $ENV{SystemDrive}/lzo/*/lib
       $ENV{LZO_DIR}/lib
