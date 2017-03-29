@@ -11253,7 +11253,6 @@ btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * lea
       mvcc_info = &local_mvcc_info;
     }
 
-  OID_SET_NULL (&inst_oid);
   BTREE_RECORD_OR_BUF_INIT (buf, leaf_record);
   while (buf.ptr < buf.endptr)
     {
@@ -11262,6 +11261,7 @@ btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * lea
        * first object. In any other cases follow the MVCC flags. */
       *offset_to_object = CAST_BUFLEN (buf.ptr - buf.buffer);
 
+      OID_SET_NULL (&inst_oid);
       /* Get object and all its information from record. */
       if (btree_or_get_object (&buf, btid, BTREE_LEAF_NODE, after_key_offset, &inst_oid, &class_oid, mvcc_info) !=
 	  NO_ERROR)
