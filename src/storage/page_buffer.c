@@ -1180,6 +1180,8 @@ STATIC_INLINE void pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBU
 STATIC_INLINE void pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (PGBUF_BCB * bcb, const char *file, int line)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_register_fix (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_hot (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 
@@ -7096,8 +7098,7 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       curr_bufptr->hash_next = NULL;
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
       VPID_SET_NULL (&(bufptr->vpid));
-      assert ((bufptr->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) == 0);
-      bufptr->count_fix_and_avoid_dealloc = 0;
+      pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
 
       return NO_ERROR;
     }
@@ -7593,8 +7594,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   assert (!pgbuf_bcb_avoid_victim (bufptr));
   bufptr->latch_mode = PGBUF_NO_LATCH;
   pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);	/* todo: why this?? */
-  assert ((bufptr->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) == 0);
-  bufptr->count_fix_and_avoid_dealloc = 0;
+  pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
   if (fetch_mode != NEW_PAGE)
@@ -8025,8 +8025,7 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   bufptr->latch_mode = PGBUF_LATCH_INVALID;
   assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0);
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_INVALID_ZONE);
-  assert ((bufptr->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) == 0);
-  bufptr->count_fix_and_avoid_dealloc = 0;
+  pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
   bufptr->next_BCB = pgbuf_Pool.buf_invalid_list.invalid_top;
@@ -15118,6 +15117,28 @@ pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb)
   assert (bcb->count_fix_and_avoid_dealloc >= 0);
   assert ((bcb->count_fix_and_avoid_dealloc & 0x00008000) == 0);
   return (bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0;
+}
+
+/*
+ * pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc () - check avoid deallocation is 0 and reset the whole bcb field.
+ *
+ * return    : void
+ * bcb (in)  : bcb
+ * file (in) : caller file
+ * line (in) : caller line
+ *
+ * note: avoid deallocation is allowed to be non-zero due to pgbuf_ordered_fix and the possibility of victimizing its
+ *       bcb. avoid crashing the server and just issue a warning.
+ */
+STATIC_INLINE void
+pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (PGBUF_BCB * bcb, const char *file, int line)
+{
+  if (pgbuf_bcb_should_avoid_deallocation (bcb))
+    {
+      er_log_debug (file, line, "warning: bcb %p, vpid = %d|%d, should not have avoid deallocation marker.\n",
+		    bcb, VPID_AS_ARGS (&bcb->vpid));
+    }
+  bcb->count_fix_and_avoid_dealloc = 0;
 }
 
 /*
