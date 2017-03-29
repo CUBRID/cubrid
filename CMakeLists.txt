@@ -17,6 +17,9 @@
 #
 
 cmake_minimum_required(VERSION 2.8)
+
+#also searches for modules onto cubrid/cmake
+# add other Find[LIBRARY].cmake scripts in cubrid/cmake
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -772,6 +775,23 @@ if(WITH_LIBEDIT STREQUAL "BUNDLED")
   # TODO: support system or user provided library
 endif(WITH_LIBEDIT STREQUAL "BUNDLED")
 
+# WITH_LIBLZO can have multiple values with different meanings
+# on Linux:
+# * "BUNDLED" - (default) builds lzo library from cubrid/external/lzo-2.03 and
+#               uses the library created by the build
+# * "BUNDLEDsome_name" - (e.g. BUNDLEDlzo-2.10) builds lzo library from 
+#               cubrid/external/some_name and  uses the library created by the build
+# * "" - use lzo library from the system (see cubrid/cmake/FindLZO.cmake)
+# * "/some/path" - use lzo library located in /some/path 
+#               /some/path/include/lzo should contain header files
+#               /some/path/lib should contain the library
+#               (see cubrid/cmake/FindLZO.cmake)
+# * "http://U/R/L/to/lzo.tar.gz" - downloads the library from specified URL and builds it
+# on Windows:
+# * BUNDLED - (default) uses the prebuilt library from cubrid/win/external/
+# * "" - searches for LZO library in some default system locations
+# * "/some/path" - searches for LZO library in the given path
+
 if(WITH_LIBLZO MATCHES "^BUNDLED")
   string(SUBSTRING "${WITH_LIBLZO}" 7 -1 LZO_PATH)
   
@@ -781,6 +801,7 @@ if(WITH_LIBLZO MATCHES "^BUNDLED")
   
   if(UNIX)
     set(LIBLZO_TARGET liblzo)
+    # compile LZO library from cubrid/external/${LZO_PATH}
     externalproject_add(${LIBLZO_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/${LZO_PATH}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
@@ -801,6 +822,8 @@ if(WITH_LIBLZO MATCHES "^BUNDLED")
 elseif(WITH_LIBLZO MATCHES "^http")
   if(UNIX)
     set(LIBLZO_TARGET liblzo)
+    #compile LZO library given an internet url to a LZO archive
+    #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
     externalproject_add(${LIBLZO_TARGET}
       URL ${WITH_LIBLZO}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
@@ -814,6 +837,8 @@ elseif(WITH_LIBLZO MATCHES "^http")
   endif(UNIX)
 else()
   set(LZO_ROOT ${WITH_LIBLZO})
+  #searches for LZO library within LZO_ROOT path and other system paths (see cubrid/cmake/FindLZO.cmake).
+  #calls cubrid/cmake/FindLZO.cmake
   find_package(LZO REQUIRED)
   if(LZO_FOUND)
     set(LIBLZO_LIBS     ${LZO_LIBRARIES})
