@@ -11,6 +11,7 @@
 #include "Utils.hpp"
 #include <iostream>
 #include <assert.h>
+#include "ErrorManager.hpp"
 
 extern "C"
 {
@@ -141,7 +142,7 @@ class StatisticsFile
     };
 
     StatisticsFile (const std::string &filename, const std::string &alias);
-    bool readFileAndInit ();
+    ErrorManager::ErrorCode readFileAndInit ();
     Snapshot *getSnapshotBySeconds (unsigned int minutes);
     Snapshot *getSnapshotByArgument (const char *argument);
     void getIndicesOfSnapshotsByArgument (const char *argument, int &minutes1, int &minutes2);

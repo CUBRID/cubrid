@@ -66,6 +66,7 @@ set(STATISTICS_TOOL_SOURCES
         ${EXECUTABLES_DIR}/stattool/PlotExecutor.cpp
         ${EXECUTABLES_DIR}/stattool/ShowExecutor.cpp
         ${EXECUTABLES_DIR}/stattool/LoadExecutor.cpp
+        ${EXECUTABLES_DIR}/stattool/ErrorManager.cpp
         ${BASE_DIR}/perfmon_base.c
         ${BASE_DIR}/porting.c
 )

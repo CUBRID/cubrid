@@ -18,8 +18,9 @@ class PlotExecutor : public CommandExecutor
 {
   public:
     PlotExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files);
-    bool parseCommandAndInit();
-    bool execute();
+    ErrorManager::ErrorCode parseCommandAndInit();
+    ErrorManager::ErrorCode execute();
+    void printUsage();
     ~PlotExecutor();
   private:
     bool hasArgument (unsigned int i);

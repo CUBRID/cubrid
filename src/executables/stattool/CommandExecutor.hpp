@@ -10,18 +10,17 @@
 #include <sstream>
 #include "StatisticsFile.hpp"
 #include "../../base/perfmon_base.h"
+#include "ErrorManager.hpp"
 
-extern "C" {
-#include <error_manager.h>
-}
 
 class CommandExecutor
 {
   public:
     CommandExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files);
+    virtual ErrorManager::ErrorCode parseCommandAndInit() = 0;
+    virtual ErrorManager::ErrorCode execute() = 0;
+    virtual void printUsage() = 0;
     virtual ~CommandExecutor ();
-    virtual bool parseCommandAndInit() = 0;
-    virtual bool execute() = 0;
   protected:
     std::vector<std::string> arguments;
     std::vector<std::string> possibleOptions;

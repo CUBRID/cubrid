@@ -12,7 +12,7 @@ ShowExecutor::ShowExecutor (std::string &wholeCommand,
   possibleOptions.push_back (SHOW_COMPLEX_CMD);
 }
 
-bool ShowExecutor::parseCommandAndInit()
+ErrorManager::ErrorCode ShowExecutor::parseCommandAndInit()
 {
   for (unsigned int i = 0; i < arguments.size(); i++)
     {
@@ -74,10 +74,10 @@ bool ShowExecutor::parseCommandAndInit()
             }
         }
     }
-  return true;
+  return ErrorManager::NO_ERRORS;
 }
 
-bool ShowExecutor::execute()
+ErrorManager::ErrorCode ShowExecutor::execute()
 {
   printf ("%-50s", "");
   for (unsigned int i = 0; i < arguments.size(); i++)
@@ -110,7 +110,12 @@ bool ShowExecutor::execute()
           printf ("\n");
         }
     }
-  return true;
+  return ErrorManager::NO_ERRORS;
+}
+
+void ShowExecutor::printUsage()
+{
+  printf ("usage: show <alias[(X-Y)][/alias[(Z-W)]]>...\n");
 }
 
 ShowExecutor::~ShowExecutor()

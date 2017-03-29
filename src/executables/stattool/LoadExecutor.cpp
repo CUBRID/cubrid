@@ -9,30 +9,36 @@ LoadExecutor::LoadExecutor (std::string &wholeCommand,
 {
 }
 
-bool LoadExecutor::parseCommandAndInit()
+ErrorManager::ErrorCode LoadExecutor::parseCommandAndInit()
 {
   if (arguments.size() < 2)
     {
-      return false;
+      ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::NOT_ENOUGH_ARGUMENTS_MSG, "");
+      return ErrorManager::ARGUMENT_ERROR;
     }
 
   filename = arguments[0];
   alias = arguments[1];
 
-  return true;
+  return ErrorManager::NO_ERRORS;
 }
 
-bool LoadExecutor::execute()
+ErrorManager::ErrorCode LoadExecutor::execute()
 {
   StatisticsFile *newFile = new StatisticsFile (std::string (filename), std::string (alias));
 
-  bool hasSucceded = newFile->readFileAndInit();
-  if (hasSucceded)
+  ErrorManager::ErrorCode errorCode = newFile->readFileAndInit();
+  if (errorCode == ErrorManager::NO_ERRORS)
     {
       files.push_back (newFile);
     }
 
-  return hasSucceded;
+  return errorCode;
+}
+
+void LoadExecutor::printUsage()
+{
+  printf ("usage: load <filename> <alias>\n");
 }
 
 LoadExecutor::~LoadExecutor()

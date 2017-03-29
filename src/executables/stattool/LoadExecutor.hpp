@@ -11,8 +11,9 @@ class LoadExecutor : public CommandExecutor
 {
   public:
     LoadExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files);
-    bool parseCommandAndInit();
-    bool execute();
+    ErrorManager::ErrorCode parseCommandAndInit();
+    ErrorManager::ErrorCode execute();
+    void printUsage();
     ~LoadExecutor();
   private:
     std::string filename, alias;

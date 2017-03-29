@@ -13,10 +13,31 @@ PlotExecutor::PlotExecutor (std::string &wholeCommand,
   possibleOptions.push_back (INTERVAL_CMD);
 }
 
-bool PlotExecutor::parseCommandAndInit()
+ErrorManager::ErrorCode PlotExecutor::parseCommandAndInit()
 {
-  int index1, index2;
+  int index1 = -1, index2 = -1;
   bool hasFilename = false;
+  bool hasAlias = false, hasVariable = false;
+  bool first = true;
+
+  for (unsigned int i = 0; i < arguments.size(); i++)
+    {
+      if (arguments[i].compare (ALIAS_CMD) == 0)
+        {
+          hasAlias = true;
+        }
+      if (arguments[i].compare (VARIABLE_CMD) == 0)
+        {
+          hasVariable = true;
+        }
+    }
+
+  if (!hasAlias || !hasVariable)
+    {
+      ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::MISSING_ARGUMENT_MSG, "");
+      return ErrorManager::ARGUMENT_ERROR;
+    }
+
   for (unsigned int i = 0; i < arguments.size(); i++)
     {
       if (arguments[i].compare (ALIAS_CMD) == 0)
@@ -31,14 +52,18 @@ bool PlotExecutor::parseCommandAndInit()
           i--;
           if (aliases.size() == 0)
             {
-              return false;
+              ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::MISSING_ARGUMENT_MSG,
+                                               "No aliases were found!");
+              return ErrorManager::ARGUMENT_ERROR;
             }
         }
       else if (arguments[i].compare (VARIABLE_CMD) == 0)
         {
           if (!hasArgument (i))
             {
-              return false;
+              ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::MISSING_ARGUMENT_MSG,
+                                               "You must provide a variable!");
+              return ErrorManager::ARGUMENT_ERROR;
             }
           variable = arguments[i+1];
           i++;
@@ -47,7 +72,9 @@ bool PlotExecutor::parseCommandAndInit()
         {
           if (!hasArgument (i))
             {
-              return false;
+              ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::MISSING_ARGUMENT_MSG,
+                                               "You must provide an interval!");
+              return ErrorManager::ARGUMENT_ERROR;
             }
           interval = arguments[i+1];
           i++;
@@ -56,7 +83,9 @@ bool PlotExecutor::parseCommandAndInit()
         {
           if (!hasArgument (i))
             {
-              return false;
+              ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::MISSING_ARGUMENT_MSG,
+                                               "You must provide a plot filename!!");
+              return ErrorManager::ARGUMENT_ERROR;
             }
           hasFilename = true;
           plotFilename = arguments[i+1];
@@ -74,19 +103,6 @@ bool PlotExecutor::parseCommandAndInit()
       std::string arg = "";
       arg += aliases[i] + interval;
 
-      if (i == 0)
-        {
-          plotCmd += "plot '-' with lines title \"";
-          plotCmd += arg;
-          plotCmd += "\", ";
-        }
-      else
-        {
-          plotCmd += "'-' with lines title \"";
-          plotCmd += arg;
-          plotCmd += "\", ";
-        }
-
       for (unsigned int j = 0; j < files.size(); j++)
         {
           files[j]->getIndicesOfSnapshotsByArgument (arg.c_str (), index1, index2);
@@ -94,14 +110,33 @@ bool PlotExecutor::parseCommandAndInit()
           if (index1 != -1 && index2 != -1)
             {
               plotData.push_back (std::make_pair (j, std::make_pair (index1, index2)));
+              if (first)
+                {
+                  first = false;
+                  plotCmd += "plot '-' with lines title \"";
+                  plotCmd += arg;
+                  plotCmd += "\", ";
+                }
+              else
+                {
+                  plotCmd += "'-' with lines title \"";
+                  plotCmd += arg;
+                  plotCmd += "\", ";
+                }
+              break;
             }
         }
     }
+  if (first)
+    {
+      ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::INVALID_ALIASES, "");
+      return ErrorManager::ARGUMENT_ERROR;
+    }
 
-  return true;
+  return ErrorManager::NO_ERRORS;
 }
 
-bool PlotExecutor::execute()
+ErrorManager::ErrorCode PlotExecutor::execute()
 {
   std::string cmd = "";
 
@@ -112,8 +147,8 @@ bool PlotExecutor::execute()
 #endif
   if (gnuplotPipe == NULL)
     {
-      printf ("Unable to open pipe!\n");
-      return false;
+      ErrorManager::printErrorMessage (ErrorManager::OPEN_ERROR, ErrorManager::PIPE_MSG, "");
+      return ErrorManager::OPEN_ERROR;
     }
 
   cmd += "set xlabel \"Time(s)\"";
@@ -149,7 +184,7 @@ bool PlotExecutor::execute()
   _pclose (gnuplotPipe);
 #endif
 
-  return true;
+  return ErrorManager::NO_ERRORS;
 }
 
 bool PlotExecutor::hasArgument (unsigned int i)
@@ -158,6 +193,14 @@ bool PlotExecutor::hasArgument (unsigned int i)
          std::find (possibleOptions.begin (), possibleOptions.end (), arguments[i+1]) == possibleOptions.end();
 }
 
+void PlotExecutor::printUsage()
+{
+  printf ("usage: plot <OPTIONS>\n\nvalid options:\n");
+  printf ("\t-a <alias1, alias2...>\n");
+  printf ("\t-i <INTERVAL>\n");
+  printf ("\t-v <VARIABLE>\n");
+  printf ("\t-f <PLOT FILENAME>\n");
+}
 
 PlotExecutor::~PlotExecutor()
 {

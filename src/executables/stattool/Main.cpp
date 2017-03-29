@@ -4,6 +4,7 @@
 #include "ShowExecutor.hpp"
 #include "PlotExecutor.hpp"
 #include "LoadExecutor.hpp"
+#include "ErrorManager.hpp"
 #if defined (WINDOWS)
 #include <windows.h>
 #endif
@@ -12,15 +13,6 @@ extern "C" {
 #include <perfmon_base.h>
 #include <string.h>
 #include <porting.h>
-}
-
-void print_plot_usage ()
-{
-  printf ("usage: plot <OPTIONS>\n\nvalid options:\n");
-  printf ("\t-a <alias1, alias2...>\n");
-  printf ("\t-i <INTERVAL>\n");
-  printf ("\t-v <VARIABLE>\n");
-  printf ("\t-f <PLOT FILENAME>\n");
 }
 
 int main (int argc, char **argv)
@@ -70,14 +62,22 @@ int main (int argc, char **argv)
         }
       else
         {
-          printf ("Unknown command!\n");
+          ErrorManager::printErrorMessage (ErrorManager::CMD_ERROR, ErrorManager::INVALID_COMMAND,
+                                           "The command is: " + commandStr);
           continue;
         }
 
       if (!quit)
         {
-          executor->parseCommandAndInit ();
-          executor->execute ();
+          ErrorManager::ErrorCode errorCode = executor->parseCommandAndInit ();
+          if (errorCode == ErrorManager::NO_ERRORS)
+            {
+              executor->execute ();
+            }
+          else
+            {
+              executor->printUsage ();
+            }
           delete executor;
         }
     }

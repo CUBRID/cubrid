@@ -9,7 +9,7 @@ StatisticsFile::StatisticsFile (const std::string &filename, const std::string &
 {
 }
 
-bool StatisticsFile::readFileAndInit ()
+ErrorManager::ErrorCode StatisticsFile::readFileAndInit ()
 {
   FILE *binary_fp = NULL;
   struct tm *timestamp;
@@ -20,7 +20,8 @@ bool StatisticsFile::readFileAndInit ()
   binary_fp = fopen (filename.c_str(), "rb");
   if (binary_fp == NULL)
     {
-      return false;
+      ErrorManager::printErrorMessage (ErrorManager::OPEN_ERROR, ErrorManager::FILE_MSG, "Filename: " + filename);
+      return ErrorManager::OPEN_ERROR;
     }
 
   fread (&seconds, sizeof (INT64), 1, binary_fp);
@@ -29,7 +30,8 @@ bool StatisticsFile::readFileAndInit ()
   timestamp = localtime (&relativeEpochSeconds);
   if (timestamp == NULL)
     {
-      return false;
+      ErrorManager::printErrorMessage (ErrorManager::CMD_ERROR, ErrorManager::MISSING_TIMESTAMP, "");
+      return ErrorManager::CMD_ERROR;
     }
   relativeTimestamp = *timestamp;
 
@@ -48,7 +50,7 @@ bool StatisticsFile::readFileAndInit ()
     }
 
   fclose (binary_fp);
-  return true;
+  return ErrorManager::NO_ERRORS;
 }
 
 StatisticsFile::Snapshot *StatisticsFile::getSnapshotBySeconds (unsigned int seconds)
@@ -128,15 +130,16 @@ void StatisticsFile::getIndicesOfSnapshotsByArgument (const char *argument, int 
   index2 = (int)snapshots.size() - 1;
 
   sscanf (argument, "%[^(]%[^)]", alias, diffArgument);
-  if (strlen (diffArgument) == 0)
-    {
-      return;
-    }
 
   if (strcmp (alias, this->alias.c_str()) != 0)
     {
       index1 = -1;
       index2 = -1;
+      return;
+    }
+
+  if (strlen (diffArgument) == 0)
+    {
       return;
     }
 

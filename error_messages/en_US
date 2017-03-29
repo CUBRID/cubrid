@@ -1,0 +1,13 @@
+#1
+0 "Unable to open file!"
+1 "Unable to open pipe!"
+#2
+0 "Unable to create file!"
+1 "Unable to create pipe!"
+#3
+2 "Missing argument!"
+3 "Not enough arguments were provided!"
+6 "Invalid provided aliases!"
+#4
+4 "The provided command is invalid!"
+5 "Timestamp was not found in the provided file!"

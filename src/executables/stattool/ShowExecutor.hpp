@@ -14,8 +14,9 @@ class ShowExecutor : public CommandExecutor
 {
   public:
     ShowExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files);
-    bool parseCommandAndInit();
-    bool execute();
+    ErrorManager::ErrorCode parseCommandAndInit();
+    ErrorManager::ErrorCode execute();
+    void printUsage();
     ~ShowExecutor();
   private:
     bool showComplex;
