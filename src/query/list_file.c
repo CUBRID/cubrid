@@ -1945,7 +1945,7 @@ int
 qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR ovf_tuple_page_p,
 				  QFILE_LIST_ID * input_list_id_p)
 {
-  PAGE_PTR cur_page_p, new_page_p, prev_page_p, ovf_page_p;
+  PAGE_PTR cur_page_p, new_page_p = NULL, prev_page_p, ovf_page_p;
   int tuple_length;
   char *page_p;
   int offset, tuple_page_size;
@@ -1977,6 +1977,10 @@ qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_
       ovf_page_p = qmgr_get_old_page (thread_p, &ovf_vpid, input_list_id_p->tfile_vfid);
       if (ovf_page_p == NULL)
 	{
+	  if (new_page_p)
+	    {
+	      qfile_set_dirty_page (thread_p, new_page_p, FREE, list_id_p->tfile_vfid);
+	    }
 	  return ER_FAILED;
 	}
 
