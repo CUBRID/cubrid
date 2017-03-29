@@ -4900,6 +4900,9 @@ pgbuf_initialize_bcb_table (void)
       bufptr->hit_age = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
+      bufptr->tick_lru3 = 0;
+      bufptr->tick_lru_list = 0;
+
       /* link BCB and iopage buffer */
       ioptr = PGBUF_FIND_IOPAGE_PTR (i);
 
