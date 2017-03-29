@@ -12118,38 +12118,24 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  er_status = er_errid ();
 	  if (er_status == ER_INTERRUPTED)
 	    {
+	      /* this is expected */
 	      goto exit;
 	    }
-
-	  valid =
-	    pgbuf_is_valid_page (thread_p, &(ordered_holders_info[i].vpid),
-				 VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)), NULL, NULL);
-#if defined(PGBUF_ORDERED_DEBUG)
-	  _er_log_debug (__FILE__, __LINE__,
-			 "ORDERED_FIX(%u): restore_pages_ERR: cannot fix VPID:(%d,%d), "
-			 "GROUP:%d,%d, rank:%d, page_fetch_mode:%d , latch_req: %d, valid:%d", ordered_fix_id,
-			 ordered_holders_info[i].vpid.volid, ordered_holders_info[i].vpid.pageid,
-			 ordered_holders_info[i].group_id.volid, ordered_holders_info[i].group_id.pageid,
-			 ordered_holders_info[i].rank, curr_fetch_mode, curr_request_mode, valid);
-#endif
-	  if (valid == DISK_INVALID)
+	  if (er_status == ER_PB_BAD_PAGEID)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, ordered_holders_info[i].vpid.pageid,
-		      fileio_get_volume_label (ordered_holders_info[i].vpid.volid, PEEK));
+	      /* page was probably deallocated? so has the impossible indeed happen?? */
+	      assert (false);
+	      er_log_debug (ARG_FILE_LINE, "pgbuf_ordered_fix: page %d|%d was deallocated an we told it not to!\n",
+			    VPID_AS_ARGS (&ordered_holders_info[i].vpid));
 	    }
-
-	  er_status = er_errid ();
-
 	  if (!VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
 	    {
 	      int prev_er_status = er_status;
 	      er_status = ER_PB_ORDERED_REFIX_FAILED;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 3, ordered_holders_info[i].vpid.volid,
 		      ordered_holders_info[i].vpid.pageid, prev_er_status);
-	      goto exit;
 	    }
-	  /* try to restore fixes on all remaining pages */
-	  continue;
+	  goto exit;
 	}
 
       /* get holder of last fix: last fixed pages is in top of holder list, we use parse code just for safety */
@@ -15072,14 +15058,8 @@ pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb)
 {
-#if !defined (NDEBUG)
-  int newval =
-#endif /* !NDEBUG */
-    ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1);
-  assert (newval > 0);
-  assert ((newval & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0);
-  assert (bcb->count_fix_and_avoid_dealloc > 0);
-  assert ((bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0);
+  assert ((bcb->count_fix_and_avoid_dealloc & 0x00008000) == 0);
+  (void) ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1);
 }
 
 /*
@@ -15091,14 +15071,39 @@ pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb)
 {
-#if !defined (NDEBUG)
-  int newval =
-#endif /* !NDEBUG */
-    ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, -1);
-  assert (newval >= 0);
-  assert ((newval & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0xFFFF);
-  assert (bcb->count_fix_and_avoid_dealloc >= 0);
-  assert ((bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0xFFFF);
+  int count_crt;
+  do
+    {
+      /* get bcb->count_fix_and_avoid_dealloc (volatile) */
+      count_crt = bcb->count_fix_and_avoid_dealloc;
+      assert ((count_crt & 0x00008000) == 0);
+      if ((count_crt & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0)
+	{
+	  /* we can decrement counter */
+	}
+      else
+	{
+	  /* interestingly enough, this case can happen. how?
+	   *
+	   * well, pgbuf_ordered_fix may be forced to unfix all pages currently held by transaction to fix a new page.
+	   * all pages that are "less" than new page are marked to avoid deallocation and unfixed. then transaction is
+	   * blocked on latching new page, which may take a while, pages previously unfixed can be victimized.
+	   * when pgbuf_ordered_fix tries to fix back these pages, it will load them from disk and tadaa, the avoid
+	   * deallocation count is 0. so we expect the case.
+	   *
+	   * note: avoid deallocation count is supposed to prevent vacuum workers from deallocating these pages.
+	   *       so, victimizing a bcb marked to avoid deallocation is not perfectly safe. however, the likelihood of
+	   *       page really getting deallocated is ... almost zero. the alternative of avoiding victimization when
+	   *       bcb's are marked for deallocation is much more complicated and poses serious risks (what if we leak
+	   *       the counter and prevent bcb from being victimized indefinitely?). so, we prefer the existing risks.
+	   */
+	  er_log_debug (ARG_FILE_LINE,
+			"pgbuf_bcb_unregister_avoid_deallocation: bcb %p, vpid = %d|%d was probably victimized.\n",
+			bcb, VPID_AS_ARGS (&bcb->vpid));
+	  break;
+	}
+    }
+  while (!ATOMIC_CAS_32 (&bcb->count_fix_and_avoid_dealloc, count_crt, count_crt - 1));
 }
 
 /*
@@ -15111,6 +15116,7 @@ STATIC_INLINE bool
 pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb)
 {
   assert (bcb->count_fix_and_avoid_dealloc >= 0);
+  assert ((bcb->count_fix_and_avoid_dealloc & 0x00008000) == 0);
   return (bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0;
 }
 
