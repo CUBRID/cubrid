@@ -12,7 +12,7 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
+ *  along with this program; if not, write to the Free Softwarehttp://jira.cubrid.org/browse/CBRD-20692
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
@@ -588,6 +588,14 @@ struct vacuum_dropped_files_rcv_data
   VFID vfid;
   OID class_oid;
 };
+
+/* Logging */
+#define VACUUM_LOG_DATA_ENTRY_MSG(name) \
+  "name = {blockid = %lld, flags = %lld, start_lsa = %lld|%d, oldest_mvccid=%llu, newest_mvccid=%llu }"
+#define VACUUM_LOG_DATA_ENTRY_AS_ARGS(data) \
+  (long long) VACUUM_BLOCKID_WITHOUT_FLAGS ((data)->blockid), (long long) VACUUM_BLOCKID_GET_FLAGS ((data)->blockid), \
+  LSA_AS_ARGS (&(data)->start_lsa), (unsigned long long) (data)->oldest_mvccid, \
+  (unsigned long long) (data)->newest_mvccid
 
 /* Vacuum static functions. */
 static void vacuum_process_vacuum_data (THREAD_ENTRY * thread_p);
@@ -1491,8 +1499,7 @@ retry_prepare:
 	    {
 	      /* Fix should have worked. */
 	      ASSERT_ERROR_AND_SET (error_code);
-	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page (%d, %d).",
-				   forward_vpid.volid, forward_vpid.pageid);
+	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d", VPID_AS_ARGS (&forward_vpid));
 	      return error_code;
 	    }
 	  /* Conditional latch. Unfix home, and fix in reversed order. */
@@ -1510,8 +1517,7 @@ retry_prepare:
 	  if (helper->forward_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
-	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page (%d, %d).",
-				   forward_vpid.volid, forward_vpid.pageid);
+	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d", VPID_AS_ARGS (&forward_vpid));
 	      return error_code;
 	    }
 	  /* Fix home page. */
@@ -1520,8 +1526,7 @@ retry_prepare:
 	  if (helper->home_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
-	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page (%d, %d).",
-				   forward_vpid.volid, forward_vpid.pageid);
+	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|d.", VPID_AS_ARGS (&forward_vpid));
 	      return error_code;
 	    }
 	  /* Both pages fixed. */
@@ -1583,8 +1588,8 @@ retry_prepare:
 	      if (helper->home_page == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error_code);
-		  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page (%d, %d).",
-				       helper->home_vpid.volid, helper->home_vpid.pageid);
+		  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.",
+				       VPID_AS_ARGS (&helper->home_vpid));
 		  return error_code;
 		}
 	      /* While home has been unfixed, it is possible that current record was changed. It could be vacuumed.
@@ -1614,8 +1619,7 @@ retry_prepare:
       if (helper->forward_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
-	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page (%d, %d).",
-			       forward_vpid.volid, forward_vpid.pageid);
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d", VPID_AS_ARGS (&forward_vpid));
 	  return error_code;
 	}
 
@@ -1625,8 +1629,7 @@ retry_prepare:
 	{
 	  ASSERT_ERROR ();
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-			       "Failed to get MVCC header from overflow page %d|%d.", forward_vpid.volid,
-			       forward_vpid.pageid);
+			       "Failed to get MVCC header from overflow page %d|%d.", VPID_AS_ARGS (&forward_vpid));
 	  return error_code;
 	}
       break;
@@ -2045,8 +2048,7 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
   if (error_code != NO_ERROR)
     {
       vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-			   "Failed to obtain heap file identifier for class (%d, %d, %d)", class_oid.volid,
-			   class_oid.pageid, class_oid.slotid);
+			   "Failed to obtain heap file identifier for class %d|%d|%d)", OID_AS_ARGS (&class_oid));
 
       assert_release (false);
       return error_code;
@@ -2284,8 +2286,7 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  /* Only insert MVCCID has been removed */
 	  if (spage_get_record (thread_p, rcv->pgptr, slotids[i], &peek_record, PEEK) != S_SUCCESS)
 	    {
-	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
-				   "Failed to get record at (%d, %d, %d).",
+	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY, "Failed to get record at %d|%d|%d",
 				   PGBUF_PAGE_VPID_AS_ARGS (rcv->pgptr), slotids[i]);
 	      assert_release (false);
 	      return ER_FAILED;
@@ -2680,12 +2681,10 @@ restart:
 	   */
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
-			 "Job for blockid = %lld, newest_mvccid = %llu, start_lsa = %lld cannot be generated. "
-			 "vacuum_Global_oldest_active_mvccid = %lld, log_Gl.append.prev_lsa.pageid = %d.",
-			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
-			 (unsigned long long int) entry->newest_mvccid,
-			 (long long int) entry->start_lsa.pageid, (int) entry->start_lsa.offset,
-			 (long long int) vacuum_Global_oldest_active_mvccid,
+			 "Cannot generate job for " VACUUM_LOG_DATA_ENTRY_MSG ("entry") ". "
+			 "vacuum_Global_oldest_active_mvccid = %llu, log_Gl.append.prev_lsa.pageid = %d.",
+			 VACUUM_LOG_DATA_ENTRY_AS_ARGS (entry),
+			 (unsigned long long int) vacuum_Global_oldest_active_mvccid,
 			 (long long int) log_Gl.append.prev_lsa.pageid);
 
 	  /* todo: remember this as starting point for next iteration of generating jobs */
@@ -3008,9 +3007,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
   log_page_p->hdr.offset = NULL_OFFSET;
 
   vacuum_er_log (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_JOBS,
-		 "vacuum_process_log_block (): blockid(%lld) start_lsa(%lld, %d) old_mvccid(%llu) new_mvccid(%llu)",
-		 LSA_AS_ARGS (&data->start_lsa), (unsigned long long int) data->oldest_mvccid,
-		 (unsigned long long int) data->newest_mvccid);
+		 "vacuum_process_log_block (): " VACUUM_LOG_DATA_ENTRY_MSG ("block"),
+		 VACUUM_LOG_DATA_ENTRY_AS_ARGS (data));
 
 #if defined (SERVER_MODE)
   if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_WORKERS)
@@ -3047,7 +3045,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	}
 #endif /* SERVER_MODE */
 
-      vacuum_er_log (VACUUM_ER_LOG_WORKER, "process log entry at log_lsa (%lld, %d)", LSA_AS_ARGS (&log_lsa));
+      vacuum_er_log (VACUUM_ER_LOG_WORKER, "process log entry at log_lsa %lld|%d", LSA_AS_ARGS (&log_lsa));
 
       worker->state = VACUUM_WORKER_STATE_PROCESS_LOG;
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, PSTAT_VAC_WORKER_EXECUTE);
@@ -3083,7 +3081,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	{
 	  /* No need to vacuum */
 	  vacuum_er_log (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_DROPPED_FILES,
-			 "Skip vacuuming based on (%lld, %d) in file %d|%d. Log record info: rcvindex=%d.",
+			 "Skip vacuuming based on %lld|%d in file %d|%d. Log record info: rcvindex=%d.",
 			 (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset, log_vacuum.vfid.volid,
 			 log_vacuum.vfid.fileid, log_record_data.rcvindex);
 	  continue;
@@ -3148,8 +3146,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	      if (MVCCID_IS_VALID (mvcc_info.delete_mvccid))
 		{
 		  vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-				 "vacuum from b-tree: btidp(%d, (%d %d)) oid(%d, %d, %d) "
-				 "class_oid(%d, %d, %d), purpose=rem_object, mvccid=%llu, based on %lld|%d",
+				 "vacuum from b-tree: btidp(%d, %d|%d) oid(%d|%d|%d) "
+				 "class_oid(%d|%d|%d), purpose=rem_object, mvccid=%llu, based on %lld|%d",
 				 BTID_AS_ARGS (btid_int.sys_btid), OID_AS_ARGS (&oid), OID_AS_ARGS (&class_oid),
 				 (unsigned long long int) mvcc_info.delete_mvccid, LSA_AS_ARGS (&rcv_lsa));
 		  error_code =
@@ -3159,7 +3157,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	      else if (MVCCID_IS_VALID (mvcc_info.insert_mvccid) && mvcc_info.insert_mvccid != MVCCID_ALL_VISIBLE)
 		{
 		  vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-				 "vacuum from b-tree: btidp(%d, (%d %d)) oid(%d, %d, %d) class_oid(%d, %d, %d), "
+				 "vacuum from b-tree: btidp(%d, %d|%d) oid(%d|%d|%d) class_oid(%d|%d|%d), "
 				 "purpose=rem_insid, mvccid=%llu, based on %lld|%d",
 				 BTID_AS_ARGS (btid_int.sys_btid), OID_AS_ARGS (&oid), OID_AS_ARGS (&class_oid),
 				 (unsigned long long int) mvcc_info.insert_mvccid, LSA_AS_ARGS (&rcv_lsa));
@@ -3171,8 +3169,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 		{
 		  /* impossible case */
 		  vacuum_er_log_error (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-				       "invalid vacuum case for RVBT_MVCC_NOTIFY_VACUUM btid(%d, (%d %d)) "
-				       "oid(%d, %d, %d) class_oid(%d, %d, %d), based on %lld|%d",
+				       "invalid vacuum case for RVBT_MVCC_NOTIFY_VACUUM btid(%d, %d|%d) "
+				       "oid(%d|%d|%d) class_oid(%d|%d|%d), based on %lld|%d",
 				       BTID_AS_ARGS (btid_int.sys_btid), OID_AS_ARGS (&oid), OID_AS_ARGS (&class_oid),
 				       LSA_AS_ARGS (&rcv_lsa));
 		  assert_release (false);
@@ -3183,8 +3181,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	    {
 	      /* Object was deleted and must be completely removed. */
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-			     "vacuum from b-tree: btidp(%d, (%d %d)) oid(%d, %d, %d) "
-			     "class_oid(%d, %d, %d), purpose=rem_object, mvccid=%llu, based on %lld|%d",
+			     "vacuum from b-tree: btidp(%d, %d|%d) oid(%d|%d|%d) "
+			     "class_oid(%d|%d|%d), purpose=rem_object, mvccid=%llu, based on %lld|%d",
 			     BTID_AS_ARGS (btid_int.sys_btid), OID_AS_ARGS (&oid), OID_AS_ARGS (&class_oid),
 			     (unsigned long long int) mvccid, LSA_AS_ARGS (&rcv_lsa));
 	      error_code = btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid, mvccid);
@@ -5691,8 +5689,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 	    }
 #endif
 	  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-			 "add dropped file: found duplicate vfid(%d, %d) at position=%d, "
-			 "replace mvccid=%llu with mvccid=%llu. Page is (%d, %d) with lsa (%lld, %d)."
+			 "add dropped file: found duplicate vfid %d|%d at position=%d, "
+			 "replace mvccid=%llu with mvccid=%llu. Page is %d|%d with lsa %lld|%d."
 			 "Page count=%d, global count=%d", VFID_AS_ARGS (&page->dropped_files[position].vfid), position,
 			 (unsigned long long int) save_mvccid,
 			 (unsigned long long int) page->dropped_files[position].mvccid,
@@ -5750,8 +5748,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 #endif
 
       vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		     "added new dropped file(%d, %d) and mvccid=%llu at position=%d. "
-		     "Page is (%d, %d) with lsa (%lld, %d). Page count=%d, global count=%d",
+		     "added new dropped file %d|%d and mvccid=%llu at position=%d. "
+		     "Page is %d|%d with lsa %lld|%d. Page count=%d, global count=%d",
 		     VFID_AS_ARGS (&page->dropped_files[position].vfid),
 		     (unsigned long long int) page->dropped_files[position].mvccid, position,
 		     PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) page), page->n_dropped_files, vacuum_Dropped_files_count);
@@ -5825,8 +5823,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 			 sizeof (VACUUM_DROPPED_FILES_PAGE), new_page);
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		 "added new dropped file(%d, %d) and mvccid=%llu to at position=%d. "
-		 "Page is (%d, %d) with lsa (%lld, %d). Page count=%d, global count=%d",
+		 "added new dropped file %d|%d and mvccid=%llu to at position=%d. "
+		 "Page is %d|%d with lsa %lld|%d. Page count=%d, global count=%d",
 		 VFID_AS_ARGS (&new_page->dropped_files[0].vfid),
 		 (unsigned long long int) new_page->dropped_files[0].mvccid, 0,
 		 PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) new_page), new_page->n_dropped_files, vacuum_Dropped_files_count);
@@ -5864,7 +5862,7 @@ vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const O
   LOG_DATA_ADDR addr;
   VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
 
-  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "Append %s log from dropped file (%d, %d).",
+  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "Append %s log from dropped file %d|%d.",
 		 pospone_or_undo ? "postpone" : "undo", vfid->volid, vfid->fileid);
 
   /* Initialize recovery data */
@@ -5920,7 +5918,7 @@ vacuum_rv_redo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* Error! */
       vacuum_er_log_error (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
 			   "Dropped files recovery error: Invalid position %d (only %d entries in page) while "
-			   "inserting new entry vfid=(%d, %d) mvccid=%llu. Page is (%d, %d) at lsa (%lld, %d). ",
+			   "inserting new entry vfid=%d|%d mvccid=%llu. Page is %d|%d at lsa %lld|%d. ",
 			   position, page->n_dropped_files, VFID_AS_ARGS (&dropped_file->vfid),
 			   (unsigned long long) dropped_file->mvccid, PGBUF_PAGE_STATE_ARGS (rcv->pgptr));
 
@@ -5944,7 +5942,7 @@ vacuum_rv_redo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
 		 "Dropped files redo recovery, insert new entry "
-		 "vfid=(%d, %d), mvccid=%llu at position %d. Page is (%d, %d) at lsa (%lld, %d).",
+		 "vfid=%d|%d, mvccid=%llu at position %d. Page is %d|%d at lsa %lld|%d.",
 		 VFID_AS_ARGS (&dropped_file->vfid), (unsigned long long) dropped_file->mvccid, position,
 		 PGBUF_PAGE_STATE_ARGS (rcv->pgptr));
 
@@ -6019,7 +6017,7 @@ vacuum_rv_replace_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* Error! */
       vacuum_er_log_error (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
 			   "Dropped files recovery error: Invalid position %d (only %d entries in page) while "
-			   "replacing old entry with vfid=(%d, %d) mvccid=%llu. Page is (%d, %d) at lsa (%lld, %d). ",
+			   "replacing old entry with vfid=%d|%d mvccid=%llu. Page is %d|%d at lsa %lld|%d. ",
 			   position, page->n_dropped_files, VFID_AS_ARGS (&dropped_file->vfid),
 			   (unsigned long long) dropped_file->mvccid, PGBUF_PAGE_STATE_ARGS (rcv->pgptr));
 
@@ -6032,8 +6030,8 @@ vacuum_rv_replace_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* Error! */
       vacuum_er_log_error (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
 			   "Dropped files recovery error: expected to "
-			   "find vfid (%d, %d) at position %d and found (%d, %d) with MVCCID=%d. "
-			   "Page is (%d, %d) at lsa (%lld, %d). ", VFID_AS_ARGS (&dropped_file->vfid), position,
+			   "find vfid %d|%d at position %d and found %d|%d with MVCCID=%d. "
+			   "Page is %d|%d at lsa %lld|%d. ", VFID_AS_ARGS (&dropped_file->vfid), position,
 			   VFID_AS_ARGS (&page->dropped_files[position].vfid),
 			   (unsigned long long) page->dropped_files[position].mvccid,
 			   PGBUF_PAGE_STATE_ARGS (rcv->pgptr));
@@ -6044,7 +6042,7 @@ vacuum_rv_replace_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
 		 "Dropped files redo recovery, replace MVCCID for"
-		 " file (%d, %d) with %llu (position=%d). Page is (%d, %d) at lsa (%lld, %d).",
+		 " file %d|%d with %llu (position=%d). Page is %d|%d at lsa %lld|%d.",
 		 VFID_AS_ARGS (&dropped_file->vfid), (unsigned long long) dropped_file->mvccid, position,
 		 PGBUF_PAGE_STATE_ARGS (rcv->pgptr));
   page->dropped_files[position].mvccid = dropped_file->mvccid;
@@ -6112,7 +6110,7 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   my_version = ++vacuum_Dropped_files_version;
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		 "Added dropped file - vfid=(%d, %d), mvccid=%llu - "
+		 "Added dropped file - vfid=%d|%d, mvccid=%llu - "
 		 "Wait for all workers to see my_version=%d", VFID_AS_ARGS (&rcv_data->vfid), mvccid, my_version);
 
   /* Wait until all workers have been notified of this change */
@@ -6245,7 +6243,7 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
 	  vacuum_log_cleanup_dropped_files (thread_p, (PAGE_PTR) page, removed_entries, n_removed_entries);
 
 	  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-			 "cleanup dropped files. Page is (%d %d) with lsa (%lld, %d). "
+			 "cleanup dropped files. Page is %d|%d with lsa %lld|%d. "
 			 "Page count=%d, global count=%d", PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) page),
 			 page->n_dropped_files, vacuum_Dropped_files_count);
 
@@ -6272,7 +6270,7 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
     {
       /* Update next page link in the last non-empty page to NULL, to avoid fixing empty pages in the future. */
       vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		     "Cleanup dropped files must remove pages to the of page (%d, %d)... Cut off link.",
+		     "Cleanup dropped files must remove pages to the of page %d|%d... Cut off link.",
 		     last_non_empty_page_vpid.volid, last_non_empty_page_vpid.pageid);
 
       page = vacuum_fix_dropped_entries_page (thread_p, &last_non_empty_page_vpid, PGBUF_LATCH_WRITE);
@@ -6371,11 +6369,11 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 	    {
 	      /* The record must belong to the dropped file */
 	      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-			     "found dropped file: vfid=(%d, %d) "
-			     "mvccid=%d in page (%d, %d). Entry at position %d, vfid=(%d, %d) mvccid=%d. "
-			     "The vacuumed file is dropped.", vfid->volid, vfid->fileid, mvccid,
+			     "found dropped file: vfid=%d|%d mvccid=%llu in page %d|%d. "
+			     "Entry at position %d, vfid=%d|%d mvccid=%llu. The vacuumed file is dropped.",
+			     VFID_AS_ARGS (vfid), (unsigned long long int) mvccid,
 			     PGBUF_PAGE_VPID_AS_ARGS ((PAGE_PTR) page), dropped_file - page->dropped_files,
-			     dropped_file->vfid.volid, dropped_file->vfid.fileid, dropped_file->mvccid);
+			     VFID_AS_ARGS (&dropped_file->vfid), (unsigned long long int) dropped_file->mvccid);
 
 	      vacuum_unfix_dropped_entries_page (thread_p, page);
 	      return true;
@@ -6384,11 +6382,11 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 	    {
 	      /* The record belongs to an entry with the same identifier, but is newer. */
 	      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-			     "found dropped file: vfid=(%d, %d) "
-			     "mvccid=%d in page (%d, %d). Entry at position %d, vfid=(%d, %d) mvccid=%d. "
-			     "The vacuumed file is newer.", vfid->volid, vfid->fileid, mvccid,
+			     "found dropped file: vfid=%d|%d mvccid=%llu in page %d|%d. "
+			     "Entry at position %d, vfid=%d|%d mvccid=%llu. The vacuumed file is newer.",
+			     VFID_AS_ARGS (vfid), (unsigned long long int) mvccid,
 			     PGBUF_PAGE_VPID_AS_ARGS ((PAGE_PTR) page), dropped_file - page->dropped_files,
-			     dropped_file->vfid.volid, dropped_file->vfid.fileid, dropped_file->mvccid);
+			     VFID_AS_ARGS (&dropped_file->vfid), (unsigned long long int) dropped_file->mvccid);
 
 	      vacuum_unfix_dropped_entries_page (thread_p, page);
 	      return false;
@@ -6397,8 +6395,8 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 
       /* Do not log this unless you think it is useful. It spams the log file. */
       vacuum_er_log (VACUUM_ER_LOG_NONE,
-		     "didn't find dropped file: vfid=(%d, %d) mvccid=%d in page (%d, %d).", vfid->volid,
-		     vfid->fileid, mvccid, PGBUF_PAGE_VPID_AS_ARGS ((PAGE_PTR) page));
+		     "didn't find dropped file: vfid=%d|%d mvccid=%llu in page (%d, %d).", VFID_AS_ARGS (vfid),
+		     (unsigned long long int) mvccid, PGBUF_PAGE_VPID_AS_ARGS ((PAGE_PTR) page));
 
       vacuum_unfix_dropped_entries_page (thread_p, page);
     }
@@ -6482,7 +6480,7 @@ vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       /* Remove entry at indexes[i] */
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_DROPPED_FILES,
-		     "Recovery of dropped classes: remove file(%d, %d), mvccid=%llu at position %d.",
+		     "Recovery of dropped classes: remove file %d|%d, mvccid=%llu at position %d.",
 		     (int) page->dropped_files[indexes[i]].vfid.volid,
 		     (int) page->dropped_files[indexes[i]].vfid.fileid, page->dropped_files[indexes[i]].mvccid,
 		     (int) indexes[i]);
@@ -6548,7 +6546,7 @@ vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   /* Check recovery data is as expected */
   assert (rcv->length = sizeof (VPID));
 
-  vacuum_er_log (VACUUM_ER_LOG_RECOVERY, "Set link for dropped files from page(%d, %d) to page(%d, %d).",
+  vacuum_er_log (VACUUM_ER_LOG_RECOVERY, "Set link for dropped files from page %d|%d to page %d|%d.",
 		 pgbuf_get_vpid_ptr (rcv->pgptr)->pageid, pgbuf_get_vpid_ptr (rcv->pgptr)->volid, page->next_page.volid,
 		 page->next_page.pageid);
 
