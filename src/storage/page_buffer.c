@@ -1656,8 +1656,8 @@ pgbuf_finalize (void)
     }
   if (pgbuf_Pool.big_private_lrus_with_victims != NULL)
     {
-      lf_circular_queue_destroy (pgbuf_Pool.private_lrus_with_victims);
-      pgbuf_Pool.private_lrus_with_victims = NULL;
+      lf_circular_queue_destroy (pgbuf_Pool.big_private_lrus_with_victims);
+      pgbuf_Pool.big_private_lrus_with_victims = NULL;
     }
   if (pgbuf_Pool.shared_lrus_with_victims != NULL)
     {
