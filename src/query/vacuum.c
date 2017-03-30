@@ -3131,6 +3131,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 
 	  assert (undo_data != NULL);
 
+	  OID_SET_NULL (&oid);
 	  if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ)
 	    {
 	      btree_rv_read_keybuf_two_objects (thread_p, undo_data, undo_data_size, &btid_int, &old_version,
@@ -3145,6 +3146,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  /* Vacuum based on rcvindex. */
 	  if (log_record_data.rcvindex == RVBT_MVCC_NOTIFY_VACUUM)
 	    {
+	      assert (!OID_ISNULL (&oid));
 	      /* The notification comes from loading index. The object may be both inserted or deleted (load index
 	       * considers all objects for visibility reasons). Vacuum must also decide to remove insert MVCCID or the
 	       * entire object. */
@@ -3195,6 +3197,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 			     thread_get_current_entry_index (), btid_int.sys_btid->root_pageid,
 			     btid_int.sys_btid->vfid.fileid, btid_int.sys_btid->vfid.volid, oid.volid, oid.pageid,
 			     oid.slotid, class_oid.volid, class_oid.pageid, class_oid.slotid, mvccid);
+	      assert (!OID_ISNULL (&oid));
 	      error_code = btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid, mvccid);
 	    }
 	  else if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT
@@ -3212,6 +3215,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 			     thread_get_current_entry_index (), btid_int.sys_btid->root_pageid,
 			     btid_int.sys_btid->vfid.fileid, btid_int.sys_btid->vfid.volid, oid.volid, oid.pageid,
 			     oid.slotid, class_oid.volid, class_oid.pageid, class_oid.slotid, mvccid);
+	      assert (!OID_ISNULL (&oid));
 	      error_code = btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid, mvccid);
 	    }
 	  else

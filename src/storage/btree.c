@@ -11253,7 +11253,6 @@ btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * lea
       mvcc_info = &local_mvcc_info;
     }
 
-  OID_SET_NULL (&inst_oid);
   BTREE_RECORD_OR_BUF_INIT (buf, leaf_record);
   while (buf.ptr < buf.endptr)
     {
