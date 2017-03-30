@@ -301,7 +301,7 @@ struct disk_reserve_context
 static bool disk_Logging = false;
 #define disk_log(func, msg, ...) \
   if (disk_Logging) \
-    _er_log_debug (ARG_FILE_LINE, "DISK " func LOG_THREAD_TRAN_MSG ": \n\t" msg "\n", \
+    _er_log_debug (ARG_FILE_LINE, "DISK " func " " LOG_THREAD_TRAN_MSG ": \n\t" msg "\n", \
                    LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 
 #define DISK_RESERVE_CONTEXT_MSG \

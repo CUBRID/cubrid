@@ -306,7 +306,7 @@ static bool file_Logging = false;
 
 #define file_log(func, msg, ...) \
   if (file_Logging) \
-    _er_log_debug (ARG_FILE_LINE, "FILE " func LOG_THREAD_TRAN_MSG ": " msg "\n", \
+    _er_log_debug (ARG_FILE_LINE, "FILE " func " " LOG_THREAD_TRAN_MSG ": " msg "\n", \
                    LOG_THREAD_TRAN_ARGS(thread_get_thread_entry_info ()), __VA_ARGS__)
 
 #define FILE_PERM_TEMP_STRING(is_temp) ((is_temp) ? "temporary" : "permanent")
