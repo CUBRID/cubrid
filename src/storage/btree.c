@@ -18686,6 +18686,8 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
   DB_MIDXKEY *new_mkey = NULL;
   DB_VALUE *new_key_value = NULL;
   int error = NO_ERROR, i = 0;
+  TP_DOMAIN *domain;
+  bool has_null_domain;
 
   assert (multi_range_opt->use == true);
 
@@ -18723,6 +18725,45 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	{
 	  goto exit;
 	}
+    }
+
+  /* resolve domains */
+  if (multi_range_opt->sort_col_dom == NULL)
+    {
+      multi_range_opt->sort_col_dom =
+	(TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (TP_DOMAIN *));
+      if (multi_range_opt->sort_col_dom == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+
+      for (i = 0; i < multi_range_opt->num_attrs; i++)
+	{
+	  multi_range_opt->sort_col_dom[i] = &tp_Null_domain;
+	}
+      multi_range_opt->has_null_domain = true;
+    }
+
+  if (multi_range_opt->has_null_domain)
+    {
+      has_null_domain = false;
+      for (i = 0; i < multi_range_opt->num_attrs; i++)
+	{
+	  if (multi_range_opt->sort_col_dom[i] == &tp_Null_domain)
+	    {
+	      domain = tp_domain_resolve_value (&new_key_value[i], NULL);
+	      if (domain != &tp_Null_domain)
+		{
+		  multi_range_opt->sort_col_dom[i] = domain;
+		}
+	      else
+		{
+		  has_null_domain = true;
+		}
+	    }
+	}
+      multi_range_opt->has_null_domain = has_null_domain;
     }
 
   if (multi_range_opt->cnt == multi_range_opt->size)
@@ -18802,22 +18843,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       COPY_OID (&(curr_item->inst_oid), p_new_oid);
 
       multi_range_opt->cnt++;
-
-      if (multi_range_opt->sort_col_dom == NULL)
-	{
-	  multi_range_opt->sort_col_dom =
-	    (TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (TP_DOMAIN *));
-	  if (multi_range_opt->sort_col_dom == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto exit;
-	    }
-
-	  for (i = 0; i < multi_range_opt->num_attrs; i++)
-	    {
-	      multi_range_opt->sort_col_dom[i] = tp_domain_resolve_value (&new_key_value[i], NULL);
-	    }
-	}
     }
 
   /* find the position for this element */
