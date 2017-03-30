@@ -3120,6 +3120,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	      error_code = NO_ERROR;
 	      continue;
 	    }
+	  vacuum_er_log (thread_p, VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WORKER,
+			 "collected oid %d|%d|%d, in file %d|%d, based on %lld|%d\n", OID_AS_ARGS (&heap_object_oid),
+			 VFID_AS_ARGS (&log_vacuum.vfid), LSA_AS_ARGS (&rcv_lsa));
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
 	{
@@ -3149,9 +3152,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 		{
 		  vacuum_er_log (thread_p, VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 				 "vacuum from b-tree: btidp(%d, (%d %d)) oid(%d, %d, %d) "
-				 "class_oid(%d, %d, %d), purpose=rem_object, mvccid=%llu\n",
+				 "class_oid(%d, %d, %d), purpose=rem_object, mvccid=%llu, based on %lld|%d\n",
 				 BTID_AS_ARGS (btid_int.sys_btid), OID_AS_ARGS (&oid), OID_AS_ARGS (&class_oid),
-				 (unsigned long long int) mvcc_info.delete_mvccid);
+				 (unsigned long long int) mvcc_info.delete_mvccid, LSA_AS_ARGS (&rcv_lsa));
 		  error_code =
 		    btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid,
 					 mvcc_info.delete_mvccid);
@@ -3160,9 +3163,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 		{
 		  vacuum_er_log (thread_p, VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 				 "vacuum from b-tree: btidp(%d, (%d %d)) oid(%d, %d, %d) class_oid(%d, %d, %d), "
-				 "purpose=rem_insid, mvccid=%llu\n",
+				 "purpose=rem_insid, mvccid=%llu, based on %lld|%d\n",
 				 BTID_AS_ARGS (btid_int.sys_btid), OID_AS_ARGS (&oid), OID_AS_ARGS (&class_oid),
-				 (unsigned long long int) mvcc_info.insert_mvccid);
+				 (unsigned long long int) mvcc_info.insert_mvccid, LSA_AS_ARGS (&rcv_lsa));
 		  error_code =
 		    btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid,
 						mvcc_info.insert_mvccid);
@@ -3172,8 +3175,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 		  /* impossible case */
 		  vacuum_er_log_error (thread_p, VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 				       "invalid vacuum case for RVBT_MVCC_NOTIFY_VACUUM btid(%d, (%d %d)) "
-				       "oid(%d, %d, %d) class_oid(%d, %d, %d)",
-				       BTID_AS_ARGS (btid_int.sys_btid), OID_AS_ARGS (&oid), OID_AS_ARGS (&class_oid));
+				       "oid(%d, %d, %d) class_oid(%d, %d, %d), based on %lld|%d",
+				       BTID_AS_ARGS (btid_int.sys_btid), OID_AS_ARGS (&oid), OID_AS_ARGS (&class_oid),
+				       LSA_AS_ARGS (&rcv_lsa));
 		  assert_release (false);
 		  continue;
 		}
@@ -3183,9 +3187,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	      /* Object was deleted and must be completely removed. */
 	      vacuum_er_log (thread_p, VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 			     "vacuum from b-tree: btidp(%d, (%d %d)) oid(%d, %d, %d) "
-			     "class_oid(%d, %d, %d), purpose=rem_object, mvccid=%llu\n",
+			     "class_oid(%d, %d, %d), purpose=rem_object, mvccid=%llu, based on %lld|%d\n",
 			     BTID_AS_ARGS (btid_int.sys_btid), OID_AS_ARGS (&oid), OID_AS_ARGS (&class_oid),
-			     (unsigned long long int) mvccid);
+			     (unsigned long long int) mvccid, LSA_AS_ARGS (&rcv_lsa));
 	      error_code = btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid, mvccid);
 	    }
 	  else if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT
@@ -3199,9 +3203,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 		}
 	      vacuum_er_log (thread_p, VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 			     "vacuum from b-tree: btidp(%d, (%d %d)) oid(%d, %d, %d) "
-			     "class_oid(%d, %d, %d), purpose=rem_insid, mvccid=%llu\n",
+			     "class_oid(%d, %d, %d), purpose=rem_insid, mvccid=%llu, based on %lld|%d\n",
 			     BTID_AS_ARGS (btid_int.sys_btid), OID_AS_ARGS (&oid), OID_AS_ARGS (&class_oid),
-			     (unsigned long long int) mvccid);
+			     (unsigned long long int) mvccid, LSA_AS_ARGS (&rcv_lsa));
 	      error_code = btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid, mvccid);
 	    }
 	  else
@@ -3224,7 +3228,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	{
 	  /* A lob file must be deleted */
 	  (void) or_unpack_string (undo_data, &es_uri);
-	  vacuum_er_log (thread_p, VACUUM_ER_LOG_WORKER, "Delete lob %s.", es_uri);
+	  vacuum_er_log (thread_p, VACUUM_ER_LOG_WORKER, "Delete lob %s based on %lld|%d\n", es_uri,
+			 LSA_AS_ARGS (&rcv_lsa));
 	  (void) es_delete_file (es_uri);
 	  db_private_free_and_init (thread_p, es_uri);
 	}
