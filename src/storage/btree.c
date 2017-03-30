@@ -1148,13 +1148,12 @@ enum btree_rv_debug_id
 
 /* b-tree debug logging */
 #define btree_log(prefix, msg, ...) \
-  _er_log_debug (ARG_FILE_LINE, prefix " (thread=%d tran=%d): " msg "\n", \
-                 thread_get_current_entry_index (), LOG_FIND_THREAD_TRAN_INDEX (thread_get_thread_entry_info ()), \
-                 __VA_ARGS__)
+  _er_log_debug (ARG_FILE_LINE, prefix LOG_THREAD_TRAN_MSG ": " msg "\n", \
+                 LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 #define btree_insert_log(helper, msg, ...) \
-  if ((helper)->log_operations) btree_log ("BTREE_INSERT", msg, __VA_ARGS__)
+  if ((helper)->log_operations) btree_log ("BTREE_INSERT ", msg, __VA_ARGS__)
 #define btree_delete_log(helper, msg, ...) \
-  if ((helper)->log_operations) btree_log ("BTREE_DELETE", msg, __VA_ARGS__)
+  if ((helper)->log_operations) btree_log ("BTREE_DELETE ", msg, __VA_ARGS__)
 
 /* logging btid */
 #define BTREE_ID_MSG "index = %d, %d|%d"
