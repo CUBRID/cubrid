@@ -2022,7 +2022,7 @@ extern char log_Name_removed_archive[];
 #if defined (SA_MODE)
 #define LOG_THREAD_TRAN_MSG "%s"
 #define LOG_THREAD_TRAN_ARGS(thread_p) "(SA_MODE)"
-#else	/* !SA_MODE */	     /* SERVER_MODE */
+#else	/* !SA_MODE */	       /* SERVER_MODE */
 #define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
 #define LOG_THREAD_TRAN_ARGS(thread_p) \
   THREAD_GET_CURRENT_ENTRY_INDEX (thread_p), \
