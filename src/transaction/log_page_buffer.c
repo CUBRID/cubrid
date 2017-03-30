@@ -1841,7 +1841,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 #if defined (SERVER_MODE)
 	  if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
 	    {
-	      vacuum_er_log_error (thread_p, VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
+	      vacuum_er_log_error (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
 				   "Failed to fetch page %lld from archives.", pageid);
 	    }
 #endif /* SERVER_MODE */
@@ -1879,7 +1879,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 #if defined (SERVER_MODE)
 		      if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
 			{
-			  vacuum_er_log_error (thread_p, VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
+			  vacuum_er_log_error (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
 					       "Failed to fetch page %lld from archives.", pageid);
 			}
 #endif /* SERVER_MODE */
@@ -3683,7 +3683,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
       /* Save previous mvcc operation log lsa to vacuum info */
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
 
-      vacuum_er_log (thread_p, VACUUM_ER_LOG_LOGGING,
+      vacuum_er_log (VACUUM_ER_LOG_LOGGING,
 		     "log mvcc op at (%lld, %d) and create link with log_lsa(%lld, %d)\n",
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
@@ -6913,11 +6913,11 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	{
 	  last_arv_num_to_delete = MIN (last_arv_num_to_delete, log_Gl.hdr.last_arv_num_for_syscrashes);
 	}
-      vacuum_er_log (thread_p, VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld", vacuum_first_pageid);
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld", vacuum_first_pageid);
       if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
 	{
 	  min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
-	  vacuum_er_log (thread_p, VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d",
+	  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d",
 			 min_arv_required_for_vacuum);
 	  if (min_arv_required_for_vacuum >= 0)
 	    {
@@ -6943,7 +6943,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
 
-      vacuum_er_log (thread_p, VACUUM_ER_LOG_ARCHIVES, "last_arv_num_to_delete is %d", last_arv_num_to_delete);
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "last_arv_num_to_delete is %d", last_arv_num_to_delete);
     }
 
   LOG_CS_EXIT (thread_p);

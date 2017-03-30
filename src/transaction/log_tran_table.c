@@ -1359,7 +1359,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
       /* Set worker state to recovery. */
       worker->state = VACUUM_WORKER_STATE_RECOVERY;
 
-      vacuum_er_log (thread_p, VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
 		     "Log entry (%lld, %d) belongs to vacuum worker "
 		     "tdes. tdes->trid=%d, tdes->tail_lsa=(%lld, %d). ", (long long int) log_lsa->pageid,
 		     (int) log_lsa->offset, worker->tdes->trid, (long long int) worker->tdes->tail_lsa.pageid,

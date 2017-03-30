@@ -30353,7 +30353,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	   * OID1 is vacuumed from heap and its slot can be reused. 4. OID1 is reused and is inserted in the same
 	   * overflow page. The algorithm recognizes that the old version is just not vacuumed yet and replaces it.
 	   * OID's cannot be repeated in overflow pages. 5. Vacuum will not find the old OID1 to remove. */
-	  vacuum_er_log_warning (thread_p, VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+	  vacuum_er_log_warning (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 				 "Could not find object %d|%d|%d in key=%s to vacuum it.",
 				 delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
 				 delete_helper->object_info.oid.slotid,
@@ -31569,7 +31569,7 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
     {
       /* Key or object not found. */
       /* Object must have been vacuumed/removed already. */
-      vacuum_er_log_warning (thread_p, VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+      vacuum_er_log_warning (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 			     "Could not find object %d|%d|%d in key=%s to vacuum it.",
 			     delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
 			     delete_helper->object_info.oid.slotid,

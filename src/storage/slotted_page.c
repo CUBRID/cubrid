@@ -4862,7 +4862,7 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bo
   if (slot_p->record_type == REC_MARKDELETED || slot_p->record_type == REC_DELETED_WILL_REUSE)
     {
       /* Vacuum error log */
-      vacuum_er_log_error (thread_p, VACUUM_ER_LOG_ERROR, "Object (%d, %d, %d) was already vacuumed",
+      vacuum_er_log_error (VACUUM_ER_LOG_ERROR, "Object (%d, %d, %d) was already vacuumed",
 			   pgbuf_get_vpid_ptr (page_p)->volid, pgbuf_get_vpid_ptr (page_p)->pageid, slotid);
     }
 
