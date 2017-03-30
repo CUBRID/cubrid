@@ -3550,8 +3550,8 @@ log_sysop_start (THREAD_ENTRY * thread_p)
       assert (VACUUM_WORKER_STATE_IS_EXECUTE (thread_p) || VACUUM_WORKER_STATE_IS_TOPOP (thread_p)
 	      || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
 
-      vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-		     "VACUUM: Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
+      vacuum_er_log (thread_p, VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
+		     "Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
 		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid, tdes->topops.last,
 		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 		     VACUUM_GET_WORKER_STATE (thread_p));
@@ -3767,8 +3767,8 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_RECOVERY);
 	    }
 
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
-			 "VACUUM: Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
+	  vacuum_er_log (thread_p, VACUUM_ER_LOG_TOPOPS,
+			 "Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
 			 "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
 			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid,
 			 (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,

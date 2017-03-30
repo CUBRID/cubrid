@@ -54,13 +54,17 @@
 #define VACUUM_IS_ER_LOG_LEVEL_SET(er_log_level) \
   ((prm_get_integer_value (PRM_ID_ER_LOG_VACUUM) & (er_log_level)) != 0)
 
-#if defined(SERVER_MODE)
-#define vacuum_er_log(er_log_level, ...) \
+#define vacuum_er_log(thread_p, er_log_level, msg, ...) \
   if (VACUUM_IS_ER_LOG_LEVEL_SET (er_log_level)) \
-    _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
-#else
-#define vacuum_er_log(er_log_level, ...)
-#endif
+    _er_log_debug (ARG_FILE_LINE, "VACUUM " LOG_THREAD_TRAN_MSG ": " msg, LOG_THREAD_TRAN_ARGS (thread_p), __VA_ARGS__)
+#define vacuum_er_log_error(thread_p, er_log_level, msg, ...) \
+  if (VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_ERROR | er_log_level)) \
+    _er_log_debug (ARG_FILE_LINE, "VACUUM ERROR " LOG_THREAD_TRAN_MSG ": " msg, LOG_THREAD_TRAN_ARGS (thread_p), \
+                   __VA_ARGS__)
+#define vacuum_er_log_warning(thread_p, er_log_level, msg, ...) \
+  if (VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_WARNING | er_log_level)) \
+    _er_log_debug (ARG_FILE_LINE, "VACUUM WARNING " LOG_THREAD_TRAN_MSG ": " msg, LOG_THREAD_TRAN_ARGS (thread_p), \
+                   __VA_ARGS__)
 
 typedef INT64 VACUUM_LOG_BLOCKID;
 #define VACUUM_NULL_LOG_BLOCKID -1
@@ -281,7 +285,7 @@ extern void vacuum_start_new_job (THREAD_ENTRY * thread_p);
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
 extern int vacuum_data_load_and_recover (THREAD_ENTRY * thread_p);
-extern void vacuum_reset_log_header_cache (void);
+extern void vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p);
 extern VACUUM_LOG_BLOCKID vacuum_get_log_blockid (LOG_PAGEID pageid);
 extern void vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVCCID oldest_mvccid,
 					   MVCCID newest_mvccid);

@@ -178,8 +178,8 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
       /* Convert thread to a vacuum worker. */
       VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, vacuum_rv_get_worker_by_trid (thread_p, tdes->trid), save_thread_type);
 
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Log undo (%lld, %d), rcvindex=%d for tdes: tdes->trid=%d.",
+      vacuum_er_log (thread_p, VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "Log undo (%lld, %d), rcvindex=%d for tdes: tdes->trid=%d.",
 		     (long long int) rcv_undo_lsa->pageid, (int) rcv_undo_lsa->offset, rcvindex, tdes->trid);
     }
   else
@@ -875,7 +875,7 @@ log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "VACUUM: Found undo_redo record. tdes->trid=%d.",
+      vacuum_er_log (thread_p, VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "Found undo_redo record. tdes->trid=%d.",
 		     tdes->trid);
     }
 
@@ -958,7 +958,7 @@ log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "VACUUM: Found postpone record. tdes->trid=%d.",
+      vacuum_er_log (thread_p, VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "Found postpone record. tdes->trid=%d.",
 		     tdes->trid);
     }
 
@@ -1070,8 +1070,8 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Found postpone record. tdes->trid=%d, tdes->state=%d, ref_lsa=(%lld, %d).", tdes->trid,
+      vacuum_er_log (thread_p, VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "Found postpone record. tdes->trid=%d, tdes->state=%d, ref_lsa=(%lld, %d).", tdes->trid,
 		     tdes->state, (long long int) run_posp->ref_lsa.pageid, (int) run_posp->ref_lsa.offset);
     }
 
@@ -1239,8 +1239,8 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Found commit_topope_with_postpone. tdes->trid=%d. ", tdes->trid);
+      vacuum_er_log (thread_p, VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "Found commit_topope_with_postpone. tdes->trid=%d. ", tdes->trid);
     }
 
   LSA_COPY (&tdes->tail_lsa, log_lsa);
@@ -1497,7 +1497,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "VACUUM: Found commit sysop. tdes->trid=%d.",
+      vacuum_er_log (thread_p, VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "Found commit sysop. tdes->trid=%d.",
 		     tdes->trid);
     }
 
@@ -3147,7 +3147,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  LOG_LSA null_lsa = LSA_INITIALIZER;
 
 		  /* Reset log header MVCC info */
-		  vacuum_reset_log_header_cache ();
+		  vacuum_reset_log_header_cache (thread_p);
 
 		  /* Reset vacuum recover LSA */
 		  vacuum_notify_server_crashed (&null_lsa);
@@ -4053,8 +4053,8 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, worker, save_thread_type);
       tdes = worker->tdes;
 
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
+      vacuum_er_log (thread_p, VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
 		     tdes->trid, tdes->state, tdes->topops.last);
 
       log_recovery_finish_postpone (thread_p, tdes);
@@ -4108,8 +4108,8 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
       VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, worker, save_thread_type);
       tdes = worker->tdes;
 
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
+      vacuum_er_log (thread_p, VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
 		     tdes->trid, tdes->state, tdes->topops.last);
 
       log_recovery_abort_atomic_sysop (thread_p, tdes);
@@ -4665,8 +4665,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		      if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
 			{
-			  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-					 "VACUUM: Update undo_nxlsa=(%lld, %d) for tdes->trid=%d.",
+			  vacuum_er_log (thread_p, VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+					 "Update undo_nxlsa=(%lld, %d) for tdes->trid=%d.",
 					 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
 					 tdes->trid);
 			}
