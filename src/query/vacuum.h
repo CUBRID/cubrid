@@ -56,15 +56,15 @@
 
 #define vacuum_er_log(er_log_level, msg, ...) \
   if (VACUUM_IS_ER_LOG_LEVEL_SET (er_log_level)) \
-    _er_log_debug (ARG_FILE_LINE, "VACUUM " LOG_THREAD_TRAN_MSG ": " msg, \
+    _er_log_debug (ARG_FILE_LINE, "VACUUM " LOG_THREAD_TRAN_MSG ": " msg "\n", \
                    LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 #define vacuum_er_log_error(er_log_level, msg, ...) \
   if (VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_ERROR | er_log_level)) \
-    _er_log_debug (ARG_FILE_LINE, "VACUUM ERROR " LOG_THREAD_TRAN_MSG ": " msg, \
+    _er_log_debug (ARG_FILE_LINE, "VACUUM ERROR " LOG_THREAD_TRAN_MSG ": " msg "\n", \
                    LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 #define vacuum_er_log_warning(er_log_level, msg, ...) \
   if (VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_WARNING | er_log_level)) \
-    _er_log_debug (ARG_FILE_LINE, "VACUUM WARNING " LOG_THREAD_TRAN_MSG ": " msg, \
+    _er_log_debug (ARG_FILE_LINE, "VACUUM WARNING " LOG_THREAD_TRAN_MSG ": " msg "\n", \
                    LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 
 typedef INT64 VACUUM_LOG_BLOCKID;

@@ -3684,7 +3684,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
 
       vacuum_er_log (VACUUM_ER_LOG_LOGGING,
-		     "log mvcc op at (%lld, %d) and create link with log_lsa(%lld, %d)\n",
+		     "log mvcc op at (%lld, %d) and create link with log_lsa(%lld, %d)",
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
       /* Check if the block of log data is changed */
