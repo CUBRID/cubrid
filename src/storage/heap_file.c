@@ -4637,7 +4637,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   if (pgbuf_has_any_waiters (crt_watcher.pgptr))
     {
       assert (false);
-      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Unexpected page waiters \n");
+      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Unexpected page waiters \n");
       goto error;
     }
   /* all good, we can deallocate the page */

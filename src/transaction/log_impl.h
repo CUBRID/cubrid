@@ -2026,7 +2026,7 @@ extern char log_Name_removed_archive[];
 #define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
 #define LOG_THREAD_TRAN_ARGS(thread_p) \
   THREAD_GET_CURRENT_ENTRY_INDEX (thread_p), \
-  VACUUM_IS_THREAD_VACUUM(thread_p) && thread_p->vacuum_worker != NULL ? \
+  VACUUM_IS_THREAD_VACUUM (thread_p) && (thread_p)->vacuum_worker != NULL ? \
   VACUUM_GET_WORKER_TDES (thread_p)->trid : LOG_FIND_CURRENT_TDES (thread_p)->trid
 #endif /* SERVER_MODE */
 
