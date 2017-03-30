@@ -2467,7 +2467,18 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	      qfile_clear_list_id (xasl->proc.cte.non_recursive_part->list_id);
 	    }
 
-	  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, final);
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE) && xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
+	    {
+	      /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
+	      XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
+	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, final);
+	    }
+	  else if (!XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE)
+		   && xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
+	    {
+	      /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
+	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, final);
+	    }
 	}
       if (xasl->proc.cte.recursive_part)
 	{
@@ -2475,7 +2486,19 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	    {
 	      qfile_clear_list_id (xasl->proc.cte.recursive_part->list_id);
 	    }
-	  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, final);
+
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE) && xasl->proc.cte.recursive_part->status != XASL_CLEARED)
+	    {
+	      /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
+	      XASL_SET_FLAG (xasl->proc.cte.recursive_part, XASL_DECACHE_CLONE);
+	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, final);
+	    }
+	  else if (!XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE)
+		   && xasl->proc.cte.recursive_part->status != XASL_INITIALIZED)
+	    {
+	      /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
+	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, final);
+	    }
 	}
       if (xasl->list_id)
 	{
