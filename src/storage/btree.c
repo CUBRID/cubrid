@@ -1148,13 +1148,12 @@ enum btree_rv_debug_id
 
 /* b-tree debug logging */
 #define btree_log(prefix, msg, ...) \
-  _er_log_debug (ARG_FILE_LINE, prefix " (thread=%d tran=%d): " msg "\n", \
-                 thread_get_current_entry_index (), LOG_FIND_THREAD_TRAN_INDEX (thread_get_thread_entry_info ()), \
-                 __VA_ARGS__)
+  _er_log_debug (ARG_FILE_LINE, prefix LOG_THREAD_TRAN_MSG ": " msg "\n", \
+                 LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 #define btree_insert_log(helper, msg, ...) \
-  if ((helper)->log_operations) btree_log ("BTREE_INSERT", msg, __VA_ARGS__)
+  if ((helper)->log_operations) btree_log ("BTREE_INSERT ", msg, __VA_ARGS__)
 #define btree_delete_log(helper, msg, ...) \
-  if ((helper)->log_operations) btree_log ("BTREE_DELETE", msg, __VA_ARGS__)
+  if ((helper)->log_operations) btree_log ("BTREE_DELETE ", msg, __VA_ARGS__)
 
 /* logging btid */
 #define BTREE_ID_MSG "index = %d, %d|%d"
@@ -30354,11 +30353,11 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	   * OID1 is vacuumed from heap and its slot can be reused. 4. OID1 is reused and is inserted in the same
 	   * overflow page. The algorithm recognizes that the old version is just not vacuumed yet and replaces it.
 	   * OID's cannot be repeated in overflow pages. 5. Vacuum will not find the old OID1 to remove. */
-	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-			 "VACUUM WARNING: Could not find object %d|%d|%d in key=%s to vacuum it.",
-			 delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
-			 delete_helper->object_info.oid.slotid,
-			 delete_helper->printed_key != NULL ? delete_helper->printed_key : "(unknown)");
+	  vacuum_er_log_warning (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+				 "Could not find object %d|%d|%d in key=%s to vacuum it.",
+				 delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
+				 delete_helper->object_info.oid.slotid,
+				 delete_helper->printed_key != NULL ? delete_helper->printed_key : "(unknown)");
 	  btree_delete_log (delete_helper, "could not find object to vacuum \n"
 			    BTREE_DELETE_HELPER_MSG ("\t"), BTREE_DELETE_HELPER_AS_ARGS (delete_helper));
 	  goto exit;
@@ -31570,11 +31569,11 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
     {
       /* Key or object not found. */
       /* Object must have been vacuumed/removed already. */
-      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-		     "VACUUM WARNING: Could not find object %d|%d|%d in key=%s to vacuum it.",
-		     delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
-		     delete_helper->object_info.oid.slotid,
-		     delete_helper->printed_key != NULL ? delete_helper->printed_key : "(unknown)");
+      vacuum_er_log_warning (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+			     "Could not find object %d|%d|%d in key=%s to vacuum it.",
+			     delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
+			     delete_helper->object_info.oid.slotid,
+			     delete_helper->printed_key != NULL ? delete_helper->printed_key : "(unknown)");
       btree_delete_log (delete_helper, "could not find object to vacuum its insert MVCCID \n"
 			BTREE_DELETE_HELPER_MSG ("\t"), BTREE_DELETE_HELPER_AS_ARGS (delete_helper));
       return NO_ERROR;
