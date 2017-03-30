@@ -3135,12 +3135,15 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	    {
 	      btree_rv_read_keybuf_two_objects (thread_p, undo_data, undo_data_size, &btid_int, &old_version,
 						&new_version, &key_buf);
+	      COPY_OID (&oid, &old_version.oid);
+	      COPY_OID (&class_oid, &old_version.class_oid);
 	    }
 	  else
 	    {
 	      btree_rv_read_keybuf_nocopy (thread_p, undo_data, undo_data_size, &btid_int, &class_oid, &oid, &mvcc_info,
 					   &key_buf);
 	    }
+	  assert (!OID_ISNULL (&oid));
 
 	  /* Vacuum based on rcvindex. */
 	  if (log_record_data.rcvindex == RVBT_MVCC_NOTIFY_VACUUM)
@@ -3201,11 +3204,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 		   || log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ)
 	    {
 	      /* Object was inserted and only its insert MVCCID must be removed. */
-	      if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ)
-		{
-		  COPY_OID (&oid, &old_version.oid);
-		  COPY_OID (&class_oid, &old_version.class_oid);
-		}
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 			     "VACUUM: thread(%d): vacuum from b-tree: btidp(%d, (%d %d)) oid(%d, %d, %d) "
 			     "class_oid(%d, %d, %d), purpose=rem_insid, mvccid=%llu\n",
