@@ -130,6 +130,7 @@ typedef struct multi_range_opt MULTI_RANGE_OPT;
 struct multi_range_opt
 {
   bool use;			/* true/false */
+  bool has_null_domain;		/* true, if sort col has null domain */
   int cnt;			/* current number of entries */
   int size;			/* expected number of entries */
   int num_attrs;		/* number of order by attributes */
