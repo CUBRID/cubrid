@@ -1,10 +1,10 @@
 #include <iostream>
-#include "Utils.hpp"
-#include "StatisticsFile.hpp"
-#include "ShowExecutor.hpp"
-#include "PlotExecutor.hpp"
-#include "LoadExecutor.hpp"
-#include "ErrorManager.hpp"
+#include "STAT_TOOL_Utils.hpp"
+#include "STAT_TOOL_StatisticsFile.hpp"
+#include "STAT_TOOL_ShowExecutor.hpp"
+#include "STAT_TOOL_PlotExecutor.hpp"
+#include "STAT_TOOL_LoadExecutor.hpp"
+#include "STAT_TOOL_ErrorManager.hpp"
 #if defined (WINDOWS)
 #include <windows.h>
 #endif
@@ -15,16 +15,17 @@ extern "C" {
 #include <porting.h>
 }
 
-/* TODO: add a prefix to all files and classes that are part of StatTool. STAT_TOOL_ something.
+/*
  *
  * and please refactor using the code convention I sent in email :).
  */
+
+std::vector<StatisticsFile *> files;
 
 int main (int argc, char **argv)
 {
   bool quit = false;
   char command[MAX_COMMAND_SIZE];
-  std::vector<StatisticsFile *> files;    /* TODO: this should be global */
   metadata_initialize();
   init_name_offset_assoc();
   Utils::setNStatValues (pstat_Global.n_stat_values);
@@ -38,7 +39,7 @@ int main (int argc, char **argv)
       std::string arguments;
 
       fgets (command, MAX_COMMAND_SIZE, stdin);
-      command[strlen (command) - 1] = '\0';   /* TODO: what does this do? */
+      command[strlen (command) - 1] = '\0';         /* eliminates the ending "\n" that fgets adds */
       if (strlen (command) == 0)
         {
           continue;
@@ -67,7 +68,7 @@ int main (int argc, char **argv)
         }
       else
         {
-          ErrorManager::printErrorMessage (ErrorManager::CMD_ERROR, ErrorManager::INVALID_COMMAND,
+          ErrorManager::printErrorMessage (ErrorManager::INVALID_COMMAND_ERROR,
                                            "The command is: " + commandStr);
           continue;
         }

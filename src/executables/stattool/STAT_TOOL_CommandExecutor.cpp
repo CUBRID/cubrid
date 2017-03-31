@@ -2,7 +2,7 @@
 // Created by paul on 28.03.2017.
 //
 
-#include "CommandExecutor.hpp"
+#include "STAT_TOOL_CommandExecutor.hpp"
 
 CommandExecutor::CommandExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files) : files (files)
 {

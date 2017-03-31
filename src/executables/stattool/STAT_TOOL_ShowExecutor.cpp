@@ -2,7 +2,7 @@
 // Created by paul on 28.03.2017.
 //
 
-#include "ShowExecutor.hpp"
+#include "STAT_TOOL_ShowExecutor.hpp"
 
 ShowExecutor::ShowExecutor (std::string &wholeCommand,
                             std::vector<StatisticsFile *> &files) : CommandExecutor (wholeCommand, files),
@@ -33,7 +33,7 @@ ErrorManager::ErrorCode ShowExecutor::parseCommandAndInit()
     {
       if (snapshotsStr[i].find ("/") != std::string::npos)
         {
-          StatisticsFile::Snapshot *snapshot1 = NULL, *snapshot2 = NULL;
+          Snapshot *snapshot1 = NULL, *snapshot2 = NULL;
           char splitAliases[MAX_COMMAND_SIZE];
           char *firstAlias, *secondAlias, *savePtr;
 
@@ -63,7 +63,7 @@ ErrorManager::ErrorCode ShowExecutor::parseCommandAndInit()
         }
       else
         {
-          StatisticsFile::Snapshot *snapshot;
+          Snapshot *snapshot;
           for (unsigned int j = 0; j < files.size(); j++)
             {
               if ((snapshot = files[j]->getSnapshotByArgument (snapshotsStr[i].c_str())) != NULL)

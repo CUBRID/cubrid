@@ -5,7 +5,7 @@
 #ifndef CUBRID_PLOTEXECUTOR_H
 #define CUBRID_PLOTEXECUTOR_H
 
-#include "CommandExecutor.hpp"
+#include "STAT_TOOL_CommandExecutor.hpp"
 #include <algorithm>
 
 #define DEFAULT_PLOT_FILENAME "plot"

@@ -5,7 +5,8 @@
 #ifndef CUBRID_SHOWEXECUTOR_H
 #define CUBRID_SHOWEXECUTOR_H
 
-#include "CommandExecutor.hpp"
+#include "STAT_TOOL_CommandExecutor.hpp"
+#include "STAT_TOOL_Snapshot.hpp"
 #include <algorithm>
 
 #define SHOW_COMPLEX_CMD "-c"
@@ -21,7 +22,7 @@ class ShowExecutor : public CommandExecutor
   private:
     bool showComplex;
     std::vector<std::string> snapshotsStr;
-    std::vector<StatisticsFile::Snapshot *> snapshots;
+    std::vector<Snapshot *> snapshots;
     int end;
 };
 

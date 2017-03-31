@@ -5,7 +5,7 @@
 #ifndef CUBRID_LOADEXECUTOR_H
 #define CUBRID_LOADEXECUTOR_H
 
-#include "CommandExecutor.hpp"
+#include "STAT_TOOL_CommandExecutor.hpp"
 
 class LoadExecutor : public CommandExecutor
 {

@@ -2,7 +2,7 @@
 // Created by paul on 28.03.2017.
 //
 
-#include "PlotExecutor.hpp"
+#include "STAT_TOOL_PlotExecutor.hpp"
 
 PlotExecutor::PlotExecutor (std::string &wholeCommand,
                             std::vector<StatisticsFile *> &files) : CommandExecutor (wholeCommand, files)
@@ -34,8 +34,8 @@ ErrorManager::ErrorCode PlotExecutor::parseCommandAndInit()
 
   if (!hasAlias || !hasVariable)
     {
-      ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::MISSING_ARGUMENT_MSG, "");
-      return ErrorManager::ARGUMENT_ERROR;
+      ErrorManager::printErrorMessage (ErrorManager::MISSING_ARGUMENT_ERROR, "");
+      return ErrorManager::MISSING_ARGUMENT_ERROR;
     }
 
   for (unsigned int i = 0; i < arguments.size(); i++)
@@ -52,18 +52,18 @@ ErrorManager::ErrorCode PlotExecutor::parseCommandAndInit()
           i--;
           if (aliases.size() == 0)
             {
-              ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::MISSING_ARGUMENT_MSG,
+              ErrorManager::printErrorMessage (ErrorManager::MISSING_ARGUMENT_ERROR,
                                                "No aliases were found!");
-              return ErrorManager::ARGUMENT_ERROR;
+              return ErrorManager::MISSING_ARGUMENT_ERROR;
             }
         }
       else if (arguments[i].compare (VARIABLE_CMD) == 0)
         {
           if (!hasArgument (i))
             {
-              ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::MISSING_ARGUMENT_MSG,
+              ErrorManager::printErrorMessage (ErrorManager::MISSING_ARGUMENT_ERROR,
                                                "You must provide a variable!");
-              return ErrorManager::ARGUMENT_ERROR;
+              return ErrorManager::MISSING_ARGUMENT_ERROR;
             }
           variable = arguments[i+1];
           i++;
@@ -72,9 +72,9 @@ ErrorManager::ErrorCode PlotExecutor::parseCommandAndInit()
         {
           if (!hasArgument (i))
             {
-              ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::MISSING_ARGUMENT_MSG,
+              ErrorManager::printErrorMessage (ErrorManager::MISSING_ARGUMENT_ERROR,
                                                "You must provide an interval!");
-              return ErrorManager::ARGUMENT_ERROR;
+              return ErrorManager::MISSING_ARGUMENT_ERROR;
             }
           interval = arguments[i+1];
           i++;
@@ -83,9 +83,9 @@ ErrorManager::ErrorCode PlotExecutor::parseCommandAndInit()
         {
           if (!hasArgument (i))
             {
-              ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::MISSING_ARGUMENT_MSG,
+              ErrorManager::printErrorMessage (ErrorManager::MISSING_ARGUMENT_ERROR,
                                                "You must provide a plot filename!!");
-              return ErrorManager::ARGUMENT_ERROR;
+              return ErrorManager::MISSING_ARGUMENT_ERROR;
             }
           hasFilename = true;
           plotFilename = arguments[i+1];
@@ -129,8 +129,8 @@ ErrorManager::ErrorCode PlotExecutor::parseCommandAndInit()
     }
   if (first)
     {
-      ErrorManager::printErrorMessage (ErrorManager::ARGUMENT_ERROR, ErrorManager::INVALID_ALIASES, "");
-      return ErrorManager::ARGUMENT_ERROR;
+      ErrorManager::printErrorMessage (ErrorManager::INVALID_ALIASES_ERROR, "");
+      return ErrorManager::INVALID_ALIASES_ERROR;
     }
 
   return ErrorManager::NO_ERRORS;
@@ -147,8 +147,8 @@ ErrorManager::ErrorCode PlotExecutor::execute()
 #endif
   if (gnuplotPipe == NULL)
     {
-      ErrorManager::printErrorMessage (ErrorManager::OPEN_ERROR, ErrorManager::PIPE_MSG, "");
-      return ErrorManager::OPEN_ERROR;
+      ErrorManager::printErrorMessage (ErrorManager::OPEN_PIPE_ERROR, "");
+      return ErrorManager::OPEN_PIPE_ERROR;
     }
 
   cmd += "set xlabel \"Time(s)\"";

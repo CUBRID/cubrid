@@ -2,7 +2,7 @@
 // Created by paul on 21.03.2017.
 //
 
-#include "StatisticsFile.hpp"
+#include "STAT_TOOL_StatisticsFile.hpp"
 
 StatisticsFile::StatisticsFile (const std::string &filename, const std::string &alias) : filename (filename),
   alias (alias)
@@ -20,8 +20,8 @@ ErrorManager::ErrorCode StatisticsFile::readFileAndInit ()
   binary_fp = fopen (filename.c_str(), "rb");
   if (binary_fp == NULL)
     {
-      ErrorManager::printErrorMessage (ErrorManager::OPEN_ERROR, ErrorManager::FILE_MSG, "Filename: " + filename);
-      return ErrorManager::OPEN_ERROR;
+      ErrorManager::printErrorMessage (ErrorManager::OPEN_FILE_ERROR, "Filename: " + filename);
+      return ErrorManager::OPEN_FILE_ERROR;
     }
 
   fread (&seconds, sizeof (INT64), 1, binary_fp);
@@ -30,8 +30,8 @@ ErrorManager::ErrorCode StatisticsFile::readFileAndInit ()
   timestamp = localtime (&relativeEpochSeconds);
   if (timestamp == NULL)
     {
-      ErrorManager::printErrorMessage (ErrorManager::CMD_ERROR, ErrorManager::MISSING_TIMESTAMP, "");
-      return ErrorManager::CMD_ERROR;
+      ErrorManager::printErrorMessage (ErrorManager::MISSING_TIMESTAMP_ERROR, "");
+      return ErrorManager::MISSING_TIMESTAMP_ERROR;
     }
   relativeTimestamp = *timestamp;
 
@@ -53,7 +53,7 @@ ErrorManager::ErrorCode StatisticsFile::readFileAndInit ()
   return ErrorManager::NO_ERRORS;
 }
 
-StatisticsFile::Snapshot *StatisticsFile::getSnapshotBySeconds (unsigned int seconds)
+Snapshot *StatisticsFile::getSnapshotBySeconds (unsigned int seconds)
 {
   unsigned int i, j, mid;
 
@@ -166,7 +166,7 @@ void StatisticsFile::getIndicesOfSnapshotsByArgument (const char *argument, int 
     }
 }
 
-StatisticsFile::Snapshot *StatisticsFile::getSnapshotByArgument (const char *argument)
+Snapshot *StatisticsFile::getSnapshotByArgument (const char *argument)
 {
   char diffArgument[32];
   char alias[MAX_FILE_NAME_SIZE];
@@ -194,7 +194,7 @@ StatisticsFile::Snapshot *StatisticsFile::getSnapshotByArgument (const char *arg
     }
 }
 
-void StatisticsFile::printInTableForm (StatisticsFile::Snapshot *s1, StatisticsFile::Snapshot *s2, FILE *stream)
+void StatisticsFile::printInTableForm (Snapshot *s1, Snapshot *s2, FILE *stream)
 {
   int i;
   char timestamp1[20], timestamp2[20];

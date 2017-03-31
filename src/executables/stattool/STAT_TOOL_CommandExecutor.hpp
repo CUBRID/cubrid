@@ -8,10 +8,12 @@
 #include <string>
 #include <vector>
 #include <sstream>
-#include "StatisticsFile.hpp"
-#include "../../base/perfmon_base.h"
-#include "ErrorManager.hpp"
+#include "STAT_TOOL_StatisticsFile.hpp"
+#include "STAT_TOOL_ErrorManager.hpp"
 
+extern "C" {
+  #include "../../base/perfmon_base.h"
+}
 
 class CommandExecutor
 {
