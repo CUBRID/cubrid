@@ -191,10 +191,8 @@ if(WIN32)
   target_compile_definitions(cubrid_esql PRIVATE YY_NO_UNISTD_H)
 endif(WIN32)
 target_link_libraries(cubrid_esql LINK_PRIVATE cubridcs)
-if(USE_BISON_FLEX)
-  add_dependencies(cubrid_esql gen_esql_grammar gen_esql_lexer)
-endif(USE_BISON_FLEX)
 
+add_dependencies(cubrid_esql gen_esql_grammar gen_esql_lexer)
 
 set(GENCAT_SOURCES
   ${BASE_DIR}/porting.c

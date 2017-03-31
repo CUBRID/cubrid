@@ -28,15 +28,13 @@ project(CUBRID)
 
 # options
 if(UNIX)
-  set(USE_BISON_FLEX_DEFAULT ON)
   set(ENABLE_SYSTEMTAP_DEFAULT ON)
 else(UNIX)
-  set(USE_BISON_FLEX_DEFAULT OFF)
   set(ENABLE_SYSTEMTAP_DEFAULT OFF)
 endif(UNIX)
+
 # FIXME: linux 32bit build mode not working now
 option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
-option(USE_BISON_FLEX "Use bison and flex to generate parser and lexer" ${USE_BISON_FLEX_DEFAULT})
 option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABLE_SYSTEMTAP_DEFAULT})
 option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
@@ -192,66 +190,105 @@ set(ESQL_GRAMMAR_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.c)
 set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
 set(ESQL_LEXER_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.c)
 
-if(USE_BISON_FLEX)
-  # bison and flex check
-  include(FindBISON)
-  find_package(BISON)
-  if(BISON_FOUND)
-    if(BISON_VERSION VERSION_GREATER 2.3)
-      set(USE_BISON_NEWDIRECTIVE 1) 
-    endif(BISON_VERSION VERSION_GREATER 2.3)
-  endif(BISON_FOUND) 
-  include(FindFLEX)
-  find_package(FLEX)
+# bison and flex check
+include(FindBISON)
+find_package(BISON)
 
-  if(USE_BISON_NEWDIRECTIVE)
-    file(READ ${CSQL_GRAMMAR_INPUT} yy )
-    string(REPLACE "%{/*%CODE_REQUIRES_START%*/" "%code requires{" mod_yy "${yy}" )
-    string(REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code provides{" mod_yy "${mod_yy}" )
-    string(REPLACE "/*%CODE_END%*/%}" "}" mod_yy "${mod_yy}" )
-    set(CSQL_GRAMMAR_INPUT ${CMAKE_BINARY_DIR}/csql_grammar.yy)
-    file(WRITE ${CSQL_GRAMMAR_INPUT} "${mod_yy}")
-  endif(USE_BISON_NEWDIRECTIVE)
-  bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
-    COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
-  flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
-    COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
-  add_flex_bison_dependency(csql_lexer csql_grammar)
-  add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
-  add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
+if(BISON_FOUND)
+  if(BISON_VERSION VERSION_GREATER 2.3)
+    set(USE_BISON_NEWDIRECTIVE 1) 
+  endif(BISON_VERSION VERSION_GREATER 2.3)
+else(BISON_FOUND)
+  if(UNIX)
+    message(FATAL_ERROR "Please install bison and flex.")
+  else()
+    message(
+      FATAL_ERROR
+      "Please install bison and flex.\nDownload the latest archive from"
+      " https://github.com/lexxmark/winflexbison/releases"
+      " extract it to a directory in the Path (e.g. %USERPROFILE%\\AppData\\Local\\Microsoft\\WindowsApps)"
+      " and retry running cmake."
+    )
+  endif()
+endif(BISON_FOUND)
 
-  bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
-    COMPILE_FLAGS "--no-lines --name-prefix=loader_yy -d -r all")
-  flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
-    COMPILE_FLAGS "--noline --never-interactive --prefix=loader_yy")
-  add_flex_bison_dependency(loader_lexer loader_grammar)
-  add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
-  add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
+include(FindFLEX)
+find_package(FLEX)
 
-  if(USE_BISON_NEWDIRECTIVE)
-    file(READ ${ESQL_GRAMMAR_INPUT} yy )
-    string(REPLACE "%{/*%CODE_REQUIRES_START%*/" "%code requires{" mod_yy "${yy}" )
-    string(REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code provides{" mod_yy "${mod_yy}" )
-    string(REPLACE "/*%CODE_END%*/%}" "}" mod_yy "${mod_yy}" )
-    set(ESQL_GRAMMAR_INPUT ${CMAKE_BINARY_DIR}/esql_grammar.yy)
-    file(WRITE ${ESQL_GRAMMAR_INPUT} "${mod_yy}")
-  endif(USE_BISON_NEWDIRECTIVE)
-  bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
-    COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
-  flex_target(esql_lexer ${ESQL_LEXER_INPUT} ${ESQL_LEXER_OUTPUT}
-    COMPILE_FLAGS "--noline --never-interactive --prefix=esql_yy")
-  add_flex_bison_dependency(esql_lexer esql_grammar)
-  add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
-  add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
-else(USE_BISON_FLEX)
-  set(BISON_csql_grammar_OUTPUTS ${CSQL_GRAMMAR_OUTPUT})
-  set(FLEX_csql_lexer_OUTPUTS ${CSQL_LEXER_OUTPUT})
-  set(BISON_loader_grammar_OUTPUTS ${LOADER_GRAMMAR_OUTPUT})
-  set(FLEX_loader_lexer_OUTPUTS ${LOADER_LEXER_OUTPUT})
-  set(BISON_esql_grammar_OUTPUTS ${ESQL_GRAMMAR_OUTPUT})
-  set(FLEX_esql_lexer_OUTPUTS ${ESQL_LEXER_OUTPUT})
-endif(USE_BISON_FLEX)
+if(USE_BISON_NEWDIRECTIVE)
+  # replace old bison directives with new ones
+  # use add_custom_command because we want to regenerate csql_grammar.yy
+  # whenever csql_grammar.y is modified
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
+    COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
+    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y
+  )
+else()
+  # using old bison - just copy the csql_grammar.y to csql_grammar.yy
+  # keeping the chain of dependencies
+  # use add_custom_command because we want to regenerate csql_grammar.yy
+  # whenever csql_grammar.y is modified
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
+    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y
+  )
+endif(USE_BISON_NEWDIRECTIVE)
 
+set(CSQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy)
+
+# because csql_grammar.yy are generated through a custom command 
+# whenever csql_grammar.y is modified, bison and flex will be 
+# run to create new outputs
+
+bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
+  COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
+flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
+  COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
+add_flex_bison_dependency(csql_lexer csql_grammar)
+add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
+add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
+
+bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
+  COMPILE_FLAGS "--no-lines --name-prefix=loader_yy -d -r all")
+flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
+  COMPILE_FLAGS "--noline --never-interactive --prefix=loader_yy")
+add_flex_bison_dependency(loader_lexer loader_grammar)
+add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
+add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
+
+if(USE_BISON_NEWDIRECTIVE)
+  # replace old bison directives with new ones
+  # use add_custom_command because we want to regenerate esql_grammar.yy
+  # whenever esql_grammar.y is modified
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
+    COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
+    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
+  )
+else()
+  # using old bison - just copy the esql_grammar.y to esql_grammar.yy
+  # keeping the chain of dependencies
+  # use add_custom_command because we want to regenerate esql_grammar.yy
+  # whenever esql_grammar.y is modified
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
+    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/esql_grammar.y
+  )
+endif(USE_BISON_NEWDIRECTIVE)
+
+set(ESQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy)
+
+
+# because esql_grammar.yy are generated through a custom command 
+# whenever esql_grammar.y is modified, bison and flex will be 
+# run to create new outputs
+
+bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
+  COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
+flex_target(esql_lexer ${ESQL_LEXER_INPUT} ${ESQL_LEXER_OUTPUT}
+  COMPILE_FLAGS "--noline --never-interactive --prefix=esql_yy")
+add_flex_bison_dependency(esql_lexer esql_grammar)
+add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
+add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
 
 # java check
 include(FindJNI)
