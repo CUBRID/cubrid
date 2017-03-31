@@ -18750,6 +18750,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       has_null_domain = false;
       for (i = 0; i < multi_range_opt->num_attrs; i++)
 	{
+	  assert (multi_range_opt->sort_col_dom[i] != NULL);
 	  if (multi_range_opt->sort_col_dom[i] == &tp_Null_domain)
 	    {
 	      domain = tp_domain_resolve_value (&new_key_value[i], NULL);
