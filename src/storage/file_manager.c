@@ -4422,9 +4422,9 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
   expand_size_in_sectors = MIN (expand_size_in_sectors, expand_max_size_in_sectors);
 
   file_log ("file_perm_expand",
-	    "expand file %d|%d by %d sectors. \n" FILE_HEAD_ALLOC_MSG
-	    FILE_TABLESPACE_MSG, VFID_AS_ARGS (&fhead->self),
-	    expand_size_in_sectors, FILE_HEAD_ALLOC_AS_ARGS (fhead), FILE_TABLESPACE_AS_ARGS (&fhead->tablespace));
+	    "expand file %d|%d by %d sectors. \n" FILE_HEAD_ALLOC_MSG FILE_TABLESPACE_MSG,
+	    VFID_AS_ARGS (&fhead->self), expand_size_in_sectors, FILE_HEAD_ALLOC_AS_ARGS (fhead),
+	    FILE_TABLESPACE_AS_ARGS (&fhead->tablespace));
 
   /* allocate a buffer to hold the new sectors */
   vsids_reserved = (VSID *) db_private_alloc (thread_p, expand_size_in_sectors * sizeof (VSID));
@@ -4480,9 +4480,8 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
 
   file_log ("file_perm_expand",
 	    "expand file %d|%d, page header %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d; "
-	    "first sector %d|%d \n" FILE_HEAD_ALLOC_MSG
-	    FILE_EXTDATA_MSG ("partial table"), VFID_AS_ARGS (&fhead->self),
-	    PGBUF_PAGE_MODIFY_ARGS (page_fhead, &save_lsa),
+	    "first sector %d|%d \n" FILE_HEAD_ALLOC_MSG FILE_EXTDATA_MSG ("partial table"),
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_MODIFY_ARGS (page_fhead, &save_lsa),
 	    VSID_AS_ARGS (vsids_reserved), FILE_HEAD_ALLOC_AS_ARGS (fhead), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
 
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
@@ -5712,9 +5711,8 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
   vsid_dealloc.sectid = SECTOR_FROM_PAGEID (vpid_dealloc->pageid);
 
   file_log ("file_perm_dealloc",
-	    "file %d|%d de%s %d|%d (search for VSID %d|%d) \n"
-	    FILE_HEAD_ALLOC_MSG, VFID_AS_ARGS (&fhead->self),
-	    FILE_ALLOC_TYPE_STRING (alloc_type), VPID_AS_ARGS (vpid_dealloc),
+	    "file %d|%d de%s %d|%d (search for VSID %d|%d) \n" FILE_HEAD_ALLOC_MSG,
+	    VFID_AS_ARGS (&fhead->self), FILE_ALLOC_TYPE_STRING (alloc_type), VPID_AS_ARGS (vpid_dealloc),
 	    VSID_AS_ARGS (&vsid_dealloc), FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
   /* search partial table. */
@@ -5827,9 +5825,9 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 
 	  file_log ("file_perm_dealloc",
 		    "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
-		    "after simulating the deallocation of full table page \n"
-		    FILE_HEAD_ALLOC_MSG, VFID_AS_ARGS (&fhead->self),
-		    PGBUF_PAGE_MODIFY_ARGS (page_fhead, &save_page_lsa));
+		    "after simulating the deallocation of full table page \n" FILE_HEAD_ALLOC_MSG,
+		    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_MODIFY_ARGS (page_fhead, &save_page_lsa),
+		    FILE_HEAD_ALLOC_AS_ARGS (fhead));
 	}
 
       /* find free space */
@@ -5933,8 +5931,8 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 
   file_log ("file_perm_dealloc",
 	    "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
-	    "after de%s, is_empty = %s, was_full = %s, \n"
-	    FILE_HEAD_ALLOC_MSG, VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_MODIFY_ARGS (page_fhead, &save_page_lsa),
+	    "after de%s, is_empty = %s, was_full = %s, \n" FILE_HEAD_ALLOC_MSG,
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_MODIFY_ARGS (page_fhead, &save_page_lsa),
 	    FILE_ALLOC_TYPE_STRING (alloc_type), is_empty ? "true" : "false", was_full ? "true" : "false",
 	    FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
@@ -7982,8 +7980,8 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	}
 
       file_log ("file_temp_alloc",
-		"no free pages" FILE_HEAD_ALLOC_MSG
-		"\texpand file with VSID = %d|%d ", FILE_HEAD_ALLOC_AS_ARGS (fhead), VSID_AS_ARGS (&partsect_new.vsid));
+		"no free pages" FILE_HEAD_ALLOC_MSG "\texpand file with VSID = %d|%d ",
+		FILE_HEAD_ALLOC_AS_ARGS (fhead), VSID_AS_ARGS (&partsect_new.vsid));
 
       assert (extdata_part_ftab != NULL);
       if (file_extdata_is_full (extdata_part_ftab))
