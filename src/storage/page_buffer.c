@@ -8530,7 +8530,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   /* we need more victims */
   pgbuf_wakeup_flush_thread (thread_p);
-
   /* failed finding victim in single-threaded, although the number of victim candidates is positive? impossible!
    * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
    * NULL. */
@@ -15351,6 +15350,13 @@ pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threa
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
   victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
   PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+
+  /* no victim found in first step, but flush thread ran and candidates can be found, try again */
+  if (victim == NULL && multi_threaded == false && lru_list->count_vict_cand > 0)
+    {
+      victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
+      PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+    }
 
   if ((multi_threaded || victim != NULL) && lru_list->count_vict_cand > 0)
     {
