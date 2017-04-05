@@ -3117,9 +3117,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   victim_cand_count = 0;
   for (lru_idx = 0; lru_idx < PGBUF_TOTAL_LRU_COUNT; lru_idx++)
     {
-#if defined (SA_MODE)
-      int candidates_this_lru = victim_cand_count;	  
-#endif
       victim_flush_priority_this_lru = pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx];
       if (victim_flush_priority_this_lru <= 0)
 	{
@@ -3161,20 +3158,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 #endif /* SERVER_MODE */
 	}
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
-
-#if defined (SA_MODE)
-      if ((pgbuf_Pool.buf_LRU_list[lru_idx].flags & PGBUF_LRU_VICTIM_LFCQ_FLAG) == 0
-	  && pgbuf_Pool.buf_LRU_list[lru_idx].count_vict_cand > 0)
-	{
-	  /* TODO: temporary investigation code */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      /* we found no dirty pages to flush, make sure the LRU is in victimize queue */
-      if (candidates_this_lru == victim_cand_count)
-	{
-	  pgbuf_lfcq_add_lru_with_victims (&pgbuf_Pool.buf_LRU_list[lru_idx]);
-	}
-#endif
     }
 
   er_log_debug (ARG_FILE_LINE,
@@ -8547,7 +8530,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   /* we need more victims */
   pgbuf_wakeup_flush_thread (thread_p);
-  
   /* failed finding victim in single-threaded, although the number of victim candidates is positive? impossible!
    * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
    * NULL. */
@@ -15214,13 +15196,6 @@ pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list)
   if (old_flags & PGBUF_LRU_VICTIM_LFCQ_FLAG)
     {
       /* already added. */
-#if defined (SA_MODE)
-      /* TODO: temporary investigation code */
-      if (lru_list->count_vict_cand > 0)
-	{
-	  PGBUF_ABORT_RELEASE ();
-	}
-#endif
       return false;
     }
 
@@ -15244,10 +15219,6 @@ pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list)
 	      return true;
 	    }
 	}
-#if defined (SA_MODE)
-      /* TODO: temporary investigation code */
-      PGBUF_ABORT_RELEASE ();
-#endif
       /* clear the flag */
       lru_list->flags &= ~PGBUF_LRU_VICTIM_LFCQ_FLAG;
     }
