@@ -15380,6 +15380,13 @@ pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threa
   victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
   PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
 
+  /* no victim found in first step, but flush thread ran and candidates can be found, try again */
+  if (victim == NULL && multi_threaded == false && lru_list->count_vict_cand > 0)
+    {
+      victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
+      PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);      
+    }
+
   if ((multi_threaded || victim != NULL) && lru_list->count_vict_cand > 0)
     {
       /* add lru list back to queue */
