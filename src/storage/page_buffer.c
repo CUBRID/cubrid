@@ -3492,11 +3492,6 @@ end:
 	      /* should have found victim candidate */
 	      assert (false);
 	    }
-	  if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
-	    {
-	      /* should be over quota */
-	      assert (false);
-	    }
 	}
 
       /* now, let's double check that not finding flush candidates is possible (enough victim candidates as it is). */
