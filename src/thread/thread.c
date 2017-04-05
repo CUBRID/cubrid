@@ -796,7 +796,8 @@ loop:
 		  thread_lock_entry (thread_p);
 
 		  /* The worker thread may have been waked up by others. Check it again. */
-		  if (thread_p->tran_index != -1 && thread_p->status == TS_WAIT && thread_p->lockwait == NULL)
+		  if (thread_p->tran_index != -1 && thread_p->status == TS_WAIT && thread_p->lockwait == NULL
+		      && thread_p->check_interrupt == true)
 		    {
 		      thread_p->interrupted = true;
 		      thread_wakeup_already_had_mutex (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT);
@@ -809,9 +810,8 @@ loop:
 		  /* 
 		   * we can only wakeup LWT when waiting on THREAD_LOGWR_SUSPENDED.
 		   */
-		  r =
-		    thread_check_suspend_reason_and_wakeup (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT,
-							    THREAD_LOGWR_SUSPENDED);
+		  r = thread_check_suspend_reason_and_wakeup (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT,
+							      THREAD_LOGWR_SUSPENDED);
 		  if (r == NO_ERROR)
 		    {
 		      thread_p->interrupted = true;
