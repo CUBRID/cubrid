@@ -8461,7 +8461,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		  /* hint advanced */
 		}
 
-	      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
+	      assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
 
 	  found_victim_cnt++;
@@ -8527,7 +8527,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		  /* modified hint */
 		}
 
-	      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
+	      assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
 	  found_victim_cnt++;
 	  if (found_victim_cnt >= lru_victim_cnt)
@@ -14565,7 +14565,7 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
     }
   while (!ATOMIC_CAS_ADDR (&lru_list->victim_hint, old_victim_hint, bcb));
 
-  assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
+  assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 
   /* update victim counter. */
   /* add to lock-free circular queue so victimizers can find it... if this is not a private list under quota. */
@@ -14632,7 +14632,7 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
       /* updated hint */
     }
 
-  assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
+  assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 }
 
 /*
