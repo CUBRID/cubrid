@@ -287,6 +287,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (BTREE_STATS) * n_btstats);
 	      goto error;
 	    }
+	  memset(att->bt_stats, 0, sizeof (BTREE_STATS) * n_btstats);
 
 	  for (j = 0, bt_statsp = att->bt_stats; j < n_btstats; j++, bt_statsp++)
 	    {
