@@ -265,6 +265,7 @@ typedef enum
 /* zone counts & thresholds */
 #define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
 #define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
+#define PGBUF_LRU_VICTIM_ZONE_COUNT(list) ((list)->count_lru3)
 
 #define PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD(list) ((list)->threshold_lru1 < (list)->count_lru1)
 #define PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD(list) ((list)->threshold_lru2 < (list)->count_lru2)
@@ -3487,13 +3488,29 @@ end:
 	      continue;
 	    }
 	  lru_list = PGBUF_GET_LRU_LIST (PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thrd_iter)));
+	  if (PGBUF_LRU_VICTIM_ZONE_COUNT (lru_list) == 0)
+	    {
+	      continue;
+	    }
 	  if (lru_list->count_vict_cand > 0)
 	    {
+	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
+		{
+		  /* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
+		   * flush queue */
+		  continue;
+		}
 	      /* should have found victim candidate */
 	      assert (false);
 	    }
 	  if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
+	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
+		{
+		  /* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
+		   * flush queue */
+		  continue;
+		}
 	      /* should be over quota */
 	      assert (false);
 	    }
