@@ -3008,12 +3008,10 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
 #endif /* CUBRID_DEBUG */
 
       sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
+
       /* Shutdown the system with the system transaction */
       logtb_set_to_system_tran_index (thread_p);
       log_abort_all_active_transaction (thread_p);
-#if defined(SERVER_MODE)
-      thread_stop_active_daemons ();
-#endif
 
       /* before removing temp vols */
       (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
@@ -3023,6 +3021,11 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       session_states_finalize (thread_p);
 
       (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
+
+#if defined(SERVER_MODE)
+      thread_stop_active_daemons ();
+#endif
+
       log_final (thread_p);
 
       if (is_er_final == ER_ALL_FINAL)
