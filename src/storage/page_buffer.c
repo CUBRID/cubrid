@@ -8410,7 +8410,15 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   if (!pgbuf_bcb_is_dirty (lru_list->bottom) && lru_list->victim_hint != lru_list->bottom)
     {
       /* update hint to bottom. sometimes it may be out of sync. */
-      (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, lru_list->bottom);
+      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+      if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
+	{
+	  (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, lru_list->bottom);
+	}
+      else
+	{
+	  (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, NULL);
+	}
     }
 
   /* we will search */
@@ -8452,6 +8460,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		{
 		  /* hint advanced */
 		}
+
+	      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
 
 	  found_victim_cnt++;
@@ -8516,6 +8526,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		{
 		  /* modified hint */
 		}
+
+	      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
 	  found_victim_cnt++;
 	  if (found_victim_cnt >= lru_victim_cnt)
@@ -8531,7 +8543,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     {
       /* we had a hint and we failed to find any victim candidates. */
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_BAD_HINT);
-      if (lru_list->count_vict_cand > 0)
+      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+      if (lru_list->count_vict_cand > 0 && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
 	{
 	  /* set victim hint to bottom */
 	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
@@ -8691,7 +8704,15 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
       if (nassigned == 0 && lru_list->count_vict_cand > 0 && pgbuf_is_any_thread_waiting_for_direct_victim ())
 	{
 	  /* maybe hint was bad? that's most likely case. reset the hint to bottom. */
-	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+	  assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+	  if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
+	    {
+	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+	    }
+	  else
+	    {
+	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL);
+	    }
 
 	  /* check from bottom anyway */
 	  nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, lru_list->bottom);
@@ -14544,6 +14565,8 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
     }
   while (!ATOMIC_CAS_ADDR (&lru_list->victim_hint, old_victim_hint, bcb));
 
+  assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
+
   /* update victim counter. */
   /* add to lock-free circular queue so victimizers can find it... if this is not a private list under quota. */
   ATOMIC_INC_32 (&lru_list->count_vict_cand, 1);
@@ -14608,6 +14631,8 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
     {
       /* updated hint */
     }
+
+  assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 }
 
 /*
