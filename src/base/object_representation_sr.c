@@ -2362,6 +2362,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 	  goto error_cleanup;
 	}
+      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
     }
 
   if (rep->n_shared_attrs)
@@ -2373,6 +2374,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
 	  goto error_cleanup;
 	}
+      memset (rep->shared_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
     }
 
   if (rep->n_class_attrs)
@@ -2384,6 +2386,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
 	  goto error_cleanup;
 	}
+      memset (rep->class_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
     }
 
 
@@ -2846,6 +2849,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       free_and_init (rep);
       return NULL;
     }
+  memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 
   /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of the
    * disk_rep points directly at the the substructure's variable offset table (which it does) and use
@@ -3044,6 +3048,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 		  (sizeof (OR_ATTRIBUTE) * rep->n_attributes));
 	  goto error;
 	}
+      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 
       /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of
        * the disk_rep points directly at the the substructure's variable offset table (which it does) and use
