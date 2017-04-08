@@ -6509,7 +6509,7 @@ qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_
     {
       if (spec->node_type == PT_SPEC && spec->info.spec.on_cond != NULL)
 	{
-	  if (t_node != NULL)
+	  if (t_node == NULL)
 	    {
 	      t_node = *wherep = spec->info.spec.on_cond;
 	    }
