@@ -815,6 +815,7 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size, VPID * page_id_p)
   if (page_p == NULL)
     {
       ASSERT_ERROR ();
+      pthread_mutex_unlock (&catalog_Max_space_lock);
       return NULL;
     }
 
