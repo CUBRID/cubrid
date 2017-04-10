@@ -184,7 +184,7 @@ end
 #
 define pgbuf_cast_btop
   set $arg1 = $arg0->iopage_buffer->iopage.page
-  end
+end
 
 # pgbuf_cast_ptob
 # $arg0 (in)  : PAGE_PTR
@@ -193,7 +193,7 @@ define pgbuf_cast_btop
 #
 define pgbuf_cast_ptob
   set $arg1 = ((PGBUF_IOPAGE_BUFFER *) (((PAGE_PTR) $arg0) - sizeof (FILEIO_PAGE_RESERVED) - sizeof (PGBUF_BCB *)))->bcb
-  end
+end
 
 # pgbuf_print_alloc_bcb_waits
 # No arguments
@@ -208,9 +208,9 @@ define pgbuf_print_alloc_bcb_waits
   while $i < thread_Manager.num_total
     if pgbuf_Pool.direct_victims.bcb_victims[$i] != 0
       printf "(thr = %d, bcb = %p) \n", $i, pgbuf_Pool.direct_victims.bcb_victims[$i]
-      end
-    set $i = $i + 1
     end
+    set $i = $i + 1
+  end
   printf "\n"
 
   printf "waiter_threads_high_priority: "
@@ -221,7 +221,7 @@ define pgbuf_print_alloc_bcb_waits
   while $i < $lfcq->produce_cursor
     printf "%d ", $thrar[$i % $lfcq->capacity]->index
     set $i = $i + 1
-    end
+  end
   printf "\n"
 
   printf "waiter_threads_low_priority: "
@@ -232,9 +232,9 @@ define pgbuf_print_alloc_bcb_waits
   while $i < $lfcq->produce_cursor
     printf "%d ", $thrar[$i % $lfcq->capacity]->index
     set $i = $i + 1
-    end
-  printf "\n"
   end
+  printf "\n"
+end
   
 define pgbuf_find_alloc_bcb_wait_thread
   printf "bcb = %p \n", pgbuf_Pool.direct_victims.bcb_victims[$arg0]
@@ -249,10 +249,10 @@ define pgbuf_find_alloc_bcb_wait_thread
       printf "waiter_threads_high_priority, cursor = %d, distance = %d, thread_p = %p \n", $i, $dist, $thrar[$i % $lfcq->capacity]
       set $found = 1
       loop_break
-      end
+    end
     set $i = $i + 1
     set $dist = $dist + 1
-    end
+  end
 
   if !$found
     set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
@@ -264,16 +264,16 @@ define pgbuf_find_alloc_bcb_wait_thread
         printf "waiter_threads_low_priority, cursor = %d, distance = %d, thread_p = %p \n", $i, $dist, $thrar[$i % $lfcq->capacity]
         set $found = 1
         loop_break
-        end
+      end
       set $i = $i + 1
       set $dist = $dist + 1
-      end
     end
+  end
 
   if !$found
     printf "not found \n"
-    end
   end
+end
 
 # pgbuf_read_bcb_flags
 # $arg0 - bcb flags
@@ -293,46 +293,46 @@ define pgbuf_read_bcb_flags
   printf "Flags: %x \n", ($flags & 0xF0000000)
   if $flags & $dirty_flag
     printf "BCB is dirty \n"
-    end
+  end
   if $flags & $flushing_flag
     printf "BCB is being flushed to disk \n"
-    end
+  end
   if $flags & $victim_direct_flag
     printf "BCB is direct victim \n"
-    end
+  end
   if $flags & $invalid_direct_victim_flag
     printf "BCB is invalid direct victim \n"
-    end
+  end
   if $flags & $to_vacuum_flag
     printf "BCB will be fixed by vacuum \n"
-    end
+  end
   if $flags & $mov_to_bot_flag
     printf "BCB must be moved to bottom \n"
-    end
+  end
   if $flags & $async_flush_flag
     printf "BCB must be flushed \n"
-    end
+  end
   
   if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_1_ZONE
     printf "BCB is in lru 1 \n"
-    end
+  end
   if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_2_ZONE
     printf "BCB is in lru 2 \n"
-    end
+  end
   if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_3_ZONE
     printf "BCB is in lru 3 \n"
-    end
+  end
   if ($flags & PGBUF_ZONE_MASK) == PGBUF_VOID_ZONE
     printf "BCB is in void zone \n"
-    end
+  end
   if ($flags & PGBUF_ZONE_MASK) == PGBUF_INVALID_ZONE
     printf "BCB is in invalid zone \n"
-    end
+  end
   
   if $flags & PGBUF_LRU_ZONE_MASK
     printf "BCB is in lru list with index %d \n", $flags & 0xFFFF
-    end
   end
+end
 
 # pgbuf_lru_print
 # $arg0 - lru index
@@ -363,10 +363,10 @@ define pgbuf_lru_print
   while $bcb != 0
     if ($bcb->flags & PGBUF_ZONE_MASK) == PGBUF_LRU_1_ZONE
       set $cnt1 = $cnt1 + 1
-      end
+    end
     if ($bcb->flags & PGBUF_ZONE_MASK) == PGBUF_LRU_2_ZONE
       set $cnt2 = $cnt2 + 1
-      end
+    end
     if ($bcb->flags & PGBUF_ZONE_MASK) == PGBUF_LRU_3_ZONE
       set $cnt3 = $cnt3 + 1
       if ($bcb->flags & 0xE0000000) == 0
@@ -374,37 +374,37 @@ define pgbuf_lru_print
         if $first_victim == 0
           set $first_victim = $bcb
           set $dist_fv = $dist
-          end
+        end
         if ($bcb->flags & 0x08000000) != 0
           set $cnt_tovac_vc = $cnt_tovac_vc + 1
-          end
         end
+      end
       if ($bcb->flags & 0x08000000) != 0
         set $cnt_tovac_lru3 = $cnt_tovac_lru3 + 1
-        end
       end
+    end
     if ($bcb->flags & 0x80000000) != 0
       set $cntdrt = $cntdrt + 1
-      end
+    end
     if ($bcb->flags & 0x40000000) != 0
       set $cntisflsh = $cntisflsh + 1
-      end
+    end
     if ($bcb->flags & 0x20000000) != 0
       set $cntdirv = $cntdirv + 1
-      end
+    end
     if $bcb->fcnt > 0 || $bcb->latch_mode != PGBUF_NO_LATCH || $bcb->next_wait_thrd != 0
       set $cntfix = $cntfix + 1
-      end
+    end
     if $bcb == $lru_list->victim_hint
       set $dist_vh = $dist
-      end
+    end
     if ($bcb->flags & 0x08000000) != 0
       set $cnt_tovac = $cnt_tovac + 1
     end
       
     set $bcb = $bcb->prev_BCB
     set $dist = $dist + 1
-    end
+  end
   
   if $lru_idx < pgbuf_Pool.num_LRU_list
     printf "LRU shared list %d: \n", $lru_idx
@@ -412,7 +412,7 @@ define pgbuf_lru_print
   else
     printf "LRU private list %d: \n", $lru_idx
     printf "Total count:  %d; quota = %d \n", $cnt1 + $cnt2 + $cnt3, $lru_list->quota
-    end
+  end
   if $cnt1 + $cnt2 + $cnt3 == 0
     printf "Empty list \n"
   else
@@ -424,8 +424,21 @@ define pgbuf_lru_print
     printf "Victim hint: %p, distance: %d \n", pgbuf_Pool.buf_LRU_list[$lru_idx]->victim_hint, $dist_vh
     printf "Dirties = %d, Flushing = %d, Direct victims = %d, Fixed = %d \n", $cntdrt, $cntisflsh, $cntdirv, $cntfix
     printf "To vacuum = %d, in lru3 = %d, victim candidates = %d \n", $cnt_tovac, $cnt_tovac_lru3, $cnt_tovac_vc
-    end
   end
+end
+
+# pgbuf_lru_print_all
+# No arguments
+#
+# Prints info on all lru lists
+#
+define pgbuf_lru_print_all
+  set $i = 0
+  while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
+    pgbuf_lru_print $i
+    set $i = $i + 1
+  end
+end
 
 # pgbuf_lru_print_victim_status
 # No arguments
@@ -449,9 +462,9 @@ define pgbuf_lru_print_victim_status
     set $shared_vc = $shared_vc + $lru_list->count_vict_cand
     if $lru_list->count_lru1 + $lru_list->count_lru2 + $lru_list->count_lru3 == 0
       set $shared_empty = $shared_empty + 1
-      end
-    set $i = $i + 1
     end
+    set $i = $i + 1
+  end
     
   set $private_1 = 0
   set $private_2 = 0
@@ -479,13 +492,13 @@ define pgbuf_lru_print_victim_status
       if $lru_list->count_vict_cand > 0
         set $oq_with_vc = $oq_with_vc + 1
         set $oq_with_vc_bcbs = $oq_with_vc_bcbs + $lru_list->count_vict_cand
-        end
       end
+    end
     if $lru_list->count_lru1 + $lru_list->count_lru2 + $lru_list->count_lru3 == 0
       set $private_empty = $private_empty + 1
-      end
-    set $i = $i + 1
     end
+    set $i = $i + 1
+  end
   
   printf "\n"
   printf "Shared lists: %d, empty = %d \n", pgbuf_Pool.num_LRU_list, $shared_empty
@@ -504,7 +517,7 @@ define pgbuf_lru_print_victim_status
   printf "Over quota: lists = %d, bcb's = %d \n", $oq_lists, $oq_bcbs
   printf "Candidates in over quota: lists = %d, bcb's = %d \n", $oq_with_vc, $oq_with_vc_bcbs
   printf "\n"
-  end
+end
     
 # pgbuf_flush_select_victims
 # No args
@@ -524,7 +537,7 @@ define pgbuf_flush_select_victims
       set $check_cnt = (int) (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[$i] * (float) check_count_lru / lru_sum_flush_priority)
       if $check_cnt < 1
         set $check_cnt = 1
-        end
+      end
       printf "check=%7d, ", $check_cnt
       set $bcb = pgbuf_Pool.buf_LRU_list[$i].bottom
       set $bcb_count = 0
@@ -532,18 +545,18 @@ define pgbuf_flush_select_victims
       while $bcb != 0 && ($bcb->flags & 0x30000) == 0x30000 && $bcb_count < $check_cnt
         if ($bcb->flags & 0x80000000) != 0
           set $vict_count = $vict_count + 1
-          end
+        end
         set $bcb_count = $bcb_count + 1
         set $bcb = $bcb->prev_BCB
-        end
+      end
       printf "vict_count=%7d \n", $vict_count
       set $total_vict_cand = $total_vict_cand + $vict_count
-      end
-    set $i = $i + 1
     end
-    printf "total victims = %d \n", $total_vict_cand
-  set pagination on
+    set $i = $i + 1
   end
+  printf "total victims = %d \n", $total_vict_cand
+  set pagination on
+end
 
 # pgbuf_flush_show_all
 # No arguments
@@ -564,7 +577,7 @@ define pgbuf_flush_show_all
     set $plru = $thrar[$i % $lfcq->capacity]->private_lru_index + pgbuf_Pool.num_LRU_list
     pgbuf_lru_print $plru
     set $i = $i + 1
-    end
+  end
     
   set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
   set $i = $lfcq->consume_cursor
@@ -574,11 +587,11 @@ define pgbuf_flush_show_all
     set $plru = $thrar[$i % $lfcq->capacity]->private_lru_index + pgbuf_Pool.num_LRU_list
     pgbuf_lru_print $plru
     set $i = $i + 1
-    end
+  end
   
   pgbuf_lru_print_victim_status
   pgbuf_flush_select_victims
-  end
+end
   
 # pgbuf_show_lru_dirties
 # No arguments
@@ -607,5 +620,6 @@ define pgbuf_show_lru_dirties
      printf "LRU: %d, count_lru3:%d (actual:%d), total:%d, dirties:%d\n", $i, $lru_list->count_lru3, $actual_lru3_cnt, $lru_list->count_lru3 + $lru_list->count_lru2 + $lru_list->count_lru1, $dirty_cnt
 	 
     set $i = $i + 1
-    end
-end  
+  end
+end
+

@@ -13105,6 +13105,15 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 	   * private bcb's must be less than 90% of buffer. that means shared bcb's have to be 10% or more of buffer.
 	   * PGBUF_MIN_SHARED_LIST_ADJUST_SIZE is currently set to 50, which is 5% to targeted 1k shared list size.
 	   * we shouldn't be here unless I messed up the calculus. */
+	  if (pgbuf_Pool.buf_invalid_list.invalid_cnt > 0)
+	    {
+	      /* This is not really an interesting case.
+	       * Probably both shared and private are small and most of buffers in invalid list.
+	       * We don't really need flush for the case, since BCB could be allocated from invalid list.
+	       */
+	      return;
+	    }
+
 	  assert (false);
 	  use_prv_size = true;
 	  prv_flush_ratio = 1.0f;
