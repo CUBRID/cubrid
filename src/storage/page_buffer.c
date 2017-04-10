@@ -2842,12 +2842,17 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 
 	  /* check if page invalidation should be performed on the page */
 	  if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&temp_vpid, &bufptr->vpid)
-	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0
-	      || pgbuf_bcb_avoid_victim (bufptr))
+	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0)
 	    {
 	      PGBUF_BCB_UNLOCK (bufptr);
 	      continue;
 	    }
+	}
+
+      if (pgbuf_bcb_avoid_victim (bufptr))
+	{
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  continue;
 	}
 
 #if defined(CUBRID_DEBUG)
