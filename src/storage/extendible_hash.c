@@ -2827,6 +2827,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, b
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
       return error_code;
     }
   old_pages -= 1;		/* The first page starts with 0 */
@@ -2840,6 +2841,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, b
 #ifdef EHASH_DEBUG
   if (check_pages != old_pages)
     {
+      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_ROOT_CORRUPTED, 3, ehid_p->vfid.volid, ehid_p->vfid.fileid,
 	      ehid_p->pageid);
       return ER_FAILED;
