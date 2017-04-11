@@ -16631,7 +16631,7 @@ heap_get_hfid_and_file_type_from_class_oid (THREAD_ENTRY * thread_p, const OID *
   error_code = heap_hfid_cache_get (thread_p, class_oid, hfid_out, ftype_out);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR_AND_ERROR (error_code);
+      ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
 
