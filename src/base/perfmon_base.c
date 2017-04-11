@@ -456,7 +456,6 @@ aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const int fix_dim
   if (dim == stat->dimensions)
     {
       *res += stats[offset];
-      //printf("%s %d\n", pstat_Nameoffset[offset].name, offset);
       return;
     }
 
