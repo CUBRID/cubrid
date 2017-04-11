@@ -16,11 +16,6 @@ extern "C" {
 #include <porting.h>
 }
 
-/*
- *
- * and please refactor using the code convention I sent in email :).
- */
-
 std::vector<StatisticsFile *> files;
 
 int main (int argc, char **argv)
