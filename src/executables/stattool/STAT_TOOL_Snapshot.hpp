@@ -12,20 +12,21 @@ extern "C"
 #include <perfmon_base.h>
 }
 
-struct Snapshot {
-    UINT64 *rawStats;
-    struct tm timestamp, secondTimeStamp;
-    bool isDifference;
+struct Snapshot
+{
+  UINT64 *rawStats;
+  struct tm timestamp, secondTimeStamp;
+  bool isDifference;
 
-    Snapshot (time_t seconds, time_t seconds2);
-    Snapshot (time_t seconds);
-    Snapshot (const Snapshot &other);
-    Snapshot *difference (Snapshot *other);
-    Snapshot *divide (Snapshot *other);
-    time_t getSeconds ();
-    UINT64 getStatusValueFromName (const char *stat_name);
-    void print (FILE *stream);
-    ~Snapshot ();
+  Snapshot (time_t seconds, time_t seconds2);
+  Snapshot (time_t seconds);
+  Snapshot (const Snapshot &other);
+  Snapshot *difference (Snapshot *other);
+  Snapshot *divide (Snapshot *other);
+  time_t getSeconds ();
+  UINT64 getStatusValueFromName (const char *stat_name);
+  void print (FILE *stream);
+  ~Snapshot ();
 };
 
 #endif //CUBRID_STAT_TOOL_SNAPSHOT_H

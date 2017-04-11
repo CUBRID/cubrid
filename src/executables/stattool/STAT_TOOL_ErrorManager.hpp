@@ -28,12 +28,14 @@ class ErrorManager
       INVALID_COMMAND_ERROR,
       MISSING_TIMESTAMP_ERROR,
       INVALID_ALIASES_ERROR,
+      INVALID_ARGUMENT_ERROR,
       NUM_ERRORS
     };
 
-    struct ErrorMessage {
-	ErrorCode code;
-	const char *message;
+    struct ErrorMessage
+    {
+      ErrorCode code;
+      const char *message;
     };
 
     static const ErrorMessage errorsMap[];

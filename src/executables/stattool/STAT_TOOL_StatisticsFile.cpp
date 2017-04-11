@@ -194,6 +194,7 @@ Snapshot *StatisticsFile::getSnapshotByArgument (const char *argument)
     }
 }
 
+#if 0
 void StatisticsFile::printInTableForm (Snapshot *s1, Snapshot *s2, FILE *stream)
 {
   int i;
@@ -261,6 +262,7 @@ void StatisticsFile::printInTableForm (Snapshot *s1, Snapshot *s2, FILE *stream)
                                              & (stats2[pstat_Metadata[i].start_offset]));
     }
 }
+#endif
 
 StatisticsFile::~StatisticsFile()
 {

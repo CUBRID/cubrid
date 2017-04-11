@@ -17,14 +17,24 @@ extern "C"
 }
 #endif
 
-#define PSTAT_METADATA_INIT_SINGLE_ACC(id, name) { id, name, PSTAT_ACCUMULATE_SINGLE_VALUE, 0, 0, NULL, NULL, NULL, NULL }
+#define NUM_ARGS(...) (sizeof((int[]){__VA_ARGS__})/sizeof(int))
+
+#define PSTAT_METADATA_INIT_SINGLE_ACC(id, name) { id, name, PSTAT_ACCUMULATE_SINGLE_VALUE, 0, 0, NULL, NULL}
 #define PSTAT_METADATA_INIT_SINGLE_PEEK(id, name) \
-  { id, name, PSTAT_PEEK_SINGLE_VALUE, 0, 0, NULL, NULL, NULL, NULL}
-#define PSTAT_METADATA_INIT_COUNTER_TIMER(id, name) { id, name, PSTAT_COUNTER_TIMER_VALUE, 0, 0, NULL, NULL, NULL, NULL }
+  { id, name, PSTAT_PEEK_SINGLE_VALUE, 0, 0, NULL, NULL}
+#define PSTAT_METADATA_INIT_COUNTER_TIMER(id, name) { id, name, PSTAT_COUNTER_TIMER_VALUE, 0, 0, NULL, NULL}
 #define PSTAT_METADATA_INIT_COMPUTED_RATIO(id, name) \
-  { id, name, PSTAT_COMPUTED_RATIO_VALUE, 0, 0, NULL, NULL, NULL, NULL }
-#define PSTAT_METADATA_INIT_COMPLEX(id, name, f_dump_in_file, f_dump_in_buffer, f_load, f_dump_diff) \
-  { id, name, PSTAT_COMPLEX_VALUE, 0, 0, f_dump_in_file, f_dump_in_buffer, f_load, f_dump_diff }
+  { id, name, PSTAT_COMPUTED_RATIO_VALUE, 0, 0, NULL, NULL}
+#define PSTAT_METADATA_INIT_COMPLEX(id, name, load, load_names, ...) \
+  { \
+    .psid = id, \
+    .stat_name = name, \
+    .valtype = PSTAT_COMPLEX_VALUE, \
+    .dimensions = NUM_ARGS(__VA_ARGS__), \
+    .sizes = (int [NUM_ARGS(__VA_ARGS__)]){__VA_ARGS__}, \
+    .f_load = load, \
+    .f_load_names = load_names \
+  }
 
 #define STAT_NAME_MAX_SIZE 64
 
@@ -497,15 +507,19 @@ typedef enum
 				 */
 } PSTAT_VALUE_TYPE;
 
+struct PSTAT_NameOffsetAssoc
+{
+  char name[STAT_NAME_MAX_SIZE];
+};
+
+typedef struct PSTAT_NameOffsetAssoc PSTAT_NAMEOFFSET;
+
 /* PSTAT_METADATA
  * This structure will keep meta-data information on each statistic we are monitoring.
  */
 typedef struct pstat_metadata PSTAT_METADATA;
-
-typedef void (*PSTAT_DUMP_IN_FILE_FUNC) (FILE *, const UINT64 * stat_vals);
-typedef void (*PSTAT_DUMP_IN_BUFFER_FUNC) (char **, const UINT64 * stat_vals, int *remaining_size);
 typedef int (*PSTAT_LOAD_FUNC) (void);
-typedef void (*PSTAT_DUMP_DIFF_IN_FILE_FUNC) (FILE * stream, const UINT64 * stats1, const UINT64 * stats2);
+typedef void (*PSTAT_LOAD_NAMES_FUNC) (PSTAT_NAMEOFFSET *);
 
 struct pstat_metadata
 {
@@ -518,10 +532,12 @@ struct pstat_metadata
   int start_offset;
   int n_vals;
 
-  PSTAT_DUMP_IN_FILE_FUNC f_dump_in_file;
-  PSTAT_DUMP_IN_BUFFER_FUNC f_dump_in_buffer;
+  /* dimensions and sizes are only for complex types */
+  int dimensions;
+  int *sizes;
+
   PSTAT_LOAD_FUNC f_load;
-  PSTAT_DUMP_DIFF_IN_FILE_FUNC f_dump_diff_in_file;
+  PSTAT_LOAD_NAMES_FUNC f_load_names;
 };
 
 /* Statistics activation flags */
@@ -625,64 +641,15 @@ int f_load_Time_data_page_fix_acquire_time (void);
 int f_load_Num_mvcc_snapshot_ext (void);
 int f_load_Time_obj_lock_acquire_time (void);
 
-void f_dump_in_buffer_Num_data_page_fix_ext (char **s, const UINT64 * stat_vals, int *remaining_size);
-void f_dump_in_buffer_Num_data_page_promote_ext (char **s, const UINT64 * stat_vals, int *remaining_size);
-void f_dump_in_buffer_Num_data_page_promote_time_ext (char **s, const UINT64 * stat_vals, int *remaining_size);
-void f_dump_in_buffer_Num_data_page_unfix_ext (char **s, const UINT64 * stat_vals, int *remaining_size);
-void f_dump_in_buffer_Time_data_page_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size);
-void f_dump_in_buffer_Time_data_page_hold_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size);
-void f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size);
-void f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int *remaining_size);
-void f_dump_in_buffer_Time_obj_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size);
-
-void f_dump_in_file_Num_data_page_fix_ext (FILE * f, const UINT64 * stat_vals);
-void f_dump_in_file_Num_data_page_promote_ext (FILE * f, const UINT64 * stat_vals);
-void f_dump_in_file_Num_data_page_promote_time_ext (FILE * f, const UINT64 * stat_vals);
-void f_dump_in_file_Num_data_page_unfix_ext (FILE * f, const UINT64 * stat_vals);
-void f_dump_in_file_Time_data_page_lock_acquire_time (FILE * f, const UINT64 * stat_vals);
-void f_dump_in_file_Time_data_page_hold_acquire_time (FILE * f, const UINT64 * stat_vals);
-void f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_vals);
-void f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals);
-void f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals);
-
-void perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
-void perfmon_stat_dump_in_file_fix_page_array_stat (FILE * stream, const UINT64 * stats_ptr);
-void perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
-void perfmon_stat_dump_in_file_promote_page_array_stat (FILE * stream, const UINT64 * stats_ptr);
-void perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
-void perfmon_stat_dump_in_file_unfix_page_array_stat (FILE * stream, const UINT64 * stats_ptr);
-void perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
-void perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE * stream, const UINT64 * stats_ptr);
-void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
-void perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE * stream, const UINT64 * stats_ptr);
-void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
-void perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE * stream, const UINT64 * stats_ptr);
-void perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
-void perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 * stats_ptr);
-void perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
-void perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * stats_ptr);
-void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
-void perfmon_stat_dump_in_file_snapshot_array_stat (FILE * stream, const UINT64 * stats_ptr);
-
-void
-f_dump_diff_in_file_Num_data_page_fix_ext_in_tabel_form (FILE * stream, const UINT64 * stats1, const UINT64 * stats2);
-void
-f_dump_diff_in_file_Num_data_page_promote_ext_in_table_form (FILE * stream, const UINT64 * stats1,
-							     const UINT64 * stats2);
-void f_dump_diff_in_file_Num_data_page_promote_time_ext_in_table_form (FILE * stream, const UINT64 * stats1,
-								       const UINT64 * stats2);
-void f_dump_diff_in_file_Num_data_page_unfix_ext_in_table_form (FILE * stream, const UINT64 * stats1,
-								const UINT64 * stats2);
-void f_dump_diff_in_file_Time_data_page_lock_acquire_time_in_table_form (FILE * stream, const UINT64 * stats1,
-									 const UINT64 * stats2);
-void f_dump_diff_in_file_Time_data_page_hold_acquire_time_in_table_form (FILE * stream, const UINT64 * stats1,
-									 const UINT64 * stats2);
-void f_dump_diff_in_file_Time_data_page_fix_acquire_time_in_table_form (FILE * stream, const UINT64 * stats1,
-									const UINT64 * stats2);
-void f_dump_diff_in_file_Num_mvcc_snapshot_ext_in_table_form (FILE * stream, const UINT64 * stats1,
-							      const UINT64 * stats2);
-void f_dump_diff_in_file_Time_obj_lock_acquire_time_in_table_form (FILE * stream, const UINT64 * stats1,
-								   const UINT64 * stats2);
+void f_load_names_Num_data_page_fix_ext (PSTAT_NAMEOFFSET * names);
+void f_load_names_Num_data_page_promote_ext (PSTAT_NAMEOFFSET * names);
+void f_load_names_Num_data_page_promote_time_ext (PSTAT_NAMEOFFSET * names);
+void f_load_names_Num_data_page_unfix_ext (PSTAT_NAMEOFFSET * names);
+void f_load_names_Time_data_page_lock_acquire_time (PSTAT_NAMEOFFSET * names);
+void f_load_names_Time_data_page_hold_acquire_time (PSTAT_NAMEOFFSET * names);
+void f_load_names_Time_data_page_fix_acquire_time (PSTAT_NAMEOFFSET * names);
+void f_load_names_Num_mvcc_snapshot_ext (PSTAT_NAMEOFFSET * names);
+void f_load_names_Time_obj_lock_acquire_time (PSTAT_NAMEOFFSET * names);
 
 const char *perfmon_stat_module_name (const int module);
 const char *perfmon_stat_page_type_name (const int page_type);
@@ -695,6 +662,10 @@ const char *perfmon_stat_snapshot_record_type (const int rec_type);
 const char *perfmon_stat_lock_mode_name (const int lock_mode);
 void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 void perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * stats2);
+void aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const int fix_dim_num, const int fix_index,
+			     int *res, int dim, int offset);
+void perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * stats_ptr);
+void perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, char **s, int *remaining_size);
 
 int metadata_initialize ();
 void init_name_offset_assoc ();
@@ -742,13 +713,6 @@ struct pstat_global
   bool initialized;
   int activation_flag;
 };
-
-struct PSTAT_NameOffsetAssoc
-{
-  char name[STAT_NAME_MAX_SIZE];
-};
-
-typedef struct PSTAT_NameOffsetAssoc PSTAT_NAMEOFFSET;
 
 extern int total_num_stat_vals;
 extern PSTAT_NAMEOFFSET *pstat_Nameoffset;

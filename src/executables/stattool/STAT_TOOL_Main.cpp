@@ -5,6 +5,7 @@
 #include "STAT_TOOL_PlotExecutor.hpp"
 #include "STAT_TOOL_LoadExecutor.hpp"
 #include "STAT_TOOL_ErrorManager.hpp"
+#include "STAT_TOOL_AggregateExecutor.hpp"
 #if defined (WINDOWS)
 #include <windows.h>
 #endif
@@ -61,6 +62,10 @@ int main (int argc, char **argv)
       else if (commandKeyword.compare ("plot") == 0)
         {
           executor = new PlotExecutor (arguments, files);
+        }
+      else if (commandKeyword.compare ("aggregate") == 0)
+        {
+          executor = new AggregateExecutor (arguments, files);
         }
       else if (commandKeyword.compare ("quit") == 0)
         {
