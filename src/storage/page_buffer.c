@@ -14560,13 +14560,22 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
   int list_tick;
 
   /* first, let's update the victim hint. */
+  /* We don't own the LRU mutex here, so after we read the victim_hint, another thread may change that BCB, 
+   * or the victim_hint pointer itself.
+   * All changes of lru_list->victim_hint, must be precedeed by changing the new hint BCB to LRU3 zone, the checks must
+   * be repetead here in the same sequence: 
+   *  1. read lru_list->victim_hint
+   *  2. stop if old_victim_hint is still in LRU3 and is older than proposed to be hint
+   *  3. atomically change the hint
+   * (old_victim_hint may suffer other changes including relocating to another LRU, this is protected by the atomic op)
+   */
   do
     {
       /* replace current victim hint only if this candidate is better. that is if its age in zone 3 is greater that of
        * current hint's */
       old_victim_hint = lru_list->victim_hint;
       list_tick = lru_list->tick_lru3;
-      if (old_victim_hint != NULL
+      if (old_victim_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (old_victim_hint)
 	  && (PGBUF_AGE_DIFF (old_victim_hint->tick_lru3, list_tick) > PGBUF_AGE_DIFF (bcb->tick_lru3, list_tick)))
 	{
 	  /* current hint is older. */
@@ -14578,8 +14587,6 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
        * is better. */
     }
   while (!ATOMIC_CAS_ADDR (&lru_list->victim_hint, old_victim_hint, bcb));
-
-  assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 
   /* update victim counter. */
   /* add to lock-free circular queue so victimizers can find it... if this is not a private list under quota. */
