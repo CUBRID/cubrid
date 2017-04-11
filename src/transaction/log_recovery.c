@@ -102,6 +102,9 @@ static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
 			       time_t * stopat);
+static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+						  const LOG_LSA * postpone_start_lsa);
+static void log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p);
 static void log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -176,7 +179,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
       VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, vacuum_rv_get_worker_by_trid (thread_p, tdes->trid), save_thread_type);
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Log undo (%lld, %d), rcvindex=%d for tdes: tdes->trid=%d.",
+		     "Log undo (%lld, %d), rcvindex=%d for tdes: tdes->trid=%d.",
 		     (long long int) rcv_undo_lsa->pageid, (int) rcv_undo_lsa->offset, rcvindex, tdes->trid);
     }
   else
@@ -872,7 +875,7 @@ log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "VACUUM: Found undo_redo record. tdes->trid=%d.",
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "Found undo_redo record. tdes->trid=%d.",
 		     tdes->trid);
     }
 
@@ -955,7 +958,7 @@ log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "VACUUM: Found postpone record. tdes->trid=%d.",
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "Found postpone record. tdes->trid=%d.",
 		     tdes->trid);
     }
 
@@ -1068,7 +1071,7 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Found postpone record. tdes->trid=%d, tdes->state=%d, ref_lsa=(%lld, %d).", tdes->trid,
+		     "Found postpone record. tdes->trid=%d, tdes->state=%d, ref_lsa=(%lld, %d).", tdes->trid,
 		     tdes->state, (long long int) run_posp->ref_lsa.pageid, (int) run_posp->ref_lsa.offset);
     }
 
@@ -1237,7 +1240,7 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Found commit_topope_with_postpone. tdes->trid=%d. ", tdes->trid);
+		     "Found commit_topope_with_postpone. tdes->trid=%d. ", tdes->trid);
     }
 
   LSA_COPY (&tdes->tail_lsa, log_lsa);
@@ -1494,8 +1497,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "VACUUM: Found commit sysop. tdes->trid=%d.",
-		     tdes->trid);
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "Found commit sysop. tdes->trid=%d.", tdes->trid);
     }
 
   LSA_COPY (&tdes->tail_lsa, log_lsa);
@@ -1623,6 +1625,11 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
     {
       /* reset tdes->rcv.atomic_sysop_start_lsa */
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+    }
+  if (LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+    {
+      /* reset tdes->rcv.atomic_sysop_start_lsa */
+      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
     }
 
   return NO_ERROR;
@@ -2729,6 +2736,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_REC_2PC_START *start_2pc = NULL;	/* Start 2PC commit log record */
   LOG_REC_2PC_PARTICP_ACK *received_ack = NULL;	/* A 2PC participant ack */
   LOG_REC_DONETIME *donetime = NULL;
+  LOG_REC_SYSOP_END *sysop_end;	/* Result of top system op */
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
@@ -3139,7 +3147,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  LOG_LSA null_lsa = LSA_INITIALIZER;
 
 		  /* Reset log header MVCC info */
-		  vacuum_reset_log_header_cache ();
+		  vacuum_reset_log_header_cache (thread_p);
 
 		  /* Reset vacuum recover LSA */
 		  vacuum_notify_server_crashed (&null_lsa);
@@ -3662,7 +3670,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT_WITH_POSTPONE:
 	    case LOG_SYSOP_START_POSTPONE:
-	    case LOG_SYSOP_END:
 	    case LOG_START_CHKPT:
 	    case LOG_END_CHKPT:
 	    case LOG_SAVEPOINT:
@@ -3678,6 +3685,17 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_END_OF_LOG:
 	    case LOG_SYSOP_ATOMIC_START:
+	      break;
+
+	    case LOG_SYSOP_END:
+	      LSA_COPY (&rcv_lsa, &log_lsa);
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
+	      sysop_end = ((LOG_REC_SYSOP_END *) ((char *) log_pgptr->area + log_lsa.offset));
+	      if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+		{
+		  LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
+		}
 	      break;
 
 	    case LOG_SMALLER_LOGREC_TYPE:
@@ -3731,6 +3749,110 @@ exit:
 }
 
 /*
+ * log_recovery_abort_interrupted_sysop () - find and abort interruped system operation during postpones.
+ *
+ * return                  : void
+ * thread_p (in)           : thread entry
+ * tdes (in)               : transaction descriptor
+ * postpone_start_lsa (in) : LSA of start postpone (system op or transaction)
+ */
+static void
+log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * postpone_start_lsa)
+{
+  LOG_LSA iter_lsa, prev_lsa;
+  LOG_RECORD_HEADER logrec_head;
+  LOG_PAGE *log_page = NULL;
+  char buffer_log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_LSA last_parent_lsa = LSA_INITIALIZER;
+
+  assert (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
+	  || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
+  assert (!LSA_ISNULL (postpone_start_lsa));
+
+  if (LSA_ISNULL (&tdes->undo_nxlsa) || LSA_LE (&tdes->undo_nxlsa, postpone_start_lsa))
+    {
+      /* nothing to abort */
+      return;
+    }
+
+  log_page = (LOG_PAGE *) PTR_ALIGN (buffer_log_page, MAX_ALIGNMENT);
+
+  /* how it works:
+   * we can have so-called logical run postpone system operation for some complex cases (e.g. file destroy or
+   * deallocate). if these operations are interrupted by crash, we must abort them first before finishing the postpone
+   * phase of system operation or transaction.
+   *
+   * normally, all records during the postpone execution are run postpones - physical or logical system operations.
+   * so to rollback a logical system op during postpone we have to stop at previous run postpone (or at the start of
+   * postpone if this system op is first). we need to manually search it.
+   */
+
+  for (iter_lsa = tdes->undo_nxlsa; LSA_GT (&iter_lsa, postpone_start_lsa); iter_lsa = prev_lsa)
+    {
+      if (logpb_fetch_page (thread_p, &iter_lsa, LOG_CS_FORCE_USE, log_page) != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_abort_interrupted_sysop");
+	  return;
+	}
+      logrec_head = *(LOG_RECORD_HEADER *) (log_page->area + iter_lsa.offset);
+      assert (logrec_head.trid == tdes->trid);
+
+      if (logrec_head.type == LOG_RUN_POSTPONE)
+	{
+	  /* found run postpone, stop */
+	  last_parent_lsa = iter_lsa;
+	  break;
+	}
+      else if (logrec_head.type == LOG_SYSOP_END)
+	{
+	  /* we need to see why type of system op. */
+	  LOG_LSA read_lsa = iter_lsa;
+	  LOG_REC_SYSOP_END *sysop_end;
+
+	  /* skip header */
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (logrec_head), &read_lsa, log_page);
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*sysop_end), &read_lsa, log_page);
+
+	  sysop_end = (LOG_REC_SYSOP_END *) (log_page->area + read_lsa.offset);
+	  if (sysop_end->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+	    {
+	      /* found run postpone, stop */
+	      last_parent_lsa = iter_lsa;
+	      break;
+	    }
+	  else
+	    {
+	      /* go to last parent */
+	      prev_lsa = sysop_end->lastparent_lsa;
+	    }
+	}
+      else
+	{
+	  /* safe-guard: we do not expect postpone starts */
+	  assert (logrec_head.type != LOG_COMMIT_WITH_POSTPONE && logrec_head.type != LOG_SYSOP_START_POSTPONE);
+
+	  /* move to previous */
+	  prev_lsa = logrec_head.prev_tranlsa;
+	}
+      assert (!LSA_ISNULL (&prev_lsa) && !LSA_EQ (&prev_lsa, &iter_lsa));
+    }
+
+  if (LSA_ISNULL (&last_parent_lsa))
+    {
+      /* no run postpones before system op. stop at start postpone. */
+      assert (LSA_EQ (&iter_lsa, postpone_start_lsa));
+      last_parent_lsa = *postpone_start_lsa;
+    }
+
+  /* simulate system op */
+  log_sysop_start (thread_p);
+  /* hack last parent lsa */
+  tdes->topops.stack[tdes->topops.last].lastparent_lsa = last_parent_lsa;
+  /* rollback */
+  log_sysop_abort (thread_p);
+}
+
+/*
  * log_recovery_finish_sysop_postpone () - Finish postpone during recovery for one system operation.
  *
  * return        : void
@@ -3757,30 +3879,8 @@ log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       LSA_SET_NULL (&first_postpone_to_apply);
 
       /* first verify it didn't crash in the middle of a run postpone system op */
-      if (!LSA_ISNULL (&tdes->undo_nxlsa) && LSA_LT (&sysop_start_postpone_lsa, &tdes->undo_nxlsa))
-	{
-	  /* rollback. simulate a new system op */
-
-	  log_sysop_start (thread_p);
-
-	  /* now we don't really know where to stop the rollback, however we can estimate. the postpone phase should be
-	   * only populated with run postpone log records and logical run postpone system operations.
-	   * if last log record before this system op is a logical run postpone, its LSA is stored in
-	   * tdes->tail_topresult_lsa. if it is a run postpone, we won't know, but rollback skips them. so we can set
-	   * this system op parent to either tail_topresult_lsa or to sysop_start_postpone_lsa, whichever comes last.
-	   */
-	  if (!LSA_ISNULL (&tdes->tail_topresult_lsa) && LSA_GT (&tdes->tail_topresult_lsa, &sysop_start_postpone_lsa))
-	    {
-	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->tail_topresult_lsa;
-	    }
-	  else
-	    {
-	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone_lsa;
-	    }
-	  /* rollback */
-	  log_sysop_abort (thread_p);
-	  assert (tdes->topops.last == 0);
-	}
+      log_recovery_abort_interrupted_sysop (thread_p, tdes, &sysop_start_postpone_lsa);
+      assert (tdes->topops.last == 0);
 
       /* find first postpone */
       log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
@@ -3880,25 +3980,12 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* 
        * The transaction was the one that was committing
        */
-      if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE && !LSA_ISNULL (&tdes->undo_nxlsa)
-	  && LSA_GT (&tdes->undo_nxlsa, &tdes->rcv.tran_start_postpone_lsa))
+      if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
 	{
-	  /* Transaction stopped in the middle of a logical postpone. We must rollback it. */
+	  /* make sure to abort interrupted logical postpone. */
 	  assert (tdes->topops.last == -1);
-	  log_sysop_start (thread_p);
-
-	  /* same as with the system op case, we need to set last parent to tail_topresult_lsa or
-	   * tran_start_postpone_lsa, whichever is last. */
-	  if (!LSA_ISNULL (&tdes->tail_topresult_lsa)
-	      && LSA_GT (&tdes->tail_topresult_lsa, &tdes->rcv.tran_start_postpone_lsa))
-	    {
-	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->tail_topresult_lsa;
-	    }
-	  else
-	    {
-	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.tran_start_postpone_lsa;
-	    }
-	  log_sysop_abort (thread_p);
+	  log_recovery_abort_interrupted_sysop (thread_p, tdes, &tdes->rcv.tran_start_postpone_lsa);
+	  assert (tdes->topops.last == -1);
 	  /* no more undo */
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
 	}
@@ -3977,7 +4064,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       tdes = worker->tdes;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
+		     "Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
 		     tdes->trid, tdes->state, tdes->topops.last);
 
       log_recovery_finish_postpone (thread_p, tdes);
@@ -4032,10 +4119,11 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
       tdes = worker->tdes;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
+		     "Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
 		     tdes->trid, tdes->state, tdes->topops.last);
 
       log_recovery_abort_atomic_sysop (thread_p, tdes);
+      worker->state = VACUUM_WORKER_STATE_RECOVERY;
 
       /* Restore thread */
       VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
@@ -4086,7 +4174,8 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
        * I am not sure this really happens. It might, and it might be risky to allow it. However, I assume this nested
        * operation will not do other complicated operations to mess with other logical operations. I hope at least. */
       /* finish postpone of nested system op. */
-      er_log_debug (ARG_FILE_LINE, "Nested sysop start pospone (%lld|%d) inside atomic sysop (%lld|%d). \n",
+      er_log_debug (ARG_FILE_LINE,
+		    "(trid = %d) Nested sysop start pospone (%lld|%d) inside atomic sysop (%lld|%d). \n", tdes->trid,
 		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa), LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
       log_recovery_finish_sysop_postpone (thread_p, tdes);
     }
@@ -4100,7 +4189,8 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
        * 4. crash.
        *
        * we first have to abort atomic system op. postpone will be finished later. */
-      er_log_debug (ARG_FILE_LINE, "Nested atomic sysop  (%lld|%d) after sysop start postpone (%lld|%d). \n",
+      er_log_debug (ARG_FILE_LINE,
+		    "(trid = %d) Nested atomic sysop  (%lld|%d) after sysop start postpone (%lld|%d). \n", tdes->trid,
 		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa), LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
     }
 
@@ -4586,7 +4676,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
 			{
 			  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-					 "VACUUM: Update undo_nxlsa=(%lld, %d) for tdes->trid=%d.",
+					 "Update undo_nxlsa=(%lld, %d) for tdes->trid=%d.",
 					 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
 					 tdes->trid);
 			}

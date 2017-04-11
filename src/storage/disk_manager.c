@@ -301,9 +301,8 @@ struct disk_reserve_context
 static bool disk_Logging = false;
 #define disk_log(func, msg, ...) \
   if (disk_Logging) \
-    _er_log_debug (ARG_FILE_LINE, "DISK " func " (thread=%d tran=%d): \n\t" msg "\n", \
-                   thread_get_current_entry_index (), LOG_FIND_THREAD_TRAN_INDEX (thread_get_thread_entry_info ()), \
-                   __VA_ARGS__)
+    _er_log_debug (ARG_FILE_LINE, "DISK " func " " LOG_THREAD_TRAN_MSG ": \n\t" msg "\n", \
+                   LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 
 #define DISK_RESERVE_CONTEXT_MSG \
   "\t\tcontext: \n" \
@@ -409,6 +408,8 @@ static int disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinf
 STATIC_INLINE void disk_reserve_from_cache_volume (VOLID volid, DISK_RESERVE_CONTEXT * context)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void disk_cache_free_reserved (DISK_RESERVE_CONTEXT * context) __attribute__ ((ALWAYS_INLINE));
+static int disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, int nsects,
+							 VSID * vsids);
 static int disk_unreserve_sectors_from_volume (THREAD_ENTRY * thread_p, VOLID volid, DISK_RESERVE_CONTEXT * context);
 static int disk_stab_unit_unreserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args);
 static DISK_ISVALID disk_check_sectors_are_reserved_in_volume (THREAD_ENTRY * thread_p, VOLID volid,
@@ -3947,6 +3948,45 @@ error:
   /* abort any changes */
   log_sysop_abort (thread_p);
 
+  if (purpose == DB_TEMPORARY_DATA_PURPOSE)
+    {
+      /* nothing was logged. we need to revert any partial allocations we may have made. */
+      int nreserved = context.vsidp - reserved_sectors;
+      if (nreserved > 0)
+	{
+	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+	  int iter_vsid;
+
+	  qsort (reserved_sectors, nreserved, sizeof (VSID), disk_compare_vsids);
+	  if (disk_unreserve_ordered_sectors_without_csect (thread_p, purpose, nreserved, reserved_sectors) != NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+
+	  /* we'll need to remove reservations for the rest of sectors (that were not allocated from disk). but first,
+	   * let's avoid removing the reservations for the ones we allocated from disk and rollbacked (they have been
+	   * removed from cache too) */
+	  for (iter_vsid = 0; iter_vsid < nreserved; iter_vsid++)
+	    {
+	      /* search vsid in volumes */
+	      for (iter = 0; iter < context.n_cache_vol_reserve; iter++)
+		{
+		  if (reserved_sectors[iter_vsid].volid == context.cache_vol_reserve[iter].volid)
+		    {
+		      context.cache_vol_reserve[iter].nsect--;
+		      break;
+		    }
+		}
+	      assert (iter < context.n_cache_vol_reserve);
+	    }
+	}
+    }
+  else
+    {
+      /* changes reverted by log_sysop_abort */
+    }
+
   /* undo cache reserve */
   disk_cache_free_reserved (&context);
 
@@ -4207,11 +4247,6 @@ disk_reserve_from_cache_volume (VOLID volid, DISK_RESERVE_CONTEXT * context)
 int
 disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, int nsects, VSID * vsids)
 {
-  int start_index = 0;
-  int end_index = 0;
-  int index;
-  VOLID volid = NULL_VOLID;
-  DISK_RESERVE_CONTEXT context;
   int error_code = NO_ERROR;
 
   error_code = csect_enter_as_reader (thread_p, CSECT_DISK_CHECK, INF_WAIT);
@@ -4220,6 +4255,36 @@ disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
       ASSERT_ERROR ();
       return error_code;
     }
+
+  error_code = disk_unreserve_ordered_sectors_without_csect (thread_p, purpose, nsects, vsids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  csect_exit (thread_p, CSECT_DISK_CHECK);
+  return error_code;
+}
+
+/*
+ * disk_unreserve_ordered_sectors_without_csect () - un-reserve given list of sectors from disk volumes. the list must
+ *                                                   be ordered. caller must make sure to lock CSECT_DISK_CHECK.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * purpose (in)  : the purpose of reserved sectors
+ * nsects (in)   : number of sectors
+ * vsids (in)    : array of sectors
+ */
+static int
+disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, int nsects, VSID * vsids)
+{
+  int start_index = 0;
+  int end_index = 0;
+  int index;
+  VOLID volid = NULL_VOLID;
+  DISK_RESERVE_CONTEXT context;
+  int error_code = NO_ERROR;
 
   context.nsect_total = nsects;
 
@@ -4254,12 +4319,9 @@ disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  csect_exit (thread_p, CSECT_DISK_CHECK);
 	  return error_code;
 	}
     }
-
-  csect_exit (thread_p, CSECT_DISK_CHECK);
 
   return NO_ERROR;
 }
@@ -5590,6 +5652,30 @@ exit:
     }
 
   return error_code;
+}
+
+/*
+ * disk_compare_vsids () - Compare two sector identifiers.
+ *
+ * return      : 1 if first sector is bigger, -1 if first sector is smaller and 0 if sector ids are equal
+ * first (in)  : first sector id
+ * second (in) : second sector id
+ */
+int
+disk_compare_vsids (const void *first, const void *second)
+{
+  VSID *first_vsid = (VSID *) first;
+  VSID *second_vsid = (VSID *) second;
+
+  if (first_vsid->volid > second_vsid->volid)
+    {
+      return 1;
+    }
+  else if (first_vsid->volid < second_vsid->volid)
+    {
+      return -1;
+    }
+  return (int) (first_vsid->sectid - second_vsid->sectid);
 }
 
 /************************************************************************/

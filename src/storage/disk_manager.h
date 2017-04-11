@@ -127,6 +127,8 @@ extern int disk_volume_header_end_scan (THREAD_ENTRY * thread_p, void **ctx);
 extern SCAN_CODE disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 					       void *ctx);
 
+extern int disk_compare_vsids (const void *a, const void *b);
+
 #if defined (SA_MODE)
 extern int disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_clone);
 extern void disk_map_clone_free (DISK_VOLMAP_CLONE ** disk_map_clone);

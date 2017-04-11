@@ -9606,6 +9606,7 @@ init_server_timezone_parameter (void)
 static void
 prm_tune_parameters (void)
 {
+  SYSPRM_PARAM *pb_aout_ratio_prm;
   SYSPRM_PARAM *max_clients_prm;
   SYSPRM_PARAM *max_plan_cache_entries_prm;
   SYSPRM_PARAM *query_cache_mode_prm;
@@ -9630,6 +9631,7 @@ prm_tune_parameters (void)
   int max_clients;
 
   /* Find the parameters that require tuning */
+  pb_aout_ratio_prm = prm_find (PRM_NAME_PB_AOUT_RATIO, NULL);
   max_clients_prm = prm_find (PRM_NAME_CSS_MAX_CLIENTS, NULL);
   max_plan_cache_entries_prm = prm_find (PRM_NAME_XASL_CACHE_MAX_ENTRIES, NULL);
   query_cache_mode_prm = prm_find (PRM_NAME_LIST_QUERY_CACHE_MODE, NULL);
@@ -9637,6 +9639,12 @@ prm_tune_parameters (void)
   query_cache_size_in_pages_prm = prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES, NULL);
   test_mode_prm = prm_find (PRM_NAME_TEST_MODE, NULL);
   tz_leap_second_support_prm = prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
+
+  /* disable AOUT list until we fix CBRD-20741 */
+  if (pb_aout_ratio_prm != NULL)
+    {
+      prm_set (pb_aout_ratio_prm, "0", false);
+    }
 
   /* temporarily modifies the query result cache feature to be disabled in RB-8.2.2. because it is not verified on 64
    * bit environment. */

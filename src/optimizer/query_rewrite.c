@@ -92,6 +92,11 @@ struct qo_reset_location_info
 
 static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
+static void qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_NODE ** fromp,
+								PT_NODE ** wherep);
+static PT_NODE *qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+
 /*
  * qo_find_best_path_type () -
  *   return: PT_NODE *
@@ -6476,6 +6481,53 @@ qo_can_generate_single_table_connect_by (PARSER_CONTEXT * parser, PT_NODE * node
   return true;
 }
 
+
+/*
+ * qo_move_on_clause_of_explicit_join_to_where_clause () - move on clause of explicit join to where clause
+ *   return: void
+ *   parser(in): parser environment
+ *   fromp(in/out): &from of SELECT, &spec of UPDATE/DELETE
+ *   wherep(in/out): &where of SELECT/UPDATE/DELETE
+ *
+ * NOTE: It moves on clause of explicit join for SELECT/UPDATE/DELETE to where clase for temporary purpose.
+ *       qo_optimize_queries_post will restore them after several optimizations, for instance, range merge/intersection,
+ *       auto-parameterization.
+ *
+ */
+static void
+qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_NODE ** fromp, PT_NODE ** wherep)
+{
+  PT_NODE *t_node, *spec;
+
+  t_node = *wherep;
+  while (t_node != NULL && t_node->next != NULL)
+    {
+      t_node = t_node->next;
+    }
+
+  for (spec = *fromp; spec != NULL; spec = spec->next)
+    {
+      if (spec->node_type == PT_SPEC && spec->info.spec.on_cond != NULL)
+	{
+	  if (t_node == NULL)
+	    {
+	      t_node = *wherep = spec->info.spec.on_cond;
+	    }
+	  else
+	    {
+	      t_node->next = spec->info.spec.on_cond;
+	    }
+
+	  spec->info.spec.on_cond = NULL;
+
+	  while (t_node->next != NULL)
+	    {
+	      t_node = t_node->next;
+	    }
+	}
+    }
+}
+
 /*
  * qo_optimize_queries () - checks all subqueries for rewrite optimizations
  *   return: PT_NODE *
@@ -6489,7 +6541,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 {
   int level, seqno = 0;
   PT_NODE *next, *pred, **wherep, **havingp, *dummy;
-  PT_NODE *t_node, *spec, *derived_table;
+  PT_NODE *spec, *derived_table;
   PT_NODE **startwithp, **connectbyp, **aftercbfilterp;
   PT_NODE *limit, *derived;
   PT_NODE **merge_upd_wherep, **merge_ins_wherep, **merge_del_wherep;
@@ -6537,30 +6589,9 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       /* Put all join conditions together with WHERE clause for rewrite optimization. But we can distinguish a join
        * condition from each other and from WHERE clause by location information that were marked at 'pt_bind_names()'. 
        * We'll recover the parse tree of join conditions using the location information in shortly. */
-      t_node = node->info.query.q.select.where;
-      while (t_node && t_node->next)
-	{
-	  t_node = t_node->next;
-	}
-      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
-	{
-	  if (spec->node_type == PT_SPEC && spec->info.spec.on_cond)
-	    {
-	      if (!t_node)
-		{
-		  t_node = node->info.query.q.select.where = spec->info.spec.on_cond;
-		}
-	      else
-		{
-		  t_node->next = spec->info.spec.on_cond;
-		}
-	      spec->info.spec.on_cond = NULL;
-	      while (t_node->next)
-		{
-		  t_node = t_node->next;
-		}
-	    }
-	}
+      qo_move_on_clause_of_explicit_join_to_where_clause (parser, &node->info.query.q.select.from,
+							  &node->info.query.q.select.where);
+
       wherep = &node->info.query.q.select.where;
       havingp = &node->info.query.q.select.having;
       if (node->info.query.q.select.start_with)
@@ -6586,12 +6617,18 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       break;
 
     case PT_UPDATE:
+      qo_move_on_clause_of_explicit_join_to_where_clause (parser, &node->info.update.spec,
+							  &node->info.update.search_cond);
+
       wherep = &node->info.update.search_cond;
       orderby_for_p = &node->info.update.orderby_for;
       qo_rewrite_index_hints (parser, node);
       break;
 
     case PT_DELETE:
+      qo_move_on_clause_of_explicit_join_to_where_clause (parser, &node->info.delete_.spec,
+							  &node->info.delete_.search_cond);
+
       wherep = &node->info.delete_.search_cond;
       qo_rewrite_index_hints (parser, node);
       break;
@@ -7274,35 +7311,64 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
  *   tree(in):
  *   arg(in):
  *   continue_walk(in):
+ * NOTE: see qo_move_on_clause_of_explicit_join_to_where_clause
  */
 static PT_NODE *
 qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   PT_NODE *node, *prev, *next, *spec;
+  PT_NODE **fromp, **wherep;
   short location;
 
   switch (tree->node_type)
     {
     case PT_SELECT:
+      fromp = &tree->info.query.q.select.from;
+      wherep = &tree->info.query.q.select.where;
+      break;
+    case PT_UPDATE:
+      fromp = &tree->info.update.spec;
+      wherep = &tree->info.update.search_cond;
+      break;
+    case PT_DELETE:
+      fromp = &tree->info.delete_.spec;
+      wherep = &tree->info.delete_.search_cond;
+      break;
+    default:
+      fromp = NULL;
+      wherep = NULL;
+      break;
+    }
+
+  if (wherep != NULL)
+    {
+      assert (fromp != NULL);
+
       prev = NULL;
-      for (node = tree->info.query.q.select.where; node; node = next)
+      for (node = *wherep; node != NULL; node = next)
 	{
 	  next = node->next;
 	  node->next = NULL;
 
 	  if (node->node_type == PT_EXPR)
-	    location = node->info.expr.location;
+	    {
+	      location = node->info.expr.location;
+	    }
 	  else if (node->node_type == PT_VALUE)
-	    location = node->info.value.location;
+	    {
+	      location = node->info.value.location;
+	    }
 	  else
-	    location = -1;
+	    {
+	      location = -1;
+	    }
 
 	  if (location > 0)
 	    {
-	      for (spec = tree->info.query.q.select.from; spec && spec->info.spec.location != location;
-		   spec = spec->next)
-		/* nop */ ;
-	      if (spec)
+	      for (spec = *fromp; spec && spec->info.spec.location != location; spec = spec->next)
+		;		/* nop */
+
+	      if (spec != NULL)
 		{
 		  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
 		      || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || spec->info.spec.join_type == PT_JOIN_INNER)
@@ -7310,13 +7376,13 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 		      node->next = spec->info.spec.on_cond;
 		      spec->info.spec.on_cond = node;
 
-		      if (prev)
+		      if (prev != NULL)
 			{
 			  prev->next = next;
 			}
 		      else
 			{
-			  tree->info.query.q.select.where = next;
+			  *wherep = next;
 			}
 		    }
 		  else
@@ -7336,13 +7402,13 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 			{
 			  parser_free_tree (parser, node);
 
-			  if (prev)
+			  if (prev != NULL)
 			    {
 			      prev->next = next;
 			    }
 			  else
 			    {
-			      tree->info.query.q.select.where = next;
+			      *wherep = next;
 			    }
 			}
 		      else
@@ -7368,13 +7434,13 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 		{
 		  parser_free_tree (parser, node);
 
-		  if (prev)
+		  if (prev != NULL)
 		    {
 		      prev->next = next;
 		    }
 		  else
 		    {
-		      tree->info.query.q.select.where = next;
+		      *wherep = next;
 		    }
 		}
 	      else
@@ -7384,10 +7450,6 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 		}
 	    }
 	}
-
-      break;
-    default:
-      break;
     }
 
   return tree;

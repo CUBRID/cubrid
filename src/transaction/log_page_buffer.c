@@ -1377,7 +1377,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   LSA_SET_NULL (&loghdr->eof_lsa);
   LSA_SET_NULL (&loghdr->smallest_lsa_at_last_chkpt);
 
-  vacuum_reset_log_header_cache ();
+  vacuum_reset_log_header_cache (thread_p);
 
   return NO_ERROR;
 }
@@ -1841,8 +1841,8 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 #if defined (SERVER_MODE)
 	  if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
 	    {
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
-			     "VACUUM ERROR: Failed to fetch page %lld from archives.", pageid);
+	      vacuum_er_log_error (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
+				   "Failed to fetch page %lld from archives.", pageid);
 	    }
 #endif /* SERVER_MODE */
 	  goto error;
@@ -1879,8 +1879,8 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 #if defined (SERVER_MODE)
 		      if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
 			{
-			  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
-					 "VACUUM ERROR: Failed to fetch page %lld from archives.", pageid);
+			  vacuum_er_log_error (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
+					       "Failed to fetch page %lld from archives.", pageid);
 			}
 #endif /* SERVER_MODE */
 		      goto error;
@@ -3684,10 +3684,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
 
       vacuum_er_log (VACUUM_ER_LOG_LOGGING,
-		     "VACUUM: thread(%d): log mvcc op at (%lld, %d) and create link with log_lsa(%lld, %d)\n",
-		     thread_get_current_entry_index (), (long long int) node->start_lsa.pageid,
-		     (int) node->start_lsa.offset, (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid,
-		     (int) log_Gl.hdr.mvcc_op_log_lsa.offset);
+		     "log mvcc op at (%lld, %d) and create link with log_lsa(%lld, %d)",
+		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
       /* Check if the block of log data is changed */
       if (!LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa)
@@ -3726,6 +3724,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
        * protection.
        * at the same time, tdes->rcv.atomic_sysop_start_lsa must be reset if it was inside this system op. */
       LOG_REC_SYSOP_START_POSTPONE *sysop_start_postpone = NULL;
+
+      assert (LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa));
       tdes->rcv.sysop_start_postpone_lsa = start_lsa;
 
       sysop_start_postpone = (LOG_REC_SYSOP_START_POSTPONE *) node->data_header;
@@ -3737,15 +3737,22 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
     }
   else if (node->log_header.type == LOG_SYSOP_END)
     {
-      /* reset tdes->rcv.sysop_start_postpone_lsa and, eventually, tdes->rcv.atomic_sysop_start_lsa */
+      /* reset tdes->rcv.sysop_start_postpone_lsa and tdes->rcv.atomic_sysop_start_lsa, if this system op is not nested.
+       * we'll use lastparent_lsa to check if system op is nested or not. */
       LOG_REC_SYSOP_END *sysop_end = NULL;
-      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 
       sysop_end = (LOG_REC_SYSOP_END *) node->data_header;
-      if (LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+      if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)
+	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
 	{
 	  /* atomic system operation finished. */
 	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+	}
+      if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
+	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+	{
+	  /* atomic system operation finished. */
+	  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 	}
     }
   else if (node->log_header.type == LOG_COMMIT_WITH_POSTPONE)
@@ -6906,11 +6913,11 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	{
 	  last_arv_num_to_delete = MIN (last_arv_num_to_delete, log_Gl.hdr.last_arv_num_for_syscrashes);
 	}
-      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "VACUUM: First log pageid in vacuum data is %lld", vacuum_first_pageid);
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld", vacuum_first_pageid);
       if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
 	{
 	  min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
-	  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "VACUUM: First archive number used for vacuum is %d",
+	  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d",
 			 min_arv_required_for_vacuum);
 	  if (min_arv_required_for_vacuum >= 0)
 	    {
@@ -6936,7 +6943,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
 
-      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "VACUUM: last_arv_num_to_delete is %d", last_arv_num_to_delete);
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "last_arv_num_to_delete is %d", last_arv_num_to_delete);
     }
 
   LOG_CS_EXIT (thread_p);
@@ -7630,7 +7637,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int ntops;			/* Number of total active top actions */
   int length_all_chkpt_trans;
   size_t length_all_tops = 0;
-  int i, j;
+  int i;
   const char *catmsg;
   VOLID volid;
   int error_code = NO_ERROR;
@@ -9417,9 +9424,15 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
     }
 
   /* rename logactive tmp to logactive */
-  if (stat (log_Name_active, &stat_buf) != 0 && stat (lgat_tmpname, &stat_buf) == 0)
+  if (stat (log_Name_active, &stat_buf) != 0 && lgat_tmpname[0] != '\0' && stat (lgat_tmpname, &stat_buf) == 0)
     {
-      rename (lgat_tmpname, log_Name_active);
+      if (lgat_vdes != NULL_VOLDES)
+	{
+	  fileio_dismount (thread_p, lgat_vdes);
+	  lgat_vdes = NULL_VOLDES;
+	}
+
+      os_rename_file (lgat_tmpname, log_Name_active);
     }
 
   unlink (lgat_tmpname);

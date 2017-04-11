@@ -273,13 +273,16 @@ STATIC_INLINE bool perfmon_is_perf_tracking_and_active (int activation_flag) __a
 STATIC_INLINE bool perfmon_is_perf_tracking_force (bool always_collect) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_add_stat_to_global (PERF_STAT_ID psid, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_inc_stat_to_global (PERF_STAT_ID psid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool check_watchers)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool check_watchers)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_add_at_offset_to_global (int offset, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_at_offset_to_global (int offset, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
@@ -320,6 +323,29 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
 }
 
 /*
+ * perfmon_add_stat_to_global () - Accumulate amount only to global statistic.
+ *
+ * return	 : Void.
+ * psid (in)	 : Statistic ID.
+ * amount (in)	 : Amount to add.
+ */
+STATIC_INLINE void
+perfmon_add_stat_to_global (PERF_STAT_ID psid, UINT64 amount)
+{
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
+
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
+
+  assert (pstat_Metadata[psid].valtype == PSTAT_ACCUMULATE_SINGLE_VALUE);
+
+  /* Update statistics. */
+  perfmon_add_at_offset_to_global (pstat_Metadata[psid].start_offset, amount);
+}
+
+/*
  * perfmon_inc_stat () - Increment statistic value by 1.
  *
  * return	 : Void.
@@ -330,6 +356,19 @@ STATIC_INLINE void
 perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
 {
   perfmon_add_stat (thread_p, psid, 1);
+}
+
+/*
+ * perfmon_inc_stat_to_global () - Increment global statistic value by 1.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * psid (in)	 : Statistic ID.
+ */
+STATIC_INLINE void
+perfmon_inc_stat_to_global (PERF_STAT_ID psid)
+{
+  perfmon_add_stat_to_global (psid, 1);
 }
 
 /*
@@ -363,6 +402,23 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
       pstat_Global.tran_stats[tran_index][offset] += amount;
     }
 #endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
+ * perfmon_add_at_offset_to_global () - Add amount to statistic in global
+ *
+ * return	 : Void.
+ * offset (in)	 : Offset to statistics value.
+ * amount (in)	 : Amount to add.
+ */
+STATIC_INLINE void
+perfmon_add_at_offset_to_global (int offset, UINT64 amount)
+{
+  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (pstat_Global.initialized);
+
+  /* Update global statistic. */
+  ATOMIC_INC_64 (&(pstat_Global.global_stats[offset]), amount);
 }
 
 /*

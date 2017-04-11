@@ -1154,12 +1154,10 @@ exit_on_error:
     {
       if (is_tmp)
 	{
-	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
-	  if (file_destroy (thread_p, &bucket_vfid) != NO_ERROR)
+	  if (file_destroy (thread_p, &bucket_vfid, is_tmp) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
-	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 	}
       else
 	{
@@ -1170,12 +1168,10 @@ exit_on_error:
     {
       if (is_tmp)
 	{
-	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
-	  if (file_destroy (thread_p, &dir_vfid) != NO_ERROR)
+	  if (file_destroy (thread_p, &dir_vfid, is_tmp) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
-	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 	}
       else
 	{
@@ -1253,13 +1249,13 @@ ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset, PG
 }
 
 /*
- * xehash_destroy () - Destroy the given extendible hashing instance
- *   return: NO_ERROR, or ER_FAILED
- *   ehid(in): extendible hashing structure to destroy
+ * xehash_destroy () - destroy the extensible hash table
  *
- * Note: Destroys the specified extendible hashing structure. All of
- * bucket and directory pages of this structure are deallocated
- * by this function.
+ * return        : error code
+ * thread_p (in) : thread entry
+ * ehid_p (in)   : extensible hash identifier
+ *
+ * note: only temporary extensible hash tables can be destroyed.
  */
 int
 xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
@@ -1280,21 +1276,19 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
     }
 
   log_sysop_start (thread_p);
-  save_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
-  if (file_destroy (thread_p, &(dir_header_p->bucket_file)) != NO_ERROR)
+  if (file_destroy (thread_p, &(dir_header_p->bucket_file), true) != NO_ERROR)
     {
       assert_release (false);
     }
   pgbuf_unfix (thread_p, dir_page_p);
-  if (file_destroy (thread_p, &ehid_p->vfid) != NO_ERROR)
+  if (file_destroy (thread_p, &ehid_p->vfid, true) != NO_ERROR)
     {
       assert_release (false);
     }
 
-  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
   log_sysop_commit (thread_p);
 
   return NO_ERROR;
@@ -2833,6 +2827,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, b
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
       return error_code;
     }
   old_pages -= 1;		/* The first page starts with 0 */
@@ -2846,6 +2841,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, b
 #ifdef EHASH_DEBUG
   if (check_pages != old_pages)
     {
+      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_ROOT_CORRUPTED, 3, ehid_p->vfid.volid, ehid_p->vfid.fileid,
 	      ehid_p->pageid);
       return ER_FAILED;

@@ -265,6 +265,7 @@ typedef enum
 /* zone counts & thresholds */
 #define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
 #define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
+#define PGBUF_LRU_VICTIM_ZONE_COUNT(list) ((list)->count_lru3)
 
 #define PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD(list) ((list)->threshold_lru1 < (list)->count_lru1)
 #define PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD(list) ((list)->threshold_lru2 < (list)->count_lru2)
@@ -736,7 +737,6 @@ struct pgbuf_direct_victim
   PGBUF_BCB **bcb_victims;
   LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_high_priority;
   LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_low_priority;
-  int waiter_threads_preparing;
 };
 #define PGBUF_FLUSHED_BCBS_BUFFER_SIZE (8 * 1024)	/* 8k */
 #endif /* SERVER_MODE */
@@ -1002,7 +1002,7 @@ static int pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB *
 
 STATIC_INLINE int pgbuf_get_shared_lru_index_for_add (void) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count,
-						 float lru_sum_flush_priority);
+						 float lru_sum_flush_priority, bool * assigned_directly);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p);
 STATIC_INLINE PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   __attribute__ ((ALWAYS_INLINE));
@@ -1181,6 +1181,8 @@ STATIC_INLINE void pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBU
 STATIC_INLINE void pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (PGBUF_BCB * bcb, const char *file, int line)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_register_fix (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_hot (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 
@@ -1435,8 +1437,6 @@ pgbuf_initialize (void)
       goto error;
     }
 
-  pgbuf_Pool.direct_victims.waiter_threads_preparing = 0;
-
   pgbuf_Pool.flushed_bcbs = lf_circular_queue_create (PGBUF_FLUSHED_BCBS_BUFFER_SIZE, sizeof (PGBUF_BCB *));
   if (pgbuf_Pool.flushed_bcbs == NULL)
     {
@@ -1657,8 +1657,8 @@ pgbuf_finalize (void)
     }
   if (pgbuf_Pool.big_private_lrus_with_victims != NULL)
     {
-      lf_circular_queue_destroy (pgbuf_Pool.private_lrus_with_victims);
-      pgbuf_Pool.private_lrus_with_victims = NULL;
+      lf_circular_queue_destroy (pgbuf_Pool.big_private_lrus_with_victims);
+      pgbuf_Pool.big_private_lrus_with_victims = NULL;
     }
   if (pgbuf_Pool.shared_lrus_with_victims != NULL)
     {
@@ -2842,12 +2842,17 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 
 	  /* check if page invalidation should be performed on the page */
 	  if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&temp_vpid, &bufptr->vpid)
-	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0
-	      || pgbuf_bcb_avoid_victim (bufptr))
+	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0)
 	    {
 	      PGBUF_BCB_UNLOCK (bufptr);
 	      continue;
 	    }
+	}
+
+      if (pgbuf_bcb_avoid_victim (bufptr))
+	{
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  continue;
 	}
 
 #if defined(CUBRID_DEBUG)
@@ -3093,13 +3098,15 @@ pgbuf_compare_victim_list (const void *p1, const void *p2)
 
 /*
  * pgbuf_get_victim_candidates_from_lru () - get victim candidates from LRU list
- * return : number of victims found
- * thread_p (in)     : thread entry
- * check_count (in)  : number of items to verify before abandoning search
- * flush_ratio (in)  : flush ratio
+ * return                  : number of victims found
+ * thread_p (in)           : thread entry
+ * check_count (in)        : number of items to verify before abandoning search
+ * flush_ratio (in)        : flush ratio
+ * assigned_directly (out) : output true if a bcb was assigned directly.
  */
 static int
-pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, float lru_sum_flush_priority)
+pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, float lru_sum_flush_priority,
+				      bool * assigned_directly)
 {
   int lru_idx, victim_cand_count, i;
   PGBUF_BCB *bufptr;
@@ -3149,6 +3156,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 		{
 		  /* assigned directly. don't try any other. */
 		  try_direct_assign = false;
+		  *assigned_directly = true;
 		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_SEARCH_FOR_FLUSH);
 		}
 	      PGBUF_BCB_UNLOCK (bufptr);
@@ -3170,8 +3178,18 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
  *   return: NO_ERROR, or ER_code
  *
  */
+/*
+ * pgbuf_flush_victim_candidates () - collect & flush victim candidates
+ *
+ * return                : error code
+ * thread_p (in)         : thread entry
+ * flush_ratio (in)      : desired flush ratio
+ * perf_tracker (in/out) : time tracker for performance statistics
+ * stop (out)            : output to stop looping
+ */
 int
-pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_UTIME_TRACKER * perf_tracker)
+pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_UTIME_TRACKER * perf_tracker,
+			       bool * stop)
 {
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
@@ -3193,8 +3211,10 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   bool is_bcb_locked = false;
   bool repeated = false;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
+  bool assigned_directly = false;
 #if !defined (NDEBUG) && defined (SERVER_MODE)
   bool empty_flushed_bcb_queue = false;
+  bool direct_victim_waiters = false;
 #endif /* DEBUG && SERVER_MODE */
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
@@ -3212,6 +3232,10 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
       assert (page_flush_thread == thread_p);
     }
 #endif
+
+  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+
+  *stop = false;
 
   pgbuf_compute_lru_vict_target (&lru_sum_flush_priority);
 
@@ -3258,25 +3282,37 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 
 #if !defined (NDEBUG) && defined (SERVER_MODE)
   empty_flushed_bcb_queue = lf_circular_queue_is_empty (pgbuf_Pool.flushed_bcbs);
+  direct_victim_waiters = pgbuf_is_any_thread_waiting_for_direct_victim ();
 #endif /* DEBUG && SERVER_MODE */
 
   if (check_count_lru > 0 && lru_sum_flush_priority > 0)
     {
-      victim_count = pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, lru_sum_flush_priority);
+      victim_count =
+	pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, lru_sum_flush_priority, &assigned_directly);
     }
   if (victim_count == 0)
     {
       /* We didn't find any victims */
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, perf_tracker, PSTAT_PB_FLUSH_COLLECT);
+      /* if pgbuf_get_victim_candidates_from_lru failed to provide candidates, it means we already flushed enough.
+       * give threads looking for victims a chance to find them before looping again. output hint to stop looping. */
+      *stop = check_count_lru > 0 && lru_sum_flush_priority > 0;
       goto end;
     }
 
 #if defined (SERVER_MODE)
   /* wake up log flush thread. we need log up to date to be able to flush pages */
-  thread_wakeup_log_flush_thread ();
-#else
-  logpb_flush_pages_direct (thread_p);
+  if (thread_is_log_flush_thread_available ())
+    {
+      thread_wakeup_log_flush_thread ();
+    }
+  else
 #endif /* SERVER_MODE */
+    {
+      LOG_CS_ENTER (thread_p);
+      logpb_flush_pages_direct (thread_p);
+      LOG_CS_EXIT (thread_p);
+    }
 
   if (prm_get_bool_value (PRM_ID_PB_SEQUENTIAL_VICTIM_FLUSH) == true)
     {
@@ -3428,7 +3464,7 @@ end:
    *       flush thread may not be able to find victims. that's ok, the purpose of this safe-guard is to avoid dead
    *       scenarios when threads are waiting for direct victims but system flushes nothing. if there are flushed
    *       waiting for assignment, then we are not in this kind of scenario. */
-  if (total_flushed_count == 0 && pgbuf_is_any_thread_waiting_for_direct_victim () && empty_flushed_bcb_queue
+  if (total_flushed_count == 0 && direct_victim_waiters && empty_flushed_bcb_queue && !assigned_directly
       && count_need_wal == 0)
     {
       /* so, we have not flushed anything, but threads are waiting to direct victims. and:
@@ -3457,13 +3493,29 @@ end:
 	      continue;
 	    }
 	  lru_list = PGBUF_GET_LRU_LIST (PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thrd_iter)));
+	  if (PGBUF_LRU_VICTIM_ZONE_COUNT (lru_list) == 0)
+	    {
+	      continue;
+	    }
 	  if (lru_list->count_vict_cand > 0)
 	    {
+	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
+		{
+		  /* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
+		   * flush queue */
+		  continue;
+		}
 	      /* should have found victim candidate */
 	      assert (false);
 	    }
 	  if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
+	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
+		{
+		  /* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
+		   * flush queue */
+		  continue;
+		}
 	      /* should be over quota */
 	      assert (false);
 	    }
@@ -4873,6 +4925,9 @@ pgbuf_initialize_bcb_table (void)
       bufptr->count_fix_and_avoid_dealloc = 0;
       bufptr->hit_age = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+
+      bufptr->tick_lru3 = 0;
+      bufptr->tick_lru_list = 0;
 
       /* link BCB and iopage buffer */
       ioptr = PGBUF_FIND_IOPAGE_PTR (i);
@@ -7070,7 +7125,7 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       curr_bufptr->hash_next = NULL;
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
       VPID_SET_NULL (&(bufptr->vpid));
-      bufptr->count_fix_and_avoid_dealloc = 0;
+      pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
 
       return NO_ERROR;
     }
@@ -7346,24 +7401,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   if (thread_is_page_flush_thread_available ())
     {
     retry:
-
-      /* make sure at least flush will feed us with bcb's.
-       * note: page flush thread has an early-out check to decide if flush is really needed. one of them is if any
-       *       thread is waiting in one of the queues for direct victims. however, this was not enough in some limit
-       *       cases when having only one active thread (which is not unusual in our testing environments). the thread
-       *       does not find a bcb, wakes flush thread and then gets preempted before adding itself to the waiting
-       *       queues. flush thread wakes up, maybe does even some flushing (but bcb's are not assigned directly,
-       *       because our thread is not yet in the queue) and then goes back to sleep. no one wakes the flush thread
-       *       again (if it is not set to wake periodically) and our waiting thread waits forever (or for 5 minutes
-       *       until we time it out and hit assert).
-       *       long story short, we use a counter to track threads preparing to wait for direct victims. flush thread
-       *       does not go to sleep if the counter is not 0.
-       */
-      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, 1);
-      if (!pgbuf_Pool.is_flushing_victims)
-	{
-	  pgbuf_wakeup_flush_thread (thread_p);
-	}
       high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
       /* add to waiters thread list to be assigned victim directly */
@@ -7385,7 +7422,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    {
 	      assert (false);
 	      thread_unlock_entry (thread_p);
-	      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
 	      return NULL;
 	    }
 	  pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
@@ -7408,7 +7444,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 		{
 		  assert (false);
 		  thread_unlock_entry (thread_p);
-		  ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
 		  goto end;
 		}
 	      pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
@@ -7418,7 +7453,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	      pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO;
 	    }
 	}
-      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
+
+      /* make sure at least flush will feed us with bcb's. */
+      thread_try_wakeup_page_flush_thread ();
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
 
@@ -7584,7 +7621,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   assert (!pgbuf_bcb_avoid_victim (bufptr));
   bufptr->latch_mode = PGBUF_NO_LATCH;
   pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);	/* todo: why this?? */
-  bufptr->count_fix_and_avoid_dealloc = 0;
+  pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
   if (fetch_mode != NEW_PAGE)
@@ -8015,7 +8052,7 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   bufptr->latch_mode = PGBUF_LATCH_INVALID;
   assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0);
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_INVALID_ZONE);
-  bufptr->count_fix_and_avoid_dealloc = 0;
+  pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
   bufptr->next_BCB = pgbuf_Pool.buf_invalid_list.invalid_top;
@@ -8378,7 +8415,15 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   if (!pgbuf_bcb_is_dirty (lru_list->bottom) && lru_list->victim_hint != lru_list->bottom)
     {
       /* update hint to bottom. sometimes it may be out of sync. */
-      (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, lru_list->bottom);
+      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+      if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
+	{
+	  (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, lru_list->bottom);
+	}
+      else
+	{
+	  (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, NULL);
+	}
     }
 
   /* we will search */
@@ -8420,6 +8465,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		{
 		  /* hint advanced */
 		}
+
+	      assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
 
 	  found_victim_cnt++;
@@ -8453,7 +8500,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		}
 #endif /* SERVER_MODE */
 
-	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom))
+	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom)
+		  && thread_is_page_flush_thread_available ())
 		{
 		  /* new bottom is dirty... make sure that flush will wake up */
 		  pgbuf_wakeup_flush_thread (thread_p);
@@ -8483,6 +8531,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		{
 		  /* modified hint */
 		}
+
+	      assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
 	  found_victim_cnt++;
 	  if (found_victim_cnt >= lru_victim_cnt)
@@ -8498,7 +8548,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     {
       /* we had a hint and we failed to find any victim candidates. */
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_BAD_HINT);
-      if (lru_list->count_vict_cand > 0)
+      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+      if (lru_list->count_vict_cand > 0 && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
 	{
 	  /* set victim hint to bottom */
 	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
@@ -8510,15 +8561,14 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	}
     }
 
-  /* we need more victims */
-  pgbuf_wakeup_flush_thread (thread_p);
-
   pthread_mutex_unlock (&lru_list->mutex);
 
-  /* failed finding victim in singe-threaded, although the number of victim candidates is positive? impossible!
+  /* we need more victims */
+  pgbuf_wakeup_flush_thread (thread_p);
+  /* failed finding victim in single-threaded, although the number of victim candidates is positive? impossible!
    * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
    * NULL. */
-  assert (thread_is_page_flush_thread_available () || bufptr_victimizable != NULL);
+  assert (thread_is_page_flush_thread_available () || bufptr_victimizable != NULL || search_cnt == MAX_DEPTH);
   return NULL;
 
 #undef PERF
@@ -8659,7 +8709,15 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
       if (nassigned == 0 && lru_list->count_vict_cand > 0 && pgbuf_is_any_thread_waiting_for_direct_victim ())
 	{
 	  /* maybe hint was bad? that's most likely case. reset the hint to bottom. */
-	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+	  assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+	  if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
+	    {
+	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+	    }
+	  else
+	    {
+	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL);
+	    }
 
 	  /* check from bottom anyway */
 	  nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, lru_list->bottom);
@@ -8843,7 +8901,8 @@ pgbuf_lru_add_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU
       bcb->next_BCB = NULL;
 
       /* set tick_lru3 smaller that current bottom's */
-      bcb->tick_lru3 = lru_list->bottom->tick_lru3 - 1;
+      bcb->tick_lru3 =
+	PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom) ? lru_list->bottom->tick_lru3 - 1 : lru_list->tick_lru3 - 1;
 
       /* update bottom */
       lru_list->bottom = bcb;
@@ -9132,7 +9191,6 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
    */
 
   assert (zone != PGBUF_LRU_1_ZONE);
-  assert (zone != PGBUF_LRU_2_ZONE || PGBUF_IS_BCB_OLD_ENOUGH (bcb, lru_list));
 
   /* we'll boost. collect stats */
   if (zone == PGBUF_LRU_2_ZONE)
@@ -10935,6 +10993,7 @@ static void
 pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
 {
   PERF_UTIME_TRACKER dummy_time_tracker;
+  bool stop = false;
 
 #if defined(SERVER_MODE)
   if (thread_is_page_flush_thread_available ())
@@ -10946,7 +11005,9 @@ pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
 
   /* single-threaded environment. do flush on our own. */
   dummy_time_tracker.is_perf_tracking = false;
-  pgbuf_flush_victim_candidates (thread_p, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &dummy_time_tracker);
+  pgbuf_flush_victim_candidates (thread_p, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &dummy_time_tracker,
+				 &stop);
+  assert (!stop);
 }
 
 /*
@@ -12104,38 +12165,24 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  er_status = er_errid ();
 	  if (er_status == ER_INTERRUPTED)
 	    {
+	      /* this is expected */
 	      goto exit;
 	    }
-
-	  valid =
-	    pgbuf_is_valid_page (thread_p, &(ordered_holders_info[i].vpid),
-				 VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)), NULL, NULL);
-#if defined(PGBUF_ORDERED_DEBUG)
-	  _er_log_debug (__FILE__, __LINE__,
-			 "ORDERED_FIX(%u): restore_pages_ERR: cannot fix VPID:(%d,%d), "
-			 "GROUP:%d,%d, rank:%d, page_fetch_mode:%d , latch_req: %d, valid:%d", ordered_fix_id,
-			 ordered_holders_info[i].vpid.volid, ordered_holders_info[i].vpid.pageid,
-			 ordered_holders_info[i].group_id.volid, ordered_holders_info[i].group_id.pageid,
-			 ordered_holders_info[i].rank, curr_fetch_mode, curr_request_mode, valid);
-#endif
-	  if (valid == DISK_INVALID)
+	  if (er_status == ER_PB_BAD_PAGEID)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, ordered_holders_info[i].vpid.pageid,
-		      fileio_get_volume_label (ordered_holders_info[i].vpid.volid, PEEK));
+	      /* page was probably deallocated? so has the impossible indeed happen?? */
+	      assert (false);
+	      er_log_debug (ARG_FILE_LINE, "pgbuf_ordered_fix: page %d|%d was deallocated an we told it not to!\n",
+			    VPID_AS_ARGS (&ordered_holders_info[i].vpid));
 	    }
-
-	  er_status = er_errid ();
-
 	  if (!VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
 	    {
 	      int prev_er_status = er_status;
 	      er_status = ER_PB_ORDERED_REFIX_FAILED;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 3, ordered_holders_info[i].vpid.volid,
 		      ordered_holders_info[i].vpid.pageid, prev_er_status);
-	      goto exit;
 	    }
-	  /* try to restore fixes on all remaining pages */
-	  continue;
+	  goto exit;
 	}
 
       /* get holder of last fix: last fixed pages is in top of holder list, we use parse code just for safety */
@@ -13079,6 +13126,15 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 	   * private bcb's must be less than 90% of buffer. that means shared bcb's have to be 10% or more of buffer.
 	   * PGBUF_MIN_SHARED_LIST_ADJUST_SIZE is currently set to 50, which is 5% to targeted 1k shared list size.
 	   * we shouldn't be here unless I messed up the calculus. */
+	  if (pgbuf_Pool.buf_invalid_list.invalid_cnt > 0)
+	    {
+	      /* This is not really an interesting case.
+	       * Probably both shared and private are small and most of buffers in invalid list.
+	       * We don't really need flush for the case, since BCB could be allocated from invalid list.
+	       */
+	      return;
+	    }
+
 	  assert (false);
 	  use_prv_size = true;
 	  prv_flush_ratio = 1.0f;
@@ -14242,8 +14298,7 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
 bool
 pgbuf_keep_victim_flush_thread_running (void)
 {
-  return (pgbuf_Pool.direct_victims.waiter_threads_preparing != 0 || pgbuf_is_any_thread_waiting_for_direct_victim ()
-	  || pgbuf_is_hit_ratio_low ());
+  return (pgbuf_is_any_thread_waiting_for_direct_victim () || pgbuf_is_hit_ratio_low ());
 }
 #endif /* SERVER_MDOE */
 
@@ -14524,6 +14579,8 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
     }
   while (!ATOMIC_CAS_ADDR (&lru_list->victim_hint, old_victim_hint, bcb));
 
+  assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
+
   /* update victim counter. */
   /* add to lock-free circular queue so victimizers can find it... if this is not a private list under quota. */
   ATOMIC_INC_32 (&lru_list->count_vict_cand, 1);
@@ -14588,6 +14645,8 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
     {
       /* updated hint */
     }
+
+  assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 }
 
 /*
@@ -15059,9 +15118,8 @@ pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb)
 {
+  assert ((bcb->count_fix_and_avoid_dealloc & 0x00008000) == 0);
   (void) ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1);
-  assert (bcb->count_fix_and_avoid_dealloc > 0);
-  assert ((bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0);
 }
 
 /*
@@ -15073,8 +15131,39 @@ pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb)
 {
-  (void) ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, -1);
-  assert (bcb->count_fix_and_avoid_dealloc >= 0);
+  int count_crt;
+  do
+    {
+      /* get bcb->count_fix_and_avoid_dealloc (volatile) */
+      count_crt = bcb->count_fix_and_avoid_dealloc;
+      assert ((count_crt & 0x00008000) == 0);
+      if ((count_crt & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0)
+	{
+	  /* we can decrement counter */
+	}
+      else
+	{
+	  /* interestingly enough, this case can happen. how?
+	   *
+	   * well, pgbuf_ordered_fix may be forced to unfix all pages currently held by transaction to fix a new page.
+	   * all pages that are "less" than new page are marked to avoid deallocation and unfixed. then transaction is
+	   * blocked on latching new page, which may take a while, pages previously unfixed can be victimized.
+	   * when pgbuf_ordered_fix tries to fix back these pages, it will load them from disk and tadaa, the avoid
+	   * deallocation count is 0. so we expect the case.
+	   *
+	   * note: avoid deallocation count is supposed to prevent vacuum workers from deallocating these pages.
+	   *       so, victimizing a bcb marked to avoid deallocation is not perfectly safe. however, the likelihood of
+	   *       page really getting deallocated is ... almost zero. the alternative of avoiding victimization when
+	   *       bcb's are marked for deallocation is much more complicated and poses serious risks (what if we leak
+	   *       the counter and prevent bcb from being victimized indefinitely?). so, we prefer the existing risks.
+	   */
+	  er_log_debug (ARG_FILE_LINE,
+			"pgbuf_bcb_unregister_avoid_deallocation: bcb %p, vpid = %d|%d was probably victimized.\n",
+			bcb, VPID_AS_ARGS (&bcb->vpid));
+	  break;
+	}
+    }
+  while (!ATOMIC_CAS_32 (&bcb->count_fix_and_avoid_dealloc, count_crt, count_crt - 1));
 }
 
 /*
@@ -15087,7 +15176,30 @@ STATIC_INLINE bool
 pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb)
 {
   assert (bcb->count_fix_and_avoid_dealloc >= 0);
+  assert ((bcb->count_fix_and_avoid_dealloc & 0x00008000) == 0);
   return (bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0;
+}
+
+/*
+ * pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc () - check avoid deallocation is 0 and reset the whole bcb field.
+ *
+ * return    : void
+ * bcb (in)  : bcb
+ * file (in) : caller file
+ * line (in) : caller line
+ *
+ * note: avoid deallocation is allowed to be non-zero due to pgbuf_ordered_fix and the possibility of victimizing its
+ *       bcb. avoid crashing the server and just issue a warning.
+ */
+STATIC_INLINE void
+pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (PGBUF_BCB * bcb, const char *file, int line)
+{
+  if (pgbuf_bcb_should_avoid_deallocation (bcb))
+    {
+      er_log_debug (file, line, "warning: bcb %p, vpid = %d|%d, should not have avoid deallocation marker.\n",
+		    bcb, VPID_AS_ARGS (&bcb->vpid));
+    }
+  bcb->count_fix_and_avoid_dealloc = 0;
 }
 
 /*
@@ -15102,7 +15214,11 @@ pgbuf_bcb_register_fix (PGBUF_BCB * bcb)
   /* note: we only register to detect hot pages. once we hit the threshold, we are no longer required to fix it. */
   if (bcb->count_fix_and_avoid_dealloc < (PGBUF_FIX_COUNT_THRESHOLD << PGBUF_BCB_COUNT_FIX_SHIFT_BITS))
     {
-      ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1 << PGBUF_BCB_COUNT_FIX_SHIFT_BITS);
+#if !defined (NDEBUG)
+      int newval =
+#endif /* !NDEBUG */
+	ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1 << PGBUF_BCB_COUNT_FIX_SHIFT_BITS);
+      assert (newval >= (1 << PGBUF_BCB_COUNT_FIX_SHIFT_BITS));
       assert (bcb->count_fix_and_avoid_dealloc >= (1 << PGBUF_BCB_COUNT_FIX_SHIFT_BITS));
     }
 }
@@ -15290,6 +15406,13 @@ pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threa
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
   victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
   PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+
+  /* no victim found in first step, but flush thread ran and candidates can be found, try again */
+  if (victim == NULL && multi_threaded == false && lru_list->count_vict_cand > 0)
+    {
+      victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
+      PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+    }
 
   if ((multi_threaded || victim != NULL) && lru_list->count_vict_cand > 0)
     {

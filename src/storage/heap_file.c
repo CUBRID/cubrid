@@ -4568,9 +4568,8 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   if (pgbuf_ordered_fix (thread_p, &header_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher) != NO_ERROR)
     {
       /* Give up. */
-      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-		     page_vpid.pageid);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
   assert (header_watcher.pgptr != NULL);
@@ -4580,9 +4579,8 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       || heap_vpid_next (thread_p, hfid, *page_ptr, &next_vpid) != NO_ERROR)
     {
       /* Give up. */
-      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-		     page_vpid.pageid);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
 
@@ -4592,9 +4590,9 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       if (pgbuf_ordered_fix (thread_p, &prev_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &prev_watcher) != NO_ERROR)
 	{
 	  /* Give up. */
-	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-			 page_vpid.pageid);
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "Could not remove candidate empty heap page %d|%d.", page_vpid.volid,
+				 page_vpid.pageid);
 	  goto error;
 	}
     }
@@ -4605,22 +4603,27 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       if (pgbuf_ordered_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &next_watcher) != NO_ERROR)
 	{
 	  /* Give up. */
-	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-			 page_vpid.pageid);
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "Could not remove candidate empty heap page %d|%d.", page_vpid.volid,
+				 page_vpid.pageid);
 	  goto error;
 	}
     }
 
   /* All pages are fixed. */
 
-  if (crt_watcher.page_was_unfixed && spage_number_of_records (crt_watcher.pgptr) > 1)
+  if (crt_watcher.page_was_unfixed)
     {
-      /* Current page has new data. It is no longer a candidate for removal. */
-      vacuum_er_log (VACUUM_ER_LOG_HEAP,
-		     "VACUUM: Candidate heap page %d|%d to remove was changed and has new data.\n", page_vpid.volid,
-		     page_vpid.pageid);
-      goto error;
+      *page_ptr = crt_watcher.pgptr;	/* home was refixed */
+
+      if (spage_number_of_records (crt_watcher.pgptr) > 1)
+	{
+	  /* Current page has new data. It is no longer a candidate for removal. */
+	  vacuum_er_log (VACUUM_ER_LOG_HEAP,
+			 "Candidate heap page %d|%d to remove was changed and has new data.", page_vpid.volid,
+			 page_vpid.pageid);
+	  goto error;
+	}
     }
 
   /* recheck the dealloc flag after all latches are acquired */
@@ -4628,8 +4631,8 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     {
       /* Even though we have fixed all required pages, somebody was doing a heap scan, and already reached our page. We 
        * cannot deallocate it. */
-      vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WARNING,
-		     "VACUUM: Candidate heap page %d|%d to remove has waiters.\n", page_vpid.volid, page_vpid.pageid);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Candidate heap page %d|%d to remove has waiters.", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
 
@@ -4639,7 +4642,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   if (pgbuf_has_any_waiters (crt_watcher.pgptr))
     {
       assert (false);
-      vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_ERROR, "VACUUM: Unexpected page waiters \n");
+      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Unexpected page waiters");
       goto error;
     }
   /* all good, we can deallocate the page */
@@ -4654,9 +4657,8 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   if (spage_get_record (thread_p, header_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &copy_recdes, COPY) != S_SUCCESS)
     {
       assert_release (false);
-      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-		     page_vpid.pageid);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
   memcpy (&heap_hdr, copy_recdes.data, sizeof (heap_hdr));
@@ -4695,9 +4697,8 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   if (spage_update (thread_p, header_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &update_recdes) != SP_SUCCESS)
     {
       assert_release (false);
-      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-		     page_vpid.pageid);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
   log_append_undoredo_data2 (thread_p, RVHF_STATS, &hfid->vfid, header_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
@@ -4715,9 +4716,9 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 	  S_SUCCESS)
 	{
 	  assert_release (false);
-	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-			 page_vpid.pageid);
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "Could not remove candidate empty heap page %d|%d.", page_vpid.volid,
+				 page_vpid.pageid);
 	  goto error;
 	}
       memcpy (&chain, copy_recdes.data, copy_recdes.length);
@@ -4727,9 +4728,9 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       if (spage_update (thread_p, prev_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &update_recdes) != SP_SUCCESS)
 	{
 	  assert_release (false);
-	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-			 page_vpid.pageid);
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "Could not remove candidate empty heap page %d|%d.", page_vpid.volid,
+				 page_vpid.pageid);
 	  goto error;
 	}
       log_append_undoredo_data2 (thread_p, RVHF_CHAIN, &hfid->vfid, prev_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
@@ -4745,9 +4746,9 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 	  S_SUCCESS)
 	{
 	  assert_release (false);
-	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-			 page_vpid.pageid);
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "Could not remove candidate empty heap page %d|%d.", page_vpid.volid,
+				 page_vpid.pageid);
 	  goto error;
 	}
       memcpy (&chain, copy_recdes.data, sizeof (chain));
@@ -4758,9 +4759,9 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       if (spage_update (thread_p, next_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &update_recdes) != SP_SUCCESS)
 	{
 	  assert_release (false);
-	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-			 page_vpid.pageid);
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "Could not remove candidate empty heap page %d|%d.", page_vpid.volid,
+				 page_vpid.pageid);
 	  goto error;
 	}
       log_append_undoredo_data2 (thread_p, RVHF_CHAIN, &hfid->vfid, next_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
@@ -4774,9 +4775,8 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   if (file_dealloc (thread_p, &hfid->vfid, &page_vpid, FILE_HEAP) != NO_ERROR)
     {
       ASSERT_ERROR ();
-      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-		     page_vpid.pageid);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
 
@@ -4799,8 +4799,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   pgbuf_ordered_unfix (thread_p, &header_watcher);
 
   /* Page removed successfully. */
-  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Successfully remove heap page %d|%d.\n", page_vpid.volid,
-		 page_vpid.pageid);
+  vacuum_er_log (VACUUM_ER_LOG_HEAP, "Successfully remove heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
   return true;
 
 error:
@@ -4822,6 +4821,12 @@ error:
     }
   if (*page_ptr != NULL)
     {
+      if (*page_ptr != crt_watcher.pgptr)
+	{
+	  /* jumped to here while fixing pages */
+	  assert (crt_watcher.page_was_unfixed);
+	  *page_ptr = crt_watcher.pgptr;
+	}
       assert (crt_watcher.pgptr == *page_ptr);
       pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
     }
@@ -6116,7 +6121,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	    {
 	      goto exit_on_error;
 	    }
-	  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Compactdb removed page %d|%d from heap file (%d, %d|%d).\n",
+	  vacuum_er_log (VACUUM_ER_LOG_HEAP, "Compactdb removed page %d|%d from heap file (%d, %d|%d).\n",
 			 vpid.volid, vpid.pageid, hfid->hpgid, hfid->vfid.volid, hfid->vfid.fileid);
 	}
       else
@@ -6249,6 +6254,7 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 
 	  /* Initialize description of overflow heap file */
 	  HFID_COPY (&hfdes_ovf.hfid, hfid);
+	  hfdes_ovf.class_oid = heap_hdr->class_oid;
 	  if (file_create_with_npages (thread_p, FILE_MULTIPAGE_OBJECT_HEAP, 1, (FILE_DESCRIPTORS *) (&hfdes_ovf),
 				       ovf_vfid) == NO_ERROR)
 	    {
@@ -23476,7 +23482,7 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
       assert (MVCC_ID_PRECEDES (chain->max_mvccid, mvccid));
       HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
       vacuum_er_log (VACUUM_ER_LOG_HEAP,
-		     "VACUUM: Changed vacuum status for page %d|%d, lsa=%lld|%d from no vacuum to vacuum once.\n",
+		     "Changed vacuum status for page %d|%d, lsa=%lld|%d from no vacuum to vacuum once.",
 		     PGBUF_PAGE_STATE_ARGS (heap_page));
       break;
 
@@ -23484,7 +23490,7 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
       /* Change status to unknown number of vacuums. */
       HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_UNKNOWN);
       vacuum_er_log (VACUUM_ER_LOG_HEAP,
-		     "VACUUM: Changed vacuum status for page %d|%d, lsa=%lld|%d from vacuum once to unknown.\n",
+		     "Changed vacuum status for page %d|%d, lsa=%lld|%d from vacuum once to unknown.",
 		     PGBUF_PAGE_STATE_ARGS (heap_page));
       break;
 
@@ -23495,13 +23501,13 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
 	  /* Now page must be vacuumed once, due to new MVCC op. */
 	  HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP,
-			 "VACUUM: Changed vacuum status for page %d|%d, lsa=%lld|%d from unknown to vacuum once.\n ",
+			 "Changed vacuum status for page %d|%d, lsa=%lld|%d from unknown to vacuum once.",
 			 PGBUF_PAGE_STATE_ARGS (heap_page));
 	}
       else
 	{
 	  /* Status remains the same. Number of vacuums needed still cannot be predicted. */
-	  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Vacuum status for page %d|%d, %lld|%d remains unknown.\n ",
+	  vacuum_er_log (VACUUM_ER_LOG_HEAP, "Vacuum status for page %d|%d, %lld|%d remains unknown.",
 			 PGBUF_PAGE_STATE_ARGS (heap_page));
 	}
       break;
@@ -23513,7 +23519,7 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
   /* Update max_mvccid. */
   if (MVCC_ID_PRECEDES (chain->max_mvccid, mvccid))
     {
-      vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Update max MVCCID for page %d|%d from %llu to %llu.\n",
+      vacuum_er_log (VACUUM_ER_LOG_HEAP, "Update max MVCCID for page %d|%d from %llu to %llu.",
 		     PGBUF_PAGE_VPID_AS_ARGS (heap_page), (unsigned long long int) chain->max_mvccid,
 		     (unsigned long long int) mvccid);
       chain->max_mvccid = mvccid;
@@ -23564,7 +23570,7 @@ heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID m
 	  HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
 
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
-			 "VACUUM: Change heap page %d|%d, lsa=%lld|%d, status from %s to once.\n",
+			 "Change heap page %d|%d, lsa=%lld|%d, status from %s to once.",
 			 PGBUF_PAGE_STATE_ARGS (heap_page),
 			 vacuum_status == HEAP_PAGE_VACUUM_NONE ? "none" : "unknown");
 	  break;
@@ -23572,7 +23578,7 @@ heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID m
 	  HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_UNKNOWN);
 
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
-			 "VACUUM: Change heap page %d|%d, lsa=%lld|%d, status from once to unknown.\n",
+			 "Change heap page %d|%d, lsa=%lld|%d, status from once to unknown.",
 			 PGBUF_PAGE_STATE_ARGS (heap_page));
 	  break;
 	}
@@ -23623,7 +23629,7 @@ heap_page_set_vacuum_status_none (THREAD_ENTRY * thread_p, PAGE_PTR heap_page)
   /* Update vacuum status. */
   HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_NONE);
 
-  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Changed vacuum status for page %d|%d from vacuum once to no vacuum.\n",
+  vacuum_er_log (VACUUM_ER_LOG_HEAP, "Changed vacuum status for page %d|%d from vacuum once to no vacuum.",
 		 PGBUF_PAGE_VPID_AS_ARGS (heap_page));
 }
 

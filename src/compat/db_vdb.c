@@ -1745,6 +1745,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      /* forget all errors */
 	      er_clear ();
 	      pt_reset_error (parser);
+	      parser->query_id = NULL_QUERY_ID;	/* reset to re-try */
 
 	      /* retry the statement by calling do_prepare/execute_statement() */
 	      if (do_prepare_statement (parser, statement) == NO_ERROR)

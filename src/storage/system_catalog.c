@@ -815,6 +815,7 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size, VPID * page_id_p)
   if (page_p == NULL)
     {
       ASSERT_ERROR ();
+      pthread_mutex_unlock (&catalog_Max_space_lock);
       return NULL;
     }
 
@@ -1506,6 +1507,10 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
       return ER_FAILED;
     }
 
+  btree_stats_p->leafs = 0;
+  btree_stats_p->pages = 0;
+  btree_stats_p->height = 0;
+  btree_stats_p->keys = 0;
   btree_stats_p->pkeys_size = 0;
   btree_stats_p->pkeys = NULL;
 
@@ -3799,6 +3804,7 @@ catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, CATA
 	{
 	  return ER_FAILED;
 	}
+      memset (disk_attr_p->bt_stats, 0, sizeof (BTREE_STATS) * n_btstats);
 
       /* init */
       for (i = 0; i < n_btstats; i++)
@@ -3863,7 +3869,7 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
   DISK_ATTR *disk_attr_p = NULL;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
   OID dir_oid;
-  int i, n_attrs;
+  int i;
   int error = NO_ERROR;
   bool do_end_access = false;
 
@@ -3953,8 +3959,6 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
       return NULL;
     }
 
-  n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
-
   if (disk_repr_p->n_fixed > 0)
     {
       disk_repr_p->fixed = (DISK_ATTR *) db_private_alloc (thread_p, (sizeof (DISK_ATTR) * disk_repr_p->n_fixed));
@@ -3962,6 +3966,7 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
 	{
 	  goto exit_on_error;
 	}
+      memset (disk_repr_p->fixed, 0, sizeof (DISK_ATTR) * disk_repr_p->n_fixed);
 
       /* init */
       for (i = 0; i < disk_repr_p->n_fixed; i++)
@@ -3984,11 +3989,12 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
 	{
 	  goto exit_on_error;
 	}
+      memset (disk_repr_p->variable, 0, sizeof (DISK_ATTR) * disk_repr_p->n_variable);
 
       /* init */
-      for (i = disk_repr_p->n_fixed; i < n_attrs; i++)
+      for (i = 0; i < disk_repr_p->n_variable; i++)
 	{
-	  disk_attr_p = &disk_repr_p->variable[i - disk_repr_p->n_fixed];
+	  disk_attr_p = &disk_repr_p->variable[i];
 	  disk_attr_p->value = NULL;
 	  disk_attr_p->bt_stats = NULL;
 	  disk_attr_p->n_btstats = 0;
@@ -4715,8 +4721,20 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
       assert (classname != NULL);
       assert (strlen (classname) < 255);
 #endif
-
+      if (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK) != LK_GRANTED)
+	{
+	  /* we do the checks by best-effort. we need the lock to avoid all kind of inconsistencies from doing checks on
+	   * incomplete changes. doing an unconditional lock here is too complicated and unnecessary, since it is
+	   * unusual to do checkdb and schema changes concurrently. */
+	  er_log_debug (ARG_FILE_LINE,
+			"Skipping checking catalog for class %d|%d|%d because conditional lock failed. \n",
+			OID_AS_ARGS (&class_oid));
+	  continue;
+	}
+      /* check catalog consistency */
       ct_valid = catalog_check_class_consistency (thread_p, &class_oid);
+      /* remove lock */
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
       if (ct_valid != DISK_VALID)
 	{
 	  break;

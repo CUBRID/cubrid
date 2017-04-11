@@ -254,6 +254,8 @@ STATIC_INLINE void thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_E
 					THREAD_TYPE thread_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void thread_daemon_stop (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_wakeup (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_try_wakeup (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
 
 #if !defined(NDEBUG)
@@ -794,7 +796,8 @@ loop:
 		  thread_lock_entry (thread_p);
 
 		  /* The worker thread may have been waked up by others. Check it again. */
-		  if (thread_p->tran_index != -1 && thread_p->status == TS_WAIT && thread_p->lockwait == NULL)
+		  if (thread_p->tran_index != -1 && thread_p->status == TS_WAIT && thread_p->lockwait == NULL
+		      && thread_p->check_interrupt == true)
 		    {
 		      thread_p->interrupted = true;
 		      thread_wakeup_already_had_mutex (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT);
@@ -807,9 +810,8 @@ loop:
 		  /* 
 		   * we can only wakeup LWT when waiting on THREAD_LOGWR_SUSPENDED.
 		   */
-		  r =
-		    thread_check_suspend_reason_and_wakeup (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT,
-							    THREAD_LOGWR_SUSPENDED);
+		  r = thread_check_suspend_reason_and_wakeup (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT,
+							      THREAD_LOGWR_SUSPENDED);
 		  if (r == NO_ERROR)
 		    {
 		      thread_p->interrupted = true;
@@ -3325,6 +3327,7 @@ thread_page_flush_thread (void *arg_p)
   int wakeup_interval;
   PERF_UTIME_TRACKER perf_track;
   bool force_one_run = false;
+  bool stop_iteration = false;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   thread_daemon_start (&thread_Page_flush_thread, tsd_ptr, TT_DAEMON);
@@ -3335,8 +3338,13 @@ thread_page_flush_thread (void *arg_p)
       /* flush pages as long as necessary */
       while (!tsd_ptr->shutdown && (force_one_run || pgbuf_keep_victim_flush_thread_running ()))
 	{
-	  pgbuf_flush_victim_candidates (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &perf_track);
+	  pgbuf_flush_victim_candidates (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &perf_track,
+					 &stop_iteration);
 	  force_one_run = false;
+	  if (stop_iteration)
+	    {
+	      break;
+	    }
 	}
 
       /* wait */
@@ -3377,20 +3385,21 @@ thread_page_flush_thread (void *arg_p)
 }
 
 /*
- * thread_wakeup_page_flush_thread() -
- *   return:
+ * thread_wakeup_page_flush_thread() - wakeup page flush no matter what
  */
 void
 thread_wakeup_page_flush_thread (void)
 {
-  int rv;
+  thread_daemon_wakeup (&thread_Page_flush_thread);
+}
 
-  rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
-  if (!thread_Page_flush_thread.is_running)
-    {
-      pthread_cond_signal (&thread_Page_flush_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Page_flush_thread.lock);
+/*
+ * thread_try_wakeup_page_flush_thread () - wakeup page flush thread by trying to lock it
+ */
+void
+thread_try_wakeup_page_flush_thread (void)
+{
+  thread_daemon_try_wakeup (&thread_Page_flush_thread);
 }
 
 /*
@@ -6404,6 +6413,46 @@ thread_daemon_stop (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p)
 
   er_final (ER_THREAD_FINAL);
   thread_p->status = TS_DEAD;
+}
+
+/*
+ * thread_daemon_wakeup () - Wakeup daemon thread.
+ *
+ * return      : void
+ * daemon (in) : daemon thread monitor
+ */
+STATIC_INLINE void
+thread_daemon_wakeup (DAEMON_THREAD_MONITOR * daemon)
+{
+  pthread_mutex_lock (&daemon->lock);
+  if (!daemon->is_running)
+    {
+      /* signal wakeup */
+      pthread_cond_signal (&daemon->cond);
+    }
+  pthread_mutex_unlock (&daemon->lock);
+}
+
+/*
+ * thread_daemon_try_wakeup () - Wakeup daemon thread if lock is conditionally obtained
+ *
+ * return      : void
+ * daemon (in) : daemon thread monitor
+ */
+STATIC_INLINE void
+thread_daemon_try_wakeup (DAEMON_THREAD_MONITOR * daemon)
+{
+  if (pthread_mutex_trylock (&daemon->lock) != 0)
+    {
+      /* give up */
+      return;
+    }
+  if (!daemon->is_running)
+    {
+      /* signal wakeup */
+      pthread_cond_signal (&daemon->cond);
+    }
+  pthread_mutex_unlock (&daemon->lock);
 }
 
 /*

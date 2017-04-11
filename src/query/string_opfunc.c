@@ -14451,16 +14451,14 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 
   db_time_encode (&tmp_time, hour, minute, second);
 
-  /*************         Make TIMESTAMP        *****************/
-  if (NO_ERROR != db_timestamp_encode_ses (&tmp_date, &tmp_time, &tmp_timestamp, NULL))
-    {
-      error_status = ER_DATE_CONVERSION;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      goto exit;
-    }
-
   if (type == DB_TYPE_TIMESTAMP)
     {
+      if (db_timestamp_encode_ses (&tmp_date, &tmp_time, &tmp_timestamp, NULL) != NO_ERROR)
+	{
+	  error_status = ER_DATE_CONVERSION;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto exit;
+	}
       DB_MAKE_TIMESTAMP (result_timestamp, tmp_timestamp);
     }
   else
@@ -27889,6 +27887,10 @@ parse_tzd (const char *str, const int max_expect_len)
   assert (max_expect_len > 1);
 
   p = str;
+  if (*p == '-' || *p == '+')
+    {
+      p++;
+    }
   while (p < str + max_expect_len && char_isalnum (*p))
     {
       p++;

@@ -1148,13 +1148,12 @@ enum btree_rv_debug_id
 
 /* b-tree debug logging */
 #define btree_log(prefix, msg, ...) \
-  _er_log_debug (ARG_FILE_LINE, prefix " (thread=%d tran=%d): " msg "\n", \
-                 thread_get_current_entry_index (), LOG_FIND_THREAD_TRAN_INDEX (thread_get_thread_entry_info ()), \
-                 __VA_ARGS__)
+  _er_log_debug (ARG_FILE_LINE, prefix LOG_THREAD_TRAN_MSG ": " msg "\n", \
+                 LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 #define btree_insert_log(helper, msg, ...) \
-  if ((helper)->log_operations) btree_log ("BTREE_INSERT", msg, __VA_ARGS__)
+  if ((helper)->log_operations) btree_log ("BTREE_INSERT ", msg, __VA_ARGS__)
 #define btree_delete_log(helper, msg, ...) \
-  if ((helper)->log_operations) btree_log ("BTREE_DELETE", msg, __VA_ARGS__)
+  if ((helper)->log_operations) btree_log ("BTREE_DELETE ", msg, __VA_ARGS__)
 
 /* logging btid */
 #define BTREE_ID_MSG "index = %d, %d|%d"
@@ -1875,6 +1874,8 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 
   /* initialize description of overflow heap file */
   btdes_ovf.btid = *btid->sys_btid;	/* structure copy */
+  btdes_ovf.class_oid = btid->topclass_oid;
+  assert (!OID_ISNULL (&btdes_ovf.class_oid));
   /* create file with at least 3 pages */
   return file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, (FILE_DESCRIPTORS *) (&btdes_ovf),
 				  &btid->ovfid);
@@ -11105,14 +11106,12 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
       assert (match_mvccinfo != NULL && BTREE_MVCC_INFO_IS_DELID_VALID (match_mvccinfo));
       if (BTREE_MVCC_INFO_HAS_DELID (mvcc_info) && mvcc_info->delete_mvccid == match_mvccinfo->delete_mvccid)
 	{
-	  /* This is the object to be vacuumed. */
+	  /* This is the object to be vacuumed/deleted. */
 	  *is_match = true;
 	}
       else
 	{
 	  /* Not a match. */
-	  /* This is acceptable only for vacuum. Postpone delete expects to find an exact match. */
-	  assert (purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
 	}
       return NO_ERROR;
 
@@ -18687,6 +18686,8 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
   DB_MIDXKEY *new_mkey = NULL;
   DB_VALUE *new_key_value = NULL;
   int error = NO_ERROR, i = 0;
+  TP_DOMAIN *domain;
+  bool has_null_domain;
 
   assert (multi_range_opt->use == true);
 
@@ -18724,6 +18725,46 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	{
 	  goto exit;
 	}
+    }
+
+  /* resolve domains */
+  if (multi_range_opt->sort_col_dom == NULL)
+    {
+      multi_range_opt->sort_col_dom =
+	(TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (TP_DOMAIN *));
+      if (multi_range_opt->sort_col_dom == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+
+      for (i = 0; i < multi_range_opt->num_attrs; i++)
+	{
+	  multi_range_opt->sort_col_dom[i] = &tp_Null_domain;
+	}
+      multi_range_opt->has_null_domain = true;
+    }
+
+  if (multi_range_opt->has_null_domain)
+    {
+      has_null_domain = false;
+      for (i = 0; i < multi_range_opt->num_attrs; i++)
+	{
+	  assert (multi_range_opt->sort_col_dom[i] != NULL);
+	  if (multi_range_opt->sort_col_dom[i] == &tp_Null_domain)
+	    {
+	      domain = tp_domain_resolve_value (&new_key_value[i], NULL);
+	      if (domain != &tp_Null_domain)
+		{
+		  multi_range_opt->sort_col_dom[i] = domain;
+		}
+	      else
+		{
+		  has_null_domain = true;
+		}
+	    }
+	}
+      multi_range_opt->has_null_domain = has_null_domain;
     }
 
   if (multi_range_opt->cnt == multi_range_opt->size)
@@ -18803,22 +18844,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       COPY_OID (&(curr_item->inst_oid), p_new_oid);
 
       multi_range_opt->cnt++;
-
-      if (multi_range_opt->sort_col_dom == NULL)
-	{
-	  multi_range_opt->sort_col_dom =
-	    (TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (TP_DOMAIN *));
-	  if (multi_range_opt->sort_col_dom == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto exit;
-	    }
-
-	  for (i = 0; i < multi_range_opt->num_attrs; i++)
-	    {
-	      multi_range_opt->sort_col_dom[i] = tp_domain_resolve_value (&new_key_value[i], NULL);
-	    }
-	}
     }
 
   /* find the position for this element */
@@ -24719,6 +24744,13 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 end:
   /* End scan or end one iteration or maybe an error case. */
   assert (bts->end_scan || bts->end_one_iteration || error_code != NO_ERROR);
+
+  if (error_code != NO_ERROR)
+    {
+      /* Clear current key (if not already cleared). */
+      btree_scan_clear_key (bts);
+    }
+
   if (bts->end_scan)
     {
       /* Scan is ended. Reset current page VPID and is_scan_started flag */
@@ -27542,6 +27574,11 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	  num_visible =
 	    btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, leaf_record, offset_after_key, &leaf_info,
 						     NULL, &mvcc_snapshot_dirty);
+	  if (num_visible < 0)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
 	}
 
       /* Should we consider this a unique constraint violation? */
@@ -28235,6 +28272,11 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
       num_visible =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_info, NULL,
 						 &snapshot_dirty);
+      if (num_visible < 0)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
       /* Even though multiple visible objects are allowed, they cannot exceed two visible objects (insert does not
        * allow it). Also, there should be at least one object to delete. */
       assert (num_visible > 0);
@@ -30337,11 +30379,11 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	   * OID1 is vacuumed from heap and its slot can be reused. 4. OID1 is reused and is inserted in the same
 	   * overflow page. The algorithm recognizes that the old version is just not vacuumed yet and replaces it.
 	   * OID's cannot be repeated in overflow pages. 5. Vacuum will not find the old OID1 to remove. */
-	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-			 "VACUUM WARNING: Could not find object %d|%d|%d in key=%s to vacuum it.",
-			 delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
-			 delete_helper->object_info.oid.slotid,
-			 delete_helper->printed_key != NULL ? delete_helper->printed_key : "(unknown)");
+	  vacuum_er_log_warning (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+				 "Could not find object %d|%d|%d in key=%s to vacuum it.",
+				 delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
+				 delete_helper->object_info.oid.slotid,
+				 delete_helper->printed_key != NULL ? delete_helper->printed_key : "(unknown)");
 	  btree_delete_log (delete_helper, "could not find object to vacuum \n"
 			    BTREE_DELETE_HELPER_MSG ("\t"), BTREE_DELETE_HELPER_AS_ARGS (delete_helper));
 	  goto exit;
@@ -30463,8 +30505,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 						 &max_visible_oids, &mvcc_snapshot_dirty);
       if (num_visible_oids < 0)
 	{
-	  ASSERT_ERROR ();
-	  error_code = num_visible_oids;
+	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
       else if (num_visible_oids > 0)
@@ -31554,11 +31595,11 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
     {
       /* Key or object not found. */
       /* Object must have been vacuumed/removed already. */
-      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-		     "VACUUM WARNING: Could not find object %d|%d|%d in key=%s to vacuum it.",
-		     delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
-		     delete_helper->object_info.oid.slotid,
-		     delete_helper->printed_key != NULL ? delete_helper->printed_key : "(unknown)");
+      vacuum_er_log_warning (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
+			     "Could not find object %d|%d|%d in key=%s to vacuum it.",
+			     delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
+			     delete_helper->object_info.oid.slotid,
+			     delete_helper->printed_key != NULL ? delete_helper->printed_key : "(unknown)");
       btree_delete_log (delete_helper, "could not find object to vacuum its insert MVCCID \n"
 			BTREE_DELETE_HELPER_MSG ("\t"), BTREE_DELETE_HELPER_AS_ARGS (delete_helper));
       return NO_ERROR;

@@ -1299,14 +1299,6 @@ enum log_repl_flush
    || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
    || ((rcvindex) == RVES_NOTIFY_VACUUM))
 
-/* Is log record for a change on vacuum data */
-#define LOG_IS_VACUUM_DATA_RECOVERY(rcvindex) \
-  ((rcvindex) == RVVAC_LOG_BLOCK_APPEND	\
-   || (rcvindex) == RVVAC_LOG_BLOCK_REMOVE \
-   || (rcvindex) == RVVAC_LOG_BLOCK_SAVE \
-   || (rcvindex) == RVVAC_START_OR_END_JOB \
-   || (rcvindex) == RVVAC_COMPLETE)
-
 #define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
   (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
    && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
@@ -2025,6 +2017,18 @@ extern char log_Name_removed_archive[];
 
 #define LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE(new_data_size) \
   (DB_ALIGN (new_data_size + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE, INT_ALIGNMENT))
+
+/* logging */
+#if defined (SA_MODE)
+#define LOG_THREAD_TRAN_MSG "%s"
+#define LOG_THREAD_TRAN_ARGS(thread_p) "(SA_MODE)"
+#else	/* !SA_MODE */	       /* SERVER_MODE */
+#define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
+#define LOG_THREAD_TRAN_ARGS(thread_p) \
+  THREAD_GET_CURRENT_ENTRY_INDEX (thread_p), \
+  VACUUM_IS_THREAD_VACUUM (thread_p) && (thread_p)->vacuum_worker != NULL ? \
+  VACUUM_GET_WORKER_TDES (thread_p)->trid : LOG_FIND_CURRENT_TDES (thread_p)->trid
+#endif /* SERVER_MODE */
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);

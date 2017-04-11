@@ -1155,7 +1155,7 @@ loop:
 	  if (suspended_p != NULL)
 	    {
 	      int r;
-	      bool wakeup_now;
+	      bool wakeup_now = false;
 
 	      r = thread_lock_entry (suspended_p);
 	      if (r != NO_ERROR)
@@ -1163,44 +1163,47 @@ loop:
 		  return r;
 		}
 
-	      switch (suspended_p->resume_status)
+	      if (suspended_p->check_interrupt)
 		{
-		case THREAD_CSECT_READER_SUSPENDED:
-		case THREAD_CSECT_WRITER_SUSPENDED:
-		case THREAD_CSECT_PROMOTER_SUSPENDED:
-		case THREAD_LOCK_SUSPENDED:
-		case THREAD_PGBUF_SUSPENDED:
-		case THREAD_JOB_QUEUE_SUSPENDED:
-		  /* never try to wake thread up while the thread is waiting for a critical section or a lock. */
-		  wakeup_now = false;
-		  break;
-		case THREAD_CSS_QUEUE_SUSPENDED:
-		case THREAD_HEAP_CLSREPR_SUSPENDED:
-		case THREAD_LOGWR_SUSPENDED:
-		case THREAD_ALLOC_BCB_SUSPENDED:
-		  wakeup_now = true;
-		  break;
+		  switch (suspended_p->resume_status)
+		    {
+		    case THREAD_CSECT_READER_SUSPENDED:
+		    case THREAD_CSECT_WRITER_SUSPENDED:
+		    case THREAD_CSECT_PROMOTER_SUSPENDED:
+		    case THREAD_LOCK_SUSPENDED:
+		    case THREAD_PGBUF_SUSPENDED:
+		    case THREAD_JOB_QUEUE_SUSPENDED:
+		      /* never try to wake thread up while the thread is waiting for a critical section or a lock. */
+		      wakeup_now = false;
+		      break;
+		    case THREAD_CSS_QUEUE_SUSPENDED:
+		    case THREAD_HEAP_CLSREPR_SUSPENDED:
+		    case THREAD_LOGWR_SUSPENDED:
+		    case THREAD_ALLOC_BCB_SUSPENDED:
+		      wakeup_now = true;
+		      break;
 
-		case THREAD_RESUME_NONE:
-		case THREAD_RESUME_DUE_TO_INTERRUPT:
-		case THREAD_RESUME_DUE_TO_SHUTDOWN:
-		case THREAD_PGBUF_RESUMED:
-		case THREAD_JOB_QUEUE_RESUMED:
-		case THREAD_CSECT_READER_RESUMED:
-		case THREAD_CSECT_WRITER_RESUMED:
-		case THREAD_CSECT_PROMOTER_RESUMED:
-		case THREAD_CSS_QUEUE_RESUMED:
-		case THREAD_HEAP_CLSREPR_RESUMED:
-		case THREAD_LOCK_RESUMED:
-		case THREAD_LOGWR_RESUMED:
-		case THREAD_ALLOC_BCB_RESUMED:
-		  /* thread is in resumed status, we don't need to wake up */
-		  wakeup_now = false;
-		  break;
-		default:
-		  assert (false);
-		  wakeup_now = false;
-		  break;
+		    case THREAD_RESUME_NONE:
+		    case THREAD_RESUME_DUE_TO_INTERRUPT:
+		    case THREAD_RESUME_DUE_TO_SHUTDOWN:
+		    case THREAD_PGBUF_RESUMED:
+		    case THREAD_JOB_QUEUE_RESUMED:
+		    case THREAD_CSECT_READER_RESUMED:
+		    case THREAD_CSECT_WRITER_RESUMED:
+		    case THREAD_CSECT_PROMOTER_RESUMED:
+		    case THREAD_CSS_QUEUE_RESUMED:
+		    case THREAD_HEAP_CLSREPR_RESUMED:
+		    case THREAD_LOCK_RESUMED:
+		    case THREAD_LOGWR_RESUMED:
+		    case THREAD_ALLOC_BCB_RESUMED:
+		      /* thread is in resumed status, we don't need to wake up */
+		      wakeup_now = false;
+		      break;
+		    default:
+		      assert (false);
+		      wakeup_now = false;
+		      break;
+		    }
 		}
 
 	      if (wakeup_now == true)
