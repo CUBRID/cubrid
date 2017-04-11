@@ -14587,7 +14587,7 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
        * is better. */
     }
   while (!ATOMIC_CAS_ADDR (&lru_list->victim_hint, old_victim_hint, bcb));
-  
+
   /* update victim counter. */
   /* add to lock-free circular queue so victimizers can find it... if this is not a private list under quota. */
   ATOMIC_INC_32 (&lru_list->count_vict_cand, 1);
