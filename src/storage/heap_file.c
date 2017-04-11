@@ -4612,13 +4612,18 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 
   /* All pages are fixed. */
 
-  if (crt_watcher.page_was_unfixed && spage_number_of_records (crt_watcher.pgptr) > 1)
+  if (crt_watcher.page_was_unfixed)
     {
-      /* Current page has new data. It is no longer a candidate for removal. */
-      vacuum_er_log (VACUUM_ER_LOG_HEAP,
-		     "Candidate heap page %d|%d to remove was changed and has new data.", page_vpid.volid,
-		     page_vpid.pageid);
-      goto error;
+      *page_ptr = crt_watcher.pgptr;	/* home was refixed */
+
+      if (spage_number_of_records (crt_watcher.pgptr) > 1)
+	{
+	  /* Current page has new data. It is no longer a candidate for removal. */
+	  vacuum_er_log (VACUUM_ER_LOG_HEAP,
+			 "Candidate heap page %d|%d to remove was changed and has new data.", page_vpid.volid,
+			 page_vpid.pageid);
+	  goto error;
+	}
     }
 
   /* recheck the dealloc flag after all latches are acquired */
@@ -4816,6 +4821,12 @@ error:
     }
   if (*page_ptr != NULL)
     {
+      if (*page_ptr != crt_watcher.pgptr)
+	{
+	  /* jumped to here while fixing pages */
+	  assert (crt_watcher.page_was_unfixed);
+	  *page_ptr = crt_watcher.pgptr;
+	}
       assert (crt_watcher.pgptr == *page_ptr);
       pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
     }
