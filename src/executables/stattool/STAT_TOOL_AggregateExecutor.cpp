@@ -211,7 +211,7 @@ ErrorManager::ErrorCode AggregateExecutor::execute ()
                               0,
                               pstat_Metadata[statIndex].start_offset);
       std::stringstream ss;
-      ss << res+100;
+      ss << res;
       line += " " + ss.str();
     }
 
