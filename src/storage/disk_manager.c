@@ -3573,7 +3573,6 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   DB_VOLPURPOSE purpose;
   DKNSECTS nsect;
   int error_code = NO_ERROR;
-  LOG_TDES *tdes;
 
   assert (rcv->pgptr != NULL);
   assert (rcv->length == sizeof (rv_unit));
@@ -3621,19 +3620,15 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  if (tdes->skip_disk_cache_update == false)
-    {
-      /* update cache */
-      volid = pgbuf_get_volume_id (rcv->pgptr);
-      purpose = disk_get_volpurpose (volid);
+  /* update cache */
+  volid = pgbuf_get_volume_id (rcv->pgptr);
+  purpose = disk_get_volpurpose (volid);
 
-      nsect = bit64_count_ones (rv_unit);
+  nsect = bit64_count_ones (rv_unit);
 
-      disk_cache_lock_reserve_for_purpose (purpose);
-      disk_cache_update_vol_free (volid, nsect);
-      disk_cache_unlock_reserve_for_purpose (purpose);
-    }
+  disk_cache_lock_reserve_for_purpose (purpose);
+  disk_cache_update_vol_free (volid, nsect);
+  disk_cache_unlock_reserve_for_purpose (purpose);
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
   return NO_ERROR;
@@ -3884,7 +3879,6 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   int iter;
   DISK_RESERVE_CONTEXT context;
   int error_code = NO_ERROR;
-  LOG_TDES *tdes;
 
   assert (purpose == DB_PERMANENT_DATA_PURPOSE || purpose == DB_TEMPORARY_DATA_PURPOSE);
 
@@ -3925,7 +3919,6 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   error_code = disk_reserve_from_cache (thread_p, &context);
   if (error_code != NO_ERROR)
     {
-      csect_exit (thread_p, CSECT_DISK_CHECK);
       ASSERT_ERROR ();
       goto error;
     }
@@ -3935,7 +3928,6 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
       error_code = disk_reserve_sectors_in_volume (thread_p, iter, &context);
       if (error_code != NO_ERROR)
 	{
-	  csect_exit (thread_p, CSECT_DISK_CHECK);
 	  ASSERT_ERROR ();
 	  goto error;
 	}
@@ -3953,14 +3945,8 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
 
 error:
 
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  assert (tdes->skip_disk_cache_update == false);
-  tdes->skip_disk_cache_update = true;
   /* abort any changes */
   log_sysop_abort (thread_p);
-  tdes->skip_disk_cache_update = false;
-
-  (void) csect_enter_as_reader (thread_p, CSECT_DISK_CHECK, INF_WAIT);
 
   if (purpose == DB_TEMPORARY_DATA_PURPOSE)
     {

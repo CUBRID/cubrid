@@ -4013,6 +4013,7 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
       error_code = btree_store_overflow_key (thread_p, btid, key, key_len, node_type, &key_vpid);
       if (error_code != NO_ERROR)
 	{
+	  assert_release (false);
 	  return error_code;
 	}
 
