@@ -1183,7 +1183,12 @@ boot_find_rest_volumes (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args, VOLID 
       return error_code;
     }
 
+#if 0
+  /* We don't want to mount temp vols during bootstrapping,
+   * since temp vols might be inaccessible for a crash case and will be removed soon.
+   */
   boot_find_rest_temp_volumes (thread_p, volid, fun, args, false, true);
+#endif
 
   return error_code;
 }
