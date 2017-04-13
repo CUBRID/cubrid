@@ -1676,6 +1676,8 @@ struct log_tdes
 
   bool block_global_oldest_active_until_commit;
 
+  bool skip_disk_cache_update;
+
   LOG_RCV_TDES rcv;
 };
 
