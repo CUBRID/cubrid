@@ -5828,6 +5828,17 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 		    "after simulating the deallocation of full table page \n" FILE_HEAD_ALLOC_MSG,
 		    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_MODIFY_ARGS (page_fhead, &save_page_lsa),
 		    FILE_HEAD_ALLOC_AS_ARGS (fhead));
+
+	  /* deallocate page */
+	  page_dealloc = pgbuf_fix (thread_p, &vpid_merged, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_dealloc == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
+
+	  pgbuf_dealloc_page (thread_p, page_dealloc);
+	  perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_PAGE_DEALLOCS);
 	}
 
       /* find free space */
