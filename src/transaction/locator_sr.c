@@ -13127,13 +13127,13 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 					     NON_EXISTENT_HANDLING non_ex_handling_type)
 {
   HEAP_GET_CONTEXT context;
-  SCAN_CODE scan;
+  SCAN_CODE scan = S_SUCCESS;
   RECDES recdes_local = RECDES_INITIALIZER;
-  MVCC_REC_HEADER mvcc_header;
-  DB_LOGICAL ev_res;		/* Re-evaluation result. */
+  MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+  DB_LOGICAL ev_res = V_UNKNOWN;	/* Re-evaluation result. */
   OID class_oid_local = OID_INITIALIZER;
   LOCK lock_mode = X_LOCK;
-  int err;
+  int err = NO_ERROR;
 
   if (recdes == NULL && mvcc_reev_data != NULL)
     {
@@ -13161,7 +13161,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
     {
-      err = heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ);
+      err = heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_WRITE);
       if (err != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
