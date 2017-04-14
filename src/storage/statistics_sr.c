@@ -641,9 +641,13 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
       assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
       if (file_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  int err;
+
+	  ASSERT_ERROR_AND_SET (err);
 	  /* cannot get #pages from the heap, use ones from the catalog */
 	  npages = cls_info_p->ci_tot_pages;
+	  assert (0 < npages || err == ER_INTERRUPTED);
+	  npages = MAX (npages, 1);	/* safe-guard */
 	}
       assert (npages > 0);
 
@@ -696,8 +700,13 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	   * external file (unknown at this level) to keep overflow keys. */
 	  if (file_get_num_user_pages (thread_p, &btree_stats_p->btid.vfid, &npages) != NO_ERROR)
 	    {
+	      int err;
+
 	      /* what to do here? */
+	      ASSERT_ERROR_AND_SET (err);
 	      npages = btree_stats_p->pages;
+	      assert (0 < npages || err == ER_INTERRUPTED);
+	      npages = MAX (npages, 1);	/* safe-guard */
 	    }
 	  assert (npages > 0);
 	  if (npages > btree_stats_p->pages)
