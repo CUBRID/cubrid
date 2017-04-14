@@ -3878,6 +3878,7 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   VOLID banned_volid = NULL_VOLID;
   int iter;
   DISK_RESERVE_CONTEXT context;
+  int nreserved;
   int error_code = NO_ERROR;
 
   assert (purpose == DB_PERMANENT_DATA_PURPOSE || purpose == DB_TEMPORARY_DATA_PURPOSE);
@@ -3936,26 +3937,22 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   /* Should have enough sectors. */
   assert ((context.vsidp - reserved_sectors) == n_sectors);
 
+  csect_exit (thread_p, CSECT_DISK_CHECK);
   /* attach sys op to outer */
   log_sysop_attach_to_outer (thread_p);
-
-  csect_exit (thread_p, CSECT_DISK_CHECK);
 
   return NO_ERROR;
 
 error:
-
-  /* abort any changes */
-  log_sysop_abort (thread_p);
-
-  if (purpose == DB_TEMPORARY_DATA_PURPOSE)
+  nreserved = context.vsidp - reserved_sectors;
+  if (nreserved > 0)
     {
-      /* nothing was logged. we need to revert any partial allocations we may have made. */
-      int nreserved = context.vsidp - reserved_sectors;
-      if (nreserved > 0)
+      int iter_vsid;
+
+      if (purpose == DB_TEMPORARY_DATA_PURPOSE)
 	{
+	  /* nothing was logged. we need to revert any partial allocations we may have made. */
 	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
-	  int iter_vsid;
 
 	  qsort (reserved_sectors, nreserved, sizeof (VSID), disk_compare_vsids);
 	  if (disk_unreserve_ordered_sectors_without_csect (thread_p, purpose, nreserved, reserved_sectors) != NO_ERROR)
@@ -3963,34 +3960,33 @@ error:
 	      assert_release (false);
 	    }
 	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
-
-	  /* we'll need to remove reservations for the rest of sectors (that were not allocated from disk). but first,
-	   * let's avoid removing the reservations for the ones we allocated from disk and rollbacked (they have been
-	   * removed from cache too) */
-	  for (iter_vsid = 0; iter_vsid < nreserved; iter_vsid++)
-	    {
-	      /* search vsid in volumes */
-	      for (iter = 0; iter < context.n_cache_vol_reserve; iter++)
-		{
-		  if (reserved_sectors[iter_vsid].volid == context.cache_vol_reserve[iter].volid)
-		    {
-		      context.cache_vol_reserve[iter].nsect--;
-		      break;
-		    }
-		}
-	      assert (iter < context.n_cache_vol_reserve);
-	    }
 	}
-    }
-  else
-    {
-      /* changes reverted by log_sysop_abort */
+
+      /* we'll need to remove reservations for the rest of sectors (that were not allocated from disk). but first,
+       * let's avoid removing the reservations for the ones we allocated from disk and rollbacked (they have been
+       * removed from cache too) */
+      for (iter_vsid = 0; iter_vsid < nreserved; iter_vsid++)
+	{
+	  /* search vsid in volumes */
+	  for (iter = 0; iter < context.n_cache_vol_reserve; iter++)
+	    {
+	      if (reserved_sectors[iter_vsid].volid == context.cache_vol_reserve[iter].volid)
+		{
+		  context.cache_vol_reserve[iter].nsect--;
+		  break;
+		}
+	    }
+	  assert (iter < context.n_cache_vol_reserve);
+	}
     }
 
   /* undo cache reserve */
   disk_cache_free_reserved (&context);
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
+
+  /* abort any changes */
+  log_sysop_abort (thread_p);
 
   return error_code;
 }
