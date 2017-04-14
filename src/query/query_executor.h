@@ -768,6 +768,13 @@ struct merge_proc_node
   bool has_delete;		/* MERGE statement has DELETE */
 };
 
+typedef struct cte_proc_node CTE_PROC_NODE;
+struct cte_proc_node
+{
+  XASL_NODE *non_recursive_part;	/* non recursive part of the CTE */
+  XASL_NODE *recursive_part;	/* recursive part of the CTE */
+};
+
 typedef enum
 {
   UNION_PROC,
@@ -784,7 +791,8 @@ typedef enum
   CONNECTBY_PROC,
   DO_PROC,
   MERGE_PROC,
-  BUILD_SCHEMA_PROC
+  BUILD_SCHEMA_PROC,
+  CTE_PROC
 } PROC_TYPE;
 
 typedef enum
@@ -940,6 +948,7 @@ struct xasl_node
     DELETE_PROC_NODE delete_;	/* DELETE_PROC */
     CONNECTBY_PROC_NODE connect_by;	/* CONNECTBY_PROC */
     MERGE_PROC_NODE merge;	/* MERGE_PROC */
+    CTE_PROC_NODE cte;		/* CTE_PROC */
   } proc;
 
   double cardinality;		/* estimated cardinality of result */
@@ -958,6 +967,8 @@ struct xasl_node
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
+
+  int max_iterations;		/* Number of maximum iterations (used during run-time for recursive CTE) */
 };
 
 struct pred_expr_with_context
@@ -1079,6 +1090,7 @@ extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NOD
 					       char *xasl_stream);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
 extern void stx_free_additional_buff (THREAD_ENTRY * thread_p, void *unpack_info_ptr);
+extern void stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic);
 
 extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, TP_DOMAIN * domain);
 #if defined (ENABLE_UNUSED_FUNCTION)

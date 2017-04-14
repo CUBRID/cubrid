@@ -444,6 +444,9 @@ log_to_string (LOG_RECTYPE type)
     case LOG_REPLICATION_STATEMENT:
       return "LOG_REPLICATION_STATEMENT";
 
+    case LOG_SYSOP_ATOMIC_START:
+      return "LOG_SYSOP_ATOMIC_START";
+
     case LOG_DUMMY_HA_SERVER_STATE:
       return "LOG_DUMMY_HA_SERVER_STATE";
     case LOG_DUMMY_OVF_RECORD:
@@ -2090,6 +2093,10 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	  return;
 	}
     }
+  if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
+    {
+      pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
+    }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
@@ -2209,6 +2216,10 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	  assert (false);
 	  return;
 	}
+    }
+  if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
+    {
+      pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
     }
 }
 
@@ -3050,9 +3061,22 @@ log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_D
   LOG_PRIOR_NODE *node;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      /* Vacuum worker */
+      /* Must be under a system operation, otherwise postpone records will not work. */
+      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p));
+      /* Use reserved transaction descriptor instead of system tdes. */
+      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+    }
+  else
+    {
+      /* Find tdes in transaction table. */
+      tdes = LOG_FIND_TDES (tran_index);
+    }
   if (tdes == NULL)
     {
+      assert (false);
       return;
     }
 
@@ -3527,8 +3551,8 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 	      || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
 
       vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-		     "VACUUM: Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid, tdes->topops.last,
+		     "Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
+		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.", tdes->trid, tdes->topops.last,
 		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 		     VACUUM_GET_WORKER_STATE (thread_p));
 
@@ -3602,6 +3626,49 @@ log_sysop_start (THREAD_ENTRY * thread_p)
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
+}
+
+/*
+ * log_sysop_start_atomic () - start a system operation that required to be atomic. it is aborted during recovery before
+ *                             all postpones are finished.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ */
+void
+log_sysop_start_atomic (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = NULL;
+  int tran_index;
+
+  log_sysop_start (thread_p);
+  log_sysop_get_tran_index_and_tdes (thread_p, &tran_index, &tdes);
+  if (tdes == NULL || tdes->topops.last < 0)
+    {
+      /* not a good context. must be in a system operation */
+      assert_release (false);
+      return;
+    }
+  if (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa))
+    {
+      LOG_PRIOR_NODE *node =
+	prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_ATOMIC_START, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+      if (node == NULL)
+	{
+	  return;
+	}
+
+      (void) prior_lsa_next_record (thread_p, node, tdes);
+    }
+  else
+    {
+      /* this must be a nested atomic system operation. If parent is atomic, we'll be atomic too. */
+      assert (tdes->topops.last > 0);
+
+      /* oh, and please tell me this is not a nested system operation during postpone of system operation nested to
+       * another atomic system operation... */
+      assert (LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa));
+    }
 }
 
 /*
@@ -3701,9 +3768,9 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	    }
 
 	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
-			 "VACUUM: Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
+			 "Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
 			 "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
-			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid,
+			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.", tdes->trid,
 			 (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
 			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 			 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
@@ -3952,7 +4019,7 @@ void
 log_sysop_end_recovery_postpone (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
 				 const char *data)
 {
-  return log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
+  log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
 }
 
 /*
@@ -6987,11 +7054,11 @@ static void
 log_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
 {
   int ntops, i;
-  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
-							 * mode */
-  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topone;	/* One top system ope */
+  LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+					 * mode */
+  LOG_INFO_CHKPT_SYSOP *chkpt_topone;	/* One top system ope */
 
-  chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) data;
+  chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) data;
   ntops = length / sizeof (*chkpt_topops);
 
   /* Start dumping each checkpoint top system operation */
@@ -7021,7 +7088,7 @@ log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   fprintf (out_fp, "     Redo_LSA = %lld|%d\n", (long long int) chkpt->redo_lsa.pageid, chkpt->redo_lsa.offset);
 
   length_active_tran = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
-  length_topope = (sizeof (LOG_INFO_CHKPT_SYSOP_START_POSTPONE) * chkpt->ntops);
+  length_topope = (sizeof (LOG_INFO_CHKPT_SYSOP) * chkpt->ntops);
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
   log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, logpb_dump_checkpoint_trans, NULL);
   if (length_topope > 0)
@@ -7236,6 +7303,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
+    case LOG_SYSOP_ATOMIC_START:
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
@@ -8157,6 +8225,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_2PC_ABORT_INFORM_PARTICPS:
 	    case LOG_REPLICATION_DATA:
 	    case LOG_REPLICATION_STATEMENT:
+	    case LOG_SYSOP_ATOMIC_START:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
@@ -8573,6 +8642,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_DUMMY_HEAD_POSTPONE:
 		    case LOG_REPLICATION_DATA:
 		    case LOG_REPLICATION_STATEMENT:
+		    case LOG_SYSOP_ATOMIC_START:
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_GENERIC:
@@ -8971,7 +9041,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
   const char *vlabel;
   INT64 db_creation;
   DISK_VOLPURPOSE vol_purpose;
-  VOL_SPACE_INFO space_info;
+  DISK_VOLUME_SPACE_INFO space_info;
   VOLID volid;
   int vdes;
   LOG_LSA init_nontemp_lsa;
@@ -9028,7 +9098,8 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 
       if (vol_purpose != DB_TEMPORARY_DATA_PURPOSE)
 	{
-	  (void) fileio_reset_volume (thread_p, vdes, vlabel, space_info.total_pages, &init_nontemp_lsa);
+	  (void) fileio_reset_volume (thread_p, vdes, vlabel, DISK_SECTS_NPAGES (space_info.n_total_sects),
+				      &init_nontemp_lsa);
 	}
 
       (void) disk_set_creation (thread_p, volid, vlabel, &log_Gl.hdr.db_creation, &log_Gl.hdr.chkpt_lsa, false,

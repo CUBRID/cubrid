@@ -77,7 +77,7 @@
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
 
-#define STATDUMP_BUF_SIZE (16 * 1024)
+#define STATDUMP_BUF_SIZE (2 * 16 * 1024)
 #define QUERY_INFO_BUF_SIZE (2048 + STATDUMP_BUF_SIZE)
 
 /* This file is only included in the server.  So set the on_server flag on */
@@ -1079,18 +1079,6 @@ end:
     {
       locator_free_copy_area (copy_area);
     }
-}
-
-void
-slocator_force_repl_update (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  /* this function no longer in use */
-  assert_release (false);
-
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_UNKNOWN_SERVER_REQ, 0);
-  return_error_to_client (thread_p, rid);
-
-  return;
 }
 
 /*
@@ -3975,42 +3963,6 @@ slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid, cha
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
-
-/*
- * sbtree_delete_with_unique_key -
- * rid(in):
- * request(in):
- * reqlen(in):
- */
-void
-sbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  DB_VALUE key_value;
-  char *ptr, *class_name = NULL;
-  int error;
-  OID class_oid;
-  BTID btid;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_unpack_btid (ptr, &btid);
-  ptr = or_unpack_oid (ptr, &class_oid);
-  ptr = or_unpack_mem_value (ptr, &key_value);
-
-  error = xbtree_delete_with_unique_key (thread_p, &btid, &class_oid, &key_value);
-
-  if (error != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  or_pack_int (reply, error);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-
-  pr_clear_value (&key_value);
-}
-
 /*
  * sbtree_find_unique -
  *
@@ -4369,45 +4321,6 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
 }
 
 /*
- * sdisk_get_purpose_and_space_info -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int int_volid;
-  VOLID volid;
-  DISK_VOLPURPOSE vol_purpose;
-  VOL_SPACE_INFO space_info;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_VOL_SPACE_INFO_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  int error_code = NO_ERROR;
-
-  (void) or_unpack_int (request, &int_volid);
-  volid = (VOLID) int_volid;
-
-  error_code = xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return_error_to_client (thread_p, rid);
-    }
-  ptr = or_pack_int (reply, vol_purpose);
-  OR_PACK_VOL_SPACE_INFO (ptr, (&space_info));
-  ptr = or_pack_int (ptr, error_code);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
  * sdk_vlabel -
  *
  * return:
@@ -4459,37 +4372,6 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
     {
       db_private_free_and_init (thread_p, area);
     }
-}
-
-/*
- * sdisk_is_volume_exist -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sdisk_is_volume_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  VOLID volid;
-  int int_volid;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int exist = 0;
-
-  (void) or_unpack_int (request, &int_volid);
-  volid = (VOLID) int_volid;
-  if (xdisk_is_volume_exist (thread_p, volid))
-    {
-      exist = 1;
-    }
-
-  (void) or_pack_int (reply, exist);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -4986,7 +4868,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      event_log_slow_query (thread_p, &info, response_time, diff_stats);
 	    }
 
-	  if (trace_ioreads > 0 && diff_stats[PSTAT_PB_NUM_IOREADS] >= trace_ioreads)
+	  if (trace_ioreads > 0 && diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] >= trace_ioreads)
 	    {
 	      event_log_many_ioreads (thread_p, &info, response_time, diff_stats);
 	    }
@@ -5142,8 +5024,9 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
   fprintf (log_fp, "%*cbuffer: fetch=%lld, ioread=%lld, iowrite=%lld\n", indent, ' ',
-	   (long long int) diff_stats[PSTAT_PB_NUM_FETCHES],
-	   (long long int) diff_stats[PSTAT_PB_NUM_IOREADS], (long long int) diff_stats[PSTAT_PB_NUM_IOWRITES]);
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset],
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset],
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOWRITES].start_offset]);
   fprintf (log_fp, "%*cwait: cs=%d, lock=%d, latch=%d\n\n", indent, ' ', TO_MSEC (thread_p->event_stats.cs_waits),
 	   TO_MSEC (thread_p->event_stats.lock_waits), TO_MSEC (thread_p->event_stats.latch_waits));
 
@@ -5186,7 +5069,8 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
-  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ', (long long int) diff_stats[PSTAT_PB_NUM_IOREADS]);
+  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ',
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset]);
 
   event_log_end (thread_p);
 }
@@ -9573,4 +9457,94 @@ slocator_redistribute_partition_data (THREAD_ENTRY * thread_p, unsigned int rid,
 end:
   ptr = or_pack_int (reply, success);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * netsr_spacedb () - server-side function to get database space info
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * rid (in)      : request ID
+ * request (in)  : request data
+ * reqlen (in)   : request data length
+ */
+void
+netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  SPACEDB_ALL all[SPACEDB_ALL_COUNT];
+  SPACEDB_ONEVOL *vols = NULL;
+  SPACEDB_FILES files[SPACEDB_FILE_COUNT];
+
+  int get_vols = 0;
+  int get_files = 0;
+  SPACEDB_ONEVOL **volsp = NULL;
+  SPACEDB_FILES *filesp = NULL;
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *data_reply = NULL;
+  int data_reply_length = 0;
+
+  char *ptr;
+
+  int error_code = NO_ERROR;
+
+  /* do we need space information on all volumes? */
+  ptr = or_unpack_int (request, &get_vols);
+  if (get_vols)
+    {
+      volsp = &vols;
+    }
+  /* do we need detailed file information? */
+  ptr = or_unpack_int (ptr, &get_files);
+  if (get_files)
+    {
+      filesp = files;
+    }
+
+  /* get info from disk manager */
+  error_code = disk_spacedb (thread_p, all, volsp);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  else if (get_files)
+    {
+      /* get info from file manager */
+      error_code = file_spacedb (thread_p, filesp);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+    }
+
+  if (error_code == NO_ERROR)
+    {
+      /* success. pack space info */
+      data_reply_length = or_packed_spacedb_size (all, vols, filesp);
+      data_reply = (char *) db_private_alloc (thread_p, data_reply_length);
+      ptr = or_pack_spacedb (data_reply, all, vols, filesp);
+      assert (ptr - data_reply == data_reply_length);
+    }
+  else
+    {
+      /* error */
+      return_error_to_client (thread_p, rid);
+    }
+
+  /* send result to client */
+  ptr = or_pack_int (reply, data_reply_length);
+  ptr = or_pack_int (ptr, error_code);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply,
+				     data_reply_length);
+
+  if (vols != NULL)
+    {
+      free_and_init (vols);
+    }
+  if (data_reply != NULL)
+    {
+      db_private_free_and_init (thread_p, data_reply);
+    }
 }

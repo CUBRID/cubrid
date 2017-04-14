@@ -194,10 +194,6 @@ net_server_init (void)
   req_p->processing_function = sboot_get_locales_info;
   req_p->name = "NET_SERVER_BO_GET_LOCALES_INFO";
 
-  req_p = &net_Requests[NET_SERVER_TZ_GET_CHECKSUM];
-  req_p->processing_function = sboot_get_timezone_checksum;
-  req_p->name = "NET_SERVER_TZ_GET_CHECKSUM";
-
   /* transaction */
   req_p = &net_Requests[NET_SERVER_TM_SERVER_COMMIT];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | OUT_TRANSACTION);
@@ -522,17 +518,9 @@ net_server_init (void)
   req_p->processing_function = sdk_remarks;
   req_p->name = "NET_SERVER_DISK_REMARKS";
 
-  req_p = &net_Requests[NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO];
-  req_p->processing_function = sdisk_get_purpose_and_space_info;
-  req_p->name = "NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO";
-
   req_p = &net_Requests[NET_SERVER_DISK_VLABEL];
   req_p->processing_function = sdk_vlabel;
   req_p->name = "NET_SERVER_DISK_VLABEL";
-
-  req_p = &net_Requests[NET_SERVER_DISK_IS_EXIST];
-  req_p->processing_function = sdisk_is_volume_exist;
-  req_p->name = "NET_SERVER_DISK_IS_EXIST";
 
   /* statistics */
   req_p = &net_Requests[NET_SERVER_QST_GET_STATISTICS];
@@ -803,10 +791,6 @@ net_server_init (void)
   req_p->processing_function = sacl_reload;
   req_p->name = "NET_SERVER_ACL_RELOAD";
 
-  req_p = &net_Requests[NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY];
-  req_p->processing_function = sbtree_delete_with_unique_key;
-  req_p->name = "NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY";
-
   req_p = &net_Requests[NET_SERVER_AU_LOGIN_USER];
   req_p->processing_function = slogin_user;
   req_p->name = "NET_SERVER_SET_USERNAME";
@@ -814,11 +798,6 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_BTREE_FIND_MULTI_UNIQUES];
   req_p->processing_function = sbtree_find_multi_uniques;
   req_p->name = "NET_SERVER_FIND_MULTI_UNIQUES";
-
-  req_p = &net_Requests[NET_SERVER_LC_FORCE_REPL_UPDATE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = slocator_force_repl_update;
-  req_p->name = "NET_SERVER_LC_FORCE_REPL_UPDATE";
 
   req_p = &net_Requests[NET_SERVER_LC_PREFETCH_REPL_INSERT];
   req_p->processing_function = slocator_prefetch_repl_insert;
@@ -843,6 +822,14 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_LOCK_RR];
   req_p->processing_function = stran_lock_rep_read;
   req_p->name = "NET_SERVER_LOCK_RR";
+
+  req_p = &net_Requests[NET_SERVER_TZ_GET_CHECKSUM];
+  req_p->processing_function = sboot_get_timezone_checksum;
+  req_p->name = "NET_SERVER_TZ_GET_CHECKSUM";
+
+  req_p = &net_Requests[NET_SERVER_SPACEDB];
+  req_p->processing_function = netsr_spacedb;
+  req_p->name = "NET_SERVER_SPACEDB";
 
   req_p = &net_Requests[NET_SERVER_LC_REPL_FORCE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
@@ -1168,7 +1155,7 @@ loop:
 	  if (suspended_p != NULL)
 	    {
 	      int r;
-	      bool wakeup_now;
+	      bool wakeup_now = false;
 
 	      r = thread_lock_entry (suspended_p);
 	      if (r != NO_ERROR)
@@ -1176,42 +1163,47 @@ loop:
 		  return r;
 		}
 
-	      switch (suspended_p->resume_status)
+	      if (suspended_p->check_interrupt)
 		{
-		case THREAD_CSECT_READER_SUSPENDED:
-		case THREAD_CSECT_WRITER_SUSPENDED:
-		case THREAD_CSECT_PROMOTER_SUSPENDED:
-		case THREAD_LOCK_SUSPENDED:
-		case THREAD_PGBUF_SUSPENDED:
-		case THREAD_JOB_QUEUE_SUSPENDED:
-		  /* never try to wake thread up while the thread is waiting for a critical section or a lock. */
-		  wakeup_now = false;
-		  break;
-		case THREAD_CSS_QUEUE_SUSPENDED:
-		case THREAD_HEAP_CLSREPR_SUSPENDED:
-		case THREAD_LOGWR_SUSPENDED:
-		  wakeup_now = true;
-		  break;
+		  switch (suspended_p->resume_status)
+		    {
+		    case THREAD_CSECT_READER_SUSPENDED:
+		    case THREAD_CSECT_WRITER_SUSPENDED:
+		    case THREAD_CSECT_PROMOTER_SUSPENDED:
+		    case THREAD_LOCK_SUSPENDED:
+		    case THREAD_PGBUF_SUSPENDED:
+		    case THREAD_JOB_QUEUE_SUSPENDED:
+		      /* never try to wake thread up while the thread is waiting for a critical section or a lock. */
+		      wakeup_now = false;
+		      break;
+		    case THREAD_CSS_QUEUE_SUSPENDED:
+		    case THREAD_HEAP_CLSREPR_SUSPENDED:
+		    case THREAD_LOGWR_SUSPENDED:
+		    case THREAD_ALLOC_BCB_SUSPENDED:
+		      wakeup_now = true;
+		      break;
 
-		case THREAD_RESUME_NONE:
-		case THREAD_RESUME_DUE_TO_INTERRUPT:
-		case THREAD_RESUME_DUE_TO_SHUTDOWN:
-		case THREAD_PGBUF_RESUMED:
-		case THREAD_JOB_QUEUE_RESUMED:
-		case THREAD_CSECT_READER_RESUMED:
-		case THREAD_CSECT_WRITER_RESUMED:
-		case THREAD_CSECT_PROMOTER_RESUMED:
-		case THREAD_CSS_QUEUE_RESUMED:
-		case THREAD_HEAP_CLSREPR_RESUMED:
-		case THREAD_LOCK_RESUMED:
-		case THREAD_LOGWR_RESUMED:
-		  /* thread is in resumed status, we don't need to wake up */
-		  wakeup_now = false;
-		  break;
-		default:
-		  assert (false);
-		  wakeup_now = false;
-		  break;
+		    case THREAD_RESUME_NONE:
+		    case THREAD_RESUME_DUE_TO_INTERRUPT:
+		    case THREAD_RESUME_DUE_TO_SHUTDOWN:
+		    case THREAD_PGBUF_RESUMED:
+		    case THREAD_JOB_QUEUE_RESUMED:
+		    case THREAD_CSECT_READER_RESUMED:
+		    case THREAD_CSECT_WRITER_RESUMED:
+		    case THREAD_CSECT_PROMOTER_RESUMED:
+		    case THREAD_CSS_QUEUE_RESUMED:
+		    case THREAD_HEAP_CLSREPR_RESUMED:
+		    case THREAD_LOCK_RESUMED:
+		    case THREAD_LOGWR_RESUMED:
+		    case THREAD_ALLOC_BCB_RESUMED:
+		      /* thread is in resumed status, we don't need to wake up */
+		      wakeup_now = false;
+		      break;
+		    default:
+		      assert (false);
+		      wakeup_now = false;
+		      break;
+		    }
 		}
 
 	      if (wakeup_now == true)
@@ -1292,7 +1284,7 @@ net_server_start (const char *server_name)
       goto end;
     }
 
-  sysprm_load_and_init (NULL, NULL);
+  sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL);
   sysprm_set_er_log_file (server_name);
 
   if (sync_initialize_sync_stats () != NO_ERROR)

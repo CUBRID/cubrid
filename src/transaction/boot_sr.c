@@ -638,8 +638,6 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
       log_sysop_started = false;
     }
 
-  pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-
 end:
 
   if (log_sysop_started == true && error_code != NO_ERROR)
@@ -1185,7 +1183,12 @@ boot_find_rest_volumes (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args, VOLID 
       return error_code;
     }
 
+#if 0
+  /* We don't want to mount temp vols during bootstrapping,
+   * since temp vols might be inaccessible for a crash case and will be removed soon.
+   */
   boot_find_rest_temp_volumes (thread_p, volid, fun, args, false, true);
+#endif
 
   return error_code;
 }
@@ -1669,7 +1672,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto exit_on_error;
     }
 
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       goto exit_on_error;
@@ -1820,7 +1823,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
    */
 
 #if defined(SERVER_MODE)
-  sysprm_load_and_init (boot_Db_full_name, NULL);
+  sysprm_load_and_init (boot_Db_full_name, NULL, SYSPRM_LOAD_ALL);
 #endif /* SERVER_MODE */
 
   /* If the server is already restarted, shutdown the server */
@@ -2211,7 +2214,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -2321,7 +2324,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * recovery managers
    */
 #if defined(SERVER_MODE)
-  if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (boot_Db_full_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -2560,9 +2563,17 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
+  /* restore from backup should be prevented from other changes of the database (includes vacuum) */
+  if ((r_args == NULL || r_args->is_restore_from_backup == false)
+      && prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
-      /* Make sure dropped files are loaded from disk after recovery */
+      /* load and recovery vacuum data and dropped files */
+      error_code = vacuum_data_load_and_recover (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
       error_code = vacuum_load_dropped_files_from_disk (thread_p);
       if (error_code != NO_ERROR)
 	{
@@ -2688,12 +2699,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
-  pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-
   /* If there is an existing query area, delete it. */
   if (boot_Db_parm->query_vfid.volid != NULL_VOLID)
     {
-      (void) file_destroy (thread_p, &boot_Db_parm->query_vfid);
+      (void) file_destroy (thread_p, &boot_Db_parm->query_vfid, true);
       boot_Db_parm->query_vfid.fileid = NULL_FILEID;
       boot_Db_parm->query_vfid.volid = NULL_VOLID;
 
@@ -2783,7 +2792,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
 #if defined (SA_MODE)
   /* Completely vacuum database. */
-  xvacuum (thread_p);
+  if (r_args == NULL || r_args->is_restore_from_backup == false)
+    {
+      xvacuum (thread_p);
+    }
 #endif
 
   /* read only mode ? */
@@ -2946,7 +2958,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       return NULL_TRAN_INDEX;
     }
@@ -3001,12 +3013,10 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
 #endif /* CUBRID_DEBUG */
 
       sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
+
       /* Shutdown the system with the system transaction */
       logtb_set_to_system_tran_index (thread_p);
       log_abort_all_active_transaction (thread_p);
-#if defined(SERVER_MODE)
-      thread_stop_active_daemons ();
-#endif
 
       /* before removing temp vols */
       (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
@@ -3016,6 +3026,11 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       session_states_finalize (thread_p);
 
       (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
+
+#if defined(SERVER_MODE)
+      thread_stop_active_daemons ();
+#endif
+
       log_final (thread_p);
 
       if (is_er_final == ER_ALL_FINAL)
@@ -3781,6 +3796,14 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 
   if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
     {
+#if defined(SERVER_MODE)
+      /*
+       * Clears latch free resources, before shutting down the area manager. This is needed, since latch free resources
+       * may still refers the area manager.
+       */
+      thread_return_all_transactions_entries ();
+      lf_destroy_transaction_systems ();
+#endif
       es_final ();
       tp_final ();
       locator_free_areas ();
@@ -4562,7 +4585,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 	  return ER_FAILED;
 	}
 
-      if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+      if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
 	  return ER_FAILED;
@@ -5010,7 +5033,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   (void) fileio_synchronize_all (thread_p, false);
 
   (void) logpb_checkpoint (thread_p);
-  pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
   boot_server_status (BOOT_SERVER_UP);
 
   return tran_index;
@@ -5081,7 +5103,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  return ER_FAILED;
 	}
 
-      if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+      if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
 	  return ER_FAILED;
@@ -5203,7 +5225,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     }
 
   (void) msgcat_init ();
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -5287,7 +5309,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
 
   log_prefix = fileio_get_base_file_name (db_name);
 
-  if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (boot_Db_full_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -5408,7 +5430,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
-      /* We need to load vacuum data and initialize vacuum routine before recovery. */
+      /* We need initialize vacuum routine before recovery. */
       error_code =
 	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
 			   &boot_Db_parm->dropped_files_vfid);
@@ -5423,7 +5445,6 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     {
       goto error_exit;
     }
-
 
   if (recreate_log == false)
     {
@@ -5702,6 +5723,12 @@ boot_decoy_entries_finalize (void)
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_HFID_TABLE);
+  lf_tran_destroy_entry (t_entry);
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_XCACHE);
+  lf_tran_destroy_entry (t_entry);
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_FPCACHE);
   lf_tran_destroy_entry (t_entry);
 }
 #endif

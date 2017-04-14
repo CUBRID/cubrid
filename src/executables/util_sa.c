@@ -346,7 +346,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       goto error_exit;
@@ -918,6 +918,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   restart_arg.newvolpath = utility_get_option_bool_value (arg_map, RESTORE_USE_DATABASE_LOCATION_PATH_S);
   restart_arg.restore_upto_bktime = false;
   restart_arg.restore_slave = false;
+  restart_arg.is_restore_from_backup = true;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -3720,7 +3721,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   char *master_host_name;
   BO_RESTART_ARG restart_arg;
 
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       goto error_exit;
@@ -3759,6 +3760,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   restart_arg.newvolpath = utility_get_option_bool_value (arg_map, RESTORESLAVE_USE_DATABASE_LOCATION_PATH_S);
   restart_arg.restore_upto_bktime = false;
   restart_arg.stopat = time (NULL);
+  restart_arg.is_restore_from_backup = false;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -3965,7 +3967,7 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
   er_inited = true;
 
   memset (checksum, 0, sizeof (checksum));
-  if (timezone_compile_data (input_path, tz_gen_type, checksum) != NO_ERROR)
+  if (timezone_compile_data (input_path, tz_gen_type, db_name, checksum) != NO_ERROR)
     {
       exit_status = EXIT_FAILURE;
       goto exit;

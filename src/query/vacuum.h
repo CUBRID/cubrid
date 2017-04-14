@@ -54,13 +54,18 @@
 #define VACUUM_IS_ER_LOG_LEVEL_SET(er_log_level) \
   ((prm_get_integer_value (PRM_ID_ER_LOG_VACUUM) & (er_log_level)) != 0)
 
-#if defined(SERVER_MODE)
-#define vacuum_er_log(er_log_level, ...) \
+#define vacuum_er_log(er_log_level, msg, ...) \
   if (VACUUM_IS_ER_LOG_LEVEL_SET (er_log_level)) \
-    _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
-#else
-#define vacuum_er_log(er_log_level, ...)
-#endif
+    _er_log_debug (ARG_FILE_LINE, "VACUUM " LOG_THREAD_TRAN_MSG ": " msg "\n", \
+                   LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
+#define vacuum_er_log_error(er_log_level, msg, ...) \
+  if (VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_ERROR | er_log_level)) \
+    _er_log_debug (ARG_FILE_LINE, "VACUUM ERROR " LOG_THREAD_TRAN_MSG ": " msg "\n", \
+                   LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
+#define vacuum_er_log_warning(er_log_level, msg, ...) \
+  if (VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_WARNING | er_log_level)) \
+    _er_log_debug (ARG_FILE_LINE, "VACUUM WARNING " LOG_THREAD_TRAN_MSG ": " msg "\n", \
+                   LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 
 typedef INT64 VACUUM_LOG_BLOCKID;
 #define VACUUM_NULL_LOG_BLOCKID -1
@@ -280,7 +285,8 @@ extern void vacuum_start_new_job (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
-extern int vacuum_load_data_from_disk (THREAD_ENTRY * thread_p);
+extern int vacuum_data_load_and_recover (THREAD_ENTRY * thread_p);
+extern void vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p);
 extern VACUUM_LOG_BLOCKID vacuum_get_log_blockid (LOG_PAGEID pageid);
 extern void vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVCCID oldest_mvccid,
 					   MVCCID newest_mvccid);
@@ -288,11 +294,12 @@ extern int vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p);
 extern void vacuum_notify_server_crashed (LOG_LSA * recovery_lsa);
 extern void vacuum_notify_server_shutdown (void);
-extern void vacuum_notify_need_flush (int need_flush);
 extern int vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_redo_initialize_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+/* TODO VACUUM_DATA_COMPATIBILITY: ===> */
 extern int vacuum_rv_undoredo_first_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void vacuum_rv_undoredo_first_data_page_dump (FILE * fp, int length, void *data);
+/* TODO VACUUM_DATA_COMPATIBILITY: <=== */
 extern int vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void vacuum_rv_redo_data_finished_dump (FILE * fp, int length, void *data);
 extern int vacuum_rv_undoredo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -333,4 +340,5 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_
 							  MVCC_REC_HEADER * rec_header, int btree_node_type);
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
+
 #endif /* _VACUUM_H_ */

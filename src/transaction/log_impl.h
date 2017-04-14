@@ -954,8 +954,8 @@ struct log_header
   LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2 */
   char prefix_name[MAXLOGNAME];	/* Log prefix name */
   bool has_logging_been_skipped;	/* Has logging been skipped ? */
-  int reserved_int_1;		/* for backward compitablity - previously used for lowest_arv_num_for_backup */
-  int reserved_int_2;		/* for backward compitablity - previously used for highest_arv_num_for_backup */
+  int reserved_int_1;		/* for backward compatibility - previously used for lowest_arv_num_for_backup */
+  int reserved_int_2;		/* for backward compatibility - previously used for highest_arv_num_for_backup */
   int perm_status;		/* Reserved for future expansion and permanent status indicators, e.g. to mark
 				 * RESTORE_IN_PROGRESS */
   LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
@@ -970,7 +970,10 @@ struct log_header
   LOG_LSA mvcc_op_log_lsa;	/* Used to link log entries for mvcc operations. Vacuum will then process these entries */
   MVCCID last_block_oldest_mvccid;	/* Used to find the oldest MVCCID in a block of log data. */
   MVCCID last_block_newest_mvccid;	/* Used to find the newest MVCCID in a block of log data. */
+
+  /* TODO VACUUM_DATA_COMPATIBILITY: remove vacuum_data_first_vpid and all its references ==> */
   VPID vacuum_data_first_vpid;	/* First vacuum data page VPID. */
+  /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
 
   INT64 ha_promotion_time;
   INT64 db_restore_time;
@@ -1228,6 +1231,8 @@ enum log_rectype
   LOG_MVCC_UNDO_DATA = 47,	/* Undo for MVCC operations */
   LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
   LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
+  LOG_SYSOP_ATOMIC_START = 50,	/* Log marker to start atomic operations that need to be rollbacked immediately after
+				 * redo phase of recovery and before finishing postpones */
 
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
@@ -1293,14 +1298,6 @@ enum log_repl_flush
   (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
    || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
    || ((rcvindex) == RVES_NOTIFY_VACUUM))
-
-/* Is log record for a change on vacuum data */
-#define LOG_IS_VACUUM_DATA_RECOVERY(rcvindex) \
-  ((rcvindex) == RVVAC_LOG_BLOCK_APPEND	\
-   || (rcvindex) == RVVAC_LOG_BLOCK_REMOVE \
-   || (rcvindex) == RVVAC_LOG_BLOCK_SAVE \
-   || (rcvindex) == RVVAC_START_OR_END_JOB \
-   || (rcvindex) == RVVAC_COMPLETE)
 
 #define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
   (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
@@ -1518,11 +1515,12 @@ struct log_info_chkpt_trans
 
 };
 
-typedef struct log_info_chkpt_sysop_start_postpone LOG_INFO_CHKPT_SYSOP_START_POSTPONE;
-struct log_info_chkpt_sysop_start_postpone
+typedef struct log_info_chkpt_sysop LOG_INFO_CHKPT_SYSOP;
+struct log_info_chkpt_sysop
 {
   TRANID trid;			/* Transaction identifier */
   LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
+  LOG_LSA atomic_sysop_start_lsa;	/* saved lsa of atomic system op start */
 };
 
 typedef struct log_rec_savept LOG_REC_SAVEPT;
@@ -1590,6 +1588,10 @@ struct log_rcv_tdes
   LOG_LSA sysop_start_postpone_lsa;
   /* we need to know where transaction postpone has started. */
   LOG_LSA tran_start_postpone_lsa;
+  /* we need to know if file_perm_alloc or file_perm_dealloc operations have been interrupted. these operation must be
+   * executed atomically (all changes applied or all rollbacked) before executing finish all postpones. to know what
+   * to abort, we remember the starting LSA of such operation. */
+  LOG_LSA atomic_sysop_start_lsa;
 };
 
 typedef struct log_tdes LOG_TDES;
@@ -2016,6 +2018,18 @@ extern char log_Name_removed_archive[];
 #define LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE(new_data_size) \
   (DB_ALIGN (new_data_size + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE, INT_ALIGNMENT))
 
+/* logging */
+#if defined (SA_MODE)
+#define LOG_THREAD_TRAN_MSG "%s"
+#define LOG_THREAD_TRAN_ARGS(thread_p) "(SA_MODE)"
+#else	/* !SA_MODE */	       /* SERVER_MODE */
+#define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
+#define LOG_THREAD_TRAN_ARGS(thread_p) \
+  THREAD_GET_CURRENT_ENTRY_INDEX (thread_p), \
+  VACUUM_IS_THREAD_VACUUM (thread_p) && (thread_p)->vacuum_worker != NULL ? \
+  VACUUM_GET_WORKER_TDES (thread_p)->trid : LOG_FIND_CURRENT_TDES (thread_p)->trid
+#endif /* SERVER_MODE */
+
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);
 extern bool logpb_is_pool_initialized (void);
@@ -2235,7 +2249,7 @@ extern char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
-extern int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p);
+STATIC_INLINE int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
@@ -2334,4 +2348,32 @@ extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
+/************************************************************************/
+/* Inline functions:                                                    */
+/************************************************************************/
+
+/*
+ * logtb_find_current_wait_msecs - find waiting times for current transaction
+ *
+ * return : wait_msecs...
+ *
+ * Note: Find the waiting time for the current transaction.
+ */
+STATIC_INLINE int
+logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      return tdes->wait_msecs;
+    }
+  else
+    {
+      return 0;
+    }
+}
 #endif /* _LOG_IMPL_H_ */

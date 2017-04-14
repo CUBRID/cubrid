@@ -79,6 +79,7 @@ enum
 /* Type definitions related to disk information	*/
 
 typedef INT16 VOLID;		/* Volume identifier */
+typedef VOLID DKNVOLS;		/* Number of volumes */
 
 typedef INT32 PAGEID;		/* Data page identifier */
 typedef PAGEID DKNPAGES;	/* Number of disk pages */
@@ -565,6 +566,7 @@ struct bo_restart_arg
   bool restore_upto_bktime;
 
   bool restore_slave;		/* restore slave */
+  bool is_restore_from_backup;
   INT64 db_creation;		/* database creation time */
   LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
 };
@@ -720,6 +722,61 @@ typedef enum
 				 * accepted to find a deleted object; for example when er_clear() is used afterwards if 
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
+
+/************************************************************************/
+/* spacedb                                                              */
+/************************************************************************/
+
+/* database space info */
+typedef enum
+{
+  SPACEDB_PERM_PERM_ALL,
+  SPACEDB_PERM_TEMP_ALL,
+  SPACEDB_TEMP_TEMP_ALL,
+
+  SPACEDB_TOTAL_ALL,
+  SPACEDB_ALL_COUNT,
+} SPACEDB_ALL_TYPE;
+
+typedef struct spacedb_all SPACEDB_ALL;
+struct spacedb_all
+{
+  DKNVOLS nvols;
+  DKNPAGES npage_used;
+  DKNPAGES npage_free;
+};
+
+typedef struct spacedb_onevol SPACEDB_ONEVOL;
+struct spacedb_onevol
+{
+  VOLID volid;
+  DB_VOLTYPE type;
+  DB_VOLPURPOSE purpose;
+  DKNPAGES npage_used;
+  DKNPAGES npage_free;
+  char name[DB_MAX_PATH_LENGTH];
+};
+
+/* files */
+typedef enum
+{
+  SPACEDB_INDEX_FILE,
+  SPACEDB_HEAP_FILE,
+  SPACEDB_SYSTEM_FILE,
+  SPACEDB_TEMP_FILE,
+
+  SPACEDB_TOTAL_FILE,
+  SPACEDB_FILE_COUNT,
+} SPACEDB_FILE_TYPE;
+
+typedef struct spacedb_files SPACEDB_FILES;
+struct spacedb_files
+{
+  int nfile;
+  DKNPAGES npage_ftab;
+  DKNPAGES npage_user;
+  DKNPAGES npage_reserved;
+};
 
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);

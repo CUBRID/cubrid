@@ -77,8 +77,6 @@ extern int locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, 
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
 extern int locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list, int content_size);
 extern int locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area);
-extern int locator_force_repl_update (BTID * btid, OID * class_oid, DB_VALUE * key_value, bool has_index, int operation,
-				      RECDES * recdes);
 extern int locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int class_chn, LOCK lock,
 						int quit_on_errors, int prune_level, LC_LOCKSET ** lockset,
@@ -112,9 +110,7 @@ extern int heap_reclaim_addresses (const HFID * hfid);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
-extern int disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info);
 extern char *disk_get_fullname (VOLID volid, char *vol_fullname);
-extern bool disk_is_volume_exist (VOLID volid);
 extern int log_reset_wait_msecs (int wait_msecs);
 extern int log_reset_isolation (TRAN_ISOLATION isolation);
 extern void log_set_interrupt (int set);
@@ -199,7 +195,6 @@ extern BTREE_SEARCH btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_
 extern BTREE_SEARCH repl_btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid);
 extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type, BTID * btids, DB_VALUE * keys,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
-extern int btree_delete_with_unique_key (BTID * btid, OID * class_oid, DB_VALUE * key_value);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
 extern int qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream);
@@ -387,4 +382,6 @@ extern int tran_lock_rep_read (LOCK lock_rr_tran);
 extern int chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, const OID * class_oidp);
 
 extern int log_does_active_user_exist (const char *user_name, bool * existed);
+
+extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

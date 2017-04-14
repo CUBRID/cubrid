@@ -163,7 +163,7 @@ enum param_id
   PRM_ID_ENABLE_HISTO,
   PRM_ID_MUTEX_BUSY_WAITING_CNT,
   PRM_ID_PB_NUM_LRU_CHAINS,
-  PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSEC,
+  PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS,
   PRM_ID_PAGE_BG_FLUSH_INTERVAL,
   PRM_ID_ADAPTIVE_FLUSH_CONTROL,
   PRM_ID_MAX_FLUSH_PAGES_PER_SECOND,
@@ -314,7 +314,6 @@ enum param_id
   PRM_ID_QUERY_TRACE_FORMAT,
   PRM_ID_MAX_RECURSION_SQL_DEPTH,
   PRM_ID_UPDATE_USE_ATTRIBUTE_REFERENCES,
-  PRM_ID_PB_AIN_RATIO,
   PRM_ID_PB_AOUT_RATIO,
   PRM_ID_MAX_AGG_HASH_SIZE,
   PRM_ID_AGG_HASH_RESPECT_ORDER,
@@ -342,6 +341,7 @@ enum param_id
   PRM_ID_OPTIMIZER_RESERVE_20,
   PRM_ID_HA_REPL_ENABLE_SERVER_SIDE_UPDATE,
   PRM_ID_PB_LRU_HOT_RATIO,
+  PRM_ID_PB_LRU_BUFFER_RATIO,
   PRM_ID_HA_PREFETCHLOGDB_ENABLE,
   PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT,
   PRM_ID_HA_PREFETCHLOGDB_PAGE_DISTANCE,
@@ -401,8 +401,13 @@ enum param_id
   PRM_ID_DISK_LOGGING,
   PRM_ID_FILE_LOGGING,
 
+  PRM_ID_PB_NUM_PRIVATE_CHAINS,
+  PRM_ID_PB_MONITOR_LOCKS,
+
+  PRM_ID_CTE_MAX_RECURSIONS,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_FILE_LOGGING
+  PRM_LAST_ID = PRM_ID_CTE_MAX_RECURSIONS
 };
 
 /*
@@ -449,6 +454,18 @@ struct sysprm_assign_value
   SYSPRM_ASSIGN_VALUE *next;
 };
 
+typedef enum sysprm_load_flag SYSPRM_LOAD_FLAG;
+enum sysprm_load_flag
+{
+  SYSPRM_LOAD_ALL = 0x0,
+  SYSPRM_IGNORE_HA = 0x1,
+  SYSPRM_IGNORE_INTL_PARAMS = 0x2
+};
+
+#define SYSPRM_LOAD_IS_IGNORE_HA(flags) ((flags) & SYSPRM_IGNORE_HA)
+#define SYSPRM_LOAD_IS_IGNORE_INTL(flags) ((flags) & SYSPRM_IGNORE_INTL_PARAMS)
+
+
 #if defined (CS_MODE)
 /* when system parameters are loaded, session parameters need to be cached for
  * future clients that connect to broker
@@ -476,7 +493,7 @@ extern void prm_set_bigint_value (PARAM_ID prm_id, UINT64 value);
 extern bool sysprm_find_err_in_integer_list (PARAM_ID prm_id, int error_code);
 extern bool sysprm_find_fi_code_in_integer_list (PARAM_ID prm_id, int fi_code);
 
-extern int sysprm_load_and_init (const char *db_name, const char *conf_file);
+extern int sysprm_load_and_init (const char *db_name, const char *conf_file, const int load_flags);
 extern int sysprm_load_and_init_client (const char *db_name, const char *conf_file);
 extern int sysprm_reload_and_init (const char *db_name, const char *conf_file);
 extern void sysprm_final (void);

@@ -287,6 +287,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (BTREE_STATS) * n_btstats);
 	      goto error;
 	    }
+	  memset (att->bt_stats, 0, sizeof (BTREE_STATS) * n_btstats);
 
 	  for (j = 0, bt_statsp = att->bt_stats; j < n_btstats; j++, bt_statsp++)
 	    {
@@ -338,7 +339,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
 	      (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
 
-	      root_header = btree_get_root_header (root);
+	      root_header = btree_get_root_header (thread_p, root);
 	      if (root_header == NULL)
 		{
 		  pgbuf_unfix_and_init (thread_p, root);
@@ -2257,6 +2258,12 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
   if (n_btids > 0)
     {
       rep->indexes = (OR_INDEX *) malloc (sizeof (OR_INDEX) * n_btids);
+      if (rep->indexes == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_INDEX) * n_btids);
+	  return;
+	}
+      memset (rep->indexes, 0, sizeof (OR_INDEX) * n_btids);
     }
 
   /* Now extract the unique and index BTIDs from the property list and install them into the class and attribute
@@ -2361,6 +2368,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 	  goto error_cleanup;
 	}
+      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
     }
 
   if (rep->n_shared_attrs)
@@ -2372,6 +2380,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
 	  goto error_cleanup;
 	}
+      memset (rep->shared_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
     }
 
   if (rep->n_class_attrs)
@@ -2383,6 +2392,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
 	  goto error_cleanup;
 	}
+      memset (rep->class_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
     }
 
 
@@ -2845,6 +2855,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       free_and_init (rep);
       return NULL;
     }
+  memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 
   /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of the
    * disk_rep points directly at the the substructure's variable offset table (which it does) and use
@@ -3043,6 +3054,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 		  (sizeof (OR_ATTRIBUTE) * rep->n_attributes));
 	  goto error;
 	}
+      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 
       /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of
        * the disk_rep points directly at the the substructure's variable offset table (which it does) and use

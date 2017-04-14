@@ -1260,8 +1260,10 @@ $ LOADDB
 1191 独立清空(Stand-alone vacuum) 执行结束.
 1192 值 %1$zu 的精度超过了允许的最大值 %2$d.
 1193 处理的分区表达式的长度超过了允许的最大值(%1$d).
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 Last Error
+1194 Unable to check file %1$d|%2$d because lock on class %3$d|%4$d|%5$d is not immediately granted.
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 Maximum recursions %1$d reached executing CTE.
+1197 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1713,6 +1715,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 非法使用聚集函数.
 293 每一个分区的值都必须是严格递增的.
 294 在本地时区类型的列上不能使用函数或索引筛选(filter indexes).
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
+297 Nested WITH clauses are not supported.
+298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
+299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

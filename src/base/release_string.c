@@ -100,7 +100,11 @@ static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, 
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 10.05f;
+/* TODO: when disk_compatibility_level is incremented, also search for VACUUM_DATA_COMPATIBILITY and remove the backward
+ *       compatibility code. And remove this comment too.
+ * TODO: do the same thing for FILE_MANAGER_COMPATIBILITY.
+ */
+static float disk_compatibility_level = 10.06f;
 
 /*
  * rel_copy_version_string - version string of the product

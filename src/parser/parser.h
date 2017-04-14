@@ -301,6 +301,7 @@ extern "C"
 				     SEMANTIC_CHK_INFO * sc_info);
 
   extern PT_NODE *pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INFO * sc_info);
+  extern PT_NODE *pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
   extern PT_NODE *pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from);
 
@@ -359,7 +360,7 @@ extern "C"
   extern DB_QUERY_RESULT *pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query);
   extern DB_QUERY_RESULT *pt_make_cache_hit_result_descriptor (void);
   extern PT_NODE *pt_remove_from_list (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * list);
-  extern int pt_check_path_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q);
+  extern int pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q);
   extern int pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q);
 
   extern DB_QUERY_TYPE *pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query);

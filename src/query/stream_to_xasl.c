@@ -181,6 +181,7 @@ static char *stx_build_update_proc (THREAD_ENTRY * thread_p, char *tmp, UPDATE_P
 static char *stx_build_delete_proc (THREAD_ENTRY * thread_p, char *tmp, DELETE_PROC_NODE * ptr);
 static char *stx_build_insert_proc (THREAD_ENTRY * thread_p, char *tmp, INSERT_PROC_NODE * ptr);
 static char *stx_build_merge_proc (THREAD_ENTRY * thread_p, char *tmp, MERGE_PROC_NODE * ptr);
+static char *stx_build_cte_proc (THREAD_ENTRY * thread_p, char *tmp, CTE_PROC_NODE * ptr);
 static char *stx_build_outptr_list (THREAD_ENTRY * thread_p, char *tmp, OUTPTR_LIST * ptr);
 static char *stx_build_selupd_list (THREAD_ENTRY * thread_p, char *tmp, SELUPD_LIST * ptr);
 static char *stx_build_pred_expr (THREAD_ENTRY * thread_p, char *tmp, PRED_EXPR * ptr);
@@ -232,7 +233,6 @@ static void stx_free_visited_ptrs (THREAD_ENTRY * thread_p);
 static char *stx_alloc_struct (THREAD_ENTRY * thread_p, int size);
 static int stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_stream_size);
 static char *stx_build_regu_variable_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE_LIST * regu_var_list);
-static void stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic);
 
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -2337,6 +2337,10 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       ptr = stx_build_merge_proc (thread_p, ptr, &xasl->proc.merge);
       break;
 
+    case CTE_PROC:
+      ptr = stx_build_cte_proc (thread_p, ptr, &xasl->proc.cte);
+      break;
+
     default:
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
       return NULL;
@@ -2385,6 +2389,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
   memset (&xasl->xasl_stats, 0, sizeof (xasl->xasl_stats));
+  xasl->max_iterations = -1;
 
   return ptr;
 
@@ -3987,6 +3992,48 @@ stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr, MERGE_PROC_NODE * merg
 
   ptr = or_unpack_int (ptr, &tmp);
   merge_info->has_delete = (bool) tmp;
+
+  return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
+}
+
+static char *
+stx_build_cte_proc (THREAD_ENTRY * thread_p, char *ptr, CTE_PROC_NODE * cte_info)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      cte_info->non_recursive_part = NULL;	/* may have false_where */
+    }
+  else
+    {
+      cte_info->non_recursive_part = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+
+      if (cte_info->non_recursive_part == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      cte_info->recursive_part = NULL;
+    }
+  else
+    {
+      cte_info->recursive_part = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (cte_info->recursive_part == NULL)
+	{
+	  goto error;
+	}
+    }
 
   return ptr;
 
@@ -5802,6 +5849,13 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 	  goto error;
 	}
     }
+  else if (aggregate->function == PT_CUME_DIST || aggregate->function == PT_PERCENT_RANK)
+    {
+      /* init info.dist_percent */
+      aggregate->info.dist_percent.const_array = NULL;
+      aggregate->info.dist_percent.list_len = 0;
+      aggregate->info.dist_percent.nlargers = 0;
+    }
   else
     {
       /* Other functions need specific variables if any in the future */
@@ -6895,11 +6949,11 @@ stx_unpack_long (char *tmp, long *ptr)
 #endif
 
 /*
- * stx_init_analytic_type () - make other fields initialized
+ * stx_init_analytic_type_unserialized_fields () - make other fields initialized
  *   return:
  *   analytic(in/out)    :
  */
-static void
+void
 stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
 {
   assert (analytic != NULL);

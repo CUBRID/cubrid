@@ -1360,7 +1360,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
       worker->state = VACUUM_WORKER_STATE_RECOVERY;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Log entry (%lld, %d) belongs to vacuum worker "
+		     "Log entry (%lld, %d) belongs to vacuum worker "
 		     "tdes. tdes->trid=%d, tdes->tail_lsa=(%lld, %d). ", (long long int) log_lsa->pageid,
 		     (int) log_lsa->offset, worker->tdes->trid, (long long int) worker->tdes->tail_lsa.pageid,
 		     (int) worker->tdes->tail_lsa.offset);
@@ -1950,6 +1950,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 }
 
 /*
@@ -2045,6 +2046,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 }
 
 /*
@@ -2924,31 +2926,6 @@ logtb_find_wait_msecs (int tran_index)
 }
 
 /*
- * logtb_find_current_wait_msecs - find waiting times for current transaction
- *
- * return : wait_msecs...
- *
- * Note: Find the waiting time for the current transaction.
- */
-int
-logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
-    {
-      return tdes->wait_msecs;
-    }
-  else
-    {
-      return 0;
-    }
-}
-
-/*
  * logtb_find_interrupt -
  *
  * return :
@@ -3182,7 +3159,11 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
   INT64 now;
 #if !defined(SERVER_MODE)
   struct timeval tv;
-#endif /* !SERVER_MODE */
+
+#else /* SERVER_MODE */
+  /* vacuum threads should not be interruptible (unless this is still recovery). */
+  assert (!BO_IS_SERVER_RESTARTED () || !VACUUM_IS_THREAD_VACUUM (thread_p));
+#endif /* SERVER_MODE */
 
   interrupt = tdes->interrupt;
   if (!LOG_ISTRAN_ACTIVE (tdes))
@@ -3254,16 +3235,12 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
  *                        interrupts to check or to false if there are not
  *                        more interrupts.
  *
- * Note: Find if the current execution must be stopped due to an
- *              interrupt (^C). If clear is true, the interruption flag is
- *              cleared; This is the expected case, once someone is notified,
- *              we do not have to keep the flag on.
+ * Note: Find if the current execution must be stopped due to an interrupt (^C). If clear is true, the interruption flag
+ *       is cleared; This is the expected case, once someone is notified, we do not have to keep the flag on.
  *
- *       If the transaction is not active, false is returned. For
- *              example, in the middle of an undo action, the transaction will
- *              not be interrupted. The recovery manager will interrupt the
- *              transaction at the end of the undo action...int this case the
- *              transaction will be partially aborted.
+ *       If the transaction is not active, false is returned. For example, in the middle of an undo action, the
+ *       transaction will not be interrupted. The recovery manager will interrupt the transaction at the end of the undo
+ *       action... in this case the transaction will be partially aborted.
  */
 bool
 logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking)
@@ -3297,13 +3274,11 @@ logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_check
  *                        more interrupts.
  *   tran_index(in):
  *
- * Note: Find if the execution o fthe given transaction must be stopped
- *              due to an interrupt (^C). If clear is true, the
- *              interruption flag is cleared; This is the expected case, once
- *              someone is notified, we do not have to keep the flag on.
- *       This function is called to see if a transaction that is
- *              waiting (e.g., suspended wiating on a lock) on an event must
- *              be interrupted.
+ * Note: Find if the execution of the given transaction must be stopped due to an interrupt (^C). If clear is true, the
+ *       interruption flag is cleared; This is the expected case, once someone is notified, we do not have to keep the
+ *       flag on.
+ *       This function is called to see if a transaction that is waiting (e.g., suspended on a lock) on an event must
+ *       be interrupted.
  */
 bool
 logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index)
@@ -6923,7 +6898,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   int i, idx, msecs, error = NO_ERROR;
-  char buf[512], vpid_buf[64], vfid_buf[64];
+  char buf[512];
   const char *str;
   time_t tval;
   INT64 i64val;

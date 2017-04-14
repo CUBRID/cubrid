@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <math.h>
 #include <sys/timeb.h>
+#include <assert.h>
 
 #include "chartype.h"
 #include "system_parameter.h"
@@ -11181,7 +11182,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
       goto error;
     }
 
-  db_value_clear (&new_time_value);
+  pr_clear_value (&new_time_value);
 
   /* 2. Compute the value for each format specifier */
   if (mi < 0)
@@ -11402,7 +11403,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
   return error_status;
 
 error:
-  db_value_clear (&new_time_value);
+  pr_clear_value (&new_time_value);
 
   if (res != NULL)
     {
@@ -12508,11 +12509,11 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
   error_status =
     db_check_or_create_null_term_string (src_str, stack_buf_str, sizeof (stack_buf_str), true, true, &initial_buf_str,
 					 &do_free_buf_str);
-
   if (error_status != NO_ERROR)
     {
       goto exit;
     }
+
   cs = initial_buf_str;
   last_src = cs + strlen (cs);
 
@@ -12571,7 +12572,7 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
     {
       error_status = ER_QSTR_EMPTY_STRING;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      return error_status;
+      goto exit;
     }
 
   frmt_codeset = DB_GET_STRING_CODESET (format_str);
@@ -12583,6 +12584,7 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
     {
       goto exit;
     }
+
   cur_format_str_ptr = initial_buf_format;
   last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
 
@@ -12796,7 +12798,7 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	    {
 	      error_status = ER_QSTR_INVALID_FORMAT;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      return error_status;
+	      goto exit;
 	    }
 
 	  cs += cs_byte_size;
@@ -12976,10 +12978,12 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 exit:
   if (do_free_buf_str)
     {
+      assert (initial_buf_str != NULL);
       db_private_free (NULL, initial_buf_str);
     }
   if (do_free_buf_format)
     {
+      assert (initial_buf_format != NULL);
       db_private_free (NULL, initial_buf_format);
     }
 
@@ -13073,11 +13077,11 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
   error_status =
     db_check_or_create_null_term_string (src_str, stack_buf_str, sizeof (stack_buf_str), true, true, &initial_buf_str,
 					 &do_free_buf_str);
-
   if (error_status != NO_ERROR)
     {
       goto exit;
     }
+
   cs = initial_buf_str;
   last_src = cs + strlen (cs);
 
@@ -13158,11 +13162,11 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
   error_status =
     db_check_or_create_null_term_string (format_str, stack_buf_format, sizeof (stack_buf_format), true, true,
 					 &initial_buf_format, &do_free_buf_format);
-
   if (error_status != NO_ERROR)
     {
       goto exit;
     }
+
   cur_format_str_ptr = initial_buf_format;
   last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
 
@@ -13349,7 +13353,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	    {
 	      error_status = ER_TIME_CONVERSION;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      return error_status;
+	      goto exit;
 	    }
 
 	  cs += cs_byte_size;
@@ -13586,11 +13590,12 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 exit:
   if (do_free_buf_str)
     {
+      assert (initial_buf_str != NULL);
       db_private_free (NULL, initial_buf_str);
     }
-
   if (do_free_buf_format)
     {
+      assert (initial_buf_format != NULL);
       db_private_free (NULL, initial_buf_format);
     }
 
@@ -13693,11 +13698,11 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
   error_status =
     db_check_or_create_null_term_string (src_str, stack_buf_str, sizeof (stack_buf_str), true, true, &initial_buf_str,
 					 &do_free_buf_str);
-
   if (error_status != NO_ERROR)
     {
       goto exit;
     }
+
   cs = initial_buf_str;
   last_src = cs + strlen (cs);
 
@@ -13777,11 +13782,11 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
   error_status =
     db_check_or_create_null_term_string (format_str, stack_buf_format, sizeof (stack_buf_format), true, true,
 					 &initial_buf_format, &do_free_buf_format);
-
   if (error_status != NO_ERROR)
     {
       goto exit;
     }
+
   cur_format_str_ptr = initial_buf_format;
   last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
 
@@ -14139,7 +14144,7 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 	    {
 	      error_status = ER_QSTR_INVALID_FORMAT;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      return error_status;
+	      goto exit;
 	    }
 
 	  cs += cs_byte_size;
@@ -14446,16 +14451,14 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 
   db_time_encode (&tmp_time, hour, minute, second);
 
-  /*************         Make TIMESTAMP        *****************/
-  if (NO_ERROR != db_timestamp_encode_ses (&tmp_date, &tmp_time, &tmp_timestamp, NULL))
-    {
-      error_status = ER_DATE_CONVERSION;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      goto exit;
-    }
-
   if (type == DB_TYPE_TIMESTAMP)
     {
+      if (db_timestamp_encode_ses (&tmp_date, &tmp_time, &tmp_timestamp, NULL) != NO_ERROR)
+	{
+	  error_status = ER_DATE_CONVERSION;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto exit;
+	}
       DB_MAKE_TIMESTAMP (result_timestamp, tmp_timestamp);
     }
   else
@@ -14498,11 +14501,12 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 exit:
   if (do_free_buf_str)
     {
+      assert (initial_buf_str != NULL);
       db_private_free (NULL, initial_buf_str);
     }
-
   if (do_free_buf_format)
     {
+      assert (initial_buf_format != NULL);
       db_private_free (NULL, initial_buf_format);
     }
 
@@ -14603,11 +14607,11 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
   error_status =
     db_check_or_create_null_term_string (src_str, stack_buf_str, sizeof (stack_buf_str), true, true, &initial_buf_str,
 					 &do_free_buf_str);
-
   if (error_status != NO_ERROR)
     {
       goto exit;
     }
+
   cs = initial_buf_str;
   last_src = cs + strlen (cs);
 
@@ -14686,11 +14690,11 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
   error_status =
     db_check_or_create_null_term_string (format_str, stack_buf_format, sizeof (stack_buf_format), true, true,
 					 &initial_buf_format, &do_free_buf_format);
-
   if (error_status != NO_ERROR)
     {
       goto exit;
     }
+
   cur_format_str_ptr = initial_buf_format;
   last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
 
@@ -15097,7 +15101,7 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 	    {
 	      error_status = ER_QSTR_INVALID_FORMAT;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      return error_status;
+	      goto exit;
 	    }
 
 	  cs += cs_byte_size;
@@ -15451,11 +15455,12 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 exit:
   if (do_free_buf_str)
     {
+      assert (initial_buf_str != NULL);
       db_private_free (NULL, initial_buf_str);
     }
-
   if (do_free_buf_format)
     {
+      assert (initial_buf_format != NULL);
       db_private_free (NULL, initial_buf_format);
     }
 
@@ -15688,11 +15693,11 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
   error_status =
     db_check_or_create_null_term_string (src_str, stack_buf_str, sizeof (stack_buf_str), true, false, &initial_buf_str,
 					 &do_free_buf_str);
-
   if (error_status != NO_ERROR)
     {
       goto exit;
     }
+
   cs = initial_buf_str;
   last_cs = cs + strlen (cs);
 
@@ -15908,11 +15913,12 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
 
   if (do_free_buf_str)
     {
+      assert (initial_buf_str != NULL);
       db_private_free (NULL, initial_buf_str);
     }
-
   if (do_free_buf_format)
     {
+      assert (initial_buf_format != NULL);
       db_private_free (NULL, initial_buf_format);
     }
 
@@ -15938,11 +15944,12 @@ format_mismatch:
 exit:
   if (do_free_buf_str)
     {
+      assert (initial_buf_str != NULL);
       db_private_free (NULL, initial_buf_str);
     }
-
   if (do_free_buf_format)
     {
+      assert (initial_buf_format != NULL);
       db_private_free (NULL, initial_buf_format);
     }
 
@@ -16022,6 +16029,7 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
   if (no_user_format)
     {
       int retval = 0;
+
       switch (src_type)
 	{
 	case DB_TYPE_DATE:
@@ -16198,11 +16206,11 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
       error_status =
 	db_check_or_create_null_term_string (format_str, stack_buf_format, sizeof (stack_buf_format), true, false,
 					     &initial_buf_format, &do_free_buf_format);
-
       if (error_status != NO_ERROR)
 	{
 	  goto exit;
 	}
+
       cur_format_str_ptr = initial_buf_format;
       last_format_str_ptr = cur_format_str_ptr + strlen (cur_format_str_ptr);
 
@@ -16233,7 +16241,6 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	    case DT_INVALID:
 	      error_status = ER_QSTR_INVALID_FORMAT;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      db_private_free_and_init (NULL, result_buf);
 	      goto exit;
 
 	    default:
@@ -16259,10 +16266,10 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	    tm = DB_GET_TIME (src_value);
 	    if (ntzr != 0 || ntzd != 0 || has_tzh == true || has_tzm == true)
 	      {
-		retval = tz_create_session_tzid_for_time (tm, true, &tz_id);
-		if (retval != NO_ERROR)
+		error_status = tz_create_session_tzid_for_time (tm, true, &tz_id);
+		if (error_status != NO_ERROR)
 		  {
-		    return retval;
+		    goto exit;
 		  }
 	      }
 	    db_time_decode (tm, &hour, &minute, &second);
@@ -16275,10 +16282,10 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	    tsmp = DB_GET_TIMESTAMP (src_value);
 	    if (ntzr != 0 || ntzd != 0 || has_tzh == true || has_tzm == true)
 	      {
-		retval = tz_create_session_tzid_for_timestamp (tsmp, &tz_id);
-		if (retval != NO_ERROR)
+		error_status = tz_create_session_tzid_for_timestamp (tsmp, &tz_id);
+		if (error_status != NO_ERROR)
 		  {
-		    return retval;
+		    goto exit;
 		  }
 	      }
 	    (void) db_timestamp_decode_ses (tsmp, &tmp_date, &tmp_time);
@@ -16293,10 +16300,10 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	    dt = DB_GET_DATETIME (src_value);
 	    if (ntzr != 0 || ntzd != 0 || has_tzh == true || has_tzm == true)
 	      {
-		retval = tz_create_session_tzid_for_datetime (dt, true, &tz_id);
-		if (retval != NO_ERROR)
+		error_status = tz_create_session_tzid_for_datetime (dt, true, &tz_id);
+		if (error_status != NO_ERROR)
 		  {
-		    return retval;
+		    goto exit;
 		  }
 	      }
 	    db_datetime_decode (dt, &month, &day, &year, &hour, &minute, &second, &millisecond);
@@ -16309,10 +16316,10 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 
 	    dtz = *DB_GET_DATETIMETZ (src_value);
 	    tz_id = dtz.tz_id;
-	    retval = tz_utc_datetimetz_to_local (&dtz.datetime, &dtz.tz_id, &dt_local);
-	    if (retval != NO_ERROR)
+	    error_status = tz_utc_datetimetz_to_local (&dtz.datetime, &dtz.tz_id, &dt_local);
+	    if (error_status != NO_ERROR)
 	      {
-		return retval;
+		goto exit;
 	      }
 	    db_datetime_decode (&dt_local, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	  }
@@ -16322,16 +16329,16 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	    DB_DATETIME *dt, dt_local;
 
 	    dt = DB_GET_DATETIME (src_value);
-	    retval = tz_create_session_tzid_for_datetime (dt, true, &tz_id);
-	    if (retval != NO_ERROR)
+	    error_status = tz_create_session_tzid_for_datetime (dt, true, &tz_id);
+	    if (error_status != NO_ERROR)
 	      {
-		return retval;
+		goto exit;
 	      }
 
-	    retval = tz_utc_datetimetz_to_local (dt, &tz_id, &dt_local);
-	    if (retval != NO_ERROR)
+	    error_status = tz_utc_datetimetz_to_local (dt, &tz_id, &dt_local);
+	    if (error_status != NO_ERROR)
 	      {
-		return retval;
+		goto exit;
 	      }
 	    db_datetime_decode (&dt_local, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	  }
@@ -16343,10 +16350,10 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 
 	    tm_tz = *DB_GET_TIMETZ (src_value);
 	    tz_id = tm_tz.tz_id;
-	    retval = tz_utc_timetz_to_local (&tm_tz.time, &tm_tz.tz_id, &tm_local);
-	    if (retval != NO_ERROR)
+	    error_status = tz_utc_timetz_to_local (&tm_tz.time, &tm_tz.tz_id, &tm_local);
+	    if (error_status != NO_ERROR)
 	      {
-		return retval;
+		goto exit;
 	      }
 	    db_time_decode (&tm_local, &hour, &minute, &second);
 	  }
@@ -16356,16 +16363,16 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	    DB_TIME *tm, tm_local;
 
 	    tm = DB_GET_TIME (src_value);
-	    retval = tz_create_session_tzid_for_time (tm, true, &tz_id);
+	    error_status = tz_create_session_tzid_for_time (tm, true, &tz_id);
 
-	    if (retval != NO_ERROR)
+	    if (error_status != NO_ERROR)
 	      {
-		return retval;
+		goto exit;
 	      }
-	    retval = tz_utc_timetz_to_local (tm, &tz_id, &tm_local);
-	    if (retval != NO_ERROR)
+	    error_status = tz_utc_timetz_to_local (tm, &tz_id, &tm_local);
+	    if (error_status != NO_ERROR)
 	      {
-		return retval;
+		goto exit;
 	      }
 	    db_time_decode (&tm_local, &hour, &minute, &second);
 	  }
@@ -16378,10 +16385,10 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 
 	    tsmp_tz = *DB_GET_TIMESTAMPTZ (src_value);
 	    tz_id = tsmp_tz.tz_id;
-	    retval = db_timestamp_decode_w_tz_id (&tsmp_tz.timestamp, &tsmp_tz.tz_id, &date, &time);
-	    if (retval != NO_ERROR)
+	    error_status = db_timestamp_decode_w_tz_id (&tsmp_tz.timestamp, &tsmp_tz.tz_id, &date, &time);
+	    if (error_status != NO_ERROR)
 	      {
-		return retval;
+		goto exit;
 	      }
 	    db_date_decode (&date, &month, &day, &year);
 	    db_time_decode (&time, &hour, &minute, &second);
@@ -16394,16 +16401,16 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	    DB_TIME time;
 
 	    tsmp = DB_GET_TIMESTAMP (src_value);
-	    retval = tz_create_session_tzid_for_timestamp (tsmp, &tz_id);
-
-	    if (retval != NO_ERROR)
+	    error_status = tz_create_session_tzid_for_timestamp (tsmp, &tz_id);
+	    if (error_status != NO_ERROR)
 	      {
-		return retval;
+		goto exit;
 	      }
-	    retval = db_timestamp_decode_w_tz_id (tsmp, &tz_id, &date, &time);
-	    if (retval != NO_ERROR)
+
+	    error_status = db_timestamp_decode_w_tz_id (tsmp, &tz_id, &date, &time);
+	    if (error_status != NO_ERROR)
 	      {
-		return retval;
+		goto exit;
 	      }
 	    db_date_decode (&date, &month, &day, &year);
 	    db_time_decode (&time, &hour, &minute, &second);
@@ -16418,10 +16425,10 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	  int len = DB_GET_STRING_LENGTH (format_str);
 	  int left;
 
-	  retval = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
-	  if (retval != NO_ERROR)
+	  error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
+	  if (error_status != NO_ERROR)
 	    {
-	      return retval;
+	      goto exit;
 	    }
 	  left = len - 3 * ntzr - 3 * ntzd;
 	  len_tzr = strlen (tzr);
@@ -16434,7 +16441,7 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	{
 	  error_status = ER_QSTR_FORMAT_TOO_LONG;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  return error_status;
+	  goto exit;
 	}
       result_buf = (char *) db_private_alloc (NULL, result_size + 1);
       if (result_buf == NULL)
@@ -16826,7 +16833,8 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 exit:
   if (do_free_buf_format)
     {
-      db_private_free (NULL, initial_buf_format);
+      assert (initial_buf_format != NULL);
+      db_private_free_and_init (NULL, initial_buf_format);
     }
   return error_status;
 
@@ -16851,9 +16859,8 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 {
   int error_status = NO_ERROR;
   char tmp_str[NUMERIC_MAX_STRING_SIZE];
-  char *tmp_buf;
 
-  char *cs;			/* current source string pointer */
+  char *cs = NULL;		/* current source string pointer */
   char *format_str_ptr, *last_format;
   char *next_fsp;		/* next format string pointer */
   int token_length = 0;
@@ -16991,6 +16998,8 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
       return error_status;
     }
 
+  assert (cs != NULL);
+
   /* Remove 'trailing zero' source string */
   for (i = 0; i < strlen (cs); i++)
     {
@@ -17036,6 +17045,7 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 	{
 	  if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
 	    {
+	      error_status = ER_QSTR_FORMAT_TOO_LONG;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      db_private_free_and_init (NULL, cs);
 	      return error_status;
@@ -17044,11 +17054,12 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 	  error_status =
 	    db_check_or_create_null_term_string (format_str, stack_buf_format, sizeof (stack_buf_format), true, false,
 						 &initial_buf_format, &do_free_buf_format);
-
 	  if (error_status != NO_ERROR)
 	    {
+	      db_private_free_and_init (NULL, cs);
 	      goto exit;
 	    }
+
 	  format_str_ptr = initial_buf_format;
 	  last_format = format_str_ptr + strlen (format_str_ptr);
 	}
@@ -17189,6 +17200,7 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 exit:
   if (do_free_buf_format)
     {
+      assert (initial_buf_format != NULL);
       db_private_free (NULL, initial_buf_format);
     }
   return error_status;
@@ -22100,7 +22112,6 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
   error_status =
     db_check_or_create_null_term_string (str, stack_buf_str, sizeof (stack_buf_str), true, true, &initial_buf_str,
 					 &do_free_buf_str);
-
   if (error_status != NO_ERROR)
     {
       goto error;
@@ -23197,9 +23208,9 @@ error:
     {
       db_private_free_and_init (NULL, format_s);
     }
-
   if (do_free_buf_str)
     {
+      assert (initial_buf_str != NULL);
       db_private_free (NULL, initial_buf_str);
     }
   return error_status;
@@ -23207,9 +23218,9 @@ error:
 conversion_error:
   if (do_free_buf_str)
     {
+      assert (initial_buf_str != NULL);
       db_private_free (NULL, initial_buf_str);
     }
-
   if (format_s)
     {
       db_private_free_and_init (NULL, format_s);
@@ -27090,9 +27101,9 @@ db_get_date_format (const DB_VALUE * format_str, TIMESTAMP_FORMAT * format)
     }
 
 end:
-
   if (do_free_buf_format)
     {
+      assert (initial_buf_format != NULL);
       db_private_free (NULL, initial_buf_format);
     }
 
@@ -27876,10 +27887,114 @@ parse_tzd (const char *str, const int max_expect_len)
   assert (max_expect_len > 1);
 
   p = str;
+  if (*p == '-' || *p == '+')
+    {
+      p++;
+    }
   while (p < str + max_expect_len && char_isalnum (*p))
     {
       p++;
     }
 
   return CAST_BUFLEN (p - str);
+}
+
+/*
+ * db_conv_tz () - Converts a timezone data type from one timezone library to another
+ *
+ * return ERROR or NO_ERROR
+ * time_val (in)     : time value (datetimetz, datetimeltz, timestamptz, timestampltz)
+ * result_time (out) : result
+ *
+ */
+int
+db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
+{
+  int error = NO_ERROR;
+  DB_DATETIMETZ *datetimetz = NULL;
+  DB_DATETIME *datetime = NULL;
+  DB_TIMESTAMPTZ *timestamptz = NULL;
+  DB_TIMESTAMP *timestamp = NULL;
+
+  /* 
+   *  Assert that DB_VALUE structures have been allocated.
+   */
+  assert (time_val != (DB_VALUE *) NULL);
+  assert (result_time != (DB_VALUE *) NULL);
+
+  if (DB_IS_NULL (time_val))
+    {
+      DB_MAKE_NULL (result_time);
+      return NO_ERROR;
+    }
+
+  switch (DB_VALUE_TYPE (time_val))
+    {
+    case DB_TYPE_DATETIMETZ:
+      {
+	DB_DATETIMETZ datetimetz_out;
+
+	datetimetz = DB_GET_DATETIMETZ (time_val);
+
+	error = conv_tz (&datetimetz_out, datetimetz, DB_TYPE_DATETIMETZ);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	DB_MAKE_DATETIMETZ (result_time, &datetimetz_out);
+      }
+      break;
+
+    case DB_TYPE_DATETIMELTZ:
+      {
+	DB_DATETIME datetime_out;
+
+	datetime = DB_GET_DATETIME (time_val);
+
+	error = conv_tz (&datetime_out, datetime, DB_TYPE_DATETIMELTZ);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	DB_MAKE_DATETIMELTZ (result_time, &datetime_out);
+      }
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_TIMESTAMPTZ timestamptz_out;
+
+	timestamptz = DB_GET_TIMESTAMPTZ (time_val);
+
+	error = conv_tz (&timestamptz_out, timestamptz, DB_TYPE_TIMESTAMPTZ);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	DB_MAKE_TIMESTAMPTZ (result_time, &timestamptz_out);
+      }
+      break;
+
+    case DB_TYPE_TIMESTAMPLTZ:
+      {
+	DB_TIMESTAMP timestamp_out;
+
+	timestamp = DB_GET_TIMESTAMP (time_val);
+
+	error = conv_tz (&timestamp_out, timestamp, DB_TYPE_TIMESTAMPLTZ);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	DB_MAKE_TIMESTAMPLTZ (result_time, timestamp_out);
+      }
+      break;
+
+    default:
+      error = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      break;
+    }
+
+  return error;
 }

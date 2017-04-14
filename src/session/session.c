@@ -136,6 +136,7 @@ struct session_state
   int trace_format;
   int ref_count;
   TZ_REGION session_tz_region;
+  int private_lru_index;
 };
 
 /* session state manipulation functions */
@@ -266,6 +267,7 @@ session_state_init (void *st)
   session_p->plan_string = NULL;
   session_p->ref_count = 0;
   session_p->trace_format = QUERY_TRACE_TEXT;
+  session_p->private_lru_index = -1;
 
   return NO_ERROR;
 }
@@ -326,6 +328,9 @@ session_state_uninit (void *st)
     {
       sysprm_free_session_parameters (&session->session_parameters);
     }
+
+  (void) pgbuf_release_private_lru (thread_p, session->private_lru_index);
+  session->private_lru_index = -1;
 
 #if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "session_free_session closed %d queries for %d\n", cnt, session->id);
@@ -615,6 +620,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   /* initialize the timeout */
   if (gettimeofday (&(session_p->session_timeout), NULL) != 0)
     {
+      session_p->private_lru_index = -1;
       pthread_mutex_unlock (&session_p->mutex);
       return ER_FAILED;
     }
@@ -626,6 +632,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   /* increase reference count of new session_p */
   session_state_increase_ref_count (thread_p, session_p);
 
+  session_p->private_lru_index = pgbuf_assign_private_lru (thread_p, false, (int) session_p->id);
   /* set as thread session */
   session_set_conn_entry_data (thread_p, session_p);
 
@@ -1735,7 +1742,6 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
   int err = NO_ERROR;
-  OID user;
   const char *alias_print;
   char *data = NULL;
 
@@ -2386,22 +2392,7 @@ sentry_to_qentry (const SESSION_QUERY_ENTRY * sentry_p, QMGR_QUERY_ENTRY * qentr
   qentry_p->xasl_ent = NULL;
   qentry_p->er_msg = NULL;
   qentry_p->is_holdable = true;
-
-  if (qentry_p->temp_vfid)
-    {
-      /* when files were preserved, they were removed from transaction list of temporary files. we need to add them
-       * back to make sure they are never leaked. */
-      QMGR_TEMP_FILE *iter_temp_file;
-      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-
-      for (iter_temp_file = qentry_p->temp_vfid; iter_temp_file != NULL; iter_temp_file = iter_temp_file->next)
-	{
-	  if (!VFID_ISNULL (&iter_temp_file->temp_vfid))
-	    {
-	      (void) file_temp_save_tran_file (thread_p, &iter_temp_file->temp_vfid, iter_temp_file->temp_file_type);
-	    }
-	}
-    }
+  qentry_p->is_preserved = true;
 }
 
 /*
@@ -2637,6 +2628,7 @@ session_set_conn_entry_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
       thread_p->conn_entry->session_p = session_p;
       thread_p->conn_entry->session_id = session_p->id;
     }
+  thread_p->private_lru_index = session_p->private_lru_index;
 #endif
 }
 
@@ -3004,12 +2996,26 @@ session_state_decrease_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * state
 
 /*
  * session_get_number_of_holdable_cursors () - return the number of holdable cursors
- *	                              
+ *
  * return : the number of holdable cursors
- * 
+ *
  */
 int
 session_get_number_of_holdable_cursors (void)
 {
   return sessions.num_holdable_cursors;
+}
+
+/*
+ * session_get_private_lru_idx () - returns the LRU index of this session
+ *
+ *
+ * return : LRU index
+ * session_p (in) : session
+ *
+ */
+int
+session_get_private_lru_idx (const void *session_p)
+{
+  return ((SESSION_STATE *) session_p)->private_lru_index;
 }

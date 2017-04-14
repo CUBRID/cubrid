@@ -323,6 +323,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   query_p->er_msg = NULL;
   query_p->query_flag = 0;
   query_p->is_holdable = false;
+  query_p->is_preserved = false;
 
   return query_p;
 }
@@ -1517,7 +1518,7 @@ end:
     {
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
-	  db_value_clear (dbval);
+	  pr_clear_value (dbval);
 	}
       db_private_free_and_init (thread_p, dbvals_p);
     }
@@ -1794,7 +1795,7 @@ end:
     {
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
-	  db_value_clear (dbval);
+	  pr_clear_value (dbval);
 	}
       db_private_free_and_init (thread_p, dbvals_p);
     }
@@ -2515,6 +2516,7 @@ qmgr_allocate_tempfile_with_buffer (int num_buffer_pages)
   if (tempfile_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      return NULL;
     }
   memset (tempfile_p, 0x00, size);
 
@@ -2640,6 +2642,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tfile_vfid_p = (QMGR_TEMP_FILE *) malloc (sizeof (QMGR_TEMP_FILE));
   if (tfile_vfid_p == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QMGR_TEMP_FILE));
       return NULL;
     }
 
@@ -2790,7 +2793,7 @@ qmgr_free_query_temp_file_helper (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qu
       tfile_vfid_p = query_p->temp_vfid;
       tfile_vfid_p->prev->next = NULL;
 
-      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error, false);
+      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error, query_p->is_preserved);
 
       query_p->temp_vfid = NULL;
     }

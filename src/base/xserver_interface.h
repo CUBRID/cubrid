@@ -166,7 +166,6 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
 					DB_VALUE * key, OID * class_oid, OID * oid, bool is_all_class_srch);
-extern int xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid, DB_VALUE * key_value);
 extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size);
 extern BTREE_SEARCH xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid, int pruning_type, BTID * btids,
 					       DB_VALUE * values, int count, SCAN_OPERATION_TYPE op_type, OID ** oids,
@@ -189,7 +188,7 @@ extern int *disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, int 
 extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, VOLID volid, char *vol_fullname);
 extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p, VOLID volid);
 extern int xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,
-					     VOL_SPACE_INFO * space_info);
+					     DISK_VOLUME_SPACE_INFO * space_info);
 
 extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id, VOLID volid, PAGEID pageid,
 				      char *page_bufp, int *page_sizep);

@@ -82,6 +82,7 @@ typedef struct file_heap_des FILE_HEAP_DES;
 struct file_heap_des
 {
   OID class_oid;
+  HFID hfid;
 };
 
 /* Overflow heap file descriptor */
@@ -89,6 +90,7 @@ typedef struct file_ovf_heap_des FILE_OVF_HEAP_DES;
 struct file_ovf_heap_des
 {
   HFID hfid;
+  OID class_oid;
 };
 
 /* Btree file descriptor */
@@ -104,9 +106,10 @@ typedef struct file_ovf_btree_des FILE_OVF_BTREE_DES;
 struct file_ovf_btree_des
 {
   BTID btid;
+  OID class_oid;
 };
 
-/* Extendible Hash file descriptor */
+/* Extensible Hash file descriptor */
 typedef struct file_ehash_des FILE_EHASH_DES;
 struct file_ehash_des
 {
@@ -114,15 +117,15 @@ struct file_ehash_des
   int attr_id;
 };
 
-typedef struct file_tablespace FILE_TABLESPACE;
-struct file_tablespace
+/* Vacuum data file descriptor */
+typedef struct file_vacuum_data_des FILE_VACUUM_DATA_DES;
+struct file_vacuum_data_des
 {
-  INT64 initial_size;
-  float expand_ratio;
-  int expand_min_size;
-  int expand_max_size;
+  VPID vpid_first;
 };
 
+/* note: if you change file descriptors size, make sure to change disk compatibility version too! */
+#define FILE_DESCRIPTORS_SIZE 64
 typedef union file_descriptors FILE_DESCRIPTORS;
 union file_descriptors
 {
@@ -131,6 +134,18 @@ union file_descriptors
   FILE_BTREE_DES btree;
   FILE_OVF_BTREE_DES btree_key_overflow;	/* TODO: rename FILE_OVF_BTREE_DES */
   FILE_EHASH_DES ehash;
+  FILE_VACUUM_DATA_DES vacuum_data;
+  char dummy_align[FILE_DESCRIPTORS_SIZE];
+};
+
+/* FILE_TABLESPACE: defines the space usage and extensions for files */
+typedef struct file_tablespace FILE_TABLESPACE;
+struct file_tablespace
+{
+  INT64 initial_size;
+  float expand_ratio;
+  int expand_min_size;
+  int expand_max_size;
 };
 
 typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
@@ -153,7 +168,7 @@ extern int file_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_t
 				  VFID * vfid);
 
 extern void file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp);
 extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid);
 
@@ -175,6 +190,7 @@ extern int file_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_t
 extern int file_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,
 			   PGBUF_LATCH_CONDITION latch_cond, FILE_MAP_PAGE_FUNC func, void *args);
 extern int file_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
+extern int file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb);
 
 extern int file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    FILE_INIT_PAGE_FUNC f_init, void *f_init_args, VPID * vpid_nth);
@@ -183,7 +199,6 @@ extern int file_numerable_truncate (THREAD_ENTRY * thread_p, const VFID * vfid, 
 extern void file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);
 
 extern void file_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_temp_save_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_type);
 extern int file_get_tran_num_temp_files (THREAD_ENTRY * thread_p);
 
 extern int file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out);
@@ -205,6 +220,8 @@ extern int file_descriptor_get (THREAD_ENTRY * thread_p, const VFID * vfid, FILE
 extern int file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
 extern int file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
 
+extern const char *file_type_to_string (FILE_TYPE fstruct_type);
+
 /* Recovery stuff */
 extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -225,6 +242,7 @@ extern int file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_tracker_unregister_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
 extern int file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_tracker_reuse_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -5353,10 +5353,13 @@ ws_get_repl_obj_from_list (void)
 void
 ws_free_repl_obj (WS_REPL_OBJ * obj)
 {
-  db_value_free (obj->pkey_value);
-  free_and_init (obj);
+  assert (obj != NULL);
 
-  return;
+  if (obj->packed_pkey_value != NULL)
+    {
+      free_and_init (obj->packed_pkey_value);
+    }
+  free_and_init (obj);
 }
 
 /*
@@ -5395,7 +5398,8 @@ ws_clear_all_repl_objs (void)
  *    return:
  */
 int
-ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key, RECDES * recdes, int operation, bool has_index)
+ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length, RECDES * recdes,
+			 int operation, bool has_index)
 {
   WS_REPL_OBJ *repl_obj = NULL;
 
@@ -5407,10 +5411,19 @@ ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key, RECDES * recdes, int o
     }
 
   assert (class_oid != NULL && OID_ISNULL (class_oid) == false);
-  assert (key != NULL && DB_IS_NULL (key) == false);
+  assert (packed_pkey_value != NULL && 0 < packed_pkey_value_length);
 
   COPY_OID (&repl_obj->class_oid, class_oid);
-  repl_obj->pkey_value = db_value_copy (key);
+
+  repl_obj->packed_pkey_value_length = packed_pkey_value_length;
+  repl_obj->packed_pkey_value = (char *) malloc (packed_pkey_value_length);
+  if (repl_obj->packed_pkey_value == NULL)
+    {
+      free (repl_obj);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WS_REPL_OBJ));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (repl_obj->packed_pkey_value, packed_pkey_value, packed_pkey_value_length);
 
   repl_obj->recdes = recdes;
   repl_obj->has_index = has_index;

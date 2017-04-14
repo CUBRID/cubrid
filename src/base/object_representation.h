@@ -1503,7 +1503,7 @@ extern int or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int 
 extern int or_get_value (OR_BUF * buf, DB_VALUE * value, struct tp_domain *domain, int expected, bool copy);
 
 extern char *or_pack_value (char *buf, DB_VALUE * value);
-extern char *or_pack_mem_value (char *buf, DB_VALUE * value);
+extern char *or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment);
 extern char *or_unpack_value (char *buf, DB_VALUE * value);
 extern char *or_unpack_mem_value (char *buf, DB_VALUE * value);
 
@@ -1516,10 +1516,15 @@ extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
 extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 
-extern char *or_pack_sha1 (char *ptr, SHA1Hash * sha1);
+extern char *or_pack_sha1 (char *ptr, const SHA1Hash * sha1);
 extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
 
 /* Get the compressed and the decompressed lengths of a string stored in buffer */
 extern int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size);
+
+extern int or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files);
+extern char *or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols,
+			      const SPACEDB_FILES * files);
+extern char *or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files);
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

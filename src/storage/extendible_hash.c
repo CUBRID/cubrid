@@ -51,6 +51,10 @@
 #include "overflow_file.h"
 #include "memory_hash.h"	/* For hash functions */
 #include "db_date.h"
+#include "thread.h"
+#if defined (SA_MODE)
+#include "transaction_cl.h"
+#endif /* SA_MODE */
 
 #ifdef EHASH_DEBUG
 #define EHASH_BALANCE_FACTOR     4	/* Threshold rate of no. of directory pointers over no. of bucket pages. If
@@ -348,7 +352,7 @@ static EHASH_HASH_KEY ehash_hash_two_bytes_type (char *key);
 #if defined(EHINSERTION_ORDER)
 static void eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr);
 #endif /* EHINSERTION_ORDER */
-static void ehash_dump_bucket (PAGE_PTR buc_pgptr, DB_TYPE key_type);
+static void ehash_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR buc_pgptr, DB_TYPE key_type);
 
 /*
  * ehash_dir_locate()
@@ -1087,7 +1091,8 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
       ASSERT_ERROR ();
       goto exit_on_error;
     }
-  if (file_alloc (thread_p, &dir_vfid, file_init_page_type, &ptype, &dir_vpid, &dir_page_p) != NO_ERROR)
+  if (file_alloc (thread_p, &dir_vfid, is_tmp ? file_init_temp_page_type : file_init_page_type, &ptype, &dir_vpid,
+		  &dir_page_p) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto exit_on_error;
@@ -1149,7 +1154,10 @@ exit_on_error:
     {
       if (is_tmp)
 	{
-	  (void) file_destroy (thread_p, &bucket_vfid);
+	  if (file_destroy (thread_p, &bucket_vfid, is_tmp) != NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
 	}
       else
 	{
@@ -1160,7 +1168,10 @@ exit_on_error:
     {
       if (is_tmp)
 	{
-	  (void) file_destroy (thread_p, &dir_vfid);
+	  if (file_destroy (thread_p, &dir_vfid, is_tmp) != NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
 	}
       else
 	{
@@ -1238,19 +1249,20 @@ ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset, PG
 }
 
 /*
- * xehash_destroy () - Destroy the given extendible hashing instance
- *   return: NO_ERROR, or ER_FAILED
- *   ehid(in): extendible hashing structure to destroy
+ * xehash_destroy () - destroy the extensible hash table
  *
- * Note: Destroys the specified extendible hashing structure. All of
- * bucket and directory pages of this structure are deallocated
- * by this function.
+ * return        : error code
+ * thread_p (in) : thread entry
+ * ehid_p (in)   : extensible hash identifier
+ *
+ * note: only temporary extensible hash tables can be destroyed.
  */
 int
 xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
 {
   EHASH_DIR_HEADER *dir_header_p;
   PAGE_PTR dir_page_p;
+  bool save_check_interrupt;
 
   if (ehid_p == NULL)
     {
@@ -1267,12 +1279,12 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
-  if (file_destroy (thread_p, &(dir_header_p->bucket_file)) != NO_ERROR)
+  if (file_destroy (thread_p, &(dir_header_p->bucket_file), true) != NO_ERROR)
     {
       assert_release (false);
     }
   pgbuf_unfix (thread_p, dir_page_p);
-  if (file_destroy (thread_p, &ehid_p->vfid) != NO_ERROR)
+  if (file_destroy (thread_p, &ehid_p->vfid, true) != NO_ERROR)
     {
       assert_release (false);
     }
@@ -1411,7 +1423,7 @@ ehash_search (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p
       goto end;
     }
 
-  (void) spage_get_record (bucket_page_p, slot_id, &recdes, PEEK);
+  (void) spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK);
   (void) ehash_read_oid_from_record (recdes.data, value_p);
   result = EH_KEY_FOUND;
 
@@ -1849,7 +1861,7 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_
        * Key already exists. So, replace the associated value
        * MIGHT BE CHANGED to allow multiple values
        */
-      (void) spage_get_record (bucket_page_p, slot_no, &old_bucket_recdes, PEEK);
+      (void) spage_get_record (thread_p, bucket_page_p, slot_no, &old_bucket_recdes, PEEK);
       bucket_record_p = (char *) old_bucket_recdes.data;
 
       /* 
@@ -2403,7 +2415,7 @@ ehash_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGS
     {
       middle = (high + low) >> 1;
 
-      if (spage_get_record (bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
+      if (spage_get_record (thread_p, bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 	  return false;
@@ -2549,7 +2561,7 @@ ehash_find_first_bit_position (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_h
 
   for (slot_id = first_slot_id + 1; slot_id < num_recs; slot_id++)
     {
-      if (spage_get_record (bucket_page_p, slot_id, &recdes, PEEK) != S_SUCCESS)
+      if (spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK) != S_SUCCESS)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 	  return ER_EH_CORRUPTED;
@@ -2602,7 +2614,7 @@ ehash_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEA
 
   for (slot_id = i = first_slot_id + 1; i < num_recs; i++)
     {
-      if (spage_get_record (bucket_page_p, slot_id, &recdes, PEEK) != S_SUCCESS)
+      if (spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK) != S_SUCCESS)
 	{
 	  return ER_FAILED;
 	}
@@ -2815,6 +2827,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, b
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
       return error_code;
     }
   old_pages -= 1;		/* The first page starts with 0 */
@@ -2828,6 +2841,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, b
 #ifdef EHASH_DEBUG
   if (check_pages != old_pages)
     {
+      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_ROOT_CORRUPTED, 3, ehid_p->vfid.volid, ehid_p->vfid.fileid,
 	      ehid_p->pageid);
       return ER_FAILED;
@@ -3478,7 +3492,7 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
       else
 	{
 	  /* Key exists in the bucket */
-	  (void) spage_get_record (bucket_page_p, slot_no, &bucket_recdes, PEEK);
+	  (void) spage_get_record (thread_p, bucket_page_p, slot_no, &bucket_recdes, PEEK);
 
 	  /* Prepare the undo log record */
 	  if (ehash_allocate_recdes (&log_recdes_undo, bucket_recdes.length + sizeof (EHID), REC_HOME) == NULL)
@@ -3661,7 +3675,7 @@ ehash_merge_permanent (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root
   /* Move records of original page into the sibling bucket */
   for (slot_id = 1; slot_id < num_records; slot_id++)
     {
-      spage_get_record (bucket_page_p, slot_id, &recdes, PEEK);
+      spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK);
       bucket_record_p = (char *) recdes.data;
       bucket_record_p += sizeof (OID);
 
@@ -4539,8 +4553,8 @@ eh_depth (EHID * ehid)
  * Note: Find the current storage facts/capacity for given extendible hash.
  */
 int
-eh_capacity (EHID * ehid, int *num_recs, int *avg_reclength, int *num_bucket_pages, int *num_dir_pages, int *dir_depth,
-	     int *avg_freespace_per_page, int *avg_overhead_per_page)
+eh_capacity (THREAD_ENTRY * thread_p, EHID * ehid, int *num_recs, int *avg_reclength, int *num_bucket_pages,
+	     int *num_dir_pages, int *dir_depth, int *avg_freespace_per_page, int *avg_overhead_per_page)
 {
   EHASH_DIR_HEADER *dir_header;
   PAGE_PTR dir_pgptr = NULL;
@@ -4595,11 +4609,11 @@ eh_capacity (EHID * ehid, int *num_recs, int *avg_reclength, int *num_bucket_pag
 	  *num_recs += 1;
 	  if (slotid != 0)
 	    {
-	      *avg_reclength += spage_get_record_length (buc_pgptr, slotid);
+	      *avg_reclength += spage_get_record_length (thread_p, buc_pgptr, slotid);
 	    }
 	  else
 	    {
-	      *avg_overhead_per_page += spage_get_record_length (buc_pgptr, slotid);
+	      *avg_overhead_per_page += spage_get_record_length (thread_p, buc_pgptr, slotid);
 	    }
 	}
       pgbuf_unfix_and_init (thread_p, buc_pgptr);
@@ -4802,7 +4816,7 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
       /* Skip the first slot since it contains the bucket header */
       for (slot_id = first_slot_id + 1; apply_error_code == NO_ERROR && slot_id < num_records; slot_id++)
 	{
-	  (void) spage_get_record (bucket_page_p, slot_id, &recdes, PEEK);
+	  (void) spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK);
 	  bucket_record_p = (char *) recdes.data;
 	  bucket_record_p = ehash_read_oid_from_record (bucket_record_p, &assoc_value);
 
@@ -5045,7 +5059,7 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 	}
 
       printf ("\n\n");
-      ehash_dump_bucket (bucket_page_p, dir_header_p->key_type);
+      ehash_dump_bucket (thread_p, bucket_page_p, dir_header_p->key_type);
       pgbuf_unfix_and_init (thread_p, bucket_page_p);
     }
 
@@ -5091,7 +5105,7 @@ ehash_print_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int nth_ptr)
       pgbuf_unfix_and_init (thread_p, dir_root_page_p);
       return;
     }
-  ehash_dump_bucket (bucket_page_p, dir_header_p->key_type);
+  ehash_dump_bucket (thread_p, bucket_page_p, dir_header_p->key_type);
 
   pgbuf_unfix_and_init (thread_p, bucket_page_p);
   pgbuf_unfix_and_init (thread_p, dir_root_page_p);
@@ -5109,7 +5123,7 @@ ehash_print_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int nth_ptr)
  * Note: A debugging function. Prints out the contents of the given bucket.
  */
 static void
-ehash_dump_bucket (PAGE_PTR bucket_page_p, DB_TYPE key_type)
+ehash_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type)
 {
   EHASH_BUCKET_HEADER *bucket_header_p;
   char *bucket_record_p;
@@ -5142,7 +5156,7 @@ ehash_dump_bucket (PAGE_PTR bucket_page_p, DB_TYPE key_type)
     {
       printf ("*   %2d", slot_id);
 
-      spage_get_record (bucket_page_p, slot_id, &recdes, PEEK);
+      spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK);
       bucket_record_p = (char *) recdes.data;
       bucket_record_p = ehash_read_oid_from_record (bucket_record_p, &assoc_value);
 
@@ -5463,7 +5477,7 @@ ehash_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   recdes.data = (char *) (recv_p->data) + sizeof (short);
   recdes.area_size = recdes.length = recv_p->length - sizeof (recdes.type);
 
-  if (spage_get_record (recv_p->pgptr, slot_id, &existing_recdes, PEEK) == S_SUCCESS)
+  if (spage_get_record (thread_p, recv_p->pgptr, slot_id, &existing_recdes, PEEK) == S_SUCCESS)
     /* 
      * There is a record in the specified slot. Check if it is the same
      * record
@@ -5618,7 +5632,7 @@ ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	  /* Key exists in the bucket */
 
 	  /* Put the redo (compansating) log record */
-	  (void) spage_get_record (bucket_page_p, slot_no, &bucket_recdes, PEEK);
+	  (void) spage_get_record (thread_p, bucket_page_p, slot_no, &bucket_recdes, PEEK);
 
 	  /* Prepare the redo log record */
 	  if (ehash_allocate_recdes (&log_recdes_redo, bucket_recdes.length + sizeof (short), REC_HOME) == NULL)

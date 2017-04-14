@@ -73,8 +73,6 @@ extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 #define thread_get_current_session_id() (db_Session_id)
 #define thread_set_check_interrupt(thread_p, flag) tran_set_check_interrupt (flag)
 #define thread_get_check_interrupt(thread_p) tran_get_check_interrupt ()
-#define thread_set_check_page_validation(thread_p, flag) (true)
-#define thread_get_check_page_validation(thread_p) (true)
 
 #define thread_trace_on(thread_p)
 #define thread_set_trace_format(thread_p, format)
@@ -99,7 +97,6 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 #define thread_rc_track_enter(thread_p) (-1)
 #define thread_rc_track_exit(thread_p, idx) (NO_ERROR)
 #define thread_rc_track_amount_pgbuf(thread_p) (0)
-#define thread_rc_track_amount_pgbuf_temp(thread_p) (0)
 #define thread_rc_track_amount_qlist(thread_p) (0)
 #define thread_rc_track_dump_all(thread_p, outfp)
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
@@ -108,9 +105,9 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
 #define thread_start_scan (NULL)
 
-#else /* !SERVER_MODE */
+#define thread_is_page_flush_thread_available()	(false)
 
-#define THREAD_VACUUM_WORKERS_COUNT 10
+#else /* !SERVER_MODE */
 
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) \
   ((thrd) ? (thrd)->index : thread_get_current_entry_index())
@@ -142,7 +139,9 @@ enum
   THREAD_LOCK_SUSPENDED = 17,
   THREAD_LOCK_RESUMED = 18,
   THREAD_LOGWR_SUSPENDED = 19,
-  THREAD_LOGWR_RESUMED = 20
+  THREAD_LOGWR_RESUMED = 20,
+  THREAD_ALLOC_BCB_SUSPENDED = 21,
+  THREAD_ALLOC_BCB_RESUMED = 22,
 };
 
 typedef enum
@@ -180,7 +179,7 @@ enum
 
 /* resource track meters */
 enum
-{ RC_VMEM = 0, RC_PGBUF, RC_PGBUF_TEMP, RC_QLIST, RC_CS, RC_LAST };
+{ RC_VMEM = 0, RC_PGBUF, RC_QLIST, RC_CS, RC_LAST };
 
 /* resource track managers */
 enum
@@ -284,6 +283,7 @@ struct thread_entry
 				 * thread */
   int client_id;		/* client id whom this thread is responding */
   int tran_index;		/* tran index to which this thread belongs */
+  int private_lru_index;	/* private lru index when transaction quota is used */
   pthread_mutex_t tran_index_lock;
   unsigned int rid;		/* request id which this thread is processing */
   int status;			/* thread status */
@@ -314,8 +314,6 @@ struct thread_entry
   bool interrupted;		/* is this request/transaction interrupted ? */
   bool shutdown;		/* is server going down? */
   bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
-  bool check_page_validation;	/* check_page_validation == false, during btree_handle_prev_leaf_after_locking() or
-				 * btree_handle_curr_leaf_after_locking() function call. */
   bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
   struct thread_entry *next_wait_thrd;
 
@@ -381,8 +379,6 @@ typedef void *CSS_THREAD_ARG;
 
 typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
-extern DAEMON_THREAD_MONITOR thread_Log_flush_thread;
-
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 #endif /* not HPUX */
@@ -444,10 +440,14 @@ extern void thread_wakeup_check_ha_delay_info_thread (void);
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
-extern bool thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag);
+
+/* wakeup functions */
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_page_flush_thread (void);
+extern void thread_try_wakeup_page_flush_thread (void);
+extern void thread_wakeup_page_buffer_maintenance_thread (void);
+extern void thread_wakeup_page_post_flush_thread (void);
 extern void thread_wakeup_flush_control_thread (void);
 extern void thread_wakeup_checkpoint_thread (void);
 extern void thread_wakeup_purge_archive_logs_thread (void);
@@ -456,8 +456,12 @@ extern void thread_wakeup_auto_volume_expansion_thread (void);
 extern void thread_wakeup_vacuum_master_thread (void);
 extern void thread_wakeup_vacuum_worker_threads (int n_workers);
 
+/* is available functions */
 extern bool thread_is_page_flush_thread_available (void);
+extern bool thread_is_page_post_flush_thread_available (void);
+extern bool thread_is_log_flush_thread_available (void);
 
+/* is running tunfions */
 extern bool thread_auto_volume_expansion_thread_is_running (void);
 
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
@@ -470,9 +474,9 @@ extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p, pthread_mutex_t * mutexp, int timeout,
 					    struct timespec *to, int suspended_reason);
 extern void thread_print_entry_info (THREAD_ENTRY * p);
+extern int thread_return_all_transactions_entries (void);
 extern void thread_dump_threads (void);
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
-extern bool thread_get_check_page_validation (THREAD_ENTRY * thread_p);
 
 extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
 				    int kill_pid);
@@ -488,7 +492,6 @@ extern bool thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_exit (THREAD_ENTRY * thread_p, int id);
 extern int thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p);
-extern int thread_rc_track_amount_pgbuf_temp (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p);
 extern void thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_name, const int line_no, int amount,
@@ -529,6 +532,9 @@ extern int thread_first_vacuum_worker_thread_index (void);
 
 extern bool thread_is_auto_volume_expansion_thread_available (void);
 
+#if !defined (NDEBUG)
+extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
+#endif /* !NDEBUG */
 #endif /* SERVER_MODE */
 
 #endif /* _THREAD_H_ */

@@ -4706,6 +4706,11 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
       ptr->proc.merge.insert_xasl = NULL;
       break;
 
+    case CTE_PROC:
+      ptr->proc.cte.recursive_part = NULL;
+      ptr->proc.cte.non_recursive_part = NULL;
+      break;
+
     default:
       /* BUILD_SCHEMA_PROC */
       break;
@@ -9211,9 +9216,9 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
 
     if_true_node = pt_make_dotted_identifier (parser, "VC.vclass_def");
 
-    lhs = pt_make_pred_name_string_val (parser, PT_PLUS, "VC.vclass_def", " comment='");
-    rhs = pt_make_pred_name_string_val (parser, PT_PLUS, "VC.comment", "'");
-    if_false_node = parser_make_expression (parser, PT_PLUS, lhs, rhs, NULL);
+    lhs = pt_make_pred_name_string_val (parser, PT_CONCAT, "VC.vclass_def", " comment='");
+    rhs = pt_make_pred_name_string_val (parser, PT_CONCAT, "VC.comment", "'");
+    if_false_node = parser_make_expression (parser, PT_CONCAT, lhs, rhs, NULL);
 
     comment_node = pt_make_dotted_identifier (parser, "VC.comment");
     lhs = parser_make_expression (parser, PT_IS_NULL, comment_node, NULL, NULL);
@@ -9285,8 +9290,6 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'data_page_dirties' as [variable] , exec_stats('Num_data_page_dirties') as [value])"
     "UNION ALL (SELECT 'data_page_ioreads' as [variable] , exec_stats('Num_data_page_ioreads') as [value])"
     "UNION ALL (SELECT 'data_page_iowrites' as [variable] , exec_stats('Num_data_page_iowrites') as [value])"
-    "UNION ALL (SELECT 'data_page_victims' as [variable] , exec_stats('Num_data_page_victims') as [value])"
-    "UNION ALL (SELECT 'data_page_iowrites_for_replacement' as [variable] , exec_stats('Num_data_page_iowrites_for_replacement') as [value])"
     "UNION ALL (SELECT 'log_page_ioreads' as [variable] , exec_stats('Num_log_page_ioreads') as [value])"
     "UNION ALL (SELECT 'log_page_iowrites' as [variable] , exec_stats('Num_log_page_iowrites') as [value])"
     "UNION ALL (SELECT 'log_append_records' as [variable] , exec_stats('Num_log_append_records') as [value])"

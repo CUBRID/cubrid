@@ -1260,9 +1260,10 @@ $ LOADDB
 1191 Stand-alone vakum yürütme sona erer.
 1192 Değeri hassas %1$zu izin verilen maksimum %2$d aşıyor.
 1193 İşlenmiş bölüm ifade uzunluğu izin verilen sınırı (%1$d) aşıyor.
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 Son Hata
-
+1194 Unable to check file %1$d|%2$d because lock on class %3$d|%4$d|%5$d is not immediately granted.
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 Maximum recursions %1$d reached executing CTE.
+1197 Son Hata
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
 2 Uygun hata mesajı bulunmamakta.
@@ -1713,6 +1714,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Toplama işlevlerinin kullanımı geçersiz.
 293 Değeri kesinlikle her bölüm için artan olmalıdır.
 294 Yerel saat dilimi yazdığınız sütunlarda işlev veya filtre indeksleri kullanılamaz.
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
+297 Nested WITH clauses are not supported.
+298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
+299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.
