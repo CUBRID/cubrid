@@ -13674,12 +13674,6 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
   int file_numpages;
 #endif /* SA_MODE */
 
-  /* todo: update for new design */
-  if (true)
-    {
-      return DISK_VALID;
-    }
-
   valid_pg = heap_chkreloc_start (chk_objs);
   if (valid_pg != DISK_VALID)
     {
