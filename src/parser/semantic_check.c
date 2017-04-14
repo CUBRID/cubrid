@@ -9722,6 +9722,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    }
 	}
 
+      /* Let's avoid executing unnecessary statements below in case of errors */
+      if (pt_has_error (parser))
+	{
+	  break;
+	}
+
       /* Replace left to right attribute references in assignments before doing semantic check. The type checking phase 
        * might have to perform some coercions on the replaced names. */
       node = pt_replace_names_in_update_values (parser, node);

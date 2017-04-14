@@ -10397,11 +10397,14 @@ pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC
       return NULL;
     }
 
+  /* commented to allow to expand 'UNION ALL' view in a inline view */
   /* dual update/delete checks have been made - check if oids were already added */
+#if 0
   if (spec->info.spec.flag & PT_SPEC_FLAG_CONTAINS_OID)
     {
       return spec;
     }
+#endif
 
   /* retrieve spec's name, which will be appended to OID attribute names */
   if (spec->info.spec.range_var && spec->info.spec.range_var->node_type == PT_NAME)
@@ -10716,6 +10719,47 @@ pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ *  pt_replace_alias_name () - returns the replaced resolved name for a column alias in rhs of assignment, 
+ *   or in 'ON' condition of inner join, of UPDATE statement. 
+ *   return:  void 
+ *   parser(in): the parser context
+ *   rhs(in) : rhs node of assignment, or lhs/rhs node of ON condition of inner join in a inline view update
+ *   originam_name(in) : alias name to be replaced 
+ *   resolved_name(in) : resolved column name 
+ */
+
+static void
+pt_replace_alias_name (PARSER_CONTEXT * parser, PT_NODE * rhs, char *original_name, char *resolved_name)
+{
+  if (!rhs || !original_name || !resolved_name)
+    {
+      return;
+    }
+
+  if (rhs != NULL && rhs->node_type != PT_NAME)
+    {
+      if (rhs->node_type == PT_EXPR)
+	{
+	  /* path expression */
+	  pt_replace_alias_name (parser, rhs->info.expr.arg1, original_name, resolved_name);
+	  pt_replace_alias_name (parser, rhs->info.expr.arg2, original_name, resolved_name);
+	}
+      else if (rhs->node_type == PT_DOT_)
+	{
+	  /* dot expression */
+	  pt_replace_alias_name (parser, rhs->info.dot.arg2, original_name, resolved_name);
+	}
+    }
+
+  if (rhs && rhs->node_type == PT_NAME && !strcmp (rhs->info.name.original, original_name))
+    {
+      rhs->info.name.original = resolved_name;
+    }
+
+  return;
+}
+
+/*
  * pt_mark_spec_list_for_update () - mark update targets
  *   return:  none
  *   parser(in): the parser context
@@ -10725,17 +10769,18 @@ void
 pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *lhs, *node_tmp, *node, *resolved;
-  PT_NODE *assignments = NULL, *spec_list = NULL;
+  PT_NODE *assignments = NULL;
+  PT_NODE *rhs = NULL, *as_attr_list = NULL;
+  PT_NODE *p_on_cond = NULL;
+
 
   if (statement->node_type == PT_UPDATE)
     {
       assignments = statement->info.update.assignment;
-      spec_list = statement->info.update.spec;
     }
   else if (statement->node_type == PT_MERGE)
     {
       assignments = statement->info.merge.update.assignment;
-      spec_list = statement->info.merge.into;
     }
 
   /* set flags for updatable specs */
@@ -10743,6 +10788,7 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   while (node != NULL)
     {
       lhs = node->info.expr.arg1;
+      rhs = node->info.expr.arg2;
 
       while (lhs != NULL && lhs->node_type != PT_NAME)
 	{
@@ -10785,6 +10831,34 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      /* error should have been set */
 	      break;
+	    }
+
+	  /* a column alias name is replaced by a resolved name in lhs of update statement */
+	  as_attr_list = node_tmp->info.spec.as_attr_list;
+	  while (as_attr_list)
+	    {
+	      if (!strcmp (as_attr_list->info.name.original, lhs->info.name.original))
+		{
+		  as_attr_list->info.name.original = resolved->info.name.original;
+		}
+	      as_attr_list = as_attr_list->next;
+	    }
+
+	  /* column alias names are replaced by resolved name in rhs of assignment of update statement */
+	  if (rhs)
+	    {
+	      pt_replace_alias_name (parser, rhs, lhs->info.name.original, resolved->info.name.original);
+	    }
+
+	  /* column aliase names are replaced by a resolved name, in ON condition of inner join of a inline view UPDATE */
+	  if (node_tmp->info.spec.on_cond)
+	    {
+	      p_on_cond = node_tmp->info.spec.on_cond;
+
+	      pt_replace_alias_name (parser, p_on_cond->info.expr.arg1, lhs->info.name.original,
+				     resolved->info.name.original);
+	      pt_replace_alias_name (parser, p_on_cond->info.expr.arg2, lhs->info.name.original,
+				     resolved->info.name.original);
 	    }
 
 	  /* flat_entity_list will be propagated trough derived tables of updatable views, so the assignment name
