@@ -1713,7 +1713,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 잘못된 집계 함수입니다.
 293 분할 경계값은 각 분할에 대해서 항상 증가해야 합니다.
 294 local timezone 타입에 대해서 함수 인덱스나 필터링된 인덱스를 사용할 수 없습니다.
-295 이 인라인 뷰는 view update 제약사항에 따라 update 가 허용되지 않습니다. 
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
+297 Nested WITH clauses are not supported.
+298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
+299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
+300 이 인라인 뷰는 view update 제약사항에 따라 update 가 허용되지 않습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
