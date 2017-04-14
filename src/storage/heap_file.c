@@ -4574,6 +4574,11 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     }
   assert (header_watcher.pgptr != NULL);
 
+  if (crt_watcher.page_was_unfixed)
+    {
+      *page_ptr = crt_watcher.pgptr;	/* home was refixed */
+    }
+
   /* Get previous and next page VPID's. */
   if (heap_vpid_prev (thread_p, hfid, *page_ptr, &prev_vpid) != NO_ERROR
       || heap_vpid_next (thread_p, hfid, *page_ptr, &next_vpid) != NO_ERROR)
