@@ -607,7 +607,6 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->query_timeout = 0;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->block_global_oldest_active_until_commit = false;
-  tdes->skip_disk_cache_update = false;
 
   return NO_ERROR;
 }
@@ -2043,7 +2042,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, -1);
   tdes->block_global_oldest_active_until_commit = false;
-  tdes->skip_disk_cache_update = false;
   tdes->modified_class_list = NULL;
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
