@@ -1159,7 +1159,8 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 	  local = PT_NOT_UPDATABLE;
 	  break;
 
-	default:		/* most of sql statements are updatable */
+	  /* most of sql statements are updatable */
+	default:
 	  local &= PT_UPDATABLE;
 	  break;
 	}

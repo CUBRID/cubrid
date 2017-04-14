@@ -10572,15 +10572,15 @@ pt_process_spec_for_update (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * n
       return name;
     }
 
-/* commented to allow inline view update */
-#if 0
+  /* commented to allow inline view update */
   /* check derived table */
-  if (!(spec->info.spec.flag & PT_SPEC_FLAG_FROM_VCLASS))
-    {
-      PT_INTERNAL_ERROR (parser, "derived table not allowed");
-      return NULL;
-    }
-#endif
+  /*
+     if (!(spec->info.spec.flag & PT_SPEC_FLAG_FROM_VCLASS))
+     {
+     PT_INTERNAL_ERROR (parser, "derived table not allowed");
+     return NULL;
+     }
+   */
 
   if (dt_arg1->node_type == PT_UNION)
     {
@@ -10680,7 +10680,8 @@ pt_process_spec_for_update (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * n
 	  return NULL;
 	}
 
-      spec->info.spec.derived_table = save_dt;	/* moved here from just above to avoid segmentation fault */
+      /* moved here from just above to avoid segmentation fault */
+      spec->info.spec.derived_table = save_dt;
 
       /* next derived table of union */
       derived_table = (derived_table == dt_arg1 ? dt_arg2 : NULL);
