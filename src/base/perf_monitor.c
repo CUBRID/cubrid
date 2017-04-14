@@ -2371,7 +2371,7 @@ perfmon_initialize (int num_trans)
     {
       return rc;
     }
-  init_name_offset_assoc ();
+  perfbase_init_name_offset_assoc ();
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 

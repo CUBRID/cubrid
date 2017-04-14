@@ -18,7 +18,7 @@ extern "C" {
 #define INDEX_CMD "-i"
 #define ALIAS_CMD "-a"
 #define FILENAME_CMD "-f"
-#define DEFAULT_PLOT_FILENAME "aggregate_plot.jpg"
+#define DEFAULT_PLOT_FILENAME "aggregate_plot"
 
 class AggregateExecutor : public CommandExecutor
 {

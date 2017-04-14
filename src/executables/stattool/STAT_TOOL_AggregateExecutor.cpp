@@ -139,7 +139,7 @@ ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
   aggregateName = "";
   aggregateName += pstat_Metadata[statIndex].stat_name;
 
-  for (int i = 0; i < pstat_Metadata[statIndex].dimensions; i++)
+  for (int i = 0; i < pstat_Metadata[statIndex].dims->size; i++)
     {
       if (fixedDimension == i)
         {
@@ -203,13 +203,13 @@ ErrorManager::ErrorCode AggregateExecutor::execute ()
   for (unsigned int i = 0; i < snapshotsForAggregation.size(); i++)
     {
       int res = 0;
-      aggregate_complex_data (&pstat_Metadata[statIndex],
-                              snapshotsForAggregation[i]->rawStats,
-                              fixedDimension,
-                              fixedIndex,
-                              &res,
-                              0,
-                              pstat_Metadata[statIndex].start_offset);
+      perfbase_aggregate_complex_data (&pstat_Metadata[statIndex],
+				       snapshotsForAggregation[i]->rawStats,
+				       fixedDimension,
+				       fixedIndex,
+				       &res,
+				       0,
+				       pstat_Metadata[statIndex].start_offset);
       std::stringstream ss;
       ss << res;
       line += " " + ss.str();

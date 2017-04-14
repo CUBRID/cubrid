@@ -23,7 +23,7 @@ int main (int argc, char **argv)
   bool quit = false;
   char command[MAX_COMMAND_SIZE];
   metadata_initialize();
-  init_name_offset_assoc();
+  perfbase_init_name_offset_assoc ();
   Utils::setNStatValues (pstat_Global.n_stat_values);
 
   do

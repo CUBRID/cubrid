@@ -17,25 +17,7 @@ extern "C"
 }
 #endif
 
-#define NUM_ARGS(...) (sizeof((int[]){__VA_ARGS__})/sizeof(int))
-
-#define PSTAT_METADATA_INIT_SINGLE_ACC(id, name) { id, name, PSTAT_ACCUMULATE_SINGLE_VALUE, 0, 0, NULL, NULL}
-#define PSTAT_METADATA_INIT_SINGLE_PEEK(id, name) \
-  { id, name, PSTAT_PEEK_SINGLE_VALUE, 0, 0, NULL, NULL}
-#define PSTAT_METADATA_INIT_COUNTER_TIMER(id, name) { id, name, PSTAT_COUNTER_TIMER_VALUE, 0, 0, NULL, NULL}
-#define PSTAT_METADATA_INIT_COMPUTED_RATIO(id, name) \
-  { id, name, PSTAT_COMPUTED_RATIO_VALUE, 0, 0, NULL, NULL}
-#define PSTAT_METADATA_INIT_COMPLEX(id, name, load, load_names, ...) \
-  { \
-    .psid = id, \
-    .stat_name = name, \
-    .valtype = PSTAT_COMPLEX_VALUE, \
-    .dimensions = NUM_ARGS(__VA_ARGS__), \
-    .sizes = (int [NUM_ARGS(__VA_ARGS__)]){__VA_ARGS__}, \
-    .f_load = load, \
-    .f_load_names = load_names \
-  }
-
+#define MAX_DIM_LEN 32
 #define STAT_NAME_MAX_SIZE 64
 
 typedef enum
@@ -521,6 +503,20 @@ typedef struct pstat_metadata PSTAT_METADATA;
 typedef int (*PSTAT_LOAD_FUNC) (void);
 typedef void (*PSTAT_LOAD_NAMES_FUNC) (PSTAT_NAMEOFFSET *);
 
+typedef struct perfbase_Dim PERFBASE_DIM;
+struct perfbase_Dim
+{
+  const char *names[MAX_DIM_LEN];
+  int size;
+};
+
+typedef struct perfbase_Complex PERFBASE_COMPLEX;
+struct perfbase_Complex
+{
+  PERFBASE_DIM **dimensions;
+  int size;
+};
+
 struct pstat_metadata
 {
   /* These members must be set. */
@@ -532,12 +528,8 @@ struct pstat_metadata
   int start_offset;
   int n_vals;
 
-  /* dimensions and sizes are only for complex types */
-  int dimensions;
-  int *sizes;
-
-  PSTAT_LOAD_FUNC f_load;
-  PSTAT_LOAD_NAMES_FUNC f_load_names;
+  /* dimensions are only for complex types */
+  PERFBASE_COMPLEX *dims;
 };
 
 /* Statistics activation flags */
@@ -662,13 +654,15 @@ const char *perfmon_stat_snapshot_record_type (const int rec_type);
 const char *perfmon_stat_lock_mode_name (const int lock_mode);
 void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 void perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * stats2);
-void aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const int fix_dim_num, const int fix_index,
-			     int *res, int dim, int offset);
+void perfbase_aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const int fix_dim_num, const int fix_index,
+				      int *res, int dim, int offset);
+void perfbase_Complex_load_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata,
+				  int curr_dimension, int curr_offset, char *name_buffer);
 void perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * stats_ptr);
 void perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, char **s, int *remaining_size);
 
 int metadata_initialize ();
-void init_name_offset_assoc ();
+void perfbase_init_name_offset_assoc ();
 
 long long difference (long long var1, long long var2);
 
@@ -686,7 +680,8 @@ typedef enum
   PERF_SIX_LOCK = 7,		/* Shared and intention exclusive lock */
   PERF_U_LOCK = 8,		/* Update lock */
   PERF_X_LOCK = 9,		/* Exclusive lock */
-  PERF_SCH_M_LOCK = 10		/* Schema Modification Lock */
+  PERF_SCH_M_LOCK = 10,		/* Schema Modification Lock */
+  PERF_LOCK_CNT
 } PERF_LOCK;
 
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);

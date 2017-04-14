@@ -10,9 +10,167 @@
 #include "error_manager.h"
 #endif
 
+#define PSTAT_METADATA_INIT_SINGLE_ACC(id, name) { id, name, PSTAT_ACCUMULATE_SINGLE_VALUE, 0, 0, NULL}
+#define PSTAT_METADATA_INIT_SINGLE_PEEK(id, name) \
+  { id, name, PSTAT_PEEK_SINGLE_VALUE, 0, 0, NULL}
+#define PSTAT_METADATA_INIT_COUNTER_TIMER(id, name) { id, name, PSTAT_COUNTER_TIMER_VALUE, 0, 0, NULL}
+#define PSTAT_METADATA_INIT_COMPUTED_RATIO(id, name) \
+  { id, name, PSTAT_COMPUTED_RATIO_VALUE, 0, 0, NULL}
+#define PSTAT_METADATA_INIT_COMPLEX(id, name, load, load_names, dimensions) \
+  { \
+    .psid = id, \
+    .stat_name = name, \
+    .valtype = PSTAT_COMPLEX_VALUE, \
+    .dims = dimensions, \
+  }
+
 PSTAT_GLOBAL pstat_Global;
 PSTAT_NAMEOFFSET *pstat_Nameoffset;
 int total_num_stat_vals;
+
+PERFBASE_DIM perfbase_Dim_module = {
+  .size = PERF_MODULE_CNT,
+  .names = {"SYSTEM", "WORKER", "VACUUM"}
+};
+
+PERFBASE_DIM perfbase_Dim_page_type = {
+  .size = PERF_PAGE_CNT,
+  .names = {"PAGE_UNKNOWN", "PAGE_FTAB", "PAGE_HEAP", "PAGE_VOLHEADER", "PAGE_VOLBITMAP",
+	    "PAGE_QRESULT", "PAGE_EHASH", "PAGE_OVERFLOW", "PAGE_AREA", "PAGE_CATALOG",
+	    "PAGE_BTREE", "PAGE_LOG", "PAGE_DROPPED", "PAGE_VACUUM_DATA", "PAGE_BTREE_R",
+	    "PAGE_BTREE_O", "PAGE_BTREE_L", "PAGE_BTREE_N"}
+};
+
+PERFBASE_DIM perfbase_Dim_page_mode = {
+  .size = PERF_PAGE_MODE_CNT,
+  .names = {"OLD_WAIT", "OLD_NO_WAIT", "NEW_WAIT", "NEW_NO_WAIT", "OLD_PAGE_IN_PB"}
+};
+
+PERFBASE_DIM perfbase_Dim_holder_latch = {
+  .size = PERF_HOLDER_LATCH_CNT,
+  .names = {"READ", "WRITE", "MIXED"}
+};
+
+PERFBASE_DIM perfbase_Dim_cond_type = {
+  .size = PERF_CONDITIONAL_FIX_CNT,
+  .names = {"COND", "UNCOND", "UNCOND_WAIT"}
+};
+
+PERFBASE_DIM perfbase_Dim_snapshot = {
+  .size = PERF_SNAPSHOT_CNT,
+  .names = {"DELETE", "DIRTY", "SNAPSHOT", "VACUUM"}
+};
+
+PERFBASE_DIM perfbase_Dim_snapshot_record_type = {
+  .size = PERF_SNAPSHOT_RECORD_TYPE_CNT,
+  .names = {"INS_VACUUMED", "INS_CURR", "INS_OTHER", "INS_COMMITTED", "INS_COMMITTED_L",
+	    "INS_DELETED", "DELETED_CURR", "DELETED_OTHER", "DELETED_COMMITED", "DELETED_COMMITED_L"}
+};
+
+PERFBASE_DIM perfbase_Dim_lock_mode = {
+  .size = PERF_LOCK_CNT,
+  .names = {"NA_LOCK", "INCON_2PL", "NULL_LOCK", "SCH_S_LOCK", "IS_LOCK", "S_LOCK",
+	    "IX_LOCK", "SIX_LOCK", "U_LOCK", "X_LOCK", "SCH_M_LOCK"}
+};
+
+PERFBASE_DIM perfbase_Dim_promote_cond = {
+  .size = 2,
+  .names = {"ONLY_READER", "SHARED_READER"}
+};
+
+PERFBASE_DIM perfbase_Dim_success = {
+  .size = 2,
+  .names = {"SUCCESS", "FAILED"}
+};
+
+PERFBASE_DIM perfbase_Dim_buf_dirty = {
+  .size = 2,
+  .names = {"BUF_DIRTY", "BUF_NON_DIRTY"}
+};
+
+PERFBASE_DIM perfbase_Dim_holder_dirty = {
+  .size = 2,
+  .names = {"HOLDER_DIRTY", "HOLDER_NON_DIRTY"}
+};
+
+PERFBASE_DIM perfbase_Dim_visibility = {
+  .size = 2,
+  .names = {"INVISIBLE", "VISIBLE"}
+};
+
+PERFBASE_COMPLEX perfbase_Complex_page_fix = {
+  .size = 5,
+  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
+				     &perfbase_Dim_page_type,
+				     &perfbase_Dim_page_mode,
+				     &perfbase_Dim_holder_latch,
+				     &perfbase_Dim_cond_type}
+};
+
+PERFBASE_COMPLEX perfbase_Complex_page_promote = {
+  .size = 5,
+  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
+				     &perfbase_Dim_page_type,
+				     &perfbase_Dim_promote_cond,
+				     &perfbase_Dim_holder_latch,
+				     &perfbase_Dim_success}
+};
+
+PERFBASE_COMPLEX perfbase_Complex_page_promote_time = {
+  .size = 5,
+  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
+				     &perfbase_Dim_page_type,
+				     &perfbase_Dim_promote_cond,
+				     &perfbase_Dim_holder_latch,
+				     &perfbase_Dim_success}
+};
+
+PERFBASE_COMPLEX perfbase_Complex_page_unfix = {
+  .size = 5,
+  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
+				     &perfbase_Dim_page_type,
+				     &perfbase_Dim_buf_dirty,
+				     &perfbase_Dim_holder_dirty,
+				     &perfbase_Dim_holder_latch}
+};
+
+PERFBASE_COMPLEX perfbase_Complex_page_lock_acquire_time = {
+  .size = 5,
+  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
+				     &perfbase_Dim_page_type,
+				     &perfbase_Dim_page_mode,
+				     &perfbase_Dim_holder_latch,
+				     &perfbase_Dim_cond_type}
+};
+
+PERFBASE_COMPLEX perfbase_Complex_page_hold_acquire_time = {
+  .size = 4,
+  .dimensions = (PERFBASE_DIM *[4]) {&perfbase_Dim_module,
+				     &perfbase_Dim_page_type,
+				     &perfbase_Dim_page_mode,
+				     &perfbase_Dim_holder_latch}
+};
+
+PERFBASE_COMPLEX perfbase_Complex_page_fix_acquire_time = {
+  .size = 5,
+  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
+				     &perfbase_Dim_page_type,
+				     &perfbase_Dim_page_mode,
+				     &perfbase_Dim_holder_latch,
+				     &perfbase_Dim_cond_type}
+};
+
+PERFBASE_COMPLEX perfbase_Complex_Num_mvcc_snapshot = {
+  .size = 3,
+  .dimensions = (PERFBASE_DIM *[3]) {&perfbase_Dim_snapshot,
+				     &perfbase_Dim_snapshot_record_type,
+				     &perfbase_Dim_visibility}
+};
+
+PERFBASE_COMPLEX perfbase_Complex_Time_obj_lock_acquire_time = {
+  .size = 1,
+  .dimensions = (PERFBASE_DIM *[1]) {&perfbase_Dim_lock_mode}
+};
 
 PSTAT_METADATA pstat_Metadata[] = {
   /* Execution statistics for the file io */
@@ -365,95 +523,66 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       "Num_data_page_fix_ext",
 			       f_load_Num_data_page_fix_ext,
 			       f_load_names_Num_data_page_fix_ext,
-			       PERF_MODULE_CNT,
-			       PERF_PAGE_CNT,
-			       PERF_PAGE_MODE_CNT,
-			       PERF_HOLDER_LATCH_CNT,
-			       PERF_CONDITIONAL_FIX_CNT),
+			       &perfbase_Complex_page_fix),
 
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_COUNTERS,
 			       "Num_data_page_promote_ext",
 			       f_load_Num_data_page_promote_ext,
 			       f_load_names_Num_data_page_promote_ext,
-			       PERF_MODULE_CNT,
-			       PERF_PAGE_CNT,
-			       PERF_PROMOTE_CONDITION_CNT,
-			       PERF_HOLDER_LATCH_CNT,
-			       2),
+			       &perfbase_Complex_page_promote),
 
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_TIME_COUNTERS,
 			       "Num_data_page_promote_time_ext",
 			       f_load_Num_data_page_promote_time_ext,
 			       f_load_names_Num_data_page_promote_time_ext,
-			       PERF_MODULE_CNT,
-			       PERF_PAGE_CNT,
-			       PERF_PROMOTE_CONDITION_CNT,
-			       PERF_HOLDER_LATCH_CNT,
-			       2),
+			       &perfbase_Complex_page_promote_time),
 
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_UNFIX_COUNTERS,
 			       "Num_data_page_unfix_ext",
 			       f_load_Num_data_page_unfix_ext,
 			       f_load_names_Num_data_page_unfix_ext,
-			       PERF_MODULE_CNT,
-			       PERF_PAGE_CNT,
-			       2,
-			       2,
-			       PERF_HOLDER_LATCH_CNT),
+			       &perfbase_Complex_page_unfix),
 
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_LOCK_TIME_COUNTERS,
 			       "Time_data_page_lock_acquire_time",
 			       f_load_Time_data_page_lock_acquire_time,
 			       f_load_names_Time_data_page_lock_acquire_time,
-			       PERF_MODULE_CNT,
-			       PERF_PAGE_CNT,
-			       PERF_PAGE_MODE_CNT,
-			       PERF_HOLDER_LATCH_CNT,
-			       PERF_CONDITIONAL_FIX_CNT),
+			       &perfbase_Complex_page_lock_acquire_time),
 
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_HOLD_TIME_COUNTERS,
 			       "Time_data_page_hold_acquire_time",
 			       f_load_Time_data_page_hold_acquire_time,
 			       f_load_names_Time_data_page_hold_acquire_time,
-			       PERF_MODULE_CNT,
-			       PERF_PAGE_CNT,
-			       PERF_PAGE_MODE_CNT,
-			       PERF_HOLDER_LATCH_CNT),
+			       &perfbase_Complex_page_hold_acquire_time),
 
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_TIME_COUNTERS,
 			       "Time_data_page_fix_acquire_time",
 			       f_load_Time_data_page_fix_acquire_time,
 			       f_load_names_Time_data_page_fix_acquire_time,
-			       PERF_MODULE_CNT,
-			       PERF_PAGE_CNT,
-			       PERF_PAGE_MODE_CNT,
-			       PERF_HOLDER_LATCH_CNT,
-			       PERF_CONDITIONAL_FIX_CNT),
+			       &perfbase_Complex_page_fix_acquire_time),
 
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_MVCC_SNAPSHOT_COUNTERS,
 			       "Num_mvcc_snapshot_ext",
 			       f_load_Num_mvcc_snapshot_ext,
 			       f_load_names_Num_mvcc_snapshot_ext,
-			       PERF_SNAPSHOT_CNT,
-			       PERF_SNAPSHOT_RECORD_TYPE_CNT,
-			       PERF_SNAPSHOT_VISIBILITY_CNT),
+			       &perfbase_Complex_Num_mvcc_snapshot),
 
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS,
 			       "Time_obj_lock_acquire_time",
 			       f_load_Time_obj_lock_acquire_time,
 			       f_load_names_Time_obj_lock_acquire_time,
-			       PERF_SCH_M_LOCK)
+			       &perfbase_Complex_Time_obj_lock_acquire_time)
 };
 
 void
-aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const int fix_dim_num, const int fix_index, int *res,
-			int dim, int offset)
+perfbase_aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const int fix_dim_num, const int fix_index,
+				 int *res, int dim, int offset)
 {
   int i, j;
   int calculated_offset;
   int k;
 
-  if (dim == stat->dimensions)
+  if (dim == stat->dims->size)
     {
       *res += stats[offset];
       return;
@@ -461,384 +590,35 @@ aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const int fix_dim
 
   if (dim != fix_dim_num)
     {
-      for (i = 0; i < stat->sizes[dim]; i++)
+      for (i = 0; i < stat->dims->dimensions[dim]->size; i++)
 	{
 	  calculated_offset = offset;
 	  k = 1;
-	  for (j = dim + 1; j < stat->dimensions; j++)
+	  for (j = dim + 1; j < stat->dims->size; j++)
 	    {
-	      k *= stat->sizes[j];
+	      k *= stat->dims->dimensions[j]->size;
 	    }
 	  calculated_offset += i * k;
-	  aggregate_complex_data (stat, stats, fix_dim_num, fix_index, res, dim + 1, calculated_offset);
+	  perfbase_aggregate_complex_data (stat, stats, fix_dim_num, fix_index, res, dim + 1, calculated_offset);
 	}
     }
   else
     {
       calculated_offset = offset;
       k = 1;
-      for (i = dim + 1; i < stat->dimensions; i++)
+      for (i = dim + 1; i < stat->dims->size; i++)
 	{
-	  k *= stat->sizes[i];
+	  k *= stat->dims->dimensions[i]->size;
 	}
       calculated_offset += fix_index * k;
-      aggregate_complex_data (stat, stats, fix_dim_num, fix_index, res, dim + 1, calculated_offset);
+      perfbase_aggregate_complex_data (stat, stats, fix_dim_num, fix_index, res, dim + 1, calculated_offset);
     }
-}
-
-void
-f_load_names_Num_data_page_fix_ext (PSTAT_NAMEOFFSET * names)
-{
-  int module;
-  int page_type;
-  int page_mode;
-  int latch_mode;
-  int cond_type;
-  int current_offset;
-
-  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
-    {
-      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
-	{
-	  for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT; page_mode < PERF_PAGE_MODE_CNT; page_mode++)
-	    {
-	      for (latch_mode = PERF_HOLDER_LATCH_READ; latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
-		{
-		  for (cond_type = PERF_CONDITIONAL_FIX; cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
-		    {
-		      current_offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode, latch_mode, cond_type);
-		      snprintf (names[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
-				perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
-				perfmon_stat_page_mode_name (page_mode),
-				perfmon_stat_holder_latch_name (latch_mode), perfmon_stat_cond_type_name (cond_type));
-		    }
-		}
-	    }
-	}
-    }
-}
-
-void
-f_load_names_Num_data_page_promote_ext (PSTAT_NAMEOFFSET * names)
-{
-  int module;
-  int page_type;
-  int promote_cond;
-  int holder_latch;
-  int success;
-  int current_offset;
-
-  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
-    {
-      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
-	{
-	  for (promote_cond = PERF_PROMOTE_ONLY_READER; promote_cond < PERF_PROMOTE_CONDITION_CNT; promote_cond++)
-	    {
-	      for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
-		{
-		  for (success = 0; success < 2; success++)
-		    {
-		      current_offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond,
-								      holder_latch, success);
-		      snprintf (names[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
-				perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
-				perfmon_stat_promote_cond_name (promote_cond),
-				perfmon_stat_holder_latch_name (holder_latch), (success ? "SUCCESS" : "FAILED"));
-		    }
-		}
-	    }
-	}
-    }
-}
-
-void
-f_load_names_Num_data_page_promote_time_ext (PSTAT_NAMEOFFSET * names)
-{
-  int module;
-  int page_type;
-  int promote_cond;
-  int holder_latch;
-  int success;
-  int current_offset;
-
-  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
-    {
-      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
-	{
-	  for (promote_cond = PERF_PROMOTE_ONLY_READER; promote_cond < PERF_PROMOTE_CONDITION_CNT; promote_cond++)
-	    {
-	      for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
-		{
-		  for (success = 0; success < 2; success++)
-		    {
-		      current_offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond,
-								      holder_latch, success);
-		      snprintf (names[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
-				perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
-				perfmon_stat_promote_cond_name (promote_cond),
-				perfmon_stat_holder_latch_name (holder_latch), (success ? "SUCCESS" : "FAILED"));
-		    }
-		}
-	    }
-	}
-    }
-}
-
-void
-f_load_names_Num_data_page_unfix_ext (PSTAT_NAMEOFFSET * names)
-{
-  int module;
-  int page_type;
-  int buf_dirty;
-  int holder_dirty;
-  int holder_latch;
-  int current_offset;
-
-  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
-    {
-      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
-	{
-	  for (buf_dirty = 0; buf_dirty <= 1; buf_dirty++)
-	    {
-	      for (holder_dirty = 0; holder_dirty <= 1; holder_dirty++)
-		{
-		  for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
-		    {
-		      current_offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, holder_dirty,
-								    holder_latch);
-		      snprintf (names[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
-				perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
-				buf_dirty ? "BUF_DIRTY" : "BUF_NON_DIRTY",
-				holder_dirty ? "HOLDER_DIRTY" : "HOLDER_NON_DIRTY",
-				perfmon_stat_holder_latch_name (holder_latch));
-		    }
-		}
-	    }
-	}
-    }
-}
-
-void
-f_load_names_Time_data_page_lock_acquire_time (PSTAT_NAMEOFFSET * names)
-{
-  int module;
-  int page_type;
-  int page_mode;
-  int latch_mode;
-  int cond_type;
-  int current_offset;
-
-  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
-    {
-      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
-	{
-	  for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT; page_mode < PERF_PAGE_MODE_CNT; page_mode++)
-	    {
-	      for (latch_mode = PERF_HOLDER_LATCH_READ; latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
-		{
-		  for (cond_type = PERF_CONDITIONAL_FIX; cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
-		    {
-		      current_offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode, latch_mode, cond_type);
-		      snprintf (names[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
-				perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
-				perfmon_stat_page_mode_name (page_mode),
-				perfmon_stat_holder_latch_name (latch_mode), perfmon_stat_cond_type_name (cond_type));
-		    }
-		}
-	    }
-	}
-    }
-}
-
-void
-f_load_names_Time_data_page_hold_acquire_time (PSTAT_NAMEOFFSET * names)
-{
-  int module;
-  int page_type;
-  int page_mode;
-  int latch_mode;
-  int current_offset;
-
-  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
-    {
-      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
-	{
-	  for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT; page_mode < PERF_PAGE_MODE_CNT; page_mode++)
-	    {
-	      for (latch_mode = PERF_HOLDER_LATCH_READ; latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
-		{
-		  current_offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_mode, latch_mode);
-		  snprintf (names[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s",
-			    perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
-			    perfmon_stat_page_mode_name (page_mode), perfmon_stat_holder_latch_name (latch_mode));
-		}
-	    }
-	}
-    }
-}
-
-void
-f_load_names_Time_data_page_fix_acquire_time (PSTAT_NAMEOFFSET * names)
-{
-  int module;
-  int page_type;
-  int page_mode;
-  int latch_mode;
-  int cond_type;
-  int current_offset;
-
-  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
-    {
-      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
-	{
-	  for (page_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT; page_mode < PERF_PAGE_MODE_CNT; page_mode++)
-	    {
-	      for (latch_mode = PERF_HOLDER_LATCH_READ; latch_mode < PERF_HOLDER_LATCH_CNT; latch_mode++)
-		{
-		  for (cond_type = PERF_CONDITIONAL_FIX; cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
-		    {
-		      current_offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode, latch_mode, cond_type);
-		      snprintf (names[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s,%s,%s",
-				perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
-				perfmon_stat_page_mode_name (page_mode),
-				perfmon_stat_holder_latch_name (latch_mode), perfmon_stat_cond_type_name (cond_type));
-		    }
-		}
-	    }
-	}
-    }
-}
-
-void
-f_load_names_Num_mvcc_snapshot_ext (PSTAT_NAMEOFFSET * names)
-{
-  PERF_SNAPSHOT_TYPE snapshot;
-  PERF_SNAPSHOT_RECORD_TYPE rec_type;
-  PERF_SNAPSHOT_VISIBILITY visibility;
-  int current_offset;
-
-  for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < PERF_SNAPSHOT_CNT; snapshot++)
-    {
-      for (rec_type = PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED; rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
-	{
-	  for (visibility = PERF_SNAPSHOT_INVISIBLE; visibility < PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
-	    {
-	      current_offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
-	      snprintf (names[current_offset].name, STAT_NAME_MAX_SIZE, "%s,%s,%s",
-			perfmon_stat_snapshot_name (snapshot), perfmon_stat_snapshot_record_type (rec_type),
-			(visibility == PERF_SNAPSHOT_INVISIBLE) ? "INVISIBLE" : "VISIBLE");
-	    }
-	}
-    }
-}
-
-void
-f_load_names_Time_obj_lock_acquire_time (PSTAT_NAMEOFFSET * names)
-{
-  int lock_mode;
-  int current_offset;
-
-  for (lock_mode = PERF_NA_LOCK; lock_mode <= PERF_SCH_M_LOCK; lock_mode++)
-    {
-      current_offset = lock_mode;
-      snprintf (names[current_offset].name, STAT_NAME_MAX_SIZE, "%s", perfmon_stat_lock_mode_name (lock_mode));
-    }
-}
-
-/*
- * f_load_Num_data_page_fix_ext () - Get the number of values for Num_data_page_fix_ext statistic
- *
- */
-int
-f_load_Num_data_page_fix_ext (void)
-{
-  return PERF_PAGE_FIX_COUNTERS;
-}
-
-/*
- * f_load_Num_data_page_promote_ext () - Get the number of values for Num_data_page_promote_ext statistic
- *
- */
-int
-f_load_Num_data_page_promote_ext (void)
-{
-  return PERF_PAGE_PROMOTE_COUNTERS;
-}
-
-/*
- * f_load_Num_data_page_promote_time_ext () - Get the number of values for Num_data_page_promote_time_ext statistic
- *
- */
-int
-f_load_Num_data_page_promote_time_ext (void)
-{
-  return PERF_PAGE_PROMOTE_COUNTERS;
-}
-
-/*
- * f_load_Num_data_page_unfix_ext () - Get the number of values for Num_data_page_unfix_ext statistic
- *
- */
-int
-f_load_Num_data_page_unfix_ext (void)
-{
-  return PERF_PAGE_UNFIX_COUNTERS;
-}
-
-/*
- * f_load_Time_data_page_lock_acquire_time () - Get the number of values for Time_data_page_lock_acquire_time statistic
- *
- */
-int
-f_load_Time_data_page_lock_acquire_time (void)
-{
-  return PERF_PAGE_LOCK_TIME_COUNTERS;
-}
-
-/*
- * f_load_Time_data_page_hold_acquire_time () - Get the number of values for Time_data_page_hold_acquire_time statistic
- *
- */
-int
-f_load_Time_data_page_hold_acquire_time (void)
-{
-  return PERF_PAGE_HOLD_TIME_COUNTERS;
-}
-
-/*
- * f_load_Time_data_page_fix_acquire_time () - Get the number of values for Time_data_page_fix_acquire_time statistic
- *
- */
-int
-f_load_Time_data_page_fix_acquire_time (void)
-{
-  return PERF_PAGE_FIX_TIME_COUNTERS;
-}
-
-/*
- * f_load_Num_mvcc_snapshot_ext () - Get the number of values for Num_mvcc_snapshot_ext statistic
- *
- */
-int
-f_load_Num_mvcc_snapshot_ext (void)
-{
-  return PERF_MVCC_SNAPSHOT_COUNTERS;
-}
-
-/*
- * f_load_Time_obj_lock_acquire_time () - Get the number of values for Time_obj_lock_acquire_time statistic
- *
- */
-int
-f_load_Time_obj_lock_acquire_time (void)
-{
-  return AUX_PERF_OBJ_LOCK_STAT_COUNTERS;
 }
 
 int
 metadata_initialize ()
 {
-  int idx;
+  int idx, i, n_vals;
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {
@@ -864,10 +644,13 @@ metadata_initialize ()
 	  pstat_Metadata[idx].n_vals = 4;
 	  break;
 	case PSTAT_COMPLEX_VALUE:
-	  /* We should have a load function. */
-	  assert (pstat_Metadata[idx].f_load != NULL);
-	  pstat_Metadata[idx].n_vals = pstat_Metadata[idx].f_load ();
-	  if (pstat_Metadata[idx].n_vals < 0)
+	  n_vals = 1;
+	  for (i = 0; i < pstat_Metadata[idx].dims->size; i++)
+	    {
+	      n_vals *= pstat_Metadata[idx].dims->dimensions[i]->size;
+	    }
+	  pstat_Metadata[idx].n_vals = n_vals;
+	  if (pstat_Metadata[idx].dims->size < 1)
 	    {
 	      /* Error. */
 #if defined(SERVER_MODE)
@@ -880,247 +663,6 @@ metadata_initialize ()
     }
 
   return 0;
-}
-
-/*
- * perfmon_stat_module_name () -
- */
-const char *
-perfmon_stat_module_name (const int module)
-{
-  switch (module)
-    {
-    case PERF_MODULE_SYSTEM:
-      return "SYSTEM";
-    case PERF_MODULE_USER:
-      return "WORKER";
-    case PERF_MODULE_VACUUM:
-      return "VACUUM";
-    default:
-      break;
-    }
-  return "ERROR";
-}
-
-/*
- * perf_stat_page_type_name () -
- */
-const char *
-perfmon_stat_page_type_name (const int page_type)
-{
-  switch (page_type)
-    {
-    case PERF_PAGE_UNKNOWN:
-      return "PAGE_UNKNOWN";
-    case PERF_PAGE_FTAB:
-      return "PAGE_FTAB";
-    case PERF_PAGE_HEAP:
-      return "PAGE_HEAP";
-    case PERF_PAGE_VOLHEADER:
-      return "PAGE_VOLHEADER";
-    case PERF_PAGE_VOLBITMAP:
-      return "PAGE_VOLBITMAP";
-    case PERF_PAGE_QRESULT:
-      return "PAGE_QRESULT";
-    case PERF_PAGE_EHASH:
-      return "PAGE_EHASH";
-    case PERF_PAGE_OVERFLOW:
-      return "PAGE_OVERFLOW";
-    case PERF_PAGE_AREA:
-      return "PAGE_AREA";
-    case PERF_PAGE_CATALOG:
-      return "PAGE_CATALOG";
-    case PERF_PAGE_BTREE_GENERIC:
-      return "PAGE_BTREE";
-    case PERF_PAGE_LOG:
-      return "PAGE_LOG";
-    case PERF_PAGE_DROPPED_FILES:
-      return "PAGE_DROPPED";
-    case PERF_PAGE_VACUUM_DATA:
-      return "PAGE_VACUUM_DATA";
-    case PERF_PAGE_BTREE_ROOT:
-      return "PAGE_BTREE_R";
-    case PERF_PAGE_BTREE_OVF:
-      return "PAGE_BTREE_O";
-    case PERF_PAGE_BTREE_LEAF:
-      return "PAGE_BTREE_L";
-    case PERF_PAGE_BTREE_NONLEAF:
-      return "PAGE_BTREE_N";
-    default:
-      break;
-    }
-  return "ERROR";
-}
-
-/*
- * perfmon_stat_page_mode_name () -
- */
-const char *
-perfmon_stat_page_mode_name (const int page_mode)
-{
-  switch (page_mode)
-    {
-    case PERF_PAGE_MODE_OLD_LOCK_WAIT:
-      return "OLD_WAIT";
-    case PERF_PAGE_MODE_OLD_NO_WAIT:
-      return "OLD_NO_WAIT";
-    case PERF_PAGE_MODE_NEW_LOCK_WAIT:
-      return "NEW_WAIT";
-    case PERF_PAGE_MODE_NEW_NO_WAIT:
-      return "NEW_NO_WAIT";
-    case PERF_PAGE_MODE_OLD_IN_BUFFER:
-      return "OLD_PAGE_IN_PB";
-    default:
-      break;
-    }
-  return "ERROR";
-}
-
-/*
- * perfmon_stat_holder_latch_name () -
- */
-const char *
-perfmon_stat_holder_latch_name (const int holder_latch)
-{
-  switch (holder_latch)
-    {
-    case PERF_HOLDER_LATCH_READ:
-      return "READ";
-    case PERF_HOLDER_LATCH_WRITE:
-      return "WRITE";
-    case PERF_HOLDER_LATCH_MIXED:
-      return "MIXED";
-    default:
-      break;
-    }
-  return "ERROR";
-}
-
-/*
- * perfmon_stat_cond_type_name () -
- */
-const char *
-perfmon_stat_cond_type_name (const int cond_type)
-{
-  switch (cond_type)
-    {
-    case PERF_CONDITIONAL_FIX:
-      return "COND";
-    case PERF_UNCONDITIONAL_FIX_NO_WAIT:
-      return "UNCOND";
-    case PERF_UNCONDITIONAL_FIX_WITH_WAIT:
-      return "UNCOND_WAIT";
-    default:
-      break;
-    }
-  return "ERROR";
-}
-
-/*
- * perfmon_stat_snapshot_name () -
- */
-const char *
-perfmon_stat_snapshot_name (const int snapshot)
-{
-  switch (snapshot)
-    {
-    case PERF_SNAPSHOT_SATISFIES_DELETE:
-      return "DELETE";
-    case PERF_SNAPSHOT_SATISFIES_DIRTY:
-      return "DIRTY";
-    case PERF_SNAPSHOT_SATISFIES_SNAPSHOT:
-      return "SNAPSHOT";
-    case PERF_SNAPSHOT_SATISFIES_VACUUM:
-      return "VACUUM";
-    default:
-      break;
-    }
-  return "ERROR";
-}
-
-/*
- * perfmon_stat_snapshot_record_type () -
- */
-const char *
-perfmon_stat_snapshot_record_type (const int rec_type)
-{
-  switch (rec_type)
-    {
-    case PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED:
-      return "INS_VACUUMED";
-    case PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN:
-      return "INS_CURR";
-    case PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN:
-      return "INS_OTHER";
-    case PERF_SNAPSHOT_RECORD_INSERTED_COMMITED:
-      return "INS_COMMITTED";
-    case PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST:
-      return "INS_COMMITTED_L";
-    case PERF_SNAPSHOT_RECORD_INSERTED_DELETED:
-      return "INS_DELETED";
-    case PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN:
-      return "DELETED_CURR";
-    case PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN:
-      return "DELETED_OTHER";
-    case PERF_SNAPSHOT_RECORD_DELETED_COMMITTED:
-      return "DELETED_COMMITED";
-    case PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST:
-      return "DELETED_COMMITED_L";
-    default:
-      break;
-    }
-  return "ERROR";
-}
-
-const char *
-perfmon_stat_lock_mode_name (const int lock_mode)
-{
-  switch (lock_mode)
-    {
-    case PERF_NA_LOCK:
-      return "NA_LOCK";
-    case PERF_INCON_NON_TWO_PHASE_LOCK:
-      return "INCON_2PL";
-    case PERF_NULL_LOCK:
-      return "NULL_LOCK";
-    case PERF_SCH_S_LOCK:
-      return "SCH_S_LOCK";
-    case PERF_IS_LOCK:
-      return "IS_LOCK";
-    case PERF_S_LOCK:
-      return "S_LOCK";
-    case PERF_IX_LOCK:
-      return "IX_LOCK";
-    case PERF_SIX_LOCK:
-      return "SIX_LOCK";
-    case PERF_U_LOCK:
-      return "U_LOCK";
-    case PERF_X_LOCK:
-      return "X_LOCK";
-    case PERF_SCH_M_LOCK:
-      return "SCH_M_LOCK";
-    default:
-      break;
-    }
-  return "ERROR";
-}
-
-/*
- * perfmon_stat_cond_type_name () -
- */
-const char *
-perfmon_stat_promote_cond_name (const int cond_type)
-{
-  switch (cond_type)
-    {
-    case PERF_PROMOTE_ONLY_READER:
-      return "ONLY_READER";
-    case PERF_PROMOTE_SHARED_READER:
-      return "SHARED_READER";
-    default:
-      break;
-    }
-  return "ERROR";
 }
 
 /*
@@ -1189,29 +731,23 @@ perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * 
     {
 
       fprintf (stream, "Num_%-54s | %10lld | %10lld | %10lld\n", pstat_Metadata[stat_index].stat_name,
-	       timer_count1, timer_count2, difference (timer_count1, timer_count2));
+	       timer_count1, timer_count2, timer_count1 - timer_count2);
     }
   if (timer_total1 != 0 || timer_total2 != 0)
     {
       fprintf (stream, "Total_time_%-47s | %10lld | %10lld | %10lld\n", pstat_Metadata[stat_index].stat_name,
-	       timer_total1, timer_total2, difference (timer_total1, timer_total2));
+	       timer_total1, timer_total2, timer_total1 - timer_total2);
     }
   if (timer_max1 != 0 || timer_max2 != 0)
     {
       fprintf (stream, "Max_time_%-49s | %10lld | %10lld | %10lld\n", pstat_Metadata[stat_index].stat_name,
-	       timer_max1, timer_max2, difference (timer_max1, timer_max2));
+	       timer_max1, timer_max2, timer_max1 - timer_max2);
     }
   if (timer_avg1 != 0 || timer_avg2 != 0)
     {
       fprintf (stream, "Avg_time_%-49s | %10lld | %10lld | %10lld\n", pstat_Metadata[stat_index].stat_name,
-	       timer_avg1, timer_avg2, difference (timer_avg1, timer_avg2));
+	       timer_avg1, timer_avg2, timer_avg1 - timer_avg2);
     }
-}
-
-long long
-difference (long long var1, long long var2)
-{
-  return (var1 - var2);
 }
 
 /*
@@ -1268,7 +804,7 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 }
 
 void
-init_name_offset_assoc ()
+perfbase_init_name_offset_assoc ()
 {
   int vals = 0;
   int realI = 0;
@@ -1278,7 +814,6 @@ init_name_offset_assoc ()
     {
       vals += pstat_Metadata[i].n_vals;
     }
-
   total_num_stat_vals = vals;
 
   pstat_Nameoffset = (PSTAT_NAMEOFFSET *) malloc (sizeof (PSTAT_NAMEOFFSET) * vals);
@@ -1294,26 +829,63 @@ init_name_offset_assoc ()
 	}
       else if (pstat_Metadata[i].valtype == PSTAT_COUNTER_TIMER_VALUE)
 	{
-	  char num[128], total[128], max[128], avg[128];
-	  strcpy (num, "Num_");
-	  strcat (num, pstat_Metadata[i].stat_name);
-	  strcpy (total, "Total_time_");
-	  strcat (total, pstat_Metadata[i].stat_name);
-	  strcpy (max, "Max_time_");
-	  strcat (max, pstat_Metadata[i].stat_name);
-	  strcpy (avg, "Avg_time_");
-	  strcat (avg, pstat_Metadata[i].stat_name);
+	  strcpy (pstat_Nameoffset[realI].name, "Num_");
+	  strcat (pstat_Nameoffset[realI].name, pstat_Metadata[i].stat_name);
 
-	  strcpy (pstat_Nameoffset[realI].name, num);
-	  strcpy (pstat_Nameoffset[realI + 1].name, total);
-	  strcpy (pstat_Nameoffset[realI + 2].name, max);
-	  strcpy (pstat_Nameoffset[realI + 3].name, avg);
+	  strcpy (pstat_Nameoffset[realI + 1].name, "Total_time_");
+	  strcat (pstat_Nameoffset[realI + 1].name, pstat_Metadata[i].stat_name);
+
+	  strcpy (pstat_Nameoffset[realI + 2].name, "Max_time_");
+	  strcat (pstat_Nameoffset[realI + 2].name, pstat_Metadata[i].stat_name);
+
+	  strcpy (pstat_Nameoffset[realI + 3].name, "Avg_time_");
+	  strcat (pstat_Nameoffset[realI + 3].name, pstat_Metadata[i].stat_name);
 	}
       else if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
 	{
-	  pstat_Metadata[i].f_load_names (&(pstat_Nameoffset[offset]));
+	  char buffer[STAT_NAME_MAX_SIZE];
+	  perfbase_Complex_load_names (pstat_Nameoffset, &pstat_Metadata[i], 0, offset, buffer);
 	}
       realI += pstat_Metadata[i].n_vals;
+    }
+}
+
+void
+perfbase_Complex_load_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata, int curr_dimension, int curr_offset,
+			     char *name_buffer)
+{
+  if (curr_dimension == metadata->dims->size)
+    {
+      strcpy (names[curr_offset].name, name_buffer);
+    }
+  else
+    {
+      int i, offset, k;
+      char buffer[STAT_NAME_MAX_SIZE];
+      k = 1;
+      for (i = curr_dimension + 1; i < metadata->dims->size; i++)
+	{
+	  k *= metadata->dims->dimensions[i]->size;
+	}
+      for (i = 0; i < metadata->dims->dimensions[curr_dimension]->size; i++)
+	{
+	  offset = curr_offset;
+	  offset += k * i;
+	  if (curr_dimension == 0)
+	    {
+	      strcpy (buffer, metadata->dims->dimensions[curr_dimension]->names[i]);
+	    }
+	  else
+	    {
+	      strcpy (buffer, name_buffer);
+	      if (curr_dimension != metadata->dims->size)
+		{
+		  strcat (buffer, ",");
+		}
+	      strcat (buffer, metadata->dims->dimensions[curr_dimension]->names[i]);
+	    }
+	  perfbase_Complex_load_names (names, metadata, curr_dimension + 1, offset, buffer);
+	}
     }
 }
 
