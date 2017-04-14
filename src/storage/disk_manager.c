@@ -3944,7 +3944,6 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   return NO_ERROR;
 
 error:
-  /* nothing was logged. we need to revert any partial allocations we may have made. */
   nreserved = context.vsidp - reserved_sectors;
   if (nreserved > 0)
     {
@@ -3952,6 +3951,7 @@ error:
 
       if (purpose == DB_TEMPORARY_DATA_PURPOSE)
 	{
+	  /* nothing was logged. we need to revert any partial allocations we may have made. */
 	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
 	  qsort (reserved_sectors, nreserved, sizeof (VSID), disk_compare_vsids);
