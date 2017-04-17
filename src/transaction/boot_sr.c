@@ -1039,7 +1039,7 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
 	{
 	  break;
 	}
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
       fileio_unformat (thread_p, temp_vol_fullname);
     }
 }
@@ -2679,6 +2679,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Completely vacuum database. */
   if (r_args == NULL || r_args->is_restore_from_backup == false)
     {
+      er_clear ();		/* forget any warning or error to start vacuumming */
       xvacuum (thread_p);
     }
 #endif
