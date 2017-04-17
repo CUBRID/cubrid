@@ -22,7 +22,8 @@ class AggregateExecutor : public CommandExecutor
     void printUsage ();
     ~AggregateExecutor ();
   private:
-    int fixedDimension, fixedIndex, statIndex;
+    int fixedDimension, fixedIndex;
+    PERF_STAT_ID statIndex;
     std::string statName, aggregateName, plotFilename;
     StatisticsFile *file;
     FILE *gnuplotPipe;

@@ -16,7 +16,7 @@ AggregateExecutor::AggregateExecutor (std::string &wholeCommand,
 {
   fixedDimension = -1;
   fixedIndex = -1;
-  statIndex = -1;
+  statIndex = PSTAT_BASE;
   statName = "";
   plotFilename = "";
   file = NULL;
@@ -126,7 +126,7 @@ ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
     {
       if (strcmp (pstat_Metadata[i].stat_name, statName.c_str()) == 0)
         {
-          statIndex = i;
+          statIndex = (PERF_STAT_ID) i;
           break;
         }
     }
@@ -169,6 +169,7 @@ ErrorManager::ErrorCode AggregateExecutor::execute ()
 {
   std::string cmd = "";
   std::vector<Snapshot *> snapshotsForAggregation = file->getSnapshots ();
+  UINT64 agg_vals[PERFBASE_DIMENSION_MAX_SIZE];
 
   fprintf (gnuplotPipe, "set terminal jpeg giant font \"Helvetica\" 16\n");
   cmd += "set output '";
@@ -207,19 +208,16 @@ ErrorManager::ErrorCode AggregateExecutor::execute ()
   fprintf (gnuplotPipe, "%s\n", cmd.c_str());
   std::string line = "";
   line += aggregateName;
+
   for (unsigned int i = 0; i < snapshotsForAggregation.size(); i++)
     {
-      UINT64 res = 0;
-      perfbase_aggregate_complex_data (&pstat_Metadata[statIndex],
-				       snapshotsForAggregation[i]->rawStats,
-				       fixedDimension,
-				       fixedIndex,
-				       &res,
-				       0,
-				       pstat_Metadata[statIndex].start_offset);
+      perfbase_aggregate_complex (statIndex, snapshotsForAggregation[i]->rawStats, fixedDimension, agg_vals);
+
       std::stringstream ss;
-      ss << res;
+      ss << agg_vals[0];
       line += " " + ss.str();
+
+      /* todo: fix me */
     }
 
   for (unsigned int i = 0; i < snapshotsForAggregation.size(); i++)

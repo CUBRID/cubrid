@@ -143,6 +143,13 @@ PERFBASE_COMPLEX perfbase_Complex_Time_obj_lock_acquire_time = {
   { &perfbase_Dim_lock_mode }
 };
 
+typedef struct perfbase_complex_iterator PERFBASE_COMPLEX_ITERATOR;
+struct perfbase_complex_iterator
+{
+  const PERFBASE_COMPLEX *complexp;
+  int offsets[PERFBASE_COMPLEX_MAX_DIMENSIONS];
+};
+
 PSTAT_METADATA pstat_Metadata[] = {
   /* Execution statistics for the file io */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_FILE_NUM_CREATES, "Num_file_creates"),
@@ -507,45 +514,78 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &perfbase_Complex_Time_obj_lock_acquire_time)
 };
 
-void
-perfbase_aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const int fix_dim_num, const int fix_index,
-				 UINT64 *res, int dim, int offset)
+/************************************************************************/
+/* start of static functions section                                    */
+/************************************************************************/
+
+static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
+static void perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * stats_ptr);
+static void perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, char **s,
+                                         int *remaining_size);
+
+void perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata, int curr_dimension,
+                                  int curr_offset, char *name_buffer);
+static void perfbase_complex_iterator_init (const PERFBASE_COMPLEX * complexp, PERFBASE_COMPLEX_ITERATOR * iterator);
+static bool perfbase_complex_iterator_next (PERFBASE_COMPLEX_ITERATOR * iterator);
+
+/************************************************************************/
+/* end of static functions section                                      */
+/************************************************************************/
+
+static void
+perfbase_complex_iterator_init (const PERFBASE_COMPLEX *complexp, PERFBASE_COMPLEX_ITERATOR * iterator)
 {
-  int i, j;
-  int calculated_offset;
-  int k;
+  iterator->complexp = complexp;
+  memset (iterator->offsets, 0, sizeof (iterator->offsets));
+}
 
-  if (dim == stat->complexp->size)
-    {
-      *res += stats[offset];
-      return;
-    }
+static bool
+perfbase_complex_iterator_next (PERFBASE_COMPLEX_ITERATOR * iterator)
+{
+  int crt_dim;
 
-  if (dim != fix_dim_num)
+  for (crt_dim = 0; crt_dim < iterator->complexp->size; crt_dim++)
     {
-      for (i = 0; i < stat->complexp->dimensions[dim]->size; i++)
-	{
-	  calculated_offset = offset;
-	  k = 1;
-	  for (j = dim + 1; j < stat->complexp->size; j++)
-	    {
-	      k *= stat->complexp->dimensions[j]->size;
-	    }
-	  calculated_offset += i * k;
-	  perfbase_aggregate_complex_data (stat, stats, fix_dim_num, fix_index, res, dim + 1, calculated_offset);
-	}
+      if (++iterator->offsets[crt_dim] < iterator->complexp->dimensions[crt_dim]->size)
+        {
+          /* end incrementing offsets */
+          return true;
+        }
+      /* reset offset for current dimension and proceed to increment next dimension */
+      iterator->offsets[crt_dim] = 0;
     }
-  else
+  /* all dimensions have been consumed */
+  return false;
+}
+
+void
+perfbase_aggregate_complex (PERF_STAT_ID id, const UINT64 * vals, int index_dim, UINT64 * agg_vals)
+{
+  PERFBASE_COMPLEX_ITERATOR iter;
+  const PERFBASE_COMPLEX *complexp = pstat_Metadata[id].complexp;
+  int offset_value;
+
+  assert (pstat_Metadata[id].valtype == PSTAT_COMPLEX_VALUE && complexp != NULL);
+  assert (index_dim < complexp->size);
+
+  perfbase_complex_iterator_init (complexp, &iter);
+  offset_value = pstat_Metadata[id].start_offset;
+  
+  /* initialize aggregated values */
+  memset (agg_vals, 0, sizeof (UINT64) * complexp->dimensions[index_dim]->size);
+
+  /* compute aggregated values by index_dim */
+  do
     {
-      calculated_offset = offset;
-      k = 1;
-      for (i = dim + 1; i < stat->complexp->size; i++)
-	{
-	  k *= stat->complexp->dimensions[i]->size;
-	}
-      calculated_offset += fix_index * k;
-      perfbase_aggregate_complex_data (stat, stats, fix_dim_num, fix_index, res, dim + 1, calculated_offset);
+      agg_vals[iter.offsets[index_dim]] += vals[offset_value];
+      ++offset_value;
     }
+  while (perfbase_complex_iterator_next (&iter));
+
+  /* safe-guard: all values have been processed */
+  assert (offset_value == (pstat_Metadata[id].start_offset + pstat_Metadata[id].n_vals));
+
+  /* done */
 }
 
 int
@@ -777,16 +817,28 @@ perfbase_init_name_offset_assoc ()
       else if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
 	{
 	  char buffer[STAT_NAME_MAX_SIZE];
-	  perfbase_Complex_load_names (pstat_Nameoffset, &pstat_Metadata[i], 0, offset, buffer);
+	  perfbase_load_complex_names (pstat_Nameoffset, &pstat_Metadata[i], 0, offset, buffer);
 	}
       realI += pstat_Metadata[i].n_vals;
     }
 }
 
+/*
+ * perfbase_load_complex_names () - generate names for all complex statistic fields
+ *
+ * return              : void
+ * names (in)          : array with names for each offset
+ * metadata (in)       : metadata
+ * curr_dimension (in) : current dimension
+ * curr_offset (in)    : current offset
+ * name_buffer (in)    : buffer used for generated name
+ */
 void
-perfbase_Complex_load_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata, int curr_dimension, int curr_offset,
+perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata, int curr_dimension, int curr_offset,
 			     char *name_buffer)
 {
+  /* todo: no recursion */
+  
   if (curr_dimension == metadata->complexp->size)
     {
       strcpy (names[curr_offset].name, name_buffer);
@@ -817,11 +869,56 @@ perfbase_Complex_load_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata
 		}
 	      strcat (buffer, metadata->complexp->dimensions[curr_dimension]->names[i]);
 	    }
-	  perfbase_Complex_load_names (names, metadata, curr_dimension + 1, offset, buffer);
+	  perfbase_load_complex_names (names, metadata, curr_dimension + 1, offset, buffer);
 	}
     }
 }
 
+/*
+ * perfmon_print_timer_to_buffer - Print in a buffer the statistic values for a timer type statistic
+ *
+ * return                 : void
+ * s (in/out)             : input stream
+ * stat_index (in)        : statistic index
+ * stats_ptr (in)         : statistic values array
+ * remained_size (in/out) : remained size to write in the buffer
+ */
+static void
+perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size)
+{
+  int ret;
+  int offset = pstat_Metadata[stat_index].start_offset;
+
+  assert (pstat_Metadata[stat_index].valtype == PSTAT_COUNTER_TIMER_VALUE);
+  ret = snprintf (*s, *remained_size, "The timer values for %s are:\n", pstat_Metadata[stat_index].stat_name);
+  *remained_size -= ret;
+  *s += ret;
+  ret = snprintf (*s, *remained_size, "Num_%-25s = %10llu\n", pstat_Metadata[stat_index].stat_name,
+		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
+  *remained_size -= ret;
+  *s += ret;
+  ret = snprintf (*s, *remained_size, "Total_time_%-18s = %10llu\n", pstat_Metadata[stat_index].stat_name,
+		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
+  *remained_size -= ret;
+  *s += ret;
+  ret = snprintf (*s, *remained_size, "Max_time_%-20s = %10llu\n", pstat_Metadata[stat_index].stat_name,
+		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)]);
+  *remained_size -= ret;
+  *s += ret;
+  ret = snprintf (*s, *remained_size, "Avg_time_%-20s = %10llu\n", pstat_Metadata[stat_index].stat_name,
+		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)]);
+  *remained_size -= ret;
+  *s += ret;
+}
+
+/*
+ * perfmon_stat_dump_in_file () - document me!
+ *
+ * return         : void
+ * stream (in)    :
+ * stat (in)      :
+ * stats_ptr (in) :
+ */
 void
 perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * stats_ptr)
 {
@@ -842,6 +939,95 @@ perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * 
     }
 }
 
+/*
+ *   perfmon_server_dump_stats - Print the given server statistics
+ *   return: none
+ *   stats(in) server statistics to print
+ *   stream(in): if NULL is given, stdout is used
+ */
+void
+perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr)
+{
+  int i;
+  UINT64 *stats_ptr;
+  const char *s;
+
+  if (stream == NULL)
+    {
+      stream = stdout;
+    }
+
+  fprintf (stream, "\n *** SERVER EXECUTION STATISTICS *** \n");
+
+  stats_ptr = (UINT64 *) stats;
+  for (i = 0; i < PSTAT_COUNT; i++)
+    {
+      if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
+	{
+	  break;
+	}
+
+      if (substr != NULL)
+	{
+	  s = strstr (pstat_Metadata[i].stat_name, substr);
+	}
+      else
+	{
+	  s = pstat_Metadata[i].stat_name;
+	}
+
+      if (s)
+	{
+	  int offset = pstat_Metadata[i].start_offset;
+
+	  if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
+	    {
+	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
+		{
+		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			   (unsigned long long) stats_ptr[offset]);
+		}
+	      else
+		{
+		  perfmon_print_timer_to_file (stream, i, stats_ptr);
+		}
+	    }
+	  else
+	    {
+	      fprintf (stream, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name, (float) stats_ptr[offset] / 100);
+	    }
+	}
+    }
+
+  for (; i < PSTAT_COUNT; i++)
+    {
+      if (substr != NULL)
+	{
+	  s = strstr (pstat_Metadata[i].stat_name, substr);
+	}
+      else
+	{
+	  s = pstat_Metadata[i].stat_name;
+	}
+      if (s == NULL)
+	{
+	  continue;
+	}
+
+      fprintf (stream, "%s:\n", pstat_Metadata[i].stat_name);
+      perfmon_stat_dump_in_file (stream, &pstat_Metadata[i], stats);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_buffer () - document me!
+ *
+ * return                  : void
+ * stat (in)               : 
+ * stats_ptr (in)          :
+ * s (in/out)              :
+ * remaining_size (in/out) :
+ */
 void
 perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
@@ -871,4 +1057,116 @@ perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, ch
 	    }
 	}
     }
+}
+
+/*
+ *   perfmon_server_dump_stats_to_buffer -
+ *   return: none
+ *   stats(in) server statistics to print
+ *   buffer(in):
+ *   buf_size(in):
+ *   substr(in):
+ */
+void
+perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, const char *substr)
+{
+  int i;
+  int ret;
+  UINT64 *stats_ptr;
+  int remained_size;
+  const char *s;
+  char *p;
+
+  if (buffer == NULL || buf_size <= 0)
+    {
+      return;
+    }
+
+  p = buffer;
+  remained_size = buf_size - 1;
+  ret = snprintf (p, remained_size, "\n *** SERVER EXECUTION STATISTICS *** \n");
+  remained_size -= ret;
+  p += ret;
+
+  if (remained_size <= 0)
+    {
+      return;
+    }
+
+  stats_ptr = (UINT64 *) stats;
+  for (i = 0; i < PSTAT_COUNT; i++)
+    {
+      if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
+	{
+	  break;
+	}
+
+      if (substr != NULL)
+	{
+	  s = strstr (pstat_Metadata[i].stat_name, substr);
+	}
+      else
+	{
+	  s = pstat_Metadata[i].stat_name;
+	}
+
+      if (s)
+	{
+	  int offset = pstat_Metadata[i].start_offset;
+
+	  if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
+	    {
+	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
+		{
+		  ret = snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+				  (unsigned long long) stats_ptr[offset]);
+		}
+	      else
+		{
+		  perfmon_print_timer_to_buffer (&p, i, stats_ptr, &remained_size);
+		  ret = 0;
+		}
+	    }
+	  else
+	    {
+	      ret = snprintf (p, remained_size, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name,
+			      (float) stats_ptr[offset] / 100);
+	    }
+	  remained_size -= ret;
+	  p += ret;
+	  if (remained_size <= 0)
+	    {
+	      assert (remained_size == 0);	/* should not overrun the buffer */
+	      return;
+	    }
+	}
+    }
+
+  for (; i < PSTAT_COUNT && remained_size > 0; i++)
+    {
+      if (substr != NULL)
+	{
+	  s = strstr (pstat_Metadata[i].stat_name, substr);
+	}
+      else
+	{
+	  s = pstat_Metadata[i].stat_name;
+	}
+      if (s == NULL)
+	{
+	  continue;
+	}
+
+      ret = snprintf (p, remained_size, "%s:\n", pstat_Metadata[i].stat_name);
+      remained_size -= ret;
+      p += ret;
+      if (remained_size <= 0)
+	{
+	  assert (remained_size == 0);	/* should not overrun the buffer */
+	  return;
+	}
+      perfmon_stat_dump_in_buffer (&pstat_Metadata[i], stats, &p, &remained_size);
+    }
+
+  buffer[buf_size - 1] = '\0';
 }
