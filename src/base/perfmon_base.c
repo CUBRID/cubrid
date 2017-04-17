@@ -16,160 +16,131 @@
 #define PSTAT_METADATA_INIT_COUNTER_TIMER(id, name) { id, name, PSTAT_COUNTER_TIMER_VALUE, 0, 0, NULL}
 #define PSTAT_METADATA_INIT_COMPUTED_RATIO(id, name) \
   { id, name, PSTAT_COMPUTED_RATIO_VALUE, 0, 0, NULL}
-#define PSTAT_METADATA_INIT_COMPLEX(id, name, load, load_names, dimensions) \
-  { \
-    .psid = id, \
-    .stat_name = name, \
-    .valtype = PSTAT_COMPLEX_VALUE, \
-    .dims = dimensions, \
-  }
+#define PSTAT_METADATA_INIT_COMPLEX(id, name, md_complex) \
+  { id, name, PSTAT_COMPLEX_VALUE, 0, 0, md_complex }
 
 PSTAT_GLOBAL pstat_Global;
 PSTAT_NAMEOFFSET *pstat_Nameoffset;
 int total_num_stat_vals;
 
-PERFBASE_DIM perfbase_Dim_module = {
-  .size = PERF_MODULE_CNT,
-  .names = {"SYSTEM", "WORKER", "VACUUM"}
+const PERFBASE_DIM perfbase_Dim_module = {
+  PERF_MODULE_CNT,
+  {"SYSTEM", "WORKER", "VACUUM"},
 };
 
-PERFBASE_DIM perfbase_Dim_page_type = {
-  .size = PERF_PAGE_CNT,
-  .names = {"PAGE_UNKNOWN", "PAGE_FTAB", "PAGE_HEAP", "PAGE_VOLHEADER", "PAGE_VOLBITMAP",
-	    "PAGE_QRESULT", "PAGE_EHASH", "PAGE_OVERFLOW", "PAGE_AREA", "PAGE_CATALOG",
-	    "PAGE_BTREE", "PAGE_LOG", "PAGE_DROPPED", "PAGE_VACUUM_DATA", "PAGE_BTREE_R",
-	    "PAGE_BTREE_O", "PAGE_BTREE_L", "PAGE_BTREE_N"}
+const PERFBASE_DIM perfbase_Dim_page_type = {
+  PERF_PAGE_CNT,
+  { "PAGE_UNKNOWN", "PAGE_FTAB", "PAGE_HEAP", "PAGE_VOLHEADER", "PAGE_VOLBITMAP", "PAGE_QRESULT", "PAGE_EHASH",
+    "PAGE_OVERFLOW", "PAGE_AREA", "PAGE_CATALOG", "PAGE_BTREE", "PAGE_LOG", "PAGE_DROPPED", "PAGE_VACUUM_DATA",
+    "PAGE_BTREE_R", "PAGE_BTREE_O", "PAGE_BTREE_L", "PAGE_BTREE_N"},
 };
 
-PERFBASE_DIM perfbase_Dim_page_mode = {
-  .size = PERF_PAGE_MODE_CNT,
-  .names = {"OLD_WAIT", "OLD_NO_WAIT", "NEW_WAIT", "NEW_NO_WAIT", "OLD_PAGE_IN_PB"}
+const PERFBASE_DIM perfbase_Dim_page_mode = {
+  PERF_PAGE_MODE_CNT,
+  { "OLD_WAIT", "OLD_NO_WAIT", "NEW_WAIT", "NEW_NO_WAIT", "OLD_PAGE_IN_PB" },
 };
 
-PERFBASE_DIM perfbase_Dim_holder_latch = {
-  .size = PERF_HOLDER_LATCH_CNT,
-  .names = {"READ", "WRITE", "MIXED"}
+const PERFBASE_DIM perfbase_Dim_holder_latch = {
+  PERF_HOLDER_LATCH_CNT,
+  { "READ", "WRITE", "MIXED" },
 };
 
-PERFBASE_DIM perfbase_Dim_cond_type = {
-  .size = PERF_CONDITIONAL_FIX_CNT,
-  .names = {"COND", "UNCOND", "UNCOND_WAIT"}
+const PERFBASE_DIM perfbase_Dim_cond_type = {
+  PERF_CONDITIONAL_FIX_CNT,
+  { "COND", "UNCOND", "UNCOND_WAIT" },
 };
 
-PERFBASE_DIM perfbase_Dim_snapshot = {
-  .size = PERF_SNAPSHOT_CNT,
-  .names = {"DELETE", "DIRTY", "SNAPSHOT", "VACUUM"}
+const PERFBASE_DIM perfbase_Dim_snapshot = {
+  PERF_SNAPSHOT_CNT,
+  { "DELETE", "DIRTY", "SNAPSHOT", "VACUUM" },
 };
 
-PERFBASE_DIM perfbase_Dim_snapshot_record_type = {
-  .size = PERF_SNAPSHOT_RECORD_TYPE_CNT,
-  .names = {"INS_VACUUMED", "INS_CURR", "INS_OTHER", "INS_COMMITTED", "INS_COMMITTED_L",
-	    "INS_DELETED", "DELETED_CURR", "DELETED_OTHER", "DELETED_COMMITED", "DELETED_COMMITED_L"}
+const PERFBASE_DIM perfbase_Dim_snapshot_record_type = {
+  PERF_SNAPSHOT_RECORD_TYPE_CNT,
+  { "INS_VACUUMED", "INS_CURR", "INS_OTHER", "INS_COMMITTED", "INS_COMMITTED_L", "INS_DELETED", "DELETED_CURR",
+    "DELETED_OTHER", "DELETED_COMMITED", "DELETED_COMMITED_L" },
 };
 
-PERFBASE_DIM perfbase_Dim_lock_mode = {
-  .size = PERF_LOCK_CNT,
-  .names = {"NA_LOCK", "INCON_2PL", "NULL_LOCK", "SCH_S_LOCK", "IS_LOCK", "S_LOCK",
-	    "IX_LOCK", "SIX_LOCK", "U_LOCK", "X_LOCK", "SCH_M_LOCK"}
+const PERFBASE_DIM perfbase_Dim_lock_mode = {
+  PERF_LOCK_CNT,
+  { "NA_LOCK", "INCON_2PL", "NULL_LOCK", "SCH_S_LOCK", "IS_LOCK", "S_LOCK", "IX_LOCK", "SIX_LOCK", "U_LOCK", "X_LOCK",
+    "SCH_M_LOCK" },
 };
 
-PERFBASE_DIM perfbase_Dim_promote_cond = {
-  .size = 2,
-  .names = {"ONLY_READER", "SHARED_READER"}
+const PERFBASE_DIM perfbase_Dim_promote_cond = {
+  2,
+  { "ONLY_READER", "SHARED_READER" },
 };
 
-PERFBASE_DIM perfbase_Dim_success = {
-  .size = 2,
-  .names = {"SUCCESS", "FAILED"}
+const PERFBASE_DIM perfbase_Dim_success = {
+  2,
+  { "SUCCESS", "FAILED" },
 };
 
-PERFBASE_DIM perfbase_Dim_buf_dirty = {
-  .size = 2,
-  .names = {"BUF_DIRTY", "BUF_NON_DIRTY"}
+const PERFBASE_DIM perfbase_Dim_buf_dirty = {
+  2,
+  { "BUF_DIRTY", "BUF_NON_DIRTY" },
 };
 
-PERFBASE_DIM perfbase_Dim_holder_dirty = {
-  .size = 2,
-  .names = {"HOLDER_DIRTY", "HOLDER_NON_DIRTY"}
+const PERFBASE_DIM perfbase_Dim_holder_dirty = {
+  2,
+  { "HOLDER_DIRTY", "HOLDER_NON_DIRTY" },
 };
 
-PERFBASE_DIM perfbase_Dim_visibility = {
-  .size = 2,
-  .names = {"INVISIBLE", "VISIBLE"}
+const PERFBASE_DIM perfbase_Dim_visibility = {
+  2,
+  { "INVISIBLE", "VISIBLE" },
 };
 
-PERFBASE_COMPLEX perfbase_Complex_page_fix = {
-  .size = 5,
-  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
-				     &perfbase_Dim_page_type,
-				     &perfbase_Dim_page_mode,
-				     &perfbase_Dim_holder_latch,
-				     &perfbase_Dim_cond_type}
+const PERFBASE_COMPLEX perfbase_Complex_page_fix = {
+  5,
+  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch,
+    &perfbase_Dim_cond_type },
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_promote = {
-  .size = 5,
-  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
-				     &perfbase_Dim_page_type,
-				     &perfbase_Dim_promote_cond,
-				     &perfbase_Dim_holder_latch,
-				     &perfbase_Dim_success}
+  5,
+  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_promote_cond, &perfbase_Dim_holder_latch,
+    &perfbase_Dim_success },
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_promote_time = {
-  .size = 5,
-  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
-				     &perfbase_Dim_page_type,
-				     &perfbase_Dim_promote_cond,
-				     &perfbase_Dim_holder_latch,
-				     &perfbase_Dim_success}
+  5,
+  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_promote_cond, &perfbase_Dim_holder_latch,
+    &perfbase_Dim_success },
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_unfix = {
-  .size = 5,
-  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
-				     &perfbase_Dim_page_type,
-				     &perfbase_Dim_buf_dirty,
-				     &perfbase_Dim_holder_dirty,
-				     &perfbase_Dim_holder_latch}
+  5,
+  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_buf_dirty, &perfbase_Dim_holder_dirty,
+    &perfbase_Dim_holder_latch },
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_lock_acquire_time = {
-  .size = 5,
-  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
-				     &perfbase_Dim_page_type,
-				     &perfbase_Dim_page_mode,
-				     &perfbase_Dim_holder_latch,
-				     &perfbase_Dim_cond_type}
+  5,
+  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch,
+    &perfbase_Dim_cond_type },
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_hold_acquire_time = {
-  .size = 4,
-  .dimensions = (PERFBASE_DIM *[4]) {&perfbase_Dim_module,
-				     &perfbase_Dim_page_type,
-				     &perfbase_Dim_page_mode,
-				     &perfbase_Dim_holder_latch}
+  4,
+  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch }
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_fix_acquire_time = {
-  .size = 5,
-  .dimensions = (PERFBASE_DIM *[5]) {&perfbase_Dim_module,
-				     &perfbase_Dim_page_type,
-				     &perfbase_Dim_page_mode,
-				     &perfbase_Dim_holder_latch,
-				     &perfbase_Dim_cond_type}
+  5,
+  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch,
+    &perfbase_Dim_cond_type },
 };
 
 PERFBASE_COMPLEX perfbase_Complex_Num_mvcc_snapshot = {
-  .size = 3,
-  .dimensions = (PERFBASE_DIM *[3]) {&perfbase_Dim_snapshot,
-				     &perfbase_Dim_snapshot_record_type,
-				     &perfbase_Dim_visibility}
+  3,
+  { &perfbase_Dim_snapshot, &perfbase_Dim_snapshot_record_type, &perfbase_Dim_visibility }
 };
 
 PERFBASE_COMPLEX perfbase_Complex_Time_obj_lock_acquire_time = {
-  .size = 1,
-  .dimensions = (PERFBASE_DIM *[1]) {&perfbase_Dim_lock_mode}
+  1,
+  { &perfbase_Dim_lock_mode }
 };
 
 PSTAT_METADATA pstat_Metadata[] = {
@@ -519,70 +490,32 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC,
 				      "Data_page_total_promote_time_msec"),
 
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS,
-			       "Num_data_page_fix_ext",
-			       f_load_Num_data_page_fix_ext,
-			       f_load_names_Num_data_page_fix_ext,
-			       &perfbase_Complex_page_fix),
-
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_COUNTERS,
-			       "Num_data_page_promote_ext",
-			       f_load_Num_data_page_promote_ext,
-			       f_load_names_Num_data_page_promote_ext,
-			       &perfbase_Complex_page_promote),
-
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_TIME_COUNTERS,
-			       "Num_data_page_promote_time_ext",
-			       f_load_Num_data_page_promote_time_ext,
-			       f_load_names_Num_data_page_promote_time_ext,
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &perfbase_Complex_page_fix),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_COUNTERS, "Num_data_page_promote_ext", &perfbase_Complex_page_promote),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_TIME_COUNTERS, "Num_data_page_promote_time_ext",
 			       &perfbase_Complex_page_promote_time),
-
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_UNFIX_COUNTERS,
-			       "Num_data_page_unfix_ext",
-			       f_load_Num_data_page_unfix_ext,
-			       f_load_names_Num_data_page_unfix_ext,
-			       &perfbase_Complex_page_unfix),
-
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_LOCK_TIME_COUNTERS,
-			       "Time_data_page_lock_acquire_time",
-			       f_load_Time_data_page_lock_acquire_time,
-			       f_load_names_Time_data_page_lock_acquire_time,
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_UNFIX_COUNTERS, "Num_data_page_unfix_ext", &perfbase_Complex_page_unfix),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_LOCK_TIME_COUNTERS, "Time_data_page_lock_acquire_time",
 			       &perfbase_Complex_page_lock_acquire_time),
-
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_HOLD_TIME_COUNTERS,
-			       "Time_data_page_hold_acquire_time",
-			       f_load_Time_data_page_hold_acquire_time,
-			       f_load_names_Time_data_page_hold_acquire_time,
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_HOLD_TIME_COUNTERS, "Time_data_page_hold_acquire_time",
 			       &perfbase_Complex_page_hold_acquire_time),
-
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_TIME_COUNTERS,
-			       "Time_data_page_fix_acquire_time",
-			       f_load_Time_data_page_fix_acquire_time,
-			       f_load_names_Time_data_page_fix_acquire_time,
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_TIME_COUNTERS, "Time_data_page_fix_acquire_time",
 			       &perfbase_Complex_page_fix_acquire_time),
-
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_MVCC_SNAPSHOT_COUNTERS,
-			       "Num_mvcc_snapshot_ext",
-			       f_load_Num_mvcc_snapshot_ext,
-			       f_load_names_Num_mvcc_snapshot_ext,
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_MVCC_SNAPSHOT_COUNTERS, "Num_mvcc_snapshot_ext",
 			       &perfbase_Complex_Num_mvcc_snapshot),
-
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS,
-			       "Time_obj_lock_acquire_time",
-			       f_load_Time_obj_lock_acquire_time,
-			       f_load_names_Time_obj_lock_acquire_time,
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time",
 			       &perfbase_Complex_Time_obj_lock_acquire_time)
 };
 
 void
 perfbase_aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const int fix_dim_num, const int fix_index,
-				 int *res, int dim, int offset)
+				 UINT64 *res, int dim, int offset)
 {
   int i, j;
   int calculated_offset;
   int k;
 
-  if (dim == stat->dims->size)
+  if (dim == stat->complexp->size)
     {
       *res += stats[offset];
       return;
@@ -590,13 +523,13 @@ perfbase_aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const in
 
   if (dim != fix_dim_num)
     {
-      for (i = 0; i < stat->dims->dimensions[dim]->size; i++)
+      for (i = 0; i < stat->complexp->dimensions[dim]->size; i++)
 	{
 	  calculated_offset = offset;
 	  k = 1;
-	  for (j = dim + 1; j < stat->dims->size; j++)
+	  for (j = dim + 1; j < stat->complexp->size; j++)
 	    {
-	      k *= stat->dims->dimensions[j]->size;
+	      k *= stat->complexp->dimensions[j]->size;
 	    }
 	  calculated_offset += i * k;
 	  perfbase_aggregate_complex_data (stat, stats, fix_dim_num, fix_index, res, dim + 1, calculated_offset);
@@ -606,9 +539,9 @@ perfbase_aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const in
     {
       calculated_offset = offset;
       k = 1;
-      for (i = dim + 1; i < stat->dims->size; i++)
+      for (i = dim + 1; i < stat->complexp->size; i++)
 	{
-	  k *= stat->dims->dimensions[i]->size;
+	  k *= stat->complexp->dimensions[i]->size;
 	}
       calculated_offset += fix_index * k;
       perfbase_aggregate_complex_data (stat, stats, fix_dim_num, fix_index, res, dim + 1, calculated_offset);
@@ -645,12 +578,12 @@ metadata_initialize ()
 	  break;
 	case PSTAT_COMPLEX_VALUE:
 	  n_vals = 1;
-	  for (i = 0; i < pstat_Metadata[idx].dims->size; i++)
+	  for (i = 0; i < pstat_Metadata[idx].complexp->size; i++)
 	    {
-	      n_vals *= pstat_Metadata[idx].dims->dimensions[i]->size;
+	      n_vals *= pstat_Metadata[idx].complexp->dimensions[i]->size;
 	    }
 	  pstat_Metadata[idx].n_vals = n_vals;
-	  if (pstat_Metadata[idx].dims->size < 1)
+	  if (pstat_Metadata[idx].complexp->size < 1)
 	    {
 	      /* Error. */
 #if defined(SERVER_MODE)
@@ -854,7 +787,7 @@ void
 perfbase_Complex_load_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata, int curr_dimension, int curr_offset,
 			     char *name_buffer)
 {
-  if (curr_dimension == metadata->dims->size)
+  if (curr_dimension == metadata->complexp->size)
     {
       strcpy (names[curr_offset].name, name_buffer);
     }
@@ -863,26 +796,26 @@ perfbase_Complex_load_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata
       int i, offset, k;
       char buffer[STAT_NAME_MAX_SIZE];
       k = 1;
-      for (i = curr_dimension + 1; i < metadata->dims->size; i++)
+      for (i = curr_dimension + 1; i < metadata->complexp->size; i++)
 	{
-	  k *= metadata->dims->dimensions[i]->size;
+	  k *= metadata->complexp->dimensions[i]->size;
 	}
-      for (i = 0; i < metadata->dims->dimensions[curr_dimension]->size; i++)
+      for (i = 0; i < metadata->complexp->dimensions[curr_dimension]->size; i++)
 	{
 	  offset = curr_offset;
 	  offset += k * i;
 	  if (curr_dimension == 0)
 	    {
-	      strcpy (buffer, metadata->dims->dimensions[curr_dimension]->names[i]);
+	      strcpy (buffer, metadata->complexp->dimensions[curr_dimension]->names[i]);
 	    }
 	  else
 	    {
 	      strcpy (buffer, name_buffer);
-	      if (curr_dimension != metadata->dims->size)
+	      if (curr_dimension != metadata->complexp->size)
 		{
 		  strcat (buffer, ",");
 		}
-	      strcat (buffer, metadata->dims->dimensions[curr_dimension]->names[i]);
+	      strcat (buffer, metadata->complexp->dimensions[curr_dimension]->names[i]);
 	    }
 	  perfbase_Complex_load_names (names, metadata, curr_dimension + 1, offset, buffer);
 	}

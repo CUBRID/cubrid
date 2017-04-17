@@ -4,6 +4,12 @@
 
 #include "STAT_TOOL_PlotExecutor.hpp"
 
+#define DEFAULT_PLOT_FILENAME "plot"
+#define ALIAS_CMD "-a"
+#define VARIABLE_CMD "-v"
+#define PLOT_FILENAME_CMD "-f"
+#define INTERVAL_CMD "-i"
+
 PlotExecutor::PlotExecutor (std::string &wholeCommand,
                             std::vector<StatisticsFile *> &files) : CommandExecutor (wholeCommand, files)
 {

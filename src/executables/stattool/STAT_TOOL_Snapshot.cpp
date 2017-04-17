@@ -84,7 +84,6 @@ UINT64 Snapshot::getStatusValueFromName (const char *stat_name)
 void Snapshot::print (FILE *stream)
 {
   int i;
-  const char *s;
   UINT64 *stats_ptr = this->rawStats;
   char strTime[80];
 

@@ -13,13 +13,6 @@ extern "C" {
 #include <stdlib.h>
 }
 
-#define NAME_CMD "-n"
-#define DIM_CMD "-d"
-#define INDEX_CMD "-i"
-#define ALIAS_CMD "-a"
-#define FILENAME_CMD "-f"
-#define DEFAULT_PLOT_FILENAME "aggregate_plot"
-
 class AggregateExecutor : public CommandExecutor
 {
   public:

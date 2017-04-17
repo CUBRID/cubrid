@@ -4,6 +4,13 @@
 
 #include "STAT_TOOL_AggregateExecutor.hpp"
 
+#define NAME_CMD "-n"
+#define DIM_CMD "-d"
+#define INDEX_CMD "-i"
+#define ALIAS_CMD "-a"
+#define FILENAME_CMD "-f"
+#define DEFAULT_PLOT_FILENAME "aggregate_plot"
+
 AggregateExecutor::AggregateExecutor (std::string &wholeCommand,
                                       std::vector<StatisticsFile *> &files) : CommandExecutor (wholeCommand, files)
 {
@@ -139,7 +146,7 @@ ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
   aggregateName = "";
   aggregateName += pstat_Metadata[statIndex].stat_name;
 
-  for (int i = 0; i < pstat_Metadata[statIndex].dims->size; i++)
+  for (int i = 0; i < pstat_Metadata[statIndex].complexp->size; i++)
     {
       if (fixedDimension == i)
         {
@@ -202,7 +209,7 @@ ErrorManager::ErrorCode AggregateExecutor::execute ()
   line += aggregateName;
   for (unsigned int i = 0; i < snapshotsForAggregation.size(); i++)
     {
-      int res = 0;
+      UINT64 res = 0;
       perfbase_aggregate_complex_data (&pstat_Metadata[statIndex],
 				       snapshotsForAggregation[i]->rawStats,
 				       fixedDimension,

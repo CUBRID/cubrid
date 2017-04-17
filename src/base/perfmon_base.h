@@ -18,6 +18,7 @@ extern "C"
 #endif
 
 #define MAX_DIM_LEN 32
+#define MAX_COMPLEX_DIMENSIONS 8
 #define STAT_NAME_MAX_SIZE 64
 
 typedef enum
@@ -496,27 +497,27 @@ struct PSTAT_NameOffsetAssoc
 
 typedef struct PSTAT_NameOffsetAssoc PSTAT_NAMEOFFSET;
 
-/* PSTAT_METADATA
- * This structure will keep meta-data information on each statistic we are monitoring.
- */
-typedef struct pstat_metadata PSTAT_METADATA;
 typedef int (*PSTAT_LOAD_FUNC) (void);
 typedef void (*PSTAT_LOAD_NAMES_FUNC) (PSTAT_NAMEOFFSET *);
 
 typedef struct perfbase_Dim PERFBASE_DIM;
 struct perfbase_Dim
 {
-  const char *names[MAX_DIM_LEN];
   int size;
+  const char *names[MAX_DIM_LEN];
 };
 
 typedef struct perfbase_Complex PERFBASE_COMPLEX;
 struct perfbase_Complex
 {
-  PERFBASE_DIM **dimensions;
   int size;
+  const PERFBASE_DIM *dimensions[MAX_COMPLEX_DIMENSIONS];
 };
 
+/* PSTAT_METADATA
+ * This structure will keep meta-data information on each statistic we are monitoring.
+ */
+typedef struct pstat_metadata PSTAT_METADATA;
 struct pstat_metadata
 {
   /* These members must be set. */
@@ -529,7 +530,7 @@ struct pstat_metadata
   int n_vals;
 
   /* dimensions are only for complex types */
-  PERFBASE_COMPLEX *dims;
+  const PERFBASE_COMPLEX *complexp;
 };
 
 /* Statistics activation flags */
@@ -655,7 +656,7 @@ const char *perfmon_stat_lock_mode_name (const int lock_mode);
 void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 void perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * stats2);
 void perfbase_aggregate_complex_data (PSTAT_METADATA * stat, UINT64 * stats, const int fix_dim_num, const int fix_index,
-				      int *res, int dim, int offset);
+				      UINT64 *res, int dim, int offset);
 void perfbase_Complex_load_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata,
 				  int curr_dimension, int curr_offset, char *name_buffer);
 void perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * stats_ptr);

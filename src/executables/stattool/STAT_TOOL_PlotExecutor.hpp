@@ -8,12 +8,6 @@
 #include "STAT_TOOL_CommandExecutor.hpp"
 #include <algorithm>
 
-#define DEFAULT_PLOT_FILENAME "plot"
-#define ALIAS_CMD "-a"
-#define VARIABLE_CMD "-v"
-#define PLOT_FILENAME_CMD "-f"
-#define INTERVAL_CMD "-i"
-
 class PlotExecutor : public CommandExecutor
 {
   public:
