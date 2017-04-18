@@ -14640,11 +14640,14 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
   /* todo: add watchers on lru list mutexes */
 
   /* new victim hint should be either NULL or in the victimization zone */
-  new_victim_hint = (bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint) ? bcb_new_hint : NULL);
+  new_victim_hint = (bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint)) ? bcb_new_hint : NULL;
 
   /* restart from bottom if hint is NULL but we have victim candidates */
   new_victim_hint = ((new_victim_hint == NULL && lru_list->count_vict_cand > (was_vict_count_updated ? 0 : 1))
 		     ? lru_list->bottom : new_victim_hint);
+
+  new_victim_hint = ((new_victim_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (new_victim_hint))
+		     ? new_victim_hint : NULL);
 
   /* update hint (if it was not already updated) */
   assert (new_victim_hint == NULL || pgbuf_bcb_get_lru_index (new_victim_hint) == lru_list->index);
@@ -14804,8 +14807,9 @@ pgbuf_bcb_change_zone (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int new_lru_idx
       int lru_idx = PGBUF_GET_LRU_INDEX (old_flags);
       lru_list = PGBUF_GET_LRU_LIST (lru_idx);
 
-      /* hint should have been changed already */
-      assert (lru_list->victim_hint != bcb);
+      /* hint should have been changed already if the BCB was in LRU3; otherwise (if downgraded, we may expect that
+       * victim hint is changed by other thread (checkpoint->pgbuf_bcb_update_flags) */
+      assert (lru_list->victim_hint != bcb || PGBUF_GET_ZONE (old_flags) != PGBUF_LRU_3_ZONE);
 
       if (PGBUF_IS_SHARED_LRU_INDEX (PGBUF_GET_LRU_INDEX (old_flags)))
 	{
