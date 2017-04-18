@@ -1713,6 +1713,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   DISK_RECV_INIT_PAGES_INFO log_data;
   int npages;
   bool do_logging;
+  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
   int error_code = NO_ERROR;
 
   assert (nsect_extend > 0);
@@ -1729,15 +1730,16 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   if (fileio_expand (thread_p, volid, npages, voltype) != npages)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
+      goto exit;
     }
 
   /* fix volume header */
   error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_WRITE, &page_volheader, &volheader);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      return error_code;
+      assert_release (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto exit;
     }
 
   assert (volheader->type == voltype);
@@ -1766,8 +1768,13 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   /* success */
   /* caller will update cache */
 
-  pgbuf_unfix (thread_p, page_volheader);
-  return NO_ERROR;
+exit:
+  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+  if (page_volheader != NULL)
+    {
+      pgbuf_unfix (thread_p, page_volheader);
+    }
+  return error_code;
 }
 
 /*
