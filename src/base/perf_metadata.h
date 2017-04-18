@@ -625,6 +625,12 @@ struct pstat_metadata
 
 extern PSTAT_METADATA pstat_Metadata[];
 
+typedef struct perfmeta_complex_cursor PERFMETA_COMPLEX_CURSOR;
+struct perfmeta_complex_cursor
+{
+  int indices[PERFBASE_COMPLEX_MAX_DIMENSIONS];
+};
+
 int f_load_Num_data_page_fix_ext (void);
 int f_load_Num_data_page_promote_ext (void);
 int f_load_Num_data_page_promote_time_ext (void);
@@ -712,5 +718,8 @@ struct pstat_global
 extern int total_num_stat_vals;
 extern PSTAT_NAMEOFFSET *pstat_Nameoffset;
 extern PSTAT_GLOBAL pstat_Global;
+
+extern int perfmeta_complex_cursor_get_offset (PERF_STAT_ID psid, const PERFMETA_COMPLEX_CURSOR * cursor);
+extern int perfmeta_complex_get_offset (PERF_STAT_ID psid, ...);
 
 #endif //CUBRID_PERFMON_BASE_H

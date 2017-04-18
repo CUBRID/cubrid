@@ -1605,23 +1605,18 @@ perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
 void
 perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type)
 {
-  int module;
-  int offset;
+  PERFMETA_COMPLEX_CURSOR cursor;
 
   assert (pstat_Global.initialized);
 
-  module = perfmon_get_module_type (thread_p);
+  /* todo: hm... how can we do this in a better way? */
+  cursor.indices[0] = perfmon_get_module_type (thread_p);
+  cursor.indices[1] = page_type;
+  cursor.indices[2] = page_found_mode;
+  cursor.indices[3] = latch_mode;
+  cursor.indices[4] = cond_type;
 
-  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-  assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
-  assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
-  assert (cond_type >= PERF_CONDITIONAL_FIX && cond_type < PERF_CONDITIONAL_FIX_CNT);
-
-  offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
-  assert (offset < PERF_PAGE_FIX_COUNTERS);
-
-  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_FIX_COUNTERS, offset, 1);
+  perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_PBX_FIX_COUNTERS, &cursor), 1);
 }
 
 /*
@@ -1632,24 +1627,20 @@ void
 perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
 		     UINT64 amount)
 {
-  int module;
-  int offset;
+  PERFMETA_COMPLEX_CURSOR cursor;
 
   assert (pstat_Global.initialized);
 
-  module = perfmon_get_module_type (thread_p);
+  /* todo: hm... how can we do this in a better way? */
+  cursor.indices[0] = perfmon_get_module_type (thread_p);
+  cursor.indices[1] = page_type;
+  cursor.indices[2] = promote_cond;
+  cursor.indices[3] = holder_latch;
+  cursor.indices[4] = success;
 
-  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-  assert (promote_cond >= PERF_PROMOTE_ONLY_READER && promote_cond < PERF_PROMOTE_CONDITION_CNT);
-  assert (holder_latch >= PERF_HOLDER_LATCH_READ && holder_latch < PERF_HOLDER_LATCH_CNT);
-  assert (success == 0 || success == 1);
-
-  offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
-  assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
-
-  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_PROMOTE_COUNTERS, offset, 1);
-  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_PROMOTE_TIME_COUNTERS, offset, amount);
+  perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_PBX_PROMOTE_COUNTERS, &cursor), 1);
+  perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_PBX_PROMOTE_TIME_COUNTERS, &cursor),
+                         amount);
 }
 
 /*
@@ -1661,23 +1652,18 @@ perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, i
 void
 perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder, int holder_latch)
 {
-  int module;
-  int offset;
+  PERFMETA_COMPLEX_CURSOR cursor;
 
   assert (pstat_Global.initialized);
 
-  module = perfmon_get_module_type (thread_p);
+  /* todo: hm... how can we do this in a better way? */
+  cursor.indices[0] = perfmon_get_module_type (thread_p);
+  cursor.indices[1] = page_type;
+  cursor.indices[2] = buf_dirty;
+  cursor.indices[3] = dirtied_by_holder;
+  cursor.indices[4] = holder_latch;
 
-  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-  assert (buf_dirty == 0 || buf_dirty == 1);
-  assert (dirtied_by_holder == 0 || dirtied_by_holder == 1);
-  assert (holder_latch >= PERF_HOLDER_LATCH_READ && holder_latch < PERF_HOLDER_LATCH_CNT);
-
-  offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, dirtied_by_holder, holder_latch);
-  assert (offset < PERF_PAGE_UNFIX_COUNTERS);
-
-  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_UNFIX_COUNTERS, offset, 1);
+  perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_PBX_UNFIX_COUNTERS, &cursor), 1);
 }
 
 /*
@@ -1688,24 +1674,19 @@ void
 perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 			       int cond_type, UINT64 amount)
 {
-  int module;
-  int offset;
+  PERFMETA_COMPLEX_CURSOR cursor;
 
   assert (pstat_Global.initialized);
-
-  module = perfmon_get_module_type (thread_p);
-
-  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-  assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
-  assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
-  assert (cond_type >= PERF_CONDITIONAL_FIX && cond_type < PERF_CONDITIONAL_FIX_CNT);
   assert (amount > 0);
 
-  offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
-  assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
+  /* todo: hm... how can we do this in a better way? */
+  cursor.indices[0] = perfmon_get_module_type (thread_p);
+  cursor.indices[1] = page_type;
+  cursor.indices[2] = page_found_mode;
+  cursor.indices[3] = latch_mode;
+  cursor.indices[4] = cond_type;
 
-  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_LOCK_TIME_COUNTERS, offset, amount);
+  perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_PBX_LOCK_TIME_COUNTERS, &cursor), amount);
 }
 
 /*
@@ -1716,23 +1697,18 @@ void
 perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 			       UINT64 amount)
 {
-  int module;
-  int offset;
+  PERFMETA_COMPLEX_CURSOR cursor;
 
   assert (pstat_Global.initialized);
-
-  module = perfmon_get_module_type (thread_p);
-
-  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-  assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
-  assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
   assert (amount > 0);
 
-  offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_found_mode, latch_mode);
-  assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
+  /* todo: hm... how can we do this in a better way? */
+  cursor.indices[0] = perfmon_get_module_type (thread_p);
+  cursor.indices[1] = page_type;
+  cursor.indices[2] = page_found_mode;
+  cursor.indices[3] = latch_mode;
 
-  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_HOLD_TIME_COUNTERS, offset, amount);
+  perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_PBX_HOLD_TIME_COUNTERS, &cursor), amount);
 }
 
 /*
@@ -1743,24 +1719,19 @@ void
 perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 			      int cond_type, UINT64 amount)
 {
-  int module;
-  int offset;
+  PERFMETA_COMPLEX_CURSOR cursor;
 
   assert (pstat_Global.initialized);
-
-  module = perfmon_get_module_type (thread_p);
-
-  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-  assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
-  assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
-  assert (cond_type >= PERF_CONDITIONAL_FIX && cond_type < PERF_CONDITIONAL_FIX_CNT);
   assert (amount > 0);
 
-  offset = PERF_PAGE_FIX_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
-  assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
+  /* todo: hm... how can we do this in a better way? */
+  cursor.indices[0] = perfmon_get_module_type (thread_p);
+  cursor.indices[1] = page_type;
+  cursor.indices[2] = page_found_mode;
+  cursor.indices[3] = latch_mode;
+  cursor.indices[4] = cond_type;
 
-  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_FIX_TIME_COUNTERS, offset, amount);
+  perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_PBX_FIX_TIME_COUNTERS, &cursor), amount);
 }
 
 /*
@@ -1770,17 +1741,17 @@ perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_f
 void
 perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility)
 {
-  int offset;
+  PERFMETA_COMPLEX_CURSOR cursor;
 
   assert (pstat_Global.initialized);
+  assert (amount > 0);
 
-  assert (snapshot >= PERF_SNAPSHOT_SATISFIES_DELETE && snapshot < PERF_SNAPSHOT_CNT);
-  assert (rec_type >= PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED && rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT);
-  assert (visibility >= PERF_SNAPSHOT_INVISIBLE && visibility < PERF_SNAPSHOT_VISIBILITY_CNT);
-  offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
-  assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
+  /* todo: hm... how can we do this in a better way? */
+  cursor.indices[0] = snapshot;
+  cursor.indices[1] = rec_type;
+  cursor.indices[2] = visibility;
 
-  perfmon_add_stat_at_offset (thread_p, PSTAT_MVCC_SNAPSHOT_COUNTERS, offset, 1);
+  perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_MVCC_SNAPSHOT_COUNTERS, &cursor), amount);
 }
 
 #endif /* SERVER_MODE || SA_MODE */
@@ -1919,10 +1890,10 @@ perfmon_server_calc_stats (UINT64 * stats)
 		{
 		  for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
 		    {
-		      offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, holder_dirty, holder_latch);
-
-		      assert (offset < PERF_PAGE_UNFIX_COUNTERS);
-		      counter = stats[pstat_Metadata[PSTAT_PBX_UNFIX_COUNTERS].start_offset + offset];
+                      offset =
+                        perfmeta_complex_get_offset (PSTAT_PBX_UNFIX_COUNTERS, module, page_type, buf_dirty,
+                                                     holder_dirty, holder_latch);
+		      counter = stats[offset];
 
 		      total_unfix += counter;
 		      if (module == PERF_MODULE_VACUUM)
@@ -1947,9 +1918,10 @@ perfmon_server_calc_stats (UINT64 * stats)
 	    {
 	      for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
 		{
-		  offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_found_mode, holder_latch);
-		  assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
-		  counter = stats[pstat_Metadata[PSTAT_PBX_HOLD_TIME_COUNTERS].start_offset + offset];
+                  offset =
+                    perfmeta_complex_get_offset (PSTAT_PBX_HOLD_TIME_COUNTERS, module, page_type, page_found_mode,
+                                                 holder_latch);
+                  counter = stats[offset];
 
 		  if (page_type != PAGE_LOG && counter > 0)
 		    {
@@ -1958,18 +1930,21 @@ perfmon_server_calc_stats (UINT64 * stats)
 
 		  for (cond_type = PERF_CONDITIONAL_FIX; cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
 		    {
-		      offset = PERF_PAGE_FIX_TIME_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
-		      assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
-		      counter = stats[pstat_Metadata[PSTAT_PBX_FIX_TIME_COUNTERS].start_offset + offset];
+		      offset =
+                        perfmeta_complex_get_offset (PSTAT_PBX_FIX_TIME_COUNTERS, module, page_type, page_found_mode,
+                                                     holder_latch, cond_type);
+                      counter = stats[offset];
+
 		      /* do not include fix time of log pages */
 		      if (page_type != PAGE_LOG && counter > 0)
 			{
 			  fix_time_usec += counter;
 			}
 
-		      offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
-		      assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
-		      counter = stats[pstat_Metadata[PSTAT_PBX_LOCK_TIME_COUNTERS].start_offset + offset];
+		      offset =
+                        perfmeta_complex_get_offset (PSTAT_PBX_LOCK_TIME_COUNTERS, module, page_type, page_found_mode,
+                                                     holder_latch, cond_type);
+		      counter = stats[offset];
 
 		      if (page_type != PAGE_LOG && counter > 0)
 			{
@@ -1980,10 +1955,9 @@ perfmon_server_calc_stats (UINT64 * stats)
 			  && page_found_mode != PERF_PAGE_MODE_NEW_NO_WAIT)
 			{
 			  offset =
-			    PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
-
-			  assert (offset < PERF_PAGE_FIX_COUNTERS);
-			  counter = stats[pstat_Metadata[PSTAT_PBX_FIX_COUNTERS].start_offset + offset];
+                            perfmeta_complex_get_offset (PSTAT_PBX_FIX_COUNTERS, module, page_type, page_found_mode,
+                                                         holder_latch, cond_type);
+			  counter = stats[offset];
 
 			  if (module == PERF_MODULE_VACUUM)
 			    {
@@ -2039,10 +2013,10 @@ perfmon_server_calc_stats (UINT64 * stats)
 		{
 		  for (success = 0; success < 2; success++)
 		    {
-		      offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
-		      assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
-
-		      counter = stats[pstat_Metadata[PSTAT_PBX_PROMOTE_TIME_COUNTERS].start_offset + offset];
+                      offset =
+                        perfmeta_complex_get_offset (PSTAT_PBX_PROMOTE_TIME_COUNTERS, module, page_type, promote_cond,
+                                                     holder_latch, success);
+		      counter = stats[offset];
 		      if (counter)
 			{
 			  total_promote_time += counter;

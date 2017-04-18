@@ -160,7 +160,7 @@ typedef struct perfbase_complex_iterator PERFBASE_COMPLEX_ITERATOR;
 struct perfbase_complex_iterator
 {
   const PERFBASE_COMPLEX *complexp;
-  int offsets[PERFBASE_COMPLEX_MAX_DIMENSIONS];
+  PERFMETA_COMPLEX_CURSOR cursor;
 };
 
 PSTAT_METADATA pstat_Metadata[] = {
@@ -548,7 +548,7 @@ static void
 perfbase_complex_iterator_init (const PERFBASE_COMPLEX * complexp, PERFBASE_COMPLEX_ITERATOR * iterator)
 {
   iterator->complexp = complexp;
-  memset (iterator->offsets, 0, sizeof (iterator->offsets));
+  memset (iterator->cursor.indices, 0, sizeof (iterator->cursor.indices));
 }
 
 static bool
@@ -558,13 +558,13 @@ perfbase_complex_iterator_next (PERFBASE_COMPLEX_ITERATOR * iterator)
 
   for (crt_dim = iterator->complexp->size - 1; crt_dim >= 0; crt_dim--)
     {
-      if (++iterator->offsets[crt_dim] < iterator->complexp->dimensions[crt_dim]->size)
+      if (++iterator->cursor.indices[crt_dim] < iterator->complexp->dimensions[crt_dim]->size)
 	{
 	  /* end incrementing offsets */
 	  return true;
 	}
       /* reset offset for current dimension and proceed to increment next dimension */
-      iterator->offsets[crt_dim] = 0;
+      iterator->cursor.indices[crt_dim] = 0;
     }
   /* all dimensions have been consumed */
   return false;
@@ -589,7 +589,7 @@ perfbase_aggregate_complex (PERF_STAT_ID id, const UINT64 * vals, int index_dim,
   /* compute aggregated values by index_dim */
   do
     {
-      agg_vals[iter.offsets[index_dim]] += vals[offset_value];
+      agg_vals[iter.cursor.indices[index_dim]] += vals[offset_value];
       ++offset_value;
     }
   while (perfbase_complex_iterator_next (&iter));
@@ -858,12 +858,12 @@ perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata
 	{
 	  if (i == 0)
 	    {
-	      strcpy (names[offset].name, complexp->dimensions[i]->names[iter.offsets[i]]);
+	      strcpy (names[offset].name, complexp->dimensions[i]->names[iter.cursor.indices[i]]);
 	    }
 	  else
 	    {
 	      strcat (names[offset].name, ", ");
-	      strcat (names[offset].name, complexp->dimensions[i]->names[iter.offsets[i]]);
+	      strcat (names[offset].name, complexp->dimensions[i]->names[iter.cursor.indices[i]]);
 	    }
 	}
       offset++;
@@ -1166,4 +1166,51 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
     }
 
   buffer[buf_size - 1] = '\0';
+}
+
+/* todo: inline */
+int
+perfmeta_complex_cursor_get_offset (PERF_STAT_ID psid, const PERFMETA_COMPLEX_CURSOR * cursor)
+{
+  PSTAT_METADATA *metada = &pstat_Metadata[psid];
+  int offset = 0;
+  int iter_dim = 0;
+  int multiplier = 1;
+
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
+  assert (metada->valtype == PSTAT_COMPLEX_VALUE);
+
+  /* compute offset */
+  for (iter_dim = metada->complexp->size - 1; iter_dim >= 0; iter_dim--)
+    {
+      assert (cursor->indices[iter_dim] < metada->complexp->dimensions[iter_dim]->size
+              && cursor->indices[iter_dim] >= 0);
+      offset += cursor->indices[iter_dim] * multiplier;
+      multiplier *= metada->complexp->dimensions[iter_dim]->size;
+    }
+
+  return offset + metada->start_offset;
+}
+
+int
+perfmeta_complex_get_offset (PERF_STAT_ID psid, ...)
+{
+  PSTAT_METADATA *metada = &pstat_Metadata[psid];
+  va_list ap;
+  int offset = 0;
+  int iter_dim;
+  int val;
+  int multiplier = 1;
+
+  va_start (ap, psid);
+  for (iter_dim = metada->complexp->size - 1; iter_dim >= 0; iter_dim--)
+    {
+      val = va_arg (ap, int);
+      assert (val < metada->complexp->dimensions[iter_dim]->size && val >= 0);
+      offset += val * multiplier;
+      multiplier *= metada->complexp->dimensions[iter_dim]->size;
+    }
+  va_end (ap);
+
+  return offset + metada->start_offset;
 }
