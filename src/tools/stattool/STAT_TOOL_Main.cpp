@@ -18,7 +18,8 @@ extern "C" {
 
 std::vector<StatisticsFile *> files;
 
-int main (int argc, char **argv)
+int
+main (int argc, char **argv)
 {
   bool quit = false;
   char command[MAX_COMMAND_SIZE];

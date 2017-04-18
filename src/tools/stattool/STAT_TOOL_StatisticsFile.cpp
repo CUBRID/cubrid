@@ -9,7 +9,8 @@ StatisticsFile::StatisticsFile (const std::string &filename, const std::string &
 {
 }
 
-ErrorManager::ErrorCode StatisticsFile::readFileAndInit ()
+ErrorManager::ErrorCode
+StatisticsFile::readFileAndInit ()
 {
   FILE *binary_fp = NULL;
   struct tm *timestamp;
@@ -53,7 +54,8 @@ ErrorManager::ErrorCode StatisticsFile::readFileAndInit ()
   return ErrorManager::NO_ERRORS;
 }
 
-Snapshot *StatisticsFile::getSnapshotBySeconds (unsigned int seconds)
+Snapshot *
+StatisticsFile::getSnapshotBySeconds (unsigned int seconds)
 {
   unsigned int i, j, mid;
 
@@ -86,7 +88,8 @@ Snapshot *StatisticsFile::getSnapshotBySeconds (unsigned int seconds)
   return snapshots[j];
 }
 
-int StatisticsFile::getSnapshotIndexBySeconds (unsigned int seconds)
+int
+StatisticsFile::getSnapshotIndexBySeconds (unsigned int seconds)
 {
   unsigned int i, j, mid;
 
@@ -119,7 +122,8 @@ int StatisticsFile::getSnapshotIndexBySeconds (unsigned int seconds)
   return j;
 }
 
-void StatisticsFile::getIndicesOfSnapshotsByArgument (const char *argument, int &index1, int &index2)
+void
+StatisticsFile::getIndicesOfSnapshotsByArgument (const char *argument, int &index1, int &index2)
 {
   char diffArgument[32];
   char alias[MAX_FILE_NAME_SIZE];
@@ -166,7 +170,8 @@ void StatisticsFile::getIndicesOfSnapshotsByArgument (const char *argument, int 
     }
 }
 
-Snapshot *StatisticsFile::getSnapshotByArgument (const char *argument)
+Snapshot *
+StatisticsFile::getSnapshotByArgument (const char *argument)
 {
   char diffArgument[32];
   char alias[MAX_FILE_NAME_SIZE];
@@ -193,76 +198,6 @@ Snapshot *StatisticsFile::getSnapshotByArgument (const char *argument)
       return getSnapshotBySeconds (minutes1);
     }
 }
-
-#if 0
-void StatisticsFile::printInTableForm (Snapshot *s1, Snapshot *s2, FILE *stream)
-{
-  int i;
-  char timestamp1[20], timestamp2[20];
-
-  if (s1 == NULL && s2 == NULL)
-    {
-      printf ("You must provide two existing aliases!\n");
-      return;
-    }
-
-  UINT64 *stats1 = s1->rawStats;
-  UINT64 *stats2 = s2->rawStats;
-
-  strftime (timestamp1, 80, "%H:%M:%S", &s1->timestamp);
-  strftime (timestamp2, 80, "%H:%M:%S", &s2->timestamp);
-  printf ("\t\t\t\t\t\t\t      %s \t   %s \t  diff\n", timestamp1, timestamp2);
-
-  for (i = 0; i < PSTAT_COUNT; i++)
-    {
-      if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
-        {
-          break;
-        }
-
-      int offset = pstat_Metadata[i].start_offset;
-
-      if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
-        {
-          if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
-            {
-              if ( stats1[offset] == 0 && stats2[offset] == 0)
-                {
-                  continue;
-                }
-
-              fprintf (stream, "%-58s | %10lld | %10lld | %10lld\n", pstat_Metadata[i].stat_name,
-                       (long long) stats1[offset],
-                       (long long) stats2[offset],
-                       difference ((long long)stats1[offset], (long long)stats2[offset]));
-            }
-          else
-            {
-              perfmon_compare_timer (stream, i, stats1, stats2);
-            }
-        }
-      else
-        {
-          if (stats1[offset] == 0 && stats2[offset] == 0)
-            {
-              continue;
-            }
-
-          fprintf (stream, "%-58s | %10.2f | %10.2f | %10.2f\n", pstat_Metadata[i].stat_name,
-                   (long long) stats1[offset] / 100.0f,
-                   (long long) stats2[offset] / 100.0f,
-                   difference ((long long)stats1[offset], (long long)stats2[offset])/100.0f);
-        }
-    }
-
-  for (; i < PSTAT_COUNT; i++)
-    {
-      fprintf (stream, "\n%s:\n", pstat_Metadata[i].stat_name);
-      pstat_Metadata[i].f_dump_diff_in_file (stream, & (stats1[pstat_Metadata[i].start_offset]),
-                                             & (stats2[pstat_Metadata[i].start_offset]));
-    }
-}
-#endif
 
 StatisticsFile::~StatisticsFile()
 {

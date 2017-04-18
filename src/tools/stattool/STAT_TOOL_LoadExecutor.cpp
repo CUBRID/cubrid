@@ -9,7 +9,8 @@ LoadExecutor::LoadExecutor (std::string &wholeCommand,
 {
 }
 
-ErrorManager::ErrorCode LoadExecutor::parseCommandAndInit()
+ErrorManager::ErrorCode
+LoadExecutor::parseCommandAndInit()
 {
   if (arguments.size() < 2)
     {
@@ -23,7 +24,8 @@ ErrorManager::ErrorCode LoadExecutor::parseCommandAndInit()
   return ErrorManager::NO_ERRORS;
 }
 
-ErrorManager::ErrorCode LoadExecutor::execute()
+ErrorManager::ErrorCode
+LoadExecutor::execute()
 {
   StatisticsFile *newFile = new StatisticsFile (std::string (filename), std::string (alias));
 
@@ -36,7 +38,8 @@ ErrorManager::ErrorCode LoadExecutor::execute()
   return errorCode;
 }
 
-void LoadExecutor::printUsage()
+void
+LoadExecutor::printUsage()
 {
   printf ("usage: load <filename> <alias>\n");
 }

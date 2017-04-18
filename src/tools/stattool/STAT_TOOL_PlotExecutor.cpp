@@ -19,7 +19,8 @@ PlotExecutor::PlotExecutor (std::string &wholeCommand,
   possibleOptions.push_back (INTERVAL_CMD);
 }
 
-ErrorManager::ErrorCode PlotExecutor::parseCommandAndInit()
+ErrorManager::ErrorCode
+PlotExecutor::parseCommandAndInit()
 {
   int index1 = -1, index2 = -1;
   bool hasFilename = false;
@@ -142,7 +143,8 @@ ErrorManager::ErrorCode PlotExecutor::parseCommandAndInit()
   return ErrorManager::NO_ERRORS;
 }
 
-ErrorManager::ErrorCode PlotExecutor::execute()
+ErrorManager::ErrorCode
+PlotExecutor::execute()
 {
   std::string cmd = "";
 
@@ -193,13 +195,15 @@ ErrorManager::ErrorCode PlotExecutor::execute()
   return ErrorManager::NO_ERRORS;
 }
 
-bool PlotExecutor::hasArgument (unsigned int i)
+bool
+PlotExecutor::hasArgument (unsigned int i)
 {
   return i != arguments.size() - 1 &&
          std::find (possibleOptions.begin (), possibleOptions.end (), arguments[i+1]) == possibleOptions.end();
 }
 
-void PlotExecutor::printUsage()
+void
+PlotExecutor::printUsage()
 {
   printf ("usage: plot <OPTIONS>\n\nvalid options:\n");
   printf ("\t-a <alias1, alias2...>\n");

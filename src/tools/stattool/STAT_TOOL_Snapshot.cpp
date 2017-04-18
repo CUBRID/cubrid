@@ -31,7 +31,8 @@ Snapshot::Snapshot (const Snapshot &other)
     }
 }
 
-Snapshot *Snapshot::difference (Snapshot *other)
+Snapshot *
+Snapshot::difference (Snapshot *other)
 {
   Snapshot *newSnapshot = new Snapshot (this->getSeconds (), other->getSeconds ());
 
@@ -43,7 +44,8 @@ Snapshot *Snapshot::difference (Snapshot *other)
   return newSnapshot;
 }
 
-Snapshot *Snapshot::divide (Snapshot *other)
+Snapshot *
+Snapshot::divide (Snapshot *other)
 {
   Snapshot *newSnapshot = new Snapshot (this->getSeconds (), other->getSeconds ());
 
@@ -62,12 +64,14 @@ Snapshot *Snapshot::divide (Snapshot *other)
   return newSnapshot;
 }
 
-time_t Snapshot::getSeconds ()
+time_t
+Snapshot::getSeconds ()
 {
   return mktime (&this->timestamp);
 }
 
-UINT64 Snapshot::getStatusValueFromName (const char *stat_name)
+UINT64
+Snapshot::getStatusValueFromName (const char *stat_name)
 {
   int i;
 
@@ -81,7 +85,8 @@ UINT64 Snapshot::getStatusValueFromName (const char *stat_name)
   return 0;
 }
 
-void Snapshot::print (FILE *stream)
+void
+Snapshot::print (FILE *stream)
 {
   int i;
   UINT64 *stats_ptr = this->rawStats;
