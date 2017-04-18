@@ -26,7 +26,8 @@ AggregateExecutor::AggregateExecutor (std::string &wholeCommand,
   possibleOptions.push_back (FILENAME_CMD);
 }
 
-ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
+ErrorManager::ErrorCode
+AggregateExecutor::parseCommandAndInit ()
 {
 #if !defined (WINDOWS)
   gnuplotPipe = popen ("gnuplot", "w");
@@ -57,20 +58,21 @@ ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
         {
           if (i+1 < arguments.size())
             {
-	      char *endptr;
-	      const char *str = arguments[i+1].c_str();
-	      fixedDimension = (int) strtol (str, &endptr, 10);
-	      if (endptr == str) {
-		fixedDimension = -1;
-		fixedDimensionStr = arguments[i+1];
-	      }
+              char *endptr;
+              const char *str = arguments[i+1].c_str();
+              fixedDimension = (int) strtol (str, &endptr, 10);
+              if (endptr == str)
+                {
+                  fixedDimension = -1;
+                  fixedDimensionStr = arguments[i+1];
+                }
             }
           else
             {
               ErrorManager::printErrorMessage (ErrorManager::MISSING_ARGUMENT_ERROR, "You must provide a dimension!");
               return ErrorManager::MISSING_ARGUMENT_ERROR;
             }
-	}
+        }
       else if (arguments[i].compare (ALIAS_CMD) == 0)
         {
           if (i+1 < arguments.size())
@@ -119,22 +121,26 @@ ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
       if (strcmp (pstat_Metadata[i].stat_name, statName.c_str()) == 0)
         {
           statIndex = (PERF_STAT_ID) i;
-	  if (fixedDimension == -1) {
-	    for (int j = 0; j < pstat_Metadata[statIndex].complexp->size; j++) {
-	      if (fixedDimensionStr.compare (pstat_Metadata[statIndex].complexp->dimensions[j]->alias) == 0) {
-		fixedDimension = j;
-		break;
-	      }
-	    }
-	  }
+          if (fixedDimension == -1)
+            {
+              for (int j = 0; j < pstat_Metadata[statIndex].complexp->size; j++)
+                {
+                  if (fixedDimensionStr.compare (pstat_Metadata[statIndex].complexp->dimensions[j]->alias) == 0)
+                    {
+                      fixedDimension = j;
+                      break;
+                    }
+                }
+            }
           break;
         }
     }
 
-  if (fixedDimension == -1) {
-    ErrorManager::printErrorMessage (ErrorManager::INVALID_ARGUMENT_ERROR, "dimension (-d)");
-    return ErrorManager::INVALID_ARGUMENT_ERROR;
-  }
+  if (fixedDimension == -1)
+    {
+      ErrorManager::printErrorMessage (ErrorManager::INVALID_ARGUMENT_ERROR, "dimension (-d)");
+      return ErrorManager::INVALID_ARGUMENT_ERROR;
+    }
 
   if (statIndex == -1)
     {
@@ -166,7 +172,8 @@ ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
   return ErrorManager::NO_ERRORS;
 }
 
-ErrorManager::ErrorCode AggregateExecutor::execute ()
+ErrorManager::ErrorCode
+AggregateExecutor::execute ()
 {
   std::string cmd = "";
   std::vector<Snapshot *> snapshotsForAggregation = file->getSnapshots ();
@@ -196,39 +203,43 @@ ErrorManager::ErrorCode AggregateExecutor::execute ()
 
   fprintf (gnuplotPipe, "%s\n", cmd.c_str());
   for (unsigned int i = 0; i < snapshotsForAggregation.size(); i++)
-  {
-    cmd = "";
-    perfbase_aggregate_complex (statIndex, snapshotsForAggregation[i]->rawStats, fixedDimension, agg_vals);
-    time_t seconds = mktime (&snapshotsForAggregation[i]->timestamp) - file->getRelativeSeconds ();
-    std::stringstream ss2;
-    ss2 << seconds;
-    cmd += ss2.str();
+    {
+      cmd = "";
+      perfbase_aggregate_complex (statIndex, snapshotsForAggregation[i]->rawStats, fixedDimension, agg_vals);
+      time_t seconds = mktime (&snapshotsForAggregation[i]->timestamp) - file->getRelativeSeconds ();
+      std::stringstream ss2;
+      ss2 << seconds;
+      cmd += ss2.str();
 
-    for (int j = 0; j < pstat_Metadata[statIndex].complexp->dimensions[fixedDimension]->size; j++) {
-      std::stringstream ss3;
-      ss3 << agg_vals[j];
-      cmd += " ";
-      cmd += ss3.str();
+      for (int j = 0; j < pstat_Metadata[statIndex].complexp->dimensions[fixedDimension]->size; j++)
+        {
+          std::stringstream ss3;
+          ss3 << agg_vals[j];
+          cmd += " ";
+          cmd += ss3.str();
+        }
+      dataLines.push_back (cmd);
     }
-    dataLines.push_back(cmd);
-  }
 
   std::string title = "";
-  for (int i = 0; i < pstat_Metadata[statIndex].complexp->dimensions[fixedDimension]->size; i++) {
-    std::string tmp(aggregateName);
-    std::size_t index = tmp.find ("[x]");
-    tmp[index+1] = (char)(i+'0');
-    title += tmp;
-    title += " ";
-  }
-
-  for (int i = 0; i < pstat_Metadata[statIndex].complexp->dimensions[fixedDimension]->size; i++) {
-    fprintf (gnuplotPipe, "%s\n", title.c_str());
-    for (unsigned int j = 0; j < dataLines.size(); j++) {
-      fprintf (gnuplotPipe, "%s\n", dataLines[j].c_str());
+  for (int i = 0; i < pstat_Metadata[statIndex].complexp->dimensions[fixedDimension]->size; i++)
+    {
+      std::string tmp (aggregateName);
+      std::size_t index = tmp.find ("[x]");
+      tmp[index+1] = (char) (i+'0');
+      title += tmp;
+      title += " ";
     }
-    fprintf (gnuplotPipe, "e\n");
-  }
+
+  for (int i = 0; i < pstat_Metadata[statIndex].complexp->dimensions[fixedDimension]->size; i++)
+    {
+      fprintf (gnuplotPipe, "%s\n", title.c_str());
+      for (unsigned int j = 0; j < dataLines.size(); j++)
+        {
+          fprintf (gnuplotPipe, "%s\n", dataLines[j].c_str());
+        }
+      fprintf (gnuplotPipe, "e\n");
+    }
 
 #if !defined (WINDOWS)
   pclose (gnuplotPipe);
@@ -239,7 +250,8 @@ ErrorManager::ErrorCode AggregateExecutor::execute ()
   return ErrorManager::NO_ERRORS;
 }
 
-void AggregateExecutor::printUsage ()
+void
+AggregateExecutor::printUsage ()
 {
   printf ("usage: aggregate <OPTIONS>\n\nvalid options:\n");
   printf ("\t-a <alias>\n");

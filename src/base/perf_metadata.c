@@ -533,8 +533,8 @@ PSTAT_METADATA pstat_Metadata[] = {
 
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 static void perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * stats_ptr);
-static void perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, char **s,
-					 int *remaining_size);
+static void
+perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, char **s, int *remaining_size);
 
 void perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata);
 static void perfbase_complex_iterator_init (const PERFBASE_COMPLEX * complexp, PERFBASE_COMPLEX_ITERATOR * iterator);

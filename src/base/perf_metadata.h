@@ -490,15 +490,11 @@ typedef enum
 				 */
 } PSTAT_VALUE_TYPE;
 
+typedef struct PSTAT_NameOffsetAssoc PSTAT_NAMEOFFSET;
 struct PSTAT_NameOffsetAssoc
 {
   char name[STAT_NAME_MAX_SIZE];
 };
-
-typedef struct PSTAT_NameOffsetAssoc PSTAT_NAMEOFFSET;
-
-typedef int (*PSTAT_LOAD_FUNC) (void);
-typedef void (*PSTAT_LOAD_NAMES_FUNC) (PSTAT_NAMEOFFSET *);
 
 typedef struct perfbase_Dim PERFBASE_DIM;
 struct perfbase_Dim
@@ -624,53 +620,19 @@ struct pstat_metadata
 #define PSTAT_COUNTER_TIMER_AVG_TIME_VALUE(startvalp) ((startvalp) + 3)
 
 extern PSTAT_METADATA pstat_Metadata[];
-
 typedef struct perfmeta_complex_cursor PERFMETA_COMPLEX_CURSOR;
 struct perfmeta_complex_cursor
 {
   int indices[PERFBASE_COMPLEX_MAX_DIMENSIONS];
 };
 
-int f_load_Num_data_page_fix_ext (void);
-int f_load_Num_data_page_promote_ext (void);
-int f_load_Num_data_page_promote_time_ext (void);
-int f_load_Num_data_page_unfix_ext (void);
-int f_load_Time_data_page_lock_acquire_time (void);
-int f_load_Time_data_page_hold_acquire_time (void);
-int f_load_Time_data_page_fix_acquire_time (void);
-int f_load_Num_mvcc_snapshot_ext (void);
-int f_load_Time_obj_lock_acquire_time (void);
-
-void f_load_names_Num_data_page_fix_ext (PSTAT_NAMEOFFSET * names);
-void f_load_names_Num_data_page_promote_ext (PSTAT_NAMEOFFSET * names);
-void f_load_names_Num_data_page_promote_time_ext (PSTAT_NAMEOFFSET * names);
-void f_load_names_Num_data_page_unfix_ext (PSTAT_NAMEOFFSET * names);
-void f_load_names_Time_data_page_lock_acquire_time (PSTAT_NAMEOFFSET * names);
-void f_load_names_Time_data_page_hold_acquire_time (PSTAT_NAMEOFFSET * names);
-void f_load_names_Time_data_page_fix_acquire_time (PSTAT_NAMEOFFSET * names);
-void f_load_names_Num_mvcc_snapshot_ext (PSTAT_NAMEOFFSET * names);
-void f_load_names_Time_obj_lock_acquire_time (PSTAT_NAMEOFFSET * names);
-
-const char *perfmon_stat_module_name (const int module);
-const char *perfmon_stat_page_type_name (const int page_type);
-const char *perfmon_stat_page_mode_name (const int page_mode);
-const char *perfmon_stat_holder_latch_name (const int holder_latch);
-const char *perfmon_stat_cond_type_name (const int cond_type);
-const char *perfmon_stat_promote_cond_name (const int cond_type);
-const char *perfmon_stat_snapshot_name (const int snapshot);
-const char *perfmon_stat_snapshot_record_type (const int rec_type);
-const char *perfmon_stat_lock_mode_name (const int lock_mode);
 void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 void perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * stats2);
 extern void perfbase_aggregate_complex (PERF_STAT_ID id, const UINT64 * vals, int index_dim, UINT64 * agg_vals);
-
 extern void perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
 extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, const char *substr);
-
 int metadata_initialize ();
 void perfbase_init_name_offset_assoc ();
-
-long long difference (long long var1, long long var2);
 
 typedef enum
 {

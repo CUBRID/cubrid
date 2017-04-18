@@ -1,6 +1,7 @@
 #include "STAT_TOOL_ErrorManager.hpp"
 
-void ErrorManager::printErrorMessage (ErrorCode ec, std::string userMessage)
+void
+ErrorManager::printErrorMessage (ErrorCode ec, std::string userMessage)
 {
   if (ec < NUM_ERRORS)
     {
