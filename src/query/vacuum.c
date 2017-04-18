@@ -1165,6 +1165,9 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  /* deallocated */
 	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
 	  assert (n_heap_objects == 1);
+
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run\n",
+				 VPID_AS_ARGS (&helper.home_vpid));
 	  return NO_ERROR;
 	}
       ptype = pgbuf_get_page_ptype (thread_p, helper.home_page);
@@ -1174,6 +1177,9 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  assert (ptype == PAGE_FTAB);
 	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
 	  assert (n_heap_objects == 1);
+
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run and reused as"
+				 " file table page\n", VPID_AS_ARGS (&helper.home_vpid));
 
 	  pgbuf_unfix_and_init (thread_p, helper.home_page);
 	  return NO_ERROR;
@@ -1186,6 +1192,9 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  /* slot does not exist */
 	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
 	  assert (n_heap_objects == 1);
+
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run and reused as"
+				 " new heap page\n", VPID_AS_ARGS (&helper.home_vpid));
 
 	  pgbuf_unfix_and_init (thread_p, helper.home_page);
 	  return NO_ERROR;
