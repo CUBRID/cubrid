@@ -1630,6 +1630,7 @@ perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, i
   PERFMETA_COMPLEX_CURSOR cursor;
 
   assert (pstat_Global.initialized);
+  assert (amount > 0);
 
   /* todo: hm... how can we do this in a better way? */
   cursor.indices[0] = perfmon_get_module_type (thread_p);
@@ -1744,14 +1745,13 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
   PERFMETA_COMPLEX_CURSOR cursor;
 
   assert (pstat_Global.initialized);
-  assert (amount > 0);
 
   /* todo: hm... how can we do this in a better way? */
   cursor.indices[0] = snapshot;
   cursor.indices[1] = rec_type;
   cursor.indices[2] = visibility;
 
-  perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_MVCC_SNAPSHOT_COUNTERS, &cursor), amount);
+  perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_MVCC_SNAPSHOT_COUNTERS, &cursor), 1);
 }
 
 #endif /* SERVER_MODE || SA_MODE */
