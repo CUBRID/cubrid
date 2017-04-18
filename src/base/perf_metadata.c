@@ -5,10 +5,7 @@
 #include <assert.h>
 #include "perf_metadata.h"
 #include "porting.h"
-
-#if defined (SERVER_MODE) || defined (SA_MODE) || defined (CS_MODE)
-#include "error_manager.h"
-#endif
+#include <stdarg.h>
 
 #define PSTAT_METADATA_INIT_SINGLE_ACC(id, name) { id, name, PSTAT_ACCUMULATE_SINGLE_VALUE, 0, 0, NULL}
 #define PSTAT_METADATA_INIT_SINGLE_PEEK(id, name) \
@@ -637,10 +634,7 @@ metadata_initialize ()
 	  pstat_Metadata[idx].n_vals = n_vals;
 	  if (pstat_Metadata[idx].complexp->size < 1)
 	    {
-	      /* Error. */
-#if defined(SERVER_MODE)
-	      ASSERT_ERROR ();
-#endif
+	      assert (false);
 	      return pstat_Metadata[idx].n_vals;
 	    }
 	}
@@ -1184,7 +1178,7 @@ perfmeta_complex_cursor_get_offset (PERF_STAT_ID psid, const PERFMETA_COMPLEX_CU
   for (iter_dim = metada->complexp->size - 1; iter_dim >= 0; iter_dim--)
     {
       assert (cursor->indices[iter_dim] < metada->complexp->dimensions[iter_dim]->size
-              && cursor->indices[iter_dim] >= 0);
+	      && cursor->indices[iter_dim] >= 0);
       offset += cursor->indices[iter_dim] * multiplier;
       multiplier *= metada->complexp->dimensions[iter_dim]->size;
     }
