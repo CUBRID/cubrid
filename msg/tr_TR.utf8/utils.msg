@@ -949,6 +949,8 @@ geçerli seçenekler:\n\
   -c, --cumulative             kümülatif istatistikler Yazdırma\n\
   -i, --interval=S             bilgiyi her S saniye görüntüler\n\
   -s, --substr=STRING          substring eşleşen, stat öğeyi Yazdırma\n
+  -b, --binary-output-file=FILE		redirect binary dump to FILE; default: none\n
+61 Cannot create binary file '%1$s'\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA şifrenizi girin:

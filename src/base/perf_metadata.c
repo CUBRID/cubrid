@@ -3,7 +3,7 @@
 //
 
 #include <assert.h>
-#include "perfmon_base.h"
+#include "perf_metadata.h"
 #include "porting.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE) || defined (CS_MODE)
@@ -24,123 +24,136 @@ PSTAT_NAMEOFFSET *pstat_Nameoffset;
 int total_num_stat_vals;
 
 const PERFBASE_DIM perfbase_Dim_module = {
+  "MODULE",
   PERF_MODULE_CNT,
   {"SYSTEM", "WORKER", "VACUUM"},
 };
 
 const PERFBASE_DIM perfbase_Dim_page_type = {
+  "PAGE_TYPE",
   PERF_PAGE_CNT,
-  { "PAGE_UNKNOWN", "PAGE_FTAB", "PAGE_HEAP", "PAGE_VOLHEADER", "PAGE_VOLBITMAP", "PAGE_QRESULT", "PAGE_EHASH",
-    "PAGE_OVERFLOW", "PAGE_AREA", "PAGE_CATALOG", "PAGE_BTREE", "PAGE_LOG", "PAGE_DROPPED", "PAGE_VACUUM_DATA",
-    "PAGE_BTREE_R", "PAGE_BTREE_O", "PAGE_BTREE_L", "PAGE_BTREE_N"},
+  {"PAGE_UNKNOWN", "PAGE_FTAB", "PAGE_HEAP", "PAGE_VOLHEADER", "PAGE_VOLBITMAP", "PAGE_QRESULT", "PAGE_EHASH",
+   "PAGE_OVERFLOW", "PAGE_AREA", "PAGE_CATALOG", "PAGE_BTREE", "PAGE_LOG", "PAGE_DROPPED", "PAGE_VACUUM_DATA",
+   "PAGE_BTREE_R", "PAGE_BTREE_O", "PAGE_BTREE_L", "PAGE_BTREE_N"},
 };
 
 const PERFBASE_DIM perfbase_Dim_page_mode = {
+  "PAGE_MODE",
   PERF_PAGE_MODE_CNT,
-  { "OLD_WAIT", "OLD_NO_WAIT", "NEW_WAIT", "NEW_NO_WAIT", "OLD_PAGE_IN_PB" },
+  {"OLD_WAIT", "OLD_NO_WAIT", "NEW_WAIT", "NEW_NO_WAIT", "OLD_PAGE_IN_PB"},
 };
 
 const PERFBASE_DIM perfbase_Dim_holder_latch = {
+  "HOLDER_LATCH",
   PERF_HOLDER_LATCH_CNT,
-  { "READ", "WRITE", "MIXED" },
+  {"READ", "WRITE", "MIXED"},
 };
 
 const PERFBASE_DIM perfbase_Dim_cond_type = {
+  "COND_TYPE",
   PERF_CONDITIONAL_FIX_CNT,
-  { "COND", "UNCOND", "UNCOND_WAIT" },
+  {"COND", "UNCOND", "UNCOND_WAIT"},
 };
 
 const PERFBASE_DIM perfbase_Dim_snapshot = {
+  "SNAPSHOT",
   PERF_SNAPSHOT_CNT,
-  { "DELETE", "DIRTY", "SNAPSHOT", "VACUUM" },
+  {"DELETE", "DIRTY", "SNAPSHOT", "VACUUM"},
 };
 
 const PERFBASE_DIM perfbase_Dim_snapshot_record_type = {
+  "RECORD_TYPE",
   PERF_SNAPSHOT_RECORD_TYPE_CNT,
-  { "INS_VACUUMED", "INS_CURR", "INS_OTHER", "INS_COMMITTED", "INS_COMMITTED_L", "INS_DELETED", "DELETED_CURR",
-    "DELETED_OTHER", "DELETED_COMMITED", "DELETED_COMMITED_L" },
+  {"INS_VACUUMED", "INS_CURR", "INS_OTHER", "INS_COMMITTED", "INS_COMMITTED_L", "INS_DELETED", "DELETED_CURR",
+   "DELETED_OTHER", "DELETED_COMMITED", "DELETED_COMMITED_L"},
 };
 
 const PERFBASE_DIM perfbase_Dim_lock_mode = {
+  "LOCK_MODE",
   PERF_LOCK_CNT,
-  { "NA_LOCK", "INCON_2PL", "NULL_LOCK", "SCH_S_LOCK", "IS_LOCK", "S_LOCK", "IX_LOCK", "SIX_LOCK", "U_LOCK", "X_LOCK",
-    "SCH_M_LOCK" },
+  {"NA_LOCK", "INCON_2PL", "NULL_LOCK", "SCH_S_LOCK", "IS_LOCK", "S_LOCK", "IX_LOCK", "SIX_LOCK", "U_LOCK", "X_LOCK",
+   "SCH_M_LOCK"},
 };
 
 const PERFBASE_DIM perfbase_Dim_promote_cond = {
+  "PROMOTE_COND",
   2,
-  { "ONLY_READER", "SHARED_READER" },
+  {"ONLY_READER", "SHARED_READER"},
 };
 
 const PERFBASE_DIM perfbase_Dim_success = {
+  "SUCCESS",
   2,
-  { "SUCCESS", "FAILED" },
+  {"SUCCESS", "FAILED"},
 };
 
 const PERFBASE_DIM perfbase_Dim_buf_dirty = {
+  "BUF_DIRTY",
   2,
-  { "BUF_DIRTY", "BUF_NON_DIRTY" },
+  {"BUF_DIRTY", "BUF_NON_DIRTY"},
 };
 
 const PERFBASE_DIM perfbase_Dim_holder_dirty = {
+  "HOLDER_DIRTY",
   2,
-  { "HOLDER_DIRTY", "HOLDER_NON_DIRTY" },
+  {"HOLDER_DIRTY", "HOLDER_NON_DIRTY"},
 };
 
 const PERFBASE_DIM perfbase_Dim_visibility = {
+  "VISIBILITY",
   2,
-  { "INVISIBLE", "VISIBLE" },
+  {"INVISIBLE", "VISIBLE"},
 };
 
 const PERFBASE_COMPLEX perfbase_Complex_page_fix = {
   5,
-  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch,
-    &perfbase_Dim_cond_type },
+  {&perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch,
+   &perfbase_Dim_cond_type},
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_promote = {
   5,
-  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_promote_cond, &perfbase_Dim_holder_latch,
-    &perfbase_Dim_success },
+  {&perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_promote_cond, &perfbase_Dim_holder_latch,
+   &perfbase_Dim_success},
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_promote_time = {
   5,
-  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_promote_cond, &perfbase_Dim_holder_latch,
-    &perfbase_Dim_success },
+  {&perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_promote_cond, &perfbase_Dim_holder_latch,
+   &perfbase_Dim_success},
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_unfix = {
   5,
-  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_buf_dirty, &perfbase_Dim_holder_dirty,
-    &perfbase_Dim_holder_latch },
+  {&perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_buf_dirty, &perfbase_Dim_holder_dirty,
+   &perfbase_Dim_holder_latch},
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_lock_acquire_time = {
   5,
-  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch,
-    &perfbase_Dim_cond_type },
+  {&perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch,
+   &perfbase_Dim_cond_type},
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_hold_acquire_time = {
   4,
-  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch }
+  {&perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch}
 };
 
 PERFBASE_COMPLEX perfbase_Complex_page_fix_acquire_time = {
   5,
-  { &perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch,
-    &perfbase_Dim_cond_type },
+  {&perfbase_Dim_module, &perfbase_Dim_page_type, &perfbase_Dim_page_mode, &perfbase_Dim_holder_latch,
+   &perfbase_Dim_cond_type},
 };
 
 PERFBASE_COMPLEX perfbase_Complex_Num_mvcc_snapshot = {
   3,
-  { &perfbase_Dim_snapshot, &perfbase_Dim_snapshot_record_type, &perfbase_Dim_visibility }
+  {&perfbase_Dim_snapshot, &perfbase_Dim_snapshot_record_type, &perfbase_Dim_visibility}
 };
 
 PERFBASE_COMPLEX perfbase_Complex_Time_obj_lock_acquire_time = {
   1,
-  { &perfbase_Dim_lock_mode }
+  {&perfbase_Dim_lock_mode}
 };
 
 typedef struct perfbase_complex_iterator PERFBASE_COMPLEX_ITERATOR;
@@ -521,10 +534,9 @@ PSTAT_METADATA pstat_Metadata[] = {
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 static void perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, char **s,
-                                         int *remaining_size);
+					 int *remaining_size);
 
-void perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata, int curr_dimension,
-                                  int curr_offset, char *name_buffer);
+void perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata);
 static void perfbase_complex_iterator_init (const PERFBASE_COMPLEX * complexp, PERFBASE_COMPLEX_ITERATOR * iterator);
 static bool perfbase_complex_iterator_next (PERFBASE_COMPLEX_ITERATOR * iterator);
 
@@ -533,7 +545,7 @@ static bool perfbase_complex_iterator_next (PERFBASE_COMPLEX_ITERATOR * iterator
 /************************************************************************/
 
 static void
-perfbase_complex_iterator_init (const PERFBASE_COMPLEX *complexp, PERFBASE_COMPLEX_ITERATOR * iterator)
+perfbase_complex_iterator_init (const PERFBASE_COMPLEX * complexp, PERFBASE_COMPLEX_ITERATOR * iterator)
 {
   iterator->complexp = complexp;
   memset (iterator->offsets, 0, sizeof (iterator->offsets));
@@ -544,13 +556,13 @@ perfbase_complex_iterator_next (PERFBASE_COMPLEX_ITERATOR * iterator)
 {
   int crt_dim;
 
-  for (crt_dim = 0; crt_dim < iterator->complexp->size; crt_dim++)
+  for (crt_dim = iterator->complexp->size - 1; crt_dim >= 0; crt_dim--)
     {
       if (++iterator->offsets[crt_dim] < iterator->complexp->dimensions[crt_dim]->size)
-        {
-          /* end incrementing offsets */
-          return true;
-        }
+	{
+	  /* end incrementing offsets */
+	  return true;
+	}
       /* reset offset for current dimension and proceed to increment next dimension */
       iterator->offsets[crt_dim] = 0;
     }
@@ -570,7 +582,7 @@ perfbase_aggregate_complex (PERF_STAT_ID id, const UINT64 * vals, int index_dim,
 
   perfbase_complex_iterator_init (complexp, &iter);
   offset_value = pstat_Metadata[id].start_offset;
-  
+
   /* initialize aggregated values */
   memset (agg_vals, 0, sizeof (UINT64) * complexp->dimensions[index_dim]->size);
 
@@ -816,8 +828,7 @@ perfbase_init_name_offset_assoc ()
 	}
       else if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
 	{
-	  char buffer[STAT_NAME_MAX_SIZE];
-	  perfbase_load_complex_names (pstat_Nameoffset, &pstat_Metadata[i], 0, offset, buffer);
+	  perfbase_load_complex_names (pstat_Nameoffset, &pstat_Metadata[i]);
 	}
       realI += pstat_Metadata[i].n_vals;
     }
@@ -829,49 +840,35 @@ perfbase_init_name_offset_assoc ()
  * return              : void
  * names (in)          : array with names for each offset
  * metadata (in)       : metadata
- * curr_dimension (in) : current dimension
- * curr_offset (in)    : current offset
- * name_buffer (in)    : buffer used for generated name
  */
+
 void
-perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata, int curr_dimension, int curr_offset,
-			     char *name_buffer)
+perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata)
 {
-  /* todo: no recursion */
-  
-  if (curr_dimension == metadata->complexp->size)
+  PERFBASE_COMPLEX_ITERATOR iter;
+  const PERFBASE_COMPLEX *complexp = metadata->complexp;
+  int i;
+  int offset = metadata->start_offset;
+
+  perfbase_complex_iterator_init (complexp, &iter);
+
+  do
     {
-      strcpy (names[curr_offset].name, name_buffer);
-    }
-  else
-    {
-      int i, offset, k;
-      char buffer[STAT_NAME_MAX_SIZE];
-      k = 1;
-      for (i = curr_dimension + 1; i < metadata->complexp->size; i++)
+      for (i = 0; i < complexp->size; i++)
 	{
-	  k *= metadata->complexp->dimensions[i]->size;
-	}
-      for (i = 0; i < metadata->complexp->dimensions[curr_dimension]->size; i++)
-	{
-	  offset = curr_offset;
-	  offset += k * i;
-	  if (curr_dimension == 0)
+	  if (i == 0)
 	    {
-	      strcpy (buffer, metadata->complexp->dimensions[curr_dimension]->names[i]);
+	      strcpy (names[offset].name, complexp->dimensions[i]->names[iter.offsets[i]]);
 	    }
 	  else
 	    {
-	      strcpy (buffer, name_buffer);
-	      if (curr_dimension != metadata->complexp->size)
-		{
-		  strcat (buffer, ",");
-		}
-	      strcat (buffer, metadata->complexp->dimensions[curr_dimension]->names[i]);
+	      strcat (names[offset].name, ", ");
+	      strcat (names[offset].name, complexp->dimensions[i]->names[iter.offsets[i]]);
 	    }
-	  perfbase_load_complex_names (names, metadata, curr_dimension + 1, offset, buffer);
 	}
+      offset++;
     }
+  while (perfbase_complex_iterator_next (&iter));
 }
 
 /*

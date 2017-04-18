@@ -949,6 +949,8 @@ valid options:\n\
   -c, --cumulative             print cumulative stats\n\
   -i, --interval=S             print stats every S secs\n\
   -s, --substr=STRING          print stat item only that match the substring\n
+  -b, --binary-output-file=FILE		redirect binary dump to FILE; default: none\n
+61 Cannot create binary file '%1$s'\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Enter DBA password:

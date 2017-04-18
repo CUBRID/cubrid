@@ -11,7 +11,7 @@
 #endif
 
 extern "C" {
-#include <perfmon_base.h>
+#include <perf_metadata.h>
 #include <string.h>
 #include <porting.h>
 }

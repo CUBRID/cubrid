@@ -967,6 +967,8 @@ opţiuni valide:\n\
   -c, --cumulative             afişează statistici cumulative\n\
   -i, --interval=S             afişează statisticile la fiecare S secunde\n\
   -s, --substr=STRING          afişează un element de statistică ce conţine şirul de caractere specificat\n
+  -b, --binary-output-file=FILE	       redirectează binarul în fișierul FILE; implicit: niciunul\n
+61 Fişierul binar nu poate fi creat '%1$s'\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Introduceţi parola de administrator (DBA):

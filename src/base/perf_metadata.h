@@ -503,6 +503,7 @@ typedef void (*PSTAT_LOAD_NAMES_FUNC) (PSTAT_NAMEOFFSET *);
 typedef struct perfbase_Dim PERFBASE_DIM;
 struct perfbase_Dim
 {
+  const char *alias;
   int size;
   const char *names[PERFBASE_DIMENSION_MAX_SIZE];
 };

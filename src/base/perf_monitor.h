@@ -31,7 +31,7 @@
 
 #include "memory_alloc.h"
 #include "storage_common.h"
-#include "perfmon_base.h"
+#include "perf_metadata.h"
 
 #if defined (SERVER_MODE)
 #include "dbtype.h"

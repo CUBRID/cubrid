@@ -15,7 +15,6 @@ AggregateExecutor::AggregateExecutor (std::string &wholeCommand,
                                       std::vector<StatisticsFile *> &files) : CommandExecutor (wholeCommand, files)
 {
   fixedDimension = -1;
-  fixedIndex = -1;
   statIndex = PSTAT_BASE;
   statName = "";
   plotFilename = "";
@@ -23,7 +22,6 @@ AggregateExecutor::AggregateExecutor (std::string &wholeCommand,
 
   possibleOptions.push_back (NAME_CMD);
   possibleOptions.push_back (DIM_CMD);
-  possibleOptions.push_back (INDEX_CMD);
   possibleOptions.push_back (ALIAS_CMD);
   possibleOptions.push_back (FILENAME_CMD);
 }
@@ -59,26 +57,20 @@ ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
         {
           if (i+1 < arguments.size())
             {
-              fixedDimension = atoi (arguments[i+1].c_str());
+	      char *endptr;
+	      const char *str = arguments[i+1].c_str();
+	      fixedDimension = (int) strtol (str, &endptr, 10);
+	      if (endptr == str) {
+		fixedDimension = -1;
+		fixedDimensionStr = arguments[i+1];
+	      }
             }
           else
             {
               ErrorManager::printErrorMessage (ErrorManager::MISSING_ARGUMENT_ERROR, "You must provide a dimension!");
               return ErrorManager::MISSING_ARGUMENT_ERROR;
             }
-        }
-      else if (arguments[i].compare (INDEX_CMD) == 0)
-        {
-          if (i+1 < arguments.size())
-            {
-              fixedIndex = atoi (arguments[i+1].c_str());
-            }
-          else
-            {
-              ErrorManager::printErrorMessage (ErrorManager::MISSING_ARGUMENT_ERROR, "You must provide a dimension!");
-              return ErrorManager::MISSING_ARGUMENT_ERROR;
-            }
-        }
+	}
       else if (arguments[i].compare (ALIAS_CMD) == 0)
         {
           if (i+1 < arguments.size())
@@ -117,7 +109,7 @@ ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
       plotFilename = DEFAULT_PLOT_FILENAME;
     }
 
-  if (statName.length() == 0 || fixedDimension == -1 || fixedIndex == -1)
+  if (statName.length() == 0)
     {
       return ErrorManager::MISSING_ARGUMENT_ERROR;
     }
@@ -127,9 +119,22 @@ ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
       if (strcmp (pstat_Metadata[i].stat_name, statName.c_str()) == 0)
         {
           statIndex = (PERF_STAT_ID) i;
+	  if (fixedDimension == -1) {
+	    for (int j = 0; j < pstat_Metadata[statIndex].complexp->size; j++) {
+	      if (fixedDimensionStr.compare (pstat_Metadata[statIndex].complexp->dimensions[j]->alias) == 0) {
+		fixedDimension = j;
+		break;
+	      }
+	    }
+	  }
           break;
         }
     }
+
+  if (fixedDimension == -1) {
+    ErrorManager::printErrorMessage (ErrorManager::INVALID_ARGUMENT_ERROR, "dimension (-d)");
+    return ErrorManager::INVALID_ARGUMENT_ERROR;
+  }
 
   if (statIndex == -1)
     {
@@ -150,11 +155,7 @@ ErrorManager::ErrorCode AggregateExecutor::parseCommandAndInit ()
     {
       if (fixedDimension == i)
         {
-          aggregateName += "[";
-          std::stringstream ss;
-          ss << fixedIndex;
-          aggregateName += ss.str();
-          aggregateName += "]";
+          aggregateName += "[x]";
         }
       else
         {
@@ -169,62 +170,65 @@ ErrorManager::ErrorCode AggregateExecutor::execute ()
 {
   std::string cmd = "";
   std::vector<Snapshot *> snapshotsForAggregation = file->getSnapshots ();
+  std::vector<std::string> dataLines;
   UINT64 agg_vals[PERFBASE_DIMENSION_MAX_SIZE];
 
-  fprintf (gnuplotPipe, "set terminal jpeg giant font \"Helvetica\" 16\n");
+  fprintf (gnuplotPipe, "set terminal jpeg size 1080, 640\n");
+  fprintf (gnuplotPipe, "set yrange [0:10<*]\n");
+  fprintf (gnuplotPipe, "set xlabel \"time(s)\"\n");
+  fprintf (gnuplotPipe, "set ylabel \"aggregate value\"\n");
+
   cmd += "set output '";
   cmd += plotFilename;
   cmd += ".jpg'";
   fprintf (gnuplotPipe, "%s\n", cmd.c_str());
   cmd = "";
-  fprintf (gnuplotPipe, "set key outside\n");
+  fprintf (gnuplotPipe, "set key below\n");
   fprintf (gnuplotPipe, "set grid y\n");
-  fprintf (gnuplotPipe, "set style data histograms\n");
-  fprintf (gnuplotPipe, "set style histogram rowstacked\n");
-  fprintf (gnuplotPipe, "set boxwidth 0.5\n");
-  fprintf (gnuplotPipe, "set style fill solid 1.0 border -1\n");
 
-  for (unsigned int i = 0; i < snapshotsForAggregation.size(); i++)
-    {
-      time_t seconds = mktime (&snapshotsForAggregation[i]->timestamp) - file->getRelativeSeconds ();
-      if (i == 0)
-        {
-          cmd += "plot '-' using ";
-        }
-      else
-        {
-          cmd += "'' using ";
-        }
-      std::stringstream ss;
-      ss << i+2;
-      cmd += ss.str();
-      cmd += ":xtic(1) t \"";
-      std::stringstream ss2;
-      ss2 << seconds;
-      cmd += ss2.str();
-      cmd += "\", ";
-    }
+  cmd += "plot for [i=2:";
+  std::stringstream ss;
+  ss << pstat_Metadata[statIndex].complexp->dimensions[fixedDimension]->size + 1;
+  cmd += ss.str();
+  cmd += ":1] \"-\" using 1:(sum [col=i:";
+  cmd += ss.str();
+  cmd += "] column(col)) title columnheader(i-1) with filledcurves x1";
 
   fprintf (gnuplotPipe, "%s\n", cmd.c_str());
-  std::string line = "";
-  line += aggregateName;
-
   for (unsigned int i = 0; i < snapshotsForAggregation.size(); i++)
-    {
-      perfbase_aggregate_complex (statIndex, snapshotsForAggregation[i]->rawStats, fixedDimension, agg_vals);
+  {
+    cmd = "";
+    perfbase_aggregate_complex (statIndex, snapshotsForAggregation[i]->rawStats, fixedDimension, agg_vals);
+    time_t seconds = mktime (&snapshotsForAggregation[i]->timestamp) - file->getRelativeSeconds ();
+    std::stringstream ss2;
+    ss2 << seconds;
+    cmd += ss2.str();
 
-      std::stringstream ss;
-      ss << agg_vals[0];
-      line += " " + ss.str();
-
-      /* todo: fix me */
+    for (int j = 0; j < pstat_Metadata[statIndex].complexp->dimensions[fixedDimension]->size; j++) {
+      std::stringstream ss3;
+      ss3 << agg_vals[j];
+      cmd += " ";
+      cmd += ss3.str();
     }
+    dataLines.push_back(cmd);
+  }
 
-  for (unsigned int i = 0; i < snapshotsForAggregation.size(); i++)
-    {
-      fprintf (gnuplotPipe, "%s\n", line.c_str ());
-      fprintf (gnuplotPipe, "e\n");
+  std::string title = "";
+  for (int i = 0; i < pstat_Metadata[statIndex].complexp->dimensions[fixedDimension]->size; i++) {
+    std::string tmp(aggregateName);
+    std::size_t index = tmp.find ("[x]");
+    tmp[index+1] = (char)(i+'0');
+    title += tmp;
+    title += " ";
+  }
+
+  for (int i = 0; i < pstat_Metadata[statIndex].complexp->dimensions[fixedDimension]->size; i++) {
+    fprintf (gnuplotPipe, "%s\n", title.c_str());
+    for (unsigned int j = 0; j < dataLines.size(); j++) {
+      fprintf (gnuplotPipe, "%s\n", dataLines[j].c_str());
     }
+    fprintf (gnuplotPipe, "e\n");
+  }
 
 #if !defined (WINDOWS)
   pclose (gnuplotPipe);
@@ -241,7 +245,6 @@ void AggregateExecutor::printUsage ()
   printf ("\t-a <alias>\n");
   printf ("\t-n <name>\n");
   printf ("\t-d <fixed dimension>\n");
-  printf ("\t-i <fixed index>\n");
   printf ("\t-f <plot filename> DEFAULT: aggregate_plot.jpg\n");
 }
 

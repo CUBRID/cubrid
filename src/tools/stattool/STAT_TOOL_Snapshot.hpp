@@ -9,7 +9,7 @@
 
 extern "C"
 {
-#include <perfmon_base.h>
+#include <perf_metadata.h>
 }
 
 struct Snapshot

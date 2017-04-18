@@ -12,7 +12,7 @@
 #include "STAT_TOOL_ErrorManager.hpp"
 
 extern "C" {
-#include "../../base/perfmon_base.h"
+#include "perf_metadata.h"
 }
 
 class CommandExecutor

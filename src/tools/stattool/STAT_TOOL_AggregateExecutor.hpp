@@ -22,7 +22,8 @@ class AggregateExecutor : public CommandExecutor
     void printUsage ();
     ~AggregateExecutor ();
   private:
-    int fixedDimension, fixedIndex;
+    int fixedDimension;
+    std::string fixedDimensionStr;
     PERF_STAT_ID statIndex;
     std::string statName, aggregateName, plotFilename;
     StatisticsFile *file;

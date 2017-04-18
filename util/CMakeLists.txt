@@ -59,17 +59,17 @@ if(UNIX)
 endif(UNIX)
 
 set(STATISTICS_TOOL_SOURCES
-        ${EXECUTABLES_DIR}/stattool/STAT_TOOL_Main.cpp
-        ${EXECUTABLES_DIR}/stattool/STAT_TOOL_StatisticsFile.cpp
-        ${EXECUTABLES_DIR}/stattool/STAT_TOOL_Utils.cpp
-        ${EXECUTABLES_DIR}/stattool/STAT_TOOL_CommandExecutor.cpp
-        ${EXECUTABLES_DIR}/stattool/STAT_TOOL_PlotExecutor.cpp
-        ${EXECUTABLES_DIR}/stattool/STAT_TOOL_ShowExecutor.cpp
-        ${EXECUTABLES_DIR}/stattool/STAT_TOOL_LoadExecutor.cpp
-        ${EXECUTABLES_DIR}/stattool/STAT_TOOL_ErrorManager.cpp
-        ${EXECUTABLES_DIR}/stattool/STAT_TOOL_Snapshot.cpp
-        ${EXECUTABLES_DIR}/stattool/STAT_TOOL_AggregateExecutor.cpp
-        ${BASE_DIR}/perfmon_base.c
+        ${TOOLS_DIR}/stattool/STAT_TOOL_Main.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_StatisticsFile.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_Utils.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_CommandExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_PlotExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_ShowExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_LoadExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_ErrorManager.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_Snapshot.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_AggregateExecutor.cpp
+        ${BASE_DIR}/perf_metadata.c
         ${BASE_DIR}/porting.c
 )
 add_executable(stattool ${STATISTICS_TOOL_SOURCES})
