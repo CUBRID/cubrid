@@ -75,9 +75,9 @@ Snapshot::getStatusValueFromName (const char *stat_name)
 {
   int i;
 
-  for (i = 0; i < total_num_stat_vals; i++)
+  for (i = 0; i < perfmeta_Stat_count; i++)
     {
-      if (strcmp (pstat_Nameoffset[i].name, stat_name) == 0)
+      if (strcmp (pstat_Value_names[i], stat_name) == 0)
         {
           return rawStats[i];
         }
@@ -105,11 +105,11 @@ Snapshot::print (FILE *stream)
       printf ("Timestamp = %s\n", strTime);
     }
 
-  for (i = 0; i < total_num_stat_vals; i++)
+  for (i = 0; i < perfmeta_Stat_count; i++)
     {
       if (stats_ptr[i] != 0)
         {
-          fprintf (stream, "%s = %lld\n", pstat_Nameoffset[i].name, (long long)stats_ptr[i]);
+          fprintf (stream, "%s = %lld\n", pstat_Value_names[i], (long long)stats_ptr[i]);
         }
     }
 }

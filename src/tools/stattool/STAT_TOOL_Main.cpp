@@ -23,9 +23,8 @@ main (int argc, char **argv)
 {
   bool quit = false;
   char command[MAX_COMMAND_SIZE];
-  metadata_initialize();
-  perfbase_init_name_offset_assoc ();
-  Utils::setNStatValues (pstat_Global.n_stat_values);
+  int n_stat_values = perfmeta_init();
+  Utils::setNStatValues (n_stat_values);
 
   do
     {
@@ -94,7 +93,7 @@ main (int argc, char **argv)
     {
       delete (files[i]);
     }
-  free (pstat_Nameoffset);
+  perfmeta_final ();
 
   return 0;
 }

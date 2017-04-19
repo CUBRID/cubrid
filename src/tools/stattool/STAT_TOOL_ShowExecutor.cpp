@@ -7,7 +7,7 @@
 ShowExecutor::ShowExecutor (std::string &wholeCommand,
                             std::vector<StatisticsFile *> &files) : CommandExecutor (wholeCommand, files),
   showComplex (false),
-  end (total_num_stat_vals)
+  end (perfmeta_Stat_count)
 {
   possibleOptions.push_back (SHOW_COMPLEX_CMD);
 }
@@ -91,7 +91,7 @@ ShowExecutor::execute()
     }
   printf ("\n");
 
-  for (int i = 0; i < (showComplex ? total_num_stat_vals : pstat_Metadata[PSTAT_PBX_FIX_COUNTERS].start_offset); i++)
+  for (int i = 0; i < (showComplex ? perfmeta_Stat_count : pstat_Metadata[PSTAT_PBX_FIX_COUNTERS].start_offset); i++)
     {
       bool show = false;
       for (unsigned int j = 0; j < snapshots.size(); j++)
@@ -104,7 +104,7 @@ ShowExecutor::execute()
 
       if (show)
         {
-          printf ("%-50s", pstat_Nameoffset[i].name);
+          printf ("%-50s", pstat_Value_names[i]);
           for (unsigned int j = 0; j < snapshots.size (); j++)
             {
               printf ("%15lld", (long long) snapshots[j]->rawStats[i]);

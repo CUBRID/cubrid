@@ -116,7 +116,7 @@ AggregateExecutor::parseCommandAndInit ()
       return ErrorManager::MISSING_ARGUMENT_ERROR;
     }
 
-  for (int i = 0; i < pstat_Global.n_stat_values; i++)
+  for (int i = 0; i < perfmeta_Stat_count; i++)
     {
       if (strcmp (pstat_Metadata[i].stat_name, statName.c_str()) == 0)
         {
