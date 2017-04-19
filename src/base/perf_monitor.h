@@ -19,7 +19,7 @@
 
 
 /*
- * perf_monitor.h - Monitor execution statistics at Client
+ * perf_monitor.h - Monitor execution statistics at Client/Server
  */
 
 #ifndef _PERF_MONITOR_H_
@@ -89,8 +89,6 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 typedef struct pstat_global PSTAT_GLOBAL;
 struct pstat_global
 {
-  int n_stat_values;
-
   UINT64 *global_stats;
 
   int n_trans;
@@ -198,7 +196,6 @@ extern void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_t
 extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
 extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
-extern int perfmon_get_number_of_statistic_values (void);
 extern UINT64 *perfmon_allocate_values (void);
 extern char *perfmon_allocate_packed_values_buffer (void);
 extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
@@ -326,7 +323,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   int tran_index;
 #endif /* SERVER_MODE || SA_MODE */
 
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (offset >= 0 && offset < perfmeta_get_values_count ());
   assert (pstat_Global.initialized);
 
   /* Update global statistic. */
@@ -354,7 +351,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 STATIC_INLINE void
 perfmon_add_at_offset_to_global (int offset, UINT64 amount)
 {
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (offset >= 0 && offset < perfmeta_get_values_count ());
   assert (pstat_Global.initialized);
 
   /* Update global statistic. */
@@ -402,7 +399,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool al
   int tran_index;
 #endif /* SERVER_MODE || SA_MODE */
 
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (offset >= 0 && offset < perfmeta_get_values_count ());
   assert (pstat_Global.initialized);
 
   /* Update global statistic. */
@@ -452,7 +449,7 @@ perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval)
 STATIC_INLINE void
 perfmon_set_at_offset_to_global (int offset, int statval)
 {
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (offset >= 0 && offset < perfmeta_get_values_count ());
   assert (pstat_Global.initialized);
 
   /* Update global statistic. */
@@ -498,7 +495,7 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   int tran_index;
 #endif /* SERVER_MODE || SA_MODE */
 
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (offset >= 0 && offset < perfmeta_get_values_count ());
   assert (pstat_Global.initialized);
 
   /* Update global statistics. */
@@ -580,7 +577,7 @@ perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timedif
   int tran_index;
 #endif /* SERVER_MODE || SA_MODE */
 
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (offset >= 0 && offset < perfmeta_get_values_count ());
   assert (pstat_Global.initialized);
 
   if (count == 0)

@@ -1,9 +1,28 @@
-//
-// Created by paul on 15.03.2017.
-//
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
 
-#ifndef CUBRID_PERFMON_BASE_H
-#define CUBRID_PERFMON_BASE_H
+/*
+ * perf_metadata.h - Meta-data used for performance statistics monitoring and processing
+ */
+
+#ifndef _PERF_METADATA_H_
+#define _PERF_METADATA_H_
 
 #ifdef __cplusplus
 extern "C"
@@ -569,8 +588,6 @@ typedef enum
   PERF_LOCK_CNT
 } PERF_LOCK;
 
-
-
 extern int perfmeta_Stat_count;
 extern char (*pstat_Value_names)[STAT_NAME_MAX_SIZE];
 
@@ -587,4 +604,7 @@ extern void perfmeta_final (void);
 extern int perfmeta_complex_cursor_get_offset (PERF_STAT_ID psid, const PERFMETA_COMPLEX_CURSOR * cursor);
 extern int perfmeta_complex_get_offset (PERF_STAT_ID psid, ...);
 
-#endif //CUBRID_PERFMON_BASE_H
+extern int perfmeta_get_values_count (void);
+extern int perfmeta_get_values_memsize (void);
+
+#endif //_PERF_METADATA_H_

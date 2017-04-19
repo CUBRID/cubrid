@@ -89,8 +89,6 @@ static int rv;
 #define PSTAT_VALUE_CUSTOM	      0x00000001
 
 PSTAT_GLOBAL pstat_Global;
-#define PERFMON_VALUES_MEMSIZE (pstat_Global.n_stat_values * sizeof (UINT64))
-
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
 					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 
@@ -386,9 +384,9 @@ perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, c
     {
       if (bin_stream != NULL)
 	{
-	  char *packed_stats = (char *) malloc (sizeof (UINT64) * pstat_Global.n_stat_values);
+	  char *packed_stats = (char *) malloc (sizeof (UINT64) * perfmeta_get_values_count ());
 	  perfmon_pack_stats (packed_stats, perfmon_Stat_info.current_global_stats);
-	  fwrite (packed_stats, sizeof (UINT64), (size_t) pstat_Global.n_stat_values, bin_stream);
+	  fwrite (packed_stats, sizeof (UINT64), (size_t) perfmeta_get_values_count (), bin_stream);
 	  free (packed_stats);
 	}
       perfmon_server_dump_stats (perfmon_Stat_info.current_global_stats, stream, substr);
@@ -2137,7 +2135,6 @@ perfmon_initialize (int num_trans)
   int memsize = 0;
   int rc;
 
-  pstat_Global.n_stat_values = 0;
   pstat_Global.global_stats = NULL;
   pstat_Global.n_trans = 0;
   pstat_Global.tran_stats = NULL;
@@ -2146,10 +2143,12 @@ perfmon_initialize (int num_trans)
   pstat_Global.initialized = false;
   pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
 
-  pstat_Global.n_stat_values = perfmeta_init ();
-  if (pstat_Global.n_stat_values < 0)
+  rc = perfmeta_init ();
+  if (rc != NO_ERROR)
     {
-      return pstat_Global.n_stat_values;
+      /* out of memory */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 0);
+      return rc;
     }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -2159,13 +2158,13 @@ perfmon_initialize (int num_trans)
 #endif /* !HAVE_ATOMIC_BUILTINS */
 
   /* Allocate global stats. */
-  pstat_Global.global_stats = (UINT64 *) malloc (PERFMON_VALUES_MEMSIZE);
+  pstat_Global.global_stats = (UINT64 *) malloc (perfmeta_get_values_memsize ());
   if (pstat_Global.global_stats == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, perfmeta_get_values_memsize ());
       goto error;
     }
-  memset (pstat_Global.global_stats, 0, PERFMON_VALUES_MEMSIZE);
+  memset (pstat_Global.global_stats, 0, perfmeta_get_values_memsize ());
 
   assert (num_trans > 0);
 
@@ -2177,7 +2176,7 @@ perfmon_initialize (int num_trans)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
       goto error;
     }
-  memsize = pstat_Global.n_trans * PERFMON_VALUES_MEMSIZE;
+  memsize = pstat_Global.n_trans * perfmeta_get_values_memsize ();
   pstat_Global.tran_stats[0] = (UINT64 *) malloc (memsize);
   if (pstat_Global.tran_stats[0] == NULL)
     {
@@ -2188,7 +2187,7 @@ perfmon_initialize (int num_trans)
 
   for (idx = 1; idx < pstat_Global.n_trans; idx++)
     {
-      pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + pstat_Global.n_stat_values * idx;
+      pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + perfmeta_get_values_count () * idx;
     }
 
   memsize = pstat_Global.n_trans * sizeof (bool);
@@ -2278,7 +2277,7 @@ perfmon_start_watch (THREAD_ENTRY * thread_p)
   pthread_mutex_unlock (&pstat_Global.watch_lock);
 #endif /* !HAVE_ATOMIC_BUILTINS */
 
-  memset (pstat_Global.tran_stats[tran_index], 0, PERFMON_VALUES_MEMSIZE);
+  memset (pstat_Global.tran_stats[tran_index], 0, perfmeta_get_values_memsize ());
   pstat_Global.is_watching[tran_index] = true;
 }
 
@@ -2335,14 +2334,8 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const in
   perfmon_add_at_offset (thread_p, pstat_Metadata[psid].start_offset + offset, amount);
 }
 
-int
-perfmon_get_number_of_statistic_values (void)
-{
-  return pstat_Global.n_stat_values;
-}
-
 /*
- * perfmon_allocate_values () - Allocate PERFMON_VALUES_MEMSIZE bytes 
+ * perfmon_allocate_values () - Allocate perfmeta_get_values_memsize () bytes 
  * 
  */
 UINT64 *
@@ -2350,17 +2343,17 @@ perfmon_allocate_values (void)
 {
   UINT64 *vals;
 
-  vals = (UINT64 *) malloc (PERFMON_VALUES_MEMSIZE);
+  vals = (UINT64 *) malloc (perfmeta_get_values_memsize ());
   if (vals == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, perfmeta_get_values_memsize ());
     }
 
   return vals;
 }
 
 /*
- * perfmon_allocate_packed_values_buffer () - Allocate PERFMON_VALUES_MEMSIZE bytes and verify alignment
+ * perfmon_allocate_packed_values_buffer () - Allocate perfmeta_get_values_memsize () bytes and verify alignment
  * 
  */
 char *
@@ -2368,10 +2361,10 @@ perfmon_allocate_packed_values_buffer (void)
 {
   char *buf;
 
-  buf = (char *) malloc (PERFMON_VALUES_MEMSIZE);
+  buf = (char *) malloc (perfmeta_get_values_memsize ());
   if (buf == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, perfmeta_get_values_memsize ());
     }
   ASSERT_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -2388,7 +2381,7 @@ perfmon_allocate_packed_values_buffer (void)
 void
 perfmon_copy_values (UINT64 * dest, UINT64 * src)
 {
-  memcpy (dest, src, PERFMON_VALUES_MEMSIZE);
+  memcpy (dest, src, perfmeta_get_values_memsize ());
 }
 
 /*

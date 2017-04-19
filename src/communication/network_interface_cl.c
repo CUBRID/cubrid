@@ -7136,7 +7136,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
   int nr_statistic_values;
   int err = NO_ERROR;
 
-  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  nr_statistic_values = perfmeta_get_values_count ();
   reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
 
   if (reply == NULL)
@@ -7193,7 +7193,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
   int nr_statistic_values;
   int err = NO_ERROR;
 
-  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  nr_statistic_values = perfmeta_get_values_count ();
   reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
   if (reply == NULL)
     {
