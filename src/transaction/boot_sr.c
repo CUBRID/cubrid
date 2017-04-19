@@ -127,6 +127,7 @@ struct boot_dbparm
   EHID classname_table;		/* The hash file of class names */
 #endif
   CTID ctid;			/* The catalog file */
+  /* TODO: Remove me */
   VFID query_vfid;		/* Query file */
   char rootclass_name[10];	/* Name of the root class */
   OID rootclass_oid;		/* OID of the root class */
@@ -517,7 +518,7 @@ boot_get_lob_path (void)
  *       independently of the destiny of the current transaction. That is,
  *       if this function finishes successfully the removal is made permanent,
  *       if the function fails, whatever was done is aborted.
- *       Currently, we do not allow to remove permananet volumes. In the future
+ *       Currently, we do not allow to remove permanent volumes. In the future
  *       we may allow the removal of any volume but the primary volume
  *       (LOG_DBFIRST_VOLID).
  */
@@ -1195,7 +1196,7 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
  *
  *   volid(in): Volume identifier
  *   fun(in): Function to call on volid, vlabel, and arguments
- *   forward_dir(in): direction of accesing the tempvols (forward/backward)
+ *   forward_dir(in): direction of accessing the tempvols (forward/backward)
  *   check_before_access(in): if true, check the existence of volume before access
  *
  * Note: The given function is called for every single temporary volume which is different from the given one.
@@ -2569,6 +2570,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * system parameter
    */
 
+  /* todo: I am not sure we really need a transaction here. but since we are hurrying to release 10.1 and we don't have
+   *       time to do changes that may have a significant impact on database behavior, I'd rather keep this for now.
+   *       We should rethink the boot_Db_parm implementation altogether and we can come back to this when we do it. */
   tran_index =
     logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 			     TRAN_DEFAULT_ISOLATION_LEVEL ());
@@ -2584,26 +2588,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
-  /* If there is an existing query area, delete it. */
-  if (boot_Db_parm->query_vfid.volid != NULL_VOLID)
-    {
-      (void) file_destroy (thread_p, &boot_Db_parm->query_vfid, true);
-      boot_Db_parm->query_vfid.fileid = NULL_FILEID;
-      boot_Db_parm->query_vfid.volid = NULL_VOLID;
-
-      error_code = boot_db_parm_update_heap (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
-      if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
-	{
-	  assert_release (false);
-	  goto error;
-	}
-    }
-
   if (boot_Lob_path[0] != '\0')
     {
       error_code = es_init (boot_Lob_path);
@@ -2617,11 +2601,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
     }
 
-  if (tran_index != NULL_TRAN_INDEX)
+  if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
     {
-      logtb_release_tran_index (thread_p, tran_index);
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto error;
     }
-
   logtb_set_to_system_tran_index (thread_p);
 
   if (!tf_Metaclass_class.mc_n_variable)
