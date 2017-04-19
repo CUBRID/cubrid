@@ -18,8 +18,8 @@ extern "C"
 #endif
 
 #define PERFBASE_DIMENSION_MAX_SIZE 32
+#define STAT_NAME_MAX_SIZE 128
 #define PERFBASE_COMPLEX_MAX_DIMENSIONS 8
-#define STAT_NAME_MAX_SIZE 64
 
 typedef enum
 {
@@ -538,81 +538,6 @@ struct pstat_metadata
 #define PERFMON_ACTIVE_LOCK_OBJECT 4
 #define PERFMON_ACTIVE_PB_HASH_ANCHOR 8
 
-/* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
-#define PERF_PAGE_FIX_COUNTERS \
-  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) \
-   * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT))
-
-#define PERF_PAGE_PROMOTE_COUNTERS \
-  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) \
-  * (PERF_HOLDER_LATCH_CNT) * (2 /* success */))
-
-/* PERF_MODULE_TYPE x PAGE_TYPE x DIRTY_OR_CLEAN x DIRTY_OR_CLEAN x READ_OR_WRITE_OR_MIX */
-#define PERF_PAGE_UNFIX_COUNTERS \
-  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * 2 * 2 * (PERF_HOLDER_LATCH_CNT))
-
-#define PERF_PAGE_LOCK_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
-
-#define PERF_PAGE_HOLD_TIME_COUNTERS \
-    ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) \
-   * (PERF_HOLDER_LATCH_CNT))
-
-#define PERF_PAGE_FIX_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
-
-#define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-  ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
-    * (PERF_CONDITIONAL_FIX_CNT) \
-    + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
-       * (PERF_CONDITIONAL_FIX_CNT) \
-    + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
-    + (latch_mode) * (PERF_CONDITIONAL_FIX_CNT) + (cond_type))
-
-#define PERF_PAGE_PROMOTE_STAT_OFFSET(module,page_type,promote_cond, \
-				      holder_latch,success) \
-  ((module) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) \
-    * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
-    + (page_type) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) \
-    * 2 /* success */ \
-    + (promote_cond) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
-    + (holder_latch) * 2 /* success */ \
-    + success)
-
-#define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,buf_dirty,\
-				    dirtied_by_holder,holder_latch) \
-  ((module) * (PERF_PAGE_CNT) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (page_type) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (buf_dirty) * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (dirtied_by_holder) * (PERF_HOLDER_LATCH_CNT) + (holder_latch))
-
-#define PERF_PAGE_LOCK_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type)
-
-#define PERF_PAGE_HOLD_TIME_OFFSET(module,page_type,page_found_mode,latch_mode)\
-  ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
-    + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
-    + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) \
-    + (latch_mode))
-
-#define PERF_PAGE_FIX_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type)
-
-#define PERF_MVCC_SNAPSHOT_COUNTERS \
-  (PERF_SNAPSHOT_CNT * PERF_SNAPSHOT_RECORD_TYPE_CNT \
-   * PERF_SNAPSHOT_VISIBILITY_CNT)
-
-#define PERF_MVCC_SNAPSHOT_OFFSET(snapshot,rec_type,visibility) \
-  ((snapshot) * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT \
-   + (rec_type) * PERF_SNAPSHOT_VISIBILITY_CNT + (visibility))
-
-#define AUX_PERF_OBJ_LOCK_STAT_COUNTERS (PERF_SCH_M_LOCK + 1)
-
-#define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
-
 /* Count & timer values. */
 #define PSTAT_COUNTER_TIMER_COUNT_VALUE(startvalp) (startvalp)
 #define PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(startvalp) ((startvalp) + 1)
@@ -625,14 +550,6 @@ struct perfmeta_complex_cursor
 {
   int indices[PERFBASE_COMPLEX_MAX_DIMENSIONS];
 };
-
-void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
-void perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * stats2);
-extern void perfbase_aggregate_complex (PERF_STAT_ID id, const UINT64 * vals, int index_dim, UINT64 * agg_vals);
-extern void perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
-extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, const char *substr);
-int metadata_initialize ();
-void perfbase_init_name_offset_assoc ();
 
 typedef enum
 {
@@ -652,35 +569,21 @@ typedef enum
   PERF_LOCK_CNT
 } PERF_LOCK;
 
+
+
+extern int perfmeta_Stat_count;
+extern char (*pstat_Value_names)[STAT_NAME_MAX_SIZE];
+
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
-/* All globals on statistics will be here. */
-typedef struct pstat_global PSTAT_GLOBAL;
-struct pstat_global
-{
-  int n_stat_values;
-
-  UINT64 *global_stats;
-
-  int n_trans;
-  UINT64 **tran_stats;
-
-  bool *is_watching;
-#if !defined (HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t watch_lock;
-#endif				/* !HAVE_ATOMIC_BUILTINS */
-
-  INT32 n_watchers;
-
-  bool initialized;
-  int activation_flag;
-};
-
-extern int total_num_stat_vals;
-extern PSTAT_NAMEOFFSET *pstat_Nameoffset;
-extern PSTAT_GLOBAL pstat_Global;
-
+void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
+void perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * stats2);
+extern void perfbase_aggregate_complex (PERF_STAT_ID id, const UINT64 * vals, int index_dim, UINT64 * agg_vals);
+extern void perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
+extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, const char *substr);
+extern int perfmeta_init (void);
+extern void perfmeta_final (void);
 extern int perfmeta_complex_cursor_get_offset (PERF_STAT_ID psid, const PERFMETA_COMPLEX_CURSOR * cursor);
 extern int perfmeta_complex_get_offset (PERF_STAT_ID psid, ...);
 

@@ -67,12 +67,6 @@
 
 #define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
 
-/* Count & timer values. */
-#define PSTAT_COUNTER_TIMER_COUNT_VALUE(startvalp) (startvalp)
-#define PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(startvalp) ((startvalp) + 1)
-#define PSTAT_COUNTER_TIMER_MAX_TIME_VALUE(startvalp) ((startvalp) + 2)
-#define PSTAT_COUNTER_TIMER_AVG_TIME_VALUE(startvalp) ((startvalp) + 3)
-
 #if !defined(SERVER_MODE)
 #if !defined(LOG_TRAN_INDEX)
 #define LOG_TRAN_INDEX
@@ -90,6 +84,29 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
 #endif
 #endif
+
+/* All globals on statistics will be here. */
+typedef struct pstat_global PSTAT_GLOBAL;
+struct pstat_global
+{
+  int n_stat_values;
+
+  UINT64 *global_stats;
+
+  int n_trans;
+  UINT64 **tran_stats;
+
+  bool *is_watching;
+#if !defined (HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_t watch_lock;
+#endif				/* !HAVE_ATOMIC_BUILTINS */
+
+  INT32 n_watchers;
+
+  bool initialized;
+  int activation_flag;
+};
+extern PSTAT_GLOBAL pstat_Global;
 
 typedef struct diag_sys_config DIAG_SYS_CONFIG;
 struct diag_sys_config

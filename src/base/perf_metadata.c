@@ -7,6 +7,10 @@
 #include "porting.h"
 #include <stdarg.h>
 
+/************************************************************************/
+/* start of macros and structures                                       */
+/************************************************************************/
+
 #define PSTAT_METADATA_INIT_SINGLE_ACC(id, name) { id, name, PSTAT_ACCUMULATE_SINGLE_VALUE, 0, 0, NULL}
 #define PSTAT_METADATA_INIT_SINGLE_PEEK(id, name) \
   { id, name, PSTAT_PEEK_SINGLE_VALUE, 0, 0, NULL}
@@ -16,9 +20,8 @@
 #define PSTAT_METADATA_INIT_COMPLEX(id, name, md_complex) \
   { id, name, PSTAT_COMPLEX_VALUE, 0, 0, md_complex }
 
-PSTAT_GLOBAL pstat_Global;
-PSTAT_NAMEOFFSET *pstat_Nameoffset;
-int total_num_stat_vals;
+int perfmeta_Stat_count;
+char (*pstat_Value_names)[STAT_NAME_MAX_SIZE] = NULL;
 
 const PERFBASE_DIM perfbase_Dim_module = {
   "MODULE",
@@ -87,13 +90,13 @@ const PERFBASE_DIM perfbase_Dim_success = {
 const PERFBASE_DIM perfbase_Dim_buf_dirty = {
   "BUF_DIRTY",
   2,
-  {"BUF_DIRTY", "BUF_NON_DIRTY"},
+  {"BUF_NON_DIRTY", "BUF_DIRTY"},
 };
 
 const PERFBASE_DIM perfbase_Dim_holder_dirty = {
   "HOLDER_DIRTY",
   2,
-  {"HOLDER_DIRTY", "HOLDER_NON_DIRTY"},
+  {"HOLDER_NON_DIRTY", "HOLDER_DIRTY"},
 };
 
 const PERFBASE_DIM perfbase_Dim_visibility = {
@@ -525,6 +528,10 @@ PSTAT_METADATA pstat_Metadata[] = {
 };
 
 /************************************************************************/
+/* end of macros and structures                                         */
+/************************************************************************/
+
+/************************************************************************/
 /* start of static functions section                                    */
 /************************************************************************/
 
@@ -533,7 +540,7 @@ static void perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, con
 static void
 perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, char **s, int *remaining_size);
 
-void perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata);
+void perfbase_load_complex_names (char (*names)[STAT_NAME_MAX_SIZE], PSTAT_METADATA * metadata);
 static void perfbase_complex_iterator_init (const PERFBASE_COMPLEX * complexp, PERFBASE_COMPLEX_ITERATOR * iterator);
 static bool perfbase_complex_iterator_next (PERFBASE_COMPLEX_ITERATOR * iterator);
 
@@ -598,13 +605,14 @@ perfbase_aggregate_complex (PERF_STAT_ID id, const UINT64 * vals, int index_dim,
 }
 
 int
-metadata_initialize ()
+perfmeta_init (void)
 {
   int idx, i, n_vals;
+  int nvals_total = 0;
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {
-      pstat_Metadata[idx].start_offset = pstat_Global.n_stat_values;
+      pstat_Metadata[idx].start_offset = nvals_total;
       switch (pstat_Metadata[idx].valtype)
 	{
 	case PSTAT_ACCUMULATE_SINGLE_VALUE:
@@ -637,11 +645,69 @@ metadata_initialize ()
 	      assert (false);
 	      return pstat_Metadata[idx].n_vals;
 	    }
+	  break;
+	default:
+	  assert (false);
 	}
-      pstat_Global.n_stat_values += pstat_Metadata[idx].n_vals;
+      nvals_total += pstat_Metadata[idx].n_vals;
     }
 
-  return 0;
+  perfmeta_Stat_count = nvals_total;
+
+  /* initialize stat name array */
+  pstat_Value_names = (char (*)[STAT_NAME_MAX_SIZE]) malloc (STAT_NAME_MAX_SIZE * nvals_total);
+  for (i = 0; i < PSTAT_COUNT; i++)
+    {
+      switch (pstat_Metadata[i].valtype)
+	{
+	case PSTAT_ACCUMULATE_SINGLE_VALUE:
+	case PSTAT_PEEK_SINGLE_VALUE:
+	case PSTAT_COMPUTED_RATIO_VALUE:
+	  strncpy (pstat_Value_names[pstat_Metadata[i].start_offset], pstat_Metadata[i].stat_name, STAT_NAME_MAX_SIZE);
+	  break;
+
+	case PSTAT_COUNTER_TIMER_VALUE:
+	  /* num, total time, max time and average time */
+
+	  strcpy (pstat_Value_names[PSTAT_COUNTER_TIMER_COUNT_VALUE (pstat_Metadata[i].start_offset)], "Num_");
+	  strncat (pstat_Value_names[PSTAT_COUNTER_TIMER_COUNT_VALUE (pstat_Metadata[i].start_offset)],
+		   pstat_Metadata[i].stat_name, STAT_NAME_MAX_SIZE - strlen ("Num_"));
+
+	  strcpy (pstat_Value_names[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (pstat_Metadata[i].start_offset)],
+		  "Total_time_");
+	  strncat (pstat_Value_names[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (pstat_Metadata[i].start_offset)],
+		   pstat_Metadata[i].stat_name, STAT_NAME_MAX_SIZE - strlen ("Total_time_"));
+
+	  strcpy (pstat_Value_names[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (pstat_Metadata[i].start_offset)], "Max_time_");
+	  strncat (pstat_Value_names[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (pstat_Metadata[i].start_offset)],
+		   pstat_Metadata[i].stat_name, STAT_NAME_MAX_SIZE - strlen ("Max_time_"));
+
+	  strcpy (pstat_Value_names[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (pstat_Metadata[i].start_offset)], "Avg_time_");
+	  strncat (pstat_Value_names[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (pstat_Metadata[i].start_offset)],
+		   pstat_Metadata[i].stat_name, STAT_NAME_MAX_SIZE - strlen ("Avg_time_"));
+	  break;
+
+	case PSTAT_COMPLEX_VALUE:
+	  perfbase_load_complex_names (pstat_Value_names, &pstat_Metadata[i]);
+	  break;
+
+	default:
+	  assert (false);
+	  break;
+	}
+    }
+
+  return nvals_total;
+}
+
+void
+perfmeta_final (void)
+{
+  if (pstat_Value_names != NULL)
+    {
+      free (pstat_Value_names);
+      pstat_Value_names = NULL;
+    }
 }
 
 /*
@@ -747,7 +813,7 @@ perfmon_pack_stats (char *buf, UINT64 * stats)
 
   ptr = buf;
 
-  for (i = 0; i < pstat_Global.n_stat_values; i++)
+  for (i = 0; i < perfmeta_Stat_count; i++)
     {
       OR_PUT_INT64 (ptr, &(stats[i]));
       ptr += OR_INT64_SIZE;
@@ -773,59 +839,13 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 
   ptr = buf;
 
-  for (i = 0; i < pstat_Global.n_stat_values; i++)
+  for (i = 0; i < perfmeta_Stat_count; i++)
     {
       OR_GET_INT64 (ptr, &(stats[i]));
       ptr += OR_INT64_SIZE;
     }
 
   return (ptr);
-}
-
-void
-perfbase_init_name_offset_assoc ()
-{
-  int vals = 0;
-  int realI = 0;
-  unsigned int i;
-
-  for (i = 0; i < PSTAT_COUNT; i++)
-    {
-      vals += pstat_Metadata[i].n_vals;
-    }
-  total_num_stat_vals = vals;
-
-  pstat_Nameoffset = (PSTAT_NAMEOFFSET *) malloc (sizeof (PSTAT_NAMEOFFSET) * vals);
-
-  for (i = 0; i < PSTAT_COUNT; i++)
-    {
-      int offset = pstat_Metadata[i].start_offset;
-      if (pstat_Metadata[i].valtype == PSTAT_ACCUMULATE_SINGLE_VALUE ||
-	  pstat_Metadata[i].valtype == PSTAT_PEEK_SINGLE_VALUE ||
-	  pstat_Metadata[i].valtype == PSTAT_COMPUTED_RATIO_VALUE)
-	{
-	  strcpy (pstat_Nameoffset[realI].name, pstat_Metadata[i].stat_name);
-	}
-      else if (pstat_Metadata[i].valtype == PSTAT_COUNTER_TIMER_VALUE)
-	{
-	  strcpy (pstat_Nameoffset[realI].name, "Num_");
-	  strcat (pstat_Nameoffset[realI].name, pstat_Metadata[i].stat_name);
-
-	  strcpy (pstat_Nameoffset[realI + 1].name, "Total_time_");
-	  strcat (pstat_Nameoffset[realI + 1].name, pstat_Metadata[i].stat_name);
-
-	  strcpy (pstat_Nameoffset[realI + 2].name, "Max_time_");
-	  strcat (pstat_Nameoffset[realI + 2].name, pstat_Metadata[i].stat_name);
-
-	  strcpy (pstat_Nameoffset[realI + 3].name, "Avg_time_");
-	  strcat (pstat_Nameoffset[realI + 3].name, pstat_Metadata[i].stat_name);
-	}
-      else if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
-	{
-	  perfbase_load_complex_names (pstat_Nameoffset, &pstat_Metadata[i]);
-	}
-      realI += pstat_Metadata[i].n_vals;
-    }
 }
 
 /*
@@ -837,7 +857,7 @@ perfbase_init_name_offset_assoc ()
  */
 
 void
-perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata)
+perfbase_load_complex_names (char (*names)[STAT_NAME_MAX_SIZE], PSTAT_METADATA * metadata)
 {
   PERFBASE_COMPLEX_ITERATOR iter;
   const PERFBASE_COMPLEX *complexp = metadata->complexp;
@@ -848,18 +868,19 @@ perfbase_load_complex_names (PSTAT_NAMEOFFSET * names, PSTAT_METADATA * metadata
 
   do
     {
+      int str_size = 0;
       for (i = 0; i < complexp->size; i++)
 	{
-	  if (i == 0)
+	  strncpy (names[offset] + str_size, complexp->dimensions[i]->names[iter.cursor.indices[i]],
+		   STAT_NAME_MAX_SIZE - str_size);
+	  if (strlen (complexp->dimensions[i]->names[iter.cursor.indices[i]]) < STAT_NAME_MAX_SIZE - str_size)
 	    {
-	      strcpy (names[offset].name, complexp->dimensions[i]->names[iter.cursor.indices[i]]);
+	      *(names[offset] + str_size + strlen (complexp->dimensions[i]->names[iter.cursor.indices[i]])) = ' ';
+	      str_size++;
 	    }
-	  else
-	    {
-	      strcat (names[offset].name, ", ");
-	      strcat (names[offset].name, complexp->dimensions[i]->names[iter.cursor.indices[i]]);
-	    }
+	  str_size += strlen (complexp->dimensions[i]->names[iter.cursor.indices[i]]);
 	}
+      names[offset][STAT_NAME_MAX_SIZE <= str_size ? STAT_NAME_MAX_SIZE - 1 : str_size] = '\0';
       offset++;
     }
   while (perfbase_complex_iterator_next (&iter));
@@ -926,7 +947,7 @@ perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * 
 	{
 	  continue;
 	}
-      fprintf (stream, "%-56s = %16lld\n", pstat_Nameoffset[i].name, (long long) counter);
+      fprintf (stream, "%-56s = %16lld\n", pstat_Value_names[i], (long long) counter);
     }
 }
 
@@ -1038,8 +1059,7 @@ perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, ch
 	    {
 	      continue;
 	    }
-	  ret = snprintf (*s, (size_t) * remaining_size, "%-56s = %16lld\n",
-			  pstat_Nameoffset[i].name, (long long) counter);
+	  ret = snprintf (*s, (size_t) * remaining_size, "%-56s = %16lld\n", pstat_Value_names[i], (long long) counter);
 	  *remaining_size -= ret;
 	  *s += ret;
 	  if (*remaining_size <= 0)

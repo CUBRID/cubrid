@@ -1641,7 +1641,7 @@ perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, i
 
   perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_PBX_PROMOTE_COUNTERS, &cursor), 1);
   perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_PBX_PROMOTE_TIME_COUNTERS, &cursor),
-                         amount);
+			 amount);
 }
 
 /*
@@ -1890,9 +1890,9 @@ perfmon_server_calc_stats (UINT64 * stats)
 		{
 		  for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
 		    {
-                      offset =
-                        perfmeta_complex_get_offset (PSTAT_PBX_UNFIX_COUNTERS, module, page_type, buf_dirty,
-                                                     holder_dirty, holder_latch);
+		      offset =
+			perfmeta_complex_get_offset (PSTAT_PBX_UNFIX_COUNTERS, module, page_type, buf_dirty,
+						     holder_dirty, holder_latch);
 		      counter = stats[offset];
 
 		      total_unfix += counter;
@@ -1918,10 +1918,10 @@ perfmon_server_calc_stats (UINT64 * stats)
 	    {
 	      for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
 		{
-                  offset =
-                    perfmeta_complex_get_offset (PSTAT_PBX_HOLD_TIME_COUNTERS, module, page_type, page_found_mode,
-                                                 holder_latch);
-                  counter = stats[offset];
+		  offset =
+		    perfmeta_complex_get_offset (PSTAT_PBX_HOLD_TIME_COUNTERS, module, page_type, page_found_mode,
+						 holder_latch);
+		  counter = stats[offset];
 
 		  if (page_type != PAGE_LOG && counter > 0)
 		    {
@@ -1931,9 +1931,9 @@ perfmon_server_calc_stats (UINT64 * stats)
 		  for (cond_type = PERF_CONDITIONAL_FIX; cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
 		    {
 		      offset =
-                        perfmeta_complex_get_offset (PSTAT_PBX_FIX_TIME_COUNTERS, module, page_type, page_found_mode,
-                                                     holder_latch, cond_type);
-                      counter = stats[offset];
+			perfmeta_complex_get_offset (PSTAT_PBX_FIX_TIME_COUNTERS, module, page_type, page_found_mode,
+						     holder_latch, cond_type);
+		      counter = stats[offset];
 
 		      /* do not include fix time of log pages */
 		      if (page_type != PAGE_LOG && counter > 0)
@@ -1942,8 +1942,8 @@ perfmon_server_calc_stats (UINT64 * stats)
 			}
 
 		      offset =
-                        perfmeta_complex_get_offset (PSTAT_PBX_LOCK_TIME_COUNTERS, module, page_type, page_found_mode,
-                                                     holder_latch, cond_type);
+			perfmeta_complex_get_offset (PSTAT_PBX_LOCK_TIME_COUNTERS, module, page_type, page_found_mode,
+						     holder_latch, cond_type);
 		      counter = stats[offset];
 
 		      if (page_type != PAGE_LOG && counter > 0)
@@ -1955,8 +1955,8 @@ perfmon_server_calc_stats (UINT64 * stats)
 			  && page_found_mode != PERF_PAGE_MODE_NEW_NO_WAIT)
 			{
 			  offset =
-                            perfmeta_complex_get_offset (PSTAT_PBX_FIX_COUNTERS, module, page_type, page_found_mode,
-                                                         holder_latch, cond_type);
+			    perfmeta_complex_get_offset (PSTAT_PBX_FIX_COUNTERS, module, page_type, page_found_mode,
+							 holder_latch, cond_type);
 			  counter = stats[offset];
 
 			  if (module == PERF_MODULE_VACUUM)
@@ -2013,9 +2013,9 @@ perfmon_server_calc_stats (UINT64 * stats)
 		{
 		  for (success = 0; success < 2; success++)
 		    {
-                      offset =
-                        perfmeta_complex_get_offset (PSTAT_PBX_PROMOTE_TIME_COUNTERS, module, page_type, promote_cond,
-                                                     holder_latch, success);
+		      offset =
+			perfmeta_complex_get_offset (PSTAT_PBX_PROMOTE_TIME_COUNTERS, module, page_type, promote_cond,
+						     holder_latch, success);
 		      counter = stats[offset];
 		      if (counter)
 			{
@@ -2146,12 +2146,11 @@ perfmon_initialize (int num_trans)
   pstat_Global.initialized = false;
   pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
 
-  rc = metadata_initialize ();
-  if (rc != 0)
+  pstat_Global.n_stat_values = perfmeta_init ();
+  if (pstat_Global.n_stat_values < 0)
     {
-      return rc;
+      return pstat_Global.n_stat_values;
     }
-  perfbase_init_name_offset_assoc ();
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
@@ -2223,7 +2222,7 @@ error:
 void
 perfmon_finalize (void)
 {
-  free (pstat_Nameoffset);
+  perfmeta_final ();
 
   if (pstat_Global.tran_stats != NULL)
     {
