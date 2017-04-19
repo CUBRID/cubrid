@@ -2607,6 +2607,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = ER_FAILED;
       goto error;
     }
+  logtb_free_tran_index (thread_p, tran_index);
+  tran_index = NULL_TRAN_INDEX;
   logtb_set_to_system_tran_index (thread_p);
 
   if (!tf_Metaclass_class.mc_n_variable)
@@ -2760,6 +2762,11 @@ error:
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_RESTART_SERVER, 1, "");
+    }
+
+  if (tran_index != NULL_TRAN_INDEX)
+    {
+      logtb_free_tran_index (thread_p, tran_index);
     }
 
   session_states_finalize (thread_p);
