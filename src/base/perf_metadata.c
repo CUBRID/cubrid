@@ -40,7 +40,7 @@
   { id, name, PSTAT_COMPLEX_VALUE, 0, 0, md_complex }
 
 int perfmeta_Stat_count;
-char (*pstat_Value_names)[STAT_NAME_MAX_SIZE] = NULL;
+char (*pstat_Value_names)[PERFMETA_VALNAME_MAX_SIZE] = NULL;
 
 const PERFBASE_DIM perfbase_Dim_module = {
   "MODULE",
@@ -556,10 +556,10 @@ PSTAT_METADATA pstat_Metadata[] = {
 
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 static void perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * stats_ptr);
-static void
-perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, char **s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * stats_ptr, char **s,
+                                         int *remaining_size);
 
-void perfbase_load_complex_names (char (*names)[STAT_NAME_MAX_SIZE], PSTAT_METADATA * metadata);
+static void perfbase_load_complex_names (char (*names)[PERFMETA_VALNAME_MAX_SIZE], PSTAT_METADATA * metadata);
 static void perfbase_complex_iterator_init (const PERFBASE_COMPLEX * complexp, PERFBASE_COMPLEX_ITERATOR * iterator);
 static bool perfbase_complex_iterator_next (PERFBASE_COMPLEX_ITERATOR * iterator);
 
@@ -674,7 +674,7 @@ perfmeta_init (void)
   perfmeta_Stat_count = nvals_total;
 
   /* initialize stat name array */
-  pstat_Value_names = (char (*)[STAT_NAME_MAX_SIZE]) malloc (STAT_NAME_MAX_SIZE * nvals_total);
+  pstat_Value_names = (char (*)[PERFMETA_VALNAME_MAX_SIZE]) malloc (PERFMETA_VALNAME_MAX_SIZE * nvals_total);
   if (pstat_Value_names == NULL)
     {
       /* this won't work... */
@@ -688,7 +688,7 @@ perfmeta_init (void)
 	case PSTAT_ACCUMULATE_SINGLE_VALUE:
 	case PSTAT_PEEK_SINGLE_VALUE:
 	case PSTAT_COMPUTED_RATIO_VALUE:
-	  strncpy (pstat_Value_names[pstat_Metadata[i].start_offset], pstat_Metadata[i].stat_name, STAT_NAME_MAX_SIZE);
+	  strncpy (pstat_Value_names[pstat_Metadata[i].start_offset], pstat_Metadata[i].stat_name, PERFMETA_VALNAME_MAX_SIZE);
 	  break;
 
 	case PSTAT_COUNTER_TIMER_VALUE:
@@ -696,20 +696,20 @@ perfmeta_init (void)
 
 	  strcpy (pstat_Value_names[PSTAT_COUNTER_TIMER_COUNT_VALUE (pstat_Metadata[i].start_offset)], "Num_");
 	  strncat (pstat_Value_names[PSTAT_COUNTER_TIMER_COUNT_VALUE (pstat_Metadata[i].start_offset)],
-		   pstat_Metadata[i].stat_name, STAT_NAME_MAX_SIZE - strlen ("Num_"));
+		   pstat_Metadata[i].stat_name, PERFMETA_VALNAME_MAX_SIZE - strlen ("Num_"));
 
 	  strcpy (pstat_Value_names[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (pstat_Metadata[i].start_offset)],
 		  "Total_time_");
 	  strncat (pstat_Value_names[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (pstat_Metadata[i].start_offset)],
-		   pstat_Metadata[i].stat_name, STAT_NAME_MAX_SIZE - strlen ("Total_time_"));
+		   pstat_Metadata[i].stat_name, PERFMETA_VALNAME_MAX_SIZE - strlen ("Total_time_"));
 
 	  strcpy (pstat_Value_names[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (pstat_Metadata[i].start_offset)], "Max_time_");
 	  strncat (pstat_Value_names[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (pstat_Metadata[i].start_offset)],
-		   pstat_Metadata[i].stat_name, STAT_NAME_MAX_SIZE - strlen ("Max_time_"));
+		   pstat_Metadata[i].stat_name, PERFMETA_VALNAME_MAX_SIZE - strlen ("Max_time_"));
 
 	  strcpy (pstat_Value_names[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (pstat_Metadata[i].start_offset)], "Avg_time_");
 	  strncat (pstat_Value_names[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (pstat_Metadata[i].start_offset)],
-		   pstat_Metadata[i].stat_name, STAT_NAME_MAX_SIZE - strlen ("Avg_time_"));
+		   pstat_Metadata[i].stat_name, PERFMETA_VALNAME_MAX_SIZE - strlen ("Avg_time_"));
 	  break;
 
 	case PSTAT_COMPLEX_VALUE:
@@ -882,7 +882,7 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
  */
 
 void
-perfbase_load_complex_names (char (*names)[STAT_NAME_MAX_SIZE], PSTAT_METADATA * metadata)
+perfbase_load_complex_names (char (*names)[PERFMETA_VALNAME_MAX_SIZE], PSTAT_METADATA * metadata)
 {
   PERFBASE_COMPLEX_ITERATOR iter;
   const PERFBASE_COMPLEX *complexp = metadata->complexp;
@@ -897,15 +897,15 @@ perfbase_load_complex_names (char (*names)[STAT_NAME_MAX_SIZE], PSTAT_METADATA *
       for (i = 0; i < complexp->size; i++)
 	{
 	  strncpy (names[offset] + str_size, complexp->dimensions[i]->names[iter.cursor.indices[i]],
-		   STAT_NAME_MAX_SIZE - str_size);
-	  if (strlen (complexp->dimensions[i]->names[iter.cursor.indices[i]]) < STAT_NAME_MAX_SIZE - str_size)
+		   PERFMETA_VALNAME_MAX_SIZE - str_size);
+	  if (strlen (complexp->dimensions[i]->names[iter.cursor.indices[i]]) < PERFMETA_VALNAME_MAX_SIZE - str_size)
 	    {
 	      *(names[offset] + str_size + strlen (complexp->dimensions[i]->names[iter.cursor.indices[i]])) = ' ';
 	      str_size++;
 	    }
 	  str_size += strlen (complexp->dimensions[i]->names[iter.cursor.indices[i]]);
 	}
-      names[offset][STAT_NAME_MAX_SIZE <= str_size ? STAT_NAME_MAX_SIZE - 1 : str_size] = '\0';
+      names[offset][PERFMETA_VALNAME_MAX_SIZE <= str_size ? PERFMETA_VALNAME_MAX_SIZE - 1 : str_size] = '\0';
       offset++;
     }
   while (perfbase_complex_iterator_next (&iter));

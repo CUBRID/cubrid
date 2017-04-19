@@ -37,7 +37,6 @@ extern "C"
 #endif
 
 #define PERFBASE_DIMENSION_MAX_SIZE 32
-#define STAT_NAME_MAX_SIZE 128
 #define PERFBASE_COMPLEX_MAX_DIMENSIONS 8
 
 typedef enum
@@ -509,12 +508,6 @@ typedef enum
 				 */
 } PSTAT_VALUE_TYPE;
 
-typedef struct PSTAT_NameOffsetAssoc PSTAT_NAMEOFFSET;
-struct PSTAT_NameOffsetAssoc
-{
-  char name[STAT_NAME_MAX_SIZE];
-};
-
 typedef struct perfbase_Dim PERFBASE_DIM;
 struct perfbase_Dim
 {
@@ -588,8 +581,11 @@ typedef enum
   PERF_LOCK_CNT
 } PERF_LOCK;
 
+/* todo: do not expose ==> */
 extern int perfmeta_Stat_count;
-extern char (*pstat_Value_names)[STAT_NAME_MAX_SIZE];
+#define PERFMETA_VALNAME_MAX_SIZE 128
+extern char (*pstat_Value_names)[];
+/* todo: do not expose <== */
 
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
