@@ -5808,7 +5808,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   int nr_statistic_values;
   UINT64 *stats = NULL;
 
-  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  nr_statistic_values = perfmeta_get_values_count ();
   stats = perfmon_allocate_values ();
 
   if (stats == NULL)
@@ -5852,7 +5852,7 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *
   int nr_statistic_values;
   UINT64 *stats = NULL;
 
-  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  nr_statistic_values = perfmeta_get_values_count ();
   stats = perfmon_allocate_values ();
   if (stats == NULL)
     {

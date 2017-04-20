@@ -1,9 +1,28 @@
-//
-// Created by paul on 15.03.2017.
-//
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
 
-#ifndef CUBRID_PERFMON_BASE_H
-#define CUBRID_PERFMON_BASE_H
+/*
+ * perf_metadata.h - Meta-data used for performance statistics monitoring and processing
+ */
+
+#ifndef _PERF_METADATA_H_
+#define _PERF_METADATA_H_
 
 #ifdef __cplusplus
 extern "C"
@@ -18,7 +37,6 @@ extern "C"
 #endif
 
 #define PERFBASE_DIMENSION_MAX_SIZE 32
-#define STAT_NAME_MAX_SIZE 128
 #define PERFBASE_COMPLEX_MAX_DIMENSIONS 8
 
 typedef enum
@@ -490,7 +508,6 @@ typedef enum
 				 */
 } PSTAT_VALUE_TYPE;
 
-
 typedef struct perfbase_Dim PERFBASE_DIM;
 struct perfbase_Dim
 {
@@ -564,6 +581,8 @@ typedef enum
   PERF_LOCK_CNT
 } PERF_LOCK;
 
+extern char (*pstat_Value_names)[];
+/* todo: do not expose <== */
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
@@ -583,4 +602,5 @@ int perfmeta_get_Stat_count ();
 void perfmeta_copy_stats (UINT64 * dst, UINT64 * src);
 void perfmeta_get_stat_index_and_dimension (const char *stat_name, const char *dimension_name, int *stat_index,
 					    int *fixed_dimension);
-#endif //CUBRID_PERFMON_BASE_H
+extern int perfmeta_get_values_count (void);
+extern int perfmeta_get_values_memsize (void);
