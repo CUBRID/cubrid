@@ -25,6 +25,7 @@
 #include "perf_metadata.h"
 #include "porting.h"
 #include <stdarg.h>
+#include <error_code.h>
 
 /************************************************************************/
 /* start of macros and structures                                       */
@@ -41,7 +42,7 @@
 #define PERFMETA_VALNAME_MAX_SIZE 128
 
 static int perfmeta_Stat_count;
-char (*pstat_Value_names)[PERFMETA_VALNAME_MAX_SIZE] = NULL;
+static char (*pstat_Value_names)[PERFMETA_VALNAME_MAX_SIZE] = NULL;
 
 const PERFBASE_DIM perfbase_Dim_module = {
   "MODULE",
@@ -1493,14 +1494,14 @@ perfmeta_get_stat_value_from_name (const char *stat_name, UINT64 * raw_stats)
 void
 perfmeta_copy_stats (UINT64 * dst, UINT64 * src)
 {
-  for (int i = 0; i < perfmeta_get_Stat_count (); i++)
+  for (int i = 0; i < perfmeta_get_values_count (); i++)
     {
       dst[i] = src[i];
     }
 }
 
 int
-perfmeta_get_Stat_count ()
+perfmeta_get_values_count ()
 {
   return perfmeta_Stat_count;
 }

@@ -581,8 +581,6 @@ typedef enum
   PERF_LOCK_CNT
 } PERF_LOCK;
 
-extern char (*pstat_Value_names)[];
-/* todo: do not expose <== */
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
@@ -598,9 +596,10 @@ extern int perfmeta_complex_get_offset (PERF_STAT_ID psid, ...);
 UINT64 perfmeta_get_stat_value_from_name (const char *stat_name, UINT64 * raw_stats);
 void perfmeta_custom_dump_stats_in_table_form (const UINT64 ** stats, int no_of_stats, FILE * stream, int show_complex,
 					       int show_zero);
-int perfmeta_get_Stat_count ();
 void perfmeta_copy_stats (UINT64 * dst, UINT64 * src);
 void perfmeta_get_stat_index_and_dimension (const char *stat_name, const char *dimension_name, int *stat_index,
 					    int *fixed_dimension);
-extern int perfmeta_get_values_count (void);
 extern int perfmeta_get_values_memsize (void);
+extern int perfmeta_get_values_count (void);
+
+#endif /*_PERF_METADATA_H_*/

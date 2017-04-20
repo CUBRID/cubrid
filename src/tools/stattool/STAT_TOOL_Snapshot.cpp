@@ -10,7 +10,7 @@ Snapshot::Snapshot (time_t seconds, time_t seconds2)
   this->timestamp = *localtime (&seconds);
   this->secondTimeStamp = *localtime (&seconds2);
 
-  rawStats = (UINT64 *) malloc (sizeof (UINT64) * perfmeta_get_Stat_count());
+  rawStats = (UINT64 *) malloc (sizeof (UINT64) * perfmeta_get_values_count ());
 }
 
 Snapshot::Snapshot (time_t seconds)
@@ -18,7 +18,7 @@ Snapshot::Snapshot (time_t seconds)
   isDifference = false;
   memset (&secondTimeStamp, 0, sizeof (struct tm));
 
-  rawStats = (UINT64 *) malloc (sizeof (UINT64) * perfmeta_get_Stat_count());
+  rawStats = (UINT64 *) malloc (sizeof (UINT64) * perfmeta_get_values_count ());
   this->timestamp = *localtime (&seconds);
 }
 
@@ -33,7 +33,7 @@ Snapshot::difference (Snapshot *other)
 {
   Snapshot *newSnapshot = new Snapshot (this->getSeconds (), other->getSeconds ());
 
-  for (int i = 0; i < perfmeta_get_Stat_count(); i++)
+  for (int i = 0; i < perfmeta_get_values_count (); i++)
     {
       newSnapshot->rawStats[i] = this->rawStats[i] - other->rawStats[i];
     }
@@ -46,7 +46,7 @@ Snapshot::divide (Snapshot *other)
 {
   Snapshot *newSnapshot = new Snapshot (this->getSeconds (), other->getSeconds ());
 
-  for (int i = 0; i < perfmeta_get_Stat_count(); i++)
+  for (int i = 0; i < perfmeta_get_values_count (); i++)
     {
       if (other->rawStats[i] == 0)
         {
