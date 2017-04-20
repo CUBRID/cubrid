@@ -10,7 +10,7 @@ Snapshot::Snapshot (time_t seconds, time_t seconds2)
   this->timestamp = *localtime (&seconds);
   this->secondTimeStamp = *localtime (&seconds2);
 
-  rawStats = (UINT64 *) malloc (sizeof (UINT64) * Utils::getNStatValues ());
+  rawStats = (UINT64 *) malloc (sizeof (UINT64) * perfmeta_get_Stat_count());
 }
 
 Snapshot::Snapshot (time_t seconds)
@@ -18,17 +18,14 @@ Snapshot::Snapshot (time_t seconds)
   isDifference = false;
   memset (&secondTimeStamp, 0, sizeof (struct tm));
 
-  rawStats = (UINT64 *) malloc (sizeof (UINT64) * Utils::getNStatValues ());
+  rawStats = (UINT64 *) malloc (sizeof (UINT64) * perfmeta_get_Stat_count());
   this->timestamp = *localtime (&seconds);
 }
 
 Snapshot::Snapshot (const Snapshot &other)
 {
   this->timestamp = other.timestamp;
-  for (int i = 0; i < Utils::getNStatValues (); i++)
-    {
-      rawStats[i] = other.rawStats[i];
-    }
+  perfmeta_copy_stats (rawStats, other.rawStats);
 }
 
 Snapshot *
@@ -36,7 +33,7 @@ Snapshot::difference (Snapshot *other)
 {
   Snapshot *newSnapshot = new Snapshot (this->getSeconds (), other->getSeconds ());
 
-  for (int i = 0; i < Utils::getNStatValues (); i++)
+  for (int i = 0; i < perfmeta_get_Stat_count(); i++)
     {
       newSnapshot->rawStats[i] = this->rawStats[i] - other->rawStats[i];
     }
@@ -49,7 +46,7 @@ Snapshot::divide (Snapshot *other)
 {
   Snapshot *newSnapshot = new Snapshot (this->getSeconds (), other->getSeconds ());
 
-  for (int i = 0; i < Utils::getNStatValues (); i++)
+  for (int i = 0; i < perfmeta_get_Stat_count(); i++)
     {
       if (other->rawStats[i] == 0)
         {
@@ -71,47 +68,9 @@ Snapshot::getSeconds ()
 }
 
 UINT64
-Snapshot::getStatusValueFromName (const char *stat_name)
+Snapshot::getStatValueFromName (const char *stat_name)
 {
-  int i;
-
-  for (i = 0; i < perfmeta_Stat_count; i++)
-    {
-      if (strcmp (pstat_Value_names[i], stat_name) == 0)
-        {
-          return rawStats[i];
-        }
-    }
-  return 0;
-}
-
-void
-Snapshot::print (FILE *stream)
-{
-  int i;
-  UINT64 *stats_ptr = this->rawStats;
-  char strTime[80];
-
-  if (isDifference)
-    {
-      strftime (strTime, 80, "%a %B %d %H:%M:%S %Y", &timestamp);
-      printf ("First timestamp = %s\n", strTime);
-      strftime (strTime, 80, "%a %B %d %H:%M:%S %Y", &secondTimeStamp);
-      printf ("Second timestamp = %s\n", strTime);
-    }
-  else
-    {
-      strftime (strTime, 80, "%a %B %d %H:%M:%S %Y", &timestamp);
-      printf ("Timestamp = %s\n", strTime);
-    }
-
-  for (i = 0; i < perfmeta_Stat_count; i++)
-    {
-      if (stats_ptr[i] != 0)
-        {
-          fprintf (stream, "%s = %lld\n", pstat_Value_names[i], (long long)stats_ptr[i]);
-        }
-    }
+  return perfmeta_get_stat_value_from_name (stat_name, rawStats);
 }
 
 Snapshot::~Snapshot ()

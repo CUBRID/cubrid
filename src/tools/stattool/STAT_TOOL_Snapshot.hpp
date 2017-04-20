@@ -24,8 +24,7 @@ struct Snapshot
   Snapshot *difference (Snapshot *other);
   Snapshot *divide (Snapshot *other);
   time_t getSeconds ();
-  UINT64 getStatusValueFromName (const char *stat_name);
-  void print (FILE *stream);
+  UINT64 getStatValueFromName (const char *stat_name);
   ~Snapshot ();
 };
 

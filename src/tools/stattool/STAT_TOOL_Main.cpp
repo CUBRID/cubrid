@@ -23,8 +23,7 @@ main (int argc, char **argv)
 {
   bool quit = false;
   char command[MAX_COMMAND_SIZE];
-  int n_stat_values = perfmeta_init();
-  Utils::setNStatValues (n_stat_values);
+  perfmeta_init();
 
   do
     {

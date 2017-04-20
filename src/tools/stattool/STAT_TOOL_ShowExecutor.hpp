@@ -10,6 +10,7 @@
 #include <algorithm>
 
 #define SHOW_COMPLEX_CMD "-c"
+#define SHOW_ZEROES_CMD "-z"
 
 class ShowExecutor : public CommandExecutor
 {
@@ -20,10 +21,9 @@ class ShowExecutor : public CommandExecutor
     void printUsage();
     ~ShowExecutor();
   private:
-    bool showComplex;
-    std::vector<std::string> snapshotsStr;
+    bool showComplex, showZeroes;
+    std::vector<std::string> validSnapshots;
     std::vector<Snapshot *> snapshots;
-    int end;
 };
 
 #endif //CUBRID_SHOWEXECUTOR_H

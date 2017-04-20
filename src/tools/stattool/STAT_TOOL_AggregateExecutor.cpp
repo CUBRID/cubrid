@@ -15,7 +15,8 @@ AggregateExecutor::AggregateExecutor (std::string &wholeCommand,
                                       std::vector<StatisticsFile *> &files) : CommandExecutor (wholeCommand, files)
 {
   fixedDimension = -1;
-  statIndex = PSTAT_BASE;
+  fixedDimensionStr = "";
+  statIndex = -1;
   statName = "";
   plotFilename = "";
   file = NULL;
@@ -116,25 +117,7 @@ AggregateExecutor::parseCommandAndInit ()
       return ErrorManager::MISSING_ARGUMENT_ERROR;
     }
 
-  for (int i = 0; i < perfmeta_Stat_count; i++)
-    {
-      if (strcmp (pstat_Metadata[i].stat_name, statName.c_str()) == 0)
-        {
-          statIndex = (PERF_STAT_ID) i;
-          if (fixedDimension == -1)
-            {
-              for (int j = 0; j < pstat_Metadata[statIndex].complexp->size; j++)
-                {
-                  if (fixedDimensionStr.compare (pstat_Metadata[statIndex].complexp->dimensions[j]->alias) == 0)
-                    {
-                      fixedDimension = j;
-                      break;
-                    }
-                }
-            }
-          break;
-        }
-    }
+  perfmeta_get_stat_index_and_dimension (statName.c_str(), fixedDimensionStr.c_str (), &statIndex, &fixedDimension);
 
   if (fixedDimension == -1)
     {

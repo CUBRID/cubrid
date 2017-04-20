@@ -41,11 +41,11 @@ StatisticsFile::readFileAndInit ()
 
   while (fread (&seconds, sizeof (INT64), 1, binary_fp) > 0)
     {
-      char *unpacked_stats = (char *)malloc (sizeof (UINT64) * (size_t)Utils::getNStatValues());
+      char *unpacked_stats = (char *)malloc (sizeof (UINT64) * (size_t)perfmeta_get_Stat_count());
       OR_GET_INT64 (&seconds, &unpacked_seconds);
       epochSeconds = (time_t)unpacked_seconds;
       Snapshot *snapshot = new Snapshot (epochSeconds);
-      fread (unpacked_stats, sizeof (UINT64), (size_t)Utils::getNStatValues(), binary_fp);
+      fread (unpacked_stats, sizeof (UINT64), (size_t)perfmeta_get_Stat_count(), binary_fp);
       perfmon_unpack_stats (unpacked_stats, snapshot->rawStats);
       snapshots.push_back (snapshot);
     }

@@ -179,7 +179,7 @@ PlotExecutor::execute()
         {
           time_t seconds = files[plotData[i].first]->getSnapshots()[j]->getSeconds ()
                            -files[plotData[i].first]->getRelativeSeconds();
-          UINT64 value = files[plotData[i].first]->getSnapshots()[j]->getStatusValueFromName (variable.c_str ());
+          UINT64 value = files[plotData[i].first]->getSnapshots ()[j]->getStatValueFromName (variable.c_str ());
           fprintf (gnuplotPipe, "%ld %lld\n", seconds, (long long) value);
         }
 

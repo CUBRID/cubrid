@@ -490,11 +490,6 @@ typedef enum
 				 */
 } PSTAT_VALUE_TYPE;
 
-typedef struct PSTAT_NameOffsetAssoc PSTAT_NAMEOFFSET;
-struct PSTAT_NameOffsetAssoc
-{
-  char name[STAT_NAME_MAX_SIZE];
-};
 
 typedef struct perfbase_Dim PERFBASE_DIM;
 struct perfbase_Dim
@@ -569,22 +564,23 @@ typedef enum
   PERF_LOCK_CNT
 } PERF_LOCK;
 
-
-
-extern int perfmeta_Stat_count;
-extern char (*pstat_Value_names)[STAT_NAME_MAX_SIZE];
-
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
-void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
+void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr, int show_zero, int show_header);
 void perfmon_compare_timer (FILE * stream, int stat_index, UINT64 * stats1, UINT64 * stats2);
-extern void perfbase_aggregate_complex (PERF_STAT_ID id, const UINT64 * vals, int index_dim, UINT64 * agg_vals);
+extern void perfbase_aggregate_complex (int id, const UINT64 * vals, int index_dim, UINT64 * agg_vals);
 extern void perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
 extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, const char *substr);
 extern int perfmeta_init (void);
 extern void perfmeta_final (void);
 extern int perfmeta_complex_cursor_get_offset (PERF_STAT_ID psid, const PERFMETA_COMPLEX_CURSOR * cursor);
 extern int perfmeta_complex_get_offset (PERF_STAT_ID psid, ...);
-
+UINT64 perfmeta_get_stat_value_from_name (const char *stat_name, UINT64 * raw_stats);
+void perfmeta_custom_dump_stats_in_table_form (const UINT64 ** stats, int no_of_stats, FILE * stream, int show_complex,
+					       int show_zero);
+int perfmeta_get_Stat_count ();
+void perfmeta_copy_stats (UINT64 * dst, UINT64 * src);
+void perfmeta_get_stat_index_and_dimension (const char *stat_name, const char *dimension_name, int *stat_index,
+					    int *fixed_dimension);
 #endif //CUBRID_PERFMON_BASE_H

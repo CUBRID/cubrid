@@ -10,11 +10,7 @@
 
 class Utils
 {
-  public:
-    static int getNStatValues();
-    static void setNStatValues (int n);
-  private:
-    static int nStatValues;
+
 };
 
 
