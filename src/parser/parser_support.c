@@ -10751,7 +10751,7 @@ pt_replace_alias_name (PARSER_CONTEXT * parser, PT_NODE * rhs, char *original_na
 	}
     }
 
-  if (rhs && rhs->node_type == PT_NAME && !strcmp (rhs->info.name.original, original_name))
+  if (rhs && rhs->node_type == PT_NAME && !strcasecmp (rhs->info.name.original, original_name))
     {
       rhs->info.name.original = resolved_name;
     }
@@ -10837,7 +10837,7 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  as_attr_list = node_tmp->info.spec.as_attr_list;
 	  while (as_attr_list)
 	    {
-	      if (!strcmp (as_attr_list->info.name.original, lhs->info.name.original))
+	      if (!strcasecmp (as_attr_list->info.name.original, lhs->info.name.original))
 		{
 		  as_attr_list->info.name.original = resolved->info.name.original;
 		}
