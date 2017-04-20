@@ -4650,7 +4650,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     {
       perfmon_start_watch (thread_p);
 
-      base_stats = perfmon_allocate_values ();
+      base_stats = perfmeta_allocate_values ();
       if (base_stats == NULL)
 	{
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -4837,7 +4837,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
 	  if (base_stats == NULL)
 	    {
-	      base_stats = perfmon_allocate_values ();
+	      base_stats = perfmeta_allocate_values ();
 	      if (base_stats == NULL)
 		{
 		  css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -4845,13 +4845,13 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 		}
 	    }
 
-	  current_stats = perfmon_allocate_values ();
+	  current_stats = perfmeta_allocate_values ();
 	  if (current_stats == NULL)
 	    {
 	      css_send_abort_to_client (thread_p->conn_entry, rid);
 	      goto exit;
 	    }
-	  diff_stats = perfmon_allocate_values ();
+	  diff_stats = perfmeta_allocate_values ();
 	  if (diff_stats == NULL)
 	    {
 	      css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -5809,7 +5809,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   UINT64 *stats = NULL;
 
   nr_statistic_values = perfmeta_get_values_count ();
-  stats = perfmon_allocate_values ();
+  stats = perfmeta_allocate_values ();
 
   if (stats == NULL)
     {
@@ -5853,7 +5853,7 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *
   UINT64 *stats = NULL;
 
   nr_statistic_values = perfmeta_get_values_count ();
-  stats = perfmon_allocate_values ();
+  stats = perfmeta_allocate_values ();
   if (stats == NULL)
     {
       ASSERT_ERROR ();

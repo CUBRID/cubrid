@@ -29,9 +29,9 @@
 
 #include <stdio.h>
 
+#include "perf_metadata.h"
 #include "memory_alloc.h"
 #include "storage_common.h"
-#include "perf_metadata.h"
 
 #if defined (SERVER_MODE)
 #include "dbtype.h"
@@ -48,12 +48,24 @@
 #include "tsc_timer.h"
 #include <assert.h>
 
+/* TODO: do separate server and client functionalities... they have little to nothing in common (especially now that
+ *       metadata was separated. */
+
+/* todo: what is DIAG/DIAG_DEVEL?? */
+
 /* EXPORTED GLOBAL DEFINITIONS */
+/* todo: what is the purpose of this and why is it here? */
 #define MAX_DIAG_DATA_VALUE     0xfffffffffffffLL
 
+/* todo: cm refactoring ==> */
 #define MAX_SERVER_THREAD_COUNT         500
+/* todo: cm refactoring <== */
 #define MAX_SERVER_NAMELENGTH           256
 #define SH_MODE 0644
+
+/************************************************************************/
+/* server stuff                                                         */
+/************************************************************************/
 
 /* Statistics activation flags */
 
@@ -64,8 +76,6 @@
 #define PERFMON_ACTIVE_PB_HASH_ANCHOR             8
 #define PERFMON_ACTIVE_PB_VICTIMIZATION           16
 #define PERFMON_ACTIVE_MAX_VALUE                  31	/* must update when adding new conditions */
-
-#define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
 
 #if !defined(SERVER_MODE)
 #if !defined(LOG_TRAN_INDEX)
@@ -106,104 +116,45 @@ struct pstat_global
 };
 extern PSTAT_GLOBAL pstat_Global;
 
-typedef struct diag_sys_config DIAG_SYS_CONFIG;
-struct diag_sys_config
-{
-  int Executediag;
-  int DiagSM_ID_server;
-  int server_long_query_time;	/* min 1 sec */
-};
-
-typedef struct t_diag_monitor_db_value T_DIAG_MONITOR_DB_VALUE;
-struct t_diag_monitor_db_value
-{
-  INT64 query_open_page;
-  INT64 query_opened_page;
-  INT64 query_slow_query;
-  INT64 query_full_scan;
-  INT64 conn_cli_request;
-  INT64 conn_aborted_clients;
-  INT64 conn_conn_req;
-  INT64 conn_conn_reject;
-  INT64 buffer_page_write;
-  INT64 buffer_page_read;
-  INT64 lock_deadlock;
-  INT64 lock_request;
-};
-
-typedef struct t_diag_monitor_cas_value T_DIAG_MONITOR_CAS_VALUE;
-struct t_diag_monitor_cas_value
-{
-  INT64 reqs_in_interval;
-  INT64 transactions_in_interval;
-  INT64 query_in_interval;
-  int active_sessions;
-};
-
-/* Monitor config related structure */
-
-typedef struct monitor_cas_config MONITOR_CAS_CONFIG;
-struct monitor_cas_config
-{
-  char head;
-  char body[2];
-};
-
-typedef struct monitor_server_config MONITOR_SERVER_CONFIG;
-struct monitor_server_config
-{
-  char head[2];
-  char body[8];
-};
-
-typedef struct t_client_monitor_config T_CLIENT_MONITOR_CONFIG;
-struct t_client_monitor_config
-{
-  MONITOR_CAS_CONFIG cas;
-  MONITOR_SERVER_CONFIG server;
-};
-
-/* Shared memory data struct */
-
-typedef struct t_shm_diag_info_server T_SHM_DIAG_INFO_SERVER;
-struct t_shm_diag_info_server
-{
-  int magic;
-  int num_thread;
-  int magic_key;
-  char servername[MAX_SERVER_NAMELENGTH];
-  T_DIAG_MONITOR_DB_VALUE thread[MAX_SERVER_THREAD_COUNT];
-};
-
-enum t_diag_shm_mode
-{
-  DIAG_SHM_MODE_ADMIN = 0,
-  DIAG_SHM_MODE_MONITOR = 1
-};
-typedef enum t_diag_shm_mode T_DIAG_SHM_MODE;
-
-enum t_diag_server_type
-{
-  DIAG_SERVER_DB = 00000,
-  DIAG_SERVER_CAS = 10000,
-  DIAG_SERVER_DRIVER = 20000,
-  DIAG_SERVER_RESOURCE = 30000
-};
-typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
-
-extern void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
-
-extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
 extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
-extern UINT64 *perfmon_allocate_values (void);
 extern char *perfmon_allocate_packed_values_buffer (void);
-extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
+
+/*
+ * Statistics at file io level
+ */
+extern bool perfmon_server_is_stats_on (THREAD_ENTRY * thread_p);
+
+extern UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
+
+extern void perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
+
+extern UINT64 perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
+
+extern void perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+			     int cond_type);
+extern void perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch,
+				 int success, UINT64 amount);
+extern void perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
+			       int holder_latch);
+extern void perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					   int cond_type, UINT64 amount);
+extern void perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					   UINT64 amount);
+extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					  int cond_type, UINT64 amount);
+extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
+
 #endif /* SERVER_MODE || SA_MODE */
+
+
+/************************************************************************/
+/* server inline stuff                                                  */
+/************************************************************************/
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool perfmon_is_perf_tracking_and_active (int activation_flag) __attribute__ ((ALWAYS_INLINE));
@@ -672,31 +623,6 @@ perfmon_is_perf_tracking_force (bool always_collect)
   return pstat_Global.initialized && (always_collect || pstat_Global.n_watchers > 0);
 }
 
-#if defined(CS_MODE) || defined(SA_MODE)
-/* Client execution statistic structure */
-typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;
-struct perfmon_client_stat_info
-{
-  time_t cpu_start_usr_time;
-  time_t cpu_start_sys_time;
-  time_t elapsed_start_time;
-  UINT64 *base_server_stats;
-  UINT64 *current_server_stats;
-  UINT64 *old_global_stats;
-  UINT64 *current_global_stats;
-};
-
-extern bool perfmon_Iscollecting_stats;
-
-extern int perfmon_start_stats (bool for_all_trans);
-extern int perfmon_stop_stats (void);
-extern void perfmon_reset_stats (void);
-extern int perfmon_print_stats (FILE * stream);
-extern int perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, const char *substr);
-extern int perfmon_get_stats (void);
-extern int perfmon_get_global_stats (void);
-#endif /* CS_MODE || SA_MODE */
-
 #if defined (DIAG_DEVEL)
 #if defined(SERVER_MODE)
 
@@ -895,32 +821,126 @@ struct perf_utime_tracker
     } \
   while (false)
 
-#if defined(SERVER_MODE) || defined (SA_MODE)
-/*
- * Statistics at file io level
- */
-extern bool perfmon_server_is_stats_on (THREAD_ENTRY * thread_p);
+/************************************************************************/
+/* client stuff                                                         */
+/************************************************************************/
 
-extern UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
+typedef struct diag_sys_config DIAG_SYS_CONFIG;
+struct diag_sys_config
+{
+  int Executediag;
+  int DiagSM_ID_server;
+  int server_long_query_time;	/* min 1 sec */
+};
 
-extern void perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
+typedef struct t_diag_monitor_db_value T_DIAG_MONITOR_DB_VALUE;
+struct t_diag_monitor_db_value
+{
+  INT64 query_open_page;
+  INT64 query_opened_page;
+  INT64 query_slow_query;
+  INT64 query_full_scan;
+  INT64 conn_cli_request;
+  INT64 conn_aborted_clients;
+  INT64 conn_conn_req;
+  INT64 conn_conn_reject;
+  INT64 buffer_page_write;
+  INT64 buffer_page_read;
+  INT64 lock_deadlock;
+  INT64 lock_request;
+};
 
-extern UINT64 perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
+typedef struct t_diag_monitor_cas_value T_DIAG_MONITOR_CAS_VALUE;
+struct t_diag_monitor_cas_value
+{
+  INT64 reqs_in_interval;
+  INT64 transactions_in_interval;
+  INT64 query_in_interval;
+  int active_sessions;
+};
 
-extern void perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-			     int cond_type);
-extern void perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch,
-				 int success, UINT64 amount);
-extern void perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
-			       int holder_latch);
-extern void perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					   int cond_type, UINT64 amount);
-extern void perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					   UINT64 amount);
-extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					  int cond_type, UINT64 amount);
-extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
+/* Monitor config related structure */
 
-#endif /* SERVER_MODE || SA_MODE */
+typedef struct monitor_cas_config MONITOR_CAS_CONFIG;
+struct monitor_cas_config
+{
+  char head;
+  char body[2];
+};
+
+typedef struct monitor_server_config MONITOR_SERVER_CONFIG;
+struct monitor_server_config
+{
+  char head[2];
+  char body[8];
+};
+
+typedef struct t_client_monitor_config T_CLIENT_MONITOR_CONFIG;
+struct t_client_monitor_config
+{
+  MONITOR_CAS_CONFIG cas;
+  MONITOR_SERVER_CONFIG server;
+};
+
+/* Shared memory data struct */
+
+typedef struct t_shm_diag_info_server T_SHM_DIAG_INFO_SERVER;
+struct t_shm_diag_info_server
+{
+  int magic;
+  int num_thread;
+  int magic_key;
+  char servername[MAX_SERVER_NAMELENGTH];
+  T_DIAG_MONITOR_DB_VALUE thread[MAX_SERVER_THREAD_COUNT];
+};
+
+enum t_diag_shm_mode
+{
+  DIAG_SHM_MODE_ADMIN = 0,
+  DIAG_SHM_MODE_MONITOR = 1
+};
+typedef enum t_diag_shm_mode T_DIAG_SHM_MODE;
+
+enum t_diag_server_type
+{
+  DIAG_SERVER_DB = 00000,
+  DIAG_SERVER_CAS = 10000,
+  DIAG_SERVER_DRIVER = 20000,
+  DIAG_SERVER_RESOURCE = 30000
+};
+typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
+
+#if defined(CS_MODE) || defined(SA_MODE)
+/* Client execution statistic structure */
+typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;
+struct perfmon_client_stat_info
+  {
+  time_t cpu_start_usr_time;
+  time_t cpu_start_sys_time;
+  time_t elapsed_start_time;
+  UINT64 *base_server_stats;
+  UINT64 *current_server_stats;
+  UINT64 *old_global_stats;
+  UINT64 *current_global_stats;
+  };
+
+extern bool perfmon_Iscollecting_stats;
+#endif
+
+#if defined(CS_MODE) || defined(SA_MODE)
+extern int perfmon_start_stats (bool for_all_trans);
+extern int perfmon_stop_stats (void);
+extern void perfmon_reset_stats (void);
+extern int perfmon_print_stats (FILE * stream);
+extern int perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, const char *substr);
+extern int perfmon_get_stats (void);
+extern int perfmon_get_global_stats (void);
+#endif /* CS_MODE || SA_MODE */
+
+/************************************************************************/
+/* client/server common stuff                                           */
+/************************************************************************/
+
+extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
 
 #endif /* _PERF_MONITOR_H_ */
