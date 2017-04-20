@@ -4574,6 +4574,11 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     }
   assert (header_watcher.pgptr != NULL);
 
+  if (crt_watcher.page_was_unfixed)
+    {
+      *page_ptr = crt_watcher.pgptr;	/* home was refixed */
+    }
+
   /* Get previous and next page VPID's. */
   if (heap_vpid_prev (thread_p, hfid, *page_ptr, &prev_vpid) != NO_ERROR
       || heap_vpid_next (thread_p, hfid, *page_ptr, &next_vpid) != NO_ERROR)
@@ -13669,12 +13674,6 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
   int file_numpages;
 #endif /* SA_MODE */
 
-  /* todo: update for new design */
-  if (true)
-    {
-      return DISK_VALID;
-    }
-
   valid_pg = heap_chkreloc_start (chk_objs);
   if (valid_pg != DISK_VALID)
     {
@@ -13696,6 +13695,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
     }
   if (file_numpages != -1 && file_numpages != npages)
     {
+      assert (false);
       if (chk_objs != NULL)
 	{
 	  chk_objs->verify = false;
