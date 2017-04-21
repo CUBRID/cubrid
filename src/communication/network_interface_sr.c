@@ -4859,7 +4859,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	    }
 
 	  xperfmon_server_copy_stats (thread_p, current_stats);
-	  perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
+	  perfmeta_diff_stats (diff_stats, current_stats, base_stats);
 
 	  if (response_time >= trace_slow_msec)
 	    {

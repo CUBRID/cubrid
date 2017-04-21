@@ -608,4 +608,7 @@ extern int perfmeta_get_values_count (void);
 extern UINT64 *perfmeta_allocate_values (void);
 extern void perfmeta_copy_values (UINT64 * src, UINT64 * dest);
 
+extern void perfmeta_compute_stats (UINT64 * stats);
+extern int perfmeta_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
+
 #endif /*_PERF_METADATA_H_*/

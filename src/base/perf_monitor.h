@@ -937,10 +937,5 @@ extern int perfmon_get_stats (void);
 extern int perfmon_get_global_stats (void);
 #endif /* CS_MODE || SA_MODE */
 
-/************************************************************************/
-/* client/server common stuff                                           */
-/************************************************************************/
-
-extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
 
 #endif /* _PERF_MONITOR_H_ */

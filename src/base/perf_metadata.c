@@ -1575,3 +1575,272 @@ perfmeta_copy_values (UINT64 * dest, UINT64 * src)
 {
   memcpy (dest, src, perfmeta_get_values_memsize ());
 }
+
+/*
+ *   perfmeta_compute_stats - Do post processing of server statistics
+ *   return: none
+ *   stats(in/out): server statistics block to be processed
+ */
+void
+perfmeta_compute_stats (UINT64 * stats)
+{
+  int page_type;
+  int module;
+  int offset;
+  int buf_dirty;
+  int holder_dirty;
+  int holder_latch;
+  int page_found_mode;
+  int cond_type;
+  int promote_cond;
+  int success;
+  UINT64 counter = 0;
+  UINT64 total_unfix_vacuum = 0;
+  UINT64 total_unfix_vacuum_dirty = 0;
+  UINT64 total_unfix = 0;
+  UINT64 total_fix_vacuum = 0;
+  UINT64 total_fix_vacuum_hit = 0;
+  UINT64 fix_time_usec = 0;
+  UINT64 lock_time_usec = 0;
+  UINT64 hold_time_usec = 0;
+  UINT64 total_promote_time = 0;
+  int i;
+
+  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+    {
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
+	{
+	  for (buf_dirty = 0; buf_dirty <= 1; buf_dirty++)
+	    {
+	      for (holder_dirty = 0; holder_dirty <= 1; holder_dirty++)
+		{
+		  for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
+		    {
+		      offset =
+			perfmeta_complex_get_offset (PSTAT_PBX_UNFIX_COUNTERS, module, page_type, buf_dirty,
+						     holder_dirty, holder_latch);
+		      counter = stats[offset];
+
+		      total_unfix += counter;
+		      if (module == PERF_MODULE_VACUUM)
+			{
+			  total_unfix_vacuum += counter;
+			  if (holder_dirty == 1)
+			    {
+			      total_unfix_vacuum_dirty += counter;
+			    }
+			}
+		    }
+		}
+	    }
+	}
+    }
+
+  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+    {
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
+	{
+	  for (page_found_mode = PERF_PAGE_MODE_OLD_LOCK_WAIT; page_found_mode < PERF_PAGE_MODE_CNT; page_found_mode++)
+	    {
+	      for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
+		{
+		  offset =
+		    perfmeta_complex_get_offset (PSTAT_PBX_HOLD_TIME_COUNTERS, module, page_type, page_found_mode,
+						 holder_latch);
+		  counter = stats[offset];
+
+		  if (page_type != PERF_PAGE_LOG && counter > 0)
+		    {
+		      hold_time_usec += counter;
+		    }
+
+		  for (cond_type = PERF_CONDITIONAL_FIX; cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
+		    {
+		      offset =
+			perfmeta_complex_get_offset (PSTAT_PBX_FIX_TIME_COUNTERS, module, page_type, page_found_mode,
+						     holder_latch, cond_type);
+		      counter = stats[offset];
+
+		      /* do not include fix time of log pages */
+		      if (page_type != PERF_PAGE_LOG && counter > 0)
+			{
+			  fix_time_usec += counter;
+			}
+
+		      offset =
+			perfmeta_complex_get_offset (PSTAT_PBX_LOCK_TIME_COUNTERS, module, page_type, page_found_mode,
+						     holder_latch, cond_type);
+		      counter = stats[offset];
+
+		      if (page_type != PERF_PAGE_LOG && counter > 0)
+			{
+			  lock_time_usec += counter;
+			}
+
+		      if (module == PERF_MODULE_VACUUM && page_found_mode != PERF_PAGE_MODE_NEW_LOCK_WAIT
+			  && page_found_mode != PERF_PAGE_MODE_NEW_NO_WAIT)
+			{
+			  offset =
+			    perfmeta_complex_get_offset (PSTAT_PBX_FIX_COUNTERS, module, page_type, page_found_mode,
+							 holder_latch, cond_type);
+			  counter = stats[offset];
+
+			  if (module == PERF_MODULE_VACUUM)
+			    {
+			      total_fix_vacuum += counter;
+			      if (page_found_mode == PERF_PAGE_MODE_OLD_IN_BUFFER)
+				{
+				  total_fix_vacuum_hit += counter;
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	}
+    }
+
+  stats[pstat_Metadata[PSTAT_PB_VACUUM_EFFICIENCY].start_offset] =
+    SAFE_DIV (total_unfix_vacuum_dirty * 100 * 100, total_unfix_vacuum);
+
+  stats[pstat_Metadata[PSTAT_PB_VACUUM_FETCH_RATIO].start_offset] =
+    SAFE_DIV (total_unfix_vacuum * 100 * 100, total_unfix);
+
+  stats[pstat_Metadata[PSTAT_VACUUM_DATA_HIT_RATIO].start_offset] =
+    SAFE_DIV (total_fix_vacuum_hit * 100 * 100, total_fix_vacuum);
+
+  stats[pstat_Metadata[PSTAT_PB_HIT_RATIO].start_offset] =
+    SAFE_DIV ((stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset] -
+	       stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset]) * 100 * 100,
+	      stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset]);
+
+  stats[pstat_Metadata[PSTAT_LOG_HIT_RATIO].start_offset] =
+    SAFE_DIV ((stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset]
+	       - stats[pstat_Metadata[PSTAT_LOG_NUM_IOREADS].start_offset]) * 100 * 100,
+	      stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset]);
+
+  stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset] = 100 * lock_time_usec / 1000;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset] = 100 * hold_time_usec / 1000;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] = 100 * fix_time_usec / 1000;
+
+  stats[pstat_Metadata[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO].start_offset] =
+    SAFE_DIV ((stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] -
+	       stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset] -
+	       stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset]) * 100 * 100,
+	      stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset]);
+
+  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+    {
+      for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
+	{
+	  for (promote_cond = PERF_PROMOTE_ONLY_READER; promote_cond < PERF_PROMOTE_CONDITION_CNT; promote_cond++)
+	    {
+	      for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
+		{
+		  for (success = 0; success < 2; success++)
+		    {
+		      offset =
+			perfmeta_complex_get_offset (PSTAT_PBX_PROMOTE_TIME_COUNTERS, module, page_type, promote_cond,
+						     holder_latch, success);
+		      counter = stats[offset];
+		      if (counter)
+			{
+			  total_promote_time += counter;
+			}
+
+		      counter = stats[pstat_Metadata[PSTAT_PBX_PROMOTE_COUNTERS].start_offset + offset];
+		      if (counter)
+			{
+			  if (success)
+			    {
+			      stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] += counter;
+			    }
+			  else
+			    {
+			      stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] += counter;
+			    }
+			}
+		    }
+		}
+	    }
+	}
+    }
+
+  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC].start_offset] = 100 * total_promote_time / 1000;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] *= 100;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] *= 100;
+
+  for (i = 0; i < PSTAT_COUNT; i++)
+    {
+      if (pstat_Metadata[i].valtype == PSTAT_COUNTER_TIMER_VALUE)
+	{
+	  int offset = pstat_Metadata[i].start_offset;
+	  stats[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)]
+	    = SAFE_DIV (stats[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)],
+			stats[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
+	}
+    }
+}
+
+int
+perfmeta_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats)
+{
+  int i, j;
+  int offset;
+
+  if (!stats_diff || !new_stats || !old_stats)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  offset = pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset;
+  if (new_stats[offset] >= old_stats[offset])
+    {
+      stats_diff[offset] = new_stats[offset] - old_stats[offset];
+    }
+  else
+    {
+      stats_diff[offset] = 0;
+    }
+
+  for (i = 0; i < PSTAT_COUNT; i++)
+    {
+      switch (pstat_Metadata[i].valtype)
+	{
+	case PSTAT_ACCUMULATE_SINGLE_VALUE:
+	case PSTAT_COUNTER_TIMER_VALUE:
+	case PSTAT_COMPLEX_VALUE:
+	  for (j = pstat_Metadata[i].start_offset; j < pstat_Metadata[i].start_offset + pstat_Metadata[i].n_vals; j++)
+	    {
+	      if (new_stats[j] >= old_stats[j])
+		{
+		  stats_diff[j] = new_stats[j] - old_stats[j];
+		}
+	      else
+		{
+		  stats_diff[j] = 0;
+		}
+	    }
+	  break;
+
+	case PSTAT_PEEK_SINGLE_VALUE:
+	  if (i != PSTAT_PB_AVOID_VICTIM_CNT)
+	    {
+	      stats_diff[pstat_Metadata[i].start_offset] = new_stats[pstat_Metadata[i].start_offset];
+	    }
+	  break;
+
+        case PSTAT_COMPUTED_RATIO_VALUE:
+          /* will be computed later */
+          break;
+
+	default:
+	  assert (false);
+	  break;
+	}
+    }
+
+  perfmeta_compute_stats (stats_diff);
+  return NO_ERROR;
+}
