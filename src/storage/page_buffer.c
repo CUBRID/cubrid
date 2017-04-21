@@ -4842,7 +4842,7 @@ pgbuf_is_temporary_volume (VOLID volid)
     {
       return false;
     }
-  return (xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
+  return (LOG_DBFIRST_VOLID <= volid && xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
 }
 
 /*

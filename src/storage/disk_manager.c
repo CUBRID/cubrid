@@ -5288,11 +5288,18 @@ xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
       return DB_PERMANENT_DATA_PURPOSE;
     }
 
+  if (volid < LOG_DBFIRST_VOLID)
+    {
+      /* system volumes */
+      return DISK_UNKNOWN_PURPOSE;
+    }
+
   if (!disk_is_valid_volid (volid))
     {
       assert (false);
       return DISK_UNKNOWN_PURPOSE;
     }
+
   return disk_get_volpurpose (volid);
 }
 
@@ -5651,7 +5658,7 @@ STATIC_INLINE DB_VOLPURPOSE
 disk_get_volpurpose (VOLID volid)
 {
   assert (disk_Cache != NULL);
-  assert (disk_is_valid_volid (volid));
+  assert (LOG_DBFIRST_VOLID <= volid && disk_is_valid_volid (volid));
 
   return disk_Cache->vols[volid].purpose;
 }
