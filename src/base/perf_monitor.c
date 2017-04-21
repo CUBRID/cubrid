@@ -2049,26 +2049,6 @@ perfmon_server_calc_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] *= 100;
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] *= 100;
 
-#if defined (SERVER_MODE)
-  /* todo: this does not belong here... */
-  pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_DIRTY_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LRU1_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LRU2_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LRU3_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_VICT_CAND].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_DEALLOC_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_QUOTA].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_COUNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_HIGH_PRIO].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_LOW_PRIO].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_FLUSHED_BCBS_WAIT_FOR_ASSIGN].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_BIG_PRV_NUM].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
-#endif
-
   for (i = 0; i < PSTAT_COUNT; i++)
     {
       if (pstat_Metadata[i].valtype == PSTAT_COUNTER_TIMER_VALUE)
@@ -2376,4 +2356,21 @@ perfmon_get_peek_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = xcache_get_entry_count ();
   stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
   stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
+
+  pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_DIRTY_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU1_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU2_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU3_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_VICT_CAND].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_DEALLOC_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_QUOTA].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_COUNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_HIGH_PRIO].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_LOW_PRIO].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_FLUSHED_BCBS_WAIT_FOR_ASSIGN].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_BIG_PRV_NUM].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
 }
