@@ -11285,7 +11285,7 @@ logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid)
       return ER_FAILED;
     }
 
-  if (xdisk_get_purpose (thread_p, volid) == DB_TEMPORARY_DATA_PURPOSE)
+  if (LOG_DBFIRST_VOLID <= volid && xdisk_get_purpose (thread_p, volid) == DB_TEMPORARY_DATA_PURPOSE)
     {
       pgbuf_reset_temp_lsa (pgptr);
       pgbuf_set_dirty (thread_p, pgptr, FREE);
