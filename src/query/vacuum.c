@@ -5304,6 +5304,24 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 			     LSA_AS_ARGS (&mvcc_op_log_lsa));
 	      break;
 	    }
+	  else if (log_rec_header.type == LOG_SYSOP_END)
+	    {
+	      /* we need to check if it is a logical MVCC undo */
+	      LOG_REC_SYSOP_END *sysop_end = NULL;
+	      LOG_LSA copy_lsa = log_lsa;
+
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &copy_lsa, log_page_p);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &copy_lsa, log_page_p);
+	      sysop_end = (LOG_REC_SYSOP_END *) (log_page_p->area + copy_lsa.offset);
+	      if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+		{
+		  LSA_COPY (&mvcc_op_log_lsa, &log_lsa);
+		  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+				 "vacuum_recover_lost_block_data, found mvcc op at lsa = %lld|%d ",
+				 LSA_AS_ARGS (&mvcc_op_log_lsa));
+		  break;
+		}
+	    }
 	  else if (log_rec_header.type == LOG_REDO_DATA)
 	    {
 	      /* is vacuum complete? */
@@ -5355,6 +5373,11 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   is_last_block = true;
   crt_blockid = vacuum_get_log_blockid (mvcc_op_log_lsa.pageid);
   LSA_COPY (&log_lsa, &mvcc_op_log_lsa);
+
+  /* we don't reset data.oldest_mvccid between blocks. we need to maintain ordered oldest_mvccid's, and if a block + 1
+   * MVCCID is smaller than all MVCCID's in block, then it must have been active (and probably suspended) while block
+   * was logged. therefore, we must keep it. */
+  data.oldest_mvccid = MVCCID_NULL;
   while (crt_blockid > vacuum_Data.last_blockid)
     {
       /* Stop recovering this block when previous block is reached. */
@@ -5362,7 +5385,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       /* Initialize this block data. */
       data.blockid = crt_blockid;
       LSA_COPY (&data.start_lsa, &log_lsa);
-      data.oldest_mvccid = MVCCID_NULL;
+      /* inherit data.oldest_mvccid */
       data.newest_mvccid = MVCCID_NULL;
       /* Loop through MVCC op log records in this block. */
       while (log_lsa.pageid > stop_at_pageid)
