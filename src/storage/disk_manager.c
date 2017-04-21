@@ -1154,9 +1154,6 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VOLID volid = (VOLID) rcv->offset;
   int ret = NO_ERROR;
 
-  ret = disk_unformat (thread_p, (char *) rcv->data);
-  log_append_dboutside_redo (thread_p, RVLOG_OUTSIDE_LOGICAL_REDO_NOOP, 0, NULL);
-
   if (volid == disk_Cache->nvols_perm - 1)
     {
       VPID vpid_volheader;
@@ -1214,6 +1211,9 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       disk_log ("disk_rv_undo_format", "remove volume %d", volid);
     }
+
+  ret = disk_unformat (thread_p, (char *) rcv->data);
+  log_append_dboutside_redo (thread_p, RVLOG_OUTSIDE_LOGICAL_REDO_NOOP, 0, NULL);
 
   return ret;
 }
