@@ -1531,7 +1531,7 @@ perfmeta_get_stat_index_and_dimension (const char *stat_name, const char *dimens
     }
 }
 
-int
+size_t
 perfmeta_get_values_memsize (void)
 {
   return perfmeta_get_values_count () * sizeof (UINT64);
