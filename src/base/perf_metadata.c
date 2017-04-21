@@ -27,6 +27,12 @@
 #include <stdarg.h>
 #include <error_code.h>
 
+#if defined (SERVER_MODE) || defined (SA_MODE) || defined (CS_MODE)
+#include "error_manager.h"
+#else
+#define er_set(...)
+#endif
+
 /************************************************************************/
 /* start of macros and structures                                       */
 /************************************************************************/
@@ -1494,7 +1500,8 @@ perfmeta_get_stat_value_from_name (const char *stat_name, UINT64 * raw_stats)
 void
 perfmeta_copy_stats (UINT64 * dst, UINT64 * src)
 {
-  for (int i = 0; i < perfmeta_get_values_count (); i++)
+  int i;
+  for (i = 0; i < perfmeta_get_values_count (); i++)
     {
       dst[i] = src[i];
     }
@@ -1510,14 +1517,15 @@ void
 perfmeta_get_stat_index_and_dimension (const char *stat_name, const char *dimension_name, int *stat_index,
 				       int *fixed_dimension)
 {
-  for (int i = 0; i < PSTAT_COUNT; i++)
+  int i, j;
+  for (i = 0; i < PSTAT_COUNT; i++)
     {
       if (strcmp (pstat_Metadata[i].stat_name, stat_name) == 0)
 	{
 	  *stat_index = i;
 	  if (*fixed_dimension == -1)
 	    {
-	      for (int j = 0; j < pstat_Metadata[*stat_index].complexp->size; j++)
+	      for (j = 0; j < pstat_Metadata[*stat_index].complexp->size; j++)
 		{
 		  if (strcmp (dimension_name, pstat_Metadata[*stat_index].complexp->dimensions[j]->alias) == 0)
 		    {
@@ -1535,4 +1543,35 @@ size_t
 perfmeta_get_values_memsize (void)
 {
   return perfmeta_get_values_count () * sizeof (UINT64);
+}
+
+/*
+ * perfmeta_allocate_values () - Allocate perfmeta_get_values_memsize () bytes 
+ * 
+ */
+UINT64 *
+perfmeta_allocate_values (void)
+{
+  UINT64 *vals;
+
+  vals = (UINT64 *) malloc (perfmeta_get_values_memsize ());
+  if (vals == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, perfmeta_get_values_memsize ());
+    }
+
+  return vals;
+}
+
+/*
+ * perfmeta_copy_values () -
+ *
+ * dest (in/out): destination buffer
+ * source (in): source buffer
+ * 
+ */
+void
+perfmeta_copy_values (UINT64 * dest, UINT64 * src)
+{
+  memcpy (dest, src, perfmeta_get_values_memsize ());
 }

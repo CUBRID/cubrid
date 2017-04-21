@@ -88,6 +88,13 @@ static int rv;
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
 
+#if defined(CS_MODE) || defined(SA_MODE)
+bool perfmon_Iscollecting_stats = false;
+
+/* Client execution statistics */
+static PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
+#endif
+
 PSTAT_GLOBAL pstat_Global;
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
 					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
@@ -99,10 +106,44 @@ STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute_
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CS_MODE) || defined(SA_MODE)
-bool perfmon_Iscollecting_stats = false;
+static void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
+#endif
 
-/* Client execution statistics */
-static PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
+#if defined(CS_MODE) || defined(SA_MODE)
+/*
+ *   perfmon_get_current_times - Get current CPU and elapsed times
+ *   return:
+ *   cpu_user_time(out):
+ *   cpu_sys_time(out):
+ *   elapsed_time(out):
+ *
+ * Note:
+ */
+static void
+perfmon_get_current_times (time_t * cpu_user_time, time_t * cpu_sys_time, time_t * elapsed_time)
+{
+#if defined (WINDOWS)
+  *cpu_user_time = 0;
+  *cpu_sys_time = 0;
+  *elapsed_time = 0;
+
+  *elapsed_time = time (NULL);
+#else /* WINDOWS */
+  struct rusage rusage;
+
+  *cpu_user_time = 0;
+  *cpu_sys_time = 0;
+  *elapsed_time = 0;
+
+  *elapsed_time = time (NULL);
+
+  if (getrusage (RUSAGE_SELF, &rusage) == 0)
+    {
+      *cpu_user_time = rusage.ru_utime.tv_sec;
+      *cpu_sys_time = rusage.ru_stime.tv_sec;
+    }
+#endif /* WINDOWS */
+}
 
 /*
  * perfmon_start_stats - Start collecting client execution statistics
@@ -137,14 +178,14 @@ perfmon_start_stats (bool for_all_trans)
 
   if (for_all_trans)
     {
-      perfmon_Stat_info.old_global_stats = perfmon_allocate_values ();
+      perfmon_Stat_info.old_global_stats = perfmeta_allocate_values ();
       if (perfmon_Stat_info.old_global_stats == NULL)
 	{
 	  ASSERT_ERROR ();
 	  err = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto exit;
 	}
-      perfmon_Stat_info.current_global_stats = perfmon_allocate_values ();
+      perfmon_Stat_info.current_global_stats = perfmeta_allocate_values ();
 
       if (perfmon_Stat_info.current_global_stats == NULL)
 	{
@@ -155,19 +196,19 @@ perfmon_start_stats (bool for_all_trans)
 
       if (perfmon_get_global_stats () == NO_ERROR)
 	{
-	  perfmon_copy_values (perfmon_Stat_info.old_global_stats, perfmon_Stat_info.current_global_stats);
+	  perfmeta_copy_values (perfmon_Stat_info.old_global_stats, perfmon_Stat_info.current_global_stats);
 	}
     }
   else
     {
-      perfmon_Stat_info.base_server_stats = perfmon_allocate_values ();
+      perfmon_Stat_info.base_server_stats = perfmeta_allocate_values ();
       if (perfmon_Stat_info.base_server_stats == NULL)
 	{
 	  ASSERT_ERROR ();
 	  err = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto exit;
 	}
-      perfmon_Stat_info.current_server_stats = perfmon_allocate_values ();
+      perfmon_Stat_info.current_server_stats = perfmeta_allocate_values ();
       if (perfmon_Stat_info.current_server_stats == NULL)
 	{
 	  ASSERT_ERROR ();
@@ -177,7 +218,7 @@ perfmon_start_stats (bool for_all_trans)
 
       if (perfmon_get_stats () == NO_ERROR)
 	{
-	  perfmon_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
+	  perfmeta_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
 	}
     }
 exit:
@@ -234,7 +275,7 @@ perfmon_reset_stats (void)
 
       if (perfmon_get_stats () == NO_ERROR)
 	{
-	  perfmon_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
+	  perfmeta_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
 	}
     }
 }
@@ -304,7 +345,7 @@ perfmon_print_stats (FILE * stream)
       return err;
     }
 
-  diff_result = perfmon_allocate_values ();
+  diff_result = perfmeta_allocate_values ();
 
   if (diff_result == NULL)
     {
@@ -366,7 +407,7 @@ perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, c
     {
       stream = stdout;
     }
-  diff_result = perfmon_allocate_values ();
+  diff_result = perfmeta_allocate_values ();
 
   if (diff_result == NULL)
     {
@@ -1500,7 +1541,7 @@ xperfmon_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
   if (from_stats != NULL)
     {
       perfmon_server_calc_stats (from_stats);
-      perfmon_copy_values (to_stats, from_stats);
+      perfmeta_copy_values (to_stats, from_stats);
     }
 }
 
@@ -1515,7 +1556,7 @@ xperfmon_server_copy_global_stats (UINT64 * to_stats)
   if (to_stats)
     {
       perfmon_get_peek_stats (pstat_Global.global_stats);
-      perfmon_copy_values (to_stats, pstat_Global.global_stats);
+      perfmeta_copy_values (to_stats, pstat_Global.global_stats);
       perfmon_server_calc_stats (to_stats);
     }
 }
@@ -1754,6 +1795,7 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
 
 #endif /* SERVER_MODE || SA_MODE */
 
+
 int
 perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats)
 {
@@ -1811,41 +1853,6 @@ perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_s
 
   perfmon_server_calc_stats (stats_diff);
   return NO_ERROR;
-}
-
-/*
- *   perfmon_get_current_times - Get current CPU and elapsed times
- *   return:
- *   cpu_user_time(out):
- *   cpu_sys_time(out):
- *   elapsed_time(out):
- *
- * Note:
- */
-void
-perfmon_get_current_times (time_t * cpu_user_time, time_t * cpu_sys_time, time_t * elapsed_time)
-{
-#if defined (WINDOWS)
-  *cpu_user_time = 0;
-  *cpu_sys_time = 0;
-  *elapsed_time = 0;
-
-  *elapsed_time = time (NULL);
-#else /* WINDOWS */
-  struct rusage rusage;
-
-  *cpu_user_time = 0;
-  *cpu_sys_time = 0;
-  *elapsed_time = 0;
-
-  *elapsed_time = time (NULL);
-
-  if (getrusage (RUSAGE_SELF, &rusage) == 0)
-    {
-      *cpu_user_time = rusage.ru_utime.tv_sec;
-      *cpu_sys_time = rusage.ru_stime.tv_sec;
-    }
-#endif /* WINDOWS */
 }
 
 /*
@@ -1921,7 +1928,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 						 holder_latch);
 		  counter = stats[offset];
 
-		  if (page_type != PAGE_LOG && counter > 0)
+		  if (page_type != PERF_PAGE_LOG && counter > 0)
 		    {
 		      hold_time_usec += counter;
 		    }
@@ -1934,7 +1941,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 		      counter = stats[offset];
 
 		      /* do not include fix time of log pages */
-		      if (page_type != PAGE_LOG && counter > 0)
+		      if (page_type != PERF_PAGE_LOG && counter > 0)
 			{
 			  fix_time_usec += counter;
 			}
@@ -1944,7 +1951,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 						     holder_latch, cond_type);
 		      counter = stats[offset];
 
-		      if (page_type != PAGE_LOG && counter > 0)
+		      if (page_type != PERF_PAGE_LOG && counter > 0)
 			{
 			  lock_time_usec += counter;
 			}
@@ -2043,6 +2050,7 @@ perfmon_server_calc_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] *= 100;
 
 #if defined (SERVER_MODE)
+  /* todo: this does not belong here... */
   pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_DIRTY_CNT].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_LRU1_CNT].start_offset]),
@@ -2335,24 +2343,6 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const in
 }
 
 /*
- * perfmon_allocate_values () - Allocate perfmeta_get_values_memsize () bytes 
- * 
- */
-UINT64 *
-perfmon_allocate_values (void)
-{
-  UINT64 *vals;
-
-  vals = (UINT64 *) malloc (perfmeta_get_values_memsize ());
-  if (vals == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, perfmeta_get_values_memsize ());
-    }
-
-  return vals;
-}
-
-/*
  * perfmon_allocate_packed_values_buffer () - Allocate perfmeta_get_values_memsize () bytes and verify alignment
  * 
  */
@@ -2371,18 +2361,7 @@ perfmon_allocate_packed_values_buffer (void)
   return buf;
 }
 
-/*
- * perfmon_copy_values () -
- *
- * dest (in/out): destination buffer
- * source (in): source buffer
- * 
- */
-void
-perfmon_copy_values (UINT64 * dest, UINT64 * src)
-{
-  memcpy (dest, src, perfmeta_get_values_memsize ());
-}
+
 
 /*
  * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics

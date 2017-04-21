@@ -581,6 +581,8 @@ typedef enum
   PERF_LOCK_CNT
 } PERF_LOCK;
 
+#define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
+
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
@@ -601,5 +603,9 @@ void perfmeta_get_stat_index_and_dimension (const char *stat_name, const char *d
 					    int *fixed_dimension);
 extern size_t perfmeta_get_values_memsize (void);
 extern int perfmeta_get_values_count (void);
+
+
+extern UINT64 *perfmeta_allocate_values (void);
+extern void perfmeta_copy_values (UINT64 * src, UINT64 * dest);
 
 #endif /*_PERF_METADATA_H_*/
