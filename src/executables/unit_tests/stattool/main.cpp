@@ -48,7 +48,8 @@ Test tests[] =
   {AGGREGATE_HAPPY_PATH, "AGGREGATE_HAPPY_PATH", UnitTests::testAggregate_HappyPath}
 };
 
-int main (int argc, char **argv)
+int
+main (int argc, char **argv)
 {
   std::vector<unsigned int> failedTests;
   UnitTests::initTestEnvironment ();

@@ -8,17 +8,20 @@ int UnitTests::stdoutBackupFd;
 FILE *UnitTests::nullOut;
 bool UnitTests::isStdoutEnabled = true;
 
-void UnitTests::initTestEnvironment ()
+void
+UnitTests::initTestEnvironment ()
 {
   perfmeta_init ();
 }
 
-void UnitTests::destroyTestEnvironment ()
+void
+UnitTests::destroyTestEnvironment ()
 {
   perfmeta_final ();
 }
 
-bool UnitTests::testLoad_BadFile()
+bool
+UnitTests::testLoad_BadFile()
 {
   std::vector<StatisticsFile *> files;
   std::string command = "invalid_file.bin a";
@@ -32,7 +35,8 @@ bool UnitTests::testLoad_BadFile()
   return executor->execute () == ErrorManager::OPEN_FILE_ERROR;
 }
 
-bool UnitTests::testLoad_GoodFile()
+bool
+UnitTests::testLoad_GoodFile()
 {
   std::vector<StatisticsFile *> files;
   std::string command = "good.bin a";
@@ -51,7 +55,8 @@ bool UnitTests::testLoad_GoodFile()
   return code == ErrorManager::NO_ERRORS;
 }
 
-bool UnitTests::testLoad_GoodFile_checkAlias ()
+bool
+UnitTests::testLoad_GoodFile_checkAlias ()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -86,7 +91,8 @@ bool UnitTests::testLoad_GoodFile_checkAlias ()
     }
 }
 
-bool UnitTests::testLoad_GoodFile_checkSnapshots ()
+bool
+UnitTests::testLoad_GoodFile_checkSnapshots ()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -128,7 +134,8 @@ bool UnitTests::testLoad_GoodFile_checkSnapshots ()
     }
 }
 
-bool UnitTests::testLoad_noAlias ()
+bool
+UnitTests::testLoad_noAlias ()
 {
   std::vector<StatisticsFile *> files;
   std::string command = "file.bin ";
@@ -137,13 +144,15 @@ bool UnitTests::testLoad_noAlias ()
   return executor->parseCommandAndInit () == ErrorManager::NOT_ENOUGH_ARGUMENTS_ERROR;
 }
 
-void UnitTests::removeFile (const std::string &filename)
+void
+UnitTests::removeFile (const std::string &filename)
 {
   int rc = remove (filename.c_str());
   assert (rc == 0);
 }
 
-void UnitTests::createStatFile (const std::string &filename, int numOfSnapshots, int secondsGap)
+void
+UnitTests::createStatFile (const std::string &filename, int numOfSnapshots, int secondsGap)
 {
   char *packed_stats;
   FILE *binFile = fopen (filename.c_str(), "wb");
@@ -172,7 +181,8 @@ void UnitTests::createStatFile (const std::string &filename, int numOfSnapshots,
     }
 }
 
-bool UnitTests::testStatFileClass_Test1()
+bool
+UnitTests::testStatFileClass_Test1()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -217,7 +227,8 @@ bool UnitTests::testStatFileClass_Test1()
     }
 }
 
-bool UnitTests::testStatFileClass_Test2()
+bool
+UnitTests::testStatFileClass_Test2()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -263,7 +274,8 @@ bool UnitTests::testStatFileClass_Test2()
     }
 }
 
-bool UnitTests::testStatFileClass_Test3()
+bool
+UnitTests::testStatFileClass_Test3()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -328,7 +340,8 @@ bool UnitTests::testStatFileClass_Test3()
     }
 }
 
-bool UnitTests::testPlot_MissingArguments ()
+bool
+UnitTests::testPlot_MissingArguments ()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -369,7 +382,8 @@ bool UnitTests::testPlot_MissingArguments ()
     }
 }
 
-bool UnitTests::testPlot_InvalidAlias ()
+bool
+UnitTests::testPlot_InvalidAlias ()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -410,7 +424,8 @@ bool UnitTests::testPlot_InvalidAlias ()
     }
 }
 
-bool UnitTests::testPlot_CreatePlot ()
+bool
+UnitTests::testPlot_CreatePlot ()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -464,7 +479,8 @@ bool UnitTests::testPlot_CreatePlot ()
     }
 }
 
-bool UnitTests::testShow_InvalidAlias ()
+bool
+UnitTests::testShow_InvalidAlias ()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -507,7 +523,8 @@ bool UnitTests::testShow_InvalidAlias ()
     }
 }
 
-bool UnitTests::testShow_HappyPath ()
+bool
+UnitTests::testShow_HappyPath ()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -550,7 +567,8 @@ bool UnitTests::testShow_HappyPath ()
     }
 }
 
-bool UnitTests::testAggregate_MissingArguments ()
+bool
+UnitTests::testAggregate_MissingArguments ()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -593,7 +611,8 @@ bool UnitTests::testAggregate_MissingArguments ()
     }
 }
 
-bool UnitTests::testAggregate_HappyPath ()
+bool
+UnitTests::testAggregate_HappyPath ()
 {
   std::vector<StatisticsFile *> files;
   std::string filename = "good.bin";
@@ -647,7 +666,8 @@ bool UnitTests::testAggregate_HappyPath ()
     }
 }
 
-void UnitTests::disableStdout()
+void
+UnitTests::disableStdout()
 {
   if (isStdoutEnabled)
     {
@@ -659,7 +679,8 @@ void UnitTests::disableStdout()
     }
 }
 
-void UnitTests::enableStdout()
+void
+UnitTests::enableStdout()
 {
   if (!isStdoutEnabled)
     {
@@ -671,7 +692,8 @@ void UnitTests::enableStdout()
     }
 }
 
-UINT64 *UnitTests::generateRandomStats (long long max)
+UINT64 *
+UnitTests::generateRandomStats (long long max)
 {
   UINT64 *stats = (UINT64 *) malloc (perfmeta_get_values_memsize ());
 
