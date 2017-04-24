@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <time.h>
 #if !defined (WINDOWS)
+#include <sys/resource.h>
 #include <sys/time.h>
 #endif /* WINDOWS */
 #include "perf_client.h"
@@ -306,7 +307,7 @@ perfmon_print_stats (FILE * stream)
 	   (int) (elapsed_total_time - perfmon_Stat_info.elapsed_start_time));
 
   if (perfmeta_diff_stats (diff_result, perfmon_Stat_info.current_server_stats,
-			       perfmon_Stat_info.base_server_stats) != NO_ERROR)
+			   perfmon_Stat_info.base_server_stats) != NO_ERROR)
     {
       assert (false);
       goto exit;
@@ -364,7 +365,7 @@ perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, c
   else
     {
       if (perfmeta_diff_stats (diff_result, perfmon_Stat_info.current_global_stats,
-				   perfmon_Stat_info.old_global_stats) != NO_ERROR)
+			       perfmon_Stat_info.old_global_stats) != NO_ERROR)
 	{
 	  assert (false);
 	  goto exit;

@@ -58,6 +58,7 @@
 #include "replication.h"
 #include "es.h"
 #include "vacuum.h"
+#include "perf_client.h"
 
 
 /*
