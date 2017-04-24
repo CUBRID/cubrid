@@ -28,6 +28,7 @@
 #endif /* !WINDOWS */
 
 #include "perf_monitor.h"
+#include "xserver_interface.h"
 #include "error_manager.h"
 
 #include "system_parameter.h"
