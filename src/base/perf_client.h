@@ -27,26 +27,7 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-
-#include "perf_metadata.h"
-#include "memory_alloc.h"
-#include "storage_common.h"
-
-#if defined (SERVER_MODE)
-#include "dbtype.h"
-#include "connection_defs.h"
-
-#include "thread.h"
-
-#endif /* SERVER_MODE */
-#include <time.h>
-#if !defined(WINDOWS)
-#include <sys/time.h>
-#endif /* WINDOWS */
-
-#include "tsc_timer.h"
-#include <assert.h>
+#include "system.h"
 
 /* Client execution statistic structure */
 typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;

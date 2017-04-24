@@ -23,55 +23,18 @@
 
 #include <stdio.h>
 #include <time.h>
-#include <assert.h>
 #if !defined (WINDOWS)
 #include <sys/time.h>
-#include <sys/resource.h>
-#endif /* WINDOWS */
+#endif /* !WINDOWS */
+
 #include "perf_monitor.h"
 #include "error_manager.h"
 
-#if defined (SERVER_MODE) || (SA_MODE)
-#include <string.h>
-
-#if defined(SERVER_MODE)
-#include <string.h>
-#include <errno.h>
-#include <sys/types.h>
-
-#if !defined(WINDOWS)
-#include <sys/shm.h>
-#include <sys/ipc.h>
-#endif /* WINDOWS */
-
-#include <sys/stat.h>
-#include "connection_defs.h"
-#include "environment_variable.h"
-#include "connection_error.h"
-#include "databases_file.h"
-#endif /* SERVER_MODE */
-
-#include "error_manager.h"
 #include "system_parameter.h"
 #include "log_impl.h"
 #include "session.h"
-
-#if defined(SA_MODE)
-#define pthread_mutex_init(a, b)
-#define pthread_mutex_destroy(a)
-#define pthread_mutex_lock(a)	0
-#define pthread_mutex_unlock(a)
-static int rv;
-#endif /* SA_MODE */
-
-#include "log_manager.h"
-#include "xserver_interface.h"
 #include "heap_file.h"
 #include "xasl_cache.h"
-
-#if defined (SERVER_MODE)
-#include "connection_error.h"
-#endif /* SERVER_MODE */
 
 PSTAT_GLOBAL pstat_Global;
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
@@ -496,7 +459,7 @@ perfmon_initialize (int num_trans)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
       goto error;
     }
-  memsize = pstat_Global.n_trans * perfmeta_get_values_memsize ();
+  memsize = pstat_Global.n_trans * (int) perfmeta_get_values_memsize ();
   pstat_Global.tran_stats[0] = (UINT64 *) malloc (memsize);
   if (pstat_Global.tran_stats[0] == NULL)
     {
@@ -702,5 +665,3 @@ perfmon_get_peek_stats (UINT64 * stats)
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
 }
-
-#endif /* SERVER_MODE || SA_MODE */

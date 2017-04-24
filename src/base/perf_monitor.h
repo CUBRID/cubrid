@@ -30,23 +30,7 @@
 #include <stdio.h>
 
 #include "perf_metadata.h"
-#include "memory_alloc.h"
-#include "storage_common.h"
-
-#if defined (SERVER_MODE)
-#include "dbtype.h"
-#include "connection_defs.h"
-
 #include "thread.h"
-
-#endif /* SERVER_MODE */
-#include <time.h>
-#if !defined(WINDOWS)
-#include <sys/time.h>
-#endif /* WINDOWS */
-
-#include "tsc_timer.h"
-#include <assert.h>
 
 /* Statistics activation flags */
 
@@ -101,7 +85,6 @@ extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
 extern char *perfmon_allocate_packed_values_buffer (void);
 
-//#if defined (SERVER_MODE) || defined (SA_MODE)
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 

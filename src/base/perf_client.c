@@ -24,19 +24,12 @@
 
 #include <stdio.h>
 #include <time.h>
-#include <assert.h>
 #if !defined (WINDOWS)
 #include <sys/time.h>
-#include <sys/resource.h>
 #endif /* WINDOWS */
 #include "perf_client.h"
-#include "error_manager.h"
-
-#if !defined(SERVER_MODE)
-#include "memory_alloc.h"
-#include "server_interface.h"
-#endif /* !SERVER_MODE */
-
+#include "perf_metadata.h"
+#include "porting.h"
 #include "network_interface_cl.h"
 
 bool perfmon_Iscollecting_stats = false;
