@@ -1229,8 +1229,8 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   int error_code = NO_ERROR;
   DISK_VOLUME_HEADER *volheader;
   bool is_first_call = rcv->offset == -1;
-  int nsect_free;
-  int nsect_diff;
+  DKNSECTS nsect_free = 0;
+  DKNSECTS nsect_diff;
 
   rcv->offset = 0;
   (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_VOLHEADER);
@@ -1280,7 +1280,7 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       assert_release (false);
       return error_code;
     }
-  nsect_diff = disk_Cache->vols[volheader->volid].nsect_free - nsect_free;
+  nsect_diff = nsect_free - disk_Cache->vols[volheader->volid].nsect_free;
   if (nsect_diff != 0)
     {
       disk_cache_lock_reserve_for_purpose (volheader->purpose);
@@ -1972,7 +1972,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 	    "\tfullname = %s\n" "\ttotal sectors = %d\n" "\tmax sectors = %d", disk_type_to_string (extinfo->voltype),
 	    disk_purpose_to_string (extinfo->purpose), extinfo->name ? extinfo->name : "(UNKNOWN)",
 	    extinfo->comments ? extinfo->comments : "(UNKNOWN)", extinfo->path ? extinfo->path : "(UNKNOWN)",
-	    fullname ? fullname : "(UNKNOWN)", extinfo->nsect_total, extinfo->nsect_max);
+	    fullname, extinfo->nsect_total, extinfo->nsect_max);
 
 #if !defined (WINDOWS)
   {
