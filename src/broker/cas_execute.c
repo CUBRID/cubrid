@@ -58,7 +58,7 @@
 #include "cas_sql_log2.h"
 
 #include "release_string.h"
-#include "perf_monitor.h"
+#include "perf_client.h"
 #include "intl_support.h"
 #include "language_support.h"
 #include "unicode_support.h"
@@ -9624,8 +9624,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     ut_check_timeout (&tran_start_time, NULL, shm_appl->long_transaction_time, &elapsed_sec, &elapsed_msec);
   if (tran_timeout >= 0)
     {
-      as_info->num_long_transactions %= MAX_DIAG_DATA_VALUE;
-      as_info->num_long_transactions++;
+      UNSIGNED_INC (as_info->num_long_transactions);
     }
   if (err_code < 0 || errors_in_transaction > 0)
     {
@@ -10081,26 +10080,21 @@ update_query_execution_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
 {
   assert (as_info_p != NULL);
 
-  as_info_p->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-  as_info_p->num_queries_processed++;
+  UNSIGNED_INC (as_info_p->num_queries_processed);
 
   switch (stmt_type)
     {
     case CUBRID_STMT_SELECT:
-      as_info_p->num_select_queries %= MAX_DIAG_DATA_VALUE;
-      as_info_p->num_select_queries++;
+      UNSIGNED_INC (as_info_p->num_select_queries);
       break;
     case CUBRID_STMT_INSERT:
-      as_info_p->num_insert_queries %= MAX_DIAG_DATA_VALUE;
-      as_info_p->num_insert_queries++;
+      UNSIGNED_INC (as_info_p->num_insert_queries);
       break;
     case CUBRID_STMT_UPDATE:
-      as_info_p->num_update_queries %= MAX_DIAG_DATA_VALUE;
-      as_info_p->num_update_queries++;
+      UNSIGNED_INC (as_info_p->num_update_queries);
       break;
     case CUBRID_STMT_DELETE:
-      as_info_p->num_delete_queries %= MAX_DIAG_DATA_VALUE;
-      as_info_p->num_delete_queries++;
+      UNSIGNED_INC (as_info_p->num_delete_queries);
       break;
     default:
       break;

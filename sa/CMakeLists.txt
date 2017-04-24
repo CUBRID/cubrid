@@ -75,6 +75,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/uca_support.c
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/perf_client.c
+  ${BASE_DIR}/perf_diag.c
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/perf_metadata.c
   ${BASE_DIR}/ini_parser.c

@@ -60,6 +60,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/object_representation_sr.c
   ${BASE_DIR}/perf.c
+  ${BASE_DIR}/perf_diag.c
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/perf_metadata.c
   ${BASE_DIR}/porting.c

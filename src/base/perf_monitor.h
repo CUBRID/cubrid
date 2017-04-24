@@ -19,7 +19,7 @@
 
 
 /*
- * perf_monitor.h - Monitor execution statistics at Client/Server
+ * perf_monitor.h - Monitor execution statistics at Server
  */
 
 #ifndef _PERF_MONITOR_H_
@@ -48,27 +48,6 @@
 #include "tsc_timer.h"
 #include <assert.h>
 
-/* TODO: do separate server and client functionalities... they have little to nothing in common (especially now that
- *       metadata was separated. */
-
-/* todo: what is DIAG/DIAG_DEVEL?? */
-
-/* EXPORTED GLOBAL DEFINITIONS */
-/* todo: what is the purpose of this and why is it here? */
-#define MAX_DIAG_DATA_VALUE     0xfffffffffffffLL
-
-/* todo: cm refactoring ==> */
-#define MAX_SERVER_THREAD_COUNT         500
-/* todo: cm refactoring <== */
-#define MAX_SERVER_NAMELENGTH           256
-#define SH_MODE 0644
-
-/************************************************************************/
-/* server stuff                                                         */
-/************************************************************************/
-
-#if defined (SERVER_MODE) || (SA_MODE)
-//#if defined (SERVER_MODE) || defined (SA_MODE)
 /* Statistics activation flags */
 
 #define PERFMON_ACTIVE_DEFAULT                    0
@@ -625,92 +604,6 @@ perfmon_is_perf_tracking_force (bool always_collect)
   return pstat_Global.initialized && (always_collect || pstat_Global.n_watchers > 0);
 }
 
-#if defined (DIAG_DEVEL)
-#if defined(SERVER_MODE)
-
-typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
-enum t_diag_obj_type
-{
-  DIAG_OBJ_TYPE_QUERY_OPEN_PAGE = 0,
-  DIAG_OBJ_TYPE_QUERY_OPENED_PAGE = 1,
-  DIAG_OBJ_TYPE_QUERY_SLOW_QUERY = 2,
-  DIAG_OBJ_TYPE_QUERY_FULL_SCAN = 3,
-  DIAG_OBJ_TYPE_CONN_CLI_REQUEST = 4,
-  DIAG_OBJ_TYPE_CONN_ABORTED_CLIENTS = 5,
-  DIAG_OBJ_TYPE_CONN_CONN_REQ = 6,
-  DIAG_OBJ_TYPE_CONN_CONN_REJECT = 7,
-  DIAG_OBJ_TYPE_BUFFER_PAGE_READ = 8,
-  DIAG_OBJ_TYPE_BUFFER_PAGE_WRITE = 9,
-  DIAG_OBJ_TYPE_LOCK_DEADLOCK = 10,
-  DIAG_OBJ_TYPE_LOCK_REQUEST = 11
-};
-
-typedef enum t_diag_value_settype T_DIAG_VALUE_SETTYPE;
-enum t_diag_value_settype
-{
-  DIAG_VAL_SETTYPE_INC,
-  DIAG_VAL_SETTYPE_DEC,
-  DIAG_VAL_SETTYPE_SET
-};
-
-typedef int (*T_DO_FUNC) (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-
-typedef struct t_diag_object_table T_DIAG_OBJECT_TABLE;
-struct t_diag_object_table
-{
-  char typestring[32];
-  T_DIAG_OBJ_TYPE type;
-  T_DO_FUNC func;
-};
-
-/* MACRO definition */
-#define SET_DIAG_VALUE(DIAG_EXEC_FLAG, ITEM_TYPE, VALUE, SET_TYPE, ERR_BUF)          \
-    do {                                                                             \
-        if (DIAG_EXEC_FLAG == true) {                                             \
-            set_diag_value(ITEM_TYPE , VALUE, SET_TYPE, ERR_BUF);                    \
-        }                                                                            \
-    } while(0)
-
-#define DIAG_GET_TIME(DIAG_EXEC_FLAG, TIMER)                                         \
-    do {                                                                             \
-        if (DIAG_EXEC_FLAG == true) {                                             \
-            gettimeofday(&TIMER, NULL);                                              \
-        }                                                                            \
-    } while(0)
-
-#define SET_DIAG_VALUE_SLOW_QUERY(DIAG_EXEC_FLAG, START_TIME, END_TIME, VALUE, SET_TYPE, ERR_BUF)\
-    do {                                                                                 \
-        if (DIAG_EXEC_FLAG == true) {                                                 \
-            struct timeval result = {0,0};                                               \
-            ADD_TIMEVAL(result, START_TIME, END_TIME);                                   \
-            if (result.tv_sec >= diag_long_query_time)                                   \
-                set_diag_value(DIAG_OBJ_TYPE_QUERY_SLOW_QUERY, VALUE, SET_TYPE, ERR_BUF);\
-        }                                                                                \
-    } while(0)
-
-#define SET_DIAG_VALUE_FULL_SCAN(DIAG_EXEC_FLAG, VALUE, SET_TYPE, ERR_BUF, XASL, SPECP) \
-    do {                                                                                \
-        if (DIAG_EXEC_FLAG == true) {                                                \
-            if (((XASL_TYPE(XASL) == BUILDLIST_PROC) ||                                 \
-                 (XASL_TYPE(XASL) == BUILDVALUE_PROC))                                  \
-                && ACCESS_SPEC_ACCESS(SPECP) == SEQUENTIAL) {                           \
-                set_diag_value(DIAG_OBJ_TYPE_QUERY_FULL_SCAN                            \
-                        , 1                                                             \
-                        , DIAG_VAL_SETTYPE_INC                                          \
-                        , NULL);                                                        \
-            }                                                                           \
-        }                                                                               \
-    } while(0)
-
-extern int diag_long_query_time;
-extern bool diag_executediag;
-
-extern bool init_diag_mgr (const char *server_name, int num_thread, char *err_buf);
-extern void close_diag_mgr (void);
-extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-#endif /* SERVER_MODE */
-#endif /* DIAG_DEVEL */
-
 #ifndef DIFF_TIMEVAL
 #define DIFF_TIMEVAL(start, end, elapsed) \
     do { \
@@ -815,127 +708,5 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
       (track)->start_tick = (track)->end_tick; \
     } \
   while (false)
-
-#endif /* SERVER_MODE || SA_MODE */
-
-/************************************************************************/
-/* client stuff                                                         */
-/************************************************************************/
-
-#if defined (CS_MODE) || defined (SA_MODE)
-
-typedef struct diag_sys_config DIAG_SYS_CONFIG;
-struct diag_sys_config
-{
-  int Executediag;
-  int DiagSM_ID_server;
-  int server_long_query_time;	/* min 1 sec */
-};
-
-typedef struct t_diag_monitor_db_value T_DIAG_MONITOR_DB_VALUE;
-struct t_diag_monitor_db_value
-{
-  INT64 query_open_page;
-  INT64 query_opened_page;
-  INT64 query_slow_query;
-  INT64 query_full_scan;
-  INT64 conn_cli_request;
-  INT64 conn_aborted_clients;
-  INT64 conn_conn_req;
-  INT64 conn_conn_reject;
-  INT64 buffer_page_write;
-  INT64 buffer_page_read;
-  INT64 lock_deadlock;
-  INT64 lock_request;
-};
-
-typedef struct t_diag_monitor_cas_value T_DIAG_MONITOR_CAS_VALUE;
-struct t_diag_monitor_cas_value
-{
-  INT64 reqs_in_interval;
-  INT64 transactions_in_interval;
-  INT64 query_in_interval;
-  int active_sessions;
-};
-
-/* Monitor config related structure */
-
-typedef struct monitor_cas_config MONITOR_CAS_CONFIG;
-struct monitor_cas_config
-{
-  char head;
-  char body[2];
-};
-
-typedef struct monitor_server_config MONITOR_SERVER_CONFIG;
-struct monitor_server_config
-{
-  char head[2];
-  char body[8];
-};
-
-typedef struct t_client_monitor_config T_CLIENT_MONITOR_CONFIG;
-struct t_client_monitor_config
-{
-  MONITOR_CAS_CONFIG cas;
-  MONITOR_SERVER_CONFIG server;
-};
-
-/* Shared memory data struct */
-
-typedef struct t_shm_diag_info_server T_SHM_DIAG_INFO_SERVER;
-struct t_shm_diag_info_server
-{
-  int magic;
-  int num_thread;
-  int magic_key;
-  char servername[MAX_SERVER_NAMELENGTH];
-  T_DIAG_MONITOR_DB_VALUE thread[MAX_SERVER_THREAD_COUNT];
-};
-
-enum t_diag_shm_mode
-{
-  DIAG_SHM_MODE_ADMIN = 0,
-  DIAG_SHM_MODE_MONITOR = 1
-};
-typedef enum t_diag_shm_mode T_DIAG_SHM_MODE;
-
-enum t_diag_server_type
-{
-  DIAG_SERVER_DB = 00000,
-  DIAG_SERVER_CAS = 10000,
-  DIAG_SERVER_DRIVER = 20000,
-  DIAG_SERVER_RESOURCE = 30000
-};
-typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
-
-#if defined(CS_MODE) || defined(SA_MODE)
-/* Client execution statistic structure */
-typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;
-struct perfmon_client_stat_info
-  {
-  time_t cpu_start_usr_time;
-  time_t cpu_start_sys_time;
-  time_t elapsed_start_time;
-  UINT64 *base_server_stats;
-  UINT64 *current_server_stats;
-  UINT64 *old_global_stats;
-  UINT64 *current_global_stats;
-  };
-
-extern bool perfmon_Iscollecting_stats;
-#endif
-
-#if defined(CS_MODE) || defined(SA_MODE)
-extern int perfmon_start_stats (bool for_all_trans);
-extern int perfmon_stop_stats (void);
-extern void perfmon_reset_stats (void);
-extern int perfmon_print_stats (FILE * stream);
-extern int perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, const char *substr);
-extern int perfmon_get_stats (void);
-extern int perfmon_get_global_stats (void);
-#endif /* CS_MODE || SA_MODE */
-
-#endif /* CS_MODE || SA_MODE */
 
 #endif /* _PERF_MONITOR_H_ */

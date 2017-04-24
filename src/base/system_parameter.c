@@ -84,7 +84,9 @@
 #endif
 #include "vacuum.h"
 #include "tz_support.h"
+#if defined (SERVER_MODE)
 #include "perf_monitor.h"
+#endif /* SERVER_MODE */
 
 #include "fault_injection.h"
 

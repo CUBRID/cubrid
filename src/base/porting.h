@@ -916,4 +916,6 @@ extern time_t mktime_for_win32 (struct tm *tm);
 
 extern int msleep (const long msec);
 
+#define UNSIGNED_INC(x) (x) = ((x) + 1 < 0 ? 0 : (x) + 1)
+
 #endif /* _PORTING_H_ */
