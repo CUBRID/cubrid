@@ -3839,15 +3839,12 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
   else
     {
       LOG_PRIOR_NODE *node = NULL;
-      TRAN_STATE save_state;
 
       /* we are here because either system operation is not empty, or this is the end of a logical system operation.
        * we don't actually allow empty logical system operation because it might hide a logic flaw. however, there are
        * unusual cases when a logical operation does not really require logging (see RVPGBUF_FLUSH_PAGE). if you create
        * such a case, you should add a dummy log record to trick this assert. */
       assert (!LSA_ISNULL (&tdes->tail_lsa) && LSA_GT (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)));
-
-      save_state = tdes->state;
 
       /* now that we have access to tdes, we can do some updates on log record and sanity checks */
       if (log_record->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
@@ -3896,9 +3893,6 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 
       /* Remember last partial result */
       LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
-
-      /* Restore transaction state. */
-      tdes->state = save_state;
     }
 
   log_sysop_end_final (thread_p, tdes);
@@ -8454,6 +8448,7 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
 		       const char *data)
 {
   LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
+  TRAN_STATE save_state = tdes->state;
 
   if (LSA_ISNULL (LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
     {
@@ -8468,17 +8463,19 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
 
   sysop_start_postpone.sysop_end = *sysop_end;
   sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
-  tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
   log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
 
   if (VACUUM_IS_THREAD_VACUUM (thread_p)
       && vacuum_do_postpone_from_cache (thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
     {
       /* Do postpone was run from cached postpone entries. */
+      tdes->state = save_state;
       return;
     }
 
   log_do_postpone (thread_p, tdes, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes));
+
+  tdes->state = save_state;
 }
 
 /*

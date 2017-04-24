@@ -3734,6 +3734,9 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  /* atomic system operation finished. */
 	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 	}
+
+      /* for correct checkpoint, this state change must be done under the protection of prior_lsa_mutex */
+      tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
     }
   else if (node->log_header.type == LOG_SYSOP_END)
     {
