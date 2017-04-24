@@ -26,11 +26,10 @@ class StatisticsFile
   public:
     StatisticsFile (const std::string &filename, const std::string &alias);
     ErrorManager::ErrorCode readFileAndInit ();
-    Snapshot *getSnapshotBySeconds (unsigned int minutes);
+    Snapshot *getSnapshotBySeconds (unsigned int seconds);
     Snapshot *getSnapshotByArgument (const char *argument);
-    void getIndicesOfSnapshotsByArgument (const char *argument, int &minutes1, int &minutes2);
+    void getIndicesOfSnapshotsByArgument (const char *argument, int &index1, int &index2);
     int getSnapshotIndexBySeconds (unsigned int minutes);
-    static void printInTableForm (Snapshot *s1, Snapshot *s2, FILE *stream);
 
     std::vector < Snapshot * > &getSnapshots ()
     {

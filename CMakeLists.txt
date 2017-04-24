@@ -316,6 +316,7 @@ set(THREAD_DIR               ${CMAKE_SOURCE_DIR}/src/thread)
 set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
+set(STATTOOL_UNIT_TESTS_DIR  ${CMAKE_SOURCE_DIR}/src/executables/unit_tests)
 
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
