@@ -512,7 +512,6 @@ UnitTests::testShow_InvalidAlias ()
         }
       else
         {
-          struct stat st;
           bool check;
           command = "b(100) c d(100-300) e f x";
           ShowExecutor *showExecutor = new ShowExecutor (command, files);
@@ -556,7 +555,6 @@ UnitTests::testShow_HappyPath ()
         }
       else
         {
-          struct stat st;
           bool check;
           command = "a a(100) a(100-500)";
           ShowExecutor *showExecutor = new ShowExecutor (command, files);
@@ -600,7 +598,6 @@ UnitTests::testAggregate_MissingArguments ()
         }
       else
         {
-          struct stat st;
           bool check;
           command = "-n Num_data_page_fix_ext -d 4";
           AggregateExecutor *aggregateExecutor = new AggregateExecutor (command, files);
