@@ -649,7 +649,7 @@ perfmeta_init (void)
   /* called twice, once for client and once for server. */
   if (perfmeta_Initialized)
     {
-      return;
+      return NO_ERROR;
     }
   perfmeta_Initialized = true;
 #endif /* SA_MODE*/

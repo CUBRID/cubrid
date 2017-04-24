@@ -28,6 +28,7 @@
 #ident "$Id$"
 
 #include <stdio.h>
+#include <assert.h>
 
 #include "perf_metadata.h"
 #include "thread.h"
