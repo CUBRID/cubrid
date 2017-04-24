@@ -558,7 +558,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
     }
 
-  error_code = perfmon_initialize (MAX_NTRANS);
+  error_code = perfmeta_init ();
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -708,7 +708,7 @@ error_exit:
 
       lang_final ();
       tz_unload ();
-      perfmon_finalize ();
+      perfmeta_final ();
 
 #if defined(WINDOWS)
       pc_final ();
@@ -836,7 +836,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   area_init ();
   locator_initialize_areas ();
 
-  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MODE */
+  error_code = perfmeta_init ();
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1586,7 +1586,7 @@ boot_client_all_finalize (bool is_er_final)
 
       locator_free_areas ();
       sysprm_final ();
-      perfmon_finalize ();
+      perfmeta_final ();
       area_final ();
 
       msgcat_final ();

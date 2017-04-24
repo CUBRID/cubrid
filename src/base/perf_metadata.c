@@ -554,6 +554,10 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &perfbase_Complex_Time_obj_lock_acquire_time)
 };
 
+#if defined (SA_MODE)
+bool perfmeta_Initialized = false;
+#endif /* SA_MODE */
+
 /************************************************************************/
 /* end of macros and structures                                         */
 /************************************************************************/
@@ -640,6 +644,15 @@ perfmeta_init (void)
 {
   int idx, i, n_vals;
   int nvals_total = 0;
+
+#if defined (SA_MODE)
+  /* called twice, once for client and once for server. */
+  if (perfmeta_Initialized)
+    {
+      return;
+    }
+  perfmeta_Initialized = true;
+#endif /* SA_MODE*/
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {

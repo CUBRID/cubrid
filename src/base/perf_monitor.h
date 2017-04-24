@@ -36,10 +36,10 @@
 #if defined (SERVER_MODE)
 #include "dbtype.h"
 #include "connection_defs.h"
-#endif /* SERVER_MODE */
 
 #include "thread.h"
 
+#endif /* SERVER_MODE */
 #include <time.h>
 #if !defined(WINDOWS)
 #include <sys/time.h>
@@ -67,6 +67,8 @@
 /* server stuff                                                         */
 /************************************************************************/
 
+#if defined (SERVER_MODE) || (SA_MODE)
+//#if defined (SERVER_MODE) || defined (SA_MODE)
 /* Statistics activation flags */
 
 #define PERFMON_ACTIVE_DEFAULT                    0
@@ -120,7 +122,7 @@ extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
 extern char *perfmon_allocate_packed_values_buffer (void);
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
+//#if defined (SERVER_MODE) || defined (SA_MODE)
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 
@@ -149,7 +151,7 @@ extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type
 					  int cond_type, UINT64 amount);
 extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
 
-#endif /* SERVER_MODE || SA_MODE */
+//#endif /* SERVER_MODE || SA_MODE */
 
 
 /************************************************************************/
@@ -748,13 +750,6 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
 #define MONITOR_WAITING_THREAD(elapsed) (0)
 #endif
 
-typedef struct perf_utime_tracker PERF_UTIME_TRACKER;
-struct perf_utime_tracker
-{
-  bool is_perf_tracking;
-  TSC_TICKS start_tick;
-  TSC_TICKS end_tick;
-};
 #define PERF_UTIME_TRACKER_INITIALIZER { false, {0}, {0} }
 #define PERF_UTIME_TRACKER_START(thread_p, track) \
   do \
@@ -821,9 +816,13 @@ struct perf_utime_tracker
     } \
   while (false)
 
+#endif /* SERVER_MODE || SA_MODE */
+
 /************************************************************************/
 /* client stuff                                                         */
 /************************************************************************/
+
+#if defined (CS_MODE) || defined (SA_MODE)
 
 typedef struct diag_sys_config DIAG_SYS_CONFIG;
 struct diag_sys_config
@@ -937,5 +936,6 @@ extern int perfmon_get_stats (void);
 extern int perfmon_get_global_stats (void);
 #endif /* CS_MODE || SA_MODE */
 
+#endif /* CS_MODE || SA_MODE */
 
 #endif /* _PERF_MONITOR_H_ */

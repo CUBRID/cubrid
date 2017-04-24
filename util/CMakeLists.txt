@@ -71,6 +71,8 @@ set(STATISTICS_TOOL_SOURCES
         ${TOOLS_DIR}/stattool/STAT_TOOL_AggregateExecutor.cpp
         ${BASE_DIR}/perf_metadata.c
         ${BASE_DIR}/porting.c
+        ${BASE_DIR}/tsc_timer.c # todo: remove me
+        ${BASE_DIR}/perf.c # todo: remove me
 )
 add_executable(stattool ${STATISTICS_TOOL_SOURCES})
 target_compile_definitions(stattool PRIVATE ${COMMON_DEFS})

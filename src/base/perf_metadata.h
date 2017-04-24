@@ -611,4 +611,22 @@ extern void perfmeta_copy_values (UINT64 * src, UINT64 * dest);
 extern void perfmeta_compute_stats (UINT64 * stats);
 extern int perfmeta_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
 
+/* todo:
+ * this does not belong here. it belongs to perf_monitor.h. unfortunately, it is referred by heap_file.h and
+ * page_buffer.h which belong to the storage module. which should be restricted to only server/SA mode.
+ * well, we have a great deal of files which also belong to CS (some exclusively) and yet they include heap_file.h and
+ * page_buffer.h. We need a great deal of refactoring to fix that.
+ *
+ * note: remove tsc_timer from stat tool too when this is fixed.
+ */
+#include "tsc_timer.h"
+
+typedef struct perf_utime_tracker PERF_UTIME_TRACKER;
+struct perf_utime_tracker
+{
+  bool is_perf_tracking;
+  TSC_TICKS start_tick;
+  TSC_TICKS end_tick;
+};
+
 #endif /*_PERF_METADATA_H_*/

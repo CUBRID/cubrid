@@ -2131,7 +2131,9 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
     }
 #endif /* WINDOWS */
 
+#if !defined (CS_MODE)
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_CREATES);
+#endif /* !CS_MODE */
 
   if (vol_fd != NULL_VOLDES)
     {
@@ -3734,7 +3736,9 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
     }
 #endif
 
+#if !defined (CS_MODE)
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOREADS);
+#endif /* !CS_MODE */
   return io_page_p;
 }
 
@@ -3879,7 +3883,9 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 #endif
 
   fileio_compensate_flush (thread_p, vol_fd, 1);
+#if !defined (CS_MODE)
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOWRITES);
+#endif /* !CS_MODE */
   return io_page_p;
 }
 
@@ -4028,7 +4034,9 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
     }
 #endif
 
+#if !defined (CS_MODE)
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOREADS);
+#endif /* !CS_MODE */
   return io_pages_p;
 }
 
@@ -4176,7 +4184,9 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
 #endif
 
   fileio_compensate_flush (thread_p, vol_fd, num_pages);
+#if !defined (CS_MODE)
   perfmon_add_stat (thread_p, PSTAT_FILE_NUM_IOWRITES, num_pages);
+#endif /* !CS_MODE */
   return io_pages_p;
 }
 
@@ -4310,7 +4320,9 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 	}
 #endif
 
+#if !defined (CS_MODE)
       perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOSYNCHES);
+#endif /* !CS_MODE */
       return vol_fd;
     }
 }
@@ -4409,7 +4421,9 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
   APPLY_ARG arg = { 0 };
   PERF_UTIME_TRACKER time_track;
 
+#if !defined (CS_MODE)
   PERF_UTIME_TRACKER_START (thread_p, &time_track);
+#endif /* !CS_MODE */
 
   arg.vol_id = NULL_VOLID;
 
@@ -4429,7 +4443,9 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
 
   er_stack_pop ();
 
+#if !defined (CS_MODE)
   PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_FILE_IOSYNC_ALL);
+#endif /* !CS_MODE */
 
   return success;
 }

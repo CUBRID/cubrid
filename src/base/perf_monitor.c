@@ -32,13 +32,14 @@
 #include <sys/resource.h>
 #endif /* WINDOWS */
 #include "perf_monitor.h"
-#include "network_interface_cl.h"
 #include "error_manager.h"
 
-#if !defined(SERVER_MODE)
-#include "memory_alloc.h"
-#include "server_interface.h"
-#endif /* !SERVER_MODE */
+/************************************************************************/
+/* server stuff                                                         */
+/************************************************************************/
+
+#if defined (SERVER_MODE) || (SA_MODE)
+#include <string.h>
 
 #if defined(SERVER_MODE)
 #include <string.h>
@@ -57,16 +58,20 @@
 #include "databases_file.h"
 #endif /* SERVER_MODE */
 
-#include "thread.h"
+#include "error_manager.h"
+#include "system_parameter.h"
 #include "log_impl.h"
 #include "session.h"
 
-#if !defined(CS_MODE)
-#include <string.h>
+#if defined(SA_MODE)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_unlock(a)
+static int rv;
+#endif /* SA_MODE */
 
-#include "error_manager.h"
 #include "log_manager.h"
-#include "system_parameter.h"
 #include "xserver_interface.h"
 #include "heap_file.h"
 #include "xasl_cache.h"
@@ -75,383 +80,15 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 
-#if !defined(SERVER_MODE)
-#define pthread_mutex_init(a, b)
-#define pthread_mutex_destroy(a)
-#define pthread_mutex_lock(a)	0
-#define pthread_mutex_unlock(a)
-static int rv;
-#endif /* SERVER_MODE */
-#endif /* !CS_MODE */
-
-
-/* Custom values. */
-#define PSTAT_VALUE_CUSTOM	      0x00000001
-
-#if defined(CS_MODE) || defined(SA_MODE)
-bool perfmon_Iscollecting_stats = false;
-
-/* Client execution statistics */
-static PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
-#endif
-
 PSTAT_GLOBAL pstat_Global;
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
-					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
+                                               UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 
 
 
 STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
-
-#if defined(CS_MODE) || defined(SA_MODE)
-static void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
-#endif
-
-#if defined(CS_MODE) || defined(SA_MODE)
-/*
- *   perfmon_get_current_times - Get current CPU and elapsed times
- *   return:
- *   cpu_user_time(out):
- *   cpu_sys_time(out):
- *   elapsed_time(out):
- *
- * Note:
- */
-static void
-perfmon_get_current_times (time_t * cpu_user_time, time_t * cpu_sys_time, time_t * elapsed_time)
-{
-#if defined (WINDOWS)
-  *cpu_user_time = 0;
-  *cpu_sys_time = 0;
-  *elapsed_time = 0;
-
-  *elapsed_time = time (NULL);
-#else /* WINDOWS */
-  struct rusage rusage;
-
-  *cpu_user_time = 0;
-  *cpu_sys_time = 0;
-  *elapsed_time = 0;
-
-  *elapsed_time = time (NULL);
-
-  if (getrusage (RUSAGE_SELF, &rusage) == 0)
-    {
-      *cpu_user_time = rusage.ru_utime.tv_sec;
-      *cpu_sys_time = rusage.ru_stime.tv_sec;
-    }
-#endif /* WINDOWS */
-}
-
-/*
- * perfmon_start_stats - Start collecting client execution statistics
- *   return: NO_ERROR or ERROR
- */
-int
-perfmon_start_stats (bool for_all_trans)
-{
-  int err = NO_ERROR;
-
-  if (perfmon_Iscollecting_stats == true)
-    {
-      goto exit;
-    }
-
-  perfmon_Stat_info.old_global_stats = NULL;
-  perfmon_Stat_info.current_global_stats = NULL;
-  perfmon_Stat_info.base_server_stats = NULL;
-  perfmon_Stat_info.current_server_stats = NULL;
-
-  err = perfmon_server_start_stats ();
-  if (err != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit;
-    }
-
-  perfmon_Iscollecting_stats = true;
-
-  perfmon_get_current_times (&perfmon_Stat_info.cpu_start_usr_time, &perfmon_Stat_info.cpu_start_sys_time,
-			     &perfmon_Stat_info.elapsed_start_time);
-
-  if (for_all_trans)
-    {
-      perfmon_Stat_info.old_global_stats = perfmeta_allocate_values ();
-      if (perfmon_Stat_info.old_global_stats == NULL)
-	{
-	  ASSERT_ERROR ();
-	  err = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto exit;
-	}
-      perfmon_Stat_info.current_global_stats = perfmeta_allocate_values ();
-
-      if (perfmon_Stat_info.current_global_stats == NULL)
-	{
-	  ASSERT_ERROR ();
-	  err = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto exit;
-	}
-
-      if (perfmon_get_global_stats () == NO_ERROR)
-	{
-	  perfmeta_copy_values (perfmon_Stat_info.old_global_stats, perfmon_Stat_info.current_global_stats);
-	}
-    }
-  else
-    {
-      perfmon_Stat_info.base_server_stats = perfmeta_allocate_values ();
-      if (perfmon_Stat_info.base_server_stats == NULL)
-	{
-	  ASSERT_ERROR ();
-	  err = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto exit;
-	}
-      perfmon_Stat_info.current_server_stats = perfmeta_allocate_values ();
-      if (perfmon_Stat_info.current_server_stats == NULL)
-	{
-	  ASSERT_ERROR ();
-	  err = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto exit;
-	}
-
-      if (perfmon_get_stats () == NO_ERROR)
-	{
-	  perfmeta_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
-	}
-    }
-exit:
-  return err;
-}
-
-/*
- * perfmon_stop_stats - Stop collecting client execution statistics
- *   return: NO_ERROR or ER_FAILED
- */
-int
-perfmon_stop_stats (void)
-{
-  int err = NO_ERROR;
-
-  if (perfmon_Iscollecting_stats != false)
-    {
-      err = perfmon_server_stop_stats ();
-      perfmon_Iscollecting_stats = false;
-    }
-
-  if (perfmon_Stat_info.old_global_stats != NULL)
-    {
-      free_and_init (perfmon_Stat_info.old_global_stats);
-    }
-  if (perfmon_Stat_info.current_global_stats != NULL)
-    {
-      free_and_init (perfmon_Stat_info.current_global_stats);
-    }
-  if (perfmon_Stat_info.base_server_stats != NULL)
-    {
-      free_and_init (perfmon_Stat_info.base_server_stats);
-    }
-
-  if (perfmon_Stat_info.current_server_stats != NULL)
-    {
-      free_and_init (perfmon_Stat_info.current_server_stats);
-    }
-
-  return err;
-}
-
-/*
- * perfmon_reset_stats - Reset client statistics
- *   return: none
- */
-void
-perfmon_reset_stats (void)
-{
-  if (perfmon_Iscollecting_stats != false)
-    {
-      perfmon_get_current_times (&perfmon_Stat_info.cpu_start_usr_time, &perfmon_Stat_info.cpu_start_sys_time,
-				 &perfmon_Stat_info.elapsed_start_time);
-
-      if (perfmon_get_stats () == NO_ERROR)
-	{
-	  perfmeta_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
-	}
-    }
-}
-
-/*
- * perfmon_get_stats - Get the recorded client statistics
- *   return: client statistics
- */
-int
-perfmon_get_stats (void)
-{
-  int err = NO_ERROR;
-
-  if (perfmon_Iscollecting_stats != true)
-    {
-      return ER_FAILED;
-    }
-
-  err = perfmon_server_copy_stats (perfmon_Stat_info.current_server_stats);
-  return err;
-}
-
-/*
- *   perfmon_get_global_stats - Get the recorded client statistics
- *   return: client statistics
- */
-int
-perfmon_get_global_stats (void)
-{
-  UINT64 *tmp_stats;
-  int err = NO_ERROR;
-
-  if (perfmon_Iscollecting_stats != true)
-    {
-      return ER_FAILED;
-    }
-
-  tmp_stats = perfmon_Stat_info.current_global_stats;
-  perfmon_Stat_info.current_global_stats = perfmon_Stat_info.old_global_stats;
-  perfmon_Stat_info.old_global_stats = tmp_stats;
-
-  /* Refresh statistics from server */
-  err = perfmon_server_copy_global_stats (perfmon_Stat_info.current_global_stats);
-  if (err != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-    }
-  return err;
-}
-
-/*
- *   perfmon_print_stats - Print the current client statistics
- *   return: error or no error
- *   stream(in): if NULL is given, stdout is used
- */
-int
-perfmon_print_stats (FILE * stream)
-{
-  time_t cpu_total_usr_time;
-  time_t cpu_total_sys_time;
-  time_t elapsed_total_time;
-  UINT64 *diff_result = NULL;
-  int err = NO_ERROR;
-
-  if (perfmon_Iscollecting_stats != true)
-    {
-      return err;
-    }
-
-  diff_result = perfmeta_allocate_values ();
-
-  if (diff_result == NULL)
-    {
-      ASSERT_ERROR ();
-      err = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit;
-    }
-
-  if (stream == NULL)
-    {
-      stream = stdout;
-    }
-
-  if (perfmon_get_stats () != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit;
-    }
-
-  perfmon_get_current_times (&cpu_total_usr_time, &cpu_total_sys_time, &elapsed_total_time);
-
-  fprintf (stream, "\n *** CLIENT EXECUTION STATISTICS ***\n");
-
-  fprintf (stream, "System CPU (sec)              = %10d\n",
-	   (int) (cpu_total_sys_time - perfmon_Stat_info.cpu_start_sys_time));
-  fprintf (stream, "User CPU (sec)                = %10d\n",
-	   (int) (cpu_total_usr_time - perfmon_Stat_info.cpu_start_usr_time));
-  fprintf (stream, "Elapsed (sec)                 = %10d\n",
-	   (int) (elapsed_total_time - perfmon_Stat_info.elapsed_start_time));
-
-  if (perfmeta_diff_stats (diff_result, perfmon_Stat_info.current_server_stats,
-			       perfmon_Stat_info.base_server_stats) != NO_ERROR)
-    {
-      assert (false);
-      goto exit;
-    }
-  perfmon_server_dump_stats (diff_result, stream, NULL);
-
-exit:
-  if (diff_result != NULL)
-    {
-      free_and_init (diff_result);
-    }
-  return err;
-}
-
-/*
- *   perfmon_print_global_stats - Print the global statistics
- *   return: error or no error
- *   stream(in): if NULL is given, stdout is used
- */
-int
-perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, const char *substr)
-{
-  UINT64 *diff_result = NULL;
-  int err = NO_ERROR;
-
-  if (stream == NULL)
-    {
-      stream = stdout;
-    }
-  diff_result = perfmeta_allocate_values ();
-
-  if (diff_result == NULL)
-    {
-      ASSERT_ERROR ();
-      err = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit;
-    }
-  err = perfmon_get_global_stats ();
-  if (err != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit;
-    }
-  if (cumulative)
-    {
-      if (bin_stream != NULL)
-	{
-	  char *packed_stats = (char *) malloc (sizeof (UINT64) * perfmeta_get_values_count ());
-	  perfmon_pack_stats (packed_stats, perfmon_Stat_info.current_global_stats);
-	  fwrite (packed_stats, sizeof (UINT64), (size_t) perfmeta_get_values_count (), bin_stream);
-	  free (packed_stats);
-	}
-      perfmon_server_dump_stats (perfmon_Stat_info.current_global_stats, stream, substr);
-    }
-  else
-    {
-      if (perfmeta_diff_stats (diff_result, perfmon_Stat_info.current_global_stats,
-				   perfmon_Stat_info.old_global_stats) != NO_ERROR)
-	{
-	  assert (false);
-	  goto exit;
-	}
-      perfmon_server_dump_stats (diff_result, stream, substr);
-    }
-
-exit:
-  if (diff_result != NULL)
-    {
-      free_and_init (diff_result);
-    }
-  return err;
-}
-
-#endif /* CS_MODE || SA_MODE */
 
 #if defined (DIAG_DEVEL)
 #if defined(SERVER_MODE)
@@ -1481,8 +1118,6 @@ set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype, c
 #endif /* SERVER_MODE */
 #endif /* DIAG_DEVEL */
 
-#if defined(SERVER_MODE) || defined(SA_MODE)
-
 /*
  * perfmon_server_is_stats_on - Is collecting server execution statistics
  *				for the current transaction index
@@ -1793,7 +1428,6 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
   perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_MVCC_SNAPSHOT_COUNTERS, &cursor), 1);
 }
 
-#endif /* SERVER_MODE || SA_MODE */
 
 /*
  * perfmon_get_module_type () -
@@ -1842,7 +1476,6 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
 
   return module_type;
 }
-
 
 /*
  * perfmon_initialize () - Computes the metadata values & allocates/initializes global/transaction statistics values.
@@ -1968,7 +1601,6 @@ perfmon_finalize (void)
 #endif /* SERVER_MODE || SA_MODE */
 }
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * perfmon_start_watch () - Start watching performance statistics.
  *
@@ -2035,7 +1667,6 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 
   pstat_Global.is_watching[tran_index] = false;
 }
-#endif /* SERVER_MODE || SA_MODE */
 
 /*
  * perfmon_add_stat_at_offset () - Accumulate amount to statistic.
@@ -2075,8 +1706,6 @@ perfmon_allocate_packed_values_buffer (void)
   return buf;
 }
 
-
-
 /*
  * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics
  *		         
@@ -2108,3 +1737,367 @@ perfmon_get_peek_stats (UINT64 * stats)
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
 }
+
+#endif /* SERVER_MODE || SA_MODE */
+
+/************************************************************************/
+/* client stuff                                                         */
+/************************************************************************/
+
+#if !defined(SERVER_MODE)
+#include "memory_alloc.h"
+#include "server_interface.h"
+#endif /* !SERVER_MODE */
+
+#include "network_interface_cl.h"
+
+#if defined(CS_MODE) || defined(SA_MODE)
+bool perfmon_Iscollecting_stats = false;
+
+/* Client execution statistics */
+static PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
+
+static void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
+
+/*
+ *   perfmon_get_current_times - Get current CPU and elapsed times
+ *   return:
+ *   cpu_user_time(out):
+ *   cpu_sys_time(out):
+ *   elapsed_time(out):
+ *
+ * Note:
+ */
+static void
+perfmon_get_current_times (time_t * cpu_user_time, time_t * cpu_sys_time, time_t * elapsed_time)
+{
+#if defined (WINDOWS)
+  *cpu_user_time = 0;
+  *cpu_sys_time = 0;
+  *elapsed_time = 0;
+
+  *elapsed_time = time (NULL);
+#else /* WINDOWS */
+  struct rusage rusage;
+
+  *cpu_user_time = 0;
+  *cpu_sys_time = 0;
+  *elapsed_time = 0;
+
+  *elapsed_time = time (NULL);
+
+  if (getrusage (RUSAGE_SELF, &rusage) == 0)
+    {
+      *cpu_user_time = rusage.ru_utime.tv_sec;
+      *cpu_sys_time = rusage.ru_stime.tv_sec;
+    }
+#endif /* WINDOWS */
+}
+
+/*
+ * perfmon_start_stats - Start collecting client execution statistics
+ *   return: NO_ERROR or ERROR
+ */
+int
+perfmon_start_stats (bool for_all_trans)
+{
+  int err = NO_ERROR;
+
+  if (perfmon_Iscollecting_stats == true)
+    {
+      goto exit;
+    }
+
+  perfmon_Stat_info.old_global_stats = NULL;
+  perfmon_Stat_info.current_global_stats = NULL;
+  perfmon_Stat_info.base_server_stats = NULL;
+  perfmon_Stat_info.current_server_stats = NULL;
+
+  err = perfmon_server_start_stats ();
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  perfmon_Iscollecting_stats = true;
+
+  perfmon_get_current_times (&perfmon_Stat_info.cpu_start_usr_time, &perfmon_Stat_info.cpu_start_sys_time,
+			     &perfmon_Stat_info.elapsed_start_time);
+
+  if (for_all_trans)
+    {
+      perfmon_Stat_info.old_global_stats = perfmeta_allocate_values ();
+      if (perfmon_Stat_info.old_global_stats == NULL)
+	{
+	  ASSERT_ERROR ();
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+      perfmon_Stat_info.current_global_stats = perfmeta_allocate_values ();
+
+      if (perfmon_Stat_info.current_global_stats == NULL)
+	{
+	  ASSERT_ERROR ();
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+
+      if (perfmon_get_global_stats () == NO_ERROR)
+	{
+	  perfmeta_copy_values (perfmon_Stat_info.old_global_stats, perfmon_Stat_info.current_global_stats);
+	}
+    }
+  else
+    {
+      perfmon_Stat_info.base_server_stats = perfmeta_allocate_values ();
+      if (perfmon_Stat_info.base_server_stats == NULL)
+	{
+	  ASSERT_ERROR ();
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+      perfmon_Stat_info.current_server_stats = perfmeta_allocate_values ();
+      if (perfmon_Stat_info.current_server_stats == NULL)
+	{
+	  ASSERT_ERROR ();
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+
+      if (perfmon_get_stats () == NO_ERROR)
+	{
+	  perfmeta_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
+	}
+    }
+exit:
+  return err;
+}
+
+/*
+ * perfmon_stop_stats - Stop collecting client execution statistics
+ *   return: NO_ERROR or ER_FAILED
+ */
+int
+perfmon_stop_stats (void)
+{
+  int err = NO_ERROR;
+
+  if (perfmon_Iscollecting_stats != false)
+    {
+      err = perfmon_server_stop_stats ();
+      perfmon_Iscollecting_stats = false;
+    }
+
+  if (perfmon_Stat_info.old_global_stats != NULL)
+    {
+      free_and_init (perfmon_Stat_info.old_global_stats);
+    }
+  if (perfmon_Stat_info.current_global_stats != NULL)
+    {
+      free_and_init (perfmon_Stat_info.current_global_stats);
+    }
+  if (perfmon_Stat_info.base_server_stats != NULL)
+    {
+      free_and_init (perfmon_Stat_info.base_server_stats);
+    }
+
+  if (perfmon_Stat_info.current_server_stats != NULL)
+    {
+      free_and_init (perfmon_Stat_info.current_server_stats);
+    }
+
+  return err;
+}
+
+/*
+ * perfmon_reset_stats - Reset client statistics
+ *   return: none
+ */
+void
+perfmon_reset_stats (void)
+{
+  if (perfmon_Iscollecting_stats != false)
+    {
+      perfmon_get_current_times (&perfmon_Stat_info.cpu_start_usr_time, &perfmon_Stat_info.cpu_start_sys_time,
+				 &perfmon_Stat_info.elapsed_start_time);
+
+      if (perfmon_get_stats () == NO_ERROR)
+	{
+	  perfmeta_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
+	}
+    }
+}
+
+/*
+ * perfmon_get_stats - Get the recorded client statistics
+ *   return: client statistics
+ */
+int
+perfmon_get_stats (void)
+{
+  int err = NO_ERROR;
+
+  if (perfmon_Iscollecting_stats != true)
+    {
+      return ER_FAILED;
+    }
+
+  err = perfmon_server_copy_stats (perfmon_Stat_info.current_server_stats);
+  return err;
+}
+
+/*
+ *   perfmon_get_global_stats - Get the recorded client statistics
+ *   return: client statistics
+ */
+int
+perfmon_get_global_stats (void)
+{
+  UINT64 *tmp_stats;
+  int err = NO_ERROR;
+
+  if (perfmon_Iscollecting_stats != true)
+    {
+      return ER_FAILED;
+    }
+
+  tmp_stats = perfmon_Stat_info.current_global_stats;
+  perfmon_Stat_info.current_global_stats = perfmon_Stat_info.old_global_stats;
+  perfmon_Stat_info.old_global_stats = tmp_stats;
+
+  /* Refresh statistics from server */
+  err = perfmon_server_copy_global_stats (perfmon_Stat_info.current_global_stats);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  return err;
+}
+
+/*
+ *   perfmon_print_stats - Print the current client statistics
+ *   return: error or no error
+ *   stream(in): if NULL is given, stdout is used
+ */
+int
+perfmon_print_stats (FILE * stream)
+{
+  time_t cpu_total_usr_time;
+  time_t cpu_total_sys_time;
+  time_t elapsed_total_time;
+  UINT64 *diff_result = NULL;
+  int err = NO_ERROR;
+
+  if (perfmon_Iscollecting_stats != true)
+    {
+      return err;
+    }
+
+  diff_result = perfmeta_allocate_values ();
+
+  if (diff_result == NULL)
+    {
+      ASSERT_ERROR ();
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+
+  if (stream == NULL)
+    {
+      stream = stdout;
+    }
+
+  if (perfmon_get_stats () != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  perfmon_get_current_times (&cpu_total_usr_time, &cpu_total_sys_time, &elapsed_total_time);
+
+  fprintf (stream, "\n *** CLIENT EXECUTION STATISTICS ***\n");
+
+  fprintf (stream, "System CPU (sec)              = %10d\n",
+	   (int) (cpu_total_sys_time - perfmon_Stat_info.cpu_start_sys_time));
+  fprintf (stream, "User CPU (sec)                = %10d\n",
+	   (int) (cpu_total_usr_time - perfmon_Stat_info.cpu_start_usr_time));
+  fprintf (stream, "Elapsed (sec)                 = %10d\n",
+	   (int) (elapsed_total_time - perfmon_Stat_info.elapsed_start_time));
+
+  if (perfmeta_diff_stats (diff_result, perfmon_Stat_info.current_server_stats,
+			       perfmon_Stat_info.base_server_stats) != NO_ERROR)
+    {
+      assert (false);
+      goto exit;
+    }
+  perfmon_server_dump_stats (diff_result, stream, NULL);
+
+exit:
+  if (diff_result != NULL)
+    {
+      free_and_init (diff_result);
+    }
+  return err;
+}
+
+/*
+ *   perfmon_print_global_stats - Print the global statistics
+ *   return: error or no error
+ *   stream(in): if NULL is given, stdout is used
+ */
+int
+perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, const char *substr)
+{
+  UINT64 *diff_result = NULL;
+  int err = NO_ERROR;
+
+  if (stream == NULL)
+    {
+      stream = stdout;
+    }
+  diff_result = perfmeta_allocate_values ();
+
+  if (diff_result == NULL)
+    {
+      ASSERT_ERROR ();
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+  err = perfmon_get_global_stats ();
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+  if (cumulative)
+    {
+      if (bin_stream != NULL)
+	{
+	  char *packed_stats = (char *) malloc (sizeof (UINT64) * perfmeta_get_values_count ());
+	  perfmon_pack_stats (packed_stats, perfmon_Stat_info.current_global_stats);
+	  fwrite (packed_stats, sizeof (UINT64), (size_t) perfmeta_get_values_count (), bin_stream);
+	  free (packed_stats);
+	}
+      perfmon_server_dump_stats (perfmon_Stat_info.current_global_stats, stream, substr);
+    }
+  else
+    {
+      if (perfmeta_diff_stats (diff_result, perfmon_Stat_info.current_global_stats,
+				   perfmon_Stat_info.old_global_stats) != NO_ERROR)
+	{
+	  assert (false);
+	  goto exit;
+	}
+      perfmon_server_dump_stats (diff_result, stream, substr);
+    }
+
+exit:
+  if (diff_result != NULL)
+    {
+      free_and_init (diff_result);
+    }
+  return err;
+}
+
+#endif /* CS_MODE || SA_MODE */
