@@ -3532,7 +3532,7 @@ end:
 	    (int) (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx] * (float) check_count_lru
 		   / lru_sum_flush_priority);
 	  lru_list = PGBUF_GET_LRU_LIST (lru_idx);
-	  if (lru_list->count_vict_cand < check_count_lru)
+	  if (lru_list->count_vict_cand < count_check_this_lru)
 	    {
 	      assert (false);
 	    }
