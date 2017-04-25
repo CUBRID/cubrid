@@ -3,6 +3,8 @@
 # LZO_INCLUDE_DIR - the LZO include directory
 # LZO_LIBRARIES - The libraries needed to use LZO
 
+#http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
+
 if (LZO_INCLUDE_DIR AND LZO_LIBRARIES)
   # in cache already
   SET(LZO_FOUND TRUE)
