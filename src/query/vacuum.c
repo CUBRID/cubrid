@@ -36,6 +36,7 @@
 #include "dbtype.h"
 #include "transaction_cl.h"
 #include "util_func.h"
+#include "log_impl.h"
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -2923,7 +2924,7 @@ restart:
   vacuum_cleanup_dropped_files (thread_p);
 
   /* Reset log header information saved for vacuum. */
-  vacuum_reset_log_header_cache (thread_p);
+  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_END, 0);
   er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum end.\n");
@@ -2957,7 +2958,7 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vacuum_Data.oldest_unvacuumed_mvccid = oldest_newest_mvccid;
 
   /* Reset log header information saved for vacuum. */
-  vacuum_reset_log_header_cache (thread_p);
+  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -5357,7 +5358,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 		     "vacuum_recover_lost_block_data, mvcc_op_log_lsa %lld|%d is already in vacuum data "
 		     "(last blockid = %lld) ", LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa),
 		     (long long int) vacuum_Data.last_blockid);
-      vacuum_reset_log_header_cache (thread_p);
+      logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
       return NO_ERROR;
     }
   else
@@ -5451,18 +5452,6 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 
   lf_circular_queue_async_reset (vacuum_Block_data_buffer);
   return NO_ERROR;
-}
-
-/*
- * vacuum_reset_log_header_cache () - reset vacuum data cached in log global header.
- */
-void
-vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p)
-{
-  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "%s", "Reset vacuum info in log_Gl.hdr ");
-  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
-  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
-  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
 }
 
 /*
