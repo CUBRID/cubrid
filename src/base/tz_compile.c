@@ -6699,9 +6699,9 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			  strcat (update_query, column_name);
 			  strcat (update_query, "])");
 
-			  strcat (update_query, "[");
+			  strcat (where_query, "[");
 			  strcat (where_query, column_name);
-			  strcat (update_query, "]");
+			  strcat (where_query, "]");
 			  strcat (where_query, "!=");
 			  strcat (where_query, "conv_tz([");
 			  strcat (where_query, column_name);
