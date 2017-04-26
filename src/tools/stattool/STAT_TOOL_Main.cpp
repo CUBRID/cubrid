@@ -18,81 +18,100 @@ extern "C" {
 
 std::vector<StatisticsFile *> files;
 
+void
+init ()
+{
+  perfmeta_init();
+}
+
+void
+final ()
+{
+  files.clear ();
+  perfmeta_final ();
+}
+
+ErrorManager::ErrorCode
+process_command (const std::string& command, CommandExecutor *&executor, bool& quit)
+{
+  std::string::size_type spacePosition;
+  std::string commandKeyword;
+  std::string arguments;
+
+  spacePosition = command.find (" ");
+  commandKeyword = command.substr (0, spacePosition);
+  arguments = command.substr (spacePosition + 1);
+
+  if (commandKeyword.compare ("load") == 0)
+  {
+    executor = new LoadExecutor (arguments, files);
+  }
+  else if (commandKeyword.compare ("show") == 0)
+  {
+    executor = new ShowExecutor (arguments, files);
+  }
+  else if (commandKeyword.compare ("plot") == 0)
+  {
+    executor = new PlotExecutor (arguments, files);
+  }
+  else if (commandKeyword.compare ("aggregate") == 0)
+  {
+    executor = new AggregateExecutor (arguments, files);
+  }
+  else if (commandKeyword.compare ("quit") == 0)
+  {
+    quit = true;
+  }
+  else
+  {
+    ErrorManager::printErrorMessage (ErrorManager::INVALID_COMMAND_ERROR, "The command is: " + command);
+    return ErrorManager::INVALID_COMMAND_ERROR;
+  }
+
+  return ErrorManager::NO_ERRORS;
+}
+
 int
 main (int argc, char **argv)
 {
   bool quit = false;
-  char command[MAX_COMMAND_SIZE];
-  perfmeta_init();
+  char buffer[MAX_COMMAND_SIZE];
+  std::string command;
+  CommandExecutor *executor = NULL;
+  ErrorManager::ErrorCode error;
 
-  do
+  init();
+
+  while (!quit)
     {
-      std::string commandStr;
-      CommandExecutor *executor = NULL;
-      std::string::size_type spacePosition;
-      std::string commandKeyword;
-      std::string arguments;
-
-      fgets (command, MAX_COMMAND_SIZE, stdin);
-      command[strlen (command) - 1] = '\0';         /* eliminates the ending "\n" that fgets adds */
-      if (strlen (command) == 0)
+      fgets (buffer, MAX_COMMAND_SIZE, stdin);
+      buffer[strlen (buffer) - 1] = '\0';         /* eliminates the ending "\n" that fgets adds */
+      if (strlen (buffer) == 0)
         {
           continue;
         }
-      commandStr = std::string (command);
-      spacePosition = commandStr.find (" ");
+      command = std::string(buffer);
+      error = process_command (command, executor, quit);
 
-      commandKeyword = commandStr.substr (0, spacePosition);
-      arguments = commandStr.substr (spacePosition + 1);
+      if (error != ErrorManager::NO_ERRORS) {
+	continue;
+      }
 
-      if (commandKeyword.compare ("load") == 0)
-        {
-          executor = new LoadExecutor (arguments, files);
-        }
-      else if (commandKeyword.compare ("show") == 0)
-        {
-          executor = new ShowExecutor (arguments, files);
-        }
-      else if (commandKeyword.compare ("plot") == 0)
-        {
-          executor = new PlotExecutor (arguments, files);
-        }
-      else if (commandKeyword.compare ("aggregate") == 0)
-        {
-          executor = new AggregateExecutor (arguments, files);
-        }
-      else if (commandKeyword.compare ("quit") == 0)
-        {
-          quit = true;
-        }
-      else
-        {
-          ErrorManager::printErrorMessage (ErrorManager::INVALID_COMMAND_ERROR,
-                                           "The command is: " + commandStr);
-          continue;
-        }
+      if (quit) {
+	break;
+      }
 
-      if (!quit)
-        {
-          ErrorManager::ErrorCode errorCode = executor->parseCommandAndInit ();
-          if (errorCode == ErrorManager::NO_ERRORS)
-            {
-              executor->execute ();
-            }
-          else
-            {
-              executor->printUsage ();
-            }
-          delete executor;
-        }
+      error = executor->parseCommandAndInit ();
+      if (error != ErrorManager::NO_ERRORS) {
+	executor->printUsage ();
+      }
+      (void) executor->execute ();
+
+      if (executor != NULL) {
+	delete executor;
+      }
     }
-  while (!quit);
 
-  for (unsigned int i = 0; i < files.size(); i++)
-    {
-      delete (files[i]);
-    }
-  perfmeta_final ();
-
+  final();
   return 0;
 }
