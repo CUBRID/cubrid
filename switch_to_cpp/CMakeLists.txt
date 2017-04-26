@@ -1,0 +1,1 @@
+add_executable(typedef_after_decl typedef_after_decl.cpp)
