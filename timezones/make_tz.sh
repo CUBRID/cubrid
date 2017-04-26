@@ -109,11 +109,15 @@ echo "Generating timezone C file in mode $TZ_GEN_MODE"
 
 if [ "$TZ_GEN_MODE" = "extend" ]; then
 	ALL_DATABASES=$(awk '{ if (!($1 ~ "#")) print $1}' $CUBRID_DATABASES/databases.txt)
+	if [ "$ALL_DATABASES" = "" ]; then
+		echo 'There are no databases in '$CUBRID_DATABASES/databases.txt
+		echo 'Use '$0' without extend argument'
+		exit 1
+	fi
 	for DATABASE_NAME in $ALL_DATABASES; do 
 		PS=$(cubrid gen_tz -g $TZ_GEN_MODE $DATABASE_NAME 2>&1)
-		OUT=$(echo $PS | grep -o 'Could not make all the data backward compatible!')
-		if [ "$OUT" = "Could not make all the data backward compatible!" ]; then
-			echo 'Could not make all the data backward compatible!'
+		if [ $? -ne 0 ]; then
+			echo 'Error while upgrading timezone user data for database ' $DATABASE_NAME
 			echo 'Some of your databases might have been changed and needs to be restored!'
 			exit 1
 		fi		
