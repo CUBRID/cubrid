@@ -14,11 +14,12 @@ struct Parser{
   regex                               word_regex;
   regex                               typedef_regex2;
   regex                               decl_regex;
+  regex                               decl_end_regex;
   
   Parser(
-  ):  typedef_regex("typedef\\s+(struct|enum)\\s+(\\w+)\\s+(\\w+).*\n"),
-      word_regex("(\\S+)"), typedef_regex2("typedef\\s+(struct|enum).*\n"),
-      decl_regex("(struct|enum)\\s+(\\w+).*\n"){
+  ):  typedef_regex("typedef\\s+(enum)\\s+(\\w+)\\s+(\\w+).*\n"),
+      word_regex("(\\S+)"), typedef_regex2("typedef\\s+(enum).*\n"),
+      decl_regex("(enum)\\s+(\\w+).*\n"), decl_end_regex(".*?};.*\n"){
   }
   
   void run(istream &_ris, ostream &_ros);
@@ -131,5 +132,6 @@ bool Parser::match_decl_start(const string &_line, string &_name){
 }
 
 bool Parser::match_decl_end(const string &_line){
-  return _line.size() > 2 && _line[0] == '}' && _line[1] == ';';
+  //return _line.size() > 2 && _line[0] == '}' && _line[1] == ';';
+  return regex_match(_line, decl_end_regex);
 }
