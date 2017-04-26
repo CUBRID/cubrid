@@ -50,7 +50,7 @@ print_help ()
 }
 
 ErrorManager::ErrorCode
-process_command (const std::string& command, CommandExecutor *&executor, bool& quit)
+process_command (const std::string &command, CommandExecutor *&executor, bool &quit)
 {
   std::string::size_type spacePosition;
   std::string commandKeyword;
@@ -61,35 +61,35 @@ process_command (const std::string& command, CommandExecutor *&executor, bool& q
   arguments = command.substr (spacePosition + 1);
 
   if (commandKeyword.compare ("load") == 0)
-  {
-    executor = new LoadExecutor (arguments, stattool_Loaded_sets);
-  }
+    {
+      executor = new LoadExecutor (arguments, stattool_Loaded_sets);
+    }
   else if (commandKeyword.compare ("show") == 0)
-  {
-    executor = new ShowExecutor (arguments, stattool_Loaded_sets);
-  }
+    {
+      executor = new ShowExecutor (arguments, stattool_Loaded_sets);
+    }
   else if (commandKeyword.compare ("plot") == 0)
-  {
-    executor = new PlotExecutor (arguments, stattool_Loaded_sets);
-  }
+    {
+      executor = new PlotExecutor (arguments, stattool_Loaded_sets);
+    }
   else if (commandKeyword.compare ("aggregate") == 0)
-  {
-    executor = new AggregateExecutor (arguments, stattool_Loaded_sets);
-  }
+    {
+      executor = new AggregateExecutor (arguments, stattool_Loaded_sets);
+    }
   else if (commandKeyword.compare ("help") == 0)
-  {
-    print_help ();
-    executor = NULL;
-  }
+    {
+      print_help ();
+      executor = NULL;
+    }
   else if (commandKeyword.compare ("quit") == 0)
-  {
-    quit = true;
-  }
+    {
+      quit = true;
+    }
   else
-  {
-    ErrorManager::printErrorMessage (ErrorManager::INVALID_COMMAND_ERROR, "The command is: " + command);
-    return ErrorManager::INVALID_COMMAND_ERROR;
-  }
+    {
+      ErrorManager::printErrorMessage (ErrorManager::INVALID_COMMAND_ERROR, "The command is: " + command);
+      return ErrorManager::INVALID_COMMAND_ERROR;
+    }
 
   return ErrorManager::NO_ERRORS;
 }
@@ -113,26 +113,35 @@ main (int argc, char **argv)
         {
           continue;
         }
-      command = std::string(buffer);
+      command = std::string (buffer);
       error = process_command (command, executor, quit);
 
-      if (error != ErrorManager::NO_ERRORS || executor == NULL) {
-	continue;
-      }
+      if (quit)
+        {
+          /* quit program */
+          break;
+        }
 
-      if (quit) {
-	break;
-      }
+      if (error != ErrorManager::NO_ERRORS || executor == NULL)
+        {
+          /* error or nothing to execute */
+          continue;
+        }
 
       error = executor->parseCommandAndInit ();
-      if (error != ErrorManager::NO_ERRORS) {
-	executor->printUsage ();
-      }
-      (void) executor->execute ();
+      if (error != ErrorManager::NO_ERRORS)
+        {
+          executor->printUsage ();
+        }
+      else
+        {
+          (void) executor->execute ();
+        }
+    }
 
-      if (executor != NULL) {
-	delete executor;
-      }
+  if (executor != NULL)
+    {
+      delete executor;
     }
 
   final();
