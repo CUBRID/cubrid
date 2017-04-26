@@ -11,7 +11,7 @@
 class PlotExecutor : public CommandExecutor
 {
   public:
-    PlotExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files);
+    PlotExecutor (std::string &wholeCommand, std::vector<StatToolSnapshotSet *> &files);
     ErrorManager::ErrorCode parseCommandAndInit();
     ErrorManager::ErrorCode execute();
     void printUsage();

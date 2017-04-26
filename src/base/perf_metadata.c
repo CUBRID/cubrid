@@ -574,10 +574,6 @@ static void perfmon_stat_dump_in_buffer (PSTAT_METADATA * stat, const UINT64 * s
 static void perfbase_load_complex_names (char (*names)[PERFMETA_VALNAME_MAX_SIZE], PSTAT_METADATA * metadata);
 static void perfbase_complex_iterator_init (const PERFBASE_COMPLEX * complexp, PERFBASE_COMPLEX_ITERATOR * iterator);
 static bool perfbase_complex_iterator_next (PERFBASE_COMPLEX_ITERATOR * iterator);
-static void perfmon_print_timer_to_file_in_table_form (FILE * stream, int stat_index, const UINT64 ** stats,
-						       int num_of_stats, int show_zero, int show_header);
-static void perfmon_stat_dump_in_file_in_table_form (FILE * stream, PSTAT_METADATA * stat, const UINT64 ** stats,
-						     int no_of_stats, int show_zeroes);
 
 /************************************************************************/
 /* end of static functions section                                      */
@@ -652,7 +648,7 @@ perfmeta_init (void)
       return NO_ERROR;
     }
   perfmeta_Initialized = true;
-#endif /* SA_MODE*/
+#endif /* SA_MODE */
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {
@@ -804,107 +800,6 @@ perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr, 
     {
       fprintf (stream, "Avg_time_%-20s = %10lld\n", pstat_Metadata[stat_index].stat_name, timer_avg);
     }
-}
-
-/*
- * perfmon_print_timer_to_file_in_table_form - Print in a file multiple statistic values in table form (colums)
- *
- * stream (in/out): input file
- * stat_index (in): statistic index
- * stats (in) : statistic values array
- * num_of_stats (in) : number of stats in array
- * show_zero (in) : show(1) or not(0) null values
- * show_header (in) : show(1) or not(0) the header
- * return: void
- *
- */
-static void
-perfmon_print_timer_to_file_in_table_form (FILE * stream, int stat_index, const UINT64 ** stats, int num_of_stats,
-					   int show_zero, int show_header)
-{
-  int offset = pstat_Metadata[stat_index].start_offset;
-  int i;
-  long long *timer_count = (long long *) malloc (sizeof (long long) * num_of_stats);
-  long long *timer_total = (long long *) malloc (sizeof (long long) * num_of_stats);
-  long long *timer_max = (long long *) malloc (sizeof (long long) * num_of_stats);
-  long long *timer_avg = (long long *) malloc (sizeof (long long) * num_of_stats);
-  int show_timer_count = 0, show_timer_total = 0, show_timer_max = 0, show_timer_avg = 0;
-
-  assert (pstat_Metadata[stat_index].valtype == PSTAT_COUNTER_TIMER_VALUE);
-
-  for (i = 0; i < num_of_stats; i++)
-    {
-      timer_count[i] = (long long) stats[i][PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)];
-      timer_total[i] = (long long) stats[i][PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)];
-      timer_max[i] = (long long) stats[i][PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)];
-      timer_avg[i] = (long long) stats[i][PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)];
-
-      if (timer_count[i] != 0)
-	{
-	  show_timer_count = 1;
-	}
-      if (timer_total[i] != 0)
-	{
-	  show_timer_total = 1;
-	}
-      if (timer_max[i] != 0)
-	{
-	  show_timer_max = 1;
-	}
-      if (timer_avg[i] != 0)
-	{
-	  show_timer_avg = 1;
-	}
-    }
-
-  if (show_header == 1)
-    {
-      fprintf (stream, "The timer values for %s are:\n", pstat_Metadata[stat_index].stat_name);
-    }
-  if (show_timer_count != 0 || show_zero == 1)
-    {
-      fprintf (stream, "Num_%-46s", pstat_Metadata[stat_index].stat_name);
-      for (i = 0; i < num_of_stats; i++)
-	{
-	  fprintf (stream, "%15lld", timer_count[i]);
-	}
-      fprintf (stream, "\n");
-    }
-
-  if (show_timer_total != 0 || show_zero == 1)
-    {
-      fprintf (stream, "Total_time_%-40s", pstat_Metadata[stat_index].stat_name);
-      for (i = 0; i < num_of_stats; i++)
-	{
-	  fprintf (stream, "%15lld", timer_total[i]);
-	}
-      fprintf (stream, "\n");
-    }
-
-  if (show_timer_max != 0 || show_zero == 1)
-    {
-      fprintf (stream, "Max_time_%-41s", pstat_Metadata[stat_index].stat_name);
-      for (i = 0; i < num_of_stats; i++)
-	{
-	  fprintf (stream, "%15lld", timer_max[i]);
-	}
-      fprintf (stream, "\n");
-    }
-
-  if (show_timer_avg != 0 || show_zero == 1)
-    {
-      fprintf (stream, "Avg_time_%-41s", pstat_Metadata[stat_index].stat_name);
-      for (i = 0; i < num_of_stats; i++)
-	{
-	  fprintf (stream, "%15lld", timer_avg[i]);
-	}
-      fprintf (stream, "\n");
-    }
-
-  free (timer_total);
-  free (timer_max);
-  free (timer_avg);
-  free (timer_count);
 }
 
 void
@@ -1106,40 +1001,6 @@ perfmon_stat_dump_in_file (FILE * stream, PSTAT_METADATA * stat, const UINT64 * 
     }
 }
 
-static void
-perfmon_stat_dump_in_file_in_table_form (FILE * stream, PSTAT_METADATA * stat, const UINT64 ** stats, int no_of_stats,
-					 int show_zeroes)
-{
-  int i, j;
-  int start_offset = stat->start_offset;
-  int end_offset = stat->start_offset + stat->n_vals;
-
-  assert (stream != NULL);
-  for (i = start_offset; i < end_offset; i++)
-    {
-      int show = 0;
-
-      for (j = 0; j < no_of_stats; j++)
-	{
-	  if (stats[j][i] != 0)
-	    {
-	      show = 1;
-	    }
-	}
-
-      if (show == 0 && show_zeroes == 0)
-	{
-	  continue;
-	}
-      fprintf (stream, "%-50s", pstat_Value_names[i]);
-      for (j = 0; j < no_of_stats; j++)
-	{
-	  fprintf (stream, "%15lld", (long long) stats[j][i]);
-	}
-      fprintf (stream, "\n");
-    }
-}
-
 /*
  *   perfmon_server_dump_stats - Print the given server statistics
  *   return: none
@@ -1220,82 +1081,7 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
     }
 }
 
-void
-perfmeta_custom_dump_stats_in_table_form (const UINT64 ** stats, int no_of_stats, FILE * stream, int show_complex,
-					  int show_zero)
-{
-  int i, j, show;
-  int offset;
 
-  if (stream == NULL)
-    {
-      stream = stdout;
-    }
-
-  for (i = 0; i < PSTAT_COUNT; i++)
-    {
-      offset = pstat_Metadata[i].start_offset;
-      if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
-	{
-	  break;
-	}
-
-      if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
-	{
-	  if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
-	    {
-	      show = 0;
-	      for (j = 0; j < no_of_stats; j++)
-		{
-		  if (stats[j][offset] != 0)
-		    {
-		      show = 1;
-		    }
-		}
-
-	      if (show == 1 || show_zero == 1)
-		{
-		  fprintf (stream, "%-50s", pstat_Metadata[i].stat_name);
-		  for (j = 0; j < no_of_stats; j++)
-		    {
-		      fprintf (stream, "%15lld", (long long) stats[j][offset]);
-		    }
-		  fprintf (stream, "\n");
-		}
-	    }
-	  else
-	    {
-	      perfmon_print_timer_to_file_in_table_form (stream, i, stats, no_of_stats, show_zero, 0);
-	    }
-	}
-      else
-	{
-	  show = 0;
-	  for (j = 0; j < no_of_stats; j++)
-	    {
-	      if (stats[j][offset] != 0)
-		{
-		  show = 1;
-		}
-	    }
-	  if (show == 1 || show_zero == 1)
-	    {
-	      fprintf (stream, "%-50s", pstat_Metadata[i].stat_name);
-	      for (j = 0; j < no_of_stats; j++)
-		{
-		  fprintf (stream, "%15.2f", (float) stats[j][offset] / 100);
-		}
-	      fprintf (stream, "\n");
-	    }
-	}
-    }
-
-  for (; show_complex == 1 && i < PSTAT_COUNT; i++)
-    {
-      fprintf (stream, "%s:\n", pstat_Metadata[i].stat_name);
-      perfmon_stat_dump_in_file_in_table_form (stream, &pstat_Metadata[i], stats, no_of_stats, show_zero);
-    }
-}
 
 /*
  * perfmon_stat_dump_in_buffer () - document me!
@@ -1480,15 +1266,14 @@ perfmeta_complex_get_offset (PERF_STAT_ID psid, ...)
   int offset = 0;
   int iter_dim;
   int val;
-  int multiplier = 1;
 
   va_start (ap, psid);
-  for (iter_dim = metada->complexp->size - 1; iter_dim >= 0; iter_dim--)
+  for (iter_dim = 0; iter_dim < metada->complexp->size; iter_dim++)
     {
       val = va_arg (ap, int);
       assert (val < metada->complexp->dimensions[iter_dim]->size && val >= 0);
-      offset += val * multiplier;
-      multiplier *= metada->complexp->dimensions[iter_dim]->size;
+      offset *= metada->complexp->dimensions[iter_dim]->size;
+      offset += val;
     }
   va_end (ap);
 
@@ -1844,9 +1629,9 @@ perfmeta_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats
 	    }
 	  break;
 
-        case PSTAT_COMPUTED_RATIO_VALUE:
-          /* will be computed later */
-          break;
+	case PSTAT_COMPUTED_RATIO_VALUE:
+	  /* will be computed later */
+	  break;
 
 	default:
 	  assert (false);
@@ -1856,4 +1641,10 @@ perfmeta_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats
 
   perfmeta_compute_stats (stats_diff);
   return NO_ERROR;
+}
+
+char *
+perfmeta_get_value_name (int index)
+{
+  return pstat_Value_names[index];
 }

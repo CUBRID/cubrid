@@ -4,7 +4,11 @@
 
 #include "STAT_TOOL_Snapshot.hpp"
 
-Snapshot::Snapshot (time_t seconds, time_t seconds2)
+StatToolSnapshot::StatToolSnapshot ()
+{
+}
+
+StatToolSnapshot::StatToolSnapshot (time_t seconds, time_t seconds2)
 {
   isDifference = true;
   this->timestamp = *localtime (&seconds);
@@ -13,7 +17,7 @@ Snapshot::Snapshot (time_t seconds, time_t seconds2)
   rawStats = (UINT64 *) malloc (sizeof (UINT64) * perfmeta_get_values_count ());
 }
 
-Snapshot::Snapshot (time_t seconds)
+StatToolSnapshot::StatToolSnapshot (time_t seconds)
 {
   isDifference = false;
   memset (&secondTimeStamp, 0, sizeof (struct tm));
@@ -22,39 +26,36 @@ Snapshot::Snapshot (time_t seconds)
   this->timestamp = *localtime (&seconds);
 }
 
-Snapshot::Snapshot (const Snapshot &other)
+StatToolSnapshot::StatToolSnapshot (const StatToolSnapshot &other)
 {
   this->timestamp = other.timestamp;
   perfmeta_copy_stats (rawStats, other.rawStats);
 }
 
-Snapshot *
-Snapshot::difference (Snapshot *other)
+StatToolSnapshot *
+StatToolSnapshot::difference (StatToolSnapshot *other)
 {
-  Snapshot *newSnapshot = new Snapshot (this->getSeconds (), other->getSeconds ());
+  StatToolSnapshot *newSnapshot = new StatToolSnapshot (this->getSeconds (), other->getSeconds ());
 
-  for (int i = 0; i < perfmeta_get_values_count (); i++)
-    {
-      newSnapshot->rawStats[i] = this->rawStats[i] - other->rawStats[i];
-    }
+  perfmeta_diff_stats(newSnapshot->rawStats, this->rawStats, other->rawStats);
 
   return newSnapshot;
 }
 
-Snapshot *
-Snapshot::divide (Snapshot *other)
+StatToolSnapshotFloat *
+StatToolSnapshot::divide (StatToolSnapshot *other)
 {
-  Snapshot *newSnapshot = new Snapshot (this->getSeconds (), other->getSeconds ());
+  StatToolSnapshotFloat *newSnapshot = new StatToolSnapshotFloat ();
 
   for (int i = 0; i < perfmeta_get_values_count (); i++)
     {
       if (other->rawStats[i] == 0)
         {
-          newSnapshot->rawStats[i] = 0;
+          newSnapshot->rawStatsFloat[i] = 0;
         }
       else
         {
-          newSnapshot->rawStats[i] = (UINT64) (100.0f * (float)this->rawStats[i] / (float)other->rawStats[i]);
+          newSnapshot->rawStatsFloat[i] = (this->rawStats[i] / (float)other->rawStats[i]) * 100.0f;
         }
     }
 
@@ -62,18 +63,27 @@ Snapshot::divide (Snapshot *other)
 }
 
 time_t
-Snapshot::getSeconds ()
+StatToolSnapshot::getSeconds ()
 {
   return mktime (&this->timestamp);
 }
 
 UINT64
-Snapshot::getStatValueFromName (const char *stat_name)
+StatToolSnapshot::getStatValueFromName (const char *stat_name)
 {
   return perfmeta_get_stat_value_from_name (stat_name, rawStats);
 }
 
-Snapshot::~Snapshot ()
+bool StatToolSnapshot::isStatZero(int index)
+{
+  return rawStats[index] == 0;
+}
+
+void StatToolSnapshot::print(FILE *stream, int offset) {
+  fprintf (stream, "%15lld", (long long) rawStats[offset]);
+}
+
+StatToolSnapshot::~StatToolSnapshot ()
 {
   free (rawStats);
 }

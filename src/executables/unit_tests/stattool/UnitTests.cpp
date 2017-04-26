@@ -23,7 +23,7 @@ UnitTests::destroyTestEnvironment ()
 bool
 UnitTests::testLoad_BadFile()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string command = "invalid_file.bin a";
   LoadExecutor *executor = new LoadExecutor (command, files);
 
@@ -38,7 +38,7 @@ UnitTests::testLoad_BadFile()
 bool
 UnitTests::testLoad_GoodFile()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string command = "good.bin a";
   LoadExecutor *executor = new LoadExecutor (command, files);
 
@@ -58,7 +58,7 @@ UnitTests::testLoad_GoodFile()
 bool
 UnitTests::testLoad_GoodFile_checkAlias ()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
@@ -94,7 +94,7 @@ UnitTests::testLoad_GoodFile_checkAlias ()
 bool
 UnitTests::testLoad_GoodFile_checkSnapshots ()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
@@ -137,7 +137,7 @@ UnitTests::testLoad_GoodFile_checkSnapshots ()
 bool
 UnitTests::testLoad_noAlias ()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string command = "file.bin ";
   LoadExecutor *executor = new LoadExecutor (command, files);
 
@@ -184,11 +184,11 @@ UnitTests::createStatFile (const std::string &filename, int numOfSnapshots, int 
 bool
 UnitTests::testStatFileClass_Test1()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
-  Snapshot *snapshot;
+  StatToolSnapshot *snapshot;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
   LoadExecutor *executor = new LoadExecutor (command, files);
@@ -230,7 +230,7 @@ UnitTests::testStatFileClass_Test1()
 bool
 UnitTests::testStatFileClass_Test2()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
@@ -277,11 +277,11 @@ UnitTests::testStatFileClass_Test2()
 bool
 UnitTests::testStatFileClass_Test3()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
-  Snapshot *snapshot1, *snapshot2, *snapshot3;
+  StatToolSnapshot *snapshot1, *snapshot2, *snapshot3;
   int index1, index2;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
@@ -343,7 +343,7 @@ UnitTests::testStatFileClass_Test3()
 bool
 UnitTests::testPlot_MissingArguments ()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
@@ -385,7 +385,7 @@ UnitTests::testPlot_MissingArguments ()
 bool
 UnitTests::testPlot_InvalidAlias ()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
@@ -427,7 +427,7 @@ UnitTests::testPlot_InvalidAlias ()
 bool
 UnitTests::testPlot_CreatePlot ()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
@@ -482,7 +482,7 @@ UnitTests::testPlot_CreatePlot ()
 bool
 UnitTests::testShow_InvalidAlias ()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
@@ -525,7 +525,7 @@ UnitTests::testShow_InvalidAlias ()
 bool
 UnitTests::testShow_HappyPath ()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
@@ -568,7 +568,7 @@ UnitTests::testShow_HappyPath ()
 bool
 UnitTests::testAggregate_MissingArguments ()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
@@ -611,7 +611,7 @@ UnitTests::testAggregate_MissingArguments ()
 bool
 UnitTests::testAggregate_HappyPath ()
 {
-  std::vector<StatisticsFile *> files;
+  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;

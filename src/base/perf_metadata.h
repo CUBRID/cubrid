@@ -595,8 +595,6 @@ extern void perfmeta_final (void);
 extern int perfmeta_complex_cursor_get_offset (PERF_STAT_ID psid, const PERFMETA_COMPLEX_CURSOR * cursor);
 extern int perfmeta_complex_get_offset (PERF_STAT_ID psid, ...);
 UINT64 perfmeta_get_stat_value_from_name (const char *stat_name, UINT64 * raw_stats);
-void perfmeta_custom_dump_stats_in_table_form (const UINT64 ** stats, int no_of_stats, FILE * stream, int show_complex,
-					       int show_zero);
 void perfmeta_copy_stats (UINT64 * dst, UINT64 * src);
 void perfmeta_get_stat_index_and_dimension (const char *stat_name, const char *dimension_name, int *stat_index,
 					    int *fixed_dimension);
@@ -609,6 +607,7 @@ extern void perfmeta_copy_values (UINT64 * src, UINT64 * dest);
 
 extern void perfmeta_compute_stats (UINT64 * stats);
 extern int perfmeta_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
+char *perfmeta_get_value_name (int index);
 
 /* todo:
  * this does not belong here. it belongs to perf_monitor.h. unfortunately, it is referred by heap_file.h and

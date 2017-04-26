@@ -11,7 +11,7 @@
 #define INTERVAL_CMD "-i"
 
 PlotExecutor::PlotExecutor (std::string &wholeCommand,
-                            std::vector<StatisticsFile *> &files) : CommandExecutor (wholeCommand, files)
+                            std::vector<StatToolSnapshotSet *> &files) : CommandExecutor (wholeCommand, files)
 {
   possibleOptions.push_back (ALIAS_CMD);
   possibleOptions.push_back (VARIABLE_CMD);

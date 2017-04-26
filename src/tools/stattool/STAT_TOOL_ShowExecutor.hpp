@@ -15,7 +15,7 @@
 class ShowExecutor : public CommandExecutor
 {
   public:
-    ShowExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files);
+    ShowExecutor (std::string &wholeCommand, std::vector<StatToolSnapshotSet *> &files);
     ErrorManager::ErrorCode parseCommandAndInit();
     ErrorManager::ErrorCode execute();
     void printUsage();
@@ -23,7 +23,7 @@ class ShowExecutor : public CommandExecutor
   private:
     bool showComplex, showZeroes;
     std::vector<std::string> validSnapshots;
-    std::vector<Snapshot *> snapshots;
+    std::vector<StatToolSnapshot *> snapshots;
 };
 
 #endif //CUBRID_SHOWEXECUTOR_H

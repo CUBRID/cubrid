@@ -4,7 +4,7 @@
 
 #include "STAT_TOOL_CommandExecutor.hpp"
 
-CommandExecutor::CommandExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files) : files (files)
+CommandExecutor::CommandExecutor (std::string &wholeCommand, std::vector<StatToolSnapshotSet *> &files) : files (files)
 {
   std::istringstream ss (wholeCommand);
   std::string token;

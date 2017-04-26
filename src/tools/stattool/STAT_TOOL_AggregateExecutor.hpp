@@ -16,7 +16,7 @@ extern "C" {
 class AggregateExecutor : public CommandExecutor
 {
   public:
-    AggregateExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files);
+    AggregateExecutor (std::string &wholeCommand, std::vector<StatToolSnapshotSet *> &files);
     ErrorManager::ErrorCode parseCommandAndInit ();
     ErrorManager::ErrorCode execute ();
     void printUsage ();
@@ -26,7 +26,7 @@ class AggregateExecutor : public CommandExecutor
     std::string fixedDimensionStr;
     int statIndex;
     std::string statName, aggregateName, plotFilename;
-    StatisticsFile *file;
+    StatToolSnapshotSet *file;
     FILE *gnuplotPipe;
 };
 #endif //CUBRID_STAT_TOOL_AGGREGATEEXECUTOR_H

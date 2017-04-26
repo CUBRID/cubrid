@@ -61,7 +61,7 @@ endif(UNIX)
 set(STATTTOL_UNIT_TESTS_SOURCES
         ${STATTOOL_UNIT_TESTS_DIR}/stattool/main.cpp
         ${STATTOOL_UNIT_TESTS_DIR}/stattool/UnitTests.cpp
-        ${TOOLS_DIR}/stattool/STAT_TOOL_StatisticsFile.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_SnapshotSet.cpp
         ${TOOLS_DIR}/stattool/STAT_TOOL_Utils.cpp
         ${TOOLS_DIR}/stattool/STAT_TOOL_CommandExecutor.cpp
         ${TOOLS_DIR}/stattool/STAT_TOOL_PlotExecutor.cpp
@@ -88,7 +88,7 @@ endif(UNIX)
 
 set(STATISTICS_TOOL_SOURCES
         ${TOOLS_DIR}/stattool/STAT_TOOL_Main.cpp
-        ${TOOLS_DIR}/stattool/STAT_TOOL_StatisticsFile.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_SnapshotSet.cpp
         ${TOOLS_DIR}/stattool/STAT_TOOL_Utils.cpp
         ${TOOLS_DIR}/stattool/STAT_TOOL_CommandExecutor.cpp
         ${TOOLS_DIR}/stattool/STAT_TOOL_PlotExecutor.cpp
@@ -99,8 +99,6 @@ set(STATISTICS_TOOL_SOURCES
         ${TOOLS_DIR}/stattool/STAT_TOOL_AggregateExecutor.cpp
         ${BASE_DIR}/perf_metadata.c
         ${BASE_DIR}/porting.c
-        ${BASE_DIR}/tsc_timer.c # todo: remove me
-        ${BASE_DIR}/perf.c # todo: remove me
 )
 add_executable(stattool ${STATISTICS_TOOL_SOURCES})
 target_compile_definitions(stattool PRIVATE ${COMMON_DEFS})

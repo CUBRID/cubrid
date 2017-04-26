@@ -21,17 +21,18 @@ extern "C"
 #include <system.h>
 }
 
-class StatisticsFile
+class StatToolSnapshot;
+
+class StatToolSnapshotSet
 {
   public:
-    StatisticsFile (const std::string &filename, const std::string &alias);
-    ErrorManager::ErrorCode readFileAndInit ();
-    Snapshot *getSnapshotBySeconds (unsigned int seconds);
-    Snapshot *getSnapshotByArgument (const char *argument);
+    StatToolSnapshotSet (const std::string &filename, const std::string &alias);
+    StatToolSnapshot *getSnapshotBySeconds (unsigned int seconds);
+    StatToolSnapshot *getSnapshotByArgument (const char *argument);
     void getIndicesOfSnapshotsByArgument (const char *argument, int &index1, int &index2);
     int getSnapshotIndexBySeconds (unsigned int minutes);
 
-    std::vector < Snapshot * > &getSnapshots ()
+    std::vector < StatToolSnapshot * > &getSnapshots ()
     {
       return snapshots;
     }
@@ -39,10 +40,20 @@ class StatisticsFile
     {
       return relativeTimestamp;
     }
+
+    void setRelativeTimestamp (struct tm timestamp) {
+      relativeTimestamp = timestamp;
+    }
+
     time_t getRelativeSeconds ()
     {
       return relativeEpochSeconds;
     }
+
+    void setRelativeSeconds (time_t seconds) {
+      relativeEpochSeconds = seconds;
+    }
+
     std::string &getFilename ()
     {
       return filename;
@@ -52,9 +63,9 @@ class StatisticsFile
       return alias;
     }
 
-    ~StatisticsFile ();
+    ~StatToolSnapshotSet ();
   private:
-    std::vector < Snapshot * >snapshots;
+    std::vector < StatToolSnapshot * >snapshots;
     struct tm relativeTimestamp;
     std::string filename, alias;
     time_t relativeEpochSeconds;

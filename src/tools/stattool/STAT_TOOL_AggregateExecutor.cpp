@@ -12,7 +12,7 @@
 #define DEFAULT_PLOT_FILENAME "aggregate_plot"
 
 AggregateExecutor::AggregateExecutor (std::string &wholeCommand,
-                                      std::vector<StatisticsFile *> &files) : CommandExecutor (wholeCommand, files)
+                                      std::vector<StatToolSnapshotSet *> &files) : CommandExecutor (wholeCommand, files)
 {
   fixedDimension = -1;
   fixedDimensionStr = "";
@@ -159,7 +159,7 @@ ErrorManager::ErrorCode
 AggregateExecutor::execute ()
 {
   std::string cmd = "";
-  std::vector<Snapshot *> snapshotsForAggregation = file->getSnapshots ();
+  std::vector<StatToolSnapshot *> snapshotsForAggregation = file->getSnapshots ();
   std::vector<std::string> dataLines;
   UINT64 agg_vals[PERFBASE_DIMENSION_MAX_SIZE];
 

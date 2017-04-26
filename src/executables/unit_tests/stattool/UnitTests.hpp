@@ -12,7 +12,7 @@ extern "C" {
 
 #include "../../../tools/stattool/STAT_TOOL_PlotExecutor.hpp"
 #include "../../../tools/stattool/STAT_TOOL_LoadExecutor.hpp"
-#include "../../../tools/stattool/STAT_TOOL_StatisticsFile.hpp"
+#include "stattool/STAT_TOOL_SnapshotSet.hpp"
 #include "../../../tools/stattool/STAT_TOOL_ShowExecutor.hpp"
 #include "../../../tools/stattool/STAT_TOOL_AggregateExecutor.hpp"
 #include <vector>

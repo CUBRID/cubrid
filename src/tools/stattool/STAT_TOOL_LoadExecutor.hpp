@@ -10,8 +10,9 @@
 class LoadExecutor : public CommandExecutor
 {
   public:
-    LoadExecutor (std::string &wholeCommand, std::vector<StatisticsFile *> &files);
+    LoadExecutor (std::string &wholeCommand, std::vector<StatToolSnapshotSet *> &files);
     ErrorManager::ErrorCode parseCommandAndInit();
+    ErrorManager::ErrorCode readFileAndInit(StatToolSnapshotSet *set);
     ErrorManager::ErrorCode execute();
     void printUsage();
     ~LoadExecutor();

@@ -5,7 +5,7 @@
 #include "STAT_TOOL_ShowExecutor.hpp"
 
 ShowExecutor::ShowExecutor (std::string &wholeCommand,
-                            std::vector<StatisticsFile *> &files) : CommandExecutor (wholeCommand, files),
+                            std::vector<StatToolSnapshotSet *> &files) : CommandExecutor (wholeCommand, files),
   showComplex (false),
   showZeroes (false)
 {
@@ -41,28 +41,24 @@ ShowExecutor::parseCommandAndInit()
     {
       if (snapshotsStr[i].find ("/") != std::string::npos)
         {
-          Snapshot *snapshot1 = NULL, *snapshot2 = NULL;
-          char splitAliases[MAX_COMMAND_SIZE];
-          char *firstAlias, *secondAlias, *savePtr;
+	  StatToolSnapshot *snapshot1 = NULL, *snapshot2 = NULL;
+	  char splitAliases[MAX_COMMAND_SIZE];
+	  char *firstAlias, *secondAlias, *savePtr;
+	  int index1, index2;
 
           strcpy (splitAliases, snapshotsStr[i].c_str());
           firstAlias = strtok_r (splitAliases, "/", &savePtr);
           secondAlias = strtok_r (NULL, " ", &savePtr);
-          for (unsigned int j = 0; j < files.size(); j++)
-            {
-              if ((snapshot1 = files[j]->getSnapshotByArgument (firstAlias)) != NULL)
-                {
-                  break;
-                }
-            }
 
-          for (unsigned int j = 0; j < files.size(); j++)
-            {
-              if ((snapshot2 = files[j]->getSnapshotByArgument (secondAlias)) != NULL)
-                {
-                  break;
-                }
-            }
+	  sscanf (firstAlias, "#%d", &index1);
+	  sscanf (secondAlias, "#%d", &index2);
+
+	  if (index1 - 1 >= i || index2 - 1 >= i) {
+	    continue;
+	  }
+
+	  snapshot1 = Utils::findSnapshotInLoadedSets (files, snapshotsStr[index1-1].c_str());
+	  snapshot2 = Utils::findSnapshotInLoadedSets (files, snapshotsStr[index2-1].c_str());
 
           if (snapshot1 && snapshot2)
             {
@@ -70,19 +66,35 @@ ShowExecutor::parseCommandAndInit()
               validSnapshots.push_back (snapshotsStr[i]);
             }
         }
-      else
+      else if (snapshotsStr[i].find ("-") != std::string::npos)
         {
-          Snapshot *snapshot;
-          for (unsigned int j = 0; j < files.size(); j++)
-            {
-              if ((snapshot = files[j]->getSnapshotByArgument (snapshotsStr[i].c_str())) != NULL)
-                {
-                  snapshots.push_back (snapshot);
-                  validSnapshots.push_back (snapshotsStr[i]);
-                  break;
-                }
-            }
+	  StatToolSnapshot *snapshot1 = NULL, *snapshot2 = NULL;
+	  char splitAliases[MAX_COMMAND_SIZE];
+	  char *firstAlias, *secondAlias, *savePtr;
+
+	  strcpy (splitAliases, snapshotsStr[i].c_str());
+	  firstAlias = strtok_r (splitAliases, "-", &savePtr);
+	  secondAlias = strtok_r (NULL, " ", &savePtr);
+
+	  snapshot1 = Utils::findSnapshotInLoadedSets (files, firstAlias);
+	  snapshot2 = Utils::findSnapshotInLoadedSets (files, secondAlias);
+
+	  if (snapshot1 && snapshot2)
+	  {
+	    snapshots.push_back (snapshot1->difference (snapshot2));
+	    validSnapshots.push_back (snapshotsStr[i]);
+	  }
         }
+      else
+	{
+	  StatToolSnapshot *snapshot = NULL;
+	  snapshot = Utils::findSnapshotInLoadedSets (files, snapshotsStr[i].c_str());
+
+	  if (snapshot) {
+	    snapshots.push_back (snapshot);
+	    validSnapshots.push_back (snapshotsStr[i]);
+	  }
+	}
     }
   if (validSnapshots.size() == 0)
     {
@@ -97,7 +109,7 @@ ErrorManager::ErrorCode
 ShowExecutor::execute()
 {
   const UINT64 **allRawStats;
-  assert (validSnapshots.size() == validSnapshots.size());
+  assert (validSnapshots.size() == snapshots.size());
 
   allRawStats = (const UINT64 **)malloc (sizeof (UINT64 *) * validSnapshots.size());
 
@@ -109,7 +121,7 @@ ShowExecutor::execute()
     }
   printf ("\n");
 
-  perfmeta_custom_dump_stats_in_table_form (allRawStats, (int)validSnapshots.size(), NULL, (int) showComplex,
+  Utils::perfmeta_custom_dump_stats_in_table_form (snapshots, NULL, (int) showComplex,
       (int) showZeroes);
   free (allRawStats);
   return ErrorManager::NO_ERRORS;
