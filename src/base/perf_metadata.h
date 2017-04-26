@@ -30,7 +30,6 @@ extern "C"
 #endif
 
 #include <system.h>
-#include <porting.h>
 
 #ifdef __cplusplus
 }
@@ -171,8 +170,8 @@ typedef enum
   PSTAT_PB_DIRTY_CNT,
   PSTAT_PB_LRU1_CNT,
   PSTAT_PB_LRU2_CNT,
-  PSTAT_PB_AIN_CNT,   /* obsolete - I think this might have been kept for cm */
-  PSTAT_PB_VICTIM_CAND_CNT,   /* obsolete - I think this might have been kept for cm */
+  PSTAT_PB_AIN_CNT,		/* obsolete - I think this might have been kept for cm */
+  PSTAT_PB_VICTIM_CAND_CNT,	/* obsolete - I think this might have been kept for cm */
   PSTAT_PB_NUM_FLUSHED,
   PSTAT_PB_PRIVATE_QUOTA,
   PSTAT_PB_PRIVATE_COUNT,

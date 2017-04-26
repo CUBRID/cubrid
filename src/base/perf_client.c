@@ -27,6 +27,7 @@
 #if !defined (WINDOWS)
 #include <sys/resource.h>
 #include <sys/time.h>
+#include <assert.h>
 #endif /* WINDOWS */
 #include "perf_client.h"
 #include "perf_metadata.h"
