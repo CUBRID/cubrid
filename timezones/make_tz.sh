@@ -26,7 +26,7 @@ show_usage ()
   echo "                 timezone library can be used."
   echo "                 WARNING: Please backup all your databases; this mode will"
   echo "                 attempt to migrate user data of all databases found in"
-  echo "                 $CUBRID_DATABASE\databases.txt"
+  echo "                 \$CUBRID_DATABASES\databases.txt"
   echo "    -? | -h Show this help message and exit"
   echo ""
   echo " EXAMPLES"
