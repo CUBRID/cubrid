@@ -39,7 +39,7 @@
 
 PSTAT_GLOBAL pstat_Global;
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
-                                               UINT64 amount) __attribute__ ((ALWAYS_INLINE));
+					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 
 
 

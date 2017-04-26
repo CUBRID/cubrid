@@ -32,7 +32,7 @@
 /* Client execution statistic structure */
 typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;
 struct perfmon_client_stat_info
-  {
+{
   time_t cpu_start_usr_time;
   time_t cpu_start_sys_time;
   time_t elapsed_start_time;
@@ -40,7 +40,7 @@ struct perfmon_client_stat_info
   UINT64 *current_server_stats;
   UINT64 *old_global_stats;
   UINT64 *current_global_stats;
-  };
+};
 
 extern bool perfmon_Iscollecting_stats;
 
