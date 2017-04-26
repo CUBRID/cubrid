@@ -41,7 +41,8 @@ class StatToolSnapshotSet
       return relativeTimestamp;
     }
 
-    void setRelativeTimestamp (struct tm timestamp) {
+    void setRelativeTimestamp (struct tm timestamp)
+    {
       relativeTimestamp = timestamp;
     }
 
@@ -50,7 +51,8 @@ class StatToolSnapshotSet
       return relativeEpochSeconds;
     }
 
-    void setRelativeSeconds (time_t seconds) {
+    void setRelativeSeconds (time_t seconds)
+    {
       relativeEpochSeconds = seconds;
     }
 

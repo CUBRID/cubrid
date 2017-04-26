@@ -37,7 +37,7 @@ StatToolSnapshot::difference (StatToolSnapshot *other)
 {
   StatToolSnapshot *newSnapshot = new StatToolSnapshot (this->getSeconds (), other->getSeconds ());
 
-  perfmeta_diff_stats(newSnapshot->rawStats, this->rawStats, other->rawStats);
+  perfmeta_diff_stats (newSnapshot->rawStats, this->rawStats, other->rawStats);
 
   return newSnapshot;
 }
@@ -74,12 +74,13 @@ StatToolSnapshot::getStatValueFromName (const char *stat_name)
   return perfmeta_get_stat_value_from_name (stat_name, rawStats);
 }
 
-bool StatToolSnapshot::isStatZero(int index)
+bool StatToolSnapshot::isStatZero (int index)
 {
   return rawStats[index] == 0;
 }
 
-void StatToolSnapshot::print(FILE *stream, int offset) {
+void StatToolSnapshot::print (FILE *stream, int offset)
+{
   fprintf (stream, "%15lld", (long long) rawStats[offset]);
 }
 

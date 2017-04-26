@@ -26,25 +26,28 @@ struct StatToolSnapshot
   StatToolSnapshot (const StatToolSnapshot &other);
   StatToolSnapshot *difference (StatToolSnapshot *other);
   StatToolSnapshotFloat *divide (StatToolSnapshot *other);
-  virtual void print(FILE *stream, int offset);
+  virtual void print (FILE *stream, int offset);
   time_t getSeconds ();
   UINT64 getStatValueFromName (const char *stat_name);
-  virtual bool isStatZero(int index);
+  virtual bool isStatZero (int index);
   virtual ~StatToolSnapshot ();
 };
 
 struct StatToolSnapshotFloat : public StatToolSnapshot
 {
-public:
+  public:
     float *rawStatsFloat;
 
-    StatToolSnapshotFloat() {
+    StatToolSnapshotFloat()
+    {
       rawStatsFloat = (float *) malloc (sizeof (float) * perfmeta_get_values_count ());
     }
-    bool isStatZero(int index) {
+    bool isStatZero (int index)
+    {
       return rawStatsFloat[index] == 0;
     }
-    void print(FILE *stream, int offset) {
+    void print (FILE *stream, int offset)
+    {
       fprintf (stream, "%15.4f", rawStatsFloat[offset]);
     }
 };

@@ -41,24 +41,25 @@ ShowExecutor::parseCommandAndInit()
     {
       if (snapshotsStr[i].find ("/") != std::string::npos)
         {
-	  StatToolSnapshot *snapshot1 = NULL, *snapshot2 = NULL;
-	  char splitAliases[MAX_COMMAND_SIZE];
-	  char *firstAlias, *secondAlias, *savePtr;
-	  int index1, index2;
+          StatToolSnapshot *snapshot1 = NULL, *snapshot2 = NULL;
+          char splitAliases[MAX_COMMAND_SIZE];
+          char *firstAlias, *secondAlias, *savePtr;
+          int index1, index2;
 
           strcpy (splitAliases, snapshotsStr[i].c_str());
           firstAlias = strtok_r (splitAliases, "/", &savePtr);
           secondAlias = strtok_r (NULL, " ", &savePtr);
 
-	  sscanf (firstAlias, "#%d", &index1);
-	  sscanf (secondAlias, "#%d", &index2);
+          sscanf (firstAlias, "#%d", &index1);
+          sscanf (secondAlias, "#%d", &index2);
 
-	  if (index1 - 1 >= i || index2 - 1 >= i) {
-	    continue;
-	  }
+          if (index1 - 1 >= i || index2 - 1 >= i)
+            {
+              continue;
+            }
 
-	  snapshot1 = Utils::findSnapshotInLoadedSets (files, snapshotsStr[index1-1].c_str());
-	  snapshot2 = Utils::findSnapshotInLoadedSets (files, snapshotsStr[index2-1].c_str());
+          snapshot1 = Utils::findSnapshotInLoadedSets (files, snapshotsStr[index1-1].c_str());
+          snapshot2 = Utils::findSnapshotInLoadedSets (files, snapshotsStr[index2-1].c_str());
 
           if (snapshot1 && snapshot2)
             {
@@ -68,33 +69,34 @@ ShowExecutor::parseCommandAndInit()
         }
       else if (snapshotsStr[i].find ("-") != std::string::npos)
         {
-	  StatToolSnapshot *snapshot1 = NULL, *snapshot2 = NULL;
-	  char splitAliases[MAX_COMMAND_SIZE];
-	  char *firstAlias, *secondAlias, *savePtr;
+          StatToolSnapshot *snapshot1 = NULL, *snapshot2 = NULL;
+          char splitAliases[MAX_COMMAND_SIZE];
+          char *firstAlias, *secondAlias, *savePtr;
 
-	  strcpy (splitAliases, snapshotsStr[i].c_str());
-	  firstAlias = strtok_r (splitAliases, "-", &savePtr);
-	  secondAlias = strtok_r (NULL, " ", &savePtr);
+          strcpy (splitAliases, snapshotsStr[i].c_str());
+          firstAlias = strtok_r (splitAliases, "-", &savePtr);
+          secondAlias = strtok_r (NULL, " ", &savePtr);
 
-	  snapshot1 = Utils::findSnapshotInLoadedSets (files, firstAlias);
-	  snapshot2 = Utils::findSnapshotInLoadedSets (files, secondAlias);
+          snapshot1 = Utils::findSnapshotInLoadedSets (files, firstAlias);
+          snapshot2 = Utils::findSnapshotInLoadedSets (files, secondAlias);
 
-	  if (snapshot1 && snapshot2)
-	  {
-	    snapshots.push_back (snapshot1->difference (snapshot2));
-	    validSnapshots.push_back (snapshotsStr[i]);
-	  }
+          if (snapshot1 && snapshot2)
+            {
+              snapshots.push_back (snapshot1->difference (snapshot2));
+              validSnapshots.push_back (snapshotsStr[i]);
+            }
         }
       else
-	{
-	  StatToolSnapshot *snapshot = NULL;
-	  snapshot = Utils::findSnapshotInLoadedSets (files, snapshotsStr[i].c_str());
+        {
+          StatToolSnapshot *snapshot = NULL;
+          snapshot = Utils::findSnapshotInLoadedSets (files, snapshotsStr[i].c_str());
 
-	  if (snapshot) {
-	    snapshots.push_back (snapshot);
-	    validSnapshots.push_back (snapshotsStr[i]);
-	  }
-	}
+          if (snapshot)
+            {
+              snapshots.push_back (snapshot);
+              validSnapshots.push_back (snapshotsStr[i]);
+            }
+        }
     }
   if (validSnapshots.size() == 0)
     {
