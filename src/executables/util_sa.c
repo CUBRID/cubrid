@@ -3922,7 +3922,13 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       tz_gen_type = TZ_GEN_TYPE_EXTEND;
 
       db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+      /* workaround for Linux: gen_tz process should be restarted after each database migration, since globals variables
+       * from shared libcubrid.so are not properly reset at db_shutdown */
+#if defined (WINDOWS)
       if (db_name != NULL && check_database_name (db_name) != NO_ERROR)
+#else
+      if (db_name == NULL || check_database_name (db_name) != NO_ERROR)
+#endif
 	{
 	  exit_status = EXIT_FAILURE;
 	  goto exit;
