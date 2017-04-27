@@ -14967,18 +14967,18 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   buildlist = &xasl->proc.buildlist;
   xasl->next = NULL;
 
+  xasl->limit_row_count = NULL;
+  xasl->limit_offset = NULL;
+
   limit = select_node->info.query.limit;
   if (limit)
     {
       if (limit->next)
 	{
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
       xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
-    }
-  else
-    {
-      xasl->limit_row_count = NULL;
     }
 
   /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
@@ -16120,6 +16120,7 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	  limit = node->info.query.limit;
 	  if (limit->next)
 	    {
+	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	      limit = limit->next;
 	    }
 	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -16213,6 +16214,7 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 	  limit = non_recursive_part->info.query.limit;
 	  if (limit->next)
 	    {
+	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	      limit = limit->next;
 	    }
 	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -19525,6 +19527,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (limit->next)
 	{
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
       xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -20336,6 +20339,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
       if (limit->next)
 	{
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
       xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);

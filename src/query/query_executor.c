@@ -552,6 +552,8 @@ static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNIN
 static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid, UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec);
 
+static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				     bool * empty_result);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -2183,6 +2185,16 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
       if (xasl->orderby_limit)
 	{
 	  pg_cnt += qexec_clear_regu_var (xasl, xasl->orderby_limit, final);
+	}
+
+      if (xasl->limit_offset)
+	{
+	  pg_cnt += qexec_clear_regu_var (xasl, xasl->limit_offset, final);
+	}
+
+      if (xasl->limit_offset)
+	{
+	  pg_cnt += qexec_clear_regu_var (xasl, xasl->limit_offset, final);
 	}
 
       if (xasl->limit_row_count)
@@ -13211,6 +13223,78 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 }
 
 /*
+ * qexec_check_limit_clause () - checks validity of limit clause
+ *   return: NO_ERROR, or ER_code
+ *   xasl(in): XASL Tree pointer
+ *   xasl_state(in): XASL state information
+ *   empty_result(out): true if no result will be generated
+ *
+ */
+static int
+qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool * empty_result)
+{
+  DB_VALUE *limit_valp;
+  DB_VALUE zero_val;
+  DB_VALUE_COMPARE_RESULT cmp_with_zero;
+
+  /* init output */
+  *empty_result = false;
+
+  DB_MAKE_INT (&zero_val, 0);
+
+  if (xasl->limit_offset != NULL)
+    {
+      /* limit_offset should be greater than 0. Otherwise, raises an error. */
+      if (fetch_peek_dbval (thread_p, xasl->limit_offset, &xasl_state->vd, NULL, NULL, NULL, &limit_valp) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
+      if (cmp_with_zero != DB_GT && cmp_with_zero != DB_EQ)
+	{
+	  /* FIXME - proper error */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
+	  return ER_FAILED;
+	}
+    }
+
+  if (xasl->limit_row_count != NULL)
+    {
+      /* When limit_row_count is
+       *   > 0, go to execute the query.
+       *   = 0, no result will be generated. stop execution for optimization.
+       *   < 0, raise an error.
+       */
+      if (fetch_peek_dbval (thread_p, xasl->limit_row_count, &xasl_state->vd, NULL, NULL, NULL, &limit_valp) !=
+	  NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
+      if (cmp_with_zero == DB_GT)
+	{
+	  /* validated */
+	  return NO_ERROR;
+	}
+      else if (cmp_with_zero == DB_EQ)
+	{
+	  *empty_result = true;
+	  return NO_ERROR;
+	}
+      else
+	{
+	  /* FIXME - proper error */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * qexec_execute_mainblock_internal () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -13239,6 +13323,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   int old_wait_msecs, wait_msecs;
   int error;
   DB_LOGICAL limit_zero;
+  bool empty_result = false;
   bool scan_immediately_stop = false;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   bool instant_lock_mode_started = false;
@@ -13248,10 +13333,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
    * Pre_processing
    */
 
-  if (xasl->limit_row_count)
+  if (xasl->limit_offset != NULL || xasl->limit_row_count != NULL)
     {
-      limit_zero = eval_limit_count_is_0 (thread_p, xasl->limit_row_count, &xasl_state->vd);
-      if (limit_zero == V_TRUE)
+      if (qexec_check_limit_clause (thread_p, xasl, xasl_state, &empty_result) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      if (empty_result == true)
 	{
 	  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL))
 	    {
