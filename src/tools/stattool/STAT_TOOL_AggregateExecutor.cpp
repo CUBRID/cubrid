@@ -6,13 +6,17 @@
 
 #define NAME_CMD "-n"
 #define DIM_CMD "-d"
-#define INDEX_CMD "-i"
 #define ALIAS_CMD "-a"
 #define FILENAME_CMD "-f"
 #define DEFAULT_PLOT_FILENAME "aggregate_plot"
 
-AggregateExecutor::AggregateExecutor (std::string &wholeCommand,
-                                      std::vector<StatToolSnapshotSet *> &files) : CommandExecutor (wholeCommand, files)
+const char *AggregateExecutor::USAGE = "aggregate <OPTIONS>\n\nvalid options:\n" \
+                                       "\t-a <alias>\n" \
+                                       "\t-n <name>\n" \
+                                       "\t-d <fixed dimension>\n" \
+                                       "\t-f <plot filename> DEFAULT: aggregate_plot.jpg\n";
+
+AggregateExecutor::AggregateExecutor (std::string &wholeCommand) : CommandExecutor (wholeCommand)
 {
   fixedDimension = -1;
   fixedDimensionStr = "";
@@ -78,11 +82,11 @@ AggregateExecutor::parseCommandAndInit ()
         {
           if (i+1 < arguments.size())
             {
-              for (unsigned f = 0; f < files.size(); f++)
+              for (unsigned f = 0; f < Utils::loadedSets.size(); f++)
                 {
-                  if (files[i]->getAlias().compare (arguments[i+1]) == 0)
+                  if (Utils::loadedSets[i]->getAlias().compare (arguments[i+1]) == 0)
                     {
-                      file = files[i];
+                      file = Utils::loadedSets[i];
                       break;
                     }
                 }
@@ -236,11 +240,7 @@ AggregateExecutor::execute ()
 void
 AggregateExecutor::printUsage ()
 {
-  printf ("usage: aggregate <OPTIONS>\n\nvalid options:\n");
-  printf ("\t-a <alias>\n");
-  printf ("\t-n <name>\n");
-  printf ("\t-d <fixed dimension>\n");
-  printf ("\t-f <plot filename> DEFAULT: aggregate_plot.jpg\n");
+  printf ("%s", USAGE);
 }
 
 AggregateExecutor::~AggregateExecutor ()

@@ -6,12 +6,15 @@
 #define CUBRID_PLOTEXECUTOR_H
 
 #include "STAT_TOOL_CommandExecutor.hpp"
+#include "STAT_TOOL_Utils.hpp"
 #include <algorithm>
 
 class PlotExecutor : public CommandExecutor
 {
   public:
-    PlotExecutor (std::string &wholeCommand, std::vector<StatToolSnapshotSet *> &files);
+    static const char *USAGE;
+
+    PlotExecutor (std::string &wholeCommand);
     ErrorManager::ErrorCode parseCommandAndInit();
     ErrorManager::ErrorCode execute();
     void printUsage();

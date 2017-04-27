@@ -10,8 +10,13 @@
 #define PLOT_FILENAME_CMD "-f"
 #define INTERVAL_CMD "-i"
 
-PlotExecutor::PlotExecutor (std::string &wholeCommand,
-                            std::vector<StatToolSnapshotSet *> &files) : CommandExecutor (wholeCommand, files)
+const char *PlotExecutor::USAGE = "plot <OPTIONS>\n\nvalid options:\n" \
+                                  "\t-a <alias1, alias2...>\n" \
+                                  "\t-i <INTERVAL>\n" \
+                                  "\t-v <VARIABLE>\n" \
+                                  "\t-f <PLOT FILENAME>\n";
+
+PlotExecutor::PlotExecutor (std::string &wholeCommand) : CommandExecutor (wholeCommand)
 {
   possibleOptions.push_back (ALIAS_CMD);
   possibleOptions.push_back (VARIABLE_CMD);
@@ -110,9 +115,9 @@ PlotExecutor::parseCommandAndInit()
       std::string arg = "";
       arg += aliases[i] + interval;
 
-      for (unsigned int j = 0; j < files.size(); j++)
+      for (unsigned int j = 0; j < Utils::loadedSets.size(); j++)
         {
-          files[j]->getIndicesOfSnapshotsByArgument (arg.c_str (), index1, index2);
+          Utils::loadedSets[j]->getIndicesOfSnapshotsByArgument (arg.c_str (), index1, index2);
 
           if (index1 != -1 && index2 != -1)
             {
@@ -177,9 +182,9 @@ PlotExecutor::execute()
     {
       for (int j = plotData[i].second.first; j <= plotData[i].second.second; j++)
         {
-          time_t seconds = files[plotData[i].first]->getSnapshots()[j]->getSeconds ()
-                           -files[plotData[i].first]->getRelativeSeconds();
-          UINT64 value = files[plotData[i].first]->getSnapshots ()[j]->getStatValueFromName (variable.c_str ());
+          time_t seconds = Utils::loadedSets[plotData[i].first]->getSnapshots()[j]->getSeconds ()
+                           -Utils::loadedSets[plotData[i].first]->getRelativeSeconds();
+          UINT64 value = Utils::loadedSets[plotData[i].first]->getSnapshots ()[j]->getStatValueFromName (variable.c_str ());
           fprintf (gnuplotPipe, "%ld %lld\n", seconds, (long long) value);
         }
 
@@ -205,11 +210,7 @@ PlotExecutor::hasArgument (unsigned int i)
 void
 PlotExecutor::printUsage()
 {
-  printf ("usage: plot <OPTIONS>\n\nvalid options:\n");
-  printf ("\t-a <alias1, alias2...>\n");
-  printf ("\t-i <INTERVAL>\n");
-  printf ("\t-v <VARIABLE>\n");
-  printf ("\t-f <PLOT FILENAME>\n");
+  printf ("%s", USAGE);
 }
 
 PlotExecutor::~PlotExecutor()

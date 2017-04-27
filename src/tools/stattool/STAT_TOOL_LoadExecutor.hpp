@@ -6,11 +6,16 @@
 #define CUBRID_LOADEXECUTOR_H
 
 #include "STAT_TOOL_CommandExecutor.hpp"
+#include "STAT_TOOL_SnapshotSet.hpp"
+
+class StatToolSnapshotSet;
 
 class LoadExecutor : public CommandExecutor
 {
   public:
-    LoadExecutor (std::string &wholeCommand, std::vector<StatToolSnapshotSet *> &files);
+    static const char *USAGE;
+
+    LoadExecutor (std::string &wholeCommand);
     ErrorManager::ErrorCode parseCommandAndInit();
     ErrorManager::ErrorCode readFileAndInit (StatToolSnapshotSet *set);
     ErrorManager::ErrorCode execute();

@@ -6,6 +6,7 @@
 #define CUBRID_STAT_TOOL_AGGREGATEEXECUTOR_H
 
 #include "STAT_TOOL_CommandExecutor.hpp"
+#include "STAT_TOOL_SnapshotSet.hpp"
 #include <vector>
 #include <sstream>
 
@@ -13,10 +14,14 @@ extern "C" {
 #include <stdlib.h>
 }
 
+class StatToolSnapshotSet;
+
 class AggregateExecutor : public CommandExecutor
 {
   public:
-    AggregateExecutor (std::string &wholeCommand, std::vector<StatToolSnapshotSet *> &files);
+    static const char *USAGE;
+
+    AggregateExecutor (std::string &wholeCommand);
     ErrorManager::ErrorCode parseCommandAndInit ();
     ErrorManager::ErrorCode execute ();
     void printUsage ();

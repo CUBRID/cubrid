@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 #include <sstream>
-#include "STAT_TOOL_SnapshotSet.hpp"
 #include "STAT_TOOL_ErrorManager.hpp"
 
 extern "C" {
@@ -18,7 +17,7 @@ extern "C" {
 class CommandExecutor
 {
   public:
-    CommandExecutor (std::string &wholeCommand, std::vector<StatToolSnapshotSet *> &files);
+    CommandExecutor (std::string &wholeCommand);
     virtual ErrorManager::ErrorCode parseCommandAndInit() = 0;
     virtual ErrorManager::ErrorCode execute() = 0;
     virtual void printUsage() = 0;
@@ -26,7 +25,6 @@ class CommandExecutor
   protected:
     std::vector<std::string> arguments;
     std::vector<std::string> possibleOptions;
-    std::vector<StatToolSnapshotSet *> &files;
 };
 
 #endif //CUBRID_COMMANDEXECUTOR_H

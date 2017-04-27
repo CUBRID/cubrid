@@ -4,8 +4,9 @@
 
 #include "STAT_TOOL_LoadExecutor.hpp"
 
-LoadExecutor::LoadExecutor (std::string &wholeCommand,
-                            std::vector<StatToolSnapshotSet *> &files) : CommandExecutor (wholeCommand, files)
+const char *LoadExecutor::USAGE = "load <filename> <alias>\n";
+
+LoadExecutor::LoadExecutor (std::string &wholeCommand) : CommandExecutor (wholeCommand)
 {
 }
 
@@ -78,7 +79,7 @@ LoadExecutor::execute()
 
   if (errorCode == ErrorManager::NO_ERRORS)
     {
-      files.push_back (newFile);
+      Utils::loadedSets.push_back (newFile);
     }
 
   return errorCode;
@@ -87,7 +88,7 @@ LoadExecutor::execute()
 void
 LoadExecutor::printUsage()
 {
-  printf ("usage: load <filename> <alias>\n");
+  printf ("%s", USAGE);
 }
 
 LoadExecutor::~LoadExecutor()

@@ -12,11 +12,39 @@ extern "C"
 #include <perf_metadata.h>
 }
 
-struct StatToolSnapshotFloat;
+struct StatToolFauxSnapshotWithFloatColumn;
+struct StatToolColumnInterface;
 
-struct StatToolSnapshot
+struct StatToolColumnInterface
 {
-  UINT64 *rawStats;
+    virtual void printColumnValue (FILE * stream, int offset) = 0;
+    virtual bool isStatZero (int index) = 0;
+    virtual void printColumnValueForComputedRatio (FILE * stream, int offset) = 0;
+};
+
+template <class T>
+struct StatToolStatisticsColumn : public StatToolColumnInterface
+{
+    T *rawStats;
+
+    StatToolStatisticsColumn() {
+      rawStats = (T *) malloc(sizeof(T) * perfmeta_get_values_count());
+    }
+    bool isStatZero (int index) {
+      return rawStats[index] == 0;
+    }
+    virtual void printColumnValueForComputedRatio (FILE * stream, int offset) {
+      fprintf (stream, "%15.4f", rawStats[offset] / 100.0f);
+    }
+    virtual void printColumnValue (FILE * stream, int offset) = 0;
+    virtual ~StatToolStatisticsColumn ()
+    {
+      delete rawStats;
+    }
+};
+
+struct StatToolSnapshot : public StatToolStatisticsColumn<UINT64>
+{
   struct tm timestamp, secondTimeStamp;
   bool isDifference;
 
@@ -25,30 +53,26 @@ struct StatToolSnapshot
   StatToolSnapshot (time_t seconds);
   StatToolSnapshot (const StatToolSnapshot &other);
   StatToolSnapshot *difference (StatToolSnapshot *other);
-  StatToolSnapshotFloat *divide (StatToolSnapshot *other);
-  virtual void print (FILE *stream, int offset);
+  StatToolFauxSnapshotWithFloatColumn *divide (StatToolSnapshot *other);
+  void printColumnValue (FILE *stream, int offset) {
+    fprintf (stream, "%15lld", (long long) rawStats[offset]);
+  }
   time_t getSeconds ();
   UINT64 getStatValueFromName (const char *stat_name);
-  virtual bool isStatZero (int index);
-  virtual ~StatToolSnapshot ();
 };
 
-struct StatToolSnapshotFloat : public StatToolSnapshot
+struct StatToolFauxSnapshotWithFloatColumn : public StatToolStatisticsColumn<float>
 {
   public:
-    float *rawStatsFloat;
-
-    StatToolSnapshotFloat()
+    StatToolFauxSnapshotWithFloatColumn() : StatToolStatisticsColumn()
     {
-      rawStatsFloat = (float *) malloc (sizeof (float) * perfmeta_get_values_count ());
     }
-    bool isStatZero (int index)
+    void printColumnValue (FILE * stream, int offset)
     {
-      return rawStatsFloat[index] == 0;
+      fprintf (stream, "%15.4f", rawStats[offset]);
     }
-    void print (FILE *stream, int offset)
-    {
-      fprintf (stream, "%15.4f", rawStatsFloat[offset]);
+    void printColumnValueForComputedRatio (FILE * stream, int offset) {
+      printColumnValue (stream, offset);
     }
 };
 
