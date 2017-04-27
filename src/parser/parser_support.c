@@ -11224,7 +11224,8 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
   save_set_host_var = parser->set_host_var;
   parser->set_host_var = 1;
 
-  assert (limit->node_type == PT_VALUE || limit->node_type == PT_HOST_VAR);
+  assert (limit->node_type == PT_VALUE || limit->node_type == PT_HOST_VAR || limit->node_type == PT_EXPR);
+
   pt_evaluate_tree_having_serial (parser, limit, limit_val, 1);
   if (pt_has_error (parser))
     {
@@ -11250,7 +11251,9 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
       DB_MAKE_NULL (&range);
 
       /* LIMIT x,y => return x + y */
-      assert (limit->next->node_type == PT_VALUE || limit->next->node_type == PT_HOST_VAR);
+      assert (limit->next->node_type == PT_VALUE || limit->next->node_type == PT_HOST_VAR
+	      || limit->next->node_type == PT_EXPR);
+
       pt_evaluate_tree_having_serial (parser, limit->next, &range, 1);
       if (pt_has_error (parser))
 	{
