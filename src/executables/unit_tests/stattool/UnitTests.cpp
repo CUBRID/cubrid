@@ -11,21 +11,20 @@ bool UnitTests::isStdoutEnabled = true;
 void
 UnitTests::initTestEnvironment ()
 {
-  perfmeta_init ();
+  Utils::init ();
 }
 
 void
 UnitTests::destroyTestEnvironment ()
 {
-  perfmeta_final ();
+  Utils::final ();
 }
 
 bool
 UnitTests::testLoad_BadFile()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string command = "invalid_file.bin a";
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
     {
@@ -38,9 +37,8 @@ UnitTests::testLoad_BadFile()
 bool
 UnitTests::testLoad_GoodFile()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string command = "good.bin a";
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile ("good.bin", 1, 0);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -58,11 +56,10 @@ UnitTests::testLoad_GoodFile()
 bool
 UnitTests::testLoad_GoodFile_checkAlias ()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, 1, 0);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -80,13 +77,13 @@ UnitTests::testLoad_GoodFile_checkAlias ()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
       else
         {
-          return files[0]->getAlias ().compare (alias) == 0;
+          return Utils::loadedSets[0]->getAlias ().compare (alias) == 0;
         }
     }
 }
@@ -94,13 +91,12 @@ UnitTests::testLoad_GoodFile_checkAlias ()
 bool
 UnitTests::testLoad_GoodFile_checkSnapshots ()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -118,18 +114,18 @@ UnitTests::testLoad_GoodFile_checkSnapshots ()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
       else
         {
           bool check = true;
-          for (unsigned int i = 0; i < files[0]->getSnapshots ().size(); i++)
+          for (unsigned int i = 0; i < Utils::loadedSets[0]->getSnapshots ().size(); i++)
             {
-              check &= (mktime (&files[0]->getSnapshots ()[i]->timestamp) - files[0]->getRelativeSeconds () == SECONDS_GAP * (i+1));
+              check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[i]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds () == SECONDS_GAP * (i+1));
             }
-          return files[0]->getSnapshots ().size() == NUM_OF_SNAPSHOTS && check;
+          return Utils::loadedSets[0]->getSnapshots ().size() == NUM_OF_SNAPSHOTS && check;
         }
     }
 }
@@ -137,9 +133,8 @@ UnitTests::testLoad_GoodFile_checkSnapshots ()
 bool
 UnitTests::testLoad_noAlias ()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string command = "file.bin ";
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   return executor->parseCommandAndInit () == ErrorManager::NOT_ENOUGH_ARGUMENTS_ERROR;
 }
@@ -184,14 +179,13 @@ UnitTests::createStatFile (const std::string &filename, int numOfSnapshots, int 
 bool
 UnitTests::testStatFileClass_Test1()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
   StatToolSnapshot *snapshot;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -209,35 +203,36 @@ UnitTests::testStatFileClass_Test1()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
       else
         {
           bool check = true;
-          snapshot = files[0]->getSnapshotBySeconds (150);
-          check &= mktime (&snapshot->timestamp) - files[0]->getRelativeSeconds () == 200;
-          snapshot = files[0]->getSnapshotBySeconds (0);
-          check &= mktime (&snapshot->timestamp) - files[0]->getRelativeSeconds () == SECONDS_GAP;
-          snapshot = files[0]->getSnapshotBySeconds (10000);
-          check &= mktime (&snapshot->timestamp) - files[0]->getRelativeSeconds () == NUM_OF_SNAPSHOTS * SECONDS_GAP;
+          snapshot = Utils::loadedSets[0]->getSnapshotBySeconds (150);
+          check &= mktime (&snapshot->timestamp) - Utils::loadedSets[0]->getRelativeSeconds () == 200;
+          snapshot = Utils::loadedSets[0]->getSnapshotBySeconds (0);
+          check &= mktime (&snapshot->timestamp) - Utils::loadedSets[0]->getRelativeSeconds () == SECONDS_GAP;
+          snapshot = Utils::loadedSets[0]->getSnapshotBySeconds (10000);
+          check &= mktime (&snapshot->timestamp) - Utils::loadedSets[0]->getRelativeSeconds () == NUM_OF_SNAPSHOTS * SECONDS_GAP;
           return check;
         }
     }
+
+  return false;
 }
 
 bool
 UnitTests::testStatFileClass_Test2()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
   int index;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -255,29 +250,30 @@ UnitTests::testStatFileClass_Test2()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
       else
         {
           bool check = true;
-          index = files[0]->getSnapshotIndexBySeconds (150);
-          check &= (mktime (&files[0]->getSnapshots ()[index]->timestamp) - files[0]->getRelativeSeconds ()) == 200;
-          index = files[0]->getSnapshotIndexBySeconds (0);
-          check &= (mktime (&files[0]->getSnapshots ()[index]->timestamp) - files[0]->getRelativeSeconds ()) == SECONDS_GAP;
-          index = files[0]->getSnapshotIndexBySeconds (100000);
-          check &= (mktime (&files[0]->getSnapshots ()[index]->timestamp) - files[0]->getRelativeSeconds ()) == SECONDS_GAP *
+          index = Utils::loadedSets[0]->getSnapshotIndexBySeconds (150);
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == 200;
+          index = Utils::loadedSets[0]->getSnapshotIndexBySeconds (0);
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == SECONDS_GAP;
+          index = Utils::loadedSets[0]->getSnapshotIndexBySeconds (100000);
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == SECONDS_GAP *
                    NUM_OF_SNAPSHOTS;
           return check;
         }
     }
+  return false;
+
 }
 
 bool
 UnitTests::testStatFileClass_Test3()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
@@ -285,7 +281,7 @@ UnitTests::testStatFileClass_Test3()
   int index1, index2;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -303,53 +299,40 @@ UnitTests::testStatFileClass_Test3()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
       else
         {
           bool check = true;
-          files[0]->getIndicesOfSnapshotsByArgument ("b(100)", index1, index2);
+          Utils::loadedSets[0]->getIndicesOfSnapshotsByArgument ("b(100)", index1, index2);
           check &= (index1 == -1 && index2 == -1);
-          files[0]->getIndicesOfSnapshotsByArgument ("a(150)", index1, index2);
-          check &= (mktime (&files[0]->getSnapshots ()[index2]->timestamp) - files[0]->getRelativeSeconds ()) == 200;
+          Utils::loadedSets[0]->getIndicesOfSnapshotsByArgument ("a(150)", index1, index2);
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index2]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == 200;
           check &= (index1 == 0);
-          files[0]->getIndicesOfSnapshotsByArgument ("a(150-670)", index1, index2);
-          check &= (mktime (&files[0]->getSnapshots ()[index1]->timestamp) - files[0]->getRelativeSeconds ()) == 200;
-          check &= (mktime (&files[0]->getSnapshots ()[index2]->timestamp) - files[0]->getRelativeSeconds ()) == 700;
+          Utils::loadedSets[0]->getIndicesOfSnapshotsByArgument ("a(150-670)", index1, index2);
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index1]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == 200;
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index2]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == 700;
 
-          snapshot1 = files[0]->getSnapshotByArgument ("a(420)");
-          check &= (mktime (&snapshot1->timestamp) - files[0]->getRelativeSeconds ()) == 500;
-
-          snapshot1 = files[0]->getSnapshotByArgument ("a(120)");
-          snapshot2 = files[0]->getSnapshotByArgument ("a(410)");
-          snapshot3 = files[0]->getSnapshotByArgument ("a(120-410)");
-
-          for (int i = 0; i < perfmeta_get_values_count (); i++)
-            {
-              if (snapshot3->rawStats[i] != snapshot1->rawStats[i] - snapshot2->rawStats[i])
-                {
-                  check = false;
-                  break;
-                }
-            }
+          snapshot1 = Utils::loadedSets[0]->getSnapshotByArgument ("a(420)");
+          check &= (mktime (&snapshot1->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == 500;
 
           return check;
         }
     }
+  return false;
 }
 
 bool
 UnitTests::testPlot_MissingArguments ()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -367,31 +350,31 @@ UnitTests::testPlot_MissingArguments ()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
       else
         {
           command = "-a b";
-          PlotExecutor *plotExecutor = new PlotExecutor (command, files);
+          PlotExecutor *plotExecutor = new PlotExecutor (command);
           bool check =  plotExecutor->parseCommandAndInit () == ErrorManager::MISSING_ARGUMENT_ERROR;
           delete plotExecutor;
           return check;
         }
     }
+  return false;
 }
 
 bool
 UnitTests::testPlot_InvalidAlias ()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -409,31 +392,31 @@ UnitTests::testPlot_InvalidAlias ()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
       else
         {
           command = "-a b -i (100) -v Num_file_iowrites";
-          PlotExecutor *plotExecutor = new PlotExecutor (command, files);
+          PlotExecutor *plotExecutor = new PlotExecutor (command);
           bool check = plotExecutor->parseCommandAndInit () == ErrorManager::INVALID_ALIASES_ERROR;
           delete plotExecutor;
           return check;
         }
     }
+  return false;
 }
 
 bool
 UnitTests::testPlot_CreatePlot ()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -451,7 +434,7 @@ UnitTests::testPlot_CreatePlot ()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
@@ -460,7 +443,7 @@ UnitTests::testPlot_CreatePlot ()
           struct stat st;
           bool check1, check2;
           command = "-a a -i (0-700) -v Num_file_iowrites";
-          PlotExecutor *plotExecutor = new PlotExecutor (command, files);
+          PlotExecutor *plotExecutor = new PlotExecutor (command);
           check1 = plotExecutor->parseCommandAndInit () == ErrorManager::NO_ERRORS;
           if (check1)
             {
@@ -477,18 +460,18 @@ UnitTests::testPlot_CreatePlot ()
           return check2;
         }
     }
+  return false;
 }
 
 bool
 UnitTests::testShow_InvalidAlias ()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -506,7 +489,7 @@ UnitTests::testShow_InvalidAlias ()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
@@ -514,24 +497,24 @@ UnitTests::testShow_InvalidAlias ()
         {
           bool check;
           command = "b(100) c d(100-300) e f x";
-          ShowExecutor *showExecutor = new ShowExecutor (command, files);
+          ShowExecutor *showExecutor = new ShowExecutor (command);
           check = showExecutor->parseCommandAndInit () == ErrorManager::INVALID_ALIASES_ERROR;
           delete showExecutor;
           return check;
         }
     }
+  return false;
 }
 
 bool
 UnitTests::testShow_HappyPath ()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -549,7 +532,7 @@ UnitTests::testShow_HappyPath ()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
@@ -557,24 +540,24 @@ UnitTests::testShow_HappyPath ()
         {
           bool check;
           command = "a a(100) a(100-500)";
-          ShowExecutor *showExecutor = new ShowExecutor (command, files);
+          ShowExecutor *showExecutor = new ShowExecutor (command);
           check = showExecutor->parseCommandAndInit () == ErrorManager::NO_ERRORS;
           delete showExecutor;
           return check;
         }
     }
+  return false;
 }
 
 bool
 UnitTests::testAggregate_MissingArguments ()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -592,7 +575,7 @@ UnitTests::testAggregate_MissingArguments ()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
@@ -600,24 +583,24 @@ UnitTests::testAggregate_MissingArguments ()
         {
           bool check;
           command = "-n Num_data_page_fix_ext -d 4";
-          AggregateExecutor *aggregateExecutor = new AggregateExecutor (command, files);
+          AggregateExecutor *aggregateExecutor = new AggregateExecutor (command);
           check = aggregateExecutor->parseCommandAndInit () == ErrorManager::INVALID_ARGUMENT_ERROR;
           delete aggregateExecutor;
           return check;
         }
     }
+  return false;
 }
 
 bool
 UnitTests::testAggregate_HappyPath ()
 {
-  std::vector<StatToolSnapshotSet *> files;
   std::string filename = "good.bin";
   std::string alias = "a";
   std::string command = filename + " " + alias;
   const int NUM_OF_SNAPSHOTS = 10;
   const int SECONDS_GAP = 100;
-  LoadExecutor *executor = new LoadExecutor (command, files);
+  LoadExecutor *executor = new LoadExecutor (command);
 
   createStatFile (filename, NUM_OF_SNAPSHOTS, SECONDS_GAP);
   if (executor->parseCommandAndInit () != ErrorManager::NO_ERRORS)
@@ -635,7 +618,7 @@ UnitTests::testAggregate_HappyPath ()
     }
   else
     {
-      if (files.size () != 1)
+      if (Utils::loadedSets.size () != 1)
         {
           return false;
         }
@@ -644,7 +627,7 @@ UnitTests::testAggregate_HappyPath ()
           struct stat st;
           bool check1, check2;
           command = "-a a -n Num_data_page_fix_ext -d 4";
-          AggregateExecutor *aggregateExecutor = new AggregateExecutor (command, files);
+          AggregateExecutor *aggregateExecutor = new AggregateExecutor (command);
           check1 = aggregateExecutor->parseCommandAndInit () == ErrorManager::NO_ERRORS;
           if (check1)
             {
@@ -661,6 +644,7 @@ UnitTests::testAggregate_HappyPath ()
           return check2;
         }
     }
+  return false;
 }
 
 void
@@ -700,4 +684,9 @@ UnitTests::generateRandomStats (long long max)
     }
 
   return stats;
+}
+
+void
+UnitTests::simpleCleanUp () {
+  Utils::loadedSets.clear ();
 }

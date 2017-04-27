@@ -62,6 +62,7 @@ class UnitTests
 
     static void disableStdout();
     static void enableStdout();
+    static void simpleCleanUp ();
 
     static int stdoutBackupFd;
     static FILE *nullOut;
