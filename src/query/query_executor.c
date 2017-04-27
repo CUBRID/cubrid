@@ -13253,8 +13253,8 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
       if (cmp_with_zero != DB_GT && cmp_with_zero != DB_EQ)
 	{
-	  /* FIXME - proper error */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
+	  /* still want better error code */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
 	  return ER_FAILED;
 	}
     }
@@ -13285,8 +13285,8 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
       else
 	{
-	  /* FIXME - proper error */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
+	  /* still want better error code */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
 	  return ER_FAILED;
 	}
     }
