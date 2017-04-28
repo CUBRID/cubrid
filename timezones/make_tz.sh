@@ -39,15 +39,12 @@ show_usage ()
 BUILD_TARGET=64bit
 BUILD_MODE=release
 TZ_GEN_MODE=new
-ALL=""
 
 while getopts ":t:m:g:h" opt; do
 	case $opt in
 		t ) BUILD_TARGET="$OPTARG";;
 		m ) BUILD_MODE="$OPTARG";;
 		g ) TZ_GEN_MODE="$OPTARG";;
-		d ) DATABASE_NAME="$OPTARG";;
-		a ) ALL="all";;
 		h|\?|* ) show_usage; exit 1;;
 	esac
 done
