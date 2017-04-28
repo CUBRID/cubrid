@@ -158,7 +158,7 @@ extern int file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLE
 			FILE_DESCRIPTORS * des, bool is_temp, bool is_numerable, VFID * vfid);
 extern int file_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npages, FILE_DESCRIPTORS * des,
 				    VFID * vfid);
-extern int file_create_heap (THREAD_ENTRY * thread_p, FILE_HEAP_DES * des_heap, bool reuse_oid, VFID * vfid);
+extern int file_create_heap (THREAD_ENTRY * thread_p, bool reuse_oid, VFID * vfid);
 extern int file_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
 extern int file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
 extern int file_create_query_area (THREAD_ENTRY * thread_p, VFID * vfid);
