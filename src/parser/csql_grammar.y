@@ -1006,6 +1006,9 @@ int g_original_buffer_len;
 %type <node> cte_definition_list
 %type <node> cte_definition
 %type <node> cte_query_list
+%type <node> opt_limit_expr
+%type <node> limit_clause_times
+%type <node> limit_clause_term
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -13246,7 +13249,7 @@ index_name_list
 	;
 	
 index_name_keylimit
-	: index_name KEYLIMIT opt_uint_or_host_input
+	: index_name KEYLIMIT opt_limit_expr
 		{{
 		
 			PT_NODE *node = $1;
@@ -13272,7 +13275,7 @@ index_name_keylimit
 			$$ = node;
 			
 		DBG_PRINT}}
-	| index_name KEYLIMIT opt_uint_or_host_input ',' opt_uint_or_host_input
+	| index_name KEYLIMIT opt_limit_expr ',' opt_limit_expr
 		{{
 		
 			PT_NODE *node = $1;
@@ -13776,6 +13779,75 @@ opt_uint_or_host_input
 		DBG_PRINT}}
 	;
 
+opt_limit_expr
+        : opt_limit_expr '+' limit_clause_times
+                {{
+                        $$ = parser_make_expression (this_parser, PT_PLUS, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | opt_limit_expr '-' limit_clause_times
+                {{
+                        $$ = parser_make_expression (this_parser, PT_MINUS, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | limit_clause_times
+                {{
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        ;
+
+limit_clause_times
+        : limit_clause_times '*' limit_clause_term
+                {{
+                        $$ = parser_make_expression (this_parser, PT_TIMES, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | limit_clause_times '/' limit_clause_term
+                {{
+                        $$ = parser_make_expression (this_parser, PT_DIVIDE, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | limit_clause_term
+                {{
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+          ;
+
+
+
+limit_clause_term
+        : host_param_input
+                {{
+
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | unsigned_integer
+                {{
+
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+
+        | '(' opt_limit_expr ')'
+                {{
+
+                        $$ = $2;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        ;  
+
 opt_select_limit_clause
 	: /* empty */
 	| LIMIT limit_options
@@ -13848,7 +13920,7 @@ opt_select_limit_clause
 	;
 
 limit_options
-	: opt_uint_or_host_input
+	: opt_limit_expr
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
@@ -13861,7 +13933,7 @@ limit_options
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| opt_uint_or_host_input ',' opt_uint_or_host_input
+	| opt_limit_expr ',' opt_limit_expr
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
@@ -13880,7 +13952,7 @@ limit_options
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| opt_uint_or_host_input OFFSET opt_uint_or_host_input
+	| opt_limit_expr OFFSET opt_limit_expr
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
