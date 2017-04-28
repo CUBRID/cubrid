@@ -1,11 +1,5 @@
 #include <iostream>
 #include "STAT_TOOL_Utils.hpp"
-#include "STAT_TOOL_SnapshotSet.hpp"
-#include "STAT_TOOL_ShowExecutor.hpp"
-#include "STAT_TOOL_PlotExecutor.hpp"
-#include "STAT_TOOL_LoadExecutor.hpp"
-#include "STAT_TOOL_ErrorManager.hpp"
-#include "STAT_TOOL_AggregateExecutor.hpp"
 #if defined (WINDOWS)
 #include <windows.h>
 #endif
