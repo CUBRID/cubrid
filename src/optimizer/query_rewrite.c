@@ -7276,7 +7276,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  else
 	    {
 	      limit_offsetp = NULL;
-	      limit_row_countp = &node->info.update.limit->next;
+	      limit_row_countp = &node->info.update.limit;
 	    }
 	}
       break;
@@ -7291,7 +7291,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  else
 	    {
 	      limit_offsetp = NULL;
-	      limit_row_countp = &node->info.delete_.limit->next;
+	      limit_row_countp = &node->info.delete_.limit;
 	    }
 	}
       break;
