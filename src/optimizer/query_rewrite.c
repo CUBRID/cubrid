@@ -6546,7 +6546,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
   PT_NODE *limit, *derived;
   PT_NODE **merge_upd_wherep, **merge_ins_wherep, **merge_del_wherep;
   PT_NODE **orderby_for_p;
-  PT_NODE **limit_ptr;
+  PT_NODE **limit_offsetp, **limit_row_countp;
   PT_NODE **show_argp;
   bool call_auto_parameterize = false;
 
@@ -7242,8 +7242,9 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       *show_argp = result_list;
     }
 
-  limit_ptr = NULL;
   /* auto parameterize for limit clause */
+  limit_offsetp = NULL;
+  limit_row_countp = NULL;
   switch (node->node_type)
     {
     case PT_UNION:
@@ -7252,42 +7253,60 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     case PT_SELECT:
       if (node->info.query.limit)
 	{
-	  limit_ptr = &node->info.query.limit;
-	  /* It is enough to check only the count of limit clause whether the query generates an empty result set. */
 	  if (node->info.query.limit->next)
 	    {
-	      limit_ptr = &node->info.query.limit->next;
+	      limit_offsetp = &node->info.query.limit;
+	      limit_row_countp = &node->info.query.limit->next;
+	    }
+	  else
+	    {
+	      limit_offsetp = NULL;
+	      limit_row_countp = &node->info.query.limit;
 	    }
 	}
       break;
     case PT_UPDATE:
       if (node->info.update.limit)
 	{
-	  limit_ptr = &node->info.update.limit;
-	  /* It is enough to check only the count of limit clause whether the query generates an empty result set. */
 	  if (node->info.update.limit->next)
 	    {
-	      limit_ptr = &node->info.update.limit->next;
+	      limit_offsetp = &node->info.update.limit;
+	      limit_row_countp = &node->info.update.limit->next;
+	    }
+	  else
+	    {
+	      limit_offsetp = NULL;
+	      limit_row_countp = &node->info.update.limit->next;
 	    }
 	}
       break;
     case PT_DELETE:
       if (node->info.delete_.limit)
 	{
-	  limit_ptr = &node->info.delete_.limit;
-	  /* It is enough to check only the count of limit clause whether the query generates an empty result set. */
 	  if (node->info.delete_.limit->next)
 	    {
-	      limit_ptr = &node->info.delete_.limit->next;
+	      limit_offsetp = &node->info.delete_.limit;
+	      limit_row_countp = &node->info.delete_.limit->next;
+	    }
+	  else
+	    {
+	      limit_offsetp = NULL;
+	      limit_row_countp = &node->info.delete_.limit->next;
 	    }
 	}
       break;
     default:
       break;
     }
-  if (limit_ptr != NULL && pt_is_const_not_hostvar (*limit_ptr) && !PT_IS_NULL_NODE (*limit_ptr))
+
+  if (limit_offsetp != NULL && pt_is_const_not_hostvar (*limit_offsetp) && !PT_IS_NULL_NODE (*limit_offsetp))
     {
-      *limit_ptr = pt_rewrite_to_auto_param (parser, *limit_ptr);
+      *limit_offsetp = pt_rewrite_to_auto_param (parser, *limit_offsetp);
+    }
+
+  if (limit_row_countp != NULL && pt_is_const_not_hostvar (*limit_row_countp) && !PT_IS_NULL_NODE (*limit_row_countp))
+    {
+      *limit_row_countp = pt_rewrite_to_auto_param (parser, *limit_row_countp);
     }
 
   if (node->node_type == PT_SELECT)
