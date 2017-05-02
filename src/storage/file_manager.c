@@ -3036,21 +3036,22 @@ file_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npage
  *
  * return	  : Error code
  * thread_p (in)  : Thread entry
- * npages (in)	  : Number of pages
- * des_heap (in)  : Heap file descriptor
  * reuse_oid (in) : Reuse slots true or false
  * vfid (out)	  : File identifier
  *
  * todo: add tablespace.
  */
 int
-file_create_heap (THREAD_ENTRY * thread_p, FILE_HEAP_DES * des_heap, bool reuse_oid, VFID * vfid)
+file_create_heap (THREAD_ENTRY * thread_p, bool reuse_oid, VFID * vfid)
 {
+  FILE_DESCRIPTORS des;
   FILE_TYPE file_type = reuse_oid ? FILE_HEAP_REUSE_SLOTS : FILE_HEAP;
 
-  assert (des_heap != NULL);
+  /* it's done this way because of annoying Valgrind complaints: */
+  memset (&des, 0, sizeof (des));
+  /* descriptor will be updated after create, no point in setting it here. */
 
-  return file_create_with_npages (thread_p, file_type, 1, (FILE_DESCRIPTORS *) des_heap, vfid);
+  return file_create_with_npages (thread_p, file_type, 1, &des, vfid);
 }
 
 /*
@@ -3382,7 +3383,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
       goto exit;
     }
 
-  memset (page_fhead, DB_PAGESIZE, 0);
+  memset (page_fhead, 0, DB_PAGESIZE);
   pgbuf_set_page_ptype (thread_p, page_fhead, PAGE_FTAB);
   fhead = (FILE_HEADER *) page_fhead;
 
@@ -3606,7 +3607,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	      goto exit;
 	    }
 	  pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
-	  memset (page_ftab, DB_PAGESIZE, 0);
+	  memset (page_ftab, 0, DB_PAGESIZE);
 	  extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
 	  file_extdata_init (sizeof (FILE_PARTIAL_SECTOR), DB_PAGESIZE, extdata_part_ftab);
 
