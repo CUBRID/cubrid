@@ -23632,6 +23632,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
       status = tp_value_cast (&ubound_val, &ubound_val, &tp_Integer_domain, 1);
       if (status != DOMAIN_COMPATIBLE)
 	{
+	  pr_clear_value (&ubound_val);
 	  return NO_ERROR;
 	}
     }
