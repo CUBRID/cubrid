@@ -47,6 +47,10 @@
 #endif
 #include "db_elo.h"
 
+#ifdef SERVER_MODE
+#include "db_macro.i"
+#endif
+
 #define DB_NUMBER_ZERO	    0
 
 #define VALCNV_TOO_BIG_TO_MATTER   1024

@@ -6136,8 +6136,6 @@ setobj_print (FILE * fp, COL * col)
 
 /* SET REFERENCE MAINTENANCE */
 
-
-
 /*
  * setobj_type() - Returns the type of setobj is passed in
  *      return: DB_TYPE

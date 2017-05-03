@@ -579,8 +579,8 @@ elo_create (DB_ELO * elo)
   return ret;
 }
 
-/*		
- * elo_init_structure () - init. ELO structure		
+/*
+ * elo_init_structure () - init. ELO structure
  */
 void
 elo_init_structure (DB_ELO * elo)

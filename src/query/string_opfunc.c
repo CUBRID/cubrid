@@ -5698,7 +5698,6 @@ db_string_make_empty_typed_string (THREAD_ENTRY * thread_p, DB_VALUE * db_val, c
   *buf = '\0';
 
   qstr_make_typed_string (db_type, db_val, precision, buf, 0, codeset, collation_id);
-
   db_val->need_clear = true;
 
   return status;
