@@ -25,8 +25,9 @@
 #ifndef _DB_MACRO_I_
 #define _DB_MACRO_I_
 
-#include "porting.h"
 #include "dbtype.h"
+#include "error_manager.h"
+#include "porting.h"
 
 #ifdef SERVER_MODE
 #define DB_MACRO_INLINE STATIC_INLINE

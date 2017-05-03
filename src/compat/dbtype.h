@@ -34,7 +34,6 @@
 #include <string.h>
 
 /* Need to check this again and to possibly remove them!! */
-#include "error_manager.h"
 
 /***********************************/
 /* What we need from system.h */
