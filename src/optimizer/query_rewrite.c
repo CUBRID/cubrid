@@ -95,6 +95,8 @@ static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void
 static void qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_NODE ** fromp,
 								PT_NODE ** wherep);
 static PT_NODE *qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void qo_do_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
+static void qo_do_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
 /*
@@ -6546,7 +6548,6 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
   PT_NODE *limit, *derived;
   PT_NODE **merge_upd_wherep, **merge_ins_wherep, **merge_del_wherep;
   PT_NODE **orderby_for_p;
-  PT_NODE **limit_offsetp, **limit_row_countp;
   PT_NODE **show_argp;
   bool call_auto_parameterize = false;
 
@@ -7243,70 +7244,16 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   /* auto parameterize for limit clause */
-  limit_offsetp = NULL;
-  limit_row_countp = NULL;
-  switch (node->node_type)
+  if (node->node_type == PT_SELECT || node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE
+      || node->node_type == PT_INTERSECTION || node->node_type == PT_UPDATE || node->node_type == PT_DELETE)
     {
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-    case PT_SELECT:
-      if (node->info.query.limit)
-	{
-	  if (node->info.query.limit->next)
-	    {
-	      limit_offsetp = &node->info.query.limit;
-	      limit_row_countp = &node->info.query.limit->next;
-	    }
-	  else
-	    {
-	      limit_offsetp = NULL;
-	      limit_row_countp = &node->info.query.limit;
-	    }
-	}
-      break;
-    case PT_UPDATE:
-      if (node->info.update.limit)
-	{
-	  if (node->info.update.limit->next)
-	    {
-	      limit_offsetp = &node->info.update.limit;
-	      limit_row_countp = &node->info.update.limit->next;
-	    }
-	  else
-	    {
-	      limit_offsetp = NULL;
-	      limit_row_countp = &node->info.update.limit;
-	    }
-	}
-      break;
-    case PT_DELETE:
-      if (node->info.delete_.limit)
-	{
-	  if (node->info.delete_.limit->next)
-	    {
-	      limit_offsetp = &node->info.delete_.limit;
-	      limit_row_countp = &node->info.delete_.limit->next;
-	    }
-	  else
-	    {
-	      limit_offsetp = NULL;
-	      limit_row_countp = &node->info.delete_.limit;
-	    }
-	}
-      break;
-    default:
-      break;
-    }
+      qo_do_auto_parameterize_limit_clause (parser, node);
 
-  if (limit_offsetp != NULL && pt_is_const_not_hostvar (*limit_offsetp) && !PT_IS_NULL_NODE (*limit_offsetp))
-    {
-      *limit_offsetp = pt_rewrite_to_auto_param (parser, *limit_offsetp);
-    }
-
-  if (limit_row_countp != NULL && pt_is_const_not_hostvar (*limit_row_countp) && !PT_IS_NULL_NODE (*limit_row_countp))
-    {
-      *limit_row_countp = pt_rewrite_to_auto_param (parser, *limit_row_countp);
+      /* auto parameterize for keylimit clause */
+      if (node->node_type == PT_SELECT || node->node_type == PT_UPDATE || node->node_type == PT_DELETE)
+	{
+	  qo_do_auto_parameterize_keylimit_clause (parser, node);
+	}
     }
 
   if (node->node_type == PT_SELECT)
@@ -7321,6 +7268,158 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   return node;
+}
+
+static void
+qo_do_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE **limit_offsetp, **limit_row_countp;
+
+  if (node == NULL)
+    {
+      return;
+    }
+
+  limit_offsetp = NULL;
+  limit_row_countp = NULL;
+
+  switch (node->node_type)
+    {
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_SELECT:
+      if (node->info.query.limit != NULL)
+	{
+	  if (node->info.query.limit->next != NULL)
+	    {
+	      limit_offsetp = &node->info.query.limit;
+	      limit_row_countp = &node->info.query.limit->next;
+	    }
+	  else
+	    {
+	      limit_offsetp = NULL;
+	      limit_row_countp = &node->info.query.limit;
+	    }
+	}
+      break;
+
+    case PT_UPDATE:
+      if (node->info.update.limit != NULL)
+	{
+	  if (node->info.update.limit->next != NULL)
+	    {
+	      limit_offsetp = &node->info.update.limit;
+	      limit_row_countp = &node->info.update.limit->next;
+	    }
+	  else
+	    {
+	      limit_offsetp = NULL;
+	      limit_row_countp = &node->info.update.limit;
+	    }
+	}
+      break;
+
+    case PT_DELETE:
+      if (node->info.delete_.limit != NULL)
+	{
+	  if (node->info.delete_.limit->next != NULL)
+	    {
+	      limit_offsetp = &node->info.delete_.limit;
+	      limit_row_countp = &node->info.delete_.limit->next;
+	    }
+	  else
+	    {
+	      limit_offsetp = NULL;
+	      limit_row_countp = &node->info.delete_.limit;
+	    }
+	}
+      break;
+
+    default:
+      return;
+    }
+
+  if (limit_offsetp != NULL && pt_is_const_not_hostvar (*limit_offsetp) && !PT_IS_NULL_NODE (*limit_offsetp))
+    {
+      *limit_offsetp = pt_rewrite_to_auto_param (parser, *limit_offsetp);
+    }
+
+  if (limit_row_countp != NULL && pt_is_const_not_hostvar (*limit_row_countp) && !PT_IS_NULL_NODE (*limit_row_countp))
+    {
+      *limit_row_countp = pt_rewrite_to_auto_param (parser, *limit_row_countp);
+    }
+}
+
+static void
+qo_do_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *using_index = NULL;
+  PT_NODE *key_limit_lower_boundp, *key_limit_upper_boundp;
+
+  if (node == NULL)
+    {
+      return;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      using_index = node->info.query.q.select.using_index;
+      break;
+
+    case PT_UPDATE:
+      using_index = node->info.update.using_index;
+      break;
+
+    case PT_DELETE:
+      using_index = node->info.delete_.using_index;
+      break;
+
+    default:
+      return;
+    }
+
+  while (using_index != NULL)
+    {
+      /* it may include keylimit clause */
+
+      key_limit_lower_boundp = key_limit_upper_boundp = NULL;
+
+      if (using_index->info.name.indx_key_limit != NULL)
+	{
+	  key_limit_upper_boundp = using_index->info.name.indx_key_limit;
+	  key_limit_lower_boundp = using_index->info.name.indx_key_limit->next;
+
+	  using_index->info.name.indx_key_limit->next = NULL;
+	}
+
+      if (key_limit_upper_boundp != NULL)
+	{
+	  if (pt_is_const_not_hostvar (key_limit_upper_boundp) && !PT_IS_NULL_NODE (key_limit_upper_boundp))
+	    {
+	      using_index->info.name.indx_key_limit = pt_rewrite_to_auto_param (parser, key_limit_upper_boundp);
+	    }
+	  else
+	    {
+	      using_index->info.name.indx_key_limit = key_limit_upper_boundp;
+	    }
+	}
+
+      if (key_limit_lower_boundp != NULL)
+	{
+	  if (pt_is_const_not_hostvar (key_limit_lower_boundp) && !PT_IS_NULL_NODE (key_limit_lower_boundp))
+	    {
+	      using_index->info.name.indx_key_limit->next = pt_rewrite_to_auto_param (parser, key_limit_lower_boundp);
+	    }
+	  else
+	    {
+	      using_index->info.name.indx_key_limit->next = key_limit_lower_boundp;
+	    }
+	}
+
+      using_index = using_index->next;
+    }
 }
 
 /*
