@@ -5622,8 +5622,10 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 
       regu->type = TYPE_POS_VALUE;
       regu->value.val_pos = node->info.host_var.index;
-      if (parser->dbval_cnt < node->info.host_var.index)
-	parser->dbval_cnt = node->info.host_var.index;
+      if (parser->dbval_cnt <= node->info.host_var.index)
+	{
+	  parser->dbval_cnt = node->info.host_var.index + 1;
+	}
 
       /* determine the domain of this host var */
       regu->domain = NULL;

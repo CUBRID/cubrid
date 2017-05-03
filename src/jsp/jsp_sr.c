@@ -27,6 +27,7 @@
 
 #if defined(WINDOWS)
 #include <windows.h>
+#define DELAYIMP_INSECURE_WRITABLE_HOOKS
 #include <Delayimp.h>
 #pragma comment(lib, "delayimp")
 #pragma comment(lib, "jvm")

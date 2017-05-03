@@ -918,6 +918,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   restart_arg.newvolpath = utility_get_option_bool_value (arg_map, RESTORE_USE_DATABASE_LOCATION_PATH_S);
   restart_arg.restore_upto_bktime = false;
   restart_arg.restore_slave = false;
+  restart_arg.is_restore_from_backup = true;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -3759,6 +3760,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   restart_arg.newvolpath = utility_get_option_bool_value (arg_map, RESTORESLAVE_USE_DATABASE_LOCATION_PATH_S);
   restart_arg.restore_upto_bktime = false;
   restart_arg.stopat = time (NULL);
+  restart_arg.is_restore_from_backup = false;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -3920,6 +3922,16 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       tz_gen_type = TZ_GEN_TYPE_EXTEND;
 
       db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+
+#if !defined (WINDOWS)
+      /* workaround for Linux: gen_tz process should be restarted after each database migration, since globals variables
+       * from shared libcubrid.so are not properly reset at db_shutdown */
+      if (db_name == NULL)
+	{
+	  goto print_gen_tz_usage;
+	}
+#endif /* !WINDOWS */
+
       if (db_name != NULL && check_database_name (db_name) != NO_ERROR)
 	{
 	  exit_status = EXIT_FAILURE;
@@ -4034,7 +4046,10 @@ exit:
 
   if (exit_status != EXIT_SUCCESS)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      if (er_inited == true)
+	{
+	  fprintf (stderr, "%s\n", db_error_string (3));
+	}
 
       if (need_db_shutdown == true)
 	{

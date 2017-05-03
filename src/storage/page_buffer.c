@@ -265,6 +265,7 @@ typedef enum
 /* zone counts & thresholds */
 #define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
 #define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
+#define PGBUF_LRU_VICTIM_ZONE_COUNT(list) ((list)->count_lru3)
 
 #define PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD(list) ((list)->threshold_lru1 < (list)->count_lru1)
 #define PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD(list) ((list)->threshold_lru2 < (list)->count_lru2)
@@ -1180,6 +1181,8 @@ STATIC_INLINE void pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBU
 STATIC_INLINE void pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (PGBUF_BCB * bcb, const char *file, int line)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_register_fix (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_hot (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 
@@ -1654,8 +1657,8 @@ pgbuf_finalize (void)
     }
   if (pgbuf_Pool.big_private_lrus_with_victims != NULL)
     {
-      lf_circular_queue_destroy (pgbuf_Pool.private_lrus_with_victims);
-      pgbuf_Pool.private_lrus_with_victims = NULL;
+      lf_circular_queue_destroy (pgbuf_Pool.big_private_lrus_with_victims);
+      pgbuf_Pool.big_private_lrus_with_victims = NULL;
     }
   if (pgbuf_Pool.shared_lrus_with_victims != NULL)
     {
@@ -2839,12 +2842,17 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 
 	  /* check if page invalidation should be performed on the page */
 	  if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&temp_vpid, &bufptr->vpid)
-	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0
-	      || pgbuf_bcb_avoid_victim (bufptr))
+	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0)
 	    {
 	      PGBUF_BCB_UNLOCK (bufptr);
 	      continue;
 	    }
+	}
+
+      if (pgbuf_bcb_avoid_victim (bufptr))
+	{
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  continue;
 	}
 
 #if defined(CUBRID_DEBUG)
@@ -3301,7 +3309,9 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   else
 #endif /* SERVER_MODE */
     {
+      LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
+      LOG_CS_EXIT (thread_p);
     }
 
   if (prm_get_bool_value (PRM_ID_PB_SEQUENTIAL_VICTIM_FLUSH) == true)
@@ -3483,13 +3493,29 @@ end:
 	      continue;
 	    }
 	  lru_list = PGBUF_GET_LRU_LIST (PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thrd_iter)));
+	  if (PGBUF_LRU_VICTIM_ZONE_COUNT (lru_list) == 0)
+	    {
+	      continue;
+	    }
 	  if (lru_list->count_vict_cand > 0)
 	    {
+	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
+		{
+		  /* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
+		   * flush queue */
+		  continue;
+		}
 	      /* should have found victim candidate */
 	      assert (false);
 	    }
 	  if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
+	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
+		{
+		  /* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
+		   * flush queue */
+		  continue;
+		}
 	      /* should be over quota */
 	      assert (false);
 	    }
@@ -3506,7 +3532,7 @@ end:
 	    (int) (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx] * (float) check_count_lru
 		   / lru_sum_flush_priority);
 	  lru_list = PGBUF_GET_LRU_LIST (lru_idx);
-	  if (lru_list->count_vict_cand < check_count_lru)
+	  if (lru_list->count_vict_cand < count_check_this_lru)
 	    {
 	      assert (false);
 	    }
@@ -4816,7 +4842,7 @@ pgbuf_is_temporary_volume (VOLID volid)
     {
       return false;
     }
-  return (xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
+  return (LOG_DBFIRST_VOLID <= volid && xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
 }
 
 /*
@@ -4899,6 +4925,9 @@ pgbuf_initialize_bcb_table (void)
       bufptr->count_fix_and_avoid_dealloc = 0;
       bufptr->hit_age = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+
+      bufptr->tick_lru3 = 0;
+      bufptr->tick_lru_list = 0;
 
       /* link BCB and iopage buffer */
       ioptr = PGBUF_FIND_IOPAGE_PTR (i);
@@ -7096,8 +7125,7 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       curr_bufptr->hash_next = NULL;
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
       VPID_SET_NULL (&(bufptr->vpid));
-      assert ((bufptr->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) == 0);
-      bufptr->count_fix_and_avoid_dealloc = 0;
+      pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
 
       return NO_ERROR;
     }
@@ -7593,8 +7621,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   assert (!pgbuf_bcb_avoid_victim (bufptr));
   bufptr->latch_mode = PGBUF_NO_LATCH;
   pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);	/* todo: why this?? */
-  assert ((bufptr->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) == 0);
-  bufptr->count_fix_and_avoid_dealloc = 0;
+  pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
   if (fetch_mode != NEW_PAGE)
@@ -8025,8 +8052,7 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   bufptr->latch_mode = PGBUF_LATCH_INVALID;
   assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0);
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_INVALID_ZONE);
-  assert ((bufptr->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) == 0);
-  bufptr->count_fix_and_avoid_dealloc = 0;
+  pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
   bufptr->next_BCB = pgbuf_Pool.buf_invalid_list.invalid_top;
@@ -8389,7 +8415,15 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   if (!pgbuf_bcb_is_dirty (lru_list->bottom) && lru_list->victim_hint != lru_list->bottom)
     {
       /* update hint to bottom. sometimes it may be out of sync. */
-      (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, lru_list->bottom);
+      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+      if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
+	{
+	  (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, lru_list->bottom);
+	}
+      else
+	{
+	  (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, NULL);
+	}
     }
 
   /* we will search */
@@ -8431,6 +8465,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		{
 		  /* hint advanced */
 		}
+
+	      assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
 
 	  found_victim_cnt++;
@@ -8495,6 +8531,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		{
 		  /* modified hint */
 		}
+
+	      assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
 	  found_victim_cnt++;
 	  if (found_victim_cnt >= lru_victim_cnt)
@@ -8510,7 +8548,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     {
       /* we had a hint and we failed to find any victim candidates. */
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_BAD_HINT);
-      if (lru_list->count_vict_cand > 0)
+      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+      if (lru_list->count_vict_cand > 0 && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
 	{
 	  /* set victim hint to bottom */
 	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
@@ -8526,7 +8565,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   /* we need more victims */
   pgbuf_wakeup_flush_thread (thread_p);
-
   /* failed finding victim in single-threaded, although the number of victim candidates is positive? impossible!
    * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
    * NULL. */
@@ -8671,7 +8709,15 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
       if (nassigned == 0 && lru_list->count_vict_cand > 0 && pgbuf_is_any_thread_waiting_for_direct_victim ())
 	{
 	  /* maybe hint was bad? that's most likely case. reset the hint to bottom. */
-	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+	  assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+	  if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
+	    {
+	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+	    }
+	  else
+	    {
+	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL);
+	    }
 
 	  /* check from bottom anyway */
 	  nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, lru_list->bottom);
@@ -8855,7 +8901,8 @@ pgbuf_lru_add_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU
       bcb->next_BCB = NULL;
 
       /* set tick_lru3 smaller that current bottom's */
-      bcb->tick_lru3 = lru_list->bottom->tick_lru3 - 1;
+      bcb->tick_lru3 =
+	PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom) ? lru_list->bottom->tick_lru3 - 1 : lru_list->tick_lru3 - 1;
 
       /* update bottom */
       lru_list->bottom = bcb;
@@ -12118,38 +12165,24 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  er_status = er_errid ();
 	  if (er_status == ER_INTERRUPTED)
 	    {
+	      /* this is expected */
 	      goto exit;
 	    }
-
-	  valid =
-	    pgbuf_is_valid_page (thread_p, &(ordered_holders_info[i].vpid),
-				 VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)), NULL, NULL);
-#if defined(PGBUF_ORDERED_DEBUG)
-	  _er_log_debug (__FILE__, __LINE__,
-			 "ORDERED_FIX(%u): restore_pages_ERR: cannot fix VPID:(%d,%d), "
-			 "GROUP:%d,%d, rank:%d, page_fetch_mode:%d , latch_req: %d, valid:%d", ordered_fix_id,
-			 ordered_holders_info[i].vpid.volid, ordered_holders_info[i].vpid.pageid,
-			 ordered_holders_info[i].group_id.volid, ordered_holders_info[i].group_id.pageid,
-			 ordered_holders_info[i].rank, curr_fetch_mode, curr_request_mode, valid);
-#endif
-	  if (valid == DISK_INVALID)
+	  if (er_status == ER_PB_BAD_PAGEID)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, ordered_holders_info[i].vpid.pageid,
-		      fileio_get_volume_label (ordered_holders_info[i].vpid.volid, PEEK));
+	      /* page was probably deallocated? so has the impossible indeed happen?? */
+	      assert (false);
+	      er_log_debug (ARG_FILE_LINE, "pgbuf_ordered_fix: page %d|%d was deallocated an we told it not to!\n",
+			    VPID_AS_ARGS (&ordered_holders_info[i].vpid));
 	    }
-
-	  er_status = er_errid ();
-
 	  if (!VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
 	    {
 	      int prev_er_status = er_status;
 	      er_status = ER_PB_ORDERED_REFIX_FAILED;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 3, ordered_holders_info[i].vpid.volid,
 		      ordered_holders_info[i].vpid.pageid, prev_er_status);
-	      goto exit;
 	    }
-	  /* try to restore fixes on all remaining pages */
-	  continue;
+	  goto exit;
 	}
 
       /* get holder of last fix: last fixed pages is in top of holder list, we use parse code just for safety */
@@ -13093,6 +13126,15 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 	   * private bcb's must be less than 90% of buffer. that means shared bcb's have to be 10% or more of buffer.
 	   * PGBUF_MIN_SHARED_LIST_ADJUST_SIZE is currently set to 50, which is 5% to targeted 1k shared list size.
 	   * we shouldn't be here unless I messed up the calculus. */
+	  if (pgbuf_Pool.buf_invalid_list.invalid_cnt > 0)
+	    {
+	      /* This is not really an interesting case.
+	       * Probably both shared and private are small and most of buffers in invalid list.
+	       * We don't really need flush for the case, since BCB could be allocated from invalid list.
+	       */
+	      return;
+	    }
+
 	  assert (false);
 	  use_prv_size = true;
 	  prv_flush_ratio = 1.0f;
@@ -14518,13 +14560,22 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
   int list_tick;
 
   /* first, let's update the victim hint. */
+  /* We don't own the LRU mutex here, so after we read the victim_hint, another thread may change that BCB, 
+   * or the victim_hint pointer itself.
+   * All changes of lru_list->victim_hint, must be precedeed by changing the new hint BCB to LRU3 zone, the checks must
+   * be repetead here in the same sequence: 
+   *  1. read lru_list->victim_hint
+   *  2. stop if old_victim_hint is still in LRU3 and is older than proposed to be hint
+   *  3. atomically change the hint
+   * (old_victim_hint may suffer other changes including relocating to another LRU, this is protected by the atomic op)
+   */
   do
     {
       /* replace current victim hint only if this candidate is better. that is if its age in zone 3 is greater that of
        * current hint's */
       old_victim_hint = lru_list->victim_hint;
       list_tick = lru_list->tick_lru3;
-      if (old_victim_hint != NULL
+      if (old_victim_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (old_victim_hint)
 	  && (PGBUF_AGE_DIFF (old_victim_hint->tick_lru3, list_tick) > PGBUF_AGE_DIFF (bcb->tick_lru3, list_tick)))
 	{
 	  /* current hint is older. */
@@ -14589,11 +14640,14 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
   /* todo: add watchers on lru list mutexes */
 
   /* new victim hint should be either NULL or in the victimization zone */
-  new_victim_hint = (bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint) ? bcb_new_hint : NULL);
+  new_victim_hint = (bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint)) ? bcb_new_hint : NULL;
 
   /* restart from bottom if hint is NULL but we have victim candidates */
   new_victim_hint = ((new_victim_hint == NULL && lru_list->count_vict_cand > (was_vict_count_updated ? 0 : 1))
 		     ? lru_list->bottom : new_victim_hint);
+
+  new_victim_hint = ((new_victim_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (new_victim_hint))
+		     ? new_victim_hint : NULL);
 
   /* update hint (if it was not already updated) */
   assert (new_victim_hint == NULL || pgbuf_bcb_get_lru_index (new_victim_hint) == lru_list->index);
@@ -14601,6 +14655,8 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
     {
       /* updated hint */
     }
+
+  assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 }
 
 /*
@@ -14751,8 +14807,9 @@ pgbuf_bcb_change_zone (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int new_lru_idx
       int lru_idx = PGBUF_GET_LRU_INDEX (old_flags);
       lru_list = PGBUF_GET_LRU_LIST (lru_idx);
 
-      /* hint should have been changed already */
-      assert (lru_list->victim_hint != bcb);
+      /* hint should have been changed already if the BCB was in LRU3; otherwise (if downgraded, we may expect that
+       * victim hint is changed by other thread (checkpoint->pgbuf_bcb_update_flags) */
+      assert (lru_list->victim_hint != bcb || PGBUF_GET_ZONE (old_flags) != PGBUF_LRU_3_ZONE);
 
       if (PGBUF_IS_SHARED_LRU_INDEX (PGBUF_GET_LRU_INDEX (old_flags)))
 	{
@@ -15072,14 +15129,8 @@ pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb)
 {
-#if !defined (NDEBUG)
-  int newval =
-#endif /* !NDEBUG */
-    ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1);
-  assert (newval > 0);
-  assert ((newval & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0);
-  assert (bcb->count_fix_and_avoid_dealloc > 0);
-  assert ((bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0);
+  assert ((bcb->count_fix_and_avoid_dealloc & 0x00008000) == 0);
+  (void) ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1);
 }
 
 /*
@@ -15091,14 +15142,39 @@ pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb)
 {
-#if !defined (NDEBUG)
-  int newval =
-#endif /* !NDEBUG */
-    ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, -1);
-  assert (newval >= 0);
-  assert ((newval & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0xFFFF);
-  assert (bcb->count_fix_and_avoid_dealloc >= 0);
-  assert ((bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0xFFFF);
+  int count_crt;
+  do
+    {
+      /* get bcb->count_fix_and_avoid_dealloc (volatile) */
+      count_crt = bcb->count_fix_and_avoid_dealloc;
+      assert ((count_crt & 0x00008000) == 0);
+      if ((count_crt & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0)
+	{
+	  /* we can decrement counter */
+	}
+      else
+	{
+	  /* interestingly enough, this case can happen. how?
+	   *
+	   * well, pgbuf_ordered_fix may be forced to unfix all pages currently held by transaction to fix a new page.
+	   * all pages that are "less" than new page are marked to avoid deallocation and unfixed. then transaction is
+	   * blocked on latching new page, which may take a while, pages previously unfixed can be victimized.
+	   * when pgbuf_ordered_fix tries to fix back these pages, it will load them from disk and tadaa, the avoid
+	   * deallocation count is 0. so we expect the case.
+	   *
+	   * note: avoid deallocation count is supposed to prevent vacuum workers from deallocating these pages.
+	   *       so, victimizing a bcb marked to avoid deallocation is not perfectly safe. however, the likelihood of
+	   *       page really getting deallocated is ... almost zero. the alternative of avoiding victimization when
+	   *       bcb's are marked for deallocation is much more complicated and poses serious risks (what if we leak
+	   *       the counter and prevent bcb from being victimized indefinitely?). so, we prefer the existing risks.
+	   */
+	  er_log_debug (ARG_FILE_LINE,
+			"pgbuf_bcb_unregister_avoid_deallocation: bcb %p, vpid = %d|%d was probably victimized.\n",
+			bcb, VPID_AS_ARGS (&bcb->vpid));
+	  break;
+	}
+    }
+  while (!ATOMIC_CAS_32 (&bcb->count_fix_and_avoid_dealloc, count_crt, count_crt - 1));
 }
 
 /*
@@ -15111,7 +15187,30 @@ STATIC_INLINE bool
 pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb)
 {
   assert (bcb->count_fix_and_avoid_dealloc >= 0);
+  assert ((bcb->count_fix_and_avoid_dealloc & 0x00008000) == 0);
   return (bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0;
+}
+
+/*
+ * pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc () - check avoid deallocation is 0 and reset the whole bcb field.
+ *
+ * return    : void
+ * bcb (in)  : bcb
+ * file (in) : caller file
+ * line (in) : caller line
+ *
+ * note: avoid deallocation is allowed to be non-zero due to pgbuf_ordered_fix and the possibility of victimizing its
+ *       bcb. avoid crashing the server and just issue a warning.
+ */
+STATIC_INLINE void
+pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (PGBUF_BCB * bcb, const char *file, int line)
+{
+  if (pgbuf_bcb_should_avoid_deallocation (bcb))
+    {
+      er_log_debug (file, line, "warning: bcb %p, vpid = %d|%d, should not have avoid deallocation marker.\n",
+		    bcb, VPID_AS_ARGS (&bcb->vpid));
+    }
+  bcb->count_fix_and_avoid_dealloc = 0;
 }
 
 /*
@@ -15318,6 +15417,13 @@ pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threa
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
   victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
   PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+
+  /* no victim found in first step, but flush thread ran and candidates can be found, try again */
+  if (victim == NULL && multi_threaded == false && lru_list->count_vict_cand > 0)
+    {
+      victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
+      PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+    }
 
   if ((multi_threaded || victim != NULL) && lru_list->count_vict_cand > 0)
     {

@@ -2908,10 +2908,13 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	if (temp)
 	  {
 	    node = temp;
+	    /* don't visit leaves */
+	    *continue_walk = PT_LIST_WALK;
 	  }
-
-	/* don't visit leaves */
-	*continue_walk = PT_LIST_WALK;
+	else
+	  {
+	    *continue_walk = PT_STOP_WALK;
+	  }
       }
       break;
 
@@ -9087,6 +9090,10 @@ pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAM
   pt_bind_scope (parser, bind_arg);
   node->info.merge.insert.attr_list =
     parser_walk_tree (parser, node->info.merge.insert.attr_list, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+  if (pt_has_error (parser))
+    {
+      return;
+    }
 
   /* bind names for default function in insert values list */
   node_list = node->info.merge.insert.value_clauses->info.node_list.list;
@@ -9119,6 +9126,11 @@ pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAM
       prev_node = temp_node;
     }
 
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
   /* bind names for the rest of insert values list */
   scopestack->specs = node->info.merge.using_clause;
   bind_arg->scopes = scopestack;
@@ -9129,6 +9141,11 @@ pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAM
   node->info.merge.insert.value_clauses =
     parser_walk_tree (parser, node->info.merge.insert.value_clauses, pt_bind_names, bind_arg, pt_bind_names_post,
 		      bind_arg);
+
+  if (pt_has_error (parser))
+    {
+      return;
+    }
 
   /* bind names for insert search condition */
   scopestack->specs = node->info.merge.using_clause;
