@@ -1110,9 +1110,6 @@ typedef DB_IDENTIFIER DB_C_IDENTIFIER;
 /* TODO:Decide how do we handle the references copied from other headers*/
 /************************************************************************/
 
-/* From object_primitive.h */
-extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
-
 /* From dbi.h */
 extern DB_TYPE db_col_type (DB_COLLECTION * col);
 

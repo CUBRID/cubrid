@@ -265,7 +265,7 @@ install(FILES
   RENAME dbi.h
   )
 
-  
+
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY

@@ -24,8 +24,9 @@
 #ifndef _CUBRID_API_H_
 #define _CUBRID_API_H_
 
-#include <stdlib.h>
 #include "config.h"
+#include <stdlib.h>
+
 #include "error_code.h"
 
 #define IS_VALID_ISOLATION_LEVEL(isolation_level) \
