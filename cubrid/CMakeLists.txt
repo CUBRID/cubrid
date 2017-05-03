@@ -265,18 +265,7 @@ install(FILES
   RENAME dbi.h
   )
 
-install(FILES
-  ${COMPAT_DIR}/dbtype.h
-  ${BASE_DIR}/error_manager.h
-  ${BASE_DIR}/error_code.h
-  ${BASE_DIR}/getopt.h
-  ${CMAKE_SOURCE_DIR}/include/system.h
-  ${CMAKE_SOURCE_DIR}/config.h
-  ${CMAKE_SOURCE_DIR}/version.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
-  )
-
-
+  
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY
