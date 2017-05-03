@@ -4851,9 +4851,10 @@ regu_index_init (INDX_INFO * ptr)
   ptr->key_info.key_cnt = 0;
   ptr->key_info.key_ranges = NULL;
   ptr->key_info.is_constant = false;
+  ptr->key_info.key_limit_reset = false;
+  ptr->key_info.is_user_given_keylimit = false;
   ptr->key_info.key_limit_l = NULL;
   ptr->key_info.key_limit_u = NULL;
-  ptr->key_info.key_limit_reset = false;
   ptr->orderby_desc = 0;
   ptr->groupby_desc = 0;
   ptr->use_desc_index = 0;
