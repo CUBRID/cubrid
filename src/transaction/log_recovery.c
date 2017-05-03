@@ -4157,6 +4157,9 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* nothing after tdes->rcv.atomic_sysop_start_lsa */
       assert (LSA_EQ (&tdes->rcv.atomic_sysop_start_lsa, &tdes->undo_nxlsa));
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      er_log_debug (ARG_FILE_LINE, "(trid = %d) Nothing after atomic sysop (%lld|%d), nothing to rollback.\n",
+		    tdes->trid, LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+      return;
     }
   assert (tdes->topops.last <= 0);
 
@@ -4192,6 +4195,11 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       er_log_debug (ARG_FILE_LINE,
 		    "(trid = %d) Nested atomic sysop  (%lld|%d) after sysop start postpone (%lld|%d). \n", tdes->trid,
 		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa), LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "(trid = %d) Atomic sysop (%lld|%d). Rollback. \n", tdes->trid,
+		    LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
     }
 
   /* rollback. simulate a new system op */
