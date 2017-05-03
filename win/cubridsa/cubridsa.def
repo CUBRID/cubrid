@@ -32,7 +32,10 @@ EXPORTS
     db_get
     db_get_all_classes
     db_get_class_name
+    db_get_object
     db_get_owner
+    db_get_set
+    db_get_string
     db_get_superclasses
     db_io_page_size
     db_is_system_class
@@ -378,9 +381,10 @@ EXPORTS
     db_get_attribute_type
     db_get_attributes
     db_get_base_classes
-	db_get_bit
+    db_get_bigint
+    db_get_bit
     db_get_btree_statistics
-	db_get_char
+    db_get_char
     db_get_class
     db_get_class_attribute
     db_get_class_attribute_names
@@ -396,32 +400,50 @@ EXPORTS
     db_get_database_comments
     db_get_client_type
     db_get_database_name
+    db_get_date
+    db_get_datetime
+    db_get_datetimetz
     db_get_db_value_query_result
-	db_get_enum_codeset
+    db_get_double
+    db_get_elo
+    db_get_enum_short
+    db_get_enum_string
+    db_get_enum_string_size
+    db_get_enum_codeset
+    db_get_enum_collation
+    db_get_error
     db_get_errors
     db_get_expression
+    db_get_float
     db_get_foreign_key_action
     db_get_foreign_key_ref_class
     db_get_global_transaction_info
     db_get_input_markers
+    db_get_int
     db_get_jdbccachehint
     db_get_loader_commands
     db_get_method
     db_get_method_descriptor
+    db_get_method_error_msg
     db_get_method_file_names
     db_get_method_files
     db_get_method_function
     db_get_method_names
     db_get_method_source_file
     db_get_methods
+    db_get_midxkey
+    db_get_monetary
+    db_get_nchar
     db_get_next_error
     db_get_next_warning
+    db_get_numeric
     db_get_object_id
     db_get_objfetch_query_result
     db_get_ordered_attribute_names
     db_get_ordered_attributes
     db_get_output_markers
     db_get_parameters
+    db_get_pointer
     db_get_query_format
     db_get_query_result_format
     db_get_query_specs
@@ -429,19 +451,23 @@ EXPORTS
     db_get_query_type_list
     db_get_query_type_ptr
     db_get_resolutions
+    db_get_resultset
     db_get_serial_current_value
     db_get_serial_next_value
     db_get_shared
     db_get_shared_attribute
     db_get_shared_attribute_names
+    db_get_short
     db_get_start_line
     db_get_statement_type
-	db_get_string
-	db_get_string_codeset
+    db_get_string_size
     db_get_subclass_names
     db_get_subclasses
     db_get_superclass_names
     db_get_system_parameters
+    db_get_time
+    db_get_timestamp
+    db_get_timestamptz
     db_get_tran_settings
     db_get_type_name
     db_get_user
@@ -473,11 +499,43 @@ EXPORTS
     db_localtime
     db_lock_read
     db_lock_write
-	db_make_bit
-	db_make_elo
-	db_make_db_char
-	db_make_set
-	db_make_sequence
+    db_make_bigint
+    db_make_bit
+    db_make_char
+    db_make_collection
+    db_make_date
+    db_make_datetime
+    db_make_datetimeltz
+    db_make_datetimetz
+    db_make_double
+    db_make_elo
+    db_make_enumeration    
+    db_make_error
+    db_make_float
+    db_make_int
+    db_make_method_error
+    db_make_midxkey
+    db_make_monetary
+    db_make_multiset
+    db_make_nchar
+    db_make_null
+    db_make_numeric
+    db_make_object
+    db_make_pointer
+    db_make_resultset
+    db_make_sequence
+    db_make_set
+    db_make_short
+    db_make_string
+    db_make_time
+    db_make_timeltz
+    db_make_timetz
+    db_make_timestamp
+    db_make_timestampltz
+    db_make_timestamptz
+    db_make_varbit
+    db_make_varchar
+    db_make_varnchar
     db_marker_domain
     db_marker_index
     db_marker_next
@@ -720,7 +778,6 @@ EXPORTS
     dbt_set_loader_commands
     dbt_set_object_id
     rel_bit_platform
-	elo_init_structure
     envvar_root
     envvar_set
     envvar_bindir_file

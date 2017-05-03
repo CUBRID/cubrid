@@ -47,9 +47,7 @@
 #endif
 #include "db_elo.h"
 
-#ifdef SERVER_MODE
 #include "db_macro.i"
-#endif
 
 #define DB_NUMBER_ZERO	    0
 
