@@ -833,7 +833,6 @@ enum pt_custom_print
 };
 
 /* all statement node types should be assigned their API statement enumeration */
-typedef enum pt_node_type PT_NODE_TYPE;
 enum pt_node_type
 {
   PT_ALTER = CUBRID_STMT_ALTER_CLASS,
@@ -948,10 +947,10 @@ enum pt_node_type
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
+typedef enum pt_node_type PT_NODE_TYPE;
 
 
 /* Enumerated Data Types for expressions with a VALUE */
-typedef enum pt_type_enum PT_TYPE_ENUM;
 enum pt_type_enum
 {
   PT_TYPE_NONE = 1000,		/* type not known yet */
@@ -1010,6 +1009,7 @@ enum pt_type_enum
   PT_TYPE_TIMETZ,
   PT_TYPE_TIMELTZ,
 };
+typedef enum pt_type_enum PT_TYPE_ENUM;
 
 /* Enumerated priviledges for Grant, Revoke */
 typedef enum
@@ -3168,12 +3168,12 @@ struct pt_constraint_info
 };
 
 /* POINTER node types */
-typedef enum pt_pointer_type PT_POINTER_TYPE;
 enum pt_pointer_type
 {
   PT_POINTER_NORMAL = 0,	/* normal pointer, gets resolved to node */
   PT_POINTER_REF = 1		/* reference pointer - node gets walked by pt_walk_tree */
 };
+typedef enum pt_pointer_type PT_POINTER_TYPE;
 
 /* Info for the POINTER node */
 struct pt_pointer_info
@@ -3667,7 +3667,6 @@ struct pt_assignments_helper
 };
 
 /* Collation coercibility levels associated with parse tree nodes */
-typedef enum pt_coll_coerc_lev PT_COLL_COERC_LEV;
 enum pt_coll_coerc_lev
 {
   PT_COLLATION_L0_COERC = 0,	/* expressions with COLLATE modifier */
@@ -3694,6 +3693,7 @@ enum pt_coll_coerc_lev
   PT_COLLATION_NOT_COERC = PT_COLLATION_L0_COERC,
   PT_COLLATION_FULLY_COERC = PT_COLLATION_L5_COERC
 };
+typedef enum pt_coll_coerc_lev PT_COLL_COERC_LEV;
 
 typedef struct pt_coll_infer PT_COLL_INFER;
 struct pt_coll_infer

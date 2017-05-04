@@ -139,9 +139,9 @@ struct boot_dbparm
   VFID dropped_files_vfid;	/* Vacuum dropped files file identifier */
 };
 
-typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
 enum remove_temp_vol_action
 { REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
+typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
 
 extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);

@@ -356,7 +356,7 @@ extern const TZ_COUNTRY tz_countries[];
 
 #define PRINT_STRING_VAR_TO_C_FILE(fp, valname, val)			  \
   do {                                                                    \
-      fprintf (fp, "\n"SHLIB_EXPORT_PREFIX"const char "valname"[] = ");   \
+      fprintf (fp, "\n" SHLIB_EXPORT_PREFIX "const char " valname "[] = ");   \
       PRINT_STRING_TO_C_FILE (fp, val, strlen (val));			  \
       fprintf (fp, ";\n");                                                \
   } while (0);

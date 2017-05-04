@@ -1123,7 +1123,6 @@ struct btree_delete_helper
   while (false)
 
 /* Debug identifiers to help with detecting recovery issues. */
-typedef enum btree_rv_debug_id BTREE_RV_DEBUG_ID;
 enum btree_rv_debug_id
 {
   BTREE_RV_REDO_NO_ID = 0,
@@ -1145,6 +1144,7 @@ enum btree_rv_debug_id
   BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD,
   BTREE_RV_DEBUG_ID_INS_REM_LEAF_LAST
 };
+typedef enum btree_rv_debug_id BTREE_RV_DEBUG_ID;
 
 /* b-tree debug logging */
 #define btree_log(prefix, msg, ...) \

@@ -619,12 +619,12 @@ struct update_assignment
 };
 
 /* type of reevaluation */
-typedef enum mvcc_reev_data_type MVCC_REEV_DATA_TYPE;
 enum mvcc_reev_data_type
 {
   REEV_DATA_UPDDEL = 0,
   REEV_DATA_SCAN
 };
+typedef enum mvcc_reev_data_type MVCC_REEV_DATA_TYPE;
 
 /* data for MVCC condition reevaluation */
 typedef struct mvcc_update_reev_data MVCC_UPDDEL_REEV_DATA;

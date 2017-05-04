@@ -326,12 +326,12 @@ struct lc_lock_hint
   bool first_fetch_lockhint_call;	/* First client call to fetch_lockhint */
 };
 
-typedef enum lc_prefetch_flags LC_PREFETCH_FLAGS;
 enum lc_prefetch_flags
 {
   LC_PREF_FLAG_LOCK = 0x00000001,
   LC_PREF_FLAG_COUNT_OPTIM = 0x00000002
 };
+typedef enum lc_prefetch_flags LC_PREFETCH_FLAGS;
 
 
 

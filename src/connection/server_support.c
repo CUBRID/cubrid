@@ -3172,7 +3172,7 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
 
   client_id = thread_get_client_id (thread_p);
   er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: client %d state %s\n", client_id,
-		css_ha_server_state_string (state));
+		css_ha_server_state_string ((HA_SERVER_STATE)state));
   for (i = 0, table = ha_Log_applier_state; i < ha_Log_applier_state_num; i++, table++)
     {
       if (table->client_id == client_id)

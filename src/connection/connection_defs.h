@@ -252,7 +252,6 @@ enum css_check_peer_alive
 /*
  * HA mode
  */
-typedef enum ha_mode HA_MODE;
 enum ha_mode
 {
   HA_MODE_OFF = 0,
@@ -262,6 +261,7 @@ enum ha_mode
   HA_MODE_ROLE_CHANGE = 4,
   HA_MODE_REPLICA = 5
 };
+typedef enum ha_mode HA_MODE;
 #define HA_MODE_OFF_STR		"off"
 #define HA_MODE_FAIL_OVER_STR	"fail-over"
 #define HA_MODE_FAIL_BACK_STR	"fail-back"
@@ -273,7 +273,6 @@ enum ha_mode
 /*
  * HA server mode
  */
-typedef enum ha_server_mode HA_SERVER_MODE;
 enum ha_server_mode
 {
   HA_SERVER_MODE_NA = -1,
@@ -284,6 +283,7 @@ enum ha_server_mode
   HA_SERVER_MODE_SECONDARY = 1,	/* alias of standby */
   HA_SERVER_MODE_TERNARY = 2	/* alias of backup */
 };
+typedef enum ha_server_mode HA_SERVER_MODE;
 #define HA_SERVER_MODE_ACTIVE_STR      "active"
 #define HA_SERVER_MODE_STANDBY_STR     "standby"
 #define HA_SERVER_MODE_BACKUP_STR      "backup"
@@ -294,7 +294,6 @@ enum ha_server_mode
 /*
  * HA server state
  */
-typedef enum ha_server_state HA_SERVER_STATE;
 enum ha_server_state
 {
   HA_SERVER_STATE_NA = -1,	/* N/A */
@@ -306,6 +305,7 @@ enum ha_server_state
   HA_SERVER_STATE_MAINTENANCE = 5,	/* maintenance mode */
   HA_SERVER_STATE_DEAD = 6	/* server is dead - virtual state; not exists */
 };
+typedef enum ha_server_state HA_SERVER_STATE;
 #define HA_SERVER_STATE_IDLE_STR                "idle"
 #define HA_SERVER_STATE_ACTIVE_STR              "active"
 #define HA_SERVER_STATE_TO_BE_ACTIVE_STR        "to-be-active"
@@ -317,7 +317,6 @@ enum ha_server_state
 /*
  * HA log applier state
  */
-typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 enum ha_log_applier_state
 {
   HA_LOG_APPLIER_STATE_NA = -1,
@@ -327,6 +326,7 @@ enum ha_log_applier_state
   HA_LOG_APPLIER_STATE_DONE = 3,
   HA_LOG_APPLIER_STATE_ERROR = 4
 };
+typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 #define HA_LOG_APPLIER_STATE_UNREGISTERED_STR   "unregistered"
 #define HA_LOG_APPLIER_STATE_RECOVERING_STR     "recovering"
 #define HA_LOG_APPLIER_STATE_WORKING_STR        "working"

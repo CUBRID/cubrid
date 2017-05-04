@@ -68,13 +68,13 @@ struct tz_decode_info
   };
 };
 
-typedef enum ds_search_direction DS_SEARCH_DIRECTION;
 
 enum ds_search_direction
 {
   FORWARD = 0,
   BACKWARD = 1
 };
+typedef enum ds_search_direction DS_SEARCH_DIRECTION;
 
 
 #define FULL_DATE(jul_date, time_sec) ((full_date_t) jul_date * 86400ll \

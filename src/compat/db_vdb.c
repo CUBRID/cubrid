@@ -2508,7 +2508,7 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	}
       if (tp_value_cast_preserve_domain (hv, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	{
-	  d = pt_type_enum_to_db_domain (TP_DOMAIN_TYPE (hv_dom));
+	  d = pt_type_enum_to_db_domain ((PT_TYPE_ENUM)TP_DOMAIN_TYPE (hv_dom));
 	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
 		       d);
 	  tp_domain_free (d);

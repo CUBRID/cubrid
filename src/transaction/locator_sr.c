@@ -13412,7 +13412,7 @@ locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE *
 				       MVCC_REEV_DATA * mvcc_reev_data_p, MVCC_REC_HEADER * mvcc_header_p,
 				       const OID * curr_row_version_oid_p, RECDES * recdes)
 {
-  bool ev_res = V_TRUE;
+  DB_LOGICAL ev_res = V_TRUE;
 
   if (mvcc_reev_data_p == NULL)
     {

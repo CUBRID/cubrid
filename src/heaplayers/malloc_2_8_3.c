@@ -5009,7 +5009,7 @@ mspace_free (mspace msp, void *mem)
 		      do
 			{
 			  void *ptr = (char *) p - prevsize;
-			  MMAP_TRACE_H *h = (char *) next - MMAP_TRACE_H_SIZE;
+			  MMAP_TRACE_H *h = (MMAP_TRACE_H *) (next - MMAP_TRACE_H_SIZE);
 			  munmap_is_to_be_called (msp, ptr, h);
 			}
 		      while (0);

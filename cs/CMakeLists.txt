@@ -227,6 +227,51 @@ set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
+SET_SOURCE_FILES_PROPERTIES(
+  ${EXECUTABLES_DIR}/compactdb_cl.c
+  ${EXECUTABLES_DIR}/csql.c
+  ${EXECUTABLES_DIR}/csql_result.c
+  ${EXECUTABLES_DIR}/csql_result_format.c
+  ${EXECUTABLES_DIR}/csql_session.c
+  ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/file_hash.c
+  ${EXECUTABLES_DIR}/load_object.c
+  ${EXECUTABLES_DIR}/loaddb.c
+  ${EXECUTABLES_DIR}/loader.c
+  ${EXECUTABLES_DIR}/loader_object_table.c
+  ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_schema.c
+  ${EXECUTABLES_DIR}/unloaddb.c
+  ${EXECUTABLES_DIR}/util_common.c
+  ${EXECUTABLES_DIR}/util_cs.c
+  ${COMPAT_SOURCES}
+  ${BASE_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${CONNECTION_SOURCES}
+  ${CONNECTION_TCP_SOURCE}
+  ${COMMUNICATION_SOURCES}
+  ${PARSER_SOURCES}
+  ${OPTIMIZER_SOURCES}
+  ${QUERY_SOURCES}
+  ${OBJECT_SOURCES}
+  ${JSP_SOURCES}
+  ${TRANSACTION_SOURCES}
+  ${STORAGE_SOURCES}
+  ${ES_SOURCES}
+  ${PROBES_OBJECT}
+  PROPERTIES LANGUAGE CXX
+  )
+SET_SOURCE_FILES_PROPERTIES(
+  ${BASE_DIR}/md5.c
+  ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.c
+  ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.c
+  ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.c
+  ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.c
+  ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.c
+  ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.c
+  PROPERTIES LANGUAGE C
+  )
+  
 add_library(cubridcs SHARED
   ${EXECUTABLE_SOURCES}
   ${COMPAT_SOURCES}

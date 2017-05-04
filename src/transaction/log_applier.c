@@ -391,13 +391,13 @@ struct la_ha_apply_info
   DB_DATETIME start_time;
 };
 
-typedef enum lp_op LP_OP;
 enum lp_op
 {
   LP_OP_PREFETCH = 0,
   LP_OP_SYNC,
   LP_OP_IGNORE
 };
+typedef enum lp_op LP_OP;
 #define LP_HA_APPLIED_INFO_REFRESH_TIME         (50)	/* msec */
 
 typedef struct lp_info LP_INFO;

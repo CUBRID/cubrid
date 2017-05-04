@@ -78,13 +78,13 @@ extern int method_Num_method_jsp_calls;
 /* We have two valid types of membuf used by temporary file. */
 #define QMGR_IS_VALID_MEMBUF_TYPE(m)    ((m) == TEMP_FILE_MEMBUF_NORMAL || (m) == TEMP_FILE_MEMBUF_KEY_BUFFER)
 
-typedef enum qmgr_page_type QMGR_PAGE_TYPE;
 enum qmgr_page_type
 {
   QMGR_UNKNOWN_PAGE,
   QMGR_MEMBUF_PAGE,
   QMGR_TEMP_FILE_PAGE
 };
+typedef enum qmgr_page_type QMGR_PAGE_TYPE;
 
 /*
  *       		     ALLOCATION STRUCTURES

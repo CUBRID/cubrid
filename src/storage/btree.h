@@ -143,13 +143,13 @@ struct btree_keyrange
 /* Forward definition. */
 struct indx_scan_id;
 
-typedef enum bts_key_status BTS_KEY_STATUS;
 enum bts_key_status
 {
   BTS_KEY_IS_NOT_VERIFIED,
   BTS_KEY_IS_VERIFIED,
   BTS_KEY_IS_CONSUMED,
 };
+typedef enum bts_key_status BTS_KEY_STATUS;
 
 /* Btree range search scan structure */
 /* TODO: Move fields used to select visible objects only from BTREE_SCAN to
@@ -461,7 +461,6 @@ struct btree_node_scan
  * be added or removed, delete MVCCID can be added/removed or insert MVCCID
  * can be removed.
  */
-typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 enum btree_op_purpose
 {
   BTREE_OP_NO_OP,		/* No op. */
@@ -491,6 +490,7 @@ enum btree_op_purpose
 
   BTREE_OP_NOTIFY_VACUUM	/* Notify vacuum of an object in need of cleanup. */
 };
+typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 
 /* BTREE_MVCC_INFO -
  * Structure used to store b-tree specific MVCC information.

@@ -242,13 +242,13 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
 
 #define PRINT_VAR_TO_C_FILE(fp, type, valname, val, format, d)	      \
   do {								      \
-    fprintf (fp, "\n"DLL_EXPORT_PREFIX"const "			      \
-	     type" "valname"_%s = "format";\n", d, val);	      \
+    fprintf (fp, "\n" DLL_EXPORT_PREFIX "const "			      \
+	     type " " valname "_%s = " format ";\n", d, val);	      \
   } while (0);
 
 #define PRINT_STRING_VAR_TO_C_FILE(fp, valname, val, d)			  \
   do {                                                                    \
-    fprintf (fp, "\n"DLL_EXPORT_PREFIX"const char "valname"_%s[] = ", d); \
+    fprintf (fp, "\n"DLL_EXPORT_PREFIX "const char " valname "_%s[] = ", d); \
     PRINT_STRING_TO_C_FILE (fp, val, strlen (val));			  \
     fprintf (fp, ";\n");                                                  \
   } while (0);
@@ -256,7 +256,7 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
 #define PRINT_STRING_ARRAY_TO_C_FILE(fp, valname, arrcount, val, d)	    \
   do {									    \
     int istrarr;							    \
-    fprintf(fp, "\n"DLL_EXPORT_PREFIX"const char* "valname"_%s[] = {\n", d);\
+    fprintf(fp, "\n"DLL_EXPORT_PREFIX"const char* " valname "_%s[] = {\n", d);\
     for (istrarr = 0; istrarr < arrcount; istrarr++)			    \
       {									    \
 	fprintf(fp, "\t");						    \
@@ -278,7 +278,7 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
   do {									    \
     int i_arr, j_arr;							    \
     fprintf(fp,								    \
-	    "\n"DLL_EXPORT_PREFIX"const "vtype" "vname"_%s[] = {\n", d);    \
+	    "\n" DLL_EXPORT_PREFIX "const " vtype " " vname "_%s[] = {\n", d);    \
     j_arr = 1;								    \
     for (i_arr = 0; i_arr < arrcount; i_arr++)				    \
       {									    \
@@ -315,10 +315,10 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
 	if (j_uarr > PRINT_TO_C_FILE_MAX_INT_LINE)			    \
 	  {								    \
 	    j_uarr = 1;							    \
-	    fprintf(fp, "\n"tab);					    \
+	    fprintf(fp, "\n" tab);					    \
 	  }								    \
       }									    \
-    fprintf(fp, "\n"tab"}");						    \
+    fprintf(fp, "\n" tab "}");						    \
   } while (0);
 
 

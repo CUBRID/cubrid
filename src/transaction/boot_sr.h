@@ -63,14 +63,14 @@ struct auto_addvol_job
 
 #endif
 
-typedef enum boot_server_status BOOT_SERVER_STATUS;
 enum boot_server_status
 { BOOT_SERVER_UP = 1, BOOT_SERVER_DOWN, BOOT_SERVER_MAINTENANCE };
+typedef enum boot_server_status BOOT_SERVER_STATUS;
 extern BOOT_SERVER_STATUS boot_Server_status;
 
-typedef enum boot_server_shutdown_mode BOOT_SERVER_SHUTDOWN_MODE;
 enum boot_server_shutdown_mode
 { BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES, BOOT_SHUTDOWN_ALL_MODULES };
+typedef enum boot_server_shutdown_mode BOOT_SERVER_SHUTDOWN_MODE;
 
 typedef struct check_args CHECK_ARGS;
 

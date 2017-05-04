@@ -27,6 +27,7 @@
 
 #include <fcntl.h>
 #include "tsc_timer.h"
+#include <sys/time.h>
 
 #define CHECK_CPU_FREQ(v) \
 do { \

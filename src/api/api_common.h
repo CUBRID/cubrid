@@ -33,9 +33,6 @@
  * their implementation detailes behind these structures.
  */
 
-typedef enum handle_type CI_HANDLE_TYPE;
-typedef enum ci_conn_status CI_CONN_STATUS;
-typedef enum ci_stmt_status CI_STMT_STATUS;
 
 typedef struct common_api_structure_s COMMON_API_STRUCTURE;
 typedef struct api_resultset_meta_s API_RESULTSET_META;
@@ -70,6 +67,7 @@ enum handle_type
   HANDLE_TYPE_RMETA,
   HANDLE_TYPE_BATCH_RESULT
 };
+typedef enum handle_type CI_HANDLE_TYPE;
 
 /*
  * connection handle status
@@ -80,6 +78,7 @@ enum ci_conn_status
   CI_CONN_STATUS_CONNECTED = 1,
   CI_CONN_STATUS_DISCONNECTED = 2
 };
+typedef enum ci_conn_status CI_CONN_STATUS;
 
 /*
  * statement handle status
@@ -92,6 +91,7 @@ enum ci_stmt_status
   CI_STMT_STATUS_BATCH_ADDED = 0x08,
   CI_STMT_STATUS_CLOSED = 0x10
 };
+typedef enum ci_stmt_status CI_STMT_STATUS;
 
 #define COMMON_API_STRUCTURE_HEADER \
   BH_BIND bind; \

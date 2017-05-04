@@ -1175,7 +1175,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #else /* WINDOWS */
 		  /* send the "pathname" for the datagram */
 		  /* be sure to open the datagram first.  */
-		  pname = tempnam (NULL, "cubrid");
+		  pname = tempnam (NULL, "cubrid");//vapa!!!
 		  if (pname)
 		    {
 		      if (css_tcp_setup_server_datagram (pname, &socket_fd)

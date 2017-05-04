@@ -670,12 +670,12 @@ typedef DB_COLLECTION DB_MULTISET;
 typedef DB_COLLECTION DB_SEQ;
 typedef DB_COLLECTION DB_SET;
 
-typedef enum special_column_type MIN_MAX_COLUMN_TYPE;
 enum special_column_type
 {
   MIN_COLUMN = 0,
   MAX_COLUMN = 1
 };
+typedef enum special_column_type MIN_MAX_COLUMN_TYPE;
 
 /* Used in btree_coerce_key and btree_ils_adjust_range to represent
  * min or max values, necessary in index search comparisons
@@ -736,7 +736,6 @@ struct vfid
 
 #define VFID_AS_ARGS(vfidp) (vfidp)->volid, (vfidp)->fileid
 
-typedef enum db_elo_type DB_ELO_TYPE;
 typedef struct db_elo DB_ELO;
 
 enum db_elo_type
@@ -744,6 +743,7 @@ enum db_elo_type
   ELO_NULL,			/* do we need this anymore? */
   ELO_FBO
 };
+typedef enum db_elo_type DB_ELO_TYPE;
 
 struct db_elo
 {

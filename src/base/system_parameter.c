@@ -6561,7 +6561,7 @@ prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SY
  *   return: value
  */
 static int
-prm_msec_to_sec (void *out_val, unsigned int out_type, void *in_val, unsigned int in_type)
+prm_msec_to_sec (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6603,7 +6603,7 @@ prm_msec_to_sec (void *out_val, unsigned int out_type, void *in_val, unsigned in
  *   return: value
  */
 static int
-prm_sec_to_msec (void *out_val, unsigned int out_type, void *in_val, unsigned int in_type)
+prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6631,7 +6631,7 @@ prm_sec_to_msec (void *out_val, unsigned int out_type, void *in_val, unsigned in
  *   return: value
  */
 static int
-prm_sec_to_min (void *out_val, unsigned int out_type, void *in_val, unsigned int in_type)
+prm_sec_to_min (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6670,7 +6670,7 @@ prm_sec_to_min (void *out_val, unsigned int out_type, void *in_val, unsigned int
  *   return: value
  */
 static int
-prm_min_to_sec (void *out_val, unsigned int out_type, void *in_val, unsigned int in_type)
+prm_min_to_sec (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6715,7 +6715,7 @@ prm_min_to_sec (void *out_val, unsigned int out_type, void *in_val, unsigned int
  *   return: value
  */
 static int
-prm_equal_to_ori (void *out_val, unsigned int out_type, void *in_val, unsigned int in_type)
+prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {

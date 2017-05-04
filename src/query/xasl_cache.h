@@ -41,13 +41,13 @@ struct xcache_related_object
   int tcard;
 };
 
-typedef enum xcache_cleanup_reason XCACHE_CLEANUP_REASON;
 enum xcache_cleanup_reason
 {
   XCACHE_CLEANUP_NONE,		/* no cleanup is required */
   XCACHE_CLEANUP_FULL,
   XCACHE_CLEANUP_TIMEOUT
 };
+typedef enum xcache_cleanup_reason XCACHE_CLEANUP_REASON;
 
 /* XASL cache clones - XASL nodes cached for fast usage.
  *

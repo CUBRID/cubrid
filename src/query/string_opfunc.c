@@ -5796,7 +5796,7 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 		{
 		  cmp =
 		    QSTR_MATCH (coll_id, (const unsigned char *) elem_start, CAST_BUFLEN (stack_ptr - elem_start),
-				(const unsigned char *) needle_str, needle_size, false, false, &matched_stack_size);
+				(const unsigned char *) needle_str, needle_size, (const unsigned char *)false, false, &matched_stack_size);
 		  if (cmp == 0 && matched_stack_size == CAST_BUFLEN (stack_ptr - elem_start))
 		    {
 		      DB_MAKE_INT (result, position);

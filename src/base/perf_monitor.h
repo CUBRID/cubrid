@@ -1286,7 +1286,6 @@ extern int perfmon_get_global_stats (void);
 #if defined (DIAG_DEVEL)
 #if defined(SERVER_MODE)
 
-typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
 enum t_diag_obj_type
 {
   DIAG_OBJ_TYPE_QUERY_OPEN_PAGE = 0,
@@ -1302,14 +1301,15 @@ enum t_diag_obj_type
   DIAG_OBJ_TYPE_LOCK_DEADLOCK = 10,
   DIAG_OBJ_TYPE_LOCK_REQUEST = 11
 };
+typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
 
-typedef enum t_diag_value_settype T_DIAG_VALUE_SETTYPE;
 enum t_diag_value_settype
 {
   DIAG_VAL_SETTYPE_INC,
   DIAG_VAL_SETTYPE_DEC,
   DIAG_VAL_SETTYPE_SET
 };
+typedef enum t_diag_value_settype T_DIAG_VALUE_SETTYPE;
 
 typedef int (*T_DO_FUNC) (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
 

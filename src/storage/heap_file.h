@@ -263,13 +263,13 @@ typedef enum
   HEAP_OPERATION_UPDATE
 } HEAP_OPERATION_TYPE;
 
-typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
 enum update_inplace_style
 {
   UPDATE_INPLACE_NONE = 0,	/* None */
   UPDATE_INPLACE_CURRENT_MVCCID = 1,	/* non-MVCC in-place update style with current MVCC ID. */
   UPDATE_INPLACE_OLD_MVCCID = 2	/* non-MVCC in-place update style with old MVCC ID. Preserves old MVCC ID */
 };
+typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
 
 /* Currently mvcc update is also executed inplace, but coresponds to UPDATE_INPLACE_NONE. TODO: Refactor */
 #define HEAP_IS_UPDATE_INPLACE(update_inplace_style) \

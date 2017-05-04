@@ -132,7 +132,6 @@ extern bool intl_String_validation;
  * It is not guaranteed that user defined languages keep their IDs */
 typedef unsigned int INTL_LANG;
 
-typedef enum intl_builtin_lang INTL_BUILTIN_LANG;
 enum intl_builtin_lang
 {
   INTL_LANG_ENGLISH = 0,
@@ -140,8 +139,8 @@ enum intl_builtin_lang
   INTL_LANG_TURKISH,
   INTL_LANG_USER_DEF_START
 };
+typedef enum intl_builtin_lang INTL_BUILTIN_LANG;
 
-typedef enum intl_zone INTL_ZONE;
 enum intl_zone
 {
   INTL_ZONE_US,
@@ -149,8 +148,8 @@ enum intl_zone
   INTL_ZONE_GB,
   INTL_ZONE_TR
 };
+typedef enum intl_zone INTL_ZONE;
 
-typedef enum intl_codeset INTL_CODESET;
 enum intl_codeset
 {
   INTL_CODESET_ERROR = -2,
@@ -166,8 +165,8 @@ enum intl_codeset
 
   INTL_CODESET_LAST = INTL_CODESET_UTF8
 };
+typedef enum intl_codeset INTL_CODESET;
 
-typedef enum currency_check_mode CURRENCY_CHECK_MODE;
 enum currency_check_mode
 {
   CURRENCY_CHECK_MODE_NONE = 0,
@@ -178,6 +177,7 @@ enum currency_check_mode
   CURRENCY_CHECK_MODE_ESC_ISO = 0x10,
   CURRENCY_CHECK_MODE_ISO88591 = 0x16
 };
+typedef enum currency_check_mode CURRENCY_CHECK_MODE;
 
 /* map of lengths of UTF-8 characters */
 extern const unsigned char *const intl_Len_utf8_char;

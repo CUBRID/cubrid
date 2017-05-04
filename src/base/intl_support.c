@@ -4274,7 +4274,7 @@ intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET cod
 bool
 intl_is_bom_magic (const char *buf, const int size)
 {
-  const char BOM[] = { 0xef, 0xbb, 0xbf };
+  const char BOM[] = { (char)0xef, (char)0xbb, (char)0xbf };
   if (size >= 3)
     {
       return (memcmp (buf, BOM, 3) == 0) ? true : false;

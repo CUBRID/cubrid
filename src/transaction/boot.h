@@ -29,7 +29,6 @@
 #include "es_common.h"
 
 /* this enumeration should be matched with DB_CLIENT_TYPE_XXX in db.h */
-typedef enum boot_client_type BOOT_CLIENT_TYPE;
 enum boot_client_type
 {
   BOOT_CLIENT_UNKNOWN = -1,
@@ -50,6 +49,7 @@ enum boot_client_type
   BOOT_CLIENT_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
   BOOT_CLIENT_LOG_PREFETCHER = 15
 };
+typedef enum boot_client_type BOOT_CLIENT_TYPE;
 
 #define BOOT_NORMAL_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_DEFAULT \

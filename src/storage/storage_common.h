@@ -107,7 +107,14 @@ struct log_lsa
   /* The offset field is defined as 16bit-INT64 type (not short), because of alignment in windows */
 };
 
-#define LSA_COPY(lsa_ptr1, lsa_ptr2) *(lsa_ptr1) = *(lsa_ptr2)
+//vapa!!!
+//#define LSA_COPY(lsa_ptr1, lsa_ptr2) (lsa_ptr1)->pageid = (lsa_ptr2)->pageid; (lsa_ptr1)->offset = (lsa_ptr2)->offset
+
+inline void LSA_COPY(LOG_LSA *_plsa1, const LOG_LSA *_plsa2){
+  _plsa1->pageid = _plsa2->pageid;
+  _plsa1->offset = _plsa2->offset;
+}
+
 #define LSA_SET_NULL(lsa_ptr)\
   do {									      \
     (lsa_ptr)->pageid = NULL_PAGEID;                                          \

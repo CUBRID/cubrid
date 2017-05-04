@@ -75,6 +75,7 @@
 #include "partition.h"
 #include "tsc_timer.h"
 #include "xasl_generation.h"
+#include "transaction_cl.h"
 
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
@@ -163,7 +164,6 @@ typedef SCAN_CODE (*XSAL_SCAN_FUNC) (THREAD_ENTRY * thread_p, XASL_NODE *, XASL_
 /* pointer to XASL scan function */
 typedef XSAL_SCAN_FUNC *XASL_SCAN_FNC_PTR;
 
-typedef enum groupby_dimension_flag GROUPBY_DIMENSION_FLAG;
 enum groupby_dimension_flag
 {
   GROUPBY_DIM_FLAG_NONE = 0,
@@ -172,6 +172,7 @@ enum groupby_dimension_flag
   GROUPBY_DIM_FLAG_CUBE = 4,
   GROUPBY_DIM_FLAG_SET = 8
 };
+typedef enum groupby_dimension_flag GROUPBY_DIMENSION_FLAG;
 
 typedef struct groupby_dimension GROUPBY_DIMENSION;
 struct groupby_dimension
@@ -365,12 +366,12 @@ struct upddel_class_info_internal
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns;
 };
 
-typedef enum analytic_stage ANALYTIC_STAGE;
 enum analytic_stage
 {
   ANALYTIC_INTERM_PROC = 1,
   ANALYTIC_GROUP_PROC
 };
+typedef enum analytic_stage ANALYTIC_STAGE;
 
 #define QEXEC_GET_BH_TOPN_TUPLE(heap, index) (*(TOPN_TUPLE **) BH_ELEMENT (heap, index))
 
@@ -22767,7 +22768,7 @@ qexec_create_mvcc_reev_assignments (THREAD_ENTRY * thread_p, XASL_NODE * aptr, b
 				    UPDATE_ASSIGNMENT * assignments, UPDATE_MVCC_REEV_ASSIGNMENT ** mvcc_reev_assigns)
 {
   int idx, new_assign_idx, count;
-  UPDDEL_CLASS_INFO_INTERNAL *class = NULL;
+  UPDDEL_CLASS_INFO_INTERNAL *claz = NULL;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_class = NULL;
   UPDATE_ASSIGNMENT *assign = NULL;
   UPDATE_MVCC_REEV_ASSIGNMENT *new_assigns = NULL, *new_assign = NULL, *prev_new_assign = NULL;
@@ -22801,7 +22802,7 @@ qexec_create_mvcc_reev_assignments (THREAD_ENTRY * thread_p, XASL_NODE * aptr, b
   for (idx = 0, new_assign_idx = 0; idx < num_assignments; idx++)
     {
       assign = &assignments[idx];
-      class = &classes[assign->cls_idx];
+      claz = &classes[assign->cls_idx];
 
       new_assign = &new_assigns[new_assign_idx++];
       new_assign->constant = assign->constant;
@@ -22815,13 +22816,13 @@ qexec_create_mvcc_reev_assignments (THREAD_ENTRY * thread_p, XASL_NODE * aptr, b
 	  new_assign->regu_right = NULL;
 	}
       new_assign->next = NULL;
-      if (class->mvcc_reev_assigns == NULL)
+      if (claz->mvcc_reev_assigns == NULL)
 	{
-	  class->mvcc_reev_assigns = new_assign;
+	  claz->mvcc_reev_assigns = new_assign;
 	}
       else
 	{
-	  prev_new_assign = class->mvcc_reev_assigns;
+	  prev_new_assign = claz->mvcc_reev_assigns;
 	  while (prev_new_assign->next != NULL)
 	    {
 	      prev_new_assign = prev_new_assign->next;

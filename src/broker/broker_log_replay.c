@@ -66,13 +66,13 @@
           } \
         } while (0)
 
-typedef enum temp_read_result READ_RESULT;
 enum temp_read_result
 {
   READ_STOP = -1,
   READ_CONTINUE = 0,
   READ_SUCCESS = 1
 };
+typedef enum temp_read_result READ_RESULT;
 
 typedef struct t_sql_info T_SQL_INFO;
 struct t_sql_info
