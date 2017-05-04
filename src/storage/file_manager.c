@@ -629,9 +629,8 @@ STATIC_INLINE void file_log_extdata_add (THREAD_ENTRY * thread_p,
 STATIC_INLINE void file_log_extdata_remove (THREAD_ENTRY * thread_p,
 					    const FILE_EXTENSIBLE_DATA * extdata, PAGE_PTR page,
 					    int position, int count) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_log_extdata_set_next (THREAD_ENTRY * thread_p,
-					      const FILE_EXTENSIBLE_DATA * extdata, PAGE_PTR page,
-					      VPID * vpid_next) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_log_extdata_set_next (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata,
+					      PAGE_PTR page, const VPID * vpid_next) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_extdata_update_item (THREAD_ENTRY * thread_p, PAGE_PTR page_extdata, const void *item_newval,
 					     int index_item, FILE_EXTENSIBLE_DATA * extdata)
   __attribute__ ((ALWAYS_INLINE));
@@ -675,7 +674,9 @@ static int file_table_collect_vsid (THREAD_ENTRY * thread_p, const void *item,
 STATIC_INLINE int file_table_collect_all_vsids (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead,
 						FILE_VSID_COLLECTOR * collector_out) __attribute__ ((ALWAYS_INLINE));
 static int file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead);
-static int file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead);
+static int file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead,
+						      FILE_ALLOC_TYPE alloc_type, VPID * vpid_alloc_out);
+static int file_table_append_full_sector_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vpid_new);
 static int file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VSID * vsid);
 STATIC_INLINE int file_table_collect_ftab_pages (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, bool collect_numerable,
 						 FILE_FTAB_COLLECTOR * collector_out) __attribute__ ((ALWAYS_INLINE));
@@ -2322,8 +2323,8 @@ file_log_extdata_remove (THREAD_ENTRY * thread_p,
  * vpid_next (in) : New value for next page VPID.
  */
 STATIC_INLINE void
-file_log_extdata_set_next (THREAD_ENTRY * thread_p,
-			   const FILE_EXTENSIBLE_DATA * extdata, PAGE_PTR page, VPID * vpid_next)
+file_log_extdata_set_next (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, PAGE_PTR page,
+			   const VPID * vpid_next)
 {
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   LOG_LSA save_lsa;
@@ -2334,8 +2335,8 @@ file_log_extdata_set_next (THREAD_ENTRY * thread_p,
   assert (addr.offset >= 0 && addr.offset < DB_PAGESIZE);
 
   save_lsa = *pgbuf_get_lsa (page);
-  log_append_undoredo_data (thread_p, RVFL_EXTDATA_SET_NEXT, &addr,
-			    sizeof (VPID), sizeof (VPID), &extdata->vpid_next, vpid_next);
+  log_append_undoredo_data (thread_p, RVFL_EXTDATA_SET_NEXT, &addr, sizeof (VPID), sizeof (VPID), &extdata->vpid_next,
+			    vpid_next);
 
   file_log ("file_log_extdata_set_next",
 	    "page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
@@ -4225,7 +4226,6 @@ STATIC_INLINE int
 file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved)
 {
   FILE_TEMPCACHE_ENTRY *entry = NULL;
-  bool save_interrupt;
   int error_code = NO_ERROR;
 
   if (was_preserved)
@@ -4512,19 +4512,21 @@ exit:
  * file_table_move_partial_sectors_to_header () - Move partial sectors from first page of partial table to header
  *						  section of partial table
  *
- * return :
- * THREAD_ENTRY * thread_p (in) :
- * PAGE_PTR page_fhead (in) :
+ * return               : error code
+ * thread_p (in)        : thread entry
+ * page_fhead (in)      : file header page
+ * alloc_type (in)      : page allocation type
+ * vpid_alloc_out (out) : output VPID of page removed from partial table and reused for new allocation
  */
 static int
-file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
+file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
+					   VPID * vpid_alloc_out)
 {
   FILE_HEADER *fhead = NULL;
-  FILE_EXTENSIBLE_DATA *extdata_part_ftab_head;
-  FILE_EXTENSIBLE_DATA *extdata_part_ftab_first;
+  FILE_EXTENSIBLE_DATA *extdata_part_ftab_head = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_part_ftab_first = NULL;
   PAGE_PTR page_part_ftab_first = NULL;
   int n_items_to_move;
-  bool is_sysop_started = false;
   LOG_LSA save_lsa;
   int error_code = NO_ERROR;
 
@@ -4532,8 +4534,9 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
    * when we have an empty section in header partial table, but we still have partial sectors in other pages, we move
    * some or all partial sectors in first page (all are moved if they fit header section).
    *
-   * this is just a relocation of sectors that has no impact on the file structure. we can use a system operation and
-   * commit it immediately after the relocation.
+   * if all partial sectors in first page have been moved, then first page is removed from partial table. we used to
+   * deallocate the page, but to solve some strange corner cases (see CBRD-21242), it proved more convenient to reuse
+   * the page.
    */
 
   fhead = (FILE_HEADER *) page_fhead;
@@ -4589,10 +4592,6 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
   /* we cannot move more than the capacity of extensible data in header page */
   n_items_to_move = MIN (n_items_to_move, file_extdata_remaining_capacity (extdata_part_ftab_head));
 
-  /* start a system operation */
-  log_sysop_start (thread_p);
-  is_sysop_started = true;
-
   /* copy items to header section */
   file_extdata_append_array (extdata_part_ftab_head,
 			     file_extdata_start (extdata_part_ftab_first), (INT16) n_items_to_move);
@@ -4625,7 +4624,8 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
     }
   else
     {
-      /* deallocate the first partial table page. */
+      /* we can remove first page. but do not deallocate it completely. this is called in the context of
+       * file_perm_alloc, so we can just use this page. output its VPID and file_perm_alloc will know what to do. */
       VPID save_next = extdata_part_ftab_head->vpid_next;
       file_log_extdata_set_next (thread_p, extdata_part_ftab_head, page_fhead, &extdata_part_ftab_first->vpid_next);
       VPID_COPY (&extdata_part_ftab_head->vpid_next, &extdata_part_ftab_first->vpid_next);
@@ -4633,12 +4633,33 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
       file_log ("file_table_move_partial_sectors_to_header",
 		"remove first partial table page %d|%d\n", VPID_AS_ARGS (&save_next));
 
-      pgbuf_unfix_and_init (thread_p, page_part_ftab_first);
-      error_code = file_perm_dealloc (thread_p, page_fhead, &save_next, FILE_ALLOC_TABLE_PAGE);
-      if (error_code != NO_ERROR)
+      *vpid_alloc_out = save_next;
+      /* callers usually expect a "deallocated" page. we need to simulate that.
+       * note that maybe we can do without really deallocating. a page type update would be enough. this is however the
+       * safest way to do it, even thought not optimal. the case will not affect performance in any benchmark or
+       * production scenario anyway. */
+      pgbuf_dealloc_page (thread_p, page_part_ftab_first);
+      page_part_ftab_first = NULL;
+
+      if (alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR)
 	{
-	  ASSERT_ERROR ();
-	  goto exit;
+	  /* special case: file_perm_alloc also initializes & appends the new full table page. */
+	  error_code = file_table_append_full_sector_page (thread_p, page_fhead, vpid_alloc_out);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      VPID_SET_NULL (vpid_alloc_out);
+	      goto exit;
+	    }
+	}
+      else if (alloc_type == FILE_ALLOC_USER_PAGE)
+	{
+	  /* we need to update header statistics regarding numbers of table and user pages */
+	  fhead->n_page_ftab--;
+	  fhead->n_page_user++;
+
+	  log_append_undoredo_data2 (thread_p, RVFL_FHEAD_CONVERT_FTAB_TO_USER, NULL, page_fhead, NULL_OFFSET, 0, 0,
+				     NULL, NULL);
 	}
     }
 
@@ -4650,19 +4671,91 @@ exit:
       pgbuf_unfix_and_init (thread_p, page_part_ftab_first);
     }
 
-  if (is_sysop_started)
-    {
-      if (error_code != NO_ERROR)
-	{
-	  log_sysop_abort (thread_p);
-	}
-      else
-	{
-	  log_sysop_commit (thread_p);
-	}
-    }
-
   return error_code;
+}
+
+/*
+ * file_rv_fhead_convert_ftab_to_user_page () - recovery update header when converting a table page to user page
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+file_rv_fhead_convert_ftab_to_user_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  FILE_HEADER *fhead = (FILE_HEADER *) rcv->pgptr;
+  fhead->n_page_ftab--;
+  fhead->n_page_user++;
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * file_rv_fhead_convert_user_to_ftab_page () - recovery update header when converting a user page to table page
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+file_rv_fhead_convert_user_to_ftab_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  FILE_HEADER *fhead = (FILE_HEADER *) rcv->pgptr;
+  fhead->n_page_ftab++;
+  fhead->n_page_user--;
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * file_table_append_full_sector_page () - append a new page to full sectors table
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * page_fhead (in) : page file header
+ * vpid_new (in)   : new page VPID
+ */
+static int
+file_table_append_full_sector_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vpid_new)
+{
+  /* add newly allocated page to full table extdata; this page was requested while adding a new full sector */
+  PAGE_PTR page_ftab = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_new_ftab = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_full_ftab = NULL;
+  FILE_HEADER *fhead = (FILE_HEADER *) page_fhead;
+
+  int error_code = NO_ERROR;
+
+  /* small optimization: insert the page at the beginning of the list; it will be easier to access
+   * when adding the following new full sectors;
+   * extdata_new_ftab->vpid_next = extdata_full_ftab->vpid_next; extdata_full_ftab->vpid_next = new_vpid;
+   */
+  FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
+
+  /* fix new table page */
+  page_ftab = pgbuf_fix (thread_p, vpid_new, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ftab == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
+
+  /* init new table extensible data */
+  extdata_new_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
+  file_extdata_init (sizeof (VSID), DB_PAGESIZE, extdata_new_ftab);
+  VPID_COPY (&extdata_new_ftab->vpid_next, &extdata_full_ftab->vpid_next);
+
+  pgbuf_log_new_page (thread_p, page_ftab, file_extdata_size (extdata_new_ftab), PAGE_FTAB);
+  pgbuf_unfix_and_init (thread_p, page_ftab);
+
+  /* Log and link the page in previous table. */
+  file_log_extdata_set_next (thread_p, extdata_full_ftab, page_fhead, vpid_new);
+  VPID_COPY (&extdata_full_ftab->vpid_next, vpid_new);
+
+  file_log ("file_perm_alloc", "%s", "page has been added to full sectors table \n");
+  return NO_ERROR;
 }
 
 /*
@@ -4817,9 +4910,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 {
   FILE_HEADER *fhead = (FILE_HEADER *) page_fhead;
   FILE_EXTENSIBLE_DATA *extdata_part_ftab = NULL;
-  FILE_EXTENSIBLE_DATA *extdata_full_ftab = NULL;
   FILE_PARTIAL_SECTOR *partsect;
-  PAGE_PTR page_ftab = NULL;
   int offset_to_alloc_bit;
   bool was_empty = false;
   bool is_full = false;
@@ -4869,10 +4960,16 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   if (file_extdata_is_empty (extdata_part_ftab))
     {
       /* we know we have free pages, so we should have partial sectors in other table pages */
-      error_code = file_table_move_partial_sectors_to_header (thread_p, page_fhead);
+      PAGE_PTR page_ftab_free = NULL;
+      error_code = file_table_move_partial_sectors_to_header (thread_p, page_fhead, alloc_type, vpid_alloc_out);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      if (!VPID_ISNULL (vpid_alloc_out))
+	{
+	  /* table page has been reused. */
 	  goto exit;
 	}
     }
@@ -4917,39 +5014,13 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 
   if (alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR)
     {
-      /* add newly allocated page to full table extdata; this page was requested while adding a new full sector */
-      PAGE_PTR page_ftab = NULL;
-      FILE_EXTENSIBLE_DATA *extdata_new_ftab = NULL;
-
-      /* small optimization: insert the page at the beginning of the list; it will be easier to access
-       * when adding the following new full sectors; 
-       * extdata_new_ftab->vpid_next = extdata_full_ftab->vpid_next; extdata_full_ftab->vpid_next = new_vpid; 
-       */
-      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
-
-      /* fix new table page */
-      page_ftab = pgbuf_fix (thread_p, vpid_alloc_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page_ftab == NULL)
+      /* we need to add append page before we have to move yet another sector to full. otherwise we'll loop here. */
+      error_code = file_table_append_full_sector_page (thread_p, page_fhead, vpid_alloc_out);
+      if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
-      pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
-
-      /* init new table extensible data */
-      extdata_new_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
-      file_extdata_init (sizeof (VSID), DB_PAGESIZE, extdata_new_ftab);
-      file_log_extdata_set_next (thread_p, extdata_new_ftab, page_ftab, &extdata_full_ftab->vpid_next);
-      VPID_COPY (&extdata_new_ftab->vpid_next, &extdata_full_ftab->vpid_next);
-
-      pgbuf_log_new_page (thread_p, page_ftab, file_extdata_size (extdata_new_ftab), PAGE_FTAB);
-      pgbuf_unfix_and_init (thread_p, page_ftab);
-
-      /* Log and link the page in previous table. */
-      file_log_extdata_set_next (thread_p, extdata_full_ftab, page_fhead, vpid_alloc_out);
-      VPID_COPY (&extdata_full_ftab->vpid_next, vpid_alloc_out);
-
-      file_log ("file_perm_alloc", "%s", "page has been added to full sectors table \n");
     }
 
   is_full = file_partsect_is_full (partsect);
@@ -5004,13 +5075,8 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 
   assert (error_code == NO_ERROR);
 
-  perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_PAGE_ALLOCS);
-
 exit:
-  if (page_ftab != NULL)
-    {
-      pgbuf_unfix (thread_p, page_ftab);
-    }
+  perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_PAGE_ALLOCS);
 
   return error_code;
 }
