@@ -1868,17 +1868,17 @@ btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
 int
 btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 {
-  FILE_OVF_BTREE_DES btdes_ovf;
+  FILE_DESCRIPTORS des;
 
   VFID_SET_NULL (&btid->ovfid);
 
   /* initialize description of overflow heap file */
-  btdes_ovf.btid = *btid->sys_btid;	/* structure copy */
-  btdes_ovf.class_oid = btid->topclass_oid;
-  assert (!OID_ISNULL (&btdes_ovf.class_oid));
+  memset (&des, 0, sizeof (des));
+  des.btree_key_overflow.btid = *btid->sys_btid;	/* structure copy */
+  des.btree_key_overflow.class_oid = btid->topclass_oid;
+  assert (!OID_ISNULL (&des.btree_key_overflow.class_oid));
   /* create file with at least 3 pages */
-  return file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, (FILE_DESCRIPTORS *) (&btdes_ovf),
-				  &btid->ovfid);
+  return file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, &des, &btid->ovfid);
 }
 
 /*
@@ -32788,15 +32788,16 @@ btree_hash_btid (void *btid, int hash_size)
 int
 btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid)
 {
-  FILE_BTREE_DES des;
+  FILE_DESCRIPTORS des;
   VPID vpid_root;
 
   int error_code = NO_ERROR;
 
-  des.class_oid = *class_oid;
-  des.attr_id = attrid;
+  memset (&des, 0, sizeof (des));
+  des.btree.class_oid = *class_oid;
+  des.btree.attr_id = attrid;
 
-  error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, (FILE_DESCRIPTORS *) (&des), &btid->vfid);
+  error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, &des, &btid->vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
