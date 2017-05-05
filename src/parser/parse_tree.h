@@ -3707,7 +3707,16 @@ struct pt_coll_infer
 				 * to another charset (of another argument) if this flag is set */
 };
 
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+#ifdef __cplusplus
+}
+#endif
+
 
 #if !defined (SERVER_MODE)
 #ifdef __cplusplus

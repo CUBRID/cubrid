@@ -14455,7 +14455,7 @@ static ANALYTIC_EVAL_TYPE *
 pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta, ANALYTIC_EVAL_TYPE * eval,
 			     PT_NODE ** sort_list_index, ANALYTIC_INFO * info)
 {
-  ANALYTIC_EVAL_TYPE *new = NULL, *new2 = NULL, *tail;
+  ANALYTIC_EVAL_TYPE *newa = NULL, *new2 = NULL, *tail;
   ANALYTIC_TYPE *func_p;
 
   assert (meta != NULL && info != NULL);
@@ -14509,8 +14509,8 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		  return NULL;
 		}
 
-	      new = pt_build_analytic_eval_list (parser, meta->children[1], NULL, sort_list_index, info);
-	      if (new == NULL)
+	      newa = pt_build_analytic_eval_list (parser, meta->children[1], NULL, sort_list_index, info);
+	      if (newa == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
@@ -14525,8 +14525,8 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		  return NULL;
 		}
 
-	      new = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
-	      if (new == NULL)
+	      newa = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
+	      if (newa == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
@@ -14534,8 +14534,8 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	    }
 	  else
 	    {
-	      new = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
-	      if (new == NULL)
+	      newa = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
+	      if (newa == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
@@ -14549,10 +14549,10 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		}
 	    }
 
-	  if (new != NULL && new2 != NULL)
+	  if (newa != NULL && new2 != NULL)
 	    {
 	      /* link new to new2 */
-	      tail = new;
+	      tail = newa;
 	      while (tail->next != NULL)
 		{
 		  tail = tail->next;
@@ -14562,7 +14562,7 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 
 	  if (eval == NULL)
 	    {
-	      eval = new;
+	      eval = newa;
 	    }
 	  else
 	    {
@@ -14572,7 +14572,7 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		{
 		  tail = tail->next;
 		}
-	      tail->next = new;
+	      tail->next = newa;
 	    }
 	}
     }
@@ -14710,7 +14710,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
   /* compose every compatible metadomains from each possible prefix length */
   while (level > 0)
     {
-      ANALYTIC_KEY_METADOMAIN new = analitic_key_metadomain_Initializer;
+      ANALYTIC_KEY_METADOMAIN newa = analitic_key_metadomain_Initializer;
       ANALYTIC_KEY_METADOMAIN best = analitic_key_metadomain_Initializer;
       int new_destroyed = -1, best_destroyed = -1;
 
@@ -14726,13 +14726,13 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	  for (j = 0; j < af_meta[i].links_count; j++)
 	    {
 	      /* build composite metadomain */
-	      pt_metadomains_compatible (&af_meta[i], af_meta[i].links[j], &new, &new_destroyed, level);
+	      pt_metadomains_compatible (&af_meta[i], af_meta[i].links[j], &newa, &new_destroyed, level);
 
 	      /* see if it's better than current best */
 	      if (new_destroyed < best_destroyed || best_destroyed == -1)
 		{
 		  best_destroyed = new_destroyed;
-		  best = new;
+		  best = newa;
 		}
 
 	      if (best_destroyed == 0)
@@ -14814,7 +14814,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
   ret = NULL;
   for (i = 0; i < af_count; i++)
     {
-      ANALYTIC_EVAL_TYPE *new, *tail;
+      ANALYTIC_EVAL_TYPE *newa, *tail;
 
       if (af_meta[i].demoted)
 	{
@@ -14823,8 +14823,8 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	}
 
       /* build new list */
-      new = pt_build_analytic_eval_list (parser, &af_meta[i], NULL, sc_index, info);
-      if (new == NULL)
+      newa = pt_build_analytic_eval_list (parser, &af_meta[i], NULL, sc_index, info);
+      if (newa == NULL)
 	{
 	  /* error has already been set */
 	  return NULL;
@@ -14834,7 +14834,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
       if (ret == NULL)
 	{
 	  /* first top level metadomain */
-	  ret = new;
+	  ret = newa;
 	}
       else
 	{
@@ -14846,7 +14846,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	    }
 
 	  /* link */
-	  tail->next = new;
+	  tail->next = newa;
 	}
     }
 
@@ -14858,22 +14858,22 @@ fallback:
   sort_list = info->sort_lists;
   while (func_p)
     {
-      ANALYTIC_EVAL_TYPE *new = regu_analytic_eval_alloc ();
+      ANALYTIC_EVAL_TYPE *newa = regu_analytic_eval_alloc ();
 
       /* new eval structure */
-      if (new == NULL)
+      if (newa == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "regu alloc");
 	  return NULL;
 	}
       else if (ret == NULL)
 	{
-	  ret = new;
+	  ret = newa;
 	}
       else
 	{
-	  new->next = ret;
-	  ret = new;
+	  newa->next = ret;
+	  ret = newa;
 	}
 
       /* set up sort list */

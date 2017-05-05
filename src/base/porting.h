@@ -834,9 +834,7 @@ extern "C"
 #endif				/* HAVE_GCC_ATOMIC_BUILTINS */
 
 #endif				/* WINDOWS */
-#ifdef __cplusplus
-}
-#endif
+
 
 #if defined (WINDOWS)
 extern double strtod_win (const char *str, char **end_ptr);
@@ -883,5 +881,9 @@ extern time_t mktime_for_win32 (struct tm *tm);
 #endif
 
 extern int msleep (const long msec);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _PORTING_H_ */

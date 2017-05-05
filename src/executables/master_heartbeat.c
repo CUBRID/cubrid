@@ -56,6 +56,7 @@
 #include "master_request.h"
 #include "heartbeat.h"
 #include "message_catalog.h"
+#include "environment_variable.h"
 #include "utility.h"
 
 #define HB_INFO_STR_MAX         8192

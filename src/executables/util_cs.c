@@ -2507,7 +2507,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
   if (mode_name == NULL)
     {
       /* display the value of current mode */
-      mode = boot_change_ha_mode (HA_SERVER_MODE_NA, false, timeout);
+      mode = boot_change_ha_mode ((HA_SERVER_STATE)HA_SERVER_MODE_NA, false, timeout);//vapa!!!
     }
   else
     {
@@ -3249,7 +3249,7 @@ spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit
       else
 	{
 	  i = size_unit;
-	  for (; size_unit > SPACEDB_SIZE_UNIT_PAGE; size_unit--)
+	  for (; size_unit > SPACEDB_SIZE_UNIT_PAGE; (*((int*)&size_unit))--)
 	    {
 	      size /= 1024;
 	    }

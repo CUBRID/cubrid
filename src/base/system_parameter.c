@@ -10220,7 +10220,7 @@ prm_get_value (PARAM_ID prm_id)
  * NOTE: keywords are stored as integers
  */
 int
-prm_get_integer_value (PARAM_ID prm_id)
+ prm_get_integer_value (PARAM_ID prm_id)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));

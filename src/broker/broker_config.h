@@ -149,7 +149,6 @@ enum t_connect_order_value
 };
 typedef enum t_connect_order_value T_CONNECT_ORDER_VALUE;
 
-typedef enum t_proxy_log_value T_PROXY_LOG_MODE_VALUE;
 enum t_proxy_log_mode_value
 {
   PROXY_LOG_MODE_NONE = 0,
@@ -162,6 +161,8 @@ enum t_proxy_log_mode_value
   PROXY_LOG_MODE_ALL = 7,
   PROXY_LOG_MODE_DEFAULT = SQL_LOG_MODE_ERROR
 };
+
+typedef enum t_proxy_log_mode_value T_PROXY_LOG_MODE_VALUE;
 
 typedef struct t_broker_info T_BROKER_INFO;
 struct t_broker_info

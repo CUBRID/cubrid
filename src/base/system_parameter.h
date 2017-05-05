@@ -465,6 +465,10 @@ typedef enum sysprm_load_flag SYSPRM_LOAD_FLAG;
 #define SYSPRM_LOAD_IS_IGNORE_HA(flags) ((flags) & SYSPRM_IGNORE_HA)
 #define SYSPRM_LOAD_IS_IGNORE_INTL(flags) ((flags) & SYSPRM_IGNORE_INTL_PARAMS)
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 #if defined (CS_MODE)
 /* when system parameters are loaded, session parameters need to be cached for
@@ -476,6 +480,7 @@ extern SESSION_PARAM *cached_session_parameters;
 extern const char *prm_get_name (PARAM_ID prm_id);
 
 extern void *prm_get_value (PARAM_ID prm_id);
+
 extern int prm_get_integer_value (PARAM_ID prm_id);
 extern float prm_get_float_value (PARAM_ID prm_id);
 extern bool prm_get_bool_value (PARAM_ID prm_id);
@@ -550,4 +555,9 @@ extern int sysprm_init_intl_param (void);
 extern int sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int length);
 extern int sysprm_set_error (SYSPRM_ERR rc, const char *data);
 extern int sysprm_get_session_parameters_count (void);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* _SYSTEM_PARAMETER_H_ */

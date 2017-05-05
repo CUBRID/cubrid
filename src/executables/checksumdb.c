@@ -43,6 +43,7 @@
 #include "client_support.h"
 #include "connection_support.h"
 #include "environment_variable.h"
+#include "network_interface_cl.h"
 #include "locator_cl.h"
 
 #define CHKSUM_DEFAULT_LIST_SIZE	10

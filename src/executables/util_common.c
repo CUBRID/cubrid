@@ -1178,7 +1178,7 @@ util_print_deprecated (const char *option)
  *   return: NO_ERROR/ER_GENERIC_ERROR
  */
 int
-util_get_table_list_from_file (char *fname, dynamic_array * darray)
+ util_get_table_list_from_file (char *fname, dynamic_array * darray)
 {
   int c, i, p;
   char name[SM_MAX_IDENTIFIER_LENGTH];

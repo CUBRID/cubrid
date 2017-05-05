@@ -139,7 +139,7 @@ static int locator_cache (LC_COPYAREA * copy_area, MOP hint_class_mop, MOBJ hint
 			  void (*fun) (MOP mop, MOBJ object, void *args), void *args);
 static LC_FIND_CLASSNAME locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop);
 static int locator_mflush (MOP mop, void *mf);
-static int locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop, MOBJ class, HFID * hfid,
+static int locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop, MOBJ clazz, HFID * hfid,
 				      bool decache, bool isone_mflush);
 static void locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush, int minsize);

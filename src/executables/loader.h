@@ -161,6 +161,12 @@ extern bool skip_current_instance;
 
 extern LDR_CONTEXT *ldr_Current_context;
 
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 /* Loader initialization and shutdown functions */
 
 extern int ldr_init (bool verbose);
@@ -247,4 +253,9 @@ extern void ldr_act_set_skipCurrentclass (char *classname, size_t size);
 extern bool ldr_is_ignore_class (const char *classname, size_t size);
 /* log functions */
 extern void print_log_msg (int verbose, const char *fmt, ...);
+
+
+#ifdef __cplusplus
+}
+#endif
 #endif /* _LOADER_H_ */

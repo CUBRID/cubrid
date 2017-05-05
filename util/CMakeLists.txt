@@ -69,6 +69,12 @@ if(UNIX)
 else(UNIX)
   list(APPEND CUB_MASTER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(UNIX)
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${CUB_MASTER_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
 add_executable(cub_master ${CUB_MASTER_SOURCES})
 target_compile_definitions(cub_master PRIVATE ${COMMON_DEFS})
 target_include_directories(cub_master PRIVATE ${EP_INCLUDES})

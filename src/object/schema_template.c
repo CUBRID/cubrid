@@ -45,6 +45,7 @@
 #include "virtual_object.h"
 #include "db.h"
 #include "release_string.h"
+#include "execute_schema.h"
 #if defined(WINDOWS)
 #include "misc_string.h"
 #endif

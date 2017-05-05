@@ -215,6 +215,10 @@ if(UNIX)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier_sql_log.c)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier.c)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${EXECUTABLES_DIR}/checksumdb.c
+    PROPERTIES LANGUAGE CXX
+  )
 else(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/wintcp.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/rand.c)
@@ -250,7 +254,24 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
-  ${PARSER_SOURCES}
+  ${PARSER_DIR}/cnf.c
+  ${PARSER_DIR}/compile.c
+  ${PARSER_DIR}/double_byte_support.c
+  ${PARSER_DIR}/keyword.c
+  ${PARSER_DIR}/method_transform.c
+  ${PARSER_DIR}/name_resolution.c
+  ${PARSER_DIR}/parse_dbi.c
+  ${PARSER_DIR}/parse_evaluate.c
+  ${PARSER_DIR}/parse_tree.c
+  ${PARSER_DIR}/parse_tree_cl.c
+  ${PARSER_DIR}/parser_support.c
+  ${PARSER_DIR}/query_result.c
+  ${PARSER_DIR}/scanner_support.c
+  ${PARSER_DIR}/semantic_check.c
+  ${PARSER_DIR}/show_meta.c
+  ${PARSER_DIR}/type_checking.c
+  ${PARSER_DIR}/view_transform.c
+  ${PARSER_DIR}/xasl_generation.c
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}

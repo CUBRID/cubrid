@@ -6085,7 +6085,7 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
   while (*spec)
     {
       /* view definitions for select and for update might look different, so make sure to fetch the correct one */
-      PT_FETCH_AS fetch_as = PT_SELECT;
+      PT_FETCH_AS fetch_as = (PT_FETCH_AS)PT_SELECT;//vapa!!!
       bool fetch_for_update = ((*spec)->info.spec.flag & PT_SPEC_FLAG_UPDATE)
 	|| ((*spec)->info.spec.flag & PT_SPEC_FLAG_DELETE) || (statement->node_type == PT_INSERT);
 

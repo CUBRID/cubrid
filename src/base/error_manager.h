@@ -239,6 +239,10 @@ struct er_msg
   int nargs;			/* Length of array */
 };
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 extern const char *er_get_msglog_filename (void);
 extern int er_init (const char *msglog_filename, int exit_ask);
@@ -287,4 +291,8 @@ extern void er_setid (int err_id);
 
 extern bool er_has_error (void);
 extern void er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...);
+
+#ifdef __cplusplus
+}
+#endif
 #endif /* _ERROR_MANAGER_H_ */

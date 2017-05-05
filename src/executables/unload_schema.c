@@ -2892,7 +2892,7 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
   /* recall that arguments are numbered from 1 */
   for (i = 1; i < arg_count; i++)
     {
-      emit_domain_def (db_method_arg_domain (method, i));
+      emit_domain_def ( db_method_arg_domain (method, i));
       fprintf (output_file, ", ");
     }
 

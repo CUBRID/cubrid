@@ -383,9 +383,14 @@ typedef enum tp_match
    ((typeid) == DB_TYPE_TIMESTAMPTZ || (typeid) == DB_TYPE_DATETIMETZ ||\
     (typeid) == DB_TYPE_TIMETZ)
 
+  
 /*
  * FUNCTIONS
  */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 /* called during workspace initialization */
 
@@ -505,4 +510,7 @@ extern void tp_domain_clear_enumeration (DB_ENUMERATION * enumeration);
 extern int tp_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * result);
 extern int tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const int line_no,
 				    const DB_VALUE * src, const TP_DOMAIN * domain);
+#ifdef __cplusplus
+}
+#endif
 #endif /* _OBJECT_DOMAIN_H_ */

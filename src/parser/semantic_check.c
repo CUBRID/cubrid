@@ -15751,7 +15751,7 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
     {
       PT_NODE *active = (fold_as == STATEMENT_SET_FOLD_AS_ARG1 ? arg1 : arg2);
 
-      if (PT_IS_QUERY_NODE_TYPE (active) && active->info.query.with != NULL && union_node->info.query.with != NULL)
+      if (PT_IS_QUERY_NODE_TYPE (active->node_type) && active->info.query.with != NULL && union_node->info.query.with != NULL)
 	{
 	  fold_as = STATEMENT_SET_FOLD_NOTHING;
 	}

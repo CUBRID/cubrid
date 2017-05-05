@@ -291,8 +291,8 @@ static bool has_stmt_result_set (char stmt_type);
 static bool check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle);
 static char *convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string);
 static void serialize_collection_as_string (DB_VALUE * col, char **out);
-static void add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * new);
-static void add_fk_info_after (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * new);
+static void add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew);
+static void add_fk_info_after (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew);
 static T_FK_INFO_RESULT *add_fk_info_result (T_FK_INFO_RESULT * fk_res, const char *pktable_name,
 					     const char *pkcolumn_name, const char *fktable_name,
 					     const char *fkcolumn_name, short key_seq,
@@ -4427,7 +4427,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
   /* set extended type for primary types; for collection types this values is set in switch-case code */
   if (column_type_flag && !TP_IS_SET_TYPE (db_value_type (val)))
     {
-      ext_col_type = set_extended_cas_type (DB_TYPE_NULL, db_value_type (val));
+      ext_col_type = set_extended_cas_type ((T_CCI_U_TYPE)DB_TYPE_NULL, db_value_type (val));//vapa!!!
     }
   else
     {
@@ -5807,7 +5807,7 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       add_res_data_string (net_buf, name, strlen (name), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 2. ret domain */
-      domain = db_method_arg_domain (tmp_p, 0);
+      //domain = db_method_arg_domain (tmp_p, 0);
       db_type = TP_DOMAIN_TYPE (domain);
 
       if (TP_IS_SET_TYPE (db_type))
@@ -8418,13 +8418,13 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
-  DB_OBJECT *class;
+  DB_OBJECT *clazz;
 
   ut_tolower (class_name);
 
   /* is it existing class? */
-  class = db_find_class (class_name);
-  if (class == NULL)
+  clazz = db_find_class (class_name);
+  if (clazz == NULL)
     {
       net_buf_cp_int (net_buf, 0, NULL);
       schema_primarykey_meta (net_buf);
@@ -8472,29 +8472,29 @@ release_all_fk_info_results (T_FK_INFO_RESULT * fk_res)
 }
 
 static void
-add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * new)
+add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew)
 {
-  assert (pivot != NULL && new != NULL);
-  new->prev = pivot->prev;
-  if (new->prev != NULL)
+  assert (pivot != NULL && pnew != NULL);
+  pnew->prev = pivot->prev;
+  if (pnew->prev != NULL)
     {
-      new->prev->next = new;
+      pnew->prev->next = pnew;
     }
-  pivot->prev = new;
-  new->next = pivot;
+  pivot->prev = pnew;
+  pnew->next = pivot;
 }
 
 static void
-add_fk_info_after (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * new)
+add_fk_info_after (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew)
 {
-  assert (pivot != NULL && new != NULL);
-  new->next = pivot->next;
-  if (new->next != NULL)
+  assert (pivot != NULL && pnew != NULL);
+  pnew->next = pivot->next;
+  if (pnew->next != NULL)
     {
-      new->next->prev = new;
+      pnew->next->prev = pnew;
     }
-  pivot->next = new;
-  new->prev = pivot;
+  pivot->next = pnew;
+  pnew->prev = pivot;
 }
 
 static T_FK_INFO_RESULT *

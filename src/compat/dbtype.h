@@ -1048,6 +1048,10 @@ extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
 extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
 extern int db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount);
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 /*
  * DB_MAKE_ value constructors.
  * These macros are provided to make the construction of DB_VALUE
@@ -1113,6 +1117,9 @@ extern DB_CURRENCY db_get_currency_default (void);
 
 extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
+#ifdef __cplusplus
+}
+#endif
 /*
  * DB_GET_ accessor macros.
  * These macros can be used to extract a particular value from a

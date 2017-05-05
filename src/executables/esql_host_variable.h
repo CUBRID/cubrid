@@ -118,7 +118,6 @@ typedef HASH_TAB SYMTAB;
 typedef struct cursor CURSOR;
 typedef struct stmt STMT;
 typedef struct host_lod HOST_LOD;
-typedef enum link_class LINK_CLASS;
 
 struct host_lod			/* list or descriptor */
 {
@@ -220,6 +219,7 @@ enum link_class
   DECLARATOR = 0,
   SPECIFIER = 1
 };
+typedef enum link_class LINK_CLASS;
 
 struct link
 {

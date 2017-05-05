@@ -174,13 +174,13 @@ const char *AU_DBA_USER_NAME = "DBA";
          strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
 	 strcmp(name, CT_CHARSET_NAME) == 0)
 
-typedef enum fetch_by FETCH_BY;
 enum fetch_by
 {
   DONT_KNOW,			/* Don't know the mop is a class os an instance */
   BY_INSTANCE_MOP,		/* fetch a class by an instance mop */
   BY_CLASS_MOP			/* fetch a class by the class mop */
 };
+typedef enum fetch_by FETCH_BY;
 
 /*
  * AU_GRANT

@@ -82,12 +82,17 @@
 
 /* Message id in the set MSGCAT_SET_LOG are defined in the other file. */
 
-
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 /* functions for use of system message catalog */
 extern int msgcat_init (void);
 extern int msgcat_final (void);
 extern char *msgcat_message (int, int, int);
-
+#ifdef __cplusplus
+}
+#endif
 /* message catalog description  */
 typedef struct msg_catd
 {
