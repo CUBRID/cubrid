@@ -4019,6 +4019,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  goto end;
 	}
 
+
       node_ptr = NULL;
       (void) parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
       if (node_ptr != NULL)
@@ -4160,14 +4161,25 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 static PT_NODE *
 pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  PT_NODE **default_expr = (PT_NODE **) arg;
+  PT_NODE **default_expr = (PT_NODE **) arg, *node = NULL;
 
   if (tree == NULL || !PT_IS_EXPR_NODE (tree))
     {
       *continue_walk = PT_STOP_WALK;
     }
 
-  switch (tree->info.expr.op)
+  if (tree->info.expr.arg1 != NULL && PT_IS_EXPR_NODE (tree->info.expr.arg1) && tree->info.expr.op == PT_TO_CHAR)
+    {
+      /* The correctness of TO_CHAR expression is done a little bit later after obtaining system time. */
+      assert (tree->info.expr.arg2 != NULL && tree->info.expr.arg2->node_type == PT_VALUE);
+      node = tree->info.expr.arg1;
+    }
+  else
+    {
+      node = tree;
+    }
+
+  switch (node->info.expr.op)
     {
     case PT_SYS_TIME:
     case PT_SYS_DATE:
@@ -7706,14 +7718,14 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		}
 
 	      if (DB_IS_NULL (&col_attr->default_value.value)
-		  && (col_attr->default_value.default_expr == DB_DEFAULT_NONE))
+		  && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
 		{
 		  /* don't create any default node if default value is null unless default expression type is not
 		   * DB_DEFAULT_NONE */
 		  continue;
 		}
 
-	      if (col_attr->default_value.default_expr == DB_DEFAULT_NONE)
+	      if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
 		{
 		  default_value = pt_dbval_to_value (parser, &col_attr->default_value.value);
 		  if (!default_value)
@@ -7731,7 +7743,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		    }
 		  default_data->info.data_default.default_value = default_value;
 		  default_data->info.data_default.shared = PT_DEFAULT;
-		  default_data->info.data_default.default_expr = DB_DEFAULT_NONE;
+		  default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 		}
 	      else
 		{
@@ -7739,7 +7751,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		  if (default_value)
 		    {
 		      default_value->info.expr.op =
-			pt_op_type_from_default_expr_type (col_attr->default_value.default_expr);
+			pt_op_type_from_default_expr_type (col_attr->default_value.default_expr.default_expr_type);
 		    }
 		  else
 		    {
@@ -7756,7 +7768,8 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		    }
 		  default_data->info.data_default.default_value = default_value;
 		  default_data->info.data_default.shared = PT_DEFAULT;
-		  default_data->info.data_default.default_expr = col_attr->default_value.default_expr;
+		  default_data->info.data_default.default_expr_type =
+		    col_attr->default_value.default_expr.default_expr_type;
 		}
 	      attr->info.attr_def.data_default = default_data;
 	    }

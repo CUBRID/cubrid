@@ -12004,3 +12004,44 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 
   return node;
 }
+
+/*
+ * pt_get_default_value_from_attrnode () - get default value from data default node
+ * return : error code or NO_ERROR
+ *
+ * parser (in)		  : parser context
+ * data_default_node (in) : attribute node
+ * default_expr (out)	  : default expression
+ */
+void
+pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
+						  DB_DEFAULT_EXPR * default_expr)
+{
+  PT_NODE *pt_default_expr = NULL;
+  DB_VALUE *db_value_default_expr_format = NULL;
+  assert (parser != NULL && default_expr != NULL);
+
+  classobj_initialize_default_expr (default_expr);
+  if (data_default_node != NULL)
+    {
+      assert (data_default_node->node_type == PT_DATA_DEFAULT);
+      default_expr->default_expr_type = data_default_node->info.data_default.default_expr_type;
+
+      pt_default_expr = data_default_node->info.data_default.default_value;
+      if (pt_default_expr && pt_default_expr->node_type == PT_EXPR)
+	{
+	  if (pt_default_expr->info.expr.op == PT_TO_CHAR)
+	    {
+	      default_expr->default_expr_op = T_TO_CHAR;
+	      assert (pt_default_expr->info.expr.arg2 != NULL
+		      && pt_default_expr->info.expr.arg2->node_type == PT_VALUE);
+
+	      if (PT_IS_CHAR_STRING_TYPE (pt_default_expr->info.expr.arg2->type_enum))
+		{
+		  db_value_default_expr_format = pt_value_to_db (parser, pt_default_expr->info.expr.arg2);
+		  default_expr->default_expr_format = DB_GET_STRING (db_value_default_expr_format);
+		}
+	    }
+	}
+    }
+}

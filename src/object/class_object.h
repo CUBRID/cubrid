@@ -443,7 +443,7 @@ struct sm_default_value
 {
   DB_VALUE original_value;	/* initial default value; */
   DB_VALUE value;		/* current default/shared/class value */
-  DB_DEFAULT_EXPR_TYPE default_expr;	/* identifier for the default expression */
+  DB_DEFAULT_EXPR default_expr;	/* default expression */
 };
 
 typedef struct sm_attribute SM_ATTRIBUTE;
@@ -1168,6 +1168,8 @@ extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char *
 				       const char *constraint_name, const char **att_names, const int *asc_desc,
 				       SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_index_info);
 extern void classobj_initialize_attributes (SM_ATTRIBUTE * attributes);
+extern int classobj_copy_default_expr (DB_DEFAULT_EXPR * src, DB_DEFAULT_EXPR * dest);
+extern void classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr);
 extern void classobj_initialize_methods (SM_METHOD * methods);
 extern SM_PARTITION *classobj_make_partition_info (void);
 extern void classobj_free_partition_info (SM_PARTITION * partition_info);

@@ -8424,9 +8424,9 @@ pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 static PT_NODE *
 pt_init_data_default (PT_NODE * p)
 {
-  p->info.data_default.default_value = 0;
+  p->info.data_default.default_value = (PT_NODE *) 0;
   p->info.data_default.shared = (PT_MISC_TYPE) 0;
-  p->info.data_default.default_expr = DB_DEFAULT_NONE;
+  p->info.data_default.default_expr_type = DB_DEFAULT_NONE;
   return p;
 }
 

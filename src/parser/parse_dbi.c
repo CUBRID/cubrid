@@ -527,7 +527,7 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
       return NULL;
     }
 
-  if (default_value->default_expr == DB_DEFAULT_NONE)
+  if (default_value->default_expr.default_expr_type == DB_DEFAULT_NONE)
     {
       result = pt_dbval_to_value (parser, &default_value->value);
       if (result == NULL)
@@ -543,7 +543,7 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
 	  return NULL;
 	}
-      result->info.expr.op = pt_op_type_from_default_expr_type (default_value->default_expr);
+      result->info.expr.op = pt_op_type_from_default_expr_type (default_value->default_expr.default_expr_type);
     }
 
   data_type = parser_new_node (parser, PT_DATA_TYPE);

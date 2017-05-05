@@ -4687,10 +4687,10 @@ classobj_make_attribute (const char *name, PR_TYPE * type, SM_NAME_SPACE name_sp
   att->flags = 0;
   att->order = 0;
   att->storage_order = 0;
-  att->default_value.default_expr = DB_DEFAULT_NONE;
   /* initial values are unbound */
   db_make_null (&att->default_value.original_value);
   db_make_null (&att->default_value.value);
+  classobj_initialize_default_expr (&att->default_value.default_expr);
 
   att->constraints = NULL;
   att->order_link = NULL;
@@ -4753,6 +4753,7 @@ classobj_initialize_attributes (SM_ATTRIBUTE * attributes)
       attr->comment = NULL;
       db_value_put_null (&attr->default_value.value);
       db_value_put_null (&attr->default_value.original_value);
+      classobj_initialize_default_expr (&attr->default_value.default_expr);
     }
 }
 
@@ -4797,6 +4798,7 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 {
   int error = NO_ERROR;
 
+  assert (src != NULL);
   dest->header.name = NULL;
   dest->header.name_space = src->header.name_space;
   dest->id = src->id;		/* correct ? */
@@ -4812,7 +4814,7 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
   dest->domain = NULL;
   dest->properties = NULL;
   dest->auto_increment = src->auto_increment;
-  dest->default_value.default_expr = src->default_value.default_expr;
+  classobj_copy_default_expr (&src->default_value.default_expr, &dest->default_value.default_expr);
   dest->comment = NULL;
 
   if (copy)
@@ -4919,6 +4921,7 @@ memory_error:
   return er_errid ();
 }
 
+
 /*
  * classobj_copy_attribute() - Copies an attribute.
  *    The alias if provided will override the attribute name.
@@ -4926,7 +4929,6 @@ memory_error:
  *   src(in): source attribute
  *   alias(in): alias name (can be NULL)
  */
-
 SM_ATTRIBUTE *
 classobj_copy_attribute (SM_ATTRIBUTE * src, const char *alias)
 {
@@ -5108,6 +5110,14 @@ classobj_clear_attribute (SM_ATTRIBUTE * att)
     }
   classobj_clear_attribute_value (&att->default_value.value);
   classobj_clear_attribute_value (&att->default_value.original_value);
+
+  if (att->default_value.default_expr.default_expr_format)
+    {
+      ws_free_string (att->default_value.default_expr.default_expr_format);
+      att->default_value.default_expr.default_expr_format = NULL;
+    }
+
+  att->header.name = NULL;
 
   /* Do this last in case we needed it for default value maintenance or something. This probably isn't necessary, the
    * domain should have been cached at this point ? */
@@ -6717,7 +6727,7 @@ classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute, co
   error =
     smt_add_attribute_w_dflt (ctemplate, attribute->header.name, NULL, attribute->domain,
 			      &attribute->default_value.value, attribute->header.name_space,
-			      attribute->default_value.default_expr);
+			      &attribute->default_value.default_expr);
   if (error != NO_ERROR)
     {
       return error;
@@ -8879,4 +8889,35 @@ classobj_copy_partition_info (SM_PARTITION * partition_info)
 error:
   classobj_free_partition_info (new_partition_info);
   return NULL;
+}
+
+/*
+ * classobj_copy_default_expr() - Copies default expression.
+ *    return: error code
+ *
+ *   src(in): source default expression
+ *   dest(out): destination default expression
+ */
+int
+classobj_copy_default_expr (DB_DEFAULT_EXPR * src, DB_DEFAULT_EXPR * dest)
+{
+  assert (src != NULL && dest != NULL);
+
+  dest->default_expr_type = src->default_expr_type;
+  dest->default_expr_op = src->default_expr_op;
+  if (src->default_expr_format)
+    {
+      dest->default_expr_format = ws_copy_string (src->default_expr_format);
+      if (dest->default_expr_format == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (src->default_expr_format));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  else
+    {
+      dest->default_expr_format = NULL;
+    }
+
+  return NO_ERROR;
 }

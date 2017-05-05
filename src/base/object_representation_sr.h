@@ -39,7 +39,7 @@ struct or_default_value
   /* could this be converted to a server side DB_VALUE ? */
   void *value;			/* default value */
   int val_length;		/* default value length */
-  DB_DEFAULT_EXPR_TYPE default_expr;	/* identifier for the pseudo-column default expression */
+  DB_DEFAULT_EXPR default_expr;	/* default expression */
 };
 
 /*

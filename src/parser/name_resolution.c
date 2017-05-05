@@ -1501,7 +1501,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
     {
       for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
 	{
-	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr))
+	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr.default_expr_type))
 	    {
 	      node->si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
@@ -3248,12 +3248,27 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
       return ER_FAILED;
     }
 
-  if (att->default_value.default_expr != DB_DEFAULT_NONE)
+  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
       /* if the default value is an expression, make a node for it */
-      PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->default_value.default_expr);
+      PT_OP_TYPE op;
+      PT_NODE *default_op_value_node;
+
+      op = pt_op_type_from_default_expr_type (att->default_value.default_expr.default_expr_type);
       assert (op != (PT_OP_TYPE) 0);
-      name->info.name.default_value = pt_expression_0 (parser, op);
+      default_op_value_node = pt_expression_0 (parser, op);
+
+      if (att->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+	{
+	  name->info.name.default_value = default_op_value_node;
+	}
+      else
+	{
+	  PT_NODE *arg1, *arg2;
+	  arg1 = default_op_value_node;
+	  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
+	  name->info.name.default_value = parser_make_expression (parser, T_TO_CHAR, arg1, arg2, NULL);
+	}
     }
   else
     {
@@ -3340,12 +3355,27 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	      /* default value was already set */
 	      return 1;
 	    }
-	  if (att->default_value.default_expr != DB_DEFAULT_NONE)
+	  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
 	      /* if the default value is an expression, make a node for it */
-	      PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->default_value.default_expr);
+	      PT_OP_TYPE op;
+	      PT_NODE *default_op_value_node;
+
+	      op = pt_op_type_from_default_expr_type (att->default_value.default_expr.default_expr_type);
 	      assert (op != (PT_OP_TYPE) 0);
-	      attr->info.name.default_value = pt_expression_0 (parser, op);
+	      default_op_value_node = pt_expression_0 (parser, op);
+
+	      if (att->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+		{
+		  attr->info.name.default_value = default_op_value_node;
+		}
+	      else
+		{
+		  PT_NODE *arg1, *arg2;
+		  arg1 = default_op_value_node;
+		  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
+		  attr->info.name.default_value = parser_make_expression (parser, T_TO_CHAR, arg1, arg2, NULL);
+		}
 	    }
 	  else
 	    {
@@ -6239,7 +6269,8 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       const char *name = db_attr->header.name;
 
-      if (db_attr->default_value.default_expr == DB_DEFAULT_NONE && DB_IS_NULL (&db_attr->default_value.value))
+      if (db_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+	  && DB_IS_NULL (&db_attr->default_value.value))
 	{
 	  continue;
 	}

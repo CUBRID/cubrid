@@ -272,11 +272,10 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
       att->position = or_att->position;
       att->val_length = or_att->default_value.val_length;
       att->value = or_att->default_value.value;
-      att->default_expr = or_att->default_value.default_expr;
       or_att->default_value.value = NULL;
       att->classoid = or_att->classoid;
 
-      /* initialize B+tree statisitcs information */
+      /* initialize B+tree statistics information */
 
       n_btstats = att->n_btstats = or_att->n_btids;
       if (n_btstats > 0)
@@ -2326,8 +2325,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
   int i, start_offset, offset, vallen, n_fixed, n_variable, vallen1, vallen2;
   int n_shared_attrs, n_class_attrs;
   OR_BUF buf;
-  DB_VALUE val, def_expr;
-  DB_SEQ *att_props = NULL;
+  DB_VALUE val, def_expr_op, def_expr, def_expr_type, def_expr_format;
+  char *def_expr_format_str = NULL;
+  DB_SEQ *att_props = NULL, *def_expr_set = NULL;
 
   rep = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
   if (rep == NULL)
@@ -2507,18 +2507,75 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	    }
 	}
 
-      att->default_value.default_expr = DB_DEFAULT_NONE;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
       if (vallen1 > 0)
 	{
 	  db_make_null (&val);
 	  db_make_null (&def_expr);
+	  db_make_null (&def_expr_op);
+	  db_make_null (&def_expr_format);
+
 	  or_get_value (&buf, &val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), vallen1, true);
 	  att_props = DB_GET_SEQUENCE (&val);
 	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
 	    {
-	      att->default_value.default_expr = DB_GET_INT (&def_expr);
-	      att->current_default_value.default_expr = DB_GET_INT (&def_expr);
+	      if (DB_VALUE_TYPE (&def_expr) == DB_TYPE_SEQUENCE)
+		{
+		  /* Currently, we allow only (T_TO_CHAR(int), default_expr(int), default_expr_format(string)) */
+		  assert (set_size (DB_PULL_SEQUENCE (&def_expr)) == 3);
+		  def_expr_set = DB_PULL_SEQUENCE (&def_expr);
+		  if (set_get_element_nocopy (def_expr_set, 0, &def_expr_op) != NO_ERROR)
+		    {
+		      assert (false);
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&val);
+		      goto error_cleanup;
+		    }
+		  assert (DB_VALUE_TYPE (&def_expr_op) == DB_TYPE_INTEGER
+			  && DB_GET_INT (&def_expr_op) == (int) T_TO_CHAR);
+		  att->default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
+		  att->current_default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
+
+		  if (set_get_element_nocopy (def_expr_set, 1, &def_expr_type) != NO_ERROR)
+		    {
+		      assert (false);
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&val);
+		      goto error_cleanup;
+		    }
+		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
+		  att->default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr_type);
+		  att->current_default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr_type);
+
+		  if (set_get_element_nocopy (def_expr_set, 2, &def_expr_format) != NO_ERROR)
+		    {
+		      assert (false);
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&val);
+		      goto error_cleanup;
+		    }
+
+		  if (!db_value_is_null (&def_expr_format))
+		    {
+#if !defined(NDEBUG)
+		      {
+			DB_TYPE db_value_type = db_value_type (&def_expr_format);
+			assert (db_value_type == DB_TYPE_NULL || db_value_type == DB_TYPE_CHAR
+				|| db_value_type == DB_TYPE_NCHAR || db_value_type == DB_TYPE_VARCHAR
+				|| db_value_type == DB_TYPE_VARNCHAR);
+		      }
+#endif
+		      def_expr_format_str = DB_GET_STRING (&def_expr_format);
+		      att->default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
+		      att->current_default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
+		    }
+		}
+	      else
+		{
+		  assert (DB_VALUE_TYPE (&def_expr) == DB_TYPE_INTEGER);
+		  att->default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr);
+		  att->current_default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr);
+		}
 	    }
 
 	  pr_clear_value (&def_expr);
@@ -2559,10 +2616,10 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->position = i;
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
-      att->default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->default_value.default_expr);
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;	/* structure copy */
 
@@ -2637,10 +2694,10 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->position = i;
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
-      att->default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->default_value.default_expr);
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;
 
@@ -2880,10 +2937,10 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       att->position = i;
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
-      att->default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->default_value.default_expr);
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
 
       /* We won't know if there are any B-tree ID's for unique constraints until we read the class property list later
        * on */
@@ -3079,10 +3136,10 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  att->position = j;
 	  att->default_value.val_length = 0;
 	  att->default_value.value = NULL;
-	  att->default_value.default_expr = DB_DEFAULT_NONE;
+	  classobj_initialize_default_expr (&att->default_value.default_expr);
 	  att->current_default_value.val_length = 0;
 	  att->current_default_value.value = NULL;
-	  att->current_default_value.default_expr = DB_DEFAULT_NONE;
+	  classobj_initialize_default_expr (&att->current_default_value.default_expr);
 
 	  /* We won't know if there are any B-tree ID's for unique constraints until we read the class property list
 	   * later on */
@@ -3498,9 +3555,19 @@ or_free_classrep (OR_CLASSREP * rep)
 		  free_and_init (att->default_value.value);
 		}
 
+	      if (att->default_value.default_expr.default_expr_format != NULL)
+		{
+		  free_and_init (att->default_value.default_expr.default_expr_format);
+		}
+
 	      if (att->current_default_value.value != NULL)
 		{
 		  free_and_init (att->current_default_value.value);
+		}
+
+	      if (att->current_default_value.default_expr.default_expr_format != NULL)
+		{
+		  free_and_init (att->current_default_value.default_expr.default_expr_format);
 		}
 
 	      if (att->btids != NULL && att->btids != att->btid_pack)
@@ -3520,9 +3587,19 @@ or_free_classrep (OR_CLASSREP * rep)
 		  free_and_init (att->default_value.value);
 		}
 
+	      if (att->default_value.default_expr.default_expr_format != NULL)
+		{
+		  free_and_init (att->default_value.default_expr.default_expr_format);
+		}
+
 	      if (att->current_default_value.value != NULL)
 		{
 		  free_and_init (att->current_default_value.value);
+		}
+
+	      if (att->current_default_value.default_expr.default_expr_format != NULL)
+		{
+		  free_and_init (att->current_default_value.default_expr.default_expr_format);
 		}
 
 	      if (att->btids != NULL && att->btids != att->btid_pack)

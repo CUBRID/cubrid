@@ -2315,14 +2315,14 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 
   default_value = db_attribute_default (attribute);
   if ((default_value != NULL && !DB_IS_NULL (default_value))
-      || attribute->default_value.default_expr != DB_DEFAULT_NONE)
+      || attribute->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
       if (qualifier != SHARED_ATTRIBUTE)
 	{
 	  fprintf (output_file, " DEFAULT ");
 	}
 
-      switch (attribute->default_value.default_expr)
+      switch (attribute->default_value.default_expr.default_expr_type)
 	{
 	case DB_DEFAULT_SYSTIME:
 	  fprintf (output_file, "SYS_TIME");
