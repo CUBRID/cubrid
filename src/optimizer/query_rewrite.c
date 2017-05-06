@@ -6672,7 +6672,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 		  PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
 		  assert (derived->info.query.q.select.where == NULL);
 		  derived->info.query.q.select.where = limit;
-		  derived->info.query.limit = parser_copy_tree_list (parser, node->info.query.limit);
+
+		  /* move limit clause to derived */
+		  derived->info.query.limit = node->info.query.limit;
+		  node->info.query.limit = NULL;
 
 		  node = derived;
 		}
@@ -7241,8 +7244,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   /* auto parameterize for limit clause */
-  if (node->node_type == PT_SELECT || node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE
-      || node->node_type == PT_INTERSECTION || node->node_type == PT_UPDATE || node->node_type == PT_DELETE)
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) || node->node_type == PT_UPDATE || node->node_type == PT_DELETE)
     {
       qo_do_auto_parameterize_limit_clause (parser, node);
 
