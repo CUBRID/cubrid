@@ -19895,6 +19895,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  result = parser_copy_tree_list (parser, result);
 	}
 
+#if 0
+      /* We tried to fold trivial expressions which is always true: e.g, inst_num() > 0
+       * This looks like a nice optimization but it causes defects with rewrite optimization of limit clause.
+       * Once we fold a rewritten predicate here, limit clause might be bound with an incorrect hostvar.
+       * Please note that limit clause and rewritten predicates works independently.
+       * The optimization cannot be applied until we change the design of limit evaluation.
+       */
       if (opd1 && opd1->node_type == PT_EXPR && opd2 && opd2->node_type == PT_VALUE
 	  && (opd1->info.expr.op == PT_INST_NUM || opd1->info.expr.op == PT_ORDERBY_NUM)
 	  && (opd2->type_enum == PT_TYPE_INTEGER || opd2->type_enum == PT_TYPE_BIGINT))
@@ -19922,6 +19929,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      result = pt_dbval_to_value (parser, &dbval_res);
 	    }
 	}
+#endif
 
       if (result == NULL)
 	{
