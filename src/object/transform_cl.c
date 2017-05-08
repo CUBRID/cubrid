@@ -3053,6 +3053,10 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		    {
 		      def_expr_format_str = DB_GET_STRING (&def_expr_format);
 		      att->default_value.default_expr.default_expr_format = ws_copy_string (def_expr_format_str);
+		      if (att->default_value.default_expr.default_expr_format == NULL)
+			{
+			  assert (er_errid () != NO_ERROR);
+			}
 		    }
 		}
 	      else
