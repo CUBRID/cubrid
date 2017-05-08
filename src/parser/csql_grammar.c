@@ -1,21 +1,23 @@
-/* A Bison parser, made by GNU Bison 2.7.  */
+/* A Bison parser, made by GNU Bison 2.3.  */
 
 /* Skeleton implementation for Bison GLR parsers in C
-   
-      Copyright (C) 2002-2012 Free Software Foundation, Inc.
-   
-   This program is free software: you can redistribute it and/or modify
+
+   Copyright (C) 2002, 2003, 2004, 2005, 2006 Free Software Foundation, Inc.
+
+   This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
-   
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
    This program is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
-   
+
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor,
+   Boston, MA 02110-1301, USA.  */
 
 /* As a special exception, you may create a larger work that contains
    part or all of the Bison parser skeleton and distribute that work
@@ -26,7 +28,7 @@
    special exception, which will cause the skeleton and the resulting
    Bison output files to be licensed under the GNU General Public
    License without this special exception.
-   
+
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
 
@@ -36,7 +38,7 @@
 #define YYBISON 1
 
 /* Bison version.  */
-#define YYBISON_VERSION "2.7"
+#define YYBISON_VERSION "2.3"
 
 /* Skeleton name.  */
 #define YYSKELETON_NAME "glr.c"
@@ -44,7 +46,8 @@
 /* Pure parsers.  */
 #define YYPURE 0
 
-
+/* Using locations.  */
+#define YYLSP_NEEDED 1
 
 
 /* Substitute the variable and function names.  */
@@ -57,522 +60,14 @@
 #define yynerrs csql_yynerrs
 #define yylloc  csql_yylloc
 
-/* Copy the first part of user declarations.  */
 
-
-#define YYMAXDEPTH	1000000
-
-/* #define PARSER_DEBUG */
-
-#include "config.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include <math.h>
-#include <errno.h>
-
-#include "chartype.h"
-#include "parser.h"
-#include "parser_message.h"
-#include "dbdef.h"
-#include "language_support.h"
-#include "unicode_support.h"
-#include "environment_variable.h"
-#include "transaction_cl.h"
-#include "csql_grammar_scan.h"
-#include "system_parameter.h"
-#define JP_MAXNAME 256
-#if defined(WINDOWS)
-#define snprintf _sprintf_p
-#endif /* WINDOWS */
-#include "memory_alloc.h"
-#include "db_elo.h"
-
-/* Bit mask to be used to check constraints of a column.
- * COLUMN_CONSTRAINT_SHARED_DEFAULT_AI is special-purpose mask
- * to identify duplication of SHARED, DEFAULT and AUTO_INCREMENT.
- */
-#define COLUMN_CONSTRAINT_UNIQUE		(0x01)
-#define COLUMN_CONSTRAINT_PRIMARY_KEY		(0x02)
-#define COLUMN_CONSTRAINT_NULL			(0x04)
-#define COLUMN_CONSTRAINT_OTHERS		(0x08)
-#define COLUMN_CONSTRAINT_SHARED		(0x10)
-#define COLUMN_CONSTRAINT_DEFAULT		(0x20)
-#define COLUMN_CONSTRAINT_AUTO_INCREMENT	(0x40)
-#define COLUMN_CONSTRAINT_SHARED_DEFAULT_AI	(0x70)
-#define COLUMN_CONSTRAINT_COMMENT       (0x80)
-
-#ifdef PARSER_DEBUG
-#define DBG_PRINT printf("rule matched at line: %d\n", __LINE__);
-#define PRINT_(a) printf(a)
-#define PRINT_1(a, b) printf(a, b)
-#define PRINT_2(a, b, c) printf(a, b, c)
-#else
-#define DBG_PRINT
-#define PRINT_(a)
-#define PRINT_1(a, b)
-#define PRINT_2(a, b, c)
-#endif
-
-#define STACK_SIZE	128
-
-typedef struct function_map FUNCTION_MAP;
-struct function_map
-{
-  const char *keyword;
-  PT_OP_TYPE op;
-};
-
-
-static FUNCTION_MAP functions[] = {
-  {"abs", PT_ABS},
-  {"acos", PT_ACOS},
-  {"addtime", PT_ADDTIME}, 
-  {"asin", PT_ASIN},
-  {"atan", PT_ATAN},
-  {"atan2", PT_ATAN2},
-  {"bin", PT_BIN},
-  {"bit_count", PT_BIT_COUNT},
-  {"bit_to_blob", PT_BIT_TO_BLOB},
-  {"blob_from_file", PT_BLOB_FROM_FILE},
-  {"blob_length", PT_BLOB_LENGTH},
-  {"blob_to_bit", PT_BLOB_TO_BIT},
-  {"ceil", PT_CEIL},
-  {"ceiling", PT_CEIL},
-  {"char_length", PT_CHAR_LENGTH},
-  {"char_to_blob", PT_CHAR_TO_BLOB},
-  {"char_to_clob", PT_CHAR_TO_CLOB},
-  {"character_length", PT_CHAR_LENGTH},
-  {"clob_from_file", PT_CLOB_FROM_FILE},
-  {"clob_length", PT_CLOB_LENGTH},
-  {"concat", PT_CONCAT},
-  {"concat_ws", PT_CONCAT_WS},
-  {"cos", PT_COS},
-  {"cot", PT_COT},
-  {"cume_dist", PT_CUME_DIST},
-  {"curtime", PT_CURRENT_TIME},
-  {"curdate", PT_CURRENT_DATE},
-  {"utc_time", PT_UTC_TIME},
-  {"utc_date", PT_UTC_DATE},
-  {"datediff", PT_DATEDIFF},
-  {"timediff",PT_TIMEDIFF},
-  {"date_format", PT_DATE_FORMAT},
-  {"dayofmonth", PT_DAYOFMONTH},
-  {"dayofyear", PT_DAYOFYEAR},
-  {"decode", PT_DECODE},
-  {"decr", PT_DECR},
-  {"degrees", PT_DEGREES},
-  {"drand", PT_DRAND},
-  {"drandom", PT_DRANDOM},
-  {"exec_stats", PT_EXEC_STATS},
-  {"exp", PT_EXP},
-  {"field", PT_FIELD},
-  {"floor", PT_FLOOR},
-  {"from_days", PT_FROMDAYS},
-  {"greatest", PT_GREATEST},
-  {"groupby_num", PT_GROUPBY_NUM},
-  {"incr", PT_INCR},
-  {"index_cardinality", PT_INDEX_CARDINALITY},
-  {"inst_num", PT_INST_NUM},
-  {"instr", PT_INSTR},
-  {"instrb", PT_INSTR},
-  {"last_day", PT_LAST_DAY},
-  {"length", PT_CHAR_LENGTH},
-  {"lengthb", PT_CHAR_LENGTH},
-  {"least", PT_LEAST},
-  {"like_match_lower_bound", PT_LIKE_LOWER_BOUND},
-  {"like_match_upper_bound", PT_LIKE_UPPER_BOUND},
-  {"list_dbs", PT_LIST_DBS},
-  {"locate", PT_LOCATE},
-  {"ln", PT_LN},
-  {"log2", PT_LOG2},
-  {"log10", PT_LOG10},
-  {"log", PT_LOG},
-  {"lpad", PT_LPAD},
-  {"ltrim", PT_LTRIM},
-  {"makedate", PT_MAKEDATE},
-  {"maketime", PT_MAKETIME},
-  {"mid", PT_MID},
-  {"months_between", PT_MONTHS_BETWEEN},
-  {"new_time", PT_NEW_TIME},
-  {"format", PT_FORMAT},
-  {"now", PT_CURRENT_DATETIME},
-  {"nvl", PT_NVL},
-  {"nvl2", PT_NVL2},
-  {"orderby_num", PT_ORDERBY_NUM},
-  {"percent_rank", PT_PERCENT_RANK},
-  {"power", PT_POWER},
-  {"pow", PT_POWER},
-  {"pi", PT_PI},
-  {"radians", PT_RADIANS},
-  {"rand", PT_RAND},
-  {"random", PT_RANDOM},
-  {"repeat", PT_REPEAT},
-  {"space", PT_SPACE},
-  {"reverse", PT_REVERSE},
-  {"disk_size", PT_DISK_SIZE},
-  {"round", PT_ROUND},
-  {"row_count", PT_ROW_COUNT},
-  {"last_insert_id", PT_LAST_INSERT_ID},
-  {"rpad", PT_RPAD},
-  {"rtrim", PT_RTRIM},
-  {"sec_to_time", PT_SECTOTIME},
-  {"serial_current_value", PT_CURRENT_VALUE},
-  {"serial_next_value", PT_NEXT_VALUE},
-  {"sign", PT_SIGN},
-  {"sin", PT_SIN},
-  {"sqrt", PT_SQRT},
-  {"strcmp", PT_STRCMP},
-  {"substr", PT_SUBSTRING},
-  {"substring_index", PT_SUBSTRING_INDEX},
-  {"find_in_set", PT_FINDINSET},
-  {"md5", PT_MD5},
-/*
- * temporarily block aes_encrypt and aes_decrypt functions until binary string charset is available.
- *
- *  {"aes_encrypt", PT_AES_ENCRYPT},
- *  {"aes_decrypt", PT_AES_DECRYPT},
- */	
-  {"sha1", PT_SHA_ONE},	
-  {"sha2", PT_SHA_TWO},	
-  {"substrb", PT_SUBSTRING},
-  {"tan", PT_TAN},
-  {"time_format", PT_TIME_FORMAT},
-  {"to_char", PT_TO_CHAR},
-  {"to_date", PT_TO_DATE},
-  {"to_datetime", PT_TO_DATETIME},
-  {"to_days", PT_TODAYS},
-  {"time_to_sec", PT_TIMETOSEC},
-  {"to_number", PT_TO_NUMBER},
-  {"to_time", PT_TO_TIME},
-  {"to_timestamp", PT_TO_TIMESTAMP},
-  {"trunc", PT_TRUNC},
-  {"tz_offset", PT_TZ_OFFSET},
-  {"unix_timestamp", PT_UNIX_TIMESTAMP},
-  {"typeof", PT_TYPEOF},
-  {"from_unixtime", PT_FROM_UNIXTIME},
-  {"from_tz", PT_FROM_TZ},
-  {"weekday", PT_WEEKDAY},
-  {"dayofweek", PT_DAYOFWEEK},
-  {"version", PT_VERSION},
-  {"quarter", PT_QUARTERF},
-  {"week", PT_WEEKF},
-  {"hex", PT_HEX},
-  {"ascii", PT_ASCII},
-  {"conv", PT_CONV},
-  {"inet_aton", PT_INET_ATON},
-  {"inet_ntoa", PT_INET_NTOA},
-  {"coercibility", PT_COERCIBILITY},
-  {"width_bucket", PT_WIDTH_BUCKET},
-  {"trace_stats", PT_TRACE_STATS},
-  {"str_to_date", PT_STR_TO_DATE},
-  {"to_base64", PT_TO_BASE64},
-  {"from_base64", PT_FROM_BASE64},
-  {"sys_guid", PT_SYS_GUID},
-  {"sleep", PT_SLEEP},
-  {"to_datetime_tz", PT_TO_DATETIME_TZ},
-  {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
-  {"utc_timestamp", PT_UTC_TIMESTAMP},
-  {"crc32", PT_CRC32},
-  {"schema_def", PT_SCHEMA_DEF},
-  {"conv_tz", PT_CONV_TZ}
-};
-
-
-static int parser_groupby_exception = 0;
-
-
-
-
-/* xxxnum_check: 0 not allowed, no compatibility check
-		 1 allowed, compatibility check (search_condition)
-		 2 allowed, no compatibility check (select_list) */
-static int parser_instnum_check = 0;
-static int parser_groupbynum_check = 0;
-static int parser_orderbynum_check = 0;
-static int parser_within_join_condition = 0;
-
-/* xxx_check: 0 not allowed
-              1 allowed */
-static int parser_sysconnectbypath_check = 0;
-static int parser_prior_check = 0;
-static int parser_connectbyroot_check = 0;
-static int parser_serial_check = 1;
-static int parser_pseudocolumn_check = 1;
-static int parser_subquery_check = 1;
-static int parser_hostvar_check = 1;
-
-/* check Oracle style outer-join operator: '(+)' */
-static bool parser_found_Oracle_outer = false;
-
-/* check sys_date, sys_time, sys_timestamp, sys_datetime local_transaction_id */
-static bool parser_si_datetime = false;
-static bool parser_si_tran_id = false;
-
-/* check the condition that the statment is not able to be prepared */
-static bool parser_cannot_prepare = false;
-
-/* check the condition that the result of a query is not able to be cached */
-static bool parser_cannot_cache = false;
-
-/* check if INCR is used legally */
-static int parser_select_level = -1;
-
-/* handle inner increment exprs in select list */
-static PT_NODE *parser_hidden_incr_list = NULL;
-
-/* for opt_over_analytic_partition_by */
-static bool is_analytic_function = false;
-
-#define PT_EMPTY INT_MAX
-
-#if defined(WINDOWS)
-#define inline
-#endif
-
-
-#define TO_NUMBER(a)			((UINTPTR)(a))
-#define FROM_NUMBER(a)			((PT_NODE*)(UINTPTR)(a))
-
-
-#define SET_CONTAINER_2(a, i, j)		a.c1 = i, a.c2 = j
-#define SET_CONTAINER_3(a, i, j, k)		a.c1 = i, a.c2 = j, a.c3 = k
-#define SET_CONTAINER_4(a, i, j, k, l)		a.c1 = i, a.c2 = j, a.c3 = k, a.c4 = l
-
-#define CONTAINER_AT_0(a)			(a).c1
-#define CONTAINER_AT_1(a)			(a).c2
-#define CONTAINER_AT_2(a)			(a).c3
-#define CONTAINER_AT_3(a)			(a).c4
-#define CONTAINER_AT_4(a)			(a).c5
-#define CONTAINER_AT_5(a)			(a).c6
-#define CONTAINER_AT_6(a)			(a).c7
-#define CONTAINER_AT_7(a)			(a).c8
-#define CONTAINER_AT_8(a)			(a).c9
-#define CONTAINER_AT_9(a)			(a).c10
-
-#define YEN_SIGN_TEXT           "(\0xa1\0xef)"
-#define DOLLAR_SIGN_TEXT        "$"
-#define WON_SIGN_TEXT           "\\"
-#define TURKISH_LIRA_TEXT       "TL"
-#define BRITISH_POUND_TEXT      "GBP"
-#define CAMBODIAN_RIEL_TEXT     "KHR"
-#define CHINESE_RENMINBI_TEXT   "CNY"
-#define INDIAN_RUPEE_TEXT       "INR"
-#define RUSSIAN_RUBLE_TEXT      "RUB"
-#define AUSTRALIAN_DOLLAR_TEXT  "AUD"
-#define CANADIAN_DOLLAR_TEXT    "CAD"
-#define BRASILIAN_REAL_TEXT     "BRL"
-#define ROMANIAN_LEU_TEXT       "RON"
-#define EURO_TEXT               "EUR"
-#define SWISS_FRANC_TEXT        "CHF"
-#define DANISH_KRONE_TEXT       "DKK"
-#define NORWEGIAN_KRONE_TEXT    "NOK"
-#define BULGARIAN_LEV_TEXT      "BGN"
-#define VIETNAMESE_DONG_TEXT    "VND"
-#define CZECH_KORUNA_TEXT       "CZK"
-#define POLISH_ZLOTY_TEXT       "PLN"
-#define SWEDISH_KRONA_TEXT      "SEK"
-#define CROATIAN_KUNA_TEXT      "HRK"
-#define SERBIAN_DINAR_TEXT      "RSD"
-
-#define PARSER_SAVE_ERR_CONTEXT(node, context) \
-  if ((node) && (node)->buffer_pos == -1) \
-    { \
-     (node)->buffer_pos = context; \
-    }
-
-typedef enum
-{
-  SERIAL_START,
-  SERIAL_INC,
-  SERIAL_MAX,
-  SERIAL_MIN,
-  SERIAL_CYCLE,
-  SERIAL_CACHE,
-} SERIAL_DEFINE;
-
-FUNCTION_MAP *keyword_offset (const char *name);
-
-static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser,
-					    FUNC_TYPE func_code,
-					    PT_NODE * args_list);
-static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
-static PT_NODE *parser_make_link_or (PT_NODE * list, PT_NODE * node);
-
-
-
-static void parser_save_and_set_cannot_cache (bool value);
-static void parser_restore_cannot_cache (void);
-
-static void parser_save_and_set_si_datetime (int value);
-static void parser_restore_si_datetime (void);
-
-static void parser_save_and_set_si_tran_id (int value);
-static void parser_restore_si_tran_id (void);
-
-static void parser_save_and_set_cannot_prepare (bool value);
-static void parser_restore_cannot_prepare (void);
-
-static void parser_save_and_set_wjc (int value);
-static void parser_restore_wjc (void);
-
-static void parser_save_and_set_ic (int value);
-static void parser_restore_ic (void);
-
-static void parser_save_and_set_gc (int value);
-static void parser_restore_gc (void);
-
-static void parser_save_and_set_oc (int value);
-static void parser_restore_oc (void);
-
-static void parser_save_and_set_sysc (int value);
-static void parser_restore_sysc (void);
-
-static void parser_save_and_set_prc (int value);
-static void parser_restore_prc (void);
-
-static void parser_save_and_set_cbrc (int value);
-static void parser_restore_cbrc (void);
-
-static void parser_save_and_set_serc (int value);
-static void parser_restore_serc (void);
-
-static void parser_save_and_set_pseudoc (int value);
-static void parser_restore_pseudoc (void);
-
-static void parser_save_and_set_sqc (int value);
-static void parser_restore_sqc (void);
-
-static void parser_save_and_set_hvar (int value);
-static void parser_restore_hvar (void);
-
-static void parser_save_found_Oracle_outer (void);
-static void parser_restore_found_Oracle_outer (void);
-
-static void parser_save_alter_node (PT_NODE * node);
-static PT_NODE *parser_get_alter_node (void);
-
-static void parser_save_attr_def_one (PT_NODE * node);
-static PT_NODE *parser_get_attr_def_one (void);
-
-static void parser_push_orderby_node (PT_NODE * node);
-static PT_NODE *parser_top_orderby_node (void);
-static PT_NODE *parser_pop_orderby_node (void);
-
-static void parser_push_select_stmt_node (PT_NODE * node);
-static PT_NODE *parser_top_select_stmt_node (void);
-static PT_NODE *parser_pop_select_stmt_node (void);
-static bool parser_is_select_stmt_node_empty (void);
-
-static void parser_push_hint_node (PT_NODE * node);
-static PT_NODE *parser_top_hint_node (void);
-static PT_NODE *parser_pop_hint_node (void);
-static bool parser_is_hint_node_empty (void);
-
-static void parser_push_join_type (int v);
-static int parser_top_join_type (void);
-static int parser_pop_join_type (void);
-
-static void parser_save_is_reverse (bool v);
-static bool parser_get_is_reverse (void);
-
-static void parser_initialize_parser_context (void);
-static PT_NODE *parser_make_date_lang (int arg_cnt, PT_NODE * arg3);
-static PT_NODE *parser_make_number_lang (const int argc);
-static void parser_remove_dummy_select (PT_NODE ** node);
-static int parser_count_list (PT_NODE * list);
-static int parser_count_prefix_columns (PT_NODE * list, int * arg_count);
-
-static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
-static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
-static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p,
-				   const char *str, const int str_size);
-static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
-						const PT_TYPE_ENUM char_type,
-						const char *str,
-						const INTL_CODESET codeset);
-static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
-				       const PT_TYPE_ENUM type,
-				       const char *str);
-static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
-				       PT_NODE *node,
-				       const int codeset_id,
-				       const int collation_id, bool force);
-static void pt_value_set_collation_info (PARSER_CONTEXT *parser,
-					 PT_NODE *node,
-					 PT_NODE *coll_node);
-static void pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
-                   const char *str, const char *txt, DB_CURRENCY type);
-static PT_MISC_TYPE parser_attr_type;
-
-static bool allow_attribute_ordering;
-
-int parse_one_statement (int state);
-static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
-					   PT_NODE *node, PT_NODE *coll_node);
-
-
-#define push_msg(a) _push_msg(a, __LINE__)
-
-void _push_msg (int code, int line);
-void pop_msg (void);
-
-char *g_query_string;
-int g_query_string_len;
-int g_original_buffer_len;
-
-
-/*
- * The behavior of location propagation when a rule is matched must
- * take into account the context information. The left-side symbol in a rule
- * will have the same context information as the last symbol from its 
- * right side
- */
-#define YYLLOC_DEFAULT(Current, Rhs, N)				        \
-    do									\
-      if (N)								\
-	{								\
-	  (Current).first_line   = YYRHSLOC (Rhs, 1).first_line;	\
-	  (Current).first_column = YYRHSLOC (Rhs, 1).first_column;	\
-	  (Current).last_line    = YYRHSLOC (Rhs, N).last_line;		\
-	  (Current).last_column  = YYRHSLOC (Rhs, N).last_column;	\
-	  (Current).buffer_pos   = YYRHSLOC (Rhs, N).buffer_pos;	\
-	}								\
-      else								\
-	{								\
-	  (Current).first_line   = (Current).last_line   =		\
-	    YYRHSLOC (Rhs, 0).last_line;				\
-	  (Current).first_column = (Current).last_column =		\
-	    YYRHSLOC (Rhs, 0).last_column;				\
-	  (Current).buffer_pos   = YYRHSLOC (Rhs, 0).buffer_pos;	\
-	}								\
-    while (0)
-
-/* 
- * YY_LOCATION_PRINT -- Print the location on the stream.
- * This macro was not mandated originally: define only if we know
- * we won't break user code: when these are the locations we know.  
- */
-
-#define YY_LOCATION_PRINT(File, Loc)			\
-    fprintf (File, "%d.%d-%d.%d",			\
-	     (Loc).first_line, (Loc).first_column,	\
-	     (Loc).last_line,  (Loc).last_column)
-
-
-
-
-# ifndef YY_NULL
-#  if defined __cplusplus && 201103L <= __cplusplus
-#   define YY_NULL nullptr
-#  else
-#   define YY_NULL 0
-#  endif
-# endif
 
 #include "csql_grammar.h"
+
+/* Enabling traces.  */
+#ifndef YYDEBUG
+# define YYDEBUG 0
+#endif
 
 /* Enabling verbose error messages.  */
 #ifdef YYERROR_VERBOSE
@@ -582,47 +77,51 @@ int g_original_buffer_len;
 # define YYERROR_VERBOSE 1
 #endif
 
+/* Enabling the token table.  */
+#ifndef YYTOKEN_TABLE
+# define YYTOKEN_TABLE 0
+#endif
+
 /* Default (constant) value used for initialization for null
-   right-hand sides.  Unlike the standard yacc.c template, here we set
-   the default value of $$ to a zeroed-out value.  Since the default
-   value is undefined, this behavior is technically correct.  */
+   right-hand sides.  Unlike the standard yacc.c template,
+   here we set the default value of $$ to a zeroed-out value.
+   Since the default value is undefined, this behavior is
+   technically correct.  */
 static YYSTYPE yyval_default;
-static YYLTYPE yyloc_default
-# if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
-  = { 1, 1, 1, 1 }
-# endif
-;
 
 /* Copy the second part of user declarations.  */
 
+
+/* Line 234 of glr.c.  */
 
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #ifndef YY_
-# if defined YYENABLE_NLS && YYENABLE_NLS
+# if YYENABLE_NLS
 #  if ENABLE_NLS
 #   include <libintl.h> /* INFRINGES ON USER NAME SPACE */
-#   define YY_(Msgid) dgettext ("bison-runtime", Msgid)
+#   define YY_(msgid) dgettext ("bison-runtime", msgid)
 #  endif
 # endif
 # ifndef YY_
-#  define YY_(Msgid) Msgid
+#  define YY_(msgid) msgid
 # endif
 #endif
 
 /* Suppress unused-variable warnings by "using" E.  */
 #if ! defined lint || defined __GNUC__
-# define YYUSE(E) ((void) (E))
+# define YYUSE(e) ((void) (e))
 #else
-# define YYUSE(E) /* empty */
+# define YYUSE(e) /* empty */
 #endif
 
 /* Identity function, used to suppress warnings about constant conditions.  */
 #ifndef lint
-# define YYID(N) (N)
+# define YYID(n) (n)
 #else
 #if (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
@@ -661,9 +160,8 @@ YYID (i)
 #ifndef YYSETJMP
 # include <setjmp.h>
 # define YYJMP_BUF jmp_buf
-# define YYSETJMP(Env) setjmp (Env)
-/* Pacify clang.  */
-# define YYLONGJMP(Env, Val) (longjmp (Env, Val), YYASSERT (0))
+# define YYSETJMP(env) setjmp (env)
+# define YYLONGJMP(env, val) longjmp (env, val)
 #endif
 
 /*-----------------.
@@ -673,13 +171,15 @@ YYID (i)
 #ifndef __attribute__
 /* This feature is available in gcc versions 2.5 and later.  */
 # if (! defined __GNUC__ || __GNUC__ < 2 \
-      || (__GNUC__ == 2 && __GNUC_MINOR__ < 5))
+      || (__GNUC__ == 2 && __GNUC_MINOR__ < 5) || __STRICT_ANSI__)
 #  define __attribute__(Spec) /* empty */
 # endif
 #endif
 
+#define YYOPTIONAL_LOC(Name) Name
+
 #ifndef YYASSERT
-# define YYASSERT(Condition) ((void) ((Condition) || (abort (), 0)))
+# define YYASSERT(condition) ((void) ((condition) || (abort (), 0)))
 #endif
 
 /* YYFINAL -- State number of the termination state.  */
@@ -705,8 +205,9 @@ YYID (i)
 #define YYUNDEFTOK  2
 #define YYMAXUTOK   810
 
-#define YYTRANSLATE(YYX)                                                \
-  ((unsigned int) (YYX) <= YYMAXUTOK ? yytranslate[YYX] : YYUNDEFTOK)
+#define YYTRANSLATE(YYX)						\
+  ((YYX <= 0) ? YYEOF :							\
+   (unsigned int) (YYX) <= YYMAXUTOK ? yytranslate[YYX] : YYUNDEFTOK)
 
 /* YYTRANSLATE[YYLEX] -- Bison symbol number corresponding to YYLEX.  */
 static const unsigned short int yytranslate[] =
@@ -1762,7 +1263,7 @@ static const unsigned short int yyrline[] =
 };
 #endif
 
-#if YYDEBUG || YYERROR_VERBOSE || 1
+#if YYDEBUG || YYERROR_VERBOSE || YYTOKEN_TABLE
 /* YYTNAME[SYMBOL-NUM] -- String name of the symbol SYMBOL-NUM.
    First, the terminals, then, starting at YYNTOKENS, nonterminals.  */
 static const char *const yytname[] =
@@ -1865,30 +1366,29 @@ static const char *const yytname[] =
   "BINARY_STRING", "EUCKR_STRING", "ISO_STRING", "UTF8_STRING", "';'",
   "','", "'='", "'@'", "'('", "')'", "'*'", "'-'", "'+'", "'?'", "':'",
   "'|'", "'&'", "'/'", "'^'", "'~'", "'!'", "'>'", "'<'", "'{'", "'}'",
-  "']'", "'`'", "$accept", "stmt_done", "stmt_list", "stmt", "$@1", "$@2",
-  "$@3", "stmt_", "$@4", "$@5", "$@6", "$@7", "$@8", "$@9", "$@10", "$@11",
-  "$@12", "$@13", "$@14", "$@15", "opt_from_table_spec_list", "set_stmt",
-  "$@16", "$@17", "$@18", "$@19", "$@20", "$@21", "$@22", "$@23", "$@24",
-  "$@25", "$@26", "$@27", "$@28", "$@29", "$@30", "$@31",
-  "query_trace_spec", "opt_trace_output_format",
-  "session_variable_assignment_list", "session_variable_assignment",
-  "session_variable_definition", "session_variable_expression",
-  "session_variable_list", "session_variable", "get_stmt", "$@32", "$@33",
-  "$@34", "$@35", "$@36", "$@37", "$@38", "$@39", "$@40", "$@41", "$@42",
-  "$@43", "$@44", "$@45", "create_stmt", "$@46", "$@47", "$@48", "$@49",
-  "$@50", "$@51", "$@52", "$@53", "$@54", "$@55", "$@56", "$@57", "$@58",
-  "$@59", "$@60", "opt_serial_option_list", "serial_option_list",
-  "of_serial_option", "opt_replace", "alter_stmt", "$@61", "$@62", "$@63",
-  "$@64", "view_or_vclass", "alter_clause_list", "$@65",
+  "']'", "'`'", "$accept", "stmt_done", "stmt_list", "stmt", "@1", "@2",
+  "@3", "stmt_", "@4", "@5", "@6", "@7", "@8", "@9", "@10", "@11", "@12",
+  "@13", "@14", "@15", "opt_from_table_spec_list", "set_stmt", "@16",
+  "@17", "@18", "@19", "@20", "@21", "@22", "@23", "@24", "@25", "@26",
+  "@27", "@28", "@29", "@30", "@31", "query_trace_spec",
+  "opt_trace_output_format", "session_variable_assignment_list",
+  "session_variable_assignment", "session_variable_definition",
+  "session_variable_expression", "session_variable_list",
+  "session_variable", "get_stmt", "@32", "@33", "@34", "@35", "@36", "@37",
+  "@38", "@39", "@40", "@41", "@42", "@43", "@44", "@45", "create_stmt",
+  "@46", "@47", "@48", "@49", "@50", "@51", "@52", "@53", "@54", "@55",
+  "@56", "@57", "@58", "@59", "@60", "opt_serial_option_list",
+  "serial_option_list", "of_serial_option", "opt_replace", "alter_stmt",
+  "@61", "@62", "@63", "@64", "view_or_vclass", "alter_clause_list", "@65",
   "prepare_alter_node", "only_class_name", "rename_stmt",
   "rename_class_list", "rename_class_pair", "procedure_or_function",
   "opt_owner_clause", "as_or_to", "truncate_stmt", "do_stmt", "drop_stmt",
-  "$@66", "deallocate_or_drop", "opt_reverse", "opt_unique",
+  "@66", "deallocate_or_drop", "opt_reverse", "opt_unique",
   "opt_index_column_name_list", "index_column_name_list",
   "update_statistics_stmt", "only_class_name_list", "opt_with_fullscan",
   "opt_of_to_eq", "opt_level_spec", "char_string_literal_list",
   "table_spec_list", "extended_table_spec_list", "join_table_spec",
-  "join_condition", "$@67", "opt_of_inner_left_right", "opt_outer",
+  "join_condition", "@67", "opt_of_inner_left_right", "opt_outer",
   "table_spec", "original_table_spec", "opt_table_spec_index_hint",
   "opt_table_spec_index_hint_list", "opt_as_identifier_attr_name",
   "opt_as", "class_spec_list", "class_spec", "only_all_class_spec_list",
@@ -1901,15 +1401,15 @@ static const char *const yytname[] =
   "alter_auto_increment_mysql_specific",
   "alter_rename_clause_allow_multiple",
   "alter_rename_clause_cubrid_specific", "opt_of_attr_column_method",
-  "opt_class", "opt_identifier", "alter_add_clause_for_alter_list", "$@68",
-  "$@69", "$@70", "$@71", "$@72", "$@73", "$@74", "$@75",
-  "alter_add_clause_cubrid_specific", "$@76", "$@77",
+  "opt_class", "opt_identifier", "alter_add_clause_for_alter_list", "@68",
+  "@69", "@70", "@71", "@72", "@73", "@74", "@75",
+  "alter_add_clause_cubrid_specific", "@76", "@77",
   "opt_of_column_attribute", "add_partition_clause",
   "alter_drop_clause_mysql_specific", "alter_drop_clause_for_alter_list",
   "alter_drop_clause_cubrid_specific",
   "normal_or_class_attr_list_with_commas",
-  "alter_modify_clause_for_alter_list", "$@78", "$@79", "$@80", "$@81",
-  "alter_change_clause_for_alter_list", "$@82", "$@83",
+  "alter_modify_clause_for_alter_list", "@78", "@79", "@80", "@81",
+  "alter_change_clause_for_alter_list", "@82", "@83",
   "alter_change_clause_cubrid_specific", "normal_or_class_attr",
   "query_number_list", "alter_column_clause_mysql_specific",
   "normal_column_or_class_attribute", "insert_or_replace_stmt",
@@ -1926,19 +1426,19 @@ static const char *const yytname[] =
   "show_type_id_dot_id", "kill_type", "of_or_where", "named_args",
   "named_arg", "opt_arg_value", "arg_value_list", "arg_value", "opt_full",
   "of_from_in", "opt_for_current_user", "of_describe_desc_explain",
-  "of_index_indexes_keys", "update_head", "$@84", "update_stmt", "$@85",
-  "opt_of_where_cursor", "$@86", "$@87", "opt_as_identifier",
+  "of_index_indexes_keys", "update_head", "@84", "update_stmt", "@85",
+  "opt_of_where_cursor", "@86", "@87", "opt_as_identifier",
   "update_assignment_list", "update_assignment",
   "paren_path_expression_set", "path_expression_list", "delete_name",
-  "delete_name_list", "delete_from_using", "delete_stmt", "$@88",
-  "merge_stmt", "$@89", "merge_update_insert_clause",
-  "merge_update_clause", "merge_insert_clause", "opt_merge_delete_clause",
-  "auth_stmt", "revoke_cmd", "$@90", "$@91", "grant_cmd", "$@92", "$@93",
-  "grant_head", "opt_with_grant_option", "on_class_list", "$@94", "$@95",
-  "to_id_list", "$@96", "$@97", "from_id_list", "$@98", "$@99",
-  "author_cmd_list", "authorized_cmd", "opt_password", "$@100", "$@101",
-  "opt_groups", "$@102", "$@103", "opt_members", "$@104", "$@105",
-  "call_stmt", "opt_class_or_normal_attr_def_list", "opt_method_def_list",
+  "delete_name_list", "delete_from_using", "delete_stmt", "@88",
+  "merge_stmt", "@89", "merge_update_insert_clause", "merge_update_clause",
+  "merge_insert_clause", "opt_merge_delete_clause", "auth_stmt",
+  "revoke_cmd", "@90", "@91", "grant_cmd", "@92", "@93", "grant_head",
+  "opt_with_grant_option", "on_class_list", "@94", "@95", "to_id_list",
+  "@96", "@97", "from_id_list", "@98", "@99", "author_cmd_list",
+  "authorized_cmd", "opt_password", "@100", "@101", "opt_groups", "@102",
+  "@103", "opt_members", "@104", "@105", "call_stmt",
+  "opt_class_or_normal_attr_def_list", "opt_method_def_list",
   "opt_method_files", "opt_inherit_resolution_list",
   "opt_table_option_list", "opt_partition_clause", "opt_create_as_clause",
   "of_class_table_type", "of_view_vclass", "opt_or_replace",
@@ -1954,11 +1454,11 @@ static const char *const yytname[] =
   "constraint_attr", "method_def_list", "method_def",
   "opt_method_def_arg_list", "arg_type_list", "inout_data_type",
   "opt_data_type", "opt_function_identifier", "method_file_list",
-  "file_path_name", "opt_class_attr_def_list", "$@106", "$@107",
-  "class_or_normal_attr_def_list", "class_or_normal_attr_def", "$@108",
-  "$@109", "view_attr_def_list", "view_attr_def",
+  "file_path_name", "opt_class_attr_def_list", "@106", "@107",
+  "class_or_normal_attr_def_list", "class_or_normal_attr_def", "@108",
+  "@109", "view_attr_def_list", "view_attr_def",
   "attr_def_list_with_commas", "attr_def_list", "attr_def",
-  "attr_constraint_def", "attr_index_def", "attr_def_one", "$@110",
+  "attr_constraint_def", "attr_index_def", "attr_def_one", "@110",
   "opt_attr_ordering_info", "opt_constraint_list_and_opt_column_comment",
   "constraint_list_and_column_comment",
   "column_constraint_and_comment_def", "column_unique_constraint_def",
@@ -1970,7 +1470,7 @@ static const char *const yytname[] =
   "isolation_level_spec", "of_schema_class", "isolation_level_name",
   "timeout_spec", "transaction_stmt", "opt_savepoint", "opt_work",
   "opt_to", "evaluate_stmt", "prepare_stmt", "execute_stmt", "opt_using",
-  "$@111", "$@112", "opt_status", "trigger_status", "opt_priority",
+  "@111", "@112", "opt_status", "trigger_status", "opt_priority",
   "trigger_priority", "opt_if_trigger_condition", "trigger_time",
   "opt_trigger_action_time", "event_spec", "event_type", "event_target",
   "trigger_condition", "trigger_action", "trigger_spec_list",
@@ -1979,59 +1479,56 @@ static const char *const yytname[] =
   "serial_min", "serial_max", "of_cycle_nocycle", "of_cached_num",
   "integer_text", "uint_text", "opt_plus", "opt_of_data_type_cursor",
   "opt_of_is_as", "opt_sp_param_list", "sp_param_list", "sp_param_def",
-  "opt_sp_in_out", "esql_query_stmt", "$@113", "csql_query", "$@114",
-  "$@115", "$@116", "csql_query_without_values_query", "$@117", "$@118",
-  "$@119", "select_expression_opt_with", "select_expression", "$@120",
-  "$@121", "@122", "select_expression_without_values_query", "$@123",
-  "$@124", "@125", "table_op", "select_or_subquery",
-  "select_or_subquery_without_values_query", "values_query", "$@126",
-  "values_expression", "values_expr_item", "select_stmt", "$@127", "$@128",
+  "opt_sp_in_out", "esql_query_stmt", "@113", "csql_query", "@114", "@115",
+  "@116", "csql_query_without_values_query", "@117", "@118", "@119",
+  "select_expression_opt_with", "select_expression", "@120", "@121",
+  "@122", "select_expression_without_values_query", "@123", "@124", "@125",
+  "table_op", "select_or_subquery",
+  "select_or_subquery_without_values_query", "values_query", "@126",
+  "values_expression", "values_expr_item", "select_stmt", "@127", "@128",
   "opt_with_clause", "opt_recursive", "cte_definition_list",
-  "cte_definition", "cte_query_list", "opt_from_clause", "$@129",
+  "cte_definition", "cte_query_list", "opt_from_clause", "@129",
   "opt_select_param_list", "opt_hint_list", "hint_list", "all_distinct",
-  "select_list", "alias_enabled_expression_list_top", "$@130",
+  "select_list", "alias_enabled_expression_list_top", "@130",
   "alias_enabled_expression_list", "alias_enabled_expression_",
   "expression_list", "expression_queue", "to_param_list", "to_param",
   "from_param", "host_param_input", "host_param_output", "param_",
-  "opt_where_clause", "$@131", "opt_startwith_connectby_clause",
-  "startwith_clause", "$@132", "connectby_clause", "$@133", "opt_nocycle",
+  "opt_where_clause", "@131", "opt_startwith_connectby_clause",
+  "startwith_clause", "@132", "connectby_clause", "@133", "opt_nocycle",
   "opt_groupby_clause", "opt_with_rollup", "group_spec_list", "group_spec",
-  "$@134", "opt_having_clause", "$@135", "opt_using_index_clause",
+  "@134", "opt_having_clause", "@135", "opt_using_index_clause",
   "index_name_keylimit_list", "index_name_list", "index_name_keylimit",
   "index_name", "opt_with_increment_clause", "opt_for_update_clause",
   "incr_arg_name_list__inc", "incr_arg_name__inc",
   "incr_arg_name_list__dec", "incr_arg_name__dec",
-  "opt_update_orderby_clause", "$@136", "opt_orderby_clause", "$@137",
-  "$@138", "opt_siblings", "opt_uint_or_host_input",
+  "opt_update_orderby_clause", "@136", "opt_orderby_clause", "@137",
+  "@138", "opt_siblings", "opt_uint_or_host_input",
   "opt_select_limit_clause", "limit_options", "opt_upd_del_limit_clause",
   "opt_for_search_condition", "sort_spec_list", "sort_spec",
   "opt_nulls_first_or_last", "expression_", "normal_expression",
   "expression_strcat", "expression_bitor", "expression_bitand",
   "expression_bitshift", "expression_add_sub", "term", "factor", "factor_",
-  "$@139", "$@140", "primary_w_collate", "primary",
-  "search_condition_query", "$@141", "search_condition_expression",
-  "pseudo_column", "reserved_func", "$@142", "$@143", "$@144", "$@145",
-  "$@146", "$@147", "$@148", "$@149", "$@150", "$@151", "$@152", "$@153",
-  "$@154", "$@155", "$@156", "$@157", "$@158", "$@159", "$@160", "$@161",
-  "$@162", "$@163", "$@164", "$@165", "$@166", "$@167", "$@168", "$@169",
-  "$@170", "$@171", "$@172", "$@173", "$@174", "$@175", "$@176", "$@177",
-  "$@178", "$@179", "$@180", "$@181", "$@182", "$@183", "$@184", "$@185",
-  "$@186", "$@187", "$@188", "$@189", "$@190", "$@191", "$@192", "$@193",
-  "$@194", "$@195", "$@196", "$@197", "$@198", "$@199", "$@200", "$@201",
-  "$@202", "$@203", "$@204", "$@205", "$@206", "$@207", "$@208", "$@209",
-  "$@210", "$@211", "$@212", "$@213", "$@214", "$@215", "$@216", "$@217",
-  "$@218", "$@219", "$@220", "$@221", "$@222", "$@223", "$@224", "$@225",
-  "$@226", "$@227", "$@228", "$@229", "$@230", "$@231", "$@232", "$@233",
-  "$@234", "$@235", "$@236", "$@237", "$@238", "$@239", "$@240", "$@241",
-  "$@242", "$@243", "$@244", "$@245", "$@246", "$@247", "$@248", "$@249",
-  "of_cume_dist_percent_rank_function", "of_current_date", "$@250",
-  "of_current_time", "$@251", "of_db_timezone_", "$@252",
-  "of_session_timezone_", "$@253", "of_current_timestamps", "$@254",
-  "$@255", "$@256", "of_current_datetime", "$@257", "of_users",
-  "of_avg_max_etc", "of_analytic", "of_analytic_first_last",
-  "of_analytic_nth_value", "of_analytic_lead_lag", "of_percentile",
-  "of_analytic_no_args", "of_distinct_unique",
-  "opt_group_concat_separator", "opt_agg_order_by",
+  "@139", "@140", "primary_w_collate", "primary", "search_condition_query",
+  "@141", "search_condition_expression", "pseudo_column", "reserved_func",
+  "@142", "@143", "@144", "@145", "@146", "@147", "@148", "@149", "@150",
+  "@151", "@152", "@153", "@154", "@155", "@156", "@157", "@158", "@159",
+  "@160", "@161", "@162", "@163", "@164", "@165", "@166", "@167", "@168",
+  "@169", "@170", "@171", "@172", "@173", "@174", "@175", "@176", "@177",
+  "@178", "@179", "@180", "@181", "@182", "@183", "@184", "@185", "@186",
+  "@187", "@188", "@189", "@190", "@191", "@192", "@193", "@194", "@195",
+  "@196", "@197", "@198", "@199", "@200", "@201", "@202", "@203", "@204",
+  "@205", "@206", "@207", "@208", "@209", "@210", "@211", "@212", "@213",
+  "@214", "@215", "@216", "@217", "@218", "@219", "@220", "@221", "@222",
+  "@223", "@224", "@225", "@226", "@227", "@228", "@229", "@230", "@231",
+  "@232", "@233", "@234", "@235", "@236", "@237", "@238", "@239", "@240",
+  "@241", "@242", "@243", "@244", "@245", "@246", "@247", "@248", "@249",
+  "of_cume_dist_percent_rank_function", "of_current_date", "@250",
+  "of_current_time", "@251", "of_db_timezone_", "@252",
+  "of_session_timezone_", "@253", "of_current_timestamps", "@254", "@255",
+  "@256", "of_current_datetime", "@257", "of_users", "of_avg_max_etc",
+  "of_analytic", "of_analytic_first_last", "of_analytic_nth_value",
+  "of_analytic_lead_lag", "of_percentile", "of_analytic_no_args",
+  "of_distinct_unique", "opt_group_concat_separator", "opt_agg_order_by",
   "opt_analytic_from_last", "opt_analytic_ignore_nulls",
   "opt_analytic_partition_by", "opt_over_analytic_partition_by",
   "opt_analytic_order_by", "of_leading_trailing_both", "case_expr",
@@ -2041,7 +1538,7 @@ static const char *const yytname[] =
   "generic_function", "generic_function_id", "opt_expression_list",
   "table_set_function_call", "search_condition", "boolean_term_xor",
   "boolean_term_is", "is_op", "boolean_term", "boolean_factor",
-  "predicate", "predicate_expression", "$@258", "predicate_expr_sub",
+  "predicate", "predicate_expression", "@258", "predicate_expr_sub",
   "pred_lhs", "opt_paren_plus", "comp_op", "opt_of_all_some_any",
   "like_op", "rlike_op", "rlike_or_regexp", "null_op", "between_op",
   "in_op", "in_pred_operand", "range_list", "range_", "set_op", "subquery",
@@ -2063,7 +1560,7 @@ static const char *const yytname[] =
   "date_or_time_literal", "create_as_clause", "partition_clause", "opt_by",
   "partition_def_list", "partition_def",
   "alter_partition_clause_for_alter_list", "opt_all", "execute_using_list",
-  "signed_literal_list", "paren_plus", "paren_minus", "vacuum_stmt", YY_NULL
+  "signed_literal_list", "paren_plus", "paren_minus", "vacuum_stmt", 0
 };
 #endif
 
@@ -2851,9 +2348,9 @@ static const unsigned char yymerger[] =
        0,     0,     0,     0,     0
 };
 
-/* YYDEFACT[S] -- default reduction number in state S.  Performed when
-   YYTABLE doesn't specify something else to do.  Zero means the default
-   is an error.  */
+/* YYDEFACT[S] -- default rule to reduce with in state S when YYTABLE
+   doesn't specify something else to do.  Zero means the default is an
+   error.  */
 static const unsigned short int yydefact[] =
 {
        6,    10,     0,     6,     5,     7,     1,     4,   905,   155,
@@ -3685,7 +3182,8 @@ static const short int yypgoto[] =
 
 /* YYTABLE[YYPACT[STATE-NUM]].  What to do in state STATE-NUM.  If
    positive, shift that token.  If negative, reduce the rule which
-   number is the opposite.  If YYTABLE_NINF, syntax error.  */
+   number is the opposite.  If zero, do what YYDEFACT says.
+   If YYTABLE_NINF, syntax error.  */
 #define YYTABLE_NINF -1671
 static const short int yytable[] =
 {
@@ -12301,94 +11799,51 @@ static const unsigned short int yystos[] =
     1056,  1272,   557,   557,  1058,  1056
 };
 
+
+/* Prevent warning if -Wmissing-prototypes.  */
+int yyparse (void);
+
 /* Error token number */
 #define YYTERROR 1
-
 
 /* YYLLOC_DEFAULT -- Set CURRENT to span from RHS[1] to RHS[N].
    If N is 0, then set CURRENT to the empty location which ends
    the previous symbol: RHS[0] (always defined).  */
 
+
+#define YYRHSLOC(Rhs, K) ((Rhs)[K].yystate.yyloc)
 #ifndef YYLLOC_DEFAULT
-# define YYLLOC_DEFAULT(Current, Rhs, N)                                \
-    do                                                                  \
-      if (YYID (N))                                                     \
-        {                                                               \
-          (Current).first_line   = YYRHSLOC (Rhs, 1).first_line;        \
-          (Current).first_column = YYRHSLOC (Rhs, 1).first_column;      \
-          (Current).last_line    = YYRHSLOC (Rhs, N).last_line;         \
-          (Current).last_column  = YYRHSLOC (Rhs, N).last_column;       \
-        }                                                               \
-      else                                                              \
-        {                                                               \
-          (Current).first_line   = (Current).last_line   =              \
-            YYRHSLOC (Rhs, 0).last_line;                                \
-          (Current).first_column = (Current).last_column =              \
-            YYRHSLOC (Rhs, 0).last_column;                              \
-        }                                                               \
+# define YYLLOC_DEFAULT(Current, Rhs, N)				\
+    do									\
+      if (YYID (N))							\
+	{								\
+	  (Current).first_line   = YYRHSLOC (Rhs, 1).first_line;	\
+	  (Current).first_column = YYRHSLOC (Rhs, 1).first_column;	\
+	  (Current).last_line    = YYRHSLOC (Rhs, N).last_line;		\
+	  (Current).last_column  = YYRHSLOC (Rhs, N).last_column;	\
+	}								\
+      else								\
+	{								\
+	  (Current).first_line   = (Current).last_line   =		\
+	    YYRHSLOC (Rhs, 0).last_line;				\
+	  (Current).first_column = (Current).last_column =		\
+	    YYRHSLOC (Rhs, 0).last_column;				\
+	}								\
     while (YYID (0))
-#endif
-
-# define YYRHSLOC(Rhs, K) ((Rhs)[K].yystate.yyloc)
-
 
 /* YY_LOCATION_PRINT -- Print the location on the stream.
    This macro was not mandated originally: define only if we know
    we won't break user code: when these are the locations we know.  */
 
-#ifndef __attribute__
-/* This feature is available in gcc versions 2.5 and later.  */
-# if (! defined __GNUC__ || __GNUC__ < 2 \
-      || (__GNUC__ == 2 && __GNUC_MINOR__ < 5))
-#  define __attribute__(Spec) /* empty */
-# endif
+# define YY_LOCATION_PRINT(File, Loc)			\
+    fprintf (File, "%d.%d-%d.%d",			\
+	     (Loc).first_line, (Loc).first_column,	\
+	     (Loc).last_line,  (Loc).last_column)
 #endif
+
 
 #ifndef YY_LOCATION_PRINT
-# if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
-
-/* Print *YYLOCP on YYO.  Private, do not rely on its existence. */
-
-__attribute__((__unused__))
-#if (defined __STDC__ || defined __C99__FUNC__ \
-     || defined __cplusplus || defined _MSC_VER)
-static unsigned
-yy_location_print_ (FILE *yyo, YYLTYPE const * const yylocp)
-#else
-static unsigned
-yy_location_print_ (yyo, yylocp)
-    FILE *yyo;
-    YYLTYPE const * const yylocp;
-#endif
-{
-  unsigned res = 0;
-  int end_col = 0 != yylocp->last_column ? yylocp->last_column - 1 : 0;
-  if (0 <= yylocp->first_line)
-    {
-      res += fprintf (yyo, "%d", yylocp->first_line);
-      if (0 <= yylocp->first_column)
-        res += fprintf (yyo, ".%d", yylocp->first_column);
-    }
-  if (0 <= yylocp->last_line)
-    {
-      if (yylocp->first_line < yylocp->last_line)
-        {
-          res += fprintf (yyo, "-%d", yylocp->last_line);
-          if (0 <= end_col)
-            res += fprintf (yyo, ".%d", end_col);
-        }
-      else if (0 <= end_col && yylocp->first_column < end_col)
-        res += fprintf (yyo, "-%d", end_col);
-    }
-  return res;
- }
-
-#  define YY_LOCATION_PRINT(File, Loc)          \
-  yy_location_print_ (File, &(Loc))
-
-# else
-#  define YY_LOCATION_PRINT(File, Loc) ((void) 0)
-# endif
+# define YY_LOCATION_PRINT(File, Loc) ((void) 0)
 #endif
 
 
@@ -12396,6 +11851,7 @@ yy_location_print_ (yyo, yylocp)
 #define YYLEX yylex ()
 
 YYSTYPE yylval;
+
 YYLTYPE yylloc;
 
 int yynerrs;
@@ -12406,8 +11862,8 @@ static const int YYEMPTY = -2;
 
 typedef enum { yyok, yyaccept, yyabort, yyerr } YYRESULTTAG;
 
-#define YYCHK(YYE)                                                           \
-   do { YYRESULTTAG yyflag = YYE; if (yyflag != yyok) return yyflag; }       \
+#define YYCHK(YYE)							     \
+   do { YYRESULTTAG yyflag = YYE; if (yyflag != yyok) return yyflag; }	     \
    while (YYID (0))
 
 #if YYDEBUG
@@ -12416,10 +11872,10 @@ typedef enum { yyok, yyaccept, yyabort, yyerr } YYRESULTTAG;
 #  define YYFPRINTF fprintf
 # endif
 
-# define YYDPRINTF(Args)                        \
-do {                                            \
-  if (yydebug)                                  \
-    YYFPRINTF Args;                             \
+# define YYDPRINTF(Args)			\
+do {						\
+  if (yydebug)					\
+    YYFPRINTF Args;				\
 } while (YYID (0))
 
 
@@ -12431,8 +11887,6 @@ do {                                            \
 static void
 yy_symbol_value_print (FILE *yyoutput, int yytype, YYSTYPE const * const yyvaluep, YYLTYPE const * const yylocationp)
 {
-  FILE *yyo = yyoutput;
-  YYUSE (yyo);
   if (!yyvaluep)
     return;
   YYUSE (yylocationp);
@@ -12445,7 +11899,7 @@ yy_symbol_value_print (FILE *yyoutput, int yytype, YYSTYPE const * const yyvalue
   switch (yytype)
     {
       default:
-        break;
+	break;
     }
 }
 
@@ -12468,14 +11922,15 @@ yy_symbol_print (FILE *yyoutput, int yytype, YYSTYPE const * const yyvaluep, YYL
   YYFPRINTF (yyoutput, ")");
 }
 
-# define YY_SYMBOL_PRINT(Title, Type, Value, Location)          \
-do {                                                            \
-  if (yydebug)                                                  \
-    {                                                           \
-      YYFPRINTF (stderr, "%s ", Title);                         \
-      yy_symbol_print (stderr, Type, Value, Location);        \
-      YYFPRINTF (stderr, "\n");                                 \
-    }                                                           \
+# define YY_SYMBOL_PRINT(Title, Type, Value, Location)			    \
+do {									    \
+  if (yydebug)								    \
+    {									    \
+      YYFPRINTF (stderr, "%s ", Title);					    \
+      yy_symbol_print (stderr, Type,					    \
+		       Value, Location);  \
+      YYFPRINTF (stderr, "\n");						    \
+    }									    \
 } while (YYID (0))
 
 /* Nonzero means print parse trace.  It is left uninitialized so that
@@ -12490,7 +11945,7 @@ int yydebug;
 #endif /* !YYDEBUG */
 
 /* YYINITDEPTH -- initial size of the parser's stacks.  */
-#ifndef YYINITDEPTH
+#ifndef	YYINITDEPTH
 # define YYINITDEPTH 200
 #endif
 
@@ -12515,7 +11970,7 @@ int yydebug;
 #ifndef YYSTACKEXPANDABLE
 # if (! defined __cplusplus \
       || (defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL \
-          && defined YYSTYPE_IS_TRIVIAL && YYSTYPE_IS_TRIVIAL))
+	  && defined YYSTYPE_IS_TRIVIAL && YYSTYPE_IS_TRIVIAL))
 #  define YYSTACKEXPANDABLE 1
 # else
 #  define YYSTACKEXPANDABLE 0
@@ -12523,16 +11978,16 @@ int yydebug;
 #endif
 
 #if YYSTACKEXPANDABLE
-# define YY_RESERVE_GLRSTACK(Yystack)                   \
-  do {                                                  \
-    if (Yystack->yyspaceLeft < YYHEADROOM)              \
-      yyexpandGLRStack (Yystack);                       \
+# define YY_RESERVE_GLRSTACK(Yystack)			\
+  do {							\
+    if (Yystack->yyspaceLeft < YYHEADROOM)		\
+      yyexpandGLRStack (Yystack);			\
   } while (YYID (0))
 #else
-# define YY_RESERVE_GLRSTACK(Yystack)                   \
-  do {                                                  \
-    if (Yystack->yyspaceLeft < YYHEADROOM)              \
-      yyMemoryExhausted (Yystack);                      \
+# define YY_RESERVE_GLRSTACK(Yystack)			\
+  do {							\
+    if (Yystack->yyspaceLeft < YYHEADROOM)		\
+      yyMemoryExhausted (Yystack);			\
   } while (YYID (0))
 #endif
 
@@ -12576,27 +12031,27 @@ yytnamerr (char *yyres, const char *yystr)
       char const *yyp = yystr;
 
       for (;;)
-        switch (*++yyp)
-          {
-          case '\'':
-          case ',':
-            goto do_not_strip_quotes;
+	switch (*++yyp)
+	  {
+	  case '\'':
+	  case ',':
+	    goto do_not_strip_quotes;
 
-          case '\\':
-            if (*++yyp != '\\')
-              goto do_not_strip_quotes;
-            /* Fall through.  */
-          default:
-            if (yyres)
-              yyres[yyn] = *yyp;
-            yyn++;
-            break;
+	  case '\\':
+	    if (*++yyp != '\\')
+	      goto do_not_strip_quotes;
+	    /* Fall through.  */
+	  default:
+	    if (yyres)
+	      yyres[yyn] = *yyp;
+	    yyn++;
+	    break;
 
-          case '"':
-            if (yyres)
-              yyres[yyn] = '\0';
-            return yyn;
-          }
+	  case '"':
+	    if (yyres)
+	      yyres[yyn] = '\0';
+	    return yyn;
+	  }
     do_not_strip_quotes: ;
     }
 
@@ -12707,7 +12162,7 @@ static void yyFail (yyGLRStack* yystackp, const char* yymsg)
 static void
 yyFail (yyGLRStack* yystackp, const char* yymsg)
 {
-  if (yymsg != YY_NULL)
+  if (yymsg != NULL)
     yyerror (yymsg);
   YYLONGJMP (yystackp->yyexception_buffer, 1);
 }
@@ -12739,8 +12194,9 @@ static void yyfillin (yyGLRStackItem *, int, int) __attribute__ ((__unused__));
 static void
 yyfillin (yyGLRStackItem *yyvsp, int yylow0, int yylow1)
 {
+  yyGLRState* s;
   int i;
-  yyGLRState *s = yyvsp[yylow0].yystate.yypred;
+  s = yyvsp[yylow0].yystate.yypred;
   for (i = yylow0-1; i >= yylow1; i -= 1)
     {
       YYASSERT (s->yyresolved);
@@ -12774,11 +12230,13 @@ yyfill (yyGLRStackItem *yyvsp, int *yylow, int yylow1, yybool yynormal)
  *  yyerr for YYERROR, yyabort for YYABORT.  */
 /*ARGSUSED*/ static YYRESULTTAG
 yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
-              yyGLRStack* yystackp,
-              YYSTYPE* yyvalp, YYLTYPE *yylocp)
+	      YYSTYPE* yyvalp,
+	      YYLTYPE* YYOPTIONAL_LOC (yylocp),
+	      yyGLRStack* yystackp
+	      )
 {
   yybool yynormal __attribute__ ((__unused__)) =
-    (yystackp->yysplitPoint == YY_NULL);
+    (yystackp->yysplitPoint == NULL);
   int yylow;
 # undef yyerrok
 # define yyerrok (yystackp->yyerrState = 0)
@@ -12795,9 +12253,9 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 # undef YYFILL
 # define YYFILL(N) yyfill (yyvsp, &yylow, N, yynormal)
 # undef YYBACKUP
-# define YYBACKUP(Token, Value)                                              \
+# define YYBACKUP(Token, Value)						     \
   return yyerror (YY_("syntax error: cannot back up")),     \
-         yyerrok, yyerr
+	 yyerrok, yyerr
 
   yylow = 1;
   if (yyrhslen == 0)
@@ -12831,7 +12289,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			#endif
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 5:
@@ -12856,7 +12314,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			#endif
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 6:
@@ -12892,7 +12350,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			      }
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 7:
@@ -12927,7 +12385,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			allow_attribute_ordering = false;
 			parser_hidden_incr_list = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 8:
@@ -12976,7 +12434,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			      }
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 9:
@@ -12999,7 +12457,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 10:
@@ -13008,117 +12466,117 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 11:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 12:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 13:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 14:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 15:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 16:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 17:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 18:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 19:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 20:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 21:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 22:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 23:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 24:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 25:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 26:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 27:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 28:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 29:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 30:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 31:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 32:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 33:
@@ -13164,17 +12622,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = dt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 34:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_ATTACH); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_ATTACH); ;}
     break;
 
   case 35:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 36:
@@ -13191,17 +12649,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 37:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_PREPARE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_PREPARE); ;}
     break;
 
   case 38:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 39:
@@ -13218,17 +12676,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 40:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_EXECUTE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_EXECUTE); ;}
     break;
 
   case 41:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 42:
@@ -13245,17 +12703,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 43:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SCOPE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SCOPE); ;}
     break;
 
   case 44:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 45:
@@ -13273,22 +12731,22 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 46:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 47:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SET_TIMEZONE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SET_TIMEZONE); ;}
     break;
 
   case 48:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 49:
@@ -13303,17 +12761,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 50:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SET_TIMEZONE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SET_TIMEZONE); ;}
     break;
 
   case 51:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 52:
@@ -13328,27 +12786,27 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 53:
 
-    { ((*yyvalp).node) = NULL; }
+    { ((*yyvalp).node) = NULL; ;}
     break;
 
   case 54:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 55:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SET_OPT_LEVEL); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SET_OPT_LEVEL); ;}
     break;
 
   case 56:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 57:
@@ -13365,17 +12823,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 58:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SET_OPT_COST); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SET_OPT_COST); ;}
     break;
 
   case 59:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 60:
@@ -13394,17 +12852,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 61:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SET_SYS_PARAM); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SET_SYS_PARAM); ;}
     break;
 
   case 62:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 63:
@@ -13417,17 +12875,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 64:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SET_TRAN); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SET_TRAN); ;}
     break;
 
   case 65:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 66:
@@ -13444,17 +12902,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 67:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SET_TRIGGER_TRACE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SET_TRIGGER_TRACE); ;}
     break;
 
   case 68:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 69:
@@ -13472,17 +12930,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 70:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SET_TRIGGER_DEPTH); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SET_TRIGGER_DEPTH); ;}
     break;
 
   case 71:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 72:
@@ -13500,7 +12958,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 73:
@@ -13516,7 +12974,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 74:
@@ -13546,17 +13004,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 75:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SET_NAMES); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SET_NAMES); ;}
     break;
 
   case 76:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 77:
@@ -13573,17 +13031,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 78:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SET_NAMES); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SET_NAMES); ;}
     break;
 
   case 79:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 80:
@@ -13613,7 +13071,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 81:
@@ -13630,42 +13088,42 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 82:
 
     {{
 			((*yyvalp).number) = PT_TRACE_ON;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 83:
 
     {{
 			((*yyvalp).number) = PT_TRACE_OFF;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 84:
 
     {{
 			((*yyvalp).number) = PT_TRACE_FORMAT_TEXT;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 85:
 
     {{
 			((*yyvalp).number) = PT_TRACE_FORMAT_TEXT;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 86:
 
     {{
 			((*yyvalp).number) = PT_TRACE_FORMAT_JSON;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 87:
@@ -13675,7 +13133,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 88:
@@ -13685,7 +13143,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 89:
@@ -13698,7 +13156,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 90:
@@ -13708,7 +13166,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 91:
@@ -13721,7 +13179,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 92:
@@ -13735,7 +13193,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 93:
@@ -13745,7 +13203,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 94:
@@ -13755,7 +13213,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 95:
@@ -13780,17 +13238,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 96:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_GET_STAT); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_GET_STAT); ;}
     break;
 
   case 97:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 98:
@@ -13807,17 +13265,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 99:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_GET_OPT_LEVEL); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_GET_OPT_LEVEL); ;}
     break;
 
   case 100:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 101:
@@ -13834,17 +13292,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 102:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_GET_OPT_COST); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_GET_OPT_COST); ;}
     break;
 
   case 103:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 104:
@@ -13861,17 +13319,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 105:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_GET_TRAN_ISOL); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_GET_TRAN_ISOL); ;}
     break;
 
   case 106:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 107:
@@ -13889,17 +13347,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 108:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_GET_TRAN_LOCK); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_GET_TRAN_LOCK); ;}
     break;
 
   case 109:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 110:
@@ -13917,17 +13375,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 111:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_GET_TRIGGER_TRACE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_GET_TRIGGER_TRACE); ;}
     break;
 
   case 112:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 113:
@@ -13945,17 +13403,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 114:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_GET_TRIGGER_DEPTH); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_GET_TRIGGER_DEPTH); ;}
     break;
 
   case 115:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 116:
@@ -13973,7 +13431,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 117:
@@ -13981,7 +13439,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {					/* 2 */
 			PT_NODE* qc = parser_new_node(this_parser, PT_CREATE_ENTITY);
 			parser_push_hint_node(qc);
-		}
+		;}
     break;
 
   case 118:
@@ -14025,7 +13483,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = qc;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 119:
@@ -14058,7 +13516,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = qc;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 120:
@@ -14067,12 +13525,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_INDEX);
 			parser_push_hint_node (node);
 			push_msg (MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-		}
+		;}
     break;
 
   case 121:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 122:
@@ -14197,17 +13655,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 		      ((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 123:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); ;}
     break;
 
   case 124:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 125:
@@ -14228,17 +13686,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 126:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CREATE_TRIGGER); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CREATE_TRIGGER); ;}
     break;
 
   case 127:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 128:
@@ -14264,17 +13722,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 129:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); ;}
     break;
 
   case 130:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 131:
@@ -14316,17 +13774,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 132:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); ;}
     break;
 
   case 133:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 134:
@@ -14348,17 +13806,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 135:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); ;}
     break;
 
   case 136:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 137:
@@ -14380,7 +13838,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 138:
@@ -14390,7 +13848,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			push_msg (MSGCAT_SYNTAX_INVALID_CREATE);
 			csql_yyerror_explicit ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yyloc).first_line, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yyloc).first_column);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 139:
@@ -14398,7 +13856,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {					/* 2 */
 			PT_NODE* qc = parser_new_node(this_parser, PT_CREATE_ENTITY);
 			parser_push_hint_node(qc);
-		}
+		;}
     break;
 
   case 140:
@@ -14418,7 +13876,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = qc;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 141:
@@ -14426,7 +13884,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {					/* 2 */
 			PT_NODE* qc = parser_new_node(this_parser, PT_CREATE_ENTITY);
 			parser_push_hint_node(qc);
-		}
+		;}
     break;
 
   case 142:
@@ -14446,7 +13904,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = qc;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 143:
@@ -14455,14 +13913,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			container_10 ctn;
 			memset(&ctn, 0x00, sizeof(container_10));
 			((*yyvalp).c10) = ctn;
-		}}
+		};}
     break;
 
   case 144:
 
     {{
 			((*yyvalp).c10) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c10);
-		}}
+		};}
     break;
 
   case 145:
@@ -14560,7 +14018,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c10) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 146:
@@ -14620,7 +14078,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c10) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 147:
@@ -14629,7 +14087,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_START), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node), NULL);
 			((*yyvalp).c3) = ctn;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 148:
@@ -14638,7 +14096,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_INC), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node), NULL);
 			((*yyvalp).c3) = ctn;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 149:
@@ -14647,7 +14105,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_MIN), CONTAINER_AT_0((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2)), CONTAINER_AT_1((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2)));
 			((*yyvalp).c3) = ctn;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 150:
@@ -14656,7 +14114,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_MAX), CONTAINER_AT_0((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2)), CONTAINER_AT_1((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2)));
 			((*yyvalp).c3) = ctn;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 151:
@@ -14665,7 +14123,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_CYCLE), CONTAINER_AT_0((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2)), CONTAINER_AT_1((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2)));
 			((*yyvalp).c3) = ctn;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 152:
@@ -14674,7 +14132,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_CACHE), CONTAINER_AT_0((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2)), CONTAINER_AT_1((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2)));
 			((*yyvalp).c3) = ctn;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 153:
@@ -14683,7 +14141,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_CREATE_SELECT_NO_ACTION;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 154:
@@ -14692,7 +14150,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_CREATE_SELECT_REPLACE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 155:
@@ -14700,7 +14158,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {					/* 2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER);
 			parser_push_hint_node(node);
-		}
+		;}
     break;
 
   case 156:
@@ -14718,7 +14176,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_save_alter_node (node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 157:
@@ -14734,7 +14192,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 158:
@@ -14742,7 +14200,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {					/* 2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER);
 			parser_push_hint_node(node);
-		}
+		;}
     break;
 
   case 159:
@@ -14800,7 +14258,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (6))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 160:
@@ -14825,7 +14283,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 161:
@@ -14852,7 +14310,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 162:
@@ -14876,7 +14334,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 163:
@@ -14937,7 +14395,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 164:
@@ -14945,7 +14403,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {					/* 2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
 			parser_push_hint_node(node);
-		}
+		;}
     break;
 
   case 165:
@@ -15016,7 +14474,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 166:
@@ -15049,7 +14507,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 167:
@@ -15072,7 +14530,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 168:
@@ -15092,7 +14550,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 169:
@@ -15119,7 +14577,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 172:
@@ -15129,7 +14587,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (4))].yystate.yysemantics.yysval.node), parser_get_alter_node ());
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 173:
@@ -15138,7 +14596,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			PT_NODE *node = parser_pop_hint_node ();
 			parser_save_alter_node (node);
-		}
+		;}
     break;
 
   case 174:
@@ -15148,7 +14606,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_get_alter_node ();
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 175:
@@ -15158,17 +14616,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER);
 			parser_save_alter_node (node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 176:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 177:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 178:
@@ -15186,7 +14644,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 179:
@@ -15204,7 +14662,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 180:
@@ -15214,7 +14672,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 181:
@@ -15224,7 +14682,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 182:
@@ -15242,7 +14700,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 183:
@@ -15251,7 +14709,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 184:
@@ -15260,17 +14718,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 2;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 185:
 
-    { ((*yyvalp).node) = NULL; }
+    { ((*yyvalp).node) = NULL; ;}
     break;
 
   case 186:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 189:
@@ -15286,7 +14744,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 190:
@@ -15316,7 +14774,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 191:
@@ -15339,7 +14797,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 192:
@@ -15347,7 +14805,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {					/* 2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_DROP_INDEX);
 			parser_push_hint_node(node);
-		}
+		;}
     break;
 
   case 193:
@@ -15403,7 +14861,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 194:
@@ -15420,7 +14878,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 195:
@@ -15443,7 +14901,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 196:
@@ -15460,7 +14918,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 197:
@@ -15473,7 +14931,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 198:
@@ -15489,7 +14947,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 199:
@@ -15508,7 +14966,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 200:
@@ -15527,7 +14985,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 201:
@@ -15545,7 +15003,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 202:
@@ -15561,7 +15019,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 205:
@@ -15571,7 +15029,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_is_reverse (false);
 			((*yyvalp).boolean) = false;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 206:
@@ -15581,7 +15039,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_is_reverse (true);
 			((*yyvalp).boolean) = true;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 207:
@@ -15590,7 +15048,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).boolean) = false;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 208:
@@ -15599,7 +15057,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).boolean) = true;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 209:
@@ -15608,7 +15066,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 210:
@@ -15618,7 +15076,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 211:
@@ -15636,7 +15094,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 		      ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 		      PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 212:
@@ -15653,7 +15111,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ups;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 213:
@@ -15670,7 +15128,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ups;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 214:
@@ -15687,7 +15145,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ups;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 215:
@@ -15697,7 +15155,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 216:
@@ -15707,7 +15165,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 217:
@@ -15716,7 +15174,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
                         ((*yyvalp).number) = 0;
 
-                DBG_PRINT}}
+                DBG_PRINT};}
     break;
 
   case 218:
@@ -15725,7 +15183,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
                         ((*yyvalp).number) = 1;
 
-                DBG_PRINT}}
+                DBG_PRINT};}
     break;
 
   case 222:
@@ -15738,7 +15196,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 223:
@@ -15751,7 +15209,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 224:
@@ -15761,7 +15219,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 225:
@@ -15771,7 +15229,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 226:
@@ -15781,7 +15239,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 227:
@@ -15791,7 +15249,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 228:
@@ -15801,7 +15259,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 229:
@@ -15811,7 +15269,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 230:
@@ -15821,7 +15279,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 231:
@@ -15835,7 +15293,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, parser_make_link (n1, n2), FROM_NUMBER (number));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 232:
@@ -15848,7 +15306,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, parser_make_link (n1, n2), FROM_NUMBER (1));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 233:
@@ -15861,7 +15319,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, parser_make_link (n1, n2), FROM_NUMBER (1));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 234:
@@ -15872,7 +15330,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node), FROM_NUMBER (0));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 235:
@@ -15885,7 +15343,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = sopt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 236:
@@ -15917,7 +15375,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			parser_restore_pseudoc ();
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 237:
@@ -15935,7 +15393,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 			((*yyvalp).node) = sopt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 238:
@@ -15943,7 +15401,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			parser_save_and_set_pseudoc (0);
 			((*yyvalp).node) = PT_JOIN_NONE;   /* just return NULL */
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 239:
@@ -15952,7 +15410,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_and_set_pseudoc (0);
 			parser_save_and_set_wjc (1);
 			parser_save_and_set_ic (1);
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 240:
@@ -15976,7 +15434,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			
 			((*yyvalp).node) = condition;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 241:
@@ -15985,7 +15443,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_JOIN_INNER;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 242:
@@ -15994,7 +15452,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_JOIN_INNER;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 243:
@@ -16003,7 +15461,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_JOIN_LEFT_OUTER;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 244:
@@ -16012,7 +15470,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_JOIN_RIGHT_OUTER;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 247:
@@ -16022,7 +15480,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 248:
@@ -16032,7 +15490,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 249:
@@ -16138,7 +15596,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ent;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 250:
@@ -16168,7 +15626,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ent;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 251:
@@ -16201,7 +15659,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ent;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 252:
@@ -16222,7 +15680,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ent;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 253:
@@ -16239,7 +15697,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (5))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 254:
@@ -16257,7 +15715,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (5))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 255:
@@ -16275,7 +15733,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (5))].yystate.yysemantics.yysval.node);
 			  PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 256:
@@ -16285,7 +15743,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = 0;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 257:
@@ -16295,7 +15753,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 258:
@@ -16305,7 +15763,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 259:
@@ -16316,7 +15774,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, NULL, NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 260:
@@ -16327,7 +15785,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (5))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (5))].yystate.yysemantics.yysval.node));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 261:
@@ -16338,7 +15796,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 264:
@@ -16348,7 +15806,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 265:
@@ -16358,7 +15816,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 266:
@@ -16368,7 +15826,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 267:
@@ -16378,7 +15836,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 268:
@@ -16392,7 +15850,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 269:
@@ -16402,7 +15860,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 270:
@@ -16422,7 +15880,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ocs;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 271:
@@ -16444,7 +15902,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ocs;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 272:
@@ -16463,7 +15921,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = acs;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 273:
@@ -16481,7 +15939,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = acs;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 274:
@@ -16504,7 +15962,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = name_node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 275:
@@ -16514,7 +15972,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 276:
@@ -16524,7 +15982,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 277:
@@ -16534,14 +15992,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 278:
 
     {{
 		    ((*yyvalp).node) = NULL;
-		}}
+		};}
     break;
 
   case 279:
@@ -16549,7 +16007,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 280:
@@ -16558,7 +16016,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EMPTY;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 281:
@@ -16567,7 +16025,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_VCLASS;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 282:
@@ -16576,7 +16034,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_VCLASS;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 283:
@@ -16585,7 +16043,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_CLASS;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 284:
@@ -16594,7 +16052,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_CLASS;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 285:
@@ -16603,7 +16061,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EMPTY;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 286:
@@ -16612,7 +16070,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_CLASS;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 287:
@@ -16621,7 +16079,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_CLASS;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 288:
@@ -16630,7 +16088,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).boolean) = false;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 289:
@@ -16639,7 +16097,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).boolean) = true;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 300:
@@ -16652,7 +16110,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    alt->info.alter.code = PT_CHANGE_OWNER;
 			    alt->info.alter.alter_clause.user.user_name = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			  }
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 301:
@@ -16685,7 +16143,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				  }
 			      }
 			  }
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 302:
@@ -16712,7 +16170,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				node->info.alter.alter_clause.collation.collation_id = coll_id;
 			      }
 			  }
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 303:
@@ -16724,7 +16182,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.code = PT_CHANGE_TABLE_COMMENT;
 			    node->info.alter.alter_clause.comment.tbl_comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			  }
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 310:
@@ -16739,7 +16197,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    alt->info.alter.super.resolution_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 313:
@@ -16753,7 +16211,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    alt->info.alter.super.resolution_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 314:
@@ -16768,7 +16226,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.rename.new_name = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 315:
@@ -16792,7 +16250,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.auto_increment.start_value = val;
 			  }
 
-	      DBG_PRINT}}
+	      DBG_PRINT};}
     break;
 
   case 316:
@@ -16819,7 +16277,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.rename.old_name = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (5))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 317:
@@ -16842,7 +16300,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.rename.old_name = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (7))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 318:
@@ -16859,7 +16317,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.rename.old_name = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (4))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 319:
@@ -16868,7 +16326,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EMPTY;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 320:
@@ -16877,7 +16335,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_ATTRIBUTE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 321:
@@ -16886,7 +16344,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_ATTRIBUTE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 322:
@@ -16894,7 +16352,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 
 			((*yyvalp).number) = PT_METHOD;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 323:
@@ -16903,7 +16361,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 324:
@@ -16912,7 +16370,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 325:
@@ -16921,7 +16379,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 326:
@@ -16931,17 +16389,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 328:
 
-    { parser_attr_type = PT_META_ATTR; }
+    { parser_attr_type = PT_META_ATTR; ;}
     break;
 
   case 329:
 
-    { parser_attr_type = PT_NORMAL; }
+    { parser_attr_type = PT_NORMAL; ;}
     break;
 
   case 330:
@@ -16955,17 +16413,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (7))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 331:
 
-    { parser_attr_type = PT_META_ATTR; }
+    { parser_attr_type = PT_META_ATTR; ;}
     break;
 
   case 332:
 
-    { parser_attr_type = PT_NORMAL; }
+    { parser_attr_type = PT_NORMAL; ;}
     break;
 
   case 333:
@@ -16979,17 +16437,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (5))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 334:
 
-    { allow_attribute_ordering = true; }
+    { allow_attribute_ordering = true; ;}
     break;
 
   case 335:
 
-    { allow_attribute_ordering = false; }
+    { allow_attribute_ordering = false; ;}
     break;
 
   case 336:
@@ -17003,17 +16461,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 337:
 
-    { allow_attribute_ordering = true; }
+    { allow_attribute_ordering = true; ;}
     break;
 
   case 338:
 
-    { allow_attribute_ordering = false; }
+    { allow_attribute_ordering = false; ;}
     break;
 
   case 339:
@@ -17027,7 +16485,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 340:
@@ -17042,7 +16500,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.mthd_file_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 341:
@@ -17056,7 +16514,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.mthd_def_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 342:
@@ -17072,7 +16530,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.mthd_def_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (4))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 343:
@@ -17087,7 +16545,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.super.sup_class_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 344:
@@ -17103,17 +16561,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.query.view_comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 345:
 
-    { parser_attr_type = PT_META_ATTR; }
+    { parser_attr_type = PT_META_ATTR; ;}
     break;
 
   case 346:
 
-    { parser_attr_type = PT_NORMAL; }
+    { parser_attr_type = PT_NORMAL; ;}
     break;
 
   case 347:
@@ -17127,7 +16585,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (5))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 348:
@@ -17141,7 +16599,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 352:
@@ -17152,7 +16610,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			node->info.alter.code = PT_ADD_HASHPARTITION;
 			node->info.alter.alter_clause.partition.size = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 353:
@@ -17163,7 +16621,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			node->info.alter.code = PT_ADD_PARTITION;
 			node->info.alter.alter_clause.partition.parts = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 354:
@@ -17180,7 +16638,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.constraint_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (4))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 355:
@@ -17194,7 +16652,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.code = PT_DROP_PRIMARY_CLAUSE;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 356:
@@ -17209,7 +16667,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.constraint_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 357:
@@ -17224,7 +16682,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.attr_mthd_name_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 358:
@@ -17239,7 +16697,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.constraint_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 359:
@@ -17254,7 +16712,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.partition.name_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 360:
@@ -17269,7 +16727,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.attr_mthd_name_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 361:
@@ -17284,7 +16742,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.mthd_file_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 362:
@@ -17299,7 +16757,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.super.sup_class_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 363:
@@ -17314,7 +16772,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.query.query_no_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 364:
@@ -17329,7 +16787,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.query.query_no_list = NULL;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 365:
@@ -17339,7 +16797,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 366:
@@ -17349,17 +16807,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 367:
 
-    { allow_attribute_ordering = true; }
+    { allow_attribute_ordering = true; ;}
     break;
 
   case 368:
 
-    { allow_attribute_ordering = false; }
+    { allow_attribute_ordering = false; ;}
     break;
 
   case 369:
@@ -17375,17 +16833,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    /* no name change for MODIFY */
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 370:
 
-    { allow_attribute_ordering = true; }
+    { allow_attribute_ordering = true; ;}
     break;
 
   case 371:
 
-    { allow_attribute_ordering = false; }
+    { allow_attribute_ordering = false; ;}
     break;
 
   case 372:
@@ -17404,17 +16862,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				info.attr_def.attr_type = PT_META_ATTR;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 373:
 
-    { allow_attribute_ordering = true; }
+    { allow_attribute_ordering = true; ;}
     break;
 
   case 374:
 
-    { allow_attribute_ordering = false; }
+    { allow_attribute_ordering = false; ;}
     break;
 
   case 375:
@@ -17436,7 +16894,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			      node->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.meta_class;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 376:
@@ -17451,7 +16909,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.attr_mthd.mthd_def_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 377:
@@ -17468,7 +16926,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.query.view_comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (4))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 378:
@@ -17485,7 +16943,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.query.view_comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 379:
@@ -17502,7 +16960,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    node->info.alter.alter_clause.rename.old_name = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (4))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 380:
@@ -17517,7 +16975,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 381:
@@ -17527,7 +16985,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 382:
@@ -17537,7 +16995,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 383:
@@ -17617,7 +17075,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    alter_node->info.alter.alter_clause.ch_attr_def.data_default_list = node;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 384:
@@ -17632,7 +17090,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 385:
@@ -17647,7 +17105,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 386:
@@ -17665,7 +17123,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ins;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 387:
@@ -17683,7 +17141,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ins;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 388:
@@ -17701,7 +17159,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ins;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 389:
@@ -17717,7 +17175,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ins;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 390:
@@ -17734,7 +17192,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ins;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 391:
@@ -17751,7 +17209,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ins;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 392:
@@ -17759,7 +17217,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		}}
+		};}
     break;
 
   case 393:
@@ -17767,7 +17225,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		}}
+		};}
     break;
 
   case 394:
@@ -17775,7 +17233,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {
 			PT_NODE* ins = parser_new_node (this_parser, PT_INSERT);
 			parser_push_hint_node (ins);
-		}
+		;}
     break;
 
   case 395:
@@ -17787,7 +17245,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    ins->info.insert.do_replace = true;
 			  }
 			parser_push_hint_node (ins);
-		}
+		;}
     break;
 
   case 396:
@@ -17815,7 +17273,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ins;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 397:
@@ -17827,7 +17285,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c2) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (5))].yystate.yysemantics.yysval.c2);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 398:
@@ -17845,7 +17303,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c2) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (5))].yystate.yysemantics.yysval.c2);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 399:
@@ -17857,7 +17315,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 400:
@@ -17876,7 +17334,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 401:
@@ -17886,7 +17344,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (5))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 402:
@@ -17903,7 +17361,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ins;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 403:
@@ -17921,7 +17379,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ins;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 404:
@@ -17929,7 +17387,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		}}
+		};}
     break;
 
   case 405:
@@ -17937,7 +17395,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		}}
+		};}
     break;
 
   case 406:
@@ -17967,7 +17425,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = ins;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 407:
@@ -17976,7 +17434,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 408:
@@ -17985,7 +17443,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 409:
@@ -17995,7 +17453,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 410:
@@ -18004,7 +17462,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 411:
@@ -18013,7 +17471,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 412:
@@ -18023,7 +17481,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 413:
@@ -18033,7 +17491,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 414:
@@ -18044,7 +17502,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = nls;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 415:
@@ -18054,7 +17512,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 416:
@@ -18065,7 +17523,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = nls;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 423:
@@ -18074,7 +17532,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 424:
@@ -18084,7 +17542,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 425:
@@ -18094,7 +17552,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 426:
@@ -18104,7 +17562,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 427:
@@ -18114,7 +17572,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 428:
@@ -18125,7 +17583,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = nls;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 429:
@@ -18146,7 +17604,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = nls;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 430:
@@ -18157,7 +17615,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = nls;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 431:
@@ -18167,7 +17625,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 432:
@@ -18177,7 +17635,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 433:
@@ -18187,7 +17645,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 434:
@@ -18197,7 +17655,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 435:
@@ -18210,7 +17668,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_DEFAULTF, NULL, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 436:
@@ -18226,7 +17684,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 437:
@@ -18243,7 +17701,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 438:
@@ -18260,7 +17718,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 439:
@@ -18278,7 +17736,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 440:
@@ -18297,7 +17755,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 441:
@@ -18316,7 +17774,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 442:
@@ -18332,7 +17790,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 443:
@@ -18348,7 +17806,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 444:
@@ -18370,7 +17828,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 445:
@@ -18384,7 +17842,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 446:
@@ -18402,7 +17860,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 447:
@@ -18419,7 +17877,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 448:
@@ -18432,7 +17890,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 449:
@@ -18447,7 +17905,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 450:
@@ -18465,7 +17923,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 451:
@@ -18479,7 +17937,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 452:
@@ -18493,7 +17951,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 453:
@@ -18506,7 +17964,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 454:
@@ -18519,7 +17977,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 455:
@@ -18531,7 +17989,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 456:
@@ -18543,7 +18001,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 457:
@@ -18559,7 +18017,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 458:
@@ -18574,7 +18032,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 459:
@@ -18587,7 +18045,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 460:
@@ -18602,7 +18060,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 461:
@@ -18617,7 +18075,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 462:
@@ -18632,7 +18090,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 463:
@@ -18648,7 +18106,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 464:
@@ -18666,259 +18124,259 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 465:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_ACCESS_STATUS;
-		}}
+		};}
     break;
 
   case 466:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_GLOBAL_CRITICAL_SECTIONS;
-		}}
+		};}
     break;
 
   case 467:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_JOB_QUEUES;
-		}}
+		};}
     break;
 
   case 468:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_TIMEZONES;
-		}}
+		};}
     break;
 
   case 469:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_FULL_TIMEZONES;
-		}}
+		};}
     break;
 
   case 470:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_TRAN_TABLES;
-		}}
+		};}
     break;
 
   case 471:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_TRAN_TABLES;
-		}}
+		};}
     break;
 
   case 472:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_THREADS;
-		}}
+		};}
     break;
 
   case 473:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_ACCESS_STATUS;
-		}}
+		};}
     break;
 
   case 474:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_TIMEZONES;
-		}}
+		};}
     break;
 
   case 475:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_FULL_TIMEZONES;
-		}}
+		};}
     break;
 
   case 476:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_ACCESS_STATUS;
-		}}
+		};}
     break;
 
   case 477:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_TIMEZONES;
-		}}
+		};}
     break;
 
   case 478:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_FULL_TIMEZONES;
-		}}
+		};}
     break;
 
   case 479:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_TRAN_TABLES;
-		}}
+		};}
     break;
 
   case 480:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_TRAN_TABLES;
-		}}
+		};}
     break;
 
   case 481:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_THREADS;
-		}}
+		};}
     break;
 
   case 482:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_VOLUME_HEADER;
-		}}
+		};}
     break;
 
   case 483:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_ARCHIVE_LOG_HEADER;
-		}}
+		};}
     break;
 
   case 484:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_HEAP_HEADER;
-		}}
+		};}
     break;
 
   case 485:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_ALL_HEAP_HEADER;
-		}}
+		};}
     break;
 
   case 486:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_HEAP_CAPACITY;
-		}}
+		};}
     break;
 
   case 487:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_ALL_HEAP_CAPACITY;
-		}}
+		};}
     break;
 
   case 488:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_ALL_INDEXES_HEADER;
-		}}
+		};}
     break;
 
   case 489:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_ALL_INDEXES_CAPACITY;
-		}}
+		};}
     break;
 
   case 490:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_ACTIVE_LOG_HEADER;
-		}}
+		};}
     break;
 
   case 491:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_SLOTTED_PAGE_HEADER;
-		}}
+		};}
     break;
 
   case 492:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_SLOTTED_PAGE_SLOTS;
-		}}
+		};}
     break;
 
   case 493:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_INDEX_HEADER;
-		}}
+		};}
     break;
 
   case 494:
 
     {{
 			((*yyvalp).number) = SHOWSTMT_INDEX_CAPACITY;
-		}}
+		};}
     break;
 
   case 495:
 
     {{
 			((*yyvalp).number) = KILLSTMT_QUERY;
-		}}
+		};}
     break;
 
   case 496:
 
     {{
 			((*yyvalp).number) = KILLSTMT_TRAN;
-		}}
+		};}
     break;
 
   case 497:
 
     {{
 			((*yyvalp).node) = NULL;
-		}}
+		};}
     break;
 
   case 498:
 
     {{
 			((*yyvalp).node) = NULL;
-		}}
+		};}
     break;
 
   case 499:
 
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 500:
 
     {{
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 501:
@@ -18928,7 +18386,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			node->info.named_arg.name = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node);
 			node->info.named_arg.value = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			((*yyvalp).node) = node;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 502:
@@ -18939,14 +18397,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  node->type_enum = PT_TYPE_NULL;
 
 			((*yyvalp).node) = node;
-		}}
+		};}
     break;
 
   case 503:
 
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
-		}}
+		};}
     break;
 
   case 504:
@@ -18956,7 +18414,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 505:
@@ -18966,28 +18424,28 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 506:
 
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 507:
 
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 508:
 
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 509:
@@ -18996,7 +18454,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 510:
@@ -19005,7 +18463,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 522:
@@ -19013,7 +18471,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {
 			PT_NODE* node = parser_new_node(this_parser, PT_UPDATE);
 			parser_push_hint_node(node);
-		}
+		;}
     break;
 
   case 524:
@@ -19022,7 +18480,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PT_NODE * node = parser_pop_hint_node();
 			parser_push_orderby_node (node);
 			parser_push_hint_node (node);
-		}
+		;}
     break;
 
   case 525:
@@ -19121,7 +18579,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 526:
@@ -19138,7 +18596,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 527:
@@ -19149,7 +18607,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, 0, NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 528:
@@ -19176,7 +18634,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 531:
@@ -19187,7 +18645,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (4))].yystate.yysemantics.yysval.node));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 532:
@@ -19196,7 +18654,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 533:
@@ -19206,7 +18664,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 534:
@@ -19216,7 +18674,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 535:
@@ -19226,7 +18684,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 536:
@@ -19235,7 +18693,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 537:
@@ -19245,7 +18703,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_ASSIGN, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 538:
@@ -19262,7 +18720,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_ASSIGN, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), node_df, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 539:
@@ -19374,7 +18832,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			      }
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 540:
@@ -19393,7 +18851,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 541:
@@ -19403,7 +18861,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 542:
@@ -19412,7 +18870,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 543:
@@ -19424,7 +18882,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 544:
@@ -19436,7 +18894,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 545:
@@ -19445,7 +18903,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 546:
@@ -19454,7 +18912,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 547:
@@ -19466,7 +18924,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 548:
@@ -19478,7 +18936,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 549:
@@ -19490,7 +18948,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 550:
@@ -19502,7 +18960,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 551:
@@ -19510,7 +18968,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {				/* $2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_DELETE);
 			parser_push_hint_node(node);
-		}
+		;}
     break;
 
   case 552:
@@ -19609,7 +19067,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = del;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 553:
@@ -19617,7 +19075,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {				/* $2 */
 			PT_NODE *merge = parser_new_node (this_parser, PT_MERGE);
 			parser_push_hint_node (merge);
-		}
+		;}
     break;
 
   case 554:
@@ -19635,31 +19093,31 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = merge;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 555:
 
     {{
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 556:
 
     {{
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 557:
 
     {{
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 558:
 
     {{
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 559:
@@ -19678,7 +19136,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			      }
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 560:
@@ -19693,7 +19151,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    merge->info.merge.insert.search_cond = (((yyGLRStackItem const *)yyvsp)[YYFILL ((8) - (8))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 561:
@@ -19702,7 +19160,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 562:
@@ -19712,7 +19170,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 563:
@@ -19732,7 +19190,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 564:
@@ -19751,7 +19209,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 565:
@@ -19770,37 +19228,37 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 566:
 
-    { push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); }
+    { push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); ;}
     break;
 
   case 567:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 568:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 569:
 
-    { push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); }
+    { push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); ;}
     break;
 
   case 570:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 571:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 572:
@@ -19819,7 +19277,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 573:
@@ -19838,7 +19296,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 574:
@@ -19847,7 +19305,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 575:
@@ -19856,52 +19314,52 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 576:
 
-    { push_msg(MSGCAT_SYNTAX_MISSING_CLASS_SPEC_LIST); }
+    { push_msg(MSGCAT_SYNTAX_MISSING_CLASS_SPEC_LIST); ;}
     break;
 
   case 577:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 578:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 579:
 
-    { push_msg(MSGCAT_SYNTAX_MISSING_IDENTIFIER_LIST); }
+    { push_msg(MSGCAT_SYNTAX_MISSING_IDENTIFIER_LIST); ;}
     break;
 
   case 580:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 581:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 582:
 
-    { push_msg(MSGCAT_SYNTAX_MISSING_IDENTIFIER_LIST); }
+    { push_msg(MSGCAT_SYNTAX_MISSING_IDENTIFIER_LIST); ;}
     break;
 
   case 583:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 584:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 585:
@@ -19911,7 +19369,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 586:
@@ -19921,7 +19379,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 587:
@@ -19934,7 +19392,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 588:
@@ -19952,7 +19410,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 589:
@@ -19970,7 +19428,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 590:
@@ -19988,7 +19446,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 591:
@@ -20009,7 +19467,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 592:
@@ -20027,7 +19485,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 593:
@@ -20045,7 +19503,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 594:
@@ -20063,7 +19521,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 595:
@@ -20081,7 +19539,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 596:
@@ -20099,7 +19557,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 597:
@@ -20117,7 +19575,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 598:
@@ -20135,7 +19593,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 599:
@@ -20153,7 +19611,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 600:
@@ -20162,17 +19620,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 601:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_PASSWORD); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_PASSWORD); ;}
     break;
 
   case 602:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 603:
@@ -20182,7 +19640,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 604:
@@ -20191,17 +19649,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 605:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_GROUPS); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_GROUPS); ;}
     break;
 
   case 606:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 607:
@@ -20211,7 +19669,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 608:
@@ -20220,17 +19678,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 609:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_MEMBERS); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_MEMBERS); ;}
     break;
 
   case 610:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 611:
@@ -20240,7 +19698,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 612:
@@ -20260,7 +19718,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 613:
@@ -20269,7 +19727,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 614:
@@ -20279,7 +19737,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 615:
@@ -20288,7 +19746,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 616:
@@ -20298,7 +19756,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 617:
@@ -20307,7 +19765,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 618:
@@ -20317,7 +19775,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 619:
@@ -20326,7 +19784,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 620:
@@ -20336,7 +19794,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 621:
@@ -20345,7 +19803,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 622:
@@ -20355,7 +19813,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 623:
@@ -20364,7 +19822,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 624:
@@ -20374,7 +19832,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 625:
@@ -20385,7 +19843,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2(ctn, NULL, NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 626:
@@ -20394,7 +19852,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c2) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 627:
@@ -20403,7 +19861,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_CLASS;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 628:
@@ -20412,7 +19870,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_CLASS;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 631:
@@ -20421,7 +19879,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 632:
@@ -20430,7 +19888,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 633:
@@ -20439,7 +19897,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 634:
@@ -20448,7 +19906,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 635:
@@ -20457,7 +19915,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 636:
@@ -20466,7 +19924,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 637:
@@ -20475,7 +19933,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 638:
@@ -20485,7 +19943,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 639:
@@ -20494,7 +19952,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 640:
@@ -20504,7 +19962,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 641:
@@ -20513,7 +19971,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EMPTY;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 642:
@@ -20522,7 +19980,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_LOCAL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 643:
@@ -20531,7 +19989,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_CASCADED;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 644:
@@ -20540,7 +19998,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_CASCADED;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 645:
@@ -20550,7 +20008,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 646:
@@ -20560,7 +20018,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 647:
@@ -20570,7 +20028,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 648:
@@ -20580,7 +20038,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 649:
@@ -20604,7 +20062,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 650:
@@ -20627,7 +20085,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 651:
@@ -20637,7 +20095,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 652:
@@ -20647,7 +20105,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 653:
@@ -20657,7 +20115,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 654:
@@ -20667,7 +20125,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = pt_table_option (this_parser, PT_TABLE_OPTION_REUSE_OID, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 655:
@@ -20687,7 +20145,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = pt_table_option (this_parser, PT_TABLE_OPTION_AUTO_INCREMENT, val);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		  DBG_PRINT}}
+		  DBG_PRINT};}
     break;
 
   case 656:
@@ -20697,7 +20155,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = pt_table_option (this_parser, PT_TABLE_OPTION_CHARSET, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		  DBG_PRINT}}
+		  DBG_PRINT};}
     break;
 
   case 657:
@@ -20707,7 +20165,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = pt_table_option (this_parser, PT_TABLE_OPTION_COLLATION, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		  DBG_PRINT}}
+		  DBG_PRINT};}
     break;
 
   case 658:
@@ -20717,7 +20175,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = pt_table_option (this_parser, PT_TABLE_OPTION_COMMENT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-	      DBG_PRINT}}
+	      DBG_PRINT};}
     break;
 
   case 659:
@@ -20726,7 +20184,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 660:
@@ -20736,7 +20194,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 661:
@@ -20746,7 +20204,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (4))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 662:
@@ -20755,7 +20213,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 663:
@@ -20765,7 +20223,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 664:
@@ -20774,7 +20232,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 665:
@@ -20784,7 +20242,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 666:
@@ -20794,7 +20252,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 667:
@@ -20804,7 +20262,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 668:
@@ -20814,7 +20272,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 669:
@@ -20826,7 +20284,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (0));
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 670:
@@ -20835,7 +20293,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c4) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c4);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 671:
@@ -20859,7 +20317,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 672:
@@ -20868,7 +20326,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c4) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c4);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 673:
@@ -20887,7 +20345,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 674:
@@ -20959,7 +20417,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 675:
@@ -20984,7 +20442,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 676:
@@ -20994,7 +20452,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 677:
@@ -21004,7 +20462,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 678:
@@ -21018,7 +20476,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 679:
@@ -21027,7 +20485,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 680:
@@ -21036,7 +20494,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 681:
@@ -21045,7 +20503,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 682:
@@ -21054,7 +20512,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 683:
@@ -21064,7 +20522,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 684:
@@ -21076,7 +20534,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (PT_RULE_RESTRICT), NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 685:
@@ -21090,7 +20548,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  ctn.c2 = FROM_NUMBER (PT_RULE_RESTRICT);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 686:
@@ -21107,7 +20565,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c1 = FROM_NUMBER (PT_RULE_CASCADE);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 687:
@@ -21124,7 +20582,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c1 = FROM_NUMBER (PT_RULE_NO_ACTION);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 688:
@@ -21141,7 +20599,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c1 = FROM_NUMBER (PT_RULE_RESTRICT);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 689:
@@ -21158,7 +20616,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c1 = FROM_NUMBER (PT_RULE_SET_NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 690:
@@ -21175,7 +20633,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c2 = FROM_NUMBER (PT_RULE_NO_ACTION);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 691:
@@ -21192,7 +20650,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c2 = FROM_NUMBER (PT_RULE_RESTRICT);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 692:
@@ -21209,7 +20667,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c2 = FROM_NUMBER (PT_RULE_SET_NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 693:
@@ -21220,7 +20678,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_RULE_CASCADE), NULL, NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 694:
@@ -21231,7 +20689,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_RULE_NO_ACTION), NULL, NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 695:
@@ -21242,7 +20700,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_RULE_RESTRICT), NULL, NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 696:
@@ -21253,7 +20711,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_RULE_SET_NULL), NULL, NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 697:
@@ -21264,7 +20722,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_3 (ctn, NULL, FROM_NUMBER (PT_RULE_NO_ACTION), NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 698:
@@ -21275,7 +20733,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_3 (ctn, NULL, FROM_NUMBER (PT_RULE_RESTRICT), NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 699:
@@ -21286,7 +20744,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_3 (ctn, NULL, FROM_NUMBER (PT_RULE_SET_NULL), NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 700:
@@ -21304,7 +20762,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 701:
@@ -21318,7 +20776,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c4 = FROM_NUMBER (0);
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 702:
@@ -21332,7 +20790,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c4 = FROM_NUMBER (0);
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 703:
@@ -21346,7 +20804,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c4 = FROM_NUMBER (1);
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 704:
@@ -21360,7 +20818,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			ctn.c4 = FROM_NUMBER (0);
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 705:
@@ -21370,7 +20828,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 706:
@@ -21380,7 +20838,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 707:
@@ -21404,7 +20862,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 708:
@@ -21413,7 +20871,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 709:
@@ -21423,7 +20881,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 710:
@@ -21432,7 +20890,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 711:
@@ -21442,7 +20900,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 712:
@@ -21452,7 +20910,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 713:
@@ -21471,7 +20929,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = at;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 714:
@@ -21482,7 +20940,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_NONE), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 715:
@@ -21491,7 +20949,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c2) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 716:
@@ -21500,7 +20958,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 717:
@@ -21510,7 +20968,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 718:
@@ -21520,7 +20978,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 719:
@@ -21530,7 +20988,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 720:
@@ -21543,7 +21001,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 721:
@@ -21552,17 +21010,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 722:
 
-    { parser_attr_type = PT_META_ATTR; }
+    { parser_attr_type = PT_META_ATTR; ;}
     break;
 
   case 723:
 
-    { parser_attr_type = PT_NORMAL; }
+    { parser_attr_type = PT_NORMAL; ;}
     break;
 
   case 724:
@@ -21572,7 +21030,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (7))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 725:
@@ -21582,7 +21040,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 726:
@@ -21592,17 +21050,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 727:
 
-    { parser_attr_type = PT_META_ATTR; }
+    { parser_attr_type = PT_META_ATTR; ;}
     break;
 
   case 728:
 
-    { parser_attr_type = PT_NORMAL; }
+    { parser_attr_type = PT_NORMAL; ;}
     break;
 
   case 729:
@@ -21612,7 +21070,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 730:
@@ -21622,7 +21080,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 731:
@@ -21632,7 +21090,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 732:
@@ -21642,7 +21100,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 733:
@@ -21652,7 +21110,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 734:
@@ -21672,7 +21130,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 735:
@@ -21682,7 +21140,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 736:
@@ -21692,7 +21150,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 737:
@@ -21702,7 +21160,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 738:
@@ -21712,7 +21170,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 739:
@@ -21722,7 +21180,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 740:
@@ -21732,7 +21190,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 741:
@@ -21742,7 +21200,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 742:
@@ -21802,7 +21260,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = constraint;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 743:
@@ -21864,7 +21322,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			node->info.index.column_names = col;
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 744:
@@ -21892,7 +21350,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_save_attr_def_one (node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 745:
@@ -21912,7 +21370,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 746:
@@ -21921,7 +21379,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 747:
@@ -21943,7 +21401,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = ord;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 748:
@@ -21965,17 +21423,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = ord;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 749:
 
-    { ((*yyvalp).number) = 0; }
+    { ((*yyvalp).number) = 0; ;}
     break;
 
   case 750:
 
-    { ((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.number); }
+    { ((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.number); ;}
     break;
 
   case 751:
@@ -22012,70 +21470,70 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 
 			((*yyvalp).number) = merged;
-		}}
+		};}
     break;
 
   case 752:
 
     {{
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.number);
-		}}
+		};}
     break;
 
   case 753:
 
     {{
 			((*yyvalp).number) = COLUMN_CONSTRAINT_UNIQUE;
-		}}
+		};}
     break;
 
   case 754:
 
     {{
 			((*yyvalp).number) = COLUMN_CONSTRAINT_PRIMARY_KEY;
-		}}
+		};}
     break;
 
   case 755:
 
     {{
 			((*yyvalp).number) = COLUMN_CONSTRAINT_NULL;
-		}}
+		};}
     break;
 
   case 756:
 
     {{
 			((*yyvalp).number) = COLUMN_CONSTRAINT_OTHERS;
-		}}
+		};}
     break;
 
   case 757:
 
     {{
 			((*yyvalp).number) = COLUMN_CONSTRAINT_SHARED;
-		}}
+		};}
     break;
 
   case 758:
 
     {{
 			((*yyvalp).number) = COLUMN_CONSTRAINT_DEFAULT;
-		}}
+		};}
     break;
 
   case 759:
 
     {{
 			((*yyvalp).number) = COLUMN_CONSTRAINT_AUTO_INCREMENT;
-		}}
+		};}
     break;
 
   case 760:
 
     {{
 			((*yyvalp).number) = COLUMN_CONSTRAINT_COMMENT;
-		}}
+		};}
     break;
 
   case 761:
@@ -22117,7 +21575,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 762:
@@ -22151,7 +21609,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 763:
@@ -22183,7 +21641,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 764:
@@ -22223,7 +21681,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 765:
@@ -22256,7 +21714,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 766:
@@ -22299,7 +21757,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 776:
@@ -22342,7 +21800,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				       MSGCAT_SEMANTIC_CLASS_ATT_CANT_BE_AUTOINC);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 777:
@@ -22362,7 +21820,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				       MSGCAT_SEMANTIC_CLASS_ATT_CANT_BE_AUTOINC);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 778:
@@ -22382,7 +21840,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			attr_node->info.attr_def.data_default = node;
 			attr_node->info.attr_def.attr_type = PT_SHARED;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 779:
@@ -22457,7 +21915,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.data_default = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 780:
@@ -22468,7 +21926,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 781:
@@ -22478,7 +21936,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 782:
@@ -22488,7 +21946,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 783:
@@ -22571,7 +22029,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = tm;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 784:
@@ -22600,7 +22058,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = tm;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 785:
@@ -22617,7 +22075,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = tm;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 786:
@@ -22629,7 +22087,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (PT_NO_ISOLATION_LEVEL), FROM_NUMBER (0));
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 787:
@@ -22641,7 +22099,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (PT_NO_ISOLATION_LEVEL), FROM_NUMBER (1));
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 788:
@@ -22653,7 +22111,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (PT_SERIALIZABLE), FROM_NUMBER (0));
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 789:
@@ -22665,7 +22123,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (PT_READ_COMMITTED), FROM_NUMBER (0));
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 790:
@@ -22681,7 +22139,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (level), FROM_NUMBER (0));
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 791:
@@ -22701,7 +22159,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (error));
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 792:
@@ -22719,7 +22177,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (0));
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 793:
@@ -22738,7 +22196,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (error));
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 794:
@@ -22756,7 +22214,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 					 FROM_NUMBER (error));
 			((*yyvalp).c4) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 797:
@@ -22765,7 +22223,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_REPEATABLE_READ;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 798:
@@ -22774,7 +22232,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_READ_COMMITTED;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 799:
@@ -22792,7 +22250,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 800:
@@ -22810,7 +22268,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 801:
@@ -22820,7 +22278,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 802:
@@ -22830,7 +22288,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 803:
@@ -22840,7 +22298,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 804:
@@ -22850,7 +22308,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 805:
@@ -22867,7 +22325,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = comm;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 806:
@@ -22878,7 +22336,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = comm;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 807:
@@ -22895,7 +22353,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = roll;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 808:
@@ -22906,7 +22364,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = roll;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 809:
@@ -22923,7 +22381,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = svpt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 816:
@@ -22941,7 +22399,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 817:
@@ -22959,7 +22417,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 818:
@@ -22979,7 +22437,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 819:
@@ -22988,17 +22446,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 820:
 
-    { parser_save_and_set_hvar (0); }
+    { parser_save_and_set_hvar (0); ;}
     break;
 
   case 821:
 
-    { parser_restore_hvar (); }
+    { parser_restore_hvar (); ;}
     break;
 
   case 822:
@@ -23008,7 +22466,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 823:
@@ -23017,7 +22475,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MISC_DUMMY;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 824:
@@ -23026,7 +22484,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.number);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 825:
@@ -23035,7 +22493,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_ACTIVE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 826:
@@ -23044,7 +22502,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_INACTIVE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 827:
@@ -23053,7 +22511,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 828:
@@ -23063,7 +22521,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 829:
@@ -23073,7 +22531,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 830:
@@ -23082,7 +22540,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 831:
@@ -23092,7 +22550,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 832:
@@ -23101,7 +22559,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_BEFORE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 833:
@@ -23110,7 +22568,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_AFTER;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 834:
@@ -23119,7 +22577,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_DEFERRED;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 835:
@@ -23128,7 +22586,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MISC_DUMMY;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 836:
@@ -23137,7 +22595,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_AFTER;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 837:
@@ -23146,7 +22604,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_DEFERRED;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 838:
@@ -23163,7 +22621,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 839:
@@ -23181,7 +22639,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 840:
@@ -23190,7 +22648,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EV_INSERT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 841:
@@ -23199,7 +22657,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EV_STMT_INSERT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 842:
@@ -23208,7 +22666,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EV_DELETE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 843:
@@ -23217,7 +22675,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EV_STMT_DELETE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 844:
@@ -23226,7 +22684,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EV_UPDATE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 845:
@@ -23235,7 +22693,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EV_STMT_UPDATE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 846:
@@ -23244,7 +22702,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EV_COMMIT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 847:
@@ -23253,7 +22711,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EV_ROLLBACK;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 848:
@@ -23271,7 +22729,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 849:
@@ -23288,7 +22746,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 850:
@@ -23298,7 +22756,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 851:
@@ -23308,7 +22766,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 852:
@@ -23325,7 +22783,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 853:
@@ -23342,7 +22800,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 854:
@@ -23360,7 +22818,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 855:
@@ -23378,7 +22836,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 856:
@@ -23396,7 +22854,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 857:
@@ -23414,7 +22872,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 858:
@@ -23432,7 +22890,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 859:
@@ -23450,7 +22908,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 860:
@@ -23468,7 +22926,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 861:
@@ -23485,7 +22943,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 862:
@@ -23502,7 +22960,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 863:
@@ -23513,7 +22971,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_3 (ctn, FROM_NUMBER ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.number)), NULL, NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 864:
@@ -23524,7 +22982,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_MISC_DUMMY), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node), NULL);
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 865:
@@ -23535,7 +22993,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_MISC_DUMMY), NULL, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			((*yyvalp).c3) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 868:
@@ -23553,7 +23011,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 869:
@@ -23571,7 +23029,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 870:
@@ -23581,7 +23039,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 871:
@@ -23591,7 +23049,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 872:
@@ -23601,7 +23059,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 873:
@@ -23611,7 +23069,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 874:
@@ -23621,7 +23079,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 875:
@@ -23631,7 +23089,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 876:
@@ -23651,7 +23109,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 877:
@@ -23671,7 +23129,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 878:
@@ -23692,7 +23150,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, node, FROM_NUMBER (0));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 879:
@@ -23703,7 +23161,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER (1));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 880:
@@ -23724,7 +23182,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, node, FROM_NUMBER (0));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 881:
@@ -23735,7 +23193,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER (1));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 882:
@@ -23746,7 +23204,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (0));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 883:
@@ -23757,7 +23215,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (1));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 884:
@@ -23768,7 +23226,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node), FROM_NUMBER (0));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 885:
@@ -23778,7 +23236,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER (1));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 886:
@@ -23787,7 +23245,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).cptr) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.cptr);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 887:
@@ -23796,7 +23254,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).cptr) = pt_append_string (this_parser, (char *) "-", (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.cptr));
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 888:
@@ -23805,7 +23263,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).cptr) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.cptr);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 891:
@@ -23814,7 +23272,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_NONE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 892:
@@ -23823,7 +23281,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = TO_NUMBER (CONTAINER_AT_0 ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2)));
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 893:
@@ -23832,7 +23290,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_RESULTSET;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 897:
@@ -23841,7 +23299,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 898:
@@ -23851,7 +23309,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 899:
@@ -23861,7 +23319,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 900:
@@ -23871,7 +23329,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 901:
@@ -23892,7 +23350,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 902:
@@ -23913,7 +23371,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 903:
@@ -23922,7 +23380,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.number);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 904:
@@ -23931,12 +23389,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_INPUTOUTPUT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 905:
 
-    { parser_select_level++; }
+    { parser_select_level++; ;}
     break;
 
   case 906:
@@ -23946,7 +23404,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			parser_select_level--;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 907:
@@ -23965,7 +23423,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_and_set_sqc (1);
 			parser_save_and_set_pseudoc (1);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 908:
@@ -23975,7 +23433,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 909:
@@ -24031,7 +23489,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 910:
@@ -24042,7 +23500,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 911:
@@ -24061,7 +23519,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_and_set_sqc (1);
 			parser_save_and_set_pseudoc (1);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 912:
@@ -24071,7 +23529,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 913:
@@ -24127,7 +23585,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 914:
@@ -24138,7 +23596,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 915:
@@ -24154,7 +23612,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = stmt;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 916:
@@ -24162,7 +23620,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
         PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
         parser_push_orderby_node (node);      
-      }}
+      };}
     break;
 
   case 917:
@@ -24207,7 +23665,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
         
         parser_push_orderby_node (node);
         
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 918:
@@ -24218,7 +23676,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
             
-            DBG_PRINT}}
+            DBG_PRINT};}
     break;
 
   case 919:
@@ -24248,7 +23706,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = stmt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 920:
@@ -24258,7 +23716,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 921:
@@ -24266,7 +23724,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
         PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
         parser_push_orderby_node (node);      
-      }}
+      };}
     break;
 
   case 922:
@@ -24311,7 +23769,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
         
         parser_push_orderby_node (node);
         
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 923:
@@ -24322,7 +23780,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
             
-            DBG_PRINT}}
+            DBG_PRINT};}
     break;
 
   case 924:
@@ -24351,7 +23809,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = stmt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 925:
@@ -24361,7 +23819,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 926:
@@ -24379,7 +23837,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 927:
@@ -24398,7 +23856,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 928:
@@ -24417,7 +23875,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 929:
@@ -24436,7 +23894,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 930:
@@ -24455,7 +23913,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 931:
@@ -24465,7 +23923,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 932:
@@ -24475,7 +23933,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 933:
@@ -24483,7 +23941,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 934:
@@ -24493,7 +23951,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 935:
@@ -24503,7 +23961,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 936:
@@ -24526,7 +23984,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  
 			  parser_push_select_stmt_node (node);
 			  parser_push_hint_node (node);
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 937:
@@ -24573,7 +24031,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				  parser_select_level--;
 				  
 				((*yyvalp).node) = node;
-			DBG_PRINT}}
+			DBG_PRINT};}
     break;
 
   case 938:
@@ -24584,14 +24042,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_make_link (node1, node2);
 			
 			((*yyvalp).node) = node1;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 939:
 
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 940:
@@ -24611,7 +24069,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PT_SET_VALUE_QUERY(node);
 			
 			((*yyvalp).node) = node;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 941:
@@ -24635,7 +24093,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_push_select_stmt_node (node);
 			parser_push_hint_node (node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 942:
@@ -24659,14 +24117,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			      }
 			  }
 
-		}}
+		};}
     break;
 
   case 943:
 
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((8) - (8))].yystate.yysemantics.yysval.node);
-		}}
+		};}
     break;
 
   case 944:
@@ -24675,7 +24133,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 945:
@@ -24695,7 +24153,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 946:
@@ -24703,7 +24161,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 947:
@@ -24711,7 +24169,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{ 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 948:
@@ -24721,7 +24179,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT(((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 949:
@@ -24731,7 +24189,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT(((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 950:
@@ -24752,7 +24210,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 951:
@@ -24771,7 +24229,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = stmt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 952:
@@ -24781,7 +24239,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT(((*yyvalp).node), (*yylocp).buffer_pos);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 953:
@@ -24822,7 +24280,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 954:
@@ -24831,7 +24289,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			parser_found_Oracle_outer = false;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 955:
@@ -24945,7 +24403,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 956:
@@ -24954,7 +24412,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 957:
@@ -24964,7 +24422,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 958:
@@ -24974,7 +24432,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 961:
@@ -24985,7 +24443,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			char *hint_comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.cptr);
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 962:
@@ -24996,7 +24454,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			char *hint_comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.cptr);
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 963:
@@ -25007,7 +24465,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			char *hint_comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.cptr);
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 964:
@@ -25018,7 +24476,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			char *hint_comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.cptr);
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 965:
@@ -25029,7 +24487,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			char *hint_comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.cptr);
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 966:
@@ -25040,7 +24498,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			char *hint_comment = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.cptr);
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 967:
@@ -25049,7 +24507,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_EMPTY;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 968:
@@ -25058,7 +24516,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_ALL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 969:
@@ -25067,7 +24525,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_DISTINCT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 970:
@@ -25076,7 +24534,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_DISTINCT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 971:
@@ -25089,7 +24547,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 972:
@@ -25103,7 +24561,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link (node, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 973:
@@ -25111,7 +24569,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			 ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			 PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 974:
@@ -25125,7 +24583,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_and_set_prc (1);
 			parser_save_and_set_cbrc (1);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 975:
@@ -25141,7 +24599,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_restore_prc ();
 			parser_restore_cbrc ();
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 976:
@@ -25151,7 +24609,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 977:
@@ -25166,7 +24624,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 978:
@@ -25214,7 +24672,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 979:
@@ -25234,7 +24692,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 980:
@@ -25243,7 +24701,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = CONTAINER_AT_0((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2));
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 981:
@@ -25259,7 +24717,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).c2) = new_q;
 			PARSER_SAVE_ERR_CONTEXT (q_head, (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 982:
@@ -25271,7 +24729,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).c2) = new_q;
 			PARSER_SAVE_ERR_CONTEXT ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 983:
@@ -25281,7 +24739,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 984:
@@ -25291,7 +24749,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 985:
@@ -25302,7 +24760,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 986:
@@ -25321,7 +24779,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 987:
@@ -25340,7 +24798,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 988:
@@ -25358,7 +24816,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 989:
@@ -25376,7 +24834,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 990:
@@ -25394,7 +24852,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 991:
@@ -25412,7 +24870,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 992:
@@ -25436,7 +24894,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 993:
@@ -25464,7 +24922,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 994:
@@ -25483,7 +24941,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 995:
@@ -25512,7 +24970,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 996:
@@ -25523,7 +24981,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 997:
@@ -25532,7 +24990,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 998:
@@ -25544,7 +25002,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_and_set_sysc (1);
 			parser_save_and_set_prc (1);
 			parser_save_and_set_cbrc (1);
-		}
+		;}
     break;
 
   case 999:
@@ -25558,7 +25016,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1000:
@@ -25569,7 +25027,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, NULL, NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1001:
@@ -25580,7 +25038,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1002:
@@ -25591,7 +25049,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1003:
@@ -25602,14 +25060,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, NULL, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1004:
 
     {
 			parser_save_and_set_pseudoc (0);
-		}
+		;}
     break;
 
   case 1005:
@@ -25620,7 +25078,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (4))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1006:
@@ -25630,7 +25088,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_and_set_serc (0);
 			parser_save_and_set_pseudoc (1);
 			parser_save_and_set_sqc (0);
-		}
+		;}
     break;
 
   case 1007:
@@ -25644,7 +25102,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (5))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1009:
@@ -25658,7 +25116,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			      CONNECT_BY_CYCLES_NONE;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1010:
@@ -25667,7 +25125,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1011:
@@ -25677,7 +25135,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1012:
@@ -25686,7 +25144,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1013:
@@ -25695,7 +25153,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1014:
@@ -25705,7 +25163,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1015:
@@ -25715,14 +25173,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1016:
 
     {
 			parser_groupby_exception = 0;
-		}
+		;}
     break;
 
   case 1017:
@@ -25772,7 +25230,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1018:
@@ -25781,12 +25239,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1019:
 
-    { parser_save_and_set_gc(1); }
+    { parser_save_and_set_gc(1); ;}
     break;
 
   case 1020:
@@ -25797,7 +25255,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1021:
@@ -25806,7 +25264,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1022:
@@ -25816,7 +25274,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1023:
@@ -25836,7 +25294,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1024:
@@ -25875,7 +25333,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1025:
@@ -25885,7 +25343,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1026:
@@ -25895,7 +25353,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1027:
@@ -25905,7 +25363,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1028:
@@ -25915,7 +25373,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1029:
@@ -25944,7 +25402,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 			((*yyvalp).node) = node;
 			
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1030:
@@ -25972,7 +25430,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1031:
@@ -25982,7 +25440,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1032:
@@ -25995,7 +25453,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1033:
@@ -26008,7 +25466,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1034:
@@ -26021,7 +25479,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1035:
@@ -26036,7 +25494,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 		
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1036:
@@ -26045,7 +25503,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1037:
@@ -26055,7 +25513,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (4))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1038:
@@ -26065,7 +25523,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (4))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1040:
@@ -26088,7 +25546,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1041:
@@ -26132,7 +25590,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1042:
@@ -26142,7 +25600,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1043:
@@ -26152,7 +25610,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1044:
@@ -26177,7 +25635,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1045:
@@ -26187,7 +25645,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1046:
@@ -26197,7 +25655,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1047:
@@ -26222,17 +25680,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1048:
 
-    { ((*yyvalp).node) = NULL; }
+    { ((*yyvalp).node) = NULL; ;}
     break;
 
   case 1049:
 
-    { parser_save_and_set_oc (1); }
+    { parser_save_and_set_oc (1); ;}
     break;
 
   case 1050:
@@ -26247,12 +25705,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = stmt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1051:
 
-    { ((*yyvalp).node) = NULL; }
+    { ((*yyvalp).node) = NULL; ;}
     break;
 
   case 1052:
@@ -26280,7 +25738,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				MSGCAT_SET_PARSER_SEMANTIC,
 				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "ORDER BY");
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1053:
@@ -26295,7 +25753,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_restore_pseudoc ();
 			parser_save_and_set_oc (1);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1054:
@@ -26452,7 +25910,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = stmt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1056:
@@ -26469,7 +25927,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				    "SIBLINGS");
 			    }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1057:
@@ -26479,7 +25937,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1058:
@@ -26489,7 +25947,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1060:
@@ -26559,7 +26017,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1061:
@@ -26575,7 +26033,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1062:
@@ -26597,7 +26055,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1063:
@@ -26619,12 +26077,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1064:
 
-    { ((*yyvalp).node) = NULL; }
+    { ((*yyvalp).node) = NULL; ;}
     break;
 
   case 1065:
@@ -26634,12 +26092,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			  PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1066:
 
-    { ((*yyvalp).node) = NULL; }
+    { ((*yyvalp).node) = NULL; ;}
     break;
 
   case 1067:
@@ -26661,7 +26119,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			     }
 			  }
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1068:
@@ -26671,7 +26129,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1069:
@@ -26681,7 +26139,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1070:
@@ -26699,7 +26157,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1071:
@@ -26718,7 +26176,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1072:
@@ -26737,7 +26195,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1073:
@@ -26746,7 +26204,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NULLS_DEFAULT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1074:
@@ -26755,7 +26213,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NULLS_FIRST;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1075:
@@ -26764,7 +26222,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NULLS_LAST;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1076:
@@ -26774,7 +26232,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1077:
@@ -26784,7 +26242,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1078:
@@ -26794,7 +26252,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1079:
@@ -26804,7 +26262,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1080:
@@ -26814,7 +26272,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_STRCAT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1081:
@@ -26824,7 +26282,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1082:
@@ -26834,7 +26292,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BIT_OR, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1083:
@@ -26844,7 +26302,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1084:
@@ -26854,7 +26312,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BIT_AND, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1085:
@@ -26864,7 +26322,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1086:
@@ -26874,7 +26332,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BITSHIFT_LEFT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1087:
@@ -26884,7 +26342,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BITSHIFT_RIGHT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1088:
@@ -26894,7 +26352,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1089:
@@ -26904,7 +26362,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_PLUS, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1090:
@@ -26914,7 +26372,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_MINUS, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1091:
@@ -26924,7 +26382,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1092:
@@ -26934,7 +26392,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_TIMES, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1093:
@@ -26944,7 +26402,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_DIVIDE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1094:
@@ -26954,7 +26412,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_DIV, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1095:
@@ -26964,7 +26422,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_MOD, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1096:
@@ -26974,7 +26432,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1097:
@@ -26984,7 +26442,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BIT_XOR, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1098:
@@ -26994,7 +26452,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1099:
@@ -27004,7 +26462,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1100:
@@ -27014,7 +26472,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_UNARY_MINUS, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1101:
@@ -27024,7 +26482,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1102:
@@ -27034,7 +26492,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BIT_NOT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1103:
@@ -27046,7 +26504,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_and_set_cbrc (0);
 			parser_save_and_set_pseudoc (0);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1104:
@@ -27069,7 +26527,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1105:
@@ -27081,7 +26539,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_and_set_cbrc (0);
 			parser_save_and_set_pseudoc (0);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1106:
@@ -27104,7 +26562,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1107:
@@ -27126,7 +26584,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1108:
@@ -27140,7 +26598,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1109:
@@ -27150,7 +26608,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1110:
@@ -27160,7 +26618,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1111:
@@ -27170,7 +26628,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1112:
@@ -27180,7 +26638,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1113:
@@ -27192,7 +26650,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			parser_groupby_exception = PT_IS_SUBINSERT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1114:
@@ -27202,7 +26660,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1115:
@@ -27255,7 +26713,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    parser_groupby_exception = PT_EXPR;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1116:
@@ -27273,7 +26731,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			parser_groupby_exception = PT_EXPR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1117:
@@ -27282,7 +26740,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_groupby_exception = PT_IS_SUBQUERY;
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1118:
@@ -27292,7 +26750,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		}}
+		};}
     break;
 
   case 1119:
@@ -27302,7 +26760,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1120:
@@ -27313,7 +26771,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1121:
@@ -27323,7 +26781,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1122:
@@ -27333,7 +26791,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_CONNECT_BY_ISCYCLE, NULL, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1123:
@@ -27343,7 +26801,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_CONNECT_BY_ISLEAF, NULL, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1124:
@@ -27353,7 +26811,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_LEVEL, NULL, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1125:
@@ -27373,7 +26831,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			parser_groupby_exception = PT_COUNT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1126:
@@ -27395,7 +26853,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1127:
@@ -27415,7 +26873,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			parser_groupby_exception = PT_COUNT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1128:
@@ -27437,7 +26895,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1129:
@@ -27457,7 +26915,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			parser_groupby_exception = PT_COUNT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1130:
@@ -27479,7 +26937,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1131:
@@ -27504,7 +26962,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			parser_groupby_exception = PT_COUNT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1132:
@@ -27524,7 +26982,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			parser_groupby_exception = PT_COUNT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1133:
@@ -27549,7 +27007,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1134:
@@ -27571,7 +27029,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1135:
@@ -27599,7 +27057,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1136:
@@ -27640,7 +27098,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1137:
@@ -27676,7 +27134,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1138:
@@ -27706,7 +27164,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1139:
@@ -27730,7 +27188,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1140:
@@ -27762,17 +27220,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1141:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_GROUP_CONCAT); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_GROUP_CONCAT); ;}
     break;
 
   case 1142:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1143:
@@ -27792,7 +27250,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1144:
@@ -27820,7 +27278,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1145:
@@ -27875,17 +27333,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1146:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_INSERT_SUBSTRING); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_INSERT_SUBSTRING); ;}
     break;
 
   case 1147:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1148:
@@ -27905,7 +27363,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;		
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1149:
@@ -27925,7 +27383,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 		    ((*yyvalp).node) = node;
 		    PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1150:
@@ -27935,17 +27393,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_POSITION, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (6))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (6))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1151:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); ;}
     break;
 
   case 1152:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1153:
@@ -27958,17 +27416,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1154:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); ;}
     break;
 
   case 1155:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1156:
@@ -27981,17 +27439,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1157:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); ;}
     break;
 
   case 1158:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1159:
@@ -28004,17 +27462,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1160:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); ;}
     break;
 
   case 1161:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1162:
@@ -28027,17 +27485,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1163:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_DATE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_DATE); ;}
     break;
 
   case 1164:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1165:
@@ -28049,17 +27507,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1166:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_TIME); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_TIME); ;}
     break;
 
   case 1167:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1168:
@@ -28071,17 +27529,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1169:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_ADDDATE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_ADDDATE); ;}
     break;
 
   case 1170:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1171:
@@ -28093,17 +27551,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1172:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_DATE_ADD); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_DATE_ADD); ;}
     break;
 
   case 1173:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1174:
@@ -28124,17 +27582,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1175:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SUBDATE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SUBDATE); ;}
     break;
 
   case 1176:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1177:
@@ -28146,17 +27604,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1178:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_DATE_SUB); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_DATE_SUB); ;}
     break;
 
   case 1179:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1180:
@@ -28177,17 +27635,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1181:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_TIMESTAMP); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_TIMESTAMP); ;}
     break;
 
   case 1182:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1183:
@@ -28206,17 +27664,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1184:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_TIMESTAMP); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_TIMESTAMP); ;}
     break;
 
   case 1185:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1186:
@@ -28228,17 +27686,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1187:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_YEAR); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_YEAR); ;}
     break;
 
   case 1188:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1189:
@@ -28250,17 +27708,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1190:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_MONTH); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_MONTH); ;}
     break;
 
   case 1191:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1192:
@@ -28272,17 +27730,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1193:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_DAY); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_DAY); ;}
     break;
 
   case 1194:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1195:
@@ -28294,17 +27752,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1196:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_HOUR); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_HOUR); ;}
     break;
 
   case 1197:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1198:
@@ -28316,17 +27774,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1199:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_MINUTE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_MINUTE); ;}
     break;
 
   case 1200:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1201:
@@ -28338,17 +27796,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1202:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SECOND); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SECOND); ;}
     break;
 
   case 1203:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1204:
@@ -28360,17 +27818,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1205:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_DATABASE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_DATABASE); ;}
     break;
 
   case 1206:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1207:
@@ -28382,17 +27840,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1208:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SCHEMA); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SCHEMA); ;}
     break;
 
   case 1209:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1210:
@@ -28404,17 +27862,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1211:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); ;}
     break;
 
   case 1212:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1213:
@@ -28427,17 +27885,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1214:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); ;}
     break;
 
   case 1215:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1216:
@@ -28450,17 +27908,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1217:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); ;}
     break;
 
   case 1218:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1219:
@@ -28473,17 +27931,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1220:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); ;}
     break;
 
   case 1221:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1222:
@@ -28496,17 +27954,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1223:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CHR); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CHR); ;}
     break;
 
   case 1224:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1225:
@@ -28518,17 +27976,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1226:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CLOB_TO_CHAR); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CLOB_TO_CHAR); ;}
     break;
 
   case 1227:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1228:
@@ -28540,17 +27998,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1229:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CAST); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CAST); ;}
     break;
 
   case 1230:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1231:
@@ -28585,7 +28043,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1232:
@@ -28597,7 +28055,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 			parser_groupby_exception = PT_OID_ATTR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1233:
@@ -28608,7 +28066,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1234:
@@ -28619,7 +28077,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1235:
@@ -28630,7 +28088,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1236:
@@ -28641,7 +28099,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1237:
@@ -28652,7 +28110,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1238:
@@ -28663,7 +28121,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1239:
@@ -28674,7 +28132,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1240:
@@ -28685,7 +28143,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1241:
@@ -28696,7 +28154,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1242:
@@ -28707,7 +28165,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1243:
@@ -28722,17 +28180,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1244:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SYSTEM_USER); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SYSTEM_USER); ;}
     break;
 
   case 1245:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1246:
@@ -28744,17 +28202,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1247:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_DEFAULT); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_DEFAULT); ;}
     break;
 
   case 1248:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1249:
@@ -28773,7 +28231,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1250:
@@ -28789,7 +28247,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1251:
@@ -28813,17 +28271,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				       MSGCAT_SEMANTIC_INSTNUM_COMPATIBILITY_ERR,
 				       "INST_NUM() or ROWNUM", "INST_NUM() or ROWNUM");
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1252:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_ADD_MONTHS); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_ADD_MONTHS); ;}
     break;
 
   case 1253:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1254:
@@ -28833,17 +28291,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_ADD_MONTHS, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1255:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_OCTET_LENGTH); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_OCTET_LENGTH); ;}
     break;
 
   case 1256:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1257:
@@ -28853,17 +28311,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_OCTET_LENGTH, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1258:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_BIT_LENGTH); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_BIT_LENGTH); ;}
     break;
 
   case 1259:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1260:
@@ -28873,17 +28331,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BIT_LENGTH, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1261:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_LOWER); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_LOWER); ;}
     break;
 
   case 1262:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1263:
@@ -28893,17 +28351,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_LOWER, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1264:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_LOWER); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_LOWER); ;}
     break;
 
   case 1265:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1266:
@@ -28913,17 +28371,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_LOWER, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1267:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_UPPER); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_UPPER); ;}
     break;
 
   case 1268:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1269:
@@ -28933,17 +28391,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_UPPER, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1270:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_UPPER); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_UPPER); ;}
     break;
 
   case 1271:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1272:
@@ -28953,7 +28411,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_UPPER, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1273:
@@ -28967,12 +28425,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			parser_save_and_set_cbrc (0);
 			parser_save_and_set_pseudoc (0);
 
-		}}
+		};}
     break;
 
   case 1274:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1275:
@@ -28997,17 +28455,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1276:
 
-    { push_msg (MSGCAT_SYNTAX_INVALID_IF); }
+    { push_msg (MSGCAT_SYNTAX_INVALID_IF); ;}
     break;
 
   case 1277:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1278:
@@ -29017,17 +28475,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_IF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((8) - (10))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1279:
 
-    { push_msg (MSGCAT_SYNTAX_INVALID_IFNULL); }
+    { push_msg (MSGCAT_SYNTAX_INVALID_IFNULL); ;}
     break;
 
   case 1280:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1281:
@@ -29037,17 +28495,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_IFNULL, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1282:
 
-    { push_msg (MSGCAT_SYNTAX_INVALID_ISNULL); }
+    { push_msg (MSGCAT_SYNTAX_INVALID_ISNULL); ;}
     break;
 
   case 1283:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1284:
@@ -29057,17 +28515,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_ISNULL, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1285:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_LEFT); ;}
     break;
 
   case 1286:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1287:
@@ -29079,17 +28537,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1288:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_RIGHT); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_RIGHT); ;}
     break;
 
   case 1289:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1290:
@@ -29101,17 +28559,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1291:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_MODULUS); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_MODULUS); ;}
     break;
 
   case 1292:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1293:
@@ -29123,17 +28581,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1294:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_TRUNCATE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_TRUNCATE); ;}
     break;
 
   case 1295:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1296:
@@ -29143,17 +28601,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_TRUNC, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1297:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_TRANSLATE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_TRANSLATE); ;}
     break;
 
   case 1298:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1299:
@@ -29163,17 +28621,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_TRANSLATE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((8) - (10))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1300:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_TRANSLATE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_TRANSLATE); ;}
     break;
 
   case 1301:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1302:
@@ -29183,17 +28641,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_REPLACE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((8) - (10))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1303:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_REPLACE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_REPLACE); ;}
     break;
 
   case 1304:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1305:
@@ -29203,17 +28661,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_REPLACE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1306:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_STRTODATE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_STRTODATE); ;}
     break;
 
   case 1307:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1308:
@@ -29223,17 +28681,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_STR_TO_DATE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), parser_make_date_lang (2, NULL));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1309:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_STRTODATE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_STRTODATE); ;}
     break;
 
   case 1310:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1311:
@@ -29249,17 +28707,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_STR_TO_DATE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), node, parser_make_date_lang (2, NULL));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1312:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CHARSET); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CHARSET); ;}
     break;
 
   case 1313:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1314:
@@ -29271,17 +28729,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1315:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_COLLATION); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_COLLATION); ;}
     break;
 
   case 1316:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1317:
@@ -29293,7 +28751,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1318:
@@ -29312,17 +28770,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-        DBG_PRINT}}
+        DBG_PRINT};}
     break;
 
   case 1319:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_INDEX_PREFIX); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_INDEX_PREFIX); ;}
     break;
 
   case 1320:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1321:
@@ -29332,101 +28790,101 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_INDEX_PREFIX, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((8) - (10))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1322:
 
     {{
 			((*yyvalp).number) = PT_CUME_DIST;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1323:
 
     {{
 			((*yyvalp).number) = PT_PERCENT_RANK;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1325:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_DATE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_DATE); ;}
     break;
 
   case 1326:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1328:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIME); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIME); ;}
     break;
 
   case 1329:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1331:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_DB_TIMEZONE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_DB_TIMEZONE); ;}
     break;
 
   case 1332:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1334:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_SESSION_TIMEZONE); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_SESSION_TIMEZONE); ;}
     break;
 
   case 1335:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1337:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIMESTAMP); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIMESTAMP); ;}
     break;
 
   case 1338:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1340:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIMESTAMP); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIMESTAMP); ;}
     break;
 
   case 1341:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1343:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIME); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIME); ;}
     break;
 
   case 1344:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1346:
 
-    { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_DATETIME); }
+    { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_DATETIME); ;}
     break;
 
   case 1347:
 
-    { pop_msg(); }
+    { pop_msg(); ;}
     break;
 
   case 1351:
@@ -29435,7 +28893,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_AVG;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1352:
@@ -29444,7 +28902,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MAX;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1353:
@@ -29453,7 +28911,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MIN;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1354:
@@ -29462,7 +28920,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_SUM;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1355:
@@ -29471,7 +28929,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_STDDEV;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1356:
@@ -29480,7 +28938,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_STDDEV_POP;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1357:
@@ -29489,7 +28947,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_STDDEV_SAMP;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1358:
@@ -29498,7 +28956,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_VAR_POP;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1359:
@@ -29507,7 +28965,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_VAR_SAMP;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1360:
@@ -29516,7 +28974,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_VARIANCE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1361:
@@ -29525,7 +28983,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_AGG_BIT_AND;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1362:
@@ -29534,7 +28992,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_AGG_BIT_OR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1363:
@@ -29543,7 +29001,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_AGG_BIT_XOR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1364:
@@ -29552,7 +29010,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 		
 			((*yyvalp).number) = PT_MEDIAN;
 		
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1365:
@@ -29561,7 +29019,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_AVG;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1366:
@@ -29570,7 +29028,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MAX;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1367:
@@ -29579,7 +29037,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MIN;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1368:
@@ -29588,7 +29046,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_SUM;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1369:
@@ -29597,7 +29055,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_STDDEV;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1370:
@@ -29606,7 +29064,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_STDDEV_POP;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1371:
@@ -29615,7 +29073,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_STDDEV_SAMP;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1372:
@@ -29624,7 +29082,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_VAR_POP;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1373:
@@ -29633,7 +29091,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_VAR_SAMP;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1374:
@@ -29642,7 +29100,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_VARIANCE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1375:
@@ -29651,7 +29109,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NTILE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1376:
@@ -29660,7 +29118,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 		
 			((*yyvalp).number) = PT_MEDIAN;
 		
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1377:
@@ -29669,7 +29127,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_FIRST_VALUE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1378:
@@ -29678,7 +29136,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_LAST_VALUE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1379:
@@ -29687,7 +29145,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NTH_VALUE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1380:
@@ -29696,7 +29154,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_LEAD;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1381:
@@ -29705,7 +29163,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_LAG;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1382:
@@ -29714,7 +29172,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 		
 			((*yyvalp).number) = PT_PERCENTILE_CONT;
 		
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1383:
@@ -29723,7 +29181,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 		
 			((*yyvalp).number) = PT_PERCENTILE_DISC;
 		
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1384:
@@ -29732,7 +29190,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_ROW_NUMBER;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1385:
@@ -29741,7 +29199,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_RANK;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1386:
@@ -29750,7 +29208,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_DENSE_RANK;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1387:
@@ -29758,7 +29216,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).number) = PT_CUME_DIST;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1388:
@@ -29766,7 +29224,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).number) = PT_PERCENT_RANK;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1391:
@@ -29775,7 +29233,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1392:
@@ -29785,7 +29243,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1393:
@@ -29795,7 +29253,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1394:
@@ -29804,7 +29262,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1395:
@@ -29814,7 +29272,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1396:
@@ -29823,7 +29281,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1397:
@@ -29832,7 +29290,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1398:
@@ -29841,7 +29299,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = PT_FROM_LAST;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1399:
@@ -29850,7 +29308,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1400:
@@ -29859,7 +29317,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1401:
@@ -29868,7 +29326,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = PT_IGNORE_NULLS;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1402:
@@ -29877,7 +29335,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1403:
@@ -29897,7 +29355,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1404:
@@ -29907,7 +29365,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			is_analytic_function = false;
 			((*yyvalp).node) = NULL;
 			
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1405:
@@ -29917,7 +29375,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			is_analytic_function = true;
 			((*yyvalp).node)= (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node);
 		
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1406:
@@ -29926,7 +29384,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1407:
@@ -29945,7 +29403,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1408:
@@ -29954,7 +29412,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_LEADING;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1409:
@@ -29963,7 +29421,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TRAILING;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1410:
@@ -29972,7 +29430,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_BOTH;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1411:
@@ -29980,7 +29438,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_NULLIF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (6))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (6))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1412:
@@ -30049,7 +29507,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = expr;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1413:
@@ -30110,7 +29568,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1414:
@@ -30158,7 +29616,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1415:
@@ -30167,7 +29625,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1416:
@@ -30177,7 +29635,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1417:
@@ -30187,7 +29645,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1418:
@@ -30197,7 +29655,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1419:
@@ -30229,7 +29687,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1420:
@@ -30239,7 +29697,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1421:
@@ -30249,7 +29707,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1422:
@@ -30277,7 +29735,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1423:
@@ -30291,7 +29749,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = tmp;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1428:
@@ -30300,7 +29758,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_YEAR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1429:
@@ -30309,7 +29767,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MONTH;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1430:
@@ -30318,7 +29776,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_DAY;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1431:
@@ -30327,7 +29785,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_HOUR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1432:
@@ -30336,7 +29794,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MINUTE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1433:
@@ -30345,7 +29803,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_SECOND;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1434:
@@ -30354,7 +29812,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MILLISECOND;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1435:
@@ -30363,7 +29821,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_WEEK;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1436:
@@ -30372,7 +29830,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_QUARTER;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1437:
@@ -30381,7 +29839,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_SECOND_MILLISECOND;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1438:
@@ -30390,7 +29848,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MINUTE_MILLISECOND;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1439:
@@ -30399,7 +29857,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_MINUTE_SECOND;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1440:
@@ -30408,7 +29866,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_HOUR_MILLISECOND;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1441:
@@ -30417,7 +29875,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_HOUR_SECOND;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1442:
@@ -30426,7 +29884,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_HOUR_MINUTE;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1443:
@@ -30435,7 +29893,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_DAY_MILLISECOND;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1444:
@@ -30444,7 +29902,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_DAY_SECOND;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1445:
@@ -30453,7 +29911,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_DAY_MINUTE;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1446:
@@ -30462,7 +29920,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_DAY_HOUR;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1447:
@@ -30471,7 +29929,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_YEAR_MONTH;
 
-    		DBG_PRINT}}
+    		DBG_PRINT};}
     break;
 
   case 1448:
@@ -30480,7 +29938,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1449:
@@ -30490,7 +29948,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1450:
@@ -30517,7 +29975,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1451:
@@ -30559,7 +30017,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1452:
@@ -30568,7 +30026,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1453:
@@ -30578,7 +30036,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1454:
@@ -30595,7 +30053,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = func_node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1455:
@@ -30612,7 +30070,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = func_node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1456:
@@ -30629,7 +30087,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = func_node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1457:
@@ -30646,7 +30104,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = func_node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1458:
@@ -30657,7 +30115,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_OR, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1459:
@@ -30667,7 +30125,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node), 1, 1);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1460:
@@ -30678,7 +30136,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_XOR, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1461:
@@ -30687,7 +30145,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1462:
@@ -30697,7 +30155,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.number), arg, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1463:
@@ -30707,7 +30165,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1464:
@@ -30716,7 +30174,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_IS_NOT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1465:
@@ -30725,7 +30183,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_IS;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1466:
@@ -30736,7 +30194,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_AND, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1467:
@@ -30746,7 +30204,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1468:
@@ -30757,7 +30215,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1469:
@@ -30768,7 +30226,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1470:
@@ -30778,7 +30236,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1471:
@@ -30788,7 +30246,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_EXISTS, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1472:
@@ -30798,7 +30256,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1473:
@@ -30809,7 +30267,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			if (join_type == PT_JOIN_RIGHT_OUTER)
 			  parser_restore_wjc ();
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1474:
@@ -30895,7 +30353,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = e;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1475:
@@ -31005,7 +30463,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = e;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1476:
@@ -31017,7 +30475,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1477:
@@ -31035,7 +30493,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.number), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1478:
@@ -31058,7 +30516,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1479:
@@ -31068,7 +30526,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1480:
@@ -31078,7 +30536,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.number), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1481:
@@ -31089,7 +30547,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (5))].yystate.yysemantics.yysval.number), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (5))].yystate.yysemantics.yysval.node), node, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1482:
@@ -31221,7 +30679,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1483:
@@ -31231,7 +30689,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_RANGE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (5))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (5))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1484:
@@ -31240,7 +30698,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			PT_ERRORm (this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), MSGCAT_SET_PARSER_SYNTAX,
 				    MSGCAT_SYNTAX_INVALID_RELATIONAL_OP);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1485:
@@ -31259,7 +30717,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1486:
@@ -31268,7 +30726,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1487:
@@ -31277,7 +30735,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1488:
@@ -31300,7 +30758,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    break;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1489:
@@ -31323,7 +30781,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    break;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1490:
@@ -31346,7 +30804,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    break;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1491:
@@ -31369,7 +30827,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    break;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1492:
@@ -31392,7 +30850,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    break;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1493:
@@ -31415,7 +30873,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    break;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1494:
@@ -31425,7 +30883,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			push_msg (MSGCAT_SYNTAX_INVALID_EQUAL_OP);
 			csql_yyerror_explicit ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yyloc).first_line, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yyloc).first_column);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1495:
@@ -31435,7 +30893,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			push_msg (MSGCAT_SYNTAX_INVALID_NOT_EQUAL);
 			csql_yyerror_explicit ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yyloc).first_line, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yyloc).first_column);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1496:
@@ -31444,7 +30902,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NULLSAFE_EQ;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1497:
@@ -31453,7 +30911,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1498:
@@ -31462,7 +30920,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1499:
@@ -31471,7 +30929,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 2;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1500:
@@ -31480,7 +30938,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 3;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1501:
@@ -31489,7 +30947,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NOT_LIKE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1502:
@@ -31498,7 +30956,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_LIKE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1503:
@@ -31507,7 +30965,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_RLIKE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1504:
@@ -31516,7 +30974,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NOT_RLIKE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1505:
@@ -31525,7 +30983,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_RLIKE_BINARY;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1506:
@@ -31534,7 +30992,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NOT_RLIKE_BINARY;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1509:
@@ -31543,7 +31001,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_IS_NOT_NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1510:
@@ -31552,7 +31010,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_IS_NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1511:
@@ -31561,7 +31019,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NOT_BETWEEN;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1512:
@@ -31570,7 +31028,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_BETWEEN;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1513:
@@ -31579,7 +31037,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_IS_IN;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1514:
@@ -31588,7 +31046,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_IS_NOT_IN;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1515:
@@ -31629,7 +31087,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 
 			((*yyvalp).c2) = ctn;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1516:
@@ -31639,7 +31097,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link_or ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1517:
@@ -31649,7 +31107,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1518:
@@ -31659,7 +31117,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BETWEEN_GE_LE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1519:
@@ -31669,7 +31127,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BETWEEN_GE_LT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1520:
@@ -31679,7 +31137,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BETWEEN_GT_LE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1521:
@@ -31689,7 +31147,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BETWEEN_GT_LT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1522:
@@ -31699,7 +31157,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BETWEEN_EQ_NA, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1523:
@@ -31709,7 +31167,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BETWEEN_GE_INF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1524:
@@ -31719,7 +31177,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BETWEEN_GT_INF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1525:
@@ -31729,7 +31187,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BETWEEN_INF_LE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1526:
@@ -31739,7 +31197,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_expression (this_parser, PT_BETWEEN_INF_LT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1527:
@@ -31748,7 +31206,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_SETEQ;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1528:
@@ -31757,7 +31215,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_SETNEQ;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1529:
@@ -31766,7 +31224,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_SUBSET;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1530:
@@ -31775,7 +31233,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_SUBSETEQ;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1531:
@@ -31784,7 +31242,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_SUPERSETEQ;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1532:
@@ -31793,7 +31251,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_SUPERSET;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1533:
@@ -31813,7 +31271,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = stmt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1534:
@@ -31828,7 +31286,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1535:
@@ -31838,7 +31296,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1536:
@@ -31854,7 +31312,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1537:
@@ -31877,7 +31335,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1538:
@@ -31955,7 +31413,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = dot;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1539:
@@ -31972,7 +31430,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = dot;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1540:
@@ -31982,7 +31440,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1541:
@@ -31992,7 +31450,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1542:
@@ -32004,7 +31462,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  node->info.name.meta_class = PT_META_CLASS;
 			((*yyvalp).node) = node;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1543:
@@ -32017,7 +31475,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1546:
@@ -32032,7 +31490,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = name;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1547:
@@ -32042,7 +31500,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1548:
@@ -32052,7 +31510,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1549:
@@ -32062,7 +31520,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1550:
@@ -32079,7 +31537,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = dot;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1551:
@@ -32089,7 +31547,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1552:
@@ -32098,7 +31556,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_NOPUT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1553:
@@ -32107,7 +31565,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_INPUT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1554:
@@ -32116,7 +31574,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_OUTPUT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1555:
@@ -32125,7 +31583,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_INPUTOUTPUT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1556:
@@ -32134,7 +31592,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_CHAR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1557:
@@ -32143,7 +31601,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_NCHAR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1558:
@@ -32152,7 +31610,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_NCHAR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1559:
@@ -32160,7 +31618,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     {{
 			((*yyvalp).c2) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1560:
@@ -32238,7 +31696,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    parser_free_node (this_parser, coll_node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1561:
@@ -32266,7 +31724,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1562:
@@ -32283,7 +31741,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1563:
@@ -32297,7 +31755,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1564:
@@ -32319,7 +31777,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1565:
@@ -32332,7 +31790,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1566:
@@ -32341,7 +31799,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).c2) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1567:
@@ -32350,7 +31808,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.number);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1568:
@@ -32359,7 +31817,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.number);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1569:
@@ -32395,7 +31853,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), dt);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1570:
@@ -32431,7 +31889,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = dt;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1571:
@@ -32443,7 +31901,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			else
 			  ((*yyvalp).number) = PT_TYPE_CHAR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1572:
@@ -32452,7 +31910,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_VARCHAR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1573:
@@ -32464,7 +31922,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			else
 			  ((*yyvalp).number) = PT_TYPE_NCHAR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1574:
@@ -32476,7 +31934,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			else
 			  ((*yyvalp).number) = PT_TYPE_NCHAR;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1575:
@@ -32488,7 +31946,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			else
 			  ((*yyvalp).number) = PT_TYPE_BIT;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1576:
@@ -32497,7 +31955,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1577:
@@ -32506,7 +31964,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1578:
@@ -32517,7 +31975,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_INTEGER), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1579:
@@ -32528,7 +31986,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_SMALLINT), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1580:
@@ -32539,7 +31997,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BIGINT), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1581:
@@ -32550,7 +32008,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DOUBLE), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1582:
@@ -32561,7 +32019,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DOUBLE), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1583:
@@ -32572,7 +32030,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATE), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1584:
@@ -32583,7 +32041,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIME), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1585:
@@ -32594,7 +32052,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMP), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1586:
@@ -32605,7 +32063,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMP), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1587:
@@ -32616,7 +32074,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPTZ), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1588:
@@ -32627,7 +32085,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPTZ), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1589:
@@ -32638,7 +32096,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPLTZ), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1590:
@@ -32649,7 +32107,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPLTZ), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1591:
@@ -32660,7 +32118,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIME), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1592:
@@ -32671,7 +32129,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMETZ), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1593:
@@ -32682,7 +32140,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMETZ), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1594:
@@ -32693,7 +32151,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMELTZ), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1595:
@@ -32704,7 +32162,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMELTZ), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1596:
@@ -32715,7 +32173,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_MONETARY), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1597:
@@ -32726,7 +32184,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_OBJECT), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1598:
@@ -32789,7 +32247,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    parser_free_node (this_parser, coll_node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1599:
@@ -32800,7 +32258,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BLOB), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1600:
@@ -32811,7 +32269,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CLOB), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1601:
@@ -32832,7 +32290,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1602:
@@ -32998,7 +32456,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    parser_free_node (this_parser, coll_node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1603:
@@ -33049,7 +32507,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			if (scale)
 			  parser_free_node (this_parser, scale);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1604:
@@ -33098,7 +32556,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			if (prec)
 			  parser_free_node (this_parser, prec);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1605:
@@ -33210,7 +32668,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_ENUMERATION), dt);
 
 			((*yyvalp).c2) = ctn;
-	  DBG_PRINT}}
+	  DBG_PRINT};}
     break;
 
   case 1606:
@@ -33219,7 +32677,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1607:
@@ -33228,7 +32686,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_LOB_INTERNAL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1608:
@@ -33237,7 +32695,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_LOB_EXTERNAL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1609:
@@ -33246,7 +32704,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 0;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1610:
@@ -33255,7 +32713,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = 1;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1611:
@@ -33264,7 +32722,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1612:
@@ -33273,7 +32731,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1613:
@@ -33282,7 +32740,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1614:
@@ -33291,7 +32749,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1615:
@@ -33302,7 +32760,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, NULL, NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1616:
@@ -33313,7 +32771,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node), NULL);
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1617:
@@ -33324,7 +32782,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			SET_CONTAINER_2 (ctn, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (5))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (5))].yystate.yysemantics.yysval.node));
 			((*yyvalp).c2) = ctn;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1620:
@@ -33333,7 +32791,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1621:
@@ -33342,7 +32800,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node)=(((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1622:
@@ -33351,7 +32809,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1623:
@@ -33371,7 +32829,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 
 			((*yyvalp).node) = node;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1624:
@@ -33391,7 +32849,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 
 			((*yyvalp).node) = node;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1625:
@@ -33414,27 +32872,27 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 
 			((*yyvalp).node) = node;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1626:
 
-    { ((*yyvalp).node) = NULL; }
+    { ((*yyvalp).node) = NULL; ;}
     break;
 
   case 1627:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 1630:
 
-    { ((*yyvalp).node) = NULL; }
+    { ((*yyvalp).node) = NULL; ;}
     break;
 
   case 1631:
 
-    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node); }
+    { ((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node); ;}
     break;
 
   case 1632:
@@ -33457,7 +32915,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 
 			((*yyvalp).node) = node;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1633:
@@ -33466,7 +32924,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = NULL;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1634:
@@ -33475,7 +32933,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1635:
@@ -33484,7 +32942,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1636:
@@ -33504,7 +32962,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 
 			((*yyvalp).node) = node;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1637:
@@ -33524,7 +32982,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 
 			((*yyvalp).node) = node;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1638:
@@ -33544,7 +33002,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1639:
@@ -33574,7 +33032,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1640:
@@ -33616,7 +33074,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1641:
@@ -33635,7 +33093,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1642:
@@ -33644,7 +33102,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_SET;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1643:
@@ -33653,7 +33111,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_MULTISET;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1644:
@@ -33662,7 +33120,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_SEQUENCE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1645:
@@ -33671,7 +33129,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.number);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1648:
@@ -33681,7 +33139,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1649:
@@ -33733,7 +33191,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1650:
@@ -33776,7 +33234,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1651:
@@ -33800,7 +33258,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1652:
@@ -33810,7 +33268,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1653:
@@ -33820,7 +33278,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1654:
@@ -33830,7 +33288,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1655:
@@ -33840,7 +33298,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1656:
@@ -33850,7 +33308,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1657:
@@ -33864,7 +33322,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1658:
@@ -33874,7 +33332,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1659:
@@ -33884,7 +33342,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1660:
@@ -33897,7 +33355,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1661:
@@ -33907,7 +33365,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1662:
@@ -33920,7 +33378,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1663:
@@ -33930,7 +33388,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1664:
@@ -33940,7 +33398,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1665:
@@ -33957,7 +33415,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1666:
@@ -33974,7 +33432,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1667:
@@ -33987,7 +33445,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1668:
@@ -34018,7 +33476,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1669:
@@ -34036,7 +33494,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1670:
@@ -34045,7 +33503,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_SEQUENCE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1671:
@@ -34054,7 +33512,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.number);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1672:
@@ -34063,7 +33521,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_SET;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1673:
@@ -34072,7 +33530,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_MULTISET;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1674:
@@ -34081,7 +33539,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_SEQUENCE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1675:
@@ -34090,7 +33548,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).number) = PT_TYPE_SEQUENCE;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1676:
@@ -34100,7 +33558,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1677:
@@ -34110,21 +33568,21 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1678:
 
     {{
 			((*yyvalp).node) = NULL;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1679:
 
     {{
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1680:
@@ -34134,7 +33592,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1681:
@@ -34144,7 +33602,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1682:
@@ -34167,7 +33625,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 			((*yyvalp).node) = p;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1683:
@@ -34190,7 +33648,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 			((*yyvalp).node) = p;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1684:
@@ -34213,7 +33671,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 			((*yyvalp).node) = p;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1685:
@@ -34236,7 +33694,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  }
 			((*yyvalp).node) = p;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1686:
@@ -34249,7 +33707,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1687:
@@ -34262,7 +33720,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1688:
@@ -34275,7 +33733,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1689:
@@ -34288,7 +33746,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1690:
@@ -34301,7 +33759,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1691:
@@ -34314,7 +33772,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1692:
@@ -34327,7 +33785,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1693:
@@ -34340,7 +33798,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1694:
@@ -34353,7 +33811,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1695:
@@ -34366,7 +33824,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1696:
@@ -34379,7 +33837,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1697:
@@ -34392,7 +33850,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1698:
@@ -34405,7 +33863,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1699:
@@ -34418,7 +33876,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1700:
@@ -34431,7 +33889,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1701:
@@ -34443,7 +33901,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1702:
@@ -34457,7 +33915,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1703:
@@ -34470,7 +33928,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1704:
@@ -34483,7 +33941,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1705:
@@ -34496,7 +33954,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1706:
@@ -34509,7 +33967,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1707:
@@ -34522,7 +33980,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
                         ((*yyvalp).node) = p;
                         PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-                DBG_PRINT}}
+                DBG_PRINT};}
     break;
 
   case 1708:
@@ -34535,7 +33993,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1709:
@@ -34548,7 +34006,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1710:
@@ -34561,7 +34019,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1711:
@@ -34574,7 +34032,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1712:
@@ -34587,7 +34045,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1713:
@@ -34600,7 +34058,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1714:
@@ -34613,7 +34071,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1715:
@@ -34626,7 +34084,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1716:
@@ -34639,7 +34097,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1717:
@@ -34652,7 +34110,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1718:
@@ -34665,7 +34123,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1719:
@@ -34678,7 +34136,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1720:
@@ -34691,7 +34149,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1721:
@@ -34704,7 +34162,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1722:
@@ -34717,7 +34175,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1723:
@@ -34730,7 +34188,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1724:
@@ -34743,7 +34201,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1725:
@@ -34756,7 +34214,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1726:
@@ -34769,7 +34227,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1727:
@@ -34782,7 +34240,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1728:
@@ -34795,7 +34253,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1729:
@@ -34808,7 +34266,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1730:
@@ -34821,7 +34279,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1731:
@@ -34833,7 +34291,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  p->info.name.original = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.cptr);
 			((*yyvalp).node) = p;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1732:
@@ -34846,7 +34304,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1733:
@@ -34859,7 +34317,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1734:
@@ -34872,7 +34330,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1735:
@@ -34885,7 +34343,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1736:
@@ -34898,7 +34356,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1737:
@@ -34911,7 +34369,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1738:
@@ -34924,7 +34382,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1739:
@@ -34937,7 +34395,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1740:
@@ -34950,7 +34408,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1741:
@@ -34963,7 +34421,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1742:
@@ -34976,7 +34434,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1743:
@@ -34989,7 +34447,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1744:
@@ -35002,7 +34460,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1745:
@@ -35015,7 +34473,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1746:
@@ -35028,7 +34486,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1747:
@@ -35041,7 +34499,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1748:
@@ -35054,7 +34512,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1749:
@@ -35067,7 +34525,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1750:
@@ -35080,7 +34538,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1751:
@@ -35095,7 +34553,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1752:
@@ -35108,7 +34566,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1753:
@@ -35121,7 +34579,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1754:
@@ -35134,7 +34592,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1755:
@@ -35147,7 +34605,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1756:
@@ -35160,7 +34618,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1757:
@@ -35173,7 +34631,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1758:
@@ -35186,7 +34644,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1759:
@@ -35199,7 +34657,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1760:
@@ -35212,7 +34670,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1761:
@@ -35225,7 +34683,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1762:
@@ -35238,7 +34696,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1763:
@@ -35251,7 +34709,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1764:
@@ -35264,7 +34722,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1765:
@@ -35277,7 +34735,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1766:
@@ -35290,7 +34748,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1767:
@@ -35303,7 +34761,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1768:
@@ -35316,7 +34774,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1769:
@@ -35329,7 +34787,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1770:
@@ -35342,7 +34800,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1771:
@@ -35355,7 +34813,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1772:
@@ -35368,7 +34826,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1773:
@@ -35381,7 +34839,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1774:
@@ -35394,7 +34852,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1775:
@@ -35407,7 +34865,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1776:
@@ -35420,7 +34878,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1777:
@@ -35433,7 +34891,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1778:
@@ -35446,7 +34904,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1779:
@@ -35459,7 +34917,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1780:
@@ -35472,7 +34930,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1781:
@@ -35484,7 +34942,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			  p->info.name.original = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.cptr);
 			((*yyvalp).node) = p;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1782:
@@ -35497,7 +34955,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1783:
@@ -35510,7 +34968,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1784:
@@ -35523,7 +34981,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1785:
@@ -35536,7 +34994,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1786:
@@ -35549,7 +35007,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1787:
@@ -35562,7 +35020,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1788:
@@ -35575,7 +35033,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1789:
@@ -35588,7 +35046,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1790:
@@ -35601,7 +35059,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1791:
@@ -35614,7 +35072,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1792:
@@ -35627,7 +35085,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1793:
@@ -35640,7 +35098,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1794:
@@ -35653,7 +35111,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1795:
@@ -35666,7 +35124,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1796:
@@ -35679,7 +35137,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1797:
@@ -35692,7 +35150,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1798:
@@ -35705,7 +35163,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1799:
@@ -35718,7 +35176,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1800:
@@ -35731,7 +35189,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1801:
@@ -35744,7 +35202,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1802:
@@ -35757,7 +35215,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1803:
@@ -35770,7 +35228,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1804:
@@ -35783,7 +35241,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1805:
@@ -35796,7 +35254,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1806:
@@ -35809,7 +35267,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1807:
@@ -35822,7 +35280,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1808:
@@ -35838,7 +35296,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1809:
@@ -35854,7 +35312,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1810:
@@ -35870,7 +35328,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1811:
@@ -35886,7 +35344,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1812:
@@ -35902,7 +35360,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1813:
@@ -35918,7 +35376,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1814:
@@ -35934,7 +35392,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 		
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1815:
@@ -35950,7 +35408,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 		
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1816:
@@ -35966,7 +35424,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 		
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1817:
@@ -35982,7 +35440,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = p;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 		
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1818:
@@ -35993,7 +35451,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1819:
@@ -36006,7 +35464,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1820:
@@ -36020,7 +35478,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1821:
@@ -36030,7 +35488,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1822:
@@ -36050,7 +35508,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = str;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1823:
@@ -36060,7 +35518,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1824:
@@ -36100,7 +35558,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1825:
@@ -36140,7 +35598,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1826:
@@ -36164,7 +35622,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1827:
@@ -36188,7 +35646,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1828:
@@ -36212,7 +35670,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1829:
@@ -36236,7 +35694,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1830:
@@ -36256,7 +35714,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = str;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1831:
@@ -36266,7 +35724,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1832:
@@ -36287,7 +35745,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1833:
@@ -36308,7 +35766,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1834:
@@ -36360,7 +35818,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1835:
@@ -36387,7 +35845,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1836:
@@ -36442,7 +35900,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1837:
@@ -36463,7 +35921,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1838:
@@ -36484,7 +35942,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1839:
@@ -36505,7 +35963,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1840:
@@ -36526,7 +35984,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1841:
@@ -36546,7 +36004,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1842:
@@ -36566,7 +36024,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1843:
@@ -36586,7 +36044,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1844:
@@ -36606,7 +36064,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1845:
@@ -36626,7 +36084,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1846:
@@ -36646,7 +36104,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1847:
@@ -36666,7 +36124,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1848:
@@ -36686,7 +36144,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1849:
@@ -36706,7 +36164,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1850:
@@ -36726,7 +36184,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1851:
@@ -36746,7 +36204,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1852:
@@ -36766,7 +36224,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1853:
@@ -36786,7 +36244,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1854:
@@ -36806,7 +36264,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1855:
@@ -36826,7 +36284,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1856:
@@ -36846,7 +36304,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1857:
@@ -36866,7 +36324,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1858:
@@ -36886,7 +36344,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1859:
@@ -36906,7 +36364,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1860:
@@ -36926,7 +36384,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = val;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1861:
@@ -36935,7 +36393,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).cptr) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.cptr);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1862:
@@ -36944,7 +36402,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).cptr) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.cptr);
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1863:
@@ -36953,7 +36411,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).cptr) = pt_append_string (this_parser, (char *) "-", (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.cptr));
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1864:
@@ -36965,7 +36423,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1865:
@@ -36977,7 +36435,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1866:
@@ -36989,7 +36447,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1867:
@@ -37001,7 +36459,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1868:
@@ -37013,7 +36471,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1869:
@@ -37025,7 +36483,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1870:
@@ -37037,7 +36495,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1871:
@@ -37049,7 +36507,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1872:
@@ -37061,7 +36519,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1873:
@@ -37073,7 +36531,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1874:
@@ -37085,7 +36543,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1875:
@@ -37097,7 +36555,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = val;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1876:
@@ -37106,7 +36564,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			container_2 ctn;
 			SET_CONTAINER_2(ctn, FROM_NUMBER ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.number)), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			((*yyvalp).c2) = ctn;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1877:
@@ -37123,7 +36581,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			((*yyvalp).node) = qc;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1878:
@@ -37142,7 +36600,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = qc;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1879:
@@ -37161,7 +36619,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = qc;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1882:
@@ -37171,7 +36629,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1883:
@@ -37181,7 +36639,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1884:
@@ -37200,7 +36658,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1885:
@@ -37219,7 +36677,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1886:
@@ -37238,7 +36696,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1887:
@@ -37253,7 +36711,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    alt->info.alter.alter_clause.partition.info = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1888:
@@ -37265,7 +36723,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			if (alt)
 			  alt->info.alter.code = PT_REMOVE_PARTITION;
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1889:
@@ -37281,7 +36739,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    alt->info.alter.alter_clause.partition.parts = (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (7))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1890:
@@ -37296,7 +36754,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    alt->info.alter.alter_clause.partition.name_list = NULL;
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1891:
@@ -37311,7 +36769,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    alt->info.alter.alter_clause.partition.name_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1892:
@@ -37326,7 +36784,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    alt->info.alter.alter_clause.partition.size = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1893:
@@ -37341,7 +36799,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			    alt->info.alter.alter_clause.partition.name_list = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
 			  }
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1896:
@@ -37351,7 +36809,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1897:
@@ -37361,7 +36819,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1898:
@@ -37371,7 +36829,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1899:
@@ -37381,7 +36839,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1900:
@@ -37391,7 +36849,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1901:
@@ -37401,7 +36859,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
   case 1904:
@@ -37416,10 +36874,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 				    sizeof (PT_NODE));
 			  }
 			((*yyvalp).node) = node;
-		DBG_PRINT}}
+		DBG_PRINT};}
     break;
 
 
+/* Line 930 of glr.c.  */
 
       default: break;
     }
@@ -37448,7 +36907,7 @@ yyuserMerge (int yyn, YYSTYPE* yy0, YYSTYPE* yy1)
     }
 }
 
-                              /* Bison grammar-table manipulation.  */
+			      /* Bison grammar-table manipulation.  */
 
 /*-----------------------------------------------.
 | Release the memory associated to this symbol.  |
@@ -37469,7 +36928,7 @@ yydestruct (const char *yymsg, int yytype, YYSTYPE *yyvaluep, YYLTYPE *yylocatio
     {
 
       default:
-        break;
+	break;
     }
 }
 
@@ -37485,32 +36944,32 @@ yydestroyGLRState (char const *yymsg, yyGLRState *yys)
 {
   if (yys->yyresolved)
     yydestruct (yymsg, yystos[yys->yylrState],
-                &yys->yysemantics.yysval, &yys->yyloc);
+		&yys->yysemantics.yysval, &yys->yyloc);
   else
     {
 #if YYDEBUG
       if (yydebug)
-        {
-          if (yys->yysemantics.yyfirstVal)
-            YYFPRINTF (stderr, "%s unresolved ", yymsg);
-          else
-            YYFPRINTF (stderr, "%s incomplete ", yymsg);
-          yy_symbol_print (stderr, yystos[yys->yylrState],
-                           YY_NULL, &yys->yyloc);
-          YYFPRINTF (stderr, "\n");
-        }
+	{
+	  if (yys->yysemantics.yyfirstVal)
+	    YYFPRINTF (stderr, "%s unresolved ", yymsg);
+	  else
+	    YYFPRINTF (stderr, "%s incomplete ", yymsg);
+	  yy_symbol_print (stderr, yystos[yys->yylrState],
+			   NULL, &yys->yyloc);
+	  YYFPRINTF (stderr, "\n");
+	}
 #endif
 
       if (yys->yysemantics.yyfirstVal)
-        {
-          yySemanticOption *yyoption = yys->yysemantics.yyfirstVal;
-          yyGLRState *yyrh;
-          int yyn;
-          for (yyrh = yyoption->yystate, yyn = yyrhsLength (yyoption->yyrule);
-               yyn > 0;
-               yyrh = yyrh->yypred, yyn -= 1)
-            yydestroyGLRState (yymsg, yyrh);
-        }
+	{
+	  yySemanticOption *yyoption = yys->yysemantics.yyfirstVal;
+	  yyGLRState *yyrh;
+	  int yyn;
+	  for (yyrh = yyoption->yystate, yyn = yyrhsLength (yyoption->yyrule);
+	       yyn > 0;
+	       yyrh = yyrh->yypred, yyn -= 1)
+	    yydestroyGLRState (yymsg, yyrh);
+	}
     }
 }
 
@@ -37521,15 +36980,15 @@ yylhsNonterm (yyRuleNum yyrule)
   return yyr1[yyrule];
 }
 
-#define yypact_value_is_default(Yystate) \
-  (!!((Yystate) == (-2624)))
+#define yyis_pact_ninf(yystate) \
+  ((yystate) == YYPACT_NINF)
 
 /** True iff LR state STATE has only a default reduction (regardless
  *  of token).  */
 static inline yybool
 yyisDefaultedState (yyStateNum yystate)
 {
-  return yypact_value_is_default (yypact[yystate]);
+  return yyis_pact_ninf (yypact[yystate]);
 }
 
 /** The default reduction for STATE, assuming it has one.  */
@@ -37539,7 +36998,7 @@ yydefaultAction (yyStateNum yystate)
   return yydefact[yystate];
 }
 
-#define yytable_value_is_error(Yytable_value) \
+#define yyis_table_ninf(yytable_value) \
   YYID (0)
 
 /** Set *YYACTION to the action to take in YYSTATE on seeing YYTOKEN.
@@ -37552,16 +37011,15 @@ yydefaultAction (yyStateNum yystate)
  */
 static inline void
 yygetLRActions (yyStateNum yystate, int yytoken,
-                int* yyaction, const short int** yyconflicts)
+		int* yyaction, const short int** yyconflicts)
 {
   int yyindex = yypact[yystate] + yytoken;
-  if (yypact_value_is_default (yypact[yystate])
-      || yyindex < 0 || YYLAST < yyindex || yycheck[yyindex] != yytoken)
+  if (yyindex < 0 || YYLAST < yyindex || yycheck[yyindex] != yytoken)
     {
       *yyaction = -yydefact[yystate];
       *yyconflicts = yyconfl;
     }
-  else if (! yytable_value_is_error (yytable[yyindex]))
+  else if (! yyis_table_ninf (yytable[yyindex]))
     {
       *yyaction = yytable[yyindex];
       *yyconflicts = yyconfl + yyconflp[yyindex];
@@ -37596,7 +37054,7 @@ yyisErrorAction (int yyaction)
   return yyaction == 0;
 }
 
-                                /* GLRStates */
+				/* GLRStates */
 
 /** Return a fresh GLRStackItem.  Callers should call
  * YY_RESERVE_GLRSTACK afterwards to make sure there is sufficient
@@ -37618,7 +37076,7 @@ yynewGLRStackItem (yyGLRStack* yystackp, yybool yyisState)
  *  stack #K of *STACKP. */
 static void
 yyaddDeferredAction (yyGLRStack* yystackp, size_t yyk, yyGLRState* yystate,
-                     yyGLRState* rhs, yyRuleNum yyrule)
+		     yyGLRState* rhs, yyRuleNum yyrule)
 {
   yySemanticOption* yynewOption =
     &yynewGLRStackItem (yystackp, yyfalse)->yyoption;
@@ -37638,7 +37096,7 @@ yyaddDeferredAction (yyGLRStack* yystackp, size_t yyk, yyGLRState* yystate,
   YY_RESERVE_GLRSTACK (yystackp);
 }
 
-                                /* GLRStacks */
+				/* GLRStacks */
 
 /** Initialize SET to a singleton set containing an empty stack.  */
 static yybool
@@ -37649,7 +37107,7 @@ yyinitStateSet (yyGLRStateSet* yyset)
   yyset->yystates = (yyGLRState**) YYMALLOC (16 * sizeof yyset->yystates[0]);
   if (! yyset->yystates)
     return yyfalse;
-  yyset->yystates[0] = YY_NULL;
+  yyset->yystates[0] = NULL;
   yyset->yylookaheadNeeds =
     (yybool*) YYMALLOC (16 * sizeof yyset->yylookaheadNeeds[0]);
   if (! yyset->yylookaheadNeeds)
@@ -37679,8 +37137,8 @@ yyinitGLRStack (yyGLRStack* yystackp, size_t yysize)
   if (!yystackp->yyitems)
     return yyfalse;
   yystackp->yynextFree = yystackp->yyitems;
-  yystackp->yysplitPoint = YY_NULL;
-  yystackp->yylastDeleted = YY_NULL;
+  yystackp->yysplitPoint = NULL;
+  yystackp->yylastDeleted = NULL;
   return yyinitStateSet (&yystackp->yytops);
 }
 
@@ -37699,9 +37157,9 @@ yyexpandGLRStack (yyGLRStack* yystackp)
 {
   yyGLRStackItem* yynewItems;
   yyGLRStackItem* yyp0, *yyp1;
-  size_t yynewSize;
+  size_t yysize, yynewSize;
   size_t yyn;
-  size_t yysize = yystackp->yynextFree - yystackp->yyitems;
+  yysize = yystackp->yynextFree - yystackp->yyitems;
   if (YYMAXDEPTH - YYHEADROOM < yysize)
     yyMemoryExhausted (yystackp);
   yynewSize = 2*yysize;
@@ -37716,35 +37174,35 @@ yyexpandGLRStack (yyGLRStack* yystackp)
     {
       *yyp1 = *yyp0;
       if (*(yybool *) yyp0)
-        {
-          yyGLRState* yys0 = &yyp0->yystate;
-          yyGLRState* yys1 = &yyp1->yystate;
-          if (yys0->yypred != YY_NULL)
-            yys1->yypred =
-              YYRELOC (yyp0, yyp1, yys0->yypred, yystate);
-          if (! yys0->yyresolved && yys0->yysemantics.yyfirstVal != YY_NULL)
-            yys1->yysemantics.yyfirstVal =
-              YYRELOC (yyp0, yyp1, yys0->yysemantics.yyfirstVal, yyoption);
-        }
+	{
+	  yyGLRState* yys0 = &yyp0->yystate;
+	  yyGLRState* yys1 = &yyp1->yystate;
+	  if (yys0->yypred != NULL)
+	    yys1->yypred =
+	      YYRELOC (yyp0, yyp1, yys0->yypred, yystate);
+	  if (! yys0->yyresolved && yys0->yysemantics.yyfirstVal != NULL)
+	    yys1->yysemantics.yyfirstVal =
+	      YYRELOC(yyp0, yyp1, yys0->yysemantics.yyfirstVal, yyoption);
+	}
       else
-        {
-          yySemanticOption* yyv0 = &yyp0->yyoption;
-          yySemanticOption* yyv1 = &yyp1->yyoption;
-          if (yyv0->yystate != YY_NULL)
-            yyv1->yystate = YYRELOC (yyp0, yyp1, yyv0->yystate, yystate);
-          if (yyv0->yynext != YY_NULL)
-            yyv1->yynext = YYRELOC (yyp0, yyp1, yyv0->yynext, yyoption);
-        }
+	{
+	  yySemanticOption* yyv0 = &yyp0->yyoption;
+	  yySemanticOption* yyv1 = &yyp1->yyoption;
+	  if (yyv0->yystate != NULL)
+	    yyv1->yystate = YYRELOC (yyp0, yyp1, yyv0->yystate, yystate);
+	  if (yyv0->yynext != NULL)
+	    yyv1->yynext = YYRELOC (yyp0, yyp1, yyv0->yynext, yyoption);
+	}
     }
-  if (yystackp->yysplitPoint != YY_NULL)
+  if (yystackp->yysplitPoint != NULL)
     yystackp->yysplitPoint = YYRELOC (yystackp->yyitems, yynewItems,
-                                 yystackp->yysplitPoint, yystate);
+				 yystackp->yysplitPoint, yystate);
 
   for (yyn = 0; yyn < yystackp->yytops.yysize; yyn += 1)
-    if (yystackp->yytops.yystates[yyn] != YY_NULL)
+    if (yystackp->yytops.yystates[yyn] != NULL)
       yystackp->yytops.yystates[yyn] =
-        YYRELOC (yystackp->yyitems, yynewItems,
-                 yystackp->yytops.yystates[yyn], yystate);
+	YYRELOC (yystackp->yyitems, yynewItems,
+		 yystackp->yytops.yystates[yyn], yystate);
   YYFREE (yystackp->yyitems);
   yystackp->yyitems = yynewItems;
   yystackp->yynextFree = yynewItems + yysize;
@@ -37765,7 +37223,7 @@ yyfreeGLRStack (yyGLRStack* yystackp)
 static inline void
 yyupdateSplit (yyGLRStack* yystackp, yyGLRState* yys)
 {
-  if (yystackp->yysplitPoint != YY_NULL && yystackp->yysplitPoint > yys)
+  if (yystackp->yysplitPoint != NULL && yystackp->yysplitPoint > yys)
     yystackp->yysplitPoint = yys;
 }
 
@@ -37773,9 +37231,9 @@ yyupdateSplit (yyGLRStack* yystackp, yyGLRState* yys)
 static inline void
 yymarkStackDeleted (yyGLRStack* yystackp, size_t yyk)
 {
-  if (yystackp->yytops.yystates[yyk] != YY_NULL)
+  if (yystackp->yytops.yystates[yyk] != NULL)
     yystackp->yylastDeleted = yystackp->yytops.yystates[yyk];
-  yystackp->yytops.yystates[yyk] = YY_NULL;
+  yystackp->yytops.yystates[yyk] = NULL;
 }
 
 /** Undelete the last stack that was marked as deleted.  Can only be
@@ -37784,12 +37242,12 @@ yymarkStackDeleted (yyGLRStack* yystackp, size_t yyk)
 static void
 yyundeleteLastStack (yyGLRStack* yystackp)
 {
-  if (yystackp->yylastDeleted == YY_NULL || yystackp->yytops.yysize != 0)
+  if (yystackp->yylastDeleted == NULL || yystackp->yytops.yysize != 0)
     return;
   yystackp->yytops.yystates[0] = yystackp->yylastDeleted;
   yystackp->yytops.yysize = 1;
   YYDPRINTF ((stderr, "Restoring last deleted stack as stack #0.\n"));
-  yystackp->yylastDeleted = YY_NULL;
+  yystackp->yylastDeleted = NULL;
 }
 
 static inline void
@@ -37799,31 +37257,31 @@ yyremoveDeletes (yyGLRStack* yystackp)
   yyi = yyj = 0;
   while (yyj < yystackp->yytops.yysize)
     {
-      if (yystackp->yytops.yystates[yyi] == YY_NULL)
-        {
-          if (yyi == yyj)
-            {
-              YYDPRINTF ((stderr, "Removing dead stacks.\n"));
-            }
-          yystackp->yytops.yysize -= 1;
-        }
+      if (yystackp->yytops.yystates[yyi] == NULL)
+	{
+	  if (yyi == yyj)
+	    {
+	      YYDPRINTF ((stderr, "Removing dead stacks.\n"));
+	    }
+	  yystackp->yytops.yysize -= 1;
+	}
       else
-        {
-          yystackp->yytops.yystates[yyj] = yystackp->yytops.yystates[yyi];
-          /* In the current implementation, it's unnecessary to copy
-             yystackp->yytops.yylookaheadNeeds[yyi] since, after
-             yyremoveDeletes returns, the parser immediately either enters
-             deterministic operation or shifts a token.  However, it doesn't
-             hurt, and the code might evolve to need it.  */
-          yystackp->yytops.yylookaheadNeeds[yyj] =
-            yystackp->yytops.yylookaheadNeeds[yyi];
-          if (yyj != yyi)
-            {
-              YYDPRINTF ((stderr, "Rename stack %lu -> %lu.\n",
-                          (unsigned long int) yyi, (unsigned long int) yyj));
-            }
-          yyj += 1;
-        }
+	{
+	  yystackp->yytops.yystates[yyj] = yystackp->yytops.yystates[yyi];
+	  /* In the current implementation, it's unnecessary to copy
+	     yystackp->yytops.yylookaheadNeeds[yyi] since, after
+	     yyremoveDeletes returns, the parser immediately either enters
+	     deterministic operation or shifts a token.  However, it doesn't
+	     hurt, and the code might evolve to need it.  */
+	  yystackp->yytops.yylookaheadNeeds[yyj] =
+	    yystackp->yytops.yylookaheadNeeds[yyi];
+	  if (yyj != yyi)
+	    {
+	      YYDPRINTF ((stderr, "Rename stack %lu -> %lu.\n",
+			  (unsigned long int) yyi, (unsigned long int) yyj));
+	    }
+	  yyj += 1;
+	}
       yyi += 1;
     }
 }
@@ -37832,8 +37290,8 @@ yyremoveDeletes (yyGLRStack* yystackp)
  * LRSTATE, at input position POSN, with (resolved) semantic value SVAL.  */
 static inline void
 yyglrShift (yyGLRStack* yystackp, size_t yyk, yyStateNum yylrState,
-            size_t yyposn,
-            YYSTYPE* yyvalp, YYLTYPE* yylocp)
+	    size_t yyposn,
+	    YYSTYPE* yyvalp, YYLTYPE* yylocp)
 {
   yyGLRState* yynewState = &yynewGLRStackItem (yystackp, yytrue)->yystate;
 
@@ -37853,7 +37311,7 @@ yyglrShift (yyGLRStack* yystackp, size_t yyk, yyStateNum yylrState,
  *  semantic value of YYRHS under the action for YYRULE.  */
 static inline void
 yyglrShiftDefer (yyGLRStack* yystackp, size_t yyk, yyStateNum yylrState,
-                 size_t yyposn, yyGLRState* rhs, yyRuleNum yyrule)
+		 size_t yyposn, yyGLRState* rhs, yyRuleNum yyrule)
 {
   yyGLRState* yynewState = &yynewGLRStackItem (yystackp, yytrue)->yystate;
 
@@ -37861,7 +37319,7 @@ yyglrShiftDefer (yyGLRStack* yystackp, size_t yyk, yyStateNum yylrState,
   yynewState->yyposn = yyposn;
   yynewState->yyresolved = yyfalse;
   yynewState->yypred = yystackp->yytops.yystates[yyk];
-  yynewState->yysemantics.yyfirstVal = YY_NULL;
+  yynewState->yysemantics.yyfirstVal = NULL;
   yystackp->yytops.yystates[yyk] = yynewState;
 
   /* Invokes YY_RESERVE_GLRSTACK.  */
@@ -37876,11 +37334,11 @@ yyglrShiftDefer (yyGLRStack* yystackp, size_t yyk, yyStateNum yylrState,
  *  for userAction.  */
 static inline YYRESULTTAG
 yydoAction (yyGLRStack* yystackp, size_t yyk, yyRuleNum yyrule,
-            YYSTYPE* yyvalp, YYLTYPE *yylocp)
+	    YYSTYPE* yyvalp, YYLTYPE* yylocp)
 {
   int yynrhs = yyrhsLength (yyrule);
 
-  if (yystackp->yysplitPoint == YY_NULL)
+  if (yystackp->yysplitPoint == NULL)
     {
       /* Standard special case: single stack.  */
       yyGLRStackItem* rhs = (yyGLRStackItem*) yystackp->yytops.yystates[yyk];
@@ -37888,8 +37346,8 @@ yydoAction (yyGLRStack* yystackp, size_t yyk, yyRuleNum yyrule,
       yystackp->yynextFree -= yynrhs;
       yystackp->yyspaceLeft += yynrhs;
       yystackp->yytops.yystates[0] = & yystackp->yynextFree[-1].yystate;
-      return yyuserAction (yyrule, yynrhs, rhs, yystackp,
-                           yyvalp, yylocp);
+      return yyuserAction (yyrule, yynrhs, rhs,
+			   yyvalp, yylocp, yystackp);
     }
   else
     {
@@ -37901,29 +37359,29 @@ yydoAction (yyGLRStack* yystackp, size_t yyk, yyRuleNum yyrule,
       yyGLRState* yys;
       yyGLRStackItem yyrhsVals[YYMAXRHS + YYMAXLEFT + 1];
       yys = yyrhsVals[YYMAXRHS + YYMAXLEFT].yystate.yypred
-        = yystackp->yytops.yystates[yyk];
+	= yystackp->yytops.yystates[yyk];
       if (yynrhs == 0)
-        /* Set default location.  */
-        yyrhsVals[YYMAXRHS + YYMAXLEFT - 1].yystate.yyloc = yys->yyloc;
+	/* Set default location.  */
+	yyrhsVals[YYMAXRHS + YYMAXLEFT - 1].yystate.yyloc = yys->yyloc;
       for (yyi = 0; yyi < yynrhs; yyi += 1)
-        {
-          yys = yys->yypred;
-          YYASSERT (yys);
-        }
+	{
+	  yys = yys->yypred;
+	  YYASSERT (yys);
+	}
       yyupdateSplit (yystackp, yys);
       yystackp->yytops.yystates[yyk] = yys;
       return yyuserAction (yyrule, yynrhs, yyrhsVals + YYMAXRHS + YYMAXLEFT - 1,
-                           yystackp, yyvalp, yylocp);
+			   yyvalp, yylocp, yystackp);
     }
 }
 
 #if !YYDEBUG
 # define YY_REDUCE_PRINT(Args)
 #else
-# define YY_REDUCE_PRINT(Args)          \
-do {                                    \
-  if (yydebug)                          \
-    yy_reduce_print Args;               \
+# define YY_REDUCE_PRINT(Args)		\
+do {					\
+  if (yydebug)				\
+    yy_reduce_print Args;		\
 } while (YYID (0))
 
 /*----------------------------------------------------------.
@@ -37932,27 +37390,27 @@ do {                                    \
 
 /*ARGSUSED*/ static inline void
 yy_reduce_print (yyGLRStack* yystackp, size_t yyk, yyRuleNum yyrule,
-                 YYSTYPE* yyvalp, YYLTYPE *yylocp)
+		 YYSTYPE* yyvalp, YYLTYPE* yylocp)
 {
   int yynrhs = yyrhsLength (yyrule);
   yybool yynormal __attribute__ ((__unused__)) =
-    (yystackp->yysplitPoint == YY_NULL);
+    (yystackp->yysplitPoint == NULL);
   yyGLRStackItem* yyvsp = (yyGLRStackItem*) yystackp->yytops.yystates[yyk];
   int yylow = 1;
   int yyi;
   YYUSE (yyvalp);
   YYUSE (yylocp);
   YYFPRINTF (stderr, "Reducing stack %lu by rule %d (line %lu):\n",
-             (unsigned long int) yyk, yyrule - 1,
-             (unsigned long int) yyrline[yyrule]);
+	     (unsigned long int) yyk, yyrule - 1,
+	     (unsigned long int) yyrline[yyrule]);
   /* The symbols being reduced.  */
   for (yyi = 0; yyi < yynrhs; yyi++)
     {
-      YYFPRINTF (stderr, "   $%d = ", yyi + 1);
+      fprintf (stderr, "   $%d = ", yyi + 1);
       yy_symbol_print (stderr, yyrhs[yyprhs[yyrule] + yyi],
-                       &(((yyGLRStackItem const *)yyvsp)[YYFILL ((yyi + 1) - (yynrhs))].yystate.yysemantics.yysval)
-                       , &(((yyGLRStackItem const *)yyvsp)[YYFILL ((yyi + 1) - (yynrhs))].yystate.yyloc)                       );
-      YYFPRINTF (stderr, "\n");
+		       &(((yyGLRStackItem const *)yyvsp)[YYFILL ((yyi + 1) - (yynrhs))].yystate.yysemantics.yysval)
+		       , &(((yyGLRStackItem const *)yyvsp)[YYFILL ((yyi + 1) - (yynrhs))].yystate.yyloc)		       );
+      fprintf (stderr, "\n");
     }
 }
 #endif
@@ -37970,22 +37428,23 @@ yy_reduce_print (yyGLRStack* yystackp, size_t yyk, yyRuleNum yyrule,
  */
 static inline YYRESULTTAG
 yyglrReduce (yyGLRStack* yystackp, size_t yyk, yyRuleNum yyrule,
-             yybool yyforceEval)
+	     yybool yyforceEval)
 {
   size_t yyposn = yystackp->yytops.yystates[yyk]->yyposn;
 
-  if (yyforceEval || yystackp->yysplitPoint == YY_NULL)
+  if (yyforceEval || yystackp->yysplitPoint == NULL)
     {
       YYSTYPE yysval;
       YYLTYPE yyloc;
 
       YY_REDUCE_PRINT ((yystackp, yyk, yyrule, &yysval, &yyloc));
-      YYCHK (yydoAction (yystackp, yyk, yyrule, &yysval, &yyloc));
+      YYCHK (yydoAction (yystackp, yyk, yyrule, &yysval,
+			 &yyloc));
       YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyrule], &yysval, &yyloc);
       yyglrShift (yystackp, yyk,
-                  yyLRgotoState (yystackp->yytops.yystates[yyk]->yylrState,
-                                 yylhsNonterm (yyrule)),
-                  yyposn, &yysval, &yyloc);
+		  yyLRgotoState (yystackp->yytops.yystates[yyk]->yylrState,
+				 yylhsNonterm (yyrule)),
+		  yyposn, &yysval, &yyloc);
     }
   else
     {
@@ -37995,35 +37454,35 @@ yyglrReduce (yyGLRStack* yystackp, size_t yyk, yyRuleNum yyrule,
       yyStateNum yynewLRState;
 
       for (yys = yystackp->yytops.yystates[yyk], yyn = yyrhsLength (yyrule);
-           0 < yyn; yyn -= 1)
-        {
-          yys = yys->yypred;
-          YYASSERT (yys);
-        }
+	   0 < yyn; yyn -= 1)
+	{
+	  yys = yys->yypred;
+	  YYASSERT (yys);
+	}
       yyupdateSplit (yystackp, yys);
       yynewLRState = yyLRgotoState (yys->yylrState, yylhsNonterm (yyrule));
       YYDPRINTF ((stderr,
-                  "Reduced stack %lu by rule #%d; action deferred.  Now in state %d.\n",
-                  (unsigned long int) yyk, yyrule - 1, yynewLRState));
+		  "Reduced stack %lu by rule #%d; action deferred.  Now in state %d.\n",
+		  (unsigned long int) yyk, yyrule - 1, yynewLRState));
       for (yyi = 0; yyi < yystackp->yytops.yysize; yyi += 1)
-        if (yyi != yyk && yystackp->yytops.yystates[yyi] != YY_NULL)
-          {
-            yyGLRState *yysplit = yystackp->yysplitPoint;
-            yyGLRState *yyp = yystackp->yytops.yystates[yyi];
-            while (yyp != yys && yyp != yysplit && yyp->yyposn >= yyposn)
-              {
-                if (yyp->yylrState == yynewLRState && yyp->yypred == yys)
-                  {
-                    yyaddDeferredAction (yystackp, yyk, yyp, yys0, yyrule);
-                    yymarkStackDeleted (yystackp, yyk);
-                    YYDPRINTF ((stderr, "Merging stack %lu into stack %lu.\n",
-                                (unsigned long int) yyk,
-                                (unsigned long int) yyi));
-                    return yyok;
-                  }
-                yyp = yyp->yypred;
-              }
-          }
+	if (yyi != yyk && yystackp->yytops.yystates[yyi] != NULL)
+	  {
+	    yyGLRState* yyp, *yysplit = yystackp->yysplitPoint;
+	    yyp = yystackp->yytops.yystates[yyi];
+	    while (yyp != yys && yyp != yysplit && yyp->yyposn >= yyposn)
+	      {
+		if (yyp->yylrState == yynewLRState && yyp->yypred == yys)
+		  {
+		    yyaddDeferredAction (yystackp, yyk, yyp, yys0, yyrule);
+		    yymarkStackDeleted (yystackp, yyk);
+		    YYDPRINTF ((stderr, "Merging stack %lu into stack %lu.\n",
+				(unsigned long int) yyk,
+				(unsigned long int) yyi));
+		    return yyok;
+		  }
+		yyp = yyp->yypred;
+	      }
+	  }
       yystackp->yytops.yystates[yyk] = yys;
       yyglrShiftDefer (yystackp, yyk, yynewLRState, yyposn, yys0, yyrule);
     }
@@ -38033,7 +37492,7 @@ yyglrReduce (yyGLRStack* yystackp, size_t yyk, yyRuleNum yyrule,
 static size_t
 yysplitStack (yyGLRStack* yystackp, size_t yyk)
 {
-  if (yystackp->yysplitPoint == YY_NULL)
+  if (yystackp->yysplitPoint == NULL)
     {
       YYASSERT (yyk == 0);
       yystackp->yysplitPoint = yystackp->yytops.yystates[yyk];
@@ -38043,27 +37502,27 @@ yysplitStack (yyGLRStack* yystackp, size_t yyk)
       yyGLRState** yynewStates;
       yybool* yynewLookaheadNeeds;
 
-      yynewStates = YY_NULL;
+      yynewStates = NULL;
 
       if (yystackp->yytops.yycapacity
-          > (YYSIZEMAX / (2 * sizeof yynewStates[0])))
-        yyMemoryExhausted (yystackp);
+	  > (YYSIZEMAX / (2 * sizeof yynewStates[0])))
+	yyMemoryExhausted (yystackp);
       yystackp->yytops.yycapacity *= 2;
 
       yynewStates =
-        (yyGLRState**) YYREALLOC (yystackp->yytops.yystates,
-                                  (yystackp->yytops.yycapacity
-                                   * sizeof yynewStates[0]));
-      if (yynewStates == YY_NULL)
-        yyMemoryExhausted (yystackp);
+	(yyGLRState**) YYREALLOC (yystackp->yytops.yystates,
+				  (yystackp->yytops.yycapacity
+				   * sizeof yynewStates[0]));
+      if (yynewStates == NULL)
+	yyMemoryExhausted (yystackp);
       yystackp->yytops.yystates = yynewStates;
 
       yynewLookaheadNeeds =
-        (yybool*) YYREALLOC (yystackp->yytops.yylookaheadNeeds,
-                             (yystackp->yytops.yycapacity
-                              * sizeof yynewLookaheadNeeds[0]));
-      if (yynewLookaheadNeeds == YY_NULL)
-        yyMemoryExhausted (yystackp);
+	(yybool*) YYREALLOC (yystackp->yytops.yylookaheadNeeds,
+			     (yystackp->yytops.yycapacity
+			      * sizeof yynewLookaheadNeeds[0]));
+      if (yynewLookaheadNeeds == NULL)
+	yyMemoryExhausted (yystackp);
       yystackp->yytops.yylookaheadNeeds = yynewLookaheadNeeds;
     }
   yystackp->yytops.yystates[yystackp->yytops.yysize]
@@ -38085,11 +37544,11 @@ yyidenticalOptions (yySemanticOption* yyy0, yySemanticOption* yyy1)
       yyGLRState *yys0, *yys1;
       int yyn;
       for (yys0 = yyy0->yystate, yys1 = yyy1->yystate,
-           yyn = yyrhsLength (yyy0->yyrule);
-           yyn > 0;
-           yys0 = yys0->yypred, yys1 = yys1->yypred, yyn -= 1)
-        if (yys0->yyposn != yys1->yyposn)
-          return yyfalse;
+	   yyn = yyrhsLength (yyy0->yyrule);
+	   yyn > 0;
+	   yys0 = yys0->yypred, yys1 = yys1->yypred, yyn -= 1)
+	if (yys0->yyposn != yys1->yyposn)
+	  return yyfalse;
       return yytrue;
     }
   else
@@ -38109,41 +37568,43 @@ yymergeOptionSets (yySemanticOption* yyy0, yySemanticOption* yyy1)
        yys0 = yys0->yypred, yys1 = yys1->yypred, yyn -= 1)
     {
       if (yys0 == yys1)
-        break;
+	break;
       else if (yys0->yyresolved)
-        {
-          yys1->yyresolved = yytrue;
-          yys1->yysemantics.yysval = yys0->yysemantics.yysval;
-        }
+	{
+	  yys1->yyresolved = yytrue;
+	  yys1->yysemantics.yysval = yys0->yysemantics.yysval;
+	}
       else if (yys1->yyresolved)
-        {
-          yys0->yyresolved = yytrue;
-          yys0->yysemantics.yysval = yys1->yysemantics.yysval;
-        }
+	{
+	  yys0->yyresolved = yytrue;
+	  yys0->yysemantics.yysval = yys1->yysemantics.yysval;
+	}
       else
-        {
-          yySemanticOption** yyz0p = &yys0->yysemantics.yyfirstVal;
-          yySemanticOption* yyz1 = yys1->yysemantics.yyfirstVal;
-          while (YYID (yytrue))
-            {
-              if (yyz1 == *yyz0p || yyz1 == YY_NULL)
-                break;
-              else if (*yyz0p == YY_NULL)
-                {
-                  *yyz0p = yyz1;
-                  break;
-                }
-              else if (*yyz0p < yyz1)
-                {
-                  yySemanticOption* yyz = *yyz0p;
-                  *yyz0p = yyz1;
-                  yyz1 = yyz1->yynext;
-                  (*yyz0p)->yynext = yyz;
-                }
-              yyz0p = &(*yyz0p)->yynext;
-            }
-          yys1->yysemantics.yyfirstVal = yys0->yysemantics.yyfirstVal;
-        }
+	{
+	  yySemanticOption** yyz0p;
+	  yySemanticOption* yyz1;
+	  yyz0p = &yys0->yysemantics.yyfirstVal;
+	  yyz1 = yys1->yysemantics.yyfirstVal;
+	  while (YYID (yytrue))
+	    {
+	      if (yyz1 == *yyz0p || yyz1 == NULL)
+		break;
+	      else if (*yyz0p == NULL)
+		{
+		  *yyz0p = yyz1;
+		  break;
+		}
+	      else if (*yyz0p < yyz1)
+		{
+		  yySemanticOption* yyz = *yyz0p;
+		  *yyz0p = yyz1;
+		  yyz1 = yyz1->yynext;
+		  (*yyz0p)->yynext = yyz;
+		}
+	      yyz0p = &(*yyz0p)->yynext;
+	    }
+	  yys1->yysemantics.yyfirstVal = yys0->yysemantics.yyfirstVal;
+	}
     }
 }
 
@@ -38159,9 +37620,9 @@ yypreference (yySemanticOption* y0, yySemanticOption* y1)
   if (p0 == p1)
     {
       if (yymerger[r0] == 0 || yymerger[r0] != yymerger[r1])
-        return 0;
+	return 0;
       else
-        return 1;
+	return 1;
     }
   if (p0 == 0 || p1 == 0)
     return 0;
@@ -38173,7 +37634,7 @@ yypreference (yySemanticOption* y0, yySemanticOption* y1)
 }
 
 static YYRESULTTAG yyresolveValue (yyGLRState* yys,
-                                   yyGLRStack* yystackp);
+				   yyGLRStack* yystackp);
 
 
 /** Resolve the previous N states starting at and including state S.  If result
@@ -38183,14 +37644,14 @@ static YYRESULTTAG yyresolveValue (yyGLRState* yys,
  *  if necessary.  */
 static YYRESULTTAG
 yyresolveStates (yyGLRState* yys, int yyn,
-                 yyGLRStack* yystackp)
+		 yyGLRStack* yystackp)
 {
   if (0 < yyn)
     {
       YYASSERT (yys->yypred);
       YYCHK (yyresolveStates (yys->yypred, yyn-1, yystackp));
       if (! yys->yyresolved)
-        YYCHK (yyresolveValue (yys, yystackp));
+	YYCHK (yyresolveValue (yys, yystackp));
     }
   return yyok;
 }
@@ -38201,17 +37662,22 @@ yyresolveStates (yyGLRState* yys, int yyn,
  *  semantic values if invoked).  */
 static YYRESULTTAG
 yyresolveAction (yySemanticOption* yyopt, yyGLRStack* yystackp,
-                 YYSTYPE* yyvalp, YYLTYPE *yylocp)
+		 YYSTYPE* yyvalp, YYLTYPE* yylocp)
 {
   yyGLRStackItem yyrhsVals[YYMAXRHS + YYMAXLEFT + 1];
-  int yynrhs = yyrhsLength (yyopt->yyrule);
-  YYRESULTTAG yyflag =
-    yyresolveStates (yyopt->yystate, yynrhs, yystackp);
+  int yynrhs;
+  int yychar_current;
+  YYSTYPE yylval_current;
+  YYLTYPE yylloc_current;
+  YYRESULTTAG yyflag;
+
+  yynrhs = yyrhsLength (yyopt->yyrule);
+  yyflag = yyresolveStates (yyopt->yystate, yynrhs, yystackp);
   if (yyflag != yyok)
     {
       yyGLRState *yys;
       for (yys = yyopt->yystate; yynrhs > 0; yys = yys->yypred, yynrhs -= 1)
-        yydestroyGLRState ("Cleanup: popping", yys);
+	yydestroyGLRState ("Cleanup: popping", yys);
       return yyflag;
     }
 
@@ -38219,20 +37685,18 @@ yyresolveAction (yySemanticOption* yyopt, yyGLRStack* yystackp,
   if (yynrhs == 0)
     /* Set default location.  */
     yyrhsVals[YYMAXRHS + YYMAXLEFT - 1].yystate.yyloc = yyopt->yystate->yyloc;
-  {
-    int yychar_current = yychar;
-    YYSTYPE yylval_current = yylval;
-    YYLTYPE yylloc_current = yylloc;
-    yychar = yyopt->yyrawchar;
-    yylval = yyopt->yyval;
-    yylloc = yyopt->yyloc;
-    yyflag = yyuserAction (yyopt->yyrule, yynrhs,
-                           yyrhsVals + YYMAXRHS + YYMAXLEFT - 1,
-                           yystackp, yyvalp, yylocp);
-    yychar = yychar_current;
-    yylval = yylval_current;
-    yylloc = yylloc_current;
-  }
+  yychar_current = yychar;
+  yylval_current = yylval;
+  yylloc_current = yylloc;
+  yychar = yyopt->yyrawchar;
+  yylval = yyopt->yyval;
+  yylloc = yyopt->yyloc;
+  yyflag = yyuserAction (yyopt->yyrule, yynrhs,
+			   yyrhsVals + YYMAXRHS + YYMAXLEFT - 1,
+			   yyvalp, yylocp, yystackp);
+  yychar = yychar_current;
+  yylval = yylval_current;
+  yylloc = yylloc_current;
   return yyflag;
 }
 
@@ -38248,7 +37712,7 @@ yyreportTree (yySemanticOption* yyx, int yyindent)
 
   for (yyi = yynrhs, yys = yyx->yystate; 0 < yyi; yyi -= 1, yys = yys->yypred)
     yystates[yyi] = yys;
-  if (yys == YY_NULL)
+  if (yys == NULL)
     {
       yyleftmost_state.yyposn = 0;
       yystates[0] = &yyleftmost_state;
@@ -38258,35 +37722,35 @@ yyreportTree (yySemanticOption* yyx, int yyindent)
 
   if (yyx->yystate->yyposn < yys->yyposn + 1)
     YYFPRINTF (stderr, "%*s%s -> <Rule %d, empty>\n",
-               yyindent, "", yytokenName (yylhsNonterm (yyx->yyrule)),
-               yyx->yyrule - 1);
+	       yyindent, "", yytokenName (yylhsNonterm (yyx->yyrule)),
+	       yyx->yyrule - 1);
   else
     YYFPRINTF (stderr, "%*s%s -> <Rule %d, tokens %lu .. %lu>\n",
-               yyindent, "", yytokenName (yylhsNonterm (yyx->yyrule)),
-               yyx->yyrule - 1, (unsigned long int) (yys->yyposn + 1),
-               (unsigned long int) yyx->yystate->yyposn);
+	       yyindent, "", yytokenName (yylhsNonterm (yyx->yyrule)),
+	       yyx->yyrule - 1, (unsigned long int) (yys->yyposn + 1),
+	       (unsigned long int) yyx->yystate->yyposn);
   for (yyi = 1; yyi <= yynrhs; yyi += 1)
     {
       if (yystates[yyi]->yyresolved)
-        {
-          if (yystates[yyi-1]->yyposn+1 > yystates[yyi]->yyposn)
-            YYFPRINTF (stderr, "%*s%s <empty>\n", yyindent+2, "",
-                       yytokenName (yyrhs[yyprhs[yyx->yyrule]+yyi-1]));
-          else
-            YYFPRINTF (stderr, "%*s%s <tokens %lu .. %lu>\n", yyindent+2, "",
-                       yytokenName (yyrhs[yyprhs[yyx->yyrule]+yyi-1]),
-                       (unsigned long int) (yystates[yyi - 1]->yyposn + 1),
-                       (unsigned long int) yystates[yyi]->yyposn);
-        }
+	{
+	  if (yystates[yyi-1]->yyposn+1 > yystates[yyi]->yyposn)
+	    YYFPRINTF (stderr, "%*s%s <empty>\n", yyindent+2, "",
+		       yytokenName (yyrhs[yyprhs[yyx->yyrule]+yyi-1]));
+	  else
+	    YYFPRINTF (stderr, "%*s%s <tokens %lu .. %lu>\n", yyindent+2, "",
+		       yytokenName (yyrhs[yyprhs[yyx->yyrule]+yyi-1]),
+		       (unsigned long int) (yystates[yyi - 1]->yyposn + 1),
+		       (unsigned long int) yystates[yyi]->yyposn);
+	}
       else
-        yyreportTree (yystates[yyi]->yysemantics.yyfirstVal, yyindent+2);
+	yyreportTree (yystates[yyi]->yysemantics.yyfirstVal, yyindent+2);
     }
 }
 #endif
 
 /*ARGSUSED*/ static YYRESULTTAG
 yyreportAmbiguity (yySemanticOption* yyx0,
-                   yySemanticOption* yyx1)
+		   yySemanticOption* yyx1)
 {
   YYUSE (yyx0);
   YYUSE (yyx1);
@@ -38309,54 +37773,56 @@ yyreportAmbiguity (yySemanticOption* yyx0,
  *  is always chosen.  */
 static void
 yyresolveLocations (yyGLRState* yys1, int yyn1,
-                    yyGLRStack *yystackp)
+		    yyGLRStack *yystackp)
 {
   if (0 < yyn1)
     {
       yyresolveLocations (yys1->yypred, yyn1 - 1, yystackp);
       if (!yys1->yyresolved)
-        {
-          yyGLRStackItem yyrhsloc[1 + YYMAXRHS];
-          int yynrhs;
-          yySemanticOption *yyoption = yys1->yysemantics.yyfirstVal;
-          YYASSERT (yyoption != YY_NULL);
-          yynrhs = yyrhsLength (yyoption->yyrule);
-          if (yynrhs > 0)
-            {
-              yyGLRState *yys;
-              int yyn;
-              yyresolveLocations (yyoption->yystate, yynrhs,
-                                  yystackp);
-              for (yys = yyoption->yystate, yyn = yynrhs;
-                   yyn > 0;
-                   yys = yys->yypred, yyn -= 1)
-                yyrhsloc[yyn].yystate.yyloc = yys->yyloc;
-            }
-          else
-            {
-              /* Both yyresolveAction and yyresolveLocations traverse the GSS
-                 in reverse rightmost order.  It is only necessary to invoke
-                 yyresolveLocations on a subforest for which yyresolveAction
-                 would have been invoked next had an ambiguity not been
-                 detected.  Thus the location of the previous state (but not
-                 necessarily the previous state itself) is guaranteed to be
-                 resolved already.  */
-              yyGLRState *yyprevious = yyoption->yystate;
-              yyrhsloc[0].yystate.yyloc = yyprevious->yyloc;
-            }
-          {
-            int yychar_current = yychar;
-            YYSTYPE yylval_current = yylval;
-            YYLTYPE yylloc_current = yylloc;
-            yychar = yyoption->yyrawchar;
-            yylval = yyoption->yyval;
-            yylloc = yyoption->yyloc;
-            YYLLOC_DEFAULT ((yys1->yyloc), yyrhsloc, yynrhs);
-            yychar = yychar_current;
-            yylval = yylval_current;
-            yylloc = yylloc_current;
-          }
-        }
+	{
+	  yySemanticOption *yyoption;
+	  yyGLRStackItem yyrhsloc[1 + YYMAXRHS];
+	  int yynrhs;
+	  int yychar_current;
+	  YYSTYPE yylval_current;
+	  YYLTYPE yylloc_current;
+	  yyoption = yys1->yysemantics.yyfirstVal;
+	  YYASSERT (yyoption != NULL);
+	  yynrhs = yyrhsLength (yyoption->yyrule);
+	  if (yynrhs > 0)
+	    {
+	      yyGLRState *yys;
+	      int yyn;
+	      yyresolveLocations (yyoption->yystate, yynrhs,
+				  yystackp);
+	      for (yys = yyoption->yystate, yyn = yynrhs;
+		   yyn > 0;
+		   yys = yys->yypred, yyn -= 1)
+		yyrhsloc[yyn].yystate.yyloc = yys->yyloc;
+	    }
+	  else
+	    {
+	      /* Both yyresolveAction and yyresolveLocations traverse the GSS
+		 in reverse rightmost order.  It is only necessary to invoke
+		 yyresolveLocations on a subforest for which yyresolveAction
+		 would have been invoked next had an ambiguity not been
+		 detected.  Thus the location of the previous state (but not
+		 necessarily the previous state itself) is guaranteed to be
+		 resolved already.  */
+	      yyGLRState *yyprevious = yyoption->yystate;
+	      yyrhsloc[0].yystate.yyloc = yyprevious->yyloc;
+	    }
+	  yychar_current = yychar;
+	  yylval_current = yylval;
+	  yylloc_current = yylloc;
+	  yychar = yyoption->yyrawchar;
+	  yylval = yyoption->yyval;
+	  yylloc = yyoption->yyloc;
+	  YYLLOC_DEFAULT ((yys1->yyloc), yyrhsloc, yynrhs);
+	  yychar = yychar_current;
+	  yylval = yylval_current;
+	  yylloc = yylloc_current;
+	}
     }
 }
 
@@ -38370,72 +37836,76 @@ static YYRESULTTAG
 yyresolveValue (yyGLRState* yys, yyGLRStack* yystackp)
 {
   yySemanticOption* yyoptionList = yys->yysemantics.yyfirstVal;
-  yySemanticOption* yybest = yyoptionList;
+  yySemanticOption* yybest;
   yySemanticOption** yypp;
-  yybool yymerge = yyfalse;
+  yybool yymerge;
   YYSTYPE yysval;
   YYRESULTTAG yyflag;
   YYLTYPE *yylocp = &yys->yyloc;
 
-  for (yypp = &yyoptionList->yynext; *yypp != YY_NULL; )
+  yybest = yyoptionList;
+  yymerge = yyfalse;
+  for (yypp = &yyoptionList->yynext; *yypp != NULL; )
     {
       yySemanticOption* yyp = *yypp;
 
       if (yyidenticalOptions (yybest, yyp))
-        {
-          yymergeOptionSets (yybest, yyp);
-          *yypp = yyp->yynext;
-        }
+	{
+	  yymergeOptionSets (yybest, yyp);
+	  *yypp = yyp->yynext;
+	}
       else
-        {
-          switch (yypreference (yybest, yyp))
-            {
-            case 0:
-              yyresolveLocations (yys, 1, yystackp);
-              return yyreportAmbiguity (yybest, yyp);
-              break;
-            case 1:
-              yymerge = yytrue;
-              break;
-            case 2:
-              break;
-            case 3:
-              yybest = yyp;
-              yymerge = yyfalse;
-              break;
-            default:
-              /* This cannot happen so it is not worth a YYASSERT (yyfalse),
-                 but some compilers complain if the default case is
-                 omitted.  */
-              break;
-            }
-          yypp = &yyp->yynext;
-        }
+	{
+	  switch (yypreference (yybest, yyp))
+	    {
+	    case 0:
+	      yyresolveLocations (yys, 1, yystackp);
+	      return yyreportAmbiguity (yybest, yyp);
+	      break;
+	    case 1:
+	      yymerge = yytrue;
+	      break;
+	    case 2:
+	      break;
+	    case 3:
+	      yybest = yyp;
+	      yymerge = yyfalse;
+	      break;
+	    default:
+	      /* This cannot happen so it is not worth a YYASSERT (yyfalse),
+		 but some compilers complain if the default case is
+		 omitted.  */
+	      break;
+	    }
+	  yypp = &yyp->yynext;
+	}
     }
 
   if (yymerge)
     {
       yySemanticOption* yyp;
       int yyprec = yydprec[yybest->yyrule];
-      yyflag = yyresolveAction (yybest, yystackp, &yysval, yylocp);
+      yyflag = yyresolveAction (yybest, yystackp, &yysval,
+				yylocp);
       if (yyflag == yyok)
-        for (yyp = yybest->yynext; yyp != YY_NULL; yyp = yyp->yynext)
-          {
-            if (yyprec == yydprec[yyp->yyrule])
-              {
-                YYSTYPE yysval_other;
-                YYLTYPE yydummy;
-                yyflag = yyresolveAction (yyp, yystackp, &yysval_other, &yydummy);
-                if (yyflag != yyok)
-                  {
-                    yydestruct ("Cleanup: discarding incompletely merged value for",
-                                yystos[yys->yylrState],
-                                &yysval, yylocp);
-                    break;
-                  }
-                yyuserMerge (yymerger[yyp->yyrule], &yysval, &yysval_other);
-              }
-          }
+	for (yyp = yybest->yynext; yyp != NULL; yyp = yyp->yynext)
+	  {
+	    if (yyprec == yydprec[yyp->yyrule])
+	      {
+		YYSTYPE yysval_other;
+		YYLTYPE yydummy;
+		yyflag = yyresolveAction (yyp, yystackp, &yysval_other,
+					  &yydummy);
+		if (yyflag != yyok)
+		  {
+		    yydestruct ("Cleanup: discarding incompletely merged value for",
+				yystos[yys->yylrState],
+				&yysval, yylocp);
+		    break;
+		  }
+		yyuserMerge (yymerger[yyp->yyrule], &yysval, &yysval_other);
+	      }
+	  }
     }
   else
     yyflag = yyresolveAction (yybest, yystackp, &yysval, yylocp);
@@ -38446,24 +37916,24 @@ yyresolveValue (yyGLRState* yys, yyGLRStack* yystackp)
       yys->yysemantics.yysval = yysval;
     }
   else
-    yys->yysemantics.yyfirstVal = YY_NULL;
+    yys->yysemantics.yyfirstVal = NULL;
   return yyflag;
 }
 
 static YYRESULTTAG
 yyresolveStack (yyGLRStack* yystackp)
 {
-  if (yystackp->yysplitPoint != YY_NULL)
+  if (yystackp->yysplitPoint != NULL)
     {
       yyGLRState* yys;
       int yyn;
 
       for (yyn = 0, yys = yystackp->yytops.yystates[0];
-           yys != yystackp->yysplitPoint;
-           yys = yys->yypred, yyn += 1)
-        continue;
+	   yys != yystackp->yysplitPoint;
+	   yys = yys->yypred, yyn += 1)
+	continue;
       YYCHK (yyresolveStates (yystackp->yytops.yystates[0], yyn, yystackp
-                             ));
+			     ));
     }
   return yyok;
 }
@@ -38473,10 +37943,10 @@ yycompressStack (yyGLRStack* yystackp)
 {
   yyGLRState* yyp, *yyq, *yyr;
 
-  if (yystackp->yytops.yysize != 1 || yystackp->yysplitPoint == YY_NULL)
+  if (yystackp->yytops.yysize != 1 || yystackp->yysplitPoint == NULL)
     return;
 
-  for (yyp = yystackp->yytops.yystates[0], yyq = yyp->yypred, yyr = YY_NULL;
+  for (yyp = yystackp->yytops.yystates[0], yyq = yyp->yypred, yyr = NULL;
        yyp != yystackp->yysplitPoint;
        yyr = yyp, yyp = yyq, yyq = yyp->yypred)
     yyp->yypred = yyr;
@@ -38484,10 +37954,10 @@ yycompressStack (yyGLRStack* yystackp)
   yystackp->yyspaceLeft += yystackp->yynextFree - yystackp->yyitems;
   yystackp->yynextFree = ((yyGLRStackItem*) yystackp->yysplitPoint) + 1;
   yystackp->yyspaceLeft -= yystackp->yynextFree - yystackp->yyitems;
-  yystackp->yysplitPoint = YY_NULL;
-  yystackp->yylastDeleted = YY_NULL;
+  yystackp->yysplitPoint = NULL;
+  yystackp->yylastDeleted = NULL;
 
-  while (yyr != YY_NULL)
+  while (yyr != NULL)
     {
       yystackp->yynextFree->yystate = *yyr;
       yyr = yyr->yypred;
@@ -38500,81 +37970,73 @@ yycompressStack (yyGLRStack* yystackp)
 
 static YYRESULTTAG
 yyprocessOneStack (yyGLRStack* yystackp, size_t yyk,
-                   size_t yyposn)
+		   size_t yyposn)
 {
   int yyaction;
   const short int* yyconflicts;
   yyRuleNum yyrule;
 
-  while (yystackp->yytops.yystates[yyk] != YY_NULL)
+  while (yystackp->yytops.yystates[yyk] != NULL)
     {
       yyStateNum yystate = yystackp->yytops.yystates[yyk]->yylrState;
       YYDPRINTF ((stderr, "Stack %lu Entering state %d\n",
-                  (unsigned long int) yyk, yystate));
+		  (unsigned long int) yyk, yystate));
 
       YYASSERT (yystate != YYFINAL);
 
       if (yyisDefaultedState (yystate))
-        {
-          yyrule = yydefaultAction (yystate);
-          if (yyrule == 0)
-            {
-              YYDPRINTF ((stderr, "Stack %lu dies.\n",
-                          (unsigned long int) yyk));
-              yymarkStackDeleted (yystackp, yyk);
-              return yyok;
-            }
-          YYCHK (yyglrReduce (yystackp, yyk, yyrule, yyfalse));
-        }
+	{
+	  yyrule = yydefaultAction (yystate);
+	  if (yyrule == 0)
+	    {
+	      YYDPRINTF ((stderr, "Stack %lu dies.\n",
+			  (unsigned long int) yyk));
+	      yymarkStackDeleted (yystackp, yyk);
+	      return yyok;
+	    }
+	  YYCHK (yyglrReduce (yystackp, yyk, yyrule, yyfalse));
+	}
       else
-        {
-          yySymbol yytoken;
-          yystackp->yytops.yylookaheadNeeds[yyk] = yytrue;
-          if (yychar == YYEMPTY)
-            {
-              YYDPRINTF ((stderr, "Reading a token: "));
-              yychar = YYLEX;
-            }
+	{
+	  yySymbol yytoken;
+	  yystackp->yytops.yylookaheadNeeds[yyk] = yytrue;
+	  if (yychar == YYEMPTY)
+	    {
+	      YYDPRINTF ((stderr, "Reading a token: "));
+	      yychar = YYLEX;
+	      yytoken = YYTRANSLATE (yychar);
+	      YY_SYMBOL_PRINT ("Next token is", yytoken, &yylval, &yylloc);
+	    }
+	  else
+	    yytoken = YYTRANSLATE (yychar);
+	  yygetLRActions (yystate, yytoken, &yyaction, &yyconflicts);
 
-          if (yychar <= YYEOF)
-            {
-              yychar = yytoken = YYEOF;
-              YYDPRINTF ((stderr, "Now at end of input.\n"));
-            }
-          else
-            {
-              yytoken = YYTRANSLATE (yychar);
-              YY_SYMBOL_PRINT ("Next token is", yytoken, &yylval, &yylloc);
-            }
+	  while (*yyconflicts != 0)
+	    {
+	      size_t yynewStack = yysplitStack (yystackp, yyk);
+	      YYDPRINTF ((stderr, "Splitting off stack %lu from %lu.\n",
+			  (unsigned long int) yynewStack,
+			  (unsigned long int) yyk));
+	      YYCHK (yyglrReduce (yystackp, yynewStack,
+				  *yyconflicts, yyfalse));
+	      YYCHK (yyprocessOneStack (yystackp, yynewStack,
+					yyposn));
+	      yyconflicts += 1;
+	    }
 
-          yygetLRActions (yystate, yytoken, &yyaction, &yyconflicts);
-
-          while (*yyconflicts != 0)
-            {
-              size_t yynewStack = yysplitStack (yystackp, yyk);
-              YYDPRINTF ((stderr, "Splitting off stack %lu from %lu.\n",
-                          (unsigned long int) yynewStack,
-                          (unsigned long int) yyk));
-              YYCHK (yyglrReduce (yystackp, yynewStack,
-                                  *yyconflicts, yyfalse));
-              YYCHK (yyprocessOneStack (yystackp, yynewStack,
-                                        yyposn));
-              yyconflicts += 1;
-            }
-
-          if (yyisShiftAction (yyaction))
-            break;
-          else if (yyisErrorAction (yyaction))
-            {
-              YYDPRINTF ((stderr, "Stack %lu dies.\n",
-                          (unsigned long int) yyk));
-              yymarkStackDeleted (yystackp, yyk);
-              break;
-            }
-          else
-            YYCHK (yyglrReduce (yystackp, yyk, -yyaction,
-                                yyfalse));
-        }
+	  if (yyisShiftAction (yyaction))
+	    break;
+	  else if (yyisErrorAction (yyaction))
+	    {
+	      YYDPRINTF ((stderr, "Stack %lu dies.\n",
+			  (unsigned long int) yyk));
+	      yymarkStackDeleted (yystackp, yyk);
+	      break;
+	    }
+	  else
+	    YYCHK (yyglrReduce (yystackp, yyk, -yyaction,
+				yyfalse));
+	}
     }
   return yyok;
 }
@@ -38582,140 +38044,107 @@ yyprocessOneStack (yyGLRStack* yystackp, size_t yyk,
 /*ARGSUSED*/ static void
 yyreportSyntaxError (yyGLRStack* yystackp)
 {
-  if (yystackp->yyerrState != 0)
-    return;
-#if ! YYERROR_VERBOSE
-  yyerror (YY_("syntax error"));
-#else
-  {
-  yySymbol yytoken = yychar == YYEMPTY ? YYEMPTY : YYTRANSLATE (yychar);
-  size_t yysize0 = yytnamerr (YY_NULL, yytokenName (yytoken));
-  size_t yysize = yysize0;
-  yybool yysize_overflow = yyfalse;
-  char* yymsg = YY_NULL;
-  enum { YYERROR_VERBOSE_ARGS_MAXIMUM = 5 };
-  /* Internationalized format string. */
-  const char *yyformat = YY_NULL;
-  /* Arguments of yyformat. */
-  char const *yyarg[YYERROR_VERBOSE_ARGS_MAXIMUM];
-  /* Number of reported tokens (one for the "unexpected", one per
-     "expected").  */
-  int yycount = 0;
-
-  /* There are many possibilities here to consider:
-     - If this state is a consistent state with a default action, then
-       the only way this function was invoked is if the default action
-       is an error action.  In that case, don't check for expected
-       tokens because there are none.
-     - The only way there can be no lookahead present (in yychar) is if
-       this state is a consistent state with a default action.  Thus,
-       detecting the absence of a lookahead is sufficient to determine
-       that there is no unexpected or expected token to report.  In that
-       case, just report a simple "syntax error".
-     - Don't assume there isn't a lookahead just because this state is a
-       consistent state with a default action.  There might have been a
-       previous inconsistent state, consistent state with a non-default
-       action, or user semantic action that manipulated yychar.
-     - Of course, the expected token list depends on states to have
-       correct lookahead information, and it depends on the parser not
-       to perform extra reductions after fetching a lookahead from the
-       scanner and before detecting a syntax error.  Thus, state merging
-       (from LALR or IELR) and default reductions corrupt the expected
-       token list.  However, the list is correct for canonical LR with
-       one exception: it will still contain any token that will not be
-       accepted due to an error action in a later state.
-  */
-  if (yytoken != YYEMPTY)
+  if (yystackp->yyerrState == 0)
     {
-      int yyn = yypact[yystackp->yytops.yystates[0]->yylrState];
-      yyarg[yycount++] = yytokenName (yytoken);
-      if (!yypact_value_is_default (yyn))
-        {
-          /* Start YYX at -YYN if negative to avoid negative indexes in
-             YYCHECK.  In other words, skip the first -YYN actions for this
-             state because they are default actions.  */
-          int yyxbegin = yyn < 0 ? -yyn : 0;
-          /* Stay within bounds of both yycheck and yytname.  */
-          int yychecklim = YYLAST - yyn + 1;
-          int yyxend = yychecklim < YYNTOKENS ? yychecklim : YYNTOKENS;
-          int yyx;
-          for (yyx = yyxbegin; yyx < yyxend; ++yyx)
-            if (yycheck[yyx + yyn] == yyx && yyx != YYTERROR
-                && !yytable_value_is_error (yytable[yyx + yyn]))
-              {
-                if (yycount == YYERROR_VERBOSE_ARGS_MAXIMUM)
-                  {
-                    yycount = 1;
-                    yysize = yysize0;
-                    break;
-                  }
-                yyarg[yycount++] = yytokenName (yyx);
-                {
-                  size_t yysz = yysize + yytnamerr (YY_NULL, yytokenName (yyx));
-                  yysize_overflow |= yysz < yysize;
-                  yysize = yysz;
-                }
-              }
-        }
-    }
+#if YYERROR_VERBOSE
+      int yyn;
+      yyn = yypact[yystackp->yytops.yystates[0]->yylrState];
+      if (YYPACT_NINF < yyn && yyn <= YYLAST)
+	{
+	  yySymbol yytoken = YYTRANSLATE (yychar);
+	  size_t yysize0 = yytnamerr (NULL, yytokenName (yytoken));
+	  size_t yysize = yysize0;
+	  size_t yysize1;
+	  yybool yysize_overflow = yyfalse;
+	  char* yymsg = NULL;
+	  enum { YYERROR_VERBOSE_ARGS_MAXIMUM = 5 };
+	  char const *yyarg[YYERROR_VERBOSE_ARGS_MAXIMUM];
+	  int yyx;
+	  char *yyfmt;
+	  char const *yyf;
+	  static char const yyunexpected[] = "syntax error, unexpected %s";
+	  static char const yyexpecting[] = ", expecting %s";
+	  static char const yyor[] = " or %s";
+	  char yyformat[sizeof yyunexpected
+			+ sizeof yyexpecting - 1
+			+ ((YYERROR_VERBOSE_ARGS_MAXIMUM - 2)
+			   * (sizeof yyor - 1))];
+	  char const *yyprefix = yyexpecting;
 
-  switch (yycount)
-    {
-#define YYCASE_(N, S)                   \
-      case N:                           \
-        yyformat = S;                   \
-      break
-      YYCASE_(0, YY_("syntax error"));
-      YYCASE_(1, YY_("syntax error, unexpected %s"));
-      YYCASE_(2, YY_("syntax error, unexpected %s, expecting %s"));
-      YYCASE_(3, YY_("syntax error, unexpected %s, expecting %s or %s"));
-      YYCASE_(4, YY_("syntax error, unexpected %s, expecting %s or %s or %s"));
-      YYCASE_(5, YY_("syntax error, unexpected %s, expecting %s or %s or %s or %s"));
-#undef YYCASE_
-    }
+	  /* Start YYX at -YYN if negative to avoid negative indexes in
+	     YYCHECK.  */
+	  int yyxbegin = yyn < 0 ? -yyn : 0;
 
-  {
-    size_t yysz = yysize + strlen (yyformat);
-    yysize_overflow |= yysz < yysize;
-    yysize = yysz;
-  }
+	  /* Stay within bounds of both yycheck and yytname.  */
+	  int yychecklim = YYLAST - yyn + 1;
+	  int yyxend = yychecklim < YYNTOKENS ? yychecklim : YYNTOKENS;
+	  int yycount = 1;
 
-  if (!yysize_overflow)
-    yymsg = (char *) YYMALLOC (yysize);
+	  yyarg[0] = yytokenName (yytoken);
+	  yyfmt = yystpcpy (yyformat, yyunexpected);
 
-  if (yymsg)
-    {
-      char *yyp = yymsg;
-      int yyi = 0;
-      while ((*yyp = *yyformat))
-        {
-          if (*yyp == '%' && yyformat[1] == 's' && yyi < yycount)
-            {
-              yyp += yytnamerr (yyp, yyarg[yyi++]);
-              yyformat += 2;
-            }
-          else
-            {
-              yyp++;
-              yyformat++;
-            }
-        }
-      yyerror (yymsg);
-      YYFREE (yymsg);
-    }
-  else
-    {
-      yyerror (YY_("syntax error"));
-      yyMemoryExhausted (yystackp);
-    }
-  }
+	  for (yyx = yyxbegin; yyx < yyxend; ++yyx)
+	    if (yycheck[yyx + yyn] == yyx && yyx != YYTERROR)
+	      {
+		if (yycount == YYERROR_VERBOSE_ARGS_MAXIMUM)
+		  {
+		    yycount = 1;
+		    yysize = yysize0;
+		    yyformat[sizeof yyunexpected - 1] = '\0';
+		    break;
+		  }
+		yyarg[yycount++] = yytokenName (yyx);
+		yysize1 = yysize + yytnamerr (NULL, yytokenName (yyx));
+		yysize_overflow |= yysize1 < yysize;
+		yysize = yysize1;
+		yyfmt = yystpcpy (yyfmt, yyprefix);
+		yyprefix = yyor;
+	      }
+
+	  yyf = YY_(yyformat);
+	  yysize1 = yysize + strlen (yyf);
+	  yysize_overflow |= yysize1 < yysize;
+	  yysize = yysize1;
+
+	  if (!yysize_overflow)
+	    yymsg = (char *) YYMALLOC (yysize);
+
+	  if (yymsg)
+	    {
+	      char *yyp = yymsg;
+	      int yyi = 0;
+	      while ((*yyp = *yyf))
+		{
+		  if (*yyp == '%' && yyf[1] == 's' && yyi < yycount)
+		    {
+		      yyp += yytnamerr (yyp, yyarg[yyi++]);
+		      yyf += 2;
+		    }
+		  else
+		    {
+		      yyp++;
+		      yyf++;
+		    }
+		}
+	      yyerror (yymsg);
+	      YYFREE (yymsg);
+	    }
+	  else
+	    {
+	      yyerror (YY_("syntax error"));
+	      yyMemoryExhausted (yystackp);
+	    }
+	}
+      else
 #endif /* YYERROR_VERBOSE */
-  yynerrs += 1;
+	yyerror (YY_("syntax error"));
+      yynerrs += 1;
+    }
 }
 
 /* Recover from a syntax error on *YYSTACKP, assuming that *YYSTACKP->YYTOKENP,
    yylval, and yylloc are the syntactic category, semantic value, and location
-   of the lookahead.  */
+   of the look-ahead.  */
 /*ARGSUSED*/ static void
 yyrecoverSyntaxError (yyGLRStack* yystackp)
 {
@@ -38727,53 +38156,45 @@ yyrecoverSyntaxError (yyGLRStack* yystackp)
        reductions.  Skip tokens until we can proceed.  */
     while (YYID (yytrue))
       {
-        yySymbol yytoken;
-        if (yychar == YYEOF)
-          yyFail (yystackp, YY_NULL);
-        if (yychar != YYEMPTY)
-          {
-            /* We throw away the lookahead, but the error range
-               of the shifted error token must take it into account.  */
-            yyGLRState *yys = yystackp->yytops.yystates[0];
-            yyGLRStackItem yyerror_range[3];
-            yyerror_range[1].yystate.yyloc = yys->yyloc;
-            yyerror_range[2].yystate.yyloc = yylloc;
-            YYLLOC_DEFAULT ((yys->yyloc), yyerror_range, 2);
-            yytoken = YYTRANSLATE (yychar);
-            yydestruct ("Error: discarding",
-                        yytoken, &yylval, &yylloc);
-          }
-        YYDPRINTF ((stderr, "Reading a token: "));
-        yychar = YYLEX;
-        if (yychar <= YYEOF)
-          {
-            yychar = yytoken = YYEOF;
-            YYDPRINTF ((stderr, "Now at end of input.\n"));
-          }
-        else
-          {
-            yytoken = YYTRANSLATE (yychar);
-            YY_SYMBOL_PRINT ("Next token is", yytoken, &yylval, &yylloc);
-          }
-        yyj = yypact[yystackp->yytops.yystates[0]->yylrState];
-        if (yypact_value_is_default (yyj))
-          return;
-        yyj += yytoken;
-        if (yyj < 0 || YYLAST < yyj || yycheck[yyj] != yytoken)
-          {
-            if (yydefact[yystackp->yytops.yystates[0]->yylrState] != 0)
-              return;
-          }
-        else if (! yytable_value_is_error (yytable[yyj]))
-          return;
+	yySymbol yytoken;
+	if (yychar == YYEOF)
+	  yyFail (yystackp, NULL);
+	if (yychar != YYEMPTY)
+	  {
+	    /* We throw away the lookahead, but the error range
+	       of the shifted error token must take it into account.  */
+	    yyGLRState *yys = yystackp->yytops.yystates[0];
+	    yyGLRStackItem yyerror_range[3];
+	    yyerror_range[1].yystate.yyloc = yys->yyloc;
+	    yyerror_range[2].yystate.yyloc = yylloc;
+	    YYLLOC_DEFAULT ((yys->yyloc), yyerror_range, 2);
+	    yytoken = YYTRANSLATE (yychar);
+	    yydestruct ("Error: discarding",
+			yytoken, &yylval, &yylloc);
+	  }
+	YYDPRINTF ((stderr, "Reading a token: "));
+	yychar = YYLEX;
+	yytoken = YYTRANSLATE (yychar);
+	YY_SYMBOL_PRINT ("Next token is", yytoken, &yylval, &yylloc);
+	yyj = yypact[yystackp->yytops.yystates[0]->yylrState];
+	if (yyis_pact_ninf (yyj))
+	  return;
+	yyj += yytoken;
+	if (yyj < 0 || YYLAST < yyj || yycheck[yyj] != yytoken)
+	  {
+	    if (yydefact[yystackp->yytops.yystates[0]->yylrState] != 0)
+	      return;
+	  }
+	else if (yytable[yyj] != 0 && ! yyis_table_ninf (yytable[yyj]))
+	  return;
       }
 
   /* Reduce to one stack.  */
   for (yyk = 0; yyk < yystackp->yytops.yysize; yyk += 1)
-    if (yystackp->yytops.yystates[yyk] != YY_NULL)
+    if (yystackp->yytops.yystates[yyk] != NULL)
       break;
   if (yyk >= yystackp->yytops.yysize)
-    yyFail (yystackp, YY_NULL);
+    yyFail (yystackp, NULL);
   for (yyk += 1; yyk < yystackp->yytops.yysize; yyk += 1)
     yymarkStackDeleted (yystackp, yyk);
   yyremoveDeletes (yystackp);
@@ -38781,54 +38202,52 @@ yyrecoverSyntaxError (yyGLRStack* yystackp)
 
   /* Now pop stack until we find a state that shifts the error token.  */
   yystackp->yyerrState = 3;
-  while (yystackp->yytops.yystates[0] != YY_NULL)
+  while (yystackp->yytops.yystates[0] != NULL)
     {
       yyGLRState *yys = yystackp->yytops.yystates[0];
       yyj = yypact[yys->yylrState];
-      if (! yypact_value_is_default (yyj))
-        {
-          yyj += YYTERROR;
-          if (0 <= yyj && yyj <= YYLAST && yycheck[yyj] == YYTERROR
-              && yyisShiftAction (yytable[yyj]))
-            {
-              /* Shift the error token.  */
-              /* First adjust its location.*/
-              YYLTYPE yyerrloc;
-              yystackp->yyerror_range[2].yystate.yyloc = yylloc;
-              YYLLOC_DEFAULT (yyerrloc, (yystackp->yyerror_range), 2);
-              YY_SYMBOL_PRINT ("Shifting", yystos[yytable[yyj]],
-                               &yylval, &yyerrloc);
-              yyglrShift (yystackp, 0, yytable[yyj],
-                          yys->yyposn, &yylval, &yyerrloc);
-              yys = yystackp->yytops.yystates[0];
-              break;
-            }
-        }
+      if (! yyis_pact_ninf (yyj))
+	{
+	  yyj += YYTERROR;
+	  if (0 <= yyj && yyj <= YYLAST && yycheck[yyj] == YYTERROR
+	      && yyisShiftAction (yytable[yyj]))
+	    {
+	      /* Shift the error token having adjusted its location.  */
+	      YYLTYPE yyerrloc;
+	      yystackp->yyerror_range[2].yystate.yyloc = yylloc;
+	      YYLLOC_DEFAULT (yyerrloc, (yystackp->yyerror_range), 2);
+	      YY_SYMBOL_PRINT ("Shifting", yystos[yytable[yyj]],
+			       &yylval, &yyerrloc);
+	      yyglrShift (yystackp, 0, yytable[yyj],
+			  yys->yyposn, &yylval, &yyerrloc);
+	      yys = yystackp->yytops.yystates[0];
+	      break;
+	    }
+	}
       yystackp->yyerror_range[1].yystate.yyloc = yys->yyloc;
-      if (yys->yypred != YY_NULL)
-        yydestroyGLRState ("Error: popping", yys);
+      yydestroyGLRState ("Error: popping", yys);
       yystackp->yytops.yystates[0] = yys->yypred;
       yystackp->yynextFree -= 1;
       yystackp->yyspaceLeft += 1;
     }
-  if (yystackp->yytops.yystates[0] == YY_NULL)
-    yyFail (yystackp, YY_NULL);
+  if (yystackp->yytops.yystates[0] == NULL)
+    yyFail (yystackp, NULL);
 }
 
-#define YYCHK1(YYE)                                                          \
-  do {                                                                       \
-    switch (YYE) {                                                           \
-    case yyok:                                                               \
-      break;                                                                 \
-    case yyabort:                                                            \
-      goto yyabortlab;                                                       \
-    case yyaccept:                                                           \
-      goto yyacceptlab;                                                      \
-    case yyerr:                                                              \
-      goto yyuser_error;                                                     \
-    default:                                                                 \
-      goto yybuglab;                                                         \
-    }                                                                        \
+#define YYCHK1(YYE)							     \
+  do {									     \
+    switch (YYE) {							     \
+    case yyok:								     \
+      break;								     \
+    case yyabort:							     \
+      goto yyabortlab;							     \
+    case yyaccept:							     \
+      goto yyacceptlab;							     \
+    case yyerr:								     \
+      goto yyuser_error;						     \
+    default:								     \
+      goto yybuglab;							     \
+    }									     \
   } while (YYID (0))
 
 
@@ -38848,12 +38267,17 @@ yyparse (void)
 
   yychar = YYEMPTY;
   yylval = yyval_default;
-  yylloc = yyloc_default;
 
-/* User initialization code.  */
+#if YYLTYPE_IS_TRIVIAL
+  yylloc.first_line   = yylloc.last_line   = 1;
+  yylloc.first_column = yylloc.last_column = 0;
+#endif
 
+
+  /* User initialization code.  */
+  
 {yybuffer_pos = 0;}
-
+/* Line 2317 of glr.c.  */
 
   if (! yyinitGLRStack (yystackp, YYINITDEPTH))
     goto yyexhaustedlab;
@@ -38870,148 +38294,141 @@ yyparse (void)
   while (YYID (yytrue))
     {
       /* For efficiency, we have two loops, the first of which is
-         specialized to deterministic operation (single stack, no
-         potential ambiguity).  */
+	 specialized to deterministic operation (single stack, no
+	 potential ambiguity).  */
       /* Standard mode */
       while (YYID (yytrue))
-        {
-          yyRuleNum yyrule;
-          int yyaction;
-          const short int* yyconflicts;
+	{
+	  yyRuleNum yyrule;
+	  int yyaction;
+	  const short int* yyconflicts;
 
-          yyStateNum yystate = yystack.yytops.yystates[0]->yylrState;
-          YYDPRINTF ((stderr, "Entering state %d\n", yystate));
-          if (yystate == YYFINAL)
-            goto yyacceptlab;
-          if (yyisDefaultedState (yystate))
-            {
-              yyrule = yydefaultAction (yystate);
-              if (yyrule == 0)
-                {
-               yystack.yyerror_range[1].yystate.yyloc = yylloc;
-                  yyreportSyntaxError (&yystack);
-                  goto yyuser_error;
-                }
-              YYCHK1 (yyglrReduce (&yystack, 0, yyrule, yytrue));
-            }
-          else
-            {
-              yySymbol yytoken;
-              if (yychar == YYEMPTY)
-                {
-                  YYDPRINTF ((stderr, "Reading a token: "));
-                  yychar = YYLEX;
-                }
-
-              if (yychar <= YYEOF)
-                {
-                  yychar = yytoken = YYEOF;
-                  YYDPRINTF ((stderr, "Now at end of input.\n"));
-                }
-              else
-                {
-                  yytoken = YYTRANSLATE (yychar);
-                  YY_SYMBOL_PRINT ("Next token is", yytoken, &yylval, &yylloc);
-                }
-
-              yygetLRActions (yystate, yytoken, &yyaction, &yyconflicts);
-              if (*yyconflicts != 0)
-                break;
-              if (yyisShiftAction (yyaction))
-                {
-                  YY_SYMBOL_PRINT ("Shifting", yytoken, &yylval, &yylloc);
-                  yychar = YYEMPTY;
-                  yyposn += 1;
-                  yyglrShift (&yystack, 0, yyaction, yyposn, &yylval, &yylloc);
-                  if (0 < yystack.yyerrState)
-                    yystack.yyerrState -= 1;
-                }
-              else if (yyisErrorAction (yyaction))
-                {
-               yystack.yyerror_range[1].yystate.yyloc = yylloc;
-                  yyreportSyntaxError (&yystack);
-                  goto yyuser_error;
-                }
-              else
-                YYCHK1 (yyglrReduce (&yystack, 0, -yyaction, yytrue));
-            }
-        }
+	  yyStateNum yystate = yystack.yytops.yystates[0]->yylrState;
+	  YYDPRINTF ((stderr, "Entering state %d\n", yystate));
+	  if (yystate == YYFINAL)
+	    goto yyacceptlab;
+	  if (yyisDefaultedState (yystate))
+	    {
+	      yyrule = yydefaultAction (yystate);
+	      if (yyrule == 0)
+		{
+		  yystack.yyerror_range[1].yystate.yyloc = yylloc;
+		  yyreportSyntaxError (&yystack);
+		  goto yyuser_error;
+		}
+	      YYCHK1 (yyglrReduce (&yystack, 0, yyrule, yytrue));
+	    }
+	  else
+	    {
+	      yySymbol yytoken;
+	      if (yychar == YYEMPTY)
+		{
+		  YYDPRINTF ((stderr, "Reading a token: "));
+		  yychar = YYLEX;
+		  yytoken = YYTRANSLATE (yychar);
+		  YY_SYMBOL_PRINT ("Next token is", yytoken, &yylval, &yylloc);
+		}
+	      else
+		yytoken = YYTRANSLATE (yychar);
+	      yygetLRActions (yystate, yytoken, &yyaction, &yyconflicts);
+	      if (*yyconflicts != 0)
+		break;
+	      if (yyisShiftAction (yyaction))
+		{
+		  YY_SYMBOL_PRINT ("Shifting", yytoken, &yylval, &yylloc);
+		  if (yychar != YYEOF)
+		    yychar = YYEMPTY;
+		  yyposn += 1;
+		  yyglrShift (&yystack, 0, yyaction, yyposn, &yylval, &yylloc);
+		  if (0 < yystack.yyerrState)
+		    yystack.yyerrState -= 1;
+		}
+	      else if (yyisErrorAction (yyaction))
+		{
+		  yystack.yyerror_range[1].yystate.yyloc = yylloc;
+		  yyreportSyntaxError (&yystack);
+		  goto yyuser_error;
+		}
+	      else
+		YYCHK1 (yyglrReduce (&yystack, 0, -yyaction, yytrue));
+	    }
+	}
 
       while (YYID (yytrue))
-        {
-          yySymbol yytoken_to_shift;
-          size_t yys;
+	{
+	  yySymbol yytoken_to_shift;
+	  size_t yys;
 
-          for (yys = 0; yys < yystack.yytops.yysize; yys += 1)
-            yystackp->yytops.yylookaheadNeeds[yys] = yychar != YYEMPTY;
+	  for (yys = 0; yys < yystack.yytops.yysize; yys += 1)
+	    yystackp->yytops.yylookaheadNeeds[yys] = yychar != YYEMPTY;
 
-          /* yyprocessOneStack returns one of three things:
+	  /* yyprocessOneStack returns one of three things:
 
-              - An error flag.  If the caller is yyprocessOneStack, it
-                immediately returns as well.  When the caller is finally
-                yyparse, it jumps to an error label via YYCHK1.
+	      - An error flag.  If the caller is yyprocessOneStack, it
+		immediately returns as well.  When the caller is finally
+		yyparse, it jumps to an error label via YYCHK1.
 
-              - yyok, but yyprocessOneStack has invoked yymarkStackDeleted
-                (&yystack, yys), which sets the top state of yys to NULL.  Thus,
-                yyparse's following invocation of yyremoveDeletes will remove
-                the stack.
+	      - yyok, but yyprocessOneStack has invoked yymarkStackDeleted
+		(&yystack, yys), which sets the top state of yys to NULL.  Thus,
+		yyparse's following invocation of yyremoveDeletes will remove
+		the stack.
 
-              - yyok, when ready to shift a token.
+	      - yyok, when ready to shift a token.
 
-             Except in the first case, yyparse will invoke yyremoveDeletes and
-             then shift the next token onto all remaining stacks.  This
-             synchronization of the shift (that is, after all preceding
-             reductions on all stacks) helps prevent double destructor calls
-             on yylval in the event of memory exhaustion.  */
+	     Except in the first case, yyparse will invoke yyremoveDeletes and
+	     then shift the next token onto all remaining stacks.  This
+	     synchronization of the shift (that is, after all preceding
+	     reductions on all stacks) helps prevent double destructor calls
+	     on yylval in the event of memory exhaustion.  */
 
-          for (yys = 0; yys < yystack.yytops.yysize; yys += 1)
-            YYCHK1 (yyprocessOneStack (&yystack, yys, yyposn));
-          yyremoveDeletes (&yystack);
-          if (yystack.yytops.yysize == 0)
-            {
-              yyundeleteLastStack (&yystack);
-              if (yystack.yytops.yysize == 0)
-                yyFail (&yystack, YY_("syntax error"));
-              YYCHK1 (yyresolveStack (&yystack));
-              YYDPRINTF ((stderr, "Returning to deterministic operation.\n"));
-           yystack.yyerror_range[1].yystate.yyloc = yylloc;
-              yyreportSyntaxError (&yystack);
-              goto yyuser_error;
-            }
+	  for (yys = 0; yys < yystack.yytops.yysize; yys += 1)
+	    YYCHK1 (yyprocessOneStack (&yystack, yys, yyposn));
+	  yyremoveDeletes (&yystack);
+	  if (yystack.yytops.yysize == 0)
+	    {
+	      yyundeleteLastStack (&yystack);
+	      if (yystack.yytops.yysize == 0)
+		yyFail (&yystack, YY_("syntax error"));
+	      YYCHK1 (yyresolveStack (&yystack));
+	      YYDPRINTF ((stderr, "Returning to deterministic operation.\n"));
+	      yystack.yyerror_range[1].yystate.yyloc = yylloc;
+	      yyreportSyntaxError (&yystack);
+	      goto yyuser_error;
+	    }
 
-          /* If any yyglrShift call fails, it will fail after shifting.  Thus,
-             a copy of yylval will already be on stack 0 in the event of a
-             failure in the following loop.  Thus, yychar is set to YYEMPTY
-             before the loop to make sure the user destructor for yylval isn't
-             called twice.  */
-          yytoken_to_shift = YYTRANSLATE (yychar);
-          yychar = YYEMPTY;
-          yyposn += 1;
-          for (yys = 0; yys < yystack.yytops.yysize; yys += 1)
-            {
-              int yyaction;
-              const short int* yyconflicts;
-              yyStateNum yystate = yystack.yytops.yystates[yys]->yylrState;
-              yygetLRActions (yystate, yytoken_to_shift, &yyaction,
-                              &yyconflicts);
-              /* Note that yyconflicts were handled by yyprocessOneStack.  */
-              YYDPRINTF ((stderr, "On stack %lu, ", (unsigned long int) yys));
-              YY_SYMBOL_PRINT ("shifting", yytoken_to_shift, &yylval, &yylloc);
-              yyglrShift (&yystack, yys, yyaction, yyposn,
-                          &yylval, &yylloc);
-              YYDPRINTF ((stderr, "Stack %lu now in state #%d\n",
-                          (unsigned long int) yys,
-                          yystack.yytops.yystates[yys]->yylrState));
-            }
+	  /* If any yyglrShift call fails, it will fail after shifting.  Thus,
+	     a copy of yylval will already be on stack 0 in the event of a
+	     failure in the following loop.  Thus, yychar is set to YYEMPTY
+	     before the loop to make sure the user destructor for yylval isn't
+	     called twice.  */
+	  yytoken_to_shift = YYTRANSLATE (yychar);
+	  yychar = YYEMPTY;
+	  yyposn += 1;
+	  for (yys = 0; yys < yystack.yytops.yysize; yys += 1)
+	    {
+	      int yyaction;
+	      const short int* yyconflicts;
+	      yyStateNum yystate = yystack.yytops.yystates[yys]->yylrState;
+	      yygetLRActions (yystate, yytoken_to_shift, &yyaction,
+			      &yyconflicts);
+	      /* Note that yyconflicts were handled by yyprocessOneStack.  */
+	      YYDPRINTF ((stderr, "On stack %lu, ", (unsigned long int) yys));
+	      YY_SYMBOL_PRINT ("shifting", yytoken_to_shift, &yylval, &yylloc);
+	      yyglrShift (&yystack, yys, yyaction, yyposn,
+			  &yylval, &yylloc);
+	      YYDPRINTF ((stderr, "Stack %lu now in state #%d\n",
+			  (unsigned long int) yys,
+			  yystack.yytops.yystates[yys]->yylrState));
+	    }
 
-          if (yystack.yytops.yysize == 1)
-            {
-              YYCHK1 (yyresolveStack (&yystack));
-              YYDPRINTF ((stderr, "Returning to deterministic operation.\n"));
-              yycompressStack (&yystack);
-              break;
-            }
-        }
+	  if (yystack.yytops.yysize == 1)
+	    {
+	      YYCHK1 (yyresolveStack (&yystack));
+	      YYDPRINTF ((stderr, "Returning to deterministic operation.\n"));
+	      yycompressStack (&yystack);
+	      break;
+	    }
+	}
       continue;
     yyuser_error:
       yyrecoverSyntaxError (&yystack);
@@ -39036,9 +38453,10 @@ yyparse (void)
   goto yyreturn;
 
  yyreturn:
-  if (yychar != YYEMPTY)
+  if (yychar != YYEOF && yychar != YYEMPTY)
     yydestruct ("Cleanup: discarding lookahead",
-                YYTRANSLATE (yychar), &yylval, &yylloc);
+		YYTRANSLATE (yychar),
+		&yylval, &yylloc);
 
   /* If the stack is well-formed, pop the stack until it is empty,
      destroying its entries as we go.  But free the stack regardless
@@ -39047,25 +38465,24 @@ yyparse (void)
     {
       yyGLRState** yystates = yystack.yytops.yystates;
       if (yystates)
-        {
-          size_t yysize = yystack.yytops.yysize;
-          size_t yyk;
-          for (yyk = 0; yyk < yysize; yyk += 1)
-            if (yystates[yyk])
-              {
-                while (yystates[yyk])
-                  {
-                    yyGLRState *yys = yystates[yyk];
-                 yystack.yyerror_range[1].yystate.yyloc = yys->yyloc;
-                  if (yys->yypred != YY_NULL)
-                      yydestroyGLRState ("Cleanup: popping", yys);
-                    yystates[yyk] = yys->yypred;
-                    yystack.yynextFree -= 1;
-                    yystack.yyspaceLeft += 1;
-                  }
-                break;
-              }
-        }
+	{
+	  size_t yysize = yystack.yytops.yysize;
+	  size_t yyk;
+	  for (yyk = 0; yyk < yysize; yyk += 1)
+	    if (yystates[yyk])
+	      {
+		while (yystates[yyk])
+		  {
+		    yyGLRState *yys = yystates[yyk];
+		    yystack.yyerror_range[1].yystate.yyloc = yys->yyloc;
+		    yydestroyGLRState ("Cleanup: popping", yys);
+		    yystates[yyk] = yys->yypred;
+		    yystack.yynextFree -= 1;
+		    yystack.yyspaceLeft += 1;
+		  }
+		break;
+	      }
+	}
       yyfreeGLRStack (&yystack);
     }
 
@@ -39074,7 +38491,7 @@ yyparse (void)
 }
 
 /* DEBUGGING ONLY */
-#if YYDEBUG
+#ifdef YYDEBUG
 static void yypstack (yyGLRStack* yystackp, size_t yyk)
   __attribute__ ((__unused__));
 static void yypdumpstack (yyGLRStack* yystackp) __attribute__ ((__unused__));
@@ -39085,20 +38502,19 @@ yy_yypstack (yyGLRState* yys)
   if (yys->yypred)
     {
       yy_yypstack (yys->yypred);
-      YYFPRINTF (stderr, " -> ");
+      fprintf (stderr, " -> ");
     }
-  YYFPRINTF (stderr, "%d@%lu", yys->yylrState,
-             (unsigned long int) yys->yyposn);
+  fprintf (stderr, "%d@%lu", yys->yylrState, (unsigned long int) yys->yyposn);
 }
 
 static void
 yypstates (yyGLRState* yyst)
 {
-  if (yyst == YY_NULL)
-    YYFPRINTF (stderr, "<null>");
+  if (yyst == NULL)
+    fprintf (stderr, "<null>");
   else
     yy_yypstack (yyst);
-  YYFPRINTF (stderr, "\n");
+  fprintf (stderr, "\n");
 }
 
 static void
@@ -39107,8 +38523,8 @@ yypstack (yyGLRStack* yystackp, size_t yyk)
   yypstates (yystackp->yytops.yystates[yyk]);
 }
 
-#define YYINDEX(YYX)                                                         \
-    ((YYX) == YY_NULL ? -1 : (yyGLRStackItem*) (YYX) - yystackp->yyitems)
+#define YYINDEX(YYX)							     \
+    ((YYX) == NULL ? -1 : (yyGLRStackItem*) (YYX) - yystackp->yyitems)
 
 
 static void
@@ -39118,35 +38534,35 @@ yypdumpstack (yyGLRStack* yystackp)
   size_t yyi;
   for (yyp = yystackp->yyitems; yyp < yystackp->yynextFree; yyp += 1)
     {
-      YYFPRINTF (stderr, "%3lu. ",
-                 (unsigned long int) (yyp - yystackp->yyitems));
+      fprintf (stderr, "%3lu. ", (unsigned long int) (yyp - yystackp->yyitems));
       if (*(yybool *) yyp)
-        {
-          YYFPRINTF (stderr, "Res: %d, LR State: %d, posn: %lu, pred: %ld",
-                     yyp->yystate.yyresolved, yyp->yystate.yylrState,
-                     (unsigned long int) yyp->yystate.yyposn,
-                     (long int) YYINDEX (yyp->yystate.yypred));
-          if (! yyp->yystate.yyresolved)
-            YYFPRINTF (stderr, ", firstVal: %ld",
-                       (long int) YYINDEX (yyp->yystate
-                                             .yysemantics.yyfirstVal));
-        }
+	{
+	  fprintf (stderr, "Res: %d, LR State: %d, posn: %lu, pred: %ld",
+		   yyp->yystate.yyresolved, yyp->yystate.yylrState,
+		   (unsigned long int) yyp->yystate.yyposn,
+		   (long int) YYINDEX (yyp->yystate.yypred));
+	  if (! yyp->yystate.yyresolved)
+	    fprintf (stderr, ", firstVal: %ld",
+		     (long int) YYINDEX (yyp->yystate.yysemantics.yyfirstVal));
+	}
       else
-        {
-          YYFPRINTF (stderr, "Option. rule: %d, state: %ld, next: %ld",
-                     yyp->yyoption.yyrule - 1,
-                     (long int) YYINDEX (yyp->yyoption.yystate),
-                     (long int) YYINDEX (yyp->yyoption.yynext));
-        }
-      YYFPRINTF (stderr, "\n");
+	{
+	  fprintf (stderr, "Option. rule: %d, state: %ld, next: %ld",
+		   yyp->yyoption.yyrule - 1,
+		   (long int) YYINDEX (yyp->yyoption.yystate),
+		   (long int) YYINDEX (yyp->yyoption.yynext));
+	}
+      fprintf (stderr, "\n");
     }
-  YYFPRINTF (stderr, "Tops:");
+  fprintf (stderr, "Tops:");
   for (yyi = 0; yyi < yystackp->yytops.yysize; yyi += 1)
-    YYFPRINTF (stderr, "%lu: %ld; ", (unsigned long int) yyi,
-               (long int) YYINDEX (yystackp->yytops.yystates[yyi]));
-  YYFPRINTF (stderr, "\n");
+    fprintf (stderr, "%lu: %ld; ", (unsigned long int) yyi,
+	     (long int) YYINDEX (yystackp->yytops.yystates[yyi]));
+  fprintf (stderr, "\n");
 }
 #endif
+
+
 
 
 
@@ -42124,6 +41540,7 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 
   return node;
 }
+
 
 
 
