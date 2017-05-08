@@ -2322,6 +2322,11 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	  fprintf (output_file, " DEFAULT ");
 	}
 
+      if (attribute->default_value.default_expr.default_expr_op == T_TO_CHAR)
+	{
+	  fprintf (output_file, "TO_CHAR(");
+	}
+
       switch (attribute->default_value.default_expr.default_expr_type)
 	{
 	case DB_DEFAULT_SYSTIME:
@@ -2369,6 +2374,21 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	      desc_value_fprint (output_file, default_value);
 	    }
 	  break;
+	}
+
+      if (attribute->default_value.default_expr.default_expr_op == T_TO_CHAR)
+	{
+	  fprintf (output_file, ", \'");
+	  if (attribute->default_value.default_expr.default_expr_format != NULL)
+	    {
+	      fprintf (output_file, attribute->default_value.default_expr.default_expr_format);
+	    }
+	  else
+	    {
+	      fprintf (output_file, "NULL");
+	    }
+
+	  fprintf (output_file, "\')");
 	}
     }
 
