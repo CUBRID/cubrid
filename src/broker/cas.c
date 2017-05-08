@@ -338,6 +338,7 @@ cas_make_session_for_driver (char *out)
   size_t size = 0;
   SESSION_ID session;
 
+  
   memcpy (out + size, db_get_server_session_key (), SERVER_SESSION_KEY_SIZE);
   size += SERVER_SESSION_KEY_SIZE;
   session = db_get_session_id ();

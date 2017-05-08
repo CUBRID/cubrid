@@ -494,6 +494,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
     }
 
   cas_log_buf = t_string_make (1);
+  
   sql_buf = t_string_make (1);
   linebuf_tstr = t_string_make (1000);
   if (cas_log_buf == NULL || sql_buf == NULL || linebuf_tstr == NULL)

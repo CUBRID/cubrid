@@ -669,6 +669,7 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time, double *ret_prep
 #endif
 
   linebuf_tstr = t_string_make (1000);
+  
   req_h = (int *) malloc (sizeof (int) * SERVER_HANDLE_ALLOC_SIZE);
   bind_info = (T_BIND_INFO *) malloc (sizeof (T_BIND_INFO) * MAX_BIND_VALUE);
 #ifdef DUP_RUN

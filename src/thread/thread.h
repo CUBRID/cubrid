@@ -416,7 +416,14 @@ extern void thread_waiting_for_function (THREAD_ENTRY * thread_p, CSS_THREAD_FN 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void thread_exit (int exit_code);
 #endif
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 extern void thread_sleep (double);
+#ifdef __cplusplus
+}
+#endif
 extern void thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *num_free_threads,
 				     int *num_suspended_threads);
 extern int thread_num_worker_threads (void);

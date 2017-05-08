@@ -1605,6 +1605,10 @@ typedef struct _ha_config
 typedef int (*UTILITY_INIT_FUNC) (void);
 
 /* extern functions */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 extern int utility_initialize (void);
 extern const char *utility_get_generic_message (int message_index);
 extern int check_database_name (const char *name);
@@ -1713,4 +1717,7 @@ extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);
+#ifdef __cplusplus
+}
+#endif
 #endif /* _UTILITY_H_ */

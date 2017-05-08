@@ -301,49 +301,49 @@ pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
 void
 pp_add_symbols_to_table (SYMBOL * sym)
 {
-  SYMBOL *exists, *new, *next = NULL;
+  SYMBOL *exists, *pnew, *next = NULL;
 
-  for (new = sym; new; new = next)
+  for (pnew = sym; pnew; pnew = next)
     {
-      next = new->next;
+      next = pnew->next;
 
       if (sym->name == NULL)
 	{
 	  continue;
 	}
 
-      exists = (SYMBOL *) pp_findsym (pp_Symbol_table, new->name);
+      exists = (SYMBOL *) pp_findsym (pp_Symbol_table, pnew->name);
 
-      if (exists == NULL || exists->level != new->level)
+      if (exists == NULL || exists->level != pnew->level)
 	{
-	  pp_Symbol_table->add_symbol (pp_Symbol_table, new);
-	  new->next = pp_current_name_scope->sym_chain;
-	  pp_current_name_scope->sym_chain = new;
+	  pp_Symbol_table->add_symbol (pp_Symbol_table, pnew);
+	  pnew->next = pp_current_name_scope->sym_chain;
+	  pp_current_name_scope->sym_chain = pnew;
 	}
       else
 	{
 	  int harmless = 0;
 
-	  if (pp_the_same_type (exists->type, new->type, 0))
+	  if (pp_the_same_type (exists->type, pnew->type, 0))
 	    {
-	      if (exists->etype->decl.s.is_extern || new->etype->decl.s.is_extern)
+	      if (exists->etype->decl.s.is_extern || pnew->etype->decl.s.is_extern)
 		{
 		  harmless = 1;
-		  if (new->etype->decl.s.is_extern == 0)
+		  if (pnew->etype->decl.s.is_extern == 0)
 		    {
-		      exists->etype->decl.s.sclass = new->etype->decl.s.sclass;
-		      exists->etype->decl.s.is_static = new->etype->decl.s.is_static;
-		      exists->etype->decl.s.is_extern = new->etype->decl.s.is_extern;
+		      exists->etype->decl.s.sclass = pnew->etype->decl.s.sclass;
+		      exists->etype->decl.s.is_static = pnew->etype->decl.s.is_static;
+		      exists->etype->decl.s.is_extern = pnew->etype->decl.s.is_extern;
 		    }
 		}
 	    }
 
 	  if (harmless == 0)
 	    {
-	      esql_yyredef ((char *) new->name);
+	      esql_yyredef ((char *) pnew->name);
 	    }
 
-	  pp_discard_symbol (new);
+	  pp_discard_symbol (pnew);
 	}
     }
 }

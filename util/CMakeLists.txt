@@ -42,6 +42,11 @@ set(CSQL_SOURCES
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/getopt_long.c
   )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${CSQL_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
 if(WIN32)
   list(APPEND CSQL_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
@@ -106,8 +111,17 @@ set(CUBRID_SOURCES
   ${EXECUTABLES_DIR}/util_service.c
   ${EXECUTABLES_DIR}/util_support.c
   )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${CUBRID_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
 if(WIN32)
   list(APPEND CUBRID_SOURCES ${BASE_DIR}/getopt_long.c)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${BASE_DIR}/getopt_long.c
+    PROPERTIES LANGUAGE CXX
+  )
   list(APPEND CUBRID_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(cubrid-bin ${CUBRID_SOURCES})
@@ -128,11 +142,24 @@ set(CUB_COMMDB_SOURCES
   ${EXECUTABLES_DIR}/util_support.c
   ${EXECUTABLES_DIR}/master_util.c
   )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${CUB_COMMDB_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+  
 if(WIN32)
   list(APPEND CUB_COMMDB_SOURCES ${BASE_DIR}/getopt_long.c)
   list(APPEND CUB_COMMDB_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${BASE_DIR}/getopt_long.c
+    PROPERTIES LANGUAGE CXX
+  )
+  
 endif(WIN32)
+
 add_executable(cub_commdb ${CUB_COMMDB_SOURCES})
+
 target_link_libraries(cub_commdb LINK_PRIVATE cubridcs)
 if(WIN32)
   target_link_libraries(cub_commdb LINK_PRIVATE ws2_32)
@@ -140,6 +167,10 @@ endif(WIN32)
 
 
 set(CUBRID_REL_SOURCES ${EXECUTABLES_DIR}/cubrid_version.c)
+SET_SOURCE_FILES_PROPERTIES(
+    ${CUBRID_REL_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
 if(WIN32)
   list(APPEND CUBRID_REL_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
@@ -148,8 +179,16 @@ target_link_libraries(cubrid_rel LINK_PRIVATE cubridsa)
 
 
 set(LOADJAVA_SOURCES ${EXECUTABLES_DIR}/loadjava.c)
+SET_SOURCE_FILES_PROPERTIES(
+  ${LOADJAVA_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
 if(WIN32)
   list(APPEND LOADJAVA_SOURCES ${BASE_DIR}/getopt_long.c)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${BASE_DIR}/getopt_long.c
+    PROPERTIES LANGUAGE CXX
+  )
   list(APPEND LOADJAVA_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(loadjava ${LOADJAVA_SOURCES})
@@ -166,9 +205,18 @@ set(CUB_ADMIN_SOURCES
   ${BASE_DIR}/getopt_long.c
   ${BASE_DIR}/porting.c
   )
+  
+SET_SOURCE_FILES_PROPERTIES(
+  ${CUB_ADMIN_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )  
+
 if(WIN32)
   list(APPEND CUB_ADMIN_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
+
+
+
 add_executable(cub_admin ${CUB_ADMIN_SOURCES})
 target_include_directories(cub_admin PRIVATE ${EP_INCLUDES})
 target_link_libraries(cub_admin LINK_PRIVATE ${CMAKE_DL_LIBS})
@@ -190,13 +238,29 @@ set(CUBRID_ESQL_SOURCES
   ${EXECUTABLES_DIR}/esql_translate.c
   ${EXECUTABLES_DIR}/esql_host_variable.c
   )
+SET_SOURCE_FILES_PROPERTIES(
+  ${EXECUTABLES_DIR}/esql_symbol_table.c
+  ${EXECUTABLES_DIR}/esql_declare.c
+  ${EXECUTABLES_DIR}/esql_cursor.c
+  ${EXECUTABLES_DIR}/esql_misc.c
+  ${EXECUTABLES_DIR}/esql_whenever.c
+  ${EXECUTABLES_DIR}/esql_hash.c
+  ${EXECUTABLES_DIR}/esql_translate.c
+  ${EXECUTABLES_DIR}/esql_host_variable.c
+  PROPERTIES LANGUAGE CXX
+  )  
 if(WIN32)
-  list(APPEND CUBRID_ESQL_SOURCES ${BASE_DIR}/getopt_long.c)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${BASE_DIR}/getopt_long.c
+    PROPERTIES LANGUAGE CXX
+  )
   list(APPEND CUBRID_ESQL_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 set_source_files_properties(${BISON_esql_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_esql_lexer_OUTPUTS} PROPERTIES GENERATED true)
+
 add_executable(cubrid_esql ${CUBRID_ESQL_SOURCES})
+
 target_include_directories(cubrid_esql PRIVATE ${CMAKE_BINARY_DIR} ${EP_INCLUDES})
 target_compile_definitions(cubrid_esql PRIVATE ${COMMON_DEFS} PRODUCE_ANSI_CODE UCI_TEMPORARY)
 if(WIN32)
@@ -223,6 +287,10 @@ endif(WIN32)
 
 
 set(CONVERT_PASSWORD_SOURCES ${EXECUTABLES_DIR}/convert_password.c)
+SET_SOURCE_FILES_PROPERTIES(
+    ${CONVERT_PASSWORD_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
 if(WIN32)
   list(APPEND CONVERT_PASSWORD_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
@@ -262,6 +330,12 @@ if(UNIX)
   set(UNITTESTS_SNAPSHOT_SOURCES
       ${EXECUTABLES_DIR}/unittests_snapshot.c
       )
+      
+    SET_SOURCE_FILES_PROPERTIES(
+      ${UNITTESTS_SNAPSHOT_SOURCES}
+      PROPERTIES LANGUAGE CXX
+    )
+    
     add_executable(unittests_snapshot ${UNITTESTS_SNAPSHOT_SOURCES})
     target_compile_definitions(unittests_snapshot PRIVATE SERVER_MODE ${COMMON_DEFS})
     target_include_directories(unittests_snapshot PRIVATE ${EP_INCLUDES})
@@ -279,6 +353,10 @@ endif(UNIX)
 
 # compat utils
 if(UNIX)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${EXECUTABLES_DIR}/util_front.c
+    PROPERTIES LANGUAGE CXX
+  )
   add_executable(addvoldb ${EXECUTABLES_DIR}/util_front.c)
   add_executable(backupdb ${EXECUTABLES_DIR}/util_front.c)
   add_executable(checkdb ${EXECUTABLES_DIR}/util_front.c)

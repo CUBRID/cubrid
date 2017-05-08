@@ -143,7 +143,7 @@ struct sp_parser_ctx
   int bind_count;
   SP_CURSOR cursor;
   SP_CURSOR prv_cursor;
-  SP_TOKEN operator;
+  SP_TOKEN operator_;
   SP_PARSER_HINT_LIST list_a;
   SP_PARSER_HINT_LIST list_t[2];
 };

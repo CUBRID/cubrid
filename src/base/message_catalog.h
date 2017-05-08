@@ -90,9 +90,7 @@ extern "C"
 extern int msgcat_init (void);
 extern int msgcat_final (void);
 extern char *msgcat_message (int, int, int);
-#ifdef __cplusplus
-}
-#endif
+
 /* message catalog description  */
 typedef struct msg_catd
 {
@@ -108,5 +106,9 @@ extern int msgcat_close (MSG_CATD);
 
 /* a utility function */
 extern FILE *msgcat_open_file (const char *name);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _MESSAGE_CATALOG_H_ */

@@ -144,6 +144,12 @@ enum scanner_mode
   COMMENT_MODE = 7
 };
 
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 extern int pp_recognizing_typedef_names;
 extern int pp_nesting_level;
 
@@ -295,5 +301,10 @@ extern void pp_symbol_finish (void);
 extern void pp_symbol_stats (FILE * fp);
 extern void pp_init_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * old_scope);
 extern void pp_finish_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * new_scope);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _ESQL_MISC_H_ */

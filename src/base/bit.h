@@ -38,6 +38,11 @@
 #define BIT32_HEXA_PRINT_FORMAT   "0x%08x"
 #define BIT64_HEXA_PRINT_FORMAT   "0x%016llx"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 extern int bit8_count_ones (UINT8 i);
 extern int bit8_count_zeros (UINT8 i);
 extern int bit8_count_trailing_ones (UINT8 i);
@@ -81,5 +86,7 @@ extern bool bit64_is_set (UINT64 i, int off);
 extern UINT64 bit64_set (UINT64 i, int off);
 extern UINT64 bit64_clear (UINT64 i, int off);
 extern UINT64 bit64_set_trailing_bits (UINT64 i, int n);
-
+#ifdef __cplusplus
+}
+#endif
 #endif

@@ -69,7 +69,7 @@ static void *es_ht_add_symbol (HASH_TAB * table, void *sym);
 static void es_ht_remove_symbol (HASH_TAB * table, void *sym);
 static void *es_ht_find_symbol (HASH_TAB * table, void *sym);
 static void *es_ht_next_symbol (HASH_TAB * tbl, void *last_sym);
-static int es_ht_print_table (HASH_TAB * table, void (*print) (), void *param, int sort);
+static int es_ht_print_table (HASH_TAB * table, void (*print) (BUCKET*, void*), void *param, int sort);
 static int es_ht_get_symbol_count (HASH_TAB * table);
 
 /*
@@ -259,7 +259,7 @@ es_ht_next_symbol (HASH_TAB * table, void *last_sym)
  *       third argument to ptab().
  */
 static int
-es_ht_print_table (HASH_TAB * table, void (*print) (), void *param, int sort)
+es_ht_print_table (HASH_TAB * table, void (*print) (BUCKET*, void*), void *param, int sort)
 {
   BUCKET **outtab, **outp, *sym, **symtab;
   int i;

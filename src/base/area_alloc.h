@@ -88,6 +88,10 @@ struct area
   void (*failure_function) (void);
 };
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 /* system startup, shutdown */
 extern void area_init (void);
@@ -105,5 +109,10 @@ extern void area_flush (AREA * area);
 
 /* debug functions */
 extern void area_dump (FILE * fpp);
+
+#ifdef __cplusplus
+}
+#endif
+
 
 #endif /* _AREA_ALLOC_H_ */

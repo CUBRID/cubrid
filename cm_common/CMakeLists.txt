@@ -23,6 +23,14 @@ set(CMSTAT_SOURCES
   ${CM_COMMON_DIR}/cm_utils.c
   ${CM_COMMON_DIR}/cm_broker_jni.c
   )
+SET_SOURCE_FILES_PROPERTIES(
+    ${CMSTAT_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
+SET_SOURCE_FILES_PROPERTIES(
+    ${CM_COMMON_DIR}/cm_broker_jni.c
+    PROPERTIES LANGUAGE C
+  )
 if(WIN32)
   list(APPEND ${CMAKE_SOURCE_DIR}/win/cmstat/version.rc)
 endif(WIN32)
@@ -64,6 +72,10 @@ endif()
 set(CUB_JOBSA_SOURCES
   ${CM_COMMON_DIR}/cm_class_info_sa.c
   )
+SET_SOURCE_FILES_PROPERTIES(
+  ${CUB_JOBSA_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
 if(WIN32)
   list(APPEND CUB_JOBSA_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
@@ -73,6 +85,10 @@ target_link_libraries(cub_jobsa cubridsa)
 
 set(CUB_SAINFO_SOURCES
   ${CM_COMMON_DIR}/cm_trigger_info_sa.c
+  )
+SET_SOURCE_FILES_PROPERTIES(
+  ${CUB_SAINFO_SOURCES}
+  PROPERTIES LANGUAGE CXX
   )
 if(WIN32)
   list(APPEND CUB_SAINFO_SOURCES ${CMAKE_BINARY_DIR}/version.rc)

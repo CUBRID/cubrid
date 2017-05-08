@@ -30,6 +30,12 @@
 
 #include <sys/types.h>
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+
 /*
  * Variable-length string gadgets.  vs_new() takes the address of a
  * varstring or NULL; if NULL, it heap-allocates a new one and returns
@@ -38,7 +44,6 @@
  * and then free the varstring structure itself if it was heap
  * allocated.
  */
-
 typedef struct
 {
   char *base;
@@ -60,5 +65,9 @@ extern int vs_strcpy (varstring * vstr, const char *str);
 extern int vs_putc (varstring * vstr, int);
 extern char *vs_str (varstring * vstr);
 extern int vs_strlen (const varstring * vstr);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _VARIABLE_STRING_H_ */

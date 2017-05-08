@@ -28,6 +28,11 @@
 
 #ident "$Id$"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 extern const char *envvar_prefix (void);
 extern const char *envvar_root (void);
 extern const char *envvar_name (char *, size_t, const char *);
@@ -50,5 +55,9 @@ extern char *envvar_localedatadir_file (char *path, size_t size, const char *fil
 extern char *envvar_loclib_dir_file (char *path, size_t size, const char *filename);
 extern char *envvar_cubrid_dir (char *path, size_t size);
 extern char *envvar_tzdata_dir_file (char *path, size_t size, const char *filename);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _ENVIRONMENT_VARIABLE_H_ */
