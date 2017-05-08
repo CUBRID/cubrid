@@ -7683,10 +7683,12 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   PT_NODE *attr, *col;
   PT_NODE *columns = pt_get_select_list (parser, qry);
   PT_NODE *default_data = NULL;
-  PT_NODE *default_value = NULL;
+  PT_NODE *default_value = NULL, *default_op_value = NULL;
   PT_NODE *spec, *entity_name;
   DB_OBJECT *obj;
   DB_ATTRIBUTE *col_attr;
+  const char *lang_str;
+  int flag = 0;
 
   /* Import default value from referenced table for those attributes in the the view that have no default value. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
@@ -7747,11 +7749,50 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		}
 	      else
 		{
-		  default_value = parser_new_node (parser, PT_EXPR);
-		  if (default_value)
+		  default_op_value = parser_new_node (parser, PT_EXPR);
+		  if (default_op_value != NULL)
 		    {
-		      default_value->info.expr.op =
+		      default_op_value->info.expr.op =
 			pt_op_type_from_default_expr_type (col_attr->default_value.default_expr.default_expr_type);
+
+		      if (default_op_value->info.expr.op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+			{
+			  default_value = default_op_value;
+			}
+		      else
+			{
+			  PT_NODE *arg1, *arg2, *arg3;
+			  arg1 = default_op_value;
+			  arg2 = pt_make_string_value (parser,
+						       col_attr->default_value.default_expr.default_expr_format);
+			  if (arg2 == NULL)
+			    {
+			      parser_free_tree (parser, default_op_value);
+			      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			      goto error;
+			    }
+
+			  arg3 = parser_new_node (parser, PT_VALUE);
+			  if (arg3 == NULL)
+			    {
+			      parser_free_tree (parser, default_op_value);
+			      parser_free_tree (parser, arg2);
+			    }
+			  arg3->type_enum = PT_TYPE_INTEGER;
+			  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+			  lang_set_flag_from_lang (lang_str, 1, 0, &flag);
+			  arg3->info.value.data_value.i = (long) flag;
+
+			  default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+			  if (default_value == NULL)
+			    {
+			      parser_free_tree (parser, default_op_value);
+			      parser_free_tree (parser, arg2);
+			      parser_free_tree (parser, arg3);
+			      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			      goto error;
+			    }
+			}
 		    }
 		  else
 		    {

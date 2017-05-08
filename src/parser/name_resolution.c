@@ -3218,6 +3218,8 @@ int
 pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
 {
   DB_ATTRIBUTE *att = NULL;
+  const char *lang_str;
+  int flag = 0;
 
   if (name->node_type != PT_NAME)
     {
@@ -3264,10 +3266,37 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
 	}
       else
 	{
-	  PT_NODE *arg1, *arg2;
+	  PT_NODE *arg1, *arg2, *arg3;
 	  arg1 = default_op_value_node;
 	  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
-	  name->info.name.default_value = parser_make_expression (parser, T_TO_CHAR, arg1, arg2, NULL);
+	  if (arg2 == NULL)
+	    {
+	      parser_free_tree (parser, default_op_value_node);
+	      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+
+	  arg3 = parser_new_node (parser, PT_VALUE);
+	  if (arg3 == NULL)
+	    {
+	      parser_free_tree (parser, default_op_value_node);
+	      parser_free_tree (parser, arg2);
+	      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+	  arg3->type_enum = PT_TYPE_INTEGER;
+	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+	  lang_set_flag_from_lang (lang_str, 1, 0, &flag);
+	  arg3->info.value.data_value.i = (long) flag;
+
+	  name->info.name.default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+	  if (name->info.name.default_value == NULL)
+	    {
+	      parser_free_tree (parser, default_op_value_node);
+	      parser_free_tree (parser, arg2);
+	      parser_free_tree (parser, arg3);
+	      return ER_FAILED;
+	    }
 	}
     }
   else
@@ -3302,6 +3331,8 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
   DB_ATTRIBUTE *att = 0;
   DB_OBJECT *db = 0;
   PT_NODE *cname = flat;
+  const char *lang_str;
+  int flag = 0;
 
   if (!flat || !attr)
     {
@@ -3371,10 +3402,38 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 		}
 	      else
 		{
-		  PT_NODE *arg1, *arg2;
+		  PT_NODE *arg1, *arg2, *arg3;
 		  arg1 = default_op_value_node;
 		  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
-		  attr->info.name.default_value = parser_make_expression (parser, T_TO_CHAR, arg1, arg2, NULL);
+		  if (arg2 == NULL)
+		    {
+		      parser_free_tree (parser, default_op_value_node);
+		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      return 0;
+		    }
+
+		  arg3 = parser_new_node (parser, PT_VALUE);
+		  if (arg3 == NULL)
+		    {
+		      parser_free_tree (parser, default_op_value_node);
+		      parser_free_tree (parser, arg2);
+		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      return 0;
+		    }
+		  arg3->type_enum = PT_TYPE_INTEGER;
+		  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+		  lang_set_flag_from_lang (lang_str, 1, 0, &flag);
+		  arg3->info.value.data_value.i = (long) flag;
+
+		  attr->info.name.default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+		  if (attr->info.name.default_value == NULL)
+		    {
+		      parser_free_tree (parser, default_op_value_node);
+		      parser_free_tree (parser, arg2);
+		      parser_free_tree (parser, arg3);
+		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      return 0;
+		    }
 		}
 	    }
 	  else
