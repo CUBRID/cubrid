@@ -6664,21 +6664,28 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, PT_INST_NUM, false);
 	  if (limit != NULL)
 	    {
+	      PT_NODE *limit_node;
+
 	      node->info.query.rewrite_limit = 0;
+
+	      /* to move limit clause to derived */
+	      limit_node = node->info.query.limit;
+	      node->info.query.limit = NULL;
 
 	      derived = mq_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)
 		{
 		  PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
+
 		  assert (derived->info.query.q.select.where == NULL);
 		  derived->info.query.q.select.where = limit;
 
-		  /* move limit clause to derived */
-		  derived->info.query.limit = node->info.query.limit;
-		  node->info.query.limit = NULL;
+		  wherep = &derived->info.query.q.select.where;
 
 		  node = derived;
 		}
+
+	      node->info.query.limit = limit_node;
 	    }
 	}
 
