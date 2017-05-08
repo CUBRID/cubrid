@@ -21,6 +21,7 @@ extern "C" {
 
 #define MAX_COMMAND_SIZE 128
 #define MAX_FILE_NAME_SIZE 128
+#define COMMAND_ARGUMENT "-c"
 
 class StatToolSnapshotSet;
 class StatToolColumnInterface;
@@ -33,9 +34,12 @@ class Utils
     static StatToolSnapshot *findSnapshotInLoadedSets (const char *alias);
     static void printHelp ();
     static ErrorManager::ErrorCode processCommand (const std::string &command, CommandExecutor *&executor, bool &quit);
-    static std::vector<StatToolSnapshotSet *> loadedSets;
-private:
+    static ErrorManager::ErrorCode processArguments (char **argv, int argc, bool &quit);
 
+    static std::vector<StatToolSnapshotSet *> loadedSets;
+    static const std::vector<std::pair<std::string, std::string> > possibleArguments;
+private:
+    static std::vector<std::pair<std::string, std::string> > initPossibleArguments();
 };
 
 

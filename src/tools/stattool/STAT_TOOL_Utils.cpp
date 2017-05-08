@@ -5,6 +5,15 @@
 #include "STAT_TOOL_Utils.hpp"
 
 std::vector<StatToolSnapshotSet *> Utils::loadedSets;
+const std::vector<std::pair<std::string, std::string> > Utils::possibleArguments = Utils::initPossibleArguments();
+
+std::vector<std::pair<std::string, std::string> > Utils::initPossibleArguments()
+{
+  std::vector<std::pair<std::string, std::string> > arguments;
+  arguments.push_back (std::make_pair ("-c", "stattool -c filename_1 alias_1 ... filename_n alias_n \"command\""));
+
+  return arguments;
+}
 
 void Utils::init () {
   perfmeta_init();
@@ -19,8 +28,13 @@ Utils::findSnapshotInLoadedSets (const char *alias)
 {
   StatToolSnapshot *snapshot = NULL, *secondSnapshot = NULL;
   char *first, *second;
+  char *aliasCopy;
   first = second = NULL;
-  char *aliasCopy = strdup (alias);
+
+  if (alias == NULL) {
+    return NULL;
+  }
+  aliasCopy = strdup (alias);
 
   if (strchr (alias, '-') != NULL)
     {
@@ -72,6 +86,58 @@ Utils::printHelp ()
   printf("\n%s", PlotExecutor::USAGE);
   printf("\n%s", ShowExecutor::USAGE);
   printf("\n%s", AggregateExecutor::USAGE);
+}
+
+ErrorManager::ErrorCode
+Utils::processArguments (char **argv, int argc, bool &quit)
+{
+  std::string command = "";
+  ErrorManager::ErrorCode error = ErrorManager::NO_ERRORS;
+  CommandExecutor *executor = NULL;
+
+  if (argc < 3) {
+    return ErrorManager::NOT_ENOUGH_ARGUMENTS_ERROR;
+  }
+
+  if (strcmp(argv[1], COMMAND_ARGUMENT) == 0)
+  {
+    quit = true;
+
+    for (int i = 2; i < argc - 1; i+=2) {
+      command = "";
+      command += argv[i];
+      command += " ";
+      command += argv[i+1];
+      LoadExecutor loadExecutor(command);
+      error = loadExecutor.parseCommandAndInit ();
+      if (error != ErrorManager::NO_ERRORS) {
+	return error;
+      } else {
+	error = loadExecutor.execute ();
+	if (error != ErrorManager::NO_ERRORS) {
+	  return error;
+	}
+      }
+    }
+
+    error = Utils::processCommand (std::string(argv[argc-1]), executor, quit);
+    if (error != ErrorManager::NO_ERRORS || executor == NULL)
+    {
+      return error;
+    }
+
+    error = executor->parseCommandAndInit ();
+    if (error != ErrorManager::NO_ERRORS)
+    {
+      return error;
+    }
+    else
+    {
+      error = executor->execute ();
+    }
+  }
+
+  return error;
 }
 
 ErrorManager::ErrorCode

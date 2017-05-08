@@ -15,6 +15,18 @@ main (int argc, char **argv)
 
   Utils::init ();
 
+  if (argc > 1) {
+    for (unsigned int i = 0; i < Utils::possibleArguments.size(); i++) {
+      if (Utils::possibleArguments[i].first.compare (argv[1]) == 0) {
+	error = Utils::processArguments (argv, argc, quit);
+        if (error != ErrorManager::NO_ERRORS) {
+          std::cout << "Usage: " << Utils::possibleArguments[i].second << std::endl;
+        }
+	break;
+      }
+    }
+  }
+
   while (!quit)
     {
       fgets (buffer, MAX_COMMAND_SIZE, stdin);
