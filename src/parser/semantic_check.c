@@ -4171,7 +4171,7 @@ pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
   if (tree->info.expr.arg1 != NULL && PT_IS_EXPR_NODE (tree->info.expr.arg1) && tree->info.expr.op == PT_TO_CHAR)
     {
       /* The correctness of TO_CHAR expression is done a little bit later after obtaining system time. */
-      assert (tree->info.expr.arg2 != NULL && tree->info.expr.arg2->node_type == PT_VALUE);
+      assert (tree->info.expr.arg2 != NULL);
       node = tree->info.expr.arg1;
     }
   else
