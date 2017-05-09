@@ -12293,11 +12293,14 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  TP_DOMAIN_STATUS status;
 
 	  /* get desired domain. */
-	  desired_domain =
-	    pt_node_data_type_to_db_domain (parser, (PT_NODE *) attribute->data_type, (PT_TYPE_ENUM) desired_type);
-	  if (desired_domain != NULL)
+	  if (attribute->data_type != NULL)
 	    {
-	      desired_domain = tp_domain_cache (desired_domain);
+	      desired_domain =
+		pt_node_data_type_to_db_domain (parser, (PT_NODE *) attribute->data_type, (PT_TYPE_ENUM) desired_type);
+	      if (desired_domain != NULL)
+		{
+		  desired_domain = tp_domain_cache (desired_domain);
+		}
 	    }
 	  else
 	    {
@@ -12338,6 +12341,20 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 
 	  if (error != NO_ERROR)
 	    {
+	      if (error == ER_IT_DATA_OVERFLOW)
+		{
+		  PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+			       pt_short_print (parser, def_val), pt_show_type_enum ((PT_TYPE_ENUM) desired_type));
+		}
+	      else if (error < 0)
+		{
+		  PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			       pt_short_print (parser, def_val), (desired_type == PT_TYPE_OBJECT
+								  ? attribute->data_type->info.data_type.entity->info.
+								  name.
+								  original : pt_show_type_enum ((PT_TYPE_ENUM)
+												desired_type)));
+		}
 	      return error;
 	    }
 
