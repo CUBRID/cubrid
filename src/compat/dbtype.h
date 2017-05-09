@@ -62,24 +62,6 @@
 #define QSTR_IS_ANY_CHAR_OR_BIT(s)		(QSTR_IS_ANY_CHAR(s) \
                                                  || QSTR_IS_BIT(s))
 
-/* From intl_support.h */
-typedef enum intl_codeset INTL_CODESET;
-enum intl_codeset
-{
-  INTL_CODESET_ERROR = -2,
-  INTL_CODESET_NONE = -1,
-  INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
-  INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
-  INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
-  INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
-  INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
-  INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
-
-  INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
-
-  INTL_CODESET_LAST = INTL_CODESET_UTF8
-};
-
 /* From object_accessor.h */
 extern char *obj_Method_error_msg;
 
@@ -1234,8 +1216,6 @@ extern int db_make_string (DB_VALUE * value, const char *str);
 extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
 extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
 			   const int bit_str_bit_size);
-extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
-			    const int size);
 
 extern int db_make_set (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
@@ -1252,7 +1232,6 @@ extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
 extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
 extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
 extern int db_value_put_numeric (DB_VALUE * value, DB_C_NUMERIC num);
-extern DB_CURRENCY db_get_currency_default (void);
 extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
@@ -1268,15 +1247,15 @@ extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
 extern char *db_get_method_error_msg (void);
-extern DB_C_CHAR db_get_string (const DB_VALUE * value);
-extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
+
 extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
 
+extern OID *db_get_oid (const DB_VALUE * value);
+extern DB_CURRENCY db_get_currency_default (void);
 extern int db_get_string_codeset (const DB_VALUE * value);
 extern int db_get_string_collation (const DB_VALUE * value);
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
-
 
 /************************************************************************/
 /* TODO:Decide how do we handle the references copied from other headers*/
@@ -1289,6 +1268,8 @@ extern int db_get_enum_collation (const DB_VALUE * value);
 #define NULL_SLOTID (-1)	/* Value of an invalid slot identifier */
 #define NULL_OFFSET (-1)	/* Value of an invalid offset */
 #define NULL_FILEID (-1)	/* Value of an invalid file identifier */
+
+extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
 
 #ifdef SERVER_MODE
 #include "db_macro.i"
@@ -1355,6 +1336,9 @@ extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 extern char *db_get_enum_string (const DB_VALUE * value);
 extern unsigned short db_get_enum_short (const DB_VALUE * value);
 extern int db_get_enum_string_size (const DB_VALUE * value);
+extern DB_C_CHAR db_get_string (const DB_VALUE * value);
+extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
+
 #endif
 
 #endif /* _DBTYPE_H_ */

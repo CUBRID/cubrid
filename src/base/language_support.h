@@ -56,41 +56,20 @@
 #define LANG_COERCIBLE_COLL LANG_SYS_COLLATION
 #define LANG_COERCIBLE_CODESET LANG_SYS_CODESET
 
-#define LANG_IS_COERCIBLE_COLL(c)	\
-  ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY	\
-   || (c) == LANG_COLL_EUCKR_BINARY)
-
-/* collation and charset do be used by system : */
-enum
-{
-  LANG_COLL_ISO_BINARY = 0,
-  LANG_COLL_UTF8_BINARY = 1,
-  LANG_COLL_ISO_EN_CS = 2,
-  LANG_COLL_ISO_EN_CI = 3,
-  LANG_COLL_UTF8_EN_CS = 4,
-  LANG_COLL_UTF8_EN_CI = 5,
-  LANG_COLL_UTF8_TR_CS = 6,
-  LANG_COLL_UTF8_KO_CS = 7,
-  LANG_COLL_EUCKR_BINARY = 8,
-  LANG_COLL_BINARY = 9
-};
 #define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
   ? LANG_COLL_UTF8_BINARY :					 \
   (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
   (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
-  LANG_COLL_BINARY)))
+    LANG_COLL_BINARY)))
 
-extern INTL_CODESET lang_charset (void);
-
+/* collation and charset do be used by system : */
 #define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
 
 #define LANG_SYS_CODESET  lang_charset()
 
-#define LANG_VARIABLE_CHARSET(x) ((x) != INTL_CODESET_ASCII     && \
-  (x) != INTL_CODESET_RAW_BITS  && \
-  (x) != INTL_CODESET_RAW_BYTES && \
-  (x) != INTL_CODESET_ISO88591)
-
+#define LANG_IS_COERCIBLE_COLL(c)	\
+  ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY	\
+   || (c) == LANG_COLL_EUCKR_BINARY)
 
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
@@ -120,6 +99,20 @@ extern INTL_CODESET lang_charset (void);
       }					      \
   } while (0)
 
+enum
+{
+  LANG_COLL_ISO_BINARY = 0,
+  LANG_COLL_UTF8_BINARY = 1,
+  LANG_COLL_ISO_EN_CS = 2,
+  LANG_COLL_ISO_EN_CI = 3,
+  LANG_COLL_UTF8_EN_CS = 4,
+  LANG_COLL_UTF8_EN_CI = 5,
+  LANG_COLL_UTF8_TR_CS = 6,
+  LANG_COLL_UTF8_KO_CS = 7,
+  LANG_COLL_EUCKR_BINARY = 8,
+  LANG_COLL_BINARY = 9
+};
+
 /*
  * message for fundamental error that occur before any messages catalogs
  * can be accessed or opened.
@@ -127,6 +120,12 @@ extern INTL_CODESET lang_charset (void);
 #define LANG_ERR_NO_CUBRID "The `%s' environment variable is not set.\n"
 
 #define LANG_MAX_LANGNAME       256
+
+#define LANG_VARIABLE_CHARSET(x) ((x) != INTL_CODESET_ASCII     && \
+				  (x) != INTL_CODESET_RAW_BITS  && \
+				  (x) != INTL_CODESET_RAW_BYTES && \
+				  (x) != INTL_CODESET_ISO88591)
+
 
 typedef struct db_charset DB_CHARSET;
 struct db_charset
@@ -272,6 +271,7 @@ extern "C"
   extern const char *lang_get_msg_Loc_name (void);
   extern const char *lang_get_Lang_name (void);
   extern INTL_LANG lang_id (void);
+  extern INTL_CODESET lang_charset (void);
   extern DB_CURRENCY lang_currency (void);
   extern DB_CURRENCY lang_locale_currency (const char *locale_str);
   extern const char *lang_currency_symbol (DB_CURRENCY curr);

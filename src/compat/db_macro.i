@@ -1401,4 +1401,98 @@ db_get_enum_string_size (const DB_VALUE * value)
 
   return value->data.enumeration.str_val.medium.size;
 }
+
+/*
+ * db_get_string() -
+ * return :
+ * value(in):
+ */
+DB_MACRO_INLINE DB_C_CHAR
+db_get_string (const DB_VALUE * value)
+{
+  char *str = NULL;
+  DB_TYPE type;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
+
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Needs to be checked !! */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR
+	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT);
+
+  switch (value->data.ch.info.style)
+    {
+    case SMALL_STRING:
+      str = (char *) value->data.ch.sm.buf;
+      break;
+    case MEDIUM_STRING:
+      str = value->data.ch.medium.buf;
+      break;
+    case LARGE_STRING:
+      /* Currently not implemented */
+      str = NULL;
+      break;
+    }
+
+  return str;
+}
+
+/*
+ * db_get_bit() -
+ * return :
+ * value(in):
+ * length(out):
+ */
+DB_MACRO_INLINE DB_C_BIT
+db_get_bit (const DB_VALUE * value, int *length)
+{
+  char *str = NULL;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+  CHECK_1ARG_NULL (length);
+#endif
+
+  if (value->domain.general_info.is_null)
+    {
+      return NULL;
+    }
+
+  /* Needs to be checked !! */
+  assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_BIT || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARBIT);
+
+  switch (value->data.ch.info.style)
+    {
+    case SMALL_STRING:
+      {
+	*length = value->data.ch.sm.size;
+	str = (char *) value->data.ch.sm.buf;
+      }
+      break;
+    case MEDIUM_STRING:
+      {
+	*length = value->data.ch.medium.size;
+	str = value->data.ch.medium.buf;
+      }
+      break;
+    case LARGE_STRING:
+      {
+	/* Currently not implemented */
+	*length = 0;
+	str = NULL;
+      }
+      break;
+    }
+
+  return str;
+}
+
 #endif

@@ -150,6 +150,22 @@ enum intl_zone
   INTL_ZONE_TR
 };
 
+typedef enum intl_codeset INTL_CODESET;
+enum intl_codeset
+{
+  INTL_CODESET_ERROR = -2,
+  INTL_CODESET_NONE = -1,
+  INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
+  INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
+  INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
+  INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
+  INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
+  INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+
+  INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
+
+  INTL_CODESET_LAST = INTL_CODESET_UTF8
+};
 
 typedef enum currency_check_mode CURRENCY_CHECK_MODE;
 enum currency_check_mode

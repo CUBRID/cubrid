@@ -1800,154 +1800,6 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
 }
 
 /*
- * db_get_string() -
- * return :
- * value(in):
- */
-DB_C_CHAR
-db_get_string (const DB_VALUE * value)
-{
-  char *str = NULL;
-  DB_TYPE type;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-
-  type = DB_VALUE_DOMAIN_TYPE (value);
-
-  /* Needs to be checked !! */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR
-	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT);
-
-  switch (value->data.ch.info.style)
-    {
-    case SMALL_STRING:
-      str = (char *) value->data.ch.sm.buf;
-      break;
-    case MEDIUM_STRING:
-      str = value->data.ch.medium.buf;
-      break;
-    case LARGE_STRING:
-      /* Currently not implemented */
-      str = NULL;
-      break;
-    }
-
-  return str;
-}
-
-/*
- * db_get_bit() -
- * return :
- * value(in):
- * length(out):
- */
-DB_C_BIT
-db_get_bit (const DB_VALUE * value, int *length)
-{
-  char *str = NULL;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-  CHECK_1ARG_NULL (length);
-#endif
-
-  if (value->domain.general_info.is_null)
-    {
-      return NULL;
-    }
-
-  /* Needs to be checked !! */
-  assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_BIT || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARBIT);
-
-  switch (value->data.ch.info.style)
-    {
-    case SMALL_STRING:
-      {
-	*length = value->data.ch.sm.size;
-	str = (char *) value->data.ch.sm.buf;
-      }
-      break;
-    case MEDIUM_STRING:
-      {
-	*length = value->data.ch.medium.size;
-	str = value->data.ch.medium.buf;
-      }
-      break;
-    case LARGE_STRING:
-      {
-	/* Currently not implemented */
-	*length = 0;
-	str = NULL;
-      }
-      break;
-    }
-
-  return str;
-}
-
-/*
- * db_get_char() -
- * return :
- * value(in):
- * length(out):
- */
-DB_C_CHAR
-db_get_char (const DB_VALUE * value, int *length)
-{
-  char *str = NULL;
-  DB_TYPE type;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-  CHECK_1ARG_NULL (length);
-#endif
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-
-  type = DB_VALUE_DOMAIN_TYPE (value);
-
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR
-	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT);
-
-  switch (value->data.ch.info.style)
-    {
-    case SMALL_STRING:
-      {
-	str = (char *) value->data.ch.sm.buf;
-	intl_char_count ((unsigned char *) str, value->data.ch.sm.size, (INTL_CODESET) value->data.ch.info.codeset,
-			 length);
-      }
-      break;
-    case MEDIUM_STRING:
-      {
-	str = value->data.ch.medium.buf;
-	intl_char_count ((unsigned char *) str, value->data.ch.medium.size, (INTL_CODESET) value->data.ch.info.codeset,
-			 length);
-      }
-      break;
-    case LARGE_STRING:
-      {
-	/* Currently not implemented */
-	str = NULL;
-	*length = 0;
-      }
-      break;
-    }
-
-  return str;
-}
-
-/*
  * db_type_to_db_domain() - see the note below.
  *
  * return : DB_DOMAIN of a primitive DB_TYPE, returns NULL otherwise
@@ -2112,109 +1964,6 @@ db_value_compare (const DB_VALUE * value1, const DB_VALUE * value2)
 {
   /* this handles NULL arguments */
   return tp_value_compare (value1, value2, 1, 0);
-}
-
-
-
-
-
-/*
- * db_get_oid() -
- * return :
- * value(in):
- */
-OID *
-db_get_oid (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-
-  /* Needs to be checked !! */
-  assert (value->domain.general_info.type == DB_TYPE_OID);
-
-  return (OID *) (&value->data.oid);
-}
-
-/*
- * db_get_currency_default() - This returns the value of the default currency
- *    identifier based on the current locale.  This was formerly defined with
- *    the variable DB_CURRENCY_DEFAULT but for the PC, we need to
- *    have this available through a function so it can be exported through
- *    the DLL.
- * return  : currency identifier.
- */
-DB_CURRENCY
-db_get_currency_default ()
-{
-  return lang_currency ();
-}
-
-
-/*
- * db_get_string_codeset() -
- * return :
- * value(in):
- */
-int
-db_get_string_codeset (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
-#endif
-
-  return value->data.ch.info.codeset;
-}
-
-/*
- * db_get_string_collation() -
- * return :
- * value(in):
- */
-int
-db_get_string_collation (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO_WITH_TYPE (value, int);
-#endif
-
-  return value->domain.char_info.collation_id;
-}
-
-
-/*
- * db_get_enum_codeset() -
- * return :
- * value(in):
- */
-int
-db_get_enum_codeset (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
-#endif
-
-  return value->data.enumeration.str_val.info.codeset;
-}
-
-/*
- * db_get_enum_collation() -
- * return :
- * value(in):
- */
-int
-db_get_enum_collation (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO_WITH_TYPE (value, int);
-#endif
-
-  return value->domain.char_info.collation_id;
 }
 
 /*
@@ -2713,6 +2462,161 @@ db_get_method_error_msg (void)
 #else
   return NULL;
 #endif
+}
+
+
+/*
+ * db_get_oid() -
+ * return :
+ * value(in):
+ */
+OID *
+db_get_oid (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
+
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+
+  /* Needs to be checked !! */
+  assert (value->domain.general_info.type == DB_TYPE_OID);
+
+  return (OID *) (&value->data.oid);
+}
+
+/*
+ * db_get_currency_default() - This returns the value of the default currency
+ *    identifier based on the current locale.  This was formerly defined with
+ *    the variable DB_CURRENCY_DEFAULT but for the PC, we need to
+ *    have this available through a function so it can be exported through
+ *    the DLL.
+ * return  : currency identifier.
+ */
+DB_CURRENCY
+db_get_currency_default ()
+{
+  return lang_currency ();
+}
+
+
+/*
+ * db_get_string_codeset() -
+ * return :
+ * value(in):
+ */
+int
+db_get_string_codeset (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
+#endif
+
+  return value->data.ch.info.codeset;
+}
+
+/*
+ * db_get_string_collation() -
+ * return :
+ * value(in):
+ */
+int
+db_get_string_collation (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO_WITH_TYPE (value, int);
+#endif
+
+  return value->domain.char_info.collation_id;
+}
+
+
+/*
+ * db_get_enum_codeset() -
+ * return :
+ * value(in):
+ */
+int
+db_get_enum_codeset (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
+#endif
+
+  return value->data.enumeration.str_val.info.codeset;
+}
+
+/*
+ * db_get_enum_collation() -
+ * return :
+ * value(in):
+ */
+int
+db_get_enum_collation (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO_WITH_TYPE (value, int);
+#endif
+
+  return value->domain.char_info.collation_id;
+}
+
+/*
+ * db_get_char() -
+ * return :
+ * value(in):
+ * length(out):
+ */
+DB_C_CHAR
+db_get_char (const DB_VALUE * value, int *length)
+{
+  char *str = NULL;
+  DB_TYPE type;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+  CHECK_1ARG_NULL (length);
+#endif
+
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR
+	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT);
+
+  switch (value->data.ch.info.style)
+    {
+    case SMALL_STRING:
+      {
+	str = (char *) value->data.ch.sm.buf;
+	intl_char_count ((unsigned char *) str, value->data.ch.sm.size, (INTL_CODESET) value->data.ch.info.codeset,
+			 length);
+      }
+      break;
+    case MEDIUM_STRING:
+      {
+	str = value->data.ch.medium.buf;
+	intl_char_count ((unsigned char *) str, value->data.ch.medium.size, (INTL_CODESET) value->data.ch.info.codeset,
+			 length);
+      }
+      break;
+    case LARGE_STRING:
+      {
+	/* Currently not implemented */
+	str = NULL;
+	*length = 0;
+      }
+      break;
+    }
+
+  return str;
 }
 
 /*
