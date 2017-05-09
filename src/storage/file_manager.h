@@ -234,6 +234,8 @@ extern int file_rv_extdata_remove (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_alloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_convert_ftab_to_user_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_convert_user_to_ftab_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
