@@ -62,9 +62,6 @@
 #define QSTR_IS_ANY_CHAR_OR_BIT(s)		(QSTR_IS_ANY_CHAR(s) \
                                                  || QSTR_IS_BIT(s))
 
-/* From object_accessor.h */
-extern char *obj_Method_error_msg;
-
 /* From object_domain.h */
 /*
  * We probably should make this 0 rather than -1 so that we can more easily
@@ -1220,6 +1217,14 @@ extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_
 extern int db_make_set (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
+extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
+			 const int codeset, const int collation_id);
+extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+			    const int char_str_byte_size, const int codeset, const int collation_id);
+extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
+			  const int codeset, const int collation_id);
+extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+			     const int nchar_str_byte_size, const int codeset, const int collation_id);
 
 /*
  * DB_MAKE_ value constructors.
@@ -1282,14 +1287,6 @@ extern int db_make_float (DB_VALUE * value, const float num);
 extern int db_make_double (DB_VALUE * value, const double num);
 extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
 extern int db_make_string_copy (DB_VALUE * value, const char *str);
-extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
-			 const int codeset, const int collation_id);
-extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
-			    const int char_str_byte_size, const int codeset, const int collation_id);
-extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
-			  const int codeset, const int collation_id);
-extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
-			     const int nchar_str_byte_size, const int codeset, const int collation_id);
 extern int db_make_object (DB_VALUE * value, DB_OBJECT * obj);
 extern int db_make_collection (DB_VALUE * value, DB_COLLECTION * col);
 extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);

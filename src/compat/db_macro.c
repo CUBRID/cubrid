@@ -2070,6 +2070,115 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 }
 
 /*
+ * db_make_char() -
+ * return :
+ * value(out) :
+ * char_length(in):
+ * str(in):
+ * char_str_byte_size(in):
+ */
+int
+db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
+	      const int codeset, const int collation_id)
+{
+  int error;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ERROR (value);
+#endif
+
+  error = db_value_domain_init (value, DB_TYPE_CHAR, char_length, 0);
+  if (error == NO_ERROR)
+    {
+      error = db_make_db_char (value, codeset, collation_id, str, char_str_byte_size);
+    }
+
+  return error;
+}
+
+/*
+ * db_make_varchar() -
+ * return :
+ * value(out) :
+ * max_char_length(in):
+ * str(in):
+ * char_str_byte_size(in):
+ */
+int
+db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str, const int char_str_byte_size,
+		 const int codeset, const int collation_id)
+{
+  int error;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ERROR (value);
+#endif
+
+  error = db_value_domain_init (value, DB_TYPE_VARCHAR, max_char_length, 0);
+  if (error == NO_ERROR)
+    {
+      error = db_make_db_char (value, codeset, collation_id, str, char_str_byte_size);
+    }
+
+  return error;
+}
+
+/*
+ * db_make_nchar() -
+ * return :
+ * value(out) :
+ * nchar_length(in):
+ * str(in):
+ * nchar_str_byte_size(in):
+ */
+int
+db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
+	       const int codeset, const int collation_id)
+{
+  int error;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ERROR (value);
+#endif
+
+  error = db_value_domain_init (value, DB_TYPE_NCHAR, nchar_length, 0);
+  if (error == NO_ERROR)
+    {
+      error = db_make_db_char (value, codeset, collation_id, str, nchar_str_byte_size);
+    }
+
+  return error;
+}
+
+/*
+ * db_make_varnchar() -
+ * return :
+ * value(out) :
+ * max_nchar_length(in):
+ * str(in):
+ * nchar_str_byte_size(in):
+ */
+int
+db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
+		  const int codeset, const int collation_id)
+{
+  int error;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ERROR (value);
+#endif
+
+  error = db_value_domain_init (value, DB_TYPE_VARNCHAR, max_nchar_length, 0);
+  if (error == NO_ERROR)
+    {
+      error = db_make_db_char (value, codeset, collation_id, str, nchar_str_byte_size);
+    }
+
+  return error;
+}
+
+
+/*
  * db_make_bit() -
  * return :
  * value(out) :
