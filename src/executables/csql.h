@@ -51,7 +51,11 @@
 #endif /* WINDOWS */
 
 #define MSGCAT_CSQL_SET_CSQL	  1
-
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  
 /*
  * MESSAGE NUMBERS
  */
@@ -300,6 +304,7 @@ extern int (*csql_text_console_to_utf8) (const char *, const int, char **, int *
 extern void csql_display_msg (const char *string);
 extern void csql_exit (int exit_status);
 extern int csql (const char *argv0, CSQL_ARGUMENT * csql_arg);
+
 extern const char *csql_get_message (int message_index);
 
 extern char *csql_get_real_path (const char *pathname);
@@ -347,5 +352,9 @@ extern char *csql_string_to_plain_string (const char *string_value, int length, 
 
 extern int csql_set_column_width_info (const char *column_name, int column_width);
 extern int csql_get_column_width (const char *column_name);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _CSQL_H_ */

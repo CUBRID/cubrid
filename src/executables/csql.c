@@ -2562,6 +2562,7 @@ csql_exit (int exit_status)
   longjmp (csql_Exit_env, 1);
 }
 
+
 /*
  * csql() - "main" interface function for the csql interpreter
  *   return: EXIT_SUCCESS, EXIT_FAILURE
