@@ -1387,4 +1387,51 @@ db_get_bit (const DB_VALUE * value, int *length)
   return str;
 }
 
+/*
+ *  db_set_compressed_string()	    :- Sets the compressed string, its size and its need for clear in the DB_VALUE
+ *
+ *  value(in/out)		    :- The DB_VALUE
+ *  compressed_string(in)	    :-
+ *  compressed_size(in)		    :-
+ *  compressed_need_clear(in)	    :-
+ */
+DB_MACRO_INLINE void
+db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size, bool compressed_need_clear)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return;
+    }
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+
+  value->data.ch.medium.compressed_buf = compressed_string;
+  value->data.ch.medium.compressed_size = compressed_size;
+  value->data.ch.info.compressed_need_clear = compressed_need_clear;
+
+  return;
+}
+
+DB_MACRO_INLINE int
+db_get_compressed_size (DB_VALUE * value)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return 0;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+
+  return value->data.ch.medium.compressed_size;
+}
+
 #endif

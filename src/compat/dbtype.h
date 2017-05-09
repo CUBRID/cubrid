@@ -1248,9 +1248,6 @@ extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, 
 extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
-extern int db_get_compressed_size (DB_VALUE * value);
-extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
-				      int compressed_size, bool compressed_need_clear);
 extern char *db_get_method_error_msg (void);
 
 extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
@@ -1335,6 +1332,9 @@ extern unsigned short db_get_enum_short (const DB_VALUE * value);
 extern int db_get_enum_string_size (const DB_VALUE * value);
 extern DB_C_CHAR db_get_string (const DB_VALUE * value);
 extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
+extern int db_get_compressed_size (DB_VALUE * value);
+extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
+				      int compressed_size, bool compressed_need_clear);
 
 #endif
 
