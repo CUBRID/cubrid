@@ -12292,97 +12292,100 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  TP_DOMAIN *desired_domain;
 	  TP_DOMAIN_STATUS status;
 
-	  /* get desired domain. */
-	  if (attribute->data_type != NULL)
+	  if (def_val->node_type == PT_VALUE)
 	    {
-	      desired_domain =
-		pt_node_data_type_to_db_domain (parser, (PT_NODE *) attribute->data_type, (PT_TYPE_ENUM) desired_type);
-	      if (desired_domain != NULL)
-		{
-		  desired_domain = tp_domain_cache (desired_domain);
-		}
-	    }
-	  else
-	    {
-	      desired_domain = pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM) desired_type);
-	    }
-	  assert (desired_domain != NULL);
-
-	  /* get the db_value from node. */
-	  db_src_val = pt_value_to_db (parser, def_val);
-	  if (!db_src_val)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  /* cast the default value to attribute domain */
-	  db_make_null (&db_dest_val);
-	  status = tp_value_cast (db_src_val, &db_dest_val, desired_domain, false);
-	  switch (status)
-	    {
-	    case DOMAIN_INCOMPATIBLE:
-	      error = ER_IT_INCOMPATIBLE_DATATYPE;
-	      break;
-
-	    case DOMAIN_OVERFLOW:
-	      error = ER_IT_DATA_OVERFLOW;
-	      break;
-
-	    case DOMAIN_ERROR:
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      break;
-	    }
-
-	  if (def_val->info.value.db_value_is_in_workspace)
-	    {
-	      (void) db_value_clear (db_src_val);
-	    }
-
-	  if (error != NO_ERROR)
-	    {
-	      if (error == ER_IT_DATA_OVERFLOW)
-		{
-		  PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-			       pt_short_print (parser, def_val), pt_show_type_enum ((PT_TYPE_ENUM) desired_type));
-		}
-	      else if (error < 0)
-		{
-		  PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			       pt_short_print (parser, def_val), (desired_type == PT_TYPE_OBJECT
-								  ? attribute->data_type->info.data_type.entity->info.
-								  name.
-								  original : pt_show_type_enum ((PT_TYPE_ENUM)
-												desired_type)));
-		}
-	      return error;
-	    }
-
-	  temp = pt_dbval_to_value (parser, &db_dest_val);
-	  (void) db_value_clear (&db_dest_val);
-	  if (!temp)
-	    {
-	      return ER_FAILED;
-	    }
-	  else
-	    {
-	      temp->line_number = def_val->line_number;
-	      temp->column_number = def_val->column_number;
-	      temp->alias_print = def_val->alias_print;
-	      temp->info.value.print_charset = def_val->info.value.print_charset;
-	      temp->info.value.print_collation = def_val->info.value.print_collation;
-	      temp->info.value.is_collate_allowed = def_val->info.value.is_collate_allowed;
-	      *def_val = *temp;
+	      /* get desired domain. */
 	      if (attribute->data_type != NULL)
 		{
-		  def_val->data_type = parser_copy_tree_list (parser, attribute->data_type);
-		  if (def_val->data_type == NULL)
+		  desired_domain =
+		    pt_node_data_type_to_db_domain (parser, (PT_NODE *) attribute->data_type,
+						    (PT_TYPE_ENUM) desired_type);
+		  if (desired_domain != NULL)
 		    {
-		      return ER_FAILED;
+		      desired_domain = tp_domain_cache (desired_domain);
 		    }
 		}
-	      temp->info.value.db_value_is_in_workspace = 0;
-	      parser_free_node (parser, temp);
+	      else
+		{
+		  desired_domain = pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM) desired_type);
+		}
+	      assert (desired_domain != NULL);
+
+	      /* get the db_value from node. */
+	      db_src_val = pt_value_to_db (parser, def_val);
+	      if (!db_src_val)
+		{
+		  return ER_FAILED;
+		}
+
+	      /* cast the default value to attribute domain */
+	      db_make_null (&db_dest_val);
+	      status = tp_value_cast (db_src_val, &db_dest_val, desired_domain, false);
+	      switch (status)
+		{
+		case DOMAIN_INCOMPATIBLE:
+		  error = ER_IT_INCOMPATIBLE_DATATYPE;
+		  break;
+
+		case DOMAIN_OVERFLOW:
+		  error = ER_IT_DATA_OVERFLOW;
+		  break;
+
+		case DOMAIN_ERROR:
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  break;
+		}
+
+	      if (def_val->info.value.db_value_is_in_workspace)
+		{
+		  (void) db_value_clear (db_src_val);
+		}
+
+	      if (error != NO_ERROR)
+		{
+		  if (error == ER_IT_DATA_OVERFLOW)
+		    {
+		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+				   pt_short_print (parser, def_val), pt_show_type_enum ((PT_TYPE_ENUM) desired_type));
+		    }
+		  else if (error < 0)
+		    {
+		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+				   pt_short_print (parser, def_val),
+				   (desired_type == PT_TYPE_OBJECT
+				    ? attribute->data_type->info.data_type.entity->info.name.original
+				    : pt_show_type_enum ((PT_TYPE_ENUM) desired_type)));
+		    }
+		  return error;
+		}
+
+	      temp = pt_dbval_to_value (parser, &db_dest_val);
+	      (void) db_value_clear (&db_dest_val);
+	      if (!temp)
+		{
+		  return ER_FAILED;
+		}
+	      else
+		{
+		  temp->line_number = def_val->line_number;
+		  temp->column_number = def_val->column_number;
+		  temp->alias_print = def_val->alias_print;
+		  temp->info.value.print_charset = def_val->info.value.print_charset;
+		  temp->info.value.print_collation = def_val->info.value.print_collation;
+		  temp->info.value.is_collate_allowed = def_val->info.value.is_collate_allowed;
+		  *def_val = *temp;
+		  if (attribute->data_type != NULL)
+		    {
+		      def_val->data_type = parser_copy_tree_list (parser, attribute->data_type);
+		      if (def_val->data_type == NULL)
+			{
+			  return ER_FAILED;
+			}
+		    }
+		  temp->info.value.db_value_is_in_workspace = 0;
+		  parser_free_node (parser, temp);
+		}
 	    }
 	}
       else
