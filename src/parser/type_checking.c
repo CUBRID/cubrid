@@ -7737,16 +7737,17 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      if (limit != NULL)
 		{
 		  t_node = *expr_pred;
-		  while (t_node && t_node->next)
+		  while (t_node != NULL && t_node->next != NULL)
 		    {
 		      t_node = t_node->next;
 		    }
-		  if (!t_node)
+		  if (t_node == NULL)
 		    {
 		      t_node = *expr_pred = limit;
 		    }
 		  else
 		    {
+		      t_node->info.expr.paren_type = 1;
 		      t_node->next = limit;
 		    }
 
@@ -7789,19 +7790,20 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, PT_INST_NUM, false);
 	    }
 
-	  if (limit)
+	  if (limit != NULL)
 	    {
 	      t_node = *expr_pred;
-	      while (t_node && t_node->next)
+	      while (t_node != NULL && t_node->next != NULL)
 		{
 		  t_node = t_node->next;
 		}
-	      if (!t_node)
+	      if (t_node == NULL)
 		{
 		  t_node = *expr_pred = limit;
 		}
 	      else
 		{
+		  t_node->info.expr.paren_type = 1;
 		  t_node->next = limit;
 		}
 
@@ -7829,18 +7831,19 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	  PT_NODE *t_node = node->info.delete_.search_cond;
 	  PT_NODE *limit = pt_limit_to_numbering_expr (parser, node->info.delete_.limit, PT_INST_NUM, false);
 
-	  if (limit)
+	  if (limit != NULL)
 	    {
-	      while (t_node && t_node->next)
+	      while (t_node != NULL && t_node->next != NULL)
 		{
 		  t_node = t_node->next;
 		}
-	      if (!t_node)
+	      if (t_node == NULL)
 		{
 		  node->info.delete_.search_cond = limit;
 		}
 	      else
 		{
+		  t_node->info.expr.paren_type = 1;
 		  t_node->next = limit;
 		}
 
@@ -7862,18 +7865,32 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
 	  if (node->info.update.order_by)
 	    {
-	      expr_pred = &(node->info.update.orderby_for);
+	      expr_pred = &node->info.update.orderby_for;
 	      limit = pt_limit_to_numbering_expr (parser, node->info.update.limit, PT_ORDERBY_NUM, false);
 	    }
 	  else
 	    {
-	      expr_pred = &(node->info.update.search_cond);
+	      expr_pred = &node->info.update.search_cond;
 	      limit = pt_limit_to_numbering_expr (parser, node->info.update.limit, PT_INST_NUM, false);
 	    }
 
-	  if (limit)
+	  if (limit != NULL)
 	    {
-	      *expr_pred = parser_append_node (limit, *expr_pred);
+	      t_node = *expr_pred;
+	      while (t_node != NULL && t_node->next != NULL)
+		{
+		  t_node = t_node->next;
+		}
+	      if (t_node == NULL)
+		{
+		  t_node = *expr_pred = limit;
+		}
+	      else
+		{
+		  t_node->info.expr.paren_type = 1;
+		  t_node->next = limit;
+		}
+
 	      node->info.update.rewrite_limit = 0;
 	    }
 	  else
