@@ -13821,8 +13821,14 @@ limit_factor
 
         | '(' limit_expr ')'
                 {{
+			PT_NODE *exp = $2;
 
-                        $$ = $2;
+			if (exp && exp->node_type == PT_EXPR)
+			  {
+			    exp->info.expr.paren_type = 1;
+			  }
+
+                        $$ = exp;
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
                 DBG_PRINT}}
