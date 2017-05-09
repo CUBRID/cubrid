@@ -49,11 +49,9 @@ typedef struct oid_block_list
 } OID_BLOCK_LIST;
 
 #define SORT_SPEC_EQ(a, b) \
-  ((a)->info.sort_spec.pos_descr.pos_no \
-    == (b)->info.sort_spec.pos_descr.pos_no \
+  ((a)->info.sort_spec.pos_descr.pos_no == (b)->info.sort_spec.pos_descr.pos_no \
    && (a)->info.sort_spec.asc_or_desc == (b)->info.sort_spec.asc_or_desc \
-   && (a)->info.sort_spec.nulls_first_or_last \
-    == (b)->info.sort_spec.nulls_first_or_last)
+   && (a)->info.sort_spec.nulls_first_or_last == (b)->info.sort_spec.nulls_first_or_last)
 
 /*
  *       	         CATALOG STRUCTURES
@@ -72,10 +70,13 @@ typedef struct
 } ATTR_DESCR;			/* Attribute Descriptor */
 
 #define UT_CLEAR_ATTR_DESCR(ptr) \
-{ (ptr)->id = -1; \
-  (ptr)->type = DB_TYPE_NULL; \
-  (ptr)->cache_dbvalp = NULL; \
-}
+  do \
+    { \
+      (ptr)->id = -1; \
+      (ptr)->type = DB_TYPE_NULL; \
+      (ptr)->cache_dbvalp = NULL; \
+    } \
+  while (0)
 
 /*
  *       	         INDEX STRUCTURES
@@ -118,10 +119,11 @@ typedef struct key_info
 {
   KEY_RANGE *key_ranges;	/* a list of key ranges */
   int key_cnt;			/* key count */
-  int is_constant;		/* every key value is a constant */
+  bool is_constant;		/* every key value is a constant */
+  bool key_limit_reset;		/* should key limit reset at each range */
+  bool is_user_given_keylimit;	/* true if user specifies key limit */
   struct regu_variable_node *key_limit_l;	/* lower key limit */
   struct regu_variable_node *key_limit_u;	/* upper key limit */
-  int key_limit_reset;		/* should key limit reset at each range */
 } KEY_INFO;			/* key information structure */
 
 typedef struct indx_info
