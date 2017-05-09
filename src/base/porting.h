@@ -28,10 +28,10 @@
 #ident "$Id$"
 
 #include "config.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+// #ifdef __cplusplus
+// extern "C"
+// {
+// #endif
 
 #if defined (AIX)
 #include <sys/socket.h>
@@ -853,7 +853,6 @@ extern void port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc);
 
 extern char *trim (char *str);
 
-extern int parse_int (int *ret_p, const char *str_p, int base);
 extern int parse_bigint (INT64 * ret_p, const char *str_p, int base);
 
 extern int str_to_int32 (int *ret_p, char **end_p, const char *str_p, int base);
@@ -882,6 +881,11 @@ extern time_t mktime_for_win32 (struct tm *tm);
 
 extern int msleep (const long msec);
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+extern int parse_int (int *ret_p, const char *str_p, int base);
 #ifdef __cplusplus
 }
 #endif
