@@ -7622,8 +7622,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_eval_recursive_expr_type () - evaluates type for recursive expression
- *	nodes.
+ * pt_eval_recursive_expr_type () - evaluates type for recursive expression nodes.
  *   return: evaluated node
  *   parser(in):
  *   recursive_expr(in): recursive expression node to evaluate.
@@ -7738,16 +7737,17 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      if (limit != NULL)
 		{
 		  t_node = *expr_pred;
-		  while (t_node && t_node->next)
+		  while (t_node != NULL && t_node->next != NULL)
 		    {
 		      t_node = t_node->next;
 		    }
-		  if (!t_node)
+		  if (t_node == NULL)
 		    {
 		      t_node = *expr_pred = limit;
 		    }
 		  else
 		    {
+		      t_node->info.expr.paren_type = 1;
 		      t_node->next = limit;
 		    }
 
@@ -7776,7 +7776,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	  else if (node->info.query.q.select.group_by)
 	    {
 	      expr_pred = &node->info.query.q.select.having;
-	      limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, 0, true);
+	      limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, 0 /* irrelevant */ , true);
 	    }
 	  else if (node->info.query.all_distinct == PT_DISTINCT)
 	    {
@@ -7790,19 +7790,20 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, PT_INST_NUM, false);
 	    }
 
-	  if (limit)
+	  if (limit != NULL)
 	    {
 	      t_node = *expr_pred;
-	      while (t_node && t_node->next)
+	      while (t_node != NULL && t_node->next != NULL)
 		{
 		  t_node = t_node->next;
 		}
-	      if (!t_node)
+	      if (t_node == NULL)
 		{
 		  t_node = *expr_pred = limit;
 		}
 	      else
 		{
+		  t_node->info.expr.paren_type = 1;
 		  t_node->next = limit;
 		}
 
@@ -7828,20 +7829,21 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
       if (node->info.delete_.limit && node->info.delete_.rewrite_limit)
 	{
 	  PT_NODE *t_node = node->info.delete_.search_cond;
-	  PT_NODE *limit = pt_limit_to_numbering_expr (parser, node->info.delete_.limit,
-						       PT_INST_NUM, false);
-	  if (limit)
+	  PT_NODE *limit = pt_limit_to_numbering_expr (parser, node->info.delete_.limit, PT_INST_NUM, false);
+
+	  if (limit != NULL)
 	    {
-	      while (t_node && t_node->next)
+	      while (t_node != NULL && t_node->next != NULL)
 		{
 		  t_node = t_node->next;
 		}
-	      if (!t_node)
+	      if (t_node == NULL)
 		{
 		  node->info.delete_.search_cond = limit;
 		}
 	      else
 		{
+		  t_node->info.expr.paren_type = 1;
 		  t_node->next = limit;
 		}
 
@@ -7863,17 +7865,32 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
 	  if (node->info.update.order_by)
 	    {
-	      expr_pred = &(node->info.update.orderby_for);
+	      expr_pred = &node->info.update.orderby_for;
 	      limit = pt_limit_to_numbering_expr (parser, node->info.update.limit, PT_ORDERBY_NUM, false);
 	    }
 	  else
 	    {
-	      expr_pred = &(node->info.update.search_cond);
+	      expr_pred = &node->info.update.search_cond;
 	      limit = pt_limit_to_numbering_expr (parser, node->info.update.limit, PT_INST_NUM, false);
 	    }
-	  if (limit)
+
+	  if (limit != NULL)
 	    {
-	      *expr_pred = parser_append_node (limit, *expr_pred);
+	      t_node = *expr_pred;
+	      while (t_node != NULL && t_node->next != NULL)
+		{
+		  t_node = t_node->next;
+		}
+	      if (t_node == NULL)
+		{
+		  t_node = *expr_pred = limit;
+		}
+	      else
+		{
+		  t_node->info.expr.paren_type = 1;
+		  t_node->next = limit;
+		}
+
 	      node->info.update.rewrite_limit = 0;
 	    }
 	  else
@@ -8053,15 +8070,11 @@ pt_fold_constants (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
   switch (node->node_type)
     {
     case PT_EXPR:
-      {
-	node = pt_fold_const_expr (parser, node, arg);
-	break;
-      }
+      node = pt_fold_const_expr (parser, node, arg);
+      break;
     case PT_FUNCTION:
-      {
-	node = pt_fold_const_function (parser, node);
-	break;
-      }
+      node = pt_fold_const_function (parser, node);
+      break;
     default:
       break;
     }
@@ -8071,6 +8084,7 @@ pt_fold_constants (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
       PT_INTERNAL_ERROR (parser, "pt_fold_constants");
       return NULL;
     }
+
   return node;
 }
 
@@ -8421,22 +8435,18 @@ pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE *
     case PT_SELECT:
       {
 	PT_NODE *select_list = query->info.query.q.select.list;
+
 	query->info.query.q.select.list = parser_append_node (attrs, select_list);
 	break;
       }
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:
-      {
-	query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg1, attrs);
-	query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg2, attrs);
-
-	break;
-      }
+      query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg1, attrs);
+      query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg2, attrs);
+      break;
     default:
-      {
-	break;
-      }
+      break;
     }
 
   return query;
@@ -19902,6 +19912,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  result = parser_copy_tree_list (parser, result);
 	}
 
+#if 0
+      /* We tried to fold trivial expressions which is always true: e.g, inst_num() > 0
+       * This looks like a nice optimization but it causes defects with rewrite optimization of limit clause.
+       * Once we fold a rewritten predicate here, limit clause might be bound with an incorrect hostvar.
+       * Please note that limit clause and rewritten predicates works independently.
+       * The optimization cannot be applied until we change the design of limit evaluation.
+       */
       if (opd1 && opd1->node_type == PT_EXPR && opd2 && opd2->node_type == PT_VALUE
 	  && (opd1->info.expr.op == PT_INST_NUM || opd1->info.expr.op == PT_ORDERBY_NUM)
 	  && (opd2->type_enum == PT_TYPE_INTEGER || opd2->type_enum == PT_TYPE_BIGINT))
@@ -19929,6 +19946,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      result = pt_dbval_to_value (parser, &dbval_res);
 	    }
 	}
+#endif
 
       if (result == NULL)
 	{

@@ -810,6 +810,12 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    NULL},
+  {RVFL_FHEAD_CONVERT_FTAB_TO_USER,
+   "RVFL_FHEAD_CONVERT_FTAB_TO_USER",
+   file_rv_fhead_convert_user_to_ftab_page,
+   file_rv_fhead_convert_ftab_to_user_page,
+   NULL,
+   NULL},
 };
 
 /*
