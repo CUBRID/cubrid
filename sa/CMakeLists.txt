@@ -318,9 +318,9 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cubridsa LINK_PRIVATE cas ${EP_LIBS})
 endif(UNIX)
-if(USE_BISON_FLEX)
-  add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-endif(USE_BISON_FLEX)
+
+add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
+
 if(UNIX)
   add_dependencies(cubridsa ${EP_TARGETS})
 endif(UNIX)
