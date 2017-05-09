@@ -4636,7 +4636,7 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
       *vpid_alloc_out = save_next;
       /* callers usually expect a "deallocated" page. we need to simulate that.
        * note that maybe we can do without really deallocating. a page type update would be enough. this is however the
-       * safest way to do it, even thought not optimal. the case will not affect performance in any benchmark or
+       * safest way to do it, even though not optimal. the case will not affect performance in any benchmark or
        * production scenario anyway. */
       pgbuf_dealloc_page (thread_p, page_part_ftab_first);
       page_part_ftab_first = NULL;
@@ -4685,9 +4685,12 @@ int
 file_rv_fhead_convert_ftab_to_user_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   FILE_HEADER *fhead = (FILE_HEADER *) rcv->pgptr;
+
   fhead->n_page_ftab--;
   fhead->n_page_user++;
+
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
   return NO_ERROR;
 }
 
@@ -4702,9 +4705,12 @@ int
 file_rv_fhead_convert_user_to_ftab_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   FILE_HEADER *fhead = (FILE_HEADER *) rcv->pgptr;
+
   fhead->n_page_ftab++;
   fhead->n_page_user--;
+
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
   return NO_ERROR;
 }
 
@@ -4754,7 +4760,7 @@ file_table_append_full_sector_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead
   file_log_extdata_set_next (thread_p, extdata_full_ftab, page_fhead, vpid_new);
   VPID_COPY (&extdata_full_ftab->vpid_next, vpid_new);
 
-  file_log ("file_perm_alloc", "%s", "page has been added to full sectors table \n");
+  file_log ("file_table_append_full_sector_page", "%s", "page has been added to full sectors table \n");
   return NO_ERROR;
 }
 
@@ -4807,7 +4813,7 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
   if (!found)
     {
       /* no free space. add a new page to full table. */
-      VPID vpid_ftab_new;
+      VPID vpid_ftab_new = VPID_INITIALIZER;
 
       /* unfix the last page that remained fixed from file_extdata_find_not_null */
       if (page_ftab != NULL)
@@ -4821,6 +4827,7 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
+      assert (!VPID_ISNULL (&vpid_ftab_new));
 
       /* fix newly allocated table page. note that this is an old page, file_perm_alloc already initialized it. */
       page_ftab = pgbuf_fix (thread_p, &vpid_ftab_new, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -4961,6 +4968,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
     {
       /* we know we have free pages, so we should have partial sectors in other table pages */
       PAGE_PTR page_ftab_free = NULL;
+
       error_code = file_table_move_partial_sectors_to_header (thread_p, page_fhead, alloc_type, vpid_alloc_out);
       if (error_code != NO_ERROR)
 	{
