@@ -5751,10 +5751,24 @@ alter_column_clause_mysql_specific
 				def = node->info.data_default.default_value;
 				if (def && def->node_type == PT_EXPR)
 				  {
-					if (def->info.expr.op == PT_TO_CHAR && def->info.expr.arg1
-						&& def->info.expr.arg1->node_type == PT_EXPR)
-					  {
-						def = def->info.expr.arg1;								
+					if (def->info.expr.op == PT_TO_CHAR)
+					  {					    
+						if (def->info.expr.arg3)
+						  {							
+						    bool dummy;						
+						    bool has_user_lang = false;
+						    assert (def->info.expr.arg3->node_type == PT_VALUE);
+							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
+							if (has_user_lang)
+							  {
+								PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
+							  }
+						  }
+						
+						if (def->info.expr.arg1 && def->info.expr.arg1->node_type == PT_EXPR)
+						  {
+						    def = def->info.expr.arg1;
+						  }
 					  }
 							
 				    switch (def->info.expr.op)
@@ -10095,10 +10109,25 @@ column_default_constraint_def
 			    def = node->info.data_default.default_value;
 			    if (def && def->node_type == PT_EXPR)
 			      {
-					if (def->info.expr.op == PT_TO_CHAR && def->info.expr.arg1 
-						&& def->info.expr.arg1->node_type == PT_EXPR)
-					  {
-						def = def->info.expr.arg1;
+					if (def->info.expr.op == PT_TO_CHAR)
+					  {					  
+						if (def->info.expr.arg3)
+						  {
+							bool has_user_lang = false;
+							bool dummy;
+							
+							assert (def->info.expr.arg3->node_type == PT_VALUE);
+							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
+							 if (has_user_lang)
+							   {
+								 PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
+							   }
+							}
+						
+						if (def->info.expr.arg1  && def->info.expr.arg1->node_type == PT_EXPR)
+						  {
+							def = def->info.expr.arg1;
+						  }						
 					  }					  
 						  
 				switch (def->info.expr.op)
