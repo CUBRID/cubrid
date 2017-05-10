@@ -4553,7 +4553,7 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 		}
 	    }
 
-	  if (default_expr->default_expr_op != -1)
+	  if (default_expr->default_expr_op != NULL_DEFAULT_EXPRESSION_OPERATOR)
 	    {
 	      DB_SEQ *default_expr_sequence = NULL;
 	      DB_VALUE value;
