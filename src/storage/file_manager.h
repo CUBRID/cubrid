@@ -158,7 +158,7 @@ extern int file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLE
 			FILE_DESCRIPTORS * des, bool is_temp, bool is_numerable, VFID * vfid);
 extern int file_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npages, FILE_DESCRIPTORS * des,
 				    VFID * vfid);
-extern int file_create_heap (THREAD_ENTRY * thread_p, bool reuse_oid, VFID * vfid);
+extern int file_create_heap (THREAD_ENTRY * thread_p, bool reuse_oid, const OID * class_oid, VFID * vfid);
 extern int file_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
 extern int file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
 extern int file_create_query_area (THREAD_ENTRY * thread_p, VFID * vfid);
@@ -203,7 +203,7 @@ extern int file_get_tran_num_temp_files (THREAD_ENTRY * thread_p);
 
 extern int file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out);
 extern int file_tracker_load (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out);
+extern int file_tracker_reuse_heap (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out);
 extern int file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_ftype, VFID * vfid,
 					       OID * class_oid);
 extern DISK_ISVALID file_tracker_check (THREAD_ENTRY * thread_p);
