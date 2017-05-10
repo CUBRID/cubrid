@@ -475,6 +475,8 @@
 #define DB_UTIME_MIN       (DB_UTIME_ZERO + 1)
 #define DB_UTIME_MAX       DB_UINT32_MAX
 
+#define NULL_DEFAULT_EXPRESSION_OPERATOR (-1)
+
 #define DB_IS_DATETIME_DEFAULT_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \
     (v) == DB_DEFAULT_CURRENTTIME || (v) == DB_DEFAULT_CURRENTDATE || \
     (v) == DB_DEFAULT_SYSDATETIME || (v) == DB_DEFAULT_SYSTIMESTAMP || \
@@ -996,7 +998,16 @@ typedef enum
   DB_DEFAULT_CURRENTTIME = 9,
   DB_DEFAULT_CURRENTDATE = 10,
   DB_DEFAULT_SYSTIME = 11,
+  DB_DEFAULT_FORMATTED_SYSDATE = 12,
 } DB_DEFAULT_EXPR_TYPE;
+
+typedef struct db_default_expr DB_DEFAULT_EXPR;
+struct db_default_expr
+{
+  DB_DEFAULT_EXPR_TYPE default_expr_type;	/* default expression identifier */
+  int default_expr_op;		/* default expression operator */
+  char *default_expr_format;	/* default expression format */
+};
 
 typedef DB_DATETIME DB_C_DATETIME;
 typedef DB_DATETIMETZ DB_C_DATETIMETZ;

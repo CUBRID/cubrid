@@ -627,11 +627,17 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE
 	      pr_clear_value (&inc_val);
 	    }
 	}
-      if (!DB_IS_NULL (&attribute_p->default_value.value) || attribute_p->default_value.default_expr != DB_DEFAULT_NONE)
+      if (!DB_IS_NULL (&attribute_p->default_value.value)
+	  || attribute_p->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " DEFAULT ");
 
-	  switch (attribute_p->default_value.default_expr)
+	  if (attribute_p->default_value.default_expr.default_expr_op == T_TO_CHAR)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, "TO_CHAR(");
+	    }
+
+	  switch (attribute_p->default_value.default_expr.default_expr_type)
 	    {
 	    case DB_DEFAULT_SYSTIME:
 	      buffer = pt_append_nulstring (parser, buffer, "SYS_TIME");
@@ -667,8 +673,25 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE
 	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_TIMESTAMP");
 	      break;
 	    default:
+	      assert (attribute_p->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR);
 	      buffer = describe_value (parser, buffer, &attribute_p->default_value.value);
 	      break;
+	    }
+
+	  if (attribute_p->default_value.default_expr.default_expr_op == T_TO_CHAR)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, ", \'");
+	      if (attribute_p->default_value.default_expr.default_expr_format)
+		{
+		  buffer = pt_append_nulstring (parser, buffer,
+						attribute_p->default_value.default_expr.default_expr_format);
+		}
+	      else
+		{
+		  buffer = pt_append_nulstring (parser, buffer, "NULL");
+		}
+
+	      buffer = pt_append_nulstring (parser, buffer, "\')");
 	    }
 	}
     }

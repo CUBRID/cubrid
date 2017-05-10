@@ -2416,7 +2416,6 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node, SEMAN_COMPATIBLE
 			    {
 			      if (att->data_type == NULL)
 				{
-				  assert_release (att->data_type != NULL);
 				  return NULL;
 				}
 			    }
@@ -4019,6 +4018,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  goto end;
 	}
 
+
       node_ptr = NULL;
       (void) parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
       if (node_ptr != NULL)
@@ -4160,14 +4160,25 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 static PT_NODE *
 pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  PT_NODE **default_expr = (PT_NODE **) arg;
+  PT_NODE **default_expr = (PT_NODE **) arg, *node = NULL;
 
   if (tree == NULL || !PT_IS_EXPR_NODE (tree))
     {
       *continue_walk = PT_STOP_WALK;
     }
 
-  switch (tree->info.expr.op)
+  if (tree->info.expr.arg1 != NULL && PT_IS_EXPR_NODE (tree->info.expr.arg1) && tree->info.expr.op == PT_TO_CHAR)
+    {
+      /* The correctness of TO_CHAR expression is done a little bit later after obtaining system time. */
+      assert (tree->info.expr.arg2 != NULL);
+      node = tree->info.expr.arg1;
+    }
+  else
+    {
+      node = tree;
+    }
+
+  switch (node->info.expr.op)
     {
     case PT_SYS_TIME:
     case PT_SYS_DATE:
@@ -7671,10 +7682,12 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   PT_NODE *attr, *col;
   PT_NODE *columns = pt_get_select_list (parser, qry);
   PT_NODE *default_data = NULL;
-  PT_NODE *default_value = NULL;
+  PT_NODE *default_value = NULL, *default_op_value = NULL;
   PT_NODE *spec, *entity_name;
   DB_OBJECT *obj;
   DB_ATTRIBUTE *col_attr;
+  const char *lang_str;
+  int flag = 0;
 
   /* Import default value from referenced table for those attributes in the the view that have no default value. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
@@ -7706,14 +7719,14 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		}
 
 	      if (DB_IS_NULL (&col_attr->default_value.value)
-		  && (col_attr->default_value.default_expr == DB_DEFAULT_NONE))
+		  && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
 		{
 		  /* don't create any default node if default value is null unless default expression type is not
 		   * DB_DEFAULT_NONE */
 		  continue;
 		}
 
-	      if (col_attr->default_value.default_expr == DB_DEFAULT_NONE)
+	      if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
 		{
 		  default_value = pt_dbval_to_value (parser, &col_attr->default_value.value);
 		  if (!default_value)
@@ -7731,15 +7744,54 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		    }
 		  default_data->info.data_default.default_value = default_value;
 		  default_data->info.data_default.shared = PT_DEFAULT;
-		  default_data->info.data_default.default_expr = DB_DEFAULT_NONE;
+		  default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 		}
 	      else
 		{
-		  default_value = parser_new_node (parser, PT_EXPR);
-		  if (default_value)
+		  default_op_value = parser_new_node (parser, PT_EXPR);
+		  if (default_op_value != NULL)
 		    {
-		      default_value->info.expr.op =
-			pt_op_type_from_default_expr_type (col_attr->default_value.default_expr);
+		      default_op_value->info.expr.op =
+			pt_op_type_from_default_expr_type (col_attr->default_value.default_expr.default_expr_type);
+
+		      if (default_op_value->info.expr.op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+			{
+			  default_value = default_op_value;
+			}
+		      else
+			{
+			  PT_NODE *arg1, *arg2, *arg3;
+			  arg1 = default_op_value;
+			  arg2 = pt_make_string_value (parser,
+						       col_attr->default_value.default_expr.default_expr_format);
+			  if (arg2 == NULL)
+			    {
+			      parser_free_tree (parser, default_op_value);
+			      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			      goto error;
+			    }
+
+			  arg3 = parser_new_node (parser, PT_VALUE);
+			  if (arg3 == NULL)
+			    {
+			      parser_free_tree (parser, default_op_value);
+			      parser_free_tree (parser, arg2);
+			    }
+			  arg3->type_enum = PT_TYPE_INTEGER;
+			  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+			  lang_set_flag_from_lang (lang_str, 1, 0, &flag);
+			  arg3->info.value.data_value.i = (long) flag;
+
+			  default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+			  if (default_value == NULL)
+			    {
+			      parser_free_tree (parser, default_op_value);
+			      parser_free_tree (parser, arg2);
+			      parser_free_tree (parser, arg3);
+			      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			      goto error;
+			    }
+			}
 		    }
 		  else
 		    {
@@ -7756,7 +7808,8 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		    }
 		  default_data->info.data_default.default_value = default_value;
 		  default_data->info.data_default.shared = PT_DEFAULT;
-		  default_data->info.data_default.default_expr = col_attr->default_value.default_expr;
+		  default_data->info.data_default.default_expr_type =
+		    col_attr->default_value.default_expr.default_expr_type;
 		}
 	      attr->info.attr_def.data_default = default_data;
 	    }

@@ -413,9 +413,9 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      if (att->default_value.default_expr != DB_DEFAULT_NONE)
+      if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	{
-	  switch (att->default_value.default_expr)
+	  switch (att->default_value.default_expr.default_expr_type)
 	    {
 	    case DB_DEFAULT_SYSTIME:
 	    case DB_DEFAULT_CURRENTTIME:
@@ -12779,7 +12779,7 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spe
   while (attr)
     {
       if (db_attribute_is_non_null (attr) && db_value_is_null (db_attribute_default (attr))
-	  && attr->default_value.default_expr == DB_DEFAULT_NONE
+	  && attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
 	  && (is_attr_not_in_insert_list (parser, attr_list, db_attribute_name (attr)) || has_default_values_list)
 	  && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
 	{

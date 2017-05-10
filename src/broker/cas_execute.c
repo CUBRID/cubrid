@@ -3643,7 +3643,8 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 {
   DB_VALUE *def = NULL;
   int err;
-  char *default_value_string = NULL;
+  char *default_value_string = NULL, *default_expr_format = NULL;
+  const char *default_value_expr_type_string = NULL;
 
   *alloc = false;
 
@@ -3654,32 +3655,97 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       return default_value_string;
     }
 
-  switch (attr->default_value.default_expr)
+  if (attr->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+    {
+      int len;
+      default_expr_format = attr->default_value.default_expr.default_expr_format;
+      len = strlen ("TO_CHAR(") + 3 + strlen ("CURRENT_TIMESTAMP")
+	+ (default_expr_format ? strlen (default_expr_format) : strlen ("NULL"));
+      default_value_string = (char *) malloc (len + 1);
+      if (default_value_string == NULL)
+	{
+	  return NULL;
+	}
+
+      *alloc = true;
+    }
+
+  switch (attr->default_value.default_expr.default_expr_type)
     {
     case DB_DEFAULT_SYSTIME:
-      return "SYS_TIME";
-    case DB_DEFAULT_SYSDATE:
-      return "SYS_DATE";
-    case DB_DEFAULT_CURRENTDATE:
-      return "CURRENT_DATE";
-    case DB_DEFAULT_CURRENTTIME:
-      return "CURRENT_TIME";
-    case DB_DEFAULT_SYSDATETIME:
-      return "SYS_DATETIME";
-    case DB_DEFAULT_SYSTIMESTAMP:
-      return "SYS_TIMESTAMP";
-    case DB_DEFAULT_CURRENTDATETIME:
-      return "CURRENT_DATETIME";
-    case DB_DEFAULT_CURRENTTIMESTAMP:
-      return "CURRENT_TIMESTAMP";
-    case DB_DEFAULT_UNIX_TIMESTAMP:
-      return "UNIX_TIMESTAMP";
-    case DB_DEFAULT_USER:
-      return "USER";
-    case DB_DEFAULT_CURR_USER:
-      return "CURRENT_USER";
-    case DB_DEFAULT_NONE:
+      default_value_expr_type_string = "SYS_TIME";
       break;
+
+    case DB_DEFAULT_SYSDATE:
+      default_value_expr_type_string = "SYS_DATE";
+      break;
+
+    case DB_DEFAULT_CURRENTDATE:
+      default_value_expr_type_string = "CURRENT_DATE";
+      break;
+
+    case DB_DEFAULT_CURRENTTIME:
+      default_value_expr_type_string = "CURRENT_TIME";
+      break;
+
+    case DB_DEFAULT_SYSDATETIME:
+      default_value_expr_type_string = "SYS_DATETIME";
+      break;
+
+    case DB_DEFAULT_SYSTIMESTAMP:
+      default_value_expr_type_string = "SYS_TIMESTAMP";
+      break;
+
+    case DB_DEFAULT_CURRENTDATETIME:
+      default_value_expr_type_string = "CURRENT_DATETIME";
+      break;
+
+    case DB_DEFAULT_CURRENTTIMESTAMP:
+      default_value_expr_type_string = "CURRENT_TIMESTAMP";
+      break;
+
+    case DB_DEFAULT_UNIX_TIMESTAMP:
+      default_value_expr_type_string = "UNIX_TIMESTAMP";
+      break;
+
+    case DB_DEFAULT_USER:
+      default_value_expr_type_string = "USER";
+      break;
+
+    case DB_DEFAULT_CURR_USER:
+      default_value_expr_type_string = "CURRENT_USER";
+      break;
+
+    default:
+      default_value_expr_type_string = NULL;
+      break;
+    }
+
+  if (attr->default_value.default_expr.default_expr_op != -1)
+    {
+      default_expr_format = attr->default_value.default_expr.default_expr_format;
+      strcpy (default_value_string, "TO_CHAR(");
+      strcat (default_value_string, default_value_expr_type_string);
+      strcat (default_value_string, ", ");
+      if (default_expr_format)
+	{
+	  strcat (default_value_string, default_expr_format);
+	}
+      else
+	{
+	  strcat (default_value_string, "NULL");
+	}
+
+      strcat (default_value_string, ")");
+      return default_value_string;
+    }
+  else
+    {
+      if (default_value_expr_type_string)
+	{
+	  strcpy (default_value_string, default_value_expr_type_string);
+	  return default_value_string;
+	}
     }
 
   if (db_value_is_null (def))

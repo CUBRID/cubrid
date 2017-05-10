@@ -2315,14 +2315,19 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 
   default_value = db_attribute_default (attribute);
   if ((default_value != NULL && !DB_IS_NULL (default_value))
-      || attribute->default_value.default_expr != DB_DEFAULT_NONE)
+      || attribute->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
       if (qualifier != SHARED_ATTRIBUTE)
 	{
 	  fprintf (output_file, " DEFAULT ");
 	}
 
-      switch (attribute->default_value.default_expr)
+      if (attribute->default_value.default_expr.default_expr_op == T_TO_CHAR)
+	{
+	  fprintf (output_file, "TO_CHAR(");
+	}
+
+      switch (attribute->default_value.default_expr.default_expr_type)
 	{
 	case DB_DEFAULT_SYSTIME:
 	  fprintf (output_file, "SYS_TIME");
@@ -2369,6 +2374,21 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	      desc_value_fprint (output_file, default_value);
 	    }
 	  break;
+	}
+
+      if (attribute->default_value.default_expr.default_expr_op == T_TO_CHAR)
+	{
+	  fprintf (output_file, ", \'");
+	  if (attribute->default_value.default_expr.default_expr_format != NULL)
+	    {
+	      fprintf (output_file, attribute->default_value.default_expr.default_expr_format);
+	    }
+	  else
+	    {
+	      fprintf (output_file, "NULL");
+	    }
+
+	  fprintf (output_file, "\')");
 	}
     }
 
