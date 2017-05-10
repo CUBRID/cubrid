@@ -11025,6 +11025,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
       if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
 	{
+	  TP_DOMAIN *result_domain;
+
 	  assert (attr->current_default_value.default_expr.default_expr_type != DB_DEFAULT_NONE);
 	  if (attr->current_default_value.default_expr.default_expr_format != NULL)
 	    {
@@ -11038,7 +11040,29 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
 	  lang_set_flag_from_lang (lang_str, 1, 0, &flag);
 	  db_make_int (&lang_val, flag);
-	  if (db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], attr->domain) != NO_ERROR)
+
+	  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
+	    {
+	      /* TO_CHAR returns a string value, we need to pass an expected domain of the result */
+	      if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&insert_val)))
+		{
+		  result_domain = NULL;
+		}
+	      else if (DB_IS_NULL (&format_val))
+		{
+		  result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+		}
+	      else
+		{
+		  result_domain = tp_domain_resolve_value (&format_val, NULL);
+		}
+	    }
+	  else
+	    {
+	      result_domain = attr->domain;
+	    }
+
+	  if (db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }

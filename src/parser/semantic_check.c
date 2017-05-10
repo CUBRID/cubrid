@@ -4018,6 +4018,29 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  goto end;
 	}
 
+      if (PT_IS_EXPR_NODE (default_value->info.expr.arg1) && default_value->info.expr.op == PT_TO_CHAR)
+	{
+	  int op_type = -1;
+
+	  if (default_value->info.expr.arg2 != NULL && default_value->info.expr.arg2->node_type == PT_EXPR)
+	    {
+	      /* nested expressions in arg2 are not supported */
+	      op_type = default_value->info.expr.arg2->info.expr.op;
+	    }
+	  else if (node_ptr == NULL && default_value->info.expr.arg1
+		   && default_value->info.expr.arg1->node_type == PT_EXPR)
+	    {
+	      /* nested expressions in arg1 are not supported except sys date, time and user. */
+	      op_type = default_value->info.expr.arg1->info.expr.op;
+	    }
+
+	  if (op_type != -1)
+	    {
+	      PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_NESTED_EXPR_NOT_ALLOWED,
+			  pt_show_binopcode (op_type));
+	      goto end;
+	    }
+	}
 
       node_ptr = NULL;
       (void) parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
