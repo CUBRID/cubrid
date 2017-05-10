@@ -5071,22 +5071,24 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	  ASSERT_ERROR ();
 	  goto error;
 	}
-      assert (!HFID_IS_NULL (hfid));
 
-      /* reuse heap file */
-      if (heap_reuse (thread_p, hfid, class_oid, reuse_oid) == NULL)
+      if (!HFID_IS_NULL (hfid))
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto error;
+	  /* reuse heap file */
+	  if (heap_reuse (thread_p, hfid, class_oid, reuse_oid) == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto error;
+	    }
+	  error_code = heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid, file_type);
+	  if (error_code != NO_ERROR)
+	    {
+	      /* could not cache */
+	      assert_release (false);
+	    }
+	  /* reuse successful */
+	  goto end;
 	}
-      error_code = heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid, file_type);
-      if (error_code != NO_ERROR)
-	{
-	  /* could not cache */
-	  assert_release (false);
-	}
-      /* reuse successful */
-      goto end;
     }
 
   /* 
