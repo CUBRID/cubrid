@@ -4020,12 +4020,24 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 
       if (PT_IS_EXPR_NODE (default_value->info.expr.arg1) && default_value->info.expr.op == PT_TO_CHAR)
 	{
-	  assert (default_value->info.expr.arg2 != NULL);
-	  if (default_value->info.expr.arg2->node_type != PT_VALUE)
+	  int op_type = -1;
+
+	  if (default_value->info.expr.arg2 != NULL && default_value->info.expr.arg2->node_type == PT_EXPR)
 	    {
-	      /* nested expressions in arg2 are not supported. We may change the returned error code. */
+	      /* nested expressions in arg2 are not supported */
+	      op_type = default_value->info.expr.arg2->info.expr.op;
+	    }
+	  else if (node_ptr == NULL && default_value->info.expr.arg1
+		   && default_value->info.expr.arg1->node_type == PT_EXPR)
+	    {
+	      /* nested expressions in arg1 are not supported except sys date, time and user. */
+	      op_type = default_value->info.expr.arg1->info.expr.op;
+	    }
+
+	  if (op_type != -1)
+	    {
 	      PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_NESTED_EXPR_NOT_ALLOWED,
-			  pt_show_binopcode (node_ptr->info.expr.op));
+			  pt_show_binopcode (op_type));
 	      goto end;
 	    }
 	}
