@@ -280,6 +280,8 @@ static int get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribut
 
 static int do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser, PT_NODE * alter, MOP class_mop);
 
+static int do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * alter, MOP class_mop);
+
 static int do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * alter, PT_NODE * attr_list,
 						       int attr_count, MOP class_mop);
 
@@ -1203,6 +1205,20 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   if (alter_code == PT_ADD_ATTR_MTHD)
     {
       error = do_update_new_notnull_cols_without_default (parser, alter, vclass);
+      if (error != NO_ERROR)
+	{
+	  if (error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	    }
+	  return error;
+	}
+
+      /*
+       * if we ADD COLUMN with DEFAULT expression the existing rows will be filled with default expression for the 
+       * new column. That's because we need to set the column value right now (the default expression may be date/time).
+       */
+      error = do_update_new_cols_with_default_expression (parser, alter, vclass);
       if (error != NO_ERROR)
 	{
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -12619,6 +12635,97 @@ end:
   return error;
 }
 
+/*
+ * do_run_update_query_for_new_default_expression_fields) - worker function for
+ *    do_update_new_cols_with_default_expression().
+ *
+ *  parser(in): parser
+ *  alter(in): alter node
+ *  attr_list(in) attribute nodes list
+ *  attr_count(int): count attribute nodes
+ *  class_mop(in): class mop
+ *
+ * Note : It creates a complex UPDATE query and runs it.
+ */
+static int
+do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, PT_NODE * alter, PT_NODE * attr_list,
+						       int attr_count, MOP class_mop)
+{
+  char *query, *q;
+  int query_len, remaining, n;
+
+  PT_NODE *attr;
+  int first = TRUE;
+  int error = NO_ERROR;
+  int row_count = 0;
+
+  assert (parser && alter && attr_list);
+  assert (attr_count > 0);
+
+  /* Allocate enough for each attribute's name, its default value, and for the "UPDATE table_name" part of the query.
+   * 100 is more than the maximum length of any default value for an attribute, including three spaces, the coma sign
+   * and an equal. */
+
+  query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 100);
+  if (query_len > QUERY_MAX_SIZE)
+    {
+      ERROR1 (error, ER_UNEXPECTED, "Too many attributes.");
+      return error;
+    }
+
+  q = query = (char *) malloc (query_len + 1);
+  if (query == NULL)
+    {
+      ERROR1 (error, ER_OUT_OF_VIRTUAL_MEMORY, (size_t) (query_len + 1));
+      return error;
+    }
+
+  query[0] = 0;
+
+  /* Using UPDATE ALL to update the current class and all its children. */
+  n = snprintf (q, remaining, "UPDATE ALL [%s] SET ", alter->info.alter.entity_name->info.name.original);
+  if (n < 0)
+    {
+      ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
+      goto end;
+    }
+  remaining -= n;
+  q += n;
+
+  for (attr = attr_list; attr != NULL; attr = attr->next)
+    {
+      const char *sep = first ? "" : ", ";
+      char *data_default;
+      data_default = parser_print_tree (parser, attr->info.attr_def.data_default->info.data_default.default_value);
+      if (data_default == NULL)
+	{
+	  continue;
+	}
+
+      n = snprintf (q, remaining, "%s[%s] = %s", sep, attr->info.attr_def.attr_name->info.name.original, data_default);
+      if (n < 0)
+	{
+	  ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
+	  goto end;
+	}
+      remaining -= n;
+      q += n;
+
+      first = FALSE;
+    }
+
+  /* Now just RUN thew query */
+  error = do_run_update_query_for_class (query, class_mop, &row_count);
+
+
+end:
+  if (query)
+    {
+      free_and_init (query);
+    }
+
+  return error;
+}
 
 /*
  * is_attribute_primary_key() - Returns true if the attribute given is part
@@ -12757,6 +12864,93 @@ do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser, PT_NODE * a
       goto end;
     }
 
+
+end:
+  if (relevant_attrs != NULL)
+    {
+      parser_free_tree (parser, relevant_attrs);
+    }
+
+  return error;
+}
+
+/*
+ * do_update_new_cols_with_default_expression() : Populates the newly added columns with default expression
+ *
+ * return: error code
+ *
+ *   parser(in): Parser context
+ *   alter(in):  Parse tree of the statement
+ *
+ * Nore: Used only on ALTER TABLE ... ADD COLUMN, and only AFTER the operation has been performed (i.e. the columns
+ * have been added to the schema, even though the transaction has not been committed).
+ *
+ */
+static int
+do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * alter, MOP class_mop)
+{
+  PT_NODE *relevant_attrs = NULL;
+  int error = NO_ERROR;
+  int attr_count = 0;
+  PT_NODE *pt_data_default = NULL, *pt_default_expr = NULL;
+  PT_NODE *attr = NULL;
+  PT_NODE *save = NULL;
+  PT_NODE *copy = NULL;
+  DB_DEFAULT_EXPR default_expr;
+
+  assert (alter->node_type == PT_ALTER);
+  assert (alter->info.alter.code == PT_ADD_ATTR_MTHD);
+
+  /* Look for attributes that have a DEFAULT expression. */
+  for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr; attr = attr->next)
+    {
+      pt_data_default = attr->info.attr_def.data_default;
+      if (pt_data_default == NULL)
+	{
+	  /* don't have default clause */
+	  continue;
+	}
+
+      pt_get_default_expression_from_data_default_node (parser, pt_data_default, &default_expr);
+      if (default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+	{
+	  /* don't have default expression */
+	  continue;
+	}
+
+      if (!db_class_has_instance (class_mop))
+	{
+	  continue;
+	}
+
+      /* now we have an interesting node. Copy it in our list. */
+      attr_count++;
+      save = attr->next;
+      attr->next = NULL;
+      copy = parser_copy_tree (parser, attr);
+      if (copy == NULL)
+	{
+	  attr->next = save;
+	  ERROR0 (error, ER_OUT_OF_VIRTUAL_MEMORY);
+	  parser_free_tree (parser, relevant_attrs);
+	  goto end;
+	}
+      relevant_attrs = parser_append_node (copy, relevant_attrs);
+      attr->next = save;
+    }
+
+  if (relevant_attrs == NULL)
+    {
+      /* no interesting attribute found, just leave */
+      goto end;
+    }
+
+  /* RUN an UPDATE query comprising all the attributes */
+  error = do_run_update_query_for_new_default_expression_fields (parser, alter, relevant_attrs, attr_count, class_mop);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
 end:
   if (relevant_attrs != NULL)
