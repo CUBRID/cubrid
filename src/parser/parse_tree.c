@@ -602,7 +602,7 @@ pt_append_string_for (const PARSER_CONTEXT * parser, char *old_string, const cha
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
-      s = parser_allocate_string_buffer (parser, strlen (old_string) + new_tail_length, sizeof (char));
+      s = (char*)parser_allocate_string_buffer (parser, strlen (old_string) + new_tail_length, sizeof (char));
       if (s == NULL)
 	{
 	  return NULL;
@@ -687,7 +687,7 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
-      s = parser_allocate_string_buffer (parser,
+      s = (char*)parser_allocate_string_buffer (parser,
 					 offsetof (PARSER_VARCHAR, bytes) + old_string->length + new_tail_length,
 					 sizeof (long));
       if (s == NULL)
@@ -961,7 +961,7 @@ pt_append_string (const PARSER_CONTEXT * parser, char *old_string, const char *n
     }
   else if (old_string == NULL)
     {
-      s = parser_allocate_string_buffer (parser, strlen (new_tail), sizeof (char));
+      s = (char*)parser_allocate_string_buffer (parser, strlen (new_tail), sizeof (char));
       if (s == NULL)
 	{
 	  return NULL;

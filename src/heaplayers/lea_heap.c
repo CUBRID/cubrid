@@ -223,7 +223,7 @@ hl_register_lea_heap (void)
     {
       HL_MSPACE *hms;
 
-      hms = malloc (LEA_HEAP_BASE_SIZE);
+      hms = (HL_MSPACE*)malloc (LEA_HEAP_BASE_SIZE);
       if (hms == NULL)
 	{
 	  return 0;
@@ -234,7 +234,7 @@ hl_register_lea_heap (void)
 	LEA_HEAP_BASE_SIZE - (size_t) ((char *) hms->base - (char *) hms);
       MMAP_TRACE_H_INIT (&hms->header, NULL);
 
-      hms->ms = create_mspace_with_base (hms->base, hms->base_size, 0);
+      hms->ms = (mstate)create_mspace_with_base (hms->base, hms->base_size, 0);//vapa!!!
       if (hms->ms == NULL)
 	{
 	  free (hms);
@@ -286,7 +286,7 @@ hl_clear_lea_heap (UINTPTR heap_id)
       if (hms != NULL)
 	{
 	  destroy_mspace_internal (hms);
-	  hms->ms = create_mspace_with_base (hms->base, hms->base_size, 0);
+	  hms->ms = (mstate)create_mspace_with_base (hms->base, hms->base_size, 0);
 	  assert (hms->ms != NULL);
 	}
     }

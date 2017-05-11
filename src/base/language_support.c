@@ -1382,7 +1382,7 @@ init_user_locales (void)
     }
   assert (num_user_loc > 0);
 
-  loclib_Handle = (void *) malloc (loclib_Handle_size * sizeof (void *));
+  loclib_Handle = (void **) malloc (loclib_Handle_size * sizeof (void *));
   if (loclib_Handle == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, loclib_Handle_size * sizeof (void *));
@@ -1451,7 +1451,7 @@ init_user_locales (void)
 		}
 	    }
 
-	  lld = malloc (sizeof (LANG_LOCALE_DATA));
+	  lld = (LANG_LOCALE_DATA*)malloc (sizeof (LANG_LOCALE_DATA));
 	  if (lld == NULL)
 	    {
 	      er_status = ER_LOC_INIT;
@@ -3965,7 +3965,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
 	  break;
 	}
 
-      for (level = 0; level < coll_data->uca_opt.sett_strength; (*(int*)&level)++)
+      for (level = (T_LEVEL)0; level < coll_data->uca_opt.sett_strength; (*(int*)&level)++)
 	{
 	  w = GET_UCA_WEIGHT (level, ce_index, uca_w_l13, uca_w_l4);
 	  ADD_TO_HASH (pseudo_key, w);
@@ -6665,7 +6665,7 @@ lang_split_key_binary (const LANG_COLLATION * lang_coll, const bool is_desc, con
 
 
 #if defined(WINDOWS)
-#define GET_SYM_ADDR(lib, sym) GetProcAddress(lib, sym)
+#define GET_SYM_ADDR(lib, sym) GetProcAddress((HMODULE)lib, sym)
 #else
 #define GET_SYM_ADDR(lib, sym) dlsym(lib, sym)
 #endif
@@ -6798,7 +6798,10 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld, void *lib_handle, const 
 
   SHLIB_GET_VAL (lld->number_group_sym, "number_group_sym", char, lib_handle, lld->lang_name);
 
-  SHLIB_GET_VAL (lld->default_currency_code, "default_currency_code", int, lib_handle, lld->lang_name);
+  int currency_code;
+  SHLIB_GET_VAL (currency_code, "default_currency_code", int, lib_handle, lld->lang_name);
+  
+  lld->default_currency_code = (DB_CURRENCY)currency_code;
 
   /* alphabet */
   SHLIB_GET_ADDR (temp_num_sym, "alphabet_a_type", int *, lib_handle, lld->lang_name);
@@ -6879,7 +6882,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld, void *lib_handle, const 
 	}
       memset (lld->txt_conv, 0, sizeof (TEXT_CONVERSION));
 
-      lld->txt_conv->conv_type = txt_conv_type;
+      lld->txt_conv->conv_type = (TEXT_CONV_TYPE)txt_conv_type;
 
       SHLIB_GET_ADDR (is_lead_byte, "tc_is_lead_byte", unsigned char *, lib_handle, lld->lang_name);
       memcpy (lld->txt_conv->byte_flag, is_lead_byte, 256);
@@ -7309,7 +7312,7 @@ lang_load_library (const char *lib_file, void **handle)
       err_status = ER_LOC_INIT;
 #if defined(WINDOWS)
       FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL,
-		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1, &lib_file);
+		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1, (va_list*)&lib_file);
       snprintf (err_msg, sizeof (err_msg) - 1,
 		"Library file is invalid or not accessible.\n" " Unable to load %s !\n %s", lib_file, lpMsgBuf);
       LocalFree (lpMsgBuf);
@@ -7337,7 +7340,7 @@ lang_unload_libraries (void)
     {
       assert (loclib_Handle[i] != NULL);
 #if defined(WINDOWS)
-      FreeLibrary (loclib_Handle[i]);
+      FreeLibrary ((HMODULE)loclib_Handle[i]);
 #else
       dlclose (loclib_Handle[i]);
 #endif

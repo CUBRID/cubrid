@@ -173,7 +173,7 @@ static int tz_get_iana_zone_id_by_windows_zone (const char *windows_zone_name);
 #endif
 
 #if defined(WINDOWS)
-#define TZ_GET_SYM_ADDR(lib, sym) GetProcAddress(lib, sym)
+#define TZ_GET_SYM_ADDR(lib, sym) GetProcAddress((HMODULE)lib, sym)
 #else
 #define TZ_GET_SYM_ADDR(lib, sym) dlsym(lib, sym)
 #endif
@@ -248,7 +248,7 @@ tz_load_library (const char *lib_file, void **handle)
     {
 #if defined(WINDOWS)
       FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL,
-		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1, &lib_file);
+		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1, (va_list*)&lib_file);
       snprintf (err_msg, sizeof (err_msg) - 1,
 		"Library file is invalid or not accessible.\n" " Unable to load %s !\n %s", lib_file, lpMsgBuf);
       LocalFree (lpMsgBuf);
@@ -378,7 +378,7 @@ tz_unload (void)
   if (tz_Lib_handle != NULL)
     {
 #if defined(WINDOWS)
-      FreeLibrary (tz_Lib_handle);
+      FreeLibrary ((HMODULE)tz_Lib_handle);
 #else
       dlclose (tz_Lib_handle);
 #endif
@@ -810,7 +810,7 @@ tz_get_utc_tz_id (void)
 const TZ_REGION *
 tz_get_utc_tz_region (void)
 {
-  static const TZ_REGION utc_region = { 0, {0} };
+  static const TZ_REGION utc_region = { TZ_REGION_OFFSET, {0} };
 
   return &utc_region;
 }
@@ -822,7 +822,7 @@ tz_get_utc_tz_region (void)
 static const TZ_REGION *
 tz_get_invalid_tz_region (void)
 {
-  static const TZ_REGION invalid_region = { 0, {TZ_INVALID_OFFSET} };
+  static const TZ_REGION invalid_region = { TZ_REGION_OFFSET, {TZ_INVALID_OFFSET} };
 
   return &invalid_region;
 }

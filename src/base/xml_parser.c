@@ -95,7 +95,7 @@ xml_init_schema_tree (XML_ELEMENT_DEF ** element_array, const int count)
   int i;
   XML_ELEMENT *xml_parse_tree = NULL;
 
-  xml_parse_tree = malloc (sizeof (XML_ELEMENT));
+  xml_parse_tree = (XML_ELEMENT*) malloc (sizeof (XML_ELEMENT));
   if (xml_parse_tree == NULL)
     {
       return NULL;
@@ -167,7 +167,7 @@ xml_clone_node (XML_ELEMENT * schema_src, XML_ELEMENT * parent, XML_ELEMENT * pr
       return NULL;
     }
 
-  xml_parse_tree = malloc (sizeof (XML_ELEMENT));
+  xml_parse_tree = (XML_ELEMENT*)malloc (sizeof (XML_ELEMENT));
   if (xml_parse_tree == NULL)
     {
       *has_error = true;
@@ -225,7 +225,7 @@ xml_copy_schema_tree (XML_ELEMENT * src, XML_ELEMENT ** dest)
 static XML_ELEMENT *
 create_xml_node (XML_ELEMENT_DEF * new_elem)
 {
-  XML_ELEMENT *xml_node = malloc (sizeof (XML_ELEMENT));
+  XML_ELEMENT *xml_node = (XML_ELEMENT*) malloc (sizeof (XML_ELEMENT));
 
   if (xml_node == NULL)
     {
@@ -909,7 +909,7 @@ xml_init_parser_common (void *data, const char *xml_file, const char *encoding)
     }
 
   /* input buffer */
-  pd->buf = malloc (XML_READ_BUFFSIZE);
+  pd->buf = (char*) malloc (XML_READ_BUFFSIZE);
   if (pd->buf == NULL)
     {
       pd->xml_error = XML_CUB_OUT_OF_MEMORY;

@@ -2507,8 +2507,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	  att_props = DB_GET_SEQUENCE (&val);
 	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
 	    {
-	      att->default_value.default_expr = DB_GET_INT (&def_expr);
-	      att->current_default_value.default_expr = DB_GET_INT (&def_expr);
+	      att->default_value.default_expr = (DB_DEFAULT_EXPR_TYPE)DB_GET_INT (&def_expr);
+	      att->current_default_value.default_expr = (DB_DEFAULT_EXPR_TYPE)DB_GET_INT (&def_expr);
 	    }
 
 	  pr_clear_value (&def_expr);
@@ -3781,7 +3781,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	    }
 
 	  assert (*string == NULL);
-	  *string = db_private_alloc (NULL, decompressed_length + 1);
+	  *string = (char*)db_private_alloc (NULL, decompressed_length + 1);
 	  if (*string == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);

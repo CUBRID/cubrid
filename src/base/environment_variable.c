@@ -245,7 +245,8 @@ envvar_expand (const char *string, char *buffer, size_t maxlen)
     const char *str;
     size_t len;
   } fragments[_ENVVAR_MAX_EXPANSION], *cur, *fen;
-  char *s, *e, env[_ENVVAR_MAX_LENGTH], *val;
+  char env[_ENVVAR_MAX_LENGTH], *val;
+  const char *s, *e;
 
   s = strchr (string, '$');
   if (!s)

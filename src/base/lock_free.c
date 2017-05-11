@@ -2839,7 +2839,7 @@ lf_circular_queue_create (unsigned int capacity, int data_size)
     }
 
   /* Allocate queue data buffer */
-  queue->data = malloc (capacity * data_size);
+  queue->data = (char*)malloc (capacity * data_size);
   if (queue->data == NULL)
     {
       free (queue);
@@ -2848,7 +2848,7 @@ lf_circular_queue_create (unsigned int capacity, int data_size)
     }
 
   /* Allocate the array of entry state */
-  queue->entry_state = malloc (capacity * sizeof (UINT64));
+  queue->entry_state = (UINT64*)malloc (capacity * sizeof (UINT64));
   if (queue->entry_state == NULL)
     {
       free (queue->data);
@@ -2999,7 +2999,7 @@ lf_bitmap_destroy (LF_BITMAP * bitmap)
     }
   bitmap->entry_count = 0;
   bitmap->entry_count_in_use = 0;
-  bitmap->style = 0;
+  bitmap->style = LF_BITMAP_ONE_CHUNK;
   bitmap->usage_threshold = 1.0f;
   bitmap->start_idx = 0;
 }

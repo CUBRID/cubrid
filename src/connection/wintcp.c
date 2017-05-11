@@ -349,7 +349,7 @@ css_fd_down (SOCKET fd)
 int
 css_gethostname (char *passed_name, int length)
 {
-  char *name = "PC";
+  const char *name = "PC";
   char hostname[MAXHOSTNAMELEN];
   int err = 0;
 

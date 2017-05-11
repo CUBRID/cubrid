@@ -735,7 +735,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
       goto exit;
     }
 
-  unicode_decomp_map_count = malloc (MAX_UNICODE_CHARS * sizeof (int));
+  unicode_decomp_map_count = (int*)malloc (MAX_UNICODE_CHARS * sizeof (int));
   if (unicode_decomp_map_count == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -772,7 +772,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
     }
 
   /* Prepare the generation of all decomposition steps for all codepoints */
-  temp_list_unicode_decomp_maps = malloc (norm->unicode_mappings_count * sizeof (UNICODE_CP_MAPPING));
+  temp_list_unicode_decomp_maps = (UNICODE_CP_MAPPING*)malloc (norm->unicode_mappings_count * sizeof (UNICODE_CP_MAPPING));
   if (temp_list_unicode_decomp_maps == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -791,7 +791,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	  um = &(temp_list_unicode_decomp_maps[orig_mapping_count]);
 	  um->cp = cp;
 	  um->size = unicode_data[cp].unicode_mapping_cp_count;
-	  um->map = malloc (um->size * sizeof (uint32));
+	  um->map = (uint32*)malloc (um->size * sizeof (uint32));
 	  if (um->map == NULL)
 	    {
 	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -824,7 +824,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	    {
 	      new_map->size = um->size - 1 + unicode_data[um->map[0]].unicode_mapping_cp_count;
 	      new_map->cp = um->cp;
-	      new_map->map = malloc (new_map->size * sizeof (uint32));
+	      new_map->map = (uint32*) malloc (new_map->size * sizeof (uint32));
 	      if (new_map->map == NULL)
 		{
 		  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -875,7 +875,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	 comp_func_grouping_unicode_cp_mapping);
 
   /* Build starting indexes for each cp which is the first cp in a compact group of mappings */
-  norm->unicode_mapping_index = malloc ((MAX_UNICODE_CHARS + 1) * sizeof (int));
+  norm->unicode_mapping_index = (int*) malloc ((MAX_UNICODE_CHARS + 1) * sizeof (int));
   if (norm->unicode_mapping_index == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -1046,7 +1046,7 @@ unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps, LOCALE_DATA *
 
   /* Prepare the unicode_mappings array for storing the data from decomp_maps as utf8 buffers + length + original
    * codepoint. */
-  norm->unicode_mappings = malloc (norm->unicode_mappings_count * sizeof (UNICODE_MAPPING));
+  norm->unicode_mappings = (UNICODE_MAPPING*)malloc (norm->unicode_mappings_count * sizeof (UNICODE_MAPPING));
   if (norm->unicode_mappings == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -1056,7 +1056,7 @@ unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps, LOCALE_DATA *
   memset (norm->unicode_mappings, 0, norm->unicode_mappings_count * sizeof (UNICODE_MAPPING));
 
   /* Prepare the index list for fully decomposed mappings */
-  norm->list_full_decomp = malloc (MAX_UNICODE_CHARS * sizeof (int));
+  norm->list_full_decomp = (int*)malloc (MAX_UNICODE_CHARS * sizeof (int));
   if (norm->list_full_decomp == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);

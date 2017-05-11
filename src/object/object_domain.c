@@ -1199,7 +1199,7 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
 
   dest->count = src->count;
 
-  dest->elements = malloc (src->count * sizeof (DB_ENUM_ELEMENT));
+  dest->elements = (DB_ENUM_ELEMENT*) malloc (src->count * sizeof (DB_ENUM_ELEMENT));
   if (dest->elements == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, src->count * sizeof (DB_ENUM_ELEMENT));
@@ -1215,7 +1215,7 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
 
       if (DB_GET_ENUM_ELEM_STRING (src_elem) != NULL)
 	{
-	  dest_str = malloc (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1);
+	  dest_str = (char*) malloc (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1);
 	  if (dest_str == NULL)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5378,7 +5378,7 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
   assert (DB_VALUE_TYPE (src) == DB_TYPE_FLOAT);
   assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
 
-  rve = str_float = db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
+  rve = str_float = (char*) db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
   if (str_float == NULL)
     {
       DB_MAKE_NULL (result);
@@ -5449,7 +5449,7 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
   assert (DB_VALUE_TYPE (src) == DB_TYPE_DOUBLE);
   assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
 
-  rve = str_double = db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
+  rve = str_double = (char*) db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
   if (str_double == NULL)
     {
       DB_MAKE_NULL (result);
@@ -9418,7 +9418,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    int src_size = DB_GET_STRING_SIZE (src);
 	    int dst_size = (src_size + 1) / 2;
 
-	    bit_char_string = db_private_alloc (NULL, dst_size + 1);
+	    bit_char_string = (char*) db_private_alloc (NULL, dst_size + 1);
 	    if (bit_char_string)
 	      {
 		if (qstr_hex_to_bin (bit_char_string, dst_size, DB_GET_STRING (src), src_size) != src_size)
@@ -10250,7 +10250,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 		if (alloc_string)
 		  {
-		    enum_str = db_private_alloc (NULL, val_str_size + 1);
+		    enum_str = (char*) db_private_alloc (NULL, val_str_size + 1);
 		    if (enum_str == NULL)
 		      {
 			status = DOMAIN_ERROR;

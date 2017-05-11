@@ -1952,7 +1952,7 @@ pr_make_value (void)
 {
   DB_VALUE *value;
 
-  value = db_private_alloc (NULL, sizeof (DB_VALUE));
+  value = (DB_VALUE*) db_private_alloc (NULL, sizeof (DB_VALUE));
 
   if (value != NULL)
     {
@@ -6245,7 +6245,7 @@ mr_setmem_elo (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
       if (value != NULL && (e = db_get_elo (value)) != NULL)
 	{
-	  elo = db_private_alloc (NULL, sizeof (DB_ELO));
+	  elo = (DB_ELO*) db_private_alloc (NULL, sizeof (DB_ELO));
 	  if (elo == NULL)
 	    {
 	      return ((er_errid () == NO_ERROR) ? ER_FAILED : er_errid ());
@@ -6525,7 +6525,7 @@ peekmem_elo (OR_BUF * buf, DB_ELO * elo)
     }
 
   /* type */
-  elo->type = or_get_int (buf, &rc);
+  elo->type = (DB_ELO_TYPE) or_get_int (buf, &rc);
   if (rc != NO_ERROR)
     {
       assert (false);
@@ -8157,7 +8157,7 @@ mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
-      dst_idx.buf = db_private_alloc (NULL, dst_idx.size);
+      dst_idx.buf = (char*) db_private_alloc (NULL, dst_idx.size);
       if (dst_idx.buf == NULL)
 	{
 	  db_value_domain_init (dest, DB_TYPE_MIDXKEY, src_precision, 0);
@@ -8260,7 +8260,7 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	   * Allocate storage for the string
 	   * do not include the kludge NULL terminator
 	   */
-	  new_ = db_private_alloc (NULL, size);
+	  new_ = (char*) db_private_alloc (NULL, size);
 	}
 
       if (new_ == NULL)
@@ -9781,7 +9781,7 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   offset_postfix = pr_midxkey_get_element_offset (midx_postfix, n_prefix);
 
   midx_result.size = offset_prefix + (midx_postfix->size - offset_postfix);
-  midx_result.buf = db_private_alloc (NULL, midx_result.size);
+  midx_result.buf = (char*) db_private_alloc (NULL, midx_result.size);
   midx_result.domain = midx_postfix->domain;
   midx_result.ncolumns = midx_postfix->ncolumns;
 
@@ -10100,7 +10100,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
 	  result_size = size1;
 	}
 
-      result_midxkey.buf = db_private_alloc (NULL, result_size);
+      result_midxkey.buf = (char*) db_private_alloc (NULL, result_size);
       if (result_midxkey.buf == NULL)
 	{
 	  /* will already be set by memory mgr */
@@ -10240,7 +10240,7 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, T
   total_size = pr_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
 
   /* phase 3: initialize new_IDXbuf */
-  new_IDXbuf = db_private_alloc (NULL, total_size);
+  new_IDXbuf = (char*) db_private_alloc (NULL, total_size);
   if (new_IDXbuf == NULL)
     {
       goto error;
@@ -10897,7 +10897,7 @@ mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 
   assert (charlen == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
-  or_init (&buf, memptr, -1);
+  or_init (&buf, (char*)memptr, -1);
 
   rc = or_get_varchar_compression_lengths (&buf, &compressed_length, &decompressed_length);
 
@@ -11006,7 +11006,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	   */
 	  mem_length = len + sizeof (int) + 1;
 
-	  new_ = db_private_alloc (NULL, mem_length);
+	  new_ = (char*) db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
 	    {
 	      or_abort (buf);
@@ -11106,7 +11106,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       else
 	{
-	  new_ = db_private_alloc (NULL, src_length + 1);
+	  new_ = (char*) db_private_alloc (NULL, src_length + 1);
 	  if (new_ == NULL)
 	    {
 	      db_value_domain_init (dest, DB_TYPE_VARCHAR, src_precision, 0);
@@ -11129,7 +11129,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	  else
 	    {
-	      new_compressed_buf = db_private_alloc (NULL, src->data.ch.medium.compressed_size + 1);
+	      new_compressed_buf = (char*) db_private_alloc (NULL, src->data.ch.medium.compressed_size + 1);
 	      if (new_compressed_buf == NULL)
 		{
 		  db_value_domain_init (dest, DB_TYPE_VARCHAR, src_precision, 0);
@@ -11398,7 +11398,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	    {
 	      str_length = compressed_size;
 
-	      string = db_private_alloc (NULL, decompressed_size + 1);
+	      string = (char*) db_private_alloc (NULL, decompressed_size + 1);
 	      if (string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11419,7 +11419,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			       TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
 
-	      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+	      compressed_string = (char*) db_private_alloc (NULL, compressed_size + 1);
 	      if (compressed_string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11495,7 +11495,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		   * Allocate storage for the string including the kludge
 		   * NULL terminator
 		   */
-		  new_ = db_private_alloc (NULL, str_length + 1);
+		  new_ = (char*) db_private_alloc (NULL, str_length + 1);
 		}
 
 	      if (new_ == NULL)
@@ -11544,7 +11544,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		      decompression_size = 0;
 
 		      /* Handle decompression */
-		      decompressed_string = db_private_alloc (NULL, decompressed_size + 1);
+		      decompressed_string = (char*) db_private_alloc (NULL, decompressed_size + 1);
 		      if (decompressed_string == NULL)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11568,7 +11568,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			  assert (false);
 			}
 
-		      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+		      compressed_string = (char*) db_private_alloc (NULL, compressed_size + 1);
 		      if (compressed_string == NULL)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11700,7 +11700,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  goto cleanup;
 	}
 
-      string1 = db_private_alloc (NULL, str1_decompressed_length + 1);
+      string1 = (char*) db_private_alloc (NULL, str1_decompressed_length + 1);
       if (string1 == NULL)
 	{
 	  /* Error report */
@@ -11743,7 +11743,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  goto cleanup;
 	}
 
-      string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
+      string2 = (char*) db_private_alloc (NULL, str2_decompressed_length + 1);
       if (string2 == NULL)
 	{
 	  /* Error report */
@@ -12043,7 +12043,7 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       return ER_FAILED;
     }
 
-  intl_char_size ((unsigned char *) mem, domain->precision, TP_DOMAIN_CODESET (domain), &mem_length);
+  intl_char_size ((unsigned char *) mem, domain->precision, (INTL_CODESET) TP_DOMAIN_CODESET (domain), &mem_length);
   if (mem_length == 0)
     {
       mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
@@ -12055,7 +12055,7 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
   else
     {
-      new_ = db_private_alloc (NULL, mem_length + 1);
+      new_ = (char*) db_private_alloc (NULL, mem_length + 1);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -12226,7 +12226,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 
 	      /* make sure the copy gets a NULL terminator */
-	      new_ = db_private_alloc (NULL, src_length + 1);
+	      new_ = (char*) db_private_alloc (NULL, src_length + 1);
 	      if (new_ == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -12468,7 +12468,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	  else
 	    {
 	      /* Allocate storage for the string including the kludge NULL terminator */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char*) db_private_alloc (NULL, mem_length + 1);
 	    }
 
 	  if (new_ == NULL)
@@ -12526,7 +12526,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	}
       else if (!copy)
 	{
-	  intl_char_size ((unsigned char *) buf->ptr, domain->precision, TP_DOMAIN_CODESET (domain), &str_length);
+	  intl_char_size ((unsigned char *) buf->ptr, domain->precision, (INTL_CODESET)TP_DOMAIN_CODESET (domain), &str_length);
 	  if (str_length == 0)
 	    {
 	      str_length = mem_length;
@@ -12549,7 +12549,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char*)db_private_alloc (NULL, mem_length + 1);
 	    }
 	  if (new_ == NULL)
 	    {
@@ -12571,7 +12571,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 		    }
 		  return rc;
 		}
-	      intl_char_size ((unsigned char *) new_, domain->precision, TP_DOMAIN_CODESET (domain), &actual_size);
+	      intl_char_size ((unsigned char *) new_, domain->precision, (INTL_CODESET)TP_DOMAIN_CODESET (domain), &actual_size);
 	      if (actual_size == 0)
 		{
 		  actual_size = mem_length;
@@ -12882,7 +12882,7 @@ mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       assert (false);
       return ER_FAILED;
     }
-  intl_char_size ((unsigned char *) mem, domain->precision, TP_DOMAIN_CODESET (domain), &mem_length);
+  intl_char_size ((unsigned char *) mem, domain->precision, (INTL_CODESET)TP_DOMAIN_CODESET (domain), &mem_length);
   if (mem_length == 0)
     {
       mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
@@ -12894,7 +12894,7 @@ mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
   else
     {
-      new_ = db_private_alloc (NULL, mem_length + 1);
+      new_ = (char*)db_private_alloc (NULL, mem_length + 1);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -13063,7 +13063,7 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 
 	      /* make sure the copy gets a NULL terminator */
-	      new_ = db_private_alloc (NULL, src_length + 1);
+	      new_ = (char*)db_private_alloc (NULL, src_length + 1);
 	      if (new_ == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -13370,7 +13370,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char*)db_private_alloc (NULL, mem_length + 1);
 	    }
 
 	  if (new_ == NULL)
@@ -13423,7 +13423,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	{
 	  int str_length;
 
-	  intl_char_size ((unsigned char *) buf->ptr, domain->precision, TP_DOMAIN_CODESET (domain), &str_length);
+	  intl_char_size ((unsigned char *) buf->ptr, domain->precision, (INTL_CODESET)TP_DOMAIN_CODESET (domain), &str_length);
 	  if (str_length == 0)
 	    {
 	      str_length = mem_length;
@@ -13446,7 +13446,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char*)db_private_alloc (NULL, mem_length + 1);
 	    }
 
 	  if (new_ == NULL)
@@ -13471,7 +13471,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 
 		  return rc;
 		}
-	      intl_char_size ((unsigned char *) new_, domain->precision, TP_DOMAIN_CODESET (domain), &actual_size);
+	      intl_char_size ((unsigned char *) new_, domain->precision, (INTL_CODESET)TP_DOMAIN_CODESET (domain), &actual_size);
 	      if (actual_size == 0)
 		{
 		  actual_size = mem_length;
@@ -13508,7 +13508,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 
       if (char_count > 0)
 	{
-	  new_ = db_private_alloc (NULL, STR_SIZE (char_count, TP_DOMAIN_CODESET (domain)));
+	  new_ = (char*)db_private_alloc (NULL, STR_SIZE (char_count, TP_DOMAIN_CODESET (domain)));
 	  (void) intl_convert_charset ((unsigned char *) temp_string, char_count,
 				       (INTL_CODESET) TP_DOMAIN_CODESET (domain), (unsigned char *) new_,
 				       LANG_SYS_CODESET, &unconverted);
@@ -13716,7 +13716,7 @@ mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
        * disk representation.
        */
       new_length = src_length + sizeof (int) + 1;
-      new_ = db_private_alloc (NULL, new_length);
+      new_ = (char*)db_private_alloc (NULL, new_length);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -13780,7 +13780,7 @@ mr_getmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool cop
       else
 	{
 	  /* return it with a NULL terminator */
-	  new_ = db_private_alloc (NULL, mem_length + 1);
+	  new_ = (char*)db_private_alloc (NULL, mem_length + 1);
 	  if (new_ == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -13927,7 +13927,7 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       else
 	{
-	  new_ = db_private_alloc (NULL, src_length + 1);
+	  new_ = (char*)db_private_alloc (NULL, src_length + 1);
 	  if (new_ == NULL)
 	    {
 	      db_value_domain_init (dest, DB_TYPE_VARNCHAR, src_precision, 0);
@@ -14241,7 +14241,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	  if (compressed_size > 0)
 	    {
 	      str_length = compressed_size;
-	      string = db_private_alloc (NULL, decompressed_size + 1);
+	      string = (char*)db_private_alloc (NULL, decompressed_size + 1);
 	      if (string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -14264,7 +14264,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 				TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
 
-	      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+	      compressed_string = (char*)db_private_alloc (NULL, compressed_size + 1);
 	      if (compressed_string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -14387,7 +14387,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      assert (decompressed_size > 0);
 
 		      /* Handle decompression */
-		      decompressed_string = db_private_alloc (NULL, decompressed_size + 1);
+		      decompressed_string = (char*)db_private_alloc (NULL, decompressed_size + 1);
 
 		      if (decompressed_string == NULL)
 			{
@@ -14415,7 +14415,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      /* The compressed string stored in buf is now decompressed in decompressed_string
 		       * and is needed now to be copied over new_. */
 
-		      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+		      compressed_string = (char*)db_private_alloc (NULL, compressed_size + 1);
 		      if (compressed_string == NULL)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -14574,7 +14574,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  goto cleanup;
 	}
 
-      string1 = db_private_alloc (NULL, str1_decompressed_length + 1);
+      string1 = (char*)db_private_alloc (NULL, str1_decompressed_length + 1);
       if (string1 == NULL)
 	{
 	  /* Error report */
@@ -14614,7 +14614,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  goto cleanup;
 	}
 
-      string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
+      string2 = (char*)db_private_alloc (NULL, str2_decompressed_length + 1);
       if (string2 == NULL)
 	{
 	  /* Error report */
@@ -14872,7 +14872,7 @@ mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
   else
     {
-      new_ = db_private_alloc (NULL, mem_length + 1);
+      new_ = (char*)db_private_alloc (NULL, mem_length + 1);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -15009,7 +15009,7 @@ mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    {
 
 	      /* make sure the copy gets a NULL terminator */
-	      new_ = db_private_alloc (NULL, src_length + 1);
+	      new_ = (char*)db_private_alloc (NULL, src_length + 1);
 	      if (new_ == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -15251,7 +15251,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char*)db_private_alloc (NULL, mem_length + 1);
 	    }
 
 	  if (new_ == NULL)
@@ -15320,7 +15320,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char*)db_private_alloc (NULL, mem_length + 1);
 	    }
 
 	  if (new_ == NULL)
@@ -15542,7 +15542,7 @@ mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       src_length_bits = db_get_string_length (value);	/* size in bits */
 
       new_length = src_length + sizeof (int);
-      new_ = db_private_alloc (NULL, new_length);
+      new_ = (char*)db_private_alloc (NULL, new_length);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -15652,7 +15652,7 @@ mr_index_lengthmem_varbit (void *memptr, TP_DOMAIN * domain)
   int bitlen;
   int rc = NO_ERROR;
 
-  or_init (&buf, memptr, -1);
+  or_init (&buf, (char*)memptr, -1);
 
   bitlen = or_get_varbit_length (&buf, &rc);
 
@@ -15734,7 +15734,7 @@ mr_data_readmem_varbit (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	   */
 	  mem_length = BITS_TO_BYTES (bit_len) + sizeof (int);
 
-	  new_ = db_private_alloc (NULL, mem_length);
+	  new_ = (char*)db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
 	    {
 	      or_abort (buf);
@@ -15818,7 +15818,7 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       else
 	{
-	  new_ = db_private_alloc (NULL, src_length + 1);
+	  new_ = (char*)db_private_alloc (NULL, src_length + 1);
 	  if (new_ == NULL)
 	    {
 	      db_value_domain_init (dest, DB_TYPE_VARBIT, src_precision, 0);
@@ -16016,7 +16016,7 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		   * Allocate storage for the string including the kludge NULL
 		   * terminator
 		   */
-		  new_ = db_private_alloc (NULL, str_length + 1);
+		  new_ = (char*)db_private_alloc (NULL, str_length + 1);
 		}
 
 	      if (new_ == NULL)
@@ -16238,7 +16238,7 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     {
       if (copy)
 	{
-	  str = db_private_alloc (NULL, DB_GET_ENUM_STRING_SIZE (src) + 1);
+	  str = (char*)db_private_alloc (NULL, DB_GET_ENUM_STRING_SIZE (src) + 1);
 	  if (str == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -16334,7 +16334,7 @@ mr_setval_enumeration_internal (DB_VALUE * value, TP_DOMAIN * domain, unsigned s
 	}
       else
 	{
-	  str = db_private_alloc (NULL, str_size + 1);
+	  str = (char*)db_private_alloc (NULL, str_size + 1);
 	  if (str == NULL)
 	    {
 	      return ER_FAILED;
@@ -16530,7 +16530,7 @@ pr_get_compression_length (const char *string, int charlen)
 
   /* Alloc memory for the compressed string */
   /* Worst case LZO compression size from their FAQ */
-  compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (length));
+  compressed_string = (char*)malloc (LZO_COMPRESSED_STRING_SIZE (length));
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -16623,7 +16623,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
     }
 
   /* Step 1 : Compress, if possible, the dbvalue */
-  wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
+  wrkmem = (unsigned char*) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
@@ -16635,7 +16635,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
 
   /* Alloc memory for the compressed string */
   /* Worst case LZO compression size from their FAQ */
-  compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (str_length));
+  compressed_string = (char*)malloc (LZO_COMPRESSED_STRING_SIZE (str_length));
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -17033,7 +17033,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     }
 
   /* Alloc memory for compression */
-  compressed_string = db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (src_size));
+  compressed_string = (char*)db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (src_size));
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,

@@ -1532,7 +1532,7 @@ intl_upper_string_size (const void *alphabet, unsigned char *src, int src_size, 
 	req_size = 0;
 	for (char_count = 0; char_count < src_length && src_size > 0; char_count++)
 	  {
-	    req_size += intl_char_toupper_utf8 (alphabet, src, src_size, upper, &next);
+	    req_size += intl_char_toupper_utf8 ((const ALPHABET_DATA*)alphabet, src, src_size, upper, &next);
 	    src_size -= (next - src);
 	    src = next;
 	  }
@@ -1597,7 +1597,7 @@ intl_upper_string (const void *alphabet, unsigned char *src, unsigned char *dst,
     case INTL_CODESET_UTF8:
       {
 	int dummy_size;
-	char_count = intl_toupper_utf8 (alphabet, src, dst, length_in_chars, &dummy_size);
+	char_count = intl_toupper_utf8 ((const ALPHABET_DATA*)alphabet, src, dst, length_in_chars, &dummy_size);
       }
       break;
 
@@ -1643,7 +1643,7 @@ intl_lower_string_size (const void *alphabet, unsigned char *src, int src_size, 
 	req_size = 0;
 	for (char_count = 0; char_count < src_length && src_size > 0; char_count++)
 	  {
-	    req_size += intl_char_tolower_utf8 (alphabet, src, src_size, lower, &next);
+	    req_size += intl_char_tolower_utf8 ((const ALPHABET_DATA*)alphabet, src, src_size, lower, &next);
 	    src_size -= (next - src);
 	    src = next;
 	  }
@@ -1707,7 +1707,7 @@ intl_lower_string (const void *alphabet, unsigned char *src, unsigned char *dst,
     case INTL_CODESET_UTF8:
       {
 	int dummy_size;
-	char_count = intl_tolower_utf8 (alphabet, src, dst, length_in_chars, &dummy_size);
+	char_count = intl_tolower_utf8 ((const ALPHABET_DATA*)alphabet, src, dst, length_in_chars, &dummy_size);
       }
       break;
 
@@ -3219,7 +3219,7 @@ intl_identifier_mht_1strlowerhash (const void *key, const unsigned int ht_size)
       {
 	const LANG_LOCALE_DATA *locale = lang_locale ();
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
-	int key_size = strlen (key);
+	int key_size = strlen ((const char*)key);
 	unsigned char *next;
 
 	for (hash = 0; key_size > 0;)
@@ -4455,7 +4455,7 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size, char **out
 
   if (*out_buf == NULL)
     {
-      *out_buf = malloc (in_size + 1);
+      *out_buf = (char*)malloc (in_size + 1);
       if (*out_buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (in_size + 1));
@@ -4784,7 +4784,7 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size, char **out_buf, i
 
   if (*out_buf == NULL)
     {
-      *out_buf = malloc (in_size + 1);
+      *out_buf = (char*)malloc (in_size + 1);
       if (*out_buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (in_size + 1));

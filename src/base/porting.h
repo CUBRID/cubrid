@@ -555,25 +555,26 @@
 
 #define PTHREAD_MUTEX_INITIALIZER	{{ NULL, 0, 0, NULL, NULL, 0 }, NULL, 0}
 
-  typedef union
-  {
-    CONDITION_VARIABLE native_cond;
+enum
+{
+  COND_SIGNAL = 0,
+  COND_BROADCAST = 1,
+  MAX_EVENTS = 2
+} EVENTS;
 
-    struct
-    {
-      bool initialized;
-      unsigned int waiting;
-      CRITICAL_SECTION lock_waiting;
-      enum
-      {
-	COND_SIGNAL = 0,
-	COND_BROADCAST = 1,
-	MAX_EVENTS = 2
-      } EVENTS;
-      HANDLE events[MAX_EVENTS];
-      HANDLE broadcast_block_event;
-    };
-  } pthread_cond_t;
+typedef union
+{
+  CONDITION_VARIABLE native_cond;
+
+  struct
+  {
+    bool initialized;
+    unsigned int waiting;
+    CRITICAL_SECTION lock_waiting;
+    HANDLE events[MAX_EVENTS];
+    HANDLE broadcast_block_event;
+  };
+} pthread_cond_t;
 
 
   typedef HANDLE pthread_condattr_t;
@@ -729,24 +730,91 @@
  */
 #if defined (WINDOWS)
 
+template <bool B>
+struct Bool2Type {
+  enum { value = B };
+};
+
 #define HAVE_ATOMIC_BUILTINS
 
-#define ATOMIC_TAS_32(ptr, new_val) \
-	InterlockedExchange(ptr, new_val)
-#define ATOMIC_CAS_32(ptr, cmp_val, swap_val) \
-	(InterlockedCompareExchange(ptr, swap_val, cmp_val) == (cmp_val))
-#define ATOMIC_INC_32(ptr, amount) \
-	(InterlockedExchangeAdd(ptr, amount) + (amount))
+//#define ATOMIC_TAS_32(ptr, new_val) \
+//	InterlockedExchange(ptr, new_val)
+//#define ATOMIC_CAS_32(ptr, cmp_val, swap_val) \
+//	(InterlockedCompareExchange(ptr, swap_val, cmp_val) == (cmp_val))
+//#define ATOMIC_INC_32(ptr, amount) \
+//	(InterlockedExchangeAdd(ptr, amount) + (amount))
 #define MEMORY_BARRIER() \
 	MemoryBarrier()
 
+template <typename T>
+inline T interlocked_exchange_helper32(volatile T *ptr, T amount, Bool2Type<true> b) {
+  return InterlockedExchange(reinterpret_cast<volatile UINT32*>(ptr), amount);
+}
+
+template <typename T>
+inline T interlocked_exchange_add_helper32(volatile T *ptr, T amount, Bool2Type<true> b) {
+  return InterlockedExchangeAdd(reinterpret_cast<volatile UINT32*>(ptr), amount);
+}
+
+template <typename T>
+inline T interlocked_compare_exchange_helper32(volatile T *ptr, T cmp_val, T swap_val, Bool2Type<true> b) {
+  return InterlockedCompareExchange(reinterpret_cast<volatile UINT32*>(ptr), swap_val, cmp_val);
+}
+
+template <typename T, typename V>
+inline T ATOMIC_INC_32(volatile T *ptr, V amount) {
+  return interlocked_exchange_add_helper32(ptr, static_cast<T>(amount), Bool2Type<sizeof(T) == sizeof(UINT32)>()) + amount;
+}
+
+template <typename T, typename V1, typename V2>
+inline bool ATOMIC_CAS_32(volatile T *ptr, V1 cmp_val, V2 swap_val) {
+  return interlocked_compare_exchange_helper32(ptr, static_cast<T>(cmp_val), static_cast<T>(swap_val), Bool2Type<sizeof(T) == sizeof(UINT32)>()) == static_cast<T>(cmp_val);
+}
+
+template <typename T, typename V>
+inline T ATOMIC_TAS_32(volatile T *ptr, V amount) {
+  return interlocked_exchange_helper32(ptr, static_cast<T>(amount), Bool2Type<sizeof(T) == sizeof(UINT32)>());
+}
+
 #if defined (_WIN64)
-#define ATOMIC_TAS_64(ptr, new_val) \
-	InterlockedExchange64(ptr, new_val)
-#define ATOMIC_CAS_64(ptr, cmp_val, swap_val) \
-	(InterlockedCompareExchange64(ptr, swap_val, cmp_val) == (cmp_val))
-#define ATOMIC_INC_64(ptr, amount) \
-	(InterlockedExchangeAdd64(ptr, amount) + (amount))
+//#define ATOMIC_TAS_64(ptr, new_val) \
+//	InterlockedExchange64(ptr, new_val)
+
+//#define ATOMIC_CAS_64(ptr, cmp_val, swap_val) \
+//	(InterlockedCompareExchange64(ptr, swap_val, cmp_val) == (cmp_val))
+
+//#define ATOMIC_INC_64(ptr, amount) \
+//	(InterlockedExchangeAdd64(ptr, amount) + (amount))
+
+template <typename T>
+inline T interlocked_exchange_helper64(volatile T *ptr, T amount, Bool2Type<true> b) {
+  return InterlockedExchange64(reinterpret_cast<volatile INT64*>(ptr), static_cast<INT64>(amount));
+}
+
+template <typename T>
+inline T interlocked_exchange_add_helper64(volatile T *ptr, T amount, Bool2Type<true> b) {
+  return InterlockedExchangeAdd64(reinterpret_cast<volatile INT64*>(ptr), static_cast<INT64>(amount));
+}
+
+template <typename T>
+inline T interlocked_compare_exchange_helper64(volatile T *ptr, T cmp_val, T swap_val, Bool2Type<true> b) {
+  return InterlockedCompareExchange64(reinterpret_cast<volatile INT64*>(ptr), static_cast<INT64>(swap_val), static_cast<INT64>(cmp_val));
+}
+
+template <typename T, typename V>
+inline T ATOMIC_INC_64(volatile T *ptr, V amount) {
+  return interlocked_exchange_add_helper64(ptr, static_cast<T>(amount), Bool2Type<sizeof(T) == sizeof(UINT64)>()) + amount;
+}
+
+template <typename T, typename V1, typename V2>
+inline bool ATOMIC_CAS_64(volatile T *ptr, V1 cmp_val, V2 swap_val) {
+  return interlocked_compare_exchange_helper64(ptr, static_cast<T>(cmp_val), static_cast<T>(swap_val), Bool2Type<sizeof(T) == sizeof(UINT64)>()) == static_cast<T>(cmp_val);
+}
+
+template <typename T, typename V>
+inline T ATOMIC_TAS_64(volatile T *ptr, V amount) {
+  return interlocked_exchange_helper64(ptr, static_cast<T>(amount), Bool2Type<sizeof(T) == sizeof(UINT64)>());
+}
 
 #define ATOMIC_TAS_ADDR(ptr, new_val) ATOMIC_TAS_64 ((long long volatile *) ptr, (long long) new_val)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \

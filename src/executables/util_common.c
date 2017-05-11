@@ -39,6 +39,7 @@
 #include "heartbeat.h"
 #include "log_impl.h"
 #include "class_object.h"
+#include "wintcp.h"
 #if !defined(WINDOWS)
 #include <fcntl.h>
 #endif /* !defined(WINDOWS) */
@@ -355,7 +356,7 @@ utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p)
 	{
 	  if (*keyval_p == keyp->keyval)
 	    {
-	      *keystr_p = keyp->keystr;
+	      *keystr_p = const_cast<char*>(keyp->keystr);
 	      return NO_ERROR;
 	    }
 	}
@@ -460,7 +461,7 @@ util_split_ha_node (const char *str)
 {
   char *start_node;
 
-  start_node = strchr (str, '@');
+  start_node = (char*)strchr (str, '@');
   if (start_node == NULL || str == start_node)
     {
       return NULL;
@@ -551,7 +552,7 @@ util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p, char **ha_sy
   *(ha_copy_log_base_p) = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
   if (*(ha_copy_log_base_p) == NULL || **(ha_copy_log_base_p) == '\0')
     {
-      *(ha_copy_log_base_p) = envvar_get ("DATABASES");
+      *(ha_copy_log_base_p) = (char*)envvar_get ("DATABASES");
       if (*(ha_copy_log_base_p) == NULL)
 	{
 	  *(ha_copy_log_base_p) = ".";

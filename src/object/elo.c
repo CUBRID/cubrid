@@ -667,7 +667,7 @@ elo_free_structure (DB_ELO * elo)
  * dest(out):
  */
 int
-elo_copy (DB_ELO * elo, DB_ELO * dest)
+elo_copy (const DB_ELO * elo, DB_ELO * dest)
 {
   int ret;
   ES_URI out_uri;

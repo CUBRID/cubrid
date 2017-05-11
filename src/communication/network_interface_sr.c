@@ -404,7 +404,7 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
     }
 
   /* update connection counters for reserved connections */
-  if (css_increment_num_conn (client_type) != NO_ERROR)
+  if (css_increment_num_conn ((BOOT_CLIENT_TYPE)client_type) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       return_error_to_client (thread_p, rid);
@@ -412,7 +412,7 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
     }
   else
     {
-      thread_p->conn_entry->client_type = client_type;
+      thread_p->conn_entry->client_type = (BOOT_CLIENT_TYPE) client_type;
     }
 
   reply_size = (or_packed_string_length (server_release, &strlen1) + (OR_INT_SIZE * 3)
@@ -632,7 +632,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   copy_area = NULL;
   success =
-    xlocator_fetch_all (thread_p, &hfid, &lock, fetch_version_type, &class_oid, &nobjects, &nfetched, &last_oid,
+    xlocator_fetch_all (thread_p, &hfid, &lock, (LC_FETCH_VERSION_TYPE)fetch_version_type, &class_oid, &nobjects, &nfetched, &last_oid,
 			&copy_area);
 
   if (success != NO_ERROR)
@@ -721,7 +721,7 @@ slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   copy_area = NULL;
   doesexist =
-    xlocator_does_exist (thread_p, &oid, chn, lock, fetch_version_type, &class_oid, class_chn, need_fetching, prefetch,
+    xlocator_does_exist (thread_p, &oid, chn, lock, (LC_FETCH_VERSION_TYPE)fetch_version_type, &class_oid, class_chn, need_fetching, prefetch,
 			 &copy_area);
 
   if (doesexist == LC_ERROR)
@@ -3218,7 +3218,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       area_size += OR_INT_SIZE;	/* db_charset */
       area_size += or_packed_string_length (server_credential.db_lang, &strlen4);
 
-      area = db_private_alloc (thread_p, area_size);
+      area = (char*)db_private_alloc (thread_p, area_size);
       if (area == NULL)
 	{
 	  return_error_to_client (thread_p, rid);
@@ -4507,13 +4507,13 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     {
       /* receive XASL stream from the client */
       csserror =
-	css_receive_data_from_client (thread_p->conn_entry, rid, &stream.xasl_stream, &stream.xasl_stream_size);
+	css_receive_data_from_client (thread_p->conn_entry, rid, &stream.xasl_stream_, &stream.xasl_stream_size);
       if (csserror)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  if (stream.xasl_stream)
-	    free_and_init (stream.xasl_stream);
+	  if (stream.xasl_stream_)
+	    free_and_init (stream.xasl_stream_);
 	  return;
 	}
     }
@@ -4531,9 +4531,9 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   was_recompile_xasl = context.recompile_xasl;
 
   error = xqmgr_prepare_query (thread_p, &context, &stream);
-  if (stream.xasl_stream)
+  if (stream.xasl_stream_)
     {
-      free_and_init (stream.xasl_stream);
+      free_and_init (stream.xasl_stream_);
     }
   if (error != NO_ERROR)
     {
@@ -6216,7 +6216,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, ch
   if ((LOCK) lock_rr_tran != NULL_LOCK)
     {
       /* lock the object common for RR transactions. This is used in ALTER TABLE ADD COLUMN NOT NULL scenarios */
-      if (xtran_lock_rep_read (thread_p, lock_rr_tran) != NO_ERROR)
+      if (xtran_lock_rep_read (thread_p, (LOCK)lock_rr_tran) != NO_ERROR)
 	{
 	  allfind = LC_CLASSNAME_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6896,7 +6896,7 @@ xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p, LOG_PAGEID * fpageid_
   free_and_init (reply);
 
   *fpageid_ptr = first_pageid;
-  *mode_ptr = mode;
+  *mode_ptr = (LOGWR_MODE)mode;
 
   er_log_debug (ARG_FILE_LINE, "xlog_get_page_request_with_reply, " "fpageid(%lld), mode(%s)\n", first_pageid,
 		mode == LOGWR_MODE_SYNC ? "sync" : (mode == LOGWR_MODE_ASYNC ? "async" : "semisync"));
@@ -8242,7 +8242,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
   SESSION_PARAM *session_params = NULL;
   int error = NO_ERROR, update_parameter_values = 0;
 
-  ptr = or_unpack_int (request, &id);
+  ptr = or_unpack_int (request, (int*)&id);
   ptr = or_unpack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
   ptr = sysprm_unpack_session_parameters (ptr, &session_params);
   ptr = or_unpack_string_alloc (ptr, &db_user);
@@ -8271,7 +8271,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
       error = sysprm_session_init_session_parameters (&session_params, &update_parameter_values);
       if (error != NO_ERROR)
 	{
-	  error = sysprm_set_error (error, NULL);
+	  error = sysprm_set_error ((SYSPRM_ERR)error, NULL);
 	  return_error_to_client (thread_p, rid);
 	}
     }
@@ -8362,7 +8362,7 @@ ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL;
 
-  (void) or_unpack_int (request, &id);
+  (void) or_unpack_int (request, (int*)&id);
 
   err = xsession_end_session (thread_p, id);
 
