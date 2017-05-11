@@ -12357,51 +12357,56 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 		{
 		  (void) db_value_clear (db_src_val);
 		}
+	    }
+	  else
+	    {
+	      error = ((pt_common_type ((PT_TYPE_ENUM) desired_type, def_val->type_enum) == PT_TYPE_NONE)
+		       ? ER_IT_INCOMPATIBLE_DATATYPE : NO_ERROR);
+	    }
 
-	      if (error != NO_ERROR)
+	  if (error != NO_ERROR)
+	    {
+	      if (error == ER_IT_DATA_OVERFLOW)
 		{
-		  if (error == ER_IT_DATA_OVERFLOW)
-		    {
-		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-				   pt_short_print (parser, def_val), pt_show_type_enum ((PT_TYPE_ENUM) desired_type));
-		    }
-		  else if (error < 0)
-		    {
-		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				   pt_short_print (parser, def_val),
-				   (desired_type == PT_TYPE_OBJECT
-				    ? attribute->data_type->info.data_type.entity->info.name.original
-				    : pt_show_type_enum ((PT_TYPE_ENUM) desired_type)));
-		    }
-		  return error;
+		  PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+			       pt_short_print (parser, def_val), pt_show_type_enum ((PT_TYPE_ENUM) desired_type));
 		}
+	      else if (error < 0)
+		{
+		  PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			       pt_short_print (parser, def_val),
+			       (desired_type == PT_TYPE_OBJECT
+				? attribute->data_type->info.data_type.entity->info.name.original
+				: pt_show_type_enum ((PT_TYPE_ENUM) desired_type)));
+		}
+	      return error;
+	    }
 
-	      temp = pt_dbval_to_value (parser, &db_dest_val);
-	      (void) db_value_clear (&db_dest_val);
-	      if (!temp)
+	  temp = pt_dbval_to_value (parser, &db_dest_val);
+	  (void) db_value_clear (&db_dest_val);
+	  if (!temp)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      temp->line_number = def_val->line_number;
+	      temp->column_number = def_val->column_number;
+	      temp->alias_print = def_val->alias_print;
+	      temp->info.value.print_charset = def_val->info.value.print_charset;
+	      temp->info.value.print_collation = def_val->info.value.print_collation;
+	      temp->info.value.is_collate_allowed = def_val->info.value.is_collate_allowed;
+	      *def_val = *temp;
+	      if (attribute->data_type != NULL)
 		{
-		  return ER_FAILED;
-		}
-	      else
-		{
-		  temp->line_number = def_val->line_number;
-		  temp->column_number = def_val->column_number;
-		  temp->alias_print = def_val->alias_print;
-		  temp->info.value.print_charset = def_val->info.value.print_charset;
-		  temp->info.value.print_collation = def_val->info.value.print_collation;
-		  temp->info.value.is_collate_allowed = def_val->info.value.is_collate_allowed;
-		  *def_val = *temp;
-		  if (attribute->data_type != NULL)
+		  def_val->data_type = parser_copy_tree_list (parser, attribute->data_type);
+		  if (def_val->data_type == NULL)
 		    {
-		      def_val->data_type = parser_copy_tree_list (parser, attribute->data_type);
-		      if (def_val->data_type == NULL)
-			{
-			  return ER_FAILED;
-			}
+		      return ER_FAILED;
 		    }
-		  temp->info.value.db_value_is_in_workspace = 0;
-		  parser_free_node (parser, temp);
 		}
+	      temp->info.value.db_value_is_in_workspace = 0;
+	      parser_free_node (parser, temp);
 	    }
 	}
       else
