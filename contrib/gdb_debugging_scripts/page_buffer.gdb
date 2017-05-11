@@ -630,7 +630,7 @@ end
 # 
 # Print counters on each LRU related to count of LRU3 and count of dirties in each LRU3
 #
-define pgbuf_show_lru_dirties
+define pgbuf_show_all_lru_dirties
   set $i = 0
   while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
     pgbuf_show_lru_dirties $i
