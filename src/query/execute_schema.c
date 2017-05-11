@@ -12918,7 +12918,7 @@ do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * a
 	  continue;
 	}
 
-      if (!db_class_has_instance (class_mop))
+      if (!db_is_class (class_mop) || !db_class_has_instance (class_mop))
 	{
 	  continue;
 	}
