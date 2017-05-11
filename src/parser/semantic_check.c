@@ -7777,7 +7777,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		      default_op_value->info.expr.op =
 			pt_op_type_from_default_expr_type (col_attr->default_value.default_expr.default_expr_type);
 
-		      if (default_op_value->info.expr.op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+		      if (default_op_value->info.expr.op != PT_TO_CHAR)
 			{
 			  default_value = default_op_value;
 			}
