@@ -19327,12 +19327,50 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
   if (opd1 && op == PT_DEFAULTF)
     {
-      result = parser_copy_tree (parser, opd1->info.name.default_value);
-      if (result == NULL)
+      PT_NODE *default_value;
+      default_value = parser_copy_tree (parser, opd1->info.name.default_value);
+      if (default_value == NULL)
 	{
 	  PT_ERRORc (parser, expr, er_msg ());
 	  return expr;
 	}
+
+      if (opd1->info.name.default_value->type_enum == opd1->type_enum)
+	{
+	  result = default_value;
+	}
+      else
+	{
+	  PT_NODE *dt, *cast_expr;
+	  /* need to coerce to opd1->type_enum */
+	  cast_expr = parser_new_node (parser, PT_EXPR);
+	  if (cast_expr == NULL)
+	    {
+	      parser_free_tree (parser, default_value);
+	      PT_ERRORc (parser, expr, er_msg ());
+	      return expr;
+	    }
+
+	  cast_expr->line_number = opd1->info.name.default_value->line_number;
+	  cast_expr->column_number = opd1->info.name.default_value->column_number;
+	  cast_expr->info.expr.op = PT_CAST;
+	  cast_expr->info.expr.arg1 = default_value;
+	  cast_expr->type_enum = opd1->type_enum;
+	  cast_expr->info.expr.location = is_hidden_column;
+
+	  dt = parser_new_node (parser, PT_DATA_TYPE);
+	  if (dt == NULL)
+	    {
+	      parser_free_tree (parser, default_value);
+	      parser_free_tree (parser, cast_expr);
+	      PT_ERRORc (parser, expr, er_msg ());
+	      return expr;
+	    }
+	  dt->type_enum = opd1->type_enum;
+	  cast_expr->info.expr.cast_type = dt;
+	  result = cast_expr;
+	}
+
       goto end;
     }
 
