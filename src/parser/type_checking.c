@@ -19321,7 +19321,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
   if (opd1 && op == PT_DEFAULTF)
     {
-      PT_NODE *default_value;
+      PT_NODE *default_value, *default_value_date_type;
+      bool needs_update_precision = false;
       default_value = parser_copy_tree (parser, opd1->info.name.default_value);
       if (default_value == NULL)
 	{
@@ -19329,7 +19330,30 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  return expr;
 	}
 
-      if (opd1->info.name.default_value->type_enum == opd1->type_enum)
+      default_value_date_type = opd1->info.name.default_value->data_type;
+      assert (opd1->data_type != NULL);
+      switch (opd1->type_enum)
+	{
+	case PT_TYPE_CHAR:
+	case PT_TYPE_VARCHAR:
+	case PT_TYPE_NCHAR:
+	case PT_TYPE_VARNCHAR:
+	case PT_TYPE_BIT:
+	case PT_TYPE_VARBIT:
+	case PT_TYPE_NUMERIC:
+	case PT_TYPE_ENUMERATION:
+	  if (default_value_date_type == NULL || (default_value_date_type->info.data_type.precision
+						  != opd1->data_type->info.data_type.precision))
+	    {
+	      needs_update_precision = true;
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+
+      if (opd1->info.name.default_value->type_enum == opd1->type_enum && needs_update_precision == false)
 	{
 	  result = default_value;
 	}
@@ -19352,7 +19376,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  cast_expr->type_enum = opd1->type_enum;
 	  cast_expr->info.expr.location = is_hidden_column;
 
-	  dt = parser_new_node (parser, PT_DATA_TYPE);
+	  dt = parser_copy_tree (parser, opd1->data_type);
 	  if (dt == NULL)
 	    {
 	      parser_free_tree (parser, default_value);

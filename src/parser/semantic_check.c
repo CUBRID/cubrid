@@ -2416,6 +2416,7 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node, SEMAN_COMPATIBLE
 			    {
 			      if (att->data_type == NULL)
 				{
+				  assert_release (att->data_type != NULL);
 				  return NULL;
 				}
 			    }
