@@ -11760,7 +11760,7 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
 		       dt->info.data_type.units, &char_count);
       qstr_trim_trailing (pad, pad_size, node->info.value.data_value.str->bytes, pt_node_to_db_type (node), char_count,
 			  node->info.value.data_value.str->length, dt->info.data_type.units, &trimmed_length,
-			  &trimmed_size);
+			  &trimmed_size, true);
       if (trimmed_size < node->info.value.data_value.str->length)
 	{
 	  node->info.value.data_value.str =
