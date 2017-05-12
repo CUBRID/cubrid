@@ -36,6 +36,7 @@
 #include "dbtype.h"
 #include "transaction_cl.h"
 #include "util_func.h"
+#include "log_impl.h"
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -1150,6 +1151,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   /* Fix heap page. */
   if (was_interrupted)
     {
+      PAGE_TYPE ptype;
       error_code =
 	pgbuf_fix_if_not_deallocated (thread_p, &helper.home_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
 				      &helper.home_page);
@@ -1164,6 +1166,38 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  /* deallocated */
 	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
 	  assert (n_heap_objects == 1);
+
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run\n",
+				 VPID_AS_ARGS (&helper.home_vpid));
+	  return NO_ERROR;
+	}
+      ptype = pgbuf_get_page_ptype (thread_p, helper.home_page);
+      if (ptype != PAGE_HEAP)
+	{
+	  /* page was deallocated and reused as file table. */
+	  assert (ptype == PAGE_FTAB);
+	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
+	  assert (n_heap_objects == 1);
+
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run and reused as"
+				 " file table page\n", VPID_AS_ARGS (&helper.home_vpid));
+
+	  pgbuf_unfix_and_init (thread_p, helper.home_page);
+	  return NO_ERROR;
+	}
+      /* page still could be reused as new heap page in same file. in this case the slot may be invalid or it may hold
+       * another record (but that won't bother us, because we always check the record header).
+       * stop if slot no longer exists. */
+      if (spage_number_of_slots (helper.home_page) <= heap_objects[0].oid.slotid)
+	{
+	  /* slot does not exist */
+	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
+	  assert (n_heap_objects == 1);
+
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run and reused as"
+				 " new heap page\n", VPID_AS_ARGS (&helper.home_vpid));
+
+	  pgbuf_unfix_and_init (thread_p, helper.home_page);
 	  return NO_ERROR;
 	}
     }
@@ -2890,7 +2924,7 @@ restart:
   vacuum_cleanup_dropped_files (thread_p);
 
   /* Reset log header information saved for vacuum. */
-  vacuum_reset_log_header_cache (thread_p);
+  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_END, 0);
   er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum end.\n");
@@ -2924,7 +2958,7 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vacuum_Data.oldest_unvacuumed_mvccid = oldest_newest_mvccid;
 
   /* Reset log header information saved for vacuum. */
-  vacuum_reset_log_header_cache (thread_p);
+  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -5271,6 +5305,24 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 			     LSA_AS_ARGS (&mvcc_op_log_lsa));
 	      break;
 	    }
+	  else if (log_rec_header.type == LOG_SYSOP_END)
+	    {
+	      /* we need to check if it is a logical MVCC undo */
+	      LOG_REC_SYSOP_END *sysop_end = NULL;
+	      LOG_LSA copy_lsa = log_lsa;
+
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &copy_lsa, log_page_p);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &copy_lsa, log_page_p);
+	      sysop_end = (LOG_REC_SYSOP_END *) (log_page_p->area + copy_lsa.offset);
+	      if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+		{
+		  LSA_COPY (&mvcc_op_log_lsa, &log_lsa);
+		  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+				 "vacuum_recover_lost_block_data, found mvcc op at lsa = %lld|%d ",
+				 LSA_AS_ARGS (&mvcc_op_log_lsa));
+		  break;
+		}
+	    }
 	  else if (log_rec_header.type == LOG_REDO_DATA)
 	    {
 	      /* is vacuum complete? */
@@ -5306,7 +5358,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 		     "vacuum_recover_lost_block_data, mvcc_op_log_lsa %lld|%d is already in vacuum data "
 		     "(last blockid = %lld) ", LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa),
 		     (long long int) vacuum_Data.last_blockid);
-      vacuum_reset_log_header_cache (thread_p);
+      logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
       return NO_ERROR;
     }
   else
@@ -5322,6 +5374,11 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   is_last_block = true;
   crt_blockid = vacuum_get_log_blockid (mvcc_op_log_lsa.pageid);
   LSA_COPY (&log_lsa, &mvcc_op_log_lsa);
+
+  /* we don't reset data.oldest_mvccid between blocks. we need to maintain ordered oldest_mvccid's, and if a block + 1
+   * MVCCID is smaller than all MVCCID's in block, then it must have been active (and probably suspended) while block
+   * was logged. therefore, we must keep it. */
+  data.oldest_mvccid = MVCCID_NULL;
   while (crt_blockid > vacuum_Data.last_blockid)
     {
       /* Stop recovering this block when previous block is reached. */
@@ -5329,7 +5386,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       /* Initialize this block data. */
       data.blockid = crt_blockid;
       LSA_COPY (&data.start_lsa, &log_lsa);
-      data.oldest_mvccid = MVCCID_NULL;
+      /* inherit data.oldest_mvccid */
       data.newest_mvccid = MVCCID_NULL;
       /* Loop through MVCC op log records in this block. */
       while (log_lsa.pageid > stop_at_pageid)
@@ -5395,18 +5452,6 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 
   lf_circular_queue_async_reset (vacuum_Block_data_buffer);
   return NO_ERROR;
-}
-
-/*
- * vacuum_reset_log_header_cache () - reset vacuum data cached in log global header.
- */
-void
-vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p)
-{
-  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "%s", "Reset vacuum info in log_Gl.hdr ");
-  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
-  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
-  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
 }
 
 /*

@@ -3147,10 +3147,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  LOG_LSA null_lsa = LSA_INITIALIZER;
 
 		  /* Reset log header MVCC info */
-		  vacuum_reset_log_header_cache (thread_p);
-
-		  /* Reset vacuum recover LSA */
-		  vacuum_notify_server_crashed (&null_lsa);
+		  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 		}
 
 	      /* 
@@ -4157,6 +4154,9 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* nothing after tdes->rcv.atomic_sysop_start_lsa */
       assert (LSA_EQ (&tdes->rcv.atomic_sysop_start_lsa, &tdes->undo_nxlsa));
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      er_log_debug (ARG_FILE_LINE, "(trid = %d) Nothing after atomic sysop (%lld|%d), nothing to rollback.\n",
+		    tdes->trid, LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+      return;
     }
   assert (tdes->topops.last <= 0);
 
@@ -4192,6 +4192,11 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       er_log_debug (ARG_FILE_LINE,
 		    "(trid = %d) Nested atomic sysop  (%lld|%d) after sysop start postpone (%lld|%d). \n", tdes->trid,
 		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa), LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "(trid = %d) Atomic sysop (%lld|%d). Rollback. \n", tdes->trid,
+		    LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
     }
 
   /* rollback. simulate a new system op */

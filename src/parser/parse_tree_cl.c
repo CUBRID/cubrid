@@ -8848,6 +8848,14 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	}
     }
+
+  if (p->info.delete_.limit && p->info.delete_.rewrite_limit)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.delete_.limit);
+      q = pt_append_nulstring (parser, q, " limit ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   return q;
 }
 
@@ -15770,6 +15778,13 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r1 = pt_print_bytes_l (parser, p->info.update.orderby_for);
       b = pt_append_nulstring (parser, b, " for ");
+      b = pt_append_varchar (parser, b, r1);
+    }
+
+  if (p->info.update.limit && p->info.update.rewrite_limit)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.update.limit);
+      b = pt_append_nulstring (parser, b, " limit ");
       b = pt_append_varchar (parser, b, r1);
     }
 
