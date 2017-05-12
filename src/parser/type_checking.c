@@ -19331,26 +19331,28 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       default_value_date_type = opd1->info.name.default_value->data_type;
-      assert (opd1->data_type != NULL);
-      switch (opd1->type_enum)
+      if (opd1->data_type != NULL)
 	{
-	case PT_TYPE_CHAR:
-	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
-	case PT_TYPE_BIT:
-	case PT_TYPE_VARBIT:
-	case PT_TYPE_NUMERIC:
-	case PT_TYPE_ENUMERATION:
-	  if (default_value_date_type == NULL || (default_value_date_type->info.data_type.precision
-						  != opd1->data_type->info.data_type.precision))
+	  switch (opd1->type_enum)
 	    {
-	      needs_update_precision = true;
-	    }
-	  break;
+	    case PT_TYPE_CHAR:
+	    case PT_TYPE_VARCHAR:
+	    case PT_TYPE_NCHAR:
+	    case PT_TYPE_VARNCHAR:
+	    case PT_TYPE_BIT:
+	    case PT_TYPE_VARBIT:
+	    case PT_TYPE_NUMERIC:
+	    case PT_TYPE_ENUMERATION:
+	      if (default_value_date_type == NULL || (default_value_date_type->info.data_type.precision
+						      != opd1->data_type->info.data_type.precision))
+		{
+		  needs_update_precision = true;
+		}
+	      break;
 
-	default:
-	  break;
+	    default:
+	      break;
+	    }
 	}
 
       if (opd1->info.name.default_value->type_enum == opd1->type_enum && needs_update_precision == false)
