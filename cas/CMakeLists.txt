@@ -39,7 +39,10 @@ if(WIN32)
   list(APPEND LIBCAS_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
 endif(WIN32)
 
-add_library(cas STATIC ${LIBCAS_SOURCES})
+add_library(cas SHARED ${LIBCAS_SOURCES})
+set_target_properties(cas PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
+set_target_properties(cas PROPERTIES PUBLIC_HEADER "${CCI_DIR}/cas_cci.h;${BROKER_DIR}/cas_error.h")
+
 if(UNIX)
   set_target_properties(cas PROPERTIES COMPILE_FLAGS "-fPIC")
 endif(UNIX)
@@ -52,3 +55,8 @@ if(WIN32)
   endif(TARGET_PLATFORM_BITS EQUAL 32)
 endif(WIN32)
 target_link_libraries(cas ${SYS_LIBS})
+
+install(TARGETS cas
+  LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
+  )
+
