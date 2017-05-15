@@ -2520,11 +2520,11 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	  att_props = DB_GET_SEQUENCE (&val);
 	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
 	    {
-	      /* We can't have an attribute with default expression and default value simultaneously. */
-	      assert (att->default_value.value == NULL && att->current_default_value.value == NULL);
-
 	      if (DB_VALUE_TYPE (&def_expr) == DB_TYPE_SEQUENCE)
 		{
+		  /* We can't have an attribute with default expression and default value simultaneously. */
+		  assert (att->default_value.value == NULL && att->current_default_value.value == NULL);
+
 		  /* Currently, we allow only (T_TO_CHAR(int), default_expr(int), default_expr_format(string)) */
 		  assert (set_size (DB_PULL_SEQUENCE (&def_expr)) == 3);
 		  def_expr_set = DB_PULL_SEQUENCE (&def_expr);
