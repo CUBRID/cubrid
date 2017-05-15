@@ -336,7 +336,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   p = or_pack_int (p, body_size);
 
   /* set result */
-  stream->xasl_stream = xts_Stream_buffer;
+  stream->xasl_stream_ = xts_Stream_buffer;
   stream->xasl_stream_size = xts_Free_offset_in_stream;
 
   if (stream->xasl_stream_size <= 0)

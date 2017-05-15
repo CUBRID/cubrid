@@ -751,7 +751,7 @@ struct db_elo
   char *locator;
   char *meta_data;
   DB_ELO_TYPE type;
-  mutable int es_type;
+  int es_type;
 };
 
 /* This is the memory representation of an internal object

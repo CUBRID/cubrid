@@ -83,7 +83,7 @@ prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
     }
 
   /* if the query is not found in the cache */
-  if (stream->xasl_stream == NULL && stream->xasl_id && XASL_ID_IS_NULL (stream->xasl_id))
+  if (stream->xasl_stream_ == NULL && stream->xasl_id && XASL_ID_IS_NULL (stream->xasl_id))
     {
       free_and_init (stream->xasl_id);
     }
