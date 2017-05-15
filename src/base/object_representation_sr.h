@@ -33,6 +33,7 @@
 
 #define OR_ATT_BTID_PREALLOC 8
 
+/* We can't have an attribute with default expression and default value simultaneously. */
 typedef struct or_default_value OR_DEFAULT_VALUE;
 struct or_default_value
 {
