@@ -12321,6 +12321,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	      is_collation_change = true;
 	    }
 
+	  db_make_null (&db_dest_val);
 	  if ((original_type == (PT_TYPE_ENUM) desired_type && original_type != PT_TYPE_NUMERIC
 	       && desired_type != PT_TYPE_OBJECT && !is_collation_change) || original_type == PT_TYPE_NA
 	      || original_type == PT_TYPE_NULL)
@@ -12401,31 +12402,34 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 		  return error;
 		}
 
-	      temp = pt_dbval_to_value (parser, &db_dest_val);
-	      (void) db_value_clear (&db_dest_val);
-	      if (!temp)
+	      if (!db_value_is_null (&db_dest_val))
 		{
-		  return ER_FAILED;
-		}
-	      else
-		{
-		  temp->line_number = def_val->line_number;
-		  temp->column_number = def_val->column_number;
-		  temp->alias_print = def_val->alias_print;
-		  temp->info.value.print_charset = def_val->info.value.print_charset;
-		  temp->info.value.print_collation = def_val->info.value.print_collation;
-		  temp->info.value.is_collate_allowed = def_val->info.value.is_collate_allowed;
-		  *def_val = *temp;
-		  if (attribute->data_type != NULL)
+		  temp = pt_dbval_to_value (parser, &db_dest_val);
+		  (void) db_value_clear (&db_dest_val);
+		  if (!temp)
 		    {
-		      def_val->data_type = parser_copy_tree_list (parser, attribute->data_type);
-		      if (def_val->data_type == NULL)
-			{
-			  return ER_FAILED;
-			}
+		      return ER_FAILED;
 		    }
-		  temp->info.value.db_value_is_in_workspace = 0;
-		  parser_free_node (parser, temp);
+		  else
+		    {
+		      temp->line_number = def_val->line_number;
+		      temp->column_number = def_val->column_number;
+		      temp->alias_print = def_val->alias_print;
+		      temp->info.value.print_charset = def_val->info.value.print_charset;
+		      temp->info.value.print_collation = def_val->info.value.print_collation;
+		      temp->info.value.is_collate_allowed = def_val->info.value.is_collate_allowed;
+		      *def_val = *temp;
+		      if (attribute->data_type != NULL)
+			{
+			  def_val->data_type = parser_copy_tree_list (parser, attribute->data_type);
+			  if (def_val->data_type == NULL)
+			    {
+			      return ER_FAILED;
+			    }
+			}
+		      temp->info.value.db_value_is_in_workspace = 0;
+		      parser_free_node (parser, temp);
+		    }
 		}
 	    }
 	}
