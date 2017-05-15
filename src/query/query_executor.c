@@ -8284,7 +8284,7 @@ qexec_init_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist)
       return NO_ERROR;
     }
 
-  hash_list = db_private_alloc (thread_p, buildlist->upd_del_class_cnt * sizeof (EHID));
+  hash_list = (EHID*)db_private_alloc (thread_p, buildlist->upd_del_class_cnt * sizeof (EHID));
   if (hash_list == NULL)
     {
       goto exit_on_error;
@@ -8479,7 +8479,7 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
     }
 
   /* allocate and initialize classes for reevaluation */
-  cond_reev_classes = db_private_alloc (thread_p, sizeof (UPDDEL_MVCC_COND_REEVAL) * num_reev_classes);
+  cond_reev_classes = (UPDDEL_MVCC_COND_REEVAL*)db_private_alloc (thread_p, sizeof (UPDDEL_MVCC_COND_REEVAL) * num_reev_classes);
   if (cond_reev_classes == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -8501,7 +8501,7 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       int_cls = &internal_classes[idx];
       if (cls->num_extra_assign_reev > 0)
 	{
-	  int_cls->mvcc_extra_assign_reev =
+	  int_cls->mvcc_extra_assign_reev = (UPDDEL_MVCC_COND_REEVAL **)
 	    db_private_alloc (thread_p, cls->num_extra_assign_reev * sizeof (UPDDEL_MVCC_COND_REEVAL *));
 	  if (int_cls->mvcc_extra_assign_reev == NULL)
 	    {
@@ -10932,7 +10932,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    if (tdes)
 	      {
 		int len = strlen (tdes->client.db_user) + strlen (tdes->client.host_name) + 2;
-		temp = db_private_alloc (thread_p, len);
+		temp = (char*)db_private_alloc (thread_p, len);
 		if (!temp)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
@@ -10975,7 +10975,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      bool copy = (pr_is_set_type (attr->type)) ? true : false;
 	      if (pr_type != NULL)
 		{
-		  or_init (&buf, attr->current_default_value.value, attr->current_default_value.val_length);
+		  or_init (&buf, (char*)attr->current_default_value.value, attr->current_default_value.val_length);
 		  buf.error_abort = 1;
 		  switch (_setjmp (buf.env))
 		    {
@@ -17521,15 +17521,15 @@ qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
 
       if (i == 0)
 	{
-	  gbstate->g_dim[i].d_flag |= GROUPBY_DIM_FLAG_GROUP_BY;
+	  gbstate->g_dim[i].d_flag = (GROUPBY_DIMENSION_FLAG)(gbstate->g_dim[i].d_flag | GROUPBY_DIM_FLAG_GROUP_BY);
 	}
 #if 1				/* TODO - set dimension flag */
       if (gbstate->with_rollup)
 	{
-	  gbstate->g_dim[i].d_flag |= GROUPBY_DIM_FLAG_ROLLUP;
+	  gbstate->g_dim[i].d_flag = (GROUPBY_DIMENSION_FLAG)(gbstate->g_dim[i].d_flag | GROUPBY_DIM_FLAG_ROLLUP);
 	}
 #endif
-      gbstate->g_dim[i].d_flag |= GROUPBY_DIM_FLAG_CUBE;
+      gbstate->g_dim[i].d_flag = (GROUPBY_DIMENSION_FLAG)(gbstate->g_dim[i].d_flag | GROUPBY_DIM_FLAG_CUBE);
 
       if (gbstate->g_output_agg_list)
 	{
@@ -17772,7 +17772,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	  goto cleanup;
 	}
 
-      string1 = db_private_alloc (NULL, str1_decompressed_length + 1);
+      string1 = (char*)db_private_alloc (NULL, str1_decompressed_length + 1);
       if (string1 == NULL)
 	{
 	  /* Error report */
@@ -17813,7 +17813,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	  goto cleanup;
 	}
 
-      string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
+      string2 = (char*)db_private_alloc (NULL, str2_decompressed_length + 1);
       if (string2 == NULL)
 	{
 	  /* Error report */
@@ -18602,7 +18602,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
     }
 
   /* alloc an array to store db_values */
-  list_dbvals = db_private_alloc (thread_p, ncolumns * sizeof (DB_VALUE));
+  list_dbvals = (DB_VALUE*)db_private_alloc (thread_p, ncolumns * sizeof (DB_VALUE));
 
   if (list_dbvals == NULL)
     {
@@ -22674,7 +22674,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
   *internal_classes = NULL;
 
   size = count * sizeof (UPDDEL_CLASS_INFO_INTERNAL);
-  classes = db_private_alloc (thread_p, size);
+  classes = (UPDDEL_CLASS_INFO_INTERNAL*)db_private_alloc (thread_p, size);
   if (classes == NULL)
     {
       return ER_FAILED;
@@ -22793,7 +22793,7 @@ qexec_create_mvcc_reev_assignments (THREAD_ENTRY * thread_p, XASL_NODE * aptr, b
       regu_var = regu_var->next;
     }
 
-  new_assigns = db_private_alloc (thread_p, sizeof (UPDATE_MVCC_REEV_ASSIGNMENT) * num_assignments);
+  new_assigns = (UPDATE_MVCC_REEV_ASSIGNMENT*)db_private_alloc (thread_p, sizeof (UPDATE_MVCC_REEV_ASSIGNMENT) * num_assignments);
   if (new_assigns == NULL)
     {
       return ER_FAILED;
@@ -23830,7 +23830,7 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
       if (res == BH_LT)
 	{
 	  /* skip this tuple */
-	  return NO_ERROR;
+	  return (TOPN_STATUS)NO_ERROR;//vapa!!!
 	}
       break;
     }

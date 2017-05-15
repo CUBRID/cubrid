@@ -914,7 +914,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
    * returned if found in the cache. 
    */
 
-  if (stream->xasl_stream == NULL && context->recompile_xasl)
+  if (stream->xasl_stream_ == NULL && context->recompile_xasl)
     {
       /* Recompile requested by no xasl_stream is provided. */
       assert_release (false);
@@ -934,15 +934,15 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
 	{
 	  /* Found entry. */
 	  XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
-	  if (stream->xasl_stream == NULL && stream->xasl_header != NULL)
+	  if (stream->xasl_stream_ == NULL && stream->xasl_header != NULL)
 	    {
 	      /* also header was requested. */
-	      qfile_load_xasl_node_header (thread_p, stream->xasl_stream, stream->xasl_header);
+	      qfile_load_xasl_node_header (thread_p, stream->xasl_stream_, stream->xasl_header);
 	    }
 	  xcache_unfix (thread_p, cache_entry_p);
 	  goto exit_on_end;
 	}
-      if (stream->xasl_stream == NULL)
+      if (stream->xasl_stream_ == NULL)
 	{
 	  /* No entry found. */
 	  if (recompile_due_to_threshold)
@@ -955,10 +955,10 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
     }
   /* Add new entry to xasl cache. */
   assert (cache_entry_p == NULL);
-  assert (stream->xasl_stream != NULL);
+  assert (stream->xasl_stream_ != NULL);
 
   /* get some information from the XASL stream */
-  p = or_unpack_int ((char *) stream->xasl_stream, &header_size);
+  p = or_unpack_int ((char *) stream->xasl_stream_, &header_size);
   p = or_unpack_int (p, &dbval_cnt);
   p = or_unpack_oid (p, &creator_oid);
   p = or_unpack_int (p, &n_oid_list);

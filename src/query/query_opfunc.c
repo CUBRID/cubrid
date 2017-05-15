@@ -10860,7 +10860,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
       else
 	{
 	  TP_DOMAIN *result_domain;
-	  DB_TYPE type =
+	  DB_TYPE type = (DB_TYPE)
 	    ((func_p->function == PT_AVG) ? func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain));
 
 	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : func_p->domain);
@@ -11617,7 +11617,7 @@ qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * t
   assert_release (tuple != NULL);
   assert_release (values != NULL);
 
-  vals = db_private_alloc (thread_p, tuple->f_cnt * sizeof (DB_VALUE));
+  vals = (DB_VALUE*)db_private_alloc (thread_p, tuple->f_cnt * sizeof (DB_VALUE));
   if (vals == NULL)
     {
       error = ER_FAILED;
@@ -12734,7 +12734,7 @@ qdata_agg_hkey_compare (AGGREGATE_HASH_KEY * ckey1, AGGREGATE_HASH_KEY * ckey2, 
 
   for (i = 0; i < ckey1->val_count; i++)
     {
-      result = tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
+      result = (DB_VALUE_COMPARE_RESULT)tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)
 	{
 	  *diff_pos = i;

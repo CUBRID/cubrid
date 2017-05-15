@@ -308,7 +308,7 @@ xcache_initialize (THREAD_ENTRY * thread_p)
       return error_code;
     }
 
-  xcache_Cleanup_array = malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
+  xcache_Cleanup_array = (XCACHE_CLEANUP_CANDIDATE*)malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
   if (xcache_Cleanup_array == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -424,7 +424,7 @@ xcache_entry_init (void *entry)
 
   XASL_ID_SET_NULL (&xcache_entry->xasl_id);
   xcache_entry->stream.xasl_id = NULL;
-  xcache_entry->stream.xasl_stream = NULL;
+  xcache_entry->stream.xasl_stream_ = NULL;
 
   xcache_entry->free_data_on_uninit = false;
   xcache_entry->initialized = true;
@@ -496,9 +496,9 @@ xcache_entry_uninit (void *entry)
 	  xcache_entry->one_clone.xasl_buf = NULL;
 	  xcache_entry->cache_clones_capacity = 1;
 	}
-      if (xcache_entry->stream.xasl_stream != NULL)
+      if (xcache_entry->stream.xasl_stream_ != NULL)
 	{
-	  free_and_init (xcache_entry->stream.xasl_stream);
+	  free_and_init (xcache_entry->stream.xasl_stream_);
 	}
     }
   else
@@ -957,7 +957,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
       save_heapid = db_change_private_heap (thread_p, 0);
     }
   error_code =
-    stx_map_stream_to_xasl (thread_p, &xclone->xasl, use_xasl_clone, (*xcache_entry)->stream.xasl_stream,
+    stx_map_stream_to_xasl (thread_p, &xclone->xasl, use_xasl_clone, (*xcache_entry)->stream.xasl_stream_,
 			    (*xcache_entry)->stream.xasl_stream_size, &xclone->xasl_buf);
   if (save_heapid != 0)
     {
@@ -1216,7 +1216,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 
   assert (xcache_entry != NULL && *xcache_entry == NULL);
   assert (stream != NULL);
-  assert (stream->xasl_stream != NULL || !context->recompile_xasl);
+  assert (stream->xasl_stream_ != NULL || !context->recompile_xasl);
 
   if (!xcache_Enabled)
     {
@@ -1485,7 +1485,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	{
 	  free (sql_hash_text);
 	}
-      free_and_init (stream->xasl_stream);
+      free_and_init (stream->xasl_stream_);
     }
   else
     {
@@ -1496,7 +1496,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	}
 
       /* XASL stream was used. Remove from argument. */
-      stream->xasl_stream = NULL;
+      stream->xasl_stream_ = NULL;
     }
 
   return NO_ERROR;
