@@ -11789,7 +11789,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       || op == PT_BITSHIFT_RIGHT || op == PT_DIV || op == PT_MOD || op == PT_IF || op == PT_IFNULL || op == PT_CONCAT
       || op == PT_CONCAT_WS || op == PT_FIELD || op == PT_UNIX_TIMESTAMP || op == PT_BIT_COUNT || op == PT_REPEAT
       || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF || op == PT_AES_ENCRYPT || op == PT_AES_DECRYPT
-      || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64)
+      || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64 || op == PT_DEFAULTF)
     {
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -12334,6 +12334,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_DISK_SIZE:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_INTEGER);
+      break;
+
+    case PT_DEFAULTF:
+      dt = parser_copy_tree_list (parser, arg1->data_type);
       break;
 
     default:
@@ -19327,7 +19331,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
   if (opd1 && op == PT_DEFAULTF)
     {
-      PT_NODE *default_value;
+      PT_NODE *default_value, *default_value_date_type;
+      bool needs_update_precision = false;
       default_value = parser_copy_tree (parser, opd1->info.name.default_value);
       if (default_value == NULL)
 	{
@@ -19335,7 +19340,32 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  return expr;
 	}
 
-      if (opd1->info.name.default_value->type_enum == opd1->type_enum)
+      default_value_date_type = opd1->info.name.default_value->data_type;
+      if (opd1->data_type != NULL)
+	{
+	  switch (opd1->type_enum)
+	    {
+	    case PT_TYPE_CHAR:
+	    case PT_TYPE_VARCHAR:
+	    case PT_TYPE_NCHAR:
+	    case PT_TYPE_VARNCHAR:
+	    case PT_TYPE_BIT:
+	    case PT_TYPE_VARBIT:
+	    case PT_TYPE_NUMERIC:
+	    case PT_TYPE_ENUMERATION:
+	      if (default_value_date_type == NULL || (default_value_date_type->info.data_type.precision
+						      != opd1->data_type->info.data_type.precision))
+		{
+		  needs_update_precision = true;
+		}
+	      break;
+
+	    default:
+	      break;
+	    }
+	}
+
+      if (opd1->info.name.default_value->type_enum == opd1->type_enum && needs_update_precision == false)
 	{
 	  result = default_value;
 	}
@@ -19358,15 +19388,30 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  cast_expr->type_enum = opd1->type_enum;
 	  cast_expr->info.expr.location = is_hidden_column;
 
-	  dt = parser_new_node (parser, PT_DATA_TYPE);
-	  if (dt == NULL)
+	  if (opd1->data_type)
 	    {
-	      parser_free_tree (parser, default_value);
-	      parser_free_tree (parser, cast_expr);
-	      PT_ERRORc (parser, expr, er_msg ());
-	      return expr;
+	      dt = parser_copy_tree (parser, opd1->data_type);
+	      if (dt == NULL)
+		{
+		  parser_free_tree (parser, default_value);
+		  parser_free_tree (parser, cast_expr);
+		  PT_ERRORc (parser, expr, er_msg ());
+		  return expr;
+		}
 	    }
-	  dt->type_enum = opd1->type_enum;
+	  else
+	    {
+	      dt = parser_new_node (parser, PT_DATA_TYPE);
+	      if (dt == NULL)
+		{
+		  parser_free_tree (parser, default_value);
+		  parser_free_tree (parser, cast_expr);
+		  PT_ERRORc (parser, expr, er_msg ());
+		  return expr;
+		}
+	      dt->type_enum = opd1->type_enum;
+	    }
+
 	  cast_expr->info.expr.cast_type = dt;
 	  result = cast_expr;
 	}

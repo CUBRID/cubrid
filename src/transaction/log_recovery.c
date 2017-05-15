@@ -3148,9 +3148,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		  /* Reset log header MVCC info */
 		  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
-
-		  /* Reset vacuum recover LSA */
-		  vacuum_notify_server_crashed (&null_lsa);
 		}
 
 	      /* 

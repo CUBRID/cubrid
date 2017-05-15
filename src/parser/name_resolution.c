@@ -4505,6 +4505,10 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
 
       corr_name->info.name.spec_id = exposed_spec->info.spec.id;
       corr_name->info.name.resolved = exposed_spec->info.spec.range_var->info.name.original;
+      if (PT_IS_SPEC_REAL_TABLE (exposed_spec))
+	{
+	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_REAL_TABLE);
+	}
 
       /* attach the data type */
       corr_name->type_enum = PT_TYPE_OBJECT;
@@ -4683,6 +4687,11 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	  in_node->info.name.resolved = savespec->info.spec.range_var->info.name.original;
 	  in_node->info.name.partition = savespec->info.spec.range_var->info.name.partition;
 
+	  if (PT_IS_SPEC_REAL_TABLE (savespec))
+	    {
+	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_REAL_TABLE);
+	    }
+
 	  savespec = pt_unwhacked_spec (parser, scope, savespec);
 
 	  *p_entity = savespec;
@@ -4751,6 +4760,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	      in_node->info.name.meta_class = PT_META_CLASS;
 	      in_node->info.name.spec_id = class_spec->info.spec.id;
 	      in_node->info.name.resolved = class_spec->info.spec.range_var->info.name.original;
+	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_REAL_TABLE);
 	      /* attach the data type */
 	      in_node->type_enum = PT_TYPE_OBJECT;
 	      if (class_spec->info.spec.flat_entity_list)
@@ -4870,6 +4880,10 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    {
 	      /* only mark it resolved if it was found! transfer the info from arg1 to arg2 */
 	      arg2->info.name.resolved = arg1->info.name.resolved;
+	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_REAL_TABLE))
+		{
+		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_REAL_TABLE);
+		}
 	      /* don't loose list */
 	      arg2->next = in_node->next;
 	      /* save alias */
@@ -4923,6 +4937,10 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 
 	      /* A meta class attribute, transfer the class info from arg1 to arg2 */
 	      arg2->info.name.resolved = arg1->info.name.resolved;
+	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_REAL_TABLE))
+		{
+		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_REAL_TABLE);
+		}
 	      /* don't lose list */
 	      arg2->next = in_node->next;
 	      /* save alias */
@@ -6004,6 +6022,10 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	  while (q)
 	    {
 	      q->info.name.resolved = p->info.spec.range_var->info.name.original;
+	      if (PT_IS_SPEC_REAL_TABLE (p))
+		{
+		  PT_NAME_INFO_SET_FLAG (q, PT_NAME_REAL_TABLE);
+		}
 	      q = q->next;
 	    }
 	  p = p->next;
@@ -7335,6 +7357,11 @@ pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec, NATURAL_JOIN_ATTR_IN
   else
     {
       assert (PT_SPEC_IS_DERIVED (spec));
+    }
+
+  if (PT_IS_SPEC_REAL_TABLE (spec))
+    {
+      PT_NAME_INFO_SET_FLAG (name, PT_NAME_REAL_TABLE);
     }
 
   name->info.name.spec_id = spec->info.spec.id;
@@ -8939,6 +8966,10 @@ pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser, PT_NODE * res_list, 
     {
       node->info.name.spec_id = entity->info.spec.id;
       node->info.name.resolved = entity->info.spec.entity_name->info.name.original;
+      if (PT_IS_SPEC_REAL_TABLE (entity))
+	{
+	  PT_NAME_INFO_SET_FLAG (node, PT_NAME_REAL_TABLE);
+	}
       node->info.name.meta_class = PT_CLASS;
     }
 
