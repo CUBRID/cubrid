@@ -1923,6 +1923,20 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
+      xasl->limit_offset = NULL;
+    }
+  else
+    {
+      xasl->limit_offset = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->limit_offset == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
       xasl->limit_row_count = NULL;
     }
   else
@@ -4733,6 +4747,7 @@ static char *
 stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 {
   int offset;
+  int i;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &key_info->key_cnt);
@@ -4753,7 +4768,14 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 	}
     }
 
-  ptr = or_unpack_int (ptr, &key_info->is_constant);
+  ptr = or_unpack_int (ptr, &i);
+  key_info->is_constant = (bool) i;
+
+  ptr = or_unpack_int (ptr, &i);
+  key_info->key_limit_reset = (bool) i;
+
+  ptr = or_unpack_int (ptr, &i);
+  key_info->is_user_given_keylimit = (bool) i;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4784,8 +4806,6 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 	  return NULL;
 	}
     }
-
-  ptr = or_unpack_int (ptr, &key_info->key_limit_reset);
 
   return ptr;
 }

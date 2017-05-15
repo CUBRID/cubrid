@@ -5065,50 +5065,15 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
        * Try to reuse an already mark deleted heap file
        */
 
-      error_code = file_tracker_reuse_heap (thread_p, &hfid->vfid);
+      error_code = file_tracker_reuse_heap (thread_p, class_oid, hfid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto error;
 	}
-      if (!VFID_ISNULL (&hfid->vfid))
+
+      if (!HFID_IS_NULL (hfid))
 	{
-	  error_code = file_descriptor_get (thread_p, &hfid->vfid, &des);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	    }
-
-	  /* get hfid from descriptor. note: vfid must match. */
-	  assert (VFID_EQ (&hfid->vfid, &des.heap.hfid.vfid));
-	  *hfid = des.heap.hfid;
-
-	  /* update class in descriptor */
-	  des.heap.class_oid = *class_oid;
-
-#if !defined (NDEBUG)
-	  {
-	    /* safeguard: check hfid & sticky first page match */
-	    VPID vpid_heap_header = VPID_INITIALIZER;
-	    error_code = file_get_sticky_first_page (thread_p, &hfid->vfid, &vpid_heap_header);
-	    if (error_code != NO_ERROR)
-	      {
-		ASSERT_ERROR ();
-		goto error;
-	      }
-	    assert (hfid->vfid.volid == vpid_heap_header.volid);
-	    assert (hfid->hpgid == vpid_heap_header.pageid);
-	  }
-#endif /* !NDEBUG */
-
-	  /* update class in file header */
-	  error_code = file_descriptor_update (thread_p, &hfid->vfid, &des);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto error;
-	    }
-
 	  /* reuse heap file */
 	  if (heap_reuse (thread_p, hfid, class_oid, reuse_oid) == NULL)
 	    {
@@ -5135,7 +5100,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
    * new, and the file is going to be removed in the event of a crash.
    */
 
-  error_code = file_create_heap (thread_p, reuse_oid, &hfid->vfid);
+  error_code = file_create_heap (thread_p, reuse_oid, class_oid, &hfid->vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
