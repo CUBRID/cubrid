@@ -579,7 +579,7 @@ xes_posix_rename_file (const char *src_path, const char *metaname, char *new_pat
 {
   int ret;
 
-  es_rename_path (src_path, new_path, metaname);
+  es_rename_path ((char*)src_path, new_path, (char*)metaname);
 
   er_log_debug (ARG_FILE_LINE, "xes_posix_rename_file(%s, %s): %s\n", src_path, metaname, new_path);
 

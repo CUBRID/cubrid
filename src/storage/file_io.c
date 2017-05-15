@@ -9654,14 +9654,14 @@ fileio_get_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname, cons
       if (fileio_read_backup_info_entries (backup_volinfo_fp, FILEIO_FIRST_BACKUP_VOL_INFO) == NO_ERROR)
 	{
 	  volnameptr =
-	    fileio_get_backup_info_volume_name (try_level, FILEIO_INITIAL_BACKUP_UNITS, FILEIO_FIRST_BACKUP_VOL_INFO);
+	    fileio_get_backup_info_volume_name ((FILEIO_BACKUP_LEVEL)try_level, FILEIO_INITIAL_BACKUP_UNITS, FILEIO_FIRST_BACKUP_VOL_INFO);
 	  if (volnameptr != NULL)
 	    {
 	      strcpy (from_volbackup, volnameptr);
 	    }
 	  else
 	    {
-	      fileio_make_backup_name (from_volbackup, nopath_name, logpath, try_level, FILEIO_INITIAL_BACKUP_UNITS);
+	      fileio_make_backup_name (from_volbackup, nopath_name, logpath, (FILEIO_BACKUP_LEVEL)try_level, FILEIO_INITIAL_BACKUP_UNITS);
 	    }
 	}
       else

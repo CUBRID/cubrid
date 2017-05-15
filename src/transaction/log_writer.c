@@ -1749,7 +1749,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
 
   if (entry == NULL)
     {
-      entry = malloc (sizeof (LOGWR_ENTRY));
+      entry = (LOGWR_ENTRY*)malloc (sizeof (LOGWR_ENTRY));
       if (entry == NULL)
 	{
 	  pthread_mutex_unlock (&writer_info->wr_list_mutex);
@@ -1759,7 +1759,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
 
       entry->thread_p = thread_p;
       entry->fpageid = fpageid;
-      entry->mode = mode;
+      entry->mode = (LOGWR_MODE)mode;
       entry->start_copy_time = 0;
       entry->copy_from_first_phy_page = copy_from_first_phy_page;
 
@@ -1774,7 +1774,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
   else
     {
       entry->fpageid = fpageid;
-      entry->mode = mode;
+      entry->mode = (LOGWR_MODE)mode;
       entry->copy_from_first_phy_page = copy_from_first_phy_page;
       if (entry->status != LOGWR_STATUS_DELAY)
 	{
@@ -1809,7 +1809,7 @@ logwr_unregister_writer_entry (LOGWR_ENTRY * wr_entry, int status)
 
   rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
 
-  wr_entry->status = status;
+  wr_entry->status = (LOGWR_STATUS)status;
 
   entry = writer_info->writer_list;
   while (entry)
@@ -2186,7 +2186,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
   bool copy_from_first_phy_page = false;
 
   logpg_used_size = 0;
-  logpg_area = db_private_alloc (thread_p, (LOGWR_COPY_LOG_BUFFER_NPAGES * LOG_PAGESIZE));
+  logpg_area = (char*)db_private_alloc (thread_p, (LOGWR_COPY_LOG_BUFFER_NPAGES * LOG_PAGESIZE));
   if (logpg_area == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -2207,7 +2207,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	{
 	  copy_from_first_phy_page = false;
 	}
-      mode &= ~LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK;
+      mode = (LOGWR_MODE)(mode & ~LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK);
 
       /* In case that a non-ASYNC mode client internally uses ASYNC mode */
       orig_mode = MAX (mode, orig_mode);

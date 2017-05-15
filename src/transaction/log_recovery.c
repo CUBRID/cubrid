@@ -413,7 +413,7 @@ end:
   /* Convert thread back to system transaction. */
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
+      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE)save_thread_type);
     }
   else
     {
@@ -4059,7 +4059,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       log_recovery_finish_postpone (thread_p, tdes);
 
       /* Restore thread */
-      VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
+      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE)save_thread_type);
     }
 }
 
@@ -4115,7 +4115,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
       worker->state = VACUUM_WORKER_STATE_RECOVERY;
 
       /* Restore thread */
-      VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
+      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE)save_thread_type);
     }
 }
 

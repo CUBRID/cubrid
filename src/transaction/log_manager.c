@@ -4984,8 +4984,8 @@ log_is_valid_locator (const char *locator)
     {
       char *key, *meta;
 
-      key = LOCATOR_KEY (locator);
-      meta = LOCATOR_META (locator);
+      key = (char*)LOCATOR_KEY (locator);
+      meta = (char*)LOCATOR_META (locator);
       if (key && meta && (key > meta))
 	{
 	  return true;
@@ -5021,7 +5021,7 @@ xlog_find_lob_locator (THREAD_ENTRY * thread_p, const char *locator, char *real_
     {
       LOB_LOCATOR_ENTRY *entry, find;
 
-      find.key = LOCATOR_KEY (locator);
+      find.key = (char*)LOCATOR_KEY (locator);
       find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
       /* Find entry from red-black tree (see base/rb_tree.h) */
       entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
@@ -5067,17 +5067,17 @@ xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  key = LOCATOR_KEY (locator);
+  key = (char*)LOCATOR_KEY (locator);
   key_len = strlen (key);
 
-  entry = malloc (sizeof (LOB_LOCATOR_ENTRY) + key_len);
+  entry = (LOB_LOCATOR_ENTRY*) malloc (sizeof (LOB_LOCATOR_ENTRY) + key_len);
   if (entry == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOB_LOCATOR_ENTRY) + key_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  savept = malloc (sizeof (LOB_SAVEPOINT_ENTRY));
+  savept = (LOB_SAVEPOINT_ENTRY*)malloc (sizeof (LOB_SAVEPOINT_ENTRY));
   if (savept == NULL)
     {
       free_and_init (entry);
@@ -5131,7 +5131,7 @@ xlog_change_state_of_locator (THREAD_ENTRY * thread_p, const char *locator, cons
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  find.key = LOCATOR_KEY (locator);
+  find.key = (char*)LOCATOR_KEY (locator);
   find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
   entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
 
@@ -5146,7 +5146,7 @@ xlog_change_state_of_locator (THREAD_ENTRY * thread_p, const char *locator, cons
 	{
 	  LOB_SAVEPOINT_ENTRY *savept;
 
-	  savept = malloc (sizeof (LOB_SAVEPOINT_ENTRY));
+	  savept = (LOB_SAVEPOINT_ENTRY *)malloc (sizeof (LOB_SAVEPOINT_ENTRY));
 	  if (savept == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOB_SAVEPOINT_ENTRY));
@@ -5200,7 +5200,7 @@ xlog_drop_lob_locator (THREAD_ENTRY * thread_p, const char *locator)
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  find.key = LOCATOR_KEY (locator);
+  find.key = (char*)LOCATOR_KEY (locator);
   find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
   /* Remove entry that matches 'find' entry from the red-black tree. see base/rb_tree.h for more information */
   entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
@@ -6410,7 +6410,7 @@ log_repl_data_dump (FILE * out_fp, int length, void *data)
   PARSER_VARCHAR *buf;
   PARSER_CONTEXT *parser;
 
-  ptr = data;
+  ptr = (char*)data;
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_mem_value (ptr, &value);
 
@@ -6432,7 +6432,7 @@ log_repl_schema_dump (FILE * out_fp, int length, void *data)
   char *class_name;
   char *sql;
 
-  ptr = data;
+  ptr = (char*)data;
   ptr = or_unpack_int (ptr, &statement_type);
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_string_nocopy (ptr, &sql);
@@ -9612,7 +9612,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], header->has_logging_been_skipped);
   idx++;
 
-  str = logpb_perm_status_to_string (header->perm_status);
+  str = logpb_perm_status_to_string ((LOG_PSTATUS)header->perm_status);
   db_make_string (out_values[idx], str);
   idx++;
 
@@ -9640,11 +9640,11 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
       goto exit_on_error;
     }
 
-  str = css_ha_server_state_string (header->ha_server_state);
+  str = css_ha_server_state_string ((HA_SERVER_STATE)header->ha_server_state);
   db_make_string (out_values[idx], str);
   idx++;
 
-  str = logwr_log_ha_filestat_to_string (header->ha_file_status);
+  str = logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT)header->ha_file_status);
   db_make_string (out_values[idx], str);
   idx++;
 

@@ -2331,8 +2331,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
-	      prm_get_name (PRM_ID_HA_MODE), css_ha_mode_string (common_ha_mode), db_name,
-	      css_ha_mode_string (prm_get_integer_value (PRM_ID_HA_MODE)));
+	      prm_get_name (PRM_ID_HA_MODE), css_ha_mode_string ((HA_MODE)common_ha_mode), db_name,
+	      css_ha_mode_string ((HA_MODE)prm_get_integer_value (PRM_ID_HA_MODE)));
       error_code = ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS;
       goto error;
     }
@@ -2505,7 +2505,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   else
     {
-      lang_set_charset (db_charset_db_header);
+      lang_set_charset ((INTL_CODESET)db_charset_db_header);
     }
 
   /* Find the rest of the volumes and mount them */
@@ -2637,7 +2637,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       char er_msg[ERR_MSG_SIZE];
       snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root system table: expecting %s, found %s",
-		lang_charset_cubrid_name (db_charset_db_header), lang_charset_cubrid_name (db_charset_db_root));
+		lang_charset_cubrid_name ((INTL_CODESET)db_charset_db_header), lang_charset_cubrid_name ((INTL_CODESET)db_charset_db_root));
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
       error_code = ER_LOC_INIT;
       goto error;
@@ -2826,7 +2826,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* set number of hosts */
   css_set_ha_num_of_hosts (db->num_hosts);
   /* set server's starting mode for HA according to the 'ha_mode' parameter */
-  css_change_ha_server_state (thread_p, prm_get_integer_value (PRM_ID_HA_SERVER_STATE), false,
+  css_change_ha_server_state (thread_p, (HA_SERVER_STATE)prm_get_integer_value (PRM_ID_HA_SERVER_STATE), false,
 			      HA_CHANGE_MODE_IMMEDIATELY, true);
 #endif
 
@@ -3977,7 +3977,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	  snprintf (new_lob_pathbuf, sizeof (new_lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, new_lob_path);
 	  new_lob_path = new_lob_pathbuf;
 	  es_type = ES_POSIX;
-	  p = strchr (new_lob_path, ':') + 1;
+	  p = (char*)strchr (new_lob_path, ':') + 1;
 	  break;
 	case ES_POSIX:
 	  p = strchr (strcpy (new_lob_pathbuf, new_lob_path), ':') + 1;
@@ -5379,7 +5379,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
 	}
       else
 	{
-	  lang_set_charset (db_charset_db_header);
+	  lang_set_charset ((INTL_CODESET)db_charset_db_header);
 	}
     }
   else
@@ -5471,7 +5471,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     {
       char er_msg[ERR_MSG_SIZE];
       snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root system table: expecting %s, found %s",
-		lang_charset_cubrid_name (db_charset_db_header), lang_charset_cubrid_name (db_charset_db_root));
+		lang_charset_cubrid_name ((INTL_CODESET)db_charset_db_header), lang_charset_cubrid_name ((INTL_CODESET)db_charset_db_root));
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
       error_code = ER_LOC_INIT;
       goto error_exit;

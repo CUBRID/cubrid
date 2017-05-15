@@ -555,7 +555,7 @@
 
 #define PTHREAD_MUTEX_INITIALIZER	{{ NULL, 0, 0, NULL, NULL, 0 }, NULL, 0}
 
-enum
+typedef enum
 {
   COND_SIGNAL = 0,
   COND_BROADCAST = 1,

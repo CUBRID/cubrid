@@ -722,7 +722,7 @@ thread_start_workers (void)
 	}
 
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
-      r = pthread_create (&thread_p->tid, &thread_attr, thread_Daemons[i].daemon_function, thread_p);
+      r = pthread_create (&thread_p->tid, &thread_attr, (unsigned int(*)(void*))thread_Daemons[i].daemon_function, thread_p);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_CREATE, 0);
@@ -1262,12 +1262,12 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 
   if (entry_p->log_zip_undo)
     {
-      log_zip_free (entry_p->log_zip_undo);
+      log_zip_free ((LOG_ZIP*)entry_p->log_zip_undo);
       entry_p->log_zip_undo = NULL;
     }
   if (entry_p->log_zip_redo)
     {
-      log_zip_free (entry_p->log_zip_redo);
+      log_zip_free ((LOG_ZIP*)entry_p->log_zip_redo);
       entry_p->log_zip_redo = NULL;
     }
   if (entry_p->log_data_ptr)
