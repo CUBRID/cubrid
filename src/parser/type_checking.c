@@ -19378,15 +19378,30 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  cast_expr->type_enum = opd1->type_enum;
 	  cast_expr->info.expr.location = is_hidden_column;
 
-	  dt = parser_copy_tree (parser, opd1->data_type);
-	  if (dt == NULL)
+	  if (opd1->data_type)
 	    {
-	      parser_free_tree (parser, default_value);
-	      parser_free_tree (parser, cast_expr);
-	      PT_ERRORc (parser, expr, er_msg ());
-	      return expr;
+	      dt = parser_copy_tree (parser, opd1->data_type);
+	      if (dt == NULL)
+		{
+		  parser_free_tree (parser, default_value);
+		  parser_free_tree (parser, cast_expr);
+		  PT_ERRORc (parser, expr, er_msg ());
+		  return expr;
+		}
 	    }
-	  dt->type_enum = opd1->type_enum;
+	  else
+	    {
+	      dt = parser_new_node (parser, PT_DATA_TYPE);
+	      if (dt == NULL)
+		{
+		  parser_free_tree (parser, default_value);
+		  parser_free_tree (parser, cast_expr);
+		  PT_ERRORc (parser, expr, er_msg ());
+		  return expr;
+		}
+	      dt->type_enum = opd1->type_enum;
+	    }
+
 	  cast_expr->info.expr.cast_type = dt;
 	  result = cast_expr;
 	}
