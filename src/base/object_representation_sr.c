@@ -2489,7 +2489,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	  att->location = i - n_fixed;
 	}
 
-      /* get the current default value */
+      /* get the current default value - constant */
       if (vallen2)
 	{
 	  if (or_get_current_default_value (att, valptr2, vallen2) == 0)
@@ -2498,7 +2498,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	    }
 	}
 
-      /* get the default value, this could be using a new DB_VALUE ? */
+      /* get the default value - constant, this could be using a new DB_VALUE ? */
       if (vallen)
 	{
 	  if (or_get_default_value (att, valptr, vallen) == 0)
@@ -2507,6 +2507,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	    }
 	}
 
+      /* get the default expression. */
       classobj_initialize_default_expr (&att->current_default_value.default_expr);
       if (vallen1 > 0)
 	{
@@ -2521,9 +2522,13 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	    {
 	      if (DB_VALUE_TYPE (&def_expr) == DB_TYPE_SEQUENCE)
 		{
+		  /* We can't have an attribute with default expression and default value simultaneously. */
+		  assert (att->default_value.value == NULL && att->current_default_value.value == NULL);
+
 		  /* Currently, we allow only (T_TO_CHAR(int), default_expr(int), default_expr_format(string)) */
 		  assert (set_size (DB_PULL_SEQUENCE (&def_expr)) == 3);
 		  def_expr_set = DB_PULL_SEQUENCE (&def_expr);
+		  /* get and cache default expression operator */
 		  if (set_get_element_nocopy (def_expr_set, 0, &def_expr_op) != NO_ERROR)
 		    {
 		      assert (false);
@@ -2536,6 +2541,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  att->default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
 		  att->current_default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
 
+		  /* get and cache default expression type */
 		  if (set_get_element_nocopy (def_expr_set, 1, &def_expr_type) != NO_ERROR)
 		    {
 		      assert (false);
@@ -2547,6 +2553,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  att->default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr_type);
 		  att->current_default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr_type);
 
+		  /* get and cache default expression format */
 		  if (set_get_element_nocopy (def_expr_set, 2, &def_expr_format) != NO_ERROR)
 		    {
 		      assert (false);
@@ -2572,6 +2579,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		}
 	      else
 		{
+		  /* simple expressions like SYS_DATE */
 		  assert (DB_VALUE_TYPE (&def_expr) == DB_TYPE_INTEGER);
 		  att->default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr);
 		  att->current_default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr);

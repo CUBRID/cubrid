@@ -1001,6 +1001,10 @@ typedef enum
   DB_DEFAULT_FORMATTED_SYSDATE = 12,
 } DB_DEFAULT_EXPR_TYPE;
 
+/*
+ * An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
+ * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.
+ */
 typedef struct db_default_expr DB_DEFAULT_EXPR;
 struct db_default_expr
 {
