@@ -22590,18 +22590,6 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  alloced_string = 0;
 	  if (attrepr->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
-	      if (attrepr->default_value.default_expr.default_expr_op == T_TO_CHAR)
-		{
-		  default_expr_format = attrepr->default_value.default_expr.default_expr_format;
-		  len = strlen ("TO_CHAR(") + 3 + strlen ("CURRENT_TIMESTAMP")
-		    + (default_expr_format ? strlen (default_expr_format) : strlen ("NULL"));
-		  default_value_string = (char *) malloc (len + 1);
-		  if (default_value_string == NULL)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		}
-
 	      switch (attrepr->default_value.default_expr.default_expr_type)
 		{
 		case DB_DEFAULT_NONE:
@@ -22654,17 +22642,22 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	      if (attrepr->default_value.default_expr.default_expr_op == T_TO_CHAR)
 		{
+		  default_expr_format = attrepr->default_value.default_expr.default_expr_format;
+		  len = strlen ("TO_CHAR(") + 3 + strlen ("CURRENT_TIMESTAMP")
+		    + (default_expr_format ? strlen (default_expr_format) : 0);
+		  default_value_string = (char *) malloc (len + 1);
+		  if (default_value_string == NULL)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
 		  strcpy (default_value_string, "TO_CHAR(");
 		  strcat (default_value_string, default_expr_type_string);
-		  strcat (default_value_string, ", ");
 		  default_expr_format = attrepr->default_value.default_expr.default_expr_format;
 		  if (default_expr_format)
 		    {
+		      strcat (default_value_string, ", ");
 		      strcat (default_value_string, default_expr_format);
-		    }
-		  else
-		    {
-		      strcat (default_value_string, "NULL");
 		    }
 
 		  strcat (default_value_string, ")");

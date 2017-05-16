@@ -3655,21 +3655,6 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       return default_value_string;
     }
 
-  if (attr->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
-    {
-      int len;
-      default_expr_format = attr->default_value.default_expr.default_expr_format;
-      len = strlen ("TO_CHAR(") + 3 + strlen ("CURRENT_TIMESTAMP")
-	+ (default_expr_format ? strlen (default_expr_format) : strlen ("NULL"));
-      default_value_string = (char *) malloc (len + 1);
-      if (default_value_string == NULL)
-	{
-	  return NULL;
-	}
-
-      *alloc = true;
-    }
-
   switch (attr->default_value.default_expr.default_expr_type)
     {
     case DB_DEFAULT_SYSTIME:
@@ -3721,31 +3706,39 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       break;
     }
 
-  if (attr->default_value.default_expr.default_expr_op != -1)
+  if (default_value_expr_type_string != NULL)
     {
+      /* default expression case */
+      int len;
       default_expr_format = attr->default_value.default_expr.default_expr_format;
-      strcpy (default_value_string, "TO_CHAR(");
-      strcat (default_value_string, default_value_expr_type_string);
-      strcat (default_value_string, ", ");
-      if (default_expr_format)
+      len = strlen ("TO_CHAR(") + 3 + strlen ("CURRENT_TIMESTAMP")
+	+ (default_expr_format ? strlen (default_expr_format) : 0);
+      default_value_string = (char *) malloc (len + 1);
+      if (default_value_string == NULL)
 	{
-	  strcat (default_value_string, default_expr_format);
+	  return NULL;
+	}
+      *alloc = true;
+
+      if (attr->default_value.default_expr.default_expr_op != NULL_DEFAULT_EXPRESSION_OPERATOR)
+	{
+	  default_expr_format = attr->default_value.default_expr.default_expr_format;
+	  strcpy (default_value_string, "TO_CHAR(");
+	  strcat (default_value_string, default_value_expr_type_string);
+	  if (default_expr_format)
+	    {
+	      strcat (default_value_string, ", ");
+	      strcat (default_value_string, default_expr_format);
+	    }
+
+	  strcat (default_value_string, ")");
 	}
       else
 	{
-	  strcat (default_value_string, "NULL");
+	  strcpy (default_value_string, default_value_expr_type_string);
 	}
 
-      strcat (default_value_string, ")");
       return default_value_string;
-    }
-  else
-    {
-      if (default_value_expr_type_string)
-	{
-	  strcpy (default_value_string, default_value_expr_type_string);
-	  return default_value_string;
-	}
     }
 
   if (db_value_is_null (def))
@@ -3753,6 +3746,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       return "NULL";
     }
 
+  /* default value case */
   switch (db_value_type (def))
     {
     case DB_TYPE_UNKNOWN:

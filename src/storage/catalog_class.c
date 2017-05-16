@@ -1381,7 +1381,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   db_make_null (&default_expr);
   if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
     {
-      char *str_val;
+      char *str_val = NULL;
       int len;
 
       if (DB_VALUE_TYPE (&default_expr) == DB_TYPE_SEQUENCE)
@@ -1425,17 +1425,6 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
       else
 	{
 	  default_expr_type = DB_GET_INT (&default_expr);
-	}
-
-      len = strlen ("TO_CHAR(") + 3 + strlen ("CURRENT_TIMESTAMP")
-	+ (def_expr_format_string ? strlen (def_expr_format_string) : strlen ("NULL"));
-      str_val = (char *) db_private_alloc (thread_p, len + 1);
-      if (str_val == NULL)
-	{
-	  pr_clear_value (&default_expr);
-	  pr_clear_value (&val);
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
 	}
 
       switch (default_expr_type)
@@ -1489,8 +1478,18 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  pr_clear_value (&val);
 	  assert (false);
 	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  db_private_free_and_init (thread_p, str_val);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);	  
+	  goto error;
+	}
+
+      len = strlen ("TO_CHAR(") + 3 + strlen ("CURRENT_TIMESTAMP")
+	+ (def_expr_format_string ? strlen (def_expr_format_string) : 0);
+      str_val = (char *) db_private_alloc (thread_p, len + 1);
+      if (str_val == NULL)
+	{
+	  pr_clear_value (&default_expr);
+	  pr_clear_value (&val);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}
 
@@ -1498,14 +1497,10 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	{
 	  strcpy (str_val, "TO_CHAR(");
 	  strcat (str_val, default_expr_type_string);
-	  strcat (str_val, ", ");
 	  if (def_expr_format_string)
 	    {
+	      strcat (str_val, ", ");
 	      strcat (str_val, def_expr_format_string);
-	    }
-	  else
-	    {
-	      strcat (str_val, "NULL");
 	    }
 
 	  strcat (str_val, ")");

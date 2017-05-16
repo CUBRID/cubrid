@@ -4048,17 +4048,17 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  goto end;
 	}
 
-      if (PT_IS_EXPR_NODE (default_value->info.expr.arg1) && default_value->info.expr.op == PT_TO_CHAR)
+      if (PT_IS_EXPR_NODE (default_value) && default_value->info.expr.op == PT_TO_CHAR
+	  && PT_IS_EXPR_NODE (default_value->info.expr.arg1))
 	{
 	  int op_type = -1;
 
-	  if (default_value->info.expr.arg2 != NULL && default_value->info.expr.arg2->node_type == PT_EXPR)
+	  if (PT_IS_EXPR_NODE (default_value->info.expr.arg2))
 	    {
 	      /* nested expressions in arg2 are not supported */
 	      op_type = default_value->info.expr.arg2->info.expr.op;
 	    }
-	  else if (node_ptr == NULL && default_value->info.expr.arg1
-		   && default_value->info.expr.arg1->node_type == PT_EXPR)
+	  else if (node_ptr == NULL)
 	    {
 	      /* nested expressions in arg1 are not supported except sys date, time and user. */
 	      op_type = default_value->info.expr.arg1->info.expr.op;
@@ -4221,7 +4221,7 @@ pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
       return tree;
     }
 
-  if (tree->info.expr.arg1 != NULL && PT_IS_EXPR_NODE (tree->info.expr.arg1) && tree->info.expr.op == PT_TO_CHAR)
+  if (tree->info.expr.op == PT_TO_CHAR && tree->info.expr.arg1 != NULL && PT_IS_EXPR_NODE (tree->info.expr.arg1))
     {
       /* The correctness of TO_CHAR expression is done a little bit later after obtaining system time. */
       assert (tree->info.expr.arg2 != NULL);

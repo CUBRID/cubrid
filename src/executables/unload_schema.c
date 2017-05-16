@@ -2378,14 +2378,10 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 
       if (attribute->default_value.default_expr.default_expr_op == T_TO_CHAR)
 	{
-	  fprintf (output_file, ", \'");
 	  if (attribute->default_value.default_expr.default_expr_format != NULL)
 	    {
+	      fprintf (output_file, ", \'");
 	      fprintf (output_file, attribute->default_value.default_expr.default_expr_format);
-	    }
-	  else
-	    {
-	      fprintf (output_file, "NULL");
 	    }
 
 	  fprintf (output_file, "\')");

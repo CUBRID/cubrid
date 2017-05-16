@@ -680,15 +680,11 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE
 
 	  if (attribute_p->default_value.default_expr.default_expr_op == T_TO_CHAR)
 	    {
-	      buffer = pt_append_nulstring (parser, buffer, ", \'");
 	      if (attribute_p->default_value.default_expr.default_expr_format)
 		{
+		  buffer = pt_append_nulstring (parser, buffer, ", \'");
 		  buffer = pt_append_nulstring (parser, buffer,
 						attribute_p->default_value.default_expr.default_expr_format);
-		}
-	      else
-		{
-		  buffer = pt_append_nulstring (parser, buffer, "NULL");
 		}
 
 	      buffer = pt_append_nulstring (parser, buffer, "\')");
