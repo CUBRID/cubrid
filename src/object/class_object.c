@@ -4814,7 +4814,7 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
   dest->domain = NULL;
   dest->properties = NULL;
   dest->auto_increment = src->auto_increment;
-  classobj_copy_default_expr (&src->default_value.default_expr, &dest->default_value.default_expr);
+  classobj_copy_default_expr (&dest->default_value.default_expr, &src->default_value.default_expr);
   dest->comment = NULL;
 
   if (copy)
@@ -8895,13 +8895,13 @@ error:
  * classobj_copy_default_expr() - Copies default expression.
  *    return: error code
  *
- *   src(in): source default expression
  *   dest(out): destination default expression
+ *   src(in): source default expression
  */
 int
-classobj_copy_default_expr (DB_DEFAULT_EXPR * src, DB_DEFAULT_EXPR * dest)
+classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 {
-  assert (src != NULL && dest != NULL);
+  assert (dest != NULL && src != NULL);
 
   dest->default_expr_type = src->default_expr_type;
   dest->default_expr_op = src->default_expr_op;

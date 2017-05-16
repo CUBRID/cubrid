@@ -1390,7 +1390,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 		}
 	      else
 		{
-		  classobj_copy_default_expr (default_expr, &att->default_value.default_expr);
+		  classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
 		}
 
 	      /* if there wasn't an previous original value, take this one. This can only happen for new templates OR
@@ -1417,11 +1417,10 @@ end:
 }
 
 /*
- * smt_set_attribute_orig_default_value() - Sets the original default value of
- *					    the attribute.
+ * smt_set_attribute_orig_default_value() - Sets the original default value of the attribute.
  *					    No domain checking is performed.
  *   return: void
- *   att(in): attribute
+ *   att(in/out): attribute
  *   new_orig_value(in): original value to set
  *   default_expr(in): default expression
  *
@@ -1448,7 +1447,7 @@ smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_va
       return NO_ERROR;
     }
 
-  return classobj_copy_default_expr (default_expr, &att->default_value.default_expr);
+  return classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
 }
 
 /*

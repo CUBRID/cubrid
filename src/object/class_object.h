@@ -1168,7 +1168,7 @@ extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char *
 				       const char *constraint_name, const char **att_names, const int *asc_desc,
 				       SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_index_info);
 extern void classobj_initialize_attributes (SM_ATTRIBUTE * attributes);
-extern int classobj_copy_default_expr (DB_DEFAULT_EXPR * src, DB_DEFAULT_EXPR * dest);
+extern int classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src);
 extern void classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr);
 extern void classobj_initialize_methods (SM_METHOD * methods);
 extern SM_PARTITION *classobj_make_partition_info (void);
