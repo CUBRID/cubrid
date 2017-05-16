@@ -4546,13 +4546,6 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
       default_expr = &attr->default_value.default_expr;
       if (default_expr->default_expr_type != DB_DEFAULT_NONE)
 	{
-	  /*
-	   * we have a default expression, so the default value keeps the result of the default expression,
-	   * but is not part of the schema.
-	   */
-	  pr_clear_value (&attr->default_value.value);
-	  pr_clear_value (&attr->default_value.original_value);
-
 	  /* attr has default expression as default value */
 	  if (attr->properties == NULL)
 	    {

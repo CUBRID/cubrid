@@ -2522,8 +2522,14 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	      /* We have two cases: simple and complex expression. */
 	      if (DB_VALUE_TYPE (&def_expr) == DB_TYPE_SEQUENCE)
 		{
-		  /* We can't have an attribute with default expression and default value simultaneously. */
-		  assert (att->default_value.value == NULL && att->current_default_value.value == NULL);
+		  /*
+		   * We can't have an attribute with default expression and default value simultaneously. However,
+		   * in some situations attr->default_value.value contains the value of default expression. This happens
+		   * when the client executes the query on broker side and use attr->default_value.value to cache
+		   * the default expression value. Then the broker can modify the schema and send to server the default
+		   * expression and its cached value. Another option may be to clear default value on broker side,
+		   * but may lead to inconsistency.
+		   */
 
 		  /* Currently, we allow only (T_TO_CHAR(int), default_expr(int), default_expr_format(string)) */
 		  assert (set_size (DB_PULL_SEQUENCE (&def_expr)) == 3);
