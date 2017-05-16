@@ -3013,6 +3013,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 	{
 	  if (classobj_get_prop (att->properties, "default_expr", &value) > 0)
 	    {
+	      /* We have two cases: simple and complex expressions. */
 	      if (DB_VALUE_TYPE (&value) == DB_TYPE_SEQUENCE)
 		{
 		  DB_SET *def_expr_set;
@@ -3020,7 +3021,10 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		  char *def_expr_format_str;
 
 		  assert (set_size (DB_PULL_SEQUENCE (&value)) == 3);
+
 		  def_expr_set = DB_PULL_SEQUENCE (&value);
+
+		  /* get default expression operator (op of expr) */
 		  if (set_get_element_nocopy (def_expr_set, 0, &def_expr_op) != NO_ERROR)
 		    {
 		      assert (false);
@@ -3029,6 +3033,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 			  && DB_GET_INT (&def_expr_op) == (int) T_TO_CHAR);
 		  att->default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
 
+		  /* get default expression type (arg1 of expr) */
 		  if (set_get_element_nocopy (def_expr_set, 1, &def_expr_type) != NO_ERROR)
 		    {
 		      assert (false);
@@ -3036,17 +3041,16 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
 		  att->default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr_type);
 
+		  /* get default expression format (arg2 of expr) */
 		  if (set_get_element_nocopy (def_expr_set, 2, &def_expr_format) != NO_ERROR)
 		    {
 		      assert (false);
 		    }
 
-#if !defined(NDEBUG)
+#if !defined (NDEBUG)
 		  {
 		    DB_TYPE db_value_type = db_value_type (&def_expr_format);
-		    assert (db_value_type == DB_TYPE_NULL || db_value_type == DB_TYPE_CHAR
-			    || db_value_type == DB_TYPE_NCHAR || db_value_type == DB_TYPE_VARCHAR
-			    || db_value_type == DB_TYPE_VARNCHAR);
+		    assert (db_value_type == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type));
 		  }
 #endif
 		  if (!db_value_is_null (&def_expr_format))
@@ -3057,13 +3061,15 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 			{
 			  assert (er_errid () != NO_ERROR);
 			}
+		      pr_clear_value (&def_expr_format);
 		    }
 		}
 	      else
 		{
 		  att->default_value.default_expr.default_expr_type = DB_GET_INT (&value);
 		}
-	      db_value_clear (&value);
+
+	      pr_clear_value (&value);
 	    }
 	}
 
