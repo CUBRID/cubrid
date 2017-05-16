@@ -402,6 +402,10 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   char *user_name;
   DB_DATETIME *datetime;
   int month, day, year, hour, minute, second, millisecond;
+  DB_VALUE default_value, format_val, lang_val;
+  char *lang_str = NULL;
+  int flag;
+  TP_DOMAIN *result_domain = NULL;
 
   assert (class_name->node_type == PT_NAME);
 
@@ -421,53 +425,53 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	    case DB_DEFAULT_CURRENTTIME:
 	      if (DB_IS_NULL (&parser->sys_datetime))
 		{
-		  db_make_null (&att->default_value.value);
+		  db_make_null (&default_value);
 		}
 	      else
 		{
 		  db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (&parser->sys_datetime), &month, &day, &year,
 				      &hour, &minute, &second, &millisecond);
-		  db_make_time (&att->default_value.value, hour, minute, second);
+		  db_make_time (&default_value, hour, minute, second);
 		}
 	      break;
 	    case DB_DEFAULT_SYSDATE:
 	      if (DB_IS_NULL (&parser->sys_datetime))
 		{
-		  db_make_null (&att->default_value.value);
+		  db_make_null (&default_value);
 		}
 	      else
 		{
 		  datetime = DB_GET_DATETIME (&parser->sys_datetime);
-		  error = db_value_put_encoded_date (&att->default_value.value, &datetime->date);
+		  error = db_value_put_encoded_date (&default_value, &datetime->date);
 		}
 	      break;
 	    case DB_DEFAULT_SYSDATETIME:
-	      error = pr_clone_value (&parser->sys_datetime, &att->default_value.value);
+	      error = pr_clone_value (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_SYSTIMESTAMP:
-	      error = db_datetime_to_timestamp (&parser->sys_datetime, &att->default_value.value);
+	      error = db_datetime_to_timestamp (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_UNIX_TIMESTAMP:
-	      error = db_unix_timestamp (&parser->sys_datetime, &att->default_value.value);
+	      error = db_unix_timestamp (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_USER:
 	      user_name = db_get_user_and_host_name ();
-	      error = db_make_string (&att->default_value.value, user_name);
-	      att->default_value.value.need_clear = true;
+	      error = db_make_string (&default_value, user_name);
+	      default_value.need_clear = true;
 	      break;
 	    case DB_DEFAULT_CURR_USER:
 	      user_name = db_get_user_name ();
-	      error = DB_MAKE_STRING (&att->default_value.value, user_name);
-	      att->default_value.value.need_clear = true;
+	      error = DB_MAKE_STRING (&default_value, user_name);
+	      default_value.need_clear = true;
 	      break;
 	    case DB_DEFAULT_CURRENTDATE:
-	      error = pr_clone_value (&parser->sys_datetime, &att->default_value.value);
+	      error = pr_clone_value (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_CURRENTDATETIME:
-	      error = pr_clone_value (&parser->sys_datetime, &att->default_value.value);
+	      error = pr_clone_value (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_CURRENTTIMESTAMP:
-	      error = db_datetime_to_timestamp (&parser->sys_datetime, &att->default_value.value);
+	      error = db_datetime_to_timestamp (&parser->sys_datetime, &default_value);
 	      break;
 	    default:
 	      break;
@@ -477,6 +481,55 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	    {
 	      break;
 	    }
+
+	  if (att->default_value.default_expr.default_expr_op == T_TO_CHAR)
+	    {
+	      if (att->default_value.default_expr.default_expr_format != NULL)
+		{
+		  db_make_string (&format_val, att->default_value.default_expr.default_expr_format);
+		}
+	      else
+		{
+		  db_make_null (&format_val);
+		}
+
+	      lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+	      lang_set_flag_from_lang (lang_str, 1, 0, &flag);
+	      db_make_int (&lang_val, flag);
+
+	      if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (att->domain)))
+		{
+		  /* TO_CHAR returns a string value, we need to pass an expected domain of the result */
+		  if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&default_value)))
+		    {
+		      result_domain = NULL;
+		    }
+		  else if (DB_IS_NULL (&format_val))
+		    {
+		      result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+		    }
+		  else
+		    {
+		      result_domain = tp_domain_resolve_value (&format_val, NULL);
+		    }
+		}
+	      else
+		{
+		  result_domain = att->domain;
+		}
+
+	      error = db_to_char (&default_value, &format_val, &lang_val, &att->default_value.value, result_domain);
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
+	    }
+	  else
+	    {
+	      pr_clone_value (&default_value, &att->default_value.value);
+	    }
+
+	  db_value_clear (&default_value);
 
 	  /* make sure the default value can be used for this attribute */
 	  dom_status = tp_value_cast (&att->default_value.value, &att->default_value.value, att->domain, false);
