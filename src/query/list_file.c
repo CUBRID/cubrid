@@ -5572,7 +5572,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 #if defined(SERVER_MODE)
   TRAN_ISOLATION tran_isolation;
 #if defined(WINDOWS)
-  int num_elements;
+  unsigned int num_elements;
 #else
   size_t num_elements;
 #endif
@@ -5628,7 +5628,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	   * transaction */
 	  num_elements = (int) lent->last_ta_idx;
 	  if (lent->uncommitted_marker == true
-	      && lfind (&tran_index, lent->tran_index_array, (size_t*)&num_elements, sizeof (int),
+	      && lfind (&tran_index, lent->tran_index_array, &num_elements, sizeof (int),
 			qfile_compare_tran_id) != NULL)
 	    {
 	      lent->last_ta_idx = num_elements;
@@ -5651,7 +5651,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	  if (lent->last_ta_idx < (size_t) MAX_NTRANS)
 	    {
 	      num_elements = (int) lent->last_ta_idx;
-	      (void) lsearch (&tran_index, lent->tran_index_array, (size_t*)&num_elements, sizeof (int), qfile_compare_tran_id);
+	      (void) lsearch (&tran_index, lent->tran_index_array, &num_elements, sizeof (int), qfile_compare_tran_id);
 	      lent->last_ta_idx = num_elements;
 	    }
 
@@ -5824,7 +5824,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
 #if defined(SERVER_MODE)
   TRAN_ISOLATION tran_isolation;
 #if defined(WINDOWS)
-  int num_elements;
+  unsigned int num_elements;
 #else
   size_t num_elements;
 #endif
@@ -5915,7 +5915,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       if (lent->last_ta_idx < (size_t) MAX_NTRANS)
 	{
 	  num_elements = (int) lent->last_ta_idx;
-	  (void) lsearch (&tran_index, lent->tran_index_array, (size_t*)&num_elements, sizeof (int), qfile_compare_tran_id);
+	  (void) lsearch (&tran_index, lent->tran_index_array, &num_elements, sizeof (int), qfile_compare_tran_id);
 	  lent->last_ta_idx = num_elements;
 	}
 
@@ -6106,7 +6106,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
   if (lent->last_ta_idx < (size_t) MAX_NTRANS)
     {
       num_elements = (int) lent->last_ta_idx;
-      (void) lsearch (&tran_index, lent->tran_index_array, (size_t*)&num_elements, sizeof (int), qfile_compare_tran_id);
+      (void) lsearch (&tran_index, lent->tran_index_array, &num_elements, sizeof (int), qfile_compare_tran_id);
       lent->last_ta_idx = num_elements;
     }
 
@@ -6167,7 +6167,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
 #if defined(SERVER_MODE)
   int *p, *r;
 #if defined(WINDOWS)
-  int num_elements;
+  unsigned int num_elements;
 #else
   size_t num_elements;
 #endif
@@ -6198,7 +6198,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
     {
       /* find my tran_id */
       num_elements = (int) lent->last_ta_idx;
-      p = (int *) lfind (&tran_index, lent->tran_index_array, (size_t*)&num_elements, sizeof (int), qfile_compare_tran_id);
+      p = (int *) lfind (&tran_index, lent->tran_index_array, &num_elements, sizeof (int), qfile_compare_tran_id);
       lent->last_ta_idx = num_elements;
       if (p)
 	{

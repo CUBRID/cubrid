@@ -794,7 +794,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
       return TF_ERROR;
     }
 
-  expected_size = object_size (class_, obj, &offset_size);
+  expected_size = object_size (class_, obj, (int*)&offset_size);
   if ((expected_size + OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE) > record->area_size)
     {
       record->length = -expected_size;
@@ -3013,7 +3013,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 	{
 	  if (classobj_get_prop (att->properties, "default_expr", &value) > 0)
 	    {
-	      att->default_value.default_expr = DB_GET_INT (&value);
+	      att->default_value.default_expr = (DB_DEFAULT_EXPR_TYPE)DB_GET_INT (&value);
 	      db_value_clear (&value);
 	    }
 	}

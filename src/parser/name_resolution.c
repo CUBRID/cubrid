@@ -625,7 +625,7 @@ pt_bind_reserved_name (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * spe
 	  reserved_name->info.name.spec_id = spec->info.spec.id;
 	  reserved_name->info.name.resolved = spec->info.spec.range_var->info.name.original;
 	  reserved_name->info.name.meta_class = PT_RESERVED;
-	  reserved_name->info.name.reserved_id = i;
+	  reserved_name->info.name.reserved_id = (PT_RESERVED_NAME_ID)i;
 	  reserved_name->type_enum = pt_db_to_type_enum (pt_Reserved_name_table[i].type);
 	  if (reserved_name->type_enum == PT_TYPE_OBJECT)
 	    {
@@ -1688,12 +1688,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  if (node->info.query.q.select.hint & PT_HINT_SELECT_RECORD_INFO)
 	    {
 	      /* mark spec to scan for record info */
-	      node->info.query.q.select.from->info.spec.flag |= PT_SPEC_FLAG_RECORD_INFO_SCAN;
+	      node->info.query.q.select.from->info.spec.flag = (PT_SPEC_FLAG)(node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_RECORD_INFO_SCAN);
 	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
 	    {
 	      /* mark spec to scan for heap page headers */
-	      node->info.query.q.select.from->info.spec.flag |= PT_SPEC_FLAG_PAGE_INFO_SCAN;
+	      node->info.query.q.select.from->info.spec.flag = (PT_SPEC_FLAG)(node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_PAGE_INFO_SCAN);
 	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_KEY_INFO)
 	    {
@@ -1711,7 +1711,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      using_index->etc = (void *) PT_IDX_HINT_FORCE;
 
 	      /* mark spec to scan for index key info */
-	      node->info.query.q.select.from->info.spec.flag |= PT_SPEC_FLAG_KEY_INFO_SCAN;
+	      node->info.query.q.select.from->info.spec.flag = (PT_SPEC_FLAG)(node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_KEY_INFO_SCAN);
 	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_BTREE_NODE_INFO)
 	    {
@@ -1729,7 +1729,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      using_index->etc = (void *) PT_IDX_HINT_FORCE;
 
 	      /* mark spec to scan for index key info */
-	      node->info.query.q.select.from->info.spec.flag |= PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN;
+	      node->info.query.q.select.from->info.spec.flag = (PT_SPEC_FLAG)(node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN);
 	    }
 	}
 
@@ -6530,7 +6530,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       /* clear hint if no matched any item */
       if (*index_ss == NULL)
 	{
-	  node->info.query.q.select.hint &= ~PT_HINT_INDEX_SS;
+	  node->info.query.q.select.hint = (PT_HINT_ENUM)(node->info.query.q.select.hint & ~PT_HINT_INDEX_SS);
 	}
     }
 
@@ -6545,7 +6545,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       /* clear hint if no matched any item */
       if (*index_ls == NULL)
 	{
-	  node->info.query.q.select.hint &= ~PT_HINT_INDEX_LS;
+	  node->info.query.q.select.hint = (PT_HINT_ENUM)(node->info.query.q.select.hint & ~PT_HINT_INDEX_LS);
 	}
     }
 
@@ -7001,13 +7001,13 @@ generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list, NATURA
        */
       if (pt_cur->alias_print)
 	{
-	  attr_cur->name = pt_cur->alias_print;
+	  attr_cur->name = (char*)pt_cur->alias_print;
 	}
       else
 	{
 	  if (pt_cur->node_type == PT_NAME)
 	    {
-	      attr_cur->name = pt_cur->info.name.original;
+	      attr_cur->name = (char*)pt_cur->info.name.original;
 	    }
 	}
 
@@ -7063,7 +7063,7 @@ generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN
 	}
 
       attr_cur->next = NULL;
-      attr_cur->name = db_attribute_name (db_attr_cur);
+      attr_cur->name = (char*)db_attribute_name (db_attr_cur);
       attr_cur->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (db_attribute_type (db_attr_cur));
       attr_cur->meta_class = (db_attribute_is_shared (db_attr_cur) ? PT_SHARED : PT_NORMAL);
 
@@ -7547,7 +7547,7 @@ pt_resolve_group_having_alias_pt_name (PARSER_CONTEXT * parser, PT_NODE ** node_
       return;
     }
 
-  n_str = node->info.name.original;
+  n_str = (char*)node->info.name.original;
 
   for (col = select_list; col != NULL; col = col->next)
     {
@@ -7807,7 +7807,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 			      node->info.name.original);
 		  return NULL;
 		}
-	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	      spec->info.spec.flag = (PT_SPEC_FLAG)(spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	  parser_free_tree (parser, statement->info.query.q.select.for_update);
 	  statement->info.query.q.select.for_update = NULL;
@@ -7817,7 +7817,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  /* Flag all specs */
 	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
-	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	      spec->info.spec.flag = (PT_SPEC_FLAG)(spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	}
     }
@@ -9608,7 +9608,7 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 		  {
 		    PARSER_VARCHAR *alias;
 		    alias = pt_print_bytes (parser, att);
-		    col = pt_name (parser, alias->bytes);
+		    col = pt_name (parser, (const char*)alias->bytes);
 		  }
 		else
 		  {		/* generate column name */

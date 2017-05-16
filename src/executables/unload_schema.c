@@ -3053,7 +3053,7 @@ emit_partition_info (MOP clsobj)
 	  break;
 	}
 
-      ptr = strstr (class_->partition->expr, "SELECT ");
+      ptr = (char*)strstr (class_->partition->expr, "SELECT ");
       if (ptr)
 	{
 	  ptr2 = strstr (ptr + 7, " FROM ");

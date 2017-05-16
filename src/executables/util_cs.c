@@ -528,7 +528,7 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
       sm_downcase_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
       cls_mop = locator_find_class (name);
 
-      obj = (void *) &cls_sm;
+      obj = (MOBJ *) &cls_sm;
       ws_find (cls_mop, obj);
       if (cls_sm == NULL || cls_sm->class_type != SM_CLASS_CT)
 	{
@@ -1589,7 +1589,7 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
   if (dump_level == TRANDUMP_FULL_INFO)
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_FULL_INFO_ENTRY),
-	       tran_info->tran_index, tran_get_tranlist_state_name (tran_info->state), tran_info->db_user,
+	       tran_info->tran_index, tran_get_tranlist_state_name ((TRAN_STATE)tran_info->state), tran_info->db_user,
 	       tran_info->host_name, tran_info->process_id, tran_info->program_name,
 	       tran_info->query_exec_info.query_time, tran_info->query_exec_info.tran_time, (buf == NULL ? "-1" : buf),
 	       ((tran_info->query_exec_info.sql_id) ? tran_info->query_exec_info.sql_id : "*** empty ***"),
@@ -1598,7 +1598,7 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
   else if (dump_level == TRANDUMP_QUERY_INFO)
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_QUERY_INFO_ENTRY),
-	       tran_info->tran_index, tran_get_tranlist_state_name (tran_info->state), tran_info->process_id,
+	       tran_info->tran_index, tran_get_tranlist_state_name ((TRAN_STATE)tran_info->state), tran_info->process_id,
 	       tran_info->program_name, tran_info->query_exec_info.query_time, tran_info->query_exec_info.tran_time,
 	       (buf == NULL ? "-1" : buf),
 	       ((tran_info->query_exec_info.sql_id) ? tran_info->query_exec_info.sql_id : "*** empty ***"),
@@ -1607,7 +1607,7 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
   else
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_SUMMARY_ENTRY),
-	       tran_info->tran_index, tran_get_tranlist_state_name (tran_info->state), tran_info->db_user,
+	       tran_info->tran_index, tran_get_tranlist_state_name ((TRAN_STATE)tran_info->state), tran_info->db_user,
 	       tran_info->host_name, tran_info->process_id, tran_info->program_name);
     }
 
@@ -1941,7 +1941,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
 	  ptr = kill_tran_index;
 
-	  tmp = strchr (ptr, delimiter);
+	  tmp = (char*)strchr (ptr, delimiter);
 	  while (*ptr != '\0' && tmp)
 	    {
 	      if (list_size >= MAX_KILLTRAN_INDEX_LIST_NUM)
@@ -1967,7 +1967,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
 	      tran_index_list[list_size++] = value;
 	      ptr = tmp + 1;
-	      tmp = strchr (ptr, delimiter);
+	      tmp = (char*)strchr (ptr, delimiter);
 	    }
 
 	  result = parse_int (&value, ptr, 10);

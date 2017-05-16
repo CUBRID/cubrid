@@ -6033,7 +6033,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
       if (PRM_IS_FOR_SESSION (prm_Def[i].static_flag))
 	{
 	  sprm = &cached_session_parameters[num_session_prms++];
-	  sprm->prm_id = i;
+	  sprm->prm_id = (PARAM_ID)i;
 	  sprm->flag = *prm_Def[i].dynamic_flag;
 	  sprm->datatype = prm_Def[i].datatype;
 	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
@@ -6932,7 +6932,7 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
       SYSPRM_ASSIGN_VALUE *assign = NULL;
 
       /* get parameter name and value */
-      err = prm_get_next_param_value (&p, &name, &value);
+      err = (SYSPRM_ERR)prm_get_next_param_value (&p, &name, &value);
       if (err != PRM_ERR_NO_ERROR || name == NULL || value == NULL)
 	{
 	  break;
@@ -7053,7 +7053,7 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
       SYSPRM_ASSIGN_VALUE *assign = NULL;
 
       /* get parameter name and value */
-      err = prm_get_next_param_value (&p, &name, &value);
+      err = (SYSPRM_ERR)prm_get_next_param_value (&p, &name, &value);
       if (err != PRM_ERR_NO_ERROR || name == NULL || value == NULL)
 	{
 	  break;
@@ -11691,7 +11691,7 @@ sysprm_print_parameters_for_ha_repl (void)
 
       if (i == PRM_ID_INTL_COLLATION || i == PRM_ID_INTL_DATE_LANG || i == PRM_ID_INTL_NUMBER_LANG)
 	{
-	  char *val = prm_get_string_value (i);
+	  char *val = prm_get_string_value ((PARAM_ID)i);
 
 	  if (val == NULL)
 	    {

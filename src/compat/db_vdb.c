@@ -1841,7 +1841,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	}
       else
 	{
-	  CUBRID_STMT_TYPE stmt_type = pt_node_to_cmd_type (statement);
+	  CUBRID_STMT_TYPE stmt_type = (CUBRID_STMT_TYPE)pt_node_to_cmd_type (statement);
 	  switch (stmt_type)
 	    {
 	    case CUBRID_STMT_SELECT:
@@ -1977,7 +1977,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       db_make_null (&parser->local_transaction_id);
     }
 
-  update_execution_values (parser, err, pt_node_to_cmd_type (statement));
+  update_execution_values (parser, err, (CUBRID_STMT_TYPE)pt_node_to_cmd_type (statement));
 
   /* free if the statement was duplicated for host variable binding */
   if (statement != session->statements[stmt_ndx])
@@ -2043,7 +2043,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list, DB_
       current_value = current_value->next;
     }
 
-  values.vals = malloc (values.size * sizeof (DB_VALUE));
+  values.vals = (DB_VALUE*)malloc (values.size * sizeof (DB_VALUE));
   if (values.vals == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, values.size * sizeof (DB_VALUE));
@@ -2283,7 +2283,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   /* set columns */
   prepare_info.columns = prepared_session->type_list[0];
   /* set statement type */
-  prepare_info.stmt_type = pt_node_to_cmd_type (prepared_stmt);
+  prepare_info.stmt_type = (CUBRID_STMT_TYPE)pt_node_to_cmd_type (prepared_stmt);
   /* set host variables */
   prepare_info.host_variables.size =
     prepared_session->parser->host_var_count + prepared_session->parser->auto_param_count;

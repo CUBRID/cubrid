@@ -1032,6 +1032,7 @@ typedef enum
 /* Enumerated Misc Types */
 typedef enum
 {
+  PT_MISC_NONE = 0,
   PT_MISC_DUMMY = 3000,
   PT_ALL,
   PT_ONLY,
@@ -1353,6 +1354,7 @@ typedef enum
 
 typedef enum
 {
+  PT_TABLE_OPTION_NONE = 0,
   PT_TABLE_OPTION_REUSE_OID = 9000,
   PT_TABLE_OPTION_AUTO_INCREMENT,
   PT_TABLE_OPTION_CHARSET,

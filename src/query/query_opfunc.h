@@ -70,6 +70,7 @@ typedef enum
 
 typedef enum
 {
+  METHOD_IS_NONE = 0,
   METHOD_IS_INSTANCE_METHOD = 1,
   METHOD_IS_CLASS_METHOD
 } METHOD_TYPE;

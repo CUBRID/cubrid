@@ -292,7 +292,7 @@ ut_set_keepalive (int sock)
 
   optlen = sizeof (optval);
   optval = 1;			/* true for SO_KEEPALIVE */
-  setsockopt (sock, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen);
+  setsockopt (sock, SOL_SOCKET, SO_KEEPALIVE, (const char*)&optval, optlen);
 
   return 0;
 }

@@ -6403,7 +6403,7 @@ classobj_free_template (SM_TEMPLATE * template_ptr)
 
   if (template_ptr->triggers != NULL)
     {
-      tr_free_schema_cache (template_ptr->triggers);
+      tr_free_schema_cache ((TR_SCHEMA_CACHE*)template_ptr->triggers);
     }
 
   (void) area_free (Template_area, template_ptr);
@@ -7694,7 +7694,7 @@ classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep)
     {
       tr_free_schema_cache (class_->triggers);
     }
-  class_->triggers = flat->triggers;
+  class_->triggers = (tr_schema_cache*)flat->triggers;
   flat->triggers = NULL;
 
   ws_list_free ((DB_LIST *) class_->partition, (LFREEER) classobj_free_partition_info);
@@ -8597,7 +8597,7 @@ classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info)
     }
 
   fi_domain_size = or_packed_domain_size (func_index_info->fi_domain, 0);
-  fi_domain_buf = malloc (fi_domain_size);
+  fi_domain_buf = (char*)malloc (fi_domain_size);
   if (fi_domain_buf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) fi_domain_size);

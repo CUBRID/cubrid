@@ -13132,7 +13132,7 @@ mr_data_lengthval_nchar (DB_VALUE * value, int disk)
 	{
 	  int unconverted;
 	  int char_count = db_get_string_length (value);
-	  char *converted_string = db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
+	  char *converted_string = (char*)db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
 
 	  intl_convert_charset ((unsigned char *) src, char_count, src_codeset, (unsigned char *) converted_string,
 				lang_charset (), &unconverted);
@@ -14051,7 +14051,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 	{
 	  int unconverted;
 	  int char_count = db_get_string_length (value);
-	  char *converted_string = db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
+	  char *converted_string = (char*)db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
 
 	  intl_convert_charset ((unsigned char *) str, char_count, src_codeset, (unsigned char *) converted_string,
 				lang_charset (), &unconverted);
@@ -14103,7 +14103,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	{
 	  int unconverted;
 	  int char_count = db_get_string_length (value);
-	  char *converted_string = db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
+	  char *converted_string = (char*)db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
 
 	  (void) intl_convert_charset ((unsigned char *) str, char_count, src_codeset,
 				       (unsigned char *) converted_string, lang_charset (), &unconverted);

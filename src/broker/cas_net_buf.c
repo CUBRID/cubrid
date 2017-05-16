@@ -784,7 +784,7 @@ net_arg_get_lob_value (DB_VALUE * db_lob, void *arg)
   elo.size = lob_handle.lob_size;
   elo.type = ELO_FBO;
   elo.locator = db_private_strdup (NULL, lob_handle.locator);
-  db_make_elo (db_lob, lob_handle.db_type, &elo);
+  db_make_elo (db_lob, (DB_TYPE)lob_handle.db_type, &elo);
   db_lob->need_clear = true;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */

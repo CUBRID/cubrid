@@ -950,7 +950,7 @@ pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags
 	    }
 	  else if (flags & LC_PREF_FLAG_COUNT_OPTIM)
 	    {
-	      lcks->flags[i] |= LC_PREF_FLAG_COUNT_OPTIM;
+	      lcks->flags[i] = (LC_PREFETCH_FLAGS)(lcks->flags[i] | LC_PREF_FLAG_COUNT_OPTIM);
 	      return true;
 	    }
 	}
@@ -958,7 +958,7 @@ pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags
   if (no_lock_idx >= 0)
     {
       lcks->locks[no_lock_idx] = chk_lock;
-      lcks->flags[no_lock_idx] |= LC_PREF_FLAG_LOCK;
+      lcks->flags[no_lock_idx] = (LC_PREFETCH_FLAGS)(lcks->flags[no_lock_idx] | LC_PREF_FLAG_LOCK);
       return true;
     }
 
@@ -992,20 +992,20 @@ remove_appended_trigger_info (char *msg, int with_evaluate)
       p = strstr (msg, eval_prefix);
       if (p != NULL)
 	{
-	  p = memmove (p, p + strlen (eval_prefix), strlen (p) - strlen (eval_prefix) + 1);
+	  p = (char*)memmove (p, p + strlen (eval_prefix), strlen (p) - strlen (eval_prefix) + 1);
 	}
 
       p = strstr (msg, eval_suffix);
       if (p != NULL)
 	{
-	  p = memmove (p, p + strlen (eval_suffix), strlen (p) - strlen (eval_suffix) + 1);
+	  p = (char*)memmove (p, p + strlen (eval_suffix), strlen (p) - strlen (eval_suffix) + 1);
 	}
     }
 
   p = strstr (msg, scope_str);
   if (p != NULL)
     {
-      p = memmove (p, p + strlen (scope_str), strlen (p) - strlen (scope_str) + 1);
+      p = (char*)memmove (p, p + strlen (scope_str), strlen (p) - strlen (scope_str) + 1);
     }
 
   p = strstr (msg, from_on_str);
@@ -1016,7 +1016,7 @@ remove_appended_trigger_info (char *msg, int with_evaluate)
 
       if (i > 0 && p[i - 1] == semicolon)
 	{
-	  p = memmove (p, p + i, strlen (p) - i + 1);
+	  p = (char*)memmove (p, p + i, strlen (p) - i + 1);
 	}
     }
 }

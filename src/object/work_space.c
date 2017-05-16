@@ -2602,7 +2602,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 
       if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG))
 	{
-	  er_print_callstack (ARG_FILE_LINE, "Cache class %s mop %d|%d|%d.\n", sm_ch_name (mop->object),
+	  er_print_callstack (ARG_FILE_LINE, "Cache class %s mop %d|%d|%d.\n", sm_ch_name ((MOBJ)mop->object),
 			      ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid);
 	}
     }
@@ -2724,7 +2724,7 @@ ws_decache (MOP mop)
     {
       if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG))
 	{
-	  er_print_callstack (ARG_FILE_LINE, "Decache class %s " "mop %d|%d|%d.\n", sm_ch_name (mop->object),
+	  er_print_callstack (ARG_FILE_LINE, "Decache class %s " "mop %d|%d|%d.\n", sm_ch_name ((MOBJ)mop->object),
 			      ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid);
 	}
       /* free class object, not sure if this should be done here */
@@ -2950,7 +2950,7 @@ ws_set_lock (MOP mop, LOCK lock)
       && mop != sm_Root_class_mop && mop->object != NULL && lock != mop->lock)
     {
       er_print_callstack (ARG_FILE_LINE, "Change class %s mop %d|%d|%d " "lock from %d to %d.\n",
-			  sm_ch_name (mop->object), ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid,
+			  sm_ch_name ((MOBJ)mop->object), ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid,
 			  mop->lock, lock);
     }
   if (mop != NULL)
@@ -3256,7 +3256,7 @@ ws_clear_hints (MOP mop, bool leave_pinned)
   if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG) && mop->class_mop == sm_Root_class_mop
       && mop != sm_Root_class_mop && mop->object != NULL)
     {
-      er_print_callstack (ARG_FILE_LINE, "Clear class %s mop %d|%d|%d.\n", sm_ch_name (mop->object),
+      er_print_callstack (ARG_FILE_LINE, "Clear class %s mop %d|%d|%d.\n", sm_ch_name ((MOBJ)mop->object),
 			  ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid);
     }
 

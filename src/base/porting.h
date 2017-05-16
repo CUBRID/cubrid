@@ -730,11 +730,6 @@ typedef union
  */
 #if defined (WINDOWS)
 
-template <bool B>
-struct Bool2Type {
-  enum { value = B };
-};
-
 #define HAVE_ATOMIC_BUILTINS
 
 //#define ATOMIC_TAS_32(ptr, new_val) \
@@ -745,7 +740,11 @@ struct Bool2Type {
 //	(InterlockedExchangeAdd(ptr, amount) + (amount))
 #define MEMORY_BARRIER() \
 	MemoryBarrier()
-
+#ifdef __cplusplus
+template <bool B>
+struct Bool2Type {
+        enum { value = B };
+};
 template <typename T>
 inline T interlocked_exchange_helper32(volatile T *ptr, T amount, Bool2Type<true> b) {
   return InterlockedExchange(reinterpret_cast<volatile UINT32*>(ptr), amount);
@@ -815,6 +814,7 @@ template <typename T, typename V>
 inline T ATOMIC_TAS_64(volatile T *ptr, V amount) {
   return interlocked_exchange_helper64(ptr, static_cast<T>(amount), Bool2Type<sizeof(T) == sizeof(UINT64)>());
 }
+#endif
 
 #define ATOMIC_TAS_ADDR(ptr, new_val) ATOMIC_TAS_64 ((long long volatile *) ptr, (long long) new_val)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \

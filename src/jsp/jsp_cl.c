@@ -849,7 +849,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_int (&value, pt_type_enum_to_db (data_type));
+  db_make_int (&value, pt_type_enum_to_db ((PT_TYPE_ENUM)data_type));
   err = dbt_put_internal (obt_p, SP_ATTR_DATA_TYPE, &value);
   if (err != NO_ERROR)
     {
@@ -2293,7 +2293,7 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
       char *composed;
       bool is_composed = false;
 
-      composed = db_private_alloc (NULL, composed_size + 1);
+      composed = (char*)db_private_alloc (NULL, composed_size + 1);
       if (composed == NULL)
 	{
 	  return NULL;

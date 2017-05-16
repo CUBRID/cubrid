@@ -2367,7 +2367,7 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 		    {
 		      error = logwr_write_log_pages ();
 		    }
-		  logwr_Gl.action &= LOGWR_ACTION_DELAYED_WRITE;
+		  logwr_Gl.action = (LOGWR_ACTION)(logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE);
 		}
 
 	      ptr = or_unpack_int (ptr, &request_error);
@@ -2394,7 +2394,7 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 		    {
 		      error = logwr_write_log_pages ();
 		    }
-		  logwr_Gl.action &= LOGWR_ACTION_DELAYED_WRITE;
+		  logwr_Gl.action = (LOGWR_ACTION)(logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE);
 		}
 
 	      error = ER_NET_SERVER_DATA_RECEIVE;
@@ -2492,7 +2492,7 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length
 	  error = logwr_write_log_pages ();
 	  break;
 	case LOGWR_MODE_ASYNC:
-	  logwr_Gl.action |= LOGWR_ACTION_ASYNC_WRITE;
+	  logwr_Gl.action = (LOGWR_ACTION)(logwr_Gl.action | LOGWR_ACTION_ASYNC_WRITE);
 	  break;
 	default:
 	  break;

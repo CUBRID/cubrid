@@ -1161,11 +1161,11 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
   if (flag & CCI_EXEC_RETURN_GENERATED_KEYS)
     {
-      db_session_set_return_generated_keys (srv_handle->session, true);
+      db_session_set_return_generated_keys ((DB_SESSION*)srv_handle->session, true);
     }
   else
     {
-      db_session_set_return_generated_keys (srv_handle->session, false);
+      db_session_set_return_generated_keys ((DB_SESSION*)srv_handle->session, false);
     }
 
   if (srv_handle->is_prepared == FALSE)
@@ -1198,7 +1198,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       stmt_id = srv_handle->q_result->stmt_id;
     }
 
-  db_session_set_holdable (srv_handle->session, srv_handle->is_holdable);
+  db_session_set_holdable ((DB_SESSION*)srv_handle->session, srv_handle->is_holdable);
   srv_handle->is_from_current_transaction = true;
 
   if (!(flag & CCI_EXEC_QUERY_INFO))
@@ -1474,11 +1474,11 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
     {
       if (flag & CCI_EXEC_RETURN_GENERATED_KEYS)
 	{
-	  db_session_set_return_generated_keys (srv_handle->session, true);
+	  db_session_set_return_generated_keys ((DB_SESSION*)srv_handle->session, true);
 	}
       else
 	{
-	  db_session_set_return_generated_keys (srv_handle->session, false);
+	  db_session_set_return_generated_keys ((DB_SESSION*)srv_handle->session, false);
 	}
 
       if (is_prepared == FALSE)
@@ -1507,7 +1507,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	    }
 	}
 
-      db_session_set_holdable (srv_handle->session, srv_handle->is_holdable);
+      db_session_set_holdable ((DB_SESSION*)srv_handle->session, srv_handle->is_holdable);
       srv_handle->is_from_current_transaction = true;
 
       if (clt_cache_time)
@@ -3314,7 +3314,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
 	  char set_type;
 	  set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
 
-	  cas_type = set_extended_cas_type (set_type, db_type);
+	  cas_type = set_extended_cas_type ((T_CCI_U_TYPE)set_type, db_type);
 	}
       else
 	{
@@ -3881,7 +3881,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  {
 	    char *composed = NULL;
 
-	    composed = db_private_alloc (NULL, composed_size + 1);
+	    composed = (char*)db_private_alloc (NULL, composed_size + 1);
 	    if (composed == NULL)
 	      {
 		return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -3951,7 +3951,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  {
 	    char *composed = NULL;
 
-	    composed = db_private_alloc (NULL, composed_size + 1);
+	    composed = (char*)db_private_alloc (NULL, composed_size + 1);
 	    if (composed == NULL)
 	      {
 		return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -4938,7 +4938,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 		DB_DOMAIN *set_domain;
 		char element_type;
 		set_domain = db_col_domain (set);
-		element_type = get_set_domain (set_domain, NULL, NULL, &set_dbtype, &charset);
+		element_type = get_set_domain (set_domain, NULL, NULL, &set_dbtype, (char*)&charset);
 		if (element_type > 0)
 		  {
 		    cas_type = element_type;
@@ -4993,7 +4993,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
 	    if (column_type_flag)
 	      {
-		ext_col_type = set_extended_cas_type (set_dbtype, db_value_type (val));
+		ext_col_type = set_extended_cas_type ((T_CCI_U_TYPE)set_dbtype, db_value_type (val));
 
 		net_buf_cp_cas_type_and_charset (net_buf, ext_col_type, charset);
 		set_data_size++;
@@ -5256,13 +5256,13 @@ oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num, char **at
 	      char set_type;
 	      set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
 
-	      cas_type = set_extended_cas_type (set_type, db_type);
+	      cas_type = set_extended_cas_type ((T_CCI_U_TYPE)set_type, (DB_TYPE)db_type);
 	      precision = 0;
 	      scale = 0;
 	    }
 	  else
 	    {
-	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
+	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, (DB_TYPE)db_type);
 	      precision = db_domain_precision (domain);
 	      scale = (short) db_domain_scale (domain);
 	      charset = db_domain_codeset (domain);
@@ -5676,7 +5676,7 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
       add_res_data_short (net_buf, (short) attr_info.unique, 0, NULL);
 
       /* 9. default */
-      default_value_string = get_column_default_as_string (db_attr, &alloced_default_value_string);
+      default_value_string = (char*)get_column_default_as_string (db_attr, &alloced_default_value_string);
       add_res_data_string (net_buf, default_value_string, strlen (default_value_string), 0, CAS_SCHEMA_DEFAULT_CHARSET,
 			   NULL);
 
@@ -5813,11 +5813,11 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       if (TP_IS_SET_TYPE (db_type))
 	{
 	  set_type = get_set_domain (domain, NULL, NULL, NULL, NULL);
-	  cas_type = set_extended_cas_type (set_type, db_type);
+	  cas_type = set_extended_cas_type ((T_CCI_U_TYPE)set_type, (DB_TYPE)db_type);
 	}
       else
 	{
-	  cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
+	  cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN,(DB_TYPE)db_type);
 	}
       add_res_data_short (net_buf, cas_type, 0, NULL);
 
@@ -5832,11 +5832,11 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	  if (TP_IS_SET_TYPE (db_type))
 	    {
 	      set_type = get_set_domain (domain, NULL, NULL, NULL, NULL);
-	      cas_type = set_extended_cas_type (set_type, db_type);
+	      cas_type = set_extended_cas_type ((T_CCI_U_TYPE)set_type, (DB_TYPE)db_type);
 	    }
 	  else
 	    {
-	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
+	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, (DB_TYPE)db_type);
 	    }
 
 	  sprintf (arg_str, "%s%d ", arg_str, cas_type);
@@ -7169,7 +7169,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	    {
 	      set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
 
-	      cas_type = set_extended_cas_type (set_type, db_type);
+	      cas_type = set_extended_cas_type ((T_CCI_U_TYPE)set_type, db_type);
 	      precision = 0;
 	      scale = 0;
 	    }
@@ -8186,13 +8186,13 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char
   if (TP_IS_SET_TYPE (db_type))
     {
       set_type = get_set_domain (domain, &precision, &scale, NULL, NULL);
-      attr_table->domain = set_extended_cas_type (set_type, db_type);
+      attr_table->domain = set_extended_cas_type ((T_CCI_U_TYPE)set_type, (DB_TYPE)db_type);
       precision = 0;
       scale = 0;
     }
   else
     {
-      attr_table->domain = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, db_type);
+      attr_table->domain = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, (DB_TYPE)db_type);
       precision = db_domain_precision (domain);
       scale = (short) db_domain_scale (domain);
     }
@@ -9050,7 +9050,7 @@ create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result, DB_QUERY_TYP
   srv_handle->q_result = q_result;
 
   q_result->result = src_q_result->result;
-  q_result->tuple_count = db_query_tuple_count (src_q_result->result);
+  q_result->tuple_count = db_query_tuple_count ((DB_QUERY_RESULT*)src_q_result->result);
   q_result->stmt_type = src_q_result->stmt_type;
   q_result->col_updatable = FALSE;
   q_result->include_oid = FALSE;
@@ -9518,7 +9518,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       if (TP_IS_SET_TYPE (db_type))
 	{
 	  set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
-	  cas_type = set_extended_cas_type (set_type, db_type);
+	  cas_type = set_extended_cas_type ((T_CCI_U_TYPE)set_type, db_type);
 	  precision = 0;
 	  scale = 0;
 	}
@@ -9724,7 +9724,7 @@ cas_log_error_handler_begin (void)
 {
   CAS_ERROR_LOG_HANDLE_CONTEXT *ectx;
 
-  ectx = malloc (sizeof (*ectx));
+  ectx = (CAS_ERROR_LOG_HANDLE_CONTEXT*)malloc (sizeof (*ectx));
   if (ectx == NULL)
     {
       return;
@@ -9795,7 +9795,7 @@ cas_log_error_handler_asprint (char *buf, size_t bufsz, bool clear)
   /* ", EID = <int> ~ <int>" : 32 bytes suffice */
   if (bufsz < 32)
     {
-      buf_p = malloc (32);
+      buf_p = (char*)malloc (32);
 
       if (buf_p == NULL)
 	{
@@ -10298,18 +10298,18 @@ set_extended_cas_type (T_CCI_U_TYPE u_set_type, DB_TYPE db_type)
       u_set_type_lsb = u_set_type & 0x1f;
       u_set_type_msb = (u_set_type & 0x20) << 2;
 
-      u_set_type = u_set_type_lsb | u_set_type_msb;
+      u_set_type = (T_CCI_U_TYPE)(u_set_type_lsb | u_set_type_msb);
 
       cas_ext_type = CAS_TYPE_COLLECTION (db_type, u_set_type);
       return cas_ext_type;
     }
 
-  u_set_type = ux_db_type_to_cas_type (db_type);
+  u_set_type = (T_CCI_U_TYPE)ux_db_type_to_cas_type (db_type);
 
   u_set_type_lsb = u_set_type & 0x1f;
   u_set_type_msb = (u_set_type & 0x20) << 2;
 
-  u_set_type = u_set_type_lsb | u_set_type_msb;
+  u_set_type = (T_CCI_U_TYPE)(u_set_type_lsb | u_set_type_msb);
 
   return u_set_type;
 }
