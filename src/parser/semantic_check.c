@@ -92,6 +92,7 @@ typedef struct
   UINTPTR spec_id;
 } PT_CHAIN_INFO;
 
+static PT_NODE *pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_derive_attribute (PARSER_CONTEXT * parser, PT_NODE * c);
 static PT_NODE *pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c);
 static PT_MISC_TYPE pt_get_class_type (PARSER_CONTEXT * parser, const DB_OBJECT * cls);
@@ -1370,6 +1371,27 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
     }
 
   return result;
+}
+
+/*
+ * pt_count_names () - If the node is a PT_NAME node, bump counter
+ *   return:
+ *   parser(in):
+ *   node(in): the node to check, leave node unchanged
+ *   arg(out): count of names
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *cnt = (int *) arg;
+
+  if (node->node_type == PT_NAME)
+    {
+      (*cnt)++;
+    }
+
+  return node;
 }
 
 /*
@@ -3978,13 +4000,19 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	      goto end;
 	    }
 	  subquery_list = pt_get_subquery_list (default_value);
-	  if (subquery_list && subquery_list->next)
+	  if (subquery_list)
 	    {
-	      /* cannot allow more than one column */
-	      char *str = pt_short_print (parser, default_value);
-	      PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SINGLE_VALUE,
-			  (str != NULL ? str : "\0"));
-	      goto end;
+	      int count_names = 0;
+	      (void) parser_walk_tree (parser, subquery_list, NULL, NULL, pt_count_names, &count_names);
+
+	      if (subquery_list->next || count_names > 0)
+		{
+		  /* cannot allow more than one column */
+		  char *str = pt_short_print (parser, default_value);
+		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SINGLE_VALUE,
+			      (str != NULL ? str : "\0"));
+		  goto end;
+		}
 	    }
 	  /* skip other checks */
 	  goto end;
@@ -4190,6 +4218,7 @@ pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
   if (tree == NULL || !PT_IS_EXPR_NODE (tree))
     {
       *continue_walk = PT_STOP_WALK;
+      return tree;
     }
 
   if (tree->info.expr.arg1 != NULL && PT_IS_EXPR_NODE (tree->info.expr.arg1) && tree->info.expr.op == PT_TO_CHAR)

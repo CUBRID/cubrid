@@ -79,7 +79,6 @@ enum pt_order_by_adjustment
 
 static PT_NODE *pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, VIEW_HANDLING how);
 static PT_NODE *pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spec, LC_PREFETCH_FLAGS flags);
 static PT_NODE *pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node, PT_CLASS_LOCKS * locks);
@@ -667,27 +666,6 @@ pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 	{
 	  (*cnt)++;
 	}
-    }
-
-  return node;
-}
-
-/*
- * pt_count_names () - If the node is a PT_NAME node, bump counter
- *   return:
- *   parser(in):
- *   node(in): the node to check, leave node unchanged
- *   arg(out): count of names
- *   continue_walk(in):
- */
-static PT_NODE *
-pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  int *cnt = (int *) arg;
-
-  if (node->node_type == PT_NAME)
-    {
-      (*cnt)++;
     }
 
   return node;
