@@ -92,7 +92,6 @@ typedef struct
   UINTPTR spec_id;
 } PT_CHAIN_INFO;
 
-static PT_NODE *pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_derive_attribute (PARSER_CONTEXT * parser, PT_NODE * c);
 static PT_NODE *pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c);
 static PT_MISC_TYPE pt_get_class_type (PARSER_CONTEXT * parser, const DB_OBJECT * cls);
@@ -1371,27 +1370,6 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
     }
 
   return result;
-}
-
-/*
- * pt_count_names () - If the node is a PT_NAME node, bump counter
- *   return:
- *   parser(in):
- *   node(in): the node to check, leave node unchanged
- *   arg(out): count of names
- *   continue_walk(in):
- */
-static PT_NODE *
-pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  int *cnt = (int *) arg;
-
-  if (node->node_type == PT_NAME)
-    {
-      (*cnt)++;
-    }
-
-  return node;
 }
 
 /*
@@ -3992,28 +3970,8 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 
       if (PT_IS_QUERY (default_value))
 	{
-	  PT_NODE *subquery_list = NULL;
-	  default_value = pt_compile (parser, default_value);
-	  if (default_value == NULL || pt_has_error (parser))
-	    {
-	      /* compilation error */
-	      goto end;
-	    }
-	  subquery_list = pt_get_subquery_list (default_value);
-	  if (subquery_list)
-	    {
-	      int count_names = 0;
-	      (void) parser_walk_tree (parser, subquery_list, NULL, NULL, pt_count_names, &count_names);
-
-	      if (subquery_list->next || count_names > 0)
-		{
-		  /* cannot allow more than one column */
-		  char *str = pt_short_print (parser, default_value);
-		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SINGLE_VALUE,
-			      (str != NULL ? str : "\0"));
-		  goto end;
-		}
-	    }
+	  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_SUBQUERY_NOT_ALLOWED_IN_DEFAULT_CLAUSE);
 	  /* skip other checks */
 	  goto end;
 	}
