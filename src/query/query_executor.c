@@ -10934,8 +10934,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
 	  break;
 	case DB_DEFAULT_CURRENTTIMESTAMP:
-	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
-	  error = db_datetime_to_timestamp (&insert_val, &insert_val);
+	  {
+	    DB_DATE tmp_date;
+	    DB_TIME tmp_time;
+	    DB_TIMESTAMP tmp_timestamp;
+
+	    tmp_date = xasl_state->vd.sys_datetime.date;
+	    tmp_time = xasl_state->vd.sys_datetime.time / 1000;
+	    db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
+	    db_make_timestamp (&insert_val, tmp_timestamp);
+	  }
 	  break;
 	case DB_DEFAULT_UNIX_TIMESTAMP:
 	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
