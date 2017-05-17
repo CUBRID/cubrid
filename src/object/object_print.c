@@ -658,10 +658,10 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE
 	      buffer = pt_append_nulstring (parser, buffer, "SYS_TIMESTAMP");
 	      break;
 	    case DB_DEFAULT_UNIX_TIMESTAMP:
-	      buffer = pt_append_nulstring (parser, buffer, "UNIX_TIMESTAMP");
+	      buffer = pt_append_nulstring (parser, buffer, "UNIX_TIMESTAMP()");
 	      break;
 	    case DB_DEFAULT_USER:
-	      buffer = pt_append_nulstring (parser, buffer, "USER");
+	      buffer = pt_append_nulstring (parser, buffer, "USER()");
 	      break;
 	    case DB_DEFAULT_CURR_USER:
 	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_USER");
@@ -685,9 +685,10 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE
 		  buffer = pt_append_nulstring (parser, buffer, ", \'");
 		  buffer = pt_append_nulstring (parser, buffer,
 						attribute_p->default_value.default_expr.default_expr_format);
+		  buffer = pt_append_nulstring (parser, buffer, "\'");
 		}
 
-	      buffer = pt_append_nulstring (parser, buffer, "\')");
+	      buffer = pt_append_nulstring (parser, buffer, ")");
 	    }
 	}
     }
