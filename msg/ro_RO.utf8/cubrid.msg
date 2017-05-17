@@ -1719,6 +1719,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 297 Nested WITH clauses are not supported.
 298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
 299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
+300 Nu este permis un subquery is clauza DEFAULT.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.
