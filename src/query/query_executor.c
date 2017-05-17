@@ -14355,10 +14355,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   char *query_str = NULL;
   int client_id = -1;
   char *db_user = NULL;
-
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   LOG_TDES *tdes = NULL;
 
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
   db_user = tdes->client.db_user;
 #endif /* ENABLE_SYSTEMTAP */
