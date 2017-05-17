@@ -2382,9 +2382,10 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	    {
 	      fprintf (output_file, ", \'");
 	      fprintf (output_file, attribute->default_value.default_expr.default_expr_format);
+	      fprintf (output_file, "\'");
 	    }
 
-	  fprintf (output_file, "\')");
+	  fprintf (output_file, ")");
 	}
     }
 
