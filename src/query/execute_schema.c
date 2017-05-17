@@ -784,7 +784,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	      if (d != NULL)
 		{
-		  error = pt_coerce_value (parser, d, d, pt_desired_type, p->data_type);
+		  error = pt_coerce_value (parser, d, d, pt_desired_type, p->data_type, false);
 		  if (error != NO_ERROR)
 		    {
 		      break;
@@ -12303,7 +12303,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       /* try to coerce the default value into the attribute type */
       if (def_expr_type == DB_DEFAULT_NONE)
 	{
-	  error = pt_coerce_value (parser, def_val, def_val, desired_type, attribute->data_type);
+	  error = pt_coerce_value (parser, def_val, def_val, desired_type, attribute->data_type, true);
 	  if (error != NO_ERROR)
 	    {
 	      return error;

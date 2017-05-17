@@ -4141,7 +4141,7 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 		    }
 		}
 
-	      err = pt_coerce_value (parser, elem, elem, elem->type_enum, dt);
+	      err = pt_coerce_value (parser, elem, elem, elem->type_enum, dt, false);
 	      if (err != NO_ERROR)
 		{
 		  return err;
@@ -5627,7 +5627,7 @@ pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type, P
 	   * the original statement is printed */
 	  value_text = val->info.value.text;
 	  val->info.value.text = NULL;
-	  error = pt_coerce_value (parser, val, val, desired_type, data_type);
+	  error = pt_coerce_value (parser, val, val, desired_type, data_type, false);
 	  val->info.value.text = value_text;
 	  if (error != NO_ERROR)
 	    {
@@ -15690,7 +15690,7 @@ pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * val
       || (PT_IS_STRING_TYPE (value->type_enum) && value->data_type != NULL
 	  && value->data_type->info.data_type.collation_id != data_type->info.data_type.collation_id))
     {
-      error = pt_coerce_value (parser, value, value, data_type->type_enum, data_type);
+      error = pt_coerce_value (parser, value, value, data_type->type_enum, data_type, false);
     }
 
   return error;
