@@ -6846,9 +6846,9 @@ db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
     case DB_DEFAULT_SYSTIMESTAMP:
       return "SYS_TIMESTAMP";
     case DB_DEFAULT_UNIX_TIMESTAMP:
-      return "UNIX_TIMESTAMP";
+      return "UNIX_TIMESTAMP()";
     case DB_DEFAULT_USER:
-      return "USER";
+      return "USER()";
     case DB_DEFAULT_CURR_USER:
       return "CURRENT_USER";
     case DB_DEFAULT_CURRENTDATETIME:
