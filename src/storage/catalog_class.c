@@ -1382,6 +1382,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
     {
       char *str_val = NULL;
+      const char *default_expr_op_string = NULL;
       int len;
 
       if (DB_VALUE_TYPE (&default_expr) == DB_TYPE_SEQUENCE)
@@ -1427,53 +1428,9 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  default_expr_type = DB_GET_INT (&default_expr);
 	}
 
-      switch (default_expr_type)
+      default_expr_type_string = db_default_expression_string (default_expr_type);
+      if (default_expr_type_string == NULL)
 	{
-	case DB_DEFAULT_SYSTIME:
-	  default_expr_type_string = "SYS_TIME";
-	  break;
-
-	case DB_DEFAULT_SYSDATE:
-	  default_expr_type_string = "SYS_DATE";
-	  break;
-
-	case DB_DEFAULT_SYSDATETIME:
-	  default_expr_type_string = "SYS_DATETIME";
-	  break;
-
-	case DB_DEFAULT_SYSTIMESTAMP:
-	  default_expr_type_string = "SYS_TIMESTAMP";
-	  break;
-
-	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  default_expr_type_string = "UNIX_TIMESTAMP";
-	  break;
-
-	case DB_DEFAULT_USER:
-	  default_expr_type_string = "USER";
-	  break;
-
-	case DB_DEFAULT_CURR_USER:
-	  default_expr_type_string = "CURRENT_USER";
-	  break;
-
-	case DB_DEFAULT_CURRENTTIME:
-	  default_expr_type_string = "CURRENT_TIME";
-	  break;
-
-	case DB_DEFAULT_CURRENTDATE:
-	  default_expr_type_string = "CURRENT_DATE";
-	  break;
-
-	case DB_DEFAULT_CURRENTDATETIME:
-	  default_expr_type_string = "CURRENT_DATETIME";
-	  break;
-
-	case DB_DEFAULT_CURRENTTIMESTAMP:
-	  default_expr_type_string = "CURRENT_TIMESTAMP";
-	  break;
-
-	default:
 	  pr_clear_value (&default_expr);
 	  pr_clear_value (&val);
 	  assert (false);
@@ -1482,8 +1439,12 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  goto error;
 	}
 
-      len = strlen ("TO_CHAR(") + 3 + strlen ("CURRENT_TIMESTAMP")
-	+ (def_expr_format_string ? strlen (def_expr_format_string) : 0);
+      default_expr_op_string = qdump_operator_type_string (default_expr_op);
+
+      len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
+	     + 4 /* parenthesis, a comma and a blank */  + strlen (default_expr_type_string)
+	     + (def_expr_format_string ? strlen (def_expr_format_string) : 0));
+
       str_val = (char *) db_private_alloc (thread_p, len + 1);
       if (str_val == NULL)
 	{
@@ -1495,14 +1456,14 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 
       if (default_expr_op == T_TO_CHAR)
 	{
-	  strcpy (str_val, "TO_CHAR(");
+	  strcpy (str_val, default_expr_op_string);
+	  strcat (str_val, "(");
 	  strcat (str_val, default_expr_type_string);
 	  if (def_expr_format_string)
 	    {
 	      strcat (str_val, ", ");
 	      strcat (str_val, def_expr_format_string);
 	    }
-
 	  strcat (str_val, ")");
 	}
       else
