@@ -3061,7 +3061,6 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 			{
 			  assert (er_errid () != NO_ERROR);
 			}
-		      pr_clear_value (&def_expr_format);
 		    }
 		}
 	      else
