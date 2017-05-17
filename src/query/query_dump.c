@@ -594,12 +594,14 @@ qdump_print_key_info (KEY_INFO * key_info_p)
       fprintf (foutput, "]");
     }
   fprintf (foutput, "<is constant:%d>", key_info_p->is_constant);
+  fprintf (foutput, "<is user given keylimit:%d>", key_info_p->is_user_given_keylimit);
+  fprintf (foutput, "<reset:%d>", key_info_p->key_limit_reset);
 
   fprintf (foutput, " key limit: [");
   qdump_print_value (key_info_p->key_limit_l);
   fprintf (foutput, "][");
   qdump_print_value (key_info_p->key_limit_u);
-  fprintf (foutput, "][reset:%d]", key_info_p->key_limit_reset);
+  fprintf (foutput, "]");
 
   return true;
 }

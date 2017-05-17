@@ -1161,6 +1161,8 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       DKNSECTS total = 0, max = 0;
       DKNSECTS free = 0;
 
+      er_stack_push ();
+
       /* we need page to remove total/max from disk cache. however, it must be allocated. */
       vpid_volheader.volid = volid;
       vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
@@ -1168,13 +1170,13 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 					  &page_volheader);
       if (ret != NO_ERROR)
 	{
+	  /* what is this error?? */
 	  assert_release (false);
 	}
       else if (page_volheader == NULL)
 	{
-	  /* why was it added to cache?? */
-	  assert_release (false);
-	  ret = ER_FAILED;
+	  /* volume was not created. fall through. */
+	  assert (disk_Cache->vols[volid].nsect_free == 0);
 	}
       else
 	{
@@ -1185,6 +1187,8 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 	  pgbuf_unfix (thread_p, page_volheader);
 	}
+
+      er_stack_pop ();
 
       /* volume was added to cache. now remove it */
       free = disk_Cache->vols[volid].nsect_free;
