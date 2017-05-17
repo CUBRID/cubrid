@@ -216,7 +216,7 @@ extern "C"
   extern DB_VALUE *pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value);
 
   extern int pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-			      PT_NODE * elem_type_list);
+			      PT_NODE * elem_type_list, bool check_string_precision);
   extern PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_type, int p, int s,
 					PT_NODE * desired_dt);
   extern PT_NODE *pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM set_type,
