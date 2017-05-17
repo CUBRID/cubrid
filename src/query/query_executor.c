@@ -14611,7 +14611,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 end:
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_QUERY_EXEC_END (query_str ? query_str : "unknown", query_id, client_id, db_user ? db_user : "unknown",
-		         (er_errid () != NO_ERROR));
+			 (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
   return list_id;
 }
