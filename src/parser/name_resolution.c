@@ -3220,6 +3220,7 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
   DB_ATTRIBUTE *att = NULL;
   const char *lang_str;
   int flag = 0;
+  bool has_user_format;
 
   if (name->node_type != PT_NAME)
     {
@@ -3268,6 +3269,7 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
 	{
 	  PT_NODE *arg1, *arg2, *arg3;
 	  arg1 = default_op_value_node;
+	  has_user_format = att->default_value.default_expr.default_expr_format ? 1 : 0;
 	  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
 	  if (arg2 == NULL)
 	    {
@@ -3286,7 +3288,7 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
 	    }
 	  arg3->type_enum = PT_TYPE_INTEGER;
 	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-	  lang_set_flag_from_lang (lang_str, 1, 0, &flag);
+	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
 	  arg3->info.value.data_value.i = (long) flag;
 
 	  name->info.name.default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
@@ -3333,6 +3335,7 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
   PT_NODE *cname = flat;
   const char *lang_str;
   int flag = 0;
+  bool has_user_format;
 
   if (!flat || !attr)
     {
@@ -3404,6 +3407,7 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 		{
 		  PT_NODE *arg1, *arg2, *arg3;
 		  arg1 = default_op_value_node;
+		  has_user_format = att->default_value.default_expr.default_expr_format ? 1 : 0;
 		  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
 		  if (arg2 == NULL)
 		    {
@@ -3422,7 +3426,7 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 		    }
 		  arg3->type_enum = PT_TYPE_INTEGER;
 		  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-		  lang_set_flag_from_lang (lang_str, 1, 0, &flag);
+		  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
 		  arg3->info.value.data_value.i = (long) flag;
 
 		  attr->info.name.default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);

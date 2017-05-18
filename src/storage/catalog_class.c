@@ -1251,7 +1251,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   DB_VALUE *attr_val_p;
   DB_VALUE default_expr, val, db_value_default_expr_type, db_value_default_expr_format, db_value_default_expr_op;
   int default_expr_type, default_expr_op = NULL_DEFAULT_EXPRESSION_OPERATOR;
-  DB_SET *def_expr_set = NULL;
+  DB_SEQ *def_expr_seq = NULL;
   DB_SEQ *att_props = NULL;
   OR_VARINFO *vars = NULL;
   int size;
@@ -1388,9 +1388,9 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
       if (DB_VALUE_TYPE (&default_expr) == DB_TYPE_SEQUENCE)
 	{
 	  assert (set_size (DB_PULL_SEQUENCE (&default_expr)) == 3);
-	  def_expr_set = DB_PULL_SEQUENCE (&default_expr);
+	  def_expr_seq = DB_PULL_SEQUENCE (&default_expr);
 
-	  if (set_get_element_nocopy (def_expr_set, 0, &db_value_default_expr_op) != NO_ERROR)
+	  if (set_get_element_nocopy (def_expr_seq, 0, &db_value_default_expr_op) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -1398,13 +1398,13 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 		  && DB_GET_INT (&db_value_default_expr_op) == (int) T_TO_CHAR);
 	  default_expr_op = T_TO_CHAR;
 
-	  if (set_get_element_nocopy (def_expr_set, 1, &db_value_default_expr_type) != NO_ERROR)
+	  if (set_get_element_nocopy (def_expr_seq, 1, &db_value_default_expr_type) != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	  default_expr_type = DB_GET_INT (&db_value_default_expr_type);
 
-	  if (set_get_element_nocopy (def_expr_set, 2, &db_value_default_expr_format) != NO_ERROR)
+	  if (set_get_element_nocopy (def_expr_seq, 2, &db_value_default_expr_format) != NO_ERROR)
 	    {
 	      goto error;
 	    }

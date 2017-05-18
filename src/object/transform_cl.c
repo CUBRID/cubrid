@@ -3016,16 +3016,16 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 	      /* We have two cases: simple and complex expressions. */
 	      if (DB_VALUE_TYPE (&value) == DB_TYPE_SEQUENCE)
 		{
-		  DB_SET *def_expr_set;
+		  DB_SEQ *def_expr_seq;
 		  DB_VALUE def_expr_op, def_expr_type, def_expr_format;
 		  char *def_expr_format_str;
 
 		  assert (set_size (DB_PULL_SEQUENCE (&value)) == 3);
 
-		  def_expr_set = DB_PULL_SEQUENCE (&value);
+		  def_expr_seq = DB_PULL_SEQUENCE (&value);
 
 		  /* get default expression operator (op of expr) */
-		  if (set_get_element_nocopy (def_expr_set, 0, &def_expr_op) != NO_ERROR)
+		  if (set_get_element_nocopy (def_expr_seq, 0, &def_expr_op) != NO_ERROR)
 		    {
 		      assert (false);
 		    }
@@ -3034,7 +3034,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		  att->default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
 
 		  /* get default expression type (arg1 of expr) */
-		  if (set_get_element_nocopy (def_expr_set, 1, &def_expr_type) != NO_ERROR)
+		  if (set_get_element_nocopy (def_expr_seq, 1, &def_expr_type) != NO_ERROR)
 		    {
 		      assert (false);
 		    }
@@ -3042,7 +3042,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		  att->default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr_type);
 
 		  /* get default expression format (arg2 of expr) */
-		  if (set_get_element_nocopy (def_expr_set, 2, &def_expr_format) != NO_ERROR)
+		  if (set_get_element_nocopy (def_expr_seq, 2, &def_expr_format) != NO_ERROR)
 		    {
 		      assert (false);
 		    }
