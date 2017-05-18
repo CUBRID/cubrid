@@ -1461,8 +1461,9 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  strcat (str_val, default_expr_type_string);
 	  if (def_expr_format_string)
 	    {
-	      strcat (str_val, ", ");
+	      strcat (str_val, ", \'");
 	      strcat (str_val, def_expr_format_string);
+	      strcat (str_val, "\'");
 	    }
 	  strcat (str_val, ")");
 	}

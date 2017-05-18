@@ -3688,8 +3688,9 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 	  strcat (default_value_string, default_value_expr_type_string);
 	  if (default_expr_format)
 	    {
-	      strcat (default_value_string, ", ");
+	      strcat (default_value_string, ", \'");
 	      strcat (default_value_string, default_expr_format);
+	      strcat (default_value_string, "\'");
 	    }
 
 	  strcat (default_value_string, ")");

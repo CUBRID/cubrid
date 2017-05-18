@@ -22626,8 +22626,9 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		  strcat (default_value_string, default_expr_type_string);
 		  if (default_expr_format)
 		    {
-		      strcat (default_value_string, ", ");
+		      strcat (default_value_string, ", \'");
 		      strcat (default_value_string, default_expr_format);
+		      strcat (default_value_string, "\'");
 		    }
 
 		  strcat (default_value_string, ")");
