@@ -16824,7 +16824,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 	  while (oid != NULL)
 	    {
 	      prev_o_num = o_num;
-	      oid_ptr = (OID *) lsearch (oid, o_list, (unsigned int*)&o_num, sizeof (OID), oid_compare);
+	      oid_ptr = (OID *) lsearch (oid, o_list, &o_num, sizeof (OID), oid_compare);
 
 	      if (o_num > prev_o_num && o_num > (*nump))
 		{
@@ -17033,7 +17033,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * seria
   t_list = *tcard_listp;
 
   prev_o_num = o_num;
-  (void) lsearch (serial_oid_p, o_list, (unsigned int*)&o_num, sizeof (OID), oid_compare);
+  (void) lsearch (serial_oid_p, o_list, &o_num, sizeof (OID), oid_compare);
   if (o_num > prev_o_num && o_num > (int) *nump)
     {
       *(t_list + o_num - 1) = XASL_SERIAL_OID_TCARD;	/* init #pages */
