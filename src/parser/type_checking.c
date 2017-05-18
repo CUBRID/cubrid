@@ -6327,6 +6327,7 @@ does_op_specially_treat_null_arg (PT_OP_TYPE op)
     case PT_DRANDOM:
     case PT_CONCAT:
     case PT_CONCAT_WS:
+    case PT_TO_CHAR:
       return true;
     case PT_REPLACE:
       return prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
