@@ -150,6 +150,7 @@ static PT_NODE *pt_make_default_value (PARSER_CONTEXT * parser, const char *clas
 #endif /* ENABLE_UNUSED_FUNCTION */
 static void pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter);
 static PT_NODE *pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list);
+static PT_NODE *pt_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -3947,6 +3948,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
   PT_NODE *node_ptr;
   PT_NODE *data_default;
   PT_NODE *prev;
+  bool has_query;
 
   if (pt_has_error (parser))
     {
@@ -3961,6 +3963,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
     }
 
   prev = NULL;
+  has_query = false;
   for (data_default = data_default_list; data_default; data_default = data_default->next)
     {
       save_next = data_default->next;
@@ -3968,7 +3971,8 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 
       default_value = data_default->info.data_default.default_value;
 
-      if (PT_IS_QUERY (default_value))
+      (void) parser_walk_tree (parser, default_value, pt_find_query, &has_query, NULL, NULL);
+      if (has_query)
 	{
 	  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_SUBQUERY_NOT_ALLOWED_IN_DEFAULT_CLAUSE);
@@ -4158,6 +4162,31 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 
   return err;
 }
+
+/*
+ * pt_find_query () - search for a query
+ *
+ * result	  : parser tree node
+ * parser(in)	  : parser
+ * tree(in)	  : parser tree node
+ * arg(in/out)	  : true, if the query is found
+ * continue_walk  : Continue walk.
+ */
+static PT_NODE *
+pt_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_query = (bool *) arg;
+  assert (has_query != NULL);
+
+  if (PT_IS_QUERY (tree))
+    {
+      *has_query = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
 
 /*
  * pt_find_default_expression () - find a default expression
