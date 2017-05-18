@@ -406,6 +406,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   char *lang_str = NULL;
   int flag;
   TP_DOMAIN *result_domain = NULL;
+  bool has_user_format;
 
   assert (class_name->node_type == PT_NAME);
 
@@ -486,15 +487,17 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	    {
 	      if (att->default_value.default_expr.default_expr_format != NULL)
 		{
+		  has_user_format = 1;
 		  db_make_string (&format_val, att->default_value.default_expr.default_expr_format);
 		}
 	      else
 		{
+		  has_user_format = 0;
 		  db_make_null (&format_val);
 		}
 
 	      lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-	      lang_set_flag_from_lang (lang_str, 1, 0, &flag);
+	      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
 	      db_make_int (&lang_val, flag);
 
 	      if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (att->domain)))

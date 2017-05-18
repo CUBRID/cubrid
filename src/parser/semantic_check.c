@@ -7729,6 +7729,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   DB_ATTRIBUTE *col_attr;
   const char *lang_str;
   int flag = 0;
+  bool has_user_format;
 
   /* Import default value from referenced table for those attributes in the the view that have no default value. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
@@ -7803,6 +7804,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 			{
 			  PT_NODE *arg1, *arg2, *arg3;
 			  arg1 = default_op_value;
+			  has_user_format = col_attr->default_value.default_expr.default_expr_format ? 1 : 0;
 			  arg2 = pt_make_string_value (parser,
 						       col_attr->default_value.default_expr.default_expr_format);
 			  if (arg2 == NULL)
@@ -7820,7 +7822,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 			    }
 			  arg3->type_enum = PT_TYPE_INTEGER;
 			  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-			  lang_set_flag_from_lang (lang_str, 1, 0, &flag);
+			  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
 			  arg3->info.value.data_value.i = (long) flag;
 
 			  default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
