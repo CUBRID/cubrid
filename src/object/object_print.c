@@ -630,6 +630,8 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE
       if (!DB_IS_NULL (&attribute_p->default_value.value)
 	  || attribute_p->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	{
+	  const char *default_expr_type_str;
+
 	  buffer = pt_append_nulstring (parser, buffer, " DEFAULT ");
 
 	  if (attribute_p->default_value.default_expr.default_expr_op == T_TO_CHAR)
@@ -637,45 +639,16 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE
 	      buffer = pt_append_nulstring (parser, buffer, "TO_CHAR(");
 	    }
 
-	  switch (attribute_p->default_value.default_expr.default_expr_type)
+	  default_expr_type_str =
+	    db_default_expression_string (attribute_p->default_value.default_expr.default_expr_type);
+	  if (default_expr_type_str != NULL)
 	    {
-	    case DB_DEFAULT_SYSTIME:
-	      buffer = pt_append_nulstring (parser, buffer, "SYS_TIME");
-	      break;
-	    case DB_DEFAULT_SYSDATE:
-	      buffer = pt_append_nulstring (parser, buffer, "SYS_DATE");
-	      break;
-	    case DB_DEFAULT_CURRENTDATE:
-	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_DATE");
-	      break;
-	    case DB_DEFAULT_CURRENTTIME:
-	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_TIME");
-	      break;
-	    case DB_DEFAULT_SYSDATETIME:
-	      buffer = pt_append_nulstring (parser, buffer, "SYS_DATETIME");
-	      break;
-	    case DB_DEFAULT_SYSTIMESTAMP:
-	      buffer = pt_append_nulstring (parser, buffer, "SYS_TIMESTAMP");
-	      break;
-	    case DB_DEFAULT_UNIX_TIMESTAMP:
-	      buffer = pt_append_nulstring (parser, buffer, "UNIX_TIMESTAMP()");
-	      break;
-	    case DB_DEFAULT_USER:
-	      buffer = pt_append_nulstring (parser, buffer, "USER()");
-	      break;
-	    case DB_DEFAULT_CURR_USER:
-	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_USER");
-	      break;
-	    case DB_DEFAULT_CURRENTDATETIME:
-	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_DATETIME");
-	      break;
-	    case DB_DEFAULT_CURRENTTIMESTAMP:
-	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_TIMESTAMP");
-	      break;
-	    default:
+	      buffer = pt_append_nulstring (parser, buffer, default_expr_type_str);
+	    }
+	  else
+	    {
 	      assert (attribute_p->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR);
 	      buffer = describe_value (parser, buffer, &attribute_p->default_value.value);
-	      break;
 	    }
 
 	  if (attribute_p->default_value.default_expr.default_expr_op == T_TO_CHAR)

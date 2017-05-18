@@ -2317,6 +2317,8 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
   if ((default_value != NULL && !DB_IS_NULL (default_value))
       || attribute->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
+      const char *default_expr_type_str;
+
       if (qualifier != SHARED_ATTRIBUTE)
 	{
 	  fprintf (output_file, " DEFAULT ");
@@ -2327,42 +2329,13 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	  fprintf (output_file, "TO_CHAR(");
 	}
 
-      switch (attribute->default_value.default_expr.default_expr_type)
+      default_expr_type_str = db_default_expression_string (attribute->default_value.default_expr.default_expr_type);
+      if (default_expr_type_str != NULL)
 	{
-	case DB_DEFAULT_SYSTIME:
-	  fprintf (output_file, "SYS_TIME");
-	  break;
-	case DB_DEFAULT_SYSDATE:
-	  fprintf (output_file, "SYS_DATE");
-	  break;
-	case DB_DEFAULT_CURRENTDATE:
-	  fprintf (output_file, "CURRENT_DATE");
-	  break;
-	case DB_DEFAULT_CURRENTTIME:
-	  fprintf (output_file, "CURRENT_TIME");
-	  break;
-	case DB_DEFAULT_SYSDATETIME:
-	  fprintf (output_file, "SYS_DATETIME");
-	  break;
-	case DB_DEFAULT_SYSTIMESTAMP:
-	  fprintf (output_file, "SYS_TIMESTAMP");
-	  break;
-	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  fprintf (output_file, "UNIX_TIMESTAMP()");
-	  break;
-	case DB_DEFAULT_USER:
-	  fprintf (output_file, "USER()");
-	  break;
-	case DB_DEFAULT_CURR_USER:
-	  fprintf (output_file, "CURRENT_USER");
-	  break;
-	case DB_DEFAULT_CURRENTDATETIME:
-	  fprintf (output_file, "CURRENT_DATETIME");
-	  break;
-	case DB_DEFAULT_CURRENTTIMESTAMP:
-	  fprintf (output_file, "CURRENT_TIMESTAMP");
-	  break;
-	default:
+	  fprintf (output_file, default_expr_type_str);
+	}
+      else
+	{
 	  /* these are set during the object load phase */
 	  if (ex_contains_object_reference (default_value))
 	    {
@@ -2373,7 +2346,6 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	      /* use the desc_ printer, need to have this in a better place */
 	      desc_value_fprint (output_file, default_value);
 	    }
-	  break;
 	}
 
       if (attribute->default_value.default_expr.default_expr_op == T_TO_CHAR)
