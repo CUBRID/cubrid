@@ -3133,7 +3133,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  thread_p->tran_index = save_index;
 
 #if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_CONN_END (-1, NULL);
+	  CUBRID_CONN_END (-1, "NULL");
 #endif /* ENABLE_SYSTEMTAP */
 
 	  return NO_ERROR;
@@ -3157,7 +3157,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	{
 
 #if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_CONN_END (-1, NULL);
+	  CUBRID_CONN_END (-1, "NULL");
 #endif /* ENABLE_SYSTEMTAP */
 
 	  return NO_ERROR;
