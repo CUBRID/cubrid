@@ -2224,7 +2224,7 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
 	  data_type = parser_new_node (parser, PT_DATA_TYPE);
 	  if (data_type == NULL)
 	    {
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      return (PT_UNION_COMPATIBLE)ER_OUT_OF_VIRTUAL_MEMORY;//vapa!!!
 	    }
 	  data_type->info.data_type.precision =
 	    MAX ((ci1.prec - ci1.scale), (ci2.prec - ci2.scale)) + MAX (ci1.scale, ci2.scale);
@@ -2439,7 +2439,7 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node, SEMAN_COMPATIBLE
 		    {
 		      /* use collation and codeset of original attribute the values from cinfo are not usable */
 		      att_cinfo.coll_infer.coll_id = att->data_type->info.data_type.collation_id;
-		      att_cinfo.coll_infer.codeset = att->data_type->info.data_type.units;
+		      att_cinfo.coll_infer.codeset = (INTL_CODESET)att->data_type->info.data_type.units;
 		    }
 
 		  new_att = pt_make_cast_with_compatible_info (parser, att, next_att, &att_cinfo, &new_cast_added);
@@ -5592,8 +5592,8 @@ pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type, P
 
 	  error = ER_FAILED;
 	  PT_ERRORmf2 (parser, val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_PARTITION_VAL_CODESET,
-		       lang_charset_introducer (val_codeset),
-		       lang_charset_introducer (data_type->info.data_type.units));
+		       lang_charset_introducer ((INTL_CODESET)val_codeset),
+		       lang_charset_introducer ((INTL_CODESET)data_type->info.data_type.units));
 	  break;
 	}
 
@@ -7347,7 +7347,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	}
     }
 
-  (void) parser_walk_tree (parser, qry, pt_check_cyclic_reference_in_view_spec, self, NULL, NULL);
+  (void) parser_walk_tree (parser, qry, pt_check_cyclic_reference_in_view_spec, (void*)self, NULL, NULL);
   if (pt_has_error (parser))
     {
       return NULL;
@@ -15587,7 +15587,7 @@ pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser, PT_NODE * s
 	}
       else if (!DB_IS_NULL (db_val2))
 	{
-	  compare_result = db_value_compare (db_val1, db_val2);
+	  compare_result = (DB_VALUE_COMPARE_RESULT)db_value_compare (db_val1, db_val2);
 	  if (compare_result != DB_LT)
 	    {
 	      /* this is an error */

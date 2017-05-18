@@ -369,6 +369,7 @@ typedef struct sm_function_index_info DB_FUNCTION_INDEX_INFO;
    is used by the db_add_constraint()/db_drop_constraint() API functions. */
 typedef enum
 {
+  DB_CONSTRAINT_NONE = -1,
   DB_CONSTRAINT_UNIQUE = 0,
   DB_CONSTRAINT_INDEX = 1,
   DB_CONSTRAINT_NOT_NULL = 2,

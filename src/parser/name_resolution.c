@@ -51,8 +51,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
-extern int parser_function_code;
-
+extern "C"
+{
+    extern int parser_function_code;
+}
 
 #define PT_NAMES_HASH_SIZE                50
 

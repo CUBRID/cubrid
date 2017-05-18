@@ -68,7 +68,10 @@
 #include "dbval.h"
 
 extern bool No_oid_hint;
-extern int loader_yylineno;
+extern "C"
+{
+    extern int loader_yylineno;
+}
 
 #define LDR_MAX_ARGS 32
 

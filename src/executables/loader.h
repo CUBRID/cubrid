@@ -154,6 +154,11 @@ typedef struct loader_monetary_value
   int currency_type;
 } LDR_MONETARY_VALUE;
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 extern char **ignore_class_list;
 extern int ignore_class_num;
 extern bool skip_current_class;
@@ -162,10 +167,7 @@ extern bool skip_current_instance;
 extern LDR_CONTEXT *ldr_Current_context;
 
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+
 
 /* Loader initialization and shutdown functions */
 

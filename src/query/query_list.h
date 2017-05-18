@@ -173,7 +173,7 @@ typedef struct xasl_id XASL_ID;
 struct xasl_id
 {
   SHA1Hash sha1;		/* SHA-1 hash generated from query string. */
-  volatile INT32 cache_flag;	/* Multiple-purpose field used to handle XASL cache. */
+  /*volatile*/ INT32 cache_flag;	/* Multiple-purpose field used to handle XASL cache. */ //vapa!!!
   CACHE_TIME time_stored;	/* when this XASL plan stored */
 };				/* XASL plan file identifier */
 

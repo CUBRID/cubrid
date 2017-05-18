@@ -34,13 +34,15 @@ set(LIBCAS_SOURCES
   ${BROKER_DIR}/cas_error.c 
   ${BROKER_DIR}/cas_meta.c
   )
+
+if(WIN32)
+  list(APPEND LIBCAS_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
+endif(WIN32)
+
 SET_SOURCE_FILES_PROPERTIES(
   ${LIBCAS_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
-if(WIN32)
-  list(APPEND LIBCAS_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
-endif(WIN32)
 
 add_library(cas STATIC ${LIBCAS_SOURCES})
 if(UNIX)

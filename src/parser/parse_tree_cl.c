@@ -458,9 +458,11 @@ static void pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info);
 
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
-extern char *g_query_string;
-extern int g_query_string_len;
-
+extern "C"
+{
+    extern char *g_query_string;
+    extern int g_query_string_len;
+}
 /*
  * strcat_with_realloc () -
  *   return:

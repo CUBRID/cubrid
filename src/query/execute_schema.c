@@ -2473,7 +2473,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 {
   int error = NO_ERROR;
   int i = 0, nnames = 0;
-  DB_CONSTRAINT_TYPE ctype = -1;
+  DB_CONSTRAINT_TYPE ctype = DB_CONSTRAINT_NONE;
   const PT_NODE *c = NULL, *n = NULL;
   char **attnames = NULL;
   int *asc_desc = NULL;
@@ -6017,7 +6017,7 @@ do_reorganize_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTIT
 	  else if (names_count >= allocated - 1)
 	    {
 	      /* need to reallocate */
-	      char **new_buf = realloc (names, 10 * sizeof (char *));
+	      char **new_buf = (char**)realloc (names, 10 * sizeof (char *));
 	      if (new_buf == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 10 * sizeof (char *));
@@ -9383,7 +9383,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 
 	      if (alter->info.alter.hint & PT_HINT_SKIP_UPDATE_NULL)
 		{
-		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, ci->att_names, 0);
+		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, (const char**)ci->att_names, 0);
 		}
 	      else if (!prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
 		{
@@ -9415,7 +9415,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ALTER_CHANGE_ADD_NOT_NULL_SET_HARD_DEFAULT, 0);
 		    }
-		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, ci->att_names, 0);
+		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, (const char**)ci->att_names, 0);
 		}
 	      else
 		{
@@ -9962,7 +9962,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       /* delete current serial */
       int save;
       OID *oidp, serial_obj_id;
-      char *name = found_att->header.name;
+      const char *name = found_att->header.name;
 
       if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF))
 	{
@@ -11702,8 +11702,8 @@ build_att_coll_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
     {
       const int curr_coll_id = TP_DOMAIN_COLLATION (curr_domain);
       const int req_coll_id = TP_DOMAIN_COLLATION (req_domain);
-      const INTL_CODESET curr_cs = TP_DOMAIN_CODESET (curr_domain);
-      const INTL_CODESET req_cs = TP_DOMAIN_CODESET (req_domain);
+      const INTL_CODESET curr_cs = (INTL_CODESET)TP_DOMAIN_CODESET (curr_domain);
+      const INTL_CODESET req_cs = (INTL_CODESET)TP_DOMAIN_CODESET (req_domain);
 
       if (curr_coll_id != req_coll_id)
 	{

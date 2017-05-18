@@ -7776,7 +7776,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	  else if (node->info.query.q.select.group_by)
 	    {
 	      expr_pred = &node->info.query.q.select.having;
-	      limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, 0, true);
+	      limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, (PT_OP_TYPE)0, true);
 	    }
 	  else if (node->info.query.all_distinct == PT_DISTINCT)
 	    {
@@ -7920,7 +7920,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      }
 	    /* In order to correctly compute the common type we need to know the type of each argument and therefore we 
 	     * compute it. */
-	    node_tmp = pt_semantic_type (parser, *norm_arg, arg);
+	    node_tmp = pt_semantic_type (parser, *norm_arg, (SEMANTIC_CHK_INFO*)arg);
 	    if (*norm_arg == NULL || pt_has_error (parser))
 	      {
 		return node;
@@ -7943,7 +7943,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      }
 	    if (*recurs_arg == NULL || !PT_IS_RECURSIVE_EXPRESSION (*recurs_arg) || op != (*recurs_arg)->info.expr.op)
 	      {
-		node_tmp = pt_semantic_type (parser, *recurs_arg, arg);
+		node_tmp = pt_semantic_type (parser, *recurs_arg, (SEMANTIC_CHK_INFO*)arg);
 		if (node_tmp == NULL || pt_has_error (parser))
 		  {
 		    return node;
@@ -7967,7 +7967,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      }
 	    if (recurs_expr->info.expr.arg3 != NULL)
 	      {
-		node_tmp = pt_semantic_type (parser, recurs_expr->info.expr.arg3, arg);
+		node_tmp = pt_semantic_type (parser, recurs_expr->info.expr.arg3, (SEMANTIC_CHK_INFO*)arg);
 		if (node_tmp == NULL || pt_has_error (parser))
 		  {
 		    return node;
@@ -13091,7 +13091,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 		    if (k == num_bad)
 		      {
-			bad_types[num_bad++] = PT_TYPE_MIN + i;
+                bad_types[num_bad++] = (PT_TYPE_ENUM)(PT_TYPE_MIN + i);
 
 			if (num_bad == sizeof (bad_types) / sizeof (bad_types[0]))
 			  {
@@ -21682,7 +21682,7 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
       if (PT_HAS_COLLATION (node->type_enum))
 	{
 	  coll_infer->coll_id = node->data_type->info.data_type.collation_id;
-	  coll_infer->codeset = node->data_type->info.data_type.units;
+	  coll_infer->codeset = (INTL_CODESET)node->data_type->info.data_type.units;
 	  has_collation = true;
 
 	  if (node->data_type->info.data_type.collation_flag == TP_DOMAIN_COLL_LEAVE)
@@ -21696,7 +21696,7 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
       if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (node->expected_domain)))
 	{
 	  coll_infer->coll_id = TP_DOMAIN_COLLATION (node->expected_domain);
-	  coll_infer->codeset = TP_DOMAIN_CODESET (node->expected_domain);
+	  coll_infer->codeset = (INTL_CODESET)TP_DOMAIN_CODESET (node->expected_domain);
 	  has_collation = true;
 
 	  if (TP_DOMAIN_COLLATION_FLAG (node->expected_domain) == TP_DOMAIN_COLL_LEAVE)
@@ -23569,7 +23569,7 @@ coerce_result:
     {
       /* for these operators, we don't want the arguments' collations to infere common collation, but special values of 
        * arg2 */
-      common_cs = expr->data_type->info.data_type.units;
+      common_cs = (INTL_CODESET)expr->data_type->info.data_type.units;
       common_coll = expr->data_type->info.data_type.collation_id;
     }
 
