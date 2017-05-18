@@ -12311,11 +12311,10 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	}
       else
 	{
-	  DB_VALUE src, dest;
-	  TP_DOMAIN *d = NULL;
+	  DB_VALUE src;
+	  PT_NODE *temp_val;
 
 	  DB_MAKE_NULL (&src);
-	  DB_MAKE_NULL (&dest);
 
 	  def_val = pt_semantic_type (parser, def_val, NULL);
 	  if (pt_has_error (parser) || def_val == NULL)
@@ -12325,13 +12324,21 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	    }
 
 	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
-	  d = pt_type_enum_to_db_domain (desired_type);
-	  d = tp_domain_cache (d);
-	  if (tp_value_coerce (&src, &dest, d) != DOMAIN_COMPATIBLE)
+	  temp_val = pt_dbval_to_value (parser, &src);
+	  if (temp_val == NULL)
 	    {
-	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			   pt_short_print (parser, def_val), pt_show_type_enum (desired_type));
-	      return ER_IT_INCOMPATIBLE_DATATYPE;
+	      db_value_clear (&src);
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	      return er_errid ();
+	    }
+
+	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type);
+	  db_value_clear (&src);
+	  temp_val->info.value.db_value_is_in_workspace = 0;
+	  parser_free_node (parser, temp_val);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
 	    }
 	}
 
