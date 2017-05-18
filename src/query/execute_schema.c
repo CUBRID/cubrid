@@ -12470,7 +12470,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
   int query_len, remaining, n;
 
   PT_NODE *attr;
-  int first = TRUE;
+  bool first = true;
   int error = NO_ERROR;
   int row_count = 0;
 
@@ -12523,7 +12523,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
       remaining -= n;
       q += n;
 
-      first = FALSE;
+      first = false;
     }
 
   /* Now just RUN thew query */
@@ -12559,7 +12559,7 @@ do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, 
   char *query, *q;
   int query_len, remaining, n;
   PT_NODE *attr;
-  int first = TRUE;
+  bool first = true;
   int error = NO_ERROR;
   int row_count = 0;
 
@@ -12616,7 +12616,7 @@ do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, 
       remaining -= n;
       q += n;
 
-      first = FALSE;
+      first = false;
     }
 
   /* Now just RUN the query */
