@@ -19335,6 +19335,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     {
       PT_NODE *default_value, *default_value_date_type;
       bool needs_update_precision = false;
+
       default_value = parser_copy_tree (parser, opd1->info.name.default_value);
       if (default_value == NULL)
 	{
@@ -19355,8 +19356,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    case PT_TYPE_VARBIT:
 	    case PT_TYPE_NUMERIC:
 	    case PT_TYPE_ENUMERATION:
-	      if (default_value_date_type == NULL || (default_value_date_type->info.data_type.precision
-						      != opd1->data_type->info.data_type.precision))
+	      if (default_value_date_type == NULL
+		  || (default_value_date_type->info.data_type.precision != opd1->data_type->info.data_type.precision))
 		{
 		  needs_update_precision = true;
 		}
@@ -19374,6 +19375,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       else
 	{
 	  PT_NODE *dt, *cast_expr;
+
 	  /* need to coerce to opd1->type_enum */
 	  cast_expr = parser_new_node (parser, PT_EXPR);
 	  if (cast_expr == NULL)

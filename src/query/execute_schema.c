@@ -12541,7 +12541,7 @@ end:
 }
 
 /*
- * do_run_update_query_for_new_default_expression_fields) - worker function for
+ * do_run_update_query_for_new_default_expression_fields() - worker function for
  *    do_update_new_cols_with_default_expression().
  *
  *  parser(in): parser
@@ -12558,7 +12558,6 @@ do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, 
 {
   char *query, *q;
   int query_len, remaining, n;
-
   PT_NODE *attr;
   int first = TRUE;
   int error = NO_ERROR;
@@ -12568,7 +12567,7 @@ do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, 
   assert (attr_count > 0);
 
   /* Allocate enough for each attribute's name, its default value, and for the "UPDATE table_name" part of the query.
-   * 100 is more than the maximum length of any default value for an attribute, including three spaces, the coma sign
+   * 100 is more than the maximum length of any default value for an attribute, including three spaces, the comma sign
    * and an equal. */
 
   query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 100);
@@ -12601,6 +12600,7 @@ do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, 
     {
       const char *sep = first ? "" : ", ";
       char *data_default;
+
       data_default = parser_print_tree (parser, attr->info.attr_def.data_default->info.data_default.default_value);
       if (data_default == NULL)
 	{
@@ -12619,9 +12619,8 @@ do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, 
       first = FALSE;
     }
 
-  /* Now just RUN thew query */
+  /* Now just RUN the query */
   error = do_run_update_query_for_class (query, class_mop, &row_count);
-
 
 end:
   if (query)
@@ -12787,7 +12786,7 @@ end:
  *   parser(in): Parser context
  *   alter(in):  Parse tree of the statement
  *
- * Nore: Used only on ALTER TABLE ... ADD COLUMN, and only AFTER the operation has been performed (i.e. the columns
+ * Note: Used only on ALTER TABLE ... ADD COLUMN, and only AFTER the operation has been performed (i.e. the columns
  * have been added to the schema, even though the transaction has not been committed).
  *
  */
