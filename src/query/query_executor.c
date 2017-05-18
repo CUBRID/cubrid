@@ -10916,14 +10916,40 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       switch (attr->current_default_value.default_expr.default_expr_type)
 	{
 	case DB_DEFAULT_SYSTIME:
-	case DB_DEFAULT_CURRENTTIME:
 	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	  db_make_time (&insert_val, hour, minute, second);
 	  break;
+	case DB_DEFAULT_CURRENTTIME:
+	  {
+	    DB_TIME cur_time, db_time;
+	    const char *t_source, *t_dest;
+	    int len_source, len_dest;
+
+	    t_source = tz_get_system_timezone ();
+	    t_dest = tz_get_session_local_timezone ();
+	    len_source = strlen (t_source);
+	    len_dest = strlen (t_dest);
+	    db_time = xasl_state->vd.sys_datetime.time / 1000;
+	    error = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
+	    DB_MAKE_ENCODED_TIME (&insert_val, &cur_time);
+	  }
+	  break;
 	case DB_DEFAULT_SYSDATE:
-	case DB_DEFAULT_CURRENTDATE:
 	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	  db_make_date (&insert_val, month, day, year);
+	  break;
+	case DB_DEFAULT_CURRENTDATE:
+	  {
+	    TZ_REGION system_tz_region, session_tz_region;
+	    DB_DATETIME dest_dt;
+
+	    tz_get_system_tz_region (&system_tz_region);
+	    tz_get_session_tz_region (&session_tz_region);
+	    error =
+	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
+					    &dest_dt, NULL, NULL);
+	    DB_MAKE_ENCODED_DATE (&insert_val, &dest_dt.date);
+	  }
 	  break;
 	case DB_DEFAULT_SYSDATETIME:
 	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
@@ -10933,7 +10959,17 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  error = db_datetime_to_timestamp (&insert_val, &insert_val);
 	  break;
 	case DB_DEFAULT_CURRENTDATETIME:
-	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
+	  {
+	    TZ_REGION system_tz_region, session_tz_region;
+	    DB_DATETIME dest_dt;
+
+	    tz_get_system_tz_region (&system_tz_region);
+	    tz_get_session_tz_region (&session_tz_region);
+	    error =
+	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
+					    &dest_dt, NULL, NULL);
+	    DB_MAKE_DATETIME (&insert_val, &dest_dt);
+	  }
 	  break;
 	case DB_DEFAULT_CURRENTTIMESTAMP:
 	  {
