@@ -10793,6 +10793,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   DB_VALUE insert_val, format_val, lang_val;
   char *lang_str = NULL;
   int flag;
+  TP_DOMAIN *result_domain;
+  bool has_user_format;
 
   aptr = xasl->aptr_list;
   val_no = insert->num_vals;
@@ -11035,20 +11037,20 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
       if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
 	{
-	  TP_DOMAIN *result_domain;
-
 	  assert (attr->current_default_value.default_expr.default_expr_type != DB_DEFAULT_NONE);
 	  if (attr->current_default_value.default_expr.default_expr_format != NULL)
 	    {
 	      db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
+	      has_user_format = 1;
 	    }
 	  else
 	    {
 	      db_make_null (&format_val);
+	      has_user_format = 0;
 	    }
 
 	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-	  lang_set_flag_from_lang (lang_str, 1, 0, &flag);
+	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
 	  db_make_int (&lang_val, flag);
 
 	  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
