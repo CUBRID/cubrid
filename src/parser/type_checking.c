@@ -273,6 +273,8 @@ static PT_NODE *pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, voi
 static PT_NODE *pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func);
 static const char *pt_class_name (const PT_NODE * type);
 static int pt_set_default_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM type, PT_NODE ** dtp);
+static int pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
+				     PT_TYPE_ENUM desired_type, PT_NODE * data_type, bool check_string_precision);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int generic_func_casecmp (const void *a, const void *b);
 static void init_generic_funcs (void);
@@ -5767,14 +5769,14 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	   * will only work on constants */
 	  PT_NODE *temp = NULL, *msg_temp = NULL;
 	  msg_temp = parser->error_msgs;
-	  (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type, false);
+	  (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type);
 	  if (pt_has_error (parser))
 	    {
 	      /* ignore errors */
 	      parser_free_tree (parser, parser->error_msgs);
 	      parser->error_msgs = msg_temp;
 	    }
-	  if (pt_coerce_value (parser, arg1, arg1, common_type, NULL, false) != NO_ERROR)
+	  if (pt_coerce_value (parser, arg1, arg1, common_type, NULL) != NO_ERROR)
 	    {
 	      expr->type_enum = PT_TYPE_NONE;
 	    }
@@ -5786,7 +5788,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		    {
 		      msg_temp = parser->error_msgs;
 		      parser->error_msgs = NULL;
-		      (void) pt_coerce_value (parser, temp, temp, common_type, NULL, false);
+		      (void) pt_coerce_value (parser, temp, temp, common_type, NULL);
 		      if (pt_has_error (parser))
 			{
 			  parser_free_tree (parser, parser->error_msgs);
@@ -6106,12 +6108,12 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		{
 		  if (arg1_eq_type != common_type && arg1_eq_type != PT_TYPE_NONE)
 		    {
-		      pt_coerce_value (parser, arg1, arg1, common_type, PT_NODE_DATA_TYPE (arg1), false);
+		      pt_coerce_value (parser, arg1, arg1, common_type, PT_NODE_DATA_TYPE (arg1));
 		      arg1_type = common_type;
 		    }
 		  if (arg2_type != common_type && arg2_eq_type != PT_TYPE_NONE)
 		    {
-		      pt_coerce_value (parser, arg2, arg2, common_type, PT_NODE_DATA_TYPE (arg2), false);
+		      pt_coerce_value (parser, arg2, arg2, common_type, PT_NODE_DATA_TYPE (arg2));
 		      arg2_type = common_type;
 		    }
 		}
@@ -9043,7 +9045,7 @@ pt_get_common_datetime_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM common_type, 
     }
   else if (PT_IS_DATE_TIME_TYPE (arg_type))
     {
-      if (pt_coerce_value (parser, arg_ptr, arg_ptr, common_type, NULL, false) == NO_ERROR)
+      if (pt_coerce_value (parser, arg_ptr, arg_ptr, common_type, NULL) == NO_ERROR)
 	{
 	  return common_type;
 	}
@@ -9552,7 +9554,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 			  parser->error_msgs = NULL;
 
 			  /* try coercing to utime */
-			  if (pt_coerce_value (parser, arg1, arg1, PT_TYPE_TIMESTAMP, NULL, false) == NO_ERROR)
+			  if (pt_coerce_value (parser, arg1, arg1, PT_TYPE_TIMESTAMP, NULL) == NO_ERROR)
 			    {
 			      arg1_type = PT_TYPE_TIMESTAMP;
 			    }
@@ -9562,7 +9564,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 			      parser->error_msgs = NULL;
 
 			      /* try coercing to datetime */
-			      if (pt_coerce_value (parser, arg1, arg1, PT_TYPE_DATETIME, NULL, false) == NO_ERROR)
+			      if (pt_coerce_value (parser, arg1, arg1, PT_TYPE_DATETIME, NULL) == NO_ERROR)
 				{
 				  arg1_type = PT_TYPE_DATETIME;
 				}
@@ -9596,7 +9598,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 			  parser->error_msgs = NULL;
 
 			  /* try coercing to utime */
-			  if (pt_coerce_value (parser, arg1, arg1, PT_TYPE_TIMESTAMP, NULL, false) == NO_ERROR)
+			  if (pt_coerce_value (parser, arg1, arg1, PT_TYPE_TIMESTAMP, NULL) == NO_ERROR)
 			    {
 			      arg1_type = PT_TYPE_TIMESTAMP;
 			    }
@@ -9606,7 +9608,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 			      parser->error_msgs = NULL;
 
 			      /* try coercing to datetime */
-			      if (pt_coerce_value (parser, arg1, arg1, PT_TYPE_DATETIME, NULL, false) == NO_ERROR)
+			      if (pt_coerce_value (parser, arg1, arg1, PT_TYPE_DATETIME, NULL) == NO_ERROR)
 				{
 				  arg1_type = PT_TYPE_DATETIME;
 				}
@@ -9629,7 +9631,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		    {
 		      arg1_type = PT_TYPE_NONE;
 		      /* try coercing to datetime */
-		      if (pt_coerce_value (parser, arg1, arg1, PT_TYPE_DATETIME, NULL, false) == NO_ERROR)
+		      if (pt_coerce_value (parser, arg1, arg1, PT_TYPE_DATETIME, NULL) == NO_ERROR)
 			{
 			  arg1_type = PT_TYPE_DATETIME;
 			}
@@ -9727,7 +9729,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (arg1_hv != arg1)
 	    {
 	      /* special case of the unary minus on host var no error will be returned in this case */
-	      (void) pt_coerce_value (parser, arg1_hv, arg1_hv, arg2_type, arg2->data_type, false);
+	      (void) pt_coerce_value (parser, arg1_hv, arg1_hv, arg2_type, arg2->data_type);
 	      arg1_type = arg1->type_enum = arg1_hv->type_enum;
 	      d = pt_xasl_type_enum_to_domain (arg1_type);
 	      SET_EXPECTED_DOMAIN (arg1, d);
@@ -9737,7 +9739,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  else
 	    {
 	      /* no error will be returned in this case */
-	      (void) pt_coerce_value (parser, arg1, arg1, arg2_type, arg2->data_type, false);
+	      (void) pt_coerce_value (parser, arg1, arg1, arg2_type, arg2->data_type);
 	      arg1_type = arg1->type_enum;
 	      d = pt_xasl_type_enum_to_domain (arg1_type);
 	      SET_EXPECTED_DOMAIN (arg1, d);
@@ -9750,7 +9752,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (arg2_hv != arg2)
 	    {
 	      /* special case of the unary minus on host var no error will be returned in this case */
-	      (void) pt_coerce_value (parser, arg2_hv, arg2_hv, arg1_type, arg1->data_type, false);
+	      (void) pt_coerce_value (parser, arg2_hv, arg2_hv, arg1_type, arg1->data_type);
 	      arg2_type = arg2->type_enum = arg2_hv->type_enum;
 	      d = pt_xasl_type_enum_to_domain (arg2_type);
 	      SET_EXPECTED_DOMAIN (arg2, d);
@@ -9760,7 +9762,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  else
 	    {
 	      /* no error will be returned in this case */
-	      (void) pt_coerce_value (parser, arg2, arg2, arg1_type, arg1->data_type, false);
+	      (void) pt_coerce_value (parser, arg2, arg2, arg1_type, arg1->data_type);
 	      arg2_type = arg2->type_enum;
 	      d = pt_xasl_type_enum_to_domain (arg2_type);
 	      SET_EXPECTED_DOMAIN (arg2, d);
@@ -9808,7 +9810,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		  data_type = arg2->data_type;
 		}
 
-	      pt_coerce_value (parser, arg1, arg1, common_type, data_type, false);
+	      pt_coerce_value (parser, arg1, arg1, common_type, data_type);
 	      arg1_type = arg1->type_enum;
 	    }
 
@@ -9828,7 +9830,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		  data_type = arg1->data_type;
 		}
 
-	      pt_coerce_value (parser, arg2, arg2, common_type, data_type, false);
+	      pt_coerce_value (parser, arg2, arg2, common_type, data_type);
 	      arg2_type = arg2->type_enum;
 	    }
 	}
@@ -9862,7 +9864,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		    {
 		      if (arg1_type != PT_TYPE_NONE && arg1_type != PT_TYPE_MAYBE)
 			{
-			  (void) pt_coerce_value (parser, temp, temp, arg1_type, arg1->data_type, false);
+			  (void) pt_coerce_value (parser, temp, temp, arg1_type, arg1->data_type);
 			  d = pt_xasl_type_enum_to_domain (temp->type_enum);
 			  SET_EXPECTED_DOMAIN (temp, d);
 			  if (temp->node_type == PT_HOST_VAR)
@@ -10469,7 +10471,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_DECODE:
     case PT_CASE:
-      if (arg3_hv && pt_coerce_value (parser, arg3, arg3, PT_TYPE_LOGICAL, NULL, false) != NO_ERROR)
+      if (arg3_hv && pt_coerce_value (parser, arg3, arg3, PT_TYPE_LOGICAL, NULL) != NO_ERROR)
 	{
 	  node->type_enum = PT_TYPE_NONE;
 	  break;
@@ -12480,7 +12482,7 @@ pt_check_and_coerce_to_time (PARSER_CONTEXT * parser, PT_NODE * src)
       return ER_TIME_CONVERSION;
     }
 
-  return pt_coerce_value (parser, src, src, PT_TYPE_TIME, NULL, false);
+  return pt_coerce_value (parser, src, src, PT_TYPE_TIME, NULL);
 }
 
 /*
@@ -12521,7 +12523,7 @@ pt_check_and_coerce_to_date (PARSER_CONTEXT * parser, PT_NODE * src)
     {
       return ER_DATE_CONVERSION;
     }
-  return pt_coerce_value (parser, src, src, PT_TYPE_DATE, NULL, false);
+  return pt_coerce_value (parser, src, src, PT_TYPE_DATE, NULL);
 }
 
 /*
@@ -12566,7 +12568,7 @@ pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, PT_NODE * sr
 	  parser->error_msgs = NULL;
 
 	  /* try coercing to utime */
-	  if (pt_coerce_value (parser, src, src, PT_TYPE_TIMESTAMP, NULL, false) == NO_ERROR)
+	  if (pt_coerce_value (parser, src, src, PT_TYPE_TIMESTAMP, NULL) == NO_ERROR)
 	    {
 	      *result_type = PT_TYPE_TIMESTAMP;
 	      result = NO_ERROR;
@@ -12577,7 +12579,7 @@ pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, PT_NODE * sr
 	      parser->error_msgs = NULL;
 
 	      /* try coercing to datetime */
-	      if (pt_coerce_value (parser, src, src, PT_TYPE_DATETIME, NULL, false) == NO_ERROR)
+	      if (pt_coerce_value (parser, src, src, PT_TYPE_DATETIME, NULL) == NO_ERROR)
 		{
 		  *result_type = PT_TYPE_DATETIME;
 		  result = NO_ERROR;
@@ -12640,7 +12642,7 @@ pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NOD
 	  data_type = arg1->data_type;
 	}
 
-      result = (result && (pt_coerce_value (parser, arg1, arg1, common_type, data_type, false) == NO_ERROR));
+      result = (result && (pt_coerce_value (parser, arg1, arg1, common_type, data_type) == NO_ERROR));
     }
 
   if (arg2->type_enum != common_type)
@@ -12650,7 +12652,7 @@ pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NOD
 	  data_type = arg2->data_type;
 	}
 
-      result = (result && (pt_coerce_value (parser, arg2, arg2, common_type, data_type, false) == NO_ERROR));
+      result = (result && (pt_coerce_value (parser, arg2, arg2, common_type, data_type) == NO_ERROR));
     }
 
   if (arg3->type_enum != common_type)
@@ -12660,7 +12662,7 @@ pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NOD
 	  data_type = arg3->data_type;
 	}
 
-      result = (result && (pt_coerce_value (parser, arg3, arg3, common_type, data_type, false) == NO_ERROR));
+      result = (result && (pt_coerce_value (parser, arg3, arg3, common_type, data_type) == NO_ERROR));
     }
 
   return result;
@@ -20515,20 +20517,49 @@ pt_set_default_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM type, PT_NODE **
 
 
 /*
- * pt_coerce_value () - coerce a PT_VALUE into another PT_VALUE of
- * 			compatible type
+ * pt_coerce_value () - coerce a PT_VALUE into another PT_VALUE of compatible type
  *   return: NO_ERROR on success, non-zero for ERROR
  *   parser(in):
  *   src(in): a pointer to the original PT_VALUE
  *   dest(out): a pointer to the coerced PT_VALUE
  *   desired_type(in): the desired type of the coerced result
- *   data_type(in): the data type list of a (desired) set type or
- *                  the data type of an object or NULL
- *   check_string_precision(in): true, if needs to consider string precision
+ *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
  */
 int
-pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type, PT_NODE * data_type,
-		 bool check_string_precision)
+pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type, PT_NODE * data_type)
+{
+  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, false);
+}
+
+/*
+ * pt_coerce_value_for_default_value () - coerce a PT_VALUE of DEFAULT into another PT_VALUE of compatible type
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in):
+ *   src(in): a pointer to the original PT_VALUE
+ *   dest(out): a pointer to the coerced PT_VALUE
+ *   desired_type(in): the desired type of the coerced result
+ *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
+ */
+int
+pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
+				   PT_NODE * data_type)
+{
+  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true);
+}
+
+/*
+ * pt_coerce_value_internal () - coerce a PT_VALUE into another PT_VALUE of compatible type
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in):
+ *   src(in): a pointer to the original PT_VALUE
+ *   dest(out): a pointer to the coerced PT_VALUE
+ *   desired_type(in): the desired type of the coerced result
+ *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
+ *   check_string_precision(in): true, if needs to consider string precision
+ */
+static int
+pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
+			  PT_NODE * data_type, bool check_string_precision)
 {
   PT_TYPE_ENUM original_type;
   PT_NODE *dest_next;
