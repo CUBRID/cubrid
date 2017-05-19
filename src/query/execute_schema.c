@@ -12338,6 +12338,8 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  parser_free_node (parser, temp_val);
 	  if (error != NO_ERROR)
 	    {
+	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+			   pt_short_print (parser, def_val), pt_short_print (parser, attribute->data_type));
 	      return error;
 	    }
 	}

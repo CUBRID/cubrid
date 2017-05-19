@@ -20813,9 +20813,9 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
   else if (err < 0)
     {
       PT_ERRORmf2 (parser, src, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		   pt_short_print (parser, src), (desired_type == PT_TYPE_OBJECT
-						  ? pt_class_name (data_type)
-						  : pt_show_type_enum ((PT_TYPE_ENUM) desired_type)));
+		   pt_short_print (parser, src),
+		   (desired_type == PT_TYPE_OBJECT
+		    ? pt_class_name (data_type) : pt_show_type_enum ((PT_TYPE_ENUM) desired_type)));
     }
 
   return err;
