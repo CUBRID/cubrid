@@ -400,6 +400,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *slist;
   PT_NODE *tmp_node = NULL;
   PT_TYPE_ENUM pt_desired_type;
+  PT_NODE *temp_val, *def_val;
 #if 0
   HFID *hfid;
 #endif
@@ -936,9 +937,25 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      break;
 	    }
 	  db_desired_type = TP_DOMAIN_TYPE (def_domain);
+	  pt_desired_type = (PT_TYPE_ENUM) pt_db_to_type_enum (db_desired_type);
+	  data_type = pt_domain_to_data_type (parser, def_domain);
+	  if (data_type == NULL)
+	    {
+	      PT_ERRORm (parser, n, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      error = ER_FAILED;
+	      break;
+	    }
 
+	  def_val = d->info.data_default.default_value;
 	  if (d->info.data_default.default_expr_type == DB_DEFAULT_NONE)
 	    {
+	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, pt_desired_type, data_type);
+	      if (error != NO_ERROR)
+		{
+		  parser_free_tree (parser, data_type);
+		  break;
+		}
+
 	      pt_evaluate_tree (parser, d->info.data_default.default_value, &src_val, 1);
 
 	      /* Fix CUBRIDSUS-8035. FOR Primary Key situation, we will throw another ERROR in function
@@ -946,6 +963,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      if (DB_IS_NULL (&src_val) && (def_attr->flags & SM_ATTFLAG_NON_NULL)
 		  && !(def_attr->flags & SM_ATTFLAG_PRIMARY_KEY))
 		{
+		  db_value_clear (&src_val);
+		  parser_free_tree (parser, data_type);
 		  ERROR1 (error, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, attr_name);
 		  break;
 		}
@@ -961,16 +980,39 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	  else
 	    {
-	      PT_NODE *def_val = d->info.data_default.default_value;
 	      def_val = pt_semantic_type (parser, def_val, NULL);
 	      if (pt_has_error (parser) || def_val == NULL)
 		{
+		  parser_free_tree (parser, data_type);
 		  pt_report_to_ersys (parser, PT_SEMANTIC);
 		  error = er_errid ();
 		  break;
 		}
 
 	      pt_evaluate_tree_having_serial (parser, def_val, &src_val, 1);
+
+	      temp_val = pt_dbval_to_value (parser, &src_val);
+	      if (temp_val == NULL)
+		{
+		  parser_free_tree (parser, data_type);
+		  db_value_clear (&src_val);
+		  pt_report_to_ersys (parser, PT_SEMANTIC);
+		  error = er_errid ();
+		  break;
+		}
+
+	      error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, pt_desired_type, data_type);
+	      db_value_clear (&src_val);
+	      temp_val->info.value.db_value_is_in_workspace = 0;
+	      parser_free_node (parser, temp_val);
+	      if (error != NO_ERROR)
+		{
+		  PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+			       pt_short_print (parser, def_val), pt_short_print (parser, data_type));
+		  parser_free_tree (parser, data_type);
+		  break;
+		}
+
 	      pt_get_default_expression_from_data_default_node (parser, d, &default_expr);
 	      smt_set_attribute_default (ctemplate, attr_name, 0, &src_val, &default_expr);
 	    }
@@ -986,6 +1028,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      break;
 	    }
 
+	  parser_free_tree (parser, data_type);
 	  pr_clear_value (&src_val);
 	  pr_clear_value (&dest_val);
 	}
