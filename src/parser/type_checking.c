@@ -20571,6 +20571,8 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
   bool is_collation_change = false;
   bool has_type_string;
   bool is_same_type;
+  DB_VALUE *db_src = NULL;
+  bool need_src_clear = false;
 
   assert (src != NULL && dest != NULL);
 
@@ -20652,7 +20654,6 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 
     case PT_VALUE:
       {
-	DB_VALUE *db_src = NULL;
 	DB_VALUE db_dest;
 	TP_DOMAIN *desired_domain;
 
@@ -20710,7 +20711,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 
 	if (src->info.value.db_value_is_in_workspace)
 	  {
-	    (void) db_value_clear (db_src);
+	    need_src_clear = true;
 	  }
 
 	if (err >= 0)
@@ -20816,6 +20817,11 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 		   pt_short_print (parser, src),
 		   (desired_type == PT_TYPE_OBJECT
 		    ? pt_class_name (data_type) : pt_show_type_enum ((PT_TYPE_ENUM) desired_type)));
+    }
+
+  if (need_src_clear)
+    {
+      (void) db_value_clear (db_src);
     }
 
   return err;
