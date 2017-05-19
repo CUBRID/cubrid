@@ -14359,7 +14359,11 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  db_user = tdes->client.db_user;
+  if (tdes != NULL)
+    {
+      client_id = tdes->client_id;
+      db_user = tdes->client.db_user;
+    }
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(CUBRID_DEBUG)
