@@ -10919,6 +10919,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	  db_make_time (&insert_val, hour, minute, second);
 	  break;
+
 	case DB_DEFAULT_CURRENTTIME:
 	  {
 	    DB_TIME cur_time, db_time;
@@ -10934,10 +10935,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    DB_MAKE_ENCODED_TIME (&insert_val, &cur_time);
 	  }
 	  break;
+
 	case DB_DEFAULT_SYSDATE:
 	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	  db_make_date (&insert_val, month, day, year);
 	  break;
+
 	case DB_DEFAULT_CURRENTDATE:
 	  {
 	    TZ_REGION system_tz_region, session_tz_region;
@@ -10951,13 +10954,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    DB_MAKE_ENCODED_DATE (&insert_val, &dest_dt.date);
 	  }
 	  break;
+
 	case DB_DEFAULT_SYSDATETIME:
 	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
 	  break;
+
 	case DB_DEFAULT_SYSTIMESTAMP:
 	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
 	  error = db_datetime_to_timestamp (&insert_val, &insert_val);
 	  break;
+
 	case DB_DEFAULT_CURRENTDATETIME:
 	  {
 	    TZ_REGION system_tz_region, session_tz_region;
@@ -10971,6 +10977,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    DB_MAKE_DATETIME (&insert_val, &dest_dt);
 	  }
 	  break;
+
 	case DB_DEFAULT_CURRENTTIMESTAMP:
 	  {
 	    DB_DATE tmp_date;
@@ -10983,10 +10990,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    db_make_timestamp (&insert_val, tmp_timestamp);
 	  }
 	  break;
+
 	case DB_DEFAULT_UNIX_TIMESTAMP:
 	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
 	  error = db_unix_timestamp (&insert_val, &insert_val);
 	  break;
+
 	case DB_DEFAULT_USER:
 	  {
 	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -11009,6 +11018,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    strcat (temp, tdes->client.host_name);
 		  }
 	      }
+
 	    DB_MAKE_STRING (&insert_val, temp);
 	    insert_val.need_clear = true;
 	  }
@@ -11068,7 +11078,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  error = ER_FAILED;
 	  GOTO_EXIT_ON_ERROR;
 	  break;
-
 	}
 
       if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
@@ -11110,17 +11119,14 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      result_domain = attr->domain;
 	    }
 
-	  if (db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
+	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain);
 	}
       else
 	{
 	  pr_clone_value (&insert_val, insert->vals[k]);
 	}
 
-      db_value_clear (&insert_val);
+      pr_clear_value (&insert_val);
 
       if (error != NO_ERROR)
 	{
