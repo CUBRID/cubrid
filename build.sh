@@ -296,11 +296,11 @@ function build_package ()
 	if [ ! -d "$install_dir" -o ! -d "$prefix_dir" ]; then
 	  print_fatal "Installed directory or prefix directory not found"
 	fi
-
+	build_id_rel=`lsb_release -irs | tr -d ' '`
 	if [ "$package" = "cci" ]; then
-          package_basename="$product_name-CCI-$version-Linux.$build_target"
+          package_basename="$product_name-CCI-$version.$build_id_rel-Linux.$build_target"
         else
-          package_basename="$product_name-$version-Linux.$build_target"
+          package_basename="$product_name-$version.$build_id_rel-Linux.$build_target"
         fi
 	if [ ! "$build_mode" = "release" ]; then
 	  package_basename="$package_basename-$build_mode"
