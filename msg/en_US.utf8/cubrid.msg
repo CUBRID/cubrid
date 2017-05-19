@@ -1719,6 +1719,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 297 Nested WITH clauses are not supported.
 298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
 299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
+300 Subquery is not allowed in DEFAULT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

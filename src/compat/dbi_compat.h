@@ -3551,6 +3551,8 @@ extern void db_set_preferred_hosts (const char *hosts);
 extern int db_get_client_type (void);
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
+extern int db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val);
+extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 
 extern DB_OBJECT *db_find_class_of_index (const char *index, DB_CONSTRAINT_TYPE type);
 extern DB_OBJECT *db_find_class (const char *name);

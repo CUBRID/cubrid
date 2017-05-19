@@ -433,8 +433,6 @@ catalog_get_disk_attribute (DISK_ATTR * attr_p, char *rec_p)
   attr_p->value = NULL;
   attr_p->val_length = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_VAL_LENGTH_OFF);
   attr_p->position = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_POSITION_OFF);
-  attr_p->default_expr = DB_DEFAULT_NONE;
-
   OR_GET_OID (rec_p + CATALOG_DISK_ATTR_CLASSOID_OFF, &attr_p->classoid);
   attr_p->n_btstats = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_N_BTSTATS_OFF);
   attr_p->bt_stats = NULL;

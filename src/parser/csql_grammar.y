@@ -5751,52 +5751,71 @@ alter_column_clause_mysql_specific
 				PARSER_SAVE_ERR_CONTEXT (node, @4.buffer_pos)
 
 				def = node->info.data_default.default_value;
-
 				if (def && def->node_type == PT_EXPR)
 				  {
+					if (def->info.expr.op == PT_TO_CHAR)
+					  {					    
+						if (def->info.expr.arg3)
+						  {							
+						    bool dummy;						
+						    bool has_user_lang = false;
+						    assert (def->info.expr.arg3->node_type == PT_VALUE);
+							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
+							if (has_user_lang)
+							  {
+								PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
+							  }
+						  }
+						
+						if (def->info.expr.arg1 && def->info.expr.arg1->node_type == PT_EXPR)
+						  {
+						    def = def->info.expr.arg1;
+						  }
+					  }
+							
 				    switch (def->info.expr.op)
 				      {
 				      case PT_SYS_TIME:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSTIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
 					break;
 				      case PT_SYS_DATE:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSDATE;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
 					break;
 				      case PT_SYS_DATETIME:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSDATETIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
 					break;
 				      case PT_SYS_TIMESTAMP:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
 					break;
 				      case PT_CURRENT_TIME:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
 					break;
 				      case PT_CURRENT_DATE:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATE;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
 					break;
 				      case PT_CURRENT_DATETIME:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATETIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
 					break;
 				      case PT_CURRENT_TIMESTAMP:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
 					break;
 				      case PT_USER:
-					node->info.data_default.default_expr = DB_DEFAULT_USER;
+					node->info.data_default.default_expr_type = DB_DEFAULT_USER;
 					break;
 				      case PT_CURRENT_USER:
-					node->info.data_default.default_expr = DB_DEFAULT_CURR_USER;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
 					break;
 				      case PT_UNIX_TIMESTAMP:
-					node->info.data_default.default_expr = DB_DEFAULT_UNIX_TIMESTAMP;
+					node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
 					break;
 				      default:
-					node->info.data_default.default_expr = DB_DEFAULT_NONE;
+					node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 					break;
 				      }
 				  }
 				else
 				  {
-				    node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 				  }
 			      }
 			    
@@ -10090,52 +10109,72 @@ column_default_constraint_def
 			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
 
 			    def = node->info.data_default.default_value;
-
 			    if (def && def->node_type == PT_EXPR)
 			      {
+					if (def->info.expr.op == PT_TO_CHAR)
+					  {					  
+						if (def->info.expr.arg3)
+						  {
+							bool has_user_lang = false;
+							bool dummy;
+							
+							assert (def->info.expr.arg3->node_type == PT_VALUE);
+							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
+							 if (has_user_lang)
+							   {
+								 PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
+							   }
+							}
+						
+						if (def->info.expr.arg1  && def->info.expr.arg1->node_type == PT_EXPR)
+						  {
+							def = def->info.expr.arg1;
+						  }						
+					  }					  
+						  
 				switch (def->info.expr.op)
 				  {
 				  case PT_SYS_TIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSTIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
 				    break;
 				  case PT_SYS_DATE:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSDATE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
 				    break;
 				  case PT_SYS_DATETIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSDATETIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
 				    break;
 				  case PT_SYS_TIMESTAMP:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
 				    break;
 				  case PT_CURRENT_TIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
 				    break;
 				  case PT_CURRENT_DATE:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
 				    break;
 				  case PT_CURRENT_DATETIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATETIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
 				    break;
 				  case PT_CURRENT_TIMESTAMP:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
 				    break;
 				  case PT_USER:
-				    node->info.data_default.default_expr = DB_DEFAULT_USER;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_USER;
 				    break;
 				  case PT_CURRENT_USER:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURR_USER;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
 				    break;
 				  case PT_UNIX_TIMESTAMP:
-				    node->info.data_default.default_expr = DB_DEFAULT_UNIX_TIMESTAMP;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
 				    break;
 				  default:
-				    node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 				    break;
 				  }
 			      }
 			    else
 			      {
-				node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 			      }
 			  }
 
@@ -25772,6 +25811,3 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 
   return node;
 }
-
-
-
