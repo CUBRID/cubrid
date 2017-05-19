@@ -952,6 +952,17 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, pt_desired_type, data_type);
 	      if (error != NO_ERROR)
 		{
+		  if (error == ER_IT_DATA_OVERFLOW)
+		    {
+		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+				   pt_short_print (parser, def_val), pt_short_print (parser, data_type));
+		    }
+		  else
+		    {
+		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+				   pt_short_print (parser, def_val), pt_short_print (parser, data_type));
+		    }
+
 		  parser_free_tree (parser, data_type);
 		  break;
 		}
@@ -990,6 +1001,13 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 
 	      pt_evaluate_tree_having_serial (parser, def_val, &src_val, 1);
+	      if (pt_has_error (parser))
+		{
+		  parser_free_tree (parser, data_type);
+		  pt_report_to_ersys (parser, PT_SEMANTIC);
+		  error = er_errid ();
+		  break;
+		}
 
 	      temp_val = pt_dbval_to_value (parser, &src_val);
 	      if (temp_val == NULL)
@@ -1007,8 +1025,16 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      parser_free_node (parser, temp_val);
 	      if (error != NO_ERROR)
 		{
-		  PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-			       pt_short_print (parser, def_val), pt_short_print (parser, data_type));
+		  if (error == ER_IT_DATA_OVERFLOW)
+		    {
+		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+				   pt_short_print (parser, def_val), pt_short_print (parser, data_type));
+		    }
+		  else
+		    {
+		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+				   pt_short_print (parser, def_val), pt_short_print (parser, data_type));
+		    }
 		  parser_free_tree (parser, data_type);
 		  break;
 		}
@@ -12262,6 +12288,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
   DB_DEFAULT_EXPR_TYPE def_expr_type;
   PT_TYPE_ENUM desired_type = attribute->type_enum;
   bool has_self_ref = false;
+  const char *data_type_print;
 
   assert (attribute->node_type == PT_ATTR_DEF);
 
@@ -12349,7 +12376,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, attribute->data_type);
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      goto exit_on_coerce_error;
 	    }
 	}
       else
@@ -12367,6 +12394,12 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	    }
 
 	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	      return er_errid ();
+	    }
+
 	  temp_val = pt_dbval_to_value (parser, &src);
 	  if (temp_val == NULL)
 	    {
@@ -12381,9 +12414,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  parser_free_node (parser, temp_val);
 	  if (error != NO_ERROR)
 	    {
-	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-			   pt_short_print (parser, def_val), pt_short_print (parser, attribute->data_type));
-	      return error;
+	      goto exit_on_coerce_error;
 	    }
 	}
 
@@ -12402,6 +12433,29 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  return er_errid ();
 	}
     }
+  return error;
+
+exit_on_coerce_error:
+  if (attribute->data_type != NULL)
+    {
+      data_type_print = pt_short_print (parser, attribute->data_type);
+    }
+  else
+    {
+      data_type_print = pt_show_type_enum ((PT_TYPE_ENUM) desired_type);
+    }
+
+  if (error == ER_IT_DATA_OVERFLOW)
+    {
+      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+		   pt_short_print (parser, def_val), data_type_print);
+    }
+  else
+    {
+      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		   pt_short_print (parser, def_val), data_type_print);
+    }
+
   return error;
 }
 
