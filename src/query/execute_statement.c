@@ -435,26 +435,24 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		}
 	      break;
 	    case DB_DEFAULT_CURRENTTIME:
-	      {
-		if (DB_IS_NULL (&parser->sys_datetime))
-		  {
-		    db_make_null (&default_value);
-		  }
-		else
-		  {
-		    DB_TIME cur_time, db_time;
-		    const char *t_source, *t_dest;
-		    DB_DATETIME *datetime;
+	      if (DB_IS_NULL (&parser->sys_datetime))
+		{
+		  db_make_null (&default_value);
+		}
+	      else
+		{
+		  DB_TIME cur_time, db_time;
+		  const char *t_source, *t_dest;
+		  DB_DATETIME *datetime;
 
-		    datetime = DB_GET_DATETIME (&parser->sys_datetime);
-		    t_source = tz_get_system_timezone ();
-		    t_dest = tz_get_session_local_timezone ();
-		    db_time = datetime->time / 1000;
-		    error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
-							 strlen (t_dest), &cur_time);
-		    DB_MAKE_ENCODED_TIME (&default_value, &cur_time);
-		  }
-	      }
+		  datetime = DB_GET_DATETIME (&parser->sys_datetime);
+		  t_source = tz_get_system_timezone ();
+		  t_dest = tz_get_session_local_timezone ();
+		  db_time = datetime->time / 1000;
+		  error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
+						       strlen (t_dest), &cur_time);
+		  DB_MAKE_ENCODED_TIME (&default_value, &cur_time);
+		}
 	      break;
 	    case DB_DEFAULT_SYSDATE:
 	      if (DB_IS_NULL (&parser->sys_datetime))
@@ -488,54 +486,49 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	      break;
 	    case DB_DEFAULT_CURRENTDATE:
 	    case DB_DEFAULT_CURRENTDATETIME:
-	      {
-		if (DB_IS_NULL (&parser->sys_datetime))
-		  {
-		    db_make_null (&default_value);
-		  }
-		else
-		  {
-		    TZ_REGION system_tz_region, session_tz_region;
-		    DB_DATETIME dest_dt;
-		    DB_DATETIME *src_dt;
+	      if (DB_IS_NULL (&parser->sys_datetime))
+		{
+		  db_make_null (&default_value);
+		}
+	      else
+		{
+		  TZ_REGION system_tz_region, session_tz_region;
+		  DB_DATETIME dest_dt;
+		  DB_DATETIME *src_dt;
 
-		    src_dt = DB_GET_DATETIME (&parser->sys_datetime);
-		    tz_get_system_tz_region (&system_tz_region);
-		    tz_get_session_tz_region (&session_tz_region);
-		    error =
-		      tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region,
-						    &dest_dt, NULL, NULL);
-		    if (att->default_value.default_expr.default_expr_type == DB_DEFAULT_CURRENTDATE)
-		      {
-			DB_MAKE_ENCODED_DATE (&default_value, &dest_dt.date);
-		      }
-		    else
-		      {
-			DB_MAKE_DATETIME (&default_value, &dest_dt);
-		      }
-		  }
-	      }
+		  src_dt = DB_GET_DATETIME (&parser->sys_datetime);
+		  tz_get_system_tz_region (&system_tz_region);
+		  tz_get_session_tz_region (&session_tz_region);
+		  error =
+		    tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
+		  if (att->default_value.default_expr.default_expr_type == DB_DEFAULT_CURRENTDATE)
+		    {
+		      DB_MAKE_ENCODED_DATE (&default_value, &dest_dt.date);
+		    }
+		  else
+		    {
+		      DB_MAKE_DATETIME (&default_value, &dest_dt);
+		    }
+		}
 	      break;
 	    case DB_DEFAULT_CURRENTTIMESTAMP:
-	      {
-		if (DB_IS_NULL (&parser->sys_datetime))
-		  {
-		    db_make_null (&default_value);
-		  }
-		else
-		  {
-		    DB_DATE tmp_date;
-		    DB_TIME tmp_time;
-		    DB_TIMESTAMP tmp_timestamp;
-		    DB_DATETIME *sys_datetime;
+	      if (DB_IS_NULL (&parser->sys_datetime))
+		{
+		  db_make_null (&default_value);
+		}
+	      else
+		{
+		  DB_DATE tmp_date;
+		  DB_TIME tmp_time;
+		  DB_TIMESTAMP tmp_timestamp;
+		  DB_DATETIME *sys_datetime;
 
-		    sys_datetime = DB_GET_DATETIME (&parser->sys_datetime);
-		    tmp_date = sys_datetime->date;
-		    tmp_time = sys_datetime->time / 1000;
-		    db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
-		    db_make_timestamp (&default_value, tmp_timestamp);
-		  }
-	      }
+		  sys_datetime = DB_GET_DATETIME (&parser->sys_datetime);
+		  tmp_date = sys_datetime->date;
+		  tmp_time = sys_datetime->time / 1000;
+		  db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
+		  db_make_timestamp (&default_value, tmp_timestamp);
+		}
 	      break;
 	    default:
 	      break;
