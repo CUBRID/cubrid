@@ -1719,6 +1719,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 297 Nested WITH clauses are not supported.
 298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
 299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
+300 This inline view is not updatable due to VIEW update restrictions.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
@@ -1801,7 +1802,6 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Invalid isolation level: %1$s schema, %2$s instances.
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
-
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** invalid cache ***

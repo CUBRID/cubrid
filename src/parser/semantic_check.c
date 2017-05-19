@@ -9696,18 +9696,36 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
 	  if (entity->info.spec.derived_table != NULL)
 	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
-	      break;
+	      /* commented to allow inline view update */
+	      /*
+	         PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+	         break;
+	       */
+
+	      /* check inline view updatability */
+	      if (mq_updatable (parser, entity->info.spec.derived_table) == PT_NOT_UPDATABLE)
+		{
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INLINEVIEW_NOT_UPDATABLE, NULL);
+		  break;
+		}
+
 	    }
 
 	  /* Update of views hierarchies not allowed */
-	  if (db_is_vclass (entity->info.spec.flat_entity_list->info.name.db_object) > 0
+	  if (entity->info.spec.flat_entity_list	/* added to avoid segmentation fault */
+	      && db_is_vclass (entity->info.spec.flat_entity_list->info.name.db_object) > 0
 	      && entity->info.spec.only_all == PT_ALL)
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_SUBVCLASS_NOT_ALLOWED,
 			  t_node->info.name.original);
 	      break;
 	    }
+	}
+
+      /* Let's avoid executing unnecessary statements below in case of errors */
+      if (pt_has_error (parser))
+	{
+	  break;
 	}
 
       /* Replace left to right attribute references in assignments before doing semantic check. The type checking phase 

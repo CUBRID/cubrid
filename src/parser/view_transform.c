@@ -1090,7 +1090,8 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 	    {
 	      PT_NODE *spec = statement->info.query.q.select.from;
 
-	      while (spec != NULL)
+	      /* PT_NOT_UPDATABLE is added to avoid unncessary loop */
+	      while (spec != NULL && local != PT_NOT_UPDATABLE)
 		{
 		  if (spec->info.spec.derived_table != NULL)
 		    {
@@ -1102,9 +1103,9 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 			}
 		      else
 			{
-			  /* derived tables are not updatable */
-			  local = PT_NOT_UPDATABLE;
-			  break;
+			  /* added to allow inline view update */
+			  local &=
+			    mq_updatable_local (parser, spec->info.spec.derived_table, classes, num_classes, max);
 			}
 		    }
 		  spec = spec->next;
@@ -1154,8 +1155,15 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 	    }
 	  break;
 
+	  /* added to explicitly disallow set operators */
+	case PT_INTERSECTION:
+	case PT_DIFFERENCE:
+	  local = PT_NOT_UPDATABLE;
+	  break;
+
+	  /* most of sql statements are updatable */
 	default:
-	  local &= PT_NOT_UPDATABLE;
+	  local &= PT_UPDATABLE;
 	  break;
 	}
 
@@ -6082,7 +6090,8 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
       return statement;
     }
 
-  while (*spec)
+  /* NULL checking of 'spec' is added to avoid segmentation fault */
+  while (spec && *spec)
     {
       /* view definitions for select and for update might look different, so make sure to fetch the correct one */
       PT_FETCH_AS fetch_as = PT_SELECT;
@@ -6105,7 +6114,8 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
 	  bool multiple_entity = (entity != NULL && entity->next != NULL);
 	  bool rewrite = false, has_vclass = false;
 
-	  assert (!PT_SPEC_IS_CTE (*spec) && !PT_SPEC_IS_DERIVED (*spec));
+	  /* commented to allow view expansion in a inline view */
+	  /* assert (!PT_SPEC_IS_CTE (*spec) && !PT_SPEC_IS_DERIVED (*spec)); */
 
 	  while (entity)
 	    {
@@ -6163,7 +6173,11 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
 	}
 
       /* next! */
-      spec = &((*spec)->next);
+      /* to avoid segmentation fault */
+      if (spec && *spec)
+	{
+	  spec = &((*spec)->next);
+	}
     }
 
   return statement;
