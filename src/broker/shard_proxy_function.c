@@ -380,7 +380,7 @@ proxy_send_prepared_stmt_to_client (T_PROXY_CONTEXT * ctx_p, T_SHARD_STMT * stmt
   char *prepare_resp = NULL;
   T_PROXY_EVENT *event_p = NULL;
 
-  prepare_resp = proxy_dup_msg (stmt_p->reply_buffer);
+  prepare_resp = proxy_dup_msg ((char*)stmt_p->reply_buffer);
   if (prepare_resp == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. " "failed to duplicate prepare request. ");
@@ -741,7 +741,7 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
 	      }
 
 	    net_arg_get_int (&i_val, net_value);
-	    shard_key_id = (*fn_get_shard_key) (key_column, type, &i_val, sizeof (int));
+	    shard_key_id = (*fn_get_shard_key) (key_column, (T_SHARD_U_TYPE)type, &i_val, sizeof (int));
 	  }
 	  break;
 	case CCI_U_TYPE_SHORT:
@@ -756,7 +756,7 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
 	      }
 
 	    net_arg_get_short (&s_val, net_value);
-	    shard_key_id = (*fn_get_shard_key) (key_column, type, &s_val, sizeof (short));
+	    shard_key_id = (*fn_get_shard_key) (key_column, (T_SHARD_U_TYPE)type, &s_val, sizeof (short));
 
 	  }
 	  break;
@@ -772,7 +772,7 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
 	      }
 
 	    net_arg_get_bigint (&l_val, net_value);
-	    shard_key_id = (*fn_get_shard_key) (key_column, type, &l_val, sizeof (INT64));
+	    shard_key_id = (*fn_get_shard_key) (key_column, (T_SHARD_U_TYPE)type, &l_val, sizeof (INT64));
 
 	  }
 	  break;
@@ -1406,7 +1406,7 @@ proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   if (proxy_info_p->ignore_shard_hint == OFF)
     {
-      hint_type = shard_stmt_get_hint_type (stmt_p);
+      hint_type = (SP_HINT_TYPE)shard_stmt_get_hint_type (stmt_p);
       if (hint_type <= HT_INVAL || hint_type > HT_EOF)
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unsupported hint type. (hint_type:%d). context(%s).", hint_type,
@@ -1535,7 +1535,7 @@ proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 		 proxy_str_cas_io (cas_io_p), proxy_str_context (ctx_p));
 
       /* make prepare request event */
-      prepare_request = proxy_dup_msg (stmt_p->request_buffer);
+      prepare_request = proxy_dup_msg ((char*)stmt_p->request_buffer);
       if (prepare_request == NULL)
 	{
 	  goto free_context;
@@ -2759,7 +2759,7 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * ev
 
       if (proxy_info_p->ignore_shard_hint == OFF)
 	{
-	  hint_type = shard_stmt_get_hint_type (stmt_p);
+	  hint_type = (SP_HINT_TYPE)shard_stmt_get_hint_type (stmt_p);
 	  if (hint_type <= HT_INVAL || hint_type > HT_EOF)
 	    {
 	      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unsupported hint type. (hint_type:%d). context(%s).", hint_type,
@@ -3152,7 +3152,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   else
     {
       if (proxy_has_different_column_info
-	  (event_p->buffer.data, event_p->buffer.length, stmt_p->reply_buffer, stmt_p->reply_buffer_length))
+	  (event_p->buffer.data, event_p->buffer.length, (const char*)stmt_p->reply_buffer, stmt_p->reply_buffer_length))
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_DEBUG, "Invalid statement. schema info is different. context(%s). " "stmt(%s).",
 		     proxy_str_context (ctx_p), shard_str_stmt (stmt_p));

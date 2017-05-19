@@ -48,6 +48,10 @@
 #include <sys/time.h>
 #endif
 
+#include  <io.h>  
+#include  <stdio.h>  
+#include  <stdlib.h> 
+
 #include "connection_defs.h"
 #include "connection_cl.h"
 
@@ -2030,7 +2034,7 @@ server_monitor_thr_f (void *arg)
   char *unusable_db_host;
   char busy_cas_db_name[SRV_CON_DBNAME_SIZE];
 
-  check_list = malloc (sizeof (T_DB_SERVER) * UNUSABLE_DATABASE_MAX);
+  check_list = (T_DB_SERVER*)malloc (sizeof (T_DB_SERVER) * UNUSABLE_DATABASE_MAX);
 
   while (process_flag)
     {

@@ -122,7 +122,7 @@
 #if defined(WINDOWS)
 #define THREAD_BEGIN(THR_ID, FUNC, ARG)				\
 	do {							\
-	  THR_ID = _beginthread(FUNC, 0, (void*) (ARG));	\
+	  THR_ID = (pthread_t)_beginthread(FUNC, 0, (void*) (ARG));	\
 	} while(0)
 #else
 #define THREAD_BEGIN(THR_ID, FUNC, ARG)		\

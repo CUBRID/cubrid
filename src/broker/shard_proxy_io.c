@@ -683,13 +683,13 @@ proxy_io_make_set_db_parameter_ok (char *driver_info, char **buffer)
 int
 proxy_io_make_ex_get_isolation_level (char *driver_info, char **buffer, void *argv)
 {
-  return proxy_io_make_ex_get_int (driver_info, buffer, argv);
+  return proxy_io_make_ex_get_int (driver_info, buffer, (int*)argv);
 }
 
 int
 proxy_io_make_ex_get_lock_timeout (char *driver_info, char **buffer, void *argv)
 {
-  return proxy_io_make_ex_get_int (driver_info, buffer, argv);
+  return proxy_io_make_ex_get_int (driver_info, buffer, (int*)argv);
 }
 
 int

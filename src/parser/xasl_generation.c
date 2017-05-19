@@ -16780,7 +16780,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
   int index;
   int lock = (int) NULL_LOCK;
 #if defined(WINDOWS)
-  int o_num, o_size, prev_o_num;
+  unsigned int o_num, o_size, prev_o_num;
 #else
   size_t o_num, o_size, prev_o_num;
 #endif
@@ -16977,7 +16977,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * seria
   int *t_list = NULL;
   void *oldptr = NULL;
 #if defined(WINDOWS)
-  int o_num, o_size, prev_o_num;
+  unsigned int o_num, o_size, prev_o_num;
 #else
   size_t o_num, o_size, prev_o_num;
 #endif
