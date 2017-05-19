@@ -20711,7 +20711,15 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 
 	if (src->info.value.db_value_is_in_workspace)
 	  {
-	    need_src_clear = true;
+	    if (err == NO_ERROR)
+	      {
+		(void) db_value_clear (db_src);
+	      }
+	    else
+	      {
+		/* still needs db_src to print the message */
+		need_src_clear = true;
+	      }
 	  }
 
 	if (err >= 0)
