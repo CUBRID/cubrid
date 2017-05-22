@@ -35,11 +35,6 @@
 #ifndef	_CAS_CCI_H_
 #define	_CAS_CCI_H_
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 /************************************************************************
  * IMPORTED SYSTEM HEADER FILES						*
  ************************************************************************/
@@ -503,6 +498,7 @@ extern "C"
 #else
   typedef enum
   {
+    CUBRID_STMT_NONE = -1,
     CUBRID_STMT_ALTER_CLASS,
     CUBRID_STMT_ALTER_SERIAL,
     CUBRID_STMT_COMMIT_WORK,
@@ -966,9 +962,5 @@ extern "C"
 /************************************************************************
  * EXPORTED VARIABLES							*
  ************************************************************************/
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif				/* _CAS_CCI_H_ */

@@ -36,11 +36,6 @@
 #ifndef	_CCI_HANDLE_MNG_H_
 #define	_CCI_HANDLE_MNG_H_
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #ident "$Id$"
 
 #ifdef CAS
@@ -339,8 +334,5 @@ extern "C"
  * PUBLIC VARIABLES							*
  ************************************************************************/
 
-#ifdef __cplusplus
-}
-#endif
 
 #endif				/* _CCI_HANDLE_MNG_H_ */

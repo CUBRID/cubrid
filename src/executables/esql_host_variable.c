@@ -211,7 +211,7 @@ pp_new_host_var (HOST_VAR * var, SYMBOL * sym)
 {
   if (var == NULL)
     {
-      var = malloc (sizeof (HOST_VAR));
+      var = (HOST_VAR*)malloc (sizeof (HOST_VAR));
       if (var == NULL)
 	{
 	  return NULL;
@@ -324,7 +324,7 @@ pp_add_host_ref (HOST_VAR * var, HOST_VAR * indicator, bool structs_allowed, int
 
   if (pp_host_refs->n_refs >= pp_host_refs->max_refs)
     {
-      HOST_REF *new_refs = pp_malloc ((pp_host_refs->max_refs + 4) * sizeof (HOST_REF));
+      HOST_REF *new_refs = (HOST_REF*)pp_malloc ((pp_host_refs->max_refs + 4) * sizeof (HOST_REF));
       memset (new_refs, 0, (pp_host_refs->max_refs + 4) * sizeof (HOST_REF));
       if (pp_host_refs->real_refs != NULL)
 	{
@@ -1412,7 +1412,7 @@ pp_new_host_lod (void)
 
   if (lod == NULL)
     {
-      lod = malloc (sizeof (HOST_LOD));
+      lod = (HOST_LOD*)malloc (sizeof (HOST_LOD));
       if (lod == NULL)
 	{
 	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));

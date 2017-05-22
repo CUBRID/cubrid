@@ -1097,7 +1097,7 @@ cas_main (void)
 	      }
 	    cas_log_write_and_end (0, false, "CLIENT VERSION %s", as_info->driver_version);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-	    cas_set_session_id (req_info.client_version, db_sessionid);
+	    cas_set_session_id ((T_CAS_PROTOCOL)req_info.client_version, db_sessionid);//vapa!!!
 	    if (db_get_session_id () != DB_EMPTY_SESSION)
 	      {
 		is_new_connection = false;
@@ -1225,7 +1225,7 @@ cas_main (void)
 	    cas_bi_set_cci_pconnect (shm_appl->cci_pconnect);
 
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
-	    cas_send_connect_reply_to_driver (req_info.client_version, client_sock_fd, cas_info);
+	    cas_send_connect_reply_to_driver ((T_CAS_PROTOCOL)req_info.client_version, client_sock_fd, cas_info);
 
 	    as_info->cci_default_autocommit = shm_appl->cci_default_autocommit;
 	    req_info.need_rollback = TRUE;

@@ -6507,7 +6507,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
 	    default:
 	      /* Clone value */
-	      if (db_value_clone (&dbvals[i], &server_db_values[i]) != NO_ERROR)
+	      if (db_value_clone ((DB_VALUE*)&dbvals[i], &server_db_values[i]) != NO_ERROR)
 		{
 		  goto cleanup;
 		}

@@ -299,8 +299,8 @@ hm_pool_drop_node_from_list (T_REQ_HANDLE ** head, T_REQ_HANDLE ** tail, T_REQ_H
       return CCI_ER_REQ_HANDLE;
     }
 
-  prev_target = target->prev;
-  next_target = target->next;
+  prev_target = (T_REQ_HANDLE*)target->prev;
+  next_target = (T_REQ_HANDLE*)target->next;
   if (prev_target != NULL)
     {
       prev_target->next = next_target;
@@ -399,7 +399,7 @@ hm_pool_restore_used_statements (T_CON_HANDLE * connection)
       int statement = r->req_handle_index;
 
       req_handle_content_free_for_pool (r);
-      r = r->next;
+      r = (T_REQ_HANDLE*)r->next;
       hm_pool_move_node_from_use_to_lru (connection, statement);
     }
 
@@ -470,7 +470,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id, T_RE
       return CCI_ER_REQ_HANDLE;
     }
 
-  data = cci_mht_get (con->stmt_pool, sql);
+  data = (int*)cci_mht_get (con->stmt_pool, sql);
   if (data != NULL)
     {
       hm_pool_drop_node_from_list (&con->pool_use_head, &con->pool_use_tail, statement);
@@ -500,7 +500,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id, T_RE
     {
       return CCI_ER_NO_MORE_MEMORY;
     }
-  data = MALLOC (sizeof (int));
+  data = (int*)MALLOC (sizeof (int));
   if (data == NULL)
     {
       FREE (key);
@@ -677,7 +677,7 @@ hm_release_connection_internal (int mapped_id, T_CON_HANDLE ** connection, bool 
 
   if (delete_handle)
     {
-      error = hm_con_handle_free (*connection);
+      error = (T_CCI_ERROR_CODE)hm_con_handle_free (*connection);
       *connection = NULL;
     }
 

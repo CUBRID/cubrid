@@ -6811,7 +6811,7 @@ stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_
   xasl_unpack_info = (XASL_UNPACK_INFO*)db_private_alloc (thread_p, head_offset + body_offset);
   stx_set_xasl_unpack_info_ptr (thread_p, xasl_unpack_info);
 #else /* SERVER_MODE */
-  xasl_unpack_info = db_private_alloc (NULL, head_offset + body_offset);
+  xasl_unpack_info = (XASL_UNPACK_INFO*)db_private_alloc (NULL, head_offset + body_offset);
 #endif /* SERVER_MODE */
   if (xasl_unpack_info == NULL)
     {

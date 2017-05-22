@@ -59,7 +59,13 @@ struct esql_translate_table_s
   void (*tr_set_out_stream) (FILE * out_stream);
   void (*tr_set_line_terminator) (const char *);
 };
-
-extern ESQL_TRANSLATE_TABLE esql_Translate_table;
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+    extern ESQL_TRANSLATE_TABLE esql_Translate_table;
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _ESQL_TRANSLATE_H_ */

@@ -484,7 +484,7 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
 	  size_t req_sz;
 
 	  req_sz = private_request_size (size);
-	  h = hl_lea_alloc (private_heap_id, req_sz);
+	  h = (PRIVATE_MALLOC_HEADER*) hl_lea_alloc (private_heap_id, req_sz);
 
 	  if (h != NULL)
 	    {
@@ -616,7 +616,7 @@ db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
 	      size_t req_sz;
 
 	      req_sz = private_request_size (size);
-	      new_h = hl_lea_realloc (private_heap_id, h, req_sz);
+	      new_h = (PRIVATE_MALLOC_HEADER*)hl_lea_realloc (private_heap_id, h, req_sz);
 	      if (new_h == NULL)
 		{
 		  return NULL;

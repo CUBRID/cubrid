@@ -36,11 +36,6 @@
 #ifndef	_CCI_COMMON_H_
 #define	_CCI_COMMON_H_
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #ident "$Id$"
 
 /************************************************************************
@@ -238,7 +233,10 @@ extern "C"
 /************************************************************************
  * PUBLIC TYPE DEFINITIONS						*
  ************************************************************************/
-
+#ifdef __cplusplus
+  extern "C"
+  {
+#endif
   typedef struct
   {
     char *key;
