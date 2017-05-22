@@ -2206,7 +2206,8 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
 	{
 
 	  if (((att->flags & SM_ATTFLAG_NON_NULL) && DB_IS_NULL (&att->default_value.value)
-	       && att->default_value.default_expr == DB_DEFAULT_NONE) || (att->flags & SM_ATTFLAG_VID))
+	       && att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
+	      || (att->flags & SM_ATTFLAG_VID))
 	    {
 	      ass = template_ptr->assignments[att->order];
 	      if (ass == NULL)

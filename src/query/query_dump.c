@@ -1027,6 +1027,19 @@ qdump_print_db_value (DB_VALUE * value_p)
   return true;
 }
 
+const char *
+qdump_operator_type_string (OPERATOR_TYPE optype)
+{
+  switch (optype)
+    {
+    case T_TO_CHAR:
+      return "TO_CHAR";
+      /* TODO - fill */
+    default:
+      return NULL;
+    }
+}
+
 static const char *
 qdump_regu_type_string (REGU_DATATYPE type)
 {

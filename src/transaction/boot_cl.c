@@ -2731,7 +2731,7 @@ boot_define_index_key (MOP class_mop)
 
   DB_MAKE_INTEGER (&prefix_default, -1);
 
-  error_code = smt_set_attribute_default (def, "key_prefix_length", 0, &prefix_default, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "key_prefix_length", 0, &prefix_default, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3253,7 +3253,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "current_val", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "current_val", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3264,7 +3264,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "increment_val", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "increment_val", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3289,7 +3289,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "cyclic", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "cyclic", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3300,7 +3300,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "started", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "started", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3329,7 +3329,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "cached_num", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "cached_num", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;

@@ -75,6 +75,8 @@
 #include "partition.h"
 #include "tsc_timer.h"
 #include "xasl_generation.h"
+#include "query_executor.h"
+#include "dbi.h"
 
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
@@ -10788,6 +10790,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   DB_VALUE oid_val;
   int is_autoincrement_set = 0;
   int month, day, year, hour, minute, second, millisecond;
+  DB_VALUE insert_val, format_val, lang_val;
+  char *lang_str = NULL;
+  int flag;
+  TP_DOMAIN *result_domain;
+  bool has_user_format;
 
   aptr = xasl->aptr_list;
   val_no = insert->num_vals;
@@ -10884,6 +10891,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     {
       num_default_expr = 0;
     }
+
+  DB_MAKE_NULL (&insert_val);
   for (k = 0; k < num_default_expr; k++)
     {
       OR_ATTRIBUTE *attr;
@@ -10903,36 +10912,90 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
       DB_MAKE_NULL (new_val);
       insert->vals[k] = new_val;
-      switch (attr->current_default_value.default_expr)
+
+      switch (attr->current_default_value.default_expr.default_expr_type)
 	{
 	case DB_DEFAULT_SYSTIME:
+	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
+	  db_make_time (&insert_val, hour, minute, second);
+	  break;
+
 	case DB_DEFAULT_CURRENTTIME:
-	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  db_make_time (insert->vals[k], hour, minute, second);
+	  {
+	    DB_TIME cur_time, db_time;
+	    const char *t_source, *t_dest;
+	    int len_source, len_dest;
+
+	    t_source = tz_get_system_timezone ();
+	    t_dest = tz_get_session_local_timezone ();
+	    len_source = strlen (t_source);
+	    len_dest = strlen (t_dest);
+	    db_time = xasl_state->vd.sys_datetime.time / 1000;
+	    error = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
+	    DB_MAKE_ENCODED_TIME (&insert_val, &cur_time);
+	  }
 	  break;
+
 	case DB_DEFAULT_SYSDATE:
-	case DB_DEFAULT_CURRENTDATE:
 	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  db_make_date (insert->vals[k], month, day, year);
+	  db_make_date (&insert_val, month, day, year);
 	  break;
+
+	case DB_DEFAULT_CURRENTDATE:
+	  {
+	    TZ_REGION system_tz_region, session_tz_region;
+	    DB_DATETIME dest_dt;
+
+	    tz_get_system_tz_region (&system_tz_region);
+	    tz_get_session_tz_region (&session_tz_region);
+	    error =
+	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
+					    &dest_dt, NULL, NULL);
+	    DB_MAKE_ENCODED_DATE (&insert_val, &dest_dt.date);
+	  }
+	  break;
+
 	case DB_DEFAULT_SYSDATETIME:
-	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
+	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
 	  break;
+
 	case DB_DEFAULT_SYSTIMESTAMP:
-	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
-	  error = db_datetime_to_timestamp (insert->vals[k], insert->vals[k]);
+	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
+	  error = db_datetime_to_timestamp (&insert_val, &insert_val);
 	  break;
+
 	case DB_DEFAULT_CURRENTDATETIME:
-	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
+	  {
+	    TZ_REGION system_tz_region, session_tz_region;
+	    DB_DATETIME dest_dt;
+
+	    tz_get_system_tz_region (&system_tz_region);
+	    tz_get_session_tz_region (&session_tz_region);
+	    error =
+	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
+					    &dest_dt, NULL, NULL);
+	    DB_MAKE_DATETIME (&insert_val, &dest_dt);
+	  }
 	  break;
+
 	case DB_DEFAULT_CURRENTTIMESTAMP:
-	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
-	  error = db_datetime_to_timestamp (insert->vals[k], insert->vals[k]);
+	  {
+	    DB_DATE tmp_date;
+	    DB_TIME tmp_time;
+	    DB_TIMESTAMP tmp_timestamp;
+
+	    tmp_date = xasl_state->vd.sys_datetime.date;
+	    tmp_time = xasl_state->vd.sys_datetime.time / 1000;
+	    db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
+	    db_make_timestamp (&insert_val, tmp_timestamp);
+	  }
 	  break;
+
 	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
-	  error = db_unix_timestamp (insert->vals[k], insert->vals[k]);
+	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
+	  error = db_unix_timestamp (&insert_val, &insert_val);
 	  break;
+
 	case DB_DEFAULT_USER:
 	  {
 	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -10955,10 +11018,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    strcat (temp, tdes->client.host_name);
 		  }
 	      }
-	    DB_MAKE_STRING (insert->vals[k], temp);
-	    insert->vals[k]->need_clear = true;
+
+	    DB_MAKE_STRING (&insert_val, temp);
+	    insert_val.need_clear = true;
 	  }
 	  break;
+
 	case DB_DEFAULT_CURR_USER:
 	  {
 	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -10970,9 +11035,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      {
 		temp = tdes->client.db_user;
 	      }
-	    DB_MAKE_STRING (insert->vals[k], temp);
+	    DB_MAKE_STRING (&insert_val, temp);
 	  }
 	  break;
+
 	case DB_DEFAULT_NONE:
 	  if (attr->current_default_value.val_length <= 0)
 	    {
@@ -10991,7 +11057,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  switch (_setjmp (buf.env))
 		    {
 		    case 0:
-		      error = (*(pr_type->data_readval)) (&buf, insert->vals[k], attr->domain,
+		      error = (*(pr_type->data_readval)) (&buf, &insert_val, attr->domain,
 							  attr->current_default_value.val_length, copy, NULL, 0);
 		      if (error != NO_ERROR)
 			{
@@ -11006,6 +11072,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	    }
 	  break;
+
 	default:
 	  assert (0);
 	  error = ER_FAILED;
@@ -11013,12 +11080,60 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  break;
 	}
 
+      if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
+	{
+	  assert (attr->current_default_value.default_expr.default_expr_type != DB_DEFAULT_NONE);
+	  if (attr->current_default_value.default_expr.default_expr_format != NULL)
+	    {
+	      db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
+	      has_user_format = 1;
+	    }
+	  else
+	    {
+	      db_make_null (&format_val);
+	      has_user_format = 0;
+	    }
+
+	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+	  db_make_int (&lang_val, flag);
+
+	  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
+	    {
+	      /* TO_CHAR returns a string value, we need to pass an expected domain of the result */
+	      if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&insert_val)))
+		{
+		  result_domain = NULL;
+		}
+	      else if (DB_IS_NULL (&format_val))
+		{
+		  result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+		}
+	      else
+		{
+		  result_domain = tp_domain_resolve_value (&format_val, NULL);
+		}
+	    }
+	  else
+	    {
+	      result_domain = attr->domain;
+	    }
+
+	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain);
+	}
+      else
+	{
+	  pr_clone_value (&insert_val, insert->vals[k]);
+	}
+
+      pr_clear_value (&insert_val);
+
       if (error != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (attr->current_default_value.default_expr == DB_DEFAULT_NONE)
+      if (attr->current_default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
 	{
 	  /* skip the value cast */
 	  continue;
@@ -14355,6 +14470,15 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   char *query_str = NULL;
   int client_id = -1;
   char *db_user = NULL;
+  LOG_TDES *tdes = NULL;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      client_id = tdes->client_id;
+      db_user = tdes->client.db_user;
+    }
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(CUBRID_DEBUG)
@@ -14428,7 +14552,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   query_str = qmgr_get_query_sql_user_text (thread_p, query_id, tran_index);
 
-  CUBRID_QUERY_EXEC_START (query_str, query_id, client_id, db_user);
+  CUBRID_QUERY_EXEC_START (query_str ? query_str : "unknown", query_id, client_id, db_user ? db_user : "unknown");
 #endif /* ENABLE_SYSTEMTAP */
 
   /* form the value descriptor to represent positional values */
@@ -14605,7 +14729,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
 end:
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, (er_errid () != NO_ERROR));
+  CUBRID_QUERY_EXEC_END (query_str ? query_str : "unknown", query_id, client_id, db_user ? db_user : "unknown",
+			 (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
   return list_id;
 }
@@ -22315,7 +22440,8 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   OR_CLASSREP *rep = NULL;
   OR_INDEX *index = NULL;
   OR_ATTRIBUTE *index_att = NULL;
-  char *attr_name = NULL;
+  char *attr_name = NULL, *default_value_string = NULL;
+  const char *default_expr_type_string = NULL, *default_expr_format = NULL;
   char *attr_comment = NULL;
   OR_ATTRIBUTE *volatile attrepr = NULL;
   DB_VALUE **out_values = NULL;
@@ -22339,7 +22465,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   int all_class_attr_lengths[3];
   bool full_columns = false;
   char *string = NULL;
-  int alloced_string = 0;
+  int alloced_string = 0, len;
   HL_HEAPID save_heapid = 0;
 
   if (xasl == NULL || xasl_state == NULL)
@@ -22525,57 +22651,53 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  idx_val++;
 
 	  /* default values */
-	  if (attrepr->default_value.default_expr != DB_DEFAULT_NONE)
+	  alloced_string = 0;
+	  if (attrepr->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
-	      switch (attrepr->default_value.default_expr)
+	      const char *default_expr_op_string = NULL;
+
+	      default_expr_type_string =
+		db_default_expression_string (attrepr->default_value.default_expr.default_expr_type);
+
+	      if (attrepr->default_value.default_expr.default_expr_op == T_TO_CHAR)
 		{
-		case DB_DEFAULT_NONE:
-		  break;
-		case DB_DEFAULT_SYSTIME:
-		  db_make_string (out_values[idx_val], "SYS_TIME");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_SYSDATE:
-		  db_make_string (out_values[idx_val], "SYS_DATE");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_SYSDATETIME:
-		  db_make_string (out_values[idx_val], "SYS_DATETIME");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_SYSTIMESTAMP:
-		  db_make_string (out_values[idx_val], "SYS_TIMESTAMP");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_CURRENTTIME:
-		  db_make_string (out_values[idx_val], "CURRENT_TIME");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_CURRENTDATE:
-		  db_make_string (out_values[idx_val], "CURRENT_DATE");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_CURRENTDATETIME:
-		  db_make_string (out_values[idx_val], "CURRENT_DATETIME");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_CURRENTTIMESTAMP:
-		  db_make_string (out_values[idx_val], "CURRENT_TIMESTAMP");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_UNIX_TIMESTAMP:
-		  db_make_string (out_values[idx_val], "UNIX_TIMESTAMP");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_USER:
-		  db_make_string (out_values[idx_val], "USER");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_CURR_USER:
-		  db_make_string (out_values[idx_val], "CURRENT_USER");
-		  idx_val++;
-		  break;
+		  default_expr_op_string =
+		    qdump_operator_type_string (attrepr->default_value.default_expr.default_expr_op);
+		  default_expr_format = attrepr->default_value.default_expr.default_expr_format;
+
+		  len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
+			 + 4 /* parenthsis, a comma and a blank */  + strlen (default_expr_type_string)
+			 + (default_expr_format ? strlen (default_expr_format) : 0));
+
+		  default_value_string = (char *) malloc (len + 1);
+		  if (default_value_string == NULL)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
+		  strcpy (default_value_string, default_expr_op_string);
+		  strcat (default_value_string, "(");
+		  strcat (default_value_string, default_expr_type_string);
+		  if (default_expr_format)
+		    {
+		      strcat (default_value_string, ", \'");
+		      strcat (default_value_string, default_expr_format);
+		      strcat (default_value_string, "\'");
+		    }
+
+		  strcat (default_value_string, ")");
+
+		  db_make_string (out_values[idx_val], default_value_string);
+		  out_values[idx_val]->need_clear = true;
 		}
+	      else
+		{
+		  if (default_expr_type_string)
+		    {
+		      db_make_string (out_values[idx_val], default_expr_type_string);
+		    }
+		}
+	      idx_val++;
 	    }
 	  else if (attrepr->current_default_value.value == NULL || attrepr->current_default_value.val_length <= 0)
 	    {

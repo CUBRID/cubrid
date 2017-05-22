@@ -88,8 +88,7 @@ struct disk_attribute
 				 * var attr. */
   DB_TYPE type;			/* datatype */
   int val_length;		/* default value length >= 0 */
-  void *value;			/* default value */
-  DB_DEFAULT_EXPR_TYPE default_expr;	/* default expression identifier */
+  void *value;			/* default value. Currently, we do not keep default expression. */
   int position;			/* storage position (fixed attributes only) */
   OID classoid;			/* source class object id */
   int n_btstats;		/* number of B+tree statistics information */

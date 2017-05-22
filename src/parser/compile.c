@@ -79,7 +79,6 @@ enum pt_order_by_adjustment
 
 static PT_NODE *pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, VIEW_HANDLING how);
 static PT_NODE *pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spec, LC_PREFETCH_FLAGS flags);
 static PT_NODE *pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node, PT_CLASS_LOCKS * locks);
@@ -673,27 +672,6 @@ pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 }
 
 /*
- * pt_count_names () - If the node is a PT_NAME node, bump counter
- *   return:
- *   parser(in):
- *   node(in): the node to check, leave node unchanged
- *   arg(out): count of names
- *   continue_walk(in):
- */
-static PT_NODE *
-pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  int *cnt = (int *) arg;
-
-  if (node->node_type == PT_NAME)
-    {
-      (*cnt)++;
-    }
-
-  return node;
-}
-
-/*
  * pt_add_lock_class () - add class locks in the prefetch structure
  *   return : error code or NO_ERROR
  *   parser (in)    : parser context
@@ -1084,8 +1062,9 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
       stmt_str = pt_append_string (parser, stmt_str, " FROM ON ");
       if (name1)
 	{
+	  stmt_str = pt_append_string (parser, stmt_str, " [");
 	  stmt_str = pt_append_string (parser, stmt_str, class_name);
-	  stmt_str = pt_append_string (parser, stmt_str, " ");
+	  stmt_str = pt_append_string (parser, stmt_str, "] ");
 	  stmt_str = pt_append_string (parser, stmt_str, name1);
 	}
 
@@ -1095,9 +1074,9 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
 	    {
 	      return (PT_NODE *) 0;
 	    }
-	  stmt_str = pt_append_string (parser, stmt_str, ", ");
+	  stmt_str = pt_append_string (parser, stmt_str, ", [");
 	  stmt_str = pt_append_string (parser, stmt_str, class_name);
-	  stmt_str = pt_append_string (parser, stmt_str, " ");
+	  stmt_str = pt_append_string (parser, stmt_str, "] ");
 	  stmt_str = pt_append_string (parser, stmt_str, name2);
 	}
     }

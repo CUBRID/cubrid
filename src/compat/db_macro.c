@@ -6826,3 +6826,42 @@ db_get_compressed_size (DB_VALUE * value)
 
   return value->data.ch.medium.compressed_size;
 }
+
+/*
+ * db_default_expression_string() - 
+ * return : string opcode of default expression
+ * default_expr_type(in):
+ */
+const char *
+db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
+{
+  switch (default_expr_type)
+    {
+    case DB_DEFAULT_NONE:
+      return NULL;
+    case DB_DEFAULT_SYSDATE:
+      return "SYS_DATE";
+    case DB_DEFAULT_SYSDATETIME:
+      return "SYS_DATETIME";
+    case DB_DEFAULT_SYSTIMESTAMP:
+      return "SYS_TIMESTAMP";
+    case DB_DEFAULT_UNIX_TIMESTAMP:
+      return "UNIX_TIMESTAMP()";
+    case DB_DEFAULT_USER:
+      return "USER()";
+    case DB_DEFAULT_CURR_USER:
+      return "CURRENT_USER";
+    case DB_DEFAULT_CURRENTDATETIME:
+      return "CURRENT_DATETIME";
+    case DB_DEFAULT_CURRENTTIMESTAMP:
+      return "CURRENT_TIMESTAMP";
+    case DB_DEFAULT_CURRENTTIME:
+      return "CURRENT_TIME";
+    case DB_DEFAULT_CURRENTDATE:
+      return "CURRENT_DATE";
+    case DB_DEFAULT_SYSTIME:
+      return "SYS_TIME";
+    default:
+      return NULL;
+    }
+}

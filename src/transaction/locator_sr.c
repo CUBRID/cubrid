@@ -9152,8 +9152,7 @@ locator_repair_btree_by_insert (THREAD_ENTRY * thread_p, OID * class_oid, BTID *
 
   log_sysop_start (thread_p);
 
-  if (btree_insert (thread_p, btid, key, class_oid, inst_oid, SINGLE_ROW_INSERT, NULL, NULL, NULL /* TO DO */ )
-      == NO_ERROR)
+  if (btree_insert (thread_p, btid, key, class_oid, inst_oid, SINGLE_ROW_INSERT, NULL, NULL, NULL) == NO_ERROR)
     {
       isvalid = DISK_VALID;
       log_sysop_commit (thread_p);
