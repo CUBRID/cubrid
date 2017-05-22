@@ -1344,7 +1344,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	  return error;
 	}
       else if (proposed_value && DB_IS_NULL (proposed_value)
-	       && (default_expr != NULL && default_expr->default_expr_type == DB_DEFAULT_NONE)
+	       && (default_expr == NULL || default_expr->default_expr_type == DB_DEFAULT_NONE)
 	       && (att->flags & SM_ATTFLAG_PRIMARY_KEY))
 	{
 	  ERROR1 (error, ER_CANNOT_HAVE_PK_DEFAULT_NULL, name);
