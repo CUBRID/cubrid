@@ -3671,7 +3671,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 
       default_expr_format = attr->default_value.default_expr.default_expr_format;
       len = ((default_value_expr_op_string ? strlen (default_value_expr_op_string) : 0)
-	     + 4 /* parenthesis, a comma and a blank */  + strlen (default_value_expr_type_string)
+	     + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_value_expr_type_string)
 	     + (default_expr_format ? strlen (default_expr_format) : 0));
 
       default_value_string = (char *) malloc (len + 1);

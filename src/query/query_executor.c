@@ -22666,7 +22666,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		  default_expr_format = attrepr->default_value.default_expr.default_expr_format;
 
 		  len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
-			 + 4 /* parenthsis, a comma and a blank */  + strlen (default_expr_type_string)
+			 + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_expr_type_string)
 			 + (default_expr_format ? strlen (default_expr_format) : 0));
 
 		  default_value_string = (char *) malloc (len + 1);

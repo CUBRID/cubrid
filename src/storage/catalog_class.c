@@ -1442,7 +1442,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
       default_expr_op_string = qdump_operator_type_string (default_expr_op);
 
       len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
-	     + 4 /* parenthesis, a comma and a blank */  + strlen (default_expr_type_string)
+	     + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_expr_type_string)
 	     + (def_expr_format_string ? strlen (def_expr_format_string) : 0));
 
       str_val = (char *) db_private_alloc (thread_p, len + 1);
