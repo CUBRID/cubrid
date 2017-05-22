@@ -19369,7 +19369,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    }
 	}
 
-      if (opd1->info.name.default_value->type_enum == opd1->type_enum && needs_update_precision == false)
+      if ((opd1->info.name.default_value->type_enum == PT_TYPE_NULL)
+	  || (opd1->info.name.default_value->type_enum == opd1->type_enum && needs_update_precision == false))
 	{
 	  result = default_value;
 	}
