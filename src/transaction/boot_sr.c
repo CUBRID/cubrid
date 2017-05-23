@@ -1104,64 +1104,51 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 				  int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel, void *args),
 				  void *args)
 {
-  VOLID num_vols = 0;
-  VOLID curr_volid = LOG_DBFIRST_VOLID;
-  char *curr_vol_fullname;
-  VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
-  char next_vol_fullname[PATH_MAX];	/* Next volume name */
+  DKNVOLS num_vols = 0;
   int error_code = NO_ERROR;
 
   if (newvolpath || !use_volinfo
       || (num_vols = logpb_scan_volume_info (thread_p, NULL, volid, LOG_DBFIRST_VOLID, fun, args)) == -1)
     {
-      /* 
-       * Don't use volinfo .. or could not find volinfo
-       */
+      /* Don't use volume info .. or could not find volume info .. or it was bad */
+      VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
+      char next_vol_fullname[PATH_MAX];	/* Next volume name */
+
+      num_vols = 0;
 
       /* First the primary volume, then the rest of the volumes */
-      num_vols = 0;
-      curr_vol_fullname = next_vol_fullname;
-      strcpy (curr_vol_fullname, boot_Db_full_name);
-
       /* 
-       * Do not assume that all the volumes are mounted. This function may be
-       * called to mount the volumes. Thus, request to current volume for the
-       * next volume instead of going directly through the volume identifier.
+       * Do not assume that all the volumes are mounted. This function may be called to mount the volumes.
+       * Thus, request to current volume for the next volume instead of going directly through the volume identifier.
        */
-      do
+      strcpy (next_vol_fullname, boot_Db_full_name);
+      for (next_volid = LOG_DBFIRST_VOLID; next_volid != NULL_VOLID;)
 	{
 	  num_vols++;
-	  if (curr_volid != volid)
+	  if (next_volid != volid)
 	    {
-	      error_code = (*fun) (thread_p, curr_volid, curr_vol_fullname, args);
+	      error_code = (*fun) (thread_p, next_volid, next_vol_fullname, args);
 	      if (error_code != NO_ERROR)
 		{
 		  return error_code;
 		}
 	    }
-	  if (disk_get_link (thread_p, curr_volid, &next_volid, next_vol_fullname) == NULL)
+	  /* update next_volid and next_vol_fullname */
+	  if (disk_get_link (thread_p, next_volid, &next_volid, next_vol_fullname) == NULL)
 	    {
 	      return ER_FAILED;
 	    }
-
-	  curr_volid = next_volid;
 	}
-      while (curr_volid != NULL_VOLID);
 
       if (use_volinfo == true)
 	{
-	  /* 
-	   * The volinfo was not found.. Recreate it with the current information
-	   */
+	  /* The volume info was not found.. Recreate it with the current information */
 	  (void) logpb_recreate_volume_info (thread_p);
 	}
     }
   else
     {
-      /* 
-       * Add the volume that was ignored, as long as it is in the range of a
-       * valid one
-       */
+      /* Add the volume that was ignored, as long as it is in the range of a valid one */
       if (volid != NULL_VOLID && volid >= LOG_DBFIRST_VOLID && volid <= boot_Db_parm->last_volid)
 	{
 	  num_vols++;
