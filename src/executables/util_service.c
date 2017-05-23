@@ -3854,7 +3854,7 @@ us_hb_stop_get_options (char *db_name, int db_name_size, char *remote_host_name,
   utility_make_getopt_optstring (hb_stop_opts, opt_str);
   while (1)
     {
-      opt = getopt_long (tmp_argc, tmp_argv, opt_str, hb_stop_opts, &opt_idx);
+      opt = getopt_long (tmp_argc, (char*const*)tmp_argv, opt_str, hb_stop_opts, &opt_idx);
       if (opt == -1)
 	{
 	  break;
@@ -3952,7 +3952,7 @@ us_hb_status_get_options (bool * verbose, char *remote_host_name, int remote_hos
   utility_make_getopt_optstring (hb_status_opts, opt_str);
   while (1)
     {
-      opt = getopt_long (tmp_argc, tmp_argv, opt_str, hb_status_opts, &opt_idx);
+      opt = getopt_long (tmp_argc, (char*const*)tmp_argv, opt_str, hb_status_opts, &opt_idx);
       if (opt == -1)
 	{
 	  break;
@@ -4048,7 +4048,7 @@ us_hb_util_get_options (char *db_name, int db_name_size, char *node_name, int no
   utility_make_getopt_optstring (hb_util_opts, opt_str);
   while (1)
     {
-      opt = getopt_long (tmp_argc, tmp_argv, opt_str, hb_util_opts, &opt_idx);
+      opt = getopt_long (tmp_argc, (char*const*)tmp_argv, opt_str, hb_util_opts, &opt_idx);
       if (opt == -1)
 	{
 	  break;
