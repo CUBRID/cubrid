@@ -5799,6 +5799,7 @@ logpb_scan_volume_info (THREAD_ENTRY * thread_p, const char *db_fullname, VOLID 
 	{
 	  if (((*fun) (thread_p, volid, vol_fullname, args)) != NO_ERROR)
 	    {
+	      num_vols = -1;
 	      break;
 	    }
 

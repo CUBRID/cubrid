@@ -1217,6 +1217,8 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 
   ret = disk_unformat (thread_p, (char *) rcv->data);
+  /* we need to remove from volume info file too... the only way is to recreate it. */
+  (void) logpb_recreate_volume_info (thread_p);
   log_append_dboutside_redo (thread_p, RVLOG_OUTSIDE_LOGICAL_REDO_NOOP, 0, NULL);
 
   return ret;
