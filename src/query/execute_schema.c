@@ -12922,7 +12922,7 @@ do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * a
 	}
 
       pt_get_default_expression_from_data_default_node (parser, pt_data_default, &default_expr);
-      if (default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+      if (default_expr.default_expr_type == DB_DEFAULT_NONE)
 	{
 	  /* don't have default expression */
 	  continue;
