@@ -8816,7 +8816,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 	  intl_char_size ((unsigned char *) src, copy_length, src_codeset, &copy_size);
 	  if (copy_size > dest_precision)
 	    {
-	     *data_status = DATA_STATUS_TRUNCATED;
+	      *data_status = DATA_STATUS_TRUNCATED;
 	      copy_size = dest_precision;
 	    }
 	  copy_length = copy_size;
