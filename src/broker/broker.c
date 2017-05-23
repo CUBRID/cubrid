@@ -42,13 +42,14 @@
 #include <netinet/tcp.h>
 #include <sys/time.h>
 #include <sys/un.h>
+#else
+#include  <io.h> 
 #endif
 
 #ifdef BROKER_DEBUG
 #include <sys/time.h>
 #endif
 
-#include  <io.h>  
 #include  <stdio.h>  
 #include  <stdlib.h> 
 
