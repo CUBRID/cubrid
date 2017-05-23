@@ -12436,6 +12436,10 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
   return error;
 
 exit_on_coerce_error:
+  if (pt_has_error (parser))
+    {
+      pt_reset_error (parser);
+    }
   if (attribute->data_type != NULL)
     {
       data_type_print = pt_short_print (parser, attribute->data_type);
