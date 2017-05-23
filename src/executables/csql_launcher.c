@@ -99,7 +99,7 @@ utility_csql_print (int message_num, ...)
       return;
     }
 
-  get_message_fn = symbol;
+  get_message_fn = (GET_MESSAGE)symbol;//vapa!!!
 
   {
     va_list ap;

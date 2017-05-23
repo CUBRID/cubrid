@@ -1009,7 +1009,7 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
 
       if (as_info_p->cur_sql_log_mode != shm_appl->sql_log_mode)
 	{
-	  print_value (FIELD_SQL_LOG_MODE, get_sql_log_mode_string (as_info_p->cur_sql_log_mode), FIELD_T_STRING);
+	  print_value (FIELD_SQL_LOG_MODE, get_sql_log_mode_string ((T_SQL_LOG_MODE_VALUE)as_info_p->cur_sql_log_mode), FIELD_T_STRING);
 	}
       else
 	{
@@ -1548,9 +1548,9 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur, BR_MONITORING_ITEM * mn
       if (full_info_flag && mnt_type == MONITOR_T_BROKER)
 	{
 	  print_value (FIELD_CANCELED, &mnt_item.its, FIELD_T_INT64);
-	  print_value (FIELD_ACCESS_MODE, get_access_mode_string (br_info_p->access_mode, br_info_p->replica_only_flag),
+	  print_value (FIELD_ACCESS_MODE, get_access_mode_string ((T_ACCESS_MODE_VALUE)br_info_p->access_mode, br_info_p->replica_only_flag),
 		       FIELD_T_STRING);
-	  print_value (FIELD_SQL_LOG, get_sql_log_mode_string (br_info_p->sql_log_mode), FIELD_T_STRING);
+	  print_value (FIELD_SQL_LOG, get_sql_log_mode_string ((T_SQL_LOG_MODE_VALUE)br_info_p->sql_log_mode), FIELD_T_STRING);
 	}
 
       if (mnt_type == MONITOR_T_BROKER)

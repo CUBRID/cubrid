@@ -4097,6 +4097,9 @@ ret:
   return status;
 }
 
+
+#if !defined(WINDOWS)
+
 /*
  * process_heartbeat_start -
  *
@@ -4258,7 +4261,7 @@ ret:
   print_result (PRINT_HEARTBEAT_NAME, status, STOP);
   return status;
 }
-
+#endif
 /*
  * process_heartbeat_deregister -
  *
@@ -4457,7 +4460,7 @@ process_heartbeat_reload (int argc, const char **argv)
   print_result (PRINT_HEARTBEAT_NAME, status, RELOAD);
   return status;
 }
-
+#if !defined(WINDOWS)
 /*
  * process_heartbeat_util -
  *
@@ -4624,7 +4627,7 @@ ret:
   print_result (PRINT_HEARTBEAT_NAME, status, REPLICATION);
   return status;
 }
-
+#endif
 /*
  * process_heartbeat -
  *

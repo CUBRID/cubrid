@@ -56,6 +56,10 @@ set(CMDEP_SOURCES
   ${CM_COMMON_DIR}/cm_nameval.c
   ${CM_COMMON_DIR}/cm_utils.c
   )
+SET_SOURCE_FILES_PROPERTIES(
+    ${CMDEP_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
 add_library(cmdep SHARED ${CMDEP_SOURCES})
 set_target_properties(cmdep PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 set_target_properties(cmdep PROPERTIES PUBLIC_HEADER "${CM_COMMON_DIR}/cm_dep.h")

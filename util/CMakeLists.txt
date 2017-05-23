@@ -20,6 +20,10 @@ set(LIBCUBRIDESQL_SOURCES
   ${EXECUTABLES_DIR}/esql_gadget.c
   ${EXECUTABLES_DIR}/esql_cli.c
   )
+SET_SOURCE_FILES_PROPERTIES(
+  ${LIBCUBRIDESQL_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
 add_library(cubridesql SHARED ${LIBCUBRIDESQL_SOURCES})
 set_target_properties(cubridesql PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 set_target_properties(cubridesql PROPERTIES PUBLIC_HEADER "${EXECUTABLES_DIR}/cubrid_esql.h")
@@ -130,6 +134,7 @@ if(WIN32)
   list(APPEND CUBRID_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(cubrid-bin ${CUBRID_SOURCES})
+
 if(WIN32)
   if(MSVC_VERSION LESS 1600)
     # for VS 2008 (9.0) or less version
