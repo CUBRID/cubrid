@@ -949,7 +949,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  def_val = d->info.data_default.default_value;
 	  if (d->info.data_default.default_expr_type == DB_DEFAULT_NONE)
 	    {
-	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, pt_desired_type, data_type);
+	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, pt_desired_type, data_type,
+							 d->info.data_default.default_expr_type);
 	      if (error != NO_ERROR)
 		{
 		  if (error == ER_IT_DATA_OVERFLOW)
@@ -1019,7 +1020,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  break;
 		}
 
-	      error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, pt_desired_type, data_type);
+	      error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, pt_desired_type, data_type,
+							 d->info.data_default.default_expr_type);
 	      db_value_clear (&src_val);
 	      temp_val->info.value.db_value_is_in_workspace = 0;
 	      parser_free_node (parser, temp_val);
@@ -12373,7 +12375,8 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       /* try to coerce the default value into the attribute type */
       if (def_expr_type == DB_DEFAULT_NONE)
 	{
-	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, attribute->data_type);
+	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, attribute->data_type,
+						     def_expr_type);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_coerce_error;
@@ -12408,7 +12411,8 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	      return er_errid ();
 	    }
 
-	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type);
+	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
+						     def_expr_type);
 	  db_value_clear (&src);
 	  temp_val->info.value.db_value_is_in_workspace = 0;
 	  parser_free_node (parser, temp_val);
