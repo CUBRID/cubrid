@@ -12339,9 +12339,9 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
       error = er_errid ();
-      goto exit;     
+      goto exit;
     }
- 
+
   if (has_self_ref)
     {
       /* We are creating a new class, and expected domain of default value has a self reference. Class cannot be
