@@ -20577,7 +20577,7 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
   assert (src != NULL && dest != NULL);
   if (default_expr_type == DB_DEFAULT_NONE && src->node_type == PT_VALUE
       && pt_is_explicit_coerce_allowed_for_default_value (parser, src->type_enum, desired_type))
-    {      
+    {
       PT_NODE *temp;
       DB_VALUE *db_src, db_dest;
       TP_DOMAIN *desired_domain;
