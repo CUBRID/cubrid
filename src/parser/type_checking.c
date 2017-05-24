@@ -14570,7 +14570,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    }
 	  else
 	    {
-	      db_value_clear (arg1);
+	      pr_clear_value (arg1);
 	      *arg1 = tmp_val;
 	      db_make_double (result, -DB_GET_DOUBLE (arg1));
 	    }
@@ -15244,7 +15244,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		}
 	      else
 		{
-		  db_value_clear (arg1);
+		  pr_clear_value (arg1);
 		  *arg1 = tmp_val;
 		}
 	    }
@@ -15262,7 +15262,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		}
 	      else
 		{
-		  db_value_clear (arg2);
+		  pr_clear_value (arg2);
 		  *arg2 = tmp_val;
 		}
 	    }
@@ -20575,6 +20575,7 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
 				   PT_NODE * data_type, DB_DEFAULT_EXPR_TYPE default_expr_type)
 {
   assert (src != NULL && dest != NULL);
+
   if (default_expr_type == DB_DEFAULT_NONE && src->node_type == PT_VALUE
       && pt_is_explicit_coerce_allowed_for_default_value (parser, src->type_enum, desired_type))
     {
@@ -20600,7 +20601,7 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
       assert (desired_domain != NULL);
 
       db_src = pt_value_to_db (parser, src);
-      if (!db_src)
+      if (db_src == NULL)
 	{
 	  return ER_FAILED;
 	}
@@ -20627,7 +20628,7 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
 	{
 	  if (error == NO_ERROR)
 	    {
-	      (void) db_value_clear (db_src);
+	      (void) pr_clear_value (db_src);
 	    }
 	  else
 	    {
@@ -20639,8 +20640,10 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
       if (error == NO_ERROR)
 	{
 	  temp = pt_dbval_to_value (parser, &db_dest);
-	  (void) db_value_clear (&db_dest);
-	  if (!temp)
+
+	  (void) pr_clear_value (&db_dest);
+
+	  if (temp == NULL)
 	    {
 	      error = ER_FAILED;
 	    }
@@ -20669,8 +20672,10 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
       if (error != NO_ERROR)
 	{
 	  int semantic_err;
-	  semantic_err = (error == ER_IT_DATA_OVERFLOW)
-	    ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO;
+
+	  semantic_err = ((error == ER_IT_DATA_OVERFLOW)
+			  ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO);
+
 	  /* set error for consistency with pt_coerce_value_internal */
 	  PT_ERRORmf2 (parser, src, MSGCAT_SET_PARSER_SEMANTIC, semantic_err,
 		       pt_short_print (parser, src), pt_show_type_enum ((PT_TYPE_ENUM) desired_type));
@@ -20678,7 +20683,7 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
 
       if (need_src_clear)
 	{
-	  (void) db_value_clear (db_src);
+	  (void) pr_clear_value (db_src);
 	}
 
       return error;
@@ -20844,7 +20849,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 	  {
 	    /* when the type of the host variable is compatible to coerce, it is enough. NEVER change the node type to
 	     * PT_VALUE. */
-	    db_value_clear (&db_dest);
+	    pr_clear_value (&db_dest);
 	    return NO_ERROR;
 	  }
 
@@ -20852,7 +20857,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 	  {
 	    if (err == NO_ERROR)
 	      {
-		(void) db_value_clear (db_src);
+		(void) pr_clear_value (db_src);
 	      }
 	    else
 	      {
@@ -20864,7 +20869,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 	if (err >= 0)
 	  {
 	    temp = pt_dbval_to_value (parser, &db_dest);
-	    (void) db_value_clear (&db_dest);
+	    (void) pr_clear_value (&db_dest);
 	    if (!temp)
 	      {
 		err = ER_GENERIC_ERROR;
@@ -20968,7 +20973,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 
   if (need_src_clear)
     {
-      (void) db_value_clear (db_src);
+      (void) pr_clear_value (db_src);
     }
 
   return err;
