@@ -8810,12 +8810,17 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 
   if (dest_codeset == INTL_CODESET_RAW_BYTES)
     {
-      /* when coercing multibyte to ISO charset, we just reinterpret each byte as one character */
-      if (INTL_CODESET_MULT (src_codeset) > 1
-	  && (copy_length < dest_precision || dest_precision == TP_FLOATING_PRECISION_VALUE))
+      /* when coercing multibyte to binary charset, we just reinterpret each byte as one character */
+      if (INTL_CODESET_MULT (src_codeset) > 1)
 	{
+	  assert (dest_precision != TP_FLOATING_PRECISION_VALUE);
+
 	  intl_char_size ((unsigned char *) src, copy_length, src_codeset, &copy_size);
-	  copy_size = MIN (copy_size, dest_precision);
+	  if (copy_size > dest_precision)
+	    {
+	      *data_status = DATA_STATUS_TRUNCATED;
+	      copy_size = dest_precision;
+	    }
 	  copy_length = copy_size;
 	  if (QSTR_IS_VARIABLE_LENGTH (dest_type))
 	    {
