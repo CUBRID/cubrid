@@ -400,7 +400,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *slist;
   PT_NODE *tmp_node = NULL;
   PT_TYPE_ENUM pt_desired_type;
-  PT_NODE *temp_val, *def_val;
+  PT_NODE *temp_val, *def_val, *initial_def_val = NULL;
 #if 0
   HFID *hfid;
 #endif
@@ -949,6 +949,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  def_val = d->info.data_default.default_value;
 	  if (d->info.data_default.default_expr_type == DB_DEFAULT_NONE)
 	    {
+	      initial_def_val = parser_copy_tree (parser, def_val);
+	      if (initial_def_val == NULL)
+		{
+		  error = ER_FAILED;
+		  break;
+		}
 	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, pt_desired_type, data_type,
 							 d->info.data_default.default_expr_type);
 	      if (error != NO_ERROR)
@@ -956,12 +962,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-				   pt_short_print (parser, def_val), pt_short_print (parser, data_type));
+				   pt_short_print (parser, initial_def_val), pt_short_print (parser, data_type));
 		    }
 		  else
 		    {
 		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				   pt_short_print (parser, def_val), pt_short_print (parser, data_type));
+				   pt_short_print (parser, initial_def_val), pt_short_print (parser, data_type));
 		    }
 
 		  parser_free_tree (parser, data_type);
@@ -1233,6 +1239,11 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       assert (false);
       dbt_abort_class (ctemplate);
       return error;
+    }
+
+  if (initial_def_val != NULL)
+    {
+      parser_free_tree (parser, initial_def_val);
     }
 
   /* Process resolution list if appropriate */
@@ -12286,7 +12297,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 			  const char *classname)
 {
   int error = NO_ERROR;
-  PT_NODE *def_val = NULL;
+  PT_NODE *def_val = NULL, *initial_def_val = NULL;
   DB_DEFAULT_EXPR_TYPE def_expr_type;
   PT_TYPE_ENUM desired_type = attribute->type_enum;
   bool has_self_ref = false;
@@ -12306,7 +12317,8 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
   if (pt_has_error (parser) || def_val == NULL)
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
-      return er_errid ();
+      error = er_errid ();
+      goto exit;
     }
 
   if (classname != NULL && attribute->data_type != NULL)
@@ -12324,6 +12336,14 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	}
     }
 
+  initial_def_val = parser_copy_tree (parser, def_val);
+  if (initial_def_val == NULL)
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error = er_errid ();
+      goto exit;
+    }
+
   if (has_self_ref)
     {
       /* We are creating a new class, and expected domain of default value has a self reference. Class cannot be
@@ -12338,7 +12358,8 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  /* Should we even be here? */
 	  PT_INTERNAL_ERROR (parser, "Self referencing attribute unexpected type.");
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto exit;
 	}
       /* Desired type either PT_TYPE_OBJECT or collection type. */
 
@@ -12359,15 +12380,16 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  if (desired_type == PT_TYPE_OBJECT)
 	    {
 	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			   pt_short_print (parser, def_val), classname);
+			   pt_short_print (parser, initial_def_val), classname);
 	    }
 	  else
 	    {
 	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			   pt_short_print (parser, def_val), pt_show_type_enum (desired_type));
+			   pt_short_print (parser, initial_def_val), pt_show_type_enum (desired_type));
 	    }
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto exit;
 	}
     }
   else
@@ -12393,14 +12415,16 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  if (pt_has_error (parser) || def_val == NULL)
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	      return er_errid ();
+	      error = er_errid ();
+	      goto exit;
 	    }
 
 	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
 	  if (pt_has_error (parser))
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	      return er_errid ();
+	      error = er_errid ();
+	      goto exit;
 	    }
 
 	  temp_val = pt_dbval_to_value (parser, &src);
@@ -12408,7 +12432,8 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	    {
 	      db_value_clear (&src);
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	      return er_errid ();
+	      error = er_errid ();
+	      goto exit;
 	    }
 
 	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
@@ -12434,8 +12459,15 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       if (pt_has_error (parser))
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto exit;
 	}
+    }
+
+exit:
+  if (initial_def_val != NULL)
+    {
+      parser_free_tree (parser, initial_def_val);
     }
   return error;
 
@@ -12456,12 +12488,17 @@ exit_on_coerce_error:
   if (error == ER_IT_DATA_OVERFLOW)
     {
       PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-		   pt_short_print (parser, def_val), data_type_print);
+		   pt_short_print (parser, initial_def_val), data_type_print);
     }
   else
     {
       PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		   pt_short_print (parser, def_val), data_type_print);
+		   pt_short_print (parser, initial_def_val), data_type_print);
+    }
+
+  if (initial_def_val != NULL)
+    {
+      parser_free_tree (parser, initial_def_val);
     }
 
   return error;
