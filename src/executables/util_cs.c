@@ -2512,7 +2512,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
   else
     {
       /* change server's HA mode */
-      mode = boot_change_ha_mode (mode, force, timeout);
+      mode = boot_change_ha_mode ((HA_SERVER_STATE)mode, force, timeout);
     }
   if (mode != HA_SERVER_MODE_NA)
     {

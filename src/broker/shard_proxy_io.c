@@ -4153,7 +4153,7 @@ proxy_io_initialize (void)
       return -1;
     }
 
-  ep_Event = calloc (max_Socket, sizeof (struct epoll_event));
+  ep_Event = (epoll_event*)calloc (max_Socket, sizeof (struct epoll_event));
   if (ep_Event == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory for epoll event. (error:%d[%s]).", errno,

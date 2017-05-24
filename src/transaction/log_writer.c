@@ -1438,7 +1438,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
   LOG_HEADER hdr;
   char *atchar;
 
-  atchar = strchr (db_name, '@');
+  atchar = (char*)strchr (db_name, '@');
   if (atchar)
     {
       *atchar = '\0';

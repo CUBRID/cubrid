@@ -4068,14 +4068,14 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
     {
       snprintf (error_string, LINE_MAX,
 		"Failed to send changemode request to the server. " "(state:%d[%s], args:[%s], pid:%d)", state,
-		css_ha_server_state_string (state), proc->args, proc->pid);
+		css_ha_server_state_string ((HA_SERVER_STATE)state), proc->args, proc->pid);
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_string);
 
       return ER_FAILED;
     }
 
   snprintf (error_string, LINE_MAX, "Send changemode request to the server. " "(state:%d[%s], args:[%s], pid:%d)",
-	    state, css_ha_server_state_string (state), proc->args, proc->pid);
+	    state, css_ha_server_state_string ((HA_SERVER_STATE)state), proc->args, proc->pid);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_string);
 
   return NO_ERROR;
@@ -4120,7 +4120,7 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
     }
 
   snprintf (error_string, LINE_MAX, "Receive changemode response from the server. " "(state:%d[%s], args:[%s], pid:%d)",
-	    state, css_ha_server_state_string (state), proc->args, proc->pid);
+	    state, css_ha_server_state_string ((HA_SERVER_STATE)state), proc->args, proc->pid);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_string);
 
   switch (state)

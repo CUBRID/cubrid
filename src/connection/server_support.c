@@ -1159,7 +1159,7 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
   if (state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_STANDBY)
     {
-      if (css_change_ha_server_state (thread_p, state, false, HA_CHANGE_MODE_IMMEDIATELY, true) != NO_ERROR)
+      if (css_change_ha_server_state (thread_p, (HA_SERVER_STATE)state, false, HA_CHANGE_MODE_IMMEDIATELY, true) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
 	}

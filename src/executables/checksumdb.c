@@ -1556,8 +1556,8 @@ chksum_set_repl_info_and_demote_table_lock (const char *table_name, const char *
   REPL_INFO_SBR repl_stmt;
 
   repl_stmt.statement_type = CUBRID_STMT_INSERT;
-  repl_stmt.name = table_name;
-  repl_stmt.stmt_text = checksum_query;
+  repl_stmt.name = (char*)table_name;
+  repl_stmt.stmt_text = (char*)checksum_query;
   repl_stmt.db_user = db_get_user_name ();
   repl_stmt.sys_prm_context = NULL;
 

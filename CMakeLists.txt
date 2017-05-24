@@ -145,7 +145,7 @@ if(UNIX)
     message(STATUS "WARNING: All compilation warnings are suppressed!!!")
     
     set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer -w")
-    set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer -fpermissive -w")
+    set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer -w")
     set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")

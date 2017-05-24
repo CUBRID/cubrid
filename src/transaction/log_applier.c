@@ -1167,7 +1167,7 @@ la_expand_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size)
   memset (area, 0, size);
 
   total_buffers = cache_pb->num_buffers + slb_cnt;
-  slb_log_buffer = realloc (cache_pb->log_buffer, total_buffers * DB_SIZEOF (LA_CACHE_BUFFER *));
+  slb_log_buffer = (LA_CACHE_BUFFER**)realloc (cache_pb->log_buffer, total_buffers * DB_SIZEOF (LA_CACHE_BUFFER *));
   if (slb_log_buffer == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -2713,7 +2713,7 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 
 	  la_applier_need_shutdown = true;
 	  snprintf (err_msg, sizeof (err_msg) - 1, "Active log file(%s) charset is not valid (%s), expecting %s.",
-		    act_log->path, lang_charset_cubrid_name (act_log->log_hdr->db_charset),
+		    act_log->path, lang_charset_cubrid_name ((INTL_CODESET)act_log->log_hdr->db_charset),
 		    lang_charset_cubrid_name (lang_charset ()));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
 	  return ER_LOC_INIT;
@@ -2836,14 +2836,14 @@ la_init_repl_lists (bool need_realloc)
 
   if (need_realloc == false)
     {
-      la_Info.repl_lists = malloc ((DB_SIZEOF (LA_APPLY *) * LA_REPL_LIST_COUNT));
+      la_Info.repl_lists = (LA_APPLY**)malloc ((DB_SIZEOF (LA_APPLY *) * LA_REPL_LIST_COUNT));
       la_Info.repl_cnt = LA_REPL_LIST_COUNT;
       la_Info.cur_repl = 0;
       j = 0;
     }
   else
     {
-      la_Info.repl_lists =
+      la_Info.repl_lists = (LA_APPLY**)
 	realloc (la_Info.repl_lists, (DB_SIZEOF (LA_APPLY *) * (LA_REPL_LIST_COUNT + la_Info.repl_cnt)));
       j = la_Info.repl_cnt;
       la_Info.repl_cnt += LA_REPL_LIST_COUNT;
@@ -2858,7 +2858,7 @@ la_init_repl_lists (bool need_realloc)
 
   for (i = j; i < la_Info.repl_cnt; i++)
     {
-      la_Info.repl_lists[i] = malloc (DB_SIZEOF (LA_APPLY));
+      la_Info.repl_lists[i] = (LA_APPLY*)malloc (DB_SIZEOF (LA_APPLY));
       if (la_Info.repl_lists[i] == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (LA_APPLY));
@@ -3072,7 +3072,7 @@ la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
 {
   LA_ITEM *item;
 
-  item = malloc (DB_SIZEOF (LA_ITEM));
+  item = (LA_ITEM*)malloc (DB_SIZEOF (LA_ITEM));
   if (item == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (LA_ITEM));
@@ -3535,7 +3535,7 @@ la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type, time_t eot
   LA_COMMIT *commit;
   int error = NO_ERROR;
 
-  commit = malloc (DB_SIZEOF (LA_COMMIT));
+  commit = (LA_COMMIT*)malloc (DB_SIZEOF (LA_COMMIT));
   if (commit == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (LA_COMMIT));
@@ -3883,7 +3883,7 @@ la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo
 	{
 	  free_and_init (*data);
 	}
-      *data = malloc (*length);
+      *data = (char*)malloc (*length);
       if (*data == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, *length);
@@ -4218,7 +4218,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
   if (*data == NULL)
     {
       /* general cases, use the pre-allocated buffer */
-      *data = malloc (length);
+      *data = (char*)malloc (length);
       is_overflow = true;
 
       if (*data == NULL)
@@ -6245,7 +6245,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	  if (la_Info.db_lockf_vdes != NULL_VOLDES)
 	    {
 	      snprintf (buffer, sizeof (buffer), "the state of HA server (%s@%s) is changed to %s", la_slave_db_name,
-			la_peer_host, css_ha_server_state_string (ha_server_state->state));
+			la_peer_host, css_ha_server_state_string ((HA_SERVER_STATE)ha_server_state->state));
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
 	      la_Info.is_role_changed = true;
@@ -6353,8 +6353,8 @@ la_change_state (void)
   if (la_Info.last_server_state != la_Info.act_log.log_hdr->ha_server_state)
     {
       sprintf (buffer, "change the state of HA server (%s@%s) from '%s' to '%s'", la_slave_db_name, la_peer_host,
-	       css_ha_server_state_string (la_Info.last_server_state),
-	       css_ha_server_state_string (la_Info.act_log.log_hdr->ha_server_state));
+	       css_ha_server_state_string ((HA_SERVER_STATE)la_Info.last_server_state),
+	       css_ha_server_state_string ((HA_SERVER_STATE)la_Info.act_log.log_hdr->ha_server_state));
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
     }
 
@@ -6443,11 +6443,11 @@ la_change_state (void)
 	  return error;
 	}
 
-      error = boot_notify_ha_log_applier_state (new_state);
+      error = boot_notify_ha_log_applier_state ((HA_LOG_APPLIER_STATE)new_state);
       if (error == NO_ERROR)
 	{
 	  snprintf (buffer, sizeof (buffer), "change log apply state from '%s' to '%s'. last committed LSA: %lld|%d",
-		    css_ha_applier_state_string (la_Info.apply_state), css_ha_applier_state_string (new_state),
+		    css_ha_applier_state_string ((HA_LOG_APPLIER_STATE)la_Info.apply_state), css_ha_applier_state_string ((HA_LOG_APPLIER_STATE)new_state),
 		    (long long int) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
@@ -6456,7 +6456,7 @@ la_change_state (void)
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_CHANGE_STATE, 2,
-		  css_ha_applier_state_string (la_Info.apply_state), css_ha_applier_state_string (new_state));
+		  css_ha_applier_state_string ((HA_LOG_APPLIER_STATE)la_Info.apply_state), css_ha_applier_state_string ((HA_LOG_APPLIER_STATE)new_state));
 	}
     }
 
@@ -7013,7 +7013,7 @@ la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose)
   printf ("%-30s : %s (%ld)\n", "DB creation time", timebuf, tloc);
   printf ("%-30s : %lld | %d\n", "EOF LSA", (long long int) hdr->eof_lsa.pageid, (int) hdr->eof_lsa.offset);
   printf ("%-30s : %lld | %d\n", "Append LSA", (long long int) hdr->append_lsa.pageid, (int) hdr->append_lsa.offset);
-  printf ("%-30s : %s\n", "HA server state", css_ha_server_state_string (hdr->ha_server_state));
+  printf ("%-30s : %s\n", "HA server state", css_ha_server_state_string ((HA_SERVER_STATE) hdr->ha_server_state));
   if (verbose)
     {
       printf ("%-30s : %s\n", "CUBRID release", hdr->db_release);
@@ -7022,13 +7022,13 @@ la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose)
       printf ("%-30s : %d\n", "Is log shutdown", hdr->is_shutdown);
       printf ("%-30s : %d\n", "Next transaction identifier", hdr->next_trid);
       printf ("%-30s : %d\n", "Number of pages", hdr->npages);
-      printf ("%-30s : %d (%s)\n", "Charset", hdr->db_charset, lang_charset_cubrid_name ((int) hdr->db_charset));
+      printf ("%-30s : %d (%s)\n", "Charset", hdr->db_charset, lang_charset_cubrid_name ((INTL_CODESET) hdr->db_charset));
       printf ("%-30s : %lld\n", "Logical pageid", (long long int) hdr->fpageid);
       printf ("%-30s : %lld | %d\n", "CHKPT LSA", (long long int) hdr->chkpt_lsa.pageid, (int) hdr->chkpt_lsa.offset);
       printf ("%-30s : %lld\n", "Next archive pageid", (long long int) hdr->nxarv_pageid);
       printf ("%-30s : %lld\n", "Next archive physical pageid", (long long int) hdr->nxarv_phy_pageid);
       printf ("%-30s : %d\n", "Next archive number", hdr->nxarv_num);
-      printf ("%-30s : %s\n", "HA file status", logwr_log_ha_filestat_to_string (hdr->ha_file_status));
+      printf ("%-30s : %s\n", "HA file status", logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT)hdr->ha_file_status));
     }
 
 
@@ -7092,7 +7092,7 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
   assert (database_name != NULL);
   assert (log_path != NULL);
 
-  atchar = strchr (database_name, '@');
+  atchar = (char*)strchr (database_name, '@');
   if (atchar)
     {
       *atchar = '\0';
@@ -7433,8 +7433,8 @@ lp_init_prefetcher (const char *database_name, const char *log_path)
   (void) os_set_signal_handler (SIGINT, la_shutdown_by_signal);
   (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
 #else /* ! WINDOWS */
-  (void) os_set_signal_handler (SIGSTOP, la_shutdown_by_signal);
-  (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGSTOP, (void(*)(int))la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGTERM, (void(*)(int))la_shutdown_by_signal);
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* ! WINDOWS */
 
@@ -7453,7 +7453,7 @@ lp_init_prefetcher (const char *database_name, const char *log_path)
       *p = '\0';
     }
 
-  p = la_get_hostname_from_log_path (log_path);
+  p = la_get_hostname_from_log_path ((char*)log_path);
   if (p)
     {
       strncpy (la_peer_host, p, MAXHOSTNAMELEN);
@@ -8401,7 +8401,7 @@ la_create_repl_filter (void)
 
   filter = &la_Info.repl_filter;
 
-  filter->type = prm_get_integer_value (PRM_ID_HA_REPL_FILTER_TYPE);
+  filter->type = (REPL_FILTER_TYPE)prm_get_integer_value (PRM_ID_HA_REPL_FILTER_TYPE);
   if (filter->type == REPL_FILTER_NONE)
     {
       return NO_ERROR;
@@ -8606,8 +8606,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   (void) os_set_signal_handler (SIGINT, la_shutdown_by_signal);
   (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
 #else /* ! WINDOWS */
-  (void) os_set_signal_handler (SIGSTOP, la_shutdown_by_signal);
-  (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGSTOP, (void(*)(int))la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGTERM, (void(*)(int))la_shutdown_by_signal);
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* ! WINDOWS */
 
@@ -8626,7 +8626,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       *s = '\0';
     }
 
-  s = la_get_hostname_from_log_path (log_path);
+  s = la_get_hostname_from_log_path ((char*)log_path);
   if (s)
     {
       strncpy (la_peer_host, s, MAXHOSTNAMELEN);
@@ -9196,7 +9196,7 @@ la_delay_replica (time_t eot_time)
   static int ha_mode = -1;
   static int replica_delay = -1;
   static time_t replica_time_bound = -1;
-  static char *replica_time_bound_str = (void *) -1;
+  static char *replica_time_bound_str = (char *) -1;
   char buffer[LINE_MAX];
 
   if (ha_mode < HA_MODE_OFF)

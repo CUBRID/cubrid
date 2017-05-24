@@ -3216,20 +3216,20 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 #if defined(ENABLE_SYSTEMTAP)
   if (class_oid == NULL)
     {
-      class_oid_for_marker_p = &oid_Null_oid;
+      class_oid_for_marker_p = (OID*)&oid_Null_oid;
     }
   else
     {
-      class_oid_for_marker_p = class_oid;
+      class_oid_for_marker_p = (OID*)class_oid;
     }
 
   if (oid == NULL)
     {
-      oid_for_marker_p = &oid_Null_oid;
+      oid_for_marker_p = (OID*)&oid_Null_oid;
     }
   else
     {
-      oid_for_marker_p = oid;
+      oid_for_marker_p = (OID*)oid;
     }
 
   CUBRID_LOCK_ACQUIRE_START (oid_for_marker_p, class_oid_for_marker_p, lock);
