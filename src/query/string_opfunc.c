@@ -8813,6 +8813,8 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
       /* when coercing multibyte to binary charset, we just reinterpret each byte as one character */
       if (INTL_CODESET_MULT (src_codeset) > 1)
 	{
+	  assert (dest_precision != TP_FLOATING_PRECISION_VALUE);
+
 	  intl_char_size ((unsigned char *) src, copy_length, src_codeset, &copy_size);
 	  if (copy_size > dest_precision)
 	    {
