@@ -3192,7 +3192,7 @@ ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf)
   T_SRV_HANDLE *srv_handle;
   int err_code;
   char *file_name;
-  int fd;
+  int fd = -1;
   char read_buf[1024];
   int read_len;
 
