@@ -276,7 +276,8 @@ static int pt_set_default_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM type,
 static bool pt_is_explicit_coerce_allowed_for_default_value (PARSER_CONTEXT * parser, PT_TYPE_ENUM data_type,
 							     PT_TYPE_ENUM desired_type);
 static int pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
-				     PT_TYPE_ENUM desired_type, PT_NODE * data_type, bool check_string_precision);
+				     PT_TYPE_ENUM desired_type, PT_NODE * data_type, bool check_string_precision,
+				     bool implicit_coercion);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int generic_func_casecmp (const void *a, const void *b);
 static void init_generic_funcs (void);
@@ -20557,7 +20558,7 @@ pt_is_explicit_coerce_allowed_for_default_value (PARSER_CONTEXT * parser, PT_TYP
 int
 pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type, PT_NODE * data_type)
 {
-  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, false);
+  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, false, true);
 }
 
 /*
@@ -20574,124 +20575,21 @@ int
 pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
 				   PT_NODE * data_type, DB_DEFAULT_EXPR_TYPE default_expr_type)
 {
+  bool implicit_coercion;
+
   assert (src != NULL && dest != NULL);
 
   if (default_expr_type == DB_DEFAULT_NONE && src->node_type == PT_VALUE
       && pt_is_explicit_coerce_allowed_for_default_value (parser, src->type_enum, desired_type))
     {
-      PT_NODE *temp;
-      DB_VALUE *db_src, db_dest;
-      TP_DOMAIN *desired_domain;
-      TP_DOMAIN_STATUS status;
-      int error = NO_ERROR;
-      bool need_src_clear = false;
-
-      if (data_type != NULL)
-	{
-	  desired_domain = pt_node_data_type_to_db_domain (parser, data_type, (PT_TYPE_ENUM) desired_type);
-	  if (desired_domain != NULL)
-	    {
-	      desired_domain = tp_domain_cache (desired_domain);
-	    }
-	}
-      else
-	{
-	  desired_domain = pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM) desired_type);
-	}
-      assert (desired_domain != NULL);
-
-      db_src = pt_value_to_db (parser, src);
-      if (db_src == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      db_make_null (&db_dest);
-      status = tp_value_cast (db_src, &db_dest, desired_domain, false);
-      switch (status)
-	{
-	case DOMAIN_INCOMPATIBLE:
-	  error = ER_IT_INCOMPATIBLE_DATATYPE;
-	  break;
-
-	case DOMAIN_OVERFLOW:
-	  error = ER_IT_DATA_OVERFLOW;
-	  break;
-
-	case DOMAIN_ERROR:
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  break;
-	}
-
-      if (src->info.value.db_value_is_in_workspace)
-	{
-	  if (error == NO_ERROR)
-	    {
-	      (void) pr_clear_value (db_src);
-	    }
-	  else
-	    {
-	      /* still needs db_src to print the message */
-	      need_src_clear = true;
-	    }
-	}
-
-      if (error == NO_ERROR)
-	{
-	  temp = pt_dbval_to_value (parser, &db_dest);
-
-	  (void) pr_clear_value (&db_dest);
-
-	  if (temp == NULL)
-	    {
-	      error = ER_FAILED;
-	    }
-	  else
-	    {
-	      temp->line_number = dest->line_number;
-	      temp->column_number = dest->column_number;
-	      temp->alias_print = dest->alias_print;
-	      temp->info.value.print_charset = dest->info.value.print_charset;
-	      temp->info.value.print_collation = dest->info.value.print_collation;
-	      temp->info.value.is_collate_allowed = dest->info.value.is_collate_allowed;
-	      *dest = *temp;
-	      if (data_type != NULL)
-		{
-		  dest->data_type = parser_copy_tree_list (parser, data_type);
-		  if (dest->data_type == NULL)
-		    {
-		      error = ER_FAILED;
-		    }
-		}
-	      temp->info.value.db_value_is_in_workspace = 0;
-	      parser_free_node (parser, temp);
-	    }
-	}
-
-      if (error != NO_ERROR)
-	{
-	  int semantic_err;
-
-	  semantic_err = ((error == ER_IT_DATA_OVERFLOW)
-			  ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO);
-
-	  /* set error for consistency with pt_coerce_value_internal */
-	  PT_ERRORmf2 (parser, src, MSGCAT_SET_PARSER_SEMANTIC, semantic_err,
-		       pt_short_print (parser, src), pt_show_type_enum ((PT_TYPE_ENUM) desired_type));
-	}
-
-      if (need_src_clear)
-	{
-	  (void) pr_clear_value (db_src);
-	}
-
-      return error;
+      implicit_coercion = false;	/* explicit coercion */
     }
   else
     {
-      return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true);
+      implicit_coercion = true;
     }
+
+  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true, implicit_coercion);
 }
 
 /*
@@ -20702,11 +20600,12 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
  *   dest(out): a pointer to the coerced PT_VALUE
  *   desired_type(in): the desired type of the coerced result
  *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
- *   check_string_precision(in): true, if needs to consider string precision 
+ *   check_string_precision(in): true, if needs to consider string precision
+ *   do_implicit_coercion(in): true for implicit coercion, false for explicit coercion
  */
 static int
 pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-			  PT_NODE * data_type, bool check_string_precision)
+			  PT_NODE * data_type, bool check_string_precision, bool implicit_coercion)
 {
   PT_TYPE_ENUM original_type;
   PT_NODE *dest_next;
@@ -20826,7 +20725,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 	    desired_domain = pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM) desired_type);
 	  }
 
-	err = tp_value_coerce (db_src, &db_dest, desired_domain);
+	err = tp_value_cast (db_src, &db_dest, desired_domain, implicit_coercion);
 
 	switch (err)
 	  {
