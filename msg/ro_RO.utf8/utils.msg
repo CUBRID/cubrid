@@ -669,27 +669,26 @@ opţiuni valide:\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Descrierea spaţiului pentru baza de date '%1$s' cu pagini de dimensiune %2$s. (dimensiunea unei pagini de log: %3$s)\n\n
-16 %1$5d %2$9s  %3$s %4$s  %5$s\n
-17 Nu s-a putut deschide fişierul de ieşire '%1$s'\n
-18 Descrierea spaţiului pentru volumele temporare ale bazei de date '%1$s' cu pagini de dimensiune %2$s.\n\n
-19 Volid  Purpose   total_pages  free_pages  Vol Name\n\n
-20 Volid  Purpose    total_size   free_size  Vol Name\n\n
-21 Descrierea spaţiului pentru LOB %1$s \n\n
-22 -------------------------------------------------------------------------------\n
-30 Descrierea sumarizată a spaţiului pentru baza de date '%1$s' cu pagini de dimensiune %2$s. (dimensiunea unei pagini de log: %3$s)\n\n
-31 Purpose    total_pages  used_pages  free_pages  volume_count\n
-32 Purpose     total_size   used_size   free_size  volume_count\n
-33 %1$10s %2$s %3$s %4$s %5$10d\n
-34 -------------------------------------------------------------\n
-40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
-41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
-43 ----------------------------------------------------------------------------------------------------\n
-50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
-51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
-53 -------------------------------------------------------------------------------------------------\n
+10 Descrierea spaţiului pentru baza de date '%1$s' cu pagini de dimensiune %2$s. (dimensiunea unei pagini de log: %3$s)\n\n
+11 Nu s-a putut deschide fişierul de ieşire '%1$s'\n
+12 Descrierea spaţiului pentru LOB %1$s \n\n
+20 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+21 type                purpose            volume_count         used_size           free_size           total_size\n
+22 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+30 Descrierea spaţiului pentru toate volumele:\n
+31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+40 Decrierea detaliată a spaţiului folosit de fișiere:\n
+41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+50 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Afişează spaţiul utilizat/liber al bazei de date.\n\
 utilizare: %1$s spacedb [OPŢIUNI] nume-bază-de-date\n\
@@ -702,24 +701,6 @@ opţiuni valide:\n\
                                setează unitatea de afişare (pagina, mega, giga, tera, format lizibil); implicit: H\n\
   -s, --summarize              afişează doar un sumar pentru fiecare scop de volum\n\
   -p, --purpose                afişează dimensiunea fiecărui scop(data/index/temp) al fiecărui volum\n
-70 type                purpose            volume_count        used_pages          free_pages          total_pages\n
-71 type                purpose            volume_count         used_size           free_size           total_size\n
-72 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-73 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-74 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-75 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
-80 Descrierea spaţiului pentru toate volumele:\n
-81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
-82 volid               type                purpose             used_size           free_size           total_size         volume_name\n
-83 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-84 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-85 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-90 Decrierea detaliată a spaţiului folosit de fișiere:\n
-91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
-92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
-93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
-100 -----------------------------------------------------------------------------------------------------------------\n
-
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Numărul estimat de pagini = %1$d\n
