@@ -690,13 +690,13 @@ geçerli seçenekler:\n\
 73 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
 74 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
 75 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
-80 Space description for all volumes:\n
+80 Tüm hacimler için alan açıklaması:\n
 81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
 82 volid               type                purpose             used_size           free_size           total_size         volume_name\n
 83 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
 84 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
 85 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-90 Detailed space description for files:\n
+90 Dosyalar için ayrıntılı alan açıklaması:\n
 91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
 92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
 93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
@@ -773,7 +773,7 @@ kullanım: %1$s diagdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
-      --emergency              emergency restart; default: none\n\
+      --emergency              acil yeniden başlatma; varsayılan: hiçbir\n\
   -d, --dump-type=TYPE         TYPE of dump\n\
                                -1 tüm dökümü\n\
                                 1 dosya tabloları dökümü\n\
@@ -1097,7 +1097,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: Saat dilimi verileri ile kaynak dosyaları oluşturun paylaşılan kütüphane\n\
         derlenmiş için\n\
-kullanım: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
+kullanım: %s gen_tz -g [new|extend] [database-name] (sadece extend modu için)\n\
 \n\
 geçerli seçenekler:\n\
   -i, --input-folder    Bir IANA saat dilimi sürümünü içeren giriş klasörünün yolunu.\n\
@@ -1109,18 +1109,13 @@ geçerli seçenekler:\n\
                         ayrıca tüm ülkeleri ve zaman dilimi isimleri içeren bir kaynak dosyası\n\
                         oluşturmak (geliştirici kullanılmak üzere tasarlanmıştır, gelecekteki\n\
                         CUBRID sürümleri entegre edilecek).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder;new timezones found in the input\n\
-                        files are added; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removed if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        If necessary, when the first phase of extend fails to make\n\
-                        all the data backward compatible an update is performed which\n\
-                        modifies the timezone ids and the date and time info stored in\n\
-                        the tables of the database which contain columns of timezone data\n\
-                        type.\n
+                        2. EXTEND : giriş klasöründen verileri kullanarak, saat diliminin kaynak\n\
+                        dosya (lar) oluşturmak; Giriş dosyalarında bulunan yeni saat dilimleri eklendi;\n\
+                        GMT uzaklıklar ve yaz saati bilgisi güncellenir (ya da yeni saat dilimlerinde  için eklendi);\n\
+                        CUBRID kodlanmış bir saat diliminin girdi dosyaları eksik ise saat dilimlerinde\n\
+                        kaldırıldı asla, ilişkili veriler mevcut saat diliminin kütüphanesinden alınır.\n\
+                        Eğer uzatmanın ilk aşaması başarısız tüm verileri geriye dönük uyumlu yapamaz,\n\
+                        saat dilimi veri türlerine sahip tüm tabloların tüm satırlarını değiştirecektir.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 Verilen saat diliminin İD aralığının dışında. Tüm saat dilimlerini ve bunların İD görmek için -z kullanın.\n
