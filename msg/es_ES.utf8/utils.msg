@@ -363,7 +363,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Servidor %1$s notificado del cierre.\nEsto puede durar unos minutos. Por favor espere.
 19 Server %1$s no encontrado.
 20 Maestro apagando en %1$d minutos\n
-21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
+21 La función de 'heartbeat' está desactivada. Espere hasta que se hayan completado todos los procesos de cierre de cub_server.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 No se puede abrir archivo de salida '%1$s'\n
@@ -440,8 +440,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 114 error-control-file
 115 archivo de entrada para controlar error(es) al cargar
 116 Total %8d object(s) inserted, %d object(s) failed.\n
-117 Load failed.\n
-118 Maximum length of class name is %1$d bytes.\n
+117 Carga fallida.\n
+118 La longitud máxima del nombre de la clase es %1$d bytes.\n
 120 \
 loaddb: Importar objetos y esquemas en la base de datos.\n\
 uso: %1$s loaddb [OPTION] database-name\n\
@@ -599,7 +599,7 @@ emergency_patchlog: Parchar una base de datos en caso de emergencia.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
 \n\
 opciones validas:\n\
-  -r, --recreate-log           recreate log files; use carefully (needs database-locale argument)\n
+  -r, --recreate-log           recrear archivos de registro; Utilizar con cuidado (necesita el argumento de la base de datos-locale)\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
@@ -660,13 +660,13 @@ $set 19 MSGCAT_UTIL_SET_SPACEDB
 23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
 24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
 25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
-30 Space description for all volumes:\n
+30 Descripción del espacio para todos los volúmenes:\n
 31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
 32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
 33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
 34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
 35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-40 Detailed space description for files:\n
+40 Descripción detallada del espacio para los archivos:\n
 41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
 42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
 43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
