@@ -2736,6 +2736,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_REC_2PC_START *start_2pc = NULL;	/* Start 2PC commit log record */
   LOG_REC_2PC_PARTICP_ACK *received_ack = NULL;	/* A 2PC participant ack */
   LOG_REC_DONETIME *donetime = NULL;
+  LOG_REC_SYSOP_END *sysop_end;	/* Result of top system op */
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
@@ -3146,10 +3147,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  LOG_LSA null_lsa = LSA_INITIALIZER;
 
 		  /* Reset log header MVCC info */
-		  vacuum_reset_log_header_cache (thread_p);
-
-		  /* Reset vacuum recover LSA */
-		  vacuum_notify_server_crashed (&null_lsa);
+		  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 		}
 
 	      /* 
@@ -3669,7 +3667,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT_WITH_POSTPONE:
 	    case LOG_SYSOP_START_POSTPONE:
-	    case LOG_SYSOP_END:
 	    case LOG_START_CHKPT:
 	    case LOG_END_CHKPT:
 	    case LOG_SAVEPOINT:
@@ -3685,6 +3682,17 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_END_OF_LOG:
 	    case LOG_SYSOP_ATOMIC_START:
+	      break;
+
+	    case LOG_SYSOP_END:
+	      LSA_COPY (&rcv_lsa, &log_lsa);
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
+	      sysop_end = ((LOG_REC_SYSOP_END *) ((char *) log_pgptr->area + log_lsa.offset));
+	      if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+		{
+		  LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
+		}
 	      break;
 
 	    case LOG_SMALLER_LOGREC_TYPE:
@@ -4146,6 +4154,9 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* nothing after tdes->rcv.atomic_sysop_start_lsa */
       assert (LSA_EQ (&tdes->rcv.atomic_sysop_start_lsa, &tdes->undo_nxlsa));
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      er_log_debug (ARG_FILE_LINE, "(trid = %d) Nothing after atomic sysop (%lld|%d), nothing to rollback.\n",
+		    tdes->trid, LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+      return;
     }
   assert (tdes->topops.last <= 0);
 
@@ -4181,6 +4192,11 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       er_log_debug (ARG_FILE_LINE,
 		    "(trid = %d) Nested atomic sysop  (%lld|%d) after sysop start postpone (%lld|%d). \n", tdes->trid,
 		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa), LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "(trid = %d) Atomic sysop (%lld|%d). Rollback. \n", tdes->trid,
+		    LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
     }
 
   /* rollback. simulate a new system op */

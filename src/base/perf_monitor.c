@@ -1996,7 +1996,7 @@ perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
   UINT64 *stats;
   int i;
   UINT64 *stats_ptr;
-  UINT64 copied;
+  UINT64 copied = 0;
 
   stats = perfmon_server_get_stats (thread_p);
   if (stats != NULL)

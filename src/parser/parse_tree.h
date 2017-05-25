@@ -757,6 +757,7 @@
        || ((node)->type_enum == PT_TYPE_SET \
            && ((node)->info.value.data_value.set == NULL)))) ? true : false)
 
+#define PT_IS_SPEC_REAL_TABLE(spec_) PT_SPEC_IS_ENTITY(spec_)
 
 /*
  Enumerated types of parse tree statements
@@ -2057,7 +2058,7 @@ struct pt_data_default_info
 {
   PT_NODE *default_value;	/* PT_VALUE (list) */
   PT_MISC_TYPE shared;		/* will PT_SHARED or PT_DEFAULT */
-  DB_DEFAULT_EXPR_TYPE default_expr;	/* if it is a pseudocolumn, do not evaluate expr */
+  DB_DEFAULT_EXPR_TYPE default_expr_type;	/* if it is a pseudocolumn, do not evaluate expr */
 };
 
 /* Info for the AUTO_INCREMENT node */
@@ -2619,7 +2620,7 @@ struct pt_name_info
 #define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID restrictions for this name */
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
-
+#define PT_NAME_REAL_TABLE	   4096	/* name of table/column belongs to a real table */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))

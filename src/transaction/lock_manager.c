@@ -6804,6 +6804,10 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 	}
 
       class_oid = &lockset->classes[lockset->objects[i].class_index].oid;
+      if (OID_ISNULL (class_oid))
+	{
+	  continue;
+	}
 
       /* The intentional lock on the higher lock granule must be kept. */
       lock_unlock_object_by_isolation (thread_p, tran_index, isolation, class_oid, oid);

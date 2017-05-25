@@ -907,7 +907,8 @@ struct xasl_node
   PRED_EXPR *instnum_pred;	/* inst_num() predicate */
   DB_VALUE *instnum_val;	/* inst_num() value result */
   DB_VALUE *save_instnum_val;	/* inst_num() value kept after being substi- tuted for ordbynum_val; */
-  REGU_VARIABLE *limit_row_count;	/* the record count from a limit clause */
+  REGU_VARIABLE *limit_offset;	/* offset of limit clause */
+  REGU_VARIABLE *limit_row_count;	/* the record count from limit clause */
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
 
@@ -1104,5 +1105,7 @@ extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, R
 extern void qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent);
 extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent);
 #endif /* SERVER_MODE */
+extern const char *qdump_operator_type_string (OPERATOR_TYPE optype);
+extern const char *qdump_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 extern const char *qdump_function_type_string (FUNC_TYPE ftype);
 #endif /* _QUERY_EXECUTOR_H_ */

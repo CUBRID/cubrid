@@ -83,8 +83,7 @@
   do \
     { \
       error = code; \
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 4, \
-	      arg1, arg2, arg3, arg4); \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 4, arg1, arg2, arg3, arg4); \
     } \
   while (0)
 
@@ -94,10 +93,7 @@
 #if defined(NDEBUG)
 #define STRINGIZE(s) #s
 #define assert_release(e) \
-  ((void) ((e) ? 0 \
-               : (er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, \
-                          ER_FAILED_ASSERTION, 1, \
-                          STRINGIZE(e)))))
+  ((void) ((e) ? 0  : (er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, STRINGIZE (e)))))
 #else
 #define assert_release(e) assert(e)
 #endif

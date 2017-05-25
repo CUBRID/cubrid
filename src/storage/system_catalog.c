@@ -433,8 +433,6 @@ catalog_get_disk_attribute (DISK_ATTR * attr_p, char *rec_p)
   attr_p->value = NULL;
   attr_p->val_length = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_VAL_LENGTH_OFF);
   attr_p->position = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_POSITION_OFF);
-  attr_p->default_expr = DB_DEFAULT_NONE;
-
   OR_GET_OID (rec_p + CATALOG_DISK_ATTR_CLASSOID_OFF, &attr_p->classoid);
   attr_p->n_btstats = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_N_BTSTATS_OFF);
   attr_p->bt_stats = NULL;
@@ -815,6 +813,7 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size, VPID * page_id_p)
   if (page_p == NULL)
     {
       ASSERT_ERROR ();
+      pthread_mutex_unlock (&catalog_Max_space_lock);
       return NULL;
     }
 
@@ -1506,6 +1505,9 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
       return ER_FAILED;
     }
 
+  btree_stats_p->leafs = 0;
+  btree_stats_p->pages = 0;
+  btree_stats_p->height = 0;
   btree_stats_p->keys = 0;
   btree_stats_p->pkeys_size = 0;
   btree_stats_p->pkeys = NULL;
@@ -3800,6 +3802,7 @@ catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, CATA
 	{
 	  return ER_FAILED;
 	}
+      memset (disk_attr_p->bt_stats, 0, sizeof (BTREE_STATS) * n_btstats);
 
       /* init */
       for (i = 0; i < n_btstats; i++)
@@ -3864,7 +3867,7 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
   DISK_ATTR *disk_attr_p = NULL;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
   OID dir_oid;
-  int i, n_attrs;
+  int i;
   int error = NO_ERROR;
   bool do_end_access = false;
 
@@ -3954,8 +3957,6 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
       return NULL;
     }
 
-  n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
-
   if (disk_repr_p->n_fixed > 0)
     {
       disk_repr_p->fixed = (DISK_ATTR *) db_private_alloc (thread_p, (sizeof (DISK_ATTR) * disk_repr_p->n_fixed));
@@ -3963,6 +3964,7 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
 	{
 	  goto exit_on_error;
 	}
+      memset (disk_repr_p->fixed, 0, sizeof (DISK_ATTR) * disk_repr_p->n_fixed);
 
       /* init */
       for (i = 0; i < disk_repr_p->n_fixed; i++)
@@ -3985,11 +3987,12 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
 	{
 	  goto exit_on_error;
 	}
+      memset (disk_repr_p->variable, 0, sizeof (DISK_ATTR) * disk_repr_p->n_variable);
 
       /* init */
-      for (i = disk_repr_p->n_fixed; i < n_attrs; i++)
+      for (i = 0; i < disk_repr_p->n_variable; i++)
 	{
-	  disk_attr_p = &disk_repr_p->variable[i - disk_repr_p->n_fixed];
+	  disk_attr_p = &disk_repr_p->variable[i];
 	  disk_attr_p->value = NULL;
 	  disk_attr_p->bt_stats = NULL;
 	  disk_attr_p->n_btstats = 0;

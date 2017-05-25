@@ -1868,17 +1868,17 @@ btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
 int
 btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 {
-  FILE_OVF_BTREE_DES btdes_ovf;
+  FILE_DESCRIPTORS des;
 
   VFID_SET_NULL (&btid->ovfid);
 
   /* initialize description of overflow heap file */
-  btdes_ovf.btid = *btid->sys_btid;	/* structure copy */
-  btdes_ovf.class_oid = btid->topclass_oid;
-  assert (!OID_ISNULL (&btdes_ovf.class_oid));
+  memset (&des, 0, sizeof (des));
+  des.btree_key_overflow.btid = *btid->sys_btid;	/* structure copy */
+  des.btree_key_overflow.class_oid = btid->topclass_oid;
+  assert (!OID_ISNULL (&des.btree_key_overflow.class_oid));
   /* create file with at least 3 pages */
-  return file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, (FILE_DESCRIPTORS *) (&btdes_ovf),
-				  &btid->ovfid);
+  return file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, &des, &btid->ovfid);
 }
 
 /*
@@ -4013,7 +4013,6 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
       error_code = btree_store_overflow_key (thread_p, btid, key, key_len, (BTREE_NODE_TYPE)node_type, &key_vpid);
       if (error_code != NO_ERROR)
 	{
-	  assert_release (false);
 	  return error_code;
 	}
 
@@ -18686,6 +18685,8 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
   DB_MIDXKEY *new_mkey = NULL;
   DB_VALUE *new_key_value = NULL;
   int error = NO_ERROR, i = 0;
+  TP_DOMAIN *domain;
+  bool has_null_domain;
 
   assert (multi_range_opt->use == true);
 
@@ -18723,6 +18724,46 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	{
 	  goto exit;
 	}
+    }
+
+  /* resolve domains */
+  if (multi_range_opt->sort_col_dom == NULL)
+    {
+      multi_range_opt->sort_col_dom =
+	(TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (TP_DOMAIN *));
+      if (multi_range_opt->sort_col_dom == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+
+      for (i = 0; i < multi_range_opt->num_attrs; i++)
+	{
+	  multi_range_opt->sort_col_dom[i] = &tp_Null_domain;
+	}
+      multi_range_opt->has_null_domain = true;
+    }
+
+  if (multi_range_opt->has_null_domain)
+    {
+      has_null_domain = false;
+      for (i = 0; i < multi_range_opt->num_attrs; i++)
+	{
+	  assert (multi_range_opt->sort_col_dom[i] != NULL);
+	  if (multi_range_opt->sort_col_dom[i] == &tp_Null_domain)
+	    {
+	      domain = tp_domain_resolve_value (&new_key_value[i], NULL);
+	      if (domain != &tp_Null_domain)
+		{
+		  multi_range_opt->sort_col_dom[i] = domain;
+		}
+	      else
+		{
+		  has_null_domain = true;
+		}
+	    }
+	}
+      multi_range_opt->has_null_domain = has_null_domain;
     }
 
   if (multi_range_opt->cnt == multi_range_opt->size)
@@ -18802,22 +18843,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       COPY_OID (&(curr_item->inst_oid), p_new_oid);
 
       multi_range_opt->cnt++;
-
-      if (multi_range_opt->sort_col_dom == NULL)
-	{
-	  multi_range_opt->sort_col_dom =
-	    (TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (TP_DOMAIN *));
-	  if (multi_range_opt->sort_col_dom == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto exit;
-	    }
-
-	  for (i = 0; i < multi_range_opt->num_attrs; i++)
-	    {
-	      multi_range_opt->sort_col_dom[i] = tp_domain_resolve_value (&new_key_value[i], NULL);
-	    }
-	}
     }
 
   /* find the position for this element */
@@ -32763,15 +32788,16 @@ btree_hash_btid (void *btid, int hash_size)
 int
 btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid)
 {
-  FILE_BTREE_DES des;
+  FILE_DESCRIPTORS des;
   VPID vpid_root;
 
   int error_code = NO_ERROR;
 
-  des.class_oid = *class_oid;
-  des.attr_id = attrid;
+  memset (&des, 0, sizeof (des));
+  des.btree.class_oid = *class_oid;
+  des.btree.attr_id = attrid;
 
-  error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, (FILE_DESCRIPTORS *) (&des), &btid->vfid);
+  error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, &des, &btid->vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

@@ -323,7 +323,7 @@ static bool logpb_is_any_fix (THREAD_ENTRY * thread_p);
 static void logpb_dump_information (FILE * out_fp);
 static void logpb_dump_to_flush_page (FILE * out_fp);
 static void logpb_dump_pages (FILE * out_fp);
-static void logpb_initialize_backup_info (void);
+static void logpb_initialize_backup_info (LOG_HEADER * loghdr);
 static LOG_PAGE **logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAGES npages);
 static int logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 static void logpb_set_unavailable_archive (int arv_num);
@@ -1265,16 +1265,16 @@ logpb_dump_pages (FILE * out_fp)
  * NOTE:
  */
 static void
-logpb_initialize_backup_info ()
+logpb_initialize_backup_info (LOG_HEADER * log_hdr)
 {
   int i;
 
   for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
     {
-      log_Gl.hdr.bkinfo[i].ndirty_pages_post_bkup = 0;
-      log_Gl.hdr.bkinfo[i].io_baseln_time = 0;
-      log_Gl.hdr.bkinfo[i].io_numpages = 0;
-      log_Gl.hdr.bkinfo[i].io_bkuptime = 0;
+      log_hdr->bkinfo[i].ndirty_pages_post_bkup = 0;
+      log_hdr->bkinfo[i].io_baseln_time = 0;
+      log_hdr->bkinfo[i].io_numpages = 0;
+      log_hdr->bkinfo[i].io_bkuptime = 0;
     }
 }
 
@@ -1368,16 +1368,16 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
 
   for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
     {
-      log_Gl.hdr.bkinfo[i].bkup_attime = 0;
+      loghdr->bkinfo[i].bkup_attime = 0;
     }
-  logpb_initialize_backup_info ();
+  logpb_initialize_backup_info (loghdr);
 
   loghdr->ha_server_state = HA_SERVER_STATE_IDLE;
   loghdr->ha_file_status = -1;
   LSA_SET_NULL (&loghdr->eof_lsa);
   LSA_SET_NULL (&loghdr->smallest_lsa_at_last_chkpt);
 
-  vacuum_reset_log_header_cache (thread_p);
+  logpb_vacuum_reset_log_header_cache (thread_p, loghdr);
 
   return NO_ERROR;
 }
@@ -3734,6 +3734,9 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  /* atomic system operation finished. */
 	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 	}
+
+      /* for correct checkpoint, this state change must be done under the protection of prior_lsa_mutex */
+      tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
     }
   else if (node->log_header.type == LOG_SYSOP_END)
     {
@@ -5796,6 +5799,7 @@ logpb_scan_volume_info (THREAD_ENTRY * thread_p, const char *db_fullname, VOLID 
 	{
 	  if (((*fun) (thread_p, volid, vol_fullname, args)) != NO_ERROR)
 	    {
+	      num_vols = -1;
 	      break;
 	    }
 
@@ -8816,7 +8820,7 @@ loop:
     }
 
   /* Clear log header information regarding previous backups */
-  logpb_initialize_backup_info ();
+  logpb_initialize_backup_info (&log_Gl.hdr);
 
   /* Save additional info and metrics from this backup */
   log_Gl.hdr.bkinfo[backup_level].bkup_attime = session.bkup.bkuphdr->start_time;
@@ -11285,7 +11289,7 @@ logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid)
       return ER_FAILED;
     }
 
-  if (xdisk_get_purpose (thread_p, volid) == DB_TEMPORARY_DATA_PURPOSE)
+  if (LOG_DBFIRST_VOLID <= volid && xdisk_get_purpose (thread_p, volid) == DB_TEMPORARY_DATA_PURPOSE)
     {
       pgbuf_reset_temp_lsa (pgptr);
       pgbuf_set_dirty (thread_p, pgptr, FREE);
@@ -12117,4 +12121,16 @@ delete_fixed_logs:
   fileio_unformat (thread_p, log_Name_info);
 
   return NO_ERROR;
+}
+
+/*
+ * logpb_vacuum_reset_log_header_cache () - reset vacuum data cached in log global header.
+ */
+void
+logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr)
+{
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Reset vacuum info in loghdr (%p)", loghdr);
+  LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
+  loghdr->last_block_oldest_mvccid = MVCCID_NULL;
+  loghdr->last_block_newest_mvccid = MVCCID_NULL;
 }

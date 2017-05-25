@@ -2348,6 +2348,8 @@ extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
+extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
+
 /************************************************************************/
 /* Inline functions:                                                    */
 /************************************************************************/

@@ -951,7 +951,6 @@ int g_original_buffer_len;
 %type <node> incr_arg_name__dec
 %type <node> search_condition_query
 %type <node> search_condition_expression
-%type <node> opt_uint_or_host_input
 %type <node> opt_select_limit_clause
 %type <node> limit_options
 %type <node> opt_upd_del_limit_clause
@@ -1006,6 +1005,9 @@ int g_original_buffer_len;
 %type <node> cte_definition_list
 %type <node> cte_definition
 %type <node> cte_query_list
+%type <node> limit_expr
+%type <node> limit_term
+%type <node> limit_factor
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -5749,52 +5751,71 @@ alter_column_clause_mysql_specific
 				PARSER_SAVE_ERR_CONTEXT (node, @4.buffer_pos)
 
 				def = node->info.data_default.default_value;
-
 				if (def && def->node_type == PT_EXPR)
 				  {
+					if (def->info.expr.op == PT_TO_CHAR)
+					  {					    
+						if (def->info.expr.arg3)
+						  {							
+						    bool dummy;						
+						    bool has_user_lang = false;
+						    assert (def->info.expr.arg3->node_type == PT_VALUE);
+							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
+							if (has_user_lang)
+							  {
+								PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
+							  }
+						  }
+						
+						if (def->info.expr.arg1 && def->info.expr.arg1->node_type == PT_EXPR)
+						  {
+						    def = def->info.expr.arg1;
+						  }
+					  }
+							
 				    switch (def->info.expr.op)
 				      {
 				      case PT_SYS_TIME:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSTIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
 					break;
 				      case PT_SYS_DATE:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSDATE;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
 					break;
 				      case PT_SYS_DATETIME:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSDATETIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
 					break;
 				      case PT_SYS_TIMESTAMP:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
 					break;
 				      case PT_CURRENT_TIME:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
 					break;
 				      case PT_CURRENT_DATE:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATE;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
 					break;
 				      case PT_CURRENT_DATETIME:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATETIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
 					break;
 				      case PT_CURRENT_TIMESTAMP:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
 					break;
 				      case PT_USER:
-					node->info.data_default.default_expr = DB_DEFAULT_USER;
+					node->info.data_default.default_expr_type = DB_DEFAULT_USER;
 					break;
 				      case PT_CURRENT_USER:
-					node->info.data_default.default_expr = DB_DEFAULT_CURR_USER;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
 					break;
 				      case PT_UNIX_TIMESTAMP:
-					node->info.data_default.default_expr = DB_DEFAULT_UNIX_TIMESTAMP;
+					node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
 					break;
 				      default:
-					node->info.data_default.default_expr = DB_DEFAULT_NONE;
+					node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 					break;
 				      }
 				  }
 				else
 				  {
-				    node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 				  }
 			      }
 			    
@@ -10088,52 +10109,72 @@ column_default_constraint_def
 			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
 
 			    def = node->info.data_default.default_value;
-
 			    if (def && def->node_type == PT_EXPR)
 			      {
+					if (def->info.expr.op == PT_TO_CHAR)
+					  {					  
+						if (def->info.expr.arg3)
+						  {
+							bool has_user_lang = false;
+							bool dummy;
+							
+							assert (def->info.expr.arg3->node_type == PT_VALUE);
+							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
+							 if (has_user_lang)
+							   {
+								 PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
+							   }
+							}
+						
+						if (def->info.expr.arg1  && def->info.expr.arg1->node_type == PT_EXPR)
+						  {
+							def = def->info.expr.arg1;
+						  }						
+					  }					  
+						  
 				switch (def->info.expr.op)
 				  {
 				  case PT_SYS_TIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSTIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
 				    break;
 				  case PT_SYS_DATE:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSDATE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
 				    break;
 				  case PT_SYS_DATETIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSDATETIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
 				    break;
 				  case PT_SYS_TIMESTAMP:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
 				    break;
 				  case PT_CURRENT_TIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
 				    break;
 				  case PT_CURRENT_DATE:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
 				    break;
 				  case PT_CURRENT_DATETIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATETIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
 				    break;
 				  case PT_CURRENT_TIMESTAMP:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
 				    break;
 				  case PT_USER:
-				    node->info.data_default.default_expr = DB_DEFAULT_USER;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_USER;
 				    break;
 				  case PT_CURRENT_USER:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURR_USER;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
 				    break;
 				  case PT_UNIX_TIMESTAMP:
-				    node->info.data_default.default_expr = DB_DEFAULT_UNIX_TIMESTAMP;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
 				    break;
 				  default:
-				    node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 				    break;
 				  }
 			      }
 			    else
 			      {
-				node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 			      }
 			  }
 
@@ -13246,7 +13287,7 @@ index_name_list
 	;
 	
 index_name_keylimit
-	: index_name KEYLIMIT opt_uint_or_host_input
+	: index_name KEYLIMIT limit_expr
 		{{
 		
 			PT_NODE *node = $1;
@@ -13272,7 +13313,7 @@ index_name_keylimit
 			$$ = node;
 			
 		DBG_PRINT}}
-	| index_name KEYLIMIT opt_uint_or_host_input ',' opt_uint_or_host_input
+	| index_name KEYLIMIT limit_expr ',' limit_expr
 		{{
 		
 			PT_NODE *node = $1;
@@ -13759,22 +13800,78 @@ opt_siblings
 		DBG_PRINT}}
 	;
 
-opt_uint_or_host_input
-	: unsigned_integer
-		{{
+limit_expr
+        : limit_expr '+' limit_term
+                {{
+                        $$ = parser_make_expression (this_parser, PT_PLUS, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
+        | limit_expr '-' limit_term
+                {{
+                        $$ = parser_make_expression (this_parser, PT_MINUS, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
-	| host_param_input
-		{{
+                DBG_PRINT}}
+        | limit_term
+                {{
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
+        ;
 
-		DBG_PRINT}}
-	;
+limit_term
+        : limit_term '*' limit_factor
+                {{
+                        $$ = parser_make_expression (this_parser, PT_TIMES, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | limit_term '/' limit_factor
+                {{
+                        $$ = parser_make_expression (this_parser, PT_DIVIDE, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | limit_factor
+                {{
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+          ;
+
+limit_factor
+        : host_param_input
+                {{
+
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | unsigned_integer
+                {{
+
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+
+        | '(' limit_expr ')'
+                {{
+			PT_NODE *exp = $2;
+
+			if (exp && exp->node_type == PT_EXPR)
+			  {
+			    exp->info.expr.paren_type = 1;
+			  }
+
+                        $$ = exp;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        ;
 
 opt_select_limit_clause
 	: /* empty */
@@ -13848,7 +13945,7 @@ opt_select_limit_clause
 	;
 
 limit_options
-	: opt_uint_or_host_input
+	: limit_expr
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
@@ -13861,7 +13958,7 @@ limit_options
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| opt_uint_or_host_input ',' opt_uint_or_host_input
+	| limit_expr ',' limit_expr
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
@@ -13880,7 +13977,7 @@ limit_options
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| opt_uint_or_host_input OFFSET opt_uint_or_host_input
+	| limit_expr OFFSET limit_expr
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
@@ -13904,7 +14001,7 @@ limit_options
 opt_upd_del_limit_clause
 	: /* empty */
 		{ $$ = NULL; }
-	| LIMIT opt_uint_or_host_input
+	| LIMIT limit_expr
 		{{
 
 			  $$ = $2;
@@ -25714,6 +25811,3 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 
   return node;
 }
-
-
-

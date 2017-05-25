@@ -8426,9 +8426,9 @@ pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 static PT_NODE *
 pt_init_data_default (PT_NODE * p)
 {
-  p->info.data_default.default_value = 0;
+  p->info.data_default.default_value = (PT_NODE *) 0;
   p->info.data_default.shared = (PT_MISC_TYPE) 0;
-  p->info.data_default.default_expr = DB_DEFAULT_NONE;
+  p->info.data_default.default_expr_type = DB_DEFAULT_NONE;
   return p;
 }
 
@@ -8850,6 +8850,14 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	}
     }
+
+  if (p->info.delete_.limit && p->info.delete_.rewrite_limit)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.delete_.limit);
+      q = pt_append_nulstring (parser, q, " limit ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   return q;
 }
 
@@ -15772,6 +15780,13 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r1 = pt_print_bytes_l (parser, p->info.update.orderby_for);
       b = pt_append_nulstring (parser, b, " for ");
+      b = pt_append_varchar (parser, b, r1);
+    }
+
+  if (p->info.update.limit && p->info.update.rewrite_limit)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.update.limit);
+      b = pt_append_nulstring (parser, b, " limit ");
       b = pt_append_varchar (parser, b, r1);
     }
 

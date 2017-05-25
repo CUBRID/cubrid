@@ -7858,9 +7858,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	default:
 	  {
-	    int error_code = numeric_db_value_coerce_to_num ((DB_VALUE *) src,
-							     target,
-							     &data_stat);
+	    int error_code = numeric_db_value_coerce_to_num ((DB_VALUE *) src, target, &data_stat);
+
 	    if (error_code == ER_IT_DATA_OVERFLOW || data_stat == DATA_STATUS_TRUNCATED)
 	      {
 		status = DOMAIN_OVERFLOW;
@@ -9500,7 +9499,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode == TP_IMPLICIT_COERCION)
 	    {
 	      status = DOMAIN_OVERFLOW;
-	      db_value_clear (target);
+	      pr_clear_value (target);
 	    }
 	  else
 	    {
@@ -9537,7 +9536,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode == TP_IMPLICIT_COERCION)
 	    {
 	      status = DOMAIN_OVERFLOW;
-	      db_value_clear (target);
+	      pr_clear_value (target);
 	    }
 	  else if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
 	    {
@@ -10291,7 +10290,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       if (src != dest)
 	{
 #if 0				/* TODO - */
-	  db_value_clear (dest);
+	  pr_clear_value (dest);
 #endif
 
 	  /* make sure this doesn't have any partial results */
@@ -10309,7 +10308,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
   else if (src == dest)
     {
       /* coercsion successful, transfer the value if src == dest */
-      db_value_clear (dest);
+      pr_clear_value (dest);
       *dest = temp;
     }
 

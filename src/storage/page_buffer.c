@@ -265,6 +265,7 @@ typedef enum
 /* zone counts & thresholds */
 #define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
 #define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
+#define PGBUF_LRU_VICTIM_ZONE_COUNT(list) ((list)->count_lru3)
 
 #define PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD(list) ((list)->threshold_lru1 < (list)->count_lru1)
 #define PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD(list) ((list)->threshold_lru2 < (list)->count_lru2)
@@ -2841,12 +2842,17 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 
 	  /* check if page invalidation should be performed on the page */
 	  if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&temp_vpid, &bufptr->vpid)
-	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0
-	      || pgbuf_bcb_avoid_victim (bufptr))
+	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0)
 	    {
 	      PGBUF_BCB_UNLOCK (bufptr);
 	      continue;
 	    }
+	}
+
+      if (pgbuf_bcb_avoid_victim (bufptr))
+	{
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  continue;
 	}
 
 #if defined(CUBRID_DEBUG)
@@ -3168,11 +3174,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 }
 
 /*
- * pgbuf_flush_victim_candidates () - Flush victim candidates
- *   return: NO_ERROR, or ER_code
- *
- */
-/*
  * pgbuf_flush_victim_candidates () - collect & flush victim candidates
  *
  * return                : error code
@@ -3487,13 +3488,29 @@ end:
 	      continue;
 	    }
 	  lru_list = PGBUF_GET_LRU_LIST (PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thrd_iter)));
+	  if (PGBUF_LRU_VICTIM_ZONE_COUNT (lru_list) == 0)
+	    {
+	      continue;
+	    }
 	  if (lru_list->count_vict_cand > 0)
 	    {
+	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
+		{
+		  /* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
+		   * flush queue */
+		  continue;
+		}
 	      /* should have found victim candidate */
 	      assert (false);
 	    }
 	  if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
+	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
+		{
+		  /* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
+		   * flush queue */
+		  continue;
+		}
 	      /* should be over quota */
 	      assert (false);
 	    }
@@ -3510,7 +3527,7 @@ end:
 	    (int) (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx] * (float) check_count_lru
 		   / lru_sum_flush_priority);
 	  lru_list = PGBUF_GET_LRU_LIST (lru_idx);
-	  if (lru_list->count_vict_cand < check_count_lru)
+	  if (lru_list->count_vict_cand < count_check_this_lru)
 	    {
 	      assert (false);
 	    }
@@ -4820,7 +4837,7 @@ pgbuf_is_temporary_volume (VOLID volid)
     {
       return false;
     }
-  return (xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
+  return (LOG_DBFIRST_VOLID <= volid && xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
 }
 
 /*
@@ -8393,7 +8410,15 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   if (!pgbuf_bcb_is_dirty (lru_list->bottom) && lru_list->victim_hint != lru_list->bottom)
     {
       /* update hint to bottom. sometimes it may be out of sync. */
-      (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, lru_list->bottom);
+      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+      if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
+	{
+	  (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, lru_list->bottom);
+	}
+      else
+	{
+	  (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, NULL);
+	}
     }
 
   /* we will search */
@@ -8435,6 +8460,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		{
 		  /* hint advanced */
 		}
+
+	      assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
 
 	  found_victim_cnt++;
@@ -8499,6 +8526,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		{
 		  /* modified hint */
 		}
+
+	      assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
 	  found_victim_cnt++;
 	  if (found_victim_cnt >= lru_victim_cnt)
@@ -8514,7 +8543,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     {
       /* we had a hint and we failed to find any victim candidates. */
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_BAD_HINT);
-      if (lru_list->count_vict_cand > 0)
+      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+      if (lru_list->count_vict_cand > 0 && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
 	{
 	  /* set victim hint to bottom */
 	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
@@ -8530,7 +8560,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   /* we need more victims */
   pgbuf_wakeup_flush_thread (thread_p);
-
   /* failed finding victim in single-threaded, although the number of victim candidates is positive? impossible!
    * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
    * NULL. */
@@ -8675,7 +8704,15 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
       if (nassigned == 0 && lru_list->count_vict_cand > 0 && pgbuf_is_any_thread_waiting_for_direct_victim ())
 	{
 	  /* maybe hint was bad? that's most likely case. reset the hint to bottom. */
-	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+	  assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
+	  if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
+	    {
+	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+	    }
+	  else
+	    {
+	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL);
+	    }
 
 	  /* check from bottom anyway */
 	  nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, lru_list->bottom);
@@ -13066,6 +13103,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
        * shared are right below minimum desired size... and flush will not find anything.
        */
       this_prv_target = PGBUF_LRU_LIST_COUNT (lru_list) - (int) (lru_list->quota * 0.9);
+      this_prv_target = MIN (this_prv_target, lru_list->count_lru3);
       if (this_prv_target > 0)
 	{
 	  total_prv_target += this_prv_target;
@@ -13084,6 +13122,15 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 	   * private bcb's must be less than 90% of buffer. that means shared bcb's have to be 10% or more of buffer.
 	   * PGBUF_MIN_SHARED_LIST_ADJUST_SIZE is currently set to 50, which is 5% to targeted 1k shared list size.
 	   * we shouldn't be here unless I messed up the calculus. */
+	  if (pgbuf_Pool.buf_invalid_list.invalid_cnt > 0)
+	    {
+	      /* This is not really an interesting case.
+	       * Probably both shared and private are small and most of buffers in invalid list.
+	       * We don't really need flush for the case, since BCB could be allocated from invalid list.
+	       */
+	      return;
+	    }
+
 	  assert (false);
 	  use_prv_size = true;
 	  prv_flush_ratio = 1.0f;
@@ -13119,6 +13166,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 		{
 		  /* use bcb's over 90% of quota as flush target */
 		  this_prv_target = PGBUF_LRU_LIST_COUNT (lru_list) - (int) (lru_list->quota * 0.9);
+		  this_prv_target = MIN (this_prv_target, lru_list->count_lru3);
 		}
 	      if (this_prv_target > 0)
 		{
@@ -14509,13 +14557,22 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
   int list_tick;
 
   /* first, let's update the victim hint. */
+  /* We don't own the LRU mutex here, so after we read the victim_hint, another thread may change that BCB, 
+   * or the victim_hint pointer itself.
+   * All changes of lru_list->victim_hint, must be precedeed by changing the new hint BCB to LRU3 zone, the checks must
+   * be repetead here in the same sequence: 
+   *  1. read lru_list->victim_hint
+   *  2. stop if old_victim_hint is still in LRU3 and is older than proposed to be hint
+   *  3. atomically change the hint
+   * (old_victim_hint may suffer other changes including relocating to another LRU, this is protected by the atomic op)
+   */
   do
     {
       /* replace current victim hint only if this candidate is better. that is if its age in zone 3 is greater that of
        * current hint's */
       old_victim_hint = lru_list->victim_hint;
       list_tick = lru_list->tick_lru3;
-      if (old_victim_hint != NULL
+      if (old_victim_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (old_victim_hint)
 	  && (PGBUF_AGE_DIFF (old_victim_hint->tick_lru3, list_tick) > PGBUF_AGE_DIFF (bcb->tick_lru3, list_tick)))
 	{
 	  /* current hint is older. */
@@ -14580,11 +14637,14 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
   /* todo: add watchers on lru list mutexes */
 
   /* new victim hint should be either NULL or in the victimization zone */
-  new_victim_hint = (bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint) ? bcb_new_hint : NULL);
+  new_victim_hint = (bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint)) ? bcb_new_hint : NULL;
 
   /* restart from bottom if hint is NULL but we have victim candidates */
   new_victim_hint = ((new_victim_hint == NULL && lru_list->count_vict_cand > (was_vict_count_updated ? 0 : 1))
 		     ? lru_list->bottom : new_victim_hint);
+
+  new_victim_hint = ((new_victim_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (new_victim_hint))
+		     ? new_victim_hint : NULL);
 
   /* update hint (if it was not already updated) */
   assert (new_victim_hint == NULL || pgbuf_bcb_get_lru_index (new_victim_hint) == lru_list->index);
@@ -14592,6 +14652,8 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
     {
       /* updated hint */
     }
+
+  assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 }
 
 /*
@@ -14742,8 +14804,9 @@ pgbuf_bcb_change_zone (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int new_lru_idx
       int lru_idx = PGBUF_GET_LRU_INDEX (old_flags);
       lru_list = PGBUF_GET_LRU_LIST (lru_idx);
 
-      /* hint should have been changed already */
-      assert (lru_list->victim_hint != bcb);
+      /* hint should have been changed already if the BCB was in LRU3; otherwise (if downgraded, we may expect that
+       * victim hint is changed by other thread (checkpoint->pgbuf_bcb_update_flags) */
+      assert (lru_list->victim_hint != bcb || PGBUF_GET_ZONE (old_flags) != PGBUF_LRU_3_ZONE);
 
       if (PGBUF_IS_SHARED_LRU_INDEX (PGBUF_GET_LRU_INDEX (old_flags)))
 	{
@@ -15351,6 +15414,13 @@ pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threa
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
   victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
   PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+
+  /* no victim found in first step, but flush thread ran and candidates can be found, try again */
+  if (victim == NULL && multi_threaded == false && lru_list->count_vict_cand > 0)
+    {
+      victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
+      PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+    }
 
   if ((multi_threaded || victim != NULL) && lru_list->count_vict_cand > 0)
     {

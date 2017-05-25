@@ -823,34 +823,46 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
     {
       if (fetch_peek_dbval (thread_p, key_infop->key_limit_l, vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
       dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
 
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
 
       if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	  goto exit_on_error;
+	  return ER_QPROC_INVALID_DATATYPE;
 	}
       else
 	{
 	  isidp->key_limit_lower = DB_GET_BIGINT (dbvalp);
 	}
 
-      /* SELECT * from t where ROWNUM = 0 order by a: this would sometimes get optimized using keylimit, if the
-       * circumstances are right. in this case, the lower limit would be "0-1", effectiveley -1. We cannot allow that
-       * to happen, since -1 is a special value meaning "there is no lower limit", and certain critical decisions (such 
-       * as resetting the key limit for multiple ranges) depend on knowing whether or not there is a lower key limit.
-       * We set a flag to remember, later on, to "adjust" the key limits such that, if the lower limit is negative, to
-       * return no results. */
       if (isidp->key_limit_lower < 0)
 	{
+	  if (key_infop->is_user_given_keylimit == true)
+	    {
+	      /* We don't allow users to give us a bad keylimit bound */
+
+	      /* still want to have better error code */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+	      return ER_QPROC_INVALID_PARAMETER;
+	    }
+
+	  /* Optimizer adopts keylimit optimization */
+
+	  /* SELECT * from t where ROWNUM = 0 order by a: this would sometimes get optimized using keylimit, if the
+	   * circumstances are right. in this case, the lower limit would be "0-1", effectiveley -1. We cannot allow
+	   * that to happen, since -1 is a special value meaning "there is no lower limit", and certain critical
+	   * decisions (such as resetting the key limit for multiple ranges) depend on knowing whether or not there is
+	   * a lower key limit. We set a flag to remember, later on, to "adjust" the key limits such that, if the lower
+	   * limit is negative, to return no results.
+	   */
 	  is_lower_limit_negative = true;
 	}
     }
@@ -863,29 +875,41 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
     {
       if (fetch_peek_dbval (thread_p, key_infop->key_limit_u, vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
       dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
 
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
       if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	  goto exit_on_error;
+	  return ER_QPROC_INVALID_DATATYPE;
 	}
       else
 	{
 	  isidp->key_limit_upper = DB_GET_BIGINT (dbvalp);
 	}
 
-      /* Try to sanitize the upper value. It might have been computed from operations on host variables, which are
-       * unpredictable. */
       if (isidp->key_limit_upper < 0)
 	{
+	  if (key_infop->is_user_given_keylimit == true)
+	    {
+	      /* We don't allow users to give us a bad keylimit bound */
+
+	      /* still want to have better error code */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+	      return ER_QPROC_INVALID_PARAMETER;
+	    }
+
+	  /* Optimizer adopts keylimit optimization */
+
+	  /* Try to sanitize the upper value. It might have been computed from operations on host variables, which are
+	   * unpredictable.
+	   */
 	  isidp->key_limit_upper = 0;
 	}
     }
@@ -902,14 +926,10 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
 	{
 	  isidp->key_limit_upper = 0;
 	}
-      isidp->key_limit_lower = 0;	/* reset it to something useable */
+      isidp->key_limit_lower = 0;	/* reset it to something usable */
     }
 
   return NO_ERROR;
-
-exit_on_error:
-
-  return ER_FAILED;
 }
 
 /*
@@ -3229,7 +3249,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* initialize multiple range search optimization structure */
   {
-    bool use_multi_range_opt = (isidp->bt_num_attrs > 1 && isidp->indx_info->key_info.key_limit_reset == 1
+    bool use_multi_range_opt = (isidp->bt_num_attrs > 1 && isidp->indx_info->key_info.key_limit_reset == true
 				&& isidp->key_limit_upper > 0 && isidp->key_limit_upper < DB_INT32_MAX
 				&& isidp->key_limit_lower == -1) ? true : false;
 

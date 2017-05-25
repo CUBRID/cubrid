@@ -5410,16 +5410,17 @@ sm_att_auto_increment (MOP classop, const char *name)
  *   classop(in): class object
  *   name(in): attribute
  *   value(out): the default value of the specified attribute
+ *   default_expr(out): default expression
  */
 
 int
-sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAULT_EXPR_TYPE * function_code)
+sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAULT_EXPR ** default_expr)
 {
   SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *att = NULL;
   int error = NO_ERROR;
 
-  assert (value != NULL);
+  assert (value != NULL && default_expr != NULL);
 
   error = db_value_clear (value);
   if (error != NO_ERROR)
@@ -5439,7 +5440,7 @@ sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAUL
       goto error_exit;
     }
 
-  *function_code = att->default_value.default_expr;
+  *default_expr = &att->default_value.default_expr;
   return error;
 
 error_exit:

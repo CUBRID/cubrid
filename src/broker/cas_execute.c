@@ -3192,7 +3192,7 @@ ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf)
   T_SRV_HANDLE *srv_handle;
   int err_code;
   char *file_name;
-  int fd;
+  int fd = -1;
   char read_buf[1024];
   int read_len;
 
@@ -3643,7 +3643,9 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 {
   DB_VALUE *def = NULL;
   int err;
-  char *default_value_string = NULL;
+  char *default_value_string = NULL, *default_expr_format = NULL;
+  const char *default_value_expr_type_string = NULL;
+  const char *default_value_expr_op_string = NULL;
 
   *alloc = false;
 
@@ -3654,32 +3656,51 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       return default_value_string;
     }
 
-  switch (attr->default_value.default_expr)
+  default_value_expr_type_string = db_default_expression_string (attr->default_value.default_expr.default_expr_type);
+  if (default_value_expr_type_string != NULL)
     {
-    case DB_DEFAULT_SYSTIME:
-      return "SYS_TIME";
-    case DB_DEFAULT_SYSDATE:
-      return "SYS_DATE";
-    case DB_DEFAULT_CURRENTDATE:
-      return "CURRENT_DATE";
-    case DB_DEFAULT_CURRENTTIME:
-      return "CURRENT_TIME";
-    case DB_DEFAULT_SYSDATETIME:
-      return "SYS_DATETIME";
-    case DB_DEFAULT_SYSTIMESTAMP:
-      return "SYS_TIMESTAMP";
-    case DB_DEFAULT_CURRENTDATETIME:
-      return "CURRENT_DATETIME";
-    case DB_DEFAULT_CURRENTTIMESTAMP:
-      return "CURRENT_TIMESTAMP";
-    case DB_DEFAULT_UNIX_TIMESTAMP:
-      return "UNIX_TIMESTAMP";
-    case DB_DEFAULT_USER:
-      return "USER";
-    case DB_DEFAULT_CURR_USER:
-      return "CURRENT_USER";
-    case DB_DEFAULT_NONE:
-      break;
+      /* default expression case */
+      int len;
+
+      if (attr->default_value.default_expr.default_expr_op != NULL_DEFAULT_EXPRESSION_OPERATOR)
+	{
+	  /* We now accept only T_TO_CHAR for attr->default_value.default_expr.default_expr_op */
+
+	  default_value_expr_op_string = "TO_CHAR";	/* FIXME - remove this hard code */
+	}
+
+      default_expr_format = attr->default_value.default_expr.default_expr_format;
+      len = ((default_value_expr_op_string ? strlen (default_value_expr_op_string) : 0)
+	     + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_value_expr_type_string)
+	     + (default_expr_format ? strlen (default_expr_format) : 0));
+
+      default_value_string = (char *) malloc (len + 1);
+      if (default_value_string == NULL)
+	{
+	  return NULL;
+	}
+      *alloc = true;
+
+      if (default_value_expr_op_string != NULL)
+	{
+	  strcpy (default_value_string, default_value_expr_op_string);
+	  strcat (default_value_string, "(");
+	  strcat (default_value_string, default_value_expr_type_string);
+	  if (default_expr_format)
+	    {
+	      strcat (default_value_string, ", \'");
+	      strcat (default_value_string, default_expr_format);
+	      strcat (default_value_string, "\'");
+	    }
+
+	  strcat (default_value_string, ")");
+	}
+      else
+	{
+	  strcpy (default_value_string, default_value_expr_type_string);
+	}
+
+      return default_value_string;
     }
 
   if (db_value_is_null (def))
@@ -3687,6 +3708,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       return "NULL";
     }
 
+  /* default value case */
   switch (db_value_type (def))
     {
     case DB_TYPE_UNKNOWN:
