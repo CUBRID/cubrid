@@ -959,6 +959,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 							 d->info.data_default.default_expr_type);
 	      if (error != NO_ERROR)
 		{
+		  if (pt_has_error (parser))
+		    {
+		      /* forget previous one to set the better error */
+		      pt_reset_error (parser);
+		    }
+
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
@@ -1033,6 +1039,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      parser_free_node (parser, temp_val);
 	      if (error != NO_ERROR)
 		{
+		  if (pt_has_error (parser))
+		    {
+		      /* forget previous one to set the better error */
+		      pt_reset_error (parser);
+		    }
+
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
@@ -12474,8 +12486,10 @@ exit:
 exit_on_coerce_error:
   if (pt_has_error (parser))
     {
+      /* forget previous one to set the better error */
       pt_reset_error (parser);
     }
+
   if (attribute->data_type != NULL)
     {
       data_type_print = pt_short_print (parser, attribute->data_type);
