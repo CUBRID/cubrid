@@ -1114,7 +1114,7 @@ valid options:\n\
                         and timezone names (intended for developer use, to\n\
                         be integrated into future CUBRID versions).\n\
                         2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder;new timezones found in the input\n\
+                        data from the input folder; new timezones found in the input\n\
                         files are added; GMT offsets and daylight saving\n\
                         information is updated (or added, for new timezones);\n\
                         timezones are never removed if a timezone encoded into\n\
