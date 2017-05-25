@@ -942,7 +942,7 @@ uso: %1$s applyinfo [OPTION] database-name\n\
 \n\
 opciones validas:\n\
   -r, --remote-host-name      nombre de host remote; mostrar la informacion de registro activa del nodo remote \n\
-  -a, --applied-info 	      mostrar informacion aplicada \n\
+  -a, --applied-info          mostrar informacion aplicada \n\
   -L, --copied-log-path=PATH  ruta de los volumenes de registro copiados; mostrar informacion de registro copiado \n\
   -p, --page=ID               id de pagina; estandar : 0\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar : inhabilitar\n\
@@ -962,11 +962,11 @@ $set 46 MSGCAT_UTIL_SET_GENLOCALE
 genlocale: Genera biblioteca local compartida utilizando el archivo de entrada LDML.\n\
 uso: %1$s genlocale [OPTION] [language-string]\n\
 \n\
-language-string	      string de idioma local para cual generar biblioteca compartida.\n\
-		      Si no hay ningun string de idioma dado, todos los idiomas en 'cubrid_locales.txt'\n\
-		      van a ser procesados.\n\
+language-string       string de idioma local para cual generar biblioteca compartida.\n\
+              Si no hay ningun string de idioma dado, todos los idiomas en 'cubrid_locales.txt'\n\
+              van a ser procesados.\n\
 opciones validas:\n\
-  -v, --verbose	              habilitar mensajes de estado verbose; estandar : inhabilitar\n\
+  -v, --verbose               habilitar mensajes de estado verbose; estandar : inhabilitar\n\
   -i, --input-ldml-file       ruta para archivo de entrada LDML. Solo cuando el string de idioma es dado.\n
 61 Argumento de nombre local no valido.\n
 
@@ -978,22 +978,22 @@ $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
 dumplocale: Abandona el contenido de la biblioteca local compartida generada anteriormente utilizando el archivo de entrada LDML.\n\
 uso: %1$s dumplocale [OPTION] [language-string]\n\
 \n\
-language-string	 string de idiomas local para cual imprimir biblioteca compartida local.\n\
-		         Si no hay ningun string de idioma dado, todos los idiomas en 'cubrid_locales.txt'\n\
-		         van a ser procesados.\n\
+language-string  string de idiomas local para cual imprimir biblioteca compartida local.\n\
+                 Si no hay ningun string de idioma dado, todos los idiomas en 'cubrid_locales.txt'\n\
+                 van a ser procesados.\n\
 opciones validas:\n\
   -i, --input-file    ruta para biblioteca local compartida de entrada (generada anteriormente).\n\
                       Puede ser utilizada solo cuando no hay ningun string de idioma dado.\n\
   -d, --calendar      imprimir calendar y la informacion fecha/tiempo; estandar : inhabilitar\n\
-  -n, --numeric		  imprimir informacion numerica; estandar : inhabilitar\n\
-  -a, --alphabet=l|lower|u|upper|both	     imprimir alfabeto y informacion de carcasa; estandar : inhabilitar\n\
-      --identifier-alphabet=l|lower|u|upper	 imprimir alfabeto y informacion de carcasapara identificadores; estandar : inhabilitar\n\
-  -c, --codepoint-order	 imprimir informacion de colacion ordenada basado en valores codepoint\n\
+  -n, --numeric       imprimir informacion numerica; estandar : inhabilitar\n\
+  -a, --alphabet=l|lower|u|upper|both        imprimir alfabeto y informacion de carcasa; estandar : inhabilitar\n\
+      --identifier-alphabet=l|lower|u|upper  imprimir alfabeto y informacion de carcasapara identificadores; estandar : inhabilitar\n\
+  -c, --codepoint-order  imprimir informacion de colacion ordenada basado en valores codepoint\n\
                          (cp, char, weight, next-cp, char y weight);\n\
                          estandar : inhabilitar\n\
   -w, --weight-order  imprimir informacion de colacion ordenada basado en valores weight\n\
                       (weight, cp, char); estandar : disable\n\
-  -s, --start-value	  opcion de filtrar; inicializando codepoint para\n\
+  -s, --start-value   opcion de filtrar; inicializando codepoint para\n\
                       -a, --identificador-alfabeto, -c, -w; estandar : 0\n\
   -e, --end-value     opcion de filtrar; terminando codepoint para \n\
                       -a, --identificador-alfabeto, -c, -w; \n\
@@ -1028,8 +1028,8 @@ uso: %1$s synccolldb [OPTION] database-name\n\
 \n\
 opciones validas:\n\
   -c, --check-only    Verifica las colaciones de la base de datos con las colaciones del sistema.\n\
-		      Si se requiere sincronizacion de colaciones, codigo de error 1 es returnado.\n\
-		      Muestra un informe de las colaciones incompatibles.\n\
+              Si se requiere sincronizacion de colaciones, codigo de error 1 es returnado.\n\
+              Muestra un informe de las colaciones incompatibles.\n\
   -f, --force-only    Actualiza las colaciones en la base de datos para que sean iguales con las colaciones de la nueva configuracion del sistema.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
@@ -1082,7 +1082,7 @@ uso:  %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 opciones validas:\n\
   -i, --input-folder    camino hacia una carpeta de entradas conteniendo una version de\n\
-                       	archivos de zona horaria de la base de datos de IANA.\n\
+                        archivos de zona horaria de la base de datos de IANA.\n\
                         Default: $CUBRID/timezones/tzdata\n\
   -g, --gen-mode=TYPE   controla el resultado de gen_tz, basado en TYPE:\n\
                         TYPE:\n\
@@ -1091,18 +1091,16 @@ opciones validas:\n\
                         tambien generar un archivo fuente conteniendo todos los paises\n\
                         y nombres de zona horaria (destinado para el uso de desarolladores, a\n\
                         ser integrado dentro futuras versiones  de CUBRID).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder;new timezones found in the input\n\
-                        files are added; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removed if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        If necessary, when the first phase of extend fails to make\n\
-                        all the data backward compatible an update is performed which\n\
-                        modifies the timezone ids and the date and time info stored in\n\
-                        the tables of the database which contain columns of timezone data\n\
-                        type.\n
+                        2. EXTEND : Generar archivo(s) fuente de zona horaria datos de la \n\
+                        carpeta de entrada; Nuevas zonas horarias encontradas en la entrada\n\
+                        archivos se agregan; desplazamientos GMT y horario de verano\n\
+                        la información se actualiza (o se agrega, para nuevas zonas horarias);\n\
+                        los intervalos horarios nunca se eliminan si un huso horario codificado en\n\
+                        CUBRID no está presente en los archivos de entrada, los datos se recuperan\n\
+                        de la biblioteca de zona horaria existente.\n\
+                        Si la primera fase de la extensión no logra que todos los datos sean\n\
+                        compatibles con versiones anteriores, todas las filas de todas las tablas\n\
+                        que tengan tipos de datos de zona horaria se actualizarán.
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 El identificador de zona suministrado es fuera de rango. Utilizar -z para ver todas\n\
@@ -1113,8 +1111,8 @@ uso: %s dump_tz [OPTION]\n\
 \n\
 opciones validas:\n\
   -c, --list-countries      mostar la lista de paises actualmente soportada\n\
-  -l, --leap-seconds	    mostrar la lista de segundas leap\n\
-  -s, --summary		    mostrar un resumen de los datos de zona horaria\n\
+  -l, --leap-seconds        mostrar la lista de segundas leap\n\
+  -s, --summary         mostrar un resumen de los datos de zona horaria\n\
   -z, --list-zones          mostrar una lista de zonas horarias actualmente soportadas\n\
   -d, --zone-id=ZONE_ID|ALL mostrar la informacion disponible relacionada a la zona horaria\n\
                             a una zona horaria que tiene el ZONE_ID suministrado o para\n\
