@@ -363,7 +363,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Server %1$s benachrichtigt über Abschaltung.\nDas könnte mehrere Minuten dauern. Bitte warten.
 19 Server %1$s nicht gefunden.
 20 Master fährt runter in %1$d Minuten\n
-21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
+21 Die Heartbeat-Funktion wurde deaktiviert. Bitte warten Sie, bis alle Shutdown-Prozesse von cub_servers abgeschlossen sind.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 Ausgabedatei '%1$s' konnte nicht geöffnet werden\n
@@ -440,8 +440,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 114 Fehler-Kontroll-Datei
 115 Eingangsdatei für Fehlerkontrolle während Ladung 
 116 Total %8d object(s) inserted, %d object(s) failed.\n
-117 Load failed.\n
-118 Maximum length of class name is %1$d bytes.\n
+117 Laden fehlgeschlagen.\n
+118 Maximale Länge des Klassennamens ist %1$d Bytes.\n
 120 \
 loaddb: Import von Objekten und Schemas in die Datenbank.\n\
 Anwendung: %1$s loaddb [OPTION] Datenbanknamen\n\
@@ -626,7 +626,7 @@ gültige Optionen:\n\
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Einige Widersprüche wurden in der Datenbank festgestellt.\n Bitte error_log_file %1$s für zusätzliche Informationen einsehen.\n
 21 %1$s: Klasse konnte nicht gefunden werden. Es wird weggelassen werden.\n
-22 %1$s: Cannot find the index on class %2$s.\n
+22 %1$s: Der Index kann nicht gefunden werden. Class: %2$s.\n
 60 \
 checkdb: Konsistenz der Datenbank prüfen.\n\
 Anwendung: %1$s checkdb [OPTION] Datenbanknamen [Klassenname1 Klassenname 2 ...]\n\
@@ -659,13 +659,13 @@ $set 19 MSGCAT_UTIL_SET_SPACEDB
 23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
 24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
 25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
-30 Space description for all volumes:\n
+30 Raumbeschreibung für alle Bände:\n
 31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
 32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
 33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
 34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
 35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-40 Detailed space description for files:\n
+40 Detaillierte Raumbeschreibung für Dateien:\n
 41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
 42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
 43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
@@ -945,7 +945,7 @@ gültige Optionen:\n\
   -L, --copied-log-path=PFAD  Pfad der kopierten Logdatenträger; kopierte Loginformation anzeigen \n\
   -p, --page=ID               Seiten-ID; Standard: 0\n\
   -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-  -i, --interval=S            print information every S secs\n
+  -i, --interval=S            Druckinformationen alle S secs\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb kann nicht in Stand-Alone-Modus ausgeführt werden.\n
@@ -1027,8 +1027,8 @@ Anwendung: %1$s synccolldb [OPTION] database-name\n\
 \n\
 gültige Optionen:\n\
   -c, --check-only    Überprüft die Kollationen der Datenbank mit der Systemkollation.\n\
-		      Wenn Kollationen Synchronisierung  ist erforderlich, Fehlerkode 1 wird zurückgegeben.\n\
-		      Zeigt einen Bericht der inkompatiblen Kollationen.\n\
+              Wenn Kollationen Synchronisierung  ist erforderlich, Fehlerkode 1 wird zurückgegeben.\n\
+              Zeigt einen Bericht der inkompatiblen Kollationen.\n\
   -f, --force-only    Aktualisiert die Kollationen in der Datenbank, so dass sie gleich mit den Kollationen einer neuen Systemkonfiguration sind.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
@@ -1091,18 +1091,15 @@ gültigen Optionen:\n\
                         eine Quelldatei mit allen Ländern und Zeitzone-Namen zu \n\
                         generieren auch (für Entwicklerzwecke bestimmt ist, um in\n\
                         Zukunft CUBRID Versionen integriert werden).\n\
-                        2. EXTEND : Zeitzone zu erzeugen Quelldateien mit den Daten\n\
-                        aus dem Eingangsordner; Zeitzone IDs in CUBRID codiert werden\n\
-                        beibehalten; neue Zeitzonen in den Eingabedateien gefunden\n\
-                        werden, um die, die auch erzeugte sekundäre Quelldatei\n\
-                        hinzugefügt; GMT versetzt und Sommer Informationen aktualisiert\n\
-                        (oder hinzugefügt, für die neue Zeitzonen); Zonen sind nie\n\
-                        entfernt wenn eine Zeitzone in CUBRID codiert wird von den\n\
-                        Eingabedateien fehlen, die zugehörigen Daten aus dem vorhandenen\n\
-                        Zone Bibliothek abgerufen wird. Eine neue C-Datei, die alle\n\
-                        Zeitzone Namen erzeugt wird, und es muss in CUBRID Quell-Ordner\n\
-                        aufgenommen werden, bevor die neue Zeitzone-Bibliothek verwendet\n\
-                        werden.\n\
+                        2. EXTEND : Generiere Zeitzonen-Quelldateien mit dem\n\
+                        Daten aus dem Eingabeordner; Neue Zeitzonen in der Eingabe gefunden\n\
+                        Dateien werden hinzugefügt; GMT-Offsets und Sommerzeit\n\
+                        Informationen werden aktualisiert (oder hinzugefügt, für neue Zeitzonen);\n\
+                        Zeitzonen werden nie entfernt, wenn eine Zeitzone verschlüsselt wird\n\
+                        CUBRID fehlt in den Eingabedateien Daten werden aus der\n\
+                        vorhandenen Zeitzonenbibliothek abgerufen.\n\
+                        Wenn die erste Phase der Erweiterung nicht alle Daten rückwärts kompatibel macht,\n\
+                        Alle Zeilen in allen Tabellen mit Zeitzonendatentypen werden aktualisiert.\n\
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 Die mitgelieferte Zonen-ID außerhalb des Bereichs ist.\n\
@@ -1113,8 +1110,8 @@ Anwendung: %s dump_tz [OPTION]\n\
 \n\
 gültigen Optionen:\n\
   -c, --list-countries      zeigt die Liste der Länder, die derzeit nicht unterstützt\n\
-  -l, --leap-seconds	    zeigt die Liste der Schaltsekunden\n\
-  -s, --summary		        zeigt eine Zusammenfassung der Dump-Zeitzone-Daten\n\
+  -l, --leap-seconds        zeigt die Liste der Schaltsekunden\n\
+  -s, --summary             zeigt eine Zusammenfassung der Dump-Zeitzone-Daten\n\
   -z, --list-zones          zeigt die Liste der aktuell unterstützten Zeitzonen\n\
   -d, --zone-id=ZONE_ID|ALL Anzeigen vorhanden Zeitzoneninformationen zu einer\n\
                             Zeitzone mit dem mitgelieferten zone_id oder für alle\n\
