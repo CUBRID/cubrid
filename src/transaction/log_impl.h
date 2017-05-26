@@ -971,10 +971,6 @@ struct log_header
   MVCCID last_block_oldest_mvccid;	/* Used to find the oldest MVCCID in a block of log data. */
   MVCCID last_block_newest_mvccid;	/* Used to find the newest MVCCID in a block of log data. */
 
-  /* TODO VACUUM_DATA_COMPATIBILITY: remove vacuum_data_first_vpid and all its references ==> */
-  VPID vacuum_data_first_vpid;	/* First vacuum data page VPID. */
-  /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
-
   INT64 ha_promotion_time;
   INT64 db_restore_time;
   bool mark_will_del;
