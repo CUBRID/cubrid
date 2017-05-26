@@ -1716,7 +1716,6 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 293 분할 경계값은 각 분할에 대해서 항상 증가해야 합니다.
 294 local timezone 타입에 대해서 함수 인덱스나 필터링된 인덱스를 사용할 수 없습니다.
 295 부질의 내에 SELECT INTO 는 허용되지 않습니다.
-296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
 296 CTE 이름이 모호합니다. 같은 이름의 CTE가 하나 이상 존재합니다.: '%1$s'.
 297 WITH 절을 중첩해서 사용할 수 없습니다.
 298 재귀 CTE  '%1$s’는 재귀 질의에서 직접 참조되어야 합니다.
