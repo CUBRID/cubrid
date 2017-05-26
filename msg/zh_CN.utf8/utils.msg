@@ -660,13 +660,13 @@ $set 19 MSGCAT_UTIL_SET_SPACEDB
 23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
 24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
 25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
-30 Space description for all volumes:\n
+30 所有卷的空间描述:\n
 31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
 32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
 33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
 34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
 35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-40 Detailed space description for files:\n
+40 文件的详细空间描述:\n
 41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
 42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
 43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
@@ -753,8 +753,8 @@ diagdb: 转储一个数据库.\n\
 用法: %1$s diagdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
-  -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n\
-      --emergency              emergency restart; default: none\n\
+  -o, --output-file=FILE       重定向输出信息到文件 FILE; 默认: 空\n\
+      --emergency              紧急重启; 默认: 空\n\
   -d, --dump-type=TYPE         转储类型\n\
                                -1 转储所有\n\
                                 1 转储文件表\n\
@@ -1088,18 +1088,13 @@ gen_tz: 生成包含时区数据的源文件并编译成一个共享库.\n\
                         1. NEW (默认): 不考虑之前的版本，直接生成共享库所需的时\n\
                         区源文件; 也会生成包含所有国家和时区名字的源文件 (只为\n\
                         开发者使用, 将来会集成到CUBRID新版本中).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder;new timezones found in the input\n\
-                        files are added; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removed if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        If necessary, when the first phase of extend fails to make\n\
-                        all the data backward compatible an update is performed which\n\
-                        modifies the timezone ids and the date and time info stored in\n\
-                        the tables of the database which contain columns of timezone data\n\
-                        type.\n
+                        2. EXTEND : 使用输入文件夹中的数据生成时区源文件;\n\
+			添加输入文件夹中找到的新时区; GMT偏移和夏令时信息会\n\
+			被更新(或者为新的时区增加); 如果已编入CUBRID的时区在\n\
+			输入文件中缺失, 该时区也绝不会被移除, 其相关的数据\n\
+			会从已存在的时区库中恢复. 如果有需要, 当扩展的第一阶段\n\
+			不能使所有数据向后兼容时, 会执行更新, 该更新会修改存储在\n\
+			包含时区数据类型列的数据库表中的时区id, 日期和时间信息.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 提供的区域ID超出了范围, 用 -z 可以查看所有的时区和它们的ID.\n
