@@ -3431,28 +3431,28 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_D
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_INT_SIZE	/* client_type */
-    + length_const_string (client_credential->client_info, NULL)	/* client_info */
-    + length_const_string (client_credential->db_name, NULL)	/* db_name */
-    + length_const_string (client_credential->db_user, NULL)	/* db_user */
-    + length_const_string (client_credential->db_password, NULL)	/* db_password */
-    + length_const_string (client_credential->program_name, NULL)	/* program_name */
-    + length_const_string (client_credential->login_name, NULL)	/* login_name */
-    + length_const_string (client_credential->host_name, NULL)	/* host_name */
-    + OR_INT_SIZE		/* process_id */
-    + OR_INT_SIZE		/* db_overwrite */
-    + OR_INT_SIZE		/* db_desired_pagesize */
-    + OR_INT_SIZE		/* db_npages */
-    + OR_INT_SIZE		/* db_desired_log_page_size */
-    + OR_INT_SIZE		/* log_npages */
-    + length_const_string (db_path_info->db_path, NULL)	/* db_path */
-    + length_const_string (db_path_info->vol_path, NULL)	/* vol_path */
-    + length_const_string (db_path_info->log_path, NULL)	/* log_path */
-    + length_const_string (db_path_info->db_host, NULL)	/* db_host */
-    + length_const_string (db_path_info->db_comments, NULL)	/* db_comments */
-    + length_const_string (file_addmore_vols, NULL)	/* file_addmore_vols */
-    + OR_INT_SIZE		/* client_lock_wait */
-    + OR_INT_SIZE;		/* client_isolation */
+  request_size = (OR_INT_SIZE	/* client_type */
+		  + length_const_string (client_credential->client_info, NULL)	/* client_info */
+		  + length_const_string (client_credential->db_name, NULL)	/* db_name */
+		  + length_const_string (client_credential->db_user, NULL)	/* db_user */
+		  + length_const_string (client_credential->db_password, NULL)	/* db_password */
+		  + length_const_string (client_credential->program_name, NULL)	/* program_name */
+		  + length_const_string (client_credential->login_name, NULL)	/* login_name */
+		  + length_const_string (client_credential->host_name, NULL)	/* host_name */
+		  + OR_INT_SIZE	/* process_id */
+		  + OR_INT_SIZE	/* db_overwrite */
+		  + OR_INT_SIZE	/* db_desired_pagesize */
+		  + OR_INT_SIZE	/* db_npages */
+		  + OR_INT_SIZE	/* db_desired_log_page_size */
+		  + OR_INT_SIZE	/* log_npages */
+		  + length_const_string (db_path_info->db_path, NULL)	/* db_path */
+		  + length_const_string (db_path_info->vol_path, NULL)	/* vol_path */
+		  + length_const_string (db_path_info->log_path, NULL)	/* log_path */
+		  + length_const_string (db_path_info->db_host, NULL)	/* db_host */
+		  + length_const_string (db_path_info->db_comments, NULL)	/* db_comments */
+		  + length_const_string (file_addmore_vols, NULL)	/* file_addmore_vols */
+		  + OR_INT_SIZE	/* client_lock_wait */
+		  + OR_INT_SIZE);	/* client_isolation */
 
   request = (char *) malloc (request_size);
   if (request)
@@ -3542,17 +3542,17 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_INT_SIZE	/* client_type */
-    + length_const_string (client_credential->client_info, NULL)	/* client_info */
-    + length_const_string (client_credential->db_name, NULL)	/* db_name */
-    + length_const_string (client_credential->db_user, NULL)	/* db_user */
-    + length_const_string (client_credential->db_password, NULL)	/* db_password */
-    + length_const_string (client_credential->program_name, NULL)	/* prog_name */
-    + length_const_string (client_credential->login_name, NULL)	/* login_name */
-    + length_const_string (client_credential->host_name, NULL)	/* host_name */
-    + OR_INT_SIZE		/* process_id */
-    + OR_INT_SIZE		/* client_lock_wait */
-    + OR_INT_SIZE;		/* client_isolation */
+  request_size = (OR_INT_SIZE	/* client_type */
+		  + length_const_string (client_credential->client_info, NULL)	/* client_info */
+		  + length_const_string (client_credential->db_name, NULL)	/* db_name */
+		  + length_const_string (client_credential->db_user, NULL)	/* db_user */
+		  + length_const_string (client_credential->db_password, NULL)	/* db_password */
+		  + length_const_string (client_credential->program_name, NULL)	/* prog_name */
+		  + length_const_string (client_credential->login_name, NULL)	/* login_name */
+		  + length_const_string (client_credential->host_name, NULL)	/* host_name */
+		  + OR_INT_SIZE	/* process_id */
+		  + OR_INT_SIZE	/* client_lock_wait */
+		  + OR_INT_SIZE);	/* client_isolation */
 
   request = (char *) malloc (request_size);
   if (request)
@@ -3702,10 +3702,9 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool del
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size =
-    length_const_string (backup_path, &strlen1) + OR_INT_SIZE + OR_INT_SIZE + length_const_string (backup_verbose_file,
-												   &strlen2) +
-    OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
+  request_size = (length_const_string (backup_path, &strlen1) + OR_INT_SIZE + OR_INT_SIZE
+		  + length_const_string (backup_verbose_file, &strlen2)
+		  + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE);
 
   request = (char *) malloc (request_size);
   if (request)
@@ -3775,10 +3774,10 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size =
-    length_const_string (ext_info->path, &strlen1) + length_const_string (ext_info->name,
-									  &strlen2) +
-    length_const_string (ext_info->comments, &strlen3) + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
+  request_size = (length_const_string (ext_info->path, &strlen1)
+		  + length_const_string (ext_info->name, &strlen2)
+		  + length_const_string (ext_info->comments, &strlen3)
+		  + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE);
 
   request = (char *) malloc (request_size);
   if (request)
@@ -5550,21 +5549,21 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
     + (pred_stream ? OR_INT_SIZE : 0) + (expr_stream ? OR_INT_SIZE * 3 : 0);
 
   domain_size = or_packed_domain_size (key_type, 0);
-  request_size = OR_BTID_ALIGNED_SIZE	/* BTID */
-    + or_packed_string_length (bt_name, &bt_strlen)	/* index name */
-    + domain_size		/* key_type */
-    + (n_classes * OR_OID_SIZE)	/* class_oids */
-    + OR_INT_SIZE		/* n_classes */
-    + OR_INT_SIZE		/* n_attrs */
-    + (n_classes * n_attrs * OR_INT_SIZE)	/* attr_ids */
-    + ((n_classes == 1) ? (n_attrs * OR_INT_SIZE) : 0)	/* attrs_prefix_length */
-    + (n_classes * OR_HFID_SIZE)	/* hfids */
-    + OR_INT_SIZE		/* unique_pk */
-    + OR_INT_SIZE		/* not_null_flag */
-    + OR_OID_SIZE		/* fk_refcls_oid */
-    + OR_BTID_ALIGNED_SIZE	/* fk_refcls_pk_btid */
-    + or_packed_string_length (fk_name, &fk_strlen)	/* fk_name */
-    + index_info_size;		/* filter predicate or function index stream size */
+  request_size = (OR_BTID_ALIGNED_SIZE	/* BTID */
+		  + or_packed_string_length (bt_name, &bt_strlen)	/* index name */
+		  + domain_size	/* key_type */
+		  + (n_classes * OR_OID_SIZE)	/* class_oids */
+		  + OR_INT_SIZE	/* n_classes */
+		  + OR_INT_SIZE	/* n_attrs */
+		  + (n_classes * n_attrs * OR_INT_SIZE)	/* attr_ids */
+		  + ((n_classes == 1) ? (n_attrs * OR_INT_SIZE) : 0)	/* attrs_prefix_length */
+		  + (n_classes * OR_HFID_SIZE)	/* hfids */
+		  + OR_INT_SIZE	/* unique_pk */
+		  + OR_INT_SIZE	/* not_null_flag */
+		  + OR_OID_SIZE	/* fk_refcls_oid */
+		  + OR_BTID_ALIGNED_SIZE	/* fk_refcls_pk_btid */
+		  + or_packed_string_length (fk_name, &fk_strlen)	/* fk_name */
+		  + index_info_size);	/* filter predicate or function index stream size */
 
   request = (char *) malloc (request_size);
   if (request)
@@ -5914,11 +5913,11 @@ btree_find_multi_uniques (OID * class_oid, int pruning_type, BTID * btids, DB_VA
   BTREE_SEARCH result = BTREE_KEY_NOTFOUND;
 
   /* compute request size */
-  req_size = OR_INT_SIZE	/* number of indexes to search */
-    + OR_INT_SIZE		/* needs pruning */
-    + OR_OID_SIZE		/* class OID */
-    + OR_INT_SIZE		/* operation type */
-    + (count * OR_BTID_ALIGNED_SIZE);	/* indexes */
+  req_size = (OR_INT_SIZE	/* number of indexes to search */
+	      + OR_INT_SIZE	/* needs pruning */
+	      + OR_OID_SIZE	/* class OID */
+	      + OR_INT_SIZE	/* operation type */
+	      + (count * OR_BTID_ALIGNED_SIZE));	/* indexes */
 
   for (i = 0; i < count; i++)
     {
@@ -8377,12 +8376,12 @@ repl_set_info (REPL_INFO * repl_info)
     {
     case REPL_INFO_TYPE_SBR:
       repl_schema = (REPL_INFO_SBR *) repl_info->info;
-      request_size = OR_INT_SIZE	/* REPL_INFO.REPL_INFO_TYPE */
-	+ OR_INT_SIZE		/* REPL_INFO_SCHEMA.statement_type */
-	+ length_const_string (repl_schema->name, &strlen1) + length_const_string (repl_schema->stmt_text,
-										   &strlen2) +
-	length_const_string (repl_schema->db_user, &strlen3) + length_const_string (repl_schema->sys_prm_context,
-										    &strlen4);
+      request_size = (OR_INT_SIZE	/* REPL_INFO.REPL_INFO_TYPE */
+		      + OR_INT_SIZE	/* REPL_INFO_SCHEMA.statement_type */
+		      + length_const_string (repl_schema->name, &strlen1)
+		      + length_const_string (repl_schema->stmt_text, &strlen2)
+		      + length_const_string (repl_schema->db_user, &strlen3)
+		      + length_const_string (repl_schema->sys_prm_context, &strlen4));
 
       request = (char *) malloc (request_size);
       if (request)
@@ -8451,9 +8450,8 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   domain_size = or_packed_domain_size (key_type, 0);
-  request_size =
-    OR_OID_SIZE + OR_HFID_SIZE + domain_size + OR_INT_SIZE + (n_attrs * OR_INT_SIZE) + OR_OID_SIZE +
-    OR_BTID_ALIGNED_SIZE + or_packed_string_length (fk_name, &strlen);
+  request_size = (OR_OID_SIZE + OR_HFID_SIZE + domain_size + OR_INT_SIZE + (n_attrs * OR_INT_SIZE) + OR_OID_SIZE
+		  + OR_BTID_ALIGNED_SIZE + or_packed_string_length (fk_name, &strlen));
 
   request = (char *) malloc (request_size);
   if (request)
@@ -8559,9 +8557,9 @@ locator_prefetch_repl_update_or_delete (OID * class_oid, BTID * btid, DB_VALUE *
 
   reply = OR_ALIGNED_BUF_START (a_reply);
   key_size = OR_VALUE_ALIGNED_SIZE (key_value);
-  request_size = OR_BTID_ALIGNED_SIZE	/* btid */
-    + OR_OID_SIZE		/* class_oid */
-    + key_size;			/* key_value */
+  request_size = (OR_BTID_ALIGNED_SIZE	/* btid */
+		  + OR_OID_SIZE	/* class_oid */
+		  + key_size);	/* key_value */
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -9736,12 +9734,13 @@ chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, const OID *
     {
     case REPL_INFO_TYPE_SBR:
       repl_stmt = (REPL_INFO_SBR *) repl_info->info;
-      request_size = OR_OID_SIZE	/* class oid */
-	+ OR_INT_SIZE		/* REPL_INFO.REPL_INFO_TYPE */
-	+ OR_INT_SIZE		/* REPL_INFO_SCHEMA.statement_type */
-	+ length_const_string (repl_stmt->name, &strlen1) + length_const_string (repl_stmt->stmt_text,
-										 &strlen2) +
-	length_const_string (repl_stmt->db_user, &strlen3) + length_const_string (repl_stmt->sys_prm_context, &strlen4);
+      request_size = (OR_OID_SIZE	/* class oid */
+		      + OR_INT_SIZE	/* REPL_INFO.REPL_INFO_TYPE */
+		      + OR_INT_SIZE	/* REPL_INFO_SCHEMA.statement_type */
+		      + length_const_string (repl_stmt->name, &strlen1)
+		      + length_const_string (repl_stmt->stmt_text, &strlen2)
+		      + length_const_string (repl_stmt->db_user, &strlen3)
+		      + length_const_string (repl_stmt->sys_prm_context, &strlen4));
 
       request = (char *) malloc (request_size);
       if (request)
