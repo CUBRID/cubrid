@@ -1717,7 +1717,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 295 SELECT INTO ist bei Unterabfragen nicht erlaubt.
 296 CTE-Name Mehrdeutigkeit gibt es mehr als ein CTE mit dem gleichen Namen: '%1$s'.
 297 Verschachtelte WITH-Klauseln werden nicht unterstützt.
-298 Recursive CTE '%1$s' muss direkt in ihrer rekursiven Abfrage referenziert werden.
+298 Rekursive CTE '%1$s' muss direkt in ihrer rekursiven Abfrage referenziert werden.
 299 Fehler bei CTE '%1$s': Der nicht rekursive Teil und der rekursive Teil müssen mit UNION ALL verbunden sein.
 300 Unterabfrage ist in der DEFAULT-Klausel nicht erlaubt.
 
