@@ -1027,8 +1027,6 @@ struct log_header
      MVCCID_NULL,				 \
      /* last_block_newest_mvccid */		 \
      MVCCID_NULL,				 \
-     /* vacuum_data_first_vpid */		 \
-     VPID_INITIALIZER,				 \
      /* ha_promotion_time */ 			 \
      0, 					 \
      /* db_restore_time */			 \
@@ -1088,8 +1086,6 @@ struct log_header
      MVCCID_NULL,				 \
      /* last_block_newest_mvccid */		 \
      MVCCID_NULL,				 \
-     /* vacuum_data_first_vpid */		 \
-     VPID_INITIALIZER,				 \
      /* ha_promotion_time */ 			 \
      0, 					 \
      /* db_restore_time */			 \
