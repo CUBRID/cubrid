@@ -722,7 +722,7 @@ thread_start_workers (void)
 	}
 
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
-      r = pthread_create (&thread_p->tid, &thread_attr, (void*(*)(void*))thread_Daemons[i].daemon_function, thread_p);
+      r = pthread_create (&thread_p->tid, &thread_attr, (THREAD_RET_T(*)(void*))thread_Daemons[i].daemon_function, thread_p);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_CREATE, 0);
