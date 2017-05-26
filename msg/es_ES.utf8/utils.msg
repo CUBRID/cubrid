@@ -727,7 +727,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 7 Error al abrir archivo de entrada ELO "%1$s"\n
 8 CLASES:
 9 Nombre de archivo hash
-10 Nombre: 			 %1$s\n
+10 Nombre:           %1$s\n
 11 Tamano:                       %1$d\n
 12 Tamano de pagina:             %1$d\n
 13 Tamano de datos:              %1$d\n
