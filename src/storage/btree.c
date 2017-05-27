@@ -24054,6 +24054,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 		      ASSERT_ERROR ();
 		      return error_code;
 		    }
+		  assert (search_key.result != BTREE_KEY_FOUND);
 		}
 	      switch (search_key.result)
 		{
@@ -24081,6 +24082,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
 		case BTREE_KEY_SMALLER:
 		case BTREE_KEY_BIGGER:
+		case BTREE_KEY_NOTFOUND:
 		  /* Key is no longer in this leaf node. Locate key by advancing from root. */
 		  /* Fall through. */
 		  break;
@@ -30095,7 +30097,8 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
       /* Fix right page. */
       VPID_COPY (&right_vpid, &non_leaf_rec_info.pnt);
 #if defined (SERVER_MODE)
-      if (pgbuf_is_io_stressful () && spage_get_free_space (thread_p, child_page) < (int) (DB_PAGESIZE * 0.75f))
+      if (pgbuf_is_io_stressful () && spage_get_free_space (thread_p, child_page) < (int) (DB_PAGESIZE * 0.75f)
+	  && spage_number_of_slots (child_page) > 2)
 	{
 	  /* avoid fetching "cold" neighbor pages, that are not in page buffer. at the same time, we should avoid doing
 	   * zero merges. so if we have a strong indicator that merge is possible (e.g. current page is almost empty)
