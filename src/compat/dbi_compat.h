@@ -1691,6 +1691,7 @@ typedef enum db_class_modification_status
 
 typedef enum
 {
+  CUBRID_STMT_NONE = -1,
   CUBRID_STMT_ALTER_CLASS,
   CUBRID_STMT_ALTER_SERIAL,
   CUBRID_STMT_COMMIT_WORK,
