@@ -958,7 +958,7 @@ static float prm_lk_run_deadlock_interval_lower = 0.1f;
 static unsigned int prm_lk_run_deadlock_interval_flag = 0;
 
 int PRM_LOG_NBUFFERS = LOGPB_BUFFER_NPAGES_LOWER;
-static int prm_log_nbuffers_default = LOGPB_BUFFER_NPAGES_LOWER;
+static int prm_log_nbuffers_default = 16 * ONE_K;	/* 16k pages => 64M / 128M / 256M based on log page size */
 static int prm_log_nbuffers_lower = LOGPB_BUFFER_NPAGES_LOWER;
 static unsigned int prm_log_nbuffers_flag = 0;
 
@@ -4464,7 +4464,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_GENERIC_VOL_PREALLOC_SIZE,
    PRM_NAME_GENERIC_VOL_PREALLOC_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_OBSOLETED),
    PRM_BIGINT,
    (void *) &prm_generic_vol_prealloc_size_flag,
    (void *) &prm_generic_vol_prealloc_size_default,
