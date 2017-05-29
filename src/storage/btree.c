@@ -24054,7 +24054,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 		      ASSERT_ERROR ();
 		      return error_code;
 		    }
-		  assert (search_key.result != BTREE_KEY_FOUND);
+		  assert (search_key.result != BTREE_KEY_NOTFOUND);
 		}
 	      switch (search_key.result)
 		{
