@@ -1649,6 +1649,9 @@ log_final (THREAD_ENTRY * thread_p)
 
   LOG_CS_ENTER (thread_p);
 
+  /* reset log_Gl.rcv_phase */
+  log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
+
   if (log_Gl.trantable.area == NULL)
     {
       LOG_CS_EXIT (thread_p);
