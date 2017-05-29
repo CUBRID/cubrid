@@ -77,4 +77,4 @@ extern "C"
 }
 #endif
 
-#endif /* _SCANNER_SUPPORT_H_ */
+#endif				/* _SCANNER_SUPPORT_H_ */

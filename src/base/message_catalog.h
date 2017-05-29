@@ -87,28 +87,28 @@ extern "C"
 {
 #endif
 /* functions for use of system message catalog */
-extern int msgcat_init (void);
-extern int msgcat_final (void);
-extern char *msgcat_message (int, int, int);
+  extern int msgcat_init (void);
+  extern int msgcat_final (void);
+  extern char *msgcat_message (int, int, int);
 
 /* message catalog description  */
-typedef struct msg_catd
-{
-  const char *file;		/* file name of this message catalog */
-  void *catd;			/* nl_catd from POSIX catopen() */
-} *MSG_CATD;
+  typedef struct msg_catd
+  {
+    const char *file;		/* file name of this message catalog */
+    void *catd;			/* nl_catd from POSIX catopen() */
+  } *MSG_CATD;
 
 /* base functions for message catalog support */
-extern MSG_CATD msgcat_open (const char *);
-extern MSG_CATD msgcat_get_descriptor (int cat_id);
-extern char *msgcat_gets (MSG_CATD, int, int, const char *);
-extern int msgcat_close (MSG_CATD);
+  extern MSG_CATD msgcat_open (const char *);
+  extern MSG_CATD msgcat_get_descriptor (int cat_id);
+  extern char *msgcat_gets (MSG_CATD, int, int, const char *);
+  extern int msgcat_close (MSG_CATD);
 
 /* a utility function */
-extern FILE *msgcat_open_file (const char *name);
+  extern FILE *msgcat_open_file (const char *name);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _MESSAGE_CATALOG_H_ */
+#endif				/* _MESSAGE_CATALOG_H_ */

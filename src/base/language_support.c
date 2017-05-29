@@ -305,14 +305,11 @@ static unsigned int lang_lower_EN[LANG_CHAR_COUNT_EN];
 static int lang_w_map_EN[LANG_W_MAP_COUNT_EN];
 
 
-static void
-lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld);
+static void lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld);
 
-static void
-lang_initloc_en_binary (LANG_LOCALE_DATA * ld);
+static void lang_initloc_en_binary (LANG_LOCALE_DATA * ld);
 
-static void
-lang_init_common_en_cs (void);
+static void lang_init_common_en_cs (void);
 
 
 static LANG_COLLATION coll_Utf8_en_cs = {
@@ -337,26 +334,19 @@ static LANG_COLLATION coll_Utf8_en_cs = {
  *			       insensitive (no matter the charset)
  *   return:
  */
-static void
-lang_init_common_en_ci (void);
+static void lang_init_common_en_ci (void);
 
-static void
-lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld);
+static void lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld);
 
-static void
-lang_initloc_tr_iso (LANG_LOCALE_DATA * ld);
+static void lang_initloc_tr_iso (LANG_LOCALE_DATA * ld);
 
-static void
-lang_initloc_ko_iso (LANG_LOCALE_DATA * ld);
+static void lang_initloc_ko_iso (LANG_LOCALE_DATA * ld);
 
-static void
-lang_initloc_ko_utf8 (LANG_LOCALE_DATA * ld);
+static void lang_initloc_ko_utf8 (LANG_LOCALE_DATA * ld);
 
-static void
-lang_initloc_ko_euc (LANG_LOCALE_DATA * ld);
+static void lang_initloc_ko_euc (LANG_LOCALE_DATA * ld);
 
-static void
-lang_initloc_tr_utf8 (LANG_LOCALE_DATA * ld);
+static void lang_initloc_tr_utf8 (LANG_LOCALE_DATA * ld);
 
 static LANG_COLLATION coll_Iso88591_en_cs = {
   INTL_CODESET_ISO88591, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
@@ -1451,7 +1441,7 @@ init_user_locales (void)
 		}
 	    }
 
-	  lld = (LANG_LOCALE_DATA*)malloc (sizeof (LANG_LOCALE_DATA));
+	  lld = (LANG_LOCALE_DATA *) malloc (sizeof (LANG_LOCALE_DATA));
 	  if (lld == NULL)
 	    {
 	      er_status = ER_LOC_INIT;
@@ -3965,7 +3955,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
 	  break;
 	}
 
-      for (level = (T_LEVEL)0; level < coll_data->uca_opt.sett_strength; (*(int*)&level)++)
+      for (level = (T_LEVEL) 0; level < coll_data->uca_opt.sett_strength; (*(int *) &level)++)
 	{
 	  w = GET_UCA_WEIGHT (level, ce_index, uca_w_l13, uca_w_l4);
 	  ADD_TO_HASH (pseudo_key, w);
@@ -6800,8 +6790,8 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld, void *lib_handle, const 
 
   int currency_code;
   SHLIB_GET_VAL (currency_code, "default_currency_code", int, lib_handle, lld->lang_name);
-  
-  lld->default_currency_code = (DB_CURRENCY)currency_code;
+
+  lld->default_currency_code = (DB_CURRENCY) currency_code;
 
   /* alphabet */
   SHLIB_GET_ADDR (temp_num_sym, "alphabet_a_type", int *, lib_handle, lld->lang_name);
@@ -6882,7 +6872,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld, void *lib_handle, const 
 	}
       memset (lld->txt_conv, 0, sizeof (TEXT_CONVERSION));
 
-      lld->txt_conv->conv_type = (TEXT_CONV_TYPE)txt_conv_type;
+      lld->txt_conv->conv_type = (TEXT_CONV_TYPE) txt_conv_type;
 
       SHLIB_GET_ADDR (is_lead_byte, "tc_is_lead_byte", unsigned char *, lib_handle, lld->lang_name);
       memcpy (lld->txt_conv->byte_flag, is_lead_byte, 256);
@@ -7312,7 +7302,8 @@ lang_load_library (const char *lib_file, void **handle)
       err_status = ER_LOC_INIT;
 #if defined(WINDOWS)
       FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL,
-		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1, (va_list*)&lib_file);
+		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1,
+		     (va_list *) & lib_file);
       snprintf (err_msg, sizeof (err_msg) - 1,
 		"Library file is invalid or not accessible.\n" " Unable to load %s !\n %s", lib_file, lpMsgBuf);
       LocalFree (lpMsgBuf);
@@ -7340,7 +7331,7 @@ lang_unload_libraries (void)
     {
       assert (loclib_Handle[i] != NULL);
 #if defined(WINDOWS)
-      FreeLibrary ((HMODULE)loclib_Handle[i]);
+      FreeLibrary ((HMODULE) loclib_Handle[i]);
 #else
       dlclose (loclib_Handle[i]);
 #endif

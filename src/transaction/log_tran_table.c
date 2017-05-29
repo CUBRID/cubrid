@@ -1812,7 +1812,7 @@ logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * snapshot)
       /* allocate only once */
       size = NUM_TOTAL_TRAN_INDICES * OR_MVCCID_SIZE;
 
-      snapshot->long_tran_mvccids = (MVCCID*)malloc (size);
+      snapshot->long_tran_mvccids = (MVCCID *) malloc (size);
       if (snapshot->long_tran_mvccids == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
@@ -3849,7 +3849,7 @@ logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool cre
     }
 
   /* search */
-  unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS*)mht_get (tdes->log_upd_stats.unique_stats_hash, btid);
+  unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS *) mht_get (tdes->log_upd_stats.unique_stats_hash, btid);
 
   if (unique_stats == NULL && create)
     {
@@ -6776,7 +6776,8 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
   lf_hash_create_iterator (&it, t_entry, &log_Gl.unique_stats_table.unique_stats_hash);
-  for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL; stats = (GLOBAL_UNIQUE_STATS *)lf_hash_iterate (&it))
+  for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL;
+       stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it))
     {
       /* reflect only if some changes were logged */
       if (!LSA_ISNULL (&stats->last_log_lsa))
@@ -7029,7 +7030,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* Client_type */
-      str = boot_client_type_to_string ((BOOT_CLIENT_TYPE)tdes->client.client_type);
+      str = boot_client_type_to_string ((BOOT_CLIENT_TYPE) tdes->client.client_type);
       error = db_make_string_copy (&vals[idx], str);
       idx++;
       if (error != NO_ERROR)

@@ -4010,7 +4010,7 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
 	  btree_leaf_set_flag (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY);
 	}
 
-      error_code = btree_store_overflow_key (thread_p, btid, key, key_len, (BTREE_NODE_TYPE)node_type, &key_vpid);
+      error_code = btree_store_overflow_key (thread_p, btid, key, key_len, (BTREE_NODE_TYPE) node_type, &key_vpid);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -4366,7 +4366,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
 
       if (key != NULL)
 	{
-	  rc = btree_load_overflow_key (thread_p, btid, &overflow_vpid, key, (BTREE_NODE_TYPE)node_type);
+	  rc = btree_load_overflow_key (thread_p, btid, &overflow_vpid, key, (BTREE_NODE_TYPE) node_type);
 	  if (rc != NO_ERROR)
 	    {
 	      db_make_null (key);
@@ -5085,7 +5085,7 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
 
   /* Compare with first key. */
-  c = (DB_VALUE_COMPARE_RESULT)btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
+  c = (DB_VALUE_COMPARE_RESULT) btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
   btree_clear_key_value (&clear_key, &border_key);
   if (c == DB_EQ)
     {
@@ -5137,7 +5137,7 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       return error_code;
     }
   /* Compare with last key. */
-  c = (DB_VALUE_COMPARE_RESULT)btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
+  c = (DB_VALUE_COMPARE_RESULT) btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
   btree_clear_key_value (&clear_key, &border_key);
   if (c == DB_EQ)
     {
@@ -18830,7 +18830,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       /* just insert on last position available */
       assert (multi_range_opt->cnt < multi_range_opt->size);
 
-      curr_item = (RANGE_OPT_ITEM*)db_private_alloc (thread_p, sizeof (RANGE_OPT_ITEM));
+      curr_item = (RANGE_OPT_ITEM *) db_private_alloc (thread_p, sizeof (RANGE_OPT_ITEM));
       if (curr_item == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -28639,7 +28639,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
       has_debug_info = true;
 
       /* Get BTREE_RV_DEBUG_ID */
-      rv_debug_id = (BTREE_RV_DEBUG_ID)OR_GET_INT (rcv_data_ptr);
+      rv_debug_id = (BTREE_RV_DEBUG_ID) OR_GET_INT (rcv_data_ptr);
       rcv_data_ptr += OR_INT_SIZE;
 
       /* Read unique_pk flag. */

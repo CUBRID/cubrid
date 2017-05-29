@@ -827,7 +827,7 @@ log_bind_value (int req, T_STRING * linebuf, char *sql_log, char *output_result,
     }
   else
     {
-      cci_bind_param (req, bind_idx, CCI_A_TYPE_STR, value_p, (T_CCI_U_TYPE)type, 0);
+      cci_bind_param (req, bind_idx, CCI_A_TYPE_STR, value_p, (T_CCI_U_TYPE) type, 0);
     }
 
   if (remain_bind_buf <= 0)

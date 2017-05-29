@@ -455,7 +455,7 @@ load_msgcat (const char *path)
       return NULL;
     }
 
-  catd = (nl_catd)malloc (sizeof (*catd));
+  catd = (nl_catd) malloc (sizeof (*catd));
   if (catd == NULL)
     {
 #if defined(WINDOWS)

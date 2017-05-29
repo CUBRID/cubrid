@@ -525,7 +525,7 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
       rc = sysprm_make_default_values (ha_sys_prm, default_ha_prm, sizeof (default_ha_prm));
       if (rc != PRM_ERR_NO_ERROR)
 	{
-	  error = sysprm_set_error ((SYSPRM_ERR)rc, ha_sys_prm);
+	  error = sysprm_set_error ((SYSPRM_ERR) rc, ha_sys_prm);
 	  goto end;
 	}
 

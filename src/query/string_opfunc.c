@@ -672,7 +672,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       assert (key != NULL);
 
-      result = (unsigned char*)db_private_alloc (NULL, result_size + 1);
+      result = (unsigned char *) db_private_alloc (NULL, result_size + 1);
       if (result)
 	{
 	  if (result_size)
@@ -1598,7 +1598,7 @@ db_string_space (DB_VALUE const *count, DB_VALUE * result)
 	  return NO_ERROR;
 	}
 
-      space_string_p = (char*)db_private_alloc (NULL, len + 1);
+      space_string_p = (char *) db_private_alloc (NULL, len + 1);
 
       if (space_string_p)
 	{
@@ -5796,7 +5796,8 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 		{
 		  cmp =
 		    QSTR_MATCH (coll_id, (const unsigned char *) elem_start, CAST_BUFLEN (stack_ptr - elem_start),
-				(const unsigned char *) needle_str, needle_size, (const unsigned char *)false, false, &matched_stack_size);
+				(const unsigned char *) needle_str, needle_size, (const unsigned char *) false, false,
+				&matched_stack_size);
 		  if (cmp == 0 && matched_stack_size == CAST_BUFLEN (stack_ptr - elem_start))
 		    {
 		      DB_MAKE_INT (result, position);
@@ -6303,7 +6304,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
       }
 
     case DB_TYPE_VARCHAR:
-      codeset = (INTL_CODESET)TP_DOMAIN_CODESET (domain);
+      codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
       collation_id = TP_DOMAIN_COLLATION (domain);
 
       if (left_is_datetime)
@@ -8951,7 +8952,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 	{
 	  /* conversion error occured, re-count characters so that we comply to computed precision */
 	  (void) intl_char_size (*dest, *dest_length, dest_codeset, dest_size);
-	  end_of_string = (char*)*dest + *dest_size;
+	  end_of_string = (char *) *dest + *dest_size;
 	  *end_of_string = '\0';
 	}
 
@@ -10876,7 +10877,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
   date_lang_id = lang_get_lang_id_from_flag (DB_GET_INT (date_lang), &dummy, &dummy);
   if (domain != NULL && domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
     {
-      codeset = (INTL_CODESET)TP_DOMAIN_CODESET (domain);
+      codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
       res_collation = TP_DOMAIN_COLLATION (domain);
     }
   else
@@ -15995,7 +15996,7 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
   char stack_buf_format[64];
   char *initial_buf_format = NULL;
   bool do_free_buf_format = false;
-  const INTL_CODESET codeset = (INTL_CODESET)TP_DOMAIN_CODESET (domain);
+  const INTL_CODESET codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
   const int collation_id = TP_DOMAIN_COLLATION (domain);
   bool has_user_format = false;
   bool dummy;
@@ -16880,7 +16881,7 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
   char digit_grouping_symbol;
   bool has_user_format = false;
   bool dummy;
-  const INTL_CODESET codeset = (INTL_CODESET)TP_DOMAIN_CODESET (domain);
+  const INTL_CODESET codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
   const int collation_id = TP_DOMAIN_COLLATION (domain);
   DB_CURRENCY currency = DB_CURRENCY_NULL;
 
@@ -17132,8 +17133,9 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 
 		  /* check currency symbols */
 		  if (intl_is_currency_symbol (&(res_ptr[i]), &currency, &symbol_size,
-					       (CURRENCY_CHECK_MODE)(CURRENCY_CHECK_MODE_CONSOLE | CURRENCY_CHECK_MODE_UTF8
-						| CURRENCY_CHECK_MODE_ISO88591)))
+					       (CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_CONSOLE |
+								      CURRENCY_CHECK_MODE_UTF8 |
+								      CURRENCY_CHECK_MODE_ISO88591)))
 		    {
 		      i += symbol_size;
 		    }
@@ -18538,7 +18540,8 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token, int *
 
 	    if (intl_is_currency_symbol
 		(src, &currency, &symbol_size,
-              (CURRENCY_CHECK_MODE)(CURRENCY_CHECK_MODE_CONSOLE | CURRENCY_CHECK_MODE_UTF8 | CURRENCY_CHECK_MODE_ISO88591)))
+		 (CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_CONSOLE | CURRENCY_CHECK_MODE_UTF8 |
+					CURRENCY_CHECK_MODE_ISO88591)))
 	      {
 		src += symbol_size;
 		(*token_length) += symbol_size;
@@ -20041,7 +20044,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  db_date_to_string (res_s, 64, &db_date);
 
-	  res_final = (char*)db_private_alloc (NULL, strlen (res_s) + 1);
+	  res_final = (char *) db_private_alloc (NULL, strlen (res_s) + 1);
 	  if (!res_final)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -20130,7 +20133,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 	      db_datetime_to_string (res_s, 64, &db_datetime);
 	    }
 
-	  res_final = (char*)db_private_alloc (NULL, strlen (res_s) + 1);
+	  res_final = (char *) db_private_alloc (NULL, strlen (res_s) + 1);
 	  if (!res_final)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -20243,7 +20246,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
 	  db_datetime_to_string (res_s, 64, &dt_local);
 
-	  res_final = (char*)db_private_alloc (NULL, strlen (res_s) + 1);
+	  res_final = (char *) db_private_alloc (NULL, strlen (res_s) + 1);
 	  if (!res_final)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -21011,7 +21014,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	    {
 	      db_date_to_string (res_s, 64, &db_date);
 
-	      res_final = (char*)db_private_alloc (NULL, strlen (res_s) + 1);
+	      res_final = (char *) db_private_alloc (NULL, strlen (res_s) + 1);
 	      if (res_final == NULL)
 		{
 		  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -21047,7 +21050,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	    {
 	      db_datetime_to_string (res_s, 64, &db_datetime);
 
-	      res_final = (char*)db_private_alloc (NULL, strlen (res_s) + 1);
+	      res_final = (char *) db_private_alloc (NULL, strlen (res_s) + 1);
 	      if (res_final == NULL)
 		{
 		  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -21152,7 +21155,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	      db_datetime_to_string (res_s, 64, &db_datetime);
 	    }
 
-	  res_final = (char*)db_private_alloc (NULL, strlen (res_s) + 1);
+	  res_final = (char *) db_private_alloc (NULL, strlen (res_s) + 1);
 	  if (res_final == NULL)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -21257,7 +21260,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
 	  db_datetime_to_string (res_s, 64, &dt_local);
 
-	  res_final = (char*)db_private_alloc (NULL, strlen (res_s) + 1);
+	  res_final = (char *) db_private_alloc (NULL, strlen (res_s) + 1);
 	  if (res_final == NULL)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -21410,7 +21413,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   date_lang_id = lang_get_lang_id_from_flag (DB_GET_INT (date_lang), &dummy, &dummy);
   if (domain != NULL && domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
     {
-      codeset = (INTL_CODESET)TP_DOMAIN_CODESET (domain);
+      codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
       res_collation = TP_DOMAIN_COLLATION (domain);
     }
   else
@@ -23291,7 +23294,7 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value, const TP_DOMA
       size = 8 + 1;		/* HH:MM:SS */
     }
 
-  res_s = (char*)db_private_alloc (NULL, size);
+  res_s = (char *) db_private_alloc (NULL, size);
   if (res_s == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -23380,7 +23383,7 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value, const TP_DOMAIN *
       return ER_DATE_CONVERSION;
     }
 
-  res_s = (char*)db_private_alloc (NULL, 10 + 1);	/* MM/DD/YYYY */
+  res_s = (char *) db_private_alloc (NULL, 10 + 1);	/* MM/DD/YYYY */
   if (res_s == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -23390,7 +23393,7 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value, const TP_DOMAIN *
 
   if (domain != NULL)
     {
-      codeset = (INTL_CODESET)TP_DOMAIN_CODESET (domain);
+      codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
       collation_id = TP_DOMAIN_COLLATION (domain);
     }
   else if (TP_IS_STRING_TYPE (DB_VALUE_TYPE (date_value)))
@@ -25071,7 +25074,7 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * boun
   alloc_size = LOC_MAX_UCA_CHARS_SEQ * char_count * INTL_CODESET_MULT (codeset);
   assert (alloc_size >= original_size);
 
-  result = (char*)db_private_alloc (NULL, alloc_size + 1);
+  result = (char *) db_private_alloc (NULL, alloc_size + 1);
   if (result == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -25231,7 +25234,7 @@ db_compress_like_pattern (const DB_VALUE * const pattern, DB_VALUE * compressed_
       alloc_size = original_size;
     }
 
-  result = (char*)db_private_alloc (NULL, alloc_size + 1);
+  result = (char *) db_private_alloc (NULL, alloc_size + 1);
   if (result == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -25521,7 +25524,7 @@ db_check_or_create_null_term_string (const DB_VALUE * str_val, char *pre_alloc_b
       return NO_ERROR;
     }
 
-  new_buf = (char*)db_private_alloc (NULL, val_size + 1);
+  new_buf = (char *) db_private_alloc (NULL, val_size + 1);
   if (new_buf == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -26366,14 +26369,16 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       if (str_size >= 0)
 	{
 	  str_size = MIN (str_size, sizeof (num_str) - 1);
-	  strncpy ((char*)num_str, DB_PULL_STRING (num), str_size);
-	  str_start = (char*)num_str;
-	  str_end = (char*)num_str + str_size;
+	  strncpy ((char *) num_str, DB_PULL_STRING (num), str_size);
+	  str_start = (char *) num_str;
+	  str_end = (char *) num_str + str_size;
 
 	  /* trim the tailing white spaces */
 	  do
 	    {
-	      prev_char = (char*)intl_prev_char ((unsigned char*)str_end, (unsigned char*)str_start, codeset, &prev_char_length);
+	      prev_char =
+		(char *) intl_prev_char ((unsigned char *) str_end, (unsigned char *) str_start, codeset,
+					 &prev_char_length);
 	      assert (prev_char >= str_start);
 
 	      if (intl_is_space (prev_char, str_end, codeset, NULL))
@@ -26396,7 +26401,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 	}
 
       num_str[str_size] = '\0';
-      num_p_str = (char*)num_str;
+      num_p_str = (char *) num_str;
 
       if (!is_str_valid_number (num_p_str, str_end, from_base_int, codeset))
 	{
@@ -26493,7 +26498,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
     }
 
   /* return string */
-  res_p_str = (char*)db_private_alloc (NULL, res_size + 1);
+  res_p_str = (char *) db_private_alloc (NULL, res_size + 1);
   if (res_p_str == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -26934,7 +26939,7 @@ db_inet_ntoa (DB_VALUE * result_ip_string, const DB_VALUE * number)
 
   /* return string */
   ret_string_len = strlen (ip_string);
-  res_p_str = (char*)db_private_alloc (NULL, ret_string_len + 1);
+  res_p_str = (char *) db_private_alloc (NULL, ret_string_len + 1);
   if (res_p_str == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -27095,7 +27100,8 @@ db_get_date_format (const DB_VALUE * format_str, TIMESTAMP_FORMAT * format)
     }
 
   next_fmt_str_ptr = NULL;
-  *format = (TIMESTAMP_FORMAT)get_next_format (fmt_str_ptr, codeset, DB_TYPE_DATETIME, &format_size, &next_fmt_str_ptr);
+  *format =
+    (TIMESTAMP_FORMAT) get_next_format (fmt_str_ptr, codeset, DB_TYPE_DATETIME, &format_size, &next_fmt_str_ptr);
 
   if (next_fmt_str_ptr != NULL && *next_fmt_str_ptr != 0)
     {
@@ -27167,7 +27173,7 @@ db_get_cs_coll_info (DB_VALUE * result, const DB_VALUE * val, const int mode)
 
       if (mode == 0)
 	{
-	  DB_MAKE_STRING (result, lang_charset_cubrid_name ((INTL_CODESET)cs));
+	  DB_MAKE_STRING (result, lang_charset_cubrid_name ((INTL_CODESET) cs));
 	}
       else
 	{
@@ -27304,7 +27310,7 @@ db_string_to_base64 (DB_VALUE const *src, DB_VALUE * result)
 
       if (error_status == NO_ERROR)
 	{
-	  qstr_make_typed_string (DB_TYPE_VARCHAR, result, encode_len, (char*)encode_buf, encode_len,
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, result, encode_len, (char *) encode_buf, encode_len,
 				  DB_GET_STRING_CODESET (src), DB_GET_STRING_COLLATION (src));
 
 	  result->need_clear = true;
@@ -27395,7 +27401,7 @@ db_string_from_base64 (DB_VALUE const *src, DB_VALUE * result)
 	  break;
 
 	case NO_ERROR:
-	  qstr_make_typed_string (DB_TYPE_VARCHAR, result, decode_len, (char*)decode_buf, decode_len,
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, result, decode_len, (char *) decode_buf, decode_len,
 				  DB_GET_STRING_CODESET (src), DB_GET_STRING_COLLATION (src));
 	  result->need_clear = true;
 	  break;

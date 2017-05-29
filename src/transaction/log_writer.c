@@ -381,7 +381,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode, LOG_PAGEI
     }
   strncpy (logwr_Gl.log_path, log_path, PATH_MAX - 1);
   /* set the mode */
-  logwr_Gl.mode = (LOGWR_MODE)mode;
+  logwr_Gl.mode = (LOGWR_MODE) mode;
 
   /* set the active log file path */
   fileio_make_log_active_name (logwr_Gl.active_name, log_path, logwr_Gl.db_name);
@@ -394,7 +394,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode, LOG_PAGEI
   if (logwr_Gl.logpg_area == NULL)
     {
       logwr_Gl.logpg_area_size = log_nbuffers * LOG_PAGESIZE;
-      logwr_Gl.logpg_area = (char*)malloc (logwr_Gl.logpg_area_size);
+      logwr_Gl.logpg_area = (char *) malloc (logwr_Gl.logpg_area_size);
       if (logwr_Gl.logpg_area == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) logwr_Gl.logpg_area_size);
@@ -611,13 +611,13 @@ logwr_set_hdr_and_flush_info (void)
 	  && (logwr_Gl.last_arv_fpageid <= logwr_Gl.last_recv_pageid))
 	{
 	  /* Do delayed archiving */
-	  logwr_Gl.action = (LOGWR_ACTION)(logwr_Gl.action | LOGWR_ACTION_ARCHIVING);
+	  logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action | LOGWR_ACTION_ARCHIVING);
 	  logwr_Gl.last_arv_lpageid = logwr_Gl.last_recv_pageid;
 	}
       else if ((logwr_Gl.last_arv_num + 1 == logwr_Gl.hdr.nxarv_num)
 	       && (last_pgptr->hdr.logical_pageid >= logwr_Gl.hdr.nxarv_pageid))
 	{
-	  logwr_Gl.action = (LOGWR_ACTION)(logwr_Gl.action | LOGWR_ACTION_ARCHIVING);
+	  logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action | LOGWR_ACTION_ARCHIVING);
 	  logwr_Gl.last_arv_lpageid = logwr_Gl.hdr.nxarv_pageid - 1;
 	}
 
@@ -625,7 +625,7 @@ logwr_set_hdr_and_flush_info (void)
 	{
 	  /* There are left several pages to get from the server */
 	  logwr_Gl.last_recv_pageid = last_pgptr->hdr.logical_pageid;
-	  logwr_Gl.action = (LOGWR_ACTION)(logwr_Gl.action | LOGWR_ACTION_DELAYED_WRITE);
+	  logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action | LOGWR_ACTION_DELAYED_WRITE);
 	}
       else
 	{
@@ -634,7 +634,7 @@ logwr_set_hdr_and_flush_info (void)
 	  if (logwr_Gl.hdr.perm_status == LOG_PSTAT_HDRFLUSH_INPPROCESS || logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE)
 	    {
 	      /* In case that it finishes delay write */
-	      logwr_Gl.action = (LOGWR_ACTION)(logwr_Gl.action & ~LOGWR_ACTION_DELAYED_WRITE);
+	      logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action & ~LOGWR_ACTION_DELAYED_WRITE);
 	    }
 	}
     }
@@ -1096,15 +1096,15 @@ logwr_flush_header_page (void)
     {
       sprintf (buffer, "change the state of HA server (%s@%s) from '%s' to '%s'", logwr_Gl.db_name,
 	       (logwr_Gl.hostname != NULL) ? logwr_Gl.hostname : "unknown",
-	       css_ha_server_state_string ((HA_SERVER_STATE)prev_ha_server_state),
-	       css_ha_server_state_string ((HA_SERVER_STATE)logwr_Gl.hdr.ha_server_state));
+	       css_ha_server_state_string ((HA_SERVER_STATE) prev_ha_server_state),
+	       css_ha_server_state_string ((HA_SERVER_STATE) logwr_Gl.hdr.ha_server_state));
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
     }
   prev_ha_server_state = logwr_Gl.hdr.ha_server_state;
 
   er_log_debug (ARG_FILE_LINE, "logwr_flush_header_page, ha_server_state=%s, ha_file_status=%s\n",
-		css_ha_server_state_string ((HA_SERVER_STATE)logwr_Gl.hdr.ha_server_state),
-		logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT)logwr_Gl.hdr.ha_file_status));
+		css_ha_server_state_string ((HA_SERVER_STATE) logwr_Gl.hdr.ha_server_state),
+		logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT) logwr_Gl.hdr.ha_file_status));
 }
 
 /*
@@ -1438,7 +1438,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
   LOG_HEADER hdr;
   char *atchar;
 
-  atchar = (char*)strchr (db_name, '@');
+  atchar = (char *) strchr (db_name, '@');
   if (atchar)
     {
       *atchar = '\0';
@@ -1551,7 +1551,7 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode, INT64 
 		}
 	    }
 	}
-      logwr_Gl.action = (LOGWR_ACTION)(logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE);
+      logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE);
     }
 
 #if !defined(WINDOWS)
@@ -1749,7 +1749,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
 
   if (entry == NULL)
     {
-      entry = (LOGWR_ENTRY*)malloc (sizeof (LOGWR_ENTRY));
+      entry = (LOGWR_ENTRY *) malloc (sizeof (LOGWR_ENTRY));
       if (entry == NULL)
 	{
 	  pthread_mutex_unlock (&writer_info->wr_list_mutex);
@@ -1759,7 +1759,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
 
       entry->thread_p = thread_p;
       entry->fpageid = fpageid;
-      entry->mode = (LOGWR_MODE)mode;
+      entry->mode = (LOGWR_MODE) mode;
       entry->start_copy_time = 0;
       entry->copy_from_first_phy_page = copy_from_first_phy_page;
 
@@ -1774,7 +1774,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
   else
     {
       entry->fpageid = fpageid;
-      entry->mode = (LOGWR_MODE)mode;
+      entry->mode = (LOGWR_MODE) mode;
       entry->copy_from_first_phy_page = copy_from_first_phy_page;
       if (entry->status != LOGWR_STATUS_DELAY)
 	{
@@ -1809,7 +1809,7 @@ logwr_unregister_writer_entry (LOGWR_ENTRY * wr_entry, int status)
 
   rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
 
-  wr_entry->status = (LOGWR_STATUS)status;
+  wr_entry->status = (LOGWR_STATUS) status;
 
   entry = writer_info->writer_list;
   while (entry)
@@ -2186,7 +2186,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
   bool copy_from_first_phy_page = false;
 
   logpg_used_size = 0;
-  logpg_area = (char*)db_private_alloc (thread_p, (LOGWR_COPY_LOG_BUFFER_NPAGES * LOG_PAGESIZE));
+  logpg_area = (char *) db_private_alloc (thread_p, (LOGWR_COPY_LOG_BUFFER_NPAGES * LOG_PAGESIZE));
   if (logpg_area == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -2207,7 +2207,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	{
 	  copy_from_first_phy_page = false;
 	}
-      mode = (LOGWR_MODE)(mode & ~LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK);
+      mode = (LOGWR_MODE) (mode & ~LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK);
 
       /* In case that a non-ASYNC mode client internally uses ASYNC mode */
       orig_mode = MAX (mode, orig_mode);

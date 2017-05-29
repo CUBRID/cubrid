@@ -3216,20 +3216,20 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 #if defined(ENABLE_SYSTEMTAP)
   if (class_oid == NULL)
     {
-      class_oid_for_marker_p = (OID*)&oid_Null_oid;
+      class_oid_for_marker_p = (OID *) & oid_Null_oid;
     }
   else
     {
-      class_oid_for_marker_p = (OID*)class_oid;
+      class_oid_for_marker_p = (OID *) class_oid;
     }
 
   if (oid == NULL)
     {
-      oid_for_marker_p = (OID*)&oid_Null_oid;
+      oid_for_marker_p = (OID *) & oid_Null_oid;
     }
   else
     {
-      oid_for_marker_p = (OID*)oid;
+      oid_for_marker_p = (OID *) oid;
     }
 
   CUBRID_LOCK_ACQUIRE_START (oid_for_marker_p, class_oid_for_marker_p, lock);
@@ -7779,9 +7779,9 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   rv = pthread_mutex_lock (&lk_Gl.DL_detection_mutex);
 
   lf_hash_create_iterator (&iterator, t_entry, &lk_Gl.obj_hash_table);
-  res_ptr = (LK_RES*)lf_hash_iterate (&iterator);
+  res_ptr = (LK_RES *) lf_hash_iterate (&iterator);
 
-  for (; res_ptr != NULL; res_ptr = (LK_RES*)lf_hash_iterate (&iterator))
+  for (; res_ptr != NULL; res_ptr = (LK_RES *) lf_hash_iterate (&iterator))
     {
       /* holding resource mutex */
       if (res_ptr->holder == NULL)
@@ -8603,8 +8603,8 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   fprintf (outfp, "\tMaximum number of objects which can be locked = %d\n\n", lk_Gl.obj_hash_table.freelist->alloc_cnt);
 
   lf_hash_create_iterator (&iterator, t_entry, &lk_Gl.obj_hash_table);
-  res_ptr = (LK_RES*)lf_hash_iterate (&iterator);
-  for (; res_ptr != NULL; res_ptr = (LK_RES*)lf_hash_iterate (&iterator))
+  res_ptr = (LK_RES *) lf_hash_iterate (&iterator);
+  for (; res_ptr != NULL; res_ptr = (LK_RES *) lf_hash_iterate (&iterator))
     {
       lock_dump_resource (thread_p, outfp, res_ptr);
     }
@@ -9976,7 +9976,7 @@ lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * fr
     }
 
   /* Claim from shared freelist. */
-  return (LK_ENTRY *)lf_freelist_claim (tran_entry, freelist);
+  return (LK_ENTRY *) lf_freelist_claim (tran_entry, freelist);
 }
 
 /*

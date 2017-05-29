@@ -1583,7 +1583,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	  if (has_coerced_values == NULL)
 	    {
 	      assert (has_coerced_values == NULL && coerced_values == NULL);
-	      coerced_values = (DB_VALUE*)db_private_alloc (thread_p, sizeof (DB_VALUE) * idx_ncols);
+	      coerced_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * idx_ncols);
 	      if (coerced_values == NULL)
 		{
 		  goto err_exit;
@@ -1593,7 +1593,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 		  db_make_null (&coerced_values[j]);
 		}
 
-	      has_coerced_values = (bool*)db_private_alloc (thread_p, sizeof (bool) * idx_ncols);
+	      has_coerced_values = (bool *) db_private_alloc (thread_p, sizeof (bool) * idx_ncols);
 	      if (has_coerced_values == NULL)
 		{
 		  goto err_exit;
@@ -4816,7 +4816,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_HEAP_PAGE_SCAN:
-      status = (SCAN_CODE)scan_next_heap_page_scan (thread_p, scan_id);
+      status = (SCAN_CODE) scan_next_heap_page_scan (thread_p, scan_id);
       break;
 
     case S_CLASS_ATTR_SCAN:
@@ -4828,11 +4828,11 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_INDX_KEY_INFO_SCAN:
-      status = (SCAN_CODE)scan_next_index_key_info_scan (thread_p, scan_id);
+      status = (SCAN_CODE) scan_next_index_key_info_scan (thread_p, scan_id);
       break;
 
     case S_INDX_NODE_INFO_SCAN:
-      status = (SCAN_CODE)scan_next_index_node_info_scan (thread_p, scan_id);
+      status = (SCAN_CODE) scan_next_index_node_info_scan (thread_p, scan_id);
       break;
 
     case S_LIST_SCAN:

@@ -2367,7 +2367,7 @@ er_get_area_error (void *buffer, int *length)
   len = (OR_INT_SIZE * 3) + strlen (msg) + 1;
   *length = len = (*length > len) ? len : *length;
 
-  ptr = (char*)buffer;
+  ptr = (char *) buffer;
   OR_PUT_INT (ptr, (int) (er_entry_p->err_id));
   ptr += OR_INT_SIZE;
   OR_PUT_INT (ptr, (int) (er_entry_p->severity));

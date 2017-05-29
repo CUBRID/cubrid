@@ -3964,7 +3964,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	  if (!LSA_ISNULL (&bufptr->oldest_unflush_lsa)
 	      && (LSA_ISNULL (chkpt_smallest_lsa) || LSA_LT (&bufptr->oldest_unflush_lsa, chkpt_smallest_lsa)))
 	    {
-	      LSA_COPY (chkpt_smallest_lsa, (const LOG_LSA*)&bufptr->oldest_unflush_lsa);
+	      LSA_COPY (chkpt_smallest_lsa, (const LOG_LSA *) &bufptr->oldest_unflush_lsa);
 	    }
 	}
 
@@ -4434,7 +4434,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
 	    }
 
 	}
-      LSA_COPY ((LOG_LSA*)&bufptr->oldest_unflush_lsa, lsa_ptr);//vapa!!!
+      LSA_COPY ((LOG_LSA *) & bufptr->oldest_unflush_lsa, lsa_ptr);	//vapa!!!
     }
 
 #if defined (NDEBUG)
@@ -5146,7 +5146,7 @@ pgbuf_initialize_aout_list (void)
   list->num_hashes = MAX (list->max_count / AOUT_HASH_DIVIDE_RATIO, 1);
 
   alloc_size = list->num_hashes * sizeof (MHT_TABLE *);
-  list->aout_buf_ht = (MHT_TABLE **)malloc (alloc_size);
+  list->aout_buf_ht = (MHT_TABLE **) malloc (alloc_size);
   if (list->aout_buf_ht == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
@@ -9602,7 +9602,7 @@ pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
   /* Search the vpid in the hash table */
-  aout_buf = (PGBUF_AOUT_BUF*)mht_get (pgbuf_Pool.buf_AOUT_list.aout_buf_ht[hash_idx], vpid);
+  aout_buf = (PGBUF_AOUT_BUF *) mht_get (pgbuf_Pool.buf_AOUT_list.aout_buf_ht[hash_idx], vpid);
   if (aout_buf == NULL)
     {
       /* Not there, just return */
@@ -9823,7 +9823,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
 
   memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
 
-  LSA_COPY (&oldest_unflush_lsa, (const LOG_LSA*)&bufptr->oldest_unflush_lsa);
+  LSA_COPY (&oldest_unflush_lsa, (const LOG_LSA *) &bufptr->oldest_unflush_lsa);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
   PGBUF_BCB_UNLOCK (bufptr);
@@ -9860,7 +9860,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
       PGBUF_BCB_LOCK (bufptr);
       *is_bcb_locked = true;
       pgbuf_bcb_mark_was_not_flushed (thread_p, bufptr, was_dirty);
-      LSA_COPY ((LOG_LSA*)&bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
+      LSA_COPY ((LOG_LSA *) & bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
       error = ER_FAILED;
 
 #if defined (SERVER_MODE)
@@ -11156,7 +11156,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
   /* add bufptr as middle page */
   pgbuf_add_bufptr_to_batch (bufptr, 0);
   VPID_COPY (&first_vpid, &bufptr->vpid);
-  LSA_COPY (&log_newest_oldest_unflush_lsa, (const LOG_LSA*)&bufptr->oldest_unflush_lsa);
+  LSA_COPY (&log_newest_oldest_unflush_lsa, (const LOG_LSA *) &bufptr->oldest_unflush_lsa);
   PGBUF_BCB_UNLOCK (bufptr);
 
   VPID_COPY (&vpid, &first_vpid);
@@ -11309,7 +11309,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
 	{
 	  if (LSA_LT (&log_newest_oldest_unflush_lsa, &bufptr->oldest_unflush_lsa))
 	    {
-	      LSA_COPY (&log_newest_oldest_unflush_lsa, (const LOG_LSA*)&bufptr->oldest_unflush_lsa);
+	      LSA_COPY (&log_newest_oldest_unflush_lsa, (const LOG_LSA *) &bufptr->oldest_unflush_lsa);
 	    }
 	  dirty_pages_cnt++;
 	}
@@ -11918,7 +11918,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  if (diff < 0)
 	    {
 	      ordered_holders_info[saved_pages_cnt].watch_count = holder->watch_count;
-	      ordered_holders_info[saved_pages_cnt].ptype = (PAGE_TYPE)holder->bufptr->iopage_buffer->iopage.prv.ptype;
+	      ordered_holders_info[saved_pages_cnt].ptype = (PAGE_TYPE) holder->bufptr->iopage_buffer->iopage.prv.ptype;
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,
@@ -12145,8 +12145,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 #if !defined(NDEBUG)
       pgptr =
-	pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, (PGBUF_LATCH_MODE)curr_request_mode,
-			 PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
+	pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode,
+			 (PGBUF_LATCH_MODE) curr_request_mode, PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
 #else
       pgptr =
 	pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, curr_request_mode,
@@ -12250,8 +12250,9 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	    {
 #if !defined(NDEBUG)
 	      pgptr =
-		pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, (PGBUF_LATCH_MODE)curr_request_mode,
-				 PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
+		pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode,
+				 (PGBUF_LATCH_MODE) curr_request_mode, PGBUF_UNCONDITIONAL_LATCH, caller_file,
+				 caller_line);
 #else
 	      pgptr =
 		pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, curr_request_mode,
@@ -12269,8 +12270,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	    {
 #if !defined(NDEBUG)
 	      pgbuf_add_watch_instance_internal (holder, pgptr, ordered_holders_info[i].watcher[j],
-              (PGBUF_LATCH_MODE)ordered_holders_info[i].watcher[j]->latch_mode, false, caller_file,
-						 caller_line);
+						 (PGBUF_LATCH_MODE) ordered_holders_info[i].watcher[j]->latch_mode,
+						 false, caller_file, caller_line);
 #else
 	      pgbuf_add_watch_instance_internal (holder, pgptr, ordered_holders_info[i].watcher[j],
 						 ordered_holders_info[i].watcher[j]->latch_mode, false);
@@ -12724,7 +12725,7 @@ pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_watcher, PGB
   assert_release (holder != NULL);
 
   page_ptr = old_watcher->pgptr;
-  latch_mode = (PGBUF_LATCH_MODE)old_watcher->latch_mode;
+  latch_mode = (PGBUF_LATCH_MODE) old_watcher->latch_mode;
   new_watcher->initial_rank = old_watcher->initial_rank;
   new_watcher->curr_rank = old_watcher->curr_rank;
   VPID_COPY (&new_watcher->group_id, &old_watcher->group_id);
@@ -14051,11 +14052,11 @@ pgbuf_get_page_type_for_stat (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
   if ((io_pgptr->prv.ptype == PAGE_BTREE) && (perfmon_get_activation_flag () & PERFMON_ACTIVE_DETAILED_BTREE_PAGE))
     {
-      perf_page_type = (PERF_PAGE_TYPE)btree_get_perf_btree_page_type (thread_p, pgptr);
+      perf_page_type = (PERF_PAGE_TYPE) btree_get_perf_btree_page_type (thread_p, pgptr);
     }
   else
     {
-      perf_page_type = (PERF_PAGE_TYPE)io_pgptr->prv.ptype;
+      perf_page_type = (PERF_PAGE_TYPE) io_pgptr->prv.ptype;
     }
 
   return perf_page_type;

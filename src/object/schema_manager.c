@@ -1594,7 +1594,7 @@ sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
 #if defined(SOLARIS) || defined(LINUX) || defined(AIX)
       error = sm_link_dynamic_methods (links, (const char **) sorted_names);
 #else /* SOLARIS || LINUX || AIX */
-      error = sm_link_dynamic_methods (links, (const char**)sorted_names, (const char**)commands);
+      error = sm_link_dynamic_methods (links, (const char **) sorted_names, (const char **) commands);
 #endif /* SOLARIS || LINUX || AIX */
       if (commands != NULL)
 	{
@@ -1829,7 +1829,7 @@ sm_prelink_methods (DB_OBJLIST * classes)
 #if defined(SOLARIS) || defined(LINUX) || defined(AIX)
 	  error = sm_link_dynamic_methods (total_links, (const char **) names);
 #else /* SOLARIS || LINUX || AIX */
-	  error = sm_link_dynamic_methods (total_links, (const char**)names, NULL);
+	  error = sm_link_dynamic_methods (total_links, (const char **) names, NULL);
 #endif /* SOLARIS || LINUX || AIX */
 	  db_ws_free (names);
 	}
@@ -5664,7 +5664,7 @@ sm_class_check_uniques (MOP classop)
 		    }
 		  else
 		    {
-		      buf_start = (char*)malloc (buf_size);
+		      buf_start = (char *) malloc (buf_size);
 		      if (buf_start == NULL)
 			{
 			  error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -8859,7 +8859,7 @@ flatten_trigger_cache (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 
   if (def->triggers != NULL)
     {
-      flat_triggers = tr_copy_schema_cache ((TR_SCHEMA_CACHE*)def->triggers, NULL);
+      flat_triggers = tr_copy_schema_cache ((TR_SCHEMA_CACHE *) def->triggers, NULL);
     }
   else
     {
@@ -8881,7 +8881,7 @@ flatten_trigger_cache (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	  /* if the class is being edited, be sure and get its updated trigger cache */
 	  if (class_->new_ != NULL)
 	    {
-	      super_triggers = (TR_SCHEMA_CACHE*)class_->new_->triggers;
+	      super_triggers = (TR_SCHEMA_CACHE *) class_->new_->triggers;
 	    }
 	  else
 	    {

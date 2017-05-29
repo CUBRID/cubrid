@@ -926,7 +926,7 @@ load_shard_key_function (const char *library_name, const char *function_name)
   fn_get_shard_key = (FN_GET_SHARD_KEY) GetProcAddress ((HMODULE) handle, function_name);
 #else
   dlerror ();
-  fn_get_shard_key = (FN_GET_SHARD_KEY)dlsym (handle, function_name);
+  fn_get_shard_key = (FN_GET_SHARD_KEY) dlsym (handle, function_name);
 #endif
   if (fn_get_shard_key == NULL)
     {

@@ -9191,7 +9191,7 @@ pt_to_regu_reserved_name (PARSER_CONTEXT * parser, PT_NODE * attr)
       return NULL;
     }
   reserved_id = attr->info.name.reserved_id;
-  index = pt_reserved_id_to_valuelist_index (parser, (PT_RESERVED_NAME_ID)reserved_id);
+  index = pt_reserved_id_to_valuelist_index (parser, (PT_RESERVED_NAME_ID) reserved_id);
   if (index == RESERVED_NAME_INVALID)
     {
       return NULL;
@@ -11854,7 +11854,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	    {
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
-		  access->flags = (ACCESS_SPEC_FLAG)(access->flags | ACCESS_SPEC_FLAG_FOR_UPDATE);
+		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_FOR_UPDATE);
 		}
 
 	      access->next = access_list;
@@ -16475,7 +16475,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  if (contextp->sql_plan_alloc_size == 0)
 	    {
 	      int size = MAX (1024, (int) plan_len * 2);
-	      contextp->sql_plan_text = (char*)parser_alloc (parser, size);
+	      contextp->sql_plan_text = (char *) parser_alloc (parser, size);
 	      if (contextp->sql_plan_text == NULL)
 		{
 		  goto exit;
@@ -16489,7 +16489,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      char *ptr;
 	      int size = (contextp->sql_plan_alloc_size + (int) plan_len) * 2;
 
-	      ptr = (char*)parser_alloc (parser, size);
+	      ptr = (char *) parser_alloc (parser, size);
 	      if (ptr == NULL)
 		{
 		  goto exit;
@@ -18319,7 +18319,7 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 
   select_stmt->is_system_generated_stmt = node->is_system_generated_stmt;
 
-  select_stmt->info.query.q.select.hint = (PT_HINT_ENUM)(select_stmt->info.query.q.select.hint | hint_flags);
+  select_stmt->info.query.q.select.hint = (PT_HINT_ENUM) (select_stmt->info.query.q.select.hint | hint_flags);
   select_stmt->recompile = node->recompile;
 
   if (hint_flags & PT_HINT_ORDERED)
@@ -18467,7 +18467,7 @@ pt_mvcc_flag_specs_cond_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_N
 	  spec->info.spec.referenced_attrs = real_refs;
 	  continue;
 	}
-      spec->info.spec.flag = (PT_SPEC_FLAG)(spec->info.spec.flag | PT_SPEC_FLAG_MVCC_COND_REEV);
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_MVCC_COND_REEV);
 
       spec->info.spec.referenced_attrs = real_refs;
       parser_free_tree (parser, node);
@@ -18511,7 +18511,7 @@ pt_mvcc_flag_specs_assign_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT
 	  node = mq_get_references (parser, ah.rhs, spec);
 	  if (node != NULL)
 	    {
-	      spec->info.spec.flag = (PT_SPEC_FLAG)(spec->info.spec.flag | PT_SPEC_FLAG_MVCC_ASSIGN_REEV);
+	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_MVCC_ASSIGN_REEV);
 	      spec->info.spec.referenced_attrs = real_refs;
 	      parser_free_tree (parser, node);
 	      break;
@@ -18731,7 +18731,7 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
     {
       if (spec->info.spec.flag & spec_flag)
 	{
-	  spec->info.spec.flag = (PT_SPEC_FLAG)(spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	}
 
       if (spec->info.spec.derived_table != NULL && spec->info.spec.derived_table->node_type == PT_SELECT)
@@ -19018,7 +19018,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 	  PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_MULTI_UPDATE_AGG);
 
 	  /* can't use hash aggregation for this, might mess up order */
-	  statement->info.query.q.select.hint = (PT_HINT_ENUM)(statement->info.query.q.select.hint | PT_HINT_NO_HASH_AGGREGATE);
+	  statement->info.query.q.select.hint =
+	    (PT_HINT_ENUM) (statement->info.query.q.select.hint | PT_HINT_NO_HASH_AGGREGATE);
 	  /* The locking at update/delete stage does not work with GROUP BY, so, we will lock at SELECT stage. */
 	  PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
 	}
@@ -19228,11 +19229,13 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL;
 	       cl_name_node = cl_name_node->next)
 	    {
-	      cl_name_node->info.spec.flag = (PT_SPEC_FLAG)(cl_name_node->info.spec.flag & ~PT_SPEC_FLAG_MVCC_COND_REEV);
+	      cl_name_node->info.spec.flag =
+		(PT_SPEC_FLAG) (cl_name_node->info.spec.flag & ~PT_SPEC_FLAG_MVCC_COND_REEV);
 	    }
 	  for (cl_name_node = from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
 	    {
-	      cl_name_node->info.spec.flag = (PT_SPEC_FLAG)(cl_name_node->info.spec.flag & ~PT_SPEC_FLAG_MVCC_COND_REEV);
+	      cl_name_node->info.spec.flag =
+		(PT_SPEC_FLAG) (cl_name_node->info.spec.flag & ~PT_SPEC_FLAG_MVCC_COND_REEV);
 	    }
 	}
 
@@ -19842,11 +19845,13 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
        * select statements) */
       for (p = aptr_statement->info.query.q.select.from; p != NULL; p = p->next)
 	{
-	  p->info.spec.flag = (PT_SPEC_FLAG)(p->info.spec.flag & ~(PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV));
+	  p->info.spec.flag =
+	    (PT_SPEC_FLAG) (p->info.spec.flag & ~(PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV));
 	}
       for (p = from; p != NULL; p = p->next)
 	{
-	  p->info.spec.flag = (PT_SPEC_FLAG)(p->info.spec.flag & ~(PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV));
+	  p->info.spec.flag =
+	    (PT_SPEC_FLAG) (p->info.spec.flag & ~(PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV));
 	}
     }
 
@@ -21249,7 +21254,7 @@ pt_fix_pseudocolumns_pos_regu_list (PARSER_CONTEXT * parser, PT_NODE * node_list
 	  && (node->info.expr.op == PT_LEVEL || node->info.expr.op == PT_CONNECT_BY_ISLEAF
 	      || node->info.expr.op == PT_CONNECT_BY_ISCYCLE))
 	{
-	  rl->value.vfetch_to = (DB_VALUE*)node->etc;
+	  rl->value.vfetch_to = (DB_VALUE *) node->etc;
 	}
 
       node = saved;

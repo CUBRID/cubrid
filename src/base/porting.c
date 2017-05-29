@@ -1478,7 +1478,7 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
 
   if (len > (int) count)
     {
-      char *cp = (char*)malloc (len);
+      char *cp = (char *) malloc (len);
       if (cp == NULL)
 	{
 	  return -1;
@@ -2235,7 +2235,7 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 	{
 	  *sizeloc = stat_buf.st_size;
 
-	  buff = (char*)malloc (*sizeloc + 1);
+	  buff = (char *) malloc (*sizeloc + 1);
 	  if (buff)
 	    {
 	      fseek (fp, 0, SEEK_SET);
@@ -2553,19 +2553,19 @@ strtof_win (const char *nptr, char **endptr)
   if (d_val > FLT_MAX)		/* overflow */
     {
       errno = ERANGE;
-      *endptr = const_cast<char*>(nptr);
+      *endptr = const_cast < char *>(nptr);
       return (HUGE_VAL);
     }
   else if (d_val < (-FLT_MAX))	/* overflow */
     {
       errno = ERANGE;
-      *endptr = const_cast<char*>(nptr);
+      *endptr = const_cast < char *>(nptr);
       return (-HUGE_VAL);
     }
   else if (((d_val > 0) && (d_val < FLT_MIN)) || ((d_val < 0) && (d_val > (-FLT_MIN))))	/* underflow */
     {
       errno = ERANGE;
-      *endptr = const_cast<char*>(nptr);
+      *endptr = const_cast < char *>(nptr);
       return 0.0f;
     }
 

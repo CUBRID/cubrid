@@ -683,13 +683,13 @@ proxy_io_make_set_db_parameter_ok (char *driver_info, char **buffer)
 int
 proxy_io_make_ex_get_isolation_level (char *driver_info, char **buffer, void *argv)
 {
-  return proxy_io_make_ex_get_int (driver_info, buffer, (int*)argv);
+  return proxy_io_make_ex_get_int (driver_info, buffer, (int *) argv);
 }
 
 int
 proxy_io_make_ex_get_lock_timeout (char *driver_info, char **buffer, void *argv)
 {
-  return proxy_io_make_ex_get_int (driver_info, buffer, (int*)argv);
+  return proxy_io_make_ex_get_int (driver_info, buffer, (int *) argv);
 }
 
 int
@@ -4153,7 +4153,7 @@ proxy_io_initialize (void)
       return -1;
     }
 
-  ep_Event = (epoll_event*)calloc (max_Socket, sizeof (struct epoll_event));
+  ep_Event = (epoll_event *) calloc (max_Socket, sizeof (struct epoll_event));
   if (ep_Event == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory for epoll event. (error:%d[%s]).", errno,

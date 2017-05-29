@@ -1428,7 +1428,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  default_expr_type = DB_GET_INT (&default_expr);
 	}
 
-      default_expr_type_string = db_default_expression_string ((DB_DEFAULT_EXPR_TYPE)default_expr_type);
+      default_expr_type_string = db_default_expression_string ((DB_DEFAULT_EXPR_TYPE) default_expr_type);
       if (default_expr_type_string == NULL)
 	{
 	  pr_clear_value (&default_expr);
@@ -1439,7 +1439,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  goto error;
 	}
 
-      default_expr_op_string = qdump_operator_type_string ((OPERATOR_TYPE)default_expr_op);
+      default_expr_op_string = qdump_operator_type_string ((OPERATOR_TYPE) default_expr_op);
 
       len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
 	     + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_expr_type_string)

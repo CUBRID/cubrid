@@ -575,7 +575,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
       /* Current transaction is not in the list */
 
       /* Need to allocate an entry */
-      entry_p = (SPAGE_SAVE_ENTRY*)malloc (sizeof (*entry_p));
+      entry_p = (SPAGE_SAVE_ENTRY *) malloc (sizeof (*entry_p));
       if (entry_p == NULL)
 	{
 	  pthread_mutex_unlock (&head_p->mutex);
@@ -3931,7 +3931,7 @@ spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p, RECDES * record_des
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
-	  return (SCAN_CODE)SP_ERROR;
+	  return (SCAN_CODE) SP_ERROR;
 	}
       memcpy (record_descriptor_p->data, (char *) page_p + slot_p->offset_to_record, slot_p->record_length);
     }
