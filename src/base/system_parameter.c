@@ -748,86 +748,105 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  * Macros to call functions
  */
 
-#define PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER(prm,out_val,in_val,err) do {	\
-	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
-	assert (sizeof (*(out_val)) == sizeof (int));				\
-	assert (sizeof (*(in_val)) == sizeof (UINT64));				\
-	*(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, 		\
-				(void *) (in_val), PRM_BIGINT);			\
-} while (0)
+#define PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER(prm,out_val,in_val,err) \
+  do \
+    { \
+      assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
+      assert (sizeof (*(out_val)) == sizeof (int)); \
+      assert (sizeof (*(in_val)) == sizeof (UINT64)); \
+      *(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_BIGINT); \
+    } \
+  while (0)
 
-#define PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT(prm,out_val,in_val,err) do {		\
-	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
-	assert (sizeof (*(out_val)) == sizeof (float));				\
-	assert (sizeof (*(in_val)) == sizeof (UINT64));				\
-	*(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, 		\
-				(void *) (in_val), PRM_BIGINT);			\
-} while (0)
+#define PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT(prm,out_val,in_val,err) \
+  do \
+    { \
+      assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
+      assert (sizeof (*(out_val)) == sizeof (float)); \
+      assert (sizeof (*(in_val)) == sizeof (UINT64)); \
+      *(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_BIGINT); \
+    } \
+  while (0)
 
-#define PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER(prm,out_val,in_val,err) do {	\
-	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
-	assert (sizeof (*(out_val)) == sizeof (int));				\
-	assert (sizeof (*(in_val)) == sizeof (int));				\
-	*(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, 		\
-				(void *) (in_val), PRM_INTEGER);		\
-} while (0)
+#define PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER(prm,out_val,in_val,err) \
+  do \
+    { \
+      assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
+      assert (sizeof (*(out_val)) == sizeof (int)); \
+      assert (sizeof (*(in_val)) == sizeof (int)); \
+      *(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_INTEGER);\
+    } \
+  while (0)
 
-#define PRM_ADJUST_FOR_SET_FLOAT_TO_FLOAT(prm,out_val,in_val,err) do {		\
-	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
-	assert (sizeof (*(out_val)) == sizeof (float));				\
-	assert (sizeof (*(in_val)) == sizeof (float));				\
-	*(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, 		\
-				(void *) (in_val), PRM_FLOAT);			\
-} while (0)
+#define PRM_ADJUST_FOR_SET_FLOAT_TO_FLOAT(prm,out_val,in_val,err) \
+  do \
+    { \
+      assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
+      assert (sizeof (*(out_val)) == sizeof (float)); \
+      assert (sizeof (*(in_val)) == sizeof (float)); \
+      *(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_FLOAT); \
+    } \
+  while (0)
 
-#define PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT(prm,out_val,in_val,err) do {	\
-	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
-	assert (sizeof (*(out_val)) == sizeof (UINT64));			\
-	assert (sizeof (*(in_val)) == sizeof (UINT64));				\
-	*(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_BIGINT, 		\
-				(void *) (in_val), PRM_BIGINT);			\
-} while (0)
+#define PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT(prm,out_val,in_val,err) \
+  do \
+    { \
+      assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
+      assert (sizeof (*(out_val)) == sizeof (UINT64)); \
+      assert (sizeof (*(in_val)) == sizeof (UINT64)); \
+      *(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_BIGINT); \
+    } \
+  while (0)
 
-#define PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT(prm,out_val,in_val,err) do {	\
-	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
-	assert (sizeof (*(out_val)) == sizeof (UINT64));			\
-	assert (sizeof (*(in_val)) == sizeof (int));				\
-	*(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, 		\
-				(void *) (in_val), PRM_INTEGER);		\
-} while (0)
+#define PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT(prm,out_val,in_val,err) \
+  do \
+    { \
+      assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
+      assert (sizeof (*(out_val)) == sizeof (UINT64)); \
+      assert (sizeof (*(in_val)) == sizeof (int)); \
+      *(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_INTEGER); \
+    } \
+  while (0)
 
-#define PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT(prm,out_val,in_val,err) do {		\
-	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
-	assert (sizeof (*(out_val)) == sizeof (UINT64));			\
-	assert (sizeof (*(in_val)) == sizeof (float));				\
-	*(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, 		\
-				(void *) (in_val), PRM_FLOAT);			\
-} while (0)
+#define PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT(prm,out_val,in_val,err) \
+  do \
+    { \
+      assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
+      assert (sizeof (*(out_val)) == sizeof (UINT64)); \
+      assert (sizeof (*(in_val)) == sizeof (float)); \
+      *(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_FLOAT); \
+    } \
+  while (0)
 
-#define PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER(prm,out_val,in_val,err) do {	\
-	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
-	assert (sizeof (*(out_val)) == sizeof (int));				\
-	assert (sizeof (*(in_val)) == sizeof (int));				\
-	*(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_INTEGER, 		\
-				(void *) (in_val), PRM_INTEGER);		\
-} while (0)
+#define PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER(prm,out_val,in_val,err) \
+  do \
+    { \
+      assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);\
+      assert (sizeof (*(out_val)) == sizeof (int)); \
+      assert (sizeof (*(in_val)) == sizeof (int)); \
+      *(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_INTEGER); \
+    } \
+  while (0)
 
-#define PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT(prm,out_val,in_val,err) do {		\
-	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
-	assert (sizeof (*(out_val)) == sizeof (float));				\
-	assert (sizeof (*(in_val)) == sizeof (float));				\
-	*(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_FLOAT, 		\
-				(void *) (in_val), PRM_FLOAT);			\
-} while (0)
+#define PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT(prm,out_val,in_val,err) \
+  do \
+    { \
+      assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
+      assert (sizeof (*(out_val)) == sizeof (float)); \
+      assert (sizeof (*(in_val)) == sizeof (float)); \
+      *(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_FLOAT); \
+    } \
+  while (0)
 
-#define PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT(prm,out_val,in_val,err) do {	\
-	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
-	assert (sizeof (*(out_val)) == sizeof (UINT64));			\
-	assert (sizeof (*(in_val)) == sizeof (UINT64));				\
-	*(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, 		\
-				(void *) (in_val), PRM_BIGINT);			\
-} while (0)
-
+#define PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT(prm,out_val,in_val,err) \
+  do \
+    { \
+      assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
+      assert (sizeof (*(out_val)) == sizeof (UINT64));\
+      assert (sizeof (*(in_val)) == sizeof (UINT64)); \
+      *(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_BIGINT); \
+    } \
+  while (0)
 
 /*
  * Other macros
@@ -868,8 +887,8 @@ int PRM_ER_EXIT_ASK = ER_EXIT_DEFAULT;
 static int prm_er_exit_ask_default = ER_EXIT_DEFAULT;
 static unsigned int prm_er_exit_ask_flag = 0;
 
-int PRM_ER_LOG_SIZE = (100000 * 80L);
-static int prm_er_log_size_default = (100000 * 80L);
+int PRM_ER_LOG_SIZE = (512 * 1024 * 1024);
+static int prm_er_log_size_default = (512 * 1024 * 1024);	/* 512M */
 static int prm_er_log_size_lower = (100 * 80);
 static unsigned int prm_er_log_size_flag = 0;
 
