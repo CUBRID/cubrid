@@ -36,8 +36,9 @@
 #include "esql_misc.h"
 #include "esql_translate.h"
 
-extern "C" {
-    extern FILE *esql_yyout;
+extern "C"
+{
+  extern FILE *esql_yyout;
 }
 /*
  * This struct is used as a catchall struct for all of the various
@@ -198,7 +199,7 @@ pp_new_ptr_vec (PTR_VEC * vec)
 {
   if (vec == NULL)
     {
-      vec = (PTR_VEC*)malloc (sizeof (PTR_VEC));
+      vec = (PTR_VEC *) malloc (sizeof (PTR_VEC));
       if (vec == NULL)
 	{
 	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
@@ -354,7 +355,7 @@ pp_malloc (int n)
 {
   char *tmp;
 
-  tmp = (char*)malloc (n);
+  tmp = (char *) malloc (n);
   if (tmp == NULL)
     {
       fprintf (stderr, "%s: %s\n", prog_name, pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
@@ -380,7 +381,7 @@ pp_strdup (const char *str)
     }
   /* includes the null terminator of 'str' */
   n = strlen (str) + 1;
-  tmp = (char*)pp_malloc (n);
+  tmp = (char *) pp_malloc (n);
   memcpy (tmp, str, n);
   return tmp;
 }

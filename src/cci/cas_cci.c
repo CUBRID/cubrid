@@ -2024,7 +2024,7 @@ cci_set_db_parameter (int mapped_conn_id, T_CCI_DB_PARAM param_name, void *value
 	}
       else if (param_name == CCI_PARAM_ISOLATION_LEVEL)
 	{
-	  con_handle->isolation_level = (T_CCI_TRAN_ISOLATION)i_val;
+	  con_handle->isolation_level = (T_CCI_TRAN_ISOLATION) i_val;
 	}
     }
 
@@ -2722,7 +2722,7 @@ cci_get_autocommit (int mapped_conn_id)
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
-      return (CCI_AUTOCOMMIT_MODE)error;
+      return (CCI_AUTOCOMMIT_MODE) error;
     }
   reset_error_buffer (&(con_handle->err_buf));
   con_handle->used = false;
@@ -4345,7 +4345,7 @@ cci_last_insert_id (int mapped_conn_id, void *value, T_CCI_ERROR * err_buf)
       int value_len = strnlen (ptr, MAX_NUMERIC_PRECISION + 2);
       assert (value_len < MAX_NUMERIC_PRECISION + 2);
 
-      val = (char*)MALLOC (value_len + 1);
+      val = (char *) MALLOC (value_len + 1);
       if (val == NULL)
 	{
 	  error = CCI_ER_NO_MORE_MEMORY;
@@ -5305,7 +5305,7 @@ cci_property_create ()
 {
   T_CCI_PROPERTIES *prop;
 
-  prop = (T_CCI_PROPERTIES*)MALLOC (sizeof (T_CCI_PROPERTIES));
+  prop = (T_CCI_PROPERTIES *) MALLOC (sizeof (T_CCI_PROPERTIES));
   if (prop == NULL)
     {
       return NULL;
@@ -5313,7 +5313,7 @@ cci_property_create ()
 
   prop->capacity = 10;
   prop->size = 0;
-  prop->pair = (T_CCI_PROPERTIES_PAIR*)MALLOC (prop->capacity * sizeof (T_CCI_PROPERTIES_PAIR));
+  prop->pair = (T_CCI_PROPERTIES_PAIR *) MALLOC (prop->capacity * sizeof (T_CCI_PROPERTIES_PAIR));
   if (prop->pair == NULL)
     {
       FREE_MEM (prop);
@@ -5366,7 +5366,7 @@ cci_property_set (T_CCI_PROPERTIES * properties, char *key, char *value)
     {
       T_CCI_PROPERTIES_PAIR *tmp;
       int new_capa = properties->capacity + 10;
-      tmp = (T_CCI_PROPERTIES_PAIR*)REALLOC (properties->pair, sizeof (T_CCI_PROPERTIES_PAIR) * new_capa);
+      tmp = (T_CCI_PROPERTIES_PAIR *) REALLOC (properties->pair, sizeof (T_CCI_PROPERTIES_PAIR) * new_capa);
       if (tmp == NULL)
 	{
 	  return 0;
@@ -5581,7 +5581,7 @@ cci_property_get_isolation (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key, T
   if (tmp == NULL)
     {
       set_error_buffer (err_buf, CCI_ER_NO_PROPERTY, "Could not found isolation property");
-      *out_value = (T_CCI_TRAN_ISOLATION)default_value;
+      *out_value = (T_CCI_TRAN_ISOLATION) default_value;
     }
   else
     {
@@ -5766,7 +5766,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
 
   reset_error_buffer (err_buf);
 
-  ds = (T_CCI_DATASOURCE*)MALLOC (sizeof (T_CCI_DATASOURCE));
+  ds = (T_CCI_DATASOURCE *) MALLOC (sizeof (T_CCI_DATASOURCE));
   if (ds == NULL)
     {
       set_error_buffer (err_buf, CCI_ER_NO_MORE_MEMORY, "memory allocation error: %s", strerror (errno));
@@ -5886,7 +5886,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
       goto create_datasource_error;
     }
 
-  ds->con_handles = (int*)CALLOC (ds->max_pool_size, sizeof (T_CCI_CONN));
+  ds->con_handles = (int *) CALLOC (ds->max_pool_size, sizeof (T_CCI_CONN));
   if (ds->con_handles == NULL)
     {
       set_error_buffer (&latest_err_buf, CCI_ER_NO_MORE_MEMORY, "memory allocation error: %s", strerror (errno));
@@ -6226,7 +6226,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 
       /* reset to default value */
 
-      cci_set_autocommit (mapped_id, (CCI_AUTOCOMMIT_MODE)ds->default_autocommit);
+      cci_set_autocommit (mapped_id, (CCI_AUTOCOMMIT_MODE) ds->default_autocommit);
 
       if (ds->default_lock_timeout != CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT)
 	{

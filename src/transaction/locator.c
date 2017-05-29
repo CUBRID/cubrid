@@ -2538,7 +2538,7 @@ locator_unpack_oid_set_to_new (THREAD_ENTRY * thread_p, char *buffer)
 	  ptr = or_unpack_hfid (ptr, &class_oidset->hfid);
 	  ptr = or_unpack_int (ptr, &class_oidset->num_oids);
 
-	  class_oidset->oids = (LC_OIDMAP*)db_private_alloc (thread_p, sizeof (LC_OIDMAP) * class_oidset->num_oids);
+	  class_oidset->oids = (LC_OIDMAP *) db_private_alloc (thread_p, sizeof (LC_OIDMAP) * class_oidset->num_oids);
 	  if (class_oidset->oids == NULL)
 	    {
 	      goto memory_error;

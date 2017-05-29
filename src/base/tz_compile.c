@@ -5022,7 +5022,7 @@ xml_start_mapZone (void *data, const char **attr)
   int i;
 
   assert (data != NULL);
-  tz = (TZ_DATA*)XML_USER_DATA (pd);
+  tz = (TZ_DATA *) XML_USER_DATA (pd);
 
   if (xml_get_att_value (attr, "other", &windows_zone) == 0 && xml_get_att_value (attr, "territory", &territory) == 0
       && xml_get_att_value (attr, "type", &iana_zone) == 0)

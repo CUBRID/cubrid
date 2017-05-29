@@ -4766,7 +4766,7 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	/* 'cost' is referenced by 'val', it should be allocated from heap, and will be freed when free 'val' if set
 	 * 'need_clear' to 'true' */
-	cost = (char*)db_private_alloc (NULL, 2);
+	cost = (char *) db_private_alloc (NULL, 2);
 	if (cost == NULL)
 	  {
 	    return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5730,7 +5730,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* allocate classes_names array */
-  classes_names = (char**)db_private_alloc (NULL, num_classes * sizeof (char *));
+  classes_names = (char **) db_private_alloc (NULL, num_classes * sizeof (char *));
   if (classes_names == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5738,7 +5738,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* allocate locks array */
-  locks = (LOCK*)db_private_alloc (NULL, num_classes * sizeof (LOCK));
+  locks = (LOCK *) db_private_alloc (NULL, num_classes * sizeof (LOCK));
   if (locks == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5746,14 +5746,14 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* allocate need_subclasses array */
-  need_subclasses = (int*)db_private_alloc (NULL, num_classes * sizeof (int));
+  need_subclasses = (int *) db_private_alloc (NULL, num_classes * sizeof (int));
   if (need_subclasses == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }
 
-  flags = (LC_PREFETCH_FLAGS*)db_private_alloc (NULL, num_classes * sizeof (LC_PREFETCH_FLAGS));
+  flags = (LC_PREFETCH_FLAGS *) db_private_alloc (NULL, num_classes * sizeof (LC_PREFETCH_FLAGS));
   if (flags == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -8236,11 +8236,11 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique, PT_NODE 
 		  if (has_unique_temp)
 		    {
 		      *has_unique = 1;
-		      spec->info.spec.flag = (PT_SPEC_FLAG)(spec->info.spec.flag | PT_SPEC_FLAG_HAS_UNIQUE);
+		      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_HAS_UNIQUE);
 		    }
 		  else
 		    {
-		      spec->info.spec.flag = (PT_SPEC_FLAG)(spec->info.spec.flag | PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE);
+		      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE);
 		    }
 		}
 	      else
@@ -11486,7 +11486,8 @@ do_create_odku_stmt (PARSER_CONTEXT * parser, PT_NODE * insert)
       return NULL;
     }
 
-  insert->info.insert.spec->info.spec.flag = (PT_SPEC_FLAG)(insert->info.insert.spec->info.spec.flag | PT_SPEC_FLAG_UPDATE);
+  insert->info.insert.spec->info.spec.flag =
+    (PT_SPEC_FLAG) (insert->info.insert.spec->info.spec.flag | PT_SPEC_FLAG_UPDATE);
 
   update = parser_new_node (parser, PT_UPDATE);
   if (update == NULL)
@@ -11590,13 +11591,13 @@ do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** o
       return NO_ERROR;
     }
 
-  unique_btids = (BTID*) db_private_alloc (NULL, unique_count * sizeof (BTID));
+  unique_btids = (BTID *) db_private_alloc (NULL, unique_count * sizeof (BTID));
   if (unique_btids == NULL)
     {
       error = ER_FAILED;
       goto cleanup;
     }
-  unique_keys = (DB_VALUE*)db_private_alloc (NULL, unique_count * sizeof (DB_VALUE));
+  unique_keys = (DB_VALUE *) db_private_alloc (NULL, unique_count * sizeof (DB_VALUE));
   if (unique_keys == NULL)
     {
       error = ER_FAILED;
@@ -12405,7 +12406,7 @@ cleanup:
     }
 
   /* restore flags */
-  statement->info.insert.spec->info.spec.flag = (PT_SPEC_FLAG)flag;
+  statement->info.insert.spec->info.spec.flag = (PT_SPEC_FLAG) flag;
 
   if (*otemplate != NULL && error != NO_ERROR)
     {
@@ -12791,7 +12792,7 @@ cleanup:
   if (update != NULL)
     {
       /* restore flags */
-      statement->info.insert.spec->info.spec.flag = (PT_SPEC_FLAG)flag;
+      statement->info.insert.spec->info.spec.flag = (PT_SPEC_FLAG) flag;
       update->info.update.assignment = NULL;
       update->info.update.spec = NULL;
       if (update->info.update.check_where != NULL)

@@ -63,9 +63,9 @@ struct esql_translate_table_s
 extern "C"
 {
 #endif
-    extern ESQL_TRANSLATE_TABLE esql_Translate_table;
+  extern ESQL_TRANSLATE_TABLE esql_Translate_table;
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _ESQL_TRANSLATE_H_ */
+#endif				/* _ESQL_TRANSLATE_H_ */

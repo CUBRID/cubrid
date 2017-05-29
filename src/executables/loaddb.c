@@ -60,7 +60,7 @@ extern bool locator_Dont_check_foreign_key;	/* from locator_sr.h */
 extern "C"
 {
 #endif
-extern void do_loader_parse (FILE * fp);
+  extern void do_loader_parse (FILE * fp);
 #ifdef __cplusplus
 }
 #endif

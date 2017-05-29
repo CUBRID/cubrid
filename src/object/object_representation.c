@@ -1378,7 +1378,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       /* Alloc memory for the compressed string */
       /* Worst case LZO compression size from their FAQ */
-      compressed_string = (char*)malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
+      compressed_string = (char *) malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
       if (compressed_string == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -4031,7 +4031,7 @@ or_unpack_string (char *ptr, char **string)
     }
   else
     {
-      new_ = (char*) db_private_alloc (NULL, length);
+      new_ = (char *) db_private_alloc (NULL, length);
       /* need to handle allocation errors */
       if (new_ == NULL)
 	{
@@ -4281,7 +4281,7 @@ or_unpack_bool_array (char *ptr, bool ** bools)
     }
   else
     {
-      new_ = (bool*) db_private_alloc (NULL, length);
+      new_ = (bool *) db_private_alloc (NULL, length);
       /* need to handle allocation errors */
       if (new_ == NULL)
 	{
@@ -4920,7 +4920,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    {
 	      goto error;
 	    }
-	  domain = tp_domain_resolve_default ((DB_TYPE)(index - 1));
+	  domain = tp_domain_resolve_default ((DB_TYPE) (index - 1));
 	  /* stop the loop */
 	  more = false;
 	}
@@ -5129,13 +5129,13 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      d->codeset = codeset;
 	      d->collation_id = collation_id;
 	      d->enumeration.collation_id = collation_id;
-	      d->collation_flag = (TP_DOMAIN_COLL_ACTION)collation_flag;
+	      d->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
 	    }
 	  else
 	    {
 	      d->codeset = codeset;
 	      d->collation_id = collation_id;
-	      d->collation_flag = (TP_DOMAIN_COLL_ACTION)collation_flag;
+	      d->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
 	    }
 
 	  if (has_enum)
@@ -5247,7 +5247,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	  index = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
 	  /* Recall that the builtin domain indexes are 1 based rather than zero based, must adjust prior to indexing
 	   * the table. */
-	  domain = tp_domain_resolve_default ((DB_TYPE)(index - 1));
+	  domain = tp_domain_resolve_default ((DB_TYPE) (index - 1));
 	  if (domain == NULL)
 	    {
 	      goto error;
@@ -5499,7 +5499,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;
-		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION)collation_flag;
+		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
 		case DB_TYPE_BIT:
 		case DB_TYPE_VARBIT:
 		  dom->codeset = codeset;
@@ -5514,7 +5514,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  dom->collation_id = collation_id;
 		  dom->enumeration.collation_id = collation_id;
 		  dom->codeset = codeset;
-		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION)collation_flag;
+		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
 		default:
 		  break;
 		}
@@ -7639,7 +7639,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
       return ER_FAILED;
     }
 
-  enum_vals =(DB_ENUM_ELEMENT*) malloc (sizeof (DB_ENUM_ELEMENT) * count);
+  enum_vals = (DB_ENUM_ELEMENT *) malloc (sizeof (DB_ENUM_ELEMENT) * count);
   if (enum_vals == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_ENUM_ELEMENT) * count);
@@ -7666,7 +7666,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
 
       DB_GET_ENUM_ELEM_DBCHAR (db_enum).info = value.data.ch.info;
       str_size = db_get_string_size (&value);
-      enum_str = (char*)malloc (str_size + 1);
+      enum_str = (char *) malloc (str_size + 1);
       if (enum_str == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,

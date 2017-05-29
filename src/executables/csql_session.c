@@ -234,7 +234,7 @@ csql_help_schema (const char *class_name)
     {
       bool is_composed = false;
 
-      class_name_composed = (char*) malloc (composed_size + 1);
+      class_name_composed = (char *) malloc (composed_size + 1);
       if (class_name_composed == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -491,7 +491,7 @@ csql_help_trigger (const char *trigger_name)
 	{
 	  bool is_composed = false;
 
-	  trigger_name_composed = (char*)malloc (composed_size + 1);
+	  trigger_name_composed = (char *) malloc (composed_size + 1);
 	  if (trigger_name_composed == NULL)
 	    {
 	      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -760,7 +760,7 @@ csql_killtran (const char *argument)
 	  for (i = 0; i < info->num_trans; i++)
 	    {
 	      fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_FORMAT), info->tran[i].tran_index,
-		       tran_get_tranlist_state_name ((TRAN_STATE)info->tran[i].state), info->tran[i].db_user,
+		       tran_get_tranlist_state_name ((TRAN_STATE) info->tran[i].state), info->tran[i].db_user,
 		       info->tran[i].host_name, info->tran[i].process_id, info->tran[i].program_name);
 	    }
 
@@ -779,7 +779,7 @@ csql_killtran (const char *argument)
 	    {
 	      fprintf (csql_Output_fp, csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
 	      fprintf (csql_Output_fp, csql_get_message (CSQL_KILLTRAN_FORMAT), info->tran[i].tran_index,
-		       tran_get_tranlist_state_name ((TRAN_STATE)info->tran[i].state), info->tran[i].db_user,
+		       tran_get_tranlist_state_name ((TRAN_STATE) info->tran[i].state), info->tran[i].db_user,
 		       info->tran[i].host_name, info->tran[i].process_id, info->tran[i].program_name);
 
 	      if (thread_kill_tran_index (info->tran[i].tran_index, info->tran[i].db_user, info->tran[i].host_name,

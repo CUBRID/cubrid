@@ -812,7 +812,7 @@ obj_print_describe_partition_info (PARSER_CONTEXT * parser, SM_PARTITION * parti
       break;
     }
 
-  tmp = (char*)partinfo->expr;
+  tmp = (char *) partinfo->expr;
   assert (tmp != NULL);
 
   ptr = tmp ? strstr (tmp, "SELECT ") : NULL;

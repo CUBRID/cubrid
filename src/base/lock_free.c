@@ -2839,7 +2839,7 @@ lf_circular_queue_create (unsigned int capacity, int data_size)
     }
 
   /* Allocate queue data buffer */
-  queue->data = (char*)malloc (capacity * data_size);
+  queue->data = (char *) malloc (capacity * data_size);
   if (queue->data == NULL)
     {
       free (queue);
@@ -2848,7 +2848,7 @@ lf_circular_queue_create (unsigned int capacity, int data_size)
     }
 
   /* Allocate the array of entry state */
-  queue->entry_state = (UINT64*)malloc (capacity * sizeof (UINT64));
+  queue->entry_state = (UINT64 *) malloc (capacity * sizeof (UINT64));
   if (queue->entry_state == NULL)
     {
       free (queue->data);

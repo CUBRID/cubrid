@@ -965,7 +965,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_WITH_MSG;
     }
 
-  db_mode = uDatabaseMode ((char*)db_name, &ha_mode);
+  db_mode = uDatabaseMode ((char *) db_name, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", db_name);

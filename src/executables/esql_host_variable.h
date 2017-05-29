@@ -311,18 +311,18 @@ extern "C"
 {
 #endif
 
-extern C_TYPE pp_get_type (HOST_REF * ref);
-extern char *pp_get_precision (HOST_REF * ref);
-extern char *pp_get_input_size (HOST_REF * ref);
-extern char *pp_get_output_size (HOST_REF * ref);
-extern char *pp_get_expr (HOST_REF * ref);
-extern char *pp_get_addr_expr (HOST_REF * ref);
-extern char *pp_get_ind_expr (HOST_REF * ref);
-extern char *pp_get_ind_addr_expr (HOST_REF * ref);
-extern void pp_print_host_ref (HOST_REF * ref, FILE * fp);
+  extern C_TYPE pp_get_type (HOST_REF * ref);
+  extern char *pp_get_precision (HOST_REF * ref);
+  extern char *pp_get_input_size (HOST_REF * ref);
+  extern char *pp_get_output_size (HOST_REF * ref);
+  extern char *pp_get_expr (HOST_REF * ref);
+  extern char *pp_get_addr_expr (HOST_REF * ref);
+  extern char *pp_get_ind_expr (HOST_REF * ref);
+  extern char *pp_get_ind_addr_expr (HOST_REF * ref);
+  extern void pp_print_host_ref (HOST_REF * ref, FILE * fp);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _ESQL_HOST_VARIABLE_H_ */
+#endif				/* _ESQL_HOST_VARIABLE_H_ */

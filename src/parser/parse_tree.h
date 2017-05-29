@@ -3715,7 +3715,7 @@ struct pt_coll_infer
 extern "C"
 {
 #endif
-void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+  void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
 #ifdef __cplusplus
 }
 #endif

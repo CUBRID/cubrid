@@ -161,7 +161,7 @@ broker_stat_alloc_init (const char *bname, int num_as, int br_pid, int *as_pids,
   int i, nitem = 0;
   T_CM_BROKER_PROC_STAT *bp;
 
-  bp = (T_CM_BROKER_PROC_STAT*) malloc (sizeof (T_CM_BROKER_PROC_STAT) + (num_as - 1) * sizeof (T_CM_PROC_STAT));
+  bp = (T_CM_BROKER_PROC_STAT *) malloc (sizeof (T_CM_BROKER_PROC_STAT) + (num_as - 1) * sizeof (T_CM_PROC_STAT));
   if (bp == NULL)
     {
       cm_set_error (err_buf, CM_OUT_OF_MEMORY);
@@ -287,7 +287,7 @@ cm_get_broker_proc_stat_all (T_CM_ERROR * err_buf)
       return NULL;
     }
 
-  all_stat = (T_CM_BROKER_PROC_STAT_ALL*) calloc (1, sizeof (T_CM_BROKER_PROC_STAT_ALL));
+  all_stat = (T_CM_BROKER_PROC_STAT_ALL *) calloc (1, sizeof (T_CM_BROKER_PROC_STAT_ALL));
   p = (T_CM_BROKER_PROC_STAT **) calloc (broker_info_all.num_info, sizeof (T_CM_BROKER_PROC_STAT *));
 
   if (all_stat == NULL || p == NULL)
@@ -663,7 +663,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
     }
 
 
-  res = (T_CM_DISK_PARTITION_STAT_ALL*) malloc (sizeof (T_CM_DISK_PARTITION_STAT_ALL));
+  res = (T_CM_DISK_PARTITION_STAT_ALL *) malloc (sizeof (T_CM_DISK_PARTITION_STAT_ALL));
 
   if (res == NULL)
     {
@@ -671,7 +671,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
     }
 
   res->num_stat = i;
-  res->partitions = (T_CM_DISK_PARTITION_STAT*) malloc (sizeof (T_CM_DISK_PARTITION_STAT) * i);
+  res->partitions = (T_CM_DISK_PARTITION_STAT *) malloc (sizeof (T_CM_DISK_PARTITION_STAT) * i);
 
   if (res->partitions == NULL)
     {
@@ -1017,7 +1017,8 @@ extract_host_partition_stat (FILE * fp, const char *arg1, T_CM_ERROR * err_buf)
       if (nitem >= nalloc)
 	{
 	  nalloc *= 2;
-	  stat->partitions = (T_CM_DISK_PARTITION_STAT*) realloc (stat->partitions, nalloc * sizeof (T_CM_DISK_PARTITION_STAT));
+	  stat->partitions =
+	    (T_CM_DISK_PARTITION_STAT *) realloc (stat->partitions, nalloc * sizeof (T_CM_DISK_PARTITION_STAT));
 	}
       if (stat->partitions)
 	{
@@ -1410,7 +1411,9 @@ extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf)
 	  if (nitem >= nalloc)
 	    {
 	      nalloc *= 2;
-	      if (!(all_stat->db_stats = (T_CM_DB_PROC_STAT*) realloc (all_stat->db_stats, nalloc * sizeof (T_CM_DB_PROC_STAT))))
+	      if (!
+		  (all_stat->db_stats =
+		   (T_CM_DB_PROC_STAT *) realloc (all_stat->db_stats, nalloc * sizeof (T_CM_DB_PROC_STAT))))
 		{
 		  cm_set_error (err_buf, CM_OUT_OF_MEMORY);
 		  return NULL;

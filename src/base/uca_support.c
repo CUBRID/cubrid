@@ -2976,7 +2976,7 @@ new_contraction (UCA_STORAGE * storage)
 
   if (storage->count_contr >= storage->max_contr)
     {
-      storage->coll_contr = (UCA_CONTRACTION*)
+      storage->coll_contr = (UCA_CONTRACTION *)
 	realloc (storage->coll_contr, sizeof (UCA_CONTRACTION) * (storage->max_contr + UCA_CONTR_EXP_CNT_GROW));
 
       if (storage->coll_contr == NULL)
@@ -3013,7 +3013,7 @@ new_expansion (UCA_STORAGE * storage)
 
   if (storage->count_exp >= storage->max_exp)
     {
-      storage->coll_exp = (UCA_EXPANSION*)
+      storage->coll_exp = (UCA_EXPANSION *)
 	realloc (storage->coll_exp, sizeof (UCA_EXPANSION) * (storage->max_exp + UCA_CONTR_EXP_CNT_GROW));
 
       if (storage->coll_exp == NULL)

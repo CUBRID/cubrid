@@ -210,7 +210,7 @@ session_state_alloc (void)
 {
   SESSION_STATE *state;
 
-  state = (SESSION_STATE*)malloc (sizeof (SESSION_STATE));
+  state = (SESSION_STATE *) malloc (sizeof (SESSION_STATE));
   if (state != NULL)
     {
       pthread_mutex_init (&state->mutex, NULL);
@@ -848,7 +848,7 @@ session_remove_expired_sessions (struct timeval *timeout)
       lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
       while (true)
 	{
-	  state = (SESSION_STATE*)lf_hash_iterate (&it);
+	  state = (SESSION_STATE *) lf_hash_iterate (&it);
 	  if (state == NULL)
 	    {
 	      finished = true;
@@ -2179,7 +2179,7 @@ session_states_dump (THREAD_ENTRY * thread_p)
   fprintf (stdout, "\nSESSION COUNT = %d\n", session_count);
 
   lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
-  for (state = (SESSION_STATE*)lf_hash_iterate (&it); state != NULL; state = (SESSION_STATE*)lf_hash_iterate (&it))
+  for (state = (SESSION_STATE *) lf_hash_iterate (&it); state != NULL; state = (SESSION_STATE *) lf_hash_iterate (&it))
     {
       session_dump_session (state);
     }

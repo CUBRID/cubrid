@@ -356,7 +356,7 @@ utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p)
 	{
 	  if (*keyval_p == keyp->keyval)
 	    {
-	      *keystr_p = const_cast<char*>(keyp->keystr);
+	      *keystr_p = const_cast < char *>(keyp->keystr);
 	      return NO_ERROR;
 	    }
 	}
@@ -461,7 +461,7 @@ util_split_ha_node (const char *str)
 {
   char *start_node;
 
-  start_node = (char*)strchr (str, '@');
+  start_node = (char *) strchr (str, '@');
   if (start_node == NULL || str == start_node)
     {
       return NULL;
@@ -552,7 +552,7 @@ util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p, char **ha_sy
   *(ha_copy_log_base_p) = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
   if (*(ha_copy_log_base_p) == NULL || **(ha_copy_log_base_p) == '\0')
     {
-      *(ha_copy_log_base_p) = (char*)envvar_get ("DATABASES");
+      *(ha_copy_log_base_p) = (char *) envvar_get ("DATABASES");
       if (*(ha_copy_log_base_p) == NULL)
 	{
 	  *(ha_copy_log_base_p) = ".";
@@ -1179,7 +1179,7 @@ util_print_deprecated (const char *option)
  *   return: NO_ERROR/ER_GENERIC_ERROR
  */
 int
- util_get_table_list_from_file (char *fname, dynamic_array * darray)
+util_get_table_list_from_file (char *fname, dynamic_array * darray)
 {
   int c, i, p;
   char name[SM_MAX_IDENTIFIER_LENGTH];

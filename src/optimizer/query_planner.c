@@ -8329,7 +8329,7 @@ qo_search_planner (QO_PLANNER * planner)
 	   * Otherwise we clear it */
 	  else if (has_hint && node->info.sort_spec.asc_or_desc == PT_ASC)
 	    {
-	      *hint = (PT_HINT_ENUM)(*hint & ~PT_HINT_USE_IDX_DESC);
+	      *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
 	    }
 	}
 
@@ -8342,7 +8342,7 @@ qo_search_planner (QO_PLANNER * planner)
 	   * Otherwise we clear it */
 	  else if (has_hint && node->info.sort_spec.asc_or_desc == PT_ASC)
 	    {
-           *hint = (PT_HINT_ENUM)(*hint & ~PT_HINT_USE_IDX_DESC);
+	      *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
 	    }
 	}
     }
@@ -8375,7 +8375,8 @@ qo_search_planner (QO_PLANNER * planner)
 	    {
 	      if (plan->info->env != NULL)
 		{
-		  plan->info->env->pt_tree->info.query.q.select.hint = (PT_HINT_ENUM)(plan->info->env->pt_tree->info.query.q.select.hint & ~PT_HINT_USE_IDX_DESC);
+		  plan->info->env->pt_tree->info.query.q.select.hint =
+		    (PT_HINT_ENUM) (plan->info->env->pt_tree->info.query.q.select.hint & ~PT_HINT_USE_IDX_DESC);
 		}
 	    }
 	}
@@ -10338,7 +10339,7 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
   for (trav = plan->iscan_sort_list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE)(PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   /* test again the order by skip */
@@ -10348,7 +10349,7 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
   for (trav = plan->iscan_sort_list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE)(PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   return orderby_skip;
@@ -10478,7 +10479,7 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
   for (trav = list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE)(PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   /* test again the group by skip */
@@ -10488,7 +10489,7 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
   for (trav = list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE)(PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   return groupby_skip;

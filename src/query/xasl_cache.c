@@ -308,7 +308,7 @@ xcache_initialize (THREAD_ENTRY * thread_p)
       return error_code;
     }
 
-  xcache_Cleanup_array = (XCACHE_CLEANUP_CANDIDATE*)malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
+  xcache_Cleanup_array = (XCACHE_CLEANUP_CANDIDATE *) malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
   if (xcache_Cleanup_array == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,

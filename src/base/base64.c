@@ -513,7 +513,7 @@ base64_encode (const unsigned char *src, int src_len, unsigned char **dest, int 
 
   encode_len = get_base64_encode_len (src_len);
 
-  dest_p = (unsigned char*)db_private_alloc (NULL, encode_len + 1);
+  dest_p = (unsigned char *) db_private_alloc (NULL, encode_len + 1);
   if (dest_p == NULL)
     {
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;

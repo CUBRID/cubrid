@@ -224,7 +224,7 @@
   } while (0)
 
 #if defined(WINDOWS)
-  typedef unsigned long in_addr_t;
+typedef unsigned long in_addr_t;
 #endif
 
 
@@ -234,8 +234,8 @@
  * PUBLIC TYPE DEFINITIONS						*
  ************************************************************************/
 #ifdef __cplusplus
-  extern "C"
-  {
+extern "C"
+{
 #endif
   typedef struct
   {

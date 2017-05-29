@@ -317,7 +317,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
 	  if (buffer == NULL)
 	    {
-	      buffer = (char*)malloc (bufsize * sizeof (char));
+	      buffer = (char *) malloc (bufsize * sizeof (char));
 	      if (buffer == NULL)
 		{
 		  goto error_return;
@@ -327,7 +327,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	  else
 	    {
 	      char *oldbuffer = buffer;	/* save pointer in case realloc fails */
-	      buffer = (char*)realloc (buffer, bufsize * sizeof (char));
+	      buffer = (char *) realloc (buffer, bufsize * sizeof (char));
 	      if (buffer == NULL)
 		{
 		  free_and_init (oldbuffer);
@@ -421,7 +421,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
 	  if (buffer == NULL)
 	    {
-	      buffer = (char*)malloc (bufsize * sizeof (char));
+	      buffer = (char *) malloc (bufsize * sizeof (char));
 	      if (buffer == NULL)
 		{
 		  goto error_return;
@@ -431,7 +431,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	  else
 	    {
 	      char *oldbuffer = buffer;	/* save pointer in case realloc fails */
-	      buffer = (char*)realloc (buffer, bufsize * sizeof (char));
+	      buffer = (char *) realloc (buffer, bufsize * sizeof (char));
 	      if (buffer == NULL)
 		{
 		  free_and_init (oldbuffer);
@@ -810,7 +810,8 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn, unsigned short request_id
 	    }
 	  else if ((ha_state >= HA_SERVER_STATE_IDLE) && (ha_state <= HA_SERVER_STATE_DEAD))
 	    {
-	      strncpy (ha_state_str, css_ha_server_state_string ((HA_SERVER_STATE)ha_state), sizeof (ha_state_str) - 1);
+	      strncpy (ha_state_str, css_ha_server_state_string ((HA_SERVER_STATE) ha_state),
+		       sizeof (ha_state_str) - 1);
 	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
 			msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_SERVER_MODE),
 			temp->name, ha_state_str);

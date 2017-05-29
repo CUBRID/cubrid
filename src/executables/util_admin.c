@@ -202,7 +202,7 @@ static UTIL_ARG_MAP ua_Addvol_Option_Map[] = {
 #if defined(LINUX) || defined(AIX)
   {ADDVOL_PURPOSE_S, {ARG_STRING}, {.p = (void *) "generic"}},
 #else
-  {ADDVOL_PURPOSE_S, {ARG_STRING}, {(int) "generic"}},//vapa!!!
+  {ADDVOL_PURPOSE_S, {ARG_STRING}, {(int) "generic"}},	//vapa!!!
 #endif
   {ADDVOL_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {ADDVOL_CS_MODE_S, {ARG_BOOLEAN}, {0}},
@@ -253,7 +253,7 @@ static UTIL_ARG_MAP ua_Space_Option_Map[] = {
 #if defined(LINUX) || defined(AIX)
   {SPACE_SIZE_UNIT_S, {ARG_STRING}, {.p = (void *) "h"}},
 #else
-  {SPACE_SIZE_UNIT_S, {ARG_STRING}, {(int) "h"}},//vapa!!!
+  {SPACE_SIZE_UNIT_S, {ARG_STRING}, {(int) "h"}},	//vapa!!!
 #endif
   {SPACE_SUMMARIZE_S, {ARG_BOOLEAN}, {0}},
   {SPACE_PURPOSE_S, {ARG_BOOLEAN}, {0}},
@@ -419,11 +419,11 @@ static UTIL_ARG_MAP ua_Killtran_Option_Map[] = {
   {KILLTRAN_KILL_SQL_ID_S, {ARG_STRING}, {0}},
   {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {.p = (void *) ""}},
 #else
-  {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {(int) ""}},//vapa!!
-  {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {(int) ""}},//vapa!!
-  {KILLTRAN_KILL_PROGRAM_NAME_S, {ARG_STRING}, {(int) ""}},//vapa!!
+  {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {(int) ""}},	//vapa!!
+  {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {(int) ""}},	//vapa!!
+  {KILLTRAN_KILL_PROGRAM_NAME_S, {ARG_STRING}, {(int) ""}},	//vapa!!
   {KILLTRAN_KILL_SQL_ID_S, {ARG_STRING}, {0}},
-  {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {(int) ""}},//vapa!!
+  {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {(int) ""}},	//vapa!!
 #endif
   {KILLTRAN_DISPLAY_INFORMATION_S, {ARG_BOOLEAN}, {0}},
   {KILLTRAN_DISPLAY_QUERY_INFO_S, {ARG_BOOLEAN}, {0}},

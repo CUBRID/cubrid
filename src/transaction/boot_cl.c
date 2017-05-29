@@ -1195,7 +1195,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
 #if defined(CS_MODE)
-  if (lang_set_charset ((INTL_CODESET)boot_Server_credential.db_charset) != NO_ERROR)
+  if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
@@ -3846,7 +3846,7 @@ boot_add_charsets (MOP class_mop)
       DB_MAKE_INTEGER (&val, i);
       db_put_internal (obj, CT_DBCHARSET_CHARSET_ID, &val);
 
-      charset_name = (char *) lang_charset_cubrid_name ((INTL_CODESET)i);
+      charset_name = (char *) lang_charset_cubrid_name ((INTL_CODESET) i);
       if (charset_name == NULL)
 	{
 	  return ER_LANG_CODESET_NOT_AVAILABLE;

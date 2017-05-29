@@ -5098,7 +5098,7 @@ static SYSPRM_PARAM prm_Def[] = {
    PRM_NAME_FAULT_INJECTION_IDS,
    (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER_LIST,
-   (unsigned int*)&prm_fault_injection_id_flag,
+   (unsigned int *) &prm_fault_injection_id_flag,
    (void *) &prm_fault_injection_id_default,
    (void *) &PRM_FAULT_INJECTION_IDS,
    (void *) NULL,
@@ -5110,7 +5110,7 @@ static SYSPRM_PARAM prm_Def[] = {
    PRM_NAME_FAULT_INJECTION_TEST,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_KEYWORD,
-   (unsigned int *)&prm_fault_injection_test_flag,
+   (unsigned int *) &prm_fault_injection_test_flag,
    (void *) &prm_fault_injection_test_default,
    (void *) &PRM_FAULT_INJECTION_TEST,
    (void *) &prm_fault_injection_test_upper,
@@ -6033,7 +6033,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
       if (PRM_IS_FOR_SESSION (prm_Def[i].static_flag))
 	{
 	  sprm = &cached_session_parameters[num_session_prms++];
-	  sprm->prm_id = (PARAM_ID)i;
+	  sprm->prm_id = (PARAM_ID) i;
 	  sprm->flag = *prm_Def[i].dynamic_flag;
 	  sprm->datatype = prm_Def[i].datatype;
 	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
@@ -6932,7 +6932,7 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
       SYSPRM_ASSIGN_VALUE *assign = NULL;
 
       /* get parameter name and value */
-      err = (SYSPRM_ERR)prm_get_next_param_value (&p, &name, &value);
+      err = (SYSPRM_ERR) prm_get_next_param_value (&p, &name, &value);
       if (err != PRM_ERR_NO_ERROR || name == NULL || value == NULL)
 	{
 	  break;
@@ -7053,7 +7053,7 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
       SYSPRM_ASSIGN_VALUE *assign = NULL;
 
       /* get parameter name and value */
-      err = (SYSPRM_ERR)prm_get_next_param_value (&p, &name, &value);
+      err = (SYSPRM_ERR) prm_get_next_param_value (&p, &name, &value);
       if (err != PRM_ERR_NO_ERROR || name == NULL || value == NULL)
 	{
 	  break;
@@ -7965,7 +7965,7 @@ xsysprm_get_force_server_parameters (void)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
 	      goto cleanup;
 	    }
-	  change_val->prm_id = (PARAM_ID)i;
+	  change_val->prm_id = (PARAM_ID) i;
 	  change_val->next = NULL;
 	  sysprm_set_sysprm_value_from_parameter (&change_val->value, prm);
 	  if (force_values != NULL)
@@ -8781,7 +8781,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	    char save;
 	    int list_size, tmp;
 
-	    val = (int*)calloc (1024, sizeof (int));	/* max size is 1023 */
+	    val = (int *) calloc (1024, sizeof (int));	/* max size is 1023 */
 	    if (val == NULL)
 	      {
 		size_t size = 1024 * sizeof (int);
@@ -10220,7 +10220,7 @@ prm_get_value (PARAM_ID prm_id)
  * NOTE: keywords are stored as integers
  */
 int
- prm_get_integer_value (PARAM_ID prm_id)
+prm_get_integer_value (PARAM_ID prm_id)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
@@ -10674,7 +10674,7 @@ sysprm_free_session_parameters (SESSION_PARAM ** session_parameters_ptr)
   for (i = 0; i < NUM_SESSION_PRM; i++)
     {
       sprm = &((*session_parameters_ptr)[i]);
-      sysprm_clear_sysprm_value (&sprm->value, (SYSPRM_DATATYPE)sprm->datatype);
+      sysprm_clear_sysprm_value (&sprm->value, (SYSPRM_DATATYPE) sprm->datatype);
     }
 
   free_and_init (*session_parameters_ptr);
@@ -10918,7 +10918,7 @@ sysprm_pack_session_parameters (char *ptr, SESSION_PARAM * session_parameters)
       ptr = or_pack_int (ptr, prm->prm_id);
       ptr = or_pack_int (ptr, prm->flag);
       ptr = or_pack_int (ptr, prm->datatype);
-      ptr = sysprm_pack_sysprm_value (ptr, prm->value, (SYSPRM_DATATYPE)prm->datatype);
+      ptr = sysprm_pack_sysprm_value (ptr, prm->value, (SYSPRM_DATATYPE) prm->datatype);
     }
 
   return ptr;
@@ -10946,7 +10946,7 @@ sysprm_packed_session_parameters_length (SESSION_PARAM * session_parameters, int
       size += OR_INT_SIZE;	/* flag */
       size += OR_INT_SIZE;	/* datatype */
       size +=			/* value */
-	sysprm_packed_sysprm_value_length (session_parameters[i].value, (SYSPRM_DATATYPE)prm->datatype, size + offset);
+	sysprm_packed_sysprm_value_length (session_parameters[i].value, (SYSPRM_DATATYPE) prm->datatype, size + offset);
     }
 
   return size;
@@ -10991,14 +10991,14 @@ sysprm_unpack_session_parameters (char *ptr, SESSION_PARAM ** session_parameters
       prm = &session_params[prm_index];
 
       ptr = or_unpack_int (ptr, &tmp);
-      prm->prm_id = (PARAM_ID)tmp;
+      prm->prm_id = (PARAM_ID) tmp;
 
       ptr = or_unpack_int (ptr, &flag);
       prm->flag = (unsigned int) flag;
 
       ptr = or_unpack_int (ptr, &prm->datatype);
 
-      ptr = sysprm_unpack_sysprm_value (ptr, &prm->value, (SYSPRM_DATATYPE)prm->datatype);
+      ptr = sysprm_unpack_sysprm_value (ptr, &prm->value, (SYSPRM_DATATYPE) prm->datatype);
       if (ptr == NULL)
 	{
 	  /* error unpacking value */
@@ -11112,7 +11112,7 @@ sysprm_unpack_assign_values (char *ptr, SYSPRM_ASSIGN_VALUE ** assign_values_ptr
 	}
 
       ptr = or_unpack_int (ptr, &tmp);
-      assign_val->prm_id = (PARAM_ID)tmp;
+      assign_val->prm_id = (PARAM_ID) tmp;
 
       ptr = sysprm_unpack_sysprm_value (ptr, &assign_val->value, GET_PRM_DATATYPE (assign_val->prm_id));
       if (ptr == NULL)
@@ -11691,7 +11691,7 @@ sysprm_print_parameters_for_ha_repl (void)
 
       if (i == PRM_ID_INTL_COLLATION || i == PRM_ID_INTL_DATE_LANG || i == PRM_ID_INTL_NUMBER_LANG)
 	{
-	  char *val = prm_get_string_value ((PARAM_ID)i);
+	  char *val = prm_get_string_value ((PARAM_ID) i);
 
 	  if (val == NULL)
 	    {

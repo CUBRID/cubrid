@@ -787,7 +787,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
       break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      db_make_bit (value, 1, (const DB_C_BIT)"0", 1);//vapa!!!
+      db_make_bit (value, 1, (const DB_C_BIT) "0", 1);	//vapa!!!
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
@@ -927,7 +927,8 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_STRING (value);
       if (val_str != NULL && DB_GET_STRING_LENGTH (value) > precision)
 	{
-	  intl_char_size ((unsigned char*)val_str, precision, (INTL_CODESET)DB_GET_STRING_CODESET (value), &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, (INTL_CODESET) DB_GET_STRING_CODESET (value),
+			  &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -952,7 +953,8 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_CHAR (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  intl_char_size ((unsigned char*)val_str, precision, (INTL_CODESET)DB_GET_STRING_CODESET (value), &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, (INTL_CODESET) DB_GET_STRING_CODESET (value),
+			  &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -978,7 +980,8 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_NCHAR (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  intl_char_size ((unsigned char*)val_str, precision, (INTL_CODESET)DB_GET_STRING_CODESET (value), &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, (INTL_CODESET) DB_GET_STRING_CODESET (value),
+			  &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -1003,7 +1006,8 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_NCHAR (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  intl_char_size ((unsigned char*)val_str, precision, (INTL_CODESET)DB_GET_STRING_CODESET (value), &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, (INTL_CODESET) DB_GET_STRING_CODESET (value),
+			  &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -1799,7 +1803,7 @@ db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, cons
   error = db_value_domain_init (value, DB_TYPE_CHAR, char_length, 0);
   if (error == NO_ERROR)
     {
-      error = db_make_db_char (value, (INTL_CODESET)codeset, collation_id, str, char_str_byte_size);
+      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, char_str_byte_size);
     }
 
   return error;
@@ -1824,7 +1828,7 @@ db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR st
   error = db_value_domain_init (value, DB_TYPE_VARCHAR, max_char_length, 0);
   if (error == NO_ERROR)
     {
-      error = db_make_db_char (value, (INTL_CODESET)codeset, collation_id, str, char_str_byte_size);
+      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, char_str_byte_size);
     }
 
   return error;
@@ -1849,7 +1853,7 @@ db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, c
   error = db_value_domain_init (value, DB_TYPE_NCHAR, nchar_length, 0);
   if (error == NO_ERROR)
     {
-      error = db_make_db_char (value, (INTL_CODESET)codeset, collation_id, str, nchar_str_byte_size);
+      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, nchar_str_byte_size);
     }
 
   return error;
@@ -1874,7 +1878,7 @@ db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR
   error = db_value_domain_init (value, DB_TYPE_VARNCHAR, max_nchar_length, 0);
   if (error == NO_ERROR)
     {
-      error = db_make_db_char (value, (INTL_CODESET)codeset, collation_id, str, nchar_str_byte_size);
+      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, nchar_str_byte_size);
     }
 
   return error;

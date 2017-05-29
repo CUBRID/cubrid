@@ -248,7 +248,8 @@ tz_load_library (const char *lib_file, void **handle)
     {
 #if defined(WINDOWS)
       FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL,
-		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1, (va_list*)&lib_file);
+		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1,
+		     (va_list *) & lib_file);
       snprintf (err_msg, sizeof (err_msg) - 1,
 		"Library file is invalid or not accessible.\n" " Unable to load %s !\n %s", lib_file, lpMsgBuf);
       LocalFree (lpMsgBuf);
@@ -378,7 +379,7 @@ tz_unload (void)
   if (tz_Lib_handle != NULL)
     {
 #if defined(WINDOWS)
-      FreeLibrary ((HMODULE)tz_Lib_handle);
+      FreeLibrary ((HMODULE) tz_Lib_handle);
 #else
       dlclose (tz_Lib_handle);
 #endif

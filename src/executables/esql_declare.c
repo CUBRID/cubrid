@@ -42,8 +42,9 @@
 typedef struct spec_state SPEC_STATE;
 typedef struct scope SCOPE;
 
-extern "C" {
-    extern FILE *esql_yyout;
+extern "C"
+{
+  extern FILE *esql_yyout;
 }
 
 struct spec_state
@@ -526,13 +527,13 @@ pp_decl_init (void)
 {
   pp_nesting_level = -1;	/* It will get bumped by push_name_scope(). */
 
-  pp_name_scope_base = (SCOPE*)pp_malloc (NFRAMES * sizeof (SCOPE));
+  pp_name_scope_base = (SCOPE *) pp_malloc (NFRAMES * sizeof (SCOPE));
   memset (pp_name_scope_base, 0, NFRAMES * sizeof (SCOPE));
   pp_name_scope_limit = pp_name_scope_base + NFRAMES;
   pp_current_name_scope = NULL;
   pp_push_name_scope ();
 
-  pp_spec_scope_base = (SPEC_STATE*)pp_malloc (NFRAMES * sizeof (SPEC_STATE));
+  pp_spec_scope_base = (SPEC_STATE *) pp_malloc (NFRAMES * sizeof (SPEC_STATE));
   memset (pp_spec_scope_base, 0, NFRAMES * sizeof (SPEC_STATE));
   pp_spec_scope_limit = pp_spec_scope_base + NFRAMES;
   pp_current_spec_scope = NULL;

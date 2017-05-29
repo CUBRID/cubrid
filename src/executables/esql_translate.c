@@ -1604,7 +1604,7 @@ escape_string (const char *in_str, int length, int *counter)
     {
       int sz = temp - out_str + 1;
 
-      out_str = (char*)pp_malloc (sz);
+      out_str = (char *) pp_malloc (sz);
       memcpy (out_str, temp_buffer, sz);
     }
   *counter = add_count;

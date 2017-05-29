@@ -119,13 +119,13 @@ __md5_init_ctx (struct md5_ctx *ctx)
    output yields to the wanted ASCII representation of the message
    digest.  */
 #ifdef __cplusplus
-extern "C"
-{
+     extern "C"
+     {
 #endif
-     extern void *__md5_buffer (const char *buffer, size_t len, void *resblock) __THROW;
+       extern void *__md5_buffer (const char *buffer, size_t len, void *resblock) __THROW;
 
-     extern void md5_hash_to_hex (const char *hashString, char *hexString);
+       extern void md5_hash_to_hex (const char *hashString, char *hexString);
 #ifdef __cplusplus
-}
+     }
 #endif
-#endif /* md5.h */
+#endif				/* md5.h */

@@ -2694,7 +2694,7 @@ db_set_system_parameters (const char *data)
     }
 
   /* convert SYSPRM_ERR to error code */
-  error = sysprm_set_error ((SYSPRM_ERR)rc, data);
+  error = sysprm_set_error ((SYSPRM_ERR) rc, data);
 
 cleanup:
   /* clean up */
@@ -2738,7 +2738,7 @@ db_reset_system_parameters_from_assignments (const char *data)
       return db_set_system_parameters (buf);
     }
 
-  error = sysprm_set_error ((SYSPRM_ERR)rc, data);
+  error = sysprm_set_error ((SYSPRM_ERR) rc, data);
 
   return error;
 }
@@ -2771,7 +2771,7 @@ db_get_system_parameters (char *data, int len)
     }
 
   /* convert SYSPRM_ERR to error code */
-  error = sysprm_set_error ((SYSPRM_ERR)rc, data);
+  error = sysprm_set_error ((SYSPRM_ERR) rc, data);
 
   if (error == NO_ERROR)
     {
@@ -2821,7 +2821,7 @@ db_get_ha_server_state (char *buffer, int maxlen)
 #endif
   if (buffer)
     {
-      strncpy (buffer, css_ha_server_state_string ((HA_SERVER_STATE)ha_state), maxlen);
+      strncpy (buffer, css_ha_server_state_string ((HA_SERVER_STATE) ha_state), maxlen);
     }
   return ha_state;
 }

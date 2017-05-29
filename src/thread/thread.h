@@ -420,7 +420,7 @@ extern void thread_exit (int exit_code);
 extern "C"
 {
 #endif
-extern void thread_sleep (double);
+  extern void thread_sleep (double);
 #ifdef __cplusplus
 }
 #endif

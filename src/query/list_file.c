@@ -538,7 +538,7 @@ qfile_allocate_sort_list (THREAD_ENTRY * thread_p, int count)
   /* allocate complete list */
   while (count > 0)
     {
-      tmp = (SORT_LIST*)lf_freelist_claim (t_entry, &qfile_sort_list_Freelist);
+      tmp = (SORT_LIST *) lf_freelist_claim (t_entry, &qfile_sort_list_Freelist);
       if (tmp == NULL)
 	{
 	  assert (false);

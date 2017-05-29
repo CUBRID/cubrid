@@ -1074,63 +1074,63 @@ extern "C"
  * arguments. It is not necessary to use these macros but is usually more
  * convenient.
  */
-extern int db_make_null (DB_VALUE * value);
-extern int db_make_int (DB_VALUE * value, const int num);
-extern int db_make_float (DB_VALUE * value, const DB_C_FLOAT num);
-extern int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num);
-extern int db_make_object (DB_VALUE * value, DB_C_OBJECT * obj);
-extern int db_make_set (DB_VALUE * value, DB_C_SET * set);
-extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
-extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
-extern int db_make_collection (DB_VALUE * value, DB_C_SET * set);
-extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
-extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
-extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
-extern int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value);
-extern int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value);
-extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
-extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
-extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
-extern int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
-extern int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val);
-extern int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val);
-extern int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime);
-extern int db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime);
-extern int db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz);
-extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount);
-extern int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr);
-extern int db_make_error (DB_VALUE * value, const int errcode);
-extern int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg);
-extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
-extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
-extern int db_make_string (DB_VALUE * value, const char *str);
-extern int db_make_string_copy (DB_VALUE * value, const char *str);
-extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
-extern int db_value_put_numeric (DB_VALUE * value, DB_C_NUMERIC num);
-extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
-extern int db_value_put_bit (DB_VALUE * value, DB_C_BIT str, int size);
-extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
-			   const int bit_str_bit_size);
-extern int db_value_put_varbit (DB_VALUE * value, DB_C_BIT str, int size);
-extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
-			 const int codeset, const int collation_id);
-extern int db_value_put_char (DB_VALUE * value, DB_C_CHAR str, int size);
-extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
-			    const int char_str_byte_size, const int codeset, const int collation_id);
-extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
-extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
-			  const int codeset, const int collation_id);
-extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
-extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
-			     const int nchar_str_byte_size, const int codeset, const int collation_id);
-extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
+  extern int db_make_null (DB_VALUE * value);
+  extern int db_make_int (DB_VALUE * value, const int num);
+  extern int db_make_float (DB_VALUE * value, const DB_C_FLOAT num);
+  extern int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num);
+  extern int db_make_object (DB_VALUE * value, DB_C_OBJECT * obj);
+  extern int db_make_set (DB_VALUE * value, DB_C_SET * set);
+  extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
+  extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
+  extern int db_make_collection (DB_VALUE * value, DB_C_SET * set);
+  extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
+  extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
+  extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
+  extern int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value);
+  extern int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value);
+  extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
+  extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
+  extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
+  extern int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
+  extern int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val);
+  extern int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val);
+  extern int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime);
+  extern int db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime);
+  extern int db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz);
+  extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount);
+  extern int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr);
+  extern int db_make_error (DB_VALUE * value, const int errcode);
+  extern int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg);
+  extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
+  extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
+  extern int db_make_string (DB_VALUE * value, const char *str);
+  extern int db_make_string_copy (DB_VALUE * value, const char *str);
+  extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
+  extern int db_value_put_numeric (DB_VALUE * value, DB_C_NUMERIC num);
+  extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
+  extern int db_value_put_bit (DB_VALUE * value, DB_C_BIT str, int size);
+  extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
+			     const int bit_str_bit_size);
+  extern int db_value_put_varbit (DB_VALUE * value, DB_C_BIT str, int size);
+  extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
+			   const int codeset, const int collation_id);
+  extern int db_value_put_char (DB_VALUE * value, DB_C_CHAR str, int size);
+  extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+			      const int char_str_byte_size, const int codeset, const int collation_id);
+  extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
+  extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
+			    const int nchar_str_byte_size, const int codeset, const int collation_id);
+  extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
+  extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+			       const int nchar_str_byte_size, const int codeset, const int collation_id);
+  extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 
-extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size, unsigned char codeset,
-				const int collation_id);
+  extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
+				  unsigned char codeset, const int collation_id);
 
-extern DB_CURRENCY db_get_currency_default (void);
+  extern DB_CURRENCY db_get_currency_default (void);
 
-extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
+  extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
 #ifdef __cplusplus
 }

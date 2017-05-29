@@ -2881,7 +2881,7 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
   /* recall that arguments are numbered from 1 */
   for (i = 1; i < arg_count; i++)
     {
-      emit_domain_def ( db_method_arg_domain (method, i));
+      emit_domain_def (db_method_arg_domain (method, i));
       fprintf (output_file, ", ");
     }
 
@@ -3042,7 +3042,7 @@ emit_partition_info (MOP clsobj)
 	  break;
 	}
 
-      ptr = (char*)strstr (class_->partition->expr, "SELECT ");
+      ptr = (char *) strstr (class_->partition->expr, "SELECT ");
       if (ptr)
 	{
 	  ptr2 = strstr (ptr + 7, " FROM ");

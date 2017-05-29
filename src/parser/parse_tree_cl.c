@@ -460,8 +460,8 @@ static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
 extern "C"
 {
-    extern char *g_query_string;
-    extern int g_query_string_len;
+  extern char *g_query_string;
+  extern int g_query_string_len;
 }
 /*
  * strcat_with_realloc () -
@@ -478,7 +478,7 @@ strcat_with_realloc (PT_STRING_BLOCK * sb, const char *tail)
   if (sb->size - sb->length < strlen (tail) + margin)
     {
       sb->size = (sb->size + strlen (tail) + margin) * 2;
-      sb->body = (char*)realloc (sb->body, sb->size);
+      sb->body = (char *) realloc (sb->body, sb->size);
       cp = sb->body;
     }
 
@@ -795,7 +795,7 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
       /* the pair old_node and new_node addresses is added to copy_tree_info */
       PT_CTE_COPY_INFO *curr_cte_copy_info;
 
-      curr_cte_copy_info = (PT_CTE_COPY_INFO*)malloc (sizeof (PT_CTE_COPY_INFO));
+      curr_cte_copy_info = (PT_CTE_COPY_INFO *) malloc (sizeof (PT_CTE_COPY_INFO));
       if (curr_cte_copy_info == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
@@ -2006,7 +2006,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no, int col_no, 
 
       /* parser_allocate_string_buffer() returns the start pointer of the string buffer. It is guaranteed that the
        * length of the buffer 's' is equal to 'str_len + 1'. */
-      s = (char*)parser_allocate_string_buffer (parser, str_len, sizeof (char));
+      s = (char *) parser_allocate_string_buffer (parser, str_len, sizeof (char));
       if (s == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "insufficient memory");
@@ -2340,7 +2340,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
       return prev;
     }
 
-  sb.body = (char*)malloc (sb.size);
+  sb.body = (char *) malloc (sb.size);
   if (sb.body == NULL)
     {
       return NULL;
@@ -2349,7 +2349,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
   sb.body[0] = 0;
   if (prev)
     {
-      strcat_with_realloc (&sb, (const char*)prev->bytes);//vapa!!!
+      strcat_with_realloc (&sb, (const char *) prev->bytes);	//vapa!!!
     }
 
   while (p->next)
@@ -2363,7 +2363,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 	      strcat_with_realloc (&sb, ", ");
 	    }
 
-	  strcat_with_realloc (&sb, (const char*)r->bytes);//vapa!!!
+	  strcat_with_realloc (&sb, (const char *) r->bytes);	//vapa!!!
 	  prev = r;
 	}
       if (0 < parser->max_print_len && parser->max_print_len < sb.length)
@@ -9901,16 +9901,16 @@ pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * sb, PT_NODE * t, P
 
   if (lhs && rhs1)
     {
-      strcat_with_realloc (sb, (const char*)lhs->bytes);//vapa!!!
+      strcat_with_realloc (sb, (const char *) lhs->bytes);	//vapa!!!
       strcat_with_realloc (sb, (char *) op1);
-      strcat_with_realloc (sb, (const char*)rhs1->bytes);//vapa!!!
+      strcat_with_realloc (sb, (const char *) rhs1->bytes);	//vapa!!!
 
       if (rhs2)
 	{
 	  strcat_with_realloc (sb, " and ");
-	  strcat_with_realloc (sb, (const char*)lhs->bytes);//vapa!!!
+	  strcat_with_realloc (sb, (const char *) lhs->bytes);	//vapa!!!
 	  strcat_with_realloc (sb, (char *) op2);
-	  strcat_with_realloc (sb, (const char*)rhs2->bytes);//vapa!!!
+	  strcat_with_realloc (sb, (const char *) rhs2->bytes);	//vapa!!!
 	}
     }
 }
@@ -11868,7 +11868,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  sb.size = 1024;
 	  sb.body = NULL;
 
-	  sb.body = (char*)malloc (sb.size);
+	  sb.body = (char *) malloc (sb.size);
 	  if (sb.body == NULL)
 	    {
 	      return NULL;
@@ -16339,7 +16339,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	      OBJ_SPRINT_DB_DOUBLE (s, p->info.value.data_value.d);
 	      break;
 	    case PT_TYPE_NUMERIC:
-	      strcpy (s, (const char*)p->info.value.data_value.str->bytes);
+	      strcpy (s, (const char *) p->info.value.data_value.str->bytes);
 	      break;
 	    case PT_TYPE_INTEGER:
 	      sprintf (s, "%ld", p->info.value.data_value.i);
@@ -16532,7 +16532,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       if (r1)
 	{
-	  q = pt_append_quoted_string (parser, q, (const char*)r1->bytes, r1->length);
+	  q = pt_append_quoted_string (parser, q, (const char *) r1->bytes, r1->length);
 	}
       else
 	{

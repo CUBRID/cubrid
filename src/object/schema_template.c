@@ -4409,7 +4409,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
 
   /* cast the value to new one : explicit cast */
   new_orig_value = pr_make_ext_value ();
-  status = (TP_DOMAIN_STATUS)db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
+  status = (TP_DOMAIN_STATUS) db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
   if (status == DOMAIN_COMPATIBLE)
     {
       smt_set_attribute_orig_default_value (*found_att, new_orig_value, new_default_expr);

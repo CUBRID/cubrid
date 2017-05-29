@@ -2558,8 +2558,10 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		      goto error_cleanup;
 		    }
 		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
-		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE)DB_GET_INT (&def_expr_type);
-		  att->current_default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE)DB_GET_INT (&def_expr_type);
+		  att->default_value.default_expr.default_expr_type =
+		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr_type);
+		  att->current_default_value.default_expr.default_expr_type =
+		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr_type);
 
 		  /* get and cache default expression format - arg2 of expr */
 		  if (set_get_element_nocopy (def_expr_set, 2, &def_expr_format) != NO_ERROR)
@@ -2586,8 +2588,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  /* simple expressions like SYS_DATE */
 		  assert (DB_VALUE_TYPE (&def_expr) == DB_TYPE_INTEGER);
 
-		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE)DB_GET_INT (&def_expr);
-		  att->current_default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE)DB_GET_INT (&def_expr);
+		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr);
+		  att->current_default_value.default_expr.default_expr_type =
+		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr);
 		}
 	    }
 
@@ -3881,7 +3884,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	    }
 
 	  assert (*string == NULL);
-	  *string = (char*)db_private_alloc (NULL, decompressed_length + 1);
+	  *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
 	  if (*string == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);

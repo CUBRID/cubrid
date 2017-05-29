@@ -359,7 +359,7 @@ envvar_expand (const char *string, char *buffer, size_t maxlen)
   return NO_ERROR;
 }
 
-char * 
+char *
 envvar_bindir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);

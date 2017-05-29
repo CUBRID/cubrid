@@ -4319,7 +4319,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
     case DB_TYPE_NUMERIC:
-      buf = (char*)db_private_alloc (NULL, 128);
+      buf = (char *) db_private_alloc (NULL, 128);
       if (buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 128);

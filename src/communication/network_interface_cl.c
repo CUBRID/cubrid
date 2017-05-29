@@ -6507,7 +6507,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
 	    default:
 	      /* Clone value */
-	      if (db_value_clone ((DB_VALUE*)&dbvals[i], &server_db_values[i]) != NO_ERROR)
+	      if (db_value_clone ((DB_VALUE *) & dbvals[i], &server_db_values[i]) != NO_ERROR)
 		{
 		  goto cleanup;
 		}
@@ -8675,7 +8675,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   if (first_pageid_torecv == NULL_PAGEID && logwr_Gl.start_pageid >= NULL_PAGEID)
     {
       ptr = or_pack_int64 (request, logwr_Gl.start_pageid);
-      mode = (LOGWR_MODE)(mode | LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK);
+      mode = (LOGWR_MODE) (mode | LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK);
     }
   else
     {

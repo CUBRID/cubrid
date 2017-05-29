@@ -137,7 +137,7 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 	  if (logtb_is_interrupted (thread_p, true, &continue_check) == true)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	      return (TRAN_STATE)ER_INTERRUPTED;
+	      return (TRAN_STATE) ER_INTERRUPTED;
 	    }
 
 	  thread_sleep (10);	/* 10 msec */
