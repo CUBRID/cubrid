@@ -3731,7 +3731,6 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   master_host_name = utility_get_option_string_value (arg_map, RESTORESLAVE_MASTER_HOST_NAME_S, 0);
   source_state = utility_get_option_string_value (arg_map, RESTORESLAVE_SOURCE_STATE_S, 0);
 
-#if 0				/* temporary disables */
   if (master_host_name == NULL || source_state == NULL)
     {
       goto print_restoreslave_usage;
@@ -3752,7 +3751,6 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	       source_state);
       goto error_exit;
     }
-#endif /* temporary disables */
 
   restart_arg.restore_slave = true;
   restart_arg.printtoc = utility_get_option_bool_value (arg_map, RESTORESLAVE_LIST_S);
@@ -3769,7 +3767,6 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
       goto print_restoreslave_usage;
     }
 
-#if 0				/* temporary disables */
   if (check_ha_db_and_node_list (database_name, master_host_name) == false)
     {
       fprintf (stderr,
@@ -3794,7 +3791,6 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 
       return EXIT_SUCCESS;
     }
-#endif /* temporary disables */
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
@@ -3826,7 +3822,6 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
       return EXIT_FAILURE;
     }
 
-#if 0				/* temporary disables */
   if (init_ha_catalog)
     {
       error_code = delete_all_ha_apply_info ();
@@ -3870,7 +3865,6 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	}
 
     }
-#endif /* temporary disables */
   db_commit_transaction ();
   db_shutdown ();
 
