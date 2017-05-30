@@ -200,7 +200,7 @@ static UTIL_ARG_MAP ua_Addvol_Option_Map[] = {
   {ADDVOL_FILE_PATH_S, {ARG_STRING}, {0}},
   {ADDVOL_COMMENT_S, {ARG_STRING}, {0}},
 #if defined(LINUX) || defined(AIX)
-  {ADDVOL_PURPOSE_S, {ARG_STRING}, { (long) "generic"}},
+  {ADDVOL_PURPOSE_S, {ARG_STRING}, {(long) "generic"}},
 #else
   {ADDVOL_PURPOSE_S, {ARG_STRING}, {(int) "generic"}},	//vapa!!!
 #endif
@@ -648,7 +648,7 @@ static UTIL_ARG_MAP ua_Copylog_Option_Map[] = {
   {COPYLOG_LOG_PATH_S, {ARG_STRING}, {0}},
   {COPYLOG_MODE_S, {ARG_STRING}, {0}},
 #if defined(LINUX) || defined(AIX)
-  {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, { (-2L)}},
+  {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {(-2L)}},
 #else
   {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {(INT64) (-2L)}},
 #endif
