@@ -199,11 +199,7 @@ static UTIL_ARG_MAP ua_Addvol_Option_Map[] = {
   {ADDVOL_VOLUME_SIZE_S, {ARG_STRING}, {0}},
   {ADDVOL_FILE_PATH_S, {ARG_STRING}, {0}},
   {ADDVOL_COMMENT_S, {ARG_STRING}, {0}},
-#if defined(LINUX) || defined(AIX)
-  {ADDVOL_PURPOSE_S, {ARG_STRING}, {(long) "generic"}},
-#else
   {ADDVOL_PURPOSE_S, {ARG_STRING}, {(void *) "generic"}},	//vapa!!!
-#endif
   {ADDVOL_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {ADDVOL_CS_MODE_S, {ARG_BOOLEAN}, {0}},
   {ADDVOL_MAX_WRITESIZE_IN_SEC_S, {ARG_STRING}, {0}},
@@ -250,11 +246,7 @@ static UTIL_ARG_MAP ua_Space_Option_Map[] = {
   {SPACE_OUTPUT_FILE_S, {ARG_STRING}, {0}},
   {SPACE_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {SPACE_CS_MODE_S, {ARG_BOOLEAN}, {0}},
-#if defined(LINUX) || defined(AIX)
-  {SPACE_SIZE_UNIT_S, {ARG_STRING}, {(long) "h"}},
-#else
   {SPACE_SIZE_UNIT_S, {ARG_STRING}, {(void *) "h"}},	//vapa!!!
-#endif
   {SPACE_SUMMARIZE_S, {ARG_BOOLEAN}, {0}},
   {SPACE_PURPOSE_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
@@ -412,19 +404,11 @@ static GETOPT_LONG ua_Plandump_Option[] = {
 static UTIL_ARG_MAP ua_Killtran_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {KILLTRAN_KILL_TRANSACTION_INDEX_S, {ARG_STRING}, {0}},
-#if defined(LINUX) || defined(AIX)
-  {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {(long) ""}},
-  {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {(long) ""}},
-  {KILLTRAN_KILL_PROGRAM_NAME_S, {ARG_STRING}, {(long) ""}},
-  {KILLTRAN_KILL_SQL_ID_S, {ARG_STRING}, {0}},
-  {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {(long) ""}},
-#else
   {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {(void *) ""}},	//vapa!!
   {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {(void *) ""}},	//vapa!!
   {KILLTRAN_KILL_PROGRAM_NAME_S, {ARG_STRING}, {(void *) ""}},	//vapa!!
   {KILLTRAN_KILL_SQL_ID_S, {ARG_STRING}, {0}},
   {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {(void *) ""}},	//vapa!!
-#endif
   {KILLTRAN_DISPLAY_INFORMATION_S, {ARG_BOOLEAN}, {0}},
   {KILLTRAN_DISPLAY_QUERY_INFO_S, {ARG_BOOLEAN}, {0}},
   {KILLTRAN_FORCE_S, {ARG_BOOLEAN}, {0}},
@@ -647,11 +631,7 @@ static UTIL_ARG_MAP ua_Copylog_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {COPYLOG_LOG_PATH_S, {ARG_STRING}, {0}},
   {COPYLOG_MODE_S, {ARG_STRING}, {0}},
-#if defined(LINUX) || defined(AIX)
-  {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {(-2L)}},
-#else
   {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {(void *) (-2L)}},
-#endif
   {0, {0}, {0}}
 };
 
@@ -678,11 +658,7 @@ static GETOPT_LONG ua_Applylog_Option[] = {
 static UTIL_ARG_MAP ua_ApplyInfo_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {APPLYINFO_COPIED_LOG_PATH_S, {ARG_STRING}, {0}},
-#if defined(LINUX) || defined(AIX)
-  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {(-1L)}},
-#else
   {APPLYINFO_PAGE_S, {ARG_BIGINT}, {(void *) (-1L)}},
-#endif
   {APPLYINFO_REMOTE_NAME_S, {ARG_STRING}, {0}},
   {APPLYINFO_APPLIED_INFO_S, {ARG_BOOLEAN}, {0}},
   {APPLYINFO_VERBOSE_S, {ARG_BOOLEAN}, {0}},
