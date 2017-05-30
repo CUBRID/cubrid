@@ -40,6 +40,10 @@
 #include <sys/stat.h>
 #include <assert.h>
 
+#if !defined(WINDOWS)
+#include <inttypes.h>
+#endif
+
 #include "porting.h"
 #include "xserver_interface.h"
 #include "log_impl.h"
