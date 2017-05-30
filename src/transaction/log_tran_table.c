@@ -23,6 +23,11 @@
 
 #ident "$Id$"
 
+
+#if !defined(WINDOWS)
+#include <inttypes.h>
+#endif
+
 #include "config.h"
 
 #include <stdio.h>
@@ -39,10 +44,6 @@
 #endif /* SOLARIS */
 #include <sys/stat.h>
 #include <assert.h>
-
-#if !defined(WINDOWS)
-#include <cinttypes>
-#endif
 
 #include "porting.h"
 #include "xserver_interface.h"
