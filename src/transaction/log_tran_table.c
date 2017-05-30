@@ -41,7 +41,7 @@
 #include <assert.h>
 
 #if !defined(WINDOWS)
-#include <inttypes.h>
+#include <cinttypes>
 #endif
 
 #include "porting.h"
