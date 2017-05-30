@@ -788,9 +788,9 @@ typedef struct
   } value_info;
   union
   {
+    void *p;
     int i;
     INT64 l;
-    void *p;
   } arg_value;
 } UTIL_ARG_MAP;
 
