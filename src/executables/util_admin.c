@@ -200,7 +200,7 @@ static UTIL_ARG_MAP ua_Addvol_Option_Map[] = {
   {ADDVOL_FILE_PATH_S, {ARG_STRING}, {0}},
   {ADDVOL_COMMENT_S, {ARG_STRING}, {0}},
 #if defined(LINUX) || defined(AIX)
-  {ADDVOL_PURPOSE_S, {ARG_STRING}, {.p = (void *) "generic"}},
+  {ADDVOL_PURPOSE_S, {ARG_STRING}, { (long) "generic"}},
 #else
   {ADDVOL_PURPOSE_S, {ARG_STRING}, {(int) "generic"}},	//vapa!!!
 #endif
@@ -251,7 +251,7 @@ static UTIL_ARG_MAP ua_Space_Option_Map[] = {
   {SPACE_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {SPACE_CS_MODE_S, {ARG_BOOLEAN}, {0}},
 #if defined(LINUX) || defined(AIX)
-  {SPACE_SIZE_UNIT_S, {ARG_STRING}, {.p = (void *) "h"}},
+  {SPACE_SIZE_UNIT_S, {ARG_STRING}, {(long) "h"}},
 #else
   {SPACE_SIZE_UNIT_S, {ARG_STRING}, {(int) "h"}},	//vapa!!!
 #endif
@@ -413,11 +413,11 @@ static UTIL_ARG_MAP ua_Killtran_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {KILLTRAN_KILL_TRANSACTION_INDEX_S, {ARG_STRING}, {0}},
 #if defined(LINUX) || defined(AIX)
-  {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
-  {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
-  {KILLTRAN_KILL_PROGRAM_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
+  {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {(long) ""}},
+  {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {(long) ""}},
+  {KILLTRAN_KILL_PROGRAM_NAME_S, {ARG_STRING}, {(long) ""}},
   {KILLTRAN_KILL_SQL_ID_S, {ARG_STRING}, {0}},
-  {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {.p = (void *) ""}},
+  {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {(long) ""}},
 #else
   {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {(int) ""}},	//vapa!!
   {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {(int) ""}},	//vapa!!
@@ -648,7 +648,7 @@ static UTIL_ARG_MAP ua_Copylog_Option_Map[] = {
   {COPYLOG_LOG_PATH_S, {ARG_STRING}, {0}},
   {COPYLOG_MODE_S, {ARG_STRING}, {0}},
 #if defined(LINUX) || defined(AIX)
-  {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {.l = (-2L)}},
+  {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, { (-2L)}},
 #else
   {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {(INT64) (-2L)}},
 #endif
@@ -679,7 +679,7 @@ static UTIL_ARG_MAP ua_ApplyInfo_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {APPLYINFO_COPIED_LOG_PATH_S, {ARG_STRING}, {0}},
 #if defined(LINUX) || defined(AIX)
-  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {.l = (-1L)}},
+  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {(-1L)}},
 #else
   {APPLYINFO_PAGE_S, {ARG_BIGINT}, {(INT64) (-1L)}},
 #endif

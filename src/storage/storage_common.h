@@ -76,6 +76,7 @@ enum
     } \
   } while (0)
 
+
 /* Type definitions related to disk information	*/
 
 typedef INT16 VOLID;		/* Volume identifier */
@@ -99,7 +100,6 @@ typedef INT32 LOLENGTH;		/* Length for a large object */
 
 /* Log address structure */
 
-typedef struct log_lsa LOG_LSA;	/* Log address identifier */
 struct log_lsa
 {
   INT64 pageid:48;		/* Log page identifier : 6 bytes length */
@@ -107,15 +107,18 @@ struct log_lsa
   /* The offset field is defined as 16bit-INT64 type (not short), because of alignment in windows */
 };
 
+typedef struct log_lsa LOG_LSA;	/* Log address identifier */
 //vapa!!!
 //#define LSA_COPY(lsa_ptr1, lsa_ptr2) (lsa_ptr1)->pageid = (lsa_ptr2)->pageid; (lsa_ptr1)->offset = (lsa_ptr2)->offset
-
+#ifdef __cplusplus
 inline void
 LSA_COPY (LOG_LSA * _plsa1, const LOG_LSA * _plsa2)
 {
   _plsa1->pageid = _plsa2->pageid;
   _plsa1->offset = _plsa2->offset;
 }
+
+#endif
 
 #define LSA_SET_NULL(lsa_ptr)\
   do {									      \
