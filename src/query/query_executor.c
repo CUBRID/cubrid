@@ -21846,6 +21846,12 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  free_and_init (comment);
 	}
+
+      /* needs to clear db_value content if is allocated during qexec_end_one_iteration */
+      for (j = 0; j < size_values; j++)
+	{
+	  pr_clear_value (out_values[j]);
+	}
     }
 
   for (i = 0; i < rep->n_attributes; i++)
