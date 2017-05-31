@@ -1487,7 +1487,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       sort_param->px_height_max = (int) sqrt ((double) num_cpus);	/* n */
       sort_param->px_array_size = num_cpus;	/* 2^^n */
 
-      assert_release (sort_param->px_array_size == pow ((double) 2, (double)  sort_param->px_height_max));
+      assert_release (sort_param->px_array_size == pow ((double) 2, (double) sort_param->px_height_max));
     }
 #endif /* SERVER_MODE */
 
