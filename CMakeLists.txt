@@ -288,7 +288,7 @@ else()
   # whenever esql_grammar.y is modified
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
-    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/esql_grammar.y
+    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
   )
 endif(USE_BISON_NEWDIRECTIVE)
 
