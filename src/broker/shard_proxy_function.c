@@ -67,7 +67,7 @@ proxy_set_wait_timeout (T_PROXY_CONTEXT * ctx_p, int query_timeout)
   int proxy_wait_timeout_sec;
   int query_timeout_sec;
 
-  query_timeout_sec = ceil (query_timeout / 1000);
+  query_timeout_sec = ceil ((double) query_timeout / 1000);
   proxy_wait_timeout_sec = ctx_p->wait_timeout;
 
   if (proxy_wait_timeout_sec == 0 || query_timeout_sec == 0)
