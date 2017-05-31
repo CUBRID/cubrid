@@ -92,8 +92,6 @@ static BUILTIN_TYPE builtin_types[] = {
  */
 static HOST_LOD **pp_gathering;
 
-static HOST_LOD *input_refs;
-static HOST_LOD *output_refs;
 static HOST_LOD *pp_host_refs;
 static SYMBOL *string_dummy;
 static HOST_LOD *host_lod_chain;

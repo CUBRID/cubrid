@@ -302,7 +302,7 @@ extern "C"
   extern void pp_symbol_stats (FILE * fp);
   extern void pp_init_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * old_scope);
   extern void pp_finish_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * new_scope);
-
+  static HOST_LOD *input_refs, *output_refs;
 
 #ifdef __cplusplus
 }
