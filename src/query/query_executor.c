@@ -11696,7 +11696,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   int dead_end = false;
   int unqualified_dead_end = false;
   FETCH_PROC_NODE *fetch = &xasl->proc.fetch;
-  OID *dbvaloid = NULL;
+  OID dbvaloid = OID_INITIALIZER;
 
   /* the fetch_res represents whether current node in a path expression is successfully completed to the end, or failed */
   fetch->fetch_res = false;
@@ -11711,7 +11711,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       /* check for virtual objects */
       if (DB_VALUE_DOMAIN_TYPE (fetch->arg) != DB_TYPE_VOBJ)
 	{
-	  dbvaloid = DB_GET_OID (fetch->arg);
+	  SAFE_COPY_OID (&dbvaloid, DB_GET_OID (fetch->arg));
 	}
       else
 	{
@@ -11720,11 +11720,11 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
 	  if ((db_set_size (setp) == 3) && (db_set_get (setp, 1, &dbval) == NO_ERROR)
 	      && (db_set_get (setp, 2, &dbval1) == NO_ERROR)
-	      && (DB_IS_NULL (&dbval) || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID)
-					  && OID_ISNULL (DB_GET_OID (&dbval))))
+	      && (DB_IS_NULL (&dbval)
+		  || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID) && OID_ISNULL (DB_GET_OID (&dbval))))
 	      && (DB_VALUE_DOMAIN_TYPE (&dbval1) == DB_TYPE_OID))
 	    {
-	      dbvaloid = DB_GET_OID (&dbval1);
+	      SAFE_COPY_OID (&dbvaloid, DB_GET_OID (&dbval1));
 	    }
 	  else
 	    {
@@ -11733,7 +11733,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
 
       /* object is non_existent ? */
-      if (OID_ISNULL (dbvaloid))
+      if (OID_ISNULL (&dbvaloid))
 	{
 	  dead_end = true;
 	}
@@ -11799,7 +11799,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       lock_mode = locator_get_lock_mode_from_op_type (scan_operation_type);
 
       /* fetch the object and the class oid */
-      scan = locator_get_object (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, lock_mode,
+      scan = locator_get_object (thread_p, &dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, lock_mode,
 				 PEEK, NULL_CHN);
       if (scan != S_SUCCESS)
 	{
@@ -11923,7 +11923,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  fetch_init_val_list (specp->s.cls_node.cls_regu_list_rest);
 
 	  /* read the predicate values from the heap into the scancache */
-	  status = heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_pred);
+	  status = heap_attrinfo_read_dbvalues (thread_p, &dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_pred);
 	  if (status != NO_ERROR)
 	    {
 	      goto wrapup;
@@ -11933,7 +11933,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  if (xasl->val_list != NULL)
 	    {
 	      status =
-		fetch_val_list (thread_p, specp->s.cls_node.cls_regu_list_pred, &xasl_state->vd, NULL, dbvaloid, NULL,
+		fetch_val_list (thread_p, specp->s.cls_node.cls_regu_list_pred, &xasl_state->vd, NULL, &dbvaloid, NULL,
 				COPY);
 	      if (status != NO_ERROR)
 		{
@@ -11945,7 +11945,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  ev_res = V_UNKNOWN;
 	  if (specp->where_pred)
 	    {
-	      ev_res = eval_pred (thread_p, specp->where_pred, &xasl_state->vd, dbvaloid);
+	      ev_res = eval_pred (thread_p, specp->where_pred, &xasl_state->vd, &dbvaloid);
 	      if (ev_res == V_ERROR)
 		{
 		  status = ER_FAILED;
@@ -11964,7 +11964,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      fetch->fetch_res = true;
 	      /* read the rest of the values from the heap */
 	      status =
-		heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_rest);
+		heap_attrinfo_read_dbvalues (thread_p, &dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_rest);
 	      if (status != NO_ERROR)
 		{
 		  goto wrapup;
@@ -11974,7 +11974,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      if (xasl->val_list != NULL)
 		{
 		  status =
-		    fetch_val_list (thread_p, specp->s.cls_node.cls_regu_list_rest, &xasl_state->vd, NULL, dbvaloid,
+		    fetch_val_list (thread_p, specp->s.cls_node.cls_regu_list_rest, &xasl_state->vd, NULL, &dbvaloid,
 				    NULL, COPY);
 		  if (status != NO_ERROR)
 		    {
