@@ -838,7 +838,7 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_li
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  COPY_OID (&instance_oid, DB_GET_OID (dbval));
+	  SAFE_COPY_OID (&instance_oid, DB_GET_OID (dbval));
 
 	  if (default_cls_oid != NULL)
 	    {
@@ -870,7 +870,7 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_li
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      COPY_OID (&class_oid, DB_GET_OID (dbval));
+	      SAFE_COPY_OID (&class_oid, DB_GET_OID (dbval));
 	    }
 
 	  ret = lock_add_composite_lock (thread_p, composite_lock, &instance_oid, &class_oid);
@@ -987,7 +987,7 @@ qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
   DB_TYPE typ;
   int ret = NO_ERROR, idx, rem_cnt = 0;
   EHID *ehid = NULL;
-  OID oid;
+  OID oid, key_oid;
   EH_SEARCH eh_search;
 
   if (xasl == NULL || xasl->type != BUILDLIST_PROC || xasl->proc.buildlist.upddel_oid_locator_ehids == NULL)
@@ -1030,7 +1030,10 @@ qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 
 	  /* Get the appropriate hash file and check if the OID exists in the file */
 	  ehid = &xasl->proc.buildlist.upddel_oid_locator_ehids[idx];
-	  eh_search = ehash_search (thread_p, ehid, DB_GET_OID (dbval), &oid);
+
+	  SAFE_COPY_OID (&key_oid, DB_GET_OID (dbval));
+
+	  eh_search = ehash_search (thread_p, ehid, &key_oid, &oid);
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
@@ -1040,7 +1043,7 @@ qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 	      break;
 	    case EH_KEY_NOTFOUND:
 	      /* The OID was not processed so insert it in the hash file */
-	      if (ehash_insert (thread_p, ehid, DB_GET_OID (dbval), DB_GET_OID (dbval)) == NULL)
+	      if (ehash_insert (thread_p, ehid, &key_oid, &key_oid) == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
