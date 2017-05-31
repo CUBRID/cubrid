@@ -354,6 +354,10 @@ if(UNIX)
   set(UNITTESTS_BIT_SOURCES
     ${EXECUTABLES_DIR}/unittests_bit.c
     )
+    SET_SOURCE_FILES_PROPERTIES(
+      ${UNITTESTS_BIT_SOURCES}
+      PROPERTIES LANGUAGE CXX
+    )
   add_executable(unittests_bit ${UNITTESTS_BIT_SOURCES})
   target_compile_definitions(unittests_bit PRIVATE ${COMMON_DEFS})
   target_include_directories(unittests_bit PRIVATE ${EP_INCLUDES})
