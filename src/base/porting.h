@@ -133,9 +133,9 @@
 #define NAME_MAX	256
 #endif
 
-#if !defined (_MSC_VER) || _MSC_VER < 1700
+#if !defined (_MSC_VER) || _MSC_VER < 1700 || (defined __cplusplus && _MSC_VER == 1700)
 #define log2(x)                 (log ((double) x) / log ((double) 2))
-#endif /* !_MSC_VER || _MSC_VER < 1700 */
+#endif /* !_MSC_VER or c before _MSC_VER 1700 or c++ at 1700 */
 extern char *realpath (const char *path, char *resolved_path);
 #define sleep(sec) Sleep(1000*(sec))
 #define usleep(usec) Sleep((usec)/1000)
