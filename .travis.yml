@@ -1,3 +1,8 @@
+sudo: required
+
+services:
+  - docker
+
 language: c
 
 compiler:
@@ -6,14 +11,7 @@ compiler:
 os:
 - linux
 
-addons:
-  apt:
-    sources:
-      kalakris-cmake
-    packages:
-      - cmake
-      - systemtap-sdt-dev
-      - libelf-dev
-
 script:
-  - mkdir build && cd build && cmake .. && make
+  - docker run -v./cubrid:/home/cubrid -v./CUBRID:/home/CUBRID -e MAKEFLAGS='-j 2' cubridci/build
+  - ls
+  - ls -al CUBRID
