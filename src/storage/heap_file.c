@@ -8742,10 +8742,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
   MVCC_SNAPSHOT copy_mvcc_snapshot;
   bool is_scancache_started = false;
 
-  /* Error will be cleared at the end of this function, so any errors previously set may be lost.
-   * This function is not supposed to be called if system has errors.
-   */
-  assert (er_errid () == NO_ERROR);
+  er_stack_push ();
 
   if (HEAP_ISVALID_OID (thread_p, oid) != DISK_VALID)
     {
@@ -8754,8 +8751,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
 
   /* 
    * If the class is not NULL and it is different from the Root class,
-   * make sure that it exist. Root class always exist.. not need to check
-   * for it
+   * make sure that it exist. Root class always exist.. not need to check for it
    */
   if (class_oid != NULL && !OID_EQ (class_oid, oid_Root_class_oid)
       && HEAP_ISVALID_OID (thread_p, class_oid) != DISK_VALID)
@@ -8802,11 +8798,9 @@ exit_on_end:
     {
       heap_scancache_end (thread_p, &scan_cache);
     }
+
   /* We don't need to propagate errors from here. */
-  if (er_errid () != NO_ERROR)
-    {
-      er_clear ();
-    }
+  er_stack_pop ();
 
   return doesexist;
 }
