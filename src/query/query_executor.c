@@ -21677,15 +21677,17 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     }
 
   class_name = or_class_name (&class_record);
-  /* class name */
-  db_make_string (out_values[0], class_name);
-  /* packed */
-  db_make_null (out_values[8]);
-  /* index type */
-  db_make_string (out_values[10], "BTREE");
-
   for (i = 0; i < rep->n_indexes; i++)
     {
+      /* class name */
+      db_make_string (out_values[0], class_name);
+
+      /* packed */
+      db_make_null (out_values[8]);
+
+      /* index type */
+      db_make_string (out_values[10], "BTREE");
+
       index = rep->indexes + i;
       /* Non_unique */
       non_unique = btree_is_unique_type (index->type) ? 0 : 1;
@@ -21845,6 +21847,12 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       if (comment != NULL)
 	{
 	  free_and_init (comment);
+	}
+
+      /* needs to clear db_value content if is allocated during qexec_end_one_iteration */
+      for (j = 0; j < size_values; j++)
+	{
+	  pr_clear_value (out_values[j]);
 	}
     }
 
