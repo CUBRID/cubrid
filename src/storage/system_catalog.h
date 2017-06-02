@@ -155,7 +155,6 @@ struct catalog_access_info
 
 extern CTID catalog_Id;		/* global catalog identifier */
 
-extern void catalog_free_disk_attribute (DISK_ATTR * atr);
 extern void catalog_free_representation (DISK_REPR * repr_p);
 extern void catalog_free_class_info (CLS_INFO * class_info_p);
 extern void catalog_initialize (CTID * catid);
