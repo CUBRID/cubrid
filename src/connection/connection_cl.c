@@ -244,8 +244,7 @@ css_find_exception_conn (void)
 }
 
 /*
- * css_find_conn_from_fd () - find the connection associated with the current
- *                            socket descriptor
+ * css_find_conn_from_fd () - find the connection associated with the current socket descriptor
  *   return: conn or NULL
  *   fd(in): Socket fd
  */
@@ -388,16 +387,14 @@ css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
 }
 
 /*
- * css_read_one_request () - return a request if one is queued up or on the
- *                           socket
+ * css_read_one_request () - return a request if one is queued up or on the socket
  *   return:
  *   conn(in):
  *   rid(out):
  *   request(out):
  *   buffer_size(out):
  *
- * Note: If no input is available on the socket, it will block until something
- *       is available.
+ * Note: If no input is available on the socket, it will block until something is available.
  */
 static int
 css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size)
@@ -502,8 +499,9 @@ css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, i
       return rc;
     }
 
-begin:
   header_size = sizeof (NET_HEADER);
+
+begin:
   rc = css_net_read_header (conn->fd, (char *) &header, &header_size, timeout);
   if (rc == NO_ERRORS)
     {
@@ -511,7 +509,8 @@ begin:
       conn->transaction_id = ntohl (header.transaction_id);
       conn->db_error = (int) ntohl (header.db_error);
       type = ntohl (header.type);
-      if (DATA_TYPE == type)
+
+      if (type == DATA_TYPE)
 	{
 	  buf_size = ntohl (header.buffer_size);
 
@@ -929,7 +928,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #else /* WINDOWS */
 		  /* send the "pathname" for the datagram */
 		  /* be sure to open the datagram first.  */
-		  pname = tempnam (NULL, "usql");
+		  pname = tempnam (NULL, "csql");
 		  if (pname)
 		    {
 		      if (css_tcp_setup_server_datagram (pname, &socket_fd)
@@ -1297,46 +1296,47 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 
   data_q_entry_p = css_find_queue_entry (conn->data_queue, request_id);
 
-  if (data_q_entry_p != NULL)
+  if (data_q_entry_p == NULL)
     {
-      /* 
-       * We may have somehow already queued a receive buffer for this
-       * packet.  If so, it's important that we use *that* buffer, because
-       * upper level code will check to see that the buffer address that we
-       * return from this level is the same as the one that the upper level
-       * queued earlier.  If it isn't, it will raise an error and stop
-       * (error code -187, "Communications buffer not used").
-       */
-      buffer_q_entry_p = css_find_queue_entry (conn->buffer_queue, request_id);
-      if (buffer_q_entry_p != NULL)
-	{
-	  *buffer = buffer_q_entry_p->buffer;
-	  *buffer_size = data_q_entry_p->size;
-	  buffer_q_entry_p->buffer = NULL;
-	  memcpy (*buffer, data_q_entry_p->buffer, *buffer_size);
-	  css_queue_remove_header_entry_ptr (&conn->buffer_queue, buffer_q_entry_p);
-	}
-      else
-	{
-	  *buffer = data_q_entry_p->buffer;
-	  *buffer_size = data_q_entry_p->size;
-	  /* 
-	   * Null this out so that the call to css_queue_remove_header_entry_ptr()
-	   * below doesn't free the buffer out from underneath our caller.
-	   */
-	  data_q_entry_p->buffer = NULL;
-	}
-
-      *rc = data_q_entry_p->rc;
-      conn->transaction_id = data_q_entry_p->transaction_id;
-      conn->invalidate_snapshot = data_q_entry_p->invalidate_snapshot;
-      conn->db_error = data_q_entry_p->db_error;
-      css_queue_remove_header_entry_ptr (&conn->data_queue, data_q_entry_p);
-
-      return 1;
+      /* empty queue */
+      return 0;
     }
 
-  return 0;
+  /* 
+   * We may have somehow already queued a receive buffer for this
+   * packet.  If so, it's important that we use *that* buffer, because
+   * upper level code will check to see that the buffer address that we
+   * return from this level is the same as the one that the upper level
+   * queued earlier.  If it isn't, it will raise an error and stop
+   * (error code -187, "Communications buffer not used").
+   */
+  buffer_q_entry_p = css_find_queue_entry (conn->buffer_queue, request_id);
+  if (buffer_q_entry_p != NULL)
+    {
+      *buffer = buffer_q_entry_p->buffer;
+      *buffer_size = data_q_entry_p->size;
+      buffer_q_entry_p->buffer = NULL;
+      memcpy (*buffer, data_q_entry_p->buffer, *buffer_size);
+      css_queue_remove_header_entry_ptr (&conn->buffer_queue, buffer_q_entry_p);
+    }
+  else
+    {
+      *buffer = data_q_entry_p->buffer;
+      *buffer_size = data_q_entry_p->size;
+      /* 
+       * Null this out so that the call to css_queue_remove_header_entry_ptr()
+       * below doesn't free the buffer out from underneath our caller.
+       */
+      data_q_entry_p->buffer = NULL;
+    }
+
+  *rc = data_q_entry_p->rc;
+  conn->transaction_id = data_q_entry_p->transaction_id;
+  conn->invalidate_snapshot = data_q_entry_p->invalidate_snapshot;
+  conn->db_error = data_q_entry_p->db_error;
+  css_queue_remove_header_entry_ptr (&conn->data_queue, data_q_entry_p);
+
+  return 1;
 }
 
 /*
@@ -1356,49 +1356,50 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char 
 
   error_q_entry_p = css_find_queue_entry (conn->error_queue, request_id);
 
-  if (error_q_entry_p != NULL)
+  if (error_q_entry_p == NULL)
     {
-      *buffer = error_q_entry_p->buffer;
-      *buffer_size = error_q_entry_p->size;
-      *rc = error_q_entry_p->db_error;
-      error_q_entry_p->buffer = NULL;
-      css_queue_remove_header_entry_ptr (&conn->error_queue, error_q_entry_p);
-
-      /* 
-       * Propagate ER_LK_UNILATERALLY_ABORTED error
-       * when it is set during method call.
-       */
-      if (*rc == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  for (p = conn->error_queue; p; p = p->next)
-	    {
-	      entry = *p;
-
-	      if (p->size < *buffer_size)
-		{
-		  p->buffer = (char *) malloc (*buffer_size);
-		  if (p->buffer)
-		    {
-		      free_and_init (entry.buffer);
-		    }
-		  else
-		    {
-		      p->buffer = entry.buffer;
-		      p->db_error = *rc;
-		      continue;
-		    }
-		}
-
-	      p->size = *buffer_size;
-	      memcpy (p->buffer, *buffer, p->size);
-	      p->db_error = *rc;
-	    }
-	}
-
-      return 1;
+      /* empty queue */
+      return 0;
     }
 
-  return 0;
+  *buffer = error_q_entry_p->buffer;
+  *buffer_size = error_q_entry_p->size;
+  *rc = error_q_entry_p->db_error;
+  error_q_entry_p->buffer = NULL;
+  css_queue_remove_header_entry_ptr (&conn->error_queue, error_q_entry_p);
+
+  /* 
+   * Propagate ER_LK_UNILATERALLY_ABORTED error
+   * when it is set during method call.
+   */
+  if (*rc == ER_LK_UNILATERALLY_ABORTED)
+    {
+      for (p = conn->error_queue; p; p = p->next)
+	{
+	  entry = *p;
+
+	  if (p->size < *buffer_size)
+	    {
+	      p->buffer = (char *) malloc (*buffer_size);
+	      if (p->buffer)
+		{
+		  free_and_init (entry.buffer);
+		}
+	      else
+		{
+		  p->buffer = entry.buffer;
+		  p->db_error = *rc;
+		  continue;
+		}
+	    }
+
+	  p->size = *buffer_size;
+	  memcpy (p->buffer, *buffer, p->size);
+	  p->db_error = *rc;
+	}
+    }
+
+  return 1;
 }
 
 /*
@@ -1415,35 +1416,36 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 {
   CSS_QUEUE_ENTRY *request_q_entry_p;
   NET_HEADER *buffer;
-  int rc;
 
   TPRINTF ("Entered return queued request %d\n", 0);
-  rc = 0;
+
   request_q_entry_p = conn->request_queue;
 
   if (request_q_entry_p != NULL)
     {
-      TPRINTF ("Found a queued request %d\n", 0);
-      rc = 1;
-      *rid = request_q_entry_p->key;
-      buffer = (NET_HEADER *) request_q_entry_p->buffer;
-
-      *request = ntohs (buffer->function_code);
-      *buffer_size = ntohl (buffer->buffer_size);
-      conn->transaction_id = request_q_entry_p->transaction_id;
-      conn->invalidate_snapshot = request_q_entry_p->invalidate_snapshot;
-      conn->db_error = request_q_entry_p->db_error;
-
-      /* This will remove both the entry and the buffer */
-      css_queue_remove_header_entry (&conn->request_queue, *rid);
+      /* empty queue */
+      return 0;
     }
 
-  return rc;
+  TPRINTF ("Found a queued request %d\n", 0);
+
+  *rid = request_q_entry_p->key;
+  buffer = (NET_HEADER *) request_q_entry_p->buffer;
+
+  *request = ntohs (buffer->function_code);
+  *buffer_size = ntohl (buffer->buffer_size);
+  conn->transaction_id = request_q_entry_p->transaction_id;
+  conn->invalidate_snapshot = request_q_entry_p->invalidate_snapshot;
+  conn->db_error = request_q_entry_p->db_error;
+
+  /* This will remove both the entry and the buffer */
+  css_queue_remove_header_entry (&conn->request_queue, *rid);
+
+  return 1;
 }
 
 /*
- * css_remove_all_unexpected_packets () - remove all entries in all the queues
- *                                        associated with fd
+ * css_remove_all_unexpected_packets () - remove all entries in all the queues associated with fd
  *   return: void
  *   conn(in/out):
  *
