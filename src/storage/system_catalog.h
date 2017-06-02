@@ -131,11 +131,22 @@ struct catalog_access_info
 #define CLS_INFO_INITIALIZER \
   { HFID_INITIALIZER, 0, 0, 0, { NULL_PAGEID, NULL_SLOTID, NULL_VOLID } }
 
+#define catalog_free_class_info_and_init(class_info_p) \
+  do \
+    { \
+      if ((class_info_p) != NULL) \
+        { \
+          catalog_free_class_info ((class_info_p)); \
+          (class_info_p) = NULL; \
+        } \
+    } \
+  while (0)
+
 extern CTID catalog_Id;		/* global catalog identifier */
 
 extern void catalog_free_disk_attribute (DISK_ATTR * atr);
 extern void catalog_free_representation (DISK_REPR * dr);
-extern void catalog_free_class_info (CLS_INFO * Cls_Info);
+extern void catalog_free_class_info (CLS_INFO * class_info_p);
 extern void catalog_initialize (CTID * catid);
 extern void catalog_finalize (void);
 

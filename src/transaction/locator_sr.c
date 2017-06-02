@@ -11545,7 +11545,7 @@ locator_increase_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
   /* NOTE that tot_objects may not be correct because changes are NOT logged. */
   (void) catalog_update_class_info (thread_p, cls_oid, cls_infop, true);
 
-  catalog_free_class_info (cls_infop);
+  catalog_free_class_info_and_init (cls_infop);
 }
 
 /*
@@ -11588,7 +11588,7 @@ locator_decrease_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
   /* NOTE that tot_objects may not be correct because changes are NOT logged. */
   (void) catalog_update_class_info (thread_p, cls_oid, cls_infop, true);
 
-  catalog_free_class_info (cls_infop);
+  catalog_free_class_info_and_init (cls_infop);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 

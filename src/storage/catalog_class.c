@@ -3519,7 +3519,7 @@ catcls_insert_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * root_oi
   db_make_sequence (&value_p->value, oid_set_p);
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
 
   return NO_ERROR;
 
@@ -3537,7 +3537,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   return error;
@@ -3609,7 +3609,7 @@ catcls_delete_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
     }
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
 
   return NO_ERROR;
 
@@ -3622,7 +3622,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   return error;
@@ -4056,7 +4056,7 @@ catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record_p)
     }
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
   catcls_free_or_value (value_p);
 
   return NO_ERROR;
@@ -4070,7 +4070,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   if (value_p)
@@ -4142,7 +4142,7 @@ catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p, OID 
   csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
 
   return NO_ERROR;
 
@@ -4155,7 +4155,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   return ER_FAILED;
@@ -4221,7 +4221,7 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p, RECD
     }
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
   catcls_free_or_value (value_p);
 
   return NO_ERROR;
@@ -4235,7 +4235,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   if (value_p)
@@ -4785,7 +4785,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
     }
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
 
   return NO_ERROR;
 
@@ -4802,7 +4802,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   return error;
