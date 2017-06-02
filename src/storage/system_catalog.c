@@ -5062,7 +5062,7 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 	  fprintf (fp, " Representation directory OID: { %d , %d , %d } \n", class_info_p->ci_rep_dir.volid,
 		   class_info_p->ci_rep_dir.pageid, class_info_p->ci_rep_dir.slotid);
 
-	  catalog_free_class_info (class_info_p);
+	  catalog_free_class_info_and_init (class_info_p);
 	}
 
       fprintf (fp, "\n");
@@ -5454,8 +5454,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
 	  /* clean subclass loaded in previous iteration */
 	  if (subcls_info != NULL)
 	    {
-	      catalog_free_class_info (subcls_info);
-	      subcls_info = NULL;
+	      catalog_free_class_info_and_init (subcls_info);
 	    }
 	  if (subcls_disk_rep != NULL)
 	    {
@@ -5562,8 +5561,7 @@ exit_cleanup:
     }
   if (subcls_info != NULL)
     {
-      catalog_free_class_info (subcls_info);
-      subcls_info = NULL;
+      catalog_free_class_info_and_init (subcls_info);
     }
   if (subcls_disk_rep != NULL)
     {
@@ -5581,7 +5579,6 @@ exit_cleanup:
 exit:
   catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error);
   return error;
-
 }
 
 /*
