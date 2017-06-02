@@ -3555,164 +3555,166 @@ or_free_classrep (OR_CLASSREP * rep)
   OR_INDEX *index;
   OR_FOREIGN_KEY *fk, *fk_next;
 
-  if (rep != NULL)
+  if (rep == NULL)
     {
-      if (rep->attributes != NULL)
-	{
-	  for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
-	    {
-	      if (att->default_value.value != NULL)
-		{
-		  free_and_init (att->default_value.value);
-		}
-
-	      if (att->default_value.default_expr.default_expr_format != NULL)
-		{
-		  free_and_init (att->default_value.default_expr.default_expr_format);
-		}
-
-	      if (att->current_default_value.value != NULL)
-		{
-		  free_and_init (att->current_default_value.value);
-		}
-
-	      if (att->current_default_value.default_expr.default_expr_format != NULL)
-		{
-		  free_and_init (att->current_default_value.default_expr.default_expr_format);
-		}
-
-	      if (att->btids != NULL && att->btids != att->btid_pack)
-		{
-		  free_and_init (att->btids);
-		}
-	    }
-	  free_and_init (rep->attributes);
-	}
-
-      if (rep->shared_attrs != NULL)
-	{
-	  for (i = 0, att = rep->shared_attrs; i < rep->n_shared_attrs; i++, att++)
-	    {
-	      if (att->default_value.value != NULL)
-		{
-		  free_and_init (att->default_value.value);
-		}
-
-	      if (att->default_value.default_expr.default_expr_format != NULL)
-		{
-		  free_and_init (att->default_value.default_expr.default_expr_format);
-		}
-
-	      if (att->current_default_value.value != NULL)
-		{
-		  free_and_init (att->current_default_value.value);
-		}
-
-	      if (att->current_default_value.default_expr.default_expr_format != NULL)
-		{
-		  free_and_init (att->current_default_value.default_expr.default_expr_format);
-		}
-
-	      if (att->btids != NULL && att->btids != att->btid_pack)
-		{
-		  free_and_init (att->btids);
-		}
-	    }
-	  free_and_init (rep->shared_attrs);
-	}
-
-      if (rep->class_attrs != NULL)
-	{
-	  for (i = 0, att = rep->class_attrs; i < rep->n_class_attrs; i++, att++)
-	    {
-	      if (att->default_value.value != NULL)
-		{
-		  free_and_init (att->default_value.value);
-		}
-
-	      if (att->current_default_value.value != NULL)
-		{
-		  free_and_init (att->current_default_value.value);
-		}
-
-	      if (att->btids != NULL && att->btids != att->btid_pack)
-		{
-		  free_and_init (att->btids);
-		}
-	    }
-	  free_and_init (rep->class_attrs);
-	}
-
-      if (rep->indexes != NULL)
-	{
-	  for (i = 0, index = rep->indexes; i < rep->n_indexes; i++, index++)
-	    {
-	      if (index->atts != NULL)
-		{
-		  free_and_init (index->atts);
-		}
-
-	      if (index->btname != NULL)
-		{
-		  free_and_init (index->btname);
-		}
-
-	      if (index->filter_predicate)
-		{
-		  if (index->filter_predicate->pred_string)
-		    {
-		      free_and_init (index->filter_predicate->pred_string);
-		    }
-
-		  if (index->filter_predicate->pred_stream)
-		    {
-		      free_and_init (index->filter_predicate->pred_stream);
-		    }
-
-		  free_and_init (index->filter_predicate);
-		}
-
-	      if (index->asc_desc != NULL)
-		{
-		  free_and_init (index->asc_desc);
-		}
-
-	      if (index->attrs_prefix_length != NULL)
-		{
-		  free_and_init (index->attrs_prefix_length);
-		}
-
-	      if (index->fk)
-		{
-		  for (fk = index->fk; fk; fk = fk_next)
-		    {
-		      fk_next = fk->next;
-		      if (fk->fkname)
-			{
-			  free_and_init (fk->fkname);
-			}
-		      free_and_init (fk);
-		    }
-		}
-	      if (index->func_index_info)
-		{
-		  if (index->func_index_info->expr_string)
-		    {
-		      free_and_init (index->func_index_info->expr_string);
-		    }
-		  if (index->func_index_info->expr_stream)
-		    {
-		      free_and_init (index->func_index_info->expr_stream);
-		    }
-		  free_and_init (index->func_index_info);
-		}
-	    }
-
-	  free_and_init (rep->indexes);
-	}
-
-      free_and_init (rep);
+      return;
     }
+
+  if (rep->attributes != NULL)
+    {
+      for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
+	{
+	  if (att->default_value.value != NULL)
+	    {
+	      free_and_init (att->default_value.value);
+	    }
+
+	  if (att->default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->current_default_value.value != NULL)
+	    {
+	      free_and_init (att->current_default_value.value);
+	    }
+
+	  if (att->current_default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->current_default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->btids != NULL && att->btids != att->btid_pack)
+	    {
+	      free_and_init (att->btids);
+	    }
+	}
+      free_and_init (rep->attributes);
+    }
+
+  if (rep->shared_attrs != NULL)
+    {
+      for (i = 0, att = rep->shared_attrs; i < rep->n_shared_attrs; i++, att++)
+	{
+	  if (att->default_value.value != NULL)
+	    {
+	      free_and_init (att->default_value.value);
+	    }
+
+	  if (att->default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->current_default_value.value != NULL)
+	    {
+	      free_and_init (att->current_default_value.value);
+	    }
+
+	  if (att->current_default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->current_default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->btids != NULL && att->btids != att->btid_pack)
+	    {
+	      free_and_init (att->btids);
+	    }
+	}
+      free_and_init (rep->shared_attrs);
+    }
+
+  if (rep->class_attrs != NULL)
+    {
+      for (i = 0, att = rep->class_attrs; i < rep->n_class_attrs; i++, att++)
+	{
+	  if (att->default_value.value != NULL)
+	    {
+	      free_and_init (att->default_value.value);
+	    }
+
+	  if (att->current_default_value.value != NULL)
+	    {
+	      free_and_init (att->current_default_value.value);
+	    }
+
+	  if (att->btids != NULL && att->btids != att->btid_pack)
+	    {
+	      free_and_init (att->btids);
+	    }
+	}
+      free_and_init (rep->class_attrs);
+    }
+
+  if (rep->indexes != NULL)
+    {
+      for (i = 0, index = rep->indexes; i < rep->n_indexes; i++, index++)
+	{
+	  if (index->atts != NULL)
+	    {
+	      free_and_init (index->atts);
+	    }
+
+	  if (index->btname != NULL)
+	    {
+	      free_and_init (index->btname);
+	    }
+
+	  if (index->filter_predicate)
+	    {
+	      if (index->filter_predicate->pred_string)
+		{
+		  free_and_init (index->filter_predicate->pred_string);
+		}
+
+	      if (index->filter_predicate->pred_stream)
+		{
+		  free_and_init (index->filter_predicate->pred_stream);
+		}
+
+	      free_and_init (index->filter_predicate);
+	    }
+
+	  if (index->asc_desc != NULL)
+	    {
+	      free_and_init (index->asc_desc);
+	    }
+
+	  if (index->attrs_prefix_length != NULL)
+	    {
+	      free_and_init (index->attrs_prefix_length);
+	    }
+
+	  if (index->fk)
+	    {
+	      for (fk = index->fk; fk; fk = fk_next)
+		{
+		  fk_next = fk->next;
+		  if (fk->fkname)
+		    {
+		      free_and_init (fk->fkname);
+		    }
+		  free_and_init (fk);
+		}
+	    }
+	  if (index->func_index_info)
+	    {
+	      if (index->func_index_info->expr_string)
+		{
+		  free_and_init (index->func_index_info->expr_string);
+		}
+	      if (index->func_index_info->expr_stream)
+		{
+		  free_and_init (index->func_index_info->expr_stream);
+		}
+	      free_and_init (index->func_index_info);
+	    }
+	}
+
+      free_and_init (rep->indexes);
+    }
+
+  free_and_init (rep);
 }
 
 /*

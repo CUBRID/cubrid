@@ -7635,7 +7635,7 @@ exit_on_end:
 int
 btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 {
-  OR_CLASSREP *cls_repr;
+  OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr_idx;
   int cache_idx = -1;
   int i;
@@ -7672,7 +7672,7 @@ btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 
   if (cls_repr != NULL)
     {
-      heap_classrepr_free (cls_repr, &cache_idx);
+      heap_classrepr_free_and_init (cls_repr, &cache_idx);
     }
 
   return error;
@@ -7687,7 +7687,7 @@ btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 DISK_ISVALID
 btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * idx_btid)
 {
-  OR_CLASSREP *cls_repr;
+  OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr;
   BTID btid;
   int i;
@@ -7735,7 +7735,7 @@ btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * idx_bti
 
   if (cls_repr)
     {
-      heap_classrepr_free (cls_repr, &cache_idx);
+      heap_classrepr_free_and_init (cls_repr, &cache_idx);
     }
 
   return rv;
@@ -7949,7 +7949,7 @@ exit_repair:
 static DISK_ISVALID
 btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, bool repair)
 {
-  OR_CLASSREP *cls_repr;
+  OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr;
   int i;
   int cache_idx = -1;
@@ -7987,7 +7987,7 @@ btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid, BTID * 
   lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, true);
   if (cls_repr)
     {
-      heap_classrepr_free (cls_repr, &cache_idx);
+      heap_classrepr_free_and_init (cls_repr, &cache_idx);
     }
 
   return valid;
@@ -20353,7 +20353,7 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
   int i, error = NO_ERROR;
   OID oid;
   OR_CLASSREP *classrep = NULL;
-  int idx_in_cache;
+  int idx_in_cache = -1;
   SHOW_INDEX_SCAN_CTX *ctx = NULL;
   LC_FIND_CLASSNAME status;
   OR_PARTITION *parts = NULL;
@@ -20456,7 +20456,7 @@ cleanup:
 
   if (classrep != NULL)
     {
-      heap_classrepr_free (classrep, &idx_in_cache);
+      heap_classrepr_free_and_init (classrep, &idx_in_cache);
     }
 
   if (parts != NULL)
@@ -20500,7 +20500,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   OR_CLASSREP *classrep = NULL;
   SHOW_INDEX_SCAN_CTX *ctx = NULL;
   OID *class_oid_p = NULL;
-  int idx_in_cache;
+  int idx_in_cache = -1;
   int selected_index = 0;
   int i, index_idx, oid_idx;
   char columns[256] = { 0 };
@@ -20575,7 +20575,7 @@ cleanup:
 
   if (classrep != NULL)
     {
-      heap_classrepr_free (classrep, &idx_in_cache);
+      heap_classrepr_free_and_init (classrep, &idx_in_cache);
     }
 
   if (class_name != NULL)

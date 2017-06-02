@@ -2937,7 +2937,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
 
   return ret;
@@ -2950,7 +2950,7 @@ exit_on_error:
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }

@@ -85,6 +85,17 @@
     } \
   while (0)
 
+#define heap_classrepr_free_and_init(class_repr, idxp) \
+  do \
+    { \
+      if ((class_repr) != NULL) \
+        { \
+          heap_classrepr_free ((class_repr), (idxp)); \
+          (class_repr) = NULL; \
+        } \
+    } \
+  while (0)
+
 /*
  * Heap scan structures
  */
