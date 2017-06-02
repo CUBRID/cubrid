@@ -1584,15 +1584,13 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
  *   replydata_ptr2(in): second receive data buffer (large)
  *   replydatasize_ptr2(in): size of second expected reply data
  *
- * Note: This is one of the functions that is called to perform a server
- *    request.
+ * Note: This is one of the functions that is called to perform a server request.
  *    This is similar to net_client_request2, but the first
  *    field in the reply argument buffer is a request code which can
  *    cause the client to perform actions such as call methods.  When
  *    the actions are completed, a reply is sent to the server.  Eventually
  *    the server responds to the original request with a request code
- *    that indicates that the request is complete and this routine
- *    returns.
+ *    that indicates that the request is complete and this routine returns.
  */
 int
 net_client_request_with_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf1,
