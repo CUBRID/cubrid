@@ -1437,8 +1437,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	}
       if (subcls_rep != NULL)
 	{
-	  heap_classrepr_free (subcls_rep, &subcls_idx_cache);
-	  subcls_rep = NULL;
+	  heap_classrepr_free_and_init (subcls_rep, &subcls_idx_cache);
 	}
 
       if (catalog_get_dir_oid_from_cache (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
@@ -1577,8 +1576,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	}
       if (subcls_rep != NULL)
 	{
-	  heap_classrepr_free (subcls_rep, &subcls_idx_cache);
-	  subcls_rep = NULL;
+	  heap_classrepr_free_and_init (subcls_rep, &subcls_idx_cache);
 	}
 
       if (catalog_get_dir_oid_from_cache (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
@@ -1766,11 +1764,11 @@ cleanup:
 
   if (cls_rep != NULL)
     {
-      heap_classrepr_free (cls_rep, &cls_idx_cache);
+      heap_classrepr_free_and_init (cls_rep, &cls_idx_cache);
     }
   if (subcls_rep != NULL)
     {
-      heap_classrepr_free (subcls_rep, &subcls_idx_cache);
+      heap_classrepr_free_and_init (subcls_rep, &subcls_idx_cache);
     }
   if (mean != NULL)
     {

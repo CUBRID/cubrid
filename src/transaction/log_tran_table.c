@@ -4104,7 +4104,7 @@ cleanup:
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
 
   return error_code;
@@ -5566,18 +5566,14 @@ logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid)
     }
 
   /* free class representation */
-  error_code = heap_classrepr_free (classrepr, &classrepr_cacheindex);
-  if (error_code != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
 
   return NO_ERROR;
 
 exit_on_error:
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
 
   return (error_code == NO_ERROR && (error_code = er_errid ()) == NO_ERROR) ? ER_FAILED : error_code;

@@ -5464,8 +5464,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
 	    }
 	  if (subcls_rep != NULL)
 	    {
-	      heap_classrepr_free (subcls_rep, &subcls_idx_cache);
-	      subcls_rep = NULL;
+	      heap_classrepr_free_and_init (subcls_rep, &subcls_idx_cache);
 	    }
 
 	  if (catalog_get_dir_oid_from_cache (thread_p, &partitions[i], &dir_oid) != NO_ERROR)
@@ -5559,7 +5558,7 @@ exit_cleanup:
     }
   if (free_cls_rep)
     {
-      heap_classrepr_free (cls_rep, &idx_cache);
+      heap_classrepr_free_and_init (cls_rep, &idx_cache);
     }
   if (subcls_info != NULL)
     {
@@ -5573,8 +5572,7 @@ exit_cleanup:
     }
   if (subcls_rep != NULL)
     {
-      heap_classrepr_free (subcls_rep, &subcls_idx_cache);
-      subcls_rep = NULL;
+      heap_classrepr_free_and_init (subcls_rep, &subcls_idx_cache);
     }
   if (partitions != NULL)
     {
