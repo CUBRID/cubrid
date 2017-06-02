@@ -151,6 +151,9 @@ struct file_header
 
   /* reserved area for future extension */
   INT32 reserved0;
+  INT32 reserved1;
+  INT32 reserved2;
+  INT32 reserved3;
 };
 
 /* Disk size of file header. */
@@ -890,6 +893,9 @@ file_header_init (FILE_HEADER * fhead)
   fhead->offset_to_user_page_ftab = NULL_OFFSET;
 
   fhead->reserved0 = 0;
+  fhead->reserved1 = 0;
+  fhead->reserved2 = 0;
+  fhead->reserved3 = 0;
 }
 
 /*
@@ -3443,6 +3449,9 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   fhead->offset_to_user_page_ftab = NULL_OFFSET;
 
   fhead->reserved0 = 0;
+  fhead->reserved1 = 0;
+  fhead->reserved2 = 0;
+  fhead->reserved3 = 0;
 
   /* start with a negative empty sector (because we have allocated header). */
   fhead->n_sector_empty--;
@@ -10239,15 +10248,6 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       break;
     }
   pgbuf_unfix (thread_p, page_fhead);
-
-  /* TODO FILE_MANAGER_COMPATIBILITY: ===> */
-  if (class_oid->pageid == 0 && class_oid->volid == 0 && class_oid->slotid == 0)
-    {
-      /* for older databases, the class_oid for FILE_MULTIPAGE_OBJECT_HEAP and FILE_BTREE_OVERFLOW_KEY is 0|0|0. */
-      *stop = true;
-      return NO_ERROR;
-    }
-  /* TODO FILE_MANAGER_COMPATIBILITY: <=== */
 
   if (OID_ISNULL (class_oid))
     {

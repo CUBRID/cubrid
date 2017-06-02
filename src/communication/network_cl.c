@@ -606,7 +606,6 @@ net_histo_setup_names (void)
 
   net_Req_buffer[NET_SERVER_REPL_INFO].name = "NET_SERVER_REPL_INFO";
   net_Req_buffer[NET_SERVER_REPL_LOG_GET_APPEND_LSA].name = "NET_SERVER_REPL_LOG_GET_APPEND_LSA";
-  net_Req_buffer[NET_SERVER_REPL_BTREE_FIND_UNIQUE].name = "NET_SERVER_REPL_BTREE_FIND_UNIQUE";
 
   net_Req_buffer[NET_SERVER_LOGWR_GET_LOG_PAGES].name = "NET_SERVER_LOGWR_GET_LOG_PAGES";
 
@@ -617,8 +616,6 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_ES_COPY_FILE].name = "NET_SERVER_ES_COPY_FILE";
   net_Req_buffer[NET_SERVER_ES_RENAME_FILE].name = "NET_SERVER_ES_RENAME_FILE";
   net_Req_buffer[NET_SERVER_ES_GET_FILE_SIZE].name = "NET_SERVER_ES_GET_FILE_SIZE";
-
-  net_Req_buffer[NET_SERVER_TEST_PERFORMANCE].name = "NET_SERVER_TEST_PERFORMANCE";
 
   net_Req_buffer[NET_SERVER_SHUTDOWN].name = "NET_SERVER_SHUTDOWN";
 
