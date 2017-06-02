@@ -578,6 +578,12 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		}
 
 	      error = db_to_char (&default_value, &format_val, &lang_val, &att->default_value.value, result_domain);
+
+	      if (has_user_format)
+		{
+		  pr_clear_value (&format_val);
+		}
+
 	      if (error != NO_ERROR)
 		{
 		  break;
@@ -2771,11 +2777,11 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
       db_make_string (&value, comment);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
+      pr_clear_value (&value);
       if (error < 0)
 	{
 	  goto end;
 	}
-      pr_clear_value (&value);
     }
 
   serial_object = dbt_finish_object (obj_tmpl);
@@ -6458,6 +6464,9 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  db_make_string (&user_val, trigger_owner_name);
 
 		  au_change_trigger_owner_method (t->op, &returnval, &trigger_name_val, &user_val);
+
+		  pr_clear_value (&trigger_name_val);
+		  pr_clear_value (&user_val);
 
 		  if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
 		    {

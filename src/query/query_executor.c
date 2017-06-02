@@ -11010,9 +11010,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      {
 		int len = strlen (tdes->client.db_user) + strlen (tdes->client.host_name) + 2;
 		temp = db_private_alloc (thread_p, len);
-		if (!temp)
+		if (temp == NULL)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
+		    GOTO_EXIT_ON_ERROR;
 		  }
 		else
 		  {
@@ -11123,6 +11124,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    }
 
 	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain);
+
+	  if (has_user_format)
+	    {
+	      pr_clear_value (&format_val);
+	    }
 	}
       else
 	{
@@ -22195,6 +22201,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	      || (data_stat != DATA_STATUS_OK))
 	    {
 	      pr_clear_value (penum_arg1);
+	      pr_clear_value (penum_arg2);
 	      goto exit_on_error;
 	    }
 	  pr_clear_value (penum_arg1);
@@ -22208,6 +22215,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 		  || (data_stat != DATA_STATUS_OK))
 		{
 		  pr_clear_value (penum_arg1);
+		  pr_clear_value (penum_arg2);
 		  goto exit_on_error;
 		}
 	    }
@@ -22217,10 +22225,12 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 		  || (data_stat != DATA_STATUS_OK))
 		{
 		  pr_clear_value (penum_arg1);
+		  pr_clear_value (penum_arg2);
 		  goto exit_on_error;
 		}
 	    }
 	  pr_clear_value (penum_arg1);
+	  pr_clear_value (penum_arg2);
 	}
 
       penum_temp = penum_arg1;
@@ -22284,7 +22294,6 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	    }
 	}
 
-
       pset_arg1 = &set_arg1;
       pset_arg2 = &set_arg2;
       pset_result = &set_result;
@@ -22304,9 +22313,11 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	    {
 	      free_and_init (ordered_names);
 	      pr_clear_value (pset_arg1);
+	      pr_clear_value (pset_arg2);
 	      goto exit_on_error;
 	    }
 	  pr_clear_value (pset_arg1);
+	  pr_clear_value (pset_arg2);
 
 	  if (setdomain->next != NULL)
 	    {
