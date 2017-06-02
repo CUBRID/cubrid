@@ -324,7 +324,7 @@ end:
 
   if (disk_repr_p)
     {
-      catalog_free_representation (disk_repr_p);
+      catalog_free_representation_and_init (disk_repr_p);
     }
 
   if (cls_info_p)
@@ -791,7 +791,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   OR_PUT_INT (buf_p, max_unique_keys);
   buf_p += OR_INT_SIZE;
 
-  catalog_free_representation (disk_repr_p);
+  catalog_free_representation_and_init (disk_repr_p);
   catalog_free_class_info_and_init (cls_info_p);
 
   *length_p = CAST_STRLEN (buf_p - start_p);
@@ -814,7 +814,7 @@ exit_on_error:
 
   if (disk_repr_p)
     {
-      catalog_free_representation (disk_repr_p);
+      catalog_free_representation_and_init (disk_repr_p);
     }
   if (cls_info_p)
     {
@@ -1430,8 +1430,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	}
       if (subcls_disk_rep != NULL)
 	{
-	  catalog_free_representation (subcls_disk_rep);
-	  subcls_disk_rep = NULL;
+	  catalog_free_representation_and_init (subcls_disk_rep);
 	}
       if (subcls_rep != NULL)
 	{
@@ -1569,8 +1568,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
       /* clean subclass loaded in previous iteration */
       if (subcls_disk_rep != NULL)
 	{
-	  catalog_free_representation (subcls_disk_rep);
-	  subcls_disk_rep = NULL;
+	  catalog_free_representation_and_init (subcls_disk_rep);
 	}
       if (subcls_rep != NULL)
 	{
@@ -1774,10 +1772,10 @@ cleanup:
 	{
 	  if (mean[i].pkeys != NULL)
 	    {
-	      db_private_free (thread_p, mean[i].pkeys);
+	      db_private_free_and_init (thread_p, mean[i].pkeys);
 	    }
 	}
-      db_private_free (thread_p, mean);
+      db_private_free_and_init (thread_p, mean);
     }
   if (stddev != NULL)
     {
@@ -1796,7 +1794,7 @@ cleanup:
     }
   if (subcls_disk_rep != NULL)
     {
-      catalog_free_representation (subcls_disk_rep);
+      catalog_free_representation_and_init (subcls_disk_rep);
     }
   if (cls_info_p != NULL)
     {
@@ -1804,7 +1802,7 @@ cleanup:
     }
   if (disk_repr_p != NULL)
     {
-      catalog_free_representation (disk_repr_p);
+      catalog_free_representation_and_init (disk_repr_p);
     }
 
   return error;

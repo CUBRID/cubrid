@@ -679,14 +679,14 @@ catcls_find_btid_of_class_name (THREAD_ENTRY * thread_p, BTID * btid_p)
       BTID_COPY (btid_p, &(att_repr_p->bt_stats->btid));
     }
 
-  catalog_free_representation (repr_p);
+  catalog_free_representation_and_init (repr_p);
   return NO_ERROR;
 
 error:
 
   if (repr_p)
     {
-      catalog_free_representation (repr_p);
+      catalog_free_representation_and_init (repr_p);
     }
 
   return error;
@@ -2862,7 +2862,7 @@ catcls_reorder_attributes_by_repr (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 	    }
 	}
     }
-  catalog_free_representation (repr_p);
+  catalog_free_representation_and_init (repr_p);
 
   return NO_ERROR;
 
@@ -2870,7 +2870,7 @@ error:
 
   if (repr_p)
     {
-      catalog_free_representation (repr_p);
+      catalog_free_representation_and_init (repr_p);
     }
 
   return error;
@@ -3334,12 +3334,12 @@ catcls_put_or_value_into_record (THREAD_ENTRY * thread_p, OR_VALUE * value_p, in
   error = catcls_put_or_value_into_buffer (value_p, chn, buf_p, class_oid_p, repr_p);
   if (error != NO_ERROR)
     {
-      catalog_free_representation (repr_p);
+      catalog_free_representation_and_init (repr_p);
       return error;
     }
 
   record_p->length = (int) (buf_p->ptr - buf_p->buffer);
-  catalog_free_representation (repr_p);
+  catalog_free_representation_and_init (repr_p);
 
   return NO_ERROR;
 }
@@ -3425,7 +3425,7 @@ catcls_get_or_value_from_record (THREAD_ENTRY * thread_p, RECDES * record_p, OID
       goto error;
     }
 
-  catalog_free_representation (repr_p);
+  catalog_free_representation_and_init (repr_p);
   return value_p;
 
 error:
@@ -3437,7 +3437,7 @@ error:
 
   if (repr_p)
     {
-      catalog_free_representation (repr_p);
+      catalog_free_representation_and_init (repr_p);
     }
 
   return NULL;

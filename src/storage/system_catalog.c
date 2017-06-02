@@ -3937,8 +3937,7 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
     {
       if (disk_repr_p)
 	{
-	  catalog_free_representation (disk_repr_p);
-	  disk_repr_p = NULL;
+	  catalog_free_representation_and_init (disk_repr_p);
 	}
 
       if (catalog_record.page_p)
@@ -4038,8 +4037,7 @@ exit_on_error:
   error = ER_FAILED;
   if (disk_repr_p)
     {
-      catalog_free_representation (disk_repr_p);
-      disk_repr_p = NULL;
+      catalog_free_representation_and_init (disk_repr_p);
     }
 
   goto exit_on_end;
@@ -4484,7 +4482,7 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
 	  catalog_copy_disk_attributes (disk_repr_p->variable, disk_repr_p->n_variable, old_repr_p->variable,
 					old_repr_p->n_variable);
 
-	  catalog_free_representation (old_repr_p);
+	  catalog_free_representation_and_init (old_repr_p);
 	  catalog_drop (thread_p, class_oid_p, current_repr_id);
 	}
     }
@@ -5083,7 +5081,7 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 	    }
 
 	  catalog_dump_representation (disk_repr_p);
-	  catalog_free_representation (disk_repr_p);
+	  catalog_free_representation_and_init (disk_repr_p);
 	}
 
       if (repr_id_set != NULL)
@@ -5458,8 +5456,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
 	    }
 	  if (subcls_disk_rep != NULL)
 	    {
-	      catalog_free_representation (subcls_disk_rep);
-	      subcls_disk_rep = NULL;
+	      catalog_free_representation_and_init (subcls_disk_rep);
 	    }
 	  if (subcls_rep != NULL)
 	    {
@@ -5553,7 +5550,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
 exit_cleanup:
   if (free_disk_rep)
     {
-      catalog_free_representation (disk_repr_p);
+      catalog_free_representation_and_init (disk_repr_p);
     }
   if (free_cls_rep)
     {
@@ -5565,8 +5562,7 @@ exit_cleanup:
     }
   if (subcls_disk_rep != NULL)
     {
-      catalog_free_representation (subcls_disk_rep);
-      subcls_disk_rep = NULL;
+      catalog_free_representation_and_init (subcls_disk_rep);
     }
   if (subcls_rep != NULL)
     {
