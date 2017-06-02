@@ -1421,7 +1421,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 
   request_q_entry_p = conn->request_queue;
 
-  if (request_q_entry_p != NULL)
+  if (request_q_entry_p == NULL)
     {
       /* empty queue */
       return 0;
