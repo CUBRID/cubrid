@@ -499,9 +499,8 @@ css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, i
       return rc;
     }
 
-  header_size = sizeof (NET_HEADER);
-
 begin:
+  header_size = sizeof (NET_HEADER);
   rc = css_net_read_header (conn->fd, (char *) &header, &header_size, timeout);
   if (rc == NO_ERRORS)
     {
