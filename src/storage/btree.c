@@ -7618,16 +7618,37 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
   if (heap_get_indexinfo_of_btid (thread_p, &fdes.btree.class_oid, btid, NULL, NULL, NULL, NULL, &btname, NULL) !=
       NO_ERROR)
     {
+      if (er_errid () == NO_ERROR)
+	{
+	  /* this is sometimes expected. I found a case when index was just loaded, but class object was not updated
+	   * yet. heap_get_indexinfo_of_btid is ambiguously handled, it does not set errors, but returns error code.
+	   * this crashes in ASSERT_ERROR safe-guards.
+	   *
+	   * this is, for now, a quick fix to avoid the safe-guard. I hope it won't hide other issues.
+	   */
+	  er_log_debug (ARG_FILE_LINE, "btree_check_by_btid on (%d, %d|%d) failed, because index info could not be "
+			"fetched. it is possible that index is still loading... \n", BTID_AS_ARGS (btid));
+	  valid = DISK_VALID;
+	}
       goto exit_on_end;
     }
 
   valid = btree_check_tree (thread_p, &fdes.btree.class_oid, btid, btname);
+  if (valid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  else if (valid == DISK_INVALID)
+    {
+      assert (false);
+    }
 
 exit_on_end:
   if (btname)
     {
       free_and_init (btname);
     }
+  assert (valid != DISK_INVALID);
 
   return valid;
 }
