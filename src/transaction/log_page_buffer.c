@@ -7997,6 +7997,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * Record the checkpoint address on every volume header
    */
 
+  disk_lock_extend ();
   for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID && volid <= xboot_peek_last_permanent (thread_p);
        volid = fileio_find_next_perm_volume (thread_p, volid))
     {
@@ -8004,6 +8005,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
        * need to care for the new volumes in here. */
       (void) disk_set_checkpoint (thread_p, volid, &chkpt_lsa);
     }
+  disk_unlock_extend ();
 
   /* 
    * Get the critical section again, so we can check if any archive can be
@@ -8718,7 +8720,9 @@ loop:
 	    {
 	      goto error;
 	    }
+	  disk_lock_extend ();
 	  volid = fileio_find_next_perm_volume (thread_p, volid);
+	  disk_unlock_extend ();
 	}
       else
 	{

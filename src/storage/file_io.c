@@ -6122,21 +6122,14 @@ fileio_find_next_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
 
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
 
-  /* we might have a problem if a new volume is being added concurrently. to make sure we avoid any inconsistencies,
-   * we need to block or get blocked by adding new volumes. */
-  disk_lock_extend ();
-
   arg.vol_id = volid;
   vol_info_p = fileio_traverse_permanent_volume (thread_p, fileio_is_volume_id_gt, &arg);
   if (vol_info_p)
     {
       assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);
-
-      disk_unlock_extend ();
       return vol_info_p->volid;
     }
 
-  disk_unlock_extend ();
   return NULL_VOLID;
 }
 
