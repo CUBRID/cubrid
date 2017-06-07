@@ -18211,6 +18211,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
     {
       if (heap_get_indexinfo_of_btid (thread_p, class_oid, btid, NULL, NULL, NULL, NULL, &index_name, NULL) != NO_ERROR)
 	{
+	  er_clear ();
 	  index_name = NULL;
 	}
     }
