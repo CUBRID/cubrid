@@ -1723,7 +1723,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
-2 Transaction isolation level must be 1, 2, 3, 4, 5 or 6.
+2 Transaction isolation level must be 4, 5 or 6.
 3 Timeout value must be -1, 0, or >0.
 4 Isolation level set to:\n
 5          Unknown isolation.\n
