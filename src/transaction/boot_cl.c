@@ -133,7 +133,7 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* data page_size */ -1, /* log page_size */ -1,
   /* disk_compatibility */ 0.0,
   /* ha_server_state */ -1,
-  /* server_session_key */ {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+  /* server_session_key */ {(char)0xFF, (char)0xFF, (char)0xFF, (char)0xFF, (char)0xFF, (char)0xFF, (char)0xFF, (char)0xFF},//vapa!!!
   INTL_CODESET_NONE,
   NULL
 };
