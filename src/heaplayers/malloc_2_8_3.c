@@ -3284,7 +3284,7 @@ mmap_alloc (mstate m, size_t nb)
 	  do
 	    {
 	      void *h;
-	      h = chunk_plus_offset (p, psize - MMAP_TRACE_H_SIZE);
+	      h = chunk_plus_offset (p, psize - sizeof(MMAP_TRACE_H));
 	      mmap_called (m, mm, (MMAP_TRACE_H *) h);
 	    }
 	  while (0);
@@ -4959,7 +4959,7 @@ mspace_free (mspace msp, void *mem)
 		      do
 			{
 			  void *ptr = (char *) p - prevsize;
-			  MMAP_TRACE_H *h = (MMAP_TRACE_H *) (next - MMAP_TRACE_H_SIZE);
+			  MMAP_TRACE_H *h = (MMAP_TRACE_H *) ((char*)next - MMAP_TRACE_H_SIZE);
 			  munmap_is_to_be_called (msp, ptr, h);
 			}
 		      while (0);
