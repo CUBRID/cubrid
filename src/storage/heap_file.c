@@ -5087,6 +5087,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	    {
 	      /* could not cache */
 	      assert_release (false);
+	      goto error;
 	    }
 	  /* reuse successful */
 	  goto end;
@@ -5141,10 +5142,12 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       goto error;
     }
 
-  if (heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid, file_type) != NO_ERROR)
+  error_code = heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid, file_type);
+  if (error_code != NO_ERROR)
     {
       /* Failed to cache HFID. */
       assert_release (false);
+      goto error;
     }
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
@@ -23023,7 +23026,7 @@ heap_hfid_table_entry_key_copy (void *src, void *dest)
 static unsigned int
 heap_hfid_table_entry_key_hash (void *key, int hash_table_size)
 {
-  return ((int) OID_PSEUDO_KEY ((OID *) key)) % hash_table_size;
+  return ((unsigned int) OID_PSEUDO_KEY ((OID *) key)) % hash_table_size;
 }
 
 /*
