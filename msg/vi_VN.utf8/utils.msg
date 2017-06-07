@@ -365,6 +365,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 20 Master going down in %1$d minutes\n
 21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
 
+
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 Couldn't open output file '%1$s'\n
 60 \
@@ -393,7 +394,7 @@ valid options:\n\
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
-19 Tha database name is missing.\n
+19 The database name is missing.\n
 20 '%1$s' file does not have %2$d lines.\n
 21 interrupt ... \n
 22 Interrupted load - current transaction committed\n
@@ -536,7 +537,7 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 43 Error while processing class, class skipped.\n
 44 \nPass 3\n\n
 45 Heap compact failed...\n
-46 Heap compact succedeed...\n
+46 Heap compact succeeded...\n
 60 \
 compactdb: Free unused space in a database.\n\
 usage: %1$s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\
@@ -592,6 +593,7 @@ valid options:\n\
 37 process fork %1$s, returned %2$d, %3$s
 38 can't execute %1$s
 39 -i(--immediately) option must be used with --deact-stop-all option.\n
+
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
@@ -935,7 +937,7 @@ $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Enter DBA password:
 22 The server was not configured for HA.\n
 58 HA feature is not supported in this platform.\n
-59 applyinfo cannot run as standlone mode.\n
+59 applyinfo cannot run as standalone mode.\n
 60 \
 applyinfo: display CUBRID HA Apply information.\n\
 usage: %1$s applyinfo [OPTION] database-name\n\
@@ -1092,17 +1094,14 @@ valid options:\n\
                         and timezone names (intended for developer use, to\n\
                         be integrated into future CUBRID versions).\n\
                         2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder;new timezones found in the input\n\
+                        data from the input folder; new timezones found in the input\n\
                         files are added; GMT offsets and daylight saving\n\
                         information is updated (or added, for new timezones);\n\
                         timezones are never removed if a timezone encoded into\n\
                         CUBRID is missing from the input files, the associated\n\
                         data is retrieved from the existing timezone library.\n\
-                        If necessary, when the first phase of extend fails to make\n\
-                        all the data backward compatible an update is performed which\n\
-                        modifies the timezone ids and the date and time info stored in\n\
-                        the tables of the database which contain columns of timezone data\n\
-                        type.\n
+                        If first phase of extend fails to make all data backward compatible,\n\
+                        all rows in all tables having timezone data types will be updated.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 The supplied zone ID is out of range. Use -z to see all\n\
@@ -1113,12 +1112,12 @@ usage: %s dump_tz [OPTION]\n\
 \n\
 valid options:\n\
   -c, --list-countries      shows the list of countries currently supported\n\
-  -l, --leap-seconds	    shows the list of the leap seconds\n\
-  -s, --summary		    shows a summary of dump timezone data\n\
+  -l, --leap-seconds		shows the list of the leap seconds\n\
+  -s, --summary				shows a summary of dump timezone data\n\
   -z, --list-zones          shows the list of timezones currently supported\n\
   -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
                             to a timezone having the supplied ZONE_ID or for\n\
-                            ALL timzones. The ID of a timezone can be obtained\n\
+                            ALL timezones. The ID of a timezone can be obtained\n\
                             from the list displayed using the -z option.\n
 
 $set 53 MSGCAT_UTIL_SET_RESTORESLAVE
