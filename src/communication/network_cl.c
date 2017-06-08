@@ -183,7 +183,6 @@ set_server_error (int error)
     default:
       server_error = ER_NET_SERVER_CRASHED;
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 0);
-      assert (0);
       break;
     }
 
