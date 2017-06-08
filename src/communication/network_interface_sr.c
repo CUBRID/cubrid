@@ -3265,17 +3265,28 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 sboot_notify_unregister_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  CSS_CONN_ENTRY *conn;
   int tran_index;
   int success = NO_ERROR;
+  int r;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   (void) or_unpack_int (request, &tran_index);
 
+  conn = thread_p->conn_entry;
+
+  /* blah blah */
+  r = rmutex_lock (thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
+
   xboot_notify_unregister_client (thread_p, tran_index);
 
   (void) or_pack_int (reply, success);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  r = rmutex_unlock (thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 
 /*
