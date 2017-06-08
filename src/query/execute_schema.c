@@ -2142,6 +2142,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user;
   PT_NODE *node;
   const char *user_name, *password, *comment;
+  bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2162,13 +2163,19 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   user = db_find_user (user_name);
-
   if (user == NULL)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
       return error;
     }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_USER_ENTITY);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  set_savepoint = true;
 
   /* 
    * here, both password and comment are optional,
@@ -2182,7 +2189,10 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     {
       password = IS_STRING (node) ? GET_STRING (node) : NULL;
       error = au_set_password (user, password);
-      goto end;
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
   /* comment */
@@ -2190,11 +2200,21 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (node != NULL)
     {
       assert (node->node_type == PT_VALUE);
+
       comment = (char *) PT_VALUE_GET_BYTES (node);
       error = au_set_user_comment (user, comment);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
 end:
+  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ALTER_USER_ENTITY);
+    }
+
   return error;
 }
 
