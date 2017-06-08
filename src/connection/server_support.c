@@ -1445,6 +1445,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 {
   CSS_JOB_ENTRY *job;
   int n, type, rv, status;
+  volatile int conn_status;
   int css_peer_alive_timeout, poll_timeout;
   int max_num_loop, num_loop;
   int prefetchlogdb_max_thread_count = 0;
@@ -1474,9 +1475,26 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   while (thread_p->shutdown == false && conn->stop_talk == false)
     {
       /* check the connection */
-      if (conn->status != CONN_OPEN)
+      conn_status = conn->status;
+      if (conn_status == CONN_CLOSING)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "conn->status is not CONN_OPEN.");
+	  /* There's an interesting race condition among client, worker thread and connection handler.
+	   * Please find CBRD-21375 for detail and also see sboot_notify_unregister_client.
+	   * 
+	   * We have to synchronize here with worker thread which may be in sboot_notify_unregister_client
+	   * to let it have a chance to send reply to client.
+	   */
+	  rmutex_lock (thread_p, &conn->rmutex);
+
+	  conn_status = conn->status;
+
+	  rmutex_unlock (thread_p, &conn->rmutex);
+	}
+
+      if (conn_status != CONN_OPEN)
+	{
+	  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "conn->status (%d) is not CONN_OPEN.",
+			conn_status);
 	  status = CONNECTION_CLOSED;
 	  break;
 	}

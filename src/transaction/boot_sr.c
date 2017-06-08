@@ -3196,21 +3196,12 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
   CSS_CONN_ENTRY *conn;
   LOG_TDES *tdes;
   int client_id;
-  int r;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-      if (thread_p == NULL)
-	{
-	  return;
-	}
-    }
 
   conn = thread_p->conn_entry;
 
-  r = rmutex_lock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
+  /* sboot_notify_unregister_client should hold conn->rmutex. 
+   * Please see the comment of sboot_notify_unregister_client.
+   */
 
   client_id = conn->client_id;
   tdes = LOG_FIND_TDES (tran_index);
@@ -3221,9 +3212,6 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  conn->status = CONN_CLOSING;
 	}
     }
-
-  r = rmutex_unlock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
 }
 #endif /* SERVER_MODE */
 
