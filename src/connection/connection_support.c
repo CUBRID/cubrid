@@ -409,7 +409,6 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	{
 	  /* 0 means it timed out and no fd is changed. */
 	  errno = ETIMEDOUT;
-	  er_log_debug (ARG_FILE_LINE, "css_readn: ETIMEDOUT");
 	  return -1;
 	}
       else if (n < 0)
@@ -429,16 +428,11 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	}
       else
 	{
-	  if (po[0].revents & POLLERR)
+	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
 	      errno = EINVAL;
-	      er_log_debug (ARG_FILE_LINE, "css_readn: %s", strerror (errno));
-	      return -1;
-	    }
-	  if (po[0].revents & POLLHUP)
-	    {
-	      errno = EINVAL;
-	      er_log_debug (ARG_FILE_LINE, "css_readn: %s", strerror (errno));
+	      er_log_debug (ARG_FILE_LINE, "css_readn: %s %s", (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"),
+			    strerror (errno));
 	      return -1;
 	    }
 	}
@@ -964,21 +958,15 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 	{
 	  /* 0 means it timed out and no fd is changed. */
 	  errno = ETIMEDOUT;
-	  er_log_debug (ARG_FILE_LINE, "css_vector_send: ETIMEDOUT %s\n", strerror (errno));
 	  return -1;
 	}
       else
 	{
-	  if (po[0].revents & POLLERR)
+	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
 	      errno = EINVAL;
-	      er_log_debug (ARG_FILE_LINE, "css_vector_send: EINVAL POLLERR %s\n", strerror (errno));
-	      return -1;
-	    }
-	  if (po[0].revents & POLLHUP)
-	    {
-	      errno = EINVAL;
-	      er_log_debug (ARG_FILE_LINE, "css_vector_send: EINVAL POLLHUP %s\n", strerror (errno));
+	      er_log_debug (ARG_FILE_LINE, "css_vector_send: %s %s\n",
+			    (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"), strerror (errno));
 	      return -1;
 	    }
 	}
