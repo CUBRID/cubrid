@@ -214,8 +214,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
     {
       /* Update statistics for all partitions and the partitioned class */
       assert (partitions != NULL);
-      catalog_free_class_info (cls_info_p);
-      cls_info_p = NULL;
+      catalog_free_class_info_and_init (cls_info_p);
       error_code = stats_update_partitioned_statistics (thread_p, class_id_p, partitions, count, with_fullscan);
       db_private_free (thread_p, partitions);
       if (error_code != NO_ERROR)
@@ -325,12 +324,12 @@ end:
 
   if (disk_repr_p)
     {
-      catalog_free_representation (disk_repr_p);
+      catalog_free_representation_and_init (disk_repr_p);
     }
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FINISHED_TO_UPDATE_STATISTICS, 5,
@@ -792,8 +791,8 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   OR_PUT_INT (buf_p, max_unique_keys);
   buf_p += OR_INT_SIZE;
 
-  catalog_free_representation (disk_repr_p);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_representation_and_init (disk_repr_p);
+  catalog_free_class_info_and_init (cls_info_p);
 
   *length_p = CAST_STRLEN (buf_p - start_p);
 
@@ -815,11 +814,11 @@ exit_on_error:
 
   if (disk_repr_p)
     {
-      catalog_free_representation (disk_repr_p);
+      catalog_free_representation_and_init (disk_repr_p);
     }
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
 #if !defined(NDEBUG)
@@ -1427,18 +1426,15 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
       /* clean subclass loaded in previous iteration */
       if (subcls_info != NULL)
 	{
-	  catalog_free_class_info (subcls_info);
-	  subcls_info = NULL;
+	  catalog_free_class_info_and_init (subcls_info);
 	}
       if (subcls_disk_rep != NULL)
 	{
-	  catalog_free_representation (subcls_disk_rep);
-	  subcls_disk_rep = NULL;
+	  catalog_free_representation_and_init (subcls_disk_rep);
 	}
       if (subcls_rep != NULL)
 	{
-	  heap_classrepr_free (subcls_rep, &subcls_idx_cache);
-	  subcls_rep = NULL;
+	  heap_classrepr_free_and_init (subcls_rep, &subcls_idx_cache);
 	}
 
       if (catalog_get_dir_oid_from_cache (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
@@ -1572,13 +1568,11 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
       /* clean subclass loaded in previous iteration */
       if (subcls_disk_rep != NULL)
 	{
-	  catalog_free_representation (subcls_disk_rep);
-	  subcls_disk_rep = NULL;
+	  catalog_free_representation_and_init (subcls_disk_rep);
 	}
       if (subcls_rep != NULL)
 	{
-	  heap_classrepr_free (subcls_rep, &subcls_idx_cache);
-	  subcls_rep = NULL;
+	  heap_classrepr_free_and_init (subcls_rep, &subcls_idx_cache);
 	}
 
       if (catalog_get_dir_oid_from_cache (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
@@ -1766,11 +1760,11 @@ cleanup:
 
   if (cls_rep != NULL)
     {
-      heap_classrepr_free (cls_rep, &cls_idx_cache);
+      heap_classrepr_free_and_init (cls_rep, &cls_idx_cache);
     }
   if (subcls_rep != NULL)
     {
-      heap_classrepr_free (subcls_rep, &subcls_idx_cache);
+      heap_classrepr_free_and_init (subcls_rep, &subcls_idx_cache);
     }
   if (mean != NULL)
     {
@@ -1778,10 +1772,10 @@ cleanup:
 	{
 	  if (mean[i].pkeys != NULL)
 	    {
-	      db_private_free (thread_p, mean[i].pkeys);
+	      db_private_free_and_init (thread_p, mean[i].pkeys);
 	    }
 	}
-      db_private_free (thread_p, mean);
+      db_private_free_and_init (thread_p, mean);
     }
   if (stddev != NULL)
     {
@@ -1796,19 +1790,19 @@ cleanup:
     }
   if (subcls_info)
     {
-      catalog_free_class_info (subcls_info);
+      catalog_free_class_info_and_init (subcls_info);
     }
   if (subcls_disk_rep != NULL)
     {
-      catalog_free_representation (subcls_disk_rep);
+      catalog_free_representation_and_init (subcls_disk_rep);
     }
   if (cls_info_p != NULL)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
   if (disk_repr_p != NULL)
     {
-      catalog_free_representation (disk_repr_p);
+      catalog_free_representation_and_init (disk_repr_p);
     }
 
   return error;

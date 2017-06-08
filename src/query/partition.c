@@ -3399,7 +3399,7 @@ cleanup:
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
   if (error != NO_ERROR)
     {

@@ -217,12 +217,6 @@ struct rvfun RV_fun[] = {
    file_rv_extdata_merge,
    NULL,
    NULL},
-  {RVFL_EXTDATA_MERGE_COMPARE_VSID,	/* obsolete */
-   "RVFL_EXTDATA_MERGE_COMPARE_VSID",
-   NULL, NULL, NULL, NULL},
-  {RVFL_EXTDATA_MERGE_COMPARE_TRACK_ITEM,	/* obsolete */
-   "RVFL_EXTDATA_MERGE_COMPARE_TRACK_ITEM",
-   NULL, NULL, NULL, NULL},
   {RVFL_EXTDATA_UPDATE_ITEM,
    "RVFL_EXTDATA_UPDATE_ITEM",
    log_rv_copy_char,
@@ -239,6 +233,18 @@ struct rvfun RV_fun[] = {
    "RVFL_TRACKER_HEAP_REUSE",
    heap_rv_mark_deleted_on_undo,
    file_rv_tracker_reuse_heap,
+   NULL,
+   NULL},
+  {RVFL_TRACKER_UNREGISTER,
+   "RVFL_TRACKER_UNREGISTER",
+   file_rv_tracker_unregister_undo,
+   NULL,
+   NULL,
+   NULL},
+  {RVFL_FHEAD_CONVERT_FTAB_TO_USER,
+   "RVFL_FHEAD_CONVERT_FTAB_TO_USER",
+   file_rv_fhead_convert_user_to_ftab_page,
+   file_rv_fhead_convert_ftab_to_user_page,
    NULL,
    NULL},
 
@@ -691,14 +697,6 @@ struct rvfun RV_fun[] = {
    vacuum_rv_redo_append_data,
    NULL,
    vacuum_rv_redo_append_data_dump},
-  /* TODO VACUUM_DATA_COMPATIBILITY: ===> */
-  {RVVAC_DATA_MODIFY_FIRST_PAGE,
-   "RVVAC_DATA_MODIFY_FIRST_PAGE",
-   vacuum_rv_undoredo_first_data_page,
-   vacuum_rv_undoredo_first_data_page,
-   vacuum_rv_undoredo_first_data_page_dump,
-   vacuum_rv_undoredo_first_data_page_dump},
-  /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
   {RVVAC_DATA_INIT_NEW_PAGE,
    "RVVAC_DATA_INIT_NEW_PAGE",
    NULL,
@@ -804,18 +802,6 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL},
 
-  {RVFL_TRACKER_UNREGISTER,
-   "RVFL_TRACKER_UNREGISTER",
-   file_rv_tracker_unregister_undo,
-   NULL,
-   NULL,
-   NULL},
-  {RVFL_FHEAD_CONVERT_FTAB_TO_USER,
-   "RVFL_FHEAD_CONVERT_FTAB_TO_USER",
-   file_rv_fhead_convert_user_to_ftab_page,
-   file_rv_fhead_convert_ftab_to_user_page,
-   NULL,
-   NULL},
 };
 
 /*

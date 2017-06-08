@@ -7618,16 +7618,37 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
   if (heap_get_indexinfo_of_btid (thread_p, &fdes.btree.class_oid, btid, NULL, NULL, NULL, NULL, &btname, NULL) !=
       NO_ERROR)
     {
+      if (er_errid () == NO_ERROR)
+	{
+	  /* this is sometimes expected. I found a case when index was just loaded, but class object was not updated
+	   * yet. heap_get_indexinfo_of_btid is ambiguously handled, it does not set errors, but returns error code.
+	   * this crashes in ASSERT_ERROR safe-guards.
+	   *
+	   * this is, for now, a quick fix to avoid the safe-guard. I hope it won't hide other issues.
+	   */
+	  er_log_debug (ARG_FILE_LINE, "btree_check_by_btid on (%d, %d|%d) failed, because index info could not be "
+			"fetched. it is possible that index is still loading... \n", BTID_AS_ARGS (btid));
+	  valid = DISK_VALID;
+	}
       goto exit_on_end;
     }
 
   valid = btree_check_tree (thread_p, &fdes.btree.class_oid, btid, btname);
+  if (valid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  else if (valid == DISK_INVALID)
+    {
+      assert (false);
+    }
 
 exit_on_end:
   if (btname)
     {
       free_and_init (btname);
     }
+  assert (valid != DISK_INVALID);
 
   return valid;
 }
@@ -7635,7 +7656,7 @@ exit_on_end:
 int
 btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 {
-  OR_CLASSREP *cls_repr;
+  OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr_idx;
   int cache_idx = -1;
   int i;
@@ -7672,7 +7693,7 @@ btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 
   if (cls_repr != NULL)
     {
-      heap_classrepr_free (cls_repr, &cache_idx);
+      heap_classrepr_free_and_init (cls_repr, &cache_idx);
     }
 
   return error;
@@ -7687,7 +7708,7 @@ btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 DISK_ISVALID
 btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * idx_btid)
 {
-  OR_CLASSREP *cls_repr;
+  OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr;
   BTID btid;
   int i;
@@ -7735,7 +7756,7 @@ btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * idx_bti
 
   if (cls_repr)
     {
-      heap_classrepr_free (cls_repr, &cache_idx);
+      heap_classrepr_free_and_init (cls_repr, &cache_idx);
     }
 
   return rv;
@@ -7949,7 +7970,7 @@ exit_repair:
 static DISK_ISVALID
 btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, bool repair)
 {
-  OR_CLASSREP *cls_repr;
+  OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr;
   int i;
   int cache_idx = -1;
@@ -7987,7 +8008,7 @@ btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid, BTID * 
   lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, true);
   if (cls_repr)
     {
-      heap_classrepr_free (cls_repr, &cache_idx);
+      heap_classrepr_free_and_init (cls_repr, &cache_idx);
     }
 
   return valid;
@@ -18190,6 +18211,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
     {
       if (heap_get_indexinfo_of_btid (thread_p, class_oid, btid, NULL, NULL, NULL, NULL, &index_name, NULL) != NO_ERROR)
 	{
+	  er_clear ();
 	  index_name = NULL;
 	}
     }
@@ -20353,7 +20375,7 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
   int i, error = NO_ERROR;
   OID oid;
   OR_CLASSREP *classrep = NULL;
-  int idx_in_cache;
+  int idx_in_cache = -1;
   SHOW_INDEX_SCAN_CTX *ctx = NULL;
   LC_FIND_CLASSNAME status;
   OR_PARTITION *parts = NULL;
@@ -20456,7 +20478,7 @@ cleanup:
 
   if (classrep != NULL)
     {
-      heap_classrepr_free (classrep, &idx_in_cache);
+      heap_classrepr_free_and_init (classrep, &idx_in_cache);
     }
 
   if (parts != NULL)
@@ -20500,7 +20522,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   OR_CLASSREP *classrep = NULL;
   SHOW_INDEX_SCAN_CTX *ctx = NULL;
   OID *class_oid_p = NULL;
-  int idx_in_cache;
+  int idx_in_cache = -1;
   int selected_index = 0;
   int i, index_idx, oid_idx;
   char columns[256] = { 0 };
@@ -20575,7 +20597,7 @@ cleanup:
 
   if (classrep != NULL)
     {
-      heap_classrepr_free (classrep, &idx_in_cache);
+      heap_classrepr_free_and_init (classrep, &idx_in_cache);
     }
 
   if (class_name != NULL)
@@ -24054,6 +24076,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 		      ASSERT_ERROR ();
 		      return error_code;
 		    }
+		  assert (search_key.result != BTREE_KEY_NOTFOUND);
 		}
 	      switch (search_key.result)
 		{
@@ -24081,6 +24104,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
 		case BTREE_KEY_SMALLER:
 		case BTREE_KEY_BIGGER:
+		case BTREE_KEY_NOTFOUND:
 		  /* Key is no longer in this leaf node. Locate key by advancing from root. */
 		  /* Fall through. */
 		  break;
@@ -30095,7 +30119,8 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
       /* Fix right page. */
       VPID_COPY (&right_vpid, &non_leaf_rec_info.pnt);
 #if defined (SERVER_MODE)
-      if (pgbuf_is_io_stressful () && spage_get_free_space (thread_p, child_page) < (int) (DB_PAGESIZE * 0.75f))
+      if (pgbuf_is_io_stressful () && spage_get_free_space (thread_p, child_page) < (int) (DB_PAGESIZE * 0.75f)
+	  && spage_number_of_slots (child_page) > 2)
 	{
 	  /* avoid fetching "cold" neighbor pages, that are not in page buffer. at the same time, we should avoid doing
 	   * zero merges. so if we have a strong indicator that merge is possible (e.g. current page is almost empty)

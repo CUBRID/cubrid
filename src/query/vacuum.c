@@ -4009,13 +4009,6 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
       ASSERT_ERROR_AND_SET (error_code);
       goto end;
     }
-  /* TODO VACUUM_DATA_COMPATIBILITY: ===> */
-  if (fdes.vacuum_data.vpid_first.pageid == 0)
-    {
-      assert_release (!VPID_ISNULL (&log_Gl.hdr.vacuum_data_first_vpid));
-      fdes.vacuum_data.vpid_first = log_Gl.hdr.vacuum_data_first_vpid;
-    }
-  /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
 
   assert (!VPID_ISNULL (&fdes.vacuum_data.vpid_first));
 
@@ -4790,42 +4783,6 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	}
     }
 }
-
-/* TODO VACUUM_DATA_COMPATIBILITY: ===> */
-/*
- * vacuum_rv_undoredo_first_data_page () - Undo or redo changing first vacuum data page.
- *
- * return	 : NO_ERROR.
- * thread_p (in) : Thread entry.
- * rcv (in)	 : Recovery data.
- */
-int
-vacuum_rv_undoredo_first_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  assert (rcv->pgptr != NULL);
-  assert (rcv->length == sizeof (VPID));
-
-  VPID_COPY (&log_Gl.hdr.vacuum_data_first_vpid, (VPID *) rcv->data);
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-
-  return NO_ERROR;
-}
-
-/*
- * vacuum_rv_undoredo_first_data_page_dump () - Dump recovery for changing first vacuum data page.
- *
- * return      : Void.
- * fp (in)     : Output target.
- * length (in) : Recovery data length.
- * data (in)   : Recovery data.
- */
-void
-vacuum_rv_undoredo_first_data_page_dump (FILE * fp, int length, void *data)
-{
-  fprintf (fp, " Set first page vacuum data page VPID to %d|%d.", ((VPID *) data)->volid, ((VPID *) data)->pageid);
-}
-
-/* TODO VACUUM_DATA_COMPATIBILITY: <=== */
 
 /*
  * vacuum_rv_redo_data_finished () - Redo setting vacuum jobs as finished (or interrupted).

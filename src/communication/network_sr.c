@@ -670,21 +670,11 @@ net_server_init (void)
   req_p->processing_function = srepl_log_get_append_lsa;
   req_p->name = "NET_SERVER_REPL_LOG_GET_APPEND_LSA";
 
-  req_p = &net_Requests[NET_SERVER_REPL_BTREE_FIND_UNIQUE];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = srepl_btree_find_unique;
-  req_p->name = "NET_SERVER_REPL_BTREE_FIND_UNIQUE";
-
   /* log writer */
   req_p = &net_Requests[NET_SERVER_LOGWR_GET_LOG_PAGES];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slogwr_get_log_pages;
   req_p->name = "NET_SERVER_LOGWR_GET_LOG_PAGES";
-
-  /* test */
-  req_p = &net_Requests[NET_SERVER_TEST_PERFORMANCE];
-  req_p->processing_function = stest_performance;
-  req_p->name = "NET_SERVER_TEST_PERFORMANCE";
 
   /* shutdown */
   req_p = &net_Requests[NET_SERVER_SHUTDOWN];

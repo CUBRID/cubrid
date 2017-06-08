@@ -2366,7 +2366,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      assert_release (false);
       goto error;
     }
 
@@ -4783,7 +4783,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      assert_release (false);
       goto error;
     }
 

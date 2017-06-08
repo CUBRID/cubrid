@@ -87,8 +87,7 @@ static bool need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid);
 static int server_capabilities (void);
 static int check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, int rel_compare,
 				      REL_COMPATIBILITY * compatibility, const char *client_host);
-static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen,
-					 bool is_replication);
+static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
 			      UINT64 * diff_stats, char *queryinfo_string);
 static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
@@ -3977,28 +3976,11 @@ slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid, cha
 void
 sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  sbtree_find_unique_internal (thread_p, rid, request, reqlen, false);
-}
-
-/*
- * srepl_btree_find_unique -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-srepl_btree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  sbtree_find_unique_internal (thread_p, rid, request, reqlen, true);
+  sbtree_find_unique_internal (thread_p, rid, request, reqlen);
 }
 
 static void
-sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen, bool is_replication)
+sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   BTID btid;
   OID class_oid;
@@ -4010,14 +3992,7 @@ sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *re
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = request;
-  if (is_replication == true)
-    {
-      ptr = or_unpack_mem_value (ptr, &key);
-    }
-  else
-    {
-      ptr = or_unpack_value (ptr, &key);
-    }
+  ptr = or_unpack_value (ptr, &key);
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_btid (ptr, &btid);
 
@@ -6055,34 +6030,6 @@ xs_send_action_to_client (THREAD_ENTRY * thread_p, VACOMM_BUFFER_CLIENT_ACTION a
 }
 
 /*
- * stest_performance -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-stest_performance (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int return_size;
-  OR_ALIGNED_BUF (10000) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  if (reqlen >= OR_INT_SIZE)
-    {
-      or_unpack_int (request, &return_size);
-      if (return_size > 0)
-	{
-	  css_send_data_to_client (thread_p->conn_entry, rid, reply, return_size);
-	}
-    }
-}
-
-/*
  * slocator_assign_oid_batch -
  *
  * return:
@@ -6783,10 +6730,8 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TY
 
   rid = thread_get_comm_request_id (thread_p);
   /* need to know length of prompt string we are sending */
-  prompt_length =
-    or_packed_string_length (prompt, &strlen1) + or_packed_string_length (failure_prompt,
-									  &strlen2) + OR_INT_SIZE * 2 +
-    or_packed_string_length (secondary_prompt, &strlen3) + OR_INT_SIZE;
+  prompt_length = (or_packed_string_length (prompt, &strlen1) + or_packed_string_length (failure_prompt, &strlen2)
+		   + OR_INT_SIZE * 2 + or_packed_string_length (secondary_prompt, &strlen3) + OR_INT_SIZE);
 
   /* 
    * Client side caller must be expecting a reply/callback followed

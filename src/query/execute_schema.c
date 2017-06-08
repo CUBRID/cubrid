@@ -9609,6 +9609,9 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 
   au_change_owner_method (obj, &returnval, &class_val, &user_val);
 
+  pr_clear_value (&class_val);
+  pr_clear_value (&user_val);
+
   if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
     {
       error = DB_GET_ERROR (&returnval);

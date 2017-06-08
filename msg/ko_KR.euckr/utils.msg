@@ -651,27 +651,26 @@ checkdb: 데이터베이스 일관성 검사.\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 데이터베이스 '%1$s'의 (페이지 크기 %2$s) 볼륨 정의 (로그 페이지 크기 %3$s)\n\n
-16 %1$5d %2$9s  %3$s %4$s  %5$s\n
-17 출력파일 '%1$s' 을(를) 열 수 없습니다\n
-18 \n데이터베이스 '%1$s'의 (페이지크기 %2$s) 임시 볼륨\n\n
-19 번호  용도        페이지수  여유페이지  볼륨이름\n\n
-20 번호  용도        전체크기    여유공간  볼륨이름\n\n
-21 LOB 파일 저장소 %1$s\n\n
-22 -------------------------------------------------------------------------------\n
-30 데이터베이스 '%1$s'(페이지 크기 %2$s)의 볼륨 용도별 합산 (로그 페이지 크기 %3$s)\n\n
-31 용도         페이지수  사용된페이지  여유페이지  볼륨개수\n
-32 용도         전체크기    사용된공간    여유공간  볼륨개수\n
-33 %1$10s %2$s %3$s %4$s %5$10d\n
-34 -------------------------------------------------------------\n
-40 번호   용도      페이지수     여유페이지 데이터페이지 인덱스페이지 임시페이지 볼륨이름\n\n
-41 번호   용도      전체크기       여유공간   데이터공간   인덱스공간   임시공간 볼륨이름\n\n
-42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
-43 ----------------------------------------------------------------------------------------------------\n
-50 용도        페이지수  사용된페이지 여유페이지 데이터페이지 인덱스페이지 임시페이지  볼륨개수\n
-51 용도        전체크기    사용된공간   여유공간   데이터공간   인덱스공간   임시공간  볼륨개수\n
-52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
-53 -------------------------------------------------------------------------------------------------\n
+10 데이터베이스 '%1$s'의 (페이지 크기 %2$s) 볼륨 정의 (로그 페이지 크기 %3$s)\n\n
+11 출력파일 '%1$s' 을(를) 열 수 없습니다\n
+12 LOB 파일 저장소 %1$s\n\n
+20 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+21 type                purpose            volume_count         used_size           free_size           total_size\n
+22 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+30 전체 볼륨에 대한 공간 정보:\n
+31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+40 파일에 대한 상세 공간 정보:\n
+41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+50 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: 데이터베이스 디스크 공간 정보 출력\n\
 사용법: %1$s spacedb [옵션] <데이터베이스 이름>\n\
@@ -684,24 +683,6 @@ spacedb: 데이터베이스 디스크 공간 정보 출력\n\
                                출력 단위(page, mega, giga, tera, human readable) 설정; 기본값: H\n\
   -s, --summarize              볼륨 용도별 합계 결과 출력\n\
   -p, --purpose                각 볼륨의 목적별 (데이터/인덱스/임시) 사용량을 출력\n
-70 type                purpose            volume_count        used_pages          free_pages          total_pages\n
-71 type                purpose            volume_count         used_size           free_size           total_size\n
-72 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-73 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-74 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-75 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
-80 Space description for all volumes:\n
-81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
-82 volid               type                purpose             used_size           free_size           total_size         volume_name\n
-83 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-84 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-85 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-90 Detailed space description for files:\n
-91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
-92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
-93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
-100 -----------------------------------------------------------------------------------------------------------------\n
-
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 추정되는 페이지 개수 = %1$d\n
@@ -773,7 +754,7 @@ diagdb: 데이터베이스 정보 덤프\n\
 \n\
 옵션:\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
-      --emergency              emergency restart; 기본값: 없음\n\
+      --emergency              비상시 재시작; 기본값: 없음\n\
   -d, --dump-type=TYPE         TYPE of dump\n\
                                -1 모두 덤프\n\
                                 1 파일 테이블 덤프\n\
@@ -1093,7 +1074,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 60 유효하지 않거나 변질된 입력 폴더입니다.\n
 61 \
 gen_tz: 타임존 데이터를 포함하는 소스 파일을 생성하여 공유 라이브러리로 컴파일\n\
-사용법: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
+사용법: %s gen_tz -g [new|extend] [database-name] (extend 모드에 대해서만)\n\
 \n\
 valid options:\n\
   -i, --input-folder    IANA 타임존 데이터베이스 파일을 포함하는 입력 디렉터리 경로\n\
@@ -1103,18 +1084,13 @@ valid options:\n\
                         1. NEW (기본값) : 기존 버전에 대한 고려없이 공유 라이브러리를 위한 소스 파일 생성;\n\
                         또한 모든 국가와 타임존 이름을 포함하도록 소스 파일을 생성\n\
                         (개발자가 사용하는 것을 의도, 향후 CUBRID 버전에 통합 예정).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder;new timezones found in the input\n\
-                        files are added; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removed if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        If necessary, when the first phase of extend fails to make\n\
-                        all the data backward compatible an update is performed which\n\
-                        modifies the timezone ids and the date and time info stored in\n\
-                        the tables of the database which contain columns of timezone data\n\
-                        type.\n
+                        2. EXTEND : 입력 폴더의 데이터를 사용하여 타임존 소스 파일을 생성;\n\
+                        입력 파일의 새로운 타임존들이 추가; GMT 오프셋과 일광 절약 시간제 \n\
+                        관련 정보는 갱신되거나 새로운 타임존의 경우는 추가됨;\n\
+                        기존에 타임존 라이브러리에 포함된 타임존 식별자는 새 입력 파일에\n\
+                        더 이상 존재하지 않더라도 삭제되지 않고 항상 보존됨;\n\
+                        모든 데이터에 대한 하위 호환을 보장할 수 없는 경우에는 해당 데이터를\n\
+                        포함하는 데이터베이스의 모든 컬럼에 대해서 업데이트를 수행.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 유효하지 않은 타임존 식별자가 주어졌습니다. 전체 타임존과 해당 식별자를 확인하기 위해서 -z를 사용하세요\n

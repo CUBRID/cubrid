@@ -108,7 +108,6 @@ extern void sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *
 extern void sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void srepl_btree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_find_multi_uniques (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_class_test_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_totalpgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -137,7 +136,6 @@ extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LI
 extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize);
 extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout);
 extern int xs_send_action_to_client (THREAD_ENTRY * thread_p, VACOMM_BUFFER_CLIENT_ACTION action);
-extern void stest_performance (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

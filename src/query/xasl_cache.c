@@ -2189,7 +2189,7 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
       if (HFID_IS_NULL (&cls_info_p->ci_hfid))
 	{
 	  /* Is this expected?? */
-	  catalog_free_class_info (cls_info_p);
+	  catalog_free_class_info_and_init (cls_info_p);
 	  continue;
 	}
       assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
@@ -2213,7 +2213,7 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 	      recompile = true;
 	    }
 	}
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
   return recompile;
 }
