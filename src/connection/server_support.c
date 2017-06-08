@@ -1478,7 +1478,12 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
       conn_status = conn->status;
       if (conn_status == CONN_CLOSING)
 	{
-	  /* blah blah */
+	  /* There's an interesting race condition among client, worker thread and connection handler.
+	   * Please find CBRD-21375 for detail and also see sboot_notify_unregister_client.
+	   * 
+	   * We have to synchronize here with worker thread which may be in sboot_notify_unregister_client
+	   * to let it have a chance to send reply to client.
+	   */
 	  rmutex_lock (thread_p, &conn->rmutex);
 
 	  conn_status = conn->status;

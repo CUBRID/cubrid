@@ -433,14 +433,12 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	    {
 	      errno = EINVAL;
 	      er_log_debug (ARG_FILE_LINE, "css_readn: %s", strerror (errno));
-	      assert (0);
 	      return -1;
 	    }
 	  if (po[0].revents & POLLHUP)
 	    {
 	      errno = EINVAL;
 	      er_log_debug (ARG_FILE_LINE, "css_readn: %s", strerror (errno));
-	      assert (0);
 	      return -1;
 	    }
 	}
@@ -579,14 +577,12 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 		{
 		  if (css_peer_alive (fd, time_unit) == false)
 		    {
-		      assert (0);
 		      return ERROR_WHEN_READING_SIZE;
 		    }
 		  if (css_check_server_alive_fn != NULL)
 		    {
 		      if (css_check_server_alive_fn (NULL, NULL) == false)
 			{
-			  assert (0);
 			  return ERROR_WHEN_READING_SIZE;
 			}
 		    }
@@ -595,7 +591,6 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 	      elapsed += time_unit;
 	      continue;
 	    }
-	  assert (0);
 	  return ERROR_WHEN_READING_SIZE;
 	}
       if (nbytes != sizeof (int))
@@ -603,7 +598,6 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 #ifdef CUBRID_DEBUG
 	  er_log_debug (ARG_FILE_LINE, "css_net_recv: returning ERROR_WHEN_READING_SIZE bytes %d \n", nbytes);
 #endif
-	  assert (0);
 	  return ERROR_WHEN_READING_SIZE;
 	}
       else
@@ -2452,7 +2446,6 @@ css_check_magic (CSS_CONN_ENTRY * conn)
   nbytes = css_readn (conn->fd, (char *) &size, sizeof (int), timeout);
   if (nbytes != sizeof (int))
     {
-      assert (0);
       return ERROR_WHEN_READING_SIZE;
     }
   size = ntohl (size);

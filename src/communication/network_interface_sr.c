@@ -3274,9 +3274,24 @@ sboot_notify_unregister_client (THREAD_ENTRY * thread_p, unsigned int rid, char 
 
   (void) or_unpack_int (request, &tran_index);
 
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      if (thread_p == NULL)
+	{
+	  return;
+	}
+    }
   conn = thread_p->conn_entry;
+  assert (conn != NULL);
 
-  /* blah blah */
+  /* There's an interesting race condition among client, worker thread and connection handler.
+   * Please find CBRD-21375 for detail and also see css_connection_handler_thread.
+   * 
+   * It is important to synchronize worker thread with connection handler to avoid the race condition.
+   * To change conn->status and send reply to client should be atomic.
+   * Otherwise, connection handler may disconnect the connection and it prevents client from receiving the reply.
+   */
   r = rmutex_lock (thread_p, &conn->rmutex);
   assert (r == NO_ERROR);
 
