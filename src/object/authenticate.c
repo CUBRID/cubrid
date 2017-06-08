@@ -5320,6 +5320,11 @@ au_change_serial_owner (MOP * object, MOP new_owner)
   return NO_ERROR;
 
 exit_on_error:
+  if (obt_p != NULL)
+    {
+      dbt_abort_object (obt_p);
+    }
+
   AU_ENABLE (au_save);
 
   assert (er_errid () != NO_ERROR);
