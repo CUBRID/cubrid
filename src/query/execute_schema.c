@@ -71,6 +71,8 @@
 #define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
 #define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
 #define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
+#define UNIQUE_SAVEPOINT_GRANT_USER "gRANTuSER"
+#define UNIQUE_SAVEPOINT_REVOKE_USER "rEVOKEuSER"
 
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH 128
@@ -1731,6 +1733,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *spec_list, *s_list, *spec;
   PT_NODE *entity_list, *entity;
   int grant_option;
+  bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1747,13 +1750,21 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       grant_option = false;
     }
 
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_GRANT_USER);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  set_savepoint = true;
+
   for (user = user_list; user != NULL; user = user->next)
     {
       user_obj = db_find_user (user->info.name.original);
       if (user_obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto end;
 	}
 
       auth_list = auth_cmd_list;
@@ -1771,17 +1782,24 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  if (class_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
-		      return er_errid ();
+		      error = er_errid ();
+		      goto end;
 		    }
 
 		  error = db_grant (user_obj, class_mop, db_auth, grant_option);
 		  if (error != NO_ERROR)
 		    {
-		      return error;
+		      goto end;
 		    }
 		}
 	    }
 	}
+    }
+
+end:
+  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_GRANT_USER);
     }
 
   return error;
@@ -1804,6 +1822,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_AUTH db_auth;
   PT_NODE *spec_list, *s_list, *spec;
   PT_NODE *entity_list, *entity;
+  bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1811,13 +1830,21 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   auth_cmd_list = statement->info.revoke.auth_cmd_list;
   spec_list = statement->info.revoke.spec_list;
 
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_REVOKE_USER);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  set_savepoint = true;
+
   for (user = user_list; user != NULL; user = user->next)
     {
       user_obj = db_find_user (user->info.name.original);
       if (user_obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto end;
 	}
 
       auth_list = auth_cmd_list;
@@ -1835,17 +1862,24 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  if (class_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
-		      return er_errid ();
+		      error = er_errid ();
+		      goto end;
 		    }
 
 		  error = db_revoke (user_obj, class_mop, db_auth);
 		  if (error != NO_ERROR)
 		    {
-		      return error;
+		      goto end;
 		    }
 		}
 	    }
 	}
+    }
+
+end:
+  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_REVOKE_USER);
     }
 
   return error;
