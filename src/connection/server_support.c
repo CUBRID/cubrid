@@ -1475,20 +1475,20 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   while (thread_p->shutdown == false && conn->stop_talk == false)
     {
       /* check the connection */
-      con_status = conn->status;
+      conn_status = conn->status;
       if (conn_status == CONN_CLOSING)
 	{
 	  /* blah blah */
-	  rmutex_lock (&conn->rmutex);
+	  rmutex_lock (thread_p, &conn->rmutex);
 
 	  conn_status = conn->status;
 
-	  rmutex_unlock (&conn->rmutex);
+	  rmutex_unlock (thread_p, &conn->rmutex);
 	}
 
       if (conn_status != CONN_OPEN)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "conn->status (%) is not CONN_OPEN.",
+	  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "conn->status (%d) is not CONN_OPEN.",
 			conn_status);
 	  status = CONNECTION_CLOSED;
 	  break;
