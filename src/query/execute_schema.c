@@ -68,6 +68,9 @@
 #define UNIQUE_SAVEPOINT_ALTER_INDEX "aLTERiNDEX"
 #define UNIQUE_SAVEPOINT_CHANGE_DEF_COLL "cHANGEdEFAULTcOLL"
 #define UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT "cHANGEtBLcOMMENT"
+#define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
+#define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
+#define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
 
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH 128
@@ -1863,6 +1866,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *node, *node2;
   const char *user_name, *password, *comment;
   const char *group_name, *member_name;
+  bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1872,7 +1876,6 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  user = NULL;
   node = statement->info.create_user.user_name;
   if (node == NULL || node->node_type != PT_NAME || node->info.name.original == NULL)
     {
@@ -1949,8 +1952,13 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
-  exists = 0;
+  if (tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_USER_ENTITY) != NO_ERROR)
+    {
+      goto end;
+    }
+  set_savepoint = true;
 
+  exists = 0;
   user = db_add_user (user_name, &exists);
   if (user == NULL)
     {
@@ -1964,80 +1972,99 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, user_name);
       goto end;
     }
-  else
+
+  /* Now treats optional password, group, member and comment of the created user */
+
+  /* password */
+  node = statement->info.create_user.password;
+  password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
+  if (password != NULL)
     {
-      node = statement->info.create_user.password;
-      password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
-      if (error == NO_ERROR && password)
+      error = au_set_password (user, password);
+      if (error != NO_ERROR)
 	{
-	  error = au_set_password (user, password);
+	  goto end;
 	}
+    }
 
-      node = statement->info.create_user.groups;
-      group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-      if (error == NO_ERROR && group_name)
-	do
-	  {
-	    group = db_find_user (group_name);
-
-	    if (group == NULL)
-	      {
-		assert (er_errid () != NO_ERROR);
-		error = er_errid ();
-	      }
-	    else
-	      {
-		error = db_add_member (group, user);
-	      }
-
-	    node = node->next;
-	    group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-	  }
-	while (error == NO_ERROR && group_name);
-
-      node = statement->info.create_user.members;
-      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-      if (error == NO_ERROR && member_name != NULL)
+  /* group */
+  node = statement->info.create_user.groups;
+  group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+  if (group_name != NULL)
+    {
+      do
 	{
-	  do
+	  group = db_find_user (group_name);
+
+	  if (group == NULL)
 	    {
-	      member = db_find_user (member_name);
-
-	      if (member == NULL)
-		{
-		  assert (er_errid () != NO_ERROR);
-		  error = er_errid ();
-		}
-	      else
-		{
-		  error = db_add_member (user, member);
-		}
-
-	      node = node->next;
-	      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
 	    }
-	  while (error == NO_ERROR && member_name != NULL);
-	}
+	  else
+	    {
+	      error = db_add_member (group, user);
+	    }
 
-      /* comment */
-      node = statement->info.create_user.comment;
-      if (error == NO_ERROR && node != NULL)
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  node = node->next;
+	  group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	}
+      while (group_name != NULL);
+    }
+
+  /* member */
+  node = statement->info.create_user.members;
+  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+  if (member_name != NULL)
+    {
+      do
 	{
-	  assert (node->node_type == PT_VALUE);
-	  comment = (char *) PT_VALUE_GET_BYTES (node);
-	  error = au_set_user_comment (user, comment);
+	  member = db_find_user (member_name);
+
+	  if (member == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+	  else
+	    {
+	      error = db_add_member (user, member);
+	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  node = node->next;
+	  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	}
+      while (member_name != NULL);
+    }
+
+  /* comment */
+  node = statement->info.create_user.comment;
+  if (node != NULL)
+    {
+      assert (node->node_type == PT_VALUE);
+
+      comment = (char *) PT_VALUE_GET_BYTES (node);
+      error = au_set_user_comment (user, comment);
+      if (error != NO_ERROR)
+	{
+	  goto end;
 	}
     }
 
 end:
-  if (error != NO_ERROR)
+  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
     {
-      if (user && exists == 0)
-	{
-	  er_stack_push ();
-	  db_drop_user (user);
-	  er_stack_pop ();
-	}
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CREATE_USER_ENTITY);
     }
 
   return error;
