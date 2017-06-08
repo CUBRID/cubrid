@@ -1866,7 +1866,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (statement == NULL)
+  if (parser == NULL || statement == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
@@ -1881,6 +1881,12 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   user_name = node->info.name.original;
+  if (user_name == NULL)
+    {
+      error = ER_AU_INVALID_USER;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      return error;
+    }
 
   /* first, check if user_name is in group or member clause */
   for (node = statement->info.create_user.groups; node != NULL; node = node->next)
@@ -1943,99 +1949,94 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
-  if (parser == NULL || statement == NULL || user_name == NULL)
+  exists = 0;
+
+  user = db_add_user (user_name, &exists);
+  if (user == NULL)
     {
-      error = ER_AU_INVALID_USER;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+  else if (exists)
+    {
+      error = ER_AU_USER_EXISTS;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, user_name);
+      goto end;
     }
   else
     {
-      exists = 0;
-
-      user = db_add_user (user_name, &exists);
-      if (user == NULL)
+      node = statement->info.create_user.password;
+      password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
+      if (error == NO_ERROR && password)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  error = au_set_password (user, password);
 	}
-      else if (exists)
-	{
-	  error = ER_AU_USER_EXISTS;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, user_name);
-	}
-      else
-	{
-	  node = statement->info.create_user.password;
-	  password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
-	  if (error == NO_ERROR && password)
-	    {
-	      error = au_set_password (user, password);
-	    }
 
-	  node = statement->info.create_user.groups;
-	  group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-	  if (error == NO_ERROR && group_name)
-	    do
+      node = statement->info.create_user.groups;
+      group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+      if (error == NO_ERROR && group_name)
+	do
+	  {
+	    group = db_find_user (group_name);
+
+	    if (group == NULL)
 	      {
-		group = db_find_user (group_name);
-
-		if (group == NULL)
-		  {
-		    assert (er_errid () != NO_ERROR);
-		    error = er_errid ();
-		  }
-		else
-		  {
-		    error = db_add_member (group, user);
-		  }
-
-		node = node->next;
-		group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+		assert (er_errid () != NO_ERROR);
+		error = er_errid ();
 	      }
-	    while (error == NO_ERROR && group_name);
+	    else
+	      {
+		error = db_add_member (group, user);
+	      }
 
-	  node = statement->info.create_user.members;
-	  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-	  if (error == NO_ERROR && member_name != NULL)
+	    node = node->next;
+	    group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	  }
+	while (error == NO_ERROR && group_name);
+
+      node = statement->info.create_user.members;
+      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+      if (error == NO_ERROR && member_name != NULL)
+	{
+	  do
 	    {
-	      do
+	      member = db_find_user (member_name);
+
+	      if (member == NULL)
 		{
-		  member = db_find_user (member_name);
-
-		  if (member == NULL)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		    }
-		  else
-		    {
-		      error = db_add_member (user, member);
-		    }
-
-		  node = node->next;
-		  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
 		}
-	      while (error == NO_ERROR && member_name != NULL);
-	    }
+	      else
+		{
+		  error = db_add_member (user, member);
+		}
 
-	  /* comment */
-	  node = statement->info.create_user.comment;
-	  if (error == NO_ERROR && node != NULL)
-	    {
-	      assert (node->node_type == PT_VALUE);
-	      comment = (char *) PT_VALUE_GET_BYTES (node);
-	      error = au_set_user_comment (user, comment);
+	      node = node->next;
+	      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
 	    }
+	  while (error == NO_ERROR && member_name != NULL);
 	}
 
-      if (error != NO_ERROR)
+      /* comment */
+      node = statement->info.create_user.comment;
+      if (error == NO_ERROR && node != NULL)
 	{
-	  if (user && exists == 0)
-	    {
-	      er_stack_push ();
-	      db_drop_user (user);
-	      er_stack_pop ();
-	    }
+	  assert (node->node_type == PT_VALUE);
+	  comment = (char *) PT_VALUE_GET_BYTES (node);
+	  error = au_set_user_comment (user, comment);
+	}
+    }
+
+end:
+  if (error != NO_ERROR)
+    {
+      if (user && exists == 0)
+	{
+	  er_stack_push ();
+	  db_drop_user (user);
+	  er_stack_pop ();
 	}
     }
 
@@ -2058,7 +2059,7 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (statement == NULL)
+  if (parser == NULL || statement == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
@@ -2067,19 +2068,18 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   node = statement->info.create_user.user_name;
   user_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
 
-  if (!parser || !statement || !user_name)
+  if (user_name == NULL)
     {
       error = ER_AU_INVALID_USER;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      return error;
     }
-  else
+
+  error = db_find_user_to_drop (user_name, &user);
+  if (error == NO_ERROR)
     {
-      error = db_find_user_to_drop (user_name, &user);
-      if (error == NO_ERROR)
-	{
-	  assert (user != NULL);
-	  error = db_drop_user (user);
-	}
+      assert (user != NULL);
+      error = db_drop_user (user);
     }
 
   return error;
@@ -2101,7 +2101,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (statement == NULL)
+  if (parser == NULL || statement == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
@@ -2110,47 +2110,47 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   node = statement->info.alter_user.user_name;
   user_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
 
-  if (!parser || !statement || !user_name)
+  if (user_name == NULL)
     {
       error = ER_AU_INVALID_USER;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      return error;
     }
-  else
+
+  user = db_find_user (user_name);
+
+  if (user == NULL)
     {
-      user = db_find_user (user_name);
-
-      if (user == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
-      else
-	{
-	  /* 
-	   * here, both password and comment are optional,
-	   * either password or comment shall exist,
-	   * csql_grammar denies the error case with the missing of both.
-	   */
-
-	  /* password */
-	  node = statement->info.alter_user.password;
-	  if (node != NULL)
-	    {
-	      password = IS_STRING (node) ? GET_STRING (node) : NULL;
-	      error = au_set_password (user, password);
-	    }
-
-	  /* comment */
-	  node = statement->info.alter_user.comment;
-	  if (node != NULL)
-	    {
-	      assert (node->node_type == PT_VALUE);
-	      comment = (char *) PT_VALUE_GET_BYTES (node);
-	      error = au_set_user_comment (user, comment);
-	    }
-	}
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      return error;
     }
 
+  /* 
+   * here, both password and comment are optional,
+   * either password or comment shall exist,
+   * csql_grammar denies the error case with the missing of both.
+   */
+
+  /* password */
+  node = statement->info.alter_user.password;
+  if (node != NULL)
+    {
+      password = IS_STRING (node) ? GET_STRING (node) : NULL;
+      error = au_set_password (user, password);
+      goto end;
+    }
+
+  /* comment */
+  node = statement->info.alter_user.comment;
+  if (node != NULL)
+    {
+      assert (node->node_type == PT_VALUE);
+      comment = (char *) PT_VALUE_GET_BYTES (node);
+      error = au_set_user_comment (user, comment);
+    }
+
+end:
   return error;
 }
 
