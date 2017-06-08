@@ -12149,8 +12149,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 			 (PGBUF_LATCH_MODE) curr_request_mode, PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
 #else
       pgptr =
-	pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, (PGBUF_LATCH_MODE) curr_request_mode,
-			   PGBUF_UNCONDITIONAL_LATCH);
+	pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode,
+			   (PGBUF_LATCH_MODE) curr_request_mode, PGBUF_UNCONDITIONAL_LATCH);
 #endif
 
       if (pgptr == NULL)
@@ -12255,8 +12255,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 				 caller_line);
 #else
 	      pgptr =
-		pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, (PGBUF_LATCH_MODE)curr_request_mode,
-				   PGBUF_UNCONDITIONAL_LATCH);
+		pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode,
+				   (PGBUF_LATCH_MODE) curr_request_mode, PGBUF_UNCONDITIONAL_LATCH);
 #endif
 	      if (pgptr == NULL)
 		{
@@ -12274,7 +12274,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 						 false, caller_file, caller_line);
 #else
 	      pgbuf_add_watch_instance_internal (holder, pgptr, ordered_holders_info[i].watcher[j],
-						 (PGBUF_LATCH_MODE) ordered_holders_info[i].watcher[j]->latch_mode, false);
+						 (PGBUF_LATCH_MODE) ordered_holders_info[i].watcher[j]->latch_mode,
+						 false);
 #endif
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,
