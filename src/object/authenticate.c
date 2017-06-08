@@ -441,20 +441,16 @@ static DB_METHOD_LINK au_static_links[] = {
   {"au_add_member_method", (METHOD_LINK_FUNCTION) au_add_member_method},
   {"au_drop_member_method", (METHOD_LINK_FUNCTION) au_drop_member_method},
   {"au_set_password_method", (METHOD_LINK_FUNCTION) au_set_password_method},
-  {"au_set_password_encoded_method",
-   (METHOD_LINK_FUNCTION) au_set_password_encoded_method},
-  {"au_set_password_encoded_sha1_method",
-   (METHOD_LINK_FUNCTION) au_set_password_encoded_sha1_method},
+  {"au_set_password_encoded_method", (METHOD_LINK_FUNCTION) au_set_password_encoded_method},
+  {"au_set_password_encoded_sha1_method", (METHOD_LINK_FUNCTION) au_set_password_encoded_sha1_method},
   {"au_describe_user_method", (METHOD_LINK_FUNCTION) au_describe_user_method},
   {"au_describe_root_method", (METHOD_LINK_FUNCTION) au_describe_root_method},
   {"au_info_method", (METHOD_LINK_FUNCTION) au_info_method},
   {"au_login_method", (METHOD_LINK_FUNCTION) au_login_method},
   {"au_change_owner_method", (METHOD_LINK_FUNCTION) au_change_owner_method},
-  {"au_change_trigger_owner_method",
-   (METHOD_LINK_FUNCTION) au_change_trigger_owner_method},
+  {"au_change_trigger_owner_method", (METHOD_LINK_FUNCTION) au_change_trigger_owner_method},
   {"au_get_owner_method", (METHOD_LINK_FUNCTION) au_get_owner_method},
-  {"au_check_authorization_method",
-   (METHOD_LINK_FUNCTION) au_check_authorization_method},
+  {"au_check_authorization_method", (METHOD_LINK_FUNCTION) au_check_authorization_method},
 
   /* 
    * qo_set_cost
@@ -477,10 +473,8 @@ static DB_METHOD_LINK au_static_links[] = {
   {"get_attribute_number", (METHOD_LINK_FUNCTION) get_attribute_number},
   {"dbmeth_class_name", (METHOD_LINK_FUNCTION) dbmeth_class_name},
   {"dbmeth_print", (METHOD_LINK_FUNCTION) dbmeth_print},
-  {"au_change_sp_owner_method",
-   (METHOD_LINK_FUNCTION) au_change_sp_owner_method},
-  {"au_change_serial_owner_method",
-   (METHOD_LINK_FUNCTION) au_change_serial_owner_method},
+  {"au_change_sp_owner_method", (METHOD_LINK_FUNCTION) au_change_sp_owner_method},
+  {"au_change_serial_owner_method", (METHOD_LINK_FUNCTION) au_change_serial_owner_method},
 
   {NULL, NULL}
 };
@@ -1515,9 +1509,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   DB_VALUE value, class_name_val;
   DB_AUTH type;
   int i;
-  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE",
-    "ALTER", "INDEX", "EXECUTE"
-  };
+  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
   if (au_obj == NULL)
     {
@@ -1607,9 +1599,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   STATEMENT_ID stmt_id;
-  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE",
-    "ALTER", "INDEX", "EXECUTE"
-  };
+  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
     {
@@ -5243,16 +5233,22 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
 	{
 	  error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
 	  if (error != NO_ERROR)
-	    goto fail_return;
+	    {
+	      goto fail_return;
+	    }
 	  savepoint_owner = 1;
 	  for (i = 0; sub_partitions[i]; i++)
 	    {
 	      error = au_change_owner (sub_partitions[i], user);
 	      if (error != NO_ERROR)
-		break;
+		{
+		  break;
+		}
 	    }
 	  if (error != NO_ERROR)
-	    goto fail_return;
+	    {
+	      goto fail_return;
+	    }
 	}
     }
 
@@ -5451,7 +5447,9 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * trigge
 		{
 		  error = au_change_trigger_owner (trigger_mop, user);
 		  if (error == NO_ERROR)
-		    ok = 1;
+		    {
+		      ok = 1;
+		    }
 		}
 	    }
 	}
@@ -5651,7 +5649,8 @@ au_change_sp_owner (MOP sp, MOP owner)
   else
     {
       db_make_object (&value, owner);
-      if ((error = obj_set (sp, SP_ATTR_OWNER, &value)) < 0)
+      error = obj_set (sp, SP_ATTR_OWNER, &value);
+      if (error < 0)
 	{
 	  goto end;
 	}
@@ -5682,15 +5681,17 @@ au_change_sp_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * sp, DB_VALU
     {
       if (owner != NULL && IS_STRING (owner) && !DB_IS_NULL (owner) && db_get_string (owner) != NULL)
 	{
-
 	  sp_mop = jsp_find_stored_procedure (db_get_string (sp));
 	  if (sp_mop != NULL)
 	    {
 	      user = au_find_user (db_get_string (owner));
 	      if (user != NULL)
 		{
-		  if ((error = au_change_sp_owner (sp_mop, user)) == NO_ERROR)
-		    ok = 1;
+		  error = au_change_sp_owner (sp_mop, user);
+		  if (error == NO_ERROR)
+		    {
+		      ok = 1;
+		    }
 		}
 	    }
 	}
@@ -6013,12 +6014,14 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
 	case AU_FETCH_UPDATE:
 	  class_ = (SM_CLASS *) locator_fetch_class_of_instance (op, &classmop, DB_FETCH_WRITE);
 	  if (class_ != NULL)
-	    /* 
-	     * all this appreciably does is set the dirty flag in the MOP
-	     * should have the "dirty after getting write lock" operation
-	     * separated
-	     */
-	    class_ = (SM_CLASS *) locator_update_class (classmop);
+	    {
+	      /* 
+	       * all this appreciably does is set the dirty flag in the MOP
+	       * should have the "dirty after getting write lock" operation
+	       * separated
+	       */
+	      class_ = (SM_CLASS *) locator_update_class (classmop);
+	    }
 	  break;
 	}
     }
