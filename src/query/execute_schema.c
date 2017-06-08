@@ -1952,9 +1952,10 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
-  if (tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_USER_ENTITY) != NO_ERROR)
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_USER_ENTITY);
+  if (error != NO_ERROR)
     {
-      goto end;
+      return error;
     }
   set_savepoint = true;
 
@@ -2083,6 +2084,7 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user = NULL;
   PT_NODE *node;
   const char *user_name;
+  bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2103,10 +2105,25 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   error = db_find_user_to_drop (user_name, &user);
-  if (error == NO_ERROR)
+  if (error != NO_ERROR)
     {
-      assert (user != NULL);
-      error = db_drop_user (user);
+      return error;
+    }
+
+  assert (user != NULL);
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_DROP_USER_ENTITY);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  set_savepoint = true;
+
+  error = db_drop_user (user);
+
+  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_DROP_USER_ENTITY);
     }
 
   return error;
