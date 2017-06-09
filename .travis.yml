@@ -1,19 +1,18 @@
-language: c
+sudo: required
 
-compiler:
-  - gcc
+services:
+  - docker
 
-os:
-- linux
-
-addons:
-  apt:
-    sources:
-      kalakris-cmake
-    packages:
-      - cmake
-      - systemtap-sdt-dev
-      - libelf-dev
+before_install:
+  - gem install ghi
 
 script:
-  - mkdir build && cd build && cmake .. && make
+  - docker run -v$TRAVIS_BUILD_DIR/..:/home/cubrid -v$TRAVIS_BUILD_DIR/../CUBRID:/home/CUBRID -e MAKEFLAGS='-j2' cubridci/build || { BUILD_FAILED=$?; false; }
+  - docker run -v$TRAVIS_BUILD_DIR/..:/home/cubrid -v$TRAVIS_BUILD_DIR/../CUBRID:/home/CUBRID cubridci/test || { TESTS_FAILED=$?; false; }
+
+after_failure: |
+  if [ "$TRAVIS_PULL_REQUEST" != "false" -a ${TESTS_FAILED:-0} -gt 0 ]; then
+    TRAVIS_CURRENT_BUILD_URL="https://travis-ci.org/$TRAVIS_REPO_SLUG/builds/$TRAVIS_BUILD_ID"
+    PR_COMMENT="There are $TESTS_FAILED failed Testcases. Please check the [log]($TRAVIS_CURRENT_BUILD_URL) on Travis"
+    ghi comment -m "$PR_COMMENT" $TRAVIS_PULL_REQUEST
+  fi

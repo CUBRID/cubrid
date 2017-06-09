@@ -1,0 +1,15 @@
+environment:
+  CMAKE_GENERATOR: "Visual Studio 14 2015 Win64"
+  BUILD_TYPE: RelWithDebInfo
+
+matrix:
+  fast_finish: true
+
+install:
+  - cinst ant -i
+
+build_script:
+  - md build
+  - cd /d build
+  - cmake -G "%CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ..
+  - cmake --build . --config %BUILD_TYPE%
