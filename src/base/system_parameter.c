@@ -748,14 +748,13 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  * Macros to call functions
  */
 
-
 #define PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER(prm,out_val,in_val,err) \
   do \
     { \
       assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
       assert (sizeof (*(out_val)) == sizeof (int)); \
       assert (sizeof (*(in_val)) == sizeof (UINT64)); \
-      *(err) = (SYSPRM_ERR)(*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_BIGINT); \
+      *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_BIGINT); \
     } \
   while (0)
 
@@ -765,7 +764,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
       assert (sizeof (*(out_val)) == sizeof (float)); \
       assert (sizeof (*(in_val)) == sizeof (UINT64)); \
-      *(err) = (SYSPRM_ERR)(*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_BIGINT); \
+      *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_BIGINT); \
     } \
   while (0)
 
@@ -775,7 +774,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
       assert (sizeof (*(out_val)) == sizeof (int)); \
       assert (sizeof (*(in_val)) == sizeof (int)); \
-      *(err) = (SYSPRM_ERR)(*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_INTEGER);\
+      *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_INTEGER);\
     } \
   while (0)
 
@@ -785,7 +784,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
       assert (sizeof (*(out_val)) == sizeof (float)); \
       assert (sizeof (*(in_val)) == sizeof (float)); \
-      *(err) = (SYSPRM_ERR)(*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_FLOAT); \
+      *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_FLOAT); \
     } \
   while (0)
 
@@ -805,7 +804,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
       assert (sizeof (*(out_val)) == sizeof (UINT64)); \
       assert (sizeof (*(in_val)) == sizeof (int)); \
-      *(err) = (SYSPRM_ERR)(*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_INTEGER); \
+      *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_INTEGER); \
     } \
   while (0)
 
@@ -815,7 +814,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
       assert (sizeof (*(out_val)) == sizeof (UINT64)); \
       assert (sizeof (*(in_val)) == sizeof (float)); \
-      *(err) = (SYSPRM_ERR)(*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_FLOAT); \
+      *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_FLOAT); \
     } \
   while (0)
 
@@ -825,7 +824,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);\
       assert (sizeof (*(out_val)) == sizeof (int)); \
       assert (sizeof (*(in_val)) == sizeof (int)); \
-      *(err) = (SYSPRM_ERR)(*((prm)->get_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_INTEGER); \
+      *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_INTEGER); \
     } \
   while (0)
 
@@ -835,7 +834,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
       assert (sizeof (*(out_val)) == sizeof (float)); \
       assert (sizeof (*(in_val)) == sizeof (float)); \
-      *(err) = (SYSPRM_ERR)(*((prm)->get_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_FLOAT); \
+      *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_FLOAT); \
     } \
   while (0)
 
@@ -845,7 +844,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL); \
       assert (sizeof (*(out_val)) == sizeof (UINT64));\
       assert (sizeof (*(in_val)) == sizeof (UINT64)); \
-      *(err) = (SYSPRM_ERR)(*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_BIGINT); \
+      *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_BIGINT); \
     } \
   while (0)
 /*
