@@ -426,24 +426,17 @@ struct lock_free_circular_queue
   UINT64 capacity;
 };
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+extern bool lf_circular_queue_is_full (LOCK_FREE_CIRCULAR_QUEUE * queue);
+extern bool lf_circular_queue_is_empty (LOCK_FREE_CIRCULAR_QUEUE * queue);
+extern int lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue);
+extern bool lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
+extern bool lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
+extern void *lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue);
+extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
+extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (unsigned int capacity, int data_size);
+extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);
+extern void lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue);
 
-  extern bool lf_circular_queue_is_full (LOCK_FREE_CIRCULAR_QUEUE * queue);
-  extern bool lf_circular_queue_is_empty (LOCK_FREE_CIRCULAR_QUEUE * queue);
-  extern int lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue);
-  extern bool lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-  extern bool lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-  extern void *lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue);
-  extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-  extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (unsigned int capacity, int data_size);
-  extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);
-  extern void lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue);
-#ifdef __cplusplus
-}
-#endif
 /* lock free bitmap */
 extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold);
 extern void lf_bitmap_destroy (LF_BITMAP * bitmap);
