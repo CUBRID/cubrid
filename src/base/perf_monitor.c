@@ -3625,13 +3625,13 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
   if (*s != NULL)
     {
       for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
-           snapshot++)
+	   snapshot++)
 	{
 	  for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
-               rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
+	       rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
 	    {
 	      for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
-                   visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
+		   visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
 		{
 		  offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
 
@@ -3676,14 +3676,14 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
   UINT64 counter = 0;
 
   assert (stream != NULL);
-  for (snapshot = (unsigned int ) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int ) PERF_SNAPSHOT_CNT;
+  for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
        snapshot++)
     {
-      for (rec_type = (unsigned int ) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
-           rec_type < (unsigned int ) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
+      for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
+	   rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
 	{
-	  for (visibility = (unsigned int ) PERF_SNAPSHOT_INVISIBLE;
-               visibility < (unsigned int ) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
+	  for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
+	       visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
 	    {
 	      offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
 
