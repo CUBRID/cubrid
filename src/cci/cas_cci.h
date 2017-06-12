@@ -312,6 +312,7 @@ typedef struct
   char oid[32];
 } T_CCI_QUERY_RESULT;
 
+/* todo: T_CCI_U_TYPE duplicates db types. */
 typedef enum
 {
   CCI_U_TYPE_FIRST = 0,
