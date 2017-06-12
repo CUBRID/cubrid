@@ -254,7 +254,8 @@ start:
 	  return -2;
 	}
     }
-  if ((optchar = (int) *place++) == (int) ':' || (oli = (char*)strchr (options + (IGNORE_FIRST ? 1 : 0), optchar)) == NULL)
+  if ((optchar = (int) *place++) == (int) ':' || (oli = (char*) strchr (options + (IGNORE_FIRST ? 1 : 0), optchar))
+      == NULL)
     {
       /* option letter unknown or ':' */
       if (!*place)

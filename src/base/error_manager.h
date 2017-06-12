@@ -93,7 +93,7 @@
 #if defined(NDEBUG)
 #define STRINGIZE(s) #s
 #define assert_release(e) \
-   ((void) ((e) ? (void)0  : (er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, STRINGIZE (e)))))
+  ((e) ? (void) 0  : er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, STRINGIZE (e)))
 #else
 #define assert_release(e) assert(e)
 #endif

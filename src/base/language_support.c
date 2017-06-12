@@ -3885,7 +3885,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
   const int alpha_cnt = coll_data->w_count;
   const int exp_num = coll_data->uca_exp_num;
   unsigned int pseudo_key = 0;
-  T_LEVEL level;
+  unsigned int level;
   int str_size;
 
   str_end = str + size;
@@ -3955,7 +3955,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
 	  break;
 	}
 
-      for (level = (T_LEVEL) 0; level < coll_data->uca_opt.sett_strength; (*(int *) &level)++)
+      for (level = 0; level < (unsigned int) coll_data->uca_opt.sett_strength; level++)
 	{
 	  w = GET_UCA_WEIGHT (level, ce_index, uca_w_l13, uca_w_l4);
 	  ADD_TO_HASH (pseudo_key, w);
