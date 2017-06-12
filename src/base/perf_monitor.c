@@ -3613,9 +3613,9 @@ perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE * stream, const UINT64 
 static void
 perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
-  PERF_SNAPSHOT_TYPE snapshot;
-  PERF_SNAPSHOT_RECORD_TYPE rec_type;
-  PERF_SNAPSHOT_VISIBILITY visibility;
+  unsigned int snapshot;
+  unsigned int rec_type;
+  unsigned int visibility;
   int offset;
   UINT64 counter = 0;
   int ret;
@@ -3624,13 +3624,14 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
   assert (s != NULL);
   if (*s != NULL)
     {
-      for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < PERF_SNAPSHOT_CNT; (*((int *) &snapshot))++)
+      for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
+           snapshot++)
 	{
-	  for (rec_type = PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED; rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT;
-	       (*((int *) &rec_type))++)
+	  for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
+               rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
 	    {
-	      for (visibility = PERF_SNAPSHOT_INVISIBLE; visibility < PERF_SNAPSHOT_VISIBILITY_CNT;
-		   (*((int *) &visibility))++)
+	      for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
+                   visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
 		{
 		  offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
 
@@ -3668,20 +3669,21 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
 static void
 perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 * stats_ptr)
 {
-  PERF_SNAPSHOT_TYPE snapshot;
-  PERF_SNAPSHOT_RECORD_TYPE rec_type;
-  PERF_SNAPSHOT_VISIBILITY visibility;
+  unsigned int snapshot;
+  unsigned int rec_type;
+  unsigned int visibility;
   int offset;
   UINT64 counter = 0;
 
   assert (stream != NULL);
-  for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < PERF_SNAPSHOT_CNT; (*((int *) &snapshot))++)
+  for (snapshot = (unsigned int ) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int ) PERF_SNAPSHOT_CNT;
+       snapshot++)
     {
-      for (rec_type = PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED; rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT;
-	   (*((int *) &rec_type))++)
+      for (rec_type = (unsigned int ) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
+           rec_type < (unsigned int ) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
 	{
-	  for (visibility = PERF_SNAPSHOT_INVISIBLE; visibility < PERF_SNAPSHOT_VISIBILITY_CNT;
-	       (*((int *) &visibility))++)
+	  for (visibility = (unsigned int ) PERF_SNAPSHOT_INVISIBLE;
+               visibility < (unsigned int ) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
 	    {
 	      offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
 
@@ -3713,7 +3715,7 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
 static void
 perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
-  int lock_mode;
+  unsigned int lock_mode;
   UINT64 counter = 0;
   int ret;
 
@@ -3721,7 +3723,7 @@ perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char 
   assert (s != NULL);
   if (*s != NULL)
     {
-      for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
+      for (lock_mode = (unsigned int) NA_LOCK; lock_mode <= (unsigned int) SCH_M_LOCK; lock_mode++)
 	{
 	  counter = stats_ptr[lock_mode];
 	  if (counter == 0)
