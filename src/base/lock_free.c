@@ -1149,7 +1149,7 @@ restart_search:
 	    }
 
 	  /* attempt an add */
-	  if (!ATOMIC_CAS_ADDR (curr_p, (void *) nullptr, (*entry)))
+	  if (!ATOMIC_CAS_ADDR (curr_p, (void *) NULL, (*entry)))
 	    {
 	      if (edesc->using_mutex)
 		{
@@ -1547,7 +1547,7 @@ restart_search:
 	    }
 
 	  /* attempt an add */
-	  if (!ATOMIC_CAS_ADDR (curr_p, (void *) nullptr, (*entry)))
+	  if (!ATOMIC_CAS_ADDR (curr_p, (void *) NULL, (*entry)))
 	    {
 	      if (edesc->using_mutex)
 		{

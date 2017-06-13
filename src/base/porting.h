@@ -774,6 +774,10 @@ extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 #endif //!_WIN64
 #endif //defined (WINDOWS)
 
+#if defined (CUB_GCC_VERSION) && (CUB_GCC_VERSION < 48100)
+#define static_assert(a, b)
+#endif
+
 template < typename T, typename V > inline T ATOMIC_INC_32 (volatile T * ptr, V amount)
 {
   static_assert (sizeof (T) == sizeof (UINT32), "Not 32bit");

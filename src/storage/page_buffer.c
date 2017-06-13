@@ -8417,7 +8417,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	}
       else
 	{
-	  (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, (PGBUF_BCB *) nullptr);
+	  (void) ATOMIC_TAS_ADDR (&lru_list->victim_hint, (PGBUF_BCB *) NULL);
 	}
     }
 
@@ -8552,7 +8552,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       else
 	{
 	  /* no hint */
-	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, (PGBUF_BCB *) nullptr);
+	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, (PGBUF_BCB *) NULL);
 	}
     }
 
@@ -8711,7 +8711,7 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
 	    }
 	  else
 	    {
-	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, (PGBUF_BCB *) nullptr);
+	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, (PGBUF_BCB *) NULL);
 	    }
 
 	  /* check from bottom anyway */
@@ -14481,7 +14481,7 @@ STATIC_INLINE PGBUF_BCB *
 pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *bcb =
-    (PGBUF_BCB *) ATOMIC_TAS_ADDR (&pgbuf_Pool.direct_victims.bcb_victims[thread_p->index], (PGBUF_BCB *) nullptr);
+    (PGBUF_BCB *) ATOMIC_TAS_ADDR (&pgbuf_Pool.direct_victims.bcb_victims[thread_p->index], (PGBUF_BCB *) NULL);
   int lru_idx;
 
   assert (bcb != NULL);
