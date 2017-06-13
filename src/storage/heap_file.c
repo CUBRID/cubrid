@@ -2264,6 +2264,7 @@ heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * cla
   HEAP_CLASSREPR_ENTRY *cache_entry;
   HEAP_CLASSREPR_HASH *hash_anchor;
   OR_CLASSREP *repr = NULL;
+  OR_CLASSREP *repr_from_record = NULL;
   REPR_ID last_reprid;
   int r;
 
@@ -2289,7 +2290,7 @@ search_begin:
 		  /* some error code */
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
 		  pthread_mutex_unlock (&hash_anchor->hash_mutex);
-		  return NULL;
+		  goto exit;
 		}
 	      /* if cache_entry lock is busy. release hash mutex lock and lock cache_entry lock unconditionally */
 	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
@@ -2319,7 +2320,7 @@ search_begin:
 	  else
 	    {
 	      assert (r == ER_FAILED);
-	      return NULL;
+	      goto exit;
 	    }
 	}
 #endif
@@ -2330,7 +2331,7 @@ search_begin:
 #ifdef SERVER_MODE
 	  (void) heap_classrepr_unlock_class (hash_anchor, class_oid, true);
 #endif
-	  return NULL;
+	  goto exit;
 	}
 
       /* Get free entry */
@@ -2345,7 +2346,7 @@ search_begin:
 	  (void) heap_classrepr_unlock_class (hash_anchor, class_oid, true);
 #endif
 
-	  return repr;
+	  goto exit;
 	}
 
       /* check if cache_entry->repr[last_reprid] is valid. */
@@ -2367,8 +2368,9 @@ search_begin:
 	      if (repr != NULL)
 		{
 		  or_free_classrep (repr);
+		  repr = NULL;
 		}
-	      return NULL;
+	      goto exit;
 	    }
 	  cache_entry->max_reprid = last_reprid + 1;
 
@@ -2393,10 +2395,11 @@ search_begin:
 	  if (repr != NULL)
 	    {
 	      or_free_classrep (repr);
+	      repr = NULL;
 	    }
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_UNKNOWN_REPRID, 1, reprid);
-	  return NULL;
+	  goto exit;
 	}
 
       cache_entry->repr[reprid] = repr;
@@ -2404,6 +2407,8 @@ search_begin:
 
       if (reprid != last_reprid)
 	{			/* if last repr is not cached */
+	  /* normally, we should not access heap record while keeping mutex in cache entry. however, this entry was not
+	   * yet attached to cache, so no one will get its mutex yet */
 	  cache_entry->repr[last_reprid] =
 	    heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, last_reprid);
 	}
@@ -2444,7 +2449,7 @@ search_begin:
 	  pthread_mutex_unlock (&cache_entry->mutex);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_UNKNOWN_REPRID, 1, reprid);
-	  return NULL;
+	  goto exit;
 	}
 
       /* reprid cannot be greater than cache_entry->last_reprid. */
@@ -2452,14 +2457,28 @@ search_begin:
       if (repr == NULL)
 	{
 	  /* load repr. info. for reprid of class_oid */
-	  repr = heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, reprid);
-	  if (repr == NULL)
+	  if (repr_from_record == NULL)
 	    {
+	      /* we need to read record from its page. we cannot hold cache mutex and latch a page. */
 	      pthread_mutex_unlock (&cache_entry->mutex);
-	      return NULL;
+	      repr_from_record =
+		heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, reprid);
+	      if (repr_from_record == NULL)
+		{
+		  goto exit;
+		}
+	      /* we need to start over */
+	      goto search_begin;
 	    }
+	  else
+	    {
+	      /* use load representation from record */
+	      cache_entry->repr[reprid] = repr_from_record;
+	      repr = repr_from_record;
+	      repr_from_record = NULL;
 
-	  cache_entry->repr[reprid] = repr;
+	      /* fall through */
+	    }
 	}
 
       cache_entry->fcnt++;
@@ -2467,6 +2486,11 @@ search_begin:
     }
   pthread_mutex_unlock (&cache_entry->mutex);
 
+exit:
+  if (repr_from_record != NULL)
+    {
+      or_free_classrep (repr_from_record);
+    }
   return repr;
 }
 
