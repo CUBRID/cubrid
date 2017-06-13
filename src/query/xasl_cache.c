@@ -1015,7 +1015,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
    * Setting tv_sec is enough.
    */
   (void) gettimeofday (&time_last_used, NULL);
-  ATOMIC_TAS_32 (&xcache_entry->time_last_used.tv_sec, time_last_used.tv_sec);
+  ATOMIC_TAS (&xcache_entry->time_last_used.tv_sec, time_last_used.tv_sec);
 
   XCACHE_STAT_INC (unfix);
   ATOMIC_INC_64 (&xcache_entry->ref_count, 1);
@@ -2160,7 +2160,7 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
       /* Too soon. */
       return false;
     }
-  if (!ATOMIC_CAS_32 (&xcache_entry->time_last_rt_check.tv_sec, save_secs, crt_time.tv_sec))
+  if (!ATOMIC_CAS (&xcache_entry->time_last_rt_check.tv_sec, save_secs, crt_time.tv_sec))
     {
       /* Somebody else started the check. */
       return false;

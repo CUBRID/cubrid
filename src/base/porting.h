@@ -800,7 +800,7 @@ template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS_32 (vol
 template < typename T, typename V > inline T ATOMIC_TAS_32 (volatile T * ptr, V amount)
 {
   static_assert (sizeof (T) == sizeof (UINT32), "Not 32bit");
-  static_assert (sizeof (V) == sizeof (UINT32), "Not 32bit");
+  static_assert (sizeof (V) <= sizeof (UINT32), "Not 32bit");
 #if defined (WINDOWS)
   return InterlockedExchange (reinterpret_cast < volatile UINT32 * >(ptr), amount);
 #else
@@ -843,6 +843,44 @@ template < typename T, typename V > inline T ATOMIC_TAS_64 (volatile T * ptr, V 
 #else
   return __sync_lock_test_and_set (ptr, amount);
 #endif
+}
+
+namespace dispatch{
+  template < bool B > struct Bool2Type
+  {
+    enum
+    { value = B };
+  };
+  
+  template < typename T, typename V1, typename V2 > inline bool atomic_cas (volatile T * ptr, V1 cmp_val, V2 swap_val, Bool2Type<true> /*_is_64_bit*/)
+  {
+    return ATOMIC_CAS_64(ptr, cmp_val, swap_val);
+  }
+  
+  template < typename T, typename V1, typename V2 > inline bool atomic_cas (volatile T * ptr, V1 cmp_val, V2 swap_val, Bool2Type<false> /*_is_64_bit*/)
+  {
+    return ATOMIC_CAS_32(ptr, cmp_val, swap_val);
+  }
+  
+  template < typename T, typename V > inline T atomic_tas (volatile T * ptr, V amount, Bool2Type<true> /*_is_64_bit*/)
+  {
+    return ATOMIC_TAS_64(ptr, amount);
+  }
+   
+  template < typename T, typename V > inline T atomic_tas (volatile T * ptr, V amount, Bool2Type<false> /*_is_64_bit*/)
+  {
+    return ATOMIC_TAS_32(ptr, amount);
+  }
+}//namespace dispatch
+
+template < typename T, typename V > inline T ATOMIC_TAS (volatile T * ptr, V amount)
+{
+  return dispatch::atomic_tas(ptr, amount, dispatch::Bool2Type<sizeof(T) == sizeof(UINT64)>());
+}
+
+template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS (volatile T * ptr, V1 cmp_val, V2 swap_val)
+{
+  return dispatch::atomic_cas(ptr, cmp_val, swap_val, dispatch::Bool2Type<sizeof(T) == sizeof(UINT64)>());
 }
 
 template < typename T > inline T * ATOMIC_TAS_ADDR (T * volatile *ptr, T * new_val)
