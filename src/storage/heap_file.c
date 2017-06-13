@@ -2460,8 +2460,9 @@ search_begin:
 	  if (repr_from_record == NULL)
 	    {
 	      /* we need to read record from its page. we cannot hold cache mutex and latch a page. */
-	      repr_from_record (&cache_entry->mutex);
-	      repr = heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, reprid);
+	      pthread_mutex_unlock (&cache_entry->mutex);
+	      repr_from_record =
+		heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, reprid);
 	      if (repr_from_record == NULL)
 		{
 		  goto exit;
