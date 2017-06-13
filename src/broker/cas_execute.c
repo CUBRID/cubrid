@@ -5830,7 +5830,7 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       add_res_data_string (net_buf, name, strlen (name), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 2. ret domain */
-      domain = db_method_arg_domain (tmp_p, 0);	/* vapa: please confirm. */
+      domain = db_method_arg_domain (tmp_p, 0);
       db_type = TP_DOMAIN_TYPE (domain);
 
       if (TP_IS_SET_TYPE (db_type))
