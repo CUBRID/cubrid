@@ -828,7 +828,7 @@ test_freelist (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, bool test_local_tran)
     volatile XENTRY *e, *a, *r;
     volatile int active, retired, _a, _r, _t;
 
-    a = VOLATILE_ACCESS (freelist.available, void *);
+    a = (XENTRY*)VOLATILE_ACCESS (freelist.available, void *);
 
     _a = VOLATILE_ACCESS (freelist.available_cnt, int);
     _r = VOLATILE_ACCESS (freelist.retired_cnt, int);
@@ -932,7 +932,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 
   for (i = 0; i < HASH_SIZE; i++)
     {
-      for (e = hash.buckets[i]; e != NULL; e = e->next)
+      for (e = (XENTRY*)hash.buckets[i]; e != NULL; e = e->next)
 	{
 	  if (edesc->f_hash (&e->key, HASH_SIZE) != (unsigned int) i)
 	    {
@@ -949,7 +949,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 
       for (i = 0; i < HASH_SIZE; i++)
 	{
-	  for (e = hash.buckets[i]; e != NULL; e = e->next)
+	  for (e = (XENTRY*)hash.buckets[i]; e != NULL; e = e->next)
 	    {
 	      nondel_op_count += e->data;
 	    }
@@ -973,19 +973,19 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 
     for (i = 0; i < HASH_SIZE; i++)
       {
-	for (e = hash.buckets[i]; e != NULL; e = e->next)
+	for (e = (XENTRY*)hash.buckets[i]; e != NULL; e = e->next)
 	  {
 	    ecount++;
 	  }
       }
 
-    for (e = freelist.available; e != NULL; e = e->stack)
+    for (e = (XENTRY*)freelist.available; e != NULL; e = e->stack)
       {
 	acount++;
       }
     for (i = 0; i < ts.entry_count; i++)
       {
-	for (e = ts.entries[i].retired_list; e != NULL; e = e->stack)
+	for (e = (XENTRY*)ts.entries[i].retired_list; e != NULL; e = e->stack)
 	  {
 	    rcount++;
 	  }
@@ -1090,7 +1090,7 @@ test_hash_iterator ()
     int sum = 0;
 
     lf_hash_create_iterator (&it, te, &hash);
-    for (curr = lf_hash_iterate (&it); curr != NULL; curr = lf_hash_iterate (&it))
+    for (curr = (XENTRY*)lf_hash_iterate (&it); curr != NULL; curr = (XENTRY*)lf_hash_iterate (&it))
       {
 	sum += ((XENTRY *) curr)->data;
       }

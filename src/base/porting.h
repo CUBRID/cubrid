@@ -731,24 +731,54 @@ void *pthread_getspecific (pthread_key_t key);
  * While InterlockedXXX functions handles 32bit values, InterlockedXXX64 handles
  * 64bit values. That is why we define two types of macros.
  */
-#if defined (WINDOWS)
-
-#define HAVE_ATOMIC_BUILTINS
-
-//#define ATOMIC_TAS_32(ptr, new_val) \
-//      InterlockedExchange(ptr, new_val)
-//#define ATOMIC_CAS_32(ptr, cmp_val, swap_val) \
-//      (InterlockedCompareExchange(ptr, swap_val, cmp_val) == (cmp_val))
-//#define ATOMIC_INC_32(ptr, amount) \
-//      (InterlockedExchangeAdd(ptr, amount) + (amount))
-#define MEMORY_BARRIER() \
-	MemoryBarrier()
 #ifdef __cplusplus
+
+#if defined (WINDOWS)
+  #define MEMORY_BARRIER() \
+	MemoryBarrier()
+  #define HAVE_ATOMIC_BUILTINS
+#else
+  #if defined (HAVE_GCC_ATOMIC_BUILTINS)
+    #define HAVE_ATOMIC_BUILTINS
+    #if defined (X86) && defined (CUB_GCC_VERSION) && (CUB_GCC_VERSION < 40400)
+      #define MEMORY_BARRIER() \
+        do { \
+          asm volatile("mfence" ::: "memory"); \
+          __sync_synchronize(); \
+        } while (0)
+    #else
+      #define MEMORY_BARRIER() \
+              __sync_synchronize()
+    #endif
+  #endif
+#endif//defined (WINDOWS)
+
+#endif//__cplusplus
+              
+#if defined(HAVE_ATOMIC_BUILTINS)
+
 template < bool B > struct Bool2Type
 {
   enum
   { value = B };
 };
+
+#if defined (WINDOWS)
+
+#ifndef _WIN64
+/*
+ * These functions are used on Windows 32bit OS.
+ * InterlockedXXX64 functions are provided by Windows Vista (client)/Windows
+ * 2003 (server) or later versions. So, Windows XP 32bit does not have them.
+ * We provide the following functions to support atomic operations on all
+ * Windows versions.
+ */
+extern UINT64 win32_compare_exchange64 (UINT64 volatile *val_ptr, UINT64 swap_val, UINT64 cmp_val);
+extern UINT64 win32_exchange_add64 (UINT64 volatile *ptr, UINT64 amount);
+extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
+
+#endif//!_WIN64
+
 template < typename T > inline T interlocked_exchange_helper32 (volatile T * ptr, T amount, Bool2Type < true > b)
 {
   return InterlockedExchange (reinterpret_cast < volatile UINT32 * >(ptr), amount);
@@ -764,35 +794,6 @@ template < typename T >
 {
   return InterlockedCompareExchange (reinterpret_cast < volatile UINT32 * >(ptr), swap_val, cmp_val);
 }
-
-template < typename T, typename V > inline T ATOMIC_INC_32 (volatile T * ptr, V amount)
-{
-  return interlocked_exchange_add_helper32 (ptr, static_cast < T > (amount),
-					    Bool2Type < sizeof (T) == sizeof (UINT32) > ()) + amount;
-}
-
-template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS_32 (volatile T * ptr, V1 cmp_val, V2 swap_val)
-{
-  return interlocked_compare_exchange_helper32 (ptr, static_cast < T > (cmp_val), static_cast < T > (swap_val),
-						Bool2Type < sizeof (T) == sizeof (UINT32) > ()) == static_cast < T >
-    (cmp_val);
-}
-
-template < typename T, typename V > inline T ATOMIC_TAS_32 (volatile T * ptr, V amount)
-{
-  return interlocked_exchange_helper32 (ptr, static_cast < T > (amount),
-					Bool2Type < sizeof (T) == sizeof (UINT32) > ());
-}
-
-#if defined (_WIN64)
-//#define ATOMIC_TAS_64(ptr, new_val) \
-//      InterlockedExchange64(ptr, new_val)
-
-//#define ATOMIC_CAS_64(ptr, cmp_val, swap_val) \
-//      (InterlockedCompareExchange64(ptr, swap_val, cmp_val) == (cmp_val))
-
-//#define ATOMIC_INC_64(ptr, amount) \
-//      (InterlockedExchangeAdd64(ptr, amount) + (amount))
 
 template < typename T > inline T interlocked_exchange_helper64 (volatile T * ptr, T amount, Bool2Type < true > b)
 {
@@ -811,113 +812,101 @@ template < typename T >
 				       static_cast < INT64 > (cmp_val));
 }
 
+#endif//defined (WINDOWS)
+
+template < typename T, typename V > inline T ATOMIC_INC_32 (volatile T * ptr, V amount)
+{
+#if defined (WINDOWS)
+  return interlocked_exchange_add_helper32 (ptr, static_cast < T > (amount),
+					    Bool2Type < sizeof (T) == sizeof (UINT32) > ()) + amount;
+#else
+  return __sync_add_and_fetch(ptr, amount);
+#endif
+}
+
+template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS_32 (volatile T * ptr, V1 cmp_val, V2 swap_val)
+{
+#if defined (WINDOWS)
+  return interlocked_compare_exchange_helper32 (ptr, static_cast < T > (cmp_val), static_cast < T > (swap_val),
+						Bool2Type < sizeof (T) == sizeof (UINT32) > ()) == static_cast < T >
+    (cmp_val);
+#else
+  return __sync_bool_compare_and_swap(ptr, cmp_val, swap_val);
+#endif
+}
+
+template < typename T, typename V > inline T ATOMIC_TAS_32 (volatile T * ptr, V amount)
+{
+#if defined (WINDOWS)
+  return interlocked_exchange_helper32 (ptr, static_cast < T > (amount),
+					Bool2Type < sizeof (T) == sizeof (UINT32) > ());
+#else
+  return __sync_lock_test_and_set(ptr, amount);
+#endif
+}
+
 template < typename T, typename V > inline T ATOMIC_INC_64 (volatile T * ptr, V amount)
 {
+#if defined (_WIN64)
   return interlocked_exchange_add_helper64 (ptr, static_cast < T > (amount),
 					    Bool2Type < sizeof (T) == sizeof (UINT64) > ()) + amount;
+#elif defined(WINDOWS)
+  return win32_exchange_add64(ptr, amount) + amount;
+#else
+  return __sync_add_and_fetch(ptr, amount);
+#endif
 }
 
 template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS_64 (volatile T * ptr, V1 cmp_val, V2 swap_val)
 {
+#if defined (_WIN64)
   return interlocked_compare_exchange_helper64 (ptr, static_cast < T > (cmp_val), static_cast < T > (swap_val),
 						Bool2Type < sizeof (T) == sizeof (UINT64) > ()) == static_cast < T >
     (cmp_val);
+#elif defined(WINDOWS)
+  return win32_compare_exchange64(ptr, swap_val, cmp_val) == cmp_val;
+#else
+  return __sync_bool_compare_and_swap(ptr, cmp_val, swap_val);
+#endif
 }
 
 template < typename T, typename V > inline T ATOMIC_TAS_64 (volatile T * ptr, V amount)
 {
+#if defined (_WIN64)
   return interlocked_exchange_helper64 (ptr, static_cast < T > (amount),
 					Bool2Type < sizeof (T) == sizeof (UINT64) > ());
-}
-#endif
-
-#define ATOMIC_TAS_ADDR(ptr, new_val) ATOMIC_TAS_64 ((long long volatile *) ptr, (long long) new_val)
-#define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
-	(InterlockedCompareExchange64((long long volatile *) ptr, (long long) swap_val, (long long) cmp_val) \
-         == (long long) cmp_val)
-
-#define ATOMIC_LOAD_64(ptr) (*(ptr))
-#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
-#else /* _WIN64 */
-/*
- * These functions are used on Windows 32bit OS.
- * InterlockedXXX64 functions are provided by Windows Vista (client)/Windows
- * 2003 (server) or later versions. So, Windows XP 32bit does not have them.
- * We provide the following functions to support atomic operations on all
- * Windows versions.
- */
-extern UINT64 win32_compare_exchange64 (UINT64 volatile *val_ptr, UINT64 swap_val, UINT64 cmp_val);
-extern UINT64 win32_exchange_add64 (UINT64 volatile *ptr, UINT64 amount);
-extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
-
-#define ATOMIC_TAS_64(ptr, new_val) \
-	win32_exchange64(ptr, new_val)
-#define ATOMIC_CAS_64(ptr, cmp_val, swap_val) \
-	(win32_compare_exchange64(ptr, swap_val, cmp_val) == (cmp_val))
-#define ATOMIC_INC_64(ptr, amount) \
-	(win32_exchange_add64(ptr, amount) + (amount))
-
-#define ATOMIC_TAS_ADDR(ptr, new_val) ATOMIC_TAS_32 ((long volatile *) ptr, (long long) new_val)
-#define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
-	(InterlockedCompareExchange((long volatile *) ptr, (long long) swap_val, (long long) cmp_val) \
-         == (long long) (cmp_val))
-
-#define ATOMIC_LOAD_64(ptr) ATOMIC_INC_64 (ptr, 0)
-#define ATOMIC_STORE_64(ptr, val) ATOMIC_TAS_64 (ptr, val)
-#endif /* _WIN64 */
-
-#else /* WINDOWS */
-
-#if defined (HAVE_GCC_ATOMIC_BUILTINS)
-
-#define HAVE_ATOMIC_BUILTINS
-
-#define ATOMIC_TAS_32(ptr, new_val) \
-	__sync_lock_test_and_set(ptr, new_val)
-#define ATOMIC_CAS_32(ptr, cmp_val, swap_val) \
-	__sync_bool_compare_and_swap(ptr, cmp_val, swap_val)
-#define ATOMIC_INC_32(ptr, amount) \
-	__sync_add_and_fetch(ptr, amount)
-
-#define ATOMIC_TAS_64(ptr, new_val) \
-	__sync_lock_test_and_set(ptr, new_val)
-#define ATOMIC_CAS_64(ptr, cmp_val, swap_val) \
-	__sync_bool_compare_and_swap(ptr, cmp_val, swap_val)
-#define ATOMIC_INC_64(ptr, amount) \
-	__sync_add_and_fetch(ptr, amount)
-
-#define ATOMIC_TAS_ADDR(ptr, new_val) \
-        __sync_lock_test_and_set(ptr, new_val)
-#define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
-	__sync_bool_compare_and_swap(ptr, cmp_val, swap_val)
-
-#define ATOMIC_LOAD_64(ptr) (*(ptr))
-#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
-
-/* There is a gcc bug of __sync_synchronize in x86-64 when gcc version
- * less than 4.4. we can replace __sync_synchronize as mfence instruction.
- * see detail in https://gcc.gnu.org/bugzilla/show_bug.cgi?id=36793
- */
-#if defined (X86) && defined (CUB_GCC_VERSION) && (CUB_GCC_VERSION < 40400)
-#define MEMORY_BARRIER() \
-  do { \
-    asm volatile("mfence" ::: "memory"); \
-    __sync_synchronize(); \
-  } while (0)
+#elif defined(WINDOWS)
+  return win32_exchange64(ptr, new_val);
 #else
-#define MEMORY_BARRIER() \
-	__sync_synchronize()
+  return __sync_lock_test_and_set(ptr, amount);
 #endif
+}
 
-#else /* HAVE_GCC_ATOMIC_BUILTINS */
-/*
- * Currently we do not provide interfaces for atomic operations
- * on other OS or compilers.
- */
-#endif /* HAVE_GCC_ATOMIC_BUILTINS */
 
-#endif /* WINDOWS */
+template < typename T, typename V > inline T ATOMIC_TAS_ADDR (volatile T * ptr, V new_val){
+#if defined (_WIN64)
+  return ATOMIC_TAS_64(ptr, new_val);
+#elif defined (WINDOWS)
+  return ATOMIC_TAS_32 (ptr, new_val);
+#else
+  return __sync_lock_test_and_set(ptr, new_val);
+#endif
+}
 
+template < typename T, typename C, typename V > inline bool ATOMIC_CAS_ADDR (volatile T * ptr, C cmp_val, V swap_val){
+#if defined (_WIN64)
+  return InterlockedCompareExchange64((long long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == (long long) cmp_val;
+#elif defined (WINDOWS)
+  return InterlockedCompareExchange((long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == (long long) (cmp_val);
+#else
+  return __sync_bool_compare_and_swap(ptr, cmp_val, swap_val);
+#endif
+}
+
+#define ATOMIC_LOAD_64(ptr) (*(ptr))
+#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
+
+#endif//defined(HAVE_ATOMIC_BUILTINS)
 
 #if defined (WINDOWS)
 extern double strtod_win (const char *str, char **end_ptr);

@@ -315,6 +315,10 @@ if(UNIX)
     ${BASE_DIR}/lock_free.c
     ${EXECUTABLES_DIR}/unittests_lf.c
     )
+  SET_SOURCE_FILES_PROPERTIES(
+    ${UNITTESTS_LF_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
   add_executable(unittests_lf ${UNITTESTS_LF_SOURCES})
   target_compile_definitions(unittests_lf PRIVATE UNITTEST_LF SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_lf PRIVATE ${EP_INCLUDES})
