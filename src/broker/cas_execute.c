@@ -3375,6 +3375,7 @@ ux_free_result (void *res)
 char
 ux_db_type_to_cas_type (int db_type)
 {
+  /* todo: T_CCI_U_TYPE duplicates db types. */
   if (db_type < DB_TYPE_FIRST || db_type > DB_TYPE_LAST)
     {
       return CCI_U_TYPE_NULL;
@@ -4449,7 +4450,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
   /* set extended type for primary types; for collection types this values is set in switch-case code */
   if (column_type_flag && !TP_IS_SET_TYPE (db_value_type (val)))
     {
-      ext_col_type = set_extended_cas_type ((T_CCI_U_TYPE) DB_TYPE_NULL, db_value_type (val));	//vapa!!!
+      ext_col_type = set_extended_cas_type (CCI_U_TYPE_NULL, db_value_type (val));
     }
   else
     {
@@ -5829,7 +5830,7 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       add_res_data_string (net_buf, name, strlen (name), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 2. ret domain */
-      //domain = db_method_arg_domain (tmp_p, 0);
+      domain = db_method_arg_domain (tmp_p, 0);	/* vapa: please confirm. */
       db_type = TP_DOMAIN_TYPE (domain);
 
       if (TP_IS_SET_TYPE (db_type))
@@ -8440,13 +8441,13 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
-  DB_OBJECT *clazz;
+  DB_OBJECT *class_object;
 
   ut_tolower (class_name);
 
   /* is it existing class? */
-  clazz = db_find_class (class_name);
-  if (clazz == NULL)
+  class_object = db_find_class (class_name);
+  if (class_object == NULL)
     {
       net_buf_cp_int (net_buf, 0, NULL);
       schema_primarykey_meta (net_buf);
@@ -10311,6 +10312,7 @@ set_host_variables (DB_SESSION * session, int num_bind, DB_VALUE * in_values)
 static unsigned char
 set_extended_cas_type (T_CCI_U_TYPE u_set_type, DB_TYPE db_type)
 {
+  /* todo: T_CCI_U_TYPE duplicates db types. */
   unsigned char u_set_type_lsb, u_set_type_msb;
 
   if (TP_IS_SET_TYPE (db_type))

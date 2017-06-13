@@ -121,7 +121,7 @@ extern void db_scramble (void *region, int size);
 #define free_and_init(ptr) \
         do { \
           if ((ptr)) { \
-            free ((void*)(ptr)); \
+            free ((void*) (ptr)); \
             (ptr) = NULL; \
           } \
         } while (0)
@@ -142,7 +142,7 @@ extern void db_scramble (void *region, int size);
 
 #define free_and_init(ptr) \
         do { \
-          free ((void*)(ptr)); \
+          free ((void*) (ptr)); \
           (ptr) = NULL; \
 	} while (0)
 
