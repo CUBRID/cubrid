@@ -1323,7 +1323,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
       (*xcache_entry)->sql_info.sql_user_text = sql_user_text;
       (*xcache_entry)->sql_info.sql_plan_text = sql_plan_text;
       (*xcache_entry)->stream = *stream;
-      (*xcache_entry)->time_last_rt_check = time_stored;
+      (*xcache_entry)->time_last_rt_check = (INT64) time_stored.tv_sec;
       (*xcache_entry)->time_last_used = time_stored;
 
       /* Now that new entry is initialized, we can try to insert it. */
@@ -2147,7 +2147,7 @@ xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_A
 static bool
 xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 {
-  long save_secs = xcache_entry->time_last_rt_check.tv_sec;
+  INT64 save_secs = xcache_entry->time_last_rt_check;
   struct timeval crt_time;
   int relobj;
   CLS_INFO *cls_info_p = NULL;
@@ -2155,12 +2155,12 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
   bool recompile = false;
 
   (void) gettimeofday (&crt_time, NULL);
-  if (crt_time.tv_sec - xcache_entry->time_last_rt_check.tv_sec < XCACHE_RT_TIMEDIFF_IN_SEC)
+  if ((INT64) crt_time.tv_sec - xcache_entry->time_last_rt_check < XCACHE_RT_TIMEDIFF_IN_SEC)
     {
       /* Too soon. */
       return false;
     }
-  if (!ATOMIC_CAS_32 (&xcache_entry->time_last_rt_check.tv_sec, save_secs, crt_time.tv_sec))
+  if (!ATOMIC_CAS_64 (&xcache_entry->time_last_rt_check, save_secs, (INT64) crt_time.tv_sec))
     {
       /* Somebody else started the check. */
       return false;
