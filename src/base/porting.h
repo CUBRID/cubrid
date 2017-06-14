@@ -797,7 +797,7 @@ template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS_32 (vol
 #if defined (WINDOWS)
   return InterlockedCompareExchange (reinterpret_cast < volatile UINT32 * >(ptr), swap_val, cmp_val) == cmp_val;
 #else
-  return __sync_bool_compare_and_swap (ptr, cmp_val, swap_val) == cmp_val;
+  return __sync_bool_compare_and_swap (ptr, cmp_val, swap_val);
 #endif
 }
 
