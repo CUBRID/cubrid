@@ -849,42 +849,47 @@ template < typename T, typename V > inline T ATOMIC_TAS_64 (volatile T * ptr, V 
 #endif
 }
 
-namespace dispatch{
+namespace dispatch
+{
   template < bool B > struct Bool2Type
   {
     enum
     { value = B };
   };
-  
-  template < typename T, typename V1, typename V2 > inline bool atomic_cas (volatile T * ptr, V1 cmp_val, V2 swap_val, Bool2Type<true> /*_is_64_bit*/)
+
+    template < typename T, typename V1, typename V2 > inline bool atomic_cas (volatile T * ptr, V1 cmp_val, V2 swap_val,
+									      Bool2Type < true > /*_is_64_bit*/ )
   {
-    return ATOMIC_CAS_64(ptr, cmp_val, swap_val);
+    return ATOMIC_CAS_64 (ptr, cmp_val, swap_val);
   }
-  
-  template < typename T, typename V1, typename V2 > inline bool atomic_cas (volatile T * ptr, V1 cmp_val, V2 swap_val, Bool2Type<false> /*_is_64_bit*/)
+
+  template < typename T, typename V1, typename V2 > inline bool atomic_cas (volatile T * ptr, V1 cmp_val, V2 swap_val,
+									    Bool2Type < false > /*_is_64_bit*/ )
   {
-    return ATOMIC_CAS_32(ptr, cmp_val, swap_val);
+    return ATOMIC_CAS_32 (ptr, cmp_val, swap_val);
   }
-  
-  template < typename T, typename V > inline T atomic_tas (volatile T * ptr, V amount, Bool2Type<true> /*_is_64_bit*/)
+
+  template < typename T, typename V > inline T atomic_tas (volatile T * ptr, V amount,
+							   Bool2Type < true > /*_is_64_bit*/ )
   {
-    return ATOMIC_TAS_64(ptr, amount);
+    return ATOMIC_TAS_64 (ptr, amount);
   }
-   
-  template < typename T, typename V > inline T atomic_tas (volatile T * ptr, V amount, Bool2Type<false> /*_is_64_bit*/)
+
+  template < typename T, typename V > inline T atomic_tas (volatile T * ptr, V amount,
+							   Bool2Type < false > /*_is_64_bit*/ )
   {
-    return ATOMIC_TAS_32(ptr, amount);
+    return ATOMIC_TAS_32 (ptr, amount);
   }
-}//namespace dispatch
+}				//namespace dispatch
 
 template < typename T, typename V > inline T ATOMIC_TAS (volatile T * ptr, V amount)
 {
-  return dispatch::atomic_tas(ptr, amount, dispatch::Bool2Type<sizeof(T) == sizeof(UINT64)>());
+  return dispatch::atomic_tas (ptr, amount, dispatch::Bool2Type < sizeof (T) == sizeof (UINT64) > ());
 }
 
 template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS (volatile T * ptr, V1 cmp_val, V2 swap_val)
 {
-  return dispatch::atomic_cas(ptr, cmp_val, swap_val, dispatch::Bool2Type<sizeof(T) == sizeof(UINT64)>());
+  return dispatch::atomic_cas (ptr, cmp_val, swap_val, dispatch::Bool2Type < sizeof (T) == sizeof (UINT64) > ());
 }
 
 template < typename T > inline T * ATOMIC_TAS_ADDR (T * volatile *ptr, T * new_val)
