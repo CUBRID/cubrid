@@ -20,3 +20,5 @@ test:
           ghi comment -m "$PR_COMMENT" ${CI_PULL_REQUEST##*/}
         fi
       }
+  post:
+    - cp -r $HOME/CUBRID/tmp/tests $CIRCLE_TEST_REPORTS
