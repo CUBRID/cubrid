@@ -910,8 +910,11 @@ template < typename T > inline bool ATOMIC_CAS_ADDR (T * volatile *ptr, T * cmp_
 #endif
 }
 
-#define ATOMIC_LOAD_64(ptr) (*(ptr))
-#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
+//#define ATOMIC_LOAD_64(ptr) (*(ptr))
+//#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
+
+#define ATOMIC_LOAD_64(ptr) ATOMIC_INC_64(ptr, 0)
+#define ATOMIC_STORE_64(ptr, val) ATOMIC_TAS(ptr, val)
 
 #endif //defined(HAVE_ATOMIC_BUILTINS)
 
