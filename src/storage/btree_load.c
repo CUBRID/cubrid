@@ -1019,7 +1019,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
 error:
 
-  if (BTID_IS_NULL (&btid_global_stats))
+  if (!BTID_IS_NULL (&btid_global_stats))
     {
       logtb_delete_global_unique_stats (thread_p, &btid_global_stats);
     }
