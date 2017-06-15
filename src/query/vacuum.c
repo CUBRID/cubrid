@@ -6842,7 +6842,7 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
       last_unvacuumed = NULL;
     }
 
-  if (in_progress_distance <= 500)
+  if (in_progress_distance > 500)
     {
       /* In progress distance is computed starting with first in progress entry found and by counting all following
        * in progress or vacuumed jobs. The goal of this count is to find potential job leaks: jobs marked as in progress
