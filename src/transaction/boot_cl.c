@@ -834,6 +834,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
+  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
+
   /* initialize the "areas" memory manager, requires prm_ */
   area_init ();
   locator_initialize_areas ();
