@@ -2197,6 +2197,7 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
       if (file_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  catalog_free_class_info_and_init (cls_info_p);
 	  return false;
 	}
       if (npages > XCACHE_RT_FACTOR * xcache_entry->related_objects[relobj].tcard
