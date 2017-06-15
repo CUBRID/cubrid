@@ -626,7 +626,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
   void *func_unpack_info = NULL;
-  bool btree_id_complete = false, has_fk;
+  bool has_fk;
+  BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
   unsigned short alignment = BTREE_MAX_ALIGN;
 #if !defined(NDEBUG)
@@ -837,7 +838,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
   /* Allocate a root page and save the page_id */
   *load_args->btid->sys_btid = *btid;
-  btree_id_complete = true;
+  btid_global_stats = *btid;
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -1018,9 +1019,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
 error:
 
-  if (btree_id_complete)
+  if (!BTID_IS_NULL (&btid_global_stats))
     {
-      logtb_delete_global_unique_stats (thread_p, btid);
+      logtb_delete_global_unique_stats (thread_p, &btid_global_stats);
     }
 
   if (sort_args->scancache_inited)
