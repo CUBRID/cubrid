@@ -1261,15 +1261,6 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
       /* this is not a valid situation */
       assert_release (false);
     }
-  else if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-    {
-      /* only transaction run postpones are acceptable */
-      assert (sysop_start_posp->sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE);
-      assert (sysop_start_posp->sysop_end.run_postpone.is_sysop_postpone == false);
-
-      /* no undo */
-      LSA_SET_NULL (&tdes->undo_nxlsa);
-    }
   else if (sysop_start_posp->sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
     {
       if (sysop_start_posp->sysop_end.run_postpone.is_sysop_postpone)
@@ -1521,21 +1512,17 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 	}
       break;
 
-    case LOG_SYSOP_END_LOGICAL_UNDO:
-    case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
-      /* can be used in all states, but cannot have postpones. so it doesn't commit_start_postpone.
-       * note: if we add postpones to logical undo, it will have to save previous state... maybe it is a good idea to
-       *       do this for all types of end system op. */
-      break;
-
     case LOG_SYSOP_END_COMMIT:
       assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
+    case LOG_SYSOP_END_LOGICAL_UNDO:
+    case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
+      /* todo: I think it will be safer to save previous states in nested system operations, rather than rely on context
+       *       to guess it. we should consider that for cherry. */
       commit_start_postpone = true;
       break;
 
     case LOG_SYSOP_END_LOGICAL_COMPENSATE:
       /* compensate undo */
-      assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
       tdes->undo_nxlsa = sysop_end->compensate_lsa;
       commit_start_postpone = true;
       break;
@@ -1598,9 +1585,12 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       assert (tdes->topops.last == 0);
       if (commit_start_postpone)
 	{
-	  /* change state to previous state */
-	  if (sysop_end->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+	  /* change state to previous state, which is either TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE or 
+	   * TRAN_UNACTIVE_UNILATERALLY_ABORTED. Use tdes->rcv.tran_start_postpone_lsa to determine which case it is. */
+	  if (!LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa))
 	    {
+	      /* this must be after start postpone */
+	      assert (LSA_LE (&tdes->rcv.tran_start_postpone_lsa, &sysop_end->lastparent_lsa));
 	      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 	    }
 	  else
@@ -3910,6 +3900,7 @@ log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  db_private_free (thread_p, undo_buffer);
 	}
 
+      assert (sysop_start_postpone.sysop_end.type != LOG_SYSOP_END_ABORT);
       if (sysop_start_postpone.sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
 	{
 	  if (sysop_start_postpone.sysop_end.run_postpone.is_sysop_postpone)
@@ -3929,9 +3920,21 @@ log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	      tdes->posp_nxlsa = sysop_start_postpone.sysop_end.run_postpone.postpone_lsa;
 	    }
 	}
+      else if (!LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa))
+	{
+	  /* this must be after start postpone */
+	  assert (LSA_LE (&tdes->rcv.tran_start_postpone_lsa, &sysop_start_postpone.sysop_end.lastparent_lsa));
+	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+
+	  /* note: this is for nested system operations inside a transaction logical run postpone. this is not really,
+	   * fully correct, covering all cases. however it should work for file_tracker_unregister case.
+	   *
+	   * however, to have a robust recovery in the future, no matter how complicated the nesting of operations,
+	   * we should considering saving previous states.
+	   */
+	}
       else
 	{
-	  assert (sysop_start_postpone.sysop_end.type != LOG_SYSOP_END_ABORT);
 	  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
 	  tdes->undo_nxlsa = tdes->tail_lsa;
 	}
