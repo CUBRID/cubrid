@@ -4436,6 +4436,7 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
   DISK_REPR *old_repr_p = NULL;
   CLS_INFO *class_info_p = NULL;
   OID rep_dir;
+  int err;
 
   new_repr_id = (REPR_ID) or_rep_id (record_p);
   if (new_repr_id == NULL_REPRID)
@@ -4483,7 +4484,12 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
 					old_repr_p->n_variable);
 
 	  catalog_free_representation_and_init (old_repr_p);
-	  catalog_drop (thread_p, class_oid_p, current_repr_id);
+	  err = catalog_drop (thread_p, class_oid_p, current_repr_id);
+	  if (err != NO_ERROR)
+	    {
+	      orc_free_diskrep (disk_repr_p);
+	      return err;
+	    }
 	}
     }
 
