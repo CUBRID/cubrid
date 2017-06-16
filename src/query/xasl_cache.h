@@ -99,7 +99,7 @@ struct xasl_cache_ent
   pthread_mutex_t cache_clones_mutex;
 
   /* RT check */
-  struct timeval time_last_rt_check;
+  INT64 time_last_rt_check;
 
   bool initialized;
 };

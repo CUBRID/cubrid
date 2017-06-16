@@ -423,6 +423,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 #endif /* !SERVER_MODE */
 	      continue;
 	    }
+	  er_log_debug (ARG_FILE_LINE, "css_readn: %s", strerror (errno));
 	  return -1;
 	}
       else
@@ -430,6 +431,8 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
 	      errno = EINVAL;
+	      er_log_debug (ARG_FILE_LINE, "css_readn: %s %s", (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"),
+			    strerror (errno));
 	      return -1;
 	    }
 	}
@@ -472,9 +475,9 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 #if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
 #endif /* !SERVER_MODE */
-#ifdef CUBRID_DEBUG
-	  er_log_debug (ARG_FILE_LINE, "css_readn: returning error n %d, errno %d\n", n, errno);
-#endif
+
+	  er_log_debug (ARG_FILE_LINE, "css_readn: returning error n %d, errno %s\n", n, strerror (errno));
+
 	  return n;		/* error, return < 0 */
 	}
       nleft -= n;
@@ -915,9 +918,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 
   if (bytes_written > 0)
     {
-#ifdef CUBRID_DEBUG
       er_log_debug (ARG_FILE_LINE, "css_vector_send: retry called for %d\n", bytes_written);
-#endif
+
       for (i = 0; i < *len; i++)
 	{
 	  if ((*vec)[i].iov_len <= (size_t) bytes_written)
@@ -948,6 +950,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 	    {
 	      continue;
 	    }
+
+	  er_log_debug (ARG_FILE_LINE, "css_vector_send: EINTR %s\n", strerror (errno));
 	  return -1;
 	}
       else if (n == 0)
@@ -961,6 +965,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
 	      errno = EINVAL;
+	      er_log_debug (ARG_FILE_LINE, "css_vector_send: %s %s\n",
+			    (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"), strerror (errno));
 	      return -1;
 	    }
 	}
@@ -988,9 +994,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 #if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
 #endif /* !SERVER_MODE */
-#ifdef CUBRID_DEBUG
-	  er_log_debug (ARG_FILE_LINE, "css_vector_send: returning error n %d, errno %d\n", n, errno);
-#endif
+
+	  er_log_debug (ARG_FILE_LINE, "css_vector_send: returning error n %d, errno %s\n", n, strerror (errno));
 	  return n;		/* error, return < 0 */
 	}
     }

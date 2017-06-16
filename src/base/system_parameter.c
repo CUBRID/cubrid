@@ -5273,7 +5273,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ENABLE_STRING_COMPRESSION,
    PRM_NAME_ENABLE_STRING_COMPRESSION,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
    &prm_enable_string_compression_flag,
    (void *) &prm_enable_string_compression_default,

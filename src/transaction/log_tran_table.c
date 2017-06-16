@@ -6740,6 +6740,8 @@ logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid)
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   int error = NO_ERROR;
 
+  assert (!BTID_IS_NULL (btid));
+
 #if !defined(NDEBUG)
   {
     VPID root_vpid;

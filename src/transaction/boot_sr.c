@@ -2204,8 +2204,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
-
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
@@ -2284,6 +2282,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
 #endif /* !SERVER_MODE */
+
+  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   /* 
    * Compose the full name of the database and find location of logs
@@ -3197,21 +3197,12 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
   CSS_CONN_ENTRY *conn;
   LOG_TDES *tdes;
   int client_id;
-  int r;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-      if (thread_p == NULL)
-	{
-	  return;
-	}
-    }
 
   conn = thread_p->conn_entry;
 
-  r = rmutex_lock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
+  /* sboot_notify_unregister_client should hold conn->rmutex. 
+   * Please see the comment of sboot_notify_unregister_client.
+   */
 
   client_id = conn->client_id;
   tdes = LOG_FIND_TDES (tran_index);
@@ -3222,9 +3213,6 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  conn->status = CONN_CLOSING;
 	}
     }
-
-  r = rmutex_unlock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
 }
 #endif /* SERVER_MODE */
 

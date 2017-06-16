@@ -5516,7 +5516,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  if (error_code == ER_FAILED)
 		    {
 		      ASSERT_ERROR_AND_SET (error_code);
-		      assert (false);
 		    }
 		  else
 		    {

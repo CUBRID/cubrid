@@ -3256,7 +3256,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  /* A lob file must be deleted */
 	  (void) or_unpack_string (undo_data, &es_uri);
 	  vacuum_er_log (VACUUM_ER_LOG_WORKER, "Delete lob %s based on %lld|%d", es_uri, LSA_AS_ARGS (&rcv_lsa));
-	  (void) es_delete_file (es_uri);
+	  if (es_delete_file (es_uri) != NO_ERROR)
+	    {
+	      er_clear ();
+	    }
+	  else
+	    {
+	      ASSERT_NO_ERROR ();
+	    }
 	  db_private_free_and_init (thread_p, es_uri);
 	}
       else
@@ -6835,7 +6842,7 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
       last_unvacuumed = NULL;
     }
 
-  if (in_progress_distance <= 500)
+  if (in_progress_distance > 500)
     {
       /* In progress distance is computed starting with first in progress entry found and by counting all following
        * in progress or vacuumed jobs. The goal of this count is to find potential job leaks: jobs marked as in progress
