@@ -279,11 +279,6 @@ extern void hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle);
 extern void hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE * con_handle);
 extern int hm_con_handle_free (T_CON_HANDLE * connection);
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 extern T_CCI_ERROR_CODE hm_get_connection_by_resolved_id (int resolved_id, T_CON_HANDLE ** connection);
 extern T_CCI_ERROR_CODE hm_get_connection_force (int mapped_id, T_CON_HANDLE ** connection);
 extern T_CCI_ERROR_CODE hm_get_connection (int connection_id, T_CON_HANDLE ** connection);
@@ -293,10 +288,6 @@ extern T_CCI_ERROR_CODE hm_delete_connection (int connection_id, T_CON_HANDLE **
 extern T_CCI_ERROR_CODE hm_release_statement (int statement_id, T_CON_HANDLE ** connection, T_REQ_HANDLE ** statement);
 extern void hm_req_handle_fetch_buf_free (T_REQ_HANDLE * req_handle);
 extern int hm_conv_value_buf_alloc (T_VALUE_BUF * val_buf, int size);
-
-#ifdef __cplusplus
-}
-#endif
 
 extern void req_handle_col_info_free (T_REQ_HANDLE * req_handle);
 extern void hm_conv_value_buf_clear (T_VALUE_BUF * val_buf);
