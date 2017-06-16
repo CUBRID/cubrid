@@ -550,7 +550,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
       size1 = (int) DB_GET_STRING_SIZE (db_string1);
       string2 = (unsigned char *) DB_GET_STRING (db_string2);
       size2 = (int) DB_GET_STRING_SIZE (db_string2);
-      codeset = (INTL_CODESET) DB_GET_STRING_CODESET (db_string1);
+      codeset = DB_GET_STRING_CODESET (db_string1);
       collation_id = DB_GET_STRING_COLLATION (db_string1);
 
       assert (collation_id == DB_GET_STRING_COLLATION (db_string2));
@@ -786,7 +786,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
       unsigned char *result;
       const unsigned char *key;
       int result_size;
-      INTL_CODESET codeset = (INTL_CODESET) DB_GET_STRING_CODESET ((DB_VALUE *) db_string1);
+      INTL_CODESET codeset = DB_GET_STRING_CODESET ((DB_VALUE *) db_string1);
 
       /* We need to implicitly trim both strings since we don't want padding for the result (its of varying type) and
        * since padding can mask the logical end of both of the strings.  We need to be careful how the trimming is
@@ -1922,7 +1922,7 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
   src_type = DB_VALUE_DOMAIN_TYPE (src_string);
   src_length = (int) DB_GET_STRING_LENGTH (src_string);
   count_i = DB_GET_INTEGER (count);
-  codeset = (INTL_CODESET) DB_GET_STRING_CODESET (src_string);
+  codeset = DB_GET_STRING_CODESET (src_string);
 
   if (QSTR_IS_CHAR (src_type))
     {
@@ -3321,7 +3321,7 @@ db_string_lower (const DB_VALUE * string, DB_VALUE * lower_string)
 
 	  if (db_value_precision (string) != TP_FLOATING_PRECISION_VALUE)
 	    {
-	      intl_char_count (lower_str, lower_size, (INTL_CODESET) DB_GET_STRING_CODESET (string), &lower_length);
+	      intl_char_count (lower_str, lower_size, DB_GET_STRING_CODESET (string), &lower_length);
 	    }
 	  qstr_make_typed_string (str_type, lower_string, lower_length, (char *) lower_str, lower_size,
 				  DB_GET_STRING_CODESET (string), DB_GET_STRING_COLLATION (string));
@@ -3419,7 +3419,7 @@ db_string_upper (const DB_VALUE * string, DB_VALUE * upper_string)
 	  upper_str[upper_size] = 0;
 	  if (db_value_precision (string) != TP_FLOATING_PRECISION_VALUE)
 	    {
-	      intl_char_count (upper_str, upper_size, (INTL_CODESET) DB_GET_STRING_CODESET (string), &upper_length);
+	      intl_char_count (upper_str, upper_size, DB_GET_STRING_CODESET (string), &upper_length);
 	    }
 	  qstr_make_typed_string (str_type, upper_string, upper_length, (char *) upper_str, upper_size,
 				  DB_GET_STRING_CODESET (string), DB_GET_STRING_COLLATION (string));
@@ -3547,8 +3547,8 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
   error_status =
     qstr_trim (tr_operand, trim_charset_ptr, trim_charset_length, trim_charset_size,
 	       (unsigned char *) DB_PULL_STRING (src_string), DB_VALUE_DOMAIN_TYPE (src_string),
-	       DB_GET_STRING_LENGTH (src_string), DB_GET_STRING_SIZE (src_string),
-	       (INTL_CODESET) DB_GET_STRING_CODESET (src_string), &result, &result_type, &result_length, &result_size);
+	       DB_GET_STRING_LENGTH (src_string), DB_GET_STRING_SIZE (src_string), DB_GET_STRING_CODESET (src_string),
+	       &result, &result_type, &result_length, &result_size);
 
   if (error_status == NO_ERROR && result != NULL)
     {
@@ -3891,8 +3891,8 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
   error_status =
     qstr_pad (pad_operand, total_length, pad_charset_ptr, pad_charset_length, pad_charset_size,
 	      (unsigned char *) DB_PULL_STRING (src_string), DB_VALUE_DOMAIN_TYPE (src_string),
-	      DB_GET_STRING_LENGTH (src_string), DB_GET_STRING_SIZE (src_string),
-	      (INTL_CODESET) DB_GET_STRING_CODESET (src_string), &result, &result_type, &result_length, &result_size);
+	      DB_GET_STRING_LENGTH (src_string), DB_GET_STRING_SIZE (src_string), DB_GET_STRING_CODESET (src_string),
+	      &result, &result_type, &result_length, &result_size);
 
   if (error_status == NO_ERROR && result != NULL)
     {
@@ -5054,7 +5054,7 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
     }
   error_status =
     qstr_replace ((unsigned char *) DB_PULL_STRING (src_string), DB_GET_STRING_LENGTH (src_string),
-		  DB_GET_STRING_SIZE (src_string), (INTL_CODESET) DB_GET_STRING_CODESET (src_string), coll_id,
+		  DB_GET_STRING_SIZE (src_string), DB_GET_STRING_CODESET (src_string), coll_id,
 		  (unsigned char *) DB_PULL_STRING (srch_string), DB_GET_STRING_SIZE (srch_string), repl_string_ptr,
 		  repl_string_size, &result_ptr, &result_length, &result_size);
 
@@ -5279,7 +5279,7 @@ db_string_translate (const DB_VALUE * src_string, const DB_VALUE * from_string, 
 
   error_status =
     qstr_translate ((unsigned char *) DB_PULL_STRING (src_string), DB_VALUE_DOMAIN_TYPE (src_string),
-		    DB_GET_STRING_SIZE (src_string), (INTL_CODESET) DB_GET_STRING_CODESET (src_string),
+		    DB_GET_STRING_SIZE (src_string), DB_GET_STRING_CODESET (src_string),
 		    (unsigned char *) DB_PULL_STRING (from_string), DB_GET_STRING_SIZE (from_string),
 		    (unsigned char *) DB_PULL_STRING (to_string), DB_GET_STRING_SIZE (to_string), &result_ptr,
 		    &result_type, &result_length, &result_size);
@@ -6434,8 +6434,8 @@ db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string)
       src = (unsigned char *) DB_GET_NCHAR (src_string, &src_length);
       src_precision = QSTR_VALUE_PRECISION (src_string);
 
-      src_codeset = (INTL_CODESET) DB_GET_STRING_CODESET (src_string);
-      dest_codeset = (INTL_CODESET) DB_GET_STRING_CODESET (dest_string);
+      src_codeset = DB_GET_STRING_CODESET (src_string);
+      dest_codeset = DB_GET_STRING_CODESET (dest_string);
 
       /* Fixed-length strings */
 
@@ -19443,7 +19443,7 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
 	  memset (res, 0, DB_GET_STRING_SIZE (src_str) + 1);
 	  intl_reverse_string ((unsigned char *) DB_PULL_STRING (src_str), (unsigned char *) res,
 			       DB_GET_STRING_LENGTH (src_str), DB_GET_STRING_SIZE (src_str),
-			       (INTL_CODESET) DB_GET_STRING_CODESET (src_str));
+			       DB_GET_STRING_CODESET (src_str));
 	  if (QSTR_IS_CHAR (str_type))
 	    {
 	      DB_MAKE_VARCHAR (result_str, DB_GET_STRING_PRECISION (src_str), res, DB_GET_STRING_SIZE (src_str),

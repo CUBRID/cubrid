@@ -927,8 +927,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_STRING (value);
       if (val_str != NULL && DB_GET_STRING_LENGTH (value) > precision)
 	{
-	  intl_char_size ((unsigned char *) val_str, precision, (INTL_CODESET) DB_GET_STRING_CODESET (value),
-			  &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, DB_GET_STRING_CODESET (value), &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -953,8 +952,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_CHAR (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  intl_char_size ((unsigned char *) val_str, precision, (INTL_CODESET) DB_GET_STRING_CODESET (value),
-			  &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, DB_GET_STRING_CODESET (value), &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -980,8 +978,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_NCHAR (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  intl_char_size ((unsigned char *) val_str, precision, (INTL_CODESET) DB_GET_STRING_CODESET (value),
-			  &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, DB_GET_STRING_CODESET (value), &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -1006,8 +1003,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
       val_str = DB_GET_NCHAR (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  intl_char_size ((unsigned char *) val_str, precision, (INTL_CODESET) DB_GET_STRING_CODESET (value),
-			  &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, DB_GET_STRING_CODESET (value), &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -2946,7 +2942,7 @@ db_get_string_codeset (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
 
-  return value->data.ch.info.codeset;
+  return (int) value->data.ch.info.codeset;
 }
 
 /*

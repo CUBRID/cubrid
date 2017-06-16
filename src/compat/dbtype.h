@@ -429,7 +429,7 @@
 
 #define DB_GET_STRING_LENGTH(value) db_get_string_length(value)
 
-#define DB_GET_STRING_CODESET(value) db_get_string_codeset(value)
+#define DB_GET_STRING_CODESET(value) ((INTL_CODESET) db_get_string_codeset(value))
 
 #define DB_GET_STRING_COLLATION(value) db_get_string_collation(value)
 

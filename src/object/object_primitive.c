@@ -13603,7 +13603,7 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
     }
 
   c = QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-			  (int) DB_GET_STRING_SIZE (value2), (INTL_CODESET) DB_GET_STRING_CODESET (value2));
+			  (int) DB_GET_STRING_SIZE (value2), DB_GET_STRING_CODESET (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -13630,7 +13630,7 @@ mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerc
   string_size = (int) DB_GET_STRING_SIZE (value2);
   len2 = MIN (string_size, length);
 
-  c = nchar_compare (string1, len1, string2, len2, (INTL_CODESET) DB_GET_STRING_CODESET (value2));
+  c = nchar_compare (string1, len1, string2, len2, DB_GET_STRING_CODESET (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -14706,7 +14706,7 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
     }
 
   c = QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-			  (int) DB_GET_STRING_SIZE (value2), (INTL_CODESET) DB_GET_STRING_CODESET (value2));
+			  (int) DB_GET_STRING_SIZE (value2), DB_GET_STRING_CODESET (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -14734,7 +14734,7 @@ mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_co
   string_size = (int) DB_GET_STRING_SIZE (value2);
   len2 = MIN (string_size, length);
 
-  c = varnchar_compare (string1, len1, string2, len2, (INTL_CODESET) DB_GET_STRING_CODESET (value2));
+  c = varnchar_compare (string1, len1, string2, len2, DB_GET_STRING_CODESET (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
