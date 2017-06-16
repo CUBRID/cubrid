@@ -140,8 +140,8 @@ struct xasl_stream
   XASL_ID *xasl_id;
   XASL_NODE_HEADER *xasl_header;
 
-  char *xasl_stream_;
-  int xasl_stream_size;
+  char *buffer;
+  int buffer_size;
 };
 
 

@@ -6181,7 +6181,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
   ptr = pack_string_with_null_padding (ptr, context->sql_user_text, context->sql_user_text_len);
 
   /* pack size of XASL stream */
-  ptr = or_pack_int (ptr, stream->xasl_stream_size);
+  ptr = or_pack_int (ptr, stream->buffer_size);
   /* Pack get_xasl_header. */
   ptr = or_pack_int (ptr, get_xasl_header);
   /* Pack context. */
@@ -6193,7 +6193,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
   /* send SERVER_QM_QUERY_PREPARE request with request data and XASL stream; receive XASL file id (XASL_ID) as a reply */
   req_error =
     net_client_request2 (NET_SERVER_QM_QUERY_PREPARE, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			 (char *) stream->xasl_stream_, stream->xasl_stream_size, &reply_buffer, &reply_buffer_size);
+			 (char *) stream->buffer, stream->buffer_size, &reply_buffer, &reply_buffer_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &reply_buffer_size);
@@ -6252,32 +6252,32 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
    */
   server_stream.xasl_id = stream->xasl_id;
   server_stream.xasl_header = stream->xasl_header;
-  server_stream.xasl_stream_size = stream->xasl_stream_size;
-  if (stream->xasl_stream_size > 0)
+  server_stream.buffer_size = stream->buffer_size;
+  if (stream->buffer_size > 0)
     {
-      server_stream.xasl_stream_ = (char *) malloc (stream->xasl_stream_size);
-      if (server_stream.xasl_stream_ == NULL)
+      server_stream.buffer = (char *) malloc (stream->buffer_size);
+      if (server_stream.buffer == NULL)
 	{
 	  EXIT_SERVER ();
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->xasl_stream_size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->buffer_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      memcpy (server_stream.xasl_stream_, stream->xasl_stream_, stream->xasl_stream_size);
+      memcpy (server_stream.buffer, stream->buffer, stream->buffer_size);
     }
   else
     {
       /* No stream. This is just a lookup for existing entry. */
-      server_stream.xasl_stream_ = NULL;
+      server_stream.buffer = NULL;
     }
 
   INIT_XASL_NODE_HEADER (server_stream.xasl_header);
 
   /* call the server routine of query prepare */
   error_code = xqmgr_prepare_query (NULL, context, &server_stream);
-  if (server_stream.xasl_stream_ != NULL)
+  if (server_stream.buffer != NULL)
     {
-      free_and_init (server_stream.xasl_stream_);
+      free_and_init (server_stream.buffer);
     }
   if (error_code != NO_ERROR)
     {

@@ -209,7 +209,7 @@ xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char
       if (xasl_header_p != NULL)
 	{
 	  /* get XASL node header from XASL stream */
-	  qfile_load_xasl_node_header (thread_p, xasl_entry->stream.xasl_stream_, xasl_header_p);
+	  qfile_load_xasl_node_header (thread_p, xasl_entry->stream.buffer, xasl_header_p);
 	}
 
       xcache_unfix (thread_p, xasl_entry);
