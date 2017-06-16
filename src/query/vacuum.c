@@ -649,7 +649,7 @@ static int vacuum_compare_dropped_files (const void *a, const void *b);
 static int vacuum_compare_dropped_files_version (INT32 version_a, INT32 version_b);
 static int vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid);
 static int vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p);
-static bool vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid);
+static int vacuum_find_dropped_file (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID * vfid, MVCCID mvccid);
 static void vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 * indexes,
 					      INT16 n_indexes);
 static void vacuum_dropped_files_set_next_page (THREAD_ENTRY * thread_p, VACUUM_DROPPED_FILES_PAGE * page_p,
@@ -3869,8 +3869,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
 	}
 
       /* Check if file is dropped */
-      *is_file_dropped = vacuum_is_file_dropped (thread_p, &vacuum_info->vfid, *mvccid);
-      if (*is_file_dropped)
+      if (vacuum_is_file_dropped (thread_p, is_file_dropped, &vacuum_info->vfid, *mvccid) != NO_ERROR)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+      if (*is_file_dropped == true)
 	{
 	  return NO_ERROR;
 	}
@@ -6300,43 +6304,48 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
 /*
  * vacuum_is_file_dropped () - Check whether file is considered dropped.
  *
- * return	 : True if file is considered dropped.
- * thread_p (in) : Thread entry.
- * vfid (in)	 : File identifier.
- * mvccid (in)	 : MVCCID.
+ * return	        : error code.
+ * thread_p (in)        : Thread entry.
+ * is_file_dropped(out) : True if file is considered dropped. False, otherwise.
+ * vfid (in)	        : File identifier.
+ * mvccid (in)	        : MVCCID.
  */
-bool
-vacuum_is_file_dropped (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
+int
+vacuum_is_file_dropped (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID * vfid, MVCCID mvccid)
 {
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
-      return false;
+      *is_file_dropped = false;
+      return NO_ERROR;
     }
 
-  return vacuum_find_dropped_file (thread_p, vfid, mvccid);
+  return vacuum_find_dropped_file (thread_p, is_file_dropped, vfid, mvccid);
 }
 
 /*
  * vacuum_find_dropped_file () - Find the dropped file and check whether the given MVCCID is older than or equal to the
  *				 MVCCID of dropped file. Used by vacuum to detect records that belong to dropped files.
  *
- * return	 : True if record belong to a dropped file.
- * thread_p (in) : Thread entry.
- * vfid (in)	 : File identifier.
- * mvccid (in)	 : MVCCID of checked record.
+ * return	        : error code.
+ * thread_p (in)        : Thread entry.
+ * is_file_dropped(out) : True if file is considered dropped. False, otherwise.
+ * vfid (in)	        : File identifier.
+ * mvccid (in)	        : MVCCID of checked record.
  */
-static bool
-vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
+static int
+vacuum_find_dropped_file (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID * vfid, MVCCID mvccid)
 {
   VACUUM_DROPPED_FILES_PAGE *page = NULL;
   VACUUM_DROPPED_FILE *dropped_file = NULL;
   VPID vpid;
   INT16 page_count;
+  int error;
 
   if (vacuum_Dropped_files_count == 0)
     {
       /* No dropped files */
-      return false;
+      *is_file_dropped = false;
+      return NO_ERROR;
     }
 
   assert_release (!VPID_ISNULL (&vacuum_Dropped_files_vpid));
@@ -6350,14 +6359,19 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
       page = vacuum_fix_dropped_entries_page (thread_p, &vpid, PGBUF_LATCH_READ);
       if (page == NULL)
 	{
+	  *is_file_dropped = false;	/* actually unknown but unimportant */
+
 	  assert (!VACUUM_IS_THREAD_VACUUM_MASTER (thread_p));
 	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) || er_errid () != ER_INTERRUPTED)
 	    {
 	      assert (false);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	    }
-	  return false;
+
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
 	}
+
       /* dropped files page are never boosted. mark them that vacuum will fix to at least postpone victimization */
       pgbuf_notify_vacuum_follows (thread_p, (PAGE_PTR) page);
 
@@ -6383,7 +6397,9 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 			     VFID_AS_ARGS (&dropped_file->vfid), (unsigned long long int) dropped_file->mvccid);
 
 	      vacuum_unfix_dropped_entries_page (thread_p, page);
-	      return true;
+
+	      *is_file_dropped = true;
+	      return NO_ERROR;
 	    }
 	  else
 	    {
@@ -6396,7 +6412,9 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 			     VFID_AS_ARGS (&dropped_file->vfid), (unsigned long long int) dropped_file->mvccid);
 
 	      vacuum_unfix_dropped_entries_page (thread_p, page);
-	      return false;
+
+	      *is_file_dropped = false;
+	      return NO_ERROR;
 	    }
 	}
 
@@ -6409,7 +6427,8 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
     }
 
   /* Entry not found */
-  return false;
+  *is_file_dropped = false;
+  return NO_ERROR;
 }
 
 /*

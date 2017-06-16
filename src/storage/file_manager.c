@@ -3356,6 +3356,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
       /* we really have to have the VFID in the same volume as the first allocated page. this means we cannot change
        * volume when we look for a valid VFID. */
       VOLID first_volid = vsids_reserved[0].volid;
+      bool is_file_dropped;
 
       for (vsid_iter = vsids_reserved;
 	   vsid_iter < vsids_reserved + n_sectors && VFID_ISNULL (&found_vfid)
@@ -3365,7 +3366,14 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	  for (vfid_iter.fileid = SECTOR_FIRST_PAGEID (vsid_iter->sectid);
 	       vfid_iter.fileid <= SECTOR_LAST_PAGEID (vsid_iter->sectid); vfid_iter.fileid++)
 	    {
-	      if (!vacuum_is_file_dropped (thread_p, &vfid_iter, tran_mvccid))
+	      error_code = vacuum_is_file_dropped (thread_p, &is_file_dropped, &vfid_iter, tran_mvccid);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit;
+		}
+
+	      if (is_file_dropped == false)
 		{
 		  /* Good we found a file ID that is not considered dropped. */
 		  found_vfid = vfid_iter;
