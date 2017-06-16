@@ -796,6 +796,12 @@ typedef void (*CCI_FREE_FUNCTION) (void *);
  ************************************************************************/
 
 #if !defined(CAS)
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 extern void cci_init (void);
 extern void cci_end (void);
 
@@ -954,6 +960,10 @@ extern int cci_shard_schema_info (int con_h_id, int shard_id, T_CCI_SCH_TYPE typ
 				  char flag, T_CCI_ERROR * err_buf);
 extern int cci_is_shard (int con_h_id, T_CCI_ERROR * err_buf);
 extern int cci_get_cas_info (int mapped_conn_id, char *info_buf, int buf_length, T_CCI_ERROR * err_buf);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
 
