@@ -2668,7 +2668,7 @@ db_chn (DB_OBJECT * obj, DB_FETCH_MODE purpose)
 int
 db_set_system_parameters (const char *data)
 {
-  int rc;
+  SYSPRM_ERR rc;
   int error = NO_ERROR;
   SYSPRM_ASSIGN_VALUE *assignments = NULL;
 
@@ -2694,7 +2694,7 @@ db_set_system_parameters (const char *data)
     }
 
   /* convert SYSPRM_ERR to error code */
-  error = sysprm_set_error ((SYSPRM_ERR) rc, data);
+  error = sysprm_set_error (rc, data);
 
 cleanup:
   /* clean up */
@@ -2728,7 +2728,7 @@ db_set_system_parameters_for_ha_repl (const char *data)
 int
 db_reset_system_parameters_from_assignments (const char *data)
 {
-  int rc;
+  SYSPRM_ERR rc;
   int error = NO_ERROR;
   char buf[LINE_MAX];
 
@@ -2738,7 +2738,7 @@ db_reset_system_parameters_from_assignments (const char *data)
       return db_set_system_parameters (buf);
     }
 
-  error = sysprm_set_error ((SYSPRM_ERR) rc, data);
+  error = sysprm_set_error (rc, data);
 
   return error;
 }
@@ -2756,7 +2756,7 @@ db_reset_system_parameters_from_assignments (const char *data)
 int
 db_get_system_parameters (char *data, int len)
 {
-  int rc;
+  SYSPRM_ERR rc;
   int error = NO_ERROR;
   SYSPRM_ASSIGN_VALUE *prm_values = NULL;
 
@@ -2771,7 +2771,7 @@ db_get_system_parameters (char *data, int len)
     }
 
   /* convert SYSPRM_ERR to error code */
-  error = sysprm_set_error ((SYSPRM_ERR) rc, data);
+  error = sysprm_set_error (rc, data);
 
   if (error == NO_ERROR)
     {
@@ -2810,18 +2810,18 @@ db_get_host_connected (void)
 int
 db_get_ha_server_state (char *buffer, int maxlen)
 {
-  int ha_state;
+  HA_SERVER_STATE ha_state;
 
   CHECK_CONNECT_ERROR ();
 
 #if defined(CS_MODE)
   ha_state = boot_get_ha_server_state ();
 #else
-  ha_state = -1;
+  ha_state = HA_SERVER_STATE_NA;
 #endif
   if (buffer)
     {
-      strncpy (buffer, css_ha_server_state_string ((HA_SERVER_STATE) ha_state), maxlen);
+      strncpy (buffer, css_ha_server_state_string (ha_state), maxlen);
     }
   return ha_state;
 }

@@ -505,9 +505,9 @@ extern "C"
   extern void sysprm_dump_parameters (FILE * fp);
   extern void sysprm_set_er_log_file (const char *base_db_name);
   extern void sysprm_dump_server_parameters (FILE * fp);
-  extern int sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values);
-  extern int sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments);
-  extern int sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr);
+  extern SYSPRM_ERR sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values);
+  extern SYSPRM_ERR sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments);
+  extern SYSPRM_ERR sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr);
   extern int sysprm_get_force_server_parameters (SYSPRM_ASSIGN_VALUE ** change_values);
   extern void sysprm_tune_client_parameters (void);
   extern void sysprm_free_session_parameters (SESSION_PARAM ** session_parameters);

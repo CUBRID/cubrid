@@ -132,7 +132,7 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* root_class_hfid */ {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID},
   /* data page_size */ -1, /* log page_size */ -1,
   /* disk_compatibility */ 0.0,
-  /* ha_server_state */ -1,
+  /* ha_server_state */ HA_SERVER_STATE_NA,
   /* server_session_key */ {(char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF,
 			    (char) 0xFF},
   //vapa!!!
@@ -5593,14 +5593,14 @@ boot_get_host_connected (void)
   return boot_Host_connected;
 }
 
-int
+HA_SERVER_STATE
 boot_get_ha_server_state (void)
 {
   return boot_Server_credential.ha_server_state;
 }
 
 /*
- * boot_get_lob_path - return the lob path which is recevied from the server
+ * boot_get_lob_path - return the lob path which is received from the server
  */
 const char *
 boot_get_lob_path (void)
