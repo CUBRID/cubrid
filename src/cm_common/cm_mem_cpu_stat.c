@@ -1410,14 +1410,17 @@ extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf)
 	{
 	  if (nitem >= nalloc)
 	    {
-	      nalloc *= 2;
-	      if (!
-		  (all_stat->db_stats =
-		   (T_CM_DB_PROC_STAT *) realloc (all_stat->db_stats, nalloc * sizeof (T_CM_DB_PROC_STAT))))
+	      T_CM_DB_PROC_STAT *db_stats_newptr = NULL;
+	      int nalloc_new = nalloc * 2;
+	      db_stats_newptr =
+		(T_CM_DB_PROC_STAT *) realloc (all_stat->db_stats, nalloc_new * sizeof (T_CM_DB_PROC_STAT));
+	      if (db_stats_newptr == NULL)
 		{
 		  cm_set_error (err_buf, CM_OUT_OF_MEMORY);
 		  return NULL;
 		}
+	      all_stat->db_stats = db_stats_newptr;
+	      nalloc = nalloc_new;
 	    }
 	  if (cm_get_proc_stat (&pstat, pid) == 0)
 	    {
