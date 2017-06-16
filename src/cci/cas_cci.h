@@ -797,10 +797,10 @@ typedef void (*CCI_FREE_FUNCTION) (void *);
 
 #if !defined(CAS)
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+  #ifdef __cplusplus
+  extern "C"
+  {
+  #endif
 
 extern void cci_init (void);
 extern void cci_end (void);
