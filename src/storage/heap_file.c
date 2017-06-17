@@ -4834,10 +4834,6 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   return true;
 
 error:
-  if (is_system_op_started)
-    {
-      log_sysop_abort (thread_p);
-    }
   if (next_watcher.pgptr != NULL)
     {
       pgbuf_ordered_unfix (thread_p, &next_watcher);
@@ -4865,6 +4861,11 @@ error:
     {
       assert (crt_watcher.pgptr == NULL);
     }
+  if (is_system_op_started)
+    {
+      log_sysop_abort (thread_p);
+    }
+
   /* Page was not removed. */
   return false;
 }

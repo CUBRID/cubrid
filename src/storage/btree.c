@@ -11771,7 +11771,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     {
       if (btree_search_leaf_page (thread_p, btid, page_ptr, key, &search_key) != NO_ERROR)
 	{
-	  assert (false);
+	  ASSERT_ERROR ();
 	  goto error;
 	}
       found = (search_key.result == BTREE_KEY_FOUND);
@@ -12614,13 +12614,13 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   sep_key = btree_find_split_point (thread_p, btid, Q, &leftcnt, key, helper, &clear_sep_key);
-  assert (leftcnt <= key_cnt && leftcnt >= 0);
   if (sep_key == NULL || DB_IS_NULL (sep_key))
     {
       er_log_debug (ARG_FILE_LINE, "btree_split_node: Null middle key after split. Operation Ignored.\n");
       ASSERT_ERROR_AND_SET (ret);
       goto exit_on_error;
     }
+  assert (leftcnt <= key_cnt && leftcnt >= 0);
 
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
@@ -13463,12 +13463,12 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    ********************************************************************/
 
   sep_key = btree_find_split_point (thread_p, btid, P, &leftcnt, key, helper, &clear_sep_key);
-  assert (leftcnt <= key_cnt && leftcnt >= 0);
   if (sep_key == NULL || DB_IS_NULL (sep_key))
     {
       er_log_debug (ARG_FILE_LINE, "btree_split_root: Null middle key after split. Operation Ignored.\n");
       goto exit_on_error;
     }
+  assert (leftcnt <= key_cnt && leftcnt >= 0);
 
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
@@ -26885,10 +26885,6 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
 error:
   /* Error. */
-  if (is_system_op_started)
-    {
-      log_sysop_abort (thread_p);
-    }
   if (new_page1 != NULL)
     {
       pgbuf_unfix_and_init (thread_p, new_page1);
@@ -26900,6 +26896,10 @@ error:
   if (child_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, child_page);
+    }
+  if (is_system_op_started)
+    {
+      log_sysop_abort (thread_p);
     }
   assert (*advance_to_page == NULL);
   assert (error_code != NO_ERROR);
@@ -30280,12 +30280,6 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 error:
   assert_release (error_code != NO_ERROR);
 
-  if (is_system_op_started)
-    {
-      /* Abort system operation. */
-      log_sysop_abort (thread_p);
-    }
-
   /* Unfix used pages. */
   assert (*advance_to_page == NULL);
   if (left_page != NULL)
@@ -30299,6 +30293,11 @@ error:
   if (child_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, child_page);
+    }
+  if (is_system_op_started)
+    {
+      /* Abort system operation. */
+      log_sysop_abort (thread_p);
     }
 
   return error_code;
