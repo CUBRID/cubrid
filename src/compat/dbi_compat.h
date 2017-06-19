@@ -2063,13 +2063,6 @@ struct tz_region
     unsigned int zone_id;	/* geographical zone id */
   };
 };
-  DB_DEFAULT_CURR_USER = 6
-  DB_DEFAULT_CURRENTDATETIME = 7,
-  DB_DEFAULT_CURRENTTIMESTAMP = 8,
-  DB_DEFAULT_CURRENTTIME = 9,
-  DB_DEFAULT_CURRENTDATE = 10,
-  DB_DEFAULT_SYSTIME = 11,
-  DB_DEFAULT_FORMATTED_SYSDATE = 12,
 
 extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
 extern int db_date_weekday (DB_DATE * date);
