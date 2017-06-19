@@ -494,7 +494,7 @@ db_compile_statement_local (DB_SESSION * session)
   PT_NODE *statement = NULL;
   PT_NODE *statement_result = NULL;
   DB_QUERY_TYPE *qtype;
-  int cmd_type;
+  CUBRID_STMT_TYPE cmd_type;
   int err;
   static long seed = 0;
 
@@ -1294,7 +1294,7 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
 {
   PT_NODE *statement;
   DB_QUERY_TYPE *qtype;
-  int cmd_type;
+  CUBRID_STMT_TYPE cmd_type;
 
   /* obvious error checking - invalid parameter */
   if (!session || !session->parser)
@@ -1416,6 +1416,8 @@ db_get_start_line (DB_SESSION * session, int stmt)
  * return : stmt's node type
  * session(in): contains the SQL query that has been compiled
  * stmt(in): statement id returned by a successful compilation
+ *
+ * todo: is this acceptable? to return both error code and statement type?
  */
 int
 db_get_statement_type (DB_SESSION * session, int stmt)
@@ -1842,7 +1844,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	}
       else
 	{
-	  CUBRID_STMT_TYPE stmt_type = (CUBRID_STMT_TYPE) pt_node_to_cmd_type (statement);
+	  CUBRID_STMT_TYPE stmt_type = pt_node_to_cmd_type (statement);
 	  switch (stmt_type)
 	    {
 	    case CUBRID_STMT_SELECT:
@@ -1978,7 +1980,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       db_make_null (&parser->local_transaction_id);
     }
 
-  update_execution_values (parser, err, (CUBRID_STMT_TYPE) pt_node_to_cmd_type (statement));
+  update_execution_values (parser, err, pt_node_to_cmd_type (statement));
 
   /* free if the statement was duplicated for host variable binding */
   if (statement != session->statements[stmt_ndx])
@@ -2284,7 +2286,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   /* set columns */
   prepare_info.columns = prepared_session->type_list[0];
   /* set statement type */
-  prepare_info.stmt_type = (CUBRID_STMT_TYPE) pt_node_to_cmd_type (prepared_stmt);
+  prepare_info.stmt_type = pt_node_to_cmd_type (prepared_stmt);
   /* set host variables */
   prepare_info.host_variables.size =
     prepared_session->parser->host_var_count + prepared_session->parser->auto_param_count;

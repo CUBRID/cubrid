@@ -2602,18 +2602,16 @@ pt_db_to_type_enum (const DB_TYPE t)
  *   return: one of the CUBRID_STMT_TYPES defined in dbi.h.
  *   node(in):
  */
-int
+CUBRID_STMT_TYPE
 pt_node_to_cmd_type (PT_NODE * node)
 {
   if (node == NULL)
     {
-      return -1;
+      return CUBRID_STMT_NONE;
     }
 
   switch (node->node_type)
     {
-    default:
-      return node->node_type;
     case PT_GET_XACTION:
       if (node->info.get_xaction.option == PT_ISOLATION_LEVEL)
 	{
@@ -2631,9 +2629,13 @@ pt_node_to_cmd_type (PT_NODE * node)
       return CUBRID_STMT_SELECT;
     case PT_KILL_STMT:
       return CUBRID_STMT_KILL;
+    default:
+      /* todo: is this acceptable?? I'll add safe-guard and let's see what happens... */
+      assert (false);
+      return (CUBRID_STMT_TYPE) node->node_type;
     }
 
-  return -1;
+  return CUBRID_STMT_NONE;
 }
 
 
