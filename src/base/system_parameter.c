@@ -7787,7 +7787,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
  *	 If some values must be read from server, PRM_ERR_NOT_FOR_CLIENT is
  *	 returned.
  */
-int
+SYSPRM_ERR
 sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 {
   char buf[LINE_MAX], *p = NULL, *name = NULL;

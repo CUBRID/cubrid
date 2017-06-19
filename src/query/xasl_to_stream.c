@@ -257,7 +257,7 @@ static char *xts_process_regu_variable_list (char *ptr, const REGU_VARIABLE_LIST
  * Note: map the XASL tree into linear byte stream of disk
  * representation. On successful return, `*xasl_stream'
  * will have the address of memory containing the linearly
- * mapped xasl stream, `*xasl_stream_size' will have the
+ * mapped xasl stream, `*buffer_size' will have the
  * # of bytes allocated for the stream
  *
  * Note: the caller should be responsible for free the memory of
@@ -336,10 +336,10 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   p = or_pack_int (p, body_size);
 
   /* set result */
-  stream->xasl_stream_ = xts_Stream_buffer;
-  stream->xasl_stream_size = xts_Free_offset_in_stream;
+  stream->buffer = xts_Stream_buffer;
+  stream->buffer_size = xts_Free_offset_in_stream;
 
-  if (stream->xasl_stream_size <= 0)
+  if (stream->buffer_size <= 0)
     {
       assert (false);
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;

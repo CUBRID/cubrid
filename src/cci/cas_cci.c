@@ -144,7 +144,6 @@ int wsa_initialize ();
  * PRIVATE FUNCTION PROTOTYPES						*
  ************************************************************************/
 
-
 static void reset_error_buffer (T_CCI_ERROR * err_buf);
 static int col_set_add_drop (int resolved_id, char col_cmd, char *oid_str, char *col_attr, char *value,
 			     T_CCI_ERROR * err_buf);

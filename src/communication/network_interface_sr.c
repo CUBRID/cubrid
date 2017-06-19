@@ -4482,7 +4482,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_string_nocopy (ptr, &context.sql_user_text);
 
   /* unpack size of XASL stream */
-  ptr = or_unpack_int (ptr, &stream.xasl_stream_size);
+  ptr = or_unpack_int (ptr, &stream.buffer_size);
   /* unpack get XASL node header boolean */
   ptr = or_unpack_int (ptr, &get_xasl_header);
   /* unpack pinned xasl cache flag boolean */
@@ -4504,17 +4504,16 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       INIT_XASL_NODE_HEADER (stream.xasl_header);
     }
 
-  if (stream.xasl_stream_size > 0)
+  if (stream.buffer_size > 0)
     {
       /* receive XASL stream from the client */
-      csserror =
-	css_receive_data_from_client (thread_p->conn_entry, rid, &stream.xasl_stream_, &stream.xasl_stream_size);
+      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &stream.buffer, &stream.buffer_size);
       if (csserror)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  if (stream.xasl_stream_)
-	    free_and_init (stream.xasl_stream_);
+	  if (stream.buffer)
+	    free_and_init (stream.buffer);
 	  return;
 	}
     }
@@ -4532,9 +4531,9 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   was_recompile_xasl = context.recompile_xasl;
 
   error = xqmgr_prepare_query (thread_p, &context, &stream);
-  if (stream.xasl_stream_)
+  if (stream.buffer)
     {
-      free_and_init (stream.xasl_stream_);
+      free_and_init (stream.buffer);
     }
   if (error != NO_ERROR)
     {

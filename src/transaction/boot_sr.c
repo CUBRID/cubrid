@@ -3047,7 +3047,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 #if defined (SERVER_MODE)
       server_credential->ha_server_state = css_ha_server_state ();
 #else
-      server_credential->ha_server_state = prm_get_integer_value (PRM_ID_HA_SERVER_STATE);
+      server_credential->ha_server_state = (HA_SERVER_STATE) prm_get_integer_value (PRM_ID_HA_SERVER_STATE);
 #endif
       memcpy (server_credential->server_session_key, boot_Server_session_key, SERVER_SESSION_KEY_SIZE);
       server_credential->db_charset = lang_charset ();

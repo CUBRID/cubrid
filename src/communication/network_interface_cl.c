@@ -3554,6 +3554,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
       or_unpack_int (reply, &area_size);
       if (area_size > 0)
 	{
+	  int ha_state_to_int = (int) server_credential->ha_server_state;
 	  ptr = or_unpack_int (area, &tran_index);
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  *tran_state = (TRAN_STATE) temp_int;
@@ -3568,7 +3569,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  server_credential->log_page_size = (PGLENGTH) temp_int;
 	  ptr = or_unpack_float (ptr, &server_credential->disk_compatibility);
-	  ptr = or_unpack_int (ptr, &server_credential->ha_server_state);
+	  ptr = or_unpack_int (ptr, &ha_state_to_int);
 	  ptr = or_unpack_int (ptr, &server_credential->db_charset);
 	  ptr = or_unpack_string (ptr, &server_credential->db_lang);
 	}
@@ -6181,7 +6182,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
   ptr = pack_string_with_null_padding (ptr, context->sql_user_text, context->sql_user_text_len);
 
   /* pack size of XASL stream */
-  ptr = or_pack_int (ptr, stream->xasl_stream_size);
+  ptr = or_pack_int (ptr, stream->buffer_size);
   /* Pack get_xasl_header. */
   ptr = or_pack_int (ptr, get_xasl_header);
   /* Pack context. */
@@ -6193,7 +6194,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
   /* send SERVER_QM_QUERY_PREPARE request with request data and XASL stream; receive XASL file id (XASL_ID) as a reply */
   req_error =
     net_client_request2 (NET_SERVER_QM_QUERY_PREPARE, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			 (char *) stream->xasl_stream_, stream->xasl_stream_size, &reply_buffer, &reply_buffer_size);
+			 (char *) stream->buffer, stream->buffer_size, &reply_buffer, &reply_buffer_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &reply_buffer_size);
@@ -6252,32 +6253,32 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
    */
   server_stream.xasl_id = stream->xasl_id;
   server_stream.xasl_header = stream->xasl_header;
-  server_stream.xasl_stream_size = stream->xasl_stream_size;
-  if (stream->xasl_stream_size > 0)
+  server_stream.buffer_size = stream->buffer_size;
+  if (stream->buffer_size > 0)
     {
-      server_stream.xasl_stream_ = (char *) malloc (stream->xasl_stream_size);
-      if (server_stream.xasl_stream_ == NULL)
+      server_stream.buffer = (char *) malloc (stream->buffer_size);
+      if (server_stream.buffer == NULL)
 	{
 	  EXIT_SERVER ();
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->xasl_stream_size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->buffer_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      memcpy (server_stream.xasl_stream_, stream->xasl_stream_, stream->xasl_stream_size);
+      memcpy (server_stream.buffer, stream->buffer, stream->buffer_size);
     }
   else
     {
       /* No stream. This is just a lookup for existing entry. */
-      server_stream.xasl_stream_ = NULL;
+      server_stream.buffer = NULL;
     }
 
   INIT_XASL_NODE_HEADER (server_stream.xasl_header);
 
   /* call the server routine of query prepare */
   error_code = xqmgr_prepare_query (NULL, context, &server_stream);
-  if (server_stream.xasl_stream_ != NULL)
+  if (server_stream.buffer != NULL)
     {
-      free_and_init (server_stream.xasl_stream_);
+      free_and_init (server_stream.buffer);
     }
   if (error_code != NO_ERROR)
     {
@@ -7958,11 +7959,11 @@ error_exit:
  * return	    : SYSPRM_ERR code.
  * assignments (in) : list of assignments.
  */
-int
+SYSPRM_ERR
 sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
 {
 #if defined(CS_MODE)
-  int rc = PRM_ERR_COMM_ERR;
+  SYSPRM_ERR rc = PRM_ERR_COMM_ERR;
   int request_size = 0, req_error = NO_ERROR;
   char *request = NULL, *reply = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -7983,7 +7984,9 @@ sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
 			NULL, 0, NULL, 0);
   if (req_error == NO_ERROR)
     {
-      or_unpack_int (reply, &rc);
+      int unpack_value;
+      or_unpack_int (reply, &unpack_value);
+      rc = (SYSPRM_ERR) unpack_value;
     }
   else
     {
@@ -8008,11 +8011,11 @@ sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
  * return		   : SYSPRM_ERR code.
  * prm_values_ptr (in/out) : list of parameter values.
  */
-int
+SYSPRM_ERR
 sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 {
 #if defined(CS_MODE)
-  int rc = PRM_ERR_COMM_ERR;
+  SYSPRM_ERR rc = PRM_ERR_COMM_ERR;
   int req_error = NO_ERROR, request_size = 0, receive_size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = NULL, *request_data = NULL, *receive_data = NULL;
@@ -8041,8 +8044,10 @@ sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
     }
   else
     {
+      int unpack_value;
       ptr = or_unpack_int (reply, &receive_size);
-      ptr = or_unpack_int (ptr, &rc);
+      ptr = or_unpack_int (ptr, &unpack_value);
+      rc = (SYSPRM_ERR) unpack_value;
       if (rc != PRM_ERR_NO_ERROR || receive_data == NULL)
 	{
 	  goto cleanup;
