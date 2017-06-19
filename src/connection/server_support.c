@@ -1148,19 +1148,18 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 {
 #if !defined(WINDOWS)
   int rv;
-  int state;
+  HA_SERVER_STATE state;
   int response;
   THREAD_ENTRY *thread_p;
 
-  state = (int) css_get_master_request (master_fd);
+  state = (HA_SERVER_STATE) css_get_master_request (master_fd);
 
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
 
   if (state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_STANDBY)
     {
-      if (css_change_ha_server_state (thread_p, (HA_SERVER_STATE) state, false, HA_CHANGE_MODE_IMMEDIATELY, true) !=
-	  NO_ERROR)
+      if (css_change_ha_server_state (thread_p, state, false, HA_CHANGE_MODE_IMMEDIATELY, true) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
 	}
@@ -3191,7 +3190,7 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
 
   client_id = thread_get_client_id (thread_p);
   er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: client %d state %s\n", client_id,
-		css_ha_server_state_string ((HA_SERVER_STATE) state));
+		css_ha_applier_state_string (state));
   for (i = 0, table = ha_Log_applier_state; i < ha_Log_applier_state_num; i++, table++)
     {
       if (table->client_id == client_id)
