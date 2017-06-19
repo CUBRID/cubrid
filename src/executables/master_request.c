@@ -787,7 +787,8 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn, unsigned short request_id
   char ha_state_str[64];
   char buffer[MASTER_TO_SRV_MSG_SIZE];
   int len;
-  int response, ha_state;
+  int response;
+  HA_SERVER_STATE ha_state;
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
@@ -801,7 +802,7 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn, unsigned short request_id
 	      return;
 	    }
 
-	  ha_state = htonl (response);
+	  ha_state = (HA_SERVER_STATE) htonl (response);
 
 	  if (ha_state == HA_SERVER_STATE_NA)
 	    {
@@ -810,8 +811,7 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn, unsigned short request_id
 	    }
 	  else if ((ha_state >= HA_SERVER_STATE_IDLE) && (ha_state <= HA_SERVER_STATE_DEAD))
 	    {
-	      strncpy (ha_state_str, css_ha_server_state_string ((HA_SERVER_STATE) ha_state),
-		       sizeof (ha_state_str) - 1);
+	      strncpy (ha_state_str, css_ha_server_state_string (ha_state), sizeof (ha_state_str) - 1);
 	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
 			msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_SERVER_MODE),
 			temp->name, ha_state_str);
