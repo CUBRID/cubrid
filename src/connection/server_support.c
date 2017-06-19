@@ -1169,7 +1169,7 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
       er_log_debug (ARG_FILE_LINE, "ERROR : unexpected state. (state :%d). \n", state);
     }
 
-  state = htonl ((int) css_ha_server_state ());
+  state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
 
   css_send_heartbeat_request (css_Master_conn, SERVER_CHANGE_HA_MODE);
   css_send_heartbeat_data (css_Master_conn, (char *) &state, sizeof (state));
