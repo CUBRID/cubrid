@@ -544,14 +544,14 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
   int error, status;
   bool has_index = false;
   unsigned int repid_bits;
-  volatile int expected_disk_size;
-  volatile int offset_size;
+  int expected_disk_size;
+  int offset_size;
 
   buf = &orep;
   or_init (buf, record->data, record->area_size);
   buf->error_abort = 1;
 
-  expected_disk_size = object_disk_size (obj, (int *) &offset_size);	//vapa!!!
+  expected_disk_size = object_disk_size (obj, &offset_size);
   if (record->area_size < (expected_disk_size + (OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE)))
     {
       record->length = -expected_disk_size;
