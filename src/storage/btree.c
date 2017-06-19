@@ -14807,13 +14807,11 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 	      if (dsize < keysize)
 		{
 		  midxkey->min_max_val.position = dsize;
-		  midxkey->min_max_val.type = MIN_COLUMN;
 		}
 	    }
 	  else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
 	    {
 	      midxkey->min_max_val.position = dsize;
-	      midxkey->min_max_val.type = MAX_COLUMN;
 	    }
 	  else
 	    {
