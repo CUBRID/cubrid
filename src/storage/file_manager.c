@@ -953,6 +953,8 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
       if (file_extdata_all_item_count (thread_p, part_table, &part_cnt) != NO_ERROR)
 	{
 	  /* thread might be interrupted; give up checking */
+	  ASSERT_ERROR ();
+	  er_clear ();
 	  return;
 	}
       assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_partial == part_cnt);
@@ -972,6 +974,8 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
 	  if (file_extdata_all_item_count (thread_p, full_table, &full_cnt) != NO_ERROR)
 	    {
 	      /* thread might be interrupted; give up checking */
+	      ASSERT_ERROR ();
+	      er_clear ();
 	      return;
 	    }
 	  assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_full == full_cnt);
