@@ -14750,77 +14750,81 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 	      ;
 	    }
 
-	  minmax = key_minmax;	/* init */
-	  if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
+	  if (midxkey->min_max_val.position == -1)
 	    {
-	      if (!part_key_desc)
-		{		/* CASE 1, 2 */
-		  if (dp->is_desc != true)
-		    {		/* CASE 1 */
-		      ;		/* nop */
+	      /* If min_max_val was not set, set it here. */
+	      minmax = key_minmax;	/* init */
+	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
+		{
+		  if (!part_key_desc)
+		    {		/* CASE 1, 2 */
+		      if (dp->is_desc != true)
+			{	/* CASE 1 */
+			  ;	/* nop */
+			}
+		      else
+			{	/* CASE 2 */
+			  minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+			}
 		    }
 		  else
-		    {		/* CASE 2 */
-		      minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+		    {		/* CASE 3, 4 */
+		      if (dp->is_desc != true)
+			{	/* CASE 3 */
+			  minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+			}
+		      else
+			{	/* CASE 4 */
+			  ;	/* nop */
+			}
 		    }
 		}
-	      else
-		{		/* CASE 3, 4 */
-		  if (dp->is_desc != true)
-		    {		/* CASE 3 */
-		      minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+	      else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
+		{
+		  if (!part_key_desc)
+		    {		/* CASE 1, 2 */
+		      if (dp->is_desc != true)
+			{	/* CASE 1 */
+			  ;	/* nop */
+			}
+		      else
+			{	/* CASE 2 */
+			  minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
+			}
 		    }
 		  else
-		    {		/* CASE 4 */
-		      ;		/* nop */
+		    {		/* CASE 3, 4 */
+		      if (dp->is_desc != true)
+			{	/* CASE 3 */
+			  minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
+			}
+		      else
+			{	/* CASE 4 */
+			  ;	/* nop */
+			}
 		    }
 		}
-	    }
-	  else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
-	    {
-	      if (!part_key_desc)
-		{		/* CASE 1, 2 */
-		  if (dp->is_desc != true)
-		    {		/* CASE 1 */
-		      ;		/* nop */
-		    }
-		  else
-		    {		/* CASE 2 */
-		      minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
-		    }
-		}
-	      else
-		{		/* CASE 3, 4 */
-		  if (dp->is_desc != true)
-		    {		/* CASE 3 */
-		      minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
-		    }
-		  else
-		    {		/* CASE 4 */
-		      ;		/* nop */
-		    }
-		}
-	    }
 
-	  if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
-	    {
-	      if (dsize < keysize)
+	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
+		{
+		  if (dsize < keysize)
+		    {
+		      midxkey->min_max_val.position = dsize;
+		      midxkey->min_max_val.type = MIN_COLUMN;
+		    }
+		}
+	      else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
 		{
 		  midxkey->min_max_val.position = dsize;
-		  /* This needs to be checked!! */
-		  //midxkey->min_max_val.type = MIN_COLUMN;
+		  midxkey->min_max_val.type = MIN_COLUMN;
 		}
+	      else
+		{
+		  err = ER_FAILED;
+		}
+
 	    }
-	  else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
-	    {
-	      midxkey->min_max_val.position = dsize;
-	      /* This needs to be checked!! */
-	      //midxkey->min_max_val.type = MIN_COLUMN;
-	    }
-	  else
-	    {
-	      err = ER_FAILED;
-	    }
+
 
 	  num_dbvals = 0;
 	  partial_dom = dp;

@@ -1585,9 +1585,10 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	      /* oops, we found max. */
 	      midxkey.min_max_val.position = i;
 	      midxkey.min_max_val.type = MAX_COLUMN;
+
+	      /* just stop here */
+	      break;
 	    }
-	  /* just stop here */
-	  break;
 	}
 
       if (TP_DOMAIN_TYPE (idx_dom) != val_type_id)
@@ -1799,7 +1800,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
     }
 
-  //assert (operand == NULL);
   assert (buf_size == CAST_BUFLEN (buf.ptr - midxkey.buf));
 
   /* Make midxkey DB_VALUE */
