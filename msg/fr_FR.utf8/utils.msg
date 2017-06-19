@@ -442,8 +442,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 114 error-control-file
 115 fichier d'entrée pour le contrôle d'erreur(s) pendant le chargement
 116 Total %8d object(s) inserted, %d object(s) failed.\n
-117 Load failed.\n
-118 Maximum length of class name is %1$d bytes.\n
+117 Chargement échoué.\n
+118 La longueur maximale du nom de classe est %1$d bytes.\n
 120 \
 loaddb: Importe les objets et les schémas dans la base de données.\n\
 usage: %1$s loaddb [OPTION] database-name\n\
@@ -628,11 +628,11 @@ options valids:\n\
   -C, --CS-mode                    exécution en mode client-serveur\n\
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
-20 Some inconsistencies were detected in your database.\n Please consult error_log_file %1$s for additional information.\n
-21 %1$s: Cannot find the class. It will be ommitted.\n
-22 %1$s: Cannot find the index on class %2$s.\n
+20 Certaines incohérences ont été détectées dans votre base de données.\n Consulter le fichier  error_log_file %1$s pour plus d'informations.\n
+21 %1$s: On ne peut pas trouver la classe. Elle sera omis.\n
+22 %1$s: On ne peut pas trouver l'indice pour classe %2$s.\n
 60 \
-checkdb: Check consistency of the database.\n\
+checkdb: Vérifier la cohérence de la base de données.\n\
 usage: %1$s checkdb [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
 options valids:\n\
@@ -641,40 +641,39 @@ options valids:\n\
   -r, --repair                 répare quand incohérence est trouvée\n\
   -i, --input-class-file=FICHIER  FICHIER d'entrée des noms de classe\n\
                                par défaut: vérifier toutes les classes\
-  -I, --index-name             index name that will be checked only\n\
-                               default: check all indices\n\
-      --check-prev-link        check only previous links of indices\n\
+  -I, --index-name             nom de l'index qui ne sera vérifié que\n\
+                               par défaut: vérifier tous les indices\n\
+      --check-prev-link        vérifier uniquement les liens précédents des indices\n\
       --repair-prev-link       réparer les chaînes précédentes indices\n\
-      --check-file-tracker     check all allocated pages of file\n\
-      --check-heap             check all pages of heap files\n\
-      --check-catalog          check catalog consistency\n\
-      --check-btree            check all btree indices\n\
-      --check-class-name       check class name consistency\n\
-      --check-btree-entries    check entries of btree consistency\n
+      --check-file-tracker     vérifiez toutes les pages attribuées au fichier\n\
+      --check-heap             vérifiez toutes les pages des fichiers HEAP\n\
+      --check-catalog          vérifier la cohérence du catalogue\n\
+      --check-btree            vérifiez tous les indices btree\n\
+      --check-class-name       vérifier la cohérence des noms de classe\n\
+      --check-btree-entries    vérifiez les entrées de la cohérence de btree\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Description de l'espace pour la base de données '%1$s' avec la taille de page de %2$s. (taille de page du journal: %3$s)\n\n
-16 %1$5d %2$9s  %3$s %4$s  %5$s\n
-17 Impossible d'ouvrir le fichier de sortie '%1$s'\n
-18 Description de l'espace pour les volumes temporaires pour la base de données '%1$s' avec la taille de page de %2$s.\n\n
-19 Volid  Purpose   total_pages  free_pages  Vol Name\n\n
-20 Volid  Purpose    total_size   free_size  Vol Name\n\n
-21 Description de l'espace LOB %1$s \n\n
-22 -------------------------------------------------------------------------------\n
-30 Description résumée de l'espace de base de données '%1$s' avec la taille de page de %2$s. (taille de page du journal: %3$s)\n\n
-31 Purpose    total_pages  used_pages  free_pages  volume_count\n
-32 Purpose     total_size   used_size   free_size  volume_count\n
-33 %1$10s %2$s %3$s %4$s %5$10d\n
-34 -------------------------------------------------------------\n
-40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
-41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
-43 ----------------------------------------------------------------------------------------------------\n
-50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
-51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
-53 -------------------------------------------------------------------------------------------------\n
+10 Description de l'espace pour la base de données '%1$s' avec la taille de page de %2$s. (taille de page du journal: %3$s)\n\n
+11 Impossible d'ouvrir le fichier de sortie '%1$s'\n
+12 Description de l'espace LOB %1$s \n\n
+20 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+21 type                purpose            volume_count         used_size           free_size           total_size\n
+22 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+30 Description de l'espace pour tous les volumes:\n
+31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+40 Description détaillée de l'espace pour les fichiers:\n
+41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+50 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: afficha l'espace utilisé/libre de la base de données.\n\
 usage: %1$s spacedb [OPTION] database-name\n\
@@ -687,24 +686,6 @@ options valids:\n\
                                définir l'unité d'affichage (page, mega, giga, tera, human readable); par défaut: H\n\
   -s, --summarize              afficher seulement un sommaire pour chaque but de volume\n\
   -p, --purpose                afficher la taille utilisée de chaque objet (données/index/temp) de chaque volume\n
-70 type                purpose            volume_count        used_pages          free_pages          total_pages\n
-71 type                purpose            volume_count         used_size           free_size           total_size\n
-72 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-73 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-74 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-75 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
-80 Space description for all volumes:\n
-81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
-82 volid               type                purpose             used_size           free_size           total_size         volume_name\n
-83 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-84 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-85 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-90 Detailed space description for files:\n
-91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
-92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
-93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
-100 -----------------------------------------------------------------------------------------------------------------\n
-
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Nombre estimatif de pages = %1$d\n
@@ -964,7 +945,7 @@ usage: %1$s applyinfo [OPTION] database-name\n\
 \n\
 options valids:\n\
   -r, --remote-host-name        nom d'hôte distant; affiche les informations du journal actif du noeud distant\n\
-  -a, --applied-info 	        affiche infomation appliquée\n\
+  -a, --applied-info            affiche infomation appliquée\n\
   -L, --copied-log-path=CHEMIN  CHEMIN de volumes du journal copiés; affiche les informations du journal copié\n\
   -p, --page=ID                 id de page; par défaut : 0\n\
   -v, --verbose                 active les messages verbeux d'état; par défaut: désactivé\n\
@@ -984,9 +965,9 @@ $set 46 MSGCAT_UTIL_SET_GENLOCALE
 genlocale: Génère bibliothèque partagée locale à l'aide du fichier(s) d'entrée LDML.\n\
 usage: %1$s genlocale [OPTION] [language-string]\n\
 \n\
-language-string	      chaîne de paramètres régionaux pour laquelle générer la bibliothèque partagée.\n\
-		      Si aucune chaîne de paramètres régionaux est donné, toutes les langues dans\n\
-		      'cubrid_locales.txt' seront traitées.\n\
+language-string       chaîne de paramètres régionaux pour laquelle générer la bibliothèque partagée.\n\
+              Si aucune chaîne de paramètres régionaux est donné, toutes les langues dans\n\
+              'cubrid_locales.txt' seront traitées.\n\
 options valids:\n\
   -v, --verbose            active les messages verbeux d'état; par défaut: désactivé\n\
   -i, --input-ldml-file    chemin de fichier LDML d'entrée. Valide seulement lorsque le\n\
@@ -1001,7 +982,7 @@ $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
 dumplocale: affiche le contenu de la bibliothèque partagée précédemment généré à l'aide du fichier(s) LDML d'entrée.\n\
 usage: %1$s dumplocale [OPTION] [language-string]\n\
 \n\
-language-string	      chaîne de paramètres régionaux pour laquelle générer la bibliothèque partagée.\n\
+language-string       chaîne de paramètres régionaux pour laquelle générer la bibliothèque partagée.\n\
                       Si aucune chaîne de paramètres régionaux est donné, toutes les langues dans\n\
                       'cubrid_locales.txt' seront traitées.\n\
 options valids:\n\
@@ -1010,19 +991,19 @@ options valids:\n\
                       Peut être utilisé seulement lorsque language-string n'est pas donné..\n\
   -d, --calendar      affiche les informations de calendrier et de date/heure;\n\
                       par défaut: désactivé\n\
-  -n, --numeric	      affiche des informations numériques; par défaut: désactivé\n\
-  -a, --alphabet=l|lower|u|upper|both	       affiche d'informations d'alphabet et de casse;\n\
+  -n, --numeric       affiche des informations numériques; par défaut: désactivé\n\
+  -a, --alphabet=l|lower|u|upper|both          affiche d'informations d'alphabet et de casse;\n\
                                                par défaut: désactivé\n\
       --identifier-alphabet=l|lower|u|upper    affiche d'informations d'alphabet et de casse pour\n\
                                                identificateurs; par défaut: désactivé\n\
-  -c, --codepoint-order	 affiche d'information de classement triée sur la base des valeurs\n\
+  -c, --codepoint-order  affiche d'information de classement triée sur la base des valeurs\n\
                          des caractères codés\n\
                          (cp, char, valeur pondérée, next-cp, char et valeur pondérée);\n\
                          par défaut: désactivé\n\
   -w, --weight-order  affiche d'information de classement triée sur la base des\n\
                       valeurs pondérées des caractères\n\
                       (valeurs pondérées, cp, char); par défaut: désactivé\n\
-  -s, --start-value	  option de filtrage; caractères codés initiale pour\n\
+  -s, --start-value   option de filtrage; caractères codés initiale pour\n\
                       -a, --identifier-alphabet, -c, -w; par défaut : 0\n\
   -e, --end-value     filtering option; caractères codés de fin pour \n\
                       -a, --identifier-alphabet, -c, -w; \n\
@@ -1057,8 +1038,8 @@ usage: %1$s synccolldb [OPTION] database-name\n\
 \n\
 options valides:\n\
   -c, --check-only    Vérifie les classements des bases de données avec collation du système.\n\
-		      Si la synchronisation des classements est nécessaire, code d'erreur 1 est retourné.\n\
-		      Affiche un rapport des classements incompatibles.\n\
+              Si la synchronisation des classements est nécessaire, code d'erreur 1 est retourné.\n\
+              Affiche un rapport des classements incompatibles.\n\
   -f, --force-only    Mises à jour des classements dans les bases de données d'être les mêmes que les classements de sytem nouvelle configuration.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
@@ -1110,28 +1091,26 @@ gen_tz: Générer les fichiers source contenant des données de fuseau horaire �
 usage: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 options valides:\n\
-  -i, --input-folder	chemin d'accès à un dossier d'entrée contenant une version des\n\
-			fichiers du base de données d'IANA pour les fuseaux horaires.\n\
-			Valeur par défaut: $CUBRID/timezones/tzdata\n\
-  -g, --gen-mode=TYPE	contrôle la sortie de gen_tz, en se basant sur le TYPE:\n\
-			TYPE:\n\
-			1. NEW (par défaut): générer les fichiers source de fuseau(x) horaire(s)\n\
-			pour la bibliothèque partagée, sans tenir compte de versions précédentes;\n\
-			également générer un fichier source contenant tous les noms des pays\n\
+  -i, --input-folder    chemin d'accès à un dossier d'entrée contenant une version des\n\
+            fichiers du base de données d'IANA pour les fuseaux horaires.\n\
+            Valeur par défaut: $CUBRID/timezones/tzdata\n\
+  -g, --gen-mode=TYPE   contrôle la sortie de gen_tz, en se basant sur le TYPE:\n\
+            TYPE:\n\
+            1. NEW (par défaut): générer les fichiers source de fuseau(x) horaire(s)\n\
+            pour la bibliothèque partagée, sans tenir compte de versions précédentes;\n\
+            également générer un fichier source contenant tous les noms des pays\n\
                         et des fuseaux horaires (destiné pour l'usage du développeur,\n\
                         à être intégré dans une future version de CUBRID).\n\
-			2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder;new timezones found in the input\n\
-                        files are added; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removed if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        If necessary, when the first phase of extend fails to make\n\
-                        all the data backward compatible an update is performed which\n\
-                        modifies the timezone ids and the date and time info stored in\n\
-                        the tables of the database which contain columns of timezone data\n\
-                        type.\n
+            2. EXTEND : Générer un fichier source de timezone en utilisant le données\n\
+                        du dossier d'entrée; nouveaux fuseaux horaires trouvés dans l'entrée\n\
+                        des fichiers sont ajoutés; Offsets GMT et daylight saving informations\n\
+                        sont mises à jour (ou ajoutées pour les nouveaux fuseaux horaires);\n\
+                        les fuseaux horaires ne sont jamais supprimés si un fuseau horaire\n\
+                        encodé dans CUBRID manque aux fichiers d'entrée, les données associés\n\
+                        sont récupérées à partir de la bibliothèque de timezone existante.\n\
+                        Si la première phase d'extension ne permet pas de rendre toutes\n\
+                        les données compatibles avec l'arrière, toutes les lignes de toutes\n\
+                        les tables ayant des types de données avec timezone seront mises à jour.
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 L'ID du fuseau indiqué n'est pas compris dans la plage admissible. Utilisez -z pour voir tous\n\
@@ -1141,14 +1120,14 @@ dump_tz: Afficher des informations sur les fuseaux horaires.\n\
 usage: %s dump_tz [OPTION]\n\
 \n\
 options valides:\n\
-  -c, --list-countries	    montre la liste des pays actuellement supportées\n\
-  -l, --leap-seconds	    montre la liste des secondes bissextiles\n\
-  -s, --summary		    montre un récapitulatif de données fuseau horaire\n\
-  -z, --list-zones	    montre la liste des fuseaux horaires actuellement supportées\n\
+  -c, --list-countries      montre la liste des pays actuellement supportées\n\
+  -l, --leap-seconds        montre la liste des secondes bissextiles\n\
+  -s, --summary         montre un récapitulatif de données fuseau horaire\n\
+  -z, --list-zones      montre la liste des fuseaux horaires actuellement supportées\n\
   -d, --zone-id=ZONE_ID|ALL montre les informations disponibles relatives au fuseau horaire\n\
-			    ayant le fourni ZONE_ID ou pour tous les fuseaux horaires. L'ID\n\
-			    d'un fuseau horaire peut être obtenu à partir de la liste laquelle\n\
-			    s'affiche à l'aide de l'option -z.\n
+                ayant le fourni ZONE_ID ou pour tous les fuseaux horaires. L'ID\n\
+                d'un fuseau horaire peut être obtenu à partir de la liste laquelle\n\
+                s'affiche à l'aide de l'option -z.\n
 
 $set 53 MSGCAT_UTIL_SET_RESTORESLAVE
 20 Restauration d'esclave a été annulée ou un erreur est survenu.\n
@@ -1208,14 +1187,14 @@ usage: %1$s checksumdb [OPTION] database-name@hostname\n\
 \n\
 options valides:\n\
   -c, --chunk-size=NUMÉRO          le nombre de lignes à sélectionner pour chaque calculation de somme de contrôle\n\
-				                   par défaut: 500 lignes, minimum: 100 lignes\n\
+                                   par défaut: 500 lignes, minimum: 100 lignes\n\
   -s, --sleep=NUMÉRO               durée de la suspension d'exécution entre calculations de somme de contrôle; par défaut: 100 ms\n\
   -i, --include-class-file=FICHIER entrée FICHIER de noms des tables à inclure\n\
   -e, --exclude-class-file=FICHIER entrée FICHIER de noms des tables à exclure; seulement -i ou -e peuvent être utilisé, pas le deux\n\
   -t, --timeout=NUMÉRO             délai d'attente de requête en millisecondes; par défaut: 1000ms\n\
-  -n, --table-name=NOM         	   NOM de la table  pour enregistrer les résultats de somme de contrôle; par défaut: db_ha_checksums\n\
+  -n, --table-name=NOM             NOM de la table  pour enregistrer les résultats de somme de contrôle; par défaut: db_ha_checksums\n\
   -r, --report-only                rapporter l'intégrité de la replication en se basant sur la calculation des sommes de contrôle\n\
-				                   tous les options, avec l'exception de --table-name, seront ignorés\n\
+                                   tous les options, avec l'exception de --table-name, seront ignorés\n\
       --resume                     reprendre la calculation des sommes de contrôle\n\
       --schema-only                vérifier seulement la cohérence du schéma\n\
       --cont-on-error              continuer en cas d'erreur de calcul\n

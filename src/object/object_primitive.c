@@ -3218,7 +3218,9 @@ mr_setmem_double (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
   double d;
 
   if (value == NULL)
-    mr_initmem_double (mem, domain);
+    {
+      mr_initmem_double (mem, domain);
+    }
   else
     {
       d = db_get_double (value);

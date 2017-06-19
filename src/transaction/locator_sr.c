@@ -4184,7 +4184,7 @@ error:
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
   heap_attrinfo_end (thread_p, &index_attrinfo);
   return error_code;
@@ -5516,7 +5516,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  if (error_code == ER_FAILED)
 		    {
 		      ASSERT_ERROR_AND_SET (error_code);
-		      assert (false);
 		    }
 		  else
 		    {
@@ -9152,8 +9151,7 @@ locator_repair_btree_by_insert (THREAD_ENTRY * thread_p, OID * class_oid, BTID *
 
   log_sysop_start (thread_p);
 
-  if (btree_insert (thread_p, btid, key, class_oid, inst_oid, SINGLE_ROW_INSERT, NULL, NULL, NULL /* TO DO */ )
-      == NO_ERROR)
+  if (btree_insert (thread_p, btid, key, class_oid, inst_oid, SINGLE_ROW_INSERT, NULL, NULL, NULL) == NO_ERROR)
     {
       isvalid = DISK_VALID;
       log_sysop_commit (thread_p);
@@ -11546,7 +11544,7 @@ locator_increase_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
   /* NOTE that tot_objects may not be correct because changes are NOT logged. */
   (void) catalog_update_class_info (thread_p, cls_oid, cls_infop, true);
 
-  catalog_free_class_info (cls_infop);
+  catalog_free_class_info_and_init (cls_infop);
 }
 
 /*
@@ -11589,7 +11587,7 @@ locator_decrease_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
   /* NOTE that tot_objects may not be correct because changes are NOT logged. */
   (void) catalog_update_class_info (thread_p, cls_oid, cls_infop, true);
 
-  catalog_free_class_info (cls_infop);
+  catalog_free_class_info_and_init (cls_infop);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 

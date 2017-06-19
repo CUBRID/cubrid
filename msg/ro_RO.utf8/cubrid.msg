@@ -1260,9 +1260,9 @@ $ LOADDB
 1191 Stand-alone vacuum s-a finalizat.
 1192 Valoarea %1$zu depășește maximul permis %2$d.
 1193 După procesare, lungimea expresiei de partiționare depășește lungimea maximă(%1$d).
-1194 Nu se poate verifica fisierul %1$d|%2$d pentru ca nu s-a putut seta lock imediat pe clasa %3$d|%4$d|%5$d.
-1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Maximum recursions %1$d reached executing CTE.
+1194 Nu se poate verifica fișierul %1$d|%2$d pentru că lock-ul pe clasa %3$d|%4$d|%5$d nu s-a putut obține imediat.
+1195 Partea recursivă a CTE-ului nu poate conține funcții agregate fără clauza GROUP BY.
+1196 Execuţia CTE-ului a atins numărul maxim de iterații recursive %1$d.
 1197 Ultima eroare
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1714,11 +1714,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Utilizare invalidă a funcțiilor de agregare.
 293 Valoarea trebuie să fie strict crescătoare pentru fiecare partiție.
 294 Nu se pot folosi function sau filter indexes pe coloane timezone.
-295 SELECT INTO nu este permis in subqueries.
-296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
-297 Nested WITH clauses are not supported.
-298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
-299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
+295 SELECT INTO nu este permis într-o subinterogare.
+296 Numele CTE este ambiguu, există mai multe CTEuri cu acelaşi nume: '%1$s'.
+297 Nu sunt acceptate clause WITH imbricate.
+298 CTE-ul recursiv '%1$s' trebuie referenţiat direct în interogarea sa recursivă.
+299 Eroare în CTE '%1$s': Partea nerecursivă și partea recursivă trebuie conectate cu UNION ALL.
+300 Nu este permisă o subinterogare în clauza DEFAULT.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

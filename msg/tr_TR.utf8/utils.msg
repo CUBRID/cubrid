@@ -651,27 +651,26 @@ geçerli seçenekler:\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Sayfa boyutu %2$s ile veritabanı '%1$s' için alan açıklaması. (log sayfa boyutu:%3$s)\n\n
-16 %1$5d %2$9s  %3$s %4$s  %5$s\n
-17 Çıktı dosyası '%1$s' açılamadı\n
-18 Veritabanı '%1$s' sayfa boyutu %2$s için geçici yoğunlukları için alan açıklaması.\n\n
-19 Volid Amacı  toplam_sayfa free_pages Vol Name\n\n
-20 Volid Amacı  total_size free_size Vol Name\n\n
-21 LOB alanı açıklaması %1$s\n\n
-22 -------------------------------------------------------------------------------\n
-30 sayfa boyutu %2$s ile veritabanı '%1$s' için özet alan açıklama. (sayfa boyutu log:%3$s)\n\n
-31 Amaç toplam_sayfa used_pages free_pages volume_count\n
-32 Amaç total_size used_size free_size volume_count\n
-33 %1$10s %2$s %3$s %4$s %5$10d\n
-34 -------------------------------------------------------------\n
-40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
-41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
-43 ----------------------------------------------------------------------------------------------------\n
-50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
-51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
-53 -------------------------------------------------------------------------------------------------\n
+10 Sayfa boyutu %2$s ile veritabanı '%1$s' için alan açıklaması. (log sayfa boyutu:%3$s)\n\n
+11 Çıktı dosyası '%1$s' açılamadı\n
+12 LOB alanı açıklaması %1$s\n\n
+20 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+21 type                purpose            volume_count         used_size           free_size           total_size\n
+22 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+30 Tüm hacimler için alan açıklaması:\n
+31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+40 Dosyalar için ayrıntılı alan açıklaması:\n
+41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+50 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Kullanım / veritabanı boş alanı gösterir.\n\
 kullanım: %1$s spacedb [SEÇENEK] database-name\n\
@@ -684,24 +683,6 @@ geçerli seçenekler:\n\
                                gösterge ünitesi (sayfa, mega, giga, tera, insanların okuyabileceği); varsayılan: H\n\
   -s, --summarize              her birim bir amaç için sadece özet görüntüler\n\
   -p, --purpose                Her birimin her amacı (data/index/temp) kullanılan boyutunu görüntülemek\n
-70 type                purpose            volume_count        used_pages          free_pages          total_pages\n
-71 type                purpose            volume_count         used_size           free_size           total_size\n
-72 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-73 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-74 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
-75 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
-80 Space description for all volumes:\n
-81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
-82 volid               type                purpose             used_size           free_size           total_size         volume_name\n
-83 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-84 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-85 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
-90 Detailed space description for files:\n
-91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
-92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
-93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
-100 -----------------------------------------------------------------------------------------------------------------\n
-
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Tahmini Sayfa Sayısı = %1$d\n
@@ -773,7 +754,7 @@ kullanım: %1$s diagdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
-      --emergency              emergency restart; default: none\n\
+      --emergency              acil yeniden başlatma; varsayılan: hiçbir\n\
   -d, --dump-type=TYPE         TYPE of dump\n\
                                -1 tüm dökümü\n\
                                 1 dosya tabloları dökümü\n\
@@ -1097,7 +1078,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: Saat dilimi verileri ile kaynak dosyaları oluşturun paylaşılan kütüphane\n\
         derlenmiş için\n\
-kullanım: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
+kullanım: %s gen_tz -g [new|extend] [database-name] (sadece extend modu için)\n\
 \n\
 geçerli seçenekler:\n\
   -i, --input-folder    Bir IANA saat dilimi sürümünü içeren giriş klasörünün yolunu.\n\
@@ -1109,18 +1090,13 @@ geçerli seçenekler:\n\
                         ayrıca tüm ülkeleri ve zaman dilimi isimleri içeren bir kaynak dosyası\n\
                         oluşturmak (geliştirici kullanılmak üzere tasarlanmıştır, gelecekteki\n\
                         CUBRID sürümleri entegre edilecek).\n\
-                        2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder;new timezones found in the input\n\
-                        files are added; GMT offsets and daylight saving\n\
-                        information is updated (or added, for new timezones);\n\
-                        timezones are never removed if a timezone encoded into\n\
-                        CUBRID is missing from the input files, the associated\n\
-                        data is retrieved from the existing timezone library.\n\
-                        If necessary, when the first phase of extend fails to make\n\
-                        all the data backward compatible an update is performed which\n\
-                        modifies the timezone ids and the date and time info stored in\n\
-                        the tables of the database which contain columns of timezone data\n\
-                        type.\n
+                        2. EXTEND : giriş klasöründen verileri kullanarak, saat diliminin kaynak\n\
+                        dosya (lar) oluşturmak; Giriş dosyalarında bulunan yeni saat dilimleri eklendi;\n\
+                        GMT uzaklıklar ve yaz saati bilgisi güncellenir (ya da yeni saat dilimlerinde  için eklendi);\n\
+                        CUBRID kodlanmış bir saat diliminin girdi dosyaları eksik ise saat dilimlerinde\n\
+                        kaldırıldı asla, ilişkili veriler mevcut saat diliminin kütüphanesinden alınır.\n\
+                        Eğer uzatmanın ilk aşaması başarısız tüm verileri geriye dönük uyumlu yapamaz,\n\
+                        saat dilimi veri türlerine sahip tüm tabloların tüm satırlarını değiştirecektir.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 Verilen saat diliminin İD aralığının dışında. Tüm saat dilimlerini ve bunların İD görmek için -z kullanın.\n

@@ -2063,6 +2063,13 @@ struct tz_region
     unsigned int zone_id;	/* geographical zone id */
   };
 };
+  DB_DEFAULT_CURR_USER = 6
+  DB_DEFAULT_CURRENTDATETIME = 7,
+  DB_DEFAULT_CURRENTTIMESTAMP = 8,
+  DB_DEFAULT_CURRENTTIME = 9,
+  DB_DEFAULT_CURRENTDATE = 10,
+  DB_DEFAULT_SYSTIME = 11,
+  DB_DEFAULT_FORMATTED_SYSDATE = 12,
 
 extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
 extern int db_date_weekday (DB_DATE * date);
@@ -2482,6 +2489,8 @@ extern void db_set_preferred_hosts (const char *hosts);
 extern int db_get_client_type (void);
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
+extern int db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val);
+extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 
 extern DB_OBJECT *db_find_class_of_index (const char *index, DB_CONSTRAINT_TYPE type);
 extern DB_OBJECT *db_find_class (const char *name);

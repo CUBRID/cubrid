@@ -1260,10 +1260,10 @@ $ LOADDB
 1191 独立清空(Stand-alone vacuum) 执行结束.
 1192 值 %1$zu 的精度超过了允许的最大值 %2$d.
 1193 处理的分区表达式的长度超过了允许的最大值(%1$d).
-1194 Unable to check file %1$d|%2$d because lock on class %3$d|%4$d|%5$d is not immediately granted.
-1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Maximum recursions %1$d reached executing CTE.
-1197 Last Error
+1194 无法检查文件 %1$d|%2$d , 因为在类 %3$d|%4$d|%5$d 上的锁未被授权.
+1195 CTE的递归部分不能包含没有GROUP BY子句的聚合函数.
+1196 已达到CTE执行的最大递归次数%1$d.
+1197 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1715,11 +1715,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 非法使用聚集函数.
 293 每一个分区的值都必须是严格递增的.
 294 在本地时区类型的列上不能使用函数或索引筛选(filter indexes).
-295 SELECT INTO is not allowed in subqueries.
-296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
-297 Nested WITH clauses are not supported.
-298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
-299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
+295 子查询中不允许使用SELECT INTO.
+296 CTE名称不明确，有不止一个名称相同的CTE: '%1$s'.
+297 不支持嵌套WITH子句.
+298 递归的CTE'%1$s'必须直接在其递归查询中引用.
+299 CTE'%1$s'错误: 非递归部分和递归部分必须使用UNION ALL连接.
+300 DEFAULT子句中不允许使用子查询.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

@@ -1415,9 +1415,6 @@ logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_H
   assert (from_hdr != NULL);
 
   to_hdr->mvcc_next_id = from_hdr->mvcc_next_id;
-  /* TODO VACUUM_DATA_COMPATIBILITY: ===> */
-  VPID_COPY (&to_hdr->vacuum_data_first_vpid, &from_hdr->vacuum_data_first_vpid);
-  /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
 
   /* Add other attributes that need to be copied */
 
@@ -5799,6 +5796,7 @@ logpb_scan_volume_info (THREAD_ENTRY * thread_p, const char *db_fullname, VOLID 
 	{
 	  if (((*fun) (thread_p, volid, vol_fullname, args)) != NO_ERROR)
 	    {
+	      num_vols = -1;
 	      break;
 	    }
 
@@ -7643,6 +7641,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int i;
   const char *catmsg;
   VOLID volid;
+  VOLID curr_last_perm_volid;
   int error_code = NO_ERROR;
   LOG_PAGEID smallest_pageid;
   int first_arv_num_not_needed;
@@ -7995,8 +7994,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   /* 
    * Record the checkpoint address on every volume header
    */
+  curr_last_perm_volid = xboot_find_last_permanent (thread_p);
 
-  for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID && volid <= xboot_peek_last_permanent (thread_p);
+  for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID && volid <= curr_last_perm_volid;
        volid = fileio_find_next_perm_volume (thread_p, volid))
     {
       /* When volid is greater than boot_Db_parm->last_perm_volid, it means that the volume is now adding. We don't
@@ -8717,7 +8717,9 @@ loop:
 	    {
 	      goto error;
 	    }
+	  disk_lock_extend ();
 	  volid = fileio_find_next_perm_volume (thread_p, volid);
+	  disk_unlock_extend ();
 	}
       else
 	{

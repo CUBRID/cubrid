@@ -1104,64 +1104,51 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 				  int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel, void *args),
 				  void *args)
 {
-  VOLID num_vols = 0;
-  VOLID curr_volid = LOG_DBFIRST_VOLID;
-  char *curr_vol_fullname;
-  VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
-  char next_vol_fullname[PATH_MAX];	/* Next volume name */
+  DKNVOLS num_vols = 0;
   int error_code = NO_ERROR;
 
   if (newvolpath || !use_volinfo
       || (num_vols = logpb_scan_volume_info (thread_p, NULL, volid, LOG_DBFIRST_VOLID, fun, args)) == -1)
     {
-      /* 
-       * Don't use volinfo .. or could not find volinfo
-       */
+      /* Don't use volume info .. or could not find volume info .. or it was bad */
+      VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
+      char next_vol_fullname[PATH_MAX];	/* Next volume name */
+
+      num_vols = 0;
 
       /* First the primary volume, then the rest of the volumes */
-      num_vols = 0;
-      curr_vol_fullname = next_vol_fullname;
-      strcpy (curr_vol_fullname, boot_Db_full_name);
-
       /* 
-       * Do not assume that all the volumes are mounted. This function may be
-       * called to mount the volumes. Thus, request to current volume for the
-       * next volume instead of going directly through the volume identifier.
+       * Do not assume that all the volumes are mounted. This function may be called to mount the volumes.
+       * Thus, request to current volume for the next volume instead of going directly through the volume identifier.
        */
-      do
+      strcpy (next_vol_fullname, boot_Db_full_name);
+      for (next_volid = LOG_DBFIRST_VOLID; next_volid != NULL_VOLID;)
 	{
 	  num_vols++;
-	  if (curr_volid != volid)
+	  if (next_volid != volid)
 	    {
-	      error_code = (*fun) (thread_p, curr_volid, curr_vol_fullname, args);
+	      error_code = (*fun) (thread_p, next_volid, next_vol_fullname, args);
 	      if (error_code != NO_ERROR)
 		{
 		  return error_code;
 		}
 	    }
-	  if (disk_get_link (thread_p, curr_volid, &next_volid, next_vol_fullname) == NULL)
+	  /* update next_volid and next_vol_fullname */
+	  if (disk_get_link (thread_p, next_volid, &next_volid, next_vol_fullname) == NULL)
 	    {
 	      return ER_FAILED;
 	    }
-
-	  curr_volid = next_volid;
 	}
-      while (curr_volid != NULL_VOLID);
 
       if (use_volinfo == true)
 	{
-	  /* 
-	   * The volinfo was not found.. Recreate it with the current information
-	   */
+	  /* The volume info was not found.. Recreate it with the current information */
 	  (void) logpb_recreate_volume_info (thread_p);
 	}
     }
   else
     {
-      /* 
-       * Add the volume that was ignored, as long as it is in the range of a
-       * valid one
-       */
+      /* Add the volume that was ignored, as long as it is in the range of a valid one */
       if (volid != NULL_VOLID && volid >= LOG_DBFIRST_VOLID && volid <= boot_Db_parm->last_volid)
 	{
 	  num_vols++;
@@ -2217,8 +2204,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
-
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
@@ -2297,6 +2282,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
 #endif /* !SERVER_MODE */
+
+  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   /* 
    * Compose the full name of the database and find location of logs
@@ -2379,7 +2366,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      assert_release (false);
       goto error;
     }
 
@@ -3133,7 +3120,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  thread_p->tran_index = save_index;
 
 #if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_CONN_END (-1, NULL);
+	  CUBRID_CONN_END (-1, "NULL");
 #endif /* ENABLE_SYSTEMTAP */
 
 	  return NO_ERROR;
@@ -3157,7 +3144,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	{
 
 #if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_CONN_END (-1, NULL);
+	  CUBRID_CONN_END (-1, "NULL");
 #endif /* ENABLE_SYSTEMTAP */
 
 	  return NO_ERROR;
@@ -3209,21 +3196,12 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
   CSS_CONN_ENTRY *conn;
   LOG_TDES *tdes;
   int client_id;
-  int r;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-      if (thread_p == NULL)
-	{
-	  return;
-	}
-    }
 
   conn = thread_p->conn_entry;
 
-  r = rmutex_lock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
+  /* sboot_notify_unregister_client should hold conn->rmutex. 
+   * Please see the comment of sboot_notify_unregister_client.
+   */
 
   client_id = conn->client_id;
   tdes = LOG_FIND_TDES (tran_index);
@@ -3234,9 +3212,6 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  conn->status = CONN_CLOSING;
 	}
     }
-
-  r = rmutex_unlock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
 }
 #endif /* SERVER_MODE */
 
@@ -4795,7 +4770,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      assert_release (false);
       goto error;
     }
 

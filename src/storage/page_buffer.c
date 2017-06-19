@@ -1318,7 +1318,7 @@ pgbuf_initialize (void)
   pgbuf_Pool.ratio_lru2 = MIN (pgbuf_Pool.ratio_lru2, 1.0f - PGBUF_LRU_ZONE_MIN_RATIO - pgbuf_Pool.ratio_lru1);
   assert (pgbuf_Pool.ratio_lru2 >= PGBUF_LRU_ZONE_MIN_RATIO && pgbuf_Pool.ratio_lru2 <= PGBUF_LRU_ZONE_MAX_RATIO);
   assert ((pgbuf_Pool.ratio_lru1 + pgbuf_Pool.ratio_lru2) >= 0.099f
-	  && (pgbuf_Pool.ratio_lru1 + pgbuf_Pool.ratio_lru2) <= 0.949f);
+	  && (pgbuf_Pool.ratio_lru1 + pgbuf_Pool.ratio_lru2) <= 0.951f);
 
   /* keep page quota parameter initializer first */
   if (pgbuf_initialize_page_quota_parameters () != NO_ERROR)
@@ -3173,11 +3173,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   return victim_cand_count;
 }
 
-/*
- * pgbuf_flush_victim_candidates () - Flush victim candidates
- *   return: NO_ERROR, or ER_code
- *
- */
 /*
  * pgbuf_flush_victim_candidates () - collect & flush victim candidates
  *
@@ -13108,6 +13103,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
        * shared are right below minimum desired size... and flush will not find anything.
        */
       this_prv_target = PGBUF_LRU_LIST_COUNT (lru_list) - (int) (lru_list->quota * 0.9);
+      this_prv_target = MIN (this_prv_target, lru_list->count_lru3);
       if (this_prv_target > 0)
 	{
 	  total_prv_target += this_prv_target;
@@ -13170,6 +13166,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 		{
 		  /* use bcb's over 90% of quota as flush target */
 		  this_prv_target = PGBUF_LRU_LIST_COUNT (lru_list) - (int) (lru_list->quota * 0.9);
+		  this_prv_target = MIN (this_prv_target, lru_list->count_lru3);
 		}
 	      if (this_prv_target > 0)
 		{

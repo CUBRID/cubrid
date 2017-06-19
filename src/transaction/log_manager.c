@@ -1649,6 +1649,9 @@ log_final (THREAD_ENTRY * thread_p)
 
   LOG_CS_ENTER (thread_p);
 
+  /* reset log_Gl.rcv_phase */
+  log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
+
   if (log_Gl.trantable.area == NULL)
     {
       LOG_CS_EXIT (thread_p);
@@ -3861,7 +3864,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	{
 	  /* we should be doing rollback or undo recovery */
 	  assert (tdes->state == TRAN_UNACTIVE_ABORTED || tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED
-		  || (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE && is_rv_finish_postpone));
+		  || (is_rv_finish_postpone && (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
+						|| tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)));
 	}
       else if (log_record->type == LOG_SYSOP_END_LOGICAL_UNDO || log_record->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{

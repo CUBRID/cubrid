@@ -784,6 +784,7 @@ EXPORTS
     catcls_get_db_collation
     lang_get_collation
     lang_init
+    db_default_expression_string
 ; db private
 	db_private_alloc_debug
 	db_private_alloc_release

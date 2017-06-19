@@ -151,6 +151,9 @@ struct file_header
 
   /* reserved area for future extension */
   INT32 reserved0;
+  INT32 reserved1;
+  INT32 reserved2;
+  INT32 reserved3;
 };
 
 /* Disk size of file header. */
@@ -527,6 +530,13 @@ struct file_track_mark_heap_deleted_context
   bool is_undo;
 };
 
+typedef struct file_tracker_reuse_heap_context FILE_TRACKER_REUSE_HEAP_CONTEXT;
+struct file_tracker_reuse_heap_context
+{
+  OID class_oid;
+  HFID *hfid_out;
+};
+
 typedef int (*FILE_TRACK_ITEM_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 				     int index_item, bool * stop, void *args);
 
@@ -883,6 +893,9 @@ file_header_init (FILE_HEADER * fhead)
   fhead->offset_to_user_page_ftab = NULL_OFFSET;
 
   fhead->reserved0 = 0;
+  fhead->reserved1 = 0;
+  fhead->reserved2 = 0;
+  fhead->reserved3 = 0;
 }
 
 /*
@@ -3038,19 +3051,24 @@ file_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npage
  * return	  : Error code
  * thread_p (in)  : Thread entry
  * reuse_oid (in) : Reuse slots true or false
+ * class_oid (in) : Class identifier
  * vfid (out)	  : File identifier
  *
  * todo: add tablespace.
  */
 int
-file_create_heap (THREAD_ENTRY * thread_p, bool reuse_oid, VFID * vfid)
+file_create_heap (THREAD_ENTRY * thread_p, bool reuse_oid, const OID * class_oid, VFID * vfid)
 {
   FILE_DESCRIPTORS des;
   FILE_TYPE file_type = reuse_oid ? FILE_HEAP_REUSE_SLOTS : FILE_HEAP;
 
+  assert (class_oid != NULL);
+
   /* it's done this way because of annoying Valgrind complaints: */
   memset (&des, 0, sizeof (des));
-  /* descriptor will be updated after create, no point in setting it here. */
+  /* set class_oid here */
+  des.heap.class_oid = *class_oid;
+  /* hfid will be updated after create */
 
   return file_create_with_npages (thread_p, file_type, 1, &des, vfid);
 }
@@ -3338,6 +3356,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
       /* we really have to have the VFID in the same volume as the first allocated page. this means we cannot change
        * volume when we look for a valid VFID. */
       VOLID first_volid = vsids_reserved[0].volid;
+      bool is_file_dropped;
 
       for (vsid_iter = vsids_reserved;
 	   vsid_iter < vsids_reserved + n_sectors && VFID_ISNULL (&found_vfid)
@@ -3347,7 +3366,14 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	  for (vfid_iter.fileid = SECTOR_FIRST_PAGEID (vsid_iter->sectid);
 	       vfid_iter.fileid <= SECTOR_LAST_PAGEID (vsid_iter->sectid); vfid_iter.fileid++)
 	    {
-	      if (!vacuum_is_file_dropped (thread_p, &vfid_iter, tran_mvccid))
+	      error_code = vacuum_is_file_dropped (thread_p, &is_file_dropped, &vfid_iter, tran_mvccid);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit;
+		}
+
+	      if (is_file_dropped == false)
 		{
 		  /* Good we found a file ID that is not considered dropped. */
 		  found_vfid = vfid_iter;
@@ -3431,6 +3457,9 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   fhead->offset_to_user_page_ftab = NULL_OFFSET;
 
   fhead->reserved0 = 0;
+  fhead->reserved1 = 0;
+  fhead->reserved2 = 0;
+  fhead->reserved3 = 0;
 
   /* start with a negative empty sector (because we have allocated header). */
   fhead->n_sector_empty--;
@@ -9703,22 +9732,31 @@ file_rv_tracker_reuse_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * file_tracker_item_reuse_heap () - reuse heap file if marked as deleted
+ * file_tracker_item_reuse_heap () - reuse heap file if marked as deleted. at the same time, update file descriptor in
+ *                                   file header (descriptor update must happen with tracker protection to provide
+ *                                   consistent checks).s
  *
  * return            : error code
  * thread_p (in)     : thread entry
  * page_of_item (in) : page of item
  * extdata (in)      : extensible data
  * index_item (in)   : index of item
- * args (out)        : reused file identifier
+ * args (in/out)     : FILE_TRACKER_REUSE_HEAP_CONTEXT *
  */
 static int
 file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 			      int index_item, bool * stop, void *args)
 {
   FILE_TRACK_ITEM *item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
-  VFID *vfid;
+  FILE_TRACKER_REUSE_HEAP_CONTEXT *context = (FILE_TRACKER_REUSE_HEAP_CONTEXT *) args;
   LOG_LSA save_lsa;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  FILE_DESCRIPTORS des_new;
+  int error_code = NO_ERROR;
+
+  assert (log_check_system_op_is_started (thread_p));
 
   if (item->type != (INT16) FILE_HEAP)
     {
@@ -9729,42 +9767,97 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
       return NO_ERROR;
     }
 
-  /* reuse this heap */
-  vfid = (VFID *) args;
-  vfid->volid = item->volid;
-  vfid->fileid = item->fileid;
+  /* get vfid */
+  context->hfid_out->vfid.volid = item->volid;
+  context->hfid_out->vfid.fileid = item->fileid;
 
+  /* reuse this heap. but we need to update its descriptor first. */
+  FILE_GET_HEADER_VPID (&context->hfid_out->vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
+    }
+  fhead = (FILE_HEADER *) page_fhead;
+  assert (fhead->type == FILE_HEAP || fhead->type == FILE_HEAP_REUSE_SLOTS);
+  assert (VFID_EQ (&context->hfid_out->vfid, &fhead->self));
+  assert (VFID_EQ (&context->hfid_out->vfid, &fhead->descriptor.heap.hfid.vfid));
+  file_header_sanity_check (thread_p, fhead);
+
+  /* get hfid */
+  *context->hfid_out = fhead->descriptor.heap.hfid;
+#if !defined (NDEBUG)
+  {
+    /* safeguard: check hfid & sticky first page match */
+    VPID vpid_heap_header = VPID_INITIALIZER;
+    error_code = file_get_sticky_first_page (thread_p, &context->hfid_out->vfid, &vpid_heap_header);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	goto exit;
+      }
+    assert (context->hfid_out->vfid.volid == vpid_heap_header.volid);
+    assert (context->hfid_out->hpgid == vpid_heap_header.pageid);
+  }
+#endif /* !NDEBUG */
+
+  /* log & update class_oid */
+  des_new = fhead->descriptor;
+  des_new.heap.class_oid = context->class_oid;
+  log_append_undoredo_data2 (thread_p, RVFL_FILEDESC_UPD, NULL, page_fhead,
+			     (PGLENGTH) ((char *) &fhead->descriptor - page_fhead), sizeof (fhead->descriptor),
+			     sizeof (des_new), &fhead->descriptor, &des_new);
+  fhead->descriptor = des_new;
+  pgbuf_set_dirty_and_free (thread_p, page_fhead);
+
+  /* now update mark deleted flag in tracker item */
   save_lsa = *pgbuf_get_lsa (page_of_item);
 
   item->metadata.heap.is_marked_deleted = false;
-  log_append_undoredo_data2 (thread_p, RVFL_TRACKER_HEAP_REUSE, NULL, page_of_item, index_item, sizeof (*vfid), 0, vfid,
-			     NULL);
+  log_append_undoredo_data2 (thread_p, RVFL_TRACKER_HEAP_REUSE, NULL, page_of_item, index_item,
+			     sizeof (context->hfid_out->vfid), 0, &context->hfid_out->vfid, NULL);
   pgbuf_set_dirty (thread_p, page_of_item, DONT_FREE);
 
   file_log ("file_tracker_item_reuse_heap", "reuse heap file %d|%d; tracker page %d|%d, prev_lsa = %lld|%d, "
-	    "crt_lsa = %lld|%d, item at pos %d ", VFID_AS_ARGS (vfid), PGBUF_PAGE_MODIFY_ARGS (page_of_item, &save_lsa),
-	    index_item);
+	    "crt_lsa = %lld|%d, item at pos %d ", VFID_AS_ARGS (&context->hfid_out->vfid),
+	    PGBUF_PAGE_MODIFY_ARGS (page_of_item, &save_lsa), index_item);
 
   /* stop looking */
   *stop = true;
-  return NO_ERROR;
+  assert (error_code == NO_ERROR);
+
+exit:
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+  return error_code;
 }
 
 /*
  * file_tracker_reuse_heap () - search for heap file marked as deleted and reuse.
  *
- * return        : error code
- * thread_p (in) : thread entry
- * vfid_out (in) : VFID of reused file or NULL VFID if no file was found
+ * return         : error code
+ * thread_p (in)  : thread entry
+ * class_oid (in) : class identifier for new heap file
+ * hfid_out (out) : HFID of reused file or NULL HFID if no file was found
+ *
+ * note: file descriptor will also be updated if heap file is reused
  */
 int
-file_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out)
+file_tracker_reuse_heap (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out)
 {
-  assert (vfid_out != NULL);
+  FILE_TRACKER_REUSE_HEAP_CONTEXT context;
 
-  VFID_SET_NULL (vfid_out);
+  assert (hfid_out != NULL);
+  assert (class_oid != NULL);
 
-  return file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_reuse_heap, vfid_out);
+  HFID_SET_NULL (hfid_out);
+  context.hfid_out = hfid_out;
+  context.class_oid = *class_oid;
+
+  return file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_reuse_heap, &context);
 }
 
 /*
@@ -10163,15 +10256,6 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       break;
     }
   pgbuf_unfix (thread_p, page_fhead);
-
-  /* TODO FILE_MANAGER_COMPATIBILITY: ===> */
-  if (class_oid->pageid == 0 && class_oid->volid == 0 && class_oid->slotid == 0)
-    {
-      /* for older databases, the class_oid for FILE_MULTIPAGE_OBJECT_HEAP and FILE_BTREE_OVERFLOW_KEY is 0|0|0. */
-      *stop = true;
-      return NO_ERROR;
-    }
-  /* TODO FILE_MANAGER_COMPATIBILITY: <=== */
 
   if (OID_ISNULL (class_oid))
     {
