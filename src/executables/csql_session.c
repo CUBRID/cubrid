@@ -760,7 +760,7 @@ csql_killtran (const char *argument)
 	  for (i = 0; i < info->num_trans; i++)
 	    {
 	      fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_FORMAT), info->tran[i].tran_index,
-		       tran_get_tranlist_state_name ((TRAN_STATE) info->tran[i].state), info->tran[i].db_user,
+		       tran_get_tranlist_state_name (info->tran[i].state), info->tran[i].db_user,
 		       info->tran[i].host_name, info->tran[i].process_id, info->tran[i].program_name);
 	    }
 
@@ -779,7 +779,7 @@ csql_killtran (const char *argument)
 	    {
 	      fprintf (csql_Output_fp, csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
 	      fprintf (csql_Output_fp, csql_get_message (CSQL_KILLTRAN_FORMAT), info->tran[i].tran_index,
-		       tran_get_tranlist_state_name ((TRAN_STATE) info->tran[i].state), info->tran[i].db_user,
+		       tran_get_tranlist_state_name (info->tran[i].state), info->tran[i].db_user,
 		       info->tran[i].host_name, info->tran[i].process_id, info->tran[i].program_name);
 
 	      if (thread_kill_tran_index (info->tran[i].tran_index, info->tran[i].db_user, info->tran[i].host_name,

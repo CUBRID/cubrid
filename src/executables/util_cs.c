@@ -1589,7 +1589,7 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
   if (dump_level == TRANDUMP_FULL_INFO)
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_FULL_INFO_ENTRY),
-	       tran_info->tran_index, tran_get_tranlist_state_name ((TRAN_STATE) tran_info->state), tran_info->db_user,
+	       tran_info->tran_index, tran_get_tranlist_state_name (tran_info->state), tran_info->db_user,
 	       tran_info->host_name, tran_info->process_id, tran_info->program_name,
 	       tran_info->query_exec_info.query_time, tran_info->query_exec_info.tran_time, (buf == NULL ? "-1" : buf),
 	       ((tran_info->query_exec_info.sql_id) ? tran_info->query_exec_info.sql_id : "*** empty ***"),
@@ -1598,7 +1598,7 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
   else if (dump_level == TRANDUMP_QUERY_INFO)
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_QUERY_INFO_ENTRY),
-	       tran_info->tran_index, tran_get_tranlist_state_name ((TRAN_STATE) tran_info->state),
+	       tran_info->tran_index, tran_get_tranlist_state_name (tran_info->state),
 	       tran_info->process_id, tran_info->program_name, tran_info->query_exec_info.query_time,
 	       tran_info->query_exec_info.tran_time, (buf == NULL ? "-1" : buf),
 	       ((tran_info->query_exec_info.sql_id) ? tran_info->query_exec_info.sql_id : "*** empty ***"),
@@ -1607,7 +1607,7 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
   else
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_SUMMARY_ENTRY),
-	       tran_info->tran_index, tran_get_tranlist_state_name ((TRAN_STATE) tran_info->state), tran_info->db_user,
+	       tran_info->tran_index, tran_get_tranlist_state_name (tran_info->state), tran_info->db_user,
 	       tran_info->host_name, tran_info->process_id, tran_info->program_name);
     }
 

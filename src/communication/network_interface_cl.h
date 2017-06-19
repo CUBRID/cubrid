@@ -48,7 +48,7 @@ typedef struct one_tran_info ONE_TRAN_INFO;
 struct one_tran_info
 {
   int tran_index;
-  int state;
+  TRAN_STATE state;
   int process_id;
   char *db_user;
   char *program_name;

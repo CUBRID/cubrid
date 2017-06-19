@@ -7549,25 +7549,31 @@ logtb_get_trans_info (bool include_query_exec_info)
   info->include_query_exec_info = include_query_exec_info;
   for (i = 0; i < num_trans; i++)
     {
-      if ((ptr = or_unpack_int (ptr, &info->tran[i].tran_index)) == NULL
-	  || (ptr = or_unpack_int (ptr, &info->tran[i].state)) == NULL
-	  || (ptr = or_unpack_int (ptr, &info->tran[i].process_id)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].db_user)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].program_name)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].login_name)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].host_name)) == NULL)
+      int unpack_int_value;
+      ptr = or_unpack_int (ptr, &info->tran[i].tran_index);
+      ptr = or_unpack_int (ptr, &unpack_int_value);
+      info->tran[i].state = (TRAN_STATE) unpack_int_value;
+      ptr = or_unpack_int (ptr, &info->tran[i].process_id);
+      ptr = or_unpack_string (ptr, &info->tran[i].db_user);
+      ptr = or_unpack_string (ptr, &info->tran[i].program_name);
+      ptr = or_unpack_string (ptr, &info->tran[i].login_name);
+      ptr = or_unpack_string (ptr, &info->tran[i].host_name);
+      if (ptr == NULL)
 	{
+	  assert (false);
 	  goto error;
 	}
 
       if (include_query_exec_info)
 	{
-	  if ((ptr = or_unpack_float (ptr, &info->tran[i].query_exec_info.query_time)) == NULL
-	      || (ptr = or_unpack_float (ptr, &info->tran[i].query_exec_info.tran_time)) == NULL
-	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.wait_for_tran_index_string)) == NULL
-	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.query_stmt)) == NULL
-	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.sql_id)) == NULL)
+	  ptr = or_unpack_float (ptr, &info->tran[i].query_exec_info.query_time);
+	  ptr = or_unpack_float (ptr, &info->tran[i].query_exec_info.tran_time);
+	  ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.wait_for_tran_index_string);
+	  ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.query_stmt);
+	  ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.sql_id);
+	  if (ptr == NULL)
 	    {
+	      assert (false);
 	      goto error;
 	    }
 	  OR_UNPACK_XASL_ID (ptr, &info->tran[i].query_exec_info.xasl_id);
