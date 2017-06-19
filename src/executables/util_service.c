@@ -341,7 +341,6 @@ make_exec_abspath (char *buf, int buf_len, char *cmd)
 {
   buf[0] = '\0';
 
-
   (void) envvar_bindir_file (buf, buf_len, cmd);
 
   return buf;
@@ -426,7 +425,6 @@ print_message (FILE * output, int message_id, ...)
   const char *format;
 
   format = utility_get_generic_message (message_id);
-
   va_start (arg_list, message_id);
   vfprintf (output, format, arg_list);
   va_end (arg_list);
@@ -4262,6 +4260,7 @@ ret:
   return status;
 }
 #endif
+
 /*
  * process_heartbeat_deregister -
  *
@@ -4629,6 +4628,7 @@ ret:
   return status;
 }
 #endif
+
 /*
  * process_heartbeat -
  *
