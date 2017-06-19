@@ -2563,7 +2563,6 @@ csql_exit (int exit_status)
   longjmp (csql_Exit_env, 1);
 }
 
-
 /*
  * csql() - "main" interface function for the csql interpreter
  *   return: EXIT_SUCCESS, EXIT_FAILURE
@@ -2829,8 +2828,9 @@ csql_set_column_width_info (const char *column_name, int column_width)
 
   if (csql_column_width_info_list_index >= csql_column_width_info_list_size)
     {
-      temp_list = (CSQL_COLUMN_WIDTH_INFO *)
-	realloc (csql_column_width_info_list, sizeof (CSQL_COLUMN_WIDTH_INFO) * (csql_column_width_info_list_size * 2));
+      temp_list =
+	(CSQL_COLUMN_WIDTH_INFO *) realloc (csql_column_width_info_list,
+					    sizeof (CSQL_COLUMN_WIDTH_INFO) * (csql_column_width_info_list_size * 2));
       if (temp_list == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
