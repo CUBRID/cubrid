@@ -26893,13 +26893,18 @@ error:
     {
       pgbuf_unfix_and_init (thread_p, new_page2);
     }
+  if (is_system_op_started)
+    {
+      /*
+       * Abort system operation, before after unfixing newpage1 and newpage2 and before unfixing child page.
+       * Thus, new_page1 and newpage2 are deallocated during abort, so fix count must be 0.
+       * Also, we have to be sure that no other transaction modify the child page, in order to correctly restore it.
+       */
+      log_sysop_abort (thread_p);
+    }
   if (child_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, child_page);
-    }
-  if (is_system_op_started)
-    {
-      log_sysop_abort (thread_p);
     }
   assert (*advance_to_page == NULL);
   assert (error_code != NO_ERROR);
@@ -30280,6 +30285,12 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 error:
   assert_release (error_code != NO_ERROR);
 
+  if (is_system_op_started)
+    {
+      /* Abort system operation, before unfixing the pages to be sure that no other transaction modify the pages. */
+      log_sysop_abort (thread_p);
+    }
+
   /* Unfix used pages. */
   assert (*advance_to_page == NULL);
   if (left_page != NULL)
@@ -30293,11 +30304,6 @@ error:
   if (child_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, child_page);
-    }
-  if (is_system_op_started)
-    {
-      /* Abort system operation. */
-      log_sysop_abort (thread_p);
     }
 
   return error_code;
