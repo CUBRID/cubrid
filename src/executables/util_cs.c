@@ -2412,6 +2412,9 @@ check_server_ha_mode (void)
 /*
  * changemode() - changemode main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
+ *
+ * TODO: this is really confusing. changemode utility actually changes HA state and not HA mode. They are two different
+ *       things.
  */
 int
 changemode (UTIL_FUNCTION_ARG * arg)
@@ -2428,7 +2431,8 @@ changemode (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   char *mode_name;
-  int mode = -1, error;
+  int error;
+  HA_SERVER_STATE ha_state = HA_SERVER_STATE_NA;
   bool force;
   int timeout;
 
@@ -2460,9 +2464,10 @@ changemode (UTIL_FUNCTION_ARG * arg)
   /* check mode_name option argument */
   if (mode_name != NULL)
     {
-      if (changemode_keyword (&mode, &mode_name) != NO_ERROR)
+      int keyval = -1;
+      if (changemode_keyword (&keyval, &mode_name) != NO_ERROR)
 	{
-	  if (sscanf (mode_name, "%d", &mode) != 1)
+	  if (sscanf (mode_name, "%d", &ha_state) != 1)
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message
 				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
@@ -2470,7 +2475,9 @@ changemode (UTIL_FUNCTION_ARG * arg)
 	      goto error_exit;
 	    }
 	}
-      if (!(mode == HA_SERVER_STATE_ACTIVE || mode == HA_SERVER_STATE_STANDBY || mode == HA_SERVER_STATE_MAINTENANCE))
+      ha_state = (HA_SERVER_STATE) keyval;
+      if (!(ha_state == HA_SERVER_STATE_ACTIVE || ha_state == HA_SERVER_STATE_STANDBY
+	    || ha_state == HA_SERVER_STATE_MAINTENANCE))
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
@@ -2506,18 +2513,19 @@ changemode (UTIL_FUNCTION_ARG * arg)
 
   if (mode_name == NULL)
     {
-      /* display the value of current mode */
-      mode = boot_change_ha_mode ((HA_SERVER_STATE) HA_SERVER_MODE_NA, false, timeout);	//vapa!!!
+      /* display the value of current ha_state */
+      ha_state = boot_change_ha_mode (HA_SERVER_STATE_NA, false, timeout);
     }
   else
     {
-      /* change server's HA mode */
-      mode = boot_change_ha_mode ((HA_SERVER_STATE) mode, force, timeout);
+      /* change server's HA state */
+      ha_state = boot_change_ha_mode (ha_state, force, timeout);
     }
-  if (mode != HA_SERVER_MODE_NA)
+  if (ha_state != HA_SERVER_MODE_NA)
     {
+      int keyval = (int) ha_state;
       mode_name = NULL;
-      if (changemode_keyword (&mode, &mode_name) != NO_ERROR)
+      if (changemode_keyword (&keyval, &mode_name) != NO_ERROR)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
 		   (mode_name ? mode_name : "unknown"));
@@ -2528,6 +2536,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_SERVER_MODE),
 		   database_name, mode_name);
 	}
+      ha_state = (HA_SERVER_STATE) keyval;
     }
   else
     {
@@ -3220,6 +3229,7 @@ backupdb_sig_interrupt_handler (int sig_no)
 STATIC_INLINE char *
 spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit)
 {
+#define UNIT_STR(un) (((un) == SPACEDB_SIZE_UNIT_MBYTES) ? 'M' : ((un) == SPACEDB_SIZE_UNIT_GBYTES) ? 'G' : 'T')
   int pgsize, i;
   double size;
 
@@ -3245,21 +3255,20 @@ spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit
 		  break;
 		}
 	    }
+	  sprintf (buf, "%9.1f %c", size, UNIT_STR (i));
 	}
       else
 	{
-	  i = size_unit;
-	  for (; size_unit > SPACEDB_SIZE_UNIT_PAGE; (*((int *) &size_unit))--)
+	  for (i = size_unit; i > (int) SPACEDB_SIZE_UNIT_PAGE; i--)
 	    {
 	      size /= 1024;
 	    }
+	  sprintf (buf, "%9.1f %c", size, UNIT_STR (size_unit));
 	}
-
-      sprintf (buf, "%9.1f %c", size,
-	       (i == SPACEDB_SIZE_UNIT_MBYTES) ? 'M' : (i == SPACEDB_SIZE_UNIT_GBYTES) ? 'G' : 'T');
     }
 
   return buf;
+#undef UNIT_STR
 }
 
 /*
