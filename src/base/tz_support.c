@@ -762,13 +762,17 @@ tz_get_session_tz_region (TZ_REGION * tz_region)
 {
   TZ_REGION *session_tz_region;
 
-#if !defined(SERVER_MODE)
+#if defined(CS_MODE)
   session_tz_region = tz_get_client_tz_region_session ();
   *tz_region = *session_tz_region;
-#else
+#else /* SERVER or SA_MODE */
   if (BO_IS_SERVER_RESTARTED ())
     {
+#if defined(SERVER_MODE)
       session_tz_region = tz_get_server_tz_region_session ();
+#else
+      session_tz_region = tz_get_client_tz_region_session ();
+#endif /* SERVER_MODE */
       if (session_tz_region != NULL)
 	{
 	  *tz_region = *session_tz_region;
@@ -783,7 +787,7 @@ tz_get_session_tz_region (TZ_REGION * tz_region)
     {
       *tz_region = tz_Region_system;
     }
-#endif
+#endif /* CS_MODE */
 }
 
 /*
