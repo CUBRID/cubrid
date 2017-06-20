@@ -7976,7 +7976,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	      lock_select_deadlock_victim (thread_p, s, t);
 	      if (victim_count >= LK_MAX_VICTIM_COUNT)
 		{
-		  goto final;
+		  goto final_;
 		}
 	    }
 	  else
@@ -7988,7 +7988,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	}
     }
 
-final:
+final_:
 
 #if defined(ENABLE_SYSTEMTAP)
   if (victim_count > 0)

@@ -267,7 +267,7 @@ extern PR_TYPE *pr_type_from_id (DB_TYPE id);
 extern PR_TYPE *pr_find_type (const char *name);
 extern const char *pr_type_name (DB_TYPE id);
 
-extern int pr_is_set_type (DB_TYPE type);
+extern bool pr_is_set_type (DB_TYPE type);
 extern int pr_is_string_type (DB_TYPE type);
 extern int pr_is_prefix_key_type (DB_TYPE type);
 extern int pr_is_variable_type (DB_TYPE type);

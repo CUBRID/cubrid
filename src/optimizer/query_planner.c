@@ -9926,7 +9926,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   key_notnull = qo_validate_index_term_notnull (env, index_entryp);
   if (key_notnull)
     {
-      goto final;
+      goto final_;
     }
 
   pos = QO_ENV_PT_TREE (env)->info.query.order_by->info.sort_spec.pos_descr.pos_no;
@@ -9958,7 +9958,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   key_notnull = qo_validate_index_attr_notnull (env, index_entryp, node);
   if (key_notnull)
     {
-      goto final;
+      goto final_;
     }
 
   /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
@@ -9968,7 +9968,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
    * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
    * have an OR following we have a winner again! (because we cannot have a null value). 
    */
-final:
+final_:
   if (key_notnull)
     {
       return 1;

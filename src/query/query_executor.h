@@ -544,7 +544,7 @@ struct buildlist_proc_node
   DB_VALUE *a_instnum_val;	/* inst_num() value for query with analytic */
   int a_instnum_flag;		/* inst_num() flag for query with analytic */
   int g_grbynum_flag;		/* stop or continue grouping? */
-  int g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
+  bool g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
   int g_hash_eligible;		/* eligible for hash aggregate evaluation */
   int g_output_first_tuple;	/* output first tuple of each group */
   int g_hkey_size;		/* group by key size */
@@ -1059,7 +1059,7 @@ extern QFILE_LIST_ID *qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * 
 extern int qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				    UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 extern int qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
-extern int qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final);
+extern int qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool is_final);
 extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT * pred_filter,
 				     bool dealloc_dbvalues);
 extern int qexec_clear_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * pred_filter);

@@ -15254,15 +15254,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 	  while (node != NULL)
 	    {
-	      PT_NODE *final, *to_ex_list = NULL, *save_next;
+	      PT_NODE *final_node, *to_ex_list = NULL, *save_next;
 
 	      /* save next and unlink node */
 	      save_next = node->next;
 	      node->next = NULL;
 
 	      /* get final select list node */
-	      final = pt_to_analytic_final_node (parser, node, &to_ex_list, &buildlist->a_instnum_flag);
-	      if (final == NULL)
+	      final_node = pt_to_analytic_final_node (parser, node, &to_ex_list, &buildlist->a_instnum_flag);
+	      if (final_node == NULL)
 		{
 		  /* error was set somewhere - clean up */
 		  parser_free_tree (parser, node);
@@ -15274,7 +15274,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 	      /* append nodes to list */
 	      select_list_ex = parser_append_node (to_ex_list, select_list_ex);
-	      select_list_final = parser_append_node (final, select_list_final);
+	      select_list_final = parser_append_node (final_node, select_list_final);
 
 	      /* modify sort spec adjustment counter to account for new nodes */
 	      assert (final_idx < final_count);

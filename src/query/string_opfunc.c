@@ -251,7 +251,7 @@ static int db_str_to_millisec (const char *str);
 static void copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...);
 static DB_BIGINT get_single_unit_value (char *expr, DB_BIGINT int_val);
 static int db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr,
-					  const int unit, bool is_add);
+					  const int unit, int is_add);
 static int db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * db_days,
 					  bool is_add);
 static int db_get_datetime_from_dbvalue (const DB_VALUE * src_date, int *year, int *month, int *day, int *hour,
@@ -20450,7 +20450,7 @@ get_single_unit_value (char *expr, DB_BIGINT int_val)
  */
 static int
 db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr, const int unit,
-			       bool is_add)
+			       int is_add)
 {
   int sign = 0;
   int type = 0;			/* 1 -> time, 2 -> date, 3 -> both */
@@ -21316,7 +21316,7 @@ error:
 int
 db_date_add_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr, const int unit)
 {
-  return db_date_add_sub_interval_expr (result, date, expr, unit, true);
+  return db_date_add_sub_interval_expr (result, date, expr, unit, 1);
 }
 
 /*
@@ -21325,7 +21325,7 @@ db_date_add_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VA
  * Arguments:
  *         result(out):
  *         date(in): source date
- *         expr(in): to be substracted interval
+ *         expr(in): to be subtracted interval
  *         unit(in): unit of interval expr
  *
  * Returns: int
@@ -21335,7 +21335,7 @@ db_date_add_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VA
 int
 db_date_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr, const int unit)
 {
-  return db_date_add_sub_interval_expr (result, date, expr, unit, false);
+  return db_date_add_sub_interval_expr (result, date, expr, unit, 0);
 }
 
 /*

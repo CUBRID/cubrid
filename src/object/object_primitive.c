@@ -9345,17 +9345,10 @@ pr_type_name (DB_TYPE id)
  *    Since there is an unfortunate amount of special processing for
  *    the set types, this takes care of comparing against all three types.
  */
-int
+bool
 pr_is_set_type (DB_TYPE type)
 {
-  int status = 0;
-
-  if (TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ)
-    {
-      status = 1;
-    }
-
-  return status;
+  return TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ;
 }
 
 /*
