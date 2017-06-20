@@ -22680,8 +22680,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	      if (attrepr->default_value.default_expr.default_expr_op == T_TO_CHAR)
 		{
-		  default_expr_op_string =
-		    qdump_operator_type_string ((OPERATOR_TYPE) attrepr->default_value.default_expr.default_expr_op);
+		  default_expr_op_string = qdump_operator_type_string (T_TO_CHAR);
 		  default_expr_format = attrepr->default_value.default_expr.default_expr_format;
 
 		  len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
@@ -24061,7 +24060,7 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
       if (res == BH_LT)
 	{
 	  /* skip this tuple */
-	  return (TOPN_STATUS) NO_ERROR;	//vapa!!!
+	  return TOPN_SUCCESS;
 	}
       break;
     }
