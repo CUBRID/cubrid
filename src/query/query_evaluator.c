@@ -1773,10 +1773,6 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 	case B_IS_NOT:
 	  {
 	    DB_LOGICAL result_lhs, result_rhs;
-	    DB_LOGICAL _v_true, _v_false;
-
-	    _v_true = (pr->pe.pred.bool_op == B_IS) ? V_TRUE : V_FALSE;
-	    _v_false = (DB_LOGICAL) (V_TRUE - _v_true);	//vapa!!!
 
 	    result_lhs = eval_pred (thread_p, pr->pe.pred.lhs, vd, obj_oid);
 	    result_rhs = eval_pred (thread_p, pr->pe.pred.rhs, vd, obj_oid);
@@ -1787,11 +1783,11 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 	      }
 	    else if (result_lhs == result_rhs)
 	      {
-		result = _v_true;
+		result = (pr->pe.pred.bool_op == B_IS) ? V_TRUE : V_FALSE;
 	      }
 	    else
 	      {
-		result = _v_false;
+		result = (pr->pe.pred.bool_op == B_IS) ? V_FALSE : V_TRUE;
 	      }
 	  }
 	  break;
