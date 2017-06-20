@@ -158,7 +158,7 @@ ISS_OP_TYPE;
 typedef struct index_skip_scan INDEX_SKIP_SCAN;
 struct index_skip_scan
 {
-  int use;
+  bool use;
   ISS_OP_TYPE current_op;	/* one of the ISS_OP_ flags */
   KEY_RANGE *skipped_range;	/* range used for iterating the distinct values on the first index column */
 };

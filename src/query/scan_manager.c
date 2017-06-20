@@ -174,11 +174,11 @@ static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * is
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
 					      FILTER_INFO * data_filter, TRAN_ISOLATION isolation);
 static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -234,7 +234,7 @@ scan_init_iss (INDX_SCAN_ID * isidp)
       return NO_ERROR;
     }
 
-  iss->use = isidp->indx_info->use_iss;
+  iss->use = isidp->indx_info->use_iss != 0;
 
   if (!iss->use)
     {
@@ -4816,7 +4816,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_HEAP_PAGE_SCAN:
-      status = (SCAN_CODE) scan_next_heap_page_scan (thread_p, scan_id);
+      status = scan_next_heap_page_scan (thread_p, scan_id);
       break;
 
     case S_CLASS_ATTR_SCAN:
@@ -4828,11 +4828,11 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_INDX_KEY_INFO_SCAN:
-      status = (SCAN_CODE) scan_next_index_key_info_scan (thread_p, scan_id);
+      status = scan_next_index_key_info_scan (thread_p, scan_id);
       break;
 
     case S_INDX_NODE_INFO_SCAN:
-      status = (SCAN_CODE) scan_next_index_node_info_scan (thread_p, scan_id);
+      status = scan_next_index_node_info_scan (thread_p, scan_id);
       break;
 
     case S_LIST_SCAN:
@@ -5263,7 +5263,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  * thread_p (in) : Thread entry.
  * scan_id (in)	 : Scan data.
  */
-static int
+static SCAN_CODE
 scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   HEAP_PAGE_SCAN_ID *hpsidp = NULL;
@@ -6032,7 +6032,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
  * thread_p (in) : Thread entry.
  * scan_id (in)  : Scan data.
  */
-static int
+static SCAN_CODE
 scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDX_SCAN_ID *isidp = NULL;
@@ -6087,7 +6087,7 @@ scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  * thread_p (in) : Thread entry.
  * scan_id (in)	 : Scan data.
  */
-static int
+static SCAN_CODE
 scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDEX_NODE_SCAN_ID *insidp = NULL;
