@@ -231,8 +231,8 @@ static int make_number (char *src, char *last_src, INTL_CODESET codeset, char *t
 			const int precision, const int scale, const INTL_LANG number_lang_id);
 static int get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_position, char **next_fsp,
 			     INTL_CODESET codeset);
-static int get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *format_length,
-			    char **next_pos);
+static TIMESTAMP_FORMAT get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *format_length,
+					 char **next_pos);
 static int get_cur_year (void);
 static int get_cur_month (void);
 /* utility functions */
@@ -5796,8 +5796,7 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 		{
 		  cmp =
 		    QSTR_MATCH (coll_id, (const unsigned char *) elem_start, CAST_BUFLEN (stack_ptr - elem_start),
-				(const unsigned char *) needle_str, needle_size, (const unsigned char *) false, false,
-				&matched_stack_size);
+				(const unsigned char *) needle_str, needle_size, NULL, false, &matched_stack_size);
 		  if (cmp == 0 && matched_stack_size == CAST_BUFLEN (stack_ptr - elem_start))
 		    {
 		      DB_MAKE_INT (result, position);
@@ -8754,7 +8753,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 {
   int src_padded_length, copy_length, copy_size;
   int alloc_size;
-  char *end_of_string;
+  unsigned char *end_of_string;
   int error_status = NO_ERROR;
 
   *data_status = DATA_STATUS_OK;
@@ -8945,14 +8944,14 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 	}
 
       end_of_string =
-	(char *) qstr_pad_string ((unsigned char *) &((*dest)[copy_size]), (*dest_length - copy_length), dest_codeset);
-      *dest_size = CAST_STRLEN (end_of_string - (char *) (*dest));
+	qstr_pad_string ((unsigned char *) &((*dest)[copy_size]), (*dest_length - copy_length), dest_codeset);
+      *dest_size = CAST_STRLEN (end_of_string - (*dest));
 
       if (conv_status != 0)
 	{
 	  /* conversion error occured, re-count characters so that we comply to computed precision */
 	  (void) intl_char_size (*dest, *dest_length, dest_codeset, dest_size);
-	  end_of_string = (char *) *dest + *dest_size;
+	  end_of_string = (*dest) + *dest_size;
 	  *end_of_string = '\0';
 	}
 
@@ -12448,7 +12447,7 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
   char *cs;			/* current source string pointer */
   char *last_src, *last_format;
 
-  int cur_format;
+  TIMESTAMP_FORMAT cur_format;
 
   int cur_format_size;
 
@@ -13009,7 +13008,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
   char *cs;			/* current source string pointer */
   char *last_format, *last_src;
 
-  int cur_format;
+  TIMESTAMP_FORMAT cur_format;
 
   int cur_format_size;
 
@@ -13626,7 +13625,7 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
   char *last_format, *last_src;
 
   int cur_format_size;
-  int cur_format;
+  TIMESTAMP_FORMAT cur_format;
 
   int month = 0, day = 0, year = 0, day_of_the_week = 0, week = -1;
   int monthcount = 0, daycount = 0, yearcount = 0, day_of_the_weekcount = 0;
@@ -14535,7 +14534,7 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
   char *last_format, *last_src;
 
   int cur_format_size;
-  int cur_format;
+  TIMESTAMP_FORMAT cur_format;
 
   int month = 0, day = 0, year = 0, day_of_the_week = 0, week = -1;
   int monthcount = 0, daycount = 0, yearcount = 0, day_of_the_weekcount = 0;
@@ -15975,7 +15974,7 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
   char *last_format_str_ptr;
 
   int cur_format_size;
-  int cur_format;
+  TIMESTAMP_FORMAT cur_format;
 
   char *result_buf = NULL;
   int result_len = 0;
@@ -18838,7 +18837,7 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_posit
 /*
  * get_number_format () -
  */
-static int
+static TIMESTAMP_FORMAT
 get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *format_length, char **next_pos)
 {
   /* sp : start position */
@@ -26258,9 +26257,9 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 
   /* string representations of input number and result; size of buffer is maximum computable value in base 2 (64
    * digits) + sign (1 digit) + NULL terminator (1 byte) */
-  unsigned char num_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
+  char num_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
   unsigned char res_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
-  char *num_p_str = (char *) num_str, *res_p_str = NULL;
+  char *num_p_str = num_str, *res_p_str = NULL;
   char *num_end_ptr = NULL;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
   unsigned char swap = 0;
@@ -26369,9 +26368,9 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       if (str_size >= 0)
 	{
 	  str_size = MIN (str_size, sizeof (num_str) - 1);
-	  strncpy ((char *) num_str, DB_PULL_STRING (num), str_size);
-	  str_start = (char *) num_str;
-	  str_end = (char *) num_str + str_size;
+	  strncpy (num_str, DB_PULL_STRING (num), str_size);
+	  str_start = num_str;
+	  str_end = num_str + str_size;
 
 	  /* trim the tailing white spaces */
 	  do
@@ -26401,7 +26400,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 	}
 
       num_str[str_size] = '\0';
-      num_p_str = (char *) num_str;
+      num_p_str = num_str;
 
       if (!is_str_valid_number (num_p_str, str_end, from_base_int, codeset))
 	{
@@ -26418,11 +26417,11 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted bytes, not the size of the hex string; also, 
        * we convert at most 64 digits even if we need only 16 in order to let strtoll handle overflow (weird stuff
        * happens there ...) */
-      num_size = qstr_bin_to_hex ((char *) num_str, UINT64_MAX_BIN_DIGITS, num_p_str, num_size);
+      num_size = qstr_bin_to_hex (num_str, UINT64_MAX_BIN_DIGITS, num_p_str, num_size);
       num_str[num_size * 2] = '\0';
 
       /* set up variables for hex -> base10 conversion */
-      num_p_str = (char *) num_str;
+      num_p_str = num_str;
       from_base_int = 16;
       num_is_signed = false;
     }
@@ -27100,8 +27099,7 @@ db_get_date_format (const DB_VALUE * format_str, TIMESTAMP_FORMAT * format)
     }
 
   next_fmt_str_ptr = NULL;
-  *format =
-    (TIMESTAMP_FORMAT) get_next_format (fmt_str_ptr, codeset, DB_TYPE_DATETIME, &format_size, &next_fmt_str_ptr);
+  *format = get_next_format (fmt_str_ptr, codeset, DB_TYPE_DATETIME, &format_size, &next_fmt_str_ptr);
 
   if (next_fmt_str_ptr != NULL && *next_fmt_str_ptr != 0)
     {
