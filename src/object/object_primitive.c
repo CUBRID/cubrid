@@ -12045,7 +12045,7 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       return ER_FAILED;
     }
 
-  intl_char_size ((unsigned char *) mem, domain->precision, (INTL_CODESET) TP_DOMAIN_CODESET (domain), &mem_length);
+  intl_char_size ((unsigned char *) mem, domain->precision, TP_DOMAIN_CODESET (domain), &mem_length);
   if (mem_length == 0)
     {
       mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
@@ -12528,8 +12528,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	}
       else if (!copy)
 	{
-	  intl_char_size ((unsigned char *) buf->ptr, domain->precision, (INTL_CODESET) TP_DOMAIN_CODESET (domain),
-			  &str_length);
+	  intl_char_size ((unsigned char *) buf->ptr, domain->precision, TP_DOMAIN_CODESET (domain), &str_length);
 	  if (str_length == 0)
 	    {
 	      str_length = mem_length;
@@ -12574,8 +12573,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 		    }
 		  return rc;
 		}
-	      intl_char_size ((unsigned char *) new_, domain->precision, (INTL_CODESET) TP_DOMAIN_CODESET (domain),
-			      &actual_size);
+	      intl_char_size ((unsigned char *) new_, domain->precision, TP_DOMAIN_CODESET (domain), &actual_size);
 	      if (actual_size == 0)
 		{
 		  actual_size = mem_length;
@@ -12886,7 +12884,7 @@ mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       assert (false);
       return ER_FAILED;
     }
-  intl_char_size ((unsigned char *) mem, domain->precision, (INTL_CODESET) TP_DOMAIN_CODESET (domain), &mem_length);
+  intl_char_size ((unsigned char *) mem, domain->precision, TP_DOMAIN_CODESET (domain), &mem_length);
   if (mem_length == 0)
     {
       mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
@@ -13427,8 +13425,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	{
 	  int str_length;
 
-	  intl_char_size ((unsigned char *) buf->ptr, domain->precision, (INTL_CODESET) TP_DOMAIN_CODESET (domain),
-			  &str_length);
+	  intl_char_size ((unsigned char *) buf->ptr, domain->precision, TP_DOMAIN_CODESET (domain), &str_length);
 	  if (str_length == 0)
 	    {
 	      str_length = mem_length;
@@ -13476,8 +13473,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 
 		  return rc;
 		}
-	      intl_char_size ((unsigned char *) new_, domain->precision, (INTL_CODESET) TP_DOMAIN_CODESET (domain),
-			      &actual_size);
+	      intl_char_size ((unsigned char *) new_, domain->precision, TP_DOMAIN_CODESET (domain), &actual_size);
 	      if (actual_size == 0)
 		{
 		  actual_size = mem_length;
@@ -13515,9 +13511,8 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
       if (char_count > 0)
 	{
 	  new_ = (char *) db_private_alloc (NULL, STR_SIZE (char_count, TP_DOMAIN_CODESET (domain)));
-	  (void) intl_convert_charset ((unsigned char *) temp_string, char_count,
-				       (INTL_CODESET) TP_DOMAIN_CODESET (domain), (unsigned char *) new_,
-				       LANG_SYS_CODESET, &unconverted);
+	  (void) intl_convert_charset ((unsigned char *) temp_string, char_count, TP_DOMAIN_CODESET (domain),
+				       (unsigned char *) new_, LANG_SYS_CODESET, &unconverted);
 	  db_value_clear (value);
 	  db_make_nchar (value, domain->precision, new_, STR_SIZE (char_count, TP_DOMAIN_CODESET (domain)),
 			 TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
@@ -13576,7 +13571,7 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
     }
 
   c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
-			  mem_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+			  mem_length2, TP_DOMAIN_CODESET (domain));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -14214,7 +14209,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	{
 	  precision = domain->precision;
 #if !defined (SERVER_MODE)
-	  codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
+	  codeset = TP_DOMAIN_CODESET (domain);
 #endif
 	}
       else
@@ -14562,7 +14557,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
       c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) str1, str_length1, (unsigned char *) str2,
-			      str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+			      str_length2, TP_DOMAIN_CODESET (domain));
       c = MR_CMP_RETURN_CODE (c);
       return c;
     }
@@ -14652,8 +14647,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
     }
 
   /* Compare the strings */
-  c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1,
-			  (unsigned char *) string2, str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+  c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1, (unsigned char *) string2,
+			  str_length2, TP_DOMAIN_CODESET (domain));
   c = MR_CMP_RETURN_CODE (c);
   /* Clean up the strings */
   if (string1 != NULL && alloced_string1 == true)

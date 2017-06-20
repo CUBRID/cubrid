@@ -11895,7 +11895,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
  *
  *   return: Error code
  *   parser(in): Parser context
- *   curr_domain(in): Current domain of the atribute
+ *   curr_domain(in): Current domain of the attribute
  *   req_domain(in): Requested (new) domain of the attribute
  *   attr_chg_properties(out): structure summarizing the changed properties
  *   of attribute
@@ -11908,8 +11908,8 @@ build_att_coll_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
     {
       const int curr_coll_id = TP_DOMAIN_COLLATION (curr_domain);
       const int req_coll_id = TP_DOMAIN_COLLATION (req_domain);
-      const INTL_CODESET curr_cs = (INTL_CODESET) TP_DOMAIN_CODESET (curr_domain);
-      const INTL_CODESET req_cs = (INTL_CODESET) TP_DOMAIN_CODESET (req_domain);
+      const INTL_CODESET curr_cs = TP_DOMAIN_CODESET (curr_domain);
+      const INTL_CODESET req_cs = TP_DOMAIN_CODESET (req_domain);
 
       if (curr_coll_id != req_coll_id)
 	{

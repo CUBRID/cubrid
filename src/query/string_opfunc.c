@@ -6304,7 +6304,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
       }
 
     case DB_TYPE_VARCHAR:
-      codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
+      codeset = TP_DOMAIN_CODESET (domain);
       collation_id = TP_DOMAIN_COLLATION (domain);
 
       if (left_is_datetime)
@@ -10877,7 +10877,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
   date_lang_id = lang_get_lang_id_from_flag (DB_GET_INT (date_lang), &dummy, &dummy);
   if (domain != NULL && domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
     {
-      codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
+      codeset = TP_DOMAIN_CODESET (domain);
       res_collation = TP_DOMAIN_COLLATION (domain);
     }
   else
@@ -15996,7 +15996,7 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
   char stack_buf_format[64];
   char *initial_buf_format = NULL;
   bool do_free_buf_format = false;
-  const INTL_CODESET codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
+  const INTL_CODESET codeset = TP_DOMAIN_CODESET (domain);
   const int collation_id = TP_DOMAIN_COLLATION (domain);
   bool has_user_format = false;
   bool dummy;
@@ -16881,7 +16881,7 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
   char digit_grouping_symbol;
   bool has_user_format = false;
   bool dummy;
-  const INTL_CODESET codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
+  const INTL_CODESET codeset = TP_DOMAIN_CODESET (domain);
   const int collation_id = TP_DOMAIN_COLLATION (domain);
   DB_CURRENCY currency = DB_CURRENCY_NULL;
 
@@ -21413,7 +21413,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   date_lang_id = lang_get_lang_id_from_flag (DB_GET_INT (date_lang), &dummy, &dummy);
   if (domain != NULL && domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
     {
-      codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
+      codeset = TP_DOMAIN_CODESET (domain);
       res_collation = TP_DOMAIN_COLLATION (domain);
     }
   else
@@ -23393,7 +23393,7 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value, const TP_DOMAIN *
 
   if (domain != NULL)
     {
-      codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
+      codeset = TP_DOMAIN_CODESET (domain);
       collation_id = TP_DOMAIN_COLLATION (domain);
     }
   else if (TP_IS_STRING_TYPE (DB_VALUE_TYPE (date_value)))
