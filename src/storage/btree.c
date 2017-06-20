@@ -14822,9 +14822,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 		{
 		  err = ER_FAILED;
 		}
-
 	    }
-
 
 	  num_dbvals = 0;
 	  partial_dom = dp;
@@ -14841,7 +14839,6 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 
 	  db_private_free_and_init (NULL, dbvals);
 	}
-
     }
   else if (
 	    /* check if they are string or bit type */
