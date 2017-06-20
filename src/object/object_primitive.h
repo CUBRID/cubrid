@@ -95,7 +95,8 @@ typedef struct pr_type
   int (*data_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion, int total_order,
 		       int *start_colp);
   /* db value compare */
-  int (*cmpval) (DB_VALUE * value, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation);
+    DB_VALUE_COMPARE_RESULT (*cmpval) (DB_VALUE * value, DB_VALUE * value2, int do_coercion, int total_order,
+				       int *start_colp, int collation);
 } PR_TYPE, *PRIM;
 
 

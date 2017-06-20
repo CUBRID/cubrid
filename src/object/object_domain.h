@@ -476,12 +476,14 @@ extern "C"
 
   extern int tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2);
 
-  extern int tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion, int total_order);
+  extern DB_VALUE_COMPARE_RESULT tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion,
+						   int total_order);
 
-  extern int tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion,
-					  int total_order, bool * can_compare);
+  extern DB_VALUE_COMPARE_RESULT tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
+							      int allow_coercion, int total_order, bool * can_compare);
 
-  extern int tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion, int total_order);
+  extern DB_VALUE_COMPARE_RESULT tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion,
+						 int total_order);
 
 /* printed representations */
 

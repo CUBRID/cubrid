@@ -100,6 +100,7 @@ typedef enum
   DB_NE = 2,			/* not equal because types incomparable */
   DB_SUPERSET = 3		/* strict superset for set types.  */
 } DB_VALUE_COMPARE_RESULT;
+#define DB_INT_TO_COMPARE_RESULT(c) ((c) == 0 ? DB_EQ : ((c) > 0 ? DB_GT : DB_LT))
 
 /* Object fetch and locking constants.  These are used to specify
    a lock mode when fetching objects using of the explicit fetch and

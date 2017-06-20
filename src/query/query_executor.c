@@ -611,11 +611,11 @@ static int *tranid_lfind (const int *key, const int *base, int *nmemb);
 
 static int bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_index, int *len_son_index,
 				int cnt);
-static int bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1);
+static DB_VALUE_COMPARE_RESULT bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1);
 static int bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 			      int *start_colp);
-static int bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			     int collation);
+static DB_VALUE_COMPARE_RESULT bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						 int *start_colp, int collation);
 static void qexec_resolve_domains_on_sort_list (SORT_LIST * order_list, REGU_VARIABLE_LIST reference_regu_list);
 static void qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST * reference_out_list);
 static int qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
@@ -8519,8 +8519,10 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       int_cls = &internal_classes[idx];
       if (cls->num_extra_assign_reev > 0)
 	{
-	  int_cls->mvcc_extra_assign_reev = (UPDDEL_MVCC_COND_REEVAL **)
-	    db_private_alloc (thread_p, cls->num_extra_assign_reev * sizeof (UPDDEL_MVCC_COND_REEVAL *));
+	  int_cls->mvcc_extra_assign_reev =
+	    (UPDDEL_MVCC_COND_REEVAL **) db_private_alloc (thread_p,
+							   cls->num_extra_assign_reev
+							   * sizeof (UPDDEL_MVCC_COND_REEVAL *));
 	  if (int_cls->mvcc_extra_assign_reev == NULL)
 	    {
 	      GOTO_EXIT_ON_ERROR;
@@ -13448,7 +13450,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool has_index_scan = false;
   int old_wait_msecs, wait_msecs;
   int error;
-  DB_LOGICAL limit_zero;
   bool empty_result = false;
   bool scan_immediately_stop = false;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -17873,10 +17874,9 @@ qexec_execute_do_stmt (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
  *   s1(in): second string
  *   l1(in): length of second string
  */
-static int
+static DB_VALUE_COMPARE_RESULT
 bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1)
 {
-  int result = DB_UNK;
   DB_BIGINT b0, b1;
   unsigned char *e0 = s0 + l0;
   unsigned char *e1 = s1 + l1;
@@ -17913,13 +17913,11 @@ bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1)
       /* compare integers */
       if (b0 > b1)
 	{
-	  result = DB_GT;
-	  goto end;
+	  return DB_GT;
 	}
       if (b0 < b1)
 	{
-	  result = DB_LT;
-	  goto end;
+	  return DB_LT;
 	}
 
       /* both equal in this group, find next one */
@@ -17937,19 +17935,17 @@ bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1)
   if (s0 == e0 && s1 == e1)
     {
       /* both equal */
-      result = DB_EQ;
+      return DB_EQ;
     }
   else if (s0 == e0)
     {
-      result = DB_LT;
+      return DB_LT;
     }
   else if (s1 == e1)
     {
-      result = DB_GT;
+      return DB_GT;
     }
-
-end:
-  return result;
+  return DB_UNK;
 }
 
 /*
@@ -17979,8 +17975,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
-      c = bf2df_str_compare ((unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2);
-      return c;
+      return (int) bf2df_str_compare ((unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2);
     }
 
   assert (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
@@ -18081,7 +18076,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
       db_private_free_and_init (NULL, string2);
     }
 
-  return c;
+  return (int) c;
 
 cleanup:
   if (string1 != NULL && alloced_string1 == true)
@@ -18094,18 +18089,17 @@ cleanup:
       db_private_free_and_init (NULL, string2);
     }
 
-  return DB_UNK;
+  return (int) DB_UNK;
 }
 
 /*
  * bf2df_str_cmpval () -
  *   return: DB_LT, DB_EQ, or DB_GT
  */
-static int
+static DB_VALUE_COMPARE_RESULT
 bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
-  int c;
   unsigned char *string1, *string2;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
@@ -18116,9 +18110,7 @@ bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
       return DB_UNK;
     }
 
-  c = bf2df_str_compare (string1, (int) DB_GET_STRING_SIZE (value1), string2, (int) DB_GET_STRING_SIZE (value2));
-
-  return c;
+  return bf2df_str_compare (string1, (int) DB_GET_STRING_SIZE (value1), string2, (int) DB_GET_STRING_SIZE (value2));
 }
 
 /*
