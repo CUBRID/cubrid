@@ -6093,7 +6093,6 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
   while (*spec)
     {
       /* view definitions for select and for update might look different, so make sure to fetch the correct one */
-      PT_FETCH_AS fetch_as = (PT_FETCH_AS) PT_SELECT;	//vapa!!!
       bool fetch_for_update = ((*spec)->info.spec.flag & PT_SPEC_FLAG_UPDATE)
 	|| ((*spec)->info.spec.flag & PT_SPEC_FLAG_DELETE) || (statement->node_type == PT_INSERT);
 
@@ -6101,7 +6100,6 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
 	{
 	  /* this will fetch a view spec in some illegal cases (e.g. DELETE on a view containing joins); these cases
 	   * will be handled later on */
-	  fetch_as = PT_PARTIAL_SELECT;
 	}
 
       if ((*spec)->info.spec.flat_entity_list)
@@ -6128,7 +6126,7 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
 		    }
 		  else
 		    {
-		      subquery = mq_fetch_subqueries_for_update (parser, entity, fetch_as, DB_AUTH_SELECT);
+		      subquery = mq_fetch_subqueries_for_update (parser, entity, PT_PARTIAL_SELECT, DB_AUTH_SELECT);
 		    }
 
 		  if (subquery != NULL && subquery->next != NULL)
