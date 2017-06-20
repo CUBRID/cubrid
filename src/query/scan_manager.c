@@ -1646,8 +1646,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   /* calculate midxkey's size & make a new setdomain if need */
   for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, natts = 0;
-       operand != NULL && idx_dom != NULL && (midxkey.min_max_val.position == -1
-					      || natts < midxkey.min_max_val.position);
+       operand != NULL && idx_dom != NULL
+       && (midxkey.min_max_val.position == -1 || natts < midxkey.min_max_val.position);
        operand = operand->next, idx_dom = idx_dom->next, natts++)
     {
       /* If there is coerced value, we will use it regardless of whether a new setdomain is required or not. */
