@@ -1577,6 +1577,20 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
 
       val_type_id = DB_VALUE_DOMAIN_TYPE (val);
+      if (TP_IS_STRING_TYPE (val_type_id))
+	{
+	  /* we need to check for maxes */
+	  if (val->data.ch.medium.is_max_string)
+	    {
+	      /* oops, we found max. */
+	      midxkey.min_max_val.position = i;
+	      midxkey.min_max_val.type = MAX_COLUMN;
+
+	      /* just stop here */
+	      break;
+	    }
+	}
+
       if (TP_DOMAIN_TYPE (idx_dom) != val_type_id)
 	{
 	  /* allocate DB_VALUE array to store coerced values. */
@@ -1631,7 +1645,13 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
     }
 
   /* calculate midxkey's size & make a new setdomain if need */
-  for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, natts = 0; operand != NULL && idx_dom != NULL;
+  /* NOTICE that this will stop the iteration on MAX_COLUMN value if exists.
+   * Remaining key values including MAX_COLUMN position will be filled as NULL
+   * by btree_coerce_key at the end of this function.
+   */
+  for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, natts = 0;
+       operand != NULL && idx_dom != NULL
+       && (midxkey.min_max_val.position == -1 || natts < midxkey.min_max_val.position);
        operand = operand->next, idx_dom = idx_dom->next, natts++)
     {
       /* If there is coerced value, we will use it regardless of whether a new setdomain is required or not. */
@@ -1784,7 +1804,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
     }
 
-  assert (operand == NULL);
   assert (buf_size == CAST_BUFLEN (buf.ptr - midxkey.buf));
 
   /* Make midxkey DB_VALUE */
@@ -1805,9 +1824,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
     {
       midxkey.domain = btree_domainp;
     }
-
-  midxkey.min_max_val.position = -1;
-  midxkey.min_max_val.type = MIN_COLUMN;
 
   ret = db_make_midxkey (retval, &midxkey);
   if (ret != NO_ERROR)
