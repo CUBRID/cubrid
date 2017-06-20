@@ -121,7 +121,7 @@ static unsigned int jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static int jsp_get_argument_count (const SP_ARGS * sp_args);
 static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-					      int data_type, int mode, const char *arg_comment);
+					      PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
 				     PT_NODE * param_list, const char *java_method, const char *comment);
@@ -799,8 +799,8 @@ jsp_get_argument_count (const SP_ARGS * sp_args)
  */
 
 static int
-jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index, int data_type,
-				   int mode, const char *arg_comment)
+jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
+				   PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -849,14 +849,14 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_int (&value, pt_type_enum_to_db ((PT_TYPE_ENUM) data_type));
+  db_make_int (&value, pt_type_enum_to_db (data_type));
   err = dbt_put_internal (obt_p, SP_ATTR_DATA_TYPE, &value);
   if (err != NO_ERROR)
     {
       goto error;
     }
 
-  db_make_int (&value, jsp_map_pt_misc_to_sp_mode ((PT_MISC_TYPE) mode));
+  db_make_int (&value, jsp_map_pt_misc_to_sp_mode (mode));
   err = dbt_put_internal (obt_p, SP_ATTR_MODE, &value);
   if (err != NO_ERROR)
     {
