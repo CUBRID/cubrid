@@ -20960,6 +20960,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0)
 	{
+	  pr_clear_value (&trimed_expr);
 	  DB_MAKE_NULL (result);
 	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
@@ -20997,6 +20998,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
 	  if (m == 0 && d == 0 && y == 0)
 	    {
+	      pr_clear_value (&trimed_expr);
 	      DB_MAKE_NULL (result);
 	      er_clear ();
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
@@ -21033,6 +21035,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
 	  if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	    {
+	      pr_clear_value (&trimed_expr);
 	      DB_MAKE_NULL (result);
 	      er_clear ();
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
@@ -21096,6 +21099,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	{
+	  pr_clear_value (&trimed_expr);
 	  DB_MAKE_NULL (result);
 	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
@@ -21191,6 +21195,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
+	  pr_clear_value (&trimed_expr);
 	  DB_MAKE_NULL (result);
 	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
