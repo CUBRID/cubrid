@@ -191,17 +191,17 @@ message(STATUS "Build ${PROJECT_NAME} ${CUBRID_VERSION} ${TARGET_PLATFORM_BITS}b
 
 # generate parser and lexer
 set(CSQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y)
-set(CSQL_GRAMMAR_OUTPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.c)
+set(CSQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/csql_grammar.c)
 set(CSQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.l)
-set(CSQL_LEXER_OUTPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.c)
+set(CSQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/csql_lexer.c)
 set(LOADER_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.y)
-set(LOADER_GRAMMAR_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.c)
+set(LOADER_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/loader_grammar.c)
 set(LOADER_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.l)
-set(LOADER_LEXER_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.c)
+set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/loader_lexer.c)
 set(ESQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y)
-set(ESQL_GRAMMAR_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.c)
+set(ESQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/esql_grammar.c)
 set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
-set(ESQL_LEXER_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.c)
+set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
 # bison and flex check
 include(FindBISON)
