@@ -3931,7 +3931,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
   PT_NODE *result = NULL, *s, *result_last_node = NULL, *entity = NULL;
   PT_TYPE_ENUM t;
 
-  t = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
+  t = pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
   switch (t)
     {
     case PT_TYPE_NUMERIC:
@@ -4369,7 +4369,7 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * at
 
   dom = db_attribute_domain (att);
   attr->etc = dom;		/* used for getting additional db-specific domain information in the Versant driver */
-  attr->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
+  attr->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
   switch (attr->type_enum)
     {
     case PT_TYPE_OBJECT:
@@ -7186,7 +7186,7 @@ generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN
 
       attr_cur->next = NULL;
       attr_cur->name = (char *) db_attribute_name (db_attr_cur);
-      attr_cur->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (db_attribute_type (db_attr_cur));
+      attr_cur->type_enum = pt_db_to_type_enum (db_attribute_type (db_attr_cur));
       attr_cur->meta_class = (db_attribute_is_shared (db_attr_cur) ? PT_SHARED : PT_NORMAL);
 
       if (attr_head == NULL)
@@ -8718,7 +8718,7 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return false;
     }
 
-  node->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
+  node->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
   switch (node->type_enum)
     {
     case PT_TYPE_OBJECT:
@@ -8758,6 +8758,7 @@ static PT_NODE *
 pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
 {
   PT_NODE *new_node;
+  int error = NO_ERROR;
 
   /* initialize the new node with the corresponding fields from the PT_FUNCTION node. */
   new_node = parser_new_node (parser, PT_METHOD_CALL);
@@ -8792,10 +8793,14 @@ pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG 
 
       parser_walk_leaves (parser, new_node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
-      new_node->type_enum =
-	(PT_TYPE_ENUM) pt_db_to_type_enum ((DB_TYPE)
-					   jsp_get_return_type (new_node->info.method_call.method_name->info.name.
-								original));
+      /* returns either error or DB_TYPE... */
+      error = jsp_get_return_type (new_node->info.method_call.method_name->info.name.original);
+      if (error < 0)
+	{
+	  PT_INTERNAL_ERROR (parser, "jsp_get_return_type");
+	  return NULL;
+	}
+      new_node->type_enum = pt_db_to_type_enum ((DB_TYPE) error);
 
       d = pt_type_enum_to_db_domain (new_node->type_enum);
       d = tp_domain_cache (d);

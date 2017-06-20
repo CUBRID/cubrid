@@ -5642,7 +5642,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  TP_DOMAIN *domain;
 	  if (TP_IS_CHAR_TYPE (typ))
 	    {
-	      domain = pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM) pt_db_to_type_enum (typ));
+	      domain = pt_xasl_type_enum_to_domain (pt_db_to_type_enum (typ));
 	      regu->domain = tp_domain_copy (domain, false);
 	      if (regu->domain != NULL)
 		{
@@ -5661,7 +5661,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	    }
 	  else
 	    {
-	      regu->domain = pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM) pt_db_to_type_enum (typ));
+	      regu->domain = pt_xasl_type_enum_to_domain (pt_db_to_type_enum (typ));
 	    }
 	}
 

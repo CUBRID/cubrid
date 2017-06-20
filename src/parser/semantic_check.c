@@ -1476,7 +1476,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
       name->info.name.meta_class = (db_attribute_is_shared (attributes) ? PT_SHARED : PT_NORMAL);
 
       /* set its data type */
-      i_attr->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (db_attribute_type (attributes));
+      i_attr->type_enum = pt_db_to_type_enum (db_attribute_type (attributes));
       switch (i_attr->type_enum)
 	{
 	case PT_TYPE_OBJECT:
@@ -2226,7 +2226,7 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
 	  data_type = parser_new_node (parser, PT_DATA_TYPE);
 	  if (data_type == NULL)
 	    {
-	      return (PT_UNION_COMPATIBLE) ER_OUT_OF_VIRTUAL_MEMORY;	//vapa!!!
+	      return PT_UNION_ERROR;
 	    }
 	  data_type->info.data_type.precision =
 	    MAX ((ci1.prec - ci1.scale), (ci2.prec - ci2.scale)) + MAX (ci1.scale, ci2.scale);
@@ -5828,7 +5828,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	    {
 	      if (!intl_identifier_casecmp (column->original_name, pcol->info.name.original))
 		{
-		  pcol->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (column->db_type);
+		  pcol->type_enum = pt_db_to_type_enum (column->db_type);
 
 		  assert (column->domain != NULL);
 		  pcol->data_type = pt_domain_to_data_type (parser, column->domain);
@@ -5859,7 +5859,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		      PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
 				 MSGCAT_SEMANTIC_INVALID_PARTITION_INHERITED_ATTR);
 		    }
-		  pcol->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (smatt->type->id);
+		  pcol->type_enum = pt_db_to_type_enum (smatt->type->id);
 		  assert (smatt->domain != NULL);
 		  pcol->data_type = pt_domain_to_data_type (parser, smatt->domain);
 		  pinfo->info.partition.keycol = parser_copy_tree (parser, pcol);

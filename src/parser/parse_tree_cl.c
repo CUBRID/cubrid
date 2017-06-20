@@ -2530,9 +2530,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
     {
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
-      temp = pt_append_nulstring (parser, NULL,
-				  pt_show_type_enum ((PT_TYPE_ENUM) pt_db_to_type_enum (DB_VALUE_TYPE (val))));
-
+      temp = pt_append_nulstring (parser, NULL, pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
       /* fall thru */
     case DB_TYPE_SEQUENCE:
       temp = pt_append_nulstring (parser, temp, "{");
