@@ -6464,7 +6464,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   if (best_match == -1)
     {
       /* if best_match is -1 then we have an expression definition but it cannot be applied on this arguments. */
-      expr->node_type = (PT_NODE_TYPE) PT_TYPE_NONE;	//vapa!!!
+      expr->node_type = PT_NODE_NONE;
       return ER_FAILED;
     }
 
@@ -7782,8 +7782,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	  else if (node->info.query.q.select.group_by)
 	    {
 	      expr_pred = &node->info.query.q.select.having;
-	      limit =
-		pt_limit_to_numbering_expr (parser, node->info.query.limit, (PT_OP_TYPE) 0 /* irrelevant */ , true);
+	      limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, PT_LAST_OPCODE, true);
 	    }
 	  else if (node->info.query.all_distinct == PT_DISTINCT)
 	    {

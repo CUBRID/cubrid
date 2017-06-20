@@ -836,6 +836,7 @@ enum pt_custom_print
 /* all statement node types should be assigned their API statement enumeration */
 enum pt_node_type
 {
+  PT_NODE_NONE = CUBRID_STMT_NONE,
   PT_ALTER = CUBRID_STMT_ALTER_CLASS,
   PT_ALTER_INDEX = CUBRID_STMT_ALTER_INDEX,
   PT_ALTER_USER = CUBRID_STMT_ALTER_USER,
