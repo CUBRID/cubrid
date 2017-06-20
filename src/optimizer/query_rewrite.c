@@ -4130,7 +4130,7 @@ qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1, DB_VALUE * val2
       return (op2 == op1) ? CompResultEqual : CompResultLess;
     }
 
-  rc = (DB_VALUE_COMPARE_RESULT) tp_value_compare (val1, val2, 1, 1);
+  rc = tp_value_compare (val1, val2, 1, 1);
   if (rc == DB_EQ)
     {
       /* (val1, op1) == (val2, op2) */

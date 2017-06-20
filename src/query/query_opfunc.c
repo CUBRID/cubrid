@@ -10860,8 +10860,9 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
       else
 	{
 	  TP_DOMAIN *result_domain;
-	  DB_TYPE type = (DB_TYPE)
-	    ((func_p->function == PT_AVG) ? func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain));
+	  DB_TYPE type =
+	    (func_p->function ==
+	     PT_AVG) ? (DB_TYPE) func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain);
 
 	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : func_p->domain);
 	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, result_domain) != NO_ERROR)
@@ -12734,7 +12735,7 @@ qdata_agg_hkey_compare (AGGREGATE_HASH_KEY * ckey1, AGGREGATE_HASH_KEY * ckey2, 
 
   for (i = 0; i < ckey1->val_count; i++)
     {
-      result = (DB_VALUE_COMPARE_RESULT) tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
+      result = tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)
 	{
 	  *diff_pos = i;

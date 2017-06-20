@@ -13379,7 +13379,7 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  return ER_FAILED;
 	}
 
-      cmp_with_zero = (DB_VALUE_COMPARE_RESULT) tp_value_compare (limit_valp, &zero_val, 1, 0);
+      cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
       if (cmp_with_zero != DB_GT && cmp_with_zero != DB_EQ)
 	{
 	  /* still want better error code */
@@ -13401,7 +13401,7 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  return ER_FAILED;
 	}
 
-      cmp_with_zero = (DB_VALUE_COMPARE_RESULT) tp_value_compare (limit_valp, &zero_val, 1, 0);
+      cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
       if (cmp_with_zero == DB_GT)
 	{
 	  /* validated */

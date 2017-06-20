@@ -17049,7 +17049,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_LEAST:
-      cmp_result = (DB_VALUE_COMPARE_RESULT) tp_value_compare (arg1, arg2, 1, 0);
+      cmp_result = tp_value_compare (arg1, arg2, 1, 0);
       if (cmp_result == DB_EQ || cmp_result == DB_LT)
 	{
 	  pr_clone_value ((DB_VALUE *) arg1, result);
@@ -17075,7 +17075,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       return 1;
 
     case PT_GREATEST:
-      cmp_result = (DB_VALUE_COMPARE_RESULT) tp_value_compare (arg1, arg2, 1, 0);
+      cmp_result = tp_value_compare (arg1, arg2, 1, 0);
       if (cmp_result == DB_EQ || cmp_result == DB_GT)
 	{
 	  pr_clone_value ((DB_VALUE *) arg1, result);
@@ -18545,7 +18545,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	case PT_EQ:
 	  if (qualifier == PT_EQ_TORDER)
 	    {
-	      cmp_result = (DB_VALUE_COMPARE_RESULT) tp_value_compare (arg1, arg2, 1, 1);
+	      cmp_result = tp_value_compare (arg1, arg2, 1, 1);
 	      cmp = (cmp_result == DB_UNK) ? -1 : (cmp_result == DB_EQ) ? 1 : 0;
 	      break;
 	    }
