@@ -1645,6 +1645,10 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
     }
 
   /* calculate midxkey's size & make a new setdomain if need */
+  /* NOTICE that this will stop the iteration on MAX_COLUMN value if exists.
+   * Remaining key values including MAX_COLUMN position will be filled as NULL
+   * by btree_coerce_key at the end of this function.
+   */
   for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, natts = 0;
        operand != NULL && idx_dom != NULL
        && (midxkey.min_max_val.position == -1 || natts < midxkey.min_max_val.position);
