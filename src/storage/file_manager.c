@@ -9785,7 +9785,7 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
       VFID_SET_NULL (&context->hfid_out->vfid);
       return error_code;
     }
-  if (vacuum_is_file_dropped (thread_p, &is_dropped, &context->hfid_out->vfid, logtb_get_current_mvccid (thread_p)))
+  if (is_dropped)
     {
       file_log ("file_tracker_item_reuse_heap", "can't reuse heap file %d|%d with mvccid %llu because vacuum thinks it "
 		"is dropped.\n", VFID_AS_ARGS (&context->hfid_out->vfid),
