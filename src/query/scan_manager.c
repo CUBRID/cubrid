@@ -2081,79 +2081,76 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
     {
     case R_KEY:
     case R_KEYLIST:
-      {
-	/* When key received as NULL, currently this is assumed an UNBOUND value and no object value in the index is
-	 * equal to NULL value in the index scan context. They can be equal to NULL only in the "is NULL" context. */
+      /* When key received as NULL, currently this is assumed an UNBOUND value and no object value in the index is
+       * equal to NULL value in the index scan context. They can be equal to NULL only in the "is NULL" context. */
 
-	/* to fix multi-column index NULL problem */
-	if (DB_IS_NULL (&key_val_range->key1))
-	  {
-	    key_val_range->range = NA_NA;
+      /* to fix multi-column index NULL problem */
+      if (DB_IS_NULL (&key_val_range->key1))
+	{
+	  key_val_range->range = NA_NA;
 
-	    return ret;
-	  }
-	break;
-      }
+	  return ret;
+	}
+      break;
 
     case R_RANGE:
     case R_RANGELIST:
-      {
-	/* When key received as NULL, currently this is assumed an UNBOUND value and no object value in the index is
-	 * equal to NULL value in the index scan context. They can be equal to NULL only in the "is NULL" context. */
-	if (key_val_range->range >= GE_LE && key_val_range->range <= GT_LT)
-	  {
-	    /* to fix multi-column index NULL problem */
-	    if (DB_IS_NULL (&key_val_range->key1) || DB_IS_NULL (&key_val_range->key2))
-	      {
-		key_val_range->range = NA_NA;
+      /* When key received as NULL, currently this is assumed an UNBOUND value and no object value in the index is
+       * equal to NULL value in the index scan context. They can be equal to NULL only in the "is NULL" context. */
+      if (key_val_range->range >= GE_LE && key_val_range->range <= GT_LT)
+	{
+	  /* to fix multi-column index NULL problem */
+	  if (DB_IS_NULL (&key_val_range->key1) || DB_IS_NULL (&key_val_range->key2))
+	    {
+	      key_val_range->range = NA_NA;
 
-		return ret;
-	      }
-	    else
-	      {
-		int c = DB_UNK;
+	      return ret;
+	    }
+	  else
+	    {
+	      int c = DB_UNK;
 
-		c = scan_key_compare (&key_val_range->key1, &key_val_range->key2, key_val_range->num_index_term);
+	      c = scan_key_compare (&key_val_range->key1, &key_val_range->key2, key_val_range->num_index_term);
 
-		if (c == DB_UNK)
-		  {
-		    /* impossible case */
-		    assert_release (false);
+	      if (c == DB_UNK)
+		{
+		  /* impossible case */
+		  assert_release (false);
 
-		    key_val_range->range = NA_NA;
+		  key_val_range->range = NA_NA;
 
-		    return ER_FAILED;
-		  }
-		else if (c > 0)
-		  {
-		    key_val_range->range = NA_NA;
+		  return ER_FAILED;
+		}
+	      else if (c > 0)
+		{
+		  key_val_range->range = NA_NA;
 
-		    return ret;
-		  }
-	      }
-	  }
-	else if (key_val_range->range >= GE_INF && key_val_range->range <= GT_INF)
-	  {
-	    /* to fix multi-column index NULL problem */
-	    if (DB_IS_NULL (&key_val_range->key1))
-	      {
-		key_val_range->range = NA_NA;
+		  return ret;
+		}
+	    }
+	}
+      else if (key_val_range->range >= GE_INF && key_val_range->range <= GT_INF)
+	{
+	  /* to fix multi-column index NULL problem */
+	  if (DB_IS_NULL (&key_val_range->key1))
+	    {
+	      key_val_range->range = NA_NA;
 
-		return ret;
-	      }
-	  }
-	else if (key_val_range->range >= INF_LE && key_val_range->range <= INF_LT)
-	  {
-	    /* to fix multi-column index NULL problem */
-	    if (DB_IS_NULL (&key_val_range->key2))
-	      {
-		key_val_range->range = NA_NA;
+	      return ret;
+	    }
+	}
+      else if (key_val_range->range >= INF_LE && key_val_range->range <= INF_LT)
+	{
+	  /* to fix multi-column index NULL problem */
+	  if (DB_IS_NULL (&key_val_range->key2))
+	    {
+	      key_val_range->range = NA_NA;
 
-		return ret;
-	      }
-	  }
-	break;
-      }
+	      return ret;
+	    }
+	}
+      break;
+
     default:
       assert_release (false);
       break;			/* impossible case */
