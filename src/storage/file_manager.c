@@ -9783,7 +9783,7 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
     {
       ASSERT_ERROR ();
       VFID_SET_NULL (&context->hfid_out->vfid);
-      goto error_code;
+      return error_code;
     }
   if (vacuum_is_file_dropped (thread_p, &is_dropped, &context->hfid_out->vfid, logtb_get_current_mvccid (thread_p)))
     {
