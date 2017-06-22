@@ -531,7 +531,7 @@ struct pgbuf_bcb
 						 * common. */
   int hit_age;			/* age of last hit (used to compute activities and quotas) */
 
-  volatile LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
+  LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
   PGBUF_IOPAGE_BUFFER *iopage_buffer;	/* pointer to iopage buffer structure */
 };
 
@@ -3964,7 +3964,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	  if (!LSA_ISNULL (&bufptr->oldest_unflush_lsa)
 	      && (LSA_ISNULL (chkpt_smallest_lsa) || LSA_LT (&bufptr->oldest_unflush_lsa, chkpt_smallest_lsa)))
 	    {
-	      LSA_COPY (chkpt_smallest_lsa, (const LOG_LSA *) &bufptr->oldest_unflush_lsa);
+	      LSA_COPY (chkpt_smallest_lsa, &bufptr->oldest_unflush_lsa);
 	    }
 	}
 
@@ -4434,7 +4434,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
 	    }
 
 	}
-      LSA_COPY ((LOG_LSA *) & bufptr->oldest_unflush_lsa, lsa_ptr);	//vapa!!!
+      LSA_COPY (&bufptr->oldest_unflush_lsa, lsa_ptr);
     }
 
 #if defined (NDEBUG)
@@ -9823,7 +9823,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
 
   memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
 
-  LSA_COPY (&oldest_unflush_lsa, (const LOG_LSA *) &bufptr->oldest_unflush_lsa);
+  LSA_COPY (&oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
   PGBUF_BCB_UNLOCK (bufptr);
@@ -9860,7 +9860,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
       PGBUF_BCB_LOCK (bufptr);
       *is_bcb_locked = true;
       pgbuf_bcb_mark_was_not_flushed (thread_p, bufptr, was_dirty);
-      LSA_COPY ((LOG_LSA *) & bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
+      LSA_COPY (&bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
       error = ER_FAILED;
 
 #if defined (SERVER_MODE)
@@ -11156,7 +11156,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
   /* add bufptr as middle page */
   pgbuf_add_bufptr_to_batch (bufptr, 0);
   VPID_COPY (&first_vpid, &bufptr->vpid);
-  LSA_COPY (&log_newest_oldest_unflush_lsa, (const LOG_LSA *) &bufptr->oldest_unflush_lsa);
+  LSA_COPY (&log_newest_oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
   PGBUF_BCB_UNLOCK (bufptr);
 
   VPID_COPY (&vpid, &first_vpid);
@@ -11309,14 +11309,14 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
 	{
 	  if (LSA_LT (&log_newest_oldest_unflush_lsa, &bufptr->oldest_unflush_lsa))
 	    {
-	      LSA_COPY (&log_newest_oldest_unflush_lsa, (const LOG_LSA *) &bufptr->oldest_unflush_lsa);
+	      LSA_COPY (&log_newest_oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
 	    }
 	  dirty_pages_cnt++;
 	}
 
       if (helper->npages > PGBUF_PAGES_COUNT_THRESHOLD && ((2 * dirty_pages_cnt) < helper->npages))
 	{
-	  /* too many nondirty pages */
+	  /* too many non dirty pages */
 	  PGBUF_BCB_UNLOCK (bufptr);
 	  helper->npages = 1;
 	  abort_reason = NEIGHBOR_ABORT_TOO_MANY_NONDIRTIES;
