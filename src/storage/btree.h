@@ -705,4 +705,13 @@ extern unsigned int btree_hash_btid (void *btid, int hash_size);
 
 extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
 extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+
+extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
+			       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
+			       OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
+extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
+			      void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset, int copy,
+			      BTREE_SCAN * bts);
+extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
+						  int do_coercion, int total_order, int *start_colp);
 #endif /* _BTREE_H_ */

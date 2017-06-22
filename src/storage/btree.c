@@ -112,22 +112,22 @@
 #define NOT_FOUND -1
 
 /* B'0001 0000 0000 0000' */
-#define BTREE_LEAF_RECORD_FENCE 0x1000
+#define BTREE_LEAF_RECORD_FENCE ((short) 0x1000)
 /* B'0010 0000 0000 0000' */
-#define BTREE_LEAF_RECORD_OVERFLOW_OIDS 0x2000
+#define BTREE_LEAF_RECORD_OVERFLOW_OIDS ((short) 0x2000)
 /* B'0100 0000 0000 0000' */
-#define BTREE_LEAF_RECORD_OVERFLOW_KEY 0x4000
+#define BTREE_LEAF_RECORD_OVERFLOW_KEY ((short) 0x4000)
 /* B'1000 0000 0000 0000' */
-#define BTREE_LEAF_RECORD_CLASS_OID 0x8000
+#define BTREE_LEAF_RECORD_CLASS_OID ((short) 0x8000)
 /* B'1111 0000 0000 0000' */
-#define BTREE_LEAF_RECORD_MASK 0xF000
+#define BTREE_LEAF_RECORD_MASK ((short) 0xF000)
 
 /* B'0100 0000 0000 0000' */
-#define BTREE_OID_HAS_MVCC_INSID 0x4000
+#define BTREE_OID_HAS_MVCC_INSID ((short) 0x4000)
 /* B'1000 0000 0000 0000' */
-#define BTREE_OID_HAS_MVCC_DELID 0x8000
+#define BTREE_OID_HAS_MVCC_DELID ((short) 0x8000)
 /* B'1100 0000 0000 0000' */
-#define BTREE_OID_MVCC_FLAGS_MASK 0xC000
+#define BTREE_OID_MVCC_FLAGS_MASK ((short) 0xC000)
 
 #define BTREE_OID_HAS_MVCC_INSID_AND_DELID \
   (BTREE_OID_HAS_MVCC_INSID | BTREE_OID_HAS_MVCC_DELID)
@@ -1273,8 +1273,8 @@ static int btree_start_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid_i
 				      VPID * first_overflow_vpid, VPID * near_vpid, VPID * new_vpid,
 				      PAGE_PTR * new_page_ptr);
 static int btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * Rec,
-						    DB_VALUE * key, void *rec_header, int node_type, bool * clear_key,
-						    int *offset, int copy);
+						    DB_VALUE * key, void *rec_header, BTREE_NODE_TYPE node_type,
+						    bool * clear_key, int *offset, int copy);
 static PAGE_PTR btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID * near_vpid);
 static int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
 				      INT16 * slot_id, VPID * child_vpid);
@@ -3915,7 +3915,7 @@ btree_get_disk_size_of_key (DB_VALUE * key)
  * any case.
  */
 int
-btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key, int node_type,
+btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key, BTREE_NODE_TYPE node_type,
 		    int key_type, int key_len, bool during_loading, OID * class_oid, OID * oid,
 		    BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
 {
@@ -4010,7 +4010,7 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
 	  btree_leaf_set_flag (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY);
 	}
 
-      error_code = btree_store_overflow_key (thread_p, btid, key, key_len, (BTREE_NODE_TYPE) node_type, &key_vpid);
+      error_code = btree_store_overflow_key (thread_p, btid, key, key_len, node_type, &key_vpid);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -4074,7 +4074,8 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
  */
 int
 btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * rec, DB_VALUE * key,
-		   void *rec_header, int node_type, bool * clear_key, int *offset, int copy_key, BTREE_SCAN * bts)
+		   void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset, int copy_key,
+		   BTREE_SCAN * bts)
 {
   int n_prefix = COMMON_PREFIX_UNKNOWN;
   int error;
@@ -4162,7 +4163,8 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
  */
 static int
 btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec, DB_VALUE * key,
-					 void *rec_header, int node_type, bool * clear_key, int *offset, int copy_key)
+					 void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset,
+					 int copy_key)
 {
   OR_BUF buf;
   VPID overflow_vpid;
@@ -4366,7 +4368,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
 
       if (key != NULL)
 	{
-	  rc = btree_load_overflow_key (thread_p, btid, &overflow_vpid, key, (BTREE_NODE_TYPE) node_type);
+	  rc = btree_load_overflow_key (thread_p, btid, &overflow_vpid, key, node_type);
 	  if (rc != NO_ERROR)
 	    {
 	      db_make_null (key);
@@ -5085,7 +5087,7 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
 
   /* Compare with first key. */
-  c = (DB_VALUE_COMPARE_RESULT) btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
+  c = btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
   btree_clear_key_value (&clear_key, &border_key);
   if (c == DB_EQ)
     {
@@ -5137,7 +5139,7 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       return error_code;
     }
   /* Compare with last key. */
-  c = (DB_VALUE_COMPARE_RESULT) btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
+  c = btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
   btree_clear_key_value (&clear_key, &border_key);
   if (c == DB_EQ)
     {
@@ -15036,7 +15038,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       bts->index_scan_idp = index_scan_id_p;
       if (index_scan_id_p->indx_info != NULL)
 	{
-	  bts->use_desc_index = index_scan_id_p->indx_info->use_desc_index;
+	  bts->use_desc_index = index_scan_id_p->indx_info->use_desc_index != 0;
 	}
       else
 	{
@@ -16009,7 +16011,7 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
   /* copy use desc index information in the BTS to have it available in the b-tree functions. */
   if (index_scan_id_p->indx_info)
     {
-      bts->use_desc_index = index_scan_id_p->indx_info->use_desc_index;
+      bts->use_desc_index = index_scan_id_p->indx_info->use_desc_index != 0;
     }
   else
     {
@@ -18514,11 +18516,11 @@ btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
   return NO_ERROR;
 }
 
-int
+DB_VALUE_COMPARE_RESULT
 btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int do_coercion, int total_order,
 		   int *start_colp)
 {
-  int c = DB_UNK;
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_TYPE key1_type, key2_type;
   DB_TYPE dom_type;
   int dummy_size1, dummy_size2, dummy_diff_column;
@@ -18556,6 +18558,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
   if (dom_type == DB_TYPE_MIDXKEY)
     {
       /* safe code */
+      int midxc;
       if (key1_type != DB_TYPE_MIDXKEY)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (key1_type),
@@ -18571,8 +18574,10 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
-      c = pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
-			      &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
+      midxc =
+	pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
+			    &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
+      c = DB_INT_TO_COMPARE_RESULT (midxc);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc)
