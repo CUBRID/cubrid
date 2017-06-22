@@ -28475,10 +28475,11 @@ btree_key_record_check_no_visible (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       assert (false);
       return;
     }
-  num_visible =
-    btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_rec_info, NULL,
-					     &dirty_snapshot);
-  assert (num_visible == 0);
+
+  num_visible = btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_rec_info,
+							 NULL, &dirty_snapshot);
+
+  assert (num_visible == 0 || (num_visible < 0 && er_errid () != NO_ERROR));
 }
 #endif /* !NDEBUG */
 
