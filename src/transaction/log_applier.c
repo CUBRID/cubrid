@@ -398,6 +398,7 @@ enum lp_op
   LP_OP_IGNORE
 };
 typedef enum lp_op LP_OP;
+
 #define LP_HA_APPLIED_INFO_REFRESH_TIME         (50)	/* msec */
 
 typedef struct lp_info LP_INFO;
@@ -427,7 +428,11 @@ static char la_peer_host[MAXHOSTNAMELEN + 1];
 
 static bool la_enable_sql_logging = false;
 
+#if defined (WINDOWS)
 static void la_shutdown_by_signal (void);
+#else /* !WINDOWS */
+static void la_shutdown_by_signal (int);
+#endif /* !WINDOWS */
 static void la_init_ha_apply_info (LA_HA_APPLY_INFO * ha_apply_info);
 
 static LOG_PHY_PAGEID la_log_phypageid (LOG_PAGEID logical_pageid);
@@ -583,12 +588,14 @@ static int check_reinit_copylog (void);
  *        process "shutdown"
  */
 static void
+#if defined (WINDOWS)
 la_shutdown_by_signal (void)
+#else				/* !WINDOWS */
+la_shutdown_by_signal (int ignore)
+#endif				/* !WINDOWS */
 {
   la_applier_need_shutdown = true;
   la_applier_shutdown_by_signal = true;
-
-  return;
 }
 
 bool
@@ -7437,8 +7444,8 @@ lp_init_prefetcher (const char *database_name, const char *log_path)
   (void) os_set_signal_handler (SIGINT, la_shutdown_by_signal);
   (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
 #else /* ! WINDOWS */
-  (void) os_set_signal_handler (SIGSTOP, (void (*)(int)) la_shutdown_by_signal);
-  (void) os_set_signal_handler (SIGTERM, (void (*)(int)) la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGSTOP, la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* ! WINDOWS */
 
@@ -8610,8 +8617,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   (void) os_set_signal_handler (SIGINT, la_shutdown_by_signal);
   (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
 #else /* ! WINDOWS */
-  (void) os_set_signal_handler (SIGSTOP, (void (*)(int)) la_shutdown_by_signal);
-  (void) os_set_signal_handler (SIGTERM, (void (*)(int)) la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGSTOP, la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* ! WINDOWS */
 
