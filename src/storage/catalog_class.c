@@ -123,7 +123,7 @@ extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *n
 					  UPDATE_INPLACE_STYLE force_in_place);
 extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p);
 extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
-extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char *lang_buf,
+extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
 					  const int lang_buf_size, char *timezone_checksum);
 extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
 extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
@@ -4382,8 +4382,8 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
  *	   reason, no locks are required on the class.
  */
 int
-catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char *lang_buf, const int lang_buf_size,
-			       char *timezone_checksum)
+catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
+			       const int lang_buf_size, char *timezone_checksum)
 {
 #define CHECKSUM_SIZE 32
   OID class_oid;
@@ -4540,7 +4540,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char 
 		}
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue)) == DB_TYPE_INTEGER);
 
-	      *charset_id_p = DB_GET_INTEGER (&heap_value->dbvalue);
+	      *charset_id_p = (INTL_CODESET) DB_GET_INTEGER (&heap_value->dbvalue);
 	    }
 	  else if (heap_value->attrid == lang_att_id)
 	    {

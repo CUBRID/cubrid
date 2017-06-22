@@ -147,7 +147,7 @@ typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
 extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p);
-extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char *lang_buf,
+extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
 					  const int lang_buf_size, char *timezone_checksum);
 extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
 extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
@@ -242,7 +242,8 @@ static void boot_check_db_at_num_shutdowns (bool force_nshutdowns);
 static void boot_shutdown_server_at_exit (void);
 #endif /* SERVER_MODE */
 
-static int boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path, const char *log_prefix);
+static INTL_CODESET boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path,
+						     const char *log_prefix);
 STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 /*
@@ -2051,8 +2052,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif
   int error_code = NO_ERROR;
   char *prev_err_msg;
-  int db_charset_db_header = INTL_CODESET_NONE;
-  int db_charset_db_root = INTL_CODESET_NONE;
+  INTL_CODESET db_charset_db_header = INTL_CODESET_NONE;
+  INTL_CODESET db_charset_db_root = INTL_CODESET_NONE;
   char db_lang[LANG_MAX_LANGNAME + 1];
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
@@ -2383,7 +2384,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   else
     {
-      lang_set_charset ((INTL_CODESET) db_charset_db_header);
+      lang_set_charset (db_charset_db_header);
     }
 
   /* Find the rest of the volumes and mount them */
@@ -2513,8 +2514,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       char er_msg[ERR_MSG_SIZE];
       snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root system table: expecting %s, found %s",
-		lang_charset_cubrid_name ((INTL_CODESET) db_charset_db_header),
-		lang_charset_cubrid_name ((INTL_CODESET) db_charset_db_root));
+		lang_charset_cubrid_name (db_charset_db_header), lang_charset_cubrid_name (db_charset_db_root));
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
       error_code = ER_LOC_INIT;
       goto error;
@@ -5061,8 +5061,8 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
   int error_code = NO_ERROR;
-  int db_charset_db_header = INTL_CODESET_ERROR;
-  int db_charset_db_root;
+  INTL_CODESET db_charset_db_header = INTL_CODESET_ERROR;
+  INTL_CODESET db_charset_db_root = INTL_CODESET_ERROR;
   char dummy_timezone_checksum[32 + 1];
   char db_lang[LANG_MAX_LANGNAME];
 
@@ -5239,7 +5239,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
 	}
       else
 	{
-	  lang_set_charset ((INTL_CODESET) db_charset_db_header);
+	  lang_set_charset (db_charset_db_header);
 	}
     }
   else
@@ -5331,8 +5331,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     {
       char er_msg[ERR_MSG_SIZE];
       snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root system table: expecting %s, found %s",
-		lang_charset_cubrid_name ((INTL_CODESET) db_charset_db_header),
-		lang_charset_cubrid_name ((INTL_CODESET) db_charset_db_root));
+		lang_charset_cubrid_name (db_charset_db_header), lang_charset_cubrid_name (db_charset_db_root));
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
       error_code = ER_LOC_INIT;
       goto error_exit;
@@ -5666,15 +5665,16 @@ boot_set_skip_check_ct_classes (bool val)
  *   log_path(in):
  *   log_prefix(in):
  */
-static int
+static INTL_CODESET
 boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path, const char *log_prefix)
 {
-  int vol_header_db_charset = INTL_CODESET_ERROR;
-  int log_header_db_charset = INTL_CODESET_ERROR;
+  INTL_CODESET vol_header_db_charset = INTL_CODESET_ERROR;
+  INTL_CODESET log_header_db_charset = INTL_CODESET_ERROR;
 
-  log_header_db_charset = log_get_charset_from_header_page (thread_p, boot_Db_full_name, log_path, log_prefix);
+  log_header_db_charset =
+    (INTL_CODESET) log_get_charset_from_header_page (thread_p, boot_Db_full_name, log_path, log_prefix);
 
-  if (disk_get_boot_db_charset (thread_p, LOG_DBFIRST_VOLID, &vol_header_db_charset) == NULL)
+  if (disk_get_boot_db_charset (thread_p, LOG_DBFIRST_VOLID, &vol_header_db_charset) != NO_ERROR)
     {
       vol_header_db_charset = INTL_CODESET_ERROR;
     }

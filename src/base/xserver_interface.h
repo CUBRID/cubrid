@@ -184,7 +184,7 @@ extern DKNPAGES xdisk_get_free_numpages (THREAD_ENTRY * thread_p, VOLID volid);
 extern bool xdisk_is_volume_exist (THREAD_ENTRY * thread_p, VOLID volid);
 
 extern char *xdisk_get_remarks (THREAD_ENTRY * thread_p, VOLID volid);
-extern int *disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, int *db_charset);
+extern int disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, INTL_CODESET * db_charset);
 extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, VOLID volid, char *vol_fullname);
 extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p, VOLID volid);
 extern int xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,
