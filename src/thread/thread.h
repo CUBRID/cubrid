@@ -38,6 +38,7 @@
 #include "adjustable_array.h"
 #include "system_parameter.h"
 #include "dbtype.h"
+#include "log_compress.h"
 #endif /* SERVER_MODE */
 
 #include "lock_free.h"
@@ -325,8 +326,8 @@ struct thread_entry
   struct thread_entry *tran_next_wait;
   struct thread_entry *worker_thrd_list;	/* worker thrd on jobq list */
 
-  void *log_zip_undo;
-  void *log_zip_redo;
+  LOG_ZIP *log_zip_undo;
+  LOG_ZIP *log_zip_redo;
   char *log_data_ptr;
   int log_data_length;
 
