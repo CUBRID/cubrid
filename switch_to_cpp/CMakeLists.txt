@@ -1,1 +1,0 @@
-add_executable(typedef_after_decl EXCLUDE_FROM_ALL typedef_after_decl.cpp)
