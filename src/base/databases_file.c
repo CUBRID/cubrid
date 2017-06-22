@@ -47,6 +47,7 @@
 #include "error_manager.h"
 #include "databases_file.h"
 #include "boot.h"
+#include "connection_defs.h"
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
@@ -404,7 +405,7 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
   databases = last = NULL;
 
 #if defined(SERVER_MODE)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_string_value (PRM_ID_HA_NODE_LIST))
+  if (!HA_DISABLED () && prm_get_string_value (PRM_ID_HA_NODE_LIST))
     {
       str = strchr (prm_get_string_value (PRM_ID_HA_NODE_LIST), '@');
       ha_node_list = (str) ? str + 1 : NULL;

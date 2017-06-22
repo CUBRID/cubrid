@@ -25872,7 +25872,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
    * slightly different. */
   insert_helper.is_unique_multi_update = unique_stat_info != NULL && op_type == MULTI_ROW_UPDATE;
   /* Is HA enabled? The above exception will no longer apply. */
-  insert_helper.is_ha_enabled = prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF;
+  insert_helper.is_ha_enabled = !HA_DISABLED ();
 
   /* Add more insert_helper initialization here. */
 

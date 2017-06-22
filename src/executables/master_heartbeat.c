@@ -4595,7 +4595,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   hb_Cluster->sfd = INVALID_SOCKET;
   strncpy (hb_Cluster->host_name, host_name, sizeof (hb_Cluster->host_name) - 1);
   hb_Cluster->host_name[sizeof (hb_Cluster->host_name) - 1] = '\0';
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA)
+  if (HA_GET_MODE () == HA_MODE_REPLICA)
     {
       hb_Cluster->state = HB_NSTATE_REPLICA;
     }
@@ -4856,7 +4856,7 @@ hb_master_init (void)
   MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STARTED, 0);
 #if defined (HB_VERBOSE_DEBUG)
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "heartbeat params. (ha_mode:%s, heartbeat_nodes:{%s}" ", ha_port_id:%d). \n",
-		       (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF) ? "yes" : "no",
+		       (!HA_DISABLED ())? "yes" : "no",
 		       prm_get_string_value (PRM_ID_HA_NODE_LIST), prm_get_integer_value (PRM_ID_HA_PORT_ID));
 #endif
 

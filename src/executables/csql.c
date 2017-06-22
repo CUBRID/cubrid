@@ -2147,7 +2147,7 @@ csql_print_database (void)
 	  *pstr = '\0';
 	}
 
-      if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+      if (HA_DISABLED ())
 	{
 	  fprintf (csql_Output_fp, "\n\t%s@%s\n\n", db_name, converted_host_name);
 	}

@@ -2047,7 +2047,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
 #if defined(SERVER_MODE)
-  int common_ha_mode;
+  HA_MODE common_ha_mode;
 #endif
   int error_code = NO_ERROR;
   char *prev_err_msg;
@@ -2094,7 +2094,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  common_ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
+  common_ha_mode = HA_GET_MODE ();
 #endif /* SERVER_MODE */
 
   if (db_name == NULL)
@@ -2204,11 +2204,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && !HA_DISABLED ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
-	      prm_get_name (PRM_ID_HA_MODE), css_ha_mode_string ((HA_MODE) common_ha_mode), db_name,
-	      css_ha_mode_string ((HA_MODE) prm_get_integer_value (PRM_ID_HA_MODE)));
+	      prm_get_name (PRM_ID_HA_MODE), css_ha_mode_string (common_ha_mode), db_name,
+	      css_ha_mode_string (HA_GET_MODE ()));
       error_code = ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS;
       goto error;
     }

@@ -224,7 +224,7 @@ css_master_cleanup (int sig)
 #if !defined(WINDOWS)
   unlink (css_get_master_domain_path ());
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
     }
@@ -1212,7 +1212,7 @@ main (int argc, char **argv)
     }
 
 #if !defined(WINDOWS)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       if (hb_master_init () != NO_ERROR)
 	{

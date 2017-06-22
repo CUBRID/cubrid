@@ -646,7 +646,7 @@ css_process_kill_master (void)
       hb_cluster_shutdown_and_cleanup ();
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
     }
@@ -910,7 +910,7 @@ css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
   char *buffer = NULL;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -976,7 +976,7 @@ css_process_ha_admin_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
   char *buffer = NULL;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1057,7 +1057,7 @@ css_process_ha_node_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id,
   char *buffer = NULL;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1125,7 +1125,7 @@ css_process_ha_process_list_info (CSS_CONN_ENTRY * conn, unsigned short request_
   char *buffer = NULL;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1190,7 +1190,7 @@ css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn, unsigned short request_i
 #if !defined(WINDOWS)
   char *buffer = NULL;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1246,7 +1246,7 @@ static void
 css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buf)
 {
 #if !defined(WINDOWS)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       if (hb_is_registered_process (conn, buf))
 	{
@@ -1290,7 +1290,7 @@ css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, unsigned short request_
   pid_t pid;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       result = hb_check_request_eligibility (conn->fd);
       if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
@@ -1347,7 +1347,7 @@ css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, unsigned short request
 #if !defined(WINDOWS)
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       result = hb_check_request_eligibility (conn->fd);
       if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
@@ -1404,7 +1404,7 @@ css_process_reconfig_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_id
 #if !defined(WINDOWS)
   char *buffer = NULL;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1463,7 +1463,7 @@ css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_
   char error_string[LINE_MAX];
   char request_from[MAXHOSTNAMELEN] = "";
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1625,7 +1625,7 @@ css_process_deact_stop_all (CSS_CONN_ENTRY * conn, unsigned short request_id, ch
   char error_string[LINE_MAX];
   char request_from[MAXHOSTNAMELEN] = "";
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1714,7 +1714,7 @@ css_process_activate_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_id
 #if !defined(WINDOWS)
   int error = NO_ERROR;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1764,7 +1764,7 @@ css_process_ha_start_util_process (CSS_CONN_ENTRY * conn, unsigned short request
   int error = NO_ERROR;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }

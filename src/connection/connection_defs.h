@@ -270,12 +270,14 @@ typedef enum ha_mode HA_MODE;
 #define HA_MODE_REPLICA_STR     "replica"
 #define HA_MODE_ON_STR          "on"
 
+#define HA_GET_MODE() ((HA_MODE) prm_get_integer_value (PRM_ID_HA_MODE))
+#define HA_DISABLED() (HA_GET_MODE () == HA_MODE_OFF)
+
 /*
  * HA server mode
  */
 enum ha_server_mode
 {
-  HA_SERVER_MODE_NA = -1,
   HA_SERVER_MODE_ACTIVE = 0,
   HA_SERVER_MODE_STANDBY = 1,
   HA_SERVER_MODE_BACKUP = 2,
@@ -290,7 +292,6 @@ typedef enum ha_server_mode HA_SERVER_MODE;
 #define HA_SERVER_MODE_PRIMARY_STR      "primary"
 #define HA_SERVER_MODE_SECONDARY_STR    "secondary"
 #define HA_SERVER_MODE_TERNARY_STR      "ternary"
-
 
 /*
  * HA log applier state

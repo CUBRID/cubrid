@@ -4232,7 +4232,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 #if defined(SERVER_MODE)
   /* It changes the status of waiting log writer threads and wakes them up */
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF && !writer_info->skip_flush)
+  if (!HA_DISABLED () && !writer_info->skip_flush)
     {
       assert (hold_flush_mutex == false);
       LOG_CS_DEMOTE (thread_p);
@@ -4565,7 +4565,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   hold_flush_mutex = false;
 
 #if defined(SERVER_MODE)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF && !writer_info->skip_flush)
+  if (!HA_DISABLED () && !writer_info->skip_flush)
     {
       /* it sends signal to LWT to notify that flush is completed */
       rv = pthread_mutex_lock (&writer_info->flush_wait_mutex);
@@ -6733,7 +6733,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   (void) logpb_add_archive_page_info (thread_p, log_Gl.hdr.nxarv_num - 1, arvhdr->fpageid, last_pageid);
 
 #if defined(SERVER_MODE)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       LOG_PAGEID min_fpageid = logwr_get_min_copied_fpageid ();
       if (min_fpageid != NULL_PAGEID)
