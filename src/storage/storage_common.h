@@ -76,7 +76,6 @@ enum
     } \
   } while (0)
 
-
 /* Type definitions related to disk information	*/
 
 typedef INT16 VOLID;		/* Volume identifier */
@@ -108,17 +107,12 @@ struct log_lsa
 };
 
 typedef struct log_lsa LOG_LSA;	/* Log address identifier */
-//vapa!!!
-//#define LSA_COPY(lsa_ptr1, lsa_ptr2) (lsa_ptr1)->pageid = (lsa_ptr2)->pageid; (lsa_ptr1)->offset = (lsa_ptr2)->offset
-#ifdef __cplusplus
-inline void
-LSA_COPY (LOG_LSA * _plsa1, const LOG_LSA * _plsa2)
+INLINE void
+LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
 {
-  _plsa1->pageid = _plsa2->pageid;
-  _plsa1->offset = _plsa2->offset;
+  plsa1->pageid = plsa2->pageid;
+  plsa1->offset = plsa2->offset;
 }
-
-#endif
 
 #define LSA_SET_NULL(lsa_ptr)\
   do {									      \
