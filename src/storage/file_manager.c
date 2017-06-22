@@ -9759,7 +9759,9 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
   FILE_HEADER *fhead = NULL;
   FILE_DESCRIPTORS des_new;
   int error_code = NO_ERROR;
+#if defined (SERVER_MODE)
   bool is_dropped = false;
+#endif
 
   assert (log_check_system_op_is_started (thread_p));
 
@@ -9776,9 +9778,10 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
   context->hfid_out->vfid.volid = item->volid;
   context->hfid_out->vfid.fileid = item->fileid;
 
+#if defined (SERVER_MODE)
   /* we need it to check vacuum won't consider this dropped. */
-  error_code =
-    vacuum_is_file_dropped (thread_p, &is_dropped, &context->hfid_out->vfid, logtb_get_current_mvccid (thread_p));
+  error_code = vacuum_is_file_dropped (thread_p, &is_dropped, &context->hfid_out->vfid,
+				       logtb_get_current_mvccid (thread_p));
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -9793,6 +9796,7 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
       VFID_SET_NULL (&context->hfid_out->vfid);
       return NO_ERROR;
     }
+#endif
 
   /* reuse this heap. but we need to update its descriptor first. */
   FILE_GET_HEADER_VPID (&context->hfid_out->vfid, &vpid_fhead);
