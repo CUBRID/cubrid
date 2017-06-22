@@ -2467,7 +2467,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
       int keyval = -1;
       if (changemode_keyword (&keyval, &mode_name) != NO_ERROR)
 	{
-	  if (sscanf (mode_name, "%d", &ha_state) != 1)
+	  if (sscanf (mode_name, "%d", &keyval) != 1)
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message
 				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
@@ -2521,7 +2521,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
       /* change server's HA state */
       ha_state = boot_change_ha_mode (ha_state, force, timeout);
     }
-  if (ha_state != HA_SERVER_MODE_NA)
+  if (ha_state != HA_SERVER_STATE_NA)
     {
       int keyval = (int) ha_state;
       mode_name = NULL;
