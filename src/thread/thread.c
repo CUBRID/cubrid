@@ -187,7 +187,7 @@ struct thread_daemon
   DAEMON_THREAD_MONITOR *daemon_monitor;
   THREAD_DAEMON_TYPE type;
   int shutdown_sequence;
-  void *daemon_function;
+    THREAD_RET_T (THREAD_CALLING_CONVENTION * daemon_function) (void *);
 };
 
 static THREAD_DAEMON *thread_Daemons = NULL;
@@ -436,49 +436,49 @@ thread_initialize_manager (void)
       thread_Daemons[daemon_index].type = THREAD_DAEMON_CSS_OOB_HANDLER;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Oob_thread;
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = (void *) css_oob_handler_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = css_oob_handler_thread;
 
       /* Initialize deadlock detect daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_DEADLOCK_DETECT;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Deadlock_detect_thread;
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_deadlock_detect_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_deadlock_detect_thread;
 
       /* Initialize purge archive logs daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_PURGE_ARCHIVE_LOGS;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Purge_archive_logs_thread;
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_purge_archive_logs_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_purge_archive_logs_thread;
 
       /* Initialize checkpoint daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_CHECKPOINT;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Checkpoint_thread;
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_checkpoint_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_checkpoint_thread;
 
       /* Initialize session control daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_SESSION_CONTROL;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Session_control_thread;
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_session_control_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_session_control_thread;
 
       /* Initialize check HA delay info daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_CHECK_HA_DELAY_INFO;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Check_ha_delay_info_thread;
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_check_ha_delay_info_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_check_ha_delay_info_thread;
 
       /* Initialize auto volume expansion daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_AUTO_VOLUME_EXPANSION;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Auto_volume_expansion_thread;
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_auto_volume_expansion_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_auto_volume_expansion_thread;
 
       /* Initialize log clock daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_CLOCK;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Log_clock_thread;
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_log_clock_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_log_clock_thread;
 
       /* Initialize vacuum worker daemons */
       for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++, daemon_index++)
@@ -486,45 +486,45 @@ thread_initialize_manager (void)
 	  thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_WORKER;
 	  thread_Daemons[daemon_index].daemon_monitor = &thread_Vacuum_worker_threads[i];
 	  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-	  thread_Daemons[daemon_index].daemon_function = (void *) thread_vacuum_worker_thread;	//vapa!!!
+	  thread_Daemons[daemon_index].daemon_function = thread_vacuum_worker_thread;
 	}
 
       /* Initialize vacuum master daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_MASTER;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Vacuum_master_thread;
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_vacuum_master_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_vacuum_master_thread;
 
       /* Leave these three daemons at the end. These are to be shutdown latest */
       /* Initialize page buffer maintenance daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_MAINTENANCE;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Page_maintenance_thread;
       thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 4;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_page_buffer_maintenance_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_page_buffer_maintenance_thread;
 
       /* Initialize page flush daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_FLUSH;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Page_flush_thread;
       thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 3;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_page_flush_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_page_flush_thread;
 
       /* Initialize page post flush daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_POST_FLUSH;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Page_post_flush_thread;
       thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 2;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_page_post_flush_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_page_post_flush_thread;
 
       /* Initialize flush control daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_FLUSH_CONTROL;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Flush_control_thread;
       thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 1;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_flush_control_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_flush_control_thread;
 
       /* Initialize log flush daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_FLUSH;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Log_flush_thread;
       thread_Daemons[daemon_index].shutdown_sequence = INT_MAX;
-      thread_Daemons[daemon_index++].daemon_function = (void *) thread_log_flush_thread;	//vapa!!!
+      thread_Daemons[daemon_index++].daemon_function = thread_log_flush_thread;
 
       /* Add new daemons before page flush daemon */
 
@@ -727,9 +727,7 @@ thread_start_workers (void)
 	}
 
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
-      r =
-	pthread_create (&thread_p->tid, &thread_attr, (THREAD_RET_T (*)(void *)) thread_Daemons[i].daemon_function,
-			thread_p);
+      r = pthread_create (&thread_p->tid, &thread_attr, thread_Daemons[i].daemon_function, thread_p);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_CREATE, 0);

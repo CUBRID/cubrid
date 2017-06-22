@@ -812,13 +812,8 @@ css_set_shutdown_timeout (int timeout)
  *   return:
  *   arg(in):
  */
-#if defined(WINDOWS)
-unsigned __stdcall
+THREAD_RET_T THREAD_CALLING_CONVENTION
 css_master_thread (void)
-#else /* WINDOWS */
-void *
-css_master_thread (void)
-#endif				/* WINDOWS */
 {
   int r, run_code = 1, status = 0, nfds;
   struct pollfd po[] = { {0, 0, 0}, {0, 0, 0} };
@@ -1641,13 +1636,8 @@ ctrl_sig_handler (DWORD ctrl_event)
  *   return:
  *   arg(in):
  */
-#if defined(WINDOWS)
-unsigned __stdcall
+THREAD_RET_T THREAD_CALLING_CONVENTION
 css_oob_handler_thread (void *arg)
-#else /* WINDOWS */
-void *
-css_oob_handler_thread (void *arg)
-#endif				/* WINDOWS */
 {
   THREAD_ENTRY *thrd_entry;
   int r;
