@@ -221,8 +221,7 @@
   ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
 #endif
 #define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
-  ((thrd) ? (void)((thrd)->tran_index = (index)) : \
-            thread_set_current_tran_index ((thrd), (index)))
+  ((thrd) ? (void) ((thrd)->tran_index = (index)) : thread_set_current_tran_index ((thrd), (index)))
 #else /* SERVER_MODE */
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
