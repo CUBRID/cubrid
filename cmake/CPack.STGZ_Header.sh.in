@@ -168,7 +168,7 @@ setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
 set path=($CUBRID/bin} $path)
 ____cubrid__here_doc____
-    source $cubrid_envfile
+    source ${cubrid_envfile}-@CPACK_PACKAGE_VERSION@
     ;;
   *)
     cubrid_envfile="$HOME/.cubrid.sh"
@@ -192,7 +192,7 @@ export SHLIB_PATH
 export LIBPATH
 export PATH
 ____cubrid__here_doc____
-    . $cubrid_envfile
+    . ${cubrid_envfile}-@CPACK_PACKAGE_VERSION@
     ;;
 esac
 
