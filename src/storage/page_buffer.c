@@ -11073,8 +11073,8 @@ pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p)
 	  return true;
 	}
       if (holder->bufptr->iopage_buffer->iopage.prv.ptype == PAGE_BTREE
-	  && btree_get_perf_btree_page_type (thread_p,
-					     holder->bufptr->iopage_buffer->iopage.page) == PERF_PAGE_BTREE_ROOT)
+	  && (btree_get_perf_btree_page_type (thread_p, holder->bufptr->iopage_buffer->iopage.page)
+	      == PERF_PAGE_BTREE_ROOT))
 	{
 	  /* holds b-tree root */
 	  return true;
@@ -11565,7 +11565,7 @@ pgbuf_compare_hold_vpid_for_sort (const void *p1, const void *p2)
  *	  should check page pointer of watchers before using them in case of error.
  *
  *  Note2: If any page re-fix occurs for previously fixed pages, their 'unfix' flag in their watcher is set.
- *         (caller is resposible to check this flag)
+ *         (caller is responsible to check this flag)
  *
  */
 #if !defined(NDEBUG)
@@ -11584,7 +11584,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   PAGE_PTR pgptr, ret_pgptr;
   int i, thrd_idx;
   int saved_pages_cnt = 0;
-  int curr_request_mode;
+  PGBUF_LATCH_MODE curr_request_mode;
   PAGE_FETCH_MODE curr_fetch_mode;
   PGBUF_HOLDER_INFO ordered_holders_info[PGBUF_MAX_PAGE_FIXED_BY_TRAN];
   PGBUF_HOLDER_INFO req_page_holder_info;
@@ -12145,12 +12145,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 #if !defined(NDEBUG)
       pgptr =
-	pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode,
-			 (PGBUF_LATCH_MODE) curr_request_mode, PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
+	pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, curr_request_mode,
+			 PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
 #else
       pgptr =
-	pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode,
-			   (PGBUF_LATCH_MODE) curr_request_mode, PGBUF_UNCONDITIONAL_LATCH);
+	pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, curr_request_mode,
+			   PGBUF_UNCONDITIONAL_LATCH);
 #endif
 
       if (pgptr == NULL)
@@ -12250,13 +12250,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	    {
 #if !defined(NDEBUG)
 	      pgptr =
-		pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode,
-				 (PGBUF_LATCH_MODE) curr_request_mode, PGBUF_UNCONDITIONAL_LATCH, caller_file,
-				 caller_line);
+		pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, curr_request_mode,
+				 PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
 #else
 	      pgptr =
-		pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode,
-				   (PGBUF_LATCH_MODE) curr_request_mode, PGBUF_UNCONDITIONAL_LATCH);
+		pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, curr_request_mode,
+				   PGBUF_UNCONDITIONAL_LATCH);
 #endif
 	      if (pgptr == NULL)
 		{
@@ -14053,7 +14052,7 @@ pgbuf_get_page_type_for_stat (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
   if ((io_pgptr->prv.ptype == PAGE_BTREE) && (perfmon_get_activation_flag () & PERFMON_ACTIVE_DETAILED_BTREE_PAGE))
     {
-      perf_page_type = (PERF_PAGE_TYPE) btree_get_perf_btree_page_type (thread_p, pgptr);
+      perf_page_type = btree_get_perf_btree_page_type (thread_p, pgptr);
     }
   else
     {
