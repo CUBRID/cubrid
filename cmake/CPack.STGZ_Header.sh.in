@@ -166,7 +166,7 @@ else
 endif
 setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
-set path=($CUBRID/bin} $path)
+set path=($CUBRID/bin $path)
 ____cubrid__here_doc____
     source ${cubrid_envfile}-@CPACK_PACKAGE_VERSION@
     ;;
