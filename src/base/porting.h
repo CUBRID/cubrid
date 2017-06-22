@@ -47,13 +47,15 @@
 #define ALWAYS_INLINE
 #endif
 
-#if defined (__GNUC__)
+#if defined (__cplusplus) || defined (__GNUC__)
 #define STATIC_INLINE static inline
 #define INLINE inline
 #elif _MSC_VER >= 1000
 #define STATIC_INLINE __forceinline static
 #define INLINE __forceinline
 #else
+/* TODO: we have several cases of using INLINE/STATIC_INLINE and adding function definition in headers. This won't
+ * work. */
 #define STATIC_INLINE static
 #define INLINE
 #endif

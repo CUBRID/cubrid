@@ -107,7 +107,7 @@ struct log_lsa
 };
 
 typedef struct log_lsa LOG_LSA;	/* Log address identifier */
-INLINE void
+STATIC_INLINE void
 LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
 {
   plsa1->pageid = plsa2->pageid;
