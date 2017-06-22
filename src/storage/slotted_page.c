@@ -3931,7 +3931,7 @@ spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p, RECDES * record_des
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
-	  return (SCAN_CODE) SP_ERROR;
+	  return S_ERROR;
 	}
       memcpy (record_descriptor_p->data, (char *) page_p + slot_p->offset_to_record, slot_p->record_length);
     }
