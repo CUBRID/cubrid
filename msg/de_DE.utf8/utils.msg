@@ -753,7 +753,7 @@ Anwendung: %1$s diagdb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
   -o, --output-file=DATEI     Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
-      --emergency             emergency restart; default: none\n\
+      --emergency             Notfall neu starten; Standard: keine\n\
   -d, --dump-type=TYP         Export TYP \n\
                                -1 alles exportieren\n\
                                 1 Dateitabellen exportieren \n\
@@ -1077,8 +1077,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: Generieren Sie Quelldateien enthält, Zeitzone Daten, die in einer gemeinsamen\n\
         Bibliothek kompiliert werden.\n\
-Anwendung: %s gen_tz [OPTION]\n\
-           %s gen_tz -g extend [OPTION] [Datenbank-Name]\n\
+Anwendung: %s gen_tz -g [new|extend] [Datenbank-Name] (Nur für Erweiterungsmodus)\n\
 \n\
 gültigen Optionen:\n\
   -i, --input-folder    Pfad zu einem Eingangsordner enthält eine Version von IANA\n\
