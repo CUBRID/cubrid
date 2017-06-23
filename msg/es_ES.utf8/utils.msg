@@ -963,8 +963,8 @@ genlocale: Genera biblioteca local compartida utilizando el archivo de entrada L
 uso: %1$s genlocale [OPTION] [language-string]\n\
 \n\
 language-string       string de idioma local para cual generar biblioteca compartida.\n\
-              Si no hay ningun string de idioma dado, todos los idiomas en 'cubrid_locales.txt'\n\
-              van a ser procesados.\n\
+                      Si no hay ningun string de idioma dado, todos los idiomas en 'cubrid_locales.txt'\n\
+                      van a ser procesados.\n\
 opciones validas:\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar : inhabilitar\n\
   -i, --input-ldml-file       ruta para archivo de entrada LDML. Solo cuando el string de idioma es dado.\n
@@ -1028,8 +1028,8 @@ uso: %1$s synccolldb [OPTION] database-name\n\
 \n\
 opciones validas:\n\
   -c, --check-only    Verifica las colaciones de la base de datos con las colaciones del sistema.\n\
-              Si se requiere sincronizacion de colaciones, codigo de error 1 es returnado.\n\
-              Muestra un informe de las colaciones incompatibles.\n\
+                      Si se requiere sincronizacion de colaciones, codigo de error 1 es returnado.\n\
+                      Muestra un informe de las colaciones incompatibles.\n\
   -f, --force-only    Actualiza las colaciones en la base de datos para que sean iguales con las colaciones de la nueva configuracion del sistema.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
@@ -1100,7 +1100,7 @@ opciones validas:\n\
                         de la biblioteca de zona horaria existente.\n\
                         Si la primera fase de la extensión no logra que todos los datos sean\n\
                         compatibles con versiones anteriores, todas las filas de todas las tablas\n\
-                        que tengan tipos de datos de zona horaria se actualizarán.
+                        que tengan tipos de datos de zona horaria se actualizarán.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 El identificador de zona suministrado es fuera de rango. Utilizar -z para ver todas\n\
@@ -1112,7 +1112,7 @@ uso: %s dump_tz [OPTION]\n\
 opciones validas:\n\
   -c, --list-countries      mostar la lista de paises actualmente soportada\n\
   -l, --leap-seconds        mostrar la lista de segundas leap\n\
-  -s, --summary         mostrar un resumen de los datos de zona horaria\n\
+  -s, --summary             mostrar un resumen de los datos de zona horaria\n\
   -z, --list-zones          mostrar una lista de zonas horarias actualmente soportadas\n\
   -d, --zone-id=ZONE_ID|ALL mostrar la informacion disponible relacionada a la zona horaria\n\
                             a una zona horaria que tiene el ZONE_ID suministrado o para\n\
