@@ -9289,6 +9289,11 @@ exit_on_error:
       qexec_close_scan (thread_p, specp);
     }
 
+  if (del_lob_info_list != NULL)
+    {
+      qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
+    }
+
   if (mvcc_reev_classes != NULL)
     {
       db_private_free (thread_p, mvcc_reev_classes);
@@ -9977,6 +9982,11 @@ exit_on_error:
     {
       qexec_end_scan (thread_p, specp);
       qexec_close_scan (thread_p, specp);
+    }
+
+  if (del_lob_info_list != NULL)
+    {
+      qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
     }
 
   if (internal_classes)
