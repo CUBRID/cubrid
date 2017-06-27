@@ -5151,6 +5151,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
     {
       /* something went wrong, destroy the file, and return */
       assert_release (false);
+      error_code = ER_FAILED;
       goto error;
     }
 
@@ -17558,7 +17559,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
   ctx = (HEAP_SHOW_SCAN_CTX *) db_private_alloc (thread_p, sizeof (HEAP_SHOW_SCAN_CTX));
   if (ctx == NULL)
     {
-      assert (er_errid () != NO_ERROR);
+      ASSERT_ERROR ();
       error = er_errid ();
       goto cleanup;
     }
@@ -17585,7 +17586,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
       ctx->hfids = (HFID *) db_private_alloc (thread_p, parts_count * sizeof (HFID));
       if (ctx->hfids == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
+	  ASSERT_ERROR ();
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -17602,7 +17603,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
       ctx->hfids = (HFID *) db_private_alloc (thread_p, sizeof (HFID));
       if (ctx->hfids == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
+	  ASSERT_ERROR ();
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -17682,7 +17683,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL, NULL);
   if (pgptr == NULL)
     {
-      assert (er_errid () != NO_ERROR);
+      ASSERT_ERROR ();
       error = er_errid ();
       goto cleanup;
     }
