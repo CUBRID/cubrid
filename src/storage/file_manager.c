@@ -940,6 +940,8 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
       assert (fhead->n_sector_total == fhead->n_sector_full);
     }
 
+  er_stack_push ();
+
   FILE_HEADER_GET_PART_FTAB (fhead, part_table);
   if (fhead->n_sector_partial == 0)
     {
@@ -949,13 +951,14 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
   else
     {
       int part_cnt = 0;
+
       assert (!file_extdata_is_empty (part_table) || !VPID_ISNULL (&part_table->vpid_next));
+
       if (file_extdata_all_item_count (thread_p, part_table, &part_cnt) != NO_ERROR)
 	{
 	  /* thread might be interrupted; give up checking */
 	  ASSERT_ERROR ();
-	  er_clear ();
-	  return;
+	  goto exit;
 	}
       assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_partial == part_cnt);
     }
@@ -970,17 +973,22 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
       else
 	{
 	  int full_cnt = 0;
+
 	  assert (!file_extdata_is_empty (full_table) || !VPID_ISNULL (&full_table->vpid_next));
+
 	  if (file_extdata_all_item_count (thread_p, full_table, &full_cnt) != NO_ERROR)
 	    {
 	      /* thread might be interrupted; give up checking */
 	      ASSERT_ERROR ();
-	      er_clear ();
-	      return;
+	      goto exit;
 	    }
 	  assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_full == full_cnt);
 	}
     }
+
+exit:
+  /* forget any error of the function */
+  er_stack_pop ();
 #endif /* !NDEBUG */
 }
 
@@ -2659,10 +2667,8 @@ exit:
 static int
 file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count)
 {
-
   return file_extdata_apply_funcs (thread_p, extdata, file_extdata_add_item_count, count, NULL, NULL, false, NULL,
 				   NULL);
-
 }
 
 /*
