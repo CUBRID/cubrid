@@ -56,7 +56,7 @@ static char **util_split_ha_node (const char *str);
 static char **util_split_ha_db (const char *str);
 static char **util_split_ha_sync (const char *str);
 static int util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p, char **ha_sync_mode_p,
-				   char **ha_copy_log_base_p, int *ha_max_mem_size_p);
+				   const char **ha_copy_log_base_p, int *ha_max_mem_size_p);
 static bool util_is_replica_node (void);
 
 /*
@@ -525,7 +525,7 @@ changemode_keyword (int *keyval_p, char **keystr_p)
 }
 
 static int
-util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p, char **ha_sync_mode_p, char **ha_copy_log_base_p,
+util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p, char **ha_sync_mode_p, const char **ha_copy_log_base_p,
 			int *ha_max_mem_size_p)
 {
   int error = NO_ERROR;
@@ -654,7 +654,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
   char *ha_db_list_p = NULL;
   char *ha_node_list_p = NULL, **ha_node_list_pp = NULL;
   char *ha_sync_mode_p = NULL, **ha_sync_mode_pp = NULL;
-  char *ha_copy_log_base_p;
+  const char *ha_copy_log_base_p;
   int ha_max_mem_size;
   bool is_replica_node;
 
@@ -862,7 +862,7 @@ util_redirect_stdout_to_null (void)
  *
  */
 static int
-util_size_to_byte (double *pre, char *post)
+util_size_to_byte (double *pre, const char *post)
 {
   if (strcasecmp (post, "b") == 0)
     {
@@ -933,7 +933,7 @@ util_byte_to_size_string (char *buf, size_t len, UINT64 size_num)
   num_str[99] = '\0';
   num_len = strlen (num_str);
 
-  if (len < decpt + 4)
+  if (len < (size_t)(decpt + 4))
     {
       return ER_FAILED;
     }
@@ -983,9 +983,9 @@ int
 util_size_string_to_byte (UINT64 * size_num, const char *size_str)
 {
   double val;
-  char *default_unit = "B";
+  const char *default_unit = "B";
   char *end;
-  char *size_unit;
+  const char *size_unit;
 
   if (size_str == NULL || size_num == NULL)
     {
@@ -1029,7 +1029,7 @@ util_size_string_to_byte (UINT64 * size_num, const char *size_str)
  *
  */
 static int
-util_time_to_msec (double *pre, char *post)
+util_time_to_msec (double *pre, const char *post)
 {
   if ((strcasecmp (post, "ms") == 0) || (strcasecmp (post, "msec") == 0))
     {
@@ -1082,15 +1082,15 @@ util_msec_to_time_string (char *buf, size_t len, INT64 msec_num)
   if (sec > 0)
     {
       msec = v % ONE_SEC;
-      error = snprintf (buf, len, "%lld.%03lld sec", sec, msec);
+      error = snprintf (buf, len, "%ld.%03ld sec", sec, msec);
     }
   else if (v < 0)
     {
-      error = snprintf (buf, len, "%lld", v);
+      error = snprintf (buf, len, "%ld", v);
     }
   else
     {
-      error = snprintf (buf, len, "%lld msec", v);
+      error = snprintf (buf, len, "%ld msec", v);
     }
 
   if (error < 0)
@@ -1111,9 +1111,9 @@ int
 util_time_string_to_msec (INT64 * msec_num, char *time_str)
 {
   double val;
-  char *default_unit = "ms";
+  const char *default_unit = "ms";
   char *end;
-  char *time_unit;
+  const char *time_unit;
 
   if (time_str == NULL || msec_num == NULL)
     {

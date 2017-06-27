@@ -574,7 +574,7 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri)
   length = or_packed_string_length (uri, NULL);
 
   /* Check there is enough space in data buffer to pack the string */
-  assert (length <= ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE - INT_ALIGNMENT);
+  assert (length <= (int)(ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE - INT_ALIGNMENT));
 
   /* Align buffer to prepare for packing string */
   data = PTR_ALIGN (data_buf, INT_ALIGNMENT);

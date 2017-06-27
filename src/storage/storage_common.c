@@ -378,7 +378,7 @@ recdes_set_data_area (RECDES * rec, char *data, int size)
 char *
 lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa)
 {
-  snprintf (buf, buf_size, "(%lld|%d)", (long long int) lsa->pageid, lsa->offset);
+  snprintf (buf, buf_size, "(%lld|%ld)", (long long int) lsa->pageid, lsa->offset);
   buf[buf_size - 1] = 0;
   return buf;
 }

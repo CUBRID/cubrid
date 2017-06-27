@@ -1771,7 +1771,7 @@ locator_print_class_name (FILE * outfp, const void *key, void *ent, void *args)
 	  str_action = "UNKNOWN";
 	  break;
 	}
-      fprintf (outfp, "           action = %s, OID = %d|%d|%d, Save_Lsa = %lld|%d\n", str_action, action->oid.volid,
+      fprintf (outfp, "           action = %s, OID = %d|%d|%d, Save_Lsa = %lld|%ld\n", str_action, action->oid.volid,
 	       action->oid.pageid, action->oid.slotid, (long long int) action->savep_lsa.pageid,
 	       action->savep_lsa.offset);
       action = action->prev;
@@ -2188,7 +2188,7 @@ locator_return_object_assign (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * as
        * The cached object was obsolete.
        */
       round_length = DB_ALIGN (assign->recdes.length, MAX_ALIGNMENT);
-      if (assign->recdes.area_size < (round_length + sizeof (*assign->obj)))
+      if (assign->recdes.area_size < (round_length + (int)sizeof (*assign->obj)))
 	{
 	  assign->recdes.area_size -= (round_length + sizeof (*assign->obj));
 	  scan = S_DOESNT_FIT;
@@ -2238,7 +2238,7 @@ locator_return_object_assign (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * as
 
       if (guess_chn == CHN_UNKNOWN_ATCLIENT)
 	{
-	  if (assign->recdes.area_size < sizeof (*assign->obj))
+	  if (assign->recdes.area_size < (int)sizeof (*assign->obj))
 	    {
 	      assign->recdes.area_size -= sizeof (*assign->obj);
 	      scan = S_DOESNT_FIT;
@@ -2265,7 +2265,7 @@ locator_return_object_assign (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * as
       /* 
        * The object does not exist
        */
-      if (assign->recdes.area_size < sizeof (*assign->obj))
+      if (assign->recdes.area_size < (int)sizeof (*assign->obj))
 	{
 	  assign->recdes.area_size -= sizeof (*assign->obj);
 	  scan = S_DOESNT_FIT;

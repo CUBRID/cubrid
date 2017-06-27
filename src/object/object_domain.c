@@ -1834,6 +1834,9 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_RESULTSET:
     case DB_TYPE_TABLE:
       break;
+    case DB_TYPE_ELO:
+      assert(false);
+      break;
       /* don't have a default so we make sure to add clauses for all types */
     }
 
@@ -2477,7 +2480,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_RESULTSET:
     case DB_TYPE_TABLE:
       break;
-
+    case DB_TYPE_ELO:
+      assert(false);
+      break;
       /* don't have a default so we make sure to add clauses for all types */
     }
 
@@ -3371,6 +3376,9 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_RESULTSET:
 	case DB_TYPE_TABLE:
 	  break;
+        case DB_TYPE_ELO:
+          assert(false);
+          break;
 	}
     }
 

@@ -1663,7 +1663,7 @@ logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
   fprintf (out_fp, "    Active top system operations for tran:\n");
   for (i = topops_p->last; i >= 0; i--)
     {
-      fprintf (out_fp, " Head = %lld|%d, Posp_Head = %lld|%d\n",
+      fprintf (out_fp, " Head = %lld|%ld, Posp_Head = %lld|%ld\n",
 	       (long long int) topops_p->stack[i].lastparent_lsa.pageid, topops_p->stack[i].lastparent_lsa.offset,
 	       (long long int) topops_p->stack[i].posp_lsa.pageid, topops_p->stack[i].posp_lsa.offset);
     }
@@ -5095,7 +5095,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 					  next_trans_status_history->long_tran_mvccids,
 					  next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
 	advance_oldest_active_mvccid:
-	  if (next_trans_status_history->version == version)
+	  if ((int)next_trans_status_history->version == version)
 	    {
 	      old_lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
 	      if (old_lowest_active_mvccid < lowest_active_mvccid)
@@ -6083,7 +6083,7 @@ end_completed:
 				      next_trans_status_history->long_tran_mvccids,
 				      next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
     advance_oldest_active_mvccid:
-      if (next_trans_status_history->version == version)
+      if ((int)next_trans_status_history->version == version)
 	{
 	  old_lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
 	  if (old_lowest_active_mvccid < lowest_active_mvccid)

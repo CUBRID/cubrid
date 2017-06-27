@@ -5,7 +5,7 @@
 
 #include <assert.h>
 
-static volatile int getThreadId (void);
+static /*volatile*/ int getThreadId (void);
 
 template <int NumHeaps, class super>
 class MarkThreadHeap : public super {
@@ -108,7 +108,7 @@ extern "C" unsigned int lwp_self (void);
 #endif
 
 
-static volatile int getThreadId (void) {
+static /*volatile*/ int getThreadId (void) {
 #if defined(WIN32)
   // It looks like thread id's are always multiples of 4, so...
   int tid = GetCurrentThreadId() >> 2;

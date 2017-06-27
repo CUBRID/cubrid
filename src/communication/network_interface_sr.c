@@ -4868,7 +4868,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      event_log_slow_query (thread_p, &info, response_time, diff_stats);
 	    }
 
-	  if (trace_ioreads > 0 && diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] >= trace_ioreads)
+	  if (trace_ioreads > 0 && diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] >= (UINT64)trace_ioreads)
 	    {
 	      event_log_many_ioreads (thread_p, &info, response_time, diff_stats);
 	    }

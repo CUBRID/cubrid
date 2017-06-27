@@ -6548,7 +6548,7 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   "     Db_pagesize = %d, log_pagesize= %d, Shutdown = %d,\n"
 	   "     Next_trid = %d, Next_mvcc_id = %llu, Num_avg_trans = %d, Num_avg_locks = %d,\n"
 	   "     Num_active_log_pages = %d, First_active_log_page = %lld,\n"
-	   "     Current_append = %lld|%d, Checkpoint = %lld|%d,\n", log_header_p->magic,
+	   "     Current_append = %lld|%ld, Checkpoint = %lld|%ld,\n", log_header_p->magic,
 	   (long long) offsetof (LOG_PAGE, area), time_val, log_header_p->db_release, log_header_p->db_compatibility,
 	   log_header_p->db_iopagesize, log_header_p->db_logpagesize, log_header_p->is_shutdown,
 	   log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id, log_header_p->avg_ntrans,
@@ -6768,7 +6768,7 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (run_posp->data.rcvindex));
   fprintf (out_fp,
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Run postpone (Redo/After) length = %d, corresponding"
-	   " to\n         Postpone record with LSA = %lld|%d\n", run_posp->data.volid, run_posp->data.pageid,
+	   " to\n         Postpone record with LSA = %lld|%ld\n", run_posp->data.volid, run_posp->data.pageid,
 	   run_posp->data.offset, run_posp->length, (long long int) run_posp->ref_lsa.pageid, run_posp->ref_lsa.offset);
 
   redo_length = run_posp->length;
@@ -6819,7 +6819,7 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   compensate = (LOG_REC_COMPENSATE *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (compensate->data.rcvindex));
-  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Compensate length = %d, Next_to_UNDO = %lld|%d\n",
+  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Compensate length = %d, Next_to_UNDO = %lld|%ld\n",
 	   compensate->data.volid, compensate->data.pageid, compensate->data.offset, compensate->length,
 	   (long long int) compensate->undo_nxlsa.pageid, compensate->undo_nxlsa.offset);
 
@@ -6842,7 +6842,7 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_posp), log_lsa, log_page_p);
   start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
-  fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %d\n",
+  fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %ld\n",
 	   (long long int) start_posp->posp_lsa.pageid, start_posp->posp_lsa.offset);
 
   return log_page_p;
@@ -6875,7 +6875,7 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
 
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
   repl_log = (LOG_REC_REPLICATION *) ((char *) log_page_p->area + log_lsa->offset);
-  fprintf (out_fp, ", Target log lsa = %lld|%d\n", (long long int) repl_log->lsa.pageid, repl_log->lsa.offset);
+  fprintf (out_fp, ", Target log lsa = %lld|%ld\n", (long long int) repl_log->lsa.pageid, repl_log->lsa.offset);
   length = repl_log->length;
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
@@ -7082,7 +7082,7 @@ log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 
   chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Num_trans = %d,\n", chkpt->ntrans);
-  fprintf (out_fp, "     Redo_LSA = %lld|%d\n", (long long int) chkpt->redo_lsa.pageid, chkpt->redo_lsa.offset);
+  fprintf (out_fp, "     Redo_LSA = %lld|%ld\n", (long long int) chkpt->redo_lsa.pageid, chkpt->redo_lsa.offset);
 
   length_active_tran = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
   length_topope = (sizeof (LOG_INFO_CHKPT_SYSOP) * chkpt->ntops);
@@ -7106,7 +7106,7 @@ log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*savept), log_lsa, log_page_p);
   savept = (LOG_REC_SAVEPT *) ((char *) log_page_p->area + log_lsa->offset);
 
-  fprintf (out_fp, ", Prev_savept_Lsa = %lld|%d, length = %d,\n", (long long int) savept->prv_savept.pageid,
+  fprintf (out_fp, ", Prev_savept_Lsa = %lld|%ld, length = %d,\n", (long long int) savept->prv_savept.pageid,
 	   savept->prv_savept.offset, savept->length);
 
   length_save_point = savept->length;
@@ -7482,7 +7482,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 		|| (!LSA_EQ (&next_lsa, &log_rec->forw_lsa) && !LSA_ISNULL (&log_rec->forw_lsa)))
 	      {
 		fprintf (out_fp, "\n\n>>>>>****\n");
-		fprintf (out_fp, "Guess next address = %lld|%d for LSA = %lld|%d\n", (long long int) next_lsa.pageid,
+		fprintf (out_fp, "Guess next address = %lld|%ld for LSA = %lld|%ld\n", (long long int) next_lsa.pageid,
 			 next_lsa.offset, (long long int) lsa.pageid, lsa.offset);
 		fprintf (out_fp, "<<<<<****\n");
 	      }

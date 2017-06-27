@@ -1400,7 +1400,7 @@ disk_rv_dump_set_creation_time (FILE * fp, int length_ignore, void *data)
 
   change = (DISK_RECV_CHANGE_CREATION *) data;
 
-  fprintf (fp, "Label = %s, Db_creation = %lld, chkpt = %lld|%d\n", change->vol_fullname,
+  fprintf (fp, "Label = %s, Db_creation = %lld, chkpt = %lld|%ld\n", change->vol_fullname,
 	   (long long) change->db_creation, (long long int) change->chkpt_lsa.pageid, change->chkpt_lsa.offset);
 }
 
@@ -2901,7 +2901,7 @@ disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
 
   tmp_time = (time_t) vhdr->db_creation;
   (void) ctime_r (&tmp_time, time_val);
-  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%d\n", time_val,
+  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%ld\n", time_val,
 		  (long long int) vhdr->chkpt_lsa.pageid, vhdr->chkpt_lsa.offset);
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);
@@ -5888,7 +5888,7 @@ STATIC_INLINE bool
 disk_compatible_type_and_purpose (DB_VOLTYPE type, DB_VOLPURPOSE purpose)
 {
   /* temporary type with permanent purpose is not compatible */
-  return type == DB_PERMANENT_VOLTYPE || purpose == DB_TEMPORARY_VOLTYPE;
+  return type == DB_PERMANENT_VOLTYPE || (int)purpose == (int)DB_TEMPORARY_VOLTYPE;
 }
 
 /*

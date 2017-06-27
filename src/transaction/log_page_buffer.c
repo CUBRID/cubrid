@@ -3320,7 +3320,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_2PC_COMMIT_DECISION:
-    case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+    case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_START_CHKPT:
@@ -3481,7 +3481,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
     case LOG_DUMMY_GENERIC:
 
     case LOG_2PC_COMMIT_DECISION:
-    case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+    case LOG_2PC_ABORT_DECISION:
     case LOG_COMMIT_WITH_POSTPONE:
     case LOG_SYSOP_START_POSTPONE:
     case LOG_COMMIT:
@@ -11535,16 +11535,16 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tfirst log page id : %lld\n", (long long int) log_Gl.hdr.fpageid);
 
-  fprintf (outfp, "\tcurrent log append lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.append_lsa.pageid,
+  fprintf (outfp, "\tcurrent log append lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.append_lsa.pageid,
 	   log_Gl.hdr.append_lsa.offset);
 
-  fprintf (outfp, "\tlast log append lsa : (%lld, %d)\n", (long long int) log_Gl.append.prev_lsa.pageid,
+  fprintf (outfp, "\tlast log append lsa : (%lld, %ld)\n", (long long int) log_Gl.append.prev_lsa.pageid,
 	   log_Gl.append.prev_lsa.offset);
 
-  fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld, %d)\n",
+  fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld, %ld)\n",
 	   (long long int) log_Gl.append.nxio_lsa.pageid, log_Gl.append.nxio_lsa.offset);
 
-  fprintf (outfp, "\tcheckpoint lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.chkpt_lsa.pageid,
+  fprintf (outfp, "\tcheckpoint lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.chkpt_lsa.pageid,
 	   log_Gl.hdr.chkpt_lsa.offset);
 
   fprintf (outfp, "\tnext archive page id : %lld\n", (long long int) log_Gl.hdr.nxarv_pageid);
@@ -11557,16 +11557,16 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tlast archive number deleted : %d\n", log_Gl.hdr.last_deleted_arv_num);
 
-  fprintf (outfp, "\tbackup level 0 lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.bkup_level0_lsa.pageid,
+  fprintf (outfp, "\tbackup level 0 lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.bkup_level0_lsa.pageid,
 	   log_Gl.hdr.bkup_level0_lsa.offset);
 
-  fprintf (outfp, "\tbackup level 1 lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.bkup_level1_lsa.pageid,
+  fprintf (outfp, "\tbackup level 1 lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.bkup_level1_lsa.pageid,
 	   log_Gl.hdr.bkup_level1_lsa.offset);
 
-  fprintf (outfp, "\tbackup level 2 lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.bkup_level2_lsa.pageid,
+  fprintf (outfp, "\tbackup level 2 lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.bkup_level2_lsa.pageid,
 	   log_Gl.hdr.bkup_level2_lsa.offset);
 
-  fprintf (outfp, "\tMVCC op lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid,
+  fprintf (outfp, "\tMVCC op lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid,
 	   log_Gl.hdr.mvcc_op_log_lsa.offset);
 
   fprintf (outfp, "\tLast block oldest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.last_block_oldest_mvccid);

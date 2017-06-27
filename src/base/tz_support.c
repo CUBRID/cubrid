@@ -3075,7 +3075,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool
       goto exit;
     }
 
-  if ((src_dt->time < 0) || (src_dt->time > MILLIS_IN_A_DAY))
+  if ((src_dt->time > MILLIS_IN_A_DAY))
     {
       err_status = ER_TIME_CONVERSION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
@@ -5490,7 +5490,7 @@ set_new_zone_id (TZ_DECODE_INFO * tz_info)
   timezone_name = tz_Timezone_data.names[tz_info->zone.zone_id].name;
   tz_set_data (tz_get_new_timezone_data ());
   new_zone_id = tz_get_zone_id_by_name (timezone_name, strlen (timezone_name));
-  if (new_zone_id == -1)
+  if (new_zone_id == (unsigned int)-1)
     {
       err_status = ER_TZ_INVALID_TIMEZONE;
     }

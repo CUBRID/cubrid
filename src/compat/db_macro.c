@@ -3521,6 +3521,7 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
 DB_DOMAIN *
 db_type_to_db_domain (const DB_TYPE type)
 {
+  
   DB_DOMAIN *result = NULL;
 
   switch (type)
@@ -3555,6 +3556,7 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_ENUMERATION:
+    case DB_TYPE_ELO:
       result = tp_domain_resolve_default (type);
       break;
     case DB_TYPE_SUB:

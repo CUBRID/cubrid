@@ -2578,7 +2578,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   volatile int i;
   int k, j;
   char *classname;
-  char *attr_name;
+  const char *attr_name;
   DB_VALUE def_dbvalue;
   PR_TYPE *pr_type;
   int disk_length;

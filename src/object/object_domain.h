@@ -373,7 +373,7 @@ typedef enum tp_match
 #define TP_TYPE_HAS_COLLATION(typeid) \
   (TP_IS_CHAR_TYPE(typeid) || (typeid) == DB_TYPE_ENUMERATION)
 
-#define TP_DOMAIN_CODESET(dom) ((INTL_CODESET) ((dom) ? (dom)->codeset : LANG_SYS_CODESET))
+#define TP_DOMAIN_CODESET(dom) (((dom) ? (INTL_CODESET)(dom)->codeset : LANG_SYS_CODESET))
 #define TP_DOMAIN_COLLATION(dom) \
     ((dom) ? (dom)->collation_id : LANG_SYS_COLLATION)
 #define TP_DOMAIN_COLLATION_FLAG(dom) \

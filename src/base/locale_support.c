@@ -248,7 +248,7 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
 
 #define PRINT_STRING_VAR_TO_C_FILE(fp, valname, val, d)			  \
   do {                                                                    \
-    fprintf (fp, "\n"DLL_EXPORT_PREFIX "const char " valname "_%s[] = ", d); \
+    fprintf (fp, "\n" DLL_EXPORT_PREFIX "const char " valname "_%s[] = ", d); \
     PRINT_STRING_TO_C_FILE (fp, val, strlen (val));			  \
     fprintf (fp, ";\n");                                                  \
   } while (0);
@@ -256,7 +256,7 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
 #define PRINT_STRING_ARRAY_TO_C_FILE(fp, valname, arrcount, val, d)	    \
   do {									    \
     int istrarr;							    \
-    fprintf(fp, "\n"DLL_EXPORT_PREFIX"const char* " valname "_%s[] = {\n", d);\
+    fprintf(fp, "\n" DLL_EXPORT_PREFIX"const char* " valname "_%s[] = {\n", d);\
     for (istrarr = 0; istrarr < arrcount; istrarr++)			    \
       {									    \
 	fprintf(fp, "\t");						    \

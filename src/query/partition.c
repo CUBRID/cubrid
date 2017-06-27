@@ -1023,12 +1023,6 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 	  return false;
 	}
 
-      /* check misc_operand for EXTRACT, etc */
-      if (left->value.arithptr->misc_operand != left->value.arithptr->misc_operand)
-	{
-	  return false;
-	}
-
       /* check left operand */
       if (!partition_do_regu_variables_match (pinfo, left->value.arithptr->leftptr, right->value.arithptr->leftptr))
 	{

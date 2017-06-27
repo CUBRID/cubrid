@@ -83,7 +83,7 @@ es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *
   unum = es_get_unique_num ();
 
   /* make a file name & a dir name */
-  snprintf (filename, NAME_MAX, "%s.%020llu_%04d", metaname, unum, r % 10000);
+  snprintf (filename, NAME_MAX, "%s.%020lu_%04d", metaname, unum, r % 10000);
 
   hashval = es_name_hash_func (ES_POSIX_HASH1, filename);
   snprintf (dirname1, NAME_MAX, "ces_%03d", hashval);
