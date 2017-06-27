@@ -2976,7 +2976,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        * error. */
 
       /* disable data replication log for schema replication log types in HA mode */
-      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF && is_stmt_based_repl_type (statement))
+      if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
 	{
 	  need_stmt_replication = true;
 
@@ -3462,7 +3462,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* for the subset of nodes which represent top level statements, process them; for any other node, return an error */
 
   /* disable data replication log for schema replication log types in HA mode */
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF && is_stmt_based_repl_type (statement))
+  if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
     {
       need_stmt_based_repl = true;
 

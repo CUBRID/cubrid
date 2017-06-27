@@ -2467,7 +2467,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
       int keyval = -1;
       if (changemode_keyword (&keyval, &mode_name) != NO_ERROR)
 	{
-	  if (sscanf (mode_name, "%d", &ha_state) != 1)
+	  if (sscanf (mode_name, "%d", &keyval) != 1)
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message
 				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
@@ -2504,7 +2504,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_NOT_HA_MODE));
@@ -2521,7 +2521,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
       /* change server's HA state */
       ha_state = boot_change_ha_mode (ha_state, force, timeout);
     }
-  if (ha_state != HA_SERVER_MODE_NA)
+  if (ha_state != HA_SERVER_STATE_NA)
     {
       int keyval = (int) ha_state;
       mode_name = NULL;
@@ -2653,7 +2653,7 @@ prefetchlogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       /* initialize heartbeat */
       error = hb_process_init (database_name, log_path, HB_PTYPE_PREFETCHLOGDB);
@@ -2707,7 +2707,7 @@ retry:
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       fprintf (stderr,
 	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PREFETCHLOGDB, PREFETCHLOGDB_MSG_NOT_HA_MODE));
@@ -2885,7 +2885,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (start_pageid < NULL_PAGEID && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (start_pageid < NULL_PAGEID && !HA_DISABLED ())
     {
       error = hb_process_init (database_name, log_path, HB_PTYPE_COPYLOGDB);
       if (error != NO_ERROR)
@@ -2931,7 +2931,7 @@ retry:
   /* PRM_LOG_BACKGROUND_ARCHIVING is always true in CUBRID HA */
   sysprm_set_to_default (prm_get_name (PRM_ID_LOG_BACKGROUND_ARCHIVING), true);
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_NOT_HA_MODE));
       (void) db_shutdown ();
@@ -3093,7 +3093,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       /* initialize heartbeat */
       error = hb_process_init (database_name, log_path, HB_PTYPE_APPLYLOGDB);
@@ -3108,7 +3108,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA)
+  if (HA_GET_MODE () == HA_MODE_REPLICA)
     {
       replica_time_bound_str = prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
       if (replica_time_bound_str != NULL)
@@ -3156,7 +3156,7 @@ retry:
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB, APPLYLOGDB_MSG_NOT_HA_MODE));
       (void) db_shutdown ();
@@ -3360,7 +3360,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       goto print_applyinfo_usage;
     }
 
-  check_replica_info = (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA);
+  check_replica_info = (HA_GET_MODE () == HA_MODE_REPLICA);
   pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
 
@@ -3426,7 +3426,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      goto check_applied_info_end;
 	    }
 
-	  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+	  if (HA_DISABLED ())
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message
 				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_NOT_HA_MODE));

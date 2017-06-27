@@ -5552,29 +5552,32 @@ xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid)
 
 /*
  * disk_get_boot_db_charset () - Find the system boot charset
- *   return: hfid on success or NULL on failure
+ *   return: error code
  *   volid(in): Permanent volume identifier
  *   db_charset(out): System boot charset
  */
-int *
-disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, int *db_charset)
+int
+disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, INTL_CODESET * db_charset)
 {
   DISK_VOLUME_HEADER *vhdr;
   PAGE_PTR pgptr = NULL;
 
+  int error_code = NO_ERROR;
+
   assert (db_charset != NULL);
 
-  if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &vhdr) != NO_ERROR)
+  error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &vhdr);
+  if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return NULL;
+      return error_code;
     }
 
-  *db_charset = vhdr->db_charset;
+  *db_charset = (INTL_CODESET) vhdr->db_charset;
 
   pgbuf_unfix_and_init (thread_p, pgptr);
 
-  return db_charset;
+  return NO_ERROR;
 }
 
 /*

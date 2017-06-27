@@ -504,11 +504,12 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 int
 sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *stmt_text, char *ha_sys_prm)
 {
-  int rc, error = NO_ERROR;
+  int error = NO_ERROR;
   PARSER_CONTEXT *parser;
   PARSER_VARCHAR *buffer = NULL, *grant = NULL;
   PARSER_VARCHAR *set_param = NULL, *restore_param = NULL;
   char default_ha_prm[LINE_MAX];
+  SYSPRM_ERR rc;
 
   parser = parser_create_parser ();
 
@@ -525,7 +526,7 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
       rc = sysprm_make_default_values (ha_sys_prm, default_ha_prm, sizeof (default_ha_prm));
       if (rc != PRM_ERR_NO_ERROR)
 	{
-	  error = sysprm_set_error ((SYSPRM_ERR) rc, ha_sys_prm);
+	  error = sysprm_set_error (rc, ha_sys_prm);
 	  goto end;
 	}
 

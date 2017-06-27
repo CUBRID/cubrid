@@ -1654,7 +1654,7 @@ error_return:
 FILEIO_LOCKF_TYPE
 fileio_unlock_la_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
 {
-  int result;
+  FILEIO_LOCKF_TYPE result;
   int error;
   off_t end_offset;
   FILE *fp = NULL;
@@ -1716,7 +1716,7 @@ fileio_unlock_la_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
       (*lockf_vdes) = NULL_VOLDES;
     }
 
-  return (FILEIO_LOCKF_TYPE) result;
+  return result;
 }
 
 static void

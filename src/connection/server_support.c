@@ -812,13 +812,8 @@ css_set_shutdown_timeout (int timeout)
  *   return:
  *   arg(in):
  */
-#if defined(WINDOWS)
-unsigned __stdcall
+THREAD_RET_T THREAD_CALLING_CONVENTION
 css_master_thread (void)
-#else /* WINDOWS */
-void *
-css_master_thread (void)
-#endif				/* WINDOWS */
 {
   int r, run_code = 1, status = 0, nfds;
   struct pollfd po[] = { {0, 0, 0}, {0, 0, 0} };
@@ -886,10 +881,10 @@ css_master_thread (void)
 		{
 		  css_close_connection_to_master ();
 		  /* shutdown message received */
-		  run_code = (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF) ? 0 : 1;
+		  run_code = (!HA_DISABLED ())? 0 : 1;
 		}
 
-	      if (run_code == 0 && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+	      if (run_code == 0 && !HA_DISABLED ())
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 			  "Disconnected with the cub_master and will shut itself down", "");
@@ -1121,7 +1116,7 @@ css_process_get_server_ha_mode_request (SOCKET master_fd)
   int r;
   int response;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       response = htonl (HA_SERVER_STATE_NA);
     }
@@ -1641,13 +1636,8 @@ ctrl_sig_handler (DWORD ctrl_event)
  *   return:
  *   arg(in):
  */
-#if defined(WINDOWS)
-unsigned __stdcall
+THREAD_RET_T THREAD_CALLING_CONVENTION
 css_oob_handler_thread (void *arg)
-#else /* WINDOWS */
-void *
-css_oob_handler_thread (void *arg)
-#endif				/* WINDOWS */
 {
   THREAD_ENTRY *thrd_entry;
   int r;
@@ -1916,7 +1906,7 @@ css_init (char *server_name, int name_length, int port_id)
       css_Master_conn = conn;
 
 #if !defined(WINDOWS)
-      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+      if (!HA_DISABLED ())
 	{
 	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
 	  if (status != NO_ERROR)
@@ -1975,7 +1965,7 @@ shutdown:
 
   thread_stop_active_workers (THREAD_STOP_LOGWR);
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       css_close_connection_to_master ();
     }
@@ -2385,7 +2375,7 @@ css_pack_server_name (const char *server_name, int *name_length)
 	strlen (pid_string) + 1;
 
       /* in order to prepend '#' */
-      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+      if (!HA_DISABLED ())
 	{
 	  (*name_length)++;
 	}
@@ -2400,7 +2390,7 @@ css_pack_server_name (const char *server_name, int *name_length)
       s = packed_name;
       t = server_name;
 
-      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+      if (!HA_DISABLED ())
 	{
 	  *s++ = '#';
 	}
@@ -2860,7 +2850,7 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state)
 	  new_state = table->next_state;
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, new_state);
-	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+	  if (!HA_DISABLED ())
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_SERVER_HA_MODE_CHANGE, 2,
 		      css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (new_state));
@@ -3041,7 +3031,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  ha_Server_state = state;
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
-	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+	  if (!HA_DISABLED ())
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_SERVER_HA_MODE_CHANGE, 2,
 		      css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
