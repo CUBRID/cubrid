@@ -7561,7 +7561,8 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
     }
 
   btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
+  valid = btree_glean_root_header_info (thread_p, root_header, &btid_int);
+  if (valid != NO_ERROR)
     {
       goto error;
     }
@@ -7841,6 +7842,7 @@ retry_repair:
       header = btree_get_node_header (thread_p, current_pgptr);
       if (header == NULL)
 	{
+	  valid = DISK_ERROR;
 	  goto exit_repair;
 	}
 
@@ -7884,6 +7886,7 @@ retry_repair:
       header = btree_get_node_header (thread_p, next_pgptr);
       if (header == NULL)
 	{
+	  valid = DISK_ERROR;
 	  goto exit_repair;
 	}
 
@@ -10684,6 +10687,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   if (spage_update (thread_p, leaf_page, search_key->slotid, leaf_rec) != SP_SUCCESS)
     {
       assert_release (false);
+      ret = ER_FAILED;
       goto error;
     }
 
@@ -12610,6 +12614,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   if (qheader == NULL)
     {
       assert_release (false);
+      ret = ER_FAILED;
       goto exit_on_error;
     }
 
@@ -12746,6 +12751,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       assert (j > 0);
       if (spage_insert_at (thread_p, R, j++, &rec) != SP_SUCCESS)
 	{
+	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
     }
@@ -21091,6 +21097,7 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAG
   if (spage_update (thread_p, page_ptr, slot_id, rec) != SP_SUCCESS)
     {
       assert_release (false);
+      ret = ER_FAILED;
       goto exit_on_error;
     }
 
@@ -26599,6 +26606,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      pgbuf_unfix_and_init (thread_p, new_page2);
 
 	      /* Error */
+	      error_code = ER_FAILED;
 	      goto error;
 	    }
 	  assert (*crt_page != NULL);
@@ -26609,6 +26617,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	    {
 	      /* Unexpected. */
 	      assert (false);
+	      error_code = ER_FAILED;
 	      goto error;
 	    }
 
