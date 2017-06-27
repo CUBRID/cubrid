@@ -5476,7 +5476,8 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
 
 	  catalog_access_info.class_oid = &partitions[i];
 	  catalog_access_info.dir_oid = &dir_oid;
-	  if (catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, S_LOCK) != NO_ERROR)
+	  error = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, S_LOCK);
+	  if (error != NO_ERROR)
 	    {
 	      goto exit_cleanup;
 	    }

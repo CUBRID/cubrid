@@ -1348,20 +1348,24 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 
       if (or_val == NULL || or_val->sub.count < 8)
 	{
+	  error = ER_FAILED;
 	  goto error;
 	}
       or_val = or_val[0].sub.value;
       if (or_val == NULL)
 	{
+	  error = ER_FAILED;
 	  goto error;
 	}
       or_val = &or_val[7];
       if (!TP_IS_SET_TYPE (DB_VALUE_TYPE (&or_val->value))
 	  || DB_GET_ENUM_SHORT (attr_val_p) > or_val->value.data.set->set->size)
 	{
+	  error = ER_FAILED;
 	  goto error;
 	}
-      if (set_get_element (DB_GET_SET (&or_val->value), DB_GET_ENUM_SHORT (attr_val_p) - 1, &val) != NO_ERROR)
+      error = set_get_element (DB_GET_SET (&or_val->value), DB_GET_ENUM_SHORT (attr_val_p) - 1, &val);
+      if (error != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1390,7 +1394,8 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  assert (set_size (DB_PULL_SEQUENCE (&default_expr)) == 3);
 	  def_expr_seq = DB_PULL_SEQUENCE (&default_expr);
 
-	  if (set_get_element_nocopy (def_expr_seq, 0, &db_value_default_expr_op) != NO_ERROR)
+	  error = set_get_element_nocopy (def_expr_seq, 0, &db_value_default_expr_op);
+	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -1398,13 +1403,15 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 		  && DB_GET_INT (&db_value_default_expr_op) == (int) T_TO_CHAR);
 	  default_expr_op = T_TO_CHAR;
 
-	  if (set_get_element_nocopy (def_expr_seq, 1, &db_value_default_expr_type) != NO_ERROR)
+	  error = set_get_element_nocopy (def_expr_seq, 1, &db_value_default_expr_type);
+	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	  default_expr_type = DB_GET_INT (&db_value_default_expr_type);
 
-	  if (set_get_element_nocopy (def_expr_seq, 2, &db_value_default_expr_format) != NO_ERROR)
+	  error = set_get_element_nocopy (def_expr_seq, 2, &db_value_default_expr_format);
+	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -1671,6 +1678,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
       TP_DOMAIN *domain = tp_domain_construct (DB_TYPE_SEQUENCE, NULL, 0, 0, string_dom);
       if (domain == NULL)
 	{
+	  error = ER_FAILED;
 	  goto error;
 	}
       domain = tp_domain_cache (domain);
@@ -2442,10 +2450,12 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		  pr_clear_value (&val);
 		  if (set_get_element (seq, l, &val) != NO_ERROR)
 		    {
+		      error = ER_FAILED;
 		      goto error;
 		    }
 		  if (DB_VALUE_TYPE (&val) != DB_TYPE_SEQUENCE)
 		    {
+		      error = ER_FAILED;
 		      goto error;
 		    }
 
@@ -4693,7 +4703,8 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
     }
 
   hfid_p = &cls_info_p->ci_hfid;
-  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, class_oid_p, MULTI_ROW_UPDATE, NULL) != NO_ERROR)
+  error = heap_scancache_start_modify (thread_p, &scan, hfid_p, class_oid_p, MULTI_ROW_UPDATE, NULL);
+  if (error != NO_ERROR)
     {
       goto error;
     }
@@ -4712,6 +4723,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 
       if (DB_VALUE_TYPE (&oid_val) != DB_TYPE_OID)
 	{
+	  error = ER_FAILED;
 	  goto error;
 	}
 
@@ -4744,6 +4756,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 
 	  if (DB_VALUE_TYPE (&oid_val) != DB_TYPE_OID)
 	    {
+	      error = ER_FAILED;
 	      goto error;
 	    }
 
@@ -4805,9 +4818,9 @@ error:
       catalog_free_class_info_and_init (cls_info_p);
     }
 
+  assert (error != NO_ERROR);
   return error;
 }
-
 
 /*
  * catcls_get_db_collation () - get infomation on all collation in DB
