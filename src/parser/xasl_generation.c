@@ -23529,7 +23529,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_SHA_ONE:
 	case T_SHA_TWO:
 	case T_LPAD:
-	case PT_RPAD:
+	case T_RPAD:
 	case T_REPLACE:
 	case T_TRANSLATE:
 	case T_ADD_MONTHS:
@@ -23542,7 +23542,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_MONTH:
 	case T_DAY:
 	case T_HOUR:
-	case PT_MINUTE:
+	case T_MINUTE:
 	case T_SECOND:
 	case T_QUARTER:
 	case T_WEEKDAY:
