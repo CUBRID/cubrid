@@ -947,7 +947,7 @@ lock_get_hash_value (const OID * oid, int htsize)
   else
     {
       next_base_slotid = 2;
-      while (next_base_slotid <= (unsigned)oid->slotid)
+      while (next_base_slotid <= (unsigned) oid->slotid)
 	{
 	  next_base_slotid = next_base_slotid * 2;
 	}

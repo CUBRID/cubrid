@@ -1225,7 +1225,7 @@ spage_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
       slot_p = spage_find_slot (page_p, page_header_p, 0, false);
       for (j = 0, i = 0; i < page_header_p->num_slots; slot_p--, i++)
 	{
-	  if (/*slot_p->record_type < REC_UNKNOWN || */slot_p->record_type > REC_4BIT_USED_TYPE_MAX)//vapa!!!
+	  if ( /*slot_p->record_type < REC_UNKNOWN || */ slot_p->record_type > REC_4BIT_USED_TYPE_MAX)	//vapa!!!
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
