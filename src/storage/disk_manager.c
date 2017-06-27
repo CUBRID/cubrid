@@ -1661,12 +1661,18 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       assert (extend_info->volid_extend != NULL_VOLID);
 
       to_expand = MIN (nsect_extend, max - total);
+
+      log_sysop_start (thread_p);
+
       error_code = disk_volume_expand (thread_p, extend_info->volid_extend, voltype, to_expand, &nsect_free_new);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
 	  return error_code;
 	}
+
+      log_sysop_commit (thread_p);
       assert (nsect_free_new >= to_expand);
 
       disk_log ("disk_extend", "expanded volume %d by %d sectors for %s.", extend_info->volid_extend, nsect_free_new,
@@ -1704,7 +1710,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 
   /* add new volume(s) */
   volext.nsect_max = extend_info->nsect_vol_max;
-  volext.comments = reserve_context != NULL ? "Forced Volume Extension" : "Automatic Volume Extension";
+  volext.comments = "Automatic Volume Extension";
   volext.voltype = voltype;
   volext.purpose = voltype == DB_PERMANENT_VOLTYPE ? DB_PERMANENT_DATA_PURPOSE : DB_TEMPORARY_DATA_PURPOSE;
   volext.overwrite = false;
