@@ -680,7 +680,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       err = ER_SP_INVALID_TYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, name_str,
-	      real_type == SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
+	      (int)real_type == (int)SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
       goto error;
     }
 

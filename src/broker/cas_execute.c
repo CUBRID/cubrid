@@ -8811,7 +8811,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
       fk_attr = NULL;
       for (fk_const = db_get_constraints (fktable_obj); fk_const != NULL; fk_const = db_constraint_next (fk_const))
 	{
-	  if (db_constraint_type (fk_const) == SM_CONSTRAINT_FOREIGN_KEY
+	  if ((int)db_constraint_type (fk_const) == (int)SM_CONSTRAINT_FOREIGN_KEY
 	      && BTID_IS_EQUAL (&(fk_const->fk_info->ref_class_pk_btid), &(pk->index_btid)))
 	    {
 	      fk_attr = db_constraint_attributes (fk_const);

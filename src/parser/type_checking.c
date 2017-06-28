@@ -14242,7 +14242,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	if (dbtype[0] != DB_TYPE_NULL && dbtype[1] != DB_TYPE_NULL)
 	  {
-	    if (bi[1] < (sizeof (DB_BIGINT) * 8) && bi[1] >= 0)
+	    if (bi[1] < (int)(sizeof (DB_BIGINT) * 8) && bi[1] >= 0)
 	      {
 		if (op == PT_BITSHIFT_LEFT)
 		  {
@@ -21607,7 +21607,7 @@ pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr)
     {
       PT_NODE *new_expr = NULL;
 
-      if (expr->type_enum == DB_TYPE_ENUMERATION)
+      if ((int)expr->type_enum == (int)DB_TYPE_ENUMERATION)
 	{
 	  /* expressions should not return PT_TYPE_ENUMERATION */
 	  assert (false);

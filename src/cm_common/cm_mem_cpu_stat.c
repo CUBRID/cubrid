@@ -812,7 +812,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
       return -1;
     }
 
-  fscanf (cpufp, "%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%llu%llu", &stat->cpu_user, &stat->cpu_kernel);
+  fscanf (cpufp, "%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%lu%lu", &stat->cpu_user, &stat->cpu_kernel);
   fscanf (memfp, "%lu%lu", &vmem_pages, &rmem_pages);	/* 'size' and 'resident' in stat file */
   stat->mem_virtual = vmem_pages * get_pagesize ();
   stat->mem_physical = rmem_pages * get_pagesize ();
@@ -867,7 +867,7 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
       sscanf (linebuf, "%49s", prefix);
       if (!strcmp (prefix, "cpu"))
 	{
-	  sscanf (linebuf, "%*s%llu%llu%llu%llu%llu", &stat->cpu_user, &nice, &stat->cpu_kernel, &stat->cpu_idle,
+	  sscanf (linebuf, "%*s%lu%lu%lu%lu%lu", &stat->cpu_user, &nice, &stat->cpu_kernel, &stat->cpu_idle,
 		  &stat->cpu_iowait);
 	  stat->cpu_user += nice;
 	  n_cpuitem++;
@@ -884,30 +884,30 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
       sscanf (linebuf, "%49s", prefix);
       if (!strcmp (prefix, "MemTotal:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &stat->mem_physical_total);
+	  sscanf (linebuf, "%*s%lu", &stat->mem_physical_total);
 	  n_memitem++;
 	}
       if (!strcmp (prefix, "MemFree:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &stat->mem_physical_free);
+	  sscanf (linebuf, "%*s%lu", &stat->mem_physical_free);
 	  n_memitem++;
 	}
       if (!strcmp (prefix, "Buffers:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &buffers);
+	  sscanf (linebuf, "%*s%lu", &buffers);
 	}
       if (!strcmp (prefix, "Cached:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &cached);
+	  sscanf (linebuf, "%*s%lu", &cached);
 	}
       if (!strcmp (prefix, "SwapTotal:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &stat->mem_swap_total);
+	  sscanf (linebuf, "%*s%lu", &stat->mem_swap_total);
 	  n_memitem++;
 	}
       if (!strcmp (prefix, "SwapFree:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &stat->mem_swap_free);
+	  sscanf (linebuf, "%*s%lu", &stat->mem_swap_free);
 	  n_memitem++;
 	}
     }
@@ -1023,7 +1023,7 @@ extract_host_partition_stat (FILE * fp, const char *arg1, T_CM_ERROR * err_buf)
       if (stat->partitions)
 	{
 	  p = stat->partitions + nitem;
-	  sscanf (linebuf, "%255s%*s%llu%llu%llu", p->name, &p->size, &p->used, &p->avail);
+	  sscanf (linebuf, "%255s%*s%lu%lu%lu", p->name, &p->size, &p->used, &p->avail);
 	  nitem++;
 	}
       else

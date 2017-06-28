@@ -18381,7 +18381,6 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_IFNULL:
     case PT_LOCATE:
     case PT_SUBSTRING:
-    case PT_SUBSTR:
     case PT_NVL:
     case PT_NVL2:
     case PT_NULLIF:

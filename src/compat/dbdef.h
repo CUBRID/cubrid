@@ -63,8 +63,8 @@
                                       ? true : false )
 
 #define DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
-                                    ( ((c) == DB_CONSTRAINT_REVERSE_UNIQUE  || \
-                                       (c) == DB_CONSTRAINT_REVERSE_INDEX)     \
+                                    ( ((int)(c) == (int)DB_CONSTRAINT_REVERSE_UNIQUE  || \
+                                       (int)(c) == (int)DB_CONSTRAINT_REVERSE_INDEX)     \
                                       ? true : false )
 
 #define DB_IS_CONSTRAINT_FAMILY(c) \

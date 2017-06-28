@@ -3639,7 +3639,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
 
       /* Read the desired page */
       nbytes = read (vol_fd, io_page_p, (unsigned int) page_size);
-      if (nbytes != page_size)
+      if (nbytes != (ssize_t)page_size)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
       if (io_mutex == NULL)
@@ -3789,7 +3789,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 	}
 
       /* write the page */
-      if (write (vol_fd, io_page_p, (unsigned int) page_size) != page_size)
+      if (write (vol_fd, io_page_p, (unsigned int) page_size) != (int)page_size)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
       if (io_mutex == NULL)

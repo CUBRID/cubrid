@@ -2438,7 +2438,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_pack_ptr (ptr, net_Deferred_end_queries[i]);
     }
   net_Deferred_end_queries_count = 0;
-  assert (CAST_BUFLEN (ptr - request) <= OR_ALIGNED_BUF_SIZE (a_request));
+  assert (CAST_BUFLEN (ptr - request) <= (int)OR_ALIGNED_BUF_SIZE (a_request));
 
   req_error =
     net_client_request (NET_SERVER_TM_SERVER_COMMIT, request, CAST_BUFLEN (ptr - request), reply,
@@ -6661,7 +6661,7 @@ qmgr_end_query (QUERY_ID query_id)
     {
       ptr = or_pack_ptr (ptr, net_Deferred_end_queries[i]);
     }
-  assert (CAST_BUFLEN (ptr - request) <= OR_ALIGNED_BUF_SIZE (a_request));
+  assert (CAST_BUFLEN (ptr - request) <= (int)OR_ALIGNED_BUF_SIZE (a_request));
 
   req_error =
     net_client_request (NET_SERVER_QM_QUERY_END, request, CAST_BUFLEN (ptr - request), reply,

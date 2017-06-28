@@ -6124,7 +6124,7 @@ pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from)
       new_name->info.name.resolved = from->info.spec.range_var->info.name.original;
       /* set type enum to the expected type */
       new_name->type_enum = pt_db_to_type_enum (pt_Reserved_name_table[i].type);
-      if (new_name->type_enum == DB_TYPE_OBJECT)
+      if ((int)new_name->type_enum == (int)DB_TYPE_OBJECT)
 	{
 	  new_name->data_type =
 	    pt_domain_to_data_type (parser,
@@ -8331,7 +8331,7 @@ pt_insert_entity (PARSER_CONTEXT * parser, PT_NODE * path, PT_NODE * prev_entity
       res1 = arg1->data_type;
     }
 
-  if (!res || !res->node_type == PT_DATA_TYPE || !res->info.data_type.entity)
+  if (!res || !(res->node_type == PT_DATA_TYPE) || !res->info.data_type.entity)
     {
       /* if we have a path, it must be from a known entity list */
       PT_INTERNAL_ERROR (parser, "resolution");

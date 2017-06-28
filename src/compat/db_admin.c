@@ -562,9 +562,7 @@ db_disable_trigger (void)
 void
 db_clear_host_status (void)
 {
-  int i = 0;
-
-  for (i = 0; i < DIM (db_Host_status_list.hostlist); i++)
+  for (size_t i = 0; i < DIM (db_Host_status_list.hostlist); i++)
     {
       db_Host_status_list.hostlist[i].hostname[0] = '\0';
       db_Host_status_list.hostlist[i].status = DB_HS_NORMAL;

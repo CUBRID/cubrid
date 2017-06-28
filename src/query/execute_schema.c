@@ -771,7 +771,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      pt_desired_type = p->type_enum;
 
-	      if (pt_desired_type == DB_TYPE_BLOB || pt_desired_type == DB_TYPE_CLOB)
+	      if ((int)pt_desired_type == (int)DB_TYPE_BLOB || (int)pt_desired_type == (int)DB_TYPE_CLOB)
 		{
 		  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -14856,7 +14856,7 @@ do_save_all_indexes (MOP classmop, SM_CONSTRAINT_INFO ** saved_index_info_listpp
 
   for (c = class_->constraints; c; c = c->next)
     {
-      if (c->type == DB_CONSTRAINT_NOT_NULL)
+      if ((int)c->type == (int)DB_CONSTRAINT_NOT_NULL)
 	{
 	  continue;
 	}

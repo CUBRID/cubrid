@@ -4401,7 +4401,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
 	}
       else
 	{
-	  assert (class_->repid == (repid & ~OR_OFFSET_SIZE_FLAG));
+	  assert ((unsigned int)class_->repid == (repid & ~OR_OFFSET_SIZE_FLAG));
 	  class_to_disk (buf, (SM_CLASS *) class_);
 	}
 

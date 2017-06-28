@@ -16100,15 +16100,15 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
       /* save info for derived table size estimation */
       switch (type)
 	{
-	case PT_UNION:
+	case UNION_PROC:
 	  xasl->projected_size = MAX (left->projected_size, right->projected_size);
 	  xasl->cardinality = left->cardinality + right->cardinality;
 	  break;
-	case PT_DIFFERENCE:
+	case DIFFERENCE_PROC:
 	  xasl->projected_size = left->projected_size;
 	  xasl->cardinality = left->cardinality;
 	  break;
-	case PT_INTERSECTION:
+	case INTERSECTION_PROC:
 	  xasl->projected_size = MAX (left->projected_size, right->projected_size);
 	  xasl->cardinality = MIN (left->cardinality, right->cardinality);
 	  break;
@@ -16433,7 +16433,9 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   if (xasl != NULL && plan != NULL)
     {
       size_t plan_len, sizeloc;
-      char *ptr, *sql_plan = "";
+      char *ptr;
+      char sql_plan_empty[] = "";
+      char *sql_plan = sql_plan_empty;
       COMPILE_CONTEXT *contextp = &parser->context;
 
       FILE *fp = port_open_memstream (&ptr, &sizeloc);
@@ -16484,7 +16486,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      contextp->sql_plan_alloc_size = size;
 	      contextp->sql_plan_text[0] = '\0';
 	    }
-	  else if (contextp->sql_plan_alloc_size - strlen (contextp->sql_plan_text) < plan_len)
+	  else if (contextp->sql_plan_alloc_size - strlen (contextp->sql_plan_text) < (long)plan_len)
 	    {
 	      char *ptr;
 	      int size = (contextp->sql_plan_alloc_size + (int) plan_len) * 2;
@@ -16833,7 +16835,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 	      prev_o_num = o_num;
 	      oid_ptr = (OID *) lsearch (oid, o_list, &o_num, sizeof (OID), oid_compare);
 
-	      if (o_num > prev_o_num && o_num > (*nump))
+	      if (o_num > prev_o_num && (long)o_num > (*nump))
 		{
 		  int is_class = 0;
 
@@ -17041,7 +17043,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * seria
 
   prev_o_num = o_num;
   (void) lsearch (serial_oid_p, o_list, &o_num, sizeof (OID), oid_compare);
-  if (o_num > prev_o_num && o_num > (int) *nump)
+  if (o_num > prev_o_num && o_num > (size_t) *nump)
     {
       *(t_list + o_num - 1) = XASL_SERIAL_OID_TCARD;	/* init #pages */
       *(lck_list + o_num - 1) = (int) NULL_LOCK;
@@ -23534,7 +23536,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_SHA_ONE:
 	case T_SHA_TWO:
 	case T_LPAD:
-	case PT_RPAD:
+	case T_RPAD:
 	case T_REPLACE:
 	case T_TRANSLATE:
 	case T_ADD_MONTHS:
@@ -23547,7 +23549,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_MONTH:
 	case T_DAY:
 	case T_HOUR:
-	case PT_MINUTE:
+	case T_MINUTE:
 	case T_SECOND:
 	case T_QUARTER:
 	case T_WEEKDAY:
