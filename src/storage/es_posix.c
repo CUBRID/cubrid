@@ -649,7 +649,7 @@ es_local_read_file (const char *path, void *buf, size_t count, off_t offset)
 	  return ER_ES_GENERAL;
 	}
 
-      nbytes = read (fd, buf, count);
+      nbytes = read (fd, buf, (unsigned) count);
       if (nbytes < 0)
 	{
 	  switch (errno)
@@ -677,7 +677,7 @@ es_local_read_file (const char *path, void *buf, size_t count, off_t offset)
     }
   close (fd);
 
-  return total;
+  return (int) total;
 }
 
 /*

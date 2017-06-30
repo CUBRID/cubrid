@@ -727,7 +727,7 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 
   for (; pageid < to_pageid; pageid += num_pages, ar_phy_pageid += num_pages)
     {
-      num_pages = MIN (LOGPB_IO_NPAGES, to_pageid - pageid);
+      num_pages = MIN (LOGPB_IO_NPAGES, (int) (to_pageid - pageid));
       phy_pageid = logwr_to_physical_pageid (pageid);
       num_pages = MIN (num_pages, logwr_Gl.hdr.npages - phy_pageid + 1);
 

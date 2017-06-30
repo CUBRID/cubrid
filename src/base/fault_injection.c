@@ -411,7 +411,7 @@ fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_f
 
   if (init == false)
     {
-      srand (time (NULL));
+      srand ((unsigned int) time (NULL));
       init = true;
     }
   r = rand ();
@@ -460,7 +460,7 @@ fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_f
 
   if (init == false)
     {
-      srand (time (NULL));
+      srand ((unsigned int) time (NULL));
       init = true;
     }
   r = rand ();

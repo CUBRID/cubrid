@@ -1437,7 +1437,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       else
 	{
 	  /* Store the compressed string bytes */
-	  rc = or_put_data (buf, compressed_string, compressed_length);
+	  rc = or_put_data (buf, compressed_string, (int) compressed_length);
 	  if (rc != NO_ERROR)
 	    {
 	      goto cleanup;

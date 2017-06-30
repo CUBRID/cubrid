@@ -1533,7 +1533,7 @@ intl_upper_string_size (const void *alphabet, unsigned char *src, int src_size, 
 	for (char_count = 0; char_count < src_length && src_size > 0; char_count++)
 	  {
 	    req_size += intl_char_toupper_utf8 ((const ALPHABET_DATA *) alphabet, src, src_size, upper, &next);
-	    src_size -= (next - src);
+	    src_size -= (int) (next - src);
 	    src = next;
 	  }
       }
@@ -1644,7 +1644,7 @@ intl_lower_string_size (const void *alphabet, unsigned char *src, int src_size, 
 	for (char_count = 0; char_count < src_length && src_size > 0; char_count++)
 	  {
 	    req_size += intl_char_tolower_utf8 ((const ALPHABET_DATA *) alphabet, src, src_size, lower, &next);
-	    src_size -= (next - src);
+	    src_size -= (int) (next - src);
 	    src = next;
 	  }
       }
@@ -1978,14 +1978,14 @@ intl_set_max_bound_chr (INTL_CODESET codeset, char *chr)
   switch (codeset)
     {
     case INTL_CODESET_UTF8:
-      *chr = 0xf4;
-      *(chr + 1) = 0x8f;
-      *(chr + 2) = 0xbf;
-      *(chr + 3) = 0xbf;
+      *chr = (char) 0xf4;
+      *(chr + 1) = (char) 0x8f;
+      *(chr + 2) = (char) 0xbf;
+      *(chr + 3) = (char) 0xbf;
       return 4;
     case INTL_CODESET_KSC5601_EUC:
-      *chr = 0xff;
-      *(chr + 1) = 0xff;
+      *chr = (char) 0xff;
+      *(chr + 1) = (char) 0xff;
       return 2;
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
@@ -2095,7 +2095,7 @@ intl_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, unsigned ch
       d += size;
       *d_size += size;
 
-      s_size -= next - s;
+      s_size -= (int) (next - s);
       s = next;
     }
 
@@ -2135,7 +2135,7 @@ intl_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, unsigned ch
       d += size;
       *d_size += size;
 
-      s_size -= next - s;
+      s_size -= (int) (next - s);
       s = next;
     }
 
@@ -2367,12 +2367,12 @@ intl_identifier_casecmp_w_size (const INTL_LANG lang_id, unsigned char *str1, un
 	    int skip_size1 = 0, skip_size2 = 0;
 	    int res;
 
-	    cp1 = intl_utf8_to_cp (str1, str1_end - str1, &dummy);
-	    cp2 = intl_utf8_to_cp (str2, str2_end - str2, &dummy);
+	    cp1 = intl_utf8_to_cp (str1, (int) (str1_end - str1), &dummy);
+	    cp2 = intl_utf8_to_cp (str2, (int) (str2_end - str2), &dummy);
 
 	    res =
-	      intl_strcasecmp_utf8_one_cp (alphabet, str1, str2, str1_end - str1, str2_end - str2, cp1, cp2,
-					   &skip_size1, &skip_size2);
+	      intl_strcasecmp_utf8_one_cp (alphabet, str1, str2, (int) (str1_end - str1), (int) (str2_end - str2), cp1,
+					   cp2, &skip_size1, &skip_size2);
 
 	    if (res != 0)
 	      {
@@ -2479,12 +2479,12 @@ intl_case_match_tok (const INTL_LANG lang_id, const INTL_CODESET codeset, unsign
 	    int skip_size_tok = 0, skip_size_src = 0;
 	    int res;
 
-	    cp1 = intl_utf8_to_cp (tok, tok_end - tok, &dummy);
-	    cp2 = intl_utf8_to_cp (src, src_end - src, &dummy);
+	    cp1 = intl_utf8_to_cp (tok, (int) (tok_end - tok), &dummy);
+	    cp2 = intl_utf8_to_cp (src, (int) (src_end - src), &dummy);
 
 	    res =
-	      intl_strcasecmp_utf8_one_cp (alphabet, tok, src, tok_end - tok, src_end - src, cp1, cp2, &skip_size_tok,
-					   &skip_size_src);
+	      intl_strcasecmp_utf8_one_cp (alphabet, tok, src, (int) (tok_end - tok), (int) (src_end - src), cp1, cp2,
+					   &skip_size_tok, &skip_size_src);
 
 	    if (res != 0)
 	      {
@@ -2872,7 +2872,7 @@ intl_identifier_lower_string_size (const char *src)
 		src_lower_size += intl_cp_to_utf8 (cp, lower);
 	      }
 
-	    s_size -= next - s;
+	    s_size -= (int) (next - s);
 	    s = next;
 	  }
       }
@@ -3005,7 +3005,7 @@ intl_identifier_upper_string_size (const char *src)
 		src_upper_size += intl_cp_to_utf8 (cp, upper);
 	      }
 
-	    s_size -= next - s;
+	    s_size -= (int) (next - s);
 	    s = next;
 	  }
       }
@@ -3231,7 +3231,7 @@ intl_identifier_mht_1strlowerhash (const void *key, const unsigned int ht_size)
 		ch = alphabet->lower_cp[ch];
 	      }
 
-	    key_size -= next - byte_p;
+	    key_size -= (int) (next - byte_p);
 	    byte_p = next;
 
 	    hash = (hash << 5) - hash + ch;
@@ -3853,7 +3853,7 @@ intl_utf8_to_cp_list (const unsigned char *utf8, const int size, unsigned int *c
       unsigned int cp;
       assert (utf8_end - utf8 > 0);
 
-      cp = intl_utf8_to_cp (utf8, utf8_end - utf8, &next);
+      cp = intl_utf8_to_cp (utf8, (int) (utf8_end - utf8), &next);
       utf8 = next;
 
       if (i < max_array_size)
@@ -3908,7 +3908,7 @@ intl_utf8_to_cp_list (const unsigned char *utf8, const int size, unsigned int *c
  *  This function should be used only when the UTF-8 string enters the CUBRID
  *  system.
  */
-bool
+int
 intl_check_utf8 (const unsigned char *buf, int size, char **pos)
 {
   const unsigned char *p = buf;
@@ -4168,7 +4168,7 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
  *    - 2 bytes: A1 - FE , 00 - FF
  *    - 3 bytes: 8F	 , 00 - FF , 00 - FF
  */
-bool
+int
 intl_check_euckr (const unsigned char *buf, int size, char **pos)
 {
   const unsigned char *p = buf;
@@ -4406,7 +4406,7 @@ intl_text_single_byte_to_utf8_ext (void *t, const unsigned char *in_buf, const i
     }
 
   *(p_out) = '\0';
-  *out_size = p_out - *(out_buf);
+  *out_size = (int) (p_out - *(out_buf));
 
   return NO_ERROR;
 }
@@ -4482,7 +4482,7 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size, char **out
 	  continue;
 	}
 
-      cp = intl_utf8_to_cp (p_in, in_buf + in_size - (char *) p_in, &p_next);
+      cp = intl_utf8_to_cp (p_in, (int) (in_buf + in_size - (char *) p_in), &p_next);
       if (cp >= txt_conv->utf8_first_cp && cp <= txt_conv->utf8_last_cp)
 	{
 	  assert (txt_conv->utf8_to_text[cp - txt_conv->utf8_first_cp].size == 1);
@@ -4501,7 +4501,7 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size, char **out
     }
 
   *(p_out) = '\0';
-  *out_size = p_out - (unsigned char *) *(out_buf);
+  *out_size = (int) (p_out - (unsigned char *) *(out_buf));
 
   return NO_ERROR;
 }
@@ -4703,7 +4703,7 @@ intl_text_dbcs_to_utf8_ext (void *t, const unsigned char *in_buf, const int in_s
     {
       unsigned char *p_next;
       unsigned int text_cp = intl_dbcs_to_cp (p_in,
-					      in_buf + in_size - p_in,
+					      (int) (in_buf + in_size - p_in),
 					      txt_conv->byte_flag,
 					      &p_next);
 
@@ -4735,7 +4735,7 @@ intl_text_dbcs_to_utf8_ext (void *t, const unsigned char *in_buf, const int in_s
     }
 
   *(p_out) = '\0';
-  *out_size = p_out - *(out_buf);
+  *out_size = (int) (p_out - *(out_buf));
 
   return NO_ERROR;
 }
@@ -4813,7 +4813,7 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size, char **out_buf, i
 	  continue;
 	}
 
-      cp = intl_utf8_to_cp (p_in, in_buf + in_size - (char *) p_in, &p_next);
+      cp = intl_utf8_to_cp (p_in, (int) (in_buf + in_size - (char *) p_in), &p_next);
       if (cp >= txt_conv->utf8_first_cp && cp <= txt_conv->utf8_last_cp)
 	{
 	  unsigned char *text_bytes = txt_conv->utf8_to_text[cp - txt_conv->utf8_first_cp].bytes;
@@ -4838,7 +4838,7 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size, char **out_buf, i
     }
 
   *(p_out) = '\0';
-  *out_size = p_out - (unsigned char *) *(out_buf);
+  *out_size = (int) (p_out - (unsigned char *) *(out_buf));
 
   return NO_ERROR;
 }
@@ -4888,7 +4888,7 @@ intl_fast_iso88591_to_utf8 (const unsigned char *in_buf, const int in_size, unsi
 	}
     }
 
-  *out_size = p_out - *(out_buf);
+  *out_size = (int) (p_out - *(out_buf));
 
   return status;
 }
@@ -5008,7 +5008,7 @@ intl_euckr_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned
 	}
     }
 
-  *out_size = p_out - *(out_buf);
+  *out_size = (int) (p_out - *(out_buf));
 
   return status;
 }
@@ -5115,7 +5115,7 @@ intl_euckr_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned cha
 	}
     }
 
-  *out_size = p_out - *(out_buf);
+  *out_size = (int) (p_out - *(out_buf));
 
   return status;
 }
@@ -5148,7 +5148,7 @@ intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned 
 
   for (p_in = in_buf, p_end = in_buf + in_size, p_out = (unsigned char *) *out_buf; p_in < p_end;)
     {
-      unicode_cp = intl_utf8_to_cp (p_in, p_end - p_in, &next_utf8);
+      unicode_cp = intl_utf8_to_cp (p_in, (int) (p_end - p_in), &next_utf8);
 
       if ((unicode_cp > 0xFF) || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
 	{
@@ -5163,7 +5163,7 @@ intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned 
       p_in = next_utf8;
     }
 
-  *out_size = p_out - *(out_buf);
+  *out_size = (int) (p_out - *(out_buf));
 
   return status;
 }
@@ -5206,14 +5206,14 @@ intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size, unsigned cha
 	  unsigned int unicode_cp;
 	  unsigned char *next_utf8;
 
-	  unicode_cp = intl_utf8_to_cp (p_in, p_end - p_in, &next_utf8);
+	  unicode_cp = intl_utf8_to_cp (p_in, (int) (p_end - p_in), &next_utf8);
 	  if (unicode_cp == 0xffffffff)
 	    {
 	      goto illegal_char;
 	    }
 
 	  /* try to convert to KSC5601 */
-	  euc_bytes = ksc5601_wctomb (euc_buf, unicode_cp, next_utf8 - p_in);
+	  euc_bytes = ksc5601_wctomb (euc_buf, unicode_cp, (int) (next_utf8 - p_in));
 
 	  assert (euc_bytes != 0);
 	  if (euc_bytes == 2)
@@ -5232,7 +5232,7 @@ intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size, unsigned cha
 	    }
 	  assert (euc_bytes == RET_ILUNI);
 	  /* not found as KSC encoding, try as JISX0212 */
-	  euc_bytes = jisx0212_wctomb (euc_buf, unicode_cp, next_utf8 - p_in);
+	  euc_bytes = jisx0212_wctomb (euc_buf, unicode_cp, (int) (next_utf8 - p_in));
 
 	  assert (euc_bytes != 0);
 	  if (euc_bytes == 2)
@@ -5254,7 +5254,7 @@ intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size, unsigned cha
 	}
     }
 
-  *out_size = p_out - *(out_buf);
+  *out_size = (int) (p_out - *(out_buf));
 
   return status;
 }
@@ -5345,7 +5345,7 @@ intl_iso88591_to_euckr (const unsigned char *in_buf, const int in_size, unsigned
 	}
     }
 
-  *out_size = p_out - *(out_buf);
+  *out_size = (int) (p_out - *(out_buf));
 
   return status;
 }
@@ -6086,7 +6086,7 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned ch
       assert (*p > 0xf4);
     }
 
-  *out_size = p_out - *(out_buf);
+  *out_size = (int) (p_out - *(out_buf));
 }
 
 /*
@@ -6160,5 +6160,5 @@ intl_binary_to_euckr (const unsigned char *in_buf, const int in_size, unsigned c
       *p_out++ = '?';
     }
 
-  *out_size = p_out - *(out_buf);
+  *out_size = (int) (p_out - *(out_buf));
 }

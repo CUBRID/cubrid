@@ -686,7 +686,7 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
       return ret_val;
     }
 
-  if (ret_val == true)
+  if (ret_val != 0)
     {
       return 1;
     }

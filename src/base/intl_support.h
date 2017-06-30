@@ -318,8 +318,8 @@ extern "C"
   extern char *intl_get_money_ISO88591_symbol (const DB_CURRENCY currency);
   extern int intl_get_currency_symbol_position (const DB_CURRENCY currency);
   extern int intl_count_utf8_chars (unsigned char *s, int length_in_bytes);
-  extern bool intl_check_utf8 (const unsigned char *buf, int size, char **pos);
-  extern bool intl_check_euckr (const unsigned char *buf, int size, char **pos);
+  extern int intl_check_utf8 (const unsigned char *buf, int size, char **pos);
+  extern int intl_check_euckr (const unsigned char *buf, int size, char **pos);
   extern int intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf,
 				    int *out_size);
   extern void intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf,

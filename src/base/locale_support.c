@@ -7513,7 +7513,7 @@ locale_alphabet_data_to_buf (ALPHABET_DATA * a, char *buf)
 	}
     }
 
-  return buf_pos - buf;
+  return (int) (buf_pos - buf);
 }
 
 /*

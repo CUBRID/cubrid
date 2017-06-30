@@ -2002,7 +2002,7 @@ exit_on_error:
   return NULL_TRAN_INDEX;
 }
 
-static void
+static int
 boot_make_session_server_key (void)
 {
   UINT32 t;
@@ -2010,11 +2010,14 @@ boot_make_session_server_key (void)
 
   t = (UINT32) time (NULL);
   memcpy (boot_Server_session_key, &t, sizeof (UINT32));
-  css_hostname_to_ip (boot_Host_name, ip);
+  int err = css_hostname_to_ip (boot_Host_name, ip);
+  if (err != NO_ERROR)
+    return err;
   boot_Server_session_key[4] = ip[0];
   boot_Server_session_key[5] = ip[1];
   boot_Server_session_key[6] = ip[2];
   boot_Server_session_key[7] = ip[3];
+  return NO_ERROR;
 }
 
 /*
@@ -2177,7 +2180,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   boot_Host_name[MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
 
   COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), db->pathname, db_name);
-  boot_make_session_server_key ();
+  if (boot_make_session_server_key () != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (boot_volume_info_log_path (log_path) == NULL)
     {

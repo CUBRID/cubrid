@@ -1120,7 +1120,7 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	  while (tailor_next < tailor_end)
 	    {
 	      unsigned int tailor_cp = intl_utf8_to_cp (tailor_curr,
-							tailor_end - tailor_curr,
+							(int) (tailor_end - tailor_curr),
 							&tailor_next);
 
 	      assert (lc->tail_coll.sett_max_cp >= 0);
@@ -2078,7 +2078,7 @@ add_opt_coll_contraction (LOCALE_COLLATION * lc, const UCA_COLL_KEY * contr_key,
 
   opt_contr->wv = wv;
   assert (p_buf - opt_contr->c_buf < (int) sizeof (opt_contr->c_buf));
-  opt_contr->size = p_buf - opt_contr->c_buf;
+  opt_contr->size = (unsigned char) (p_buf - opt_contr->c_buf);
 
   if (use_expansions)
     {

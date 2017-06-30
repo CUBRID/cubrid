@@ -469,7 +469,6 @@ locator_reallocate_copy_area_by_length (LC_COPYAREA * old_area, int new_length)
   int i, last_obj_offset = -1;
   int last_obj_length = 0;
   int old_content_length = 0;
-  char *ptr;
 
   if (old_area == NULL)
     {

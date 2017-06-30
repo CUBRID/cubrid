@@ -190,7 +190,7 @@ locator_reserve_class_name (const char *class_name, OID * class_oid)
 void
 locator_set_sig_interrupt (int set)
 {
-  if (set != false || lc_Is_siginterrupt == true)
+  if (set != 0 || lc_Is_siginterrupt != 0)
     {
       lc_Is_siginterrupt = set;
       log_set_interrupt (set);

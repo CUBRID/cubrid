@@ -41,8 +41,8 @@ do { \
 
 #define CALCULATE_ELAPSED_TIME_USEC(time, diff, freq) \
 do { \
-  (time)->tv_sec = (diff) / (freq); \
-  (time)->tv_usec = (((diff) % (freq)) * (TSC_UINT64) (1000000)) / (freq); \
+  (time)->tv_sec = (long)((diff) / (freq)); \
+  (time)->tv_usec = (long)((((diff) % (freq)) * (TSC_UINT64) (1000000)) / (freq)); \
 } while (0)
 
 #define CALCULATE_ELAPSED_TIMEVAL(time, end, start) \

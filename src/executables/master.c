@@ -787,7 +787,7 @@ static int
 css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp;
-  int max_fd = 0;
+  SOCKET max_fd = 0;
 
   FD_ZERO (fd_var);
   for (temp = anchor_p; temp; temp = temp->next)
@@ -802,7 +802,7 @@ css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 	}
     }
 
-  return max_fd;
+  return (int) max_fd;
 }
 
 /*
@@ -856,7 +856,7 @@ static int
 css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp;
-  int max_fd = 0;
+  SOCKET max_fd = 0;
 
   FD_ZERO (fd_var);
   for (temp = anchor_p; temp; temp = temp->next)
@@ -871,7 +871,7 @@ css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 	}
     }
 
-  return max_fd;
+  return (int) max_fd;
 }
 
 /*
@@ -1031,7 +1031,7 @@ again:
 #if !defined(WINDOWS)
 					     (fcntl (temp->fd, F_GETFL, 0) < 0) ||
 #endif /* !WINDOWS */
-					     (temp->error_p == true) || (temp->conn_ptr == NULL)
+					     (temp->error_p != 0) || (temp->conn_ptr == NULL)
 					     || (temp->conn_ptr->status == CONN_CLOSED))))
 	{
 #if defined(DEBUG)

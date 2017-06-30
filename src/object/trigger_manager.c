@@ -6999,7 +6999,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   char *newname, *oldname;
   char *tr_name = NULL;
   int save;
-  MOP mop1, mop2;
   bool has_savepoint = false;
 
   /* Do we need to disable authorization just for check_authorization ? */

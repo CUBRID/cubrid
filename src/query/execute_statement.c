@@ -2949,7 +2949,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement)
     {
       /* skip ddl execution in case of parameter or opt. level */
-      if (pt_is_ddl_statement (statement) == true)
+      if (pt_is_ddl_statement (statement) != 0)
 	{
 	  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
 	    {
@@ -3436,7 +3436,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
   /* skip ddl execution in case of parameter or opt. level */
-  if (pt_is_ddl_statement (statement) == true)
+  if (pt_is_ddl_statement (statement) != 0)
     {
       if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
 	{
@@ -6361,7 +6361,6 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE returnval, trigger_name_val, user_val;
   bool has_trigger_comment = false;
   TR_TRIGGER *trigger;
-  MOP mop1, mop2;
   int count;
   bool has_savepoint = false;
 
@@ -14570,7 +14569,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   repl_stmt.db_user = db_get_user_name ();
 
-  if (pt_is_ddl_statement (statement) == true)
+  if (pt_is_ddl_statement (statement) != 0)
     {
       repl_stmt.sys_prm_context = sysprm_print_parameters_for_ha_repl ();
     }

@@ -2438,7 +2438,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_pack_ptr (ptr, net_Deferred_end_queries[i]);
     }
   net_Deferred_end_queries_count = 0;
-  assert (CAST_BUFLEN (ptr - request) <= (int)OR_ALIGNED_BUF_SIZE (a_request));
+  assert (CAST_BUFLEN (ptr - request) <= (int) OR_ALIGNED_BUF_SIZE (a_request));
 
   req_error =
     net_client_request (NET_SERVER_TM_SERVER_COMMIT, request, CAST_BUFLEN (ptr - request), reply,
@@ -2448,7 +2448,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_unpack_int (reply, &tran_state_int);
       tran_state = (TRAN_STATE) tran_state_int;
       ptr = or_unpack_int (ptr, &reset_on_commit);
-      if (reset_on_commit == true && log_does_allow_replication () == true)
+      if (reset_on_commit != 0 && log_does_allow_replication ())
 	{
 	  /* 
 	   * fail-back action
@@ -2504,7 +2504,7 @@ tran_server_abort (void)
       ptr = or_unpack_int (reply, &tran_state_int);
       tran_state = (TRAN_STATE) tran_state_int;
       ptr = or_unpack_int (ptr, &reset_on_commit);
-      if (reset_on_commit == true && log_does_allow_replication () == true)
+      if (reset_on_commit != 0 && log_does_allow_replication ())
 	{
 	  /* 
 	   * fail-back action
@@ -3832,7 +3832,7 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * inde
   ptr = or_pack_btid (ptr, index_btid);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  req_error = net_client_request_with_callback (NET_SERVER_BO_CHECK_DBCONSISTENCY, request, request_size, reply,
+  req_error = net_client_request_with_callback (NET_SERVER_BO_CHECK_DBCONSISTENCY, request, (int) request_size, reply,
 						OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0, &rd1, &d1, &rd2, &d2,
 						NULL, NULL);
   free_and_init (request);
@@ -6661,7 +6661,7 @@ qmgr_end_query (QUERY_ID query_id)
     {
       ptr = or_pack_ptr (ptr, net_Deferred_end_queries[i]);
     }
-  assert (CAST_BUFLEN (ptr - request) <= (int)OR_ALIGNED_BUF_SIZE (a_request));
+  assert (CAST_BUFLEN (ptr - request) <= (int) OR_ALIGNED_BUF_SIZE (a_request));
 
   req_error =
     net_client_request (NET_SERVER_QM_QUERY_END, request, CAST_BUFLEN (ptr - request), reply,

@@ -520,7 +520,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (stat_buffer.st_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      read (vdes, line, stat_buffer.st_size);
+      read (vdes, line, (unsigned int) stat_buffer.st_size);
       line[stat_buffer.st_size] = '\0';
       str = cfg_next_char (line);
       while (*str != '\0')
@@ -1330,7 +1330,7 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
 	}
       else
 	{
-	  len = next_sep - current_host;
+	  len = (int) (next_sep - current_host);
 
 	  if (len == hostname_len && strncmp (current_host, hostname, len) == 0)
 	    {

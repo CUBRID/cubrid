@@ -3639,7 +3639,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
 
       /* Read the desired page */
       nbytes = read (vol_fd, io_page_p, (unsigned int) page_size);
-      if (nbytes != (ssize_t)page_size)
+      if (nbytes != (ssize_t) page_size)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
       if (io_mutex == NULL)
@@ -3789,7 +3789,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 	}
 
       /* write the page */
-      if (write (vol_fd, io_page_p, (unsigned int) page_size) != (int)page_size)
+      if (write (vol_fd, io_page_p, (unsigned int) page_size) != (int) page_size)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
       if (io_mutex == NULL)
@@ -6096,7 +6096,7 @@ fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
       return false;
     }
 
-  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
+  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (false);
 
   arg.vol_id = volid;
   vol_info_p = fileio_traverse_temporary_volume (thread_p, fileio_is_volume_id_equal, &arg);
@@ -11108,7 +11108,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
   int x;
   int result = 0;
   bool is_retry_in = true;
-  bool rc;
+  int rc;
   char format_string[32];
 
   /* we're pretending to jump to the client */

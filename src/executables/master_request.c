@@ -1838,9 +1838,9 @@ css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id, char
     }
 
   state = hb_return_proc_state_by_fd (temp->fd);
+send_to_client:
 #endif
 
-send_to_client:
   state = htonl (state);
   if (css_send_data (conn, request_id, (char *) &state, sizeof (int)) != NO_ERRORS)
     {

@@ -566,7 +566,7 @@ trim_comments_whitespaces (char *str)
 static int
 tzc_check_new_package_validity (const char *input_folder)
 {
-  bool err_status = NO_ERROR;
+  int err_status = NO_ERROR;
   FILE *fp;
   int i;
   char temp_path[PATH_MAX];

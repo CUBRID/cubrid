@@ -132,7 +132,7 @@ poll (struct pollfd *fds, nfds_t nfds, int timeout)
   fd_set *rp, *wp, *ep;
   unsigned long int i;
   int r;
-  unsigned int max_fd;
+  unsigned long long max_fd;
 
   tp = NULL;
   if (timeout >= 0)
@@ -179,7 +179,7 @@ poll (struct pollfd *fds, nfds_t nfds, int timeout)
 	}
     }
 
-  r = select (max_fd + 1, rp, wp, ep, tp);
+  r = select ((int) max_fd + 1, rp, wp, ep, tp);
   for (i = 0; i < nfds; i++)
     {
       fds[i].revents = 0;
@@ -314,7 +314,7 @@ cuserid (char *string)
 int
 getlogin_r (char *buf, size_t bufsize)
 {
-  DWORD wd = bufsize;
+  DWORD wd = static_cast < DWORD > (bufsize);
   return GetUserName (buf, &wd);
 }
 
@@ -1665,7 +1665,7 @@ check_CONDITION_VARIABLE (void)
 static int
 timespec_to_msec (const struct timespec *abstime)
 {
-  int msec = 0;
+  long long msec = 0;
   struct timeval tv;
 
   if (abstime == NULL)
@@ -1682,7 +1682,7 @@ timespec_to_msec (const struct timespec *abstime)
       msec = 0;
     }
 
-  return msec;
+  return (int) msec;
 }
 
 
@@ -1896,7 +1896,7 @@ pthread_create (pthread_t * thread, const pthread_attr_t * attr,
 void
 pthread_exit (void *ptr)
 {
-  _endthreadex ((unsigned int) ptr);
+  _endthreadex ((unsigned int) reinterpret_cast < unsigned long long >(ptr));	//vapa!!!
 }
 
 pthread_t

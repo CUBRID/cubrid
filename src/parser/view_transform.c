@@ -4621,7 +4621,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	  return NULL;
 	}
 
-      if (is_union_translation == true)
+      if (is_union_translation != 0)
 	{
 	  select_statement->info.query.q.select.from = from =
 	    mq_rewrite_vclass_spec_as_derived (parser, select_statement, from, NULL);
@@ -4643,7 +4643,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      return NULL;
 	    }
 
-	  if (is_union_translation == true)
+	  if (is_union_translation != 0)
 	    {
 	      from->next = mq_rewrite_vclass_spec_as_derived (parser, select_statement, from->next, NULL);
 	    }
@@ -4667,7 +4667,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      return NULL;
 	    }
 
-	  if (is_union_translation == true)
+	  if (is_union_translation != 0)
 	    {
 	      select_statement->info.query.q.select.from =
 		mq_rewrite_vclass_spec_as_derived (parser, select_statement, from, NULL);

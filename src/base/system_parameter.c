@@ -7310,7 +7310,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	}
       else
 	{
-	  n = snprintf (buf, len, "%s%ld", left_side, val);
+	  n = snprintf (buf, len, "%s%lld", left_side, (unsigned long long) val);
 	}
     }
   else if (PRM_IS_BOOLEAN (prm))
@@ -7610,7 +7610,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 	}
       else
 	{
-	  n = snprintf (buf, len, "%s%ld", left_side, val);
+	  n = snprintf (buf, len, "%s%lld", left_side, (unsigned long long) val);
 	}
     }
   else if (PRM_IS_BOOLEAN (prm))

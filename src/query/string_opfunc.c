@@ -6799,7 +6799,7 @@ qstr_bit_to_hex_coerce (char *buffer, int buffer_size, const char *src, int src_
 	for (i=0; i<src_size; i++)
 	    sprintf(&(buffer[2*i]), "%02x", (unsigned char)(src[i]));
 */
-      if (pad_flag == true)
+      if (pad_flag != 0)
 	{
 	  memset (&(buffer[2 * src_size]), '0', (buffer_size - (2 * src_size)));
 	  *copy_size = buffer_size - 1;
@@ -12918,8 +12918,8 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	  error_status = ER_QSTR_INVALID_FORMAT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
-        default:
-          break;
+	default:
+	  break;
 	}
 
       /* Skip space, tab, CR */
@@ -13476,8 +13476,8 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	  error_status = ER_TIME_CONVERSION;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
-        default:
-          break;
+	default:
+	  break;
 	}
 
       /* Skip space, tab, CR */
@@ -13536,15 +13536,15 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
       goto exit;
     }
 
-  if (am == true && pm == false && hour <= 12)
+  if (am != 0 && pm == 0 && hour <= 12)
     {				/* If A.M.  */
       hour = (hour == 12) ? 0 : hour;
     }
-  else if (am == false && pm == true && hour <= 12)
+  else if (am == 0 && pm != 0 && hour <= 12)
     {				/* If P.M.  */
       hour = (hour == 12) ? hour : hour + 12;
     }
-  else if (am == false && pm == false)
+  else if (am == 0 && pm == 0)
     {				/* If military time */
       ;
     }
@@ -14361,8 +14361,8 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 	  error_status = ER_QSTR_INVALID_FORMAT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
-        default:
-          break;
+	default:
+	  break;
 	}
 
       /* Skip space, tab, CR */
@@ -14441,15 +14441,15 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
     }
 
   /**************            Check TIME        ****************/
-  if (am == true && pm == false && hour <= 12)
+  if (am != 0 && pm == 0 && hour <= 12)
     {				/* If A.M.  */
       hour = (hour == 12) ? 0 : hour;
     }
-  else if (am == false && pm == true && hour <= 12)
+  else if (am == 0 && pm != 0 && hour <= 12)
     {				/* If P.M.  */
       hour = (hour == 12) ? hour : hour + 12;
     }
-  else if (am == false && pm == false)
+  else if (am == 0 && pm == 0)
     {				/* If military time */
       ;
     }
@@ -15321,8 +15321,8 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 	  error_status = ER_QSTR_INVALID_FORMAT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
-        default:
-          break;
+	default:
+	  break;
 	}
 
       while (cs < last_src && strchr (WHITE_CHARS, *cs))
@@ -15393,15 +15393,15 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
     }
 
   /**************            Check TIME        ****************/
-  if (am == true && pm == false && hour <= 12)
+  if (am != 0 && pm == 0 && hour <= 12)
     {				/* If A.M.  */
       hour = (hour == 12) ? 0 : hour;
     }
-  else if (am == false && pm == true && hour <= 12)
+  else if (am == 0 && pm != 0 && hour <= 12)
     {				/* If P.M.  */
       hour = (hour == 12) ? hour : hour + 12;
     }
-  else if (am == false && pm == false)
+  else if (am == 0 && pm == 0)
     {				/* If military time */
       ;
     }
@@ -15535,7 +15535,7 @@ adjust_precision (char *data, int precision, int scale)
 	}
     }
 
-  if (space_started == true)
+  if (space_started != 0)
     {
       int j = i;
       while (char_isspace (*(data + j)))
@@ -15573,7 +15573,7 @@ adjust_precision (char *data, int precision, int scale)
 	  i++;
 	}
 
-      if (space_started == true)
+      if (space_started != 0)
 	{
 	  int j = i;
 	  while (char_isspace (*(data + j)))
@@ -17807,7 +17807,7 @@ make_number_to_char (const INTL_LANG lang, char *num_string, char *format_str, i
   /* num: .xxx format: xxx.xxx */
   else if (format != format_str && num == num_string)
     {
-      if (leadingzero == true)
+      if (leadingzero != 0)
 	{
 	  while (format != format_str)
 	    {
@@ -17876,7 +17876,7 @@ make_number_to_char (const INTL_LANG lang, char *num_string, char *format_str, i
 	      else
 		{
 		  *(res_str + (format - format_str)) = *num;
-		  if (leadingzero == true)
+		  if (leadingzero != 0)
 		    {
 		      while (format != format_str)
 			{

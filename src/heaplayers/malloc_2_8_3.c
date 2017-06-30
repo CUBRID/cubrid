@@ -1199,6 +1199,9 @@ extern "C"
 #include <assert.h>
 #endif /* ABORT_ON_ASSERT_FAILURE */
 #else /* DEBUG */
+#ifdef assert
+#undef assert
+#endif
 #define assert(x)
 #endif /* DEBUG */
 #ifndef LACKS_STRING_H
@@ -3002,7 +3005,7 @@ internal_malloc_stats (mstate m)
 
 /* Link a free chunk into a smallbin  */
 #define insert_small_chunk(M, P, S) {\
-  bindex_t I  = small_index(S);\
+  bindex_t I  = (bindex_t)small_index(S);\
   mchunkptr B = smallbin_at(M, I);\
   mchunkptr F = B;\
   assert(S >= MIN_CHUNK_SIZE);\
@@ -3284,7 +3287,7 @@ mmap_alloc (mstate m, size_t nb)
 	  do
 	    {
 	      void *h;
-	      h = chunk_plus_offset (p, psize - sizeof(MMAP_TRACE_H));
+	      h = chunk_plus_offset (p, psize - sizeof (MMAP_TRACE_H));
 	      mmap_called (m, mm, (MMAP_TRACE_H *) h);
 	    }
 	  while (0);
@@ -3424,12 +3427,12 @@ prepend_alloc (mstate m, char *newbase, char *oldbase, size_t nb)
       if (!cinuse (oldfirst))
 	{
 	  size_t nsize = chunksize (oldfirst);
-	  unlink_chunk (m, oldfirst, nsize);
+	  unlink_chunk (m, oldfirst, (bindex_t) nsize);
 	  oldfirst = chunk_plus_offset (oldfirst, nsize);
 	  qsize += nsize;
 	}
       set_free_with_pinuse (q, qsize, oldfirst);
-      insert_chunk (m, q, qsize);
+      insert_chunk (m, q, (bindex_t) qsize);
       check_free_chunk (m, q);
     }
 
@@ -3489,7 +3492,7 @@ add_segment (mstate m, char *tbase, size_t tsize, flag_t mmapped)
       size_t psize = csp - old_top;
       mchunkptr tn = chunk_plus_offset (q, psize);
       set_free_with_pinuse (q, psize, tn);
-      insert_chunk (m, q, psize);
+      insert_chunk (m, q, (bindex_t) psize);
     }
 
   check_top_chunk (m, m->top);
@@ -3912,7 +3915,7 @@ tmalloc_large (mstate m, size_t nb)
 		{
 		  set_size_and_pinuse_of_inuse_chunk (m, v, nb);
 		  set_size_and_pinuse_of_free_chunk (r, rsize);
-		  insert_chunk (m, r, rsize);
+		  insert_chunk (m, r, (bindex_t) rsize);
 		}
 	      return chunk2mem (v);
 	    }
@@ -4813,7 +4816,7 @@ mspace_malloc (mspace msp, size_t bytes)
 	  bindex_t idx;
 	  binmap_t smallbits;
 	  nb = (bytes < MIN_REQUEST) ? MIN_CHUNK_SIZE : pad_request (bytes);
-	  idx = small_index (nb);
+	  idx = (bindex_t) small_index (nb);
 	  smallbits = ms->smallmap >> idx;
 
 	  if ((smallbits & 0x3U) != 0)
@@ -4853,7 +4856,7 @@ mspace_malloc (mspace msp, size_t bytes)
 		      set_size_and_pinuse_of_inuse_chunk (ms, p, nb);
 		      r = chunk_plus_offset (p, nb);
 		      set_size_and_pinuse_of_free_chunk (r, rsize);
-		      replace_dv (ms, r, rsize);
+		      replace_dv (ms, r, (bindex_t) rsize);
 		    }
 		  mem = chunk2mem (p);
 		  check_malloced_chunk (ms, mem, nb);
@@ -4959,7 +4962,7 @@ mspace_free (mspace msp, void *mem)
 		      do
 			{
 			  void *ptr = (char *) p - prevsize;
-			  MMAP_TRACE_H *h = (MMAP_TRACE_H *) ((char*)next - MMAP_TRACE_H_SIZE);
+			  MMAP_TRACE_H *h = (MMAP_TRACE_H *) ((char *) next - MMAP_TRACE_H_SIZE);
 			  munmap_is_to_be_called (msp, ptr, h);
 			}
 		      while (0);
@@ -4977,7 +4980,7 @@ mspace_free (mspace msp, void *mem)
 			{	/* consolidate backward */
 			  if (p != fm->dv)
 			    {
-			      unlink_chunk (fm, p, prevsize);
+			      unlink_chunk (fm, p, (bindex_t) prevsize);
 			    }
 			  else if ((next->head & INUSE_BITS) == INUSE_BITS)
 			    {
@@ -5020,7 +5023,7 @@ mspace_free (mspace msp, void *mem)
 			{
 			  size_t nsize = chunksize (next);
 			  psize += nsize;
-			  unlink_chunk (fm, next, nsize);
+			  unlink_chunk (fm, next, (bindex_t) nsize);
 			  set_size_and_pinuse_of_free_chunk (p, psize);
 			  if (p == fm->dv)
 			    {
@@ -5031,7 +5034,7 @@ mspace_free (mspace msp, void *mem)
 		    }
 		  else
 		    set_free_with_pinuse (p, psize, next);
-		  insert_chunk (fm, p, psize);
+		  insert_chunk (fm, p, (bindex_t) psize);
 		  check_free_chunk (fm, p);
 		  goto postaction;
 		}

@@ -2089,7 +2089,7 @@ pr_clear_value (DB_VALUE * value)
 	  data = (unsigned char *) DB_GET_COMPRESSED_STRING (value);
 	  if (data != NULL)
 	    {
-	      if (value->data.ch.info.compressed_need_clear == true)
+	      if (value->data.ch.info.compressed_need_clear != 0)
 		{
 		  db_private_free_and_init (NULL, data);
 		}
@@ -2098,10 +2098,10 @@ pr_clear_value (DB_VALUE * value)
 	}
       else if (db_type == DB_TYPE_CHAR || db_type == DB_TYPE_NCHAR)
 	{
-	  assert (value->data.ch.info.compressed_need_clear == false);
+	  assert (value->data.ch.info.compressed_need_clear == 0);
 	  if (value->data.ch.medium.compressed_buf != NULL)
 	    {
-	      if (value->data.ch.info.compressed_need_clear == true)
+	      if (value->data.ch.info.compressed_need_clear != 0)
 		{
 		  db_private_free_and_init (NULL, value->data.ch.medium.compressed_buf);
 		}
@@ -11820,9 +11820,9 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
    *  If "value2" has the flag set, return -1, meaning that "value1" is Greater Than "value2".
    */
 
-  if (value1->data.ch.info.is_max_string == true)
+  if (value1->data.ch.info.is_max_string != 0)
     {
-      if (value2->data.ch.info.is_max_string == true)
+      if (value2->data.ch.info.is_max_string != 0)
 	{
 	  /* Both strings are max_string. Therefore equal. Even though this should not happen. */
 	  assert (false);
@@ -11832,7 +11832,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
     }
   else
     {
-      if (value2->data.ch.info.is_max_string == true)
+      if (value2->data.ch.info.is_max_string != 0)
 	{
 	  return DB_LT;
 	}
@@ -12669,9 +12669,9 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
    *  If "value2" has the flag set, return -1, meaning that "value1" is Greater Than "value2".
    */
 
-  if (value1->data.ch.info.is_max_string == true)
+  if (value1->data.ch.info.is_max_string != 0)
     {
-      if (value2->data.ch.info.is_max_string == true)
+      if (value2->data.ch.info.is_max_string != 0)
 	{
 	  /* Both strings are max_string. Therefore equal. Even though this should not happen. */
 	  assert (false);
@@ -12681,7 +12681,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
     }
   else
     {
-      if (value2->data.ch.info.is_max_string == true)
+      if (value2->data.ch.info.is_max_string != 0)
 	{
 	  return DB_LT;
 	}

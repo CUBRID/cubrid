@@ -1564,7 +1564,8 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
 
     case DB_TYPE_POINTER:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%lx", (unsigned long) DB_GET_POINTER (value)));
+      CHECK_PRINT_ERROR (text_print
+			 (tout, NULL, 0, "%lx", (unsigned long) (unsigned long long) DB_GET_POINTER (value)));
       break;
 
     default:

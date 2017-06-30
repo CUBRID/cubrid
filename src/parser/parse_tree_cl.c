@@ -17472,7 +17472,6 @@ static PARSER_VARCHAR *
 pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
-  PT_NODE *list;
 
   /* name of cte */
   r1 = pt_print_bytes_l (parser, p->info.cte.name);

@@ -506,7 +506,7 @@ ut_is_appl_server_ready (int pid, char *ready_flag)
 
   for (i = 0; i < SERVICE_READY_WAIT_COUNT; i++)
     {
-      if (*ready_flag == true)
+      if (*ready_flag != 0)
 	{
 	  return true;
 	}

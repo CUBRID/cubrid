@@ -525,8 +525,8 @@ changemode_keyword (int *keyval_p, char **keystr_p)
 }
 
 static int
-util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p, char **ha_sync_mode_p, const char **ha_copy_log_base_p,
-			int *ha_max_mem_size_p)
+util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p, char **ha_sync_mode_p,
+			const char **ha_copy_log_base_p, int *ha_max_mem_size_p)
 {
   int error = NO_ERROR;
 
@@ -933,7 +933,7 @@ util_byte_to_size_string (char *buf, size_t len, UINT64 size_num)
   num_str[99] = '\0';
   num_len = strlen (num_str);
 
-  if (len < (size_t)(decpt + 4))
+  if (len < (size_t) (decpt + 4))
     {
       return ER_FAILED;
     }
@@ -1082,15 +1082,15 @@ util_msec_to_time_string (char *buf, size_t len, INT64 msec_num)
   if (sec > 0)
     {
       msec = v % ONE_SEC;
-      error = snprintf (buf, len, "%ld.%03ld sec", sec, msec);
+      error = snprintf (buf, len, "%lld.%03lld sec", (long long) sec, (long long) msec);
     }
   else if (v < 0)
     {
-      error = snprintf (buf, len, "%ld", v);
+      error = snprintf (buf, len, "%lld", (long long) v);
     }
   else
     {
-      error = snprintf (buf, len, "%ld msec", v);
+      error = snprintf (buf, len, "%lld msec", (long long) v);
     }
 
   if (error < 0)

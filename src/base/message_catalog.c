@@ -411,7 +411,7 @@ load_msgcat (const char *path)
       return NULL;
     }
 
-  map_handle = CreateFileMapping ((HANDLE) file_handle, NULL, PAGE_READONLY, 0, st.st_size, NULL);
+  map_handle = CreateFileMapping ((HANDLE) file_handle, NULL, PAGE_READONLY, 0, (DWORD) st.st_size, NULL);
   if (map_handle != NULL)
     {
       data = MapViewOfFile (map_handle, FILE_MAP_READ, 0, 0, 0);

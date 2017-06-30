@@ -132,7 +132,7 @@ find_base64 (unsigned char ch)
   pos = strchr (base64_map, ch);
   assert (pos != NULL);
 
-  offset = pos - base64_map;
+  offset = (int) (pos - base64_map);
   return offset;
 }
 
