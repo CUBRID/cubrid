@@ -5941,14 +5941,6 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * 
 
   assert (BO_IS_SERVER_RESTARTED () == true);
 
-  OID_GET_VIRTUAL_CLASS_OF_DIR_OID (catalog_access_info->class_oid, &virtual_class_dir_oid);
-  if (catalog_access_info->need_unlock == true)
-    {
-      current_lock = catalog_access_info->is_update ? X_LOCK : S_LOCK;
-      lock_unlock_object_donot_move_to_non2pl (thread_p, catalog_access_info->dir_oid, &virtual_class_dir_oid,
-					       current_lock);
-    }
-
   if (catalog_access_info->is_update == true)
     {
       if (error != NO_ERROR)
@@ -5983,6 +5975,14 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * 
 #if !defined (NDEBUG)
   assert (catalog_access_info->is_systemop_started == false);
 #endif
+
+  OID_GET_VIRTUAL_CLASS_OF_DIR_OID (catalog_access_info->class_oid, &virtual_class_dir_oid);
+  if (catalog_access_info->need_unlock == true)
+    {
+      current_lock = catalog_access_info->is_update ? X_LOCK : S_LOCK;
+      lock_unlock_object_donot_move_to_non2pl (thread_p, catalog_access_info->dir_oid, &virtual_class_dir_oid,
+					       current_lock);
+    }
 
   catalog_access_info->access_started = false;
   catalog_access_info->is_update = false;
