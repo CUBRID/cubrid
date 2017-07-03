@@ -148,7 +148,9 @@ extern unsigned int db_on_server;
 
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
-
+  
+static void
+convert_json_to_string(DB_VALUE * json_value, DB_VALUE * string_clone);
 static void mr_initmem_string (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -892,6 +894,39 @@ static int pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_
 						 int decompressed_length, int alignment);
 static int pr_write_uncompressed_string_to_buffer (OR_BUF * buf, char *string, int size, int align);
 
+
+static void mr_initmem_json (void *mem, TP_DOMAIN * domain);
+static int mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
+static int mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+static int mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk);
+static int mr_index_lengthmem_json (void *memptr, TP_DOMAIN * domain);
+static void mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain);
+static void mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size);
+static void mr_freemem_json (void *memptr);
+static void mr_initval_json (DB_VALUE * value, int precision, int scale);
+static int mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_data_lengthval_json (DB_VALUE * value, int disk);
+static int mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				     char *copy_buf, int copy_buf_len);
+static int mr_index_lengthval_json (DB_VALUE * value);
+static int mr_index_writeval_json (OR_BUF * buf, DB_VALUE * value);
+static int mr_index_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				      char *copy_buf, int copy_buf_len);
+static int mr_lengthval_json_internal (DB_VALUE * value, int disk, int align);
+static int mr_writeval_json_internal (OR_BUF * buf, DB_VALUE * value, int align);
+static int mr_readval_json_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+					 char *copy_buf, int copy_buf_len, int align);
+static int mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+				      int *start_colp);
+static int mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+				     int *start_colp);
+static int mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+			       int collation);
+#if defined (ENABLE_UNUSED_FUNCTION)
+static int mr_cmpval_json2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
+				int *start_colp);
+#endif
 /*
  * Value_area
  *    Area used for allocation of value containers that may be given out
@@ -1868,6 +1903,7 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Timestampltz,
   &tp_Datetimetz,
   &tp_Datetimeltz,
+  &tp_Json,
   &tp_Timetz,
   &tp_Timeltz
 };
@@ -2033,6 +2069,10 @@ pr_clear_value (DB_VALUE * value)
 
   switch (db_type)
     {
+      case DB_TYPE_JSON:
+          db_private_free (NULL, value->data.json.json_body);
+          value->data.json.json_body = NULL;
+          break;
     case DB_TYPE_OBJECT:
       /* we need to be sure to NULL the object pointer so that this db_value does not cause garbage collection problems 
        * by retaining an object pointer. */
@@ -14765,6 +14805,398 @@ PR_TYPE tp_VarNChar = {
 
 PR_TYPE *tp_Type_varnchar = &tp_VarNChar;
 
+PR_TYPE tp_Json = {
+	"json", DB_TYPE_JSON, 1, sizeof (DB_JSON), sizeof (DB_JSON),
+	4,
+	help_fprint_value,
+	help_sprint_value,
+    mr_initmem_json,
+	mr_initval_json,
+	mr_setmem_json,
+	mr_getmem_json,
+	mr_setval_json,
+	mr_data_lengthmem_json,
+	mr_data_lengthval_json,
+	mr_data_writemem_json,
+	mr_data_readmem_json,
+	mr_data_writeval_json,
+	mr_data_readval_json,
+	mr_index_lengthmem_json,
+	mr_index_lengthval_json,
+	mr_index_writeval_json,
+	mr_index_readval_json,
+	mr_index_cmpdisk_json,
+	mr_freemem_json,
+	mr_data_cmpdisk_json,
+	mr_cmpval_json
+};
+
+PR_TYPE *tp_Type_json = &tp_Json;
+
+static void
+mr_initmem_json (void *mem, TP_DOMAIN * domain)
+{
+  ((DB_JSON *) mem)->json_body = NULL;
+}
+
+
+/*
+ * The main difference between "memory" strings and "value" strings is that
+ * the length tag is stored as an in-line prefix in the memory block allocated
+ * to hold the string characters.
+ */
+static int
+mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  int error = NO_ERROR;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+	  mr_initmem_json (memptr, domain);
+	}
+  else
+    {
+        int len = strlen (value->data.json.json_body);
+        ((DB_JSON *) memptr)->json_body = db_private_alloc (NULL, len+1);
+        memcpy (((DB_JSON *) memptr)->json_body, value->data.json.json_body, len);
+        ((DB_JSON *) memptr)->json_body[len] = '\0';
+    }
+
+  return error;
+}
+
+static int
+mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+{
+  int error = NO_ERROR;
+  DB_JSON * jsonObj = (DB_JSON *) memptr;
+  
+  if (jsonObj == NULL || jsonObj->json_body == NULL)
+    {
+      db_value_domain_init (value, DB_TYPE_JSON, domain->precision, 0);
+      value->need_clear = false;
+    }
+  else
+    {
+
+      if (!copy)
+	{
+        db_make_json (value, jsonObj->json_body);
+        value->need_clear = false;
+	}
+      else
+	{
+        int len = strlen (jsonObj->json_body);
+	  /* return it with a NULL terminator */
+	  char * new_ = db_private_alloc (NULL, len + 1);
+	  if (new_ == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+	  else
+	    {
+	      memcpy (new_, value->data.json.json_body, len);
+	      new_[len] = '\0';
+	      db_make_json (value, new_);
+	      value->need_clear = true;
+	    }
+	}
+    }
+  return error;
+}
+
+
+/*
+ * For the disk representation, we may be adding pad bytes
+ * to round up to a word boundary.
+ *
+ * NOTE: We are currently adding a NULL terminator to the disk representation
+ * for some code on the server that still manufactures pointers directly into
+ * the disk buffer and assumes it is a NULL terminated string.  This terminator
+ * can be removed after the server has been updated.  The logic for maintaining
+ * the terminator is actually in the or_put_varchar, family of functions.
+ */
+static int
+mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
+{
+  char **mem, *cur;
+  int len;
+
+  len = 0;
+  if (!disk)
+    {
+      len = tp_Json.size;
+    }
+  else if (memptr != NULL)
+    {
+        DB_JSON *json_obj = (DB_JSON *) memptr;
+      if (json_obj != NULL && json_obj->json_body != NULL)
+	{
+	  len = strlen (json_obj->json_body);
+	}
+    }
+
+  return len;
+}
+
+static int
+mr_index_lengthmem_json (void *memptr, TP_DOMAIN * domain)
+{
+    assert(false);
+}
+
+static void
+mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+{
+    assert(false);
+}
+
+
+/*
+ * The amount of memory requested is currently calculated based on the
+ * stored size prefix.  If we ever go to a system where we avoid storing
+ * the size, then we could use the size argument passed in to this function
+ * but that may also include any padding byte that added to bring us up to
+ * a word boundary. Might want some way to determine which bytes at the
+ * end of a string are padding.
+ */
+static void
+mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+{
+    assert(false);
+  return mr_data_readmem_string (buf, memptr, domain, size);
+}
+
+static void
+mr_freemem_json (void *memptr)
+{
+  char *cur;
+
+  if (memptr != NULL)
+    {
+      cur = *(char **) memptr;
+      if (cur != NULL)
+	{
+	  db_private_free_and_init (NULL, cur);
+	}
+    }
+}
+
+static void
+mr_initval_json (DB_VALUE * value, int precision, int scale)
+{
+    db_value_domain_init (value, DB_TYPE_JSON, precision, scale);
+  value->need_clear = false;
+  value->data.json.json_body = NULL;
+}
+
+static int
+mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  int error = NO_ERROR;
+  int src_precision, src_length;
+  char *src_str, *new_;
+
+  if (src == NULL || DB_IS_NULL (src))
+  {
+    error = db_value_domain_init (dest, DB_TYPE_JSON, DB_DEFAULT_PRECISION, 0);
+  }
+  else
+  {
+    db_value_domain_init (dest, DB_TYPE_JSON, DB_DEFAULT_PRECISION, 0);
+    dest->domain.general_info.is_null = 0;
+    int len = strlen (src->data.json.json_body);
+    dest->data.json.json_body = db_private_alloc (NULL, (size_t) (len + 1));
+    memcpy (dest->data.json.json_body, src->data.json.json_body, (size_t) len);
+    dest->data.json.json_body[len] = '\0';
+    dest->need_clear = true;
+  }
+
+  return error;
+}
+
+static int
+mr_index_lengthval_json (DB_VALUE * value)
+{
+    DB_VALUE str;
+    convert_json_to_string (value, &str);
+    return mr_index_lengthval_string (&str);
+}
+
+static int
+mr_index_writeval_json (OR_BUF * buf, DB_VALUE * value)
+{
+    DB_VALUE str;
+    convert_json_to_string (value, &str);
+    return mr_index_writeval_string (buf, &str);
+}
+
+static int
+mr_index_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+			   int copy_buf_len)
+{
+    DB_VALUE str;
+    convert_json_to_string (value, &str);
+   return mr_index_readval_string (buf, &str, domain, size, copy, copy_buf, copy_buf_len);
+}
+
+static int
+mr_data_lengthval_json (DB_VALUE * value, int disk)
+{
+    DB_VALUE str;
+    convert_json_to_string (value, &str);
+    return mr_data_lengthval_string (&str, disk);
+}
+
+static int
+mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
+{
+    DB_VALUE str;
+    convert_json_to_string (value, &str);
+    return mr_data_writeval_string (buf, &str);
+    
+    int len = strlen (value->data.json.json_body);
+    OR_PUT_INT (buf, len);
+    or_advance(buf, sizeof(int));
+    or_put_data (buf, value->data.json.json_body, len);
+    return NO_ERROR;
+}
+
+static int
+mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+                      int copy_buf_len)
+{
+    DB_VALUE str;
+    
+    DB_MAKE_NULL (&str);
+    int rc = mr_data_readval_string (buf, &str, domain, size, copy, copy_buf, copy_buf_len);
+    if (rc != NO_ERROR)
+    {
+       ASSERT_ERROR ();
+       return rc;
+    }
+
+    if (DB_IS_NULL (&str))
+    {
+      DB_MAKE_NULL (value);
+    }
+    else
+    {
+      assert (str.data.ch.medium.buf != NULL);
+      value->data.json.json_body = str.data.ch.medium.buf;
+      value->need_clear = str.need_clear;
+      value->domain.general_info.type = DB_TYPE_JSON;
+      value->domain.general_info.is_null = 0;
+    }
+    return NO_ERROR;
+}
+
+/*
+ * Ignoring precision as byte size is really the only important thing for
+ * varnchar.
+ */
+static int
+mr_lengthval_json_internal (DB_VALUE * value, int disk, int align)
+{
+    DB_VALUE str;
+    convert_json_to_string (value, &str);
+    return mr_lengthval_string_internal (&str, disk, align);
+  return NO_ERROR;
+}
+
+static int
+mr_readval_json_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+			      char *copy_buf, int copy_buf_len, int align)
+{
+    DB_VALUE str;
+    convert_json_to_string (value, &str);
+    return mr_readval_string_internal(buf, &str, domain, size, copy, copy_buf, copy_buf_len, align);
+}
+
+static int
+mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+			   int *start_colp)
+{
+    return mr_index_cmpdisk_string (mem1, mem2, domain, do_coercion, total_order, start_colp);
+    assert(false);
+  return NO_ERROR;
+}
+
+static int
+mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+{
+    return mr_data_cmpdisk_string (mem1, mem2, domain, do_coercion, total_order, start_colp);
+  return NO_ERROR;
+}
+
+static int
+mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+		    int collation)
+{
+    DB_VALUE str, str2;
+    convert_json_to_string (value1, &str);
+    convert_json_to_string (value2, &str2);
+    return mr_cmpval_string (&str, &str2, do_coercion, total_order, start_colp, collation);
+    assert(false);
+ return NO_ERROR;
+}
+
+#if defined (ENABLE_UNUSED_FUNCTION)
+static int
+mr_cmpval_json2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
+		     int *start_colp)
+{
+  int c;
+  unsigned char *string1, *string2;
+  int len1, len2, string_size;
+
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  string_size = (int) DB_GET_STRING_SIZE (value1);
+  len1 = MIN (string_size, length);
+  string_size = (int) DB_GET_STRING_SIZE (value2);
+  len2 = MIN (string_size, length);
+
+  c = varnchar_compare (string1, len1, string2, len2, (INTL_CODESET) DB_GET_STRING_CODESET (value2));
+  c = MR_CMP_RETURN_CODE (c);
+
+  return c;
+}
+#endif
+
+static void
+convert_json_to_string(DB_VALUE * json_value, DB_VALUE * string_clone)
+{
+    /*int len = strlen (json_value->data.json.json_body);
+    
+    memcpy (str_value->data.ch.medium.buf, json_value->data.json.json_body, len);
+    str_value->data.ch.medium.buf[len] = '\0';
+    str_value->data.ch.medium.size = len;*/
+    if (DB_IS_NULL (json_value))
+      {
+          DB_MAKE_NULL (string_clone);
+      }
+    else
+    {
+        /* init */
+        db_make_string (string_clone, json_value->data.json.json_body);
+        string_clone->need_clear = false;
+        string_clone->domain.general_info.is_null = 0;
+    }
+    /*DB_VALUE * res = db_private_alloc (NULL, sizeof (DB_VALUE));
+    db_make_string (res, strdup (json_value->data.json.json_body));
+    
+    return res;*/
+}
+
+
 /*
  * TYPE BIT
  */
@@ -16260,7 +16692,6 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   db_make_enumeration (dest, DB_GET_ENUM_SHORT (src), str, DB_GET_ENUM_STRING_SIZE (src), DB_GET_ENUM_CODESET (src),
 		       DB_GET_ENUM_COLLATION (src));
   dest->need_clear = need_clear;
-
   return NO_ERROR;
 }
 
