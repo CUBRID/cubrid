@@ -21684,7 +21684,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       /* the old overflow record is no longer needed, it was linked only by old home */
       if (heap_ovf_delete (thread_p, &context->hfid, &context->ovf_oid, NULL) == NULL)
 	{
-	  assert (false);
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
