@@ -7563,8 +7563,7 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
     }
 
   btid_int.sys_btid = btid;
-  valid = btree_glean_root_header_info (thread_p, root_header, &btid_int);
-  if (valid != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
     {
       goto error;
     }
@@ -7844,7 +7843,6 @@ retry_repair:
       header = btree_get_node_header (thread_p, current_pgptr);
       if (header == NULL)
 	{
-	  valid = DISK_ERROR;
 	  goto exit_repair;
 	}
 
@@ -7888,7 +7886,6 @@ retry_repair:
       header = btree_get_node_header (thread_p, next_pgptr);
       if (header == NULL)
 	{
-	  valid = DISK_ERROR;
 	  goto exit_repair;
 	}
 
@@ -10689,7 +10686,6 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   if (spage_update (thread_p, leaf_page, search_key->slotid, leaf_rec) != SP_SUCCESS)
     {
       assert_release (false);
-      ret = ER_FAILED;
       goto error;
     }
 
@@ -11777,7 +11773,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     {
       if (btree_search_leaf_page (thread_p, btid, page_ptr, key, &search_key) != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  assert (false);
 	  goto error;
 	}
       found = (search_key.result == BTREE_KEY_FOUND);
@@ -12616,18 +12612,17 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   if (qheader == NULL)
     {
       assert_release (false);
-      ret = ER_FAILED;
       goto exit_on_error;
     }
 
   sep_key = btree_find_split_point (thread_p, btid, Q, &leftcnt, key, helper, &clear_sep_key);
+  assert (leftcnt <= key_cnt && leftcnt >= 0);
   if (sep_key == NULL || DB_IS_NULL (sep_key))
     {
       er_log_debug (ARG_FILE_LINE, "btree_split_node: Null middle key after split. Operation Ignored.\n");
       ASSERT_ERROR_AND_SET (ret);
       goto exit_on_error;
     }
-  assert (leftcnt <= key_cnt && leftcnt >= 0);
 
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
@@ -12753,7 +12748,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       assert (j > 0);
       if (spage_insert_at (thread_p, R, j++, &rec) != SP_SUCCESS)
 	{
-	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
     }
@@ -13471,12 +13465,12 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    ********************************************************************/
 
   sep_key = btree_find_split_point (thread_p, btid, P, &leftcnt, key, helper, &clear_sep_key);
+  assert (leftcnt <= key_cnt && leftcnt >= 0);
   if (sep_key == NULL || DB_IS_NULL (sep_key))
     {
       er_log_debug (ARG_FILE_LINE, "btree_split_root: Null middle key after split. Operation Ignored.\n");
       goto exit_on_error;
     }
-  assert (leftcnt <= key_cnt && leftcnt >= 0);
 
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
@@ -14758,78 +14752,74 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 	      ;
 	    }
 
-	  if (midxkey->min_max_val.position == -1)
+	  minmax = key_minmax;	/* init */
+	  if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
 	    {
-	      /* If min_max_val was not set, set it here. */
-	      minmax = key_minmax;	/* init */
-	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
-		{
-		  if (!part_key_desc)
-		    {		/* CASE 1, 2 */
-		      if (dp->is_desc != true)
-			{	/* CASE 1 */
-			  ;	/* nop */
-			}
-		      else
-			{	/* CASE 2 */
-			  minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
-			}
+	      if (!part_key_desc)
+		{		/* CASE 1, 2 */
+		  if (dp->is_desc != true)
+		    {		/* CASE 1 */
+		      ;		/* nop */
 		    }
 		  else
-		    {		/* CASE 3, 4 */
-		      if (dp->is_desc != true)
-			{	/* CASE 3 */
-			  minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
-			}
-		      else
-			{	/* CASE 4 */
-			  ;	/* nop */
-			}
+		    {		/* CASE 2 */
+		      minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
 		    }
-		}
-	      else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
-		{
-		  if (!part_key_desc)
-		    {		/* CASE 1, 2 */
-		      if (dp->is_desc != true)
-			{	/* CASE 1 */
-			  ;	/* nop */
-			}
-		      else
-			{	/* CASE 2 */
-			  minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
-			}
-		    }
-		  else
-		    {		/* CASE 3, 4 */
-		      if (dp->is_desc != true)
-			{	/* CASE 3 */
-			  minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
-			}
-		      else
-			{	/* CASE 4 */
-			  ;	/* nop */
-			}
-		    }
-		}
-
-	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
-		{
-		  if (dsize < keysize)
-		    {
-		      midxkey->min_max_val.position = dsize;
-		      midxkey->min_max_val.type = MIN_COLUMN;
-		    }
-		}
-	      else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
-		{
-		  midxkey->min_max_val.position = dsize;
-		  midxkey->min_max_val.type = MAX_COLUMN;
 		}
 	      else
-		{
-		  err = ER_FAILED;
+		{		/* CASE 3, 4 */
+		  if (dp->is_desc != true)
+		    {		/* CASE 3 */
+		      minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+		    }
+		  else
+		    {		/* CASE 4 */
+		      ;		/* nop */
+		    }
 		}
+	    }
+	  else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
+	    {
+	      if (!part_key_desc)
+		{		/* CASE 1, 2 */
+		  if (dp->is_desc != true)
+		    {		/* CASE 1 */
+		      ;		/* nop */
+		    }
+		  else
+		    {		/* CASE 2 */
+		      minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
+		    }
+		}
+	      else
+		{		/* CASE 3, 4 */
+		  if (dp->is_desc != true)
+		    {		/* CASE 3 */
+		      minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
+		    }
+		  else
+		    {		/* CASE 4 */
+		      ;		/* nop */
+		    }
+		}
+	    }
+
+	  if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
+	    {
+	      if (dsize < keysize)
+		{
+		  midxkey->min_max_val.position = dsize;
+		  midxkey->min_max_val.type = MIN_COLUMN;
+		}
+	    }
+	  else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
+	    {
+	      midxkey->min_max_val.position = dsize;
+	      midxkey->min_max_val.type = MAX_COLUMN;
+	    }
+	  else
+	    {
+	      err = ER_FAILED;
 	    }
 
 	  num_dbvals = 0;
@@ -14847,6 +14837,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 
 	  db_private_free_and_init (NULL, dbvals);
 	}
+
     }
   else if (
 	    /* check if they are string or bit type */
@@ -21102,7 +21093,6 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAG
   if (spage_update (thread_p, page_ptr, slot_id, rec) != SP_SUCCESS)
     {
       assert_release (false);
-      ret = ER_FAILED;
       goto exit_on_error;
     }
 
@@ -26611,7 +26601,6 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      pgbuf_unfix_and_init (thread_p, new_page2);
 
 	      /* Error */
-	      error_code = ER_FAILED;
 	      goto error;
 	    }
 	  assert (*crt_page != NULL);
@@ -26622,7 +26611,6 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	    {
 	      /* Unexpected. */
 	      assert (false);
-	      error_code = ER_FAILED;
 	      goto error;
 	    }
 
@@ -26902,6 +26890,10 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
 error:
   /* Error. */
+  if (is_system_op_started)
+    {
+      log_sysop_abort (thread_p);
+    }
   if (new_page1 != NULL)
     {
       pgbuf_unfix_and_init (thread_p, new_page1);
@@ -26909,15 +26901,6 @@ error:
   if (new_page2 != NULL)
     {
       pgbuf_unfix_and_init (thread_p, new_page2);
-    }
-  if (is_system_op_started)
-    {
-      /*
-       * Abort system operation, before after unfixing newpage1 and newpage2 and before unfixing child page.
-       * Thus, new_page1 and newpage2 are deallocated during abort, so fix count must be 0.
-       * Also, we have to be sure that no other transaction modify the child page, in order to correctly restore it.
-       */
-      log_sysop_abort (thread_p);
     }
   if (child_page != NULL)
     {
@@ -28489,11 +28472,10 @@ btree_key_record_check_no_visible (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       assert (false);
       return;
     }
-
-  num_visible = btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_rec_info,
-							 NULL, &dirty_snapshot);
-
-  assert (num_visible == 0 || (num_visible < 0 && er_errid () != NO_ERROR));
+  num_visible =
+    btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_rec_info, NULL,
+					     &dirty_snapshot);
+  assert (num_visible == 0);
 }
 #endif /* !NDEBUG */
 
@@ -30305,7 +30287,7 @@ error:
 
   if (is_system_op_started)
     {
-      /* Abort system operation, before unfixing the pages to be sure that no other transaction modify the pages. */
+      /* Abort system operation. */
       log_sysop_abort (thread_p);
     }
 

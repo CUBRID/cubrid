@@ -10294,7 +10294,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
             case DB_TYPE_CHAR:
             {
                 target->domain.general_info.type = DB_TYPE_JSON;
-                target->data.json.json_body = db_private_alloc (NULL, (size_t) (DB_GET_STRING_SIZE (src) + 1));
+                target->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (DB_GET_STRING_SIZE (src) + 1));
                 target->domain.general_info.is_null = 0;
                 strcpy (target->data.json.json_body, DB_GET_STRING (src));
                 target->need_clear = true;

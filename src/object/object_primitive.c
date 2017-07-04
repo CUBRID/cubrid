@@ -15175,12 +15175,13 @@ static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
+    DB_VALUE_COMPARE_RESULT c;
     DB_VALUE str, str2;
     convert_json_to_string (value1, &str);
     convert_json_to_string (value2, &str2);
     return mr_cmpval_string (&str, &str2, do_coercion, total_order, start_colp, collation);
     assert(false);
- return NO_ERROR;
+    return c;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
