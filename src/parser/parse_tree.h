@@ -976,6 +976,7 @@ enum pt_type_enum
   PT_TYPE_VARBIT,
   PT_TYPE_LOGICAL,
   PT_TYPE_MAYBE,
+  PT_TYPE_JSON,
 
   /* special values */
   PT_TYPE_NA,			/* in SELECT NA */
@@ -3028,6 +3029,10 @@ typedef DB_TIMESTAMPTZ PT_TIMESTAMPTZ;
 typedef long PT_DATE;
 typedef DB_DATETIME PT_DATETIME;
 typedef DB_DATETIMETZ PT_DATETIMETZ;
+typedef struct
+{
+    char *json_body;
+} PT_JSON;
 
 /* enum currency types */
 typedef enum pt_currency_types
@@ -3093,6 +3098,7 @@ union pt_data_value
   PT_MONETARY money;
   PT_NODE *set;			/* constant sets */
   DB_ELO elo;			/* ??? */
+  PT_JSON json;
   int b;
   PT_ENUM_ELEMENT enumeration;
 };

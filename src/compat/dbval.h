@@ -623,6 +623,13 @@
      (v)->need_clear = false, \
      NO_ERROR)
 
+#define db_make_json(v, j) \
+    ((v)->domain.general_info.type = DB_TYPE_JSON, \
+    (v)->data.json.json_body = (j), \
+    (v)->domain.general_info.is_null = 0, \
+    (v)->need_clear = false, \
+    NO_ERROR)
+
 #define db_make_midxkey(v, m) \
     ((v)->domain.general_info.type = DB_TYPE_MIDXKEY, \
      (((m) == NULL) ? \

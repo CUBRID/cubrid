@@ -4118,7 +4118,8 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "bit varying";
     case PT_TYPE_MONETARY:
       return "monetary";
-
+    case PT_TYPE_JSON:
+        return "json";
     case PT_TYPE_MAYBE:
       return "uncertain";
 

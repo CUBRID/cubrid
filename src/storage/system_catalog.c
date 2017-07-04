@@ -4829,6 +4829,9 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
     case DB_TYPE_NULL:
       fprintf (stdout, "DB_TYPE_NULL \n");
       break;
+    case DB_TYPE_JSON:
+      fprintf (stdout, "DB_TYPE_JSON \n");
+      break;
     default:
       break;
     }

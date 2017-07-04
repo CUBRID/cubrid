@@ -575,6 +575,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   DB_OBJECT *mop;
   DB_TYPE db_type;
   char buf[100];
+  int length;
 
   assert (parser != NULL && val != NULL);
 
@@ -623,7 +624,22 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_DOUBLE:
       result->info.value.data_value.d = DB_GET_DOUBLE (val);
       break;
-
+    case DB_TYPE_JSON:
+      length = strlen(val->data.json.json_body);
+      result->info.value.data_value.json.json_body = (char *) db_private_alloc (NULL,  (length + 1));
+      memcpy (result->info.value.data_value.json.json_body, val->data.json.json_body, length);
+      result->info.value.data_value.json.json_body[length] = '\0';
+      result->data_type = parser_new_node (parser, PT_DATA_TYPE);
+      if (result->data_type == NULL)
+        {
+          parser_free_node (parser, result);
+          result = NULL;
+        }
+      else
+        {
+          result->data_type->type_enum = result->type_enum;
+        }
+      break;
     case DB_TYPE_NUMERIC:
       numeric_db_value_print ((DB_VALUE *) val, buf);
       result->info.value.data_value.str = pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, (const char *) buf);
@@ -1476,6 +1492,9 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
   domain_type = pt_type_enum_to_db (t);
   switch (domain_type)
     {
+    case DB_TYPE_JSON:
+      retval = tp_domain_construct (domain_type, NULL, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+      break;
     case DB_TYPE_INTEGER:
       retval = tp_domain_construct (domain_type, NULL, DB_INTEGER_PRECISION, 0, NULL);
       break;
@@ -1767,6 +1786,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
     case DB_TYPE_BIGINT:
+    case DB_TYPE_JSON:
       return pt_type_enum_to_db_domain (dt->type_enum);
 
     case DB_TYPE_OBJECT:
@@ -1972,6 +1992,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_OID:
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_BIGINT:
+    case DB_TYPE_JSON:
       return pt_type_enum_to_db_domain (type);
 
     case DB_TYPE_OBJECT:
@@ -2245,7 +2266,9 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
     case PT_TYPE_VARCHAR:
       db_type = DB_TYPE_VARCHAR;
       break;
-
+    case PT_TYPE_JSON:
+      db_type = DB_TYPE_JSON;
+      break;
     case PT_TYPE_OBJECT:
       db_type = DB_TYPE_OBJECT;
       break;
@@ -2513,7 +2536,9 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_TIMESTAMPLTZ:
       pt_type = PT_TYPE_TIMESTAMPLTZ;
       break;
-
+    case DB_TYPE_JSON:
+      pt_type = PT_TYPE_JSON;
+      break;
     case DB_TYPE_DATETIME:
       pt_type = PT_TYPE_DATETIME;
       break;
@@ -2723,6 +2748,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
+    case DB_TYPE_JSON:
       /* 
        * Nothing more to do for these guys; their type is completely
        * described by the type_enum.  Why don't we care about precision
@@ -3350,6 +3376,15 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       db_make_varchar (db_value, TP_FLOATING_PRECISION_VALUE, (DB_C_CHAR) value->info.value.data_value.str->bytes,
 		       value->info.value.data_value.str->length, codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
+      *more_type_info_needed = (value->data_type == NULL);
+      break;
+    case PT_TYPE_JSON:
+      db_value->domain.general_info.type = DB_TYPE_JSON;
+      db_value->domain.general_info.is_null = 0;
+      db_value->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (value->info.value.data_value.str->length + 1));
+      strcpy (db_value->data.json.json_body, (const char *) value->info.value.data_value.str->bytes);
+      value->info.value.db_value_is_in_workspace = false;
+      db_value->need_clear = true;
       *more_type_info_needed = (value->data_type == NULL);
       break;
 

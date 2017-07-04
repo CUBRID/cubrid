@@ -1198,6 +1198,8 @@ qdump_data_type_string (DB_TYPE type)
       return "DB_TABLE";
     case DB_TYPE_ENUMERATION:
       return "ENUM";
+    case DB_TYPE_JSON:
+      return "JSON";
     default:
       return "[***UNKNOWN***]";
     }

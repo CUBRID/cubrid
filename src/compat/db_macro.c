@@ -331,6 +331,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_SHORT:
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
+    case DB_TYPE_JSON:
       break;
 
     default:
@@ -502,6 +503,11 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
       db_make_enumeration (value, 0, NULL, 0, codeset, collation_id);
       break;
       /* case DB_TYPE_TABLE: internal use only */
+    case DB_TYPE_JSON:
+        value->domain.general_info.is_null = 1;
+        value->need_clear = false;
+        value->data.json.json_body = NULL;
+        break;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);
@@ -678,6 +684,10 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
 	}
       break;
       /* case DB_TYPE_TABLE: internal use only */
+    case DB_TYPE_JSON:
+        value->domain.general_info.is_null = 1;
+        value->data.json.json_body = NULL;
+        value->need_clear = false;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);
@@ -3546,6 +3556,7 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_ENUMERATION:
+    case DB_TYPE_JSON:
       result = tp_domain_resolve_default (type);
       break;
     case DB_TYPE_SUB:

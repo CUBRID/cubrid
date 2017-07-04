@@ -429,7 +429,6 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return JOB; }
 [jJ][sS][oO][nN]							{ begin_token(yytext);   
-										csql_yylval.cptr = pt_makename(yytext);
 										return JSON; }
 [kK][eE][yY]								{ begin_token(yytext);   return KEY; }
 [kK][eE][yY][sS]							{ begin_token(yytext);   

@@ -531,16 +531,17 @@ typedef enum
   DB_TYPE_TIMESTAMPLTZ = 37,
   DB_TYPE_DATETIMETZ = 38,
   DB_TYPE_DATETIMELTZ = 39,
+  DB_TYPE_JSON = 40,
   /* Disabled types */
-  DB_TYPE_TIMETZ = 40,		/* internal use only - RESERVED */
-  DB_TYPE_TIMELTZ = 41,		/* internal use only - RESERVED */
+  DB_TYPE_TIMETZ = 41,		/* internal use only - RESERVED */
+  DB_TYPE_TIMELTZ = 42,		/* internal use only - RESERVED */
   /* end of disabled types */
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
   DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
   DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP */
 
-  DB_TYPE_LAST = DB_TYPE_DATETIMELTZ
+  DB_TYPE_LAST = DB_TYPE_JSON
 } DB_TYPE;
 
 /* Domain information stored in DB_VALUE structures. */
@@ -842,6 +843,11 @@ struct db_enumeration
   unsigned short count;		/* count of enumeration elements */
 };
 
+typedef struct db_json DB_JSON;
+struct db_json {
+    char * json_body;
+};
+
 /* A union of all of the possible basic type values.  This is used in the
  * definition of the DB_VALUE which is the fundamental structure used
  * in passing data in and out of the db_ function layer.
@@ -875,6 +881,7 @@ union db_data
   DB_CHAR ch;
   DB_RESULTSET rset;
   DB_ENUM_ELEMENT enumeration;
+  DB_JSON json;
 };
 
 /* This is the primary structure used for passing values in and out of

@@ -4040,7 +4040,9 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	    }
 
 	  break;
-
+    case DB_TYPE_JSON:
+        buffer = pt_append_nulstring (parser, buffer, value->data.json.json_body);
+        break;
 	case DB_TYPE_MIDXKEY:
 	  midxkey = DB_GET_MIDXKEY (value);
 	  if (midxkey != NULL)
@@ -4267,7 +4269,9 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;
-
+    case DB_TYPE_JSON:
+        buffer = describe_data (parser, buffer, value);
+        break;
 	case DB_TYPE_TIME:
 	  buffer = pt_append_nulstring (parser, buffer, "time '");
 	  buffer = describe_data (parser, buffer, value);

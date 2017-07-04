@@ -255,7 +255,7 @@ static KEYWORD_RECORD keywords[] = {
   {JAVA, "JAVA", 1},
   {JOIN, "JOIN", 0},
   {JOB, "JOB", 1},
-  {JSON, "JSON", 1},
+  {JSON, "JSON", 0},
   {KEY, "KEY", 0},
   {KEYS, "KEYS", 1},
   {KILL, "KILL", 1},

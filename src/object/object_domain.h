@@ -178,6 +178,7 @@ extern TP_DOMAIN tp_Bit_domain;
 extern TP_DOMAIN tp_VarBit_domain;
 extern TP_DOMAIN tp_Midxkey_domain;
 extern TP_DOMAIN tp_Enumeration_domain;
+extern TP_DOMAIN tp_Json_domain;
 
 /*
  * TP_DOMAIN_STATUS

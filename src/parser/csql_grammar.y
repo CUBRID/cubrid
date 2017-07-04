@@ -1420,6 +1420,7 @@ int g_original_buffer_len;
 %token YEAR_
 %token YEAR_MONTH
 %token ZONE
+%token JSON
 
 %token YEN_SIGN
 %token DOLLAR_SIGN
@@ -1512,7 +1513,6 @@ int g_original_buffer_len;
 %token <cptr> KILL
 %token <cptr> JAVA
 %token <cptr> JOB
-%token <cptr> JSON
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
 %token <cptr> LCASE
@@ -18829,9 +18829,16 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
+    | JSON
+        {{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_JSON), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
 	| OBJECT
 		{{
-
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_OBJECT), NULL);
 			$$ = ctn;
@@ -20660,15 +20667,7 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| JSON
-		{{
 
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-
-		DBG_PRINT}}
 	| KEYS
 		{{
 

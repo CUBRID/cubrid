@@ -331,6 +331,9 @@ TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar, DB_MAX_VARNCHAR_PRECI
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
+TP_DOMAIN tp_Json_domain = {NULL, NULL, &tp_Json, TP_FLOATING_PRECISION_VALUE, 0,
+                            DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)};
+
 /* These must be in DB_TYPE order */
 static TP_DOMAIN *tp_Domains[] = {
   &tp_Null_domain,
@@ -376,6 +379,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Timestampltz_domain,
   &tp_Datetimetz_domain,
   &tp_Datetimeltz_domain,
+  &tp_Json_domain,
   &tp_Timetz_domain,
   &tp_Timeltz_domain,
   &tp_Null_domain,
@@ -1538,6 +1542,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_DATE:
     case DB_TYPE_MONETARY:
     case DB_TYPE_SHORT:
+    case DB_TYPE_JSON:
       /* 
        * these domains have no parameters, they match if the types are the
        * same.
@@ -3204,6 +3209,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_DATETIMELTZ:
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_SHORT:
+    case DB_TYPE_JSON:
 	  /* domains without parameters, return the built-in domain */
 	  domain = tp_domain_resolve_default (value_type);
 	  break;
@@ -10274,7 +10280,20 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	pr_clear_value (&conv_val);
       }
       break;
-
+    case DB_TYPE_JSON:
+        switch (original_type)
+        {
+            case DB_TYPE_CHAR:
+            {
+                target->domain.general_info.type = DB_TYPE_JSON;
+                target->data.json.json_body = db_private_alloc (NULL, (size_t) (DB_GET_STRING_SIZE (src) + 1));
+                target->domain.general_info.is_null = 0;
+                strcpy (target->data.json.json_body, DB_GET_STRING (src));
+                target->need_clear = true;
+                break;
+            }
+        }
+        break;
     default:
       status = DOMAIN_INCOMPATIBLE;
       break;
