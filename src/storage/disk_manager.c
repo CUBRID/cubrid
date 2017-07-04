@@ -396,7 +396,7 @@ STATIC_INLINE void disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
 static int disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RESERVE_CONTEXT * context);
 static DISK_ISVALID disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VOLUME_HEADER * volheader,
 					     SECTID sectid, bool debug_crash);
-static int disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context);
+static int disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context, bool * did_extend);
 STATIC_INLINE void disk_reserve_from_cache_vols (DB_VOLTYPE type, DISK_RESERVE_CONTEXT * context)
   __attribute__ ((ALWAYS_INLINE));
 static int disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * expand_info,
@@ -4025,6 +4025,7 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   DISK_RESERVE_CONTEXT context;
   int nreserved;
   bool retried = false;
+  bool did_extend = false;
   int error_code = NO_ERROR;
 
   assert (purpose == DB_PERMANENT_DATA_PURPOSE || purpose == DB_TEMPORARY_DATA_PURPOSE);
@@ -4064,7 +4065,7 @@ retry:
   context.n_cache_vol_reserve = 0;
   context.purpose = purpose;
 
-  error_code = disk_reserve_from_cache (thread_p, &context);
+  error_code = disk_reserve_from_cache (thread_p, &context, &did_extend);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4087,6 +4088,14 @@ retry:
   csect_exit (thread_p, CSECT_DISK_CHECK);
   /* attach sys op to outer */
   log_sysop_attach_to_outer (thread_p);
+
+#if !defined (NDEBUG)
+  if (did_extend)
+    {
+      /* safe-guard: catch inconsistencies early */
+      assert (disk_check (thread_p, false) != DISK_INVALID);
+    }
+#endif /* !NDEBUG */
 
   return NO_ERROR;
 
@@ -4179,9 +4188,10 @@ error:
  * return           : Error code
  * thread_p (in)    : Thread entry
  * context (in/out) : Reserve context
+ * did_extend (out) :
  */
 static int
-disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context)
+disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context, bool * did_extend)
 {
   DISK_EXTEND_INFO *extend_info;
   DKNSECTS save_remaining;
@@ -4315,6 +4325,8 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       assert_release (false);
       return ER_FAILED;
     }
+
+  *did_extend = true;
 
   /* all cache reservations were made */
   return NO_ERROR;
@@ -5988,6 +6000,17 @@ disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
 	      fileio_get_volume_label (volid, PEEK));
+      valid = DISK_INVALID;
+    }
+
+  /* permanent volume is un-maxed if and only if it is the auto-extend volume */
+  if (volheader->purpose == DB_PERMANENT_DATA_PURPOSE && volheader->nsect_max < volheader->nsect_total
+      && disk_Cache->perm_purpose_info.extend_info.volid_extend != volid)
+    {
+      /* inconsistent! */
+      assert_release (false);
+
+      /* how to repair?? */
       valid = DISK_INVALID;
     }
 
