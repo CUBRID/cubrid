@@ -17,6 +17,9 @@
 #
 
 cmake_minimum_required(VERSION 2.8)
+
+#also searches for modules onto cubrid/cmake
+# add other Find[LIBRARY].cmake scripts in cubrid/cmake
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -26,17 +29,20 @@ endif()
 
 project(CUBRID)
 
+#TODO: see why the lines below have no effect
+#list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS "c")
+#list(REMOVE_ITEM CMAKE_C_SOURCE_FILE_EXTENSIONS "c")
+
 # options
 if(UNIX)
-  set(USE_BISON_FLEX_DEFAULT ON)
   set(ENABLE_SYSTEMTAP_DEFAULT ON)
+  set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 else(UNIX)
-  set(USE_BISON_FLEX_DEFAULT OFF)
   set(ENABLE_SYSTEMTAP_DEFAULT OFF)
 endif(UNIX)
+
 # FIXME: linux 32bit build mode not working now
 option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
-option(USE_BISON_FLEX "Use bison and flex to generate parser and lexer" ${USE_BISON_FLEX_DEFAULT})
 option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABLE_SYSTEMTAP_DEFAULT})
 option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
@@ -44,13 +50,16 @@ option(WITH_JDBC "Build JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 
 # options for external libraries (BUNDLED or path)
-set(WITH_LIBREGEX "BUNDLED" CACHE STRING "Build with regex library (default: BUNDLED)")
-set(WITH_LIBEXPAT "BUNDLED" CACHE STRING "Build with expat library (default: BUNDLED)")
-set(WITH_LIBJANSSON "BUNDLED" CACHE STRING "Build with jansson library (default: BUNDLED)")
-set(WITH_LIBEDIT "BUNDLED" CACHE STRING "Build with editline library (default: BUNDLED)")
-set(WITH_LIBLZO "BUNDLED" CACHE STRING "Build with lzo library (default: BUNDLED)")
-set(WITH_LIBGPGERROR "BUNDLED" CACHE STRING "Build with gpg-error library (default: BUNDLED)")
-set(WITH_LIBGCRYPT "BUNDLED" CACHE STRING "Build with gcrypt library (default: BUNDLED)")
+
+set(WITH_EXTERNAL_PREFIX "BUNDLED" CACHE STRING "External library prefix (default: BUNDLED)")
+
+set(WITH_LIBREGEX     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with regex library (default: BUNDLED)")
+set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: BUNDLED)")
+set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: BUNDLED)")
+set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: BUNDLED)")
+set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: BUNDLED)")
+set(WITH_LIBGPGERROR  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: BUNDLED)")
+set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: BUNDLED)")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -132,9 +141,9 @@ if(UNIX)
       message(SEND_ERROR "Cannot compile 32-bit program with gcc version (${CMAKE_CXX_COMPILER_VERSION})")
       message(FATAL_ERROR "4.3.4 or higher version is required. (ref. https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185)")
     endif(ENABLE_32BIT AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.3.4)
-
+    
     set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
@@ -150,10 +159,14 @@ if(UNIX)
   endif(CMAKE_COMPILER_IS_GNUCC)
 else(UNIX)
   # turn off LinkIncremental option for release build
+  
+  #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replaceIncFlag ${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO})
   set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
   string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replaceIncFlag ${CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO})
   set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
+  #SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
+  SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /WX /wd4820" )
 endif(UNIX)
 
 # check target platform
@@ -180,78 +193,117 @@ message(STATUS "Build ${PROJECT_NAME} ${CUBRID_VERSION} ${TARGET_PLATFORM_BITS}b
 
 # generate parser and lexer
 set(CSQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y)
-set(CSQL_GRAMMAR_OUTPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.c)
+set(CSQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/csql_grammar.c)
 set(CSQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.l)
-set(CSQL_LEXER_OUTPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.c)
+set(CSQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/csql_lexer.c)
 set(LOADER_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.y)
-set(LOADER_GRAMMAR_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.c)
+set(LOADER_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/loader_grammar.c)
 set(LOADER_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.l)
-set(LOADER_LEXER_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.c)
+set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/loader_lexer.c)
 set(ESQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y)
-set(ESQL_GRAMMAR_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.c)
+set(ESQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/esql_grammar.c)
 set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
-set(ESQL_LEXER_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.c)
+set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
-if(USE_BISON_FLEX)
-  # bison and flex check
-  include(FindBISON)
-  find_package(BISON)
-  if(BISON_FOUND)
-    if(BISON_VERSION VERSION_GREATER 2.3)
-      set(USE_BISON_NEWDIRECTIVE 1) 
-    endif(BISON_VERSION VERSION_GREATER 2.3)
-  endif(BISON_FOUND) 
-  include(FindFLEX)
-  find_package(FLEX)
+# bison and flex check
+include(FindBISON)
+find_package(BISON)
 
-  if(USE_BISON_NEWDIRECTIVE)
-    file(READ ${CSQL_GRAMMAR_INPUT} yy )
-    string(REPLACE "%{/*%CODE_REQUIRES_START%*/" "%code requires{" mod_yy "${yy}" )
-    string(REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code provides{" mod_yy "${mod_yy}" )
-    string(REPLACE "/*%CODE_END%*/%}" "}" mod_yy "${mod_yy}" )
-    set(CSQL_GRAMMAR_INPUT ${CMAKE_BINARY_DIR}/csql_grammar.yy)
-    file(WRITE ${CSQL_GRAMMAR_INPUT} "${mod_yy}")
-  endif(USE_BISON_NEWDIRECTIVE)
-  bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
-    COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
-  flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
-    COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
-  add_flex_bison_dependency(csql_lexer csql_grammar)
-  add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
-  add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
+if(BISON_FOUND)
+  if(BISON_VERSION VERSION_GREATER 2.3)
+    set(USE_BISON_NEWDIRECTIVE 1) 
+  endif(BISON_VERSION VERSION_GREATER 2.3)
+else(BISON_FOUND)
+  if(UNIX)
+    message(FATAL_ERROR "Please install bison and flex.")
+  else()
+    message(
+      FATAL_ERROR
+      "Please install bison and flex.\nDownload the latest archive from"
+      " https://github.com/lexxmark/winflexbison/releases"
+      " extract it to a directory in the Path (e.g. %USERPROFILE%\\AppData\\Local\\Microsoft\\WindowsApps)"
+      " and retry running cmake."
+    )
+  endif()
+endif(BISON_FOUND)
 
-  bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
-    COMPILE_FLAGS "--no-lines --name-prefix=loader_yy -d -r all")
-  flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
-    COMPILE_FLAGS "--noline --never-interactive --prefix=loader_yy")
-  add_flex_bison_dependency(loader_lexer loader_grammar)
-  add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
-  add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
+include(FindFLEX)
+find_package(FLEX)
 
-  if(USE_BISON_NEWDIRECTIVE)
-    file(READ ${ESQL_GRAMMAR_INPUT} yy )
-    string(REPLACE "%{/*%CODE_REQUIRES_START%*/" "%code requires{" mod_yy "${yy}" )
-    string(REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code provides{" mod_yy "${mod_yy}" )
-    string(REPLACE "/*%CODE_END%*/%}" "}" mod_yy "${mod_yy}" )
-    set(ESQL_GRAMMAR_INPUT ${CMAKE_BINARY_DIR}/esql_grammar.yy)
-    file(WRITE ${ESQL_GRAMMAR_INPUT} "${mod_yy}")
-  endif(USE_BISON_NEWDIRECTIVE)
-  bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
-    COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
-  flex_target(esql_lexer ${ESQL_LEXER_INPUT} ${ESQL_LEXER_OUTPUT}
-    COMPILE_FLAGS "--noline --never-interactive --prefix=esql_yy")
-  add_flex_bison_dependency(esql_lexer esql_grammar)
-  add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
-  add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
-else(USE_BISON_FLEX)
-  set(BISON_csql_grammar_OUTPUTS ${CSQL_GRAMMAR_OUTPUT})
-  set(FLEX_csql_lexer_OUTPUTS ${CSQL_LEXER_OUTPUT})
-  set(BISON_loader_grammar_OUTPUTS ${LOADER_GRAMMAR_OUTPUT})
-  set(FLEX_loader_lexer_OUTPUTS ${LOADER_LEXER_OUTPUT})
-  set(BISON_esql_grammar_OUTPUTS ${ESQL_GRAMMAR_OUTPUT})
-  set(FLEX_esql_lexer_OUTPUTS ${ESQL_LEXER_OUTPUT})
-endif(USE_BISON_FLEX)
+if(USE_BISON_NEWDIRECTIVE)
+  # replace old bison directives with new ones
+  # use add_custom_command because we want to regenerate csql_grammar.yy
+  # whenever csql_grammar.y is modified
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
+    COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
+    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y
+  )
+else()
+  # using old bison - just copy the csql_grammar.y to csql_grammar.yy
+  # keeping the chain of dependencies
+  # use add_custom_command because we want to regenerate csql_grammar.yy
+  # whenever csql_grammar.y is modified
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
+    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y
+  )
+endif(USE_BISON_NEWDIRECTIVE)
 
+set(CSQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy)
+
+# because csql_grammar.yy are generated through a custom command 
+# whenever csql_grammar.y is modified, bison and flex will be 
+# run to create new outputs
+
+bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
+  COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
+flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
+  COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
+add_flex_bison_dependency(csql_lexer csql_grammar)
+add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
+add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
+
+bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
+  COMPILE_FLAGS "--no-lines --name-prefix=loader_yy -d -r all")
+flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
+  COMPILE_FLAGS "--noline --never-interactive --prefix=loader_yy")
+add_flex_bison_dependency(loader_lexer loader_grammar)
+add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
+add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
+
+if(USE_BISON_NEWDIRECTIVE)
+  # replace old bison directives with new ones
+  # use add_custom_command because we want to regenerate esql_grammar.yy
+  # whenever esql_grammar.y is modified
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
+    COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
+    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
+  )
+else()
+  # using old bison - just copy the esql_grammar.y to esql_grammar.yy
+  # keeping the chain of dependencies
+  # use add_custom_command because we want to regenerate esql_grammar.yy
+  # whenever esql_grammar.y is modified
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
+    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
+  )
+endif(USE_BISON_NEWDIRECTIVE)
+
+set(ESQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy)
+
+
+# because esql_grammar.yy are generated through a custom command 
+# whenever esql_grammar.y is modified, bison and flex will be 
+# run to create new outputs
+
+bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
+  COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
+flex_target(esql_lexer ${ESQL_LEXER_INPUT} ${ESQL_LEXER_OUTPUT}
+  COMPILE_FLAGS "--noline --never-interactive --prefix=esql_yy")
+add_flex_bison_dependency(esql_lexer esql_grammar)
+add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
+add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
 
 # java check
 include(FindJNI)
@@ -490,8 +542,8 @@ configure_file(cmake/version.h.cmake version.h)
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused")
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
   endif(SIZEOF_OFF64_T)
@@ -769,11 +821,35 @@ if(WITH_LIBEDIT STREQUAL "BUNDLED")
   # TODO: support system or user provided library
 endif(WITH_LIBEDIT STREQUAL "BUNDLED")
 
-if(WITH_LIBLZO STREQUAL "BUNDLED")
+# WITH_LIBLZO can have multiple values with different meanings
+# on Linux:
+# * "BUNDLED" - (default) builds lzo library from cubrid/external/lzo-2.03 and
+#               uses the library created by the build
+# * "BUNDLEDsome_name" - (e.g. BUNDLEDlzo-2.10) builds lzo library from 
+#               cubrid/external/some_name and  uses the library created by the build
+# * "" - use lzo library from the system (see cubrid/cmake/FindLZO.cmake)
+# * "/some/path" - use lzo library located in /some/path 
+#               /some/path/include/lzo should contain header files
+#               /some/path/lib should contain the library
+#               (see cubrid/cmake/FindLZO.cmake)
+# * "http://U/R/L/to/lzo.tar.gz" - downloads the library from specified URL and builds it
+# on Windows:
+# * BUNDLED - (default) uses the prebuilt library from cubrid/win/external/
+# * "" - searches for LZO library in some default system locations
+# * "/some/path" - searches for LZO library in the given path
+
+if(WITH_LIBLZO MATCHES "^BUNDLED")
+  string(SUBSTRING "${WITH_LIBLZO}" 7 -1 LZO_PATH)
+  
+  if(LZO_PATH STREQUAL "")
+    set(LZO_PATH "lzo-2.03")
+  endif()
+  
   if(UNIX)
     set(LIBLZO_TARGET liblzo)
+    # compile LZO library from cubrid/external/${LZO_PATH}
     externalproject_add(${LIBLZO_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/lzo-2.03
+      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/${LZO_PATH}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -789,8 +865,33 @@ if(WITH_LIBLZO STREQUAL "BUNDLED")
     endif(TARGET_PLATFORM_BITS EQUAL 32)
     set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/lzo)
   endif(UNIX)
-  # TODO: support system or user provided library
-endif(WITH_LIBLZO STREQUAL "BUNDLED")
+elseif(WITH_LIBLZO MATCHES "^http")
+  if(UNIX)
+    set(LIBLZO_TARGET liblzo)
+    #compile LZO library given an internet url to a LZO archive
+    #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
+    externalproject_add(${LIBLZO_TARGET}
+      URL ${WITH_LIBLZO}
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      )
+    set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
+    set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/lzo)
+    list(APPEND EP_TARGETS ${LIBLZO_TARGET})
+  else(UNIX)
+  endif(UNIX)
+else()
+  set(LZO_ROOT ${WITH_LIBLZO})
+  #searches for LZO library within LZO_ROOT path and other system paths (see cubrid/cmake/FindLZO.cmake).
+  #calls cubrid/cmake/FindLZO.cmake
+  find_package(LZO REQUIRED)
+  if(LZO_FOUND)
+    set(LIBLZO_LIBS     ${LZO_LIBRARIES})
+    set(LIBLZO_INCLUDES ${LZO_INCLUDE_DIR})
+  endif()
+endif()
+
 list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
 list(APPEND EP_LIBS ${LIBLZO_LIBS})
 

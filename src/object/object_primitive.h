@@ -95,7 +95,8 @@ typedef struct pr_type
   int (*data_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion, int total_order,
 		       int *start_colp);
   /* db value compare */
-  int (*cmpval) (DB_VALUE * value, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation);
+    DB_VALUE_COMPARE_RESULT (*cmpval) (DB_VALUE * value, DB_VALUE * value2, int do_coercion, int total_order,
+				       int *start_colp, int collation);
 } PR_TYPE, *PRIM;
 
 
@@ -268,7 +269,7 @@ extern PR_TYPE *pr_type_from_id (DB_TYPE id);
 extern PR_TYPE *pr_find_type (const char *name);
 extern const char *pr_type_name (DB_TYPE id);
 
-extern int pr_is_set_type (DB_TYPE type);
+extern bool pr_is_set_type (DB_TYPE type);
 extern int pr_is_string_type (DB_TYPE type);
 extern int pr_is_prefix_key_type (DB_TYPE type);
 extern int pr_is_variable_type (DB_TYPE type);

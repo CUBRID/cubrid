@@ -101,9 +101,9 @@
 	                                       SM_CONSTRAINT_REVERSE_INDEX)
 
 #define SM_IS_CONSTRAINT_UNIQUE_FAMILY(c) \
-        (((c) == SM_CONSTRAINT_UNIQUE          || \
-	  (c) == SM_CONSTRAINT_PRIMARY_KEY     || \
-	  (c) == SM_CONSTRAINT_REVERSE_UNIQUE)    \
+        (((int)(c) == (int)SM_CONSTRAINT_UNIQUE          || \
+	  (int)(c) == (int)SM_CONSTRAINT_PRIMARY_KEY     || \
+	  (int)(c) == (int)SM_CONSTRAINT_REVERSE_UNIQUE)    \
           ? true : false )
 
 #define SM_IS_CONSTRAINT_INDEX_FAMILY(c) \
@@ -125,7 +125,7 @@
 
 #define SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY(c) \
         ((SM_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
-         (c) == SM_CONSTRAINT_FOREIGN_KEY)        \
+         (int)(c) == (int)SM_CONSTRAINT_FOREIGN_KEY)        \
          ? true : false )
 
 #define SM_IS_INDEX_FAMILY(c) \

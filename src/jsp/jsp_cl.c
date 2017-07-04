@@ -121,7 +121,7 @@ static unsigned int jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static int jsp_get_argument_count (const SP_ARGS * sp_args);
 static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-					      int data_type, int mode, const char *arg_comment);
+					      PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
 				     PT_NODE * param_list, const char *java_method, const char *comment);
@@ -680,7 +680,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       err = ER_SP_INVALID_TYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, name_str,
-	      real_type == SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
+	      (int)real_type == (int)SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
       goto error;
     }
 
@@ -799,8 +799,8 @@ jsp_get_argument_count (const SP_ARGS * sp_args)
  */
 
 static int
-jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index, int data_type,
-				   int mode, const char *arg_comment)
+jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
+				   PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -856,7 +856,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_int (&value, jsp_map_pt_misc_to_sp_mode ((PT_MISC_TYPE) mode));
+  db_make_int (&value, jsp_map_pt_misc_to_sp_mode (mode));
   err = dbt_put_internal (obt_p, SP_ATTR_MODE, &value);
   if (err != NO_ERROR)
     {
@@ -2293,7 +2293,7 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
       char *composed;
       bool is_composed = false;
 
-      composed = db_private_alloc (NULL, composed_size + 1);
+      composed = (char *) db_private_alloc (NULL, composed_size + 1);
       if (composed == NULL)
 	{
 	  return NULL;

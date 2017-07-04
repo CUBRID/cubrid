@@ -98,7 +98,7 @@ extern LC_FIND_CLASSNAME xlocator_find_lockhint_class_oids (THREAD_ENTRY * threa
 							    const char **many_classnames, LOCK * many_locks,
 							    int *many_need_subclasses, LC_PREFETCH_FLAGS * many_flags,
 							    OID * guessed_class_oids, int *guessed_class_chns,
-							    int quit_on_errors, LC_LOCKHINT ** hlock,
+							    bool quit_on_errors, LC_LOCKHINT ** hlock,
 							    LC_COPYAREA ** fetch_area);
 extern int xlocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_area);
 extern int xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
@@ -184,7 +184,7 @@ extern DKNPAGES xdisk_get_free_numpages (THREAD_ENTRY * thread_p, VOLID volid);
 extern bool xdisk_is_volume_exist (THREAD_ENTRY * thread_p, VOLID volid);
 
 extern char *xdisk_get_remarks (THREAD_ENTRY * thread_p, VOLID volid);
-extern int *disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, int *db_charset);
+extern int disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, INTL_CODESET * db_charset);
 extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, VOLID volid, char *vol_fullname);
 extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p, VOLID volid);
 extern int xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,

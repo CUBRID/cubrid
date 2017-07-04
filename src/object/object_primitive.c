@@ -177,8 +177,8 @@ static int mr_index_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, 
 				    int *start_colp);
 static int mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				   int *start_colp);
-static int mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			     int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						 int total_order, int *start_colp, int collation);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int mr_cmpval_string2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
 			      int *start_colp);
@@ -208,8 +208,8 @@ static int mr_index_cmpdisk_char (void *mem1, void *mem2, TP_DOMAIN * domain, in
 				  int *start_colp);
 static int mr_data_cmpdisk_char (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				 int *start_colp);
-static int mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			   int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					       int *start_colp, int collation);
 static int mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				     int *start_colp, int align);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -243,8 +243,8 @@ static int mr_data_cmpdisk_nchar (void *mem1, void *mem2, TP_DOMAIN * domain, in
 				  int *start_colp);
 static int mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				      int *start_colp, int align);
-static int mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			    int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						int *start_colp, int collation);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
 			     int *start_colp);
@@ -275,8 +275,8 @@ static int mr_index_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain
 				      int *start_colp);
 static int mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				     int *start_colp);
-static int mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			       int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						   int total_order, int *start_colp, int collation);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
 				int *start_colp);
@@ -308,10 +308,10 @@ static int mr_data_cmpdisk_bit (void *mem1, void *mem2, TP_DOMAIN * domain, int 
 				int *start_colp);
 static int mr_cmpdisk_bit_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				    int *start_colp, int align);
-static int mr_cmpval_bit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			  int collation);
-static int mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
-			   int *start_colp);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_bit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					      int *start_colp, int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion,
+					       int total_order, int *start_colp);
 static void mr_initmem_varbit (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -338,10 +338,10 @@ static int mr_index_cmpdisk_varbit (void *mem1, void *mem2, TP_DOMAIN * domain, 
 				    int *start_colp);
 static int mr_data_cmpdisk_varbit (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				   int *start_colp);
-static int mr_cmpval_varbit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			     int collation);
-static int mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
-			      int *start_colp);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_varbit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						 int *start_colp, int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion,
+						  int total_order, int *start_colp);
 
 static void mr_initmem_null (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_null (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -355,8 +355,8 @@ static int mr_data_readval_null (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * dom
 				 char *copy_buf, int copy_buf_len);
 static int mr_data_cmpdisk_null (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				 int *start_colp);
-static int mr_cmpval_null (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			   int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_null (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					       int *start_colp, int collation);
 static void mr_initmem_int (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_int (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_int (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -374,8 +374,8 @@ static int mr_index_cmpdisk_int (void *mem1, void *mem2, TP_DOMAIN * domain, int
 				 int *start_colp);
 static int mr_data_cmpdisk_int (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				int *start_colp);
-static int mr_cmpval_int (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			  int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_int (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					      int *start_colp, int collation);
 static void mr_initmem_short (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_short (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_short (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -393,8 +393,8 @@ static int mr_index_cmpdisk_short (void *mem1, void *mem2, TP_DOMAIN * domain, i
 				   int *start_colp);
 static int mr_data_cmpdisk_short (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				  int *start_colp);
-static int mr_cmpval_short (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			    int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_short (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						int *start_colp, int collation);
 static void mr_initmem_bigint (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_bigint (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_bigint (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -412,8 +412,8 @@ static int mr_index_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN * domain, 
 				    int *start_colp);
 static int mr_data_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				   int *start_colp);
-static int mr_cmpval_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			     int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						 int *start_colp, int collation);
 static void mr_initmem_float (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_float (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_float (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -431,8 +431,8 @@ static int mr_index_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, i
 				   int *start_colp);
 static int mr_data_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				  int *start_colp);
-static int mr_cmpval_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			    int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						int *start_colp, int collation);
 static void mr_initmem_double (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_double (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_double (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -450,8 +450,8 @@ static int mr_index_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN * domain, 
 				    int *start_colp);
 static int mr_data_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				   int *start_colp);
-static int mr_cmpval_double (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			     int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_double (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						 int *start_colp, int collation);
 static void mr_initmem_time (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -471,8 +471,8 @@ static int mr_data_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, 
 				    int *start_colp);
 static int mr_index_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				     int *start_colp);
-static int mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			      int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						  int total_order, int *start_colp, int collation);
 static int mr_index_writeval_time (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				  char *copy_buf, int copy_buf_len);
@@ -482,8 +482,8 @@ static int mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, in
 				  int *start_colp);
 static int mr_data_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				 int *start_colp);
-static int mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			   int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					       int *start_colp, int collation);
 
 static void mr_initmem_timetz (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
@@ -502,8 +502,8 @@ static int mr_index_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, 
 				    int *start_colp);
 static int mr_data_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				   int *start_colp);
-static int mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			     int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						 int *start_colp, int collation);
 
 static void mr_initmem_utime (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
@@ -529,8 +529,8 @@ static int mr_index_cmpdisk_utime (void *mem1, void *mem2, TP_DOMAIN * domain, i
 				   int *start_colp);
 static int mr_data_cmpdisk_utime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				  int *start_colp);
-static int mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			    int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						int *start_colp, int collation);
 
 static void mr_initmem_timestamptz (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_timestamptz (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
@@ -549,8 +549,8 @@ static int mr_index_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * dom
 					 int *start_colp);
 static int mr_data_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 					int *start_colp);
-static int mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
-				  int *start_colp, int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						      int total_order, int *start_colp, int collation);
 
 static void mr_initmem_datetime (void *memptr, TP_DOMAIN * domain);
 static void mr_initval_datetime (DB_VALUE * value, int precision, int scale);
@@ -576,8 +576,8 @@ static int mr_index_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain
 				      int *start_colp);
 static int mr_data_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				     int *start_colp);
-static int mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			       int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						   int total_order, int *start_colp, int collation);
 
 static void mr_initmem_datetimetz (void *memptr, TP_DOMAIN * domain);
 static void mr_initval_datetimetz (DB_VALUE * value, int precision, int scale);
@@ -596,8 +596,8 @@ static int mr_index_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN * doma
 					int *start_colp);
 static int mr_data_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				       int *start_colp);
-static int mr_cmpval_datetimetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
-				 int *start_colp, int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_datetimetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						     int total_order, int *start_colp, int collation);
 
 static void mr_initmem_money (void *memptr, TP_DOMAIN * domain);
 static int mr_setmem_money (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -616,8 +616,8 @@ static int mr_index_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN * domain, i
 				   int *start_colp);
 static int mr_data_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				  int *start_colp);
-static int mr_cmpval_money (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			    int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_money (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						int *start_colp, int collation);
 static void mr_initmem_date (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_date (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_date (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -635,8 +635,8 @@ static int mr_index_cmpdisk_date (void *mem1, void *mem2, TP_DOMAIN * domain, in
 				  int *start_colp);
 static int mr_data_cmpdisk_date (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				 int *start_colp);
-static int mr_cmpval_date (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			   int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_date (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					       int *start_colp, int collation);
 static void mr_null_oid (OID * oid);
 static void mr_initmem_object (void *mem, TP_DOMAIN * domain);
 static void mr_initval_object (DB_VALUE * value, int precision, int scale);
@@ -656,8 +656,8 @@ static int mr_index_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, 
 				    int *start_colp);
 static int mr_data_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				   int *start_colp);
-static int mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			     int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						 int *start_colp, int collation);
 static void mr_initmem_elo (void *memptr, TP_DOMAIN * domain);
 static void mr_initval_elo (DB_VALUE * value, int precision, int scale);
 static int mr_setmem_elo (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -678,8 +678,8 @@ static int readval_elo_with_type (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * do
 static void mr_freemem_elo (void *memptr);
 static int mr_data_cmpdisk_elo (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				int *start_colp);
-static int mr_cmpval_elo (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			  int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_elo (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					      int *start_colp, int collation);
 
 static void mr_initval_blob (DB_VALUE * value, int precision, int scale);
 static int mr_getmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -701,8 +701,8 @@ static int mr_data_readval_variable (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN *
 				     char *copy_buf, int copy_buf_len);
 static int mr_data_cmpdisk_variable (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				     int *start_colp);
-static int mr_cmpval_variable (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			       int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_variable (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						   int total_order, int *start_colp, int collation);
 static void mr_initmem_sub (void *mem, TP_DOMAIN * domain);
 static void mr_initval_sub (DB_VALUE * value, int precision, int scale);
 static int mr_setmem_sub (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
@@ -717,8 +717,8 @@ static int mr_data_readval_sub (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * doma
 				int copy_buf_len);
 static int mr_data_cmpdisk_sub (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				int *start_colp);
-static int mr_cmpval_sub (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			  int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_sub (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					      int *start_colp, int collation);
 static void mr_initmem_ptr (void *memptr, TP_DOMAIN * domain);
 static void mr_initval_ptr (DB_VALUE * value, int precision, int scale);
 static int mr_setmem_ptr (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -733,8 +733,8 @@ static int mr_data_readval_ptr (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * doma
 				int copy_buf_len);
 static int mr_data_cmpdisk_ptr (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				int *start_colp);
-static int mr_cmpval_ptr (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			  int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_ptr (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					      int *start_colp, int collation);
 static void mr_initmem_error (void *memptr, TP_DOMAIN * domain);
 static void mr_initval_error (DB_VALUE * value, int precision, int scale);
 static int mr_setmem_error (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -749,8 +749,8 @@ static int mr_data_readval_error (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * do
 				  char *copy_buf, int copy_buf_len);
 static int mr_data_cmpdisk_error (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				  int *start_colp);
-static int mr_cmpval_error (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			    int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_error (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+						int *start_colp, int collation);
 static void mr_initmem_oid (void *memptr, TP_DOMAIN * domain);
 static void mr_initval_oid (DB_VALUE * value, int precision, int scale);
 static int mr_setmem_oid (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -768,8 +768,8 @@ static int mr_index_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int
 				 int *start_colp);
 static int mr_data_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				int *start_colp);
-static int mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			  int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					      int *start_colp, int collation);
 static void mr_initmem_set (void *memptr, TP_DOMAIN * domain);
 static void mr_initval_set (DB_VALUE * value, int precision, int scale);
 static int mr_setmem_set (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -786,8 +786,8 @@ static int mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * doma
 static void mr_freemem_set (void *memptr);
 static int mr_data_cmpdisk_set (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				int *start_colp);
-static int mr_cmpval_set (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			  int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_set (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					      int *start_colp, int collation);
 static void mr_initval_multiset (DB_VALUE * value, int precision, int scale);
 static int mr_getmem_multiset (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
 static int mr_setval_multiset (DB_VALUE * dest, const DB_VALUE * src, bool copy);
@@ -796,8 +796,8 @@ static int mr_getmem_sequence (void *memptr, TP_DOMAIN * domain, DB_VALUE * valu
 static int mr_setval_sequence (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_cmpdisk_sequence (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				     int *start_colp);
-static int mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			       int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						   int total_order, int *start_colp, int collation);
 static void mr_initval_midxkey (DB_VALUE * value, int precision, int scale);
 static int mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain, int disk);
@@ -816,16 +816,16 @@ static int mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain,
 				     int *start_colp);
 static int mr_data_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				    int *start_colp);
-static int mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			      int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						  int total_order, int *start_colp, int collation);
 static void mr_initval_vobj (DB_VALUE * value, int precision, int scale);
 static int mr_setval_vobj (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_readval_vobj (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				 char *copy_buf, int copy_buf_len);
 static int mr_data_cmpdisk_vobj (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				 int *start_colp);
-static int mr_cmpval_vobj (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			   int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_vobj (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					       int *start_colp, int collation);
 static void mr_initmem_numeric (void *memptr, TP_DOMAIN * domain);
 static int mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -847,8 +847,8 @@ static int mr_index_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain,
 				     int *start_colp);
 static int mr_data_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				    int *start_colp);
-static int mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			      int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						  int total_order, int *start_colp, int collation);
 static void pr_init_ordered_mem_sizes (void);
 static void mr_initmem_resultset (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
@@ -862,8 +862,8 @@ static int mr_data_readval_resultset (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN 
 				      char *copy_buf, int copy_buf_len);
 static int mr_data_cmpdisk_resultset (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				      int *start_colp);
-static int mr_cmpval_resultset (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-				int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_resultset (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						    int total_order, int *start_colp, int collation);
 
 static int pr_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total);
 static int pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, bool copy,
@@ -882,8 +882,8 @@ static int mr_data_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMAI
 static int mr_data_writeval_enumeration (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 					int *start_colp);
-static int mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
-				  int *start_colp, int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						      int total_order, int *start_colp, int collation);
 static int mr_index_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 					 int *start_colp);
 static int mr_index_writeval_enumeration (OR_BUF * buf, DB_VALUE * value);
@@ -1988,7 +1988,7 @@ pr_make_value (void)
 {
   DB_VALUE *value;
 
-  value = db_private_alloc (NULL, sizeof (DB_VALUE));
+  value = (DB_VALUE *) db_private_alloc (NULL, sizeof (DB_VALUE));
 
   if (value != NULL)
     {
@@ -2132,7 +2132,7 @@ pr_clear_value (DB_VALUE * value)
 	  data = (unsigned char *) DB_GET_COMPRESSED_STRING (value);
 	  if (data != NULL)
 	    {
-	      if (value->data.ch.info.compressed_need_clear == true)
+	      if (value->data.ch.info.compressed_need_clear != 0)
 		{
 		  db_private_free_and_init (NULL, data);
 		}
@@ -2141,10 +2141,10 @@ pr_clear_value (DB_VALUE * value)
 	}
       else if (db_type == DB_TYPE_CHAR || db_type == DB_TYPE_NCHAR)
 	{
-	  assert (value->data.ch.info.compressed_need_clear == false);
+	  assert (value->data.ch.info.compressed_need_clear == 0);
 	  if (value->data.ch.medium.compressed_buf != NULL)
 	    {
-	      if (value->data.ch.info.compressed_need_clear == true)
+	      if (value->data.ch.info.compressed_need_clear != 0)
 		{
 		  db_private_free_and_init (NULL, value->data.ch.medium.compressed_buf);
 		}
@@ -2542,7 +2542,7 @@ mr_data_cmpdisk_null (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
  *    total_order():
  *    start_colp():
  */
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_null (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   return DB_UNK;
@@ -2706,7 +2706,7 @@ mr_data_cmpdisk_int (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
   return MR_CMP (i1, i2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_int (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   int i1, i2;
@@ -2879,7 +2879,7 @@ mr_data_cmpdisk_short (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
   return MR_CMP (s1, s2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_short (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   short s1, s2;
@@ -3050,7 +3050,7 @@ mr_data_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   return MR_CMP (i1, i2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
@@ -3225,7 +3225,7 @@ mr_data_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
   return MR_CMP (f1, f2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   float f1, f2;
@@ -3416,7 +3416,7 @@ mr_data_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   return MR_CMP (d1, d2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_double (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
@@ -3726,7 +3726,7 @@ mr_index_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   return MR_CMP (t1_local, t2_local);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		   int collation)
 {
@@ -3791,7 +3791,7 @@ mr_data_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   return MR_CMP (t1, t2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   const DB_TIME *t1, *t2;
@@ -4004,12 +4004,12 @@ mr_data_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   return ret_cmp;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
   const DB_TIMETZ *t1, *t2;
-  int ret_cmp;
+  DB_VALUE_COMPARE_RESULT ret_cmp;
   int day1, day2;
 
   t1 = DB_GET_TIMETZ (value1);
@@ -4277,7 +4277,7 @@ mr_data_cmpdisk_utime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
   return MR_CMP (ts1, ts2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   const DB_TIMESTAMP *ts1, *ts2;
@@ -4471,7 +4471,7 @@ mr_data_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_
   return MR_CMP (ts1, ts2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		       int collation)
 {
@@ -4822,12 +4822,12 @@ mr_data_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
   const DB_DATETIME *dt1, *dt2;
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
 
   dt1 = DB_GET_DATETIME (value1);
   dt2 = DB_GET_DATETIME (value2);
@@ -5038,13 +5038,13 @@ mr_data_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_c
   return mr_data_cmpdisk_datetime (mem1, mem2, domain, do_coercion, total_order, start_colp);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_datetimetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		      int collation)
 {
   const DB_DATETIMETZ *dt_tz1, *dt_tz2;
   const DB_DATETIME *dt1, *dt2;
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
 
   dt_tz1 = DB_GET_DATETIMETZ (value1);
   dt_tz2 = DB_GET_DATETIMETZ (value2);
@@ -5283,7 +5283,7 @@ mr_data_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
   return MR_CMP (m1.amount, m2.amount);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_money (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   const DB_MONETARY *m1, *m2;
@@ -5454,7 +5454,7 @@ mr_data_cmpdisk_date (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   return MR_CMP (d1, d2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_date (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   const DB_DATE *d1, *d2;
@@ -6009,14 +6009,14 @@ mr_data_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
-  int c;
 #if defined (SERVER_MODE)
   OID *o1, *o2;
   DB_OBJECT *obj;
+  int oidc;
 
   /* 
    * we need to be careful here because even though the domain may
@@ -6042,9 +6042,11 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
       o2 = (obj) ? WS_OID (obj) : (OID *) (&oid_Null_oid);
     }
 
-  c = oid_compare (o1, o2);
+  oidc = oid_compare (o1, o2);
+  return MR_CMP_RETURN_CODE (oidc);
 #else /* !SERVER_MODE */
   /* on the client, we must also handle virtual db_object types */
+  DB_VALUE_COMPARE_RESULT c;
   OID *o1 = NULL, *o2 = NULL;
   DB_OBJECT *mop1 = NULL, *mop2 = NULL, *class1, *class2;
   int virtual_ = 0;
@@ -6139,46 +6141,39 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   if (virtual_ == 0)
     {
-      c = oid_compare (o1, o2);
-      goto exit_on_end;
+      int oidc = oid_compare (o1, o2);
+      return MR_CMP_RETURN_CODE (oidc);
     }
 
   if (mop1 == mop2)
     {
-      c = DB_EQ;		/* an optimization */
-      goto exit_on_end;
+      return DB_EQ;		/* an optimization */
     }
 
   if (virtual_ == 1)
     {
-      c = DB_LT;		/* consistent comparison of oids and */
-      goto exit_on_end;
+      return DB_LT;		/* consistent comparison of oids and */
     }
   if (virtual_ == 2)
     {
-      c = DB_GT;		/* non-oid based vobjs, they are never equal */
-      goto exit_on_end;
+      return DB_GT;		/* non-oid based vobjs, they are never equal */
     }
 
-  /* 
-   * virtual must be 3, impling both the objects are either proxies
-   * or non-updatable objects
-   */
+  /* virtual must be 3, meaning both objects are either proxies or non-updatable objects */
 
   if (nonupdate == 1)
     {
-      c = DB_LT;		/* again, a consistent comparison */
-      goto exit_on_end;
+      return DB_LT;		/* again, a consistent comparison */
     }
 
   if (nonupdate == 2)
     {
-      c = DB_GT;		/* for proxy mop and non-updatable mop */
-      goto exit_on_end;
+      return DB_GT;		/* for proxy mop and non-updatable mop */
     }
 
   if (nonupdate == 0)
     {
+      int oidc;
       /* 
        * comparing two proxy mops, the must both be from the
        * same proxy class. Compare the proxy classes oids.
@@ -6188,14 +6183,16 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
       class2 = db_get_class (mop2);
       o1 = (class1) ? WS_OID (class1) : (OID *) (&oid_Null_oid);
       o2 = (class2) ? WS_OID (class2) : (OID *) (&oid_Null_oid);
-      c = oid_compare (o1, o2);
+      oidc = oid_compare (o1, o2);
+      c = MR_CMP_RETURN_CODE (oidc);
+
       /* 
        * as long as the result is not equal, we are done
        * If its equal, we need to continue with a key test below.
        */
       if (c != DB_EQ)
 	{
-	  goto exit_on_end;
+	  return c;
 	}
     }
 
@@ -6207,14 +6204,8 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
    */
   vid_get_keys (mop1, &keys1);
   vid_get_keys (mop2, &keys2);
-  c = tp_value_compare (&keys1, &keys2, do_coercion, total_order);
-
-exit_on_end:
+  return tp_value_compare (&keys1, &keys2, do_coercion, total_order);
 #endif /* SERVER_MODE */
-
-  c = MR_CMP_RETURN_CODE (c);
-
-  return c;
 }
 
 
@@ -6290,7 +6281,7 @@ mr_setmem_elo (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
       if (value != NULL && (e = db_get_elo (value)) != NULL)
 	{
-	  elo = db_private_alloc (NULL, sizeof (DB_ELO));
+	  elo = (DB_ELO *) db_private_alloc (NULL, sizeof (DB_ELO));
 	  if (elo == NULL)
 	    {
 	      return ((er_errid () == NO_ERROR) ? ER_FAILED : er_errid ());
@@ -6570,7 +6561,7 @@ peekmem_elo (OR_BUF * buf, DB_ELO * elo)
     }
 
   /* type */
-  elo->type = or_get_int (buf, &rc);
+  elo->type = (DB_ELO_TYPE) or_get_int (buf, &rc);
   if (rc != NO_ERROR)
     {
       assert (false);
@@ -6727,7 +6718,7 @@ mr_data_cmpdisk_elo (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
   return DB_UNK;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_elo (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_ELO *elo1, *elo2;
@@ -6799,7 +6790,7 @@ mr_data_cmpdisk_variable (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   return DB_UNK;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_variable (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
@@ -6886,7 +6877,7 @@ mr_data_cmpdisk_sub (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
   return DB_UNK;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_sub (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   return DB_UNK;
@@ -7017,7 +7008,7 @@ mr_data_cmpdisk_ptr (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
   return DB_UNK;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_ptr (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   void *p1, *p2;
@@ -7150,7 +7141,7 @@ mr_data_cmpdisk_error (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
   return DB_UNK;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_error (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   int e1, e2;
@@ -7399,11 +7390,12 @@ mr_data_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
   OID *oid1, *oid2;
+  int oidc;
 
   oid1 = DB_GET_OID (value1);
   oid2 = DB_GET_OID (value2);
@@ -7413,8 +7405,8 @@ mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
       return DB_UNK;
     }
 
-  c = oid_compare (oid1, oid2);
-  c = MR_CMP_RETURN_CODE (c);
+  oidc = oid_compare (oid1, oid2);
+  c = MR_CMP_RETURN_CODE (oidc);
 
   return c;
 }
@@ -7993,12 +7985,14 @@ mr_data_cmpdisk_set (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_set (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
+  int setc;
 
-  c = set_compare_order (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
+  setc = set_compare_order (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
+  c = MR_CMP_RETURN_CODE (setc);
 
   return c;
 }
@@ -8131,13 +8125,15 @@ mr_data_cmpdisk_sequence (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
+  int setc;
 
-  c = set_seq_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
+  setc = set_seq_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
+  c = MR_CMP_RETURN_CODE (setc);
 
   return c;
 }
@@ -8202,7 +8198,7 @@ mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
-      dst_idx.buf = db_private_alloc (NULL, dst_idx.size);
+      dst_idx.buf = (char *) db_private_alloc (NULL, dst_idx.size);
       if (dst_idx.buf == NULL)
 	{
 	  db_value_domain_init (dest, DB_TYPE_MIDXKEY, src_precision, 0);
@@ -8305,7 +8301,7 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	   * Allocate storage for the string
 	   * do not include the kludge NULL terminator
 	   */
-	  new_ = db_private_alloc (NULL, size);
+	  new_ = (char *) db_private_alloc (NULL, size);
 	}
 
       if (new_ == NULL)
@@ -8666,11 +8662,11 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		   int collation)
 {
-  int c = DB_UNK;
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_MIDXKEY *midxkey1;
   DB_MIDXKEY *midxkey2;
   int dummy_size1, dummy_size2, dummy_diff_column;
@@ -8701,8 +8697,9 @@ mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
   assert_release (midxkey2->domain != NULL);
   assert_release (midxkey2->domain->precision == midxkey2->ncolumns);
 
-  c = pr_midxkey_compare (midxkey1, midxkey2, do_coercion, total_order, -1, start_colp, &dummy_size1, &dummy_size2,
-			  &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
+  c = (DB_VALUE_COMPARE_RESULT) pr_midxkey_compare (midxkey1, midxkey2, do_coercion, total_order, -1, start_colp,
+						    &dummy_size1, &dummy_size2, &dummy_diff_column, &dummy_dom_is_desc,
+						    &dummy_next_dom_is_desc);
 
   assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
@@ -8935,12 +8932,14 @@ mr_data_cmpdisk_vobj (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_vobj (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
+  int vobjc;
 
-  c = vobj_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
+  vobjc = vobj_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
+  c = MR_CMP_RETURN_CODE (vobjc);
 
   return c;
 }
@@ -9269,11 +9268,11 @@ mr_data_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		   int collation)
 {
-  int c = DB_UNK;
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_VALUE answer;
 
   if (numeric_db_value_compare (value1, value2, &answer) != NO_ERROR)
@@ -9389,17 +9388,10 @@ pr_type_name (DB_TYPE id)
  *    Since there is an unfortunate amount of special processing for
  *    the set types, this takes care of comparing against all three types.
  */
-int
+bool
 pr_is_set_type (DB_TYPE type)
 {
-  int status = 0;
-
-  if (TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ)
-    {
-      status = 1;
-    }
-
-  return status;
+  return TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ;
 }
 
 /*
@@ -9826,7 +9818,7 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   offset_postfix = pr_midxkey_get_element_offset (midx_postfix, n_prefix);
 
   midx_result.size = offset_prefix + (midx_postfix->size - offset_postfix);
-  midx_result.buf = db_private_alloc (NULL, midx_result.size);
+  midx_result.buf = (char *) db_private_alloc (NULL, midx_result.size);
   midx_result.domain = midx_postfix->domain;
   midx_result.ncolumns = midx_postfix->ncolumns;
 
@@ -10145,7 +10137,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
 	  result_size = size1;
 	}
 
-      result_midxkey.buf = db_private_alloc (NULL, result_size);
+      result_midxkey.buf = (char *) db_private_alloc (NULL, result_size);
       if (result_midxkey.buf == NULL)
 	{
 	  /* will already be set by memory mgr */
@@ -10285,7 +10277,7 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, T
   total_size = pr_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
 
   /* phase 3: initialize new_IDXbuf */
-  new_IDXbuf = db_private_alloc (NULL, total_size);
+  new_IDXbuf = (char *) db_private_alloc (NULL, total_size);
   if (new_IDXbuf == NULL)
     {
       goto error;
@@ -10731,7 +10723,7 @@ mr_data_cmpdisk_resultset (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
   return MR_CMP (i1, i2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_resultset (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		     int collation)
 {
@@ -10942,7 +10934,7 @@ mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 
   assert (charlen == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
-  or_init (&buf, memptr, -1);
+  or_init (&buf, (char *) memptr, -1);
 
   rc = or_get_varchar_compression_lengths (&buf, &compressed_length, &decompressed_length);
 
@@ -11051,7 +11043,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	   */
 	  mem_length = len + sizeof (int) + 1;
 
-	  new_ = db_private_alloc (NULL, mem_length);
+	  new_ = (char *) db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
 	    {
 	      or_abort (buf);
@@ -11151,7 +11143,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       else
 	{
-	  new_ = db_private_alloc (NULL, src_length + 1);
+	  new_ = (char *) db_private_alloc (NULL, src_length + 1);
 	  if (new_ == NULL)
 	    {
 	      db_value_domain_init (dest, DB_TYPE_VARCHAR, src_precision, 0);
@@ -11174,7 +11166,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	  else
 	    {
-	      new_compressed_buf = db_private_alloc (NULL, src->data.ch.medium.compressed_size + 1);
+	      new_compressed_buf = (char *) db_private_alloc (NULL, src->data.ch.medium.compressed_size + 1);
 	      if (new_compressed_buf == NULL)
 		{
 		  db_value_domain_init (dest, DB_TYPE_VARCHAR, src_precision, 0);
@@ -11443,7 +11435,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	    {
 	      str_length = compressed_size;
 
-	      string = db_private_alloc (NULL, decompressed_size + 1);
+	      string = (char *) db_private_alloc (NULL, decompressed_size + 1);
 	      if (string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11464,7 +11456,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			       TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
 
-	      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+	      compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
 	      if (compressed_string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11540,7 +11532,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		   * Allocate storage for the string including the kludge
 		   * NULL terminator
 		   */
-		  new_ = db_private_alloc (NULL, str_length + 1);
+		  new_ = (char *) db_private_alloc (NULL, str_length + 1);
 		}
 
 	      if (new_ == NULL)
@@ -11589,7 +11581,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		      decompression_size = 0;
 
 		      /* Handle decompression */
-		      decompressed_string = db_private_alloc (NULL, decompressed_size + 1);
+		      decompressed_string = (char *) db_private_alloc (NULL, decompressed_size + 1);
 		      if (decompressed_string == NULL)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11613,7 +11605,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			  assert (false);
 			}
 
-		      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+		      compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
 		      if (compressed_string == NULL)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11745,7 +11737,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  goto cleanup;
 	}
 
-      string1 = db_private_alloc (NULL, str1_decompressed_length + 1);
+      string1 = (char *) db_private_alloc (NULL, str1_decompressed_length + 1);
       if (string1 == NULL)
 	{
 	  /* Error report */
@@ -11788,7 +11780,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  goto cleanup;
 	}
 
-      string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
+      string2 = (char *) db_private_alloc (NULL, str2_decompressed_length + 1);
       if (string2 == NULL)
 	{
 	  /* Error report */
@@ -11852,13 +11844,14 @@ cleanup:
   return DB_UNK;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
   unsigned char *string1, *string2;
   int size1, size2;
+  int strc;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
@@ -11870,9 +11863,9 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
    *  If "value2" has the flag set, return -1, meaning that "value1" is Greater Than "value2".
    */
 
-  if (value1->data.ch.info.is_max_string == true)
+  if (value1->data.ch.info.is_max_string != 0)
     {
-      if (value2->data.ch.info.is_max_string == true)
+      if (value2->data.ch.info.is_max_string != 0)
 	{
 	  /* Both strings are max_string. Therefore equal. Even though this should not happen. */
 	  assert (false);
@@ -11882,7 +11875,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
     }
   else
     {
-      if (value2->data.ch.info.is_max_string == true)
+      if (value2->data.ch.info.is_max_string != 0)
 	{
 	  return DB_LT;
 	}
@@ -11912,8 +11905,8 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
       return DB_UNK;
     }
 
-  c = QSTR_COMPARE (collation, string1, size1, string2, size2);
-  c = MR_CMP_RETURN_CODE (c);
+  strc = QSTR_COMPARE (collation, string1, size1, string2, size2);
+  c = MR_CMP_RETURN_CODE (strc);
 
   return c;
 }
@@ -12100,7 +12093,7 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
   else
     {
-      new_ = db_private_alloc (NULL, mem_length + 1);
+      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -12271,7 +12264,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 
 	      /* make sure the copy gets a NULL terminator */
-	      new_ = db_private_alloc (NULL, src_length + 1);
+	      new_ = (char *) db_private_alloc (NULL, src_length + 1);
 	      if (new_ == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -12513,7 +12506,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	  else
 	    {
 	      /* Allocate storage for the string including the kludge NULL terminator */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
 	    }
 
 	  if (new_ == NULL)
@@ -12594,7 +12587,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
 	    }
 	  if (new_ == NULL)
 	    {
@@ -12703,11 +12696,12 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
   unsigned char *string1, *string2;
+  int strc;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
@@ -12718,9 +12712,9 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
    *  If "value2" has the flag set, return -1, meaning that "value1" is Greater Than "value2".
    */
 
-  if (value1->data.ch.info.is_max_string == true)
+  if (value1->data.ch.info.is_max_string != 0)
     {
-      if (value2->data.ch.info.is_max_string == true)
+      if (value2->data.ch.info.is_max_string != 0)
 	{
 	  /* Both strings are max_string. Therefore equal. Even though this should not happen. */
 	  assert (false);
@@ -12730,7 +12724,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
     }
   else
     {
-      if (value2->data.ch.info.is_max_string == true)
+      if (value2->data.ch.info.is_max_string != 0)
 	{
 	  return DB_LT;
 	}
@@ -12747,9 +12741,9 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       return DB_UNK;
     }
 
-  c = QSTR_CHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-			 (int) DB_GET_STRING_SIZE (value2));
-  c = MR_CMP_RETURN_CODE (c);
+  strc = QSTR_CHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
+			    (int) DB_GET_STRING_SIZE (value2));
+  c = MR_CMP_RETURN_CODE (strc);
 
   return c;
 }
@@ -12939,7 +12933,7 @@ mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
   else
     {
-      new_ = db_private_alloc (NULL, mem_length + 1);
+      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -13108,7 +13102,7 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 
 	      /* make sure the copy gets a NULL terminator */
-	      new_ = db_private_alloc (NULL, src_length + 1);
+	      new_ = (char *) db_private_alloc (NULL, src_length + 1);
 	      if (new_ == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -13177,7 +13171,7 @@ mr_data_lengthval_nchar (DB_VALUE * value, int disk)
 	{
 	  int unconverted;
 	  int char_count = db_get_string_length (value);
-	  char *converted_string = db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
+	  char *converted_string = (char *) db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
 
 	  intl_convert_charset ((unsigned char *) src, char_count, src_codeset, (unsigned char *) converted_string,
 				lang_charset (), &unconverted);
@@ -13415,7 +13409,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
 	    }
 
 	  if (new_ == NULL)
@@ -13491,7 +13485,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
 	    }
 
 	  if (new_ == NULL)
@@ -13553,10 +13547,9 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 
       if (char_count > 0)
 	{
-	  new_ = db_private_alloc (NULL, STR_SIZE (char_count, TP_DOMAIN_CODESET (domain)));
-	  (void) intl_convert_charset ((unsigned char *) temp_string, char_count,
-				       (INTL_CODESET) TP_DOMAIN_CODESET (domain), (unsigned char *) new_,
-				       LANG_SYS_CODESET, &unconverted);
+	  new_ = (char *) db_private_alloc (NULL, STR_SIZE (char_count, TP_DOMAIN_CODESET (domain)));
+	  (void) intl_convert_charset ((unsigned char *) temp_string, char_count, TP_DOMAIN_CODESET (domain),
+				       (unsigned char *) new_, LANG_SYS_CODESET, &unconverted);
 	  db_value_clear (value);
 	  db_make_nchar (value, domain->precision, new_, STR_SIZE (char_count, TP_DOMAIN_CODESET (domain)),
 			 TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
@@ -13615,17 +13608,18 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
     }
 
   c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
-			  mem_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+			  mem_length2, TP_DOMAIN_CODESET (domain));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
   unsigned char *string1, *string2;
+  int strc;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
@@ -13641,9 +13635,9 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
       return DB_UNK;
     }
 
-  c = QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-			  (int) DB_GET_STRING_SIZE (value2), (INTL_CODESET) DB_GET_STRING_CODESET (value2));
-  c = MR_CMP_RETURN_CODE (c);
+  strc = QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
+			     (int) DB_GET_STRING_SIZE (value2), DB_GET_STRING_CODESET (value2));
+  c = MR_CMP_RETURN_CODE (strc);
 
   return c;
 }
@@ -13669,7 +13663,7 @@ mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerc
   string_size = (int) DB_GET_STRING_SIZE (value2);
   len2 = MIN (string_size, length);
 
-  c = nchar_compare (string1, len1, string2, len2, (INTL_CODESET) DB_GET_STRING_CODESET (value2));
+  c = nchar_compare (string1, len1, string2, len2, DB_GET_STRING_CODESET (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -13761,7 +13755,7 @@ mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
        * disk representation.
        */
       new_length = src_length + sizeof (int) + 1;
-      new_ = db_private_alloc (NULL, new_length);
+      new_ = (char *) db_private_alloc (NULL, new_length);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -13825,7 +13819,7 @@ mr_getmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool cop
       else
 	{
 	  /* return it with a NULL terminator */
-	  new_ = db_private_alloc (NULL, mem_length + 1);
+	  new_ = (char *) db_private_alloc (NULL, mem_length + 1);
 	  if (new_ == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -13972,7 +13966,7 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       else
 	{
-	  new_ = db_private_alloc (NULL, src_length + 1);
+	  new_ = (char *) db_private_alloc (NULL, src_length + 1);
 	  if (new_ == NULL)
 	    {
 	      db_value_domain_init (dest, DB_TYPE_VARNCHAR, src_precision, 0);
@@ -14096,7 +14090,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 	{
 	  int unconverted;
 	  int char_count = db_get_string_length (value);
-	  char *converted_string = db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
+	  char *converted_string = (char *) db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
 
 	  intl_convert_charset ((unsigned char *) str, char_count, src_codeset, (unsigned char *) converted_string,
 				lang_charset (), &unconverted);
@@ -14148,7 +14142,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	{
 	  int unconverted;
 	  int char_count = db_get_string_length (value);
-	  char *converted_string = db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
+	  char *converted_string = (char *) db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
 
 	  (void) intl_convert_charset ((unsigned char *) str, char_count, src_codeset,
 				       (unsigned char *) converted_string, lang_charset (), &unconverted);
@@ -14253,7 +14247,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	{
 	  precision = domain->precision;
 #if !defined (SERVER_MODE)
-	  codeset = (INTL_CODESET) TP_DOMAIN_CODESET (domain);
+	  codeset = TP_DOMAIN_CODESET (domain);
 #endif
 	}
       else
@@ -14286,7 +14280,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	  if (compressed_size > 0)
 	    {
 	      str_length = compressed_size;
-	      string = db_private_alloc (NULL, decompressed_size + 1);
+	      string = (char *) db_private_alloc (NULL, decompressed_size + 1);
 	      if (string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -14309,7 +14303,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 				TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
 
-	      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+	      compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
 	      if (compressed_string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -14432,7 +14426,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      assert (decompressed_size > 0);
 
 		      /* Handle decompression */
-		      decompressed_string = db_private_alloc (NULL, decompressed_size + 1);
+		      decompressed_string = (char *) db_private_alloc (NULL, decompressed_size + 1);
 
 		      if (decompressed_string == NULL)
 			{
@@ -14460,7 +14454,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      /* The compressed string stored in buf is now decompressed in decompressed_string
 		       * and is needed now to be copied over new_. */
 
-		      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+		      compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
 		      if (compressed_string == NULL)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -14601,7 +14595,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
       c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) str1, str_length1, (unsigned char *) str2,
-			      str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+			      str_length2, TP_DOMAIN_CODESET (domain));
       c = MR_CMP_RETURN_CODE (c);
       return c;
     }
@@ -14619,7 +14613,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  goto cleanup;
 	}
 
-      string1 = db_private_alloc (NULL, str1_decompressed_length + 1);
+      string1 = (char *) db_private_alloc (NULL, str1_decompressed_length + 1);
       if (string1 == NULL)
 	{
 	  /* Error report */
@@ -14659,7 +14653,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  goto cleanup;
 	}
 
-      string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
+      string2 = (char *) db_private_alloc (NULL, str2_decompressed_length + 1);
       if (string2 == NULL)
 	{
 	  /* Error report */
@@ -14691,8 +14685,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
     }
 
   /* Compare the strings */
-  c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1,
-			  (unsigned char *) string2, str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+  c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1, (unsigned char *) string2,
+			  str_length2, TP_DOMAIN_CODESET (domain));
   c = MR_CMP_RETURN_CODE (c);
   /* Clean up the strings */
   if (string1 != NULL && alloced_string1 == true)
@@ -14723,12 +14717,13 @@ cleanup:
   return DB_UNK;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
   unsigned char *string1, *string2;
+  int strc;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
@@ -14744,9 +14739,9 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
       return DB_UNK;
     }
 
-  c = QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-			  (int) DB_GET_STRING_SIZE (value2), (INTL_CODESET) DB_GET_STRING_CODESET (value2));
-  c = MR_CMP_RETURN_CODE (c);
+  strc = QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
+			     (int) DB_GET_STRING_SIZE (value2), DB_GET_STRING_CODESET (value2));
+  c = MR_CMP_RETURN_CODE (strc);
 
   return c;
 }
@@ -14773,7 +14768,7 @@ mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_co
   string_size = (int) DB_GET_STRING_SIZE (value2);
   len2 = MIN (string_size, length);
 
-  c = varnchar_compare (string1, len1, string2, len2, (INTL_CODESET) DB_GET_STRING_CODESET (value2));
+  c = varnchar_compare (string1, len1, string2, len2, DB_GET_STRING_CODESET (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -15351,7 +15346,7 @@ mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
   else
     {
-      new_ = db_private_alloc (NULL, mem_length + 1);
+      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -15488,7 +15483,7 @@ mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    {
 
 	      /* make sure the copy gets a NULL terminator */
-	      new_ = db_private_alloc (NULL, src_length + 1);
+	      new_ = (char *) db_private_alloc (NULL, src_length + 1);
 	      if (new_ == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -15730,7 +15725,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
 	    }
 
 	  if (new_ == NULL)
@@ -15799,7 +15794,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
-	      new_ = db_private_alloc (NULL, mem_length + 1);
+	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
 	    }
 
 	  if (new_ == NULL)
@@ -15899,11 +15894,12 @@ mr_cmpdisk_bit_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_bit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
   unsigned char *string1, *string2;
+  int bitc;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
@@ -15913,18 +15909,19 @@ mr_cmpval_bit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
       return DB_UNK;
     }
 
-  c = bit_compare (string1, (int) DB_GET_STRING_SIZE (value1), string2, (int) DB_GET_STRING_SIZE (value2));
-  c = MR_CMP_RETURN_CODE (c);
+  bitc = bit_compare (string1, (int) DB_GET_STRING_SIZE (value1), string2, (int) DB_GET_STRING_SIZE (value2));
+  c = MR_CMP_RETURN_CODE (bitc);
 
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order, int *start_colp)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
   unsigned char *string1, *string2;
   int len1, len2, string_size;
+  int bitc;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
@@ -15939,8 +15936,8 @@ mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercio
   string_size = (int) DB_GET_STRING_SIZE (value2);
   len2 = MIN (string_size, length);
 
-  c = bit_compare (string1, len1, string2, len2);
-  c = MR_CMP_RETURN_CODE (c);
+  bitc = bit_compare (string1, len1, string2, len2);
+  c = MR_CMP_RETURN_CODE (bitc);
 
   return c;
 }
@@ -16021,7 +16018,7 @@ mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       src_length_bits = db_get_string_length (value);	/* size in bits */
 
       new_length = src_length + sizeof (int);
-      new_ = db_private_alloc (NULL, new_length);
+      new_ = (char *) db_private_alloc (NULL, new_length);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -16131,7 +16128,7 @@ mr_index_lengthmem_varbit (void *memptr, TP_DOMAIN * domain)
   int bitlen;
   int rc = NO_ERROR;
 
-  or_init (&buf, memptr, -1);
+  or_init (&buf, (char *) memptr, -1);
 
   bitlen = or_get_varbit_length (&buf, &rc);
 
@@ -16213,7 +16210,7 @@ mr_data_readmem_varbit (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	   */
 	  mem_length = BITS_TO_BYTES (bit_len) + sizeof (int);
 
-	  new_ = db_private_alloc (NULL, mem_length);
+	  new_ = (char *) db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
 	    {
 	      or_abort (buf);
@@ -16297,7 +16294,7 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       else
 	{
-	  new_ = db_private_alloc (NULL, src_length + 1);
+	  new_ = (char *) db_private_alloc (NULL, src_length + 1);
 	  if (new_ == NULL)
 	    {
 	      db_value_domain_init (dest, DB_TYPE_VARBIT, src_precision, 0);
@@ -16495,7 +16492,7 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		   * Allocate storage for the string including the kludge NULL
 		   * terminator
 		   */
-		  new_ = db_private_alloc (NULL, str_length + 1);
+		  new_ = (char *) db_private_alloc (NULL, str_length + 1);
 		}
 
 	      if (new_ == NULL)
@@ -16586,12 +16583,13 @@ mr_data_cmpdisk_varbit (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_varbit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
   unsigned char *string1, *string2;
+  int bitc;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
@@ -16601,18 +16599,19 @@ mr_cmpval_varbit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
       return DB_UNK;
     }
 
-  c = varbit_compare (string1, (int) DB_GET_STRING_SIZE (value1), string2, (int) DB_GET_STRING_SIZE (value2));
-  c = MR_CMP_RETURN_CODE (c);
+  bitc = varbit_compare (string1, (int) DB_GET_STRING_SIZE (value1), string2, (int) DB_GET_STRING_SIZE (value2));
+  c = MR_CMP_RETURN_CODE (bitc);
 
   return c;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order, int *start_colp)
 {
-  int c;
+  DB_VALUE_COMPARE_RESULT c;
   unsigned char *string1, *string2;
   int len1, len2, string_size;
+  int bitc;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
@@ -16627,8 +16626,8 @@ mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coer
   string_size = (int) DB_GET_STRING_SIZE (value2);
   len2 = MIN (string_size, length);
 
-  c = varbit_compare (string1, len1, string2, len2);
-  c = MR_CMP_RETURN_CODE (c);
+  bitc = varbit_compare (string1, len1, string2, len2);
+  c = MR_CMP_RETURN_CODE (bitc);
 
   return c;
 }
@@ -16717,7 +16716,7 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     {
       if (copy)
 	{
-	  str = db_private_alloc (NULL, DB_GET_ENUM_STRING_SIZE (src) + 1);
+	  str = (char *) db_private_alloc (NULL, DB_GET_ENUM_STRING_SIZE (src) + 1);
 	  if (str == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -16812,7 +16811,7 @@ mr_setval_enumeration_internal (DB_VALUE * value, TP_DOMAIN * domain, unsigned s
 	}
       else
 	{
-	  str = db_private_alloc (NULL, str_size + 1);
+	  str = (char *) db_private_alloc (NULL, str_size + 1);
 	  if (str == NULL)
 	    {
 	      return ER_FAILED;
@@ -16915,7 +16914,7 @@ mr_data_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN * domain, int do_
   return MR_CMP (s1, s2);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		       int collation)
 {
@@ -17008,7 +17007,7 @@ pr_get_compression_length (const char *string, int charlen)
 
   /* Alloc memory for the compressed string */
   /* Worst case LZO compression size from their FAQ */
-  compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (length));
+  compressed_string = (char *) malloc (LZO_COMPRESSED_STRING_SIZE (length));
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -17101,7 +17100,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
     }
 
   /* Step 1 : Compress, if possible, the dbvalue */
-  wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
+  wrkmem = (unsigned char *) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
@@ -17113,7 +17112,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
 
   /* Alloc memory for the compressed string */
   /* Worst case LZO compression size from their FAQ */
-  compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (str_length));
+  compressed_string = (char *) malloc (LZO_COMPRESSED_STRING_SIZE (str_length));
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -17511,7 +17510,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     }
 
   /* Alloc memory for compression */
-  compressed_string = db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (src_size));
+  compressed_string = (char *) db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (src_size));
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,

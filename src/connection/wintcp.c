@@ -349,7 +349,7 @@ css_fd_down (SOCKET fd)
 int
 css_gethostname (char *passed_name, int length)
 {
-  char *name = "PC";
+  const char *name = "PC";
   char hostname[MAXHOSTNAMELEN];
   int err = 0;
 
@@ -781,7 +781,7 @@ css_get_peer_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return WSAGetLastError ();
     }
-  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+  return getnameinfo (saddr, saddr_len, hostname, (DWORD) len, NULL, 0, NI_NOFQDN);
 }
 
 /*
@@ -803,7 +803,7 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return WSAGetLastError ();
     }
-  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+  return getnameinfo (saddr, saddr_len, hostname, (DWORD) len, NULL, 0, NI_NOFQDN);
 }
 
 /*
@@ -834,7 +834,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       hp = gethostbyname (host);
       if (hp == NULL)
 	{
-	  return INVALID_SOCKET;
+	  return ER_CSS_WINSOCK_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
     }

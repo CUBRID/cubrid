@@ -69,13 +69,13 @@ struct tz_decode_info
   };
 };
 
-typedef enum ds_search_direction DS_SEARCH_DIRECTION;
 
 enum ds_search_direction
 {
   FORWARD = 0,
   BACKWARD = 1
 };
+typedef enum ds_search_direction DS_SEARCH_DIRECTION;
 
 
 #define FULL_DATE(jul_date, time_sec) ((full_date_t) jul_date * 86400ll \
@@ -174,7 +174,7 @@ static int tz_get_iana_zone_id_by_windows_zone (const char *windows_zone_name);
 #endif
 
 #if defined(WINDOWS)
-#define TZ_GET_SYM_ADDR(lib, sym) GetProcAddress(lib, sym)
+#define TZ_GET_SYM_ADDR(lib, sym) GetProcAddress((HMODULE)lib, sym)
 #else
 #define TZ_GET_SYM_ADDR(lib, sym) dlsym(lib, sym)
 #endif
@@ -249,7 +249,8 @@ tz_load_library (const char *lib_file, void **handle)
     {
 #if defined(WINDOWS)
       FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL,
-		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1, &lib_file);
+		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1,
+		     (va_list *) & lib_file);
       snprintf (err_msg, sizeof (err_msg) - 1,
 		"Library file is invalid or not accessible.\n" " Unable to load %s !\n %s", lib_file, lpMsgBuf);
       LocalFree (lpMsgBuf);
@@ -379,7 +380,7 @@ tz_unload (void)
   if (tz_Lib_handle != NULL)
     {
 #if defined(WINDOWS)
-      FreeLibrary (tz_Lib_handle);
+      FreeLibrary ((HMODULE) tz_Lib_handle);
 #else
       dlclose (tz_Lib_handle);
 #endif
@@ -822,7 +823,7 @@ tz_get_utc_tz_id (void)
 const TZ_REGION *
 tz_get_utc_tz_region (void)
 {
-  static const TZ_REGION utc_region = { 0, {0} };
+  static const TZ_REGION utc_region = { TZ_REGION_OFFSET, {0} };
 
   return &utc_region;
 }
@@ -834,7 +835,7 @@ tz_get_utc_tz_region (void)
 static const TZ_REGION *
 tz_get_invalid_tz_region (void)
 {
-  static const TZ_REGION invalid_region = { 0, {TZ_INVALID_OFFSET} };
+  static const TZ_REGION invalid_region = { TZ_REGION_OFFSET, {TZ_INVALID_OFFSET} };
 
   return &invalid_region;
 }
@@ -3092,7 +3093,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool
       goto exit;
     }
 
-  if ((src_dt->time < 0) || (src_dt->time > MILLIS_IN_A_DAY))
+  if ((src_dt->time > MILLIS_IN_A_DAY))
     {
       err_status = ER_TIME_CONVERSION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
@@ -5510,7 +5511,7 @@ set_new_zone_id (TZ_DECODE_INFO * tz_info)
   timezone_name = tz_Timezone_data.names[tz_info->zone.zone_id].name;
   tz_set_data (tz_get_new_timezone_data ());
   new_zone_id = tz_get_zone_id_by_name (timezone_name, strlen (timezone_name));
-  if (new_zone_id == -1)
+  if (new_zone_id == (unsigned int)-1)
     {
       err_status = ER_TZ_INVALID_TIMEZONE;
     }

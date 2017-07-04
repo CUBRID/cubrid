@@ -174,13 +174,13 @@ const char *AU_DBA_USER_NAME = "DBA";
          strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
 	 strcmp(name, CT_CHARSET_NAME) == 0)
 
-typedef enum fetch_by FETCH_BY;
 enum fetch_by
 {
   DONT_KNOW,			/* Don't know the mop is a class os an instance */
   BY_INSTANCE_MOP,		/* fetch a class by an instance mop */
   BY_CLASS_MOP			/* fetch a class by the class mop */
 };
+typedef enum fetch_by FETCH_BY;
 
 /*
  * AU_GRANT
@@ -4487,13 +4487,13 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		  if (ins_bits)
 		    {
 		      error =
-			au_insert_new_auth (Au_user, user, class_mop, ins_bits, (grant_option) ? ins_bits : false);
+			au_insert_new_auth (Au_user, user, class_mop, ins_bits, (grant_option) ? ins_bits : DB_AUTH_NONE);
 		    }
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
 		      error =
-			au_update_new_auth (Au_user, user, class_mop, upd_bits, (grant_option) ? upd_bits : false);
+			au_update_new_auth (Au_user, user, class_mop, upd_bits, (grant_option) ? upd_bits : DB_AUTH_NONE);
 		    }
 		}
 

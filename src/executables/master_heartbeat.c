@@ -56,6 +56,7 @@
 #include "master_request.h"
 #include "heartbeat.h"
 #include "message_catalog.h"
+#include "environment_variable.h"
 #include "utility.h"
 
 #define HB_INFO_STR_MAX         8192
@@ -4003,7 +4004,8 @@ static int
 hb_resource_send_changemode (HB_PROC_ENTRY * proc)
 {
   int error = NO_ERROR;
-  int state, nstate;
+  HA_SERVER_STATE state;
+  int nstate;
   int sig = 0;
   char error_string[LINE_MAX] = "";
 
@@ -4061,7 +4063,7 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
       return ER_FAILED;
     }
 
-  nstate = htonl (state);
+  nstate = htonl ((int) state);
   error = css_send_heartbeat_data (proc->conn, (char *) &nstate, sizeof (nstate));
   if (NO_ERRORS != error)
     {
@@ -4091,7 +4093,8 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
 {
   int sfd, error, rv;
   HB_PROC_ENTRY *proc;
-  int state;
+  HA_SERVER_STATE state;
+  int nstate;
   char *ptr;
   char error_string[LINE_MAX] = "";
 
@@ -4100,12 +4103,12 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
       return;
     }
 
-  rv = css_receive_heartbeat_data (conn, (char *) &state, sizeof (state));
+  rv = css_receive_heartbeat_data (conn, (char *) &nstate, sizeof (nstate));
   if (rv != NO_ERRORS)
     {
       return;
     }
-  state = ntohl (state);
+  state = (HA_SERVER_STATE) ntohl (nstate);
 
   sfd = conn->fd;
   rv = pthread_mutex_lock (&hb_Cluster->lock);
@@ -4592,7 +4595,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   hb_Cluster->sfd = INVALID_SOCKET;
   strncpy (hb_Cluster->host_name, host_name, sizeof (hb_Cluster->host_name) - 1);
   hb_Cluster->host_name[sizeof (hb_Cluster->host_name) - 1] = '\0';
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA)
+  if (HA_GET_MODE () == HA_MODE_REPLICA)
     {
       hb_Cluster->state = HB_NSTATE_REPLICA;
     }
@@ -4853,7 +4856,7 @@ hb_master_init (void)
   MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STARTED, 0);
 #if defined (HB_VERBOSE_DEBUG)
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "heartbeat params. (ha_mode:%s, heartbeat_nodes:{%s}" ", ha_port_id:%d). \n",
-		       (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF) ? "yes" : "no",
+		       (!HA_DISABLED ())? "yes" : "no",
 		       prm_get_string_value (PRM_ID_HA_NODE_LIST), prm_get_integer_value (PRM_ID_HA_PORT_ID));
 #endif
 

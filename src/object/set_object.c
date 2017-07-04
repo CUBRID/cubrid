@@ -500,7 +500,7 @@ col_successive_merge (COL * col, long top)
   long nblocks, runsize;
 
   nblocks = BLOCK (top) + 1;
-  runs = db_private_alloc (NULL, nblocks * sizeof (DB_VALUE *));
+  runs = (DB_VALUE **) db_private_alloc (NULL, nblocks * sizeof (DB_VALUE *));
 
   if (runs == NULL)
     {
@@ -4117,7 +4117,7 @@ make_iterator (void)
 {
   SET_ITERATOR *it;
 
-  it = db_private_alloc (NULL, sizeof (SET_ITERATOR));
+  it = (SET_ITERATOR *) db_private_alloc (NULL, sizeof (SET_ITERATOR));
   if (it != NULL)
     {
       it->next = NULL;

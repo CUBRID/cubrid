@@ -308,7 +308,7 @@ area_alloc_block (AREA * area)
     {
       goto error;
     }
-  assert (area->alloc_count == new_block->bitmap.entry_count);
+  assert ((int)area->alloc_count == new_block->bitmap.entry_count);
 
   new_block->data = ((char *) new_block) + sizeof (AREA_BLOCK);
 
@@ -568,7 +568,7 @@ area_free (AREA * area, void *ptr)
 
   entry_idx = offset / (int) area->element_size;
 
-  assert (entry_idx >= 0 && entry_idx < area->alloc_count);
+  assert (entry_idx >= 0 && entry_idx < (int)area->alloc_count);
 
   error = lf_bitmap_free_entry (&block->bitmap, entry_idx);
   if (error != NO_ERROR)
@@ -815,11 +815,11 @@ area_info (AREA * area, FILE * fp)
 	  bytes += area->block_size + sizeof (AREA_BLOCK);
 	}
 
-      if (blockset->used_count < min_blocks_in_set)
+      if ((size_t)blockset->used_count < min_blocks_in_set)
 	{
 	  min_blocks_in_set = blockset->used_count;
 	}
-      if (blockset->used_count > max_blocks_in_set)
+      if ((size_t)blockset->used_count > max_blocks_in_set)
 	{
 	  max_blocks_in_set = blockset->used_count;
 	}

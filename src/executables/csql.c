@@ -333,7 +333,8 @@ initialize_csql_column_width_info_list ()
 {
   int i;
 
-  csql_column_width_info_list = malloc (sizeof (CSQL_COLUMN_WIDTH_INFO) * COLUMN_WIDTH_INFO_LIST_INIT_SIZE);
+  csql_column_width_info_list =
+    (CSQL_COLUMN_WIDTH_INFO *) malloc (sizeof (CSQL_COLUMN_WIDTH_INFO) * COLUMN_WIDTH_INFO_LIST_INIT_SIZE);
   if (csql_column_width_info_list == NULL)
     {
       csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -2140,13 +2141,13 @@ csql_print_database (void)
        * if there is hostname or ip address in db_name,
        * it will only use db_name except for hostname or ip address.
        */
-      pstr = strchr (db_name, '@');
+      pstr = (char *) strchr (db_name, '@');
       if (pstr != NULL)
 	{
 	  *pstr = '\0';
 	}
 
-      if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+      if (HA_DISABLED ())
 	{
 	  fprintf (csql_Output_fp, "\n\t%s@%s\n\n", db_name, converted_host_name);
 	}
@@ -2828,7 +2829,8 @@ csql_set_column_width_info (const char *column_name, int column_width)
   if (csql_column_width_info_list_index >= csql_column_width_info_list_size)
     {
       temp_list =
-	realloc (csql_column_width_info_list, sizeof (CSQL_COLUMN_WIDTH_INFO) * (csql_column_width_info_list_size * 2));
+	(CSQL_COLUMN_WIDTH_INFO *) realloc (csql_column_width_info_list,
+					    sizeof (CSQL_COLUMN_WIDTH_INFO) * (csql_column_width_info_list_size * 2));
       if (temp_list == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;

@@ -29,7 +29,9 @@
 
 #include "config.h"
 
+#if defined(WINDOWS)
 #include <winsock2.h>
+#endif
 
 enum CSS_ER_WINSOCK
 {

@@ -47,6 +47,7 @@
 #include "error_manager.h"
 #include "databases_file.h"
 #include "boot.h"
+#include "connection_defs.h"
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
@@ -404,7 +405,7 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
   databases = last = NULL;
 
 #if defined(SERVER_MODE)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_string_value (PRM_ID_HA_NODE_LIST))
+  if (!HA_DISABLED () && prm_get_string_value (PRM_ID_HA_NODE_LIST))
     {
       str = strchr (prm_get_string_value (PRM_ID_HA_NODE_LIST), '@');
       ha_node_list = (str) ? str + 1 : NULL;
@@ -519,7 +520,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (stat_buffer.st_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      read (vdes, line, stat_buffer.st_size);
+      read (vdes, line, (unsigned int) stat_buffer.st_size);
       line[stat_buffer.st_size] = '\0';
       str = cfg_next_char (line);
       while (*str != '\0')
@@ -1329,7 +1330,7 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
 	}
       else
 	{
-	  len = next_sep - current_host;
+	  len = (int) (next_sep - current_host);
 
 	  if (len == hostname_len && strncmp (current_host, hostname, len) == 0)
 	    {

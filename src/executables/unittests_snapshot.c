@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <log_impl.h>
+#include <sys/time.h>
 
 #define NOPS_SNAPSHOT   1000000
 #define NOPS_COMPLPETE  1000000

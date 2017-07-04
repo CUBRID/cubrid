@@ -171,7 +171,6 @@ extern int btree_get_next_overflow_vpid (THREAD_ENTRY * thread_p, PAGE_PTR page_
 #define BTREE_MVCC_SET_HEADER_FIXED_SIZE(p_mvcc_rec_header) \
   do \
     { \
-      assert (p_mvcc_rec_header != NULL); \
       if (!((p_mvcc_rec_header)->mvcc_flag & OR_MVCC_FLAG_VALID_INSID)) \
         { \
           (p_mvcc_rec_header)->mvcc_flag |= OR_MVCC_FLAG_VALID_INSID; \
@@ -273,24 +272,14 @@ extern int btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid,
 					   int oid_delta, int key_delta);
 
 extern int btree_get_disk_size_of_key (DB_VALUE *);
-extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key, int node_type,
-			       int key_type, int key_len, bool during_loading, OID * class_oid, OID * oid,
-			       BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
-extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
-			      void *rec_header, int node_type, bool * clear_key, int *offset, int copy,
-			      BTREE_SCAN * bts);
 extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
 extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid);
 extern DISK_ISVALID btree_verify_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
 				       const char *btname);
 extern int btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VALUE * prefix_key,
 				       TP_DOMAIN * key_domain);
-extern int btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int do_coercion,
-			      int total_order, int *start_colp);
+
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_desc);
 
 extern void btree_dump_key (FILE * fp, DB_VALUE * key);
-
-extern int btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
-
 #endif /* _BTREE_LOAD_H_ */

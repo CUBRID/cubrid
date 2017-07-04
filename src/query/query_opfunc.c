@@ -10861,7 +10861,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	{
 	  TP_DOMAIN *result_domain;
 	  DB_TYPE type =
-	    ((func_p->function == PT_AVG) ? func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain));
+	    (func_p->function ==
+	     PT_AVG) ? (DB_TYPE) func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain);
 
 	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : func_p->domain);
 	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, result_domain) != NO_ERROR)
@@ -11617,7 +11618,7 @@ qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * t
   assert_release (tuple != NULL);
   assert_release (values != NULL);
 
-  vals = db_private_alloc (thread_p, tuple->f_cnt * sizeof (DB_VALUE));
+  vals = (DB_VALUE *) db_private_alloc (thread_p, tuple->f_cnt * sizeof (DB_VALUE));
   if (vals == NULL)
     {
       error = ER_FAILED;

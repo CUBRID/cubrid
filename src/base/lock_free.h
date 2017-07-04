@@ -42,9 +42,9 @@ extern int lf_callback_vpid_copy (void *src, void *dest);
 /*
  * Address mark macros
  */
-#define ADDR_WITH_MARK(p)   ((void * volatile) (((long long volatile) p) | 0x1))
-#define ADDR_HAS_MARK(p)    (((long long volatile) p) & 0x1)
-#define ADDR_STRIP_MARK(p)  ((void * volatile) (((long long volatile) p) & (~((long long) 0x1))))
+#define ADDR_WITH_MARK(p)   ((void *) (((long long) p) | 0x1))
+#define ADDR_HAS_MARK(p)    (((long long) p) & 0x1)
+#define ADDR_STRIP_MARK(p)  ((void *) (((long long) p) & (~((long long) 0x1))))
 
 /*
  * Entry descriptor
@@ -152,12 +152,12 @@ struct lf_tran_entry
 
 #define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1, false }
 
-typedef enum lf_bitmap_style LF_BITMAP_STYLE;
 enum lf_bitmap_style
 {
   LF_BITMAP_ONE_CHUNK = 0,
   LF_BITMAP_LIST_OF_CHUNKS
 };
+typedef enum lf_bitmap_style LF_BITMAP_STYLE;
 
 typedef struct lf_bitmap LF_BITMAP;
 struct lf_bitmap
@@ -225,7 +225,7 @@ struct lf_tran_system
 };
 
 #define LF_TRAN_SYSTEM_INITIALIZER \
-  { NULL, 0, {NULL, 0, 0, 0, 1.0f, 0}, 0, 0, 100, 0, NULL }
+  { NULL, 0, {NULL, 0, 0, LF_BITMAP_ONE_CHUNK, 1.0f, 0}, 0, 0, 100, 0, NULL }
 
 #define LF_TRAN_CLEANUP_NECESSARY(e) ((e)->tran_system->min_active_transaction_id > (e)->last_cleanup_id)
 

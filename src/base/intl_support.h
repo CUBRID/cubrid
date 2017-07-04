@@ -132,7 +132,6 @@ extern bool intl_String_validation;
  * It is not guaranteed that user defined languages keep their IDs */
 typedef unsigned int INTL_LANG;
 
-typedef enum intl_builtin_lang INTL_BUILTIN_LANG;
 enum intl_builtin_lang
 {
   INTL_LANG_ENGLISH = 0,
@@ -140,8 +139,8 @@ enum intl_builtin_lang
   INTL_LANG_TURKISH,
   INTL_LANG_USER_DEF_START
 };
+typedef enum intl_builtin_lang INTL_BUILTIN_LANG;
 
-typedef enum intl_zone INTL_ZONE;
 enum intl_zone
 {
   INTL_ZONE_US,
@@ -149,8 +148,8 @@ enum intl_zone
   INTL_ZONE_GB,
   INTL_ZONE_TR
 };
+typedef enum intl_zone INTL_ZONE;
 
-typedef enum intl_codeset INTL_CODESET;
 enum intl_codeset
 {
   INTL_CODESET_ERROR = -2,
@@ -166,8 +165,8 @@ enum intl_codeset
 
   INTL_CODESET_LAST = INTL_CODESET_UTF8
 };
+typedef enum intl_codeset INTL_CODESET;
 
-typedef enum currency_check_mode CURRENCY_CHECK_MODE;
 enum currency_check_mode
 {
   CURRENCY_CHECK_MODE_NONE = 0,
@@ -178,6 +177,7 @@ enum currency_check_mode
   CURRENCY_CHECK_MODE_ESC_ISO = 0x10,
   CURRENCY_CHECK_MODE_ISO88591 = 0x16
 };
+typedef enum currency_check_mode CURRENCY_CHECK_MODE;
 
 /* map of lengths of UTF-8 characters */
 extern const unsigned char *const intl_Len_utf8_char;
@@ -318,8 +318,8 @@ extern "C"
   extern char *intl_get_money_ISO88591_symbol (const DB_CURRENCY currency);
   extern int intl_get_currency_symbol_position (const DB_CURRENCY currency);
   extern int intl_count_utf8_chars (unsigned char *s, int length_in_bytes);
-  extern bool intl_check_utf8 (const unsigned char *buf, int size, char **pos);
-  extern bool intl_check_euckr (const unsigned char *buf, int size, char **pos);
+  extern int intl_check_utf8 (const unsigned char *buf, int size, char **pos);
+  extern int intl_check_euckr (const unsigned char *buf, int size, char **pos);
   extern int intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf,
 				    int *out_size);
   extern void intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf,

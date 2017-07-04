@@ -1400,8 +1400,8 @@ disk_rv_dump_set_creation_time (FILE * fp, int length_ignore, void *data)
 
   change = (DISK_RECV_CHANGE_CREATION *) data;
 
-  fprintf (fp, "Label = %s, Db_creation = %lld, chkpt = %lld|%d\n", change->vol_fullname,
-	   (long long) change->db_creation, (long long int) change->chkpt_lsa.pageid, change->chkpt_lsa.offset);
+  fprintf (fp, "Label = %s, Db_creation = %lld, chkpt = %lld|%lld\n", change->vol_fullname,
+	   (long long) change->db_creation, (long long) change->chkpt_lsa.pageid, (long long) change->chkpt_lsa.offset);
 }
 
 /*
@@ -2907,8 +2907,8 @@ disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
 
   tmp_time = (time_t) vhdr->db_creation;
   (void) ctime_r (&tmp_time, time_val);
-  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%d\n", time_val,
-		  (long long int) vhdr->chkpt_lsa.pageid, vhdr->chkpt_lsa.offset);
+  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%lld\n", time_val,
+		  (long long) vhdr->chkpt_lsa.pageid, (long long) vhdr->chkpt_lsa.offset);
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);
   (void) fprintf (fp, " db_charset = %d\n", vhdr->db_charset);
@@ -4091,7 +4091,7 @@ retry:
   return NO_ERROR;
 
 error:
-  nreserved = context.vsidp - reserved_sectors;
+  nreserved = (int) (context.vsidp - reserved_sectors);
   if (nreserved > 0)
     {
       int iter_vsid;
@@ -5558,29 +5558,32 @@ xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid)
 
 /*
  * disk_get_boot_db_charset () - Find the system boot charset
- *   return: hfid on success or NULL on failure
+ *   return: error code
  *   volid(in): Permanent volume identifier
  *   db_charset(out): System boot charset
  */
-int *
-disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, int *db_charset)
+int
+disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, INTL_CODESET * db_charset)
 {
   DISK_VOLUME_HEADER *vhdr;
   PAGE_PTR pgptr = NULL;
 
+  int error_code = NO_ERROR;
+
   assert (db_charset != NULL);
 
-  if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &vhdr) != NO_ERROR)
+  error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &vhdr);
+  if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return NULL;
+      return error_code;
     }
 
-  *db_charset = vhdr->db_charset;
+  *db_charset = (INTL_CODESET) vhdr->db_charset;
 
   pgbuf_unfix_and_init (thread_p, pgptr);
 
-  return db_charset;
+  return NO_ERROR;
 }
 
 /*
@@ -5894,7 +5897,7 @@ STATIC_INLINE bool
 disk_compatible_type_and_purpose (DB_VOLTYPE type, DB_VOLPURPOSE purpose)
 {
   /* temporary type with permanent purpose is not compatible */
-  return type == DB_PERMANENT_VOLTYPE || purpose == DB_TEMPORARY_VOLTYPE;
+  return type == DB_PERMANENT_VOLTYPE || (int) purpose == (int) DB_TEMPORARY_VOLTYPE;
 }
 
 /*

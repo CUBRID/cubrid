@@ -94,19 +94,19 @@ struct tz_country
   char full_name[TZ_COUNTRY_NAME_SIZE];
 };
 
-typedef enum tz_until_flag TZ_UNTIL_FLAG;
 enum tz_until_flag
 {
   UNTIL_INFINITE = 0,
   UNTIL_EXPLICIT = 1
 };
+typedef enum tz_until_flag TZ_UNTIL_FLAG;
 
-typedef enum ds_type DS_TYPE;
 enum ds_type
 {
   DS_TYPE_FIXED = 0,
   DS_TYPE_RULESET_ID = 1
 };
+typedef enum ds_type DS_TYPE;
 
 typedef struct tz_offset_rule TZ_OFFSET_RULE;
 struct tz_offset_rule

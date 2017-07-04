@@ -148,7 +148,7 @@ typedef struct function_map FUNCTION_MAP;
 struct function_map
 {
   const char *keyword;
-  PT_OP_TYPE op;
+  int op;
 };
 
 

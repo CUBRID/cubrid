@@ -2419,7 +2419,7 @@ parse_explicit_mtime_compact (char const *str, char const *strend, unsigned int 
 	}
 
       /* year, month, day, hour, minute, seconds have been read */
-      ndigits = q - r;
+      ndigits = (int) (q - r);
       if (ndigits > 6)
 	{
 	  /* a date precedes the time in the input string */
@@ -2546,7 +2546,7 @@ parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date, un
       q++;
     }
 
-  ndigits = q - p;
+  ndigits = (int) (q - p);
 
   if (ndigits < 3)
     {
@@ -3496,12 +3496,12 @@ parse_for_timestamp (const char *buf, int buf_len, DB_DATE * date, DB_TIME * tim
     {
       if (allow_msec)
 	{
-	  p = parse_mtime (p, buf_len - (p - buf), time, NULL, NULL);
+	  p = parse_mtime (p, buf_len - (int) (p - buf), time, NULL, NULL);
 	  *time /= 1000;
 	}
       else
 	{
-	  p = parse_time (p, buf_len - (p - buf), time);
+	  p = parse_time (p, buf_len - (int) (p - buf), time);
 	}
       if (p)
 	{
@@ -3522,7 +3522,7 @@ parse_for_timestamp (const char *buf, int buf_len, DB_DATE * date, DB_TIME * tim
 
   if (p)
     {
-      p = parse_date (p, buf_len - (p - buf), date);
+      p = parse_date (p, buf_len - (int) (p - buf), date);
       if (p)
 	{
 	  goto finalcheck;
@@ -3562,7 +3562,7 @@ parse_datetime (const char *buf, int buf_len, DB_DATETIME * datetime)
   p = parse_date (buf, buf_len, &date);
   if (p)
     {
-      p = parse_mtime (p, buf_len - (p - buf), &mtime, NULL, NULL);
+      p = parse_mtime (p, buf_len - (int) (p - buf), &mtime, NULL, NULL);
       if (p)
 	{
 	  goto finalcheck;
@@ -3572,7 +3572,7 @@ parse_datetime (const char *buf, int buf_len, DB_DATETIME * datetime)
   p = parse_mtime (buf, buf_len, &mtime, NULL, NULL);
   if (p)
     {
-      p = parse_date (p, buf_len - (p - buf), &date);
+      p = parse_date (p, buf_len - (int) (p - buf), &date);
       if (p)
 	{
 	  goto finalcheck;

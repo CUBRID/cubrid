@@ -1476,7 +1476,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
       name->info.name.meta_class = (db_attribute_is_shared (attributes) ? PT_SHARED : PT_NORMAL);
 
       /* set its data type */
-      i_attr->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (db_attribute_type (attributes));
+      i_attr->type_enum = pt_db_to_type_enum (db_attribute_type (attributes));
       switch (i_attr->type_enum)
 	{
 	case PT_TYPE_OBJECT:
@@ -2226,7 +2226,7 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
 	  data_type = parser_new_node (parser, PT_DATA_TYPE);
 	  if (data_type == NULL)
 	    {
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      return PT_UNION_ERROR;
 	    }
 	  data_type->info.data_type.precision =
 	    MAX ((ci1.prec - ci1.scale), (ci2.prec - ci2.scale)) + MAX (ci1.scale, ci2.scale);
@@ -2441,7 +2441,7 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node, SEMAN_COMPATIBLE
 		    {
 		      /* use collation and codeset of original attribute the values from cinfo are not usable */
 		      att_cinfo.coll_infer.coll_id = att->data_type->info.data_type.collation_id;
-		      att_cinfo.coll_infer.codeset = att->data_type->info.data_type.units;
+		      att_cinfo.coll_infer.codeset = (INTL_CODESET) att->data_type->info.data_type.units;
 		    }
 
 		  new_att = pt_make_cast_with_compatible_info (parser, att, next_att, &att_cinfo, &new_cast_added);
@@ -4029,7 +4029,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  if (op_type != -1)
 	    {
 	      PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_NESTED_EXPR_NOT_ALLOWED,
-			  pt_show_binopcode (op_type));
+			  pt_show_binopcode ((PT_OP_TYPE) op_type));
 	      goto end;
 	    }
 	}
@@ -5644,8 +5644,8 @@ pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type, P
 
 	  error = ER_FAILED;
 	  PT_ERRORmf2 (parser, val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_PARTITION_VAL_CODESET,
-		       lang_charset_introducer (val_codeset),
-		       lang_charset_introducer (data_type->info.data_type.units));
+		       lang_charset_introducer ((INTL_CODESET) val_codeset),
+		       lang_charset_introducer ((INTL_CODESET) data_type->info.data_type.units));
 	  break;
 	}
 
@@ -5828,7 +5828,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	    {
 	      if (!intl_identifier_casecmp (column->original_name, pcol->info.name.original))
 		{
-		  pcol->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (column->db_type);
+		  pcol->type_enum = pt_db_to_type_enum (column->db_type);
 
 		  assert (column->domain != NULL);
 		  pcol->data_type = pt_domain_to_data_type (parser, column->domain);
@@ -5859,7 +5859,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		      PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
 				 MSGCAT_SEMANTIC_INVALID_PARTITION_INHERITED_ATTR);
 		    }
-		  pcol->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (smatt->type->id);
+		  pcol->type_enum = pt_db_to_type_enum (smatt->type->id);
 		  assert (smatt->domain != NULL);
 		  pcol->data_type = pt_domain_to_data_type (parser, smatt->domain);
 		  pinfo->info.partition.keycol = parser_copy_tree (parser, pcol);
@@ -7399,7 +7399,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	}
     }
 
-  (void) parser_walk_tree (parser, qry, pt_check_cyclic_reference_in_view_spec, self, NULL, NULL);
+  (void) parser_walk_tree (parser, qry, pt_check_cyclic_reference_in_view_spec, (void *) self, NULL, NULL);
   if (pt_has_error (parser))
     {
       return NULL;
@@ -12777,7 +12777,7 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	  return 1;
 	}
 
-      if (p->info.dot.arg2->node_type != PT_NAME || q->info.dot.arg2->node_type != PT_NAME)
+      if (!(p->info.dot.arg2->node_type == PT_NAME) || !(q->info.dot.arg2->node_type == PT_NAME))
 	{
 	  return 1;
 	}
@@ -15684,7 +15684,7 @@ pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser, PT_NODE * s
 	}
       else if (!DB_IS_NULL (db_val2))
 	{
-	  compare_result = db_value_compare (db_val1, db_val2);
+	  compare_result = (DB_VALUE_COMPARE_RESULT) db_value_compare (db_val1, db_val2);
 	  if (compare_result != DB_LT)
 	    {
 	      /* this is an error */

@@ -43,7 +43,7 @@ typedef enum
   TRAN_RECOVERY,		/* State of a system transaction which is used for recovery purposes. For example , set 
 				 * lock for damaged pages. */
   TRAN_ACTIVE,			/* Active transaction */
-  TRAN_UNACTIVE_COMMITTED,	/* Transaction is in the commit process or has been comitted */
+  TRAN_UNACTIVE_COMMITTED,	/* Transaction is in the commit process or has been committed */
   TRAN_UNACTIVE_WILL_COMMIT,	/* Transaction will be committed */
   TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE,	/* Transaction has been committed, but it is still executing postpone
 						 * operations */

@@ -504,11 +504,12 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 int
 sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *stmt_text, char *ha_sys_prm)
 {
-  int rc, error = NO_ERROR;
+  int error = NO_ERROR;
   PARSER_CONTEXT *parser;
   PARSER_VARCHAR *buffer = NULL, *grant = NULL;
   PARSER_VARCHAR *set_param = NULL, *restore_param = NULL;
   char default_ha_prm[LINE_MAX];
+  SYSPRM_ERR rc;
 
   parser = parser_create_parser ();
 

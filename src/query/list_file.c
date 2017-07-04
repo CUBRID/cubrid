@@ -538,7 +538,7 @@ qfile_allocate_sort_list (THREAD_ENTRY * thread_p, int count)
   /* allocate complete list */
   while (count > 0)
     {
-      tmp = lf_freelist_claim (t_entry, &qfile_sort_list_Freelist);
+      tmp = (SORT_LIST *) lf_freelist_claim (t_entry, &qfile_sort_list_Freelist);
       if (tmp == NULL)
 	{
 	  assert (false);
@@ -1262,7 +1262,7 @@ qfile_is_last_page_full (QFILE_LIST_ID * list_id_p, int tuple_length, bool is_ov
   bool result;
 
   assert (tuple_length >= 0 && list_id_p->last_offset >= 0);
-  result = (unsigned int) tuple_length + (unsigned int) list_id_p->last_offset > DB_PAGESIZE;
+  result = (unsigned int) tuple_length + (unsigned int) list_id_p->last_offset > (unsigned int)DB_PAGESIZE;
 
   if (result && !is_ovf_page)
     {
@@ -5572,7 +5572,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 #if defined(SERVER_MODE)
   TRAN_ISOLATION tran_isolation;
 #if defined(WINDOWS)
-  int num_elements;
+  unsigned int num_elements;
 #else
   size_t num_elements;
 #endif
@@ -5824,7 +5824,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
 #if defined(SERVER_MODE)
   TRAN_ISOLATION tran_isolation;
 #if defined(WINDOWS)
-  int num_elements;
+  unsigned int num_elements;
 #else
   size_t num_elements;
 #endif
@@ -6167,7 +6167,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
 #if defined(SERVER_MODE)
   int *p, *r;
 #if defined(WINDOWS)
-  int num_elements;
+  unsigned int num_elements;
 #else
   size_t num_elements;
 #endif

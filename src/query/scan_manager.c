@@ -174,11 +174,11 @@ static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * is
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
 					      FILTER_INFO * data_filter, TRAN_ISOLATION isolation);
 static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -234,7 +234,7 @@ scan_init_iss (INDX_SCAN_ID * isidp)
       return NO_ERROR;
     }
 
-  iss->use = isidp->indx_info->use_iss;
+  iss->use = isidp->indx_info->use_iss != 0;
 
   if (!iss->use)
     {
@@ -1597,7 +1597,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	  if (has_coerced_values == NULL)
 	    {
 	      assert (has_coerced_values == NULL && coerced_values == NULL);
-	      coerced_values = db_private_alloc (thread_p, sizeof (DB_VALUE) * idx_ncols);
+	      coerced_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * idx_ncols);
 	      if (coerced_values == NULL)
 		{
 		  goto err_exit;
@@ -1607,7 +1607,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 		  db_make_null (&coerced_values[j]);
 		}
 
-	      has_coerced_values = db_private_alloc (thread_p, sizeof (bool) * idx_ncols);
+	      has_coerced_values = (bool *) db_private_alloc (thread_p, sizeof (bool) * idx_ncols);
 	      if (has_coerced_values == NULL)
 		{
 		  goto err_exit;
@@ -4913,7 +4913,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   FILTER_INFO *p_range_filter = NULL, *p_key_filter = NULL;
   OID retry_oid;
   LOG_LSA ref_lsa;
-  int is_peeking;
+  bool is_peeking;
   OBJECT_GET_STATUS object_get_status;
   REGU_VARIABLE_LIST p;
 
@@ -5020,7 +5020,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
 
-      if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
+      if (is_peeking == true && hsidp->scan_cache.page_watcher.pgptr != NULL
 	  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 	{
 	  is_peeking = COPY;
@@ -5217,7 +5217,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      return S_ERROR;
 	    }
 
-	  if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
+	  if (is_peeking == true && hsidp->scan_cache.page_watcher.pgptr != NULL
 	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 	    {
 	      is_peeking = COPY;
@@ -5234,7 +5234,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  return S_ERROR;
 		}
 
-	      if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
+	      if (is_peeking != 0 && hsidp->scan_cache.page_watcher.pgptr != NULL
 		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 		{
 		  is_peeking = COPY;
@@ -5255,7 +5255,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  return S_ERROR;
 		}
 
-	      if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
+	      if (is_peeking == true && hsidp->scan_cache.page_watcher.pgptr != NULL
 		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 		{
 		  is_peeking = COPY;
@@ -5276,7 +5276,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  * thread_p (in) : Thread entry.
  * scan_id (in)	 : Scan data.
  */
-static int
+static SCAN_CODE
 scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   HEAP_PAGE_SCAN_ID *hpsidp = NULL;
@@ -6045,7 +6045,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
  * thread_p (in) : Thread entry.
  * scan_id (in)  : Scan data.
  */
-static int
+static SCAN_CODE
 scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDX_SCAN_ID *isidp = NULL;
@@ -6100,7 +6100,7 @@ scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  * thread_p (in) : Thread entry.
  * scan_id (in)	 : Scan data.
  */
-static int
+static SCAN_CODE
 scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDEX_NODE_SCAN_ID *insidp = NULL;

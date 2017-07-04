@@ -275,6 +275,72 @@ set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${EXECUTABLES_DIR}/csql.c
+  ${EXECUTABLES_DIR}/csql_session.c
+  ${EXECUTABLES_DIR}/csql_result.c
+  ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/csql_result_format.c
+  ${EXECUTABLES_DIR}/util_sa.c
+  ${EXECUTABLES_DIR}/util_cs.c
+  ${EXECUTABLES_DIR}/util_common.c
+  ${EXECUTABLES_DIR}/compactdb.c
+  ${EXECUTABLES_DIR}/loaddb.c
+  ${EXECUTABLES_DIR}/unloaddb.c
+  ${EXECUTABLES_DIR}/load_object.c
+  ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_schema.c
+  ${EXECUTABLES_DIR}/file_hash.c
+  ${EXECUTABLES_DIR}/loader.c
+  ${EXECUTABLES_DIR}/loader_object_table.c
+  ${COMPAT_SOURCES}
+  ${BASE_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${CONNECTION_SOURCES}
+  ${CONNECTION_TCP_SOURCE}
+  ${COMMUNICATION_SOURCES}
+  ${PARSER_DIR}/parser_support.c
+  ${PARSER_DIR}/show_meta.c
+  ${PARSER_DIR}/double_byte_support.c
+  ${PARSER_DIR}/method_transform.c
+  ${PARSER_DIR}/cnf.c
+  ${PARSER_DIR}/compile.c
+  ${PARSER_DIR}/parse_dbi.c
+  ${PARSER_DIR}/parse_evaluate.c
+  ${PARSER_DIR}/keyword.c
+  ${PARSER_DIR}/parse_tree_cl.c
+  ${PARSER_DIR}/parse_tree.c
+  ${PARSER_DIR}/query_result.c
+  ${PARSER_DIR}/name_resolution.c
+  ${PARSER_DIR}/semantic_check.c
+  ${PARSER_DIR}/type_checking.c
+  ${PARSER_DIR}/xasl_generation.c
+  ${PARSER_DIR}/scanner_support.c
+  ${PARSER_DIR}/view_transform.c
+  ${OPTIMIZER_SOURCES}
+  ${QUERY_SOURCES}
+  ${OBJECT_SOURCES}
+  ${JSP_SOURCES}
+  ${TRANSACTION_SOURCES}
+  ${STORAGE_SOURCES}
+  ${ES_SOURCES}
+  ${SESSION_SOURCES}
+  ${PROBES_OBJECT}
+  PROPERTIES LANGUAGE CXX
+  )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${BASE_DIR}/md5.c
+  ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.c
+  ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.c
+  ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.c
+  ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.c
+  ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.c
+  ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.c
+  PROPERTIES LANGUAGE C
+  )
+  
 add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
   ${COMPAT_SOURCES}
@@ -318,9 +384,9 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cubridsa LINK_PRIVATE cas ${EP_LIBS})
 endif(UNIX)
-if(USE_BISON_FLEX)
-  add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-endif(USE_BISON_FLEX)
+
+add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
+
 if(UNIX)
   add_dependencies(cubridsa ${EP_TARGETS})
 endif(UNIX)

@@ -144,156 +144,168 @@ enum scanner_mode
   COMMENT_MODE = 7
 };
 
-extern int pp_recognizing_typedef_names;
-extern int pp_nesting_level;
 
-
-extern char *pt_buffer;
-extern unsigned int pp_uci_opt;
-extern int pp_emit_line_directives;
-extern int pp_dump_scope_info;
-extern int pp_dump_malloc_info;
-extern const char *pp_include_path;
-extern char *pp_include_file;
-extern int pp_enable_uci_trace;
-extern int pp_disable_varchar_length;
-extern int pp_varchar2;
-extern int pp_unsafe_null;
-extern int pp_internal_ind;
-extern const char *prog_name;
-extern varstring pt_statement_buf;
-
-extern varstring pp_subscript_buf;
-extern varstring pp_host_var_buf;
-
-extern char *esql_yyfilename;
-extern int errors;
-extern ECHO_FN echo_fn;
-
-
-extern const char *VARCHAR_ARRAY_NAME;
-extern const char *VARCHAR_LENGTH_NAME;
-extern SYMTAB *pp_Symbol_table;	/* The table for C identifiers.  */
-extern SYMTAB *pp_Struct_table;	/* The table for struct definitions */
-
-extern CURSOR *pp_new_cursor (char *name, char *static_stmt, int stmtLength, STMT * dynamic_stmt, HOST_LOD * host_refs);
-extern void pp_free_cursor (CURSOR * cursor);
-extern CURSOR *pp_lookup_cursor (char *name);
-extern void pp_cursor_init (void);
-extern void pp_cursor_finish (void);
-extern void pp_print_cursors (FILE * fp);
-extern void pp_remove_cursors_from_table (CURSOR * chain);
-extern void pp_discard_cursor_chain (CURSOR * chain);
-extern STMT *pp_new_stmt (char *name);
-extern void pp_free_stmt (STMT * stmt);
-extern void pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain);
-extern void pp_add_symbols_to_table (SYMBOL * sym);
-extern void pp_remove_symbols_from_table (SYMBOL * sym_chain);
-extern void pp_do_enum (SYMBOL * sym);
-extern void pp_push_name_scope (void);
-extern void pp_pop_name_scope (void);
-extern void pp_make_typedef_names_visible (int);
-extern void pp_decl_init (void);
-extern void pp_decl_finish (void);
-extern void pp_reset_current_type_spec (void);
-extern LINK *pp_current_type_spec (void);
-extern void pp_add_storage_class (int sc);
-extern void pp_add_struct_spec (STRUCTDEF * sdef);
-extern void pp_add_type_noun (int type);
-extern void pp_add_type_adj (int adj);
-extern void pp_add_typedefed_spec (LINK * spec);
-extern void pp_add_initializer (SYMBOL * sym);
-extern void pp_push_spec_scope (void);
-extern void pp_pop_spec_scope (void);
-extern void pp_disallow_storage_classes (void);
-extern void pp_add_cursor_to_scope (CURSOR * cursor);
-extern void pp_add_whenever_to_scope (WHEN_CONDITION cond, WHEN_ACTION action, char *name);
-extern void pp_print_decls (SYMBOL * sym_chain, int preechoed);
-extern void pp_print_specs (LINK * link);
-extern void pp_suppress_echo (int);
-extern void pp_gather_input_refs (void);
-extern void pp_gather_output_refs (void);
-extern HOST_LOD *pp_input_refs (void);
-extern HOST_LOD *pp_output_refs (void);
-extern void pp_clear_host_refs (void);
-extern HOST_VAR *pp_new_host_var (HOST_VAR * var, SYMBOL * sym);
-extern void pp_free_host_var (HOST_VAR * var);
-extern HOST_REF *pp_add_host_ref (HOST_VAR *, HOST_VAR *, bool, int *);
-extern void pp_free_host_ref (HOST_REF * ref);
-extern HOST_LOD *pp_copy_host_refs (void);
-extern HOST_LOD *pp_detach_host_refs (void);
-extern HOST_REF *pp_check_type (HOST_REF * ref, BITSET typeset, const char *msg);
-extern void pp_check_host_var_list (void);
-extern HOST_VAR *pp_ptr_deref (HOST_VAR * var, int style);
-extern HOST_VAR *pp_struct_deref (HOST_VAR * var, char *field, int indirect);
-extern HOST_VAR *pp_addr_of (HOST_VAR * var);
-extern void pp_hv_init (void);
-extern void pp_hv_finish (void);
-extern HOST_REF *pp_add_host_str (char *str);
-extern HOST_LOD *pp_new_host_lod (void);
-extern void pp_free_host_lod (HOST_LOD * lod);
-extern void pp_clear_host_lod (HOST_LOD * lod);
-extern char *pp_switch_to_descriptor (void);
-extern void pp_translate_string (varstring * vstr, const char *str, int in_string);
-extern unsigned int pp_generic_case_hash (void *p);
-extern unsigned int pp_generic_hash (void *p);
-extern int pp_generic_case_cmp (void *p1, void *p2);
-extern int pp_generic_cmp (void *p1, void *p2);
-extern void pp_startup (void);
-extern void pp_finish (void);
-extern void *pp_malloc (int n);
-extern char *pp_strdup (const char *str);
-extern PTR_VEC *pp_new_ptr_vec (PTR_VEC * vec);
-extern void pp_free_ptr_vec (PTR_VEC * vec);
-extern PTR_VEC *pp_add_ptr (PTR_VEC * vec, void *new_elem);
-extern int pp_ptr_vec_n_elems (PTR_VEC * vec);
-extern void **pp_ptr_vec_elems (PTR_VEC * vec);
-extern const char *pp_get_msg (int msg_set, int msg_num);
-extern void emit_line_directive (void);
-extern void esql_yyinit (void);
-extern void esql_yyerror (const char *);
-extern void esql_yyverror (const char *, ...);
-extern void esql_yyvwarn (const char *, ...);
-extern void esql_yyredef (char *);
-extern void esql_yy_enter (enum scanner_mode);
-extern void esql_yy_push_mode (enum scanner_mode);
-extern void esql_yy_pop_mode (void);
-extern void esql_yy_check_mode (void);
-extern void esql_yy_sync_lineno (void);
-extern void esql_yy_echo (const char *str);
-extern void esql_yy_erase_last_token (void);
-extern varstring *yy_get_buf ();
-extern void echo_stream (const char *, int);
-extern void echo_vstr (const char *, int);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void echo_devnull (const char *, int);
+#ifdef __cplusplus
+extern "C"
+{
 #endif
-extern ECHO_FN pp_set_echo (ECHO_FN);
-extern SYMTAB *pp_new_symtab (void);
-extern void pp_free_symtab (SYMTAB *, HT_FREE_FN);
-extern SYMBOL *pp_new_symbol (const char *name, int scope);
-extern void pp_discard_symbol (SYMBOL * sym);
-extern void pp_discard_symbol_chain (SYMBOL * sym);
-extern LINK *pp_new_link (void);
-extern void pp_discard_link_chain (LINK * p);
-extern void pp_discard_link (LINK * p);
-extern STRUCTDEF *pp_new_structdef (const char *tag);
-extern void pp_discard_structdef (STRUCTDEF * sdef);
-extern void pp_discard_structdef_chain (STRUCTDEF * sdef);
-extern STRUCTDEF *pp_new_pseudo_def (SPECIFIER_NOUN type, const char *subscript);
-extern void pp_add_declarator (SYMBOL * sym, int type);
-extern LINK *pp_clone_type (LINK * tchain, LINK ** endp);
-extern SYMBOL *pp_clone_symbol (SYMBOL * sym);
-extern int pp_the_same_type (LINK * p1, LINK * p2, int relax);
-extern char *pp_sclass_str (int class_);
-extern char *pp_attr_str (LINK * type);
-extern const char *pp_type_str (LINK * link);
-extern void pp_print_syms (FILE * fp);
-extern SYMBOL *pp_findsym (SYMTAB * symtab, unsigned char *name);
-extern void pp_symbol_init (void);
-extern void pp_symbol_finish (void);
-extern void pp_symbol_stats (FILE * fp);
-extern void pp_init_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * old_scope);
-extern void pp_finish_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * new_scope);
 
-#endif /* _ESQL_MISC_H_ */
+  extern int pp_recognizing_typedef_names;
+  extern int pp_nesting_level;
+
+
+  extern char *pt_buffer;
+  extern unsigned int pp_uci_opt;
+  extern int pp_emit_line_directives;
+  extern int pp_dump_scope_info;
+  extern int pp_dump_malloc_info;
+  extern const char *pp_include_path;
+  extern char *pp_include_file;
+  extern int pp_enable_uci_trace;
+  extern int pp_disable_varchar_length;
+  extern int pp_varchar2;
+  extern int pp_unsafe_null;
+  extern int pp_internal_ind;
+  extern const char *prog_name;
+  extern varstring pt_statement_buf;
+
+  extern varstring pp_subscript_buf;
+  extern varstring pp_host_var_buf;
+
+  extern char *esql_yyfilename;
+  extern int errors;
+  extern ECHO_FN echo_fn;
+
+
+  extern const char *VARCHAR_ARRAY_NAME;
+  extern const char *VARCHAR_LENGTH_NAME;
+  extern SYMTAB *pp_Symbol_table;	/* The table for C identifiers.  */
+  extern SYMTAB *pp_Struct_table;	/* The table for struct definitions */
+
+  extern CURSOR *pp_new_cursor (char *name, char *static_stmt, int stmtLength, STMT * dynamic_stmt,
+				HOST_LOD * host_refs);
+  extern void pp_free_cursor (CURSOR * cursor);
+  extern CURSOR *pp_lookup_cursor (char *name);
+  extern void pp_cursor_init (void);
+  extern void pp_cursor_finish (void);
+  extern void pp_print_cursors (FILE * fp);
+  extern void pp_remove_cursors_from_table (CURSOR * chain);
+  extern void pp_discard_cursor_chain (CURSOR * chain);
+  extern STMT *pp_new_stmt (char *name);
+  extern void pp_free_stmt (STMT * stmt);
+  extern void pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain);
+  extern void pp_add_symbols_to_table (SYMBOL * sym);
+  extern void pp_remove_symbols_from_table (SYMBOL * sym_chain);
+  extern void pp_do_enum (SYMBOL * sym);
+  extern void pp_push_name_scope (void);
+  extern void pp_pop_name_scope (void);
+  extern void pp_make_typedef_names_visible (int);
+  extern void pp_decl_init (void);
+  extern void pp_decl_finish (void);
+  extern void pp_reset_current_type_spec (void);
+  extern LINK *pp_current_type_spec (void);
+  extern void pp_add_storage_class (int sc);
+  extern void pp_add_struct_spec (STRUCTDEF * sdef);
+  extern void pp_add_type_noun (int type);
+  extern void pp_add_type_adj (int adj);
+  extern void pp_add_typedefed_spec (LINK * spec);
+  extern void pp_add_initializer (SYMBOL * sym);
+  extern void pp_push_spec_scope (void);
+  extern void pp_pop_spec_scope (void);
+  extern void pp_disallow_storage_classes (void);
+  extern void pp_add_cursor_to_scope (CURSOR * cursor);
+  extern void pp_add_whenever_to_scope (WHEN_CONDITION cond, WHEN_ACTION action, char *name);
+  extern void pp_print_decls (SYMBOL * sym_chain, int preechoed);
+  extern void pp_print_specs (LINK * link);
+  extern void pp_suppress_echo (int);
+  extern void pp_gather_input_refs (void);
+  extern void pp_gather_output_refs (void);
+  extern HOST_LOD *pp_input_refs (void);
+  extern HOST_LOD *pp_output_refs (void);
+  extern void pp_clear_host_refs (void);
+  extern HOST_VAR *pp_new_host_var (HOST_VAR * var, SYMBOL * sym);
+  extern void pp_free_host_var (HOST_VAR * var);
+  extern HOST_REF *pp_add_host_ref (HOST_VAR *, HOST_VAR *, bool, int *);
+  extern void pp_free_host_ref (HOST_REF * ref);
+  extern HOST_LOD *pp_copy_host_refs (void);
+  extern HOST_LOD *pp_detach_host_refs (void);
+  extern HOST_REF *pp_check_type (HOST_REF * ref, BITSET typeset, const char *msg);
+  extern void pp_check_host_var_list (void);
+  extern HOST_VAR *pp_ptr_deref (HOST_VAR * var, int style);
+  extern HOST_VAR *pp_struct_deref (HOST_VAR * var, char *field, int indirect);
+  extern HOST_VAR *pp_addr_of (HOST_VAR * var);
+  extern void pp_hv_init (void);
+  extern void pp_hv_finish (void);
+  extern HOST_REF *pp_add_host_str (char *str);
+  extern HOST_LOD *pp_new_host_lod (void);
+  extern void pp_free_host_lod (HOST_LOD * lod);
+  extern void pp_clear_host_lod (HOST_LOD * lod);
+  extern char *pp_switch_to_descriptor (void);
+  extern void pp_translate_string (varstring * vstr, const char *str, int in_string);
+  extern unsigned int pp_generic_case_hash (void *p);
+  extern unsigned int pp_generic_hash (void *p);
+  extern int pp_generic_case_cmp (void *p1, void *p2);
+  extern int pp_generic_cmp (void *p1, void *p2);
+  extern void pp_startup (void);
+  extern void pp_finish (void);
+  extern void *pp_malloc (int n);
+  extern char *pp_strdup (const char *str);
+  extern PTR_VEC *pp_new_ptr_vec (PTR_VEC * vec);
+  extern void pp_free_ptr_vec (PTR_VEC * vec);
+  extern PTR_VEC *pp_add_ptr (PTR_VEC * vec, void *new_elem);
+  extern int pp_ptr_vec_n_elems (PTR_VEC * vec);
+  extern void **pp_ptr_vec_elems (PTR_VEC * vec);
+  extern const char *pp_get_msg (int msg_set, int msg_num);
+  extern void emit_line_directive (void);
+  extern void esql_yyinit (void);
+  extern void esql_yyerror (const char *);
+  extern void esql_yyverror (const char *, ...);
+  extern void esql_yyvwarn (const char *, ...);
+  extern void esql_yyredef (char *);
+  extern void esql_yy_enter (enum scanner_mode);
+  extern void esql_yy_push_mode (enum scanner_mode);
+  extern void esql_yy_pop_mode (void);
+  extern void esql_yy_check_mode (void);
+  extern void esql_yy_sync_lineno (void);
+  extern void esql_yy_echo (const char *str);
+  extern void esql_yy_erase_last_token (void);
+  extern varstring *yy_get_buf ();
+  extern void echo_stream (const char *, int);
+  extern void echo_vstr (const char *, int);
+#if defined (ENABLE_UNUSED_FUNCTION)
+  extern void echo_devnull (const char *, int);
+#endif
+  extern ECHO_FN pp_set_echo (ECHO_FN);
+  extern SYMTAB *pp_new_symtab (void);
+  extern void pp_free_symtab (SYMTAB *, HT_FREE_FN);
+  extern SYMBOL *pp_new_symbol (const char *name, int scope);
+  extern void pp_discard_symbol (SYMBOL * sym);
+  extern void pp_discard_symbol_chain (SYMBOL * sym);
+  extern LINK *pp_new_link (void);
+  extern void pp_discard_link_chain (LINK * p);
+  extern void pp_discard_link (LINK * p);
+  extern STRUCTDEF *pp_new_structdef (const char *tag);
+  extern void pp_discard_structdef (STRUCTDEF * sdef);
+  extern void pp_discard_structdef_chain (STRUCTDEF * sdef);
+  extern STRUCTDEF *pp_new_pseudo_def (SPECIFIER_NOUN type, const char *subscript);
+  extern void pp_add_declarator (SYMBOL * sym, int type);
+  extern LINK *pp_clone_type (LINK * tchain, LINK ** endp);
+  extern SYMBOL *pp_clone_symbol (SYMBOL * sym);
+  extern int pp_the_same_type (LINK * p1, LINK * p2, int relax);
+  extern char *pp_sclass_str (int class_);
+  extern char *pp_attr_str (LINK * type);
+  extern const char *pp_type_str (LINK * link);
+  extern void pp_print_syms (FILE * fp);
+  extern SYMBOL *pp_findsym (SYMTAB * symtab, unsigned char *name);
+  extern void pp_symbol_init (void);
+  extern void pp_symbol_finish (void);
+  extern void pp_symbol_stats (FILE * fp);
+  extern void pp_init_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * old_scope);
+  extern void pp_finish_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * new_scope);
+  static HOST_LOD *input_refs, *output_refs;
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif				/* _ESQL_MISC_H_ */
