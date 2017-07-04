@@ -6004,7 +6004,7 @@ disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
     }
 
   /* permanent volume is un-maxed if and only if it is the auto-extend volume */
-  if (volheader->purpose == DB_PERMANENT_DATA_PURPOSE && volheader->nsect_max < volheader->nsect_total
+  if (volheader->purpose == DB_PERMANENT_DATA_PURPOSE && volheader->nsect_max > volheader->nsect_total
       && disk_Cache->perm_purpose_info.extend_info.volid_extend != volid)
     {
       /* inconsistent! */
