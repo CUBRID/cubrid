@@ -3331,8 +3331,9 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 	}
       perf_tracker->start_tick = perf_tracker->end_tick;
     }
-
+#if defined (SERVER_MODE)
 repeat:
+#endif
   count_need_wal = 0;
 
   /* temporary disable second iteration */

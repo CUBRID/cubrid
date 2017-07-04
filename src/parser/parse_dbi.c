@@ -1560,7 +1560,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_DB_VALUE:
     case DB_TYPE_TABLE:
     case DB_TYPE_RESULTSET:
-    case DB_TYPE_ELO://vapa!!!
+    case DB_TYPE_ELO:		//vapa!!!
       break;
     }
 
@@ -2634,7 +2634,7 @@ pt_node_to_cmd_type (PT_NODE * node)
       return CUBRID_STMT_KILL;
     default:
       /* todo: is this acceptable?? I'll add safe-guard and let's see what happens... */
-      assert (false);
+      assert ((int) node->node_type <= (int) PT_LAST_NODE_NUMBER);
       return (CUBRID_STMT_TYPE) node->node_type;
     }
 

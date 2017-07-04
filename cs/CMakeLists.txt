@@ -284,15 +284,15 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${BASE_DIR}/md5.c
-  ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.c
-  ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.c
-  ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.c
-  ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.c
-  ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.c
-  ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.c
+  ${CSQL_GRAMMAR_OUTPUT}
+  ${LOADER_GRAMMAR_OUTPUT}
+  ${CSQL_LEXER_OUTPUT}
+  ${LOADER_LEXER_OUTPUT}
+  ${ESQL_GRAMMAR_OUTPUT}
+  ${ESQL_LEXER_OUTPUT}
   PROPERTIES LANGUAGE C
   )
-  
+
 add_library(cubridcs SHARED
   ${EXECUTABLE_SOURCES}
   ${COMPAT_SOURCES}
@@ -319,7 +319,15 @@ if(NOT USE_CUBRID_ENV)
 endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
-  set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS -Og-)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${CSQL_GRAMMAR_OUTPUT}
+    ${LOADER_GRAMMAR_OUTPUT}
+    ${CSQL_LEXER_OUTPUT}
+    ${LOADER_LEXER_OUTPUT}
+    ${ESQL_GRAMMAR_OUTPUT}
+    ${ESQL_LEXER_OUTPUT}
+    PROPERTIES COMPILE_FLAGS /WX-
+  )
   target_compile_definitions(cubridcs PRIVATE YY_NO_UNISTD_H)
   if(TARGET_PLATFORM_BITS EQUAL 32)
     target_compile_definitions(cubridcs PRIVATE _USE_32BIT_TIME_T)
