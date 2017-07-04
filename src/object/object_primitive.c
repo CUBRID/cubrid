@@ -921,7 +921,7 @@ static int mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, in
 				      int *start_colp);
 static int mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				     int *start_colp);
-static int mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 			       int collation);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int mr_cmpval_json2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
@@ -14854,7 +14854,7 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
   else
     {
         int len = strlen (value->data.json.json_body);
-        ((DB_JSON *) memptr)->json_body = db_private_alloc (NULL, len+1);
+        ((DB_JSON *) memptr)->json_body = (char *) db_private_alloc (NULL, len+1);
         memcpy (((DB_JSON *) memptr)->json_body, value->data.json.json_body, len);
         ((DB_JSON *) memptr)->json_body[len] = '\0';
     }
@@ -14885,7 +14885,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	{
         int len = strlen (json_obj->json_body);
 	  /* return it with a NULL terminator */
-	  char * new_ = db_private_alloc (NULL, len + 1);
+	  char * new_ = (char *) db_private_alloc (NULL, len + 1);
 	  if (new_ == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -15008,7 +15008,7 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       len = strlen (src->data.json.json_body);
       if (copy)
         {
-          dest->data.json.json_body = db_private_alloc (NULL, (size_t) (len + 1));
+          dest->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (len + 1));
           memcpy (dest->data.json.json_body, src->data.json.json_body, (size_t) len);
           dest->data.json.json_body[len] = '\0';
           dest->need_clear = true;
@@ -15171,7 +15171,7 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   return NO_ERROR;
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {

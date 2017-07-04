@@ -776,7 +776,7 @@ extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 #endif //!_WIN64
 #endif //defined (WINDOWS)
 
-#if defined (CUB_GCC_VERSION) && (CUB_GCC_VERSION < 48100)
+#if (__cplusplus < 201103)
 #define static_assert(a, b)
 #endif
 
