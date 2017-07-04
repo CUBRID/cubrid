@@ -212,7 +212,7 @@ static INLINE SPAGE_SLOT *spage_find_slot (PAGE_PTR pgptr, SPAGE_HEADER * sphdr,
 static INLINE int spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdes,
 					      PGSLOTID * slotid, void **slotptr, int *used_space)
   __attribute__ ((ALWAYS_INLINE));
-static SCAN_CODE spage_get_record_data (PAGE_PTR pgptr, SPAGE_SLOT * sptr, RECDES * recdes, int ispeeking);
+static SCAN_CODE spage_get_record_data (PAGE_PTR pgptr, SPAGE_SLOT * sptr, RECDES * recdes, bool ispeeking);
 static bool spage_has_enough_total_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, SPAGE_HEADER * sphdr, int space);
 static bool spage_has_enough_contiguous_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, SPAGE_HEADER * sphdr,
 					       int space);
@@ -3896,7 +3896,7 @@ spage_get_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, RE
  *   is_peeking(in):
  */
 static SCAN_CODE
-spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p, RECDES * record_descriptor_p, int is_peeking)
+spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p, RECDES * record_descriptor_p, bool is_peeking)
 {
   assert (page_p != NULL);
   assert (slot_p != NULL);
@@ -4466,7 +4466,7 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
       snprintf (err_msg, sizeof (err_msg),
 		"spage_check: Inconsistent page = %d of volume = %s.\n"
 		" (cfree + foffset + SIZEOF(SPAGE_SLOT) * nslots) > "
-		" SPAGE_DB_PAGESIZE\n (%d + %d + (%lu * %d)) > %d\n %lu > %d\n", pgbuf_get_page_id (page_p),
+		" SPAGE_DB_PAGESIZE\n (%d + %d + (%zu * %d)) > %d\n %zu > %d\n", pgbuf_get_page_id (page_p),
 		pgbuf_get_volume_label (page_p), page_header_p->cont_free, page_header_p->offset_to_free_area,
 		sizeof (SPAGE_SLOT), page_header_p->num_slots, SPAGE_DB_PAGESIZE,
 		(page_header_p->cont_free + page_header_p->offset_to_free_area

@@ -452,7 +452,7 @@ extern "C"
   TP_DOMAIN *tp_create_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * domain);
 #endif				/* ENABLE_UNUSED_FUNCTION */
   int tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain);
-  int tp_domain_references_objects (const TP_DOMAIN * dom);
+  bool tp_domain_references_objects (const TP_DOMAIN * dom);
 
   int tp_get_fixed_precision (DB_TYPE domain_type);
 

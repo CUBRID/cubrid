@@ -98,7 +98,7 @@ static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_typ
 				    time_t * stop_at, bool * did_incom_recovery, bool * may_use_checkpoint,
 				    bool * may_need_synch_checkpoint_2pc);
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
-				   LOG_LSA * end_redo_lsa, int ismedia_crash, time_t * stopat,
+				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
 			       time_t * stopat);
@@ -2368,7 +2368,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 
 static void
 log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa, LOG_LSA * end_redo_lsa,
-		       int is_media_crash, time_t * stop_at, bool * did_incom_recovery, INT64 * num_redo_log_records)
+		       bool is_media_crash, time_t * stop_at, bool * did_incom_recovery, INT64 * num_redo_log_records)
 {
   LOG_LSA checkpoint_lsa = { -1, -1 };
   LOG_LSA lsa;			/* LSA of log record to analyse */
@@ -3071,8 +3071,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			   rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %lld|%ld\n", (long long int) rcv_page_lsaptr->pageid,
-			       rcv_page_lsaptr->offset);
+		      fprintf (stdout, "      page_lsa = %lld|%lld\n", (long long int) rcv_page_lsaptr->pageid,
+			       (long long) rcv_page_lsaptr->offset);
 		    }
 		  else
 		    {
@@ -3208,8 +3208,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			   rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %lld|%ld\n", (long long int) rcv_page_lsaptr->pageid,
-			       rcv_page_lsaptr->offset);
+		      fprintf (stdout, "      page_lsa = %lld|%lld\n", (long long int) rcv_page_lsaptr->pageid,
+			       (long long) rcv_page_lsaptr->offset);
 		    }
 		  else
 		    {
@@ -3250,8 +3250,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 #if !defined(NDEBUG)
 	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		{
-		  fprintf (stdout, "TRACE EXT REDOING[3]: LSA = %lld|%ld, Rv_index = %s\n",
-			   (long long int) rcv_lsa.pageid, rcv_lsa.offset, rv_rcvindex_string (rcvindex));
+		  fprintf (stdout, "TRACE EXT REDOING[3]: LSA = %lld|%lld, Rv_index = %s\n",
+			   (long long int) rcv_lsa.pageid, (long long) rcv_lsa.offset, rv_rcvindex_string (rcvindex));
 		  fflush (stdout);
 		}
 #endif /* !NDEBUG */
@@ -3329,8 +3329,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			   rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %lld|%ld\n", (long long int) rcv_page_lsaptr->pageid,
-			       rcv_page_lsaptr->offset);
+		      fprintf (stdout, "      page_lsa = %lld|%lld\n", (long long int) rcv_page_lsaptr->pageid,
+			       (long long) rcv_page_lsaptr->offset);
 		    }
 		  else
 		    {
@@ -3417,8 +3417,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			   rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %lld|%ld\n", (long long int) rcv_page_lsaptr->pageid,
-			       rcv_page_lsaptr->offset);
+		      fprintf (stdout, "      page_lsa = %lld|%lld\n", (long long int) rcv_page_lsaptr->pageid,
+			       (long long) rcv_page_lsaptr->offset);
 		    }
 		  else
 		    {
@@ -4480,10 +4480,10 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		    {
 		      fprintf (stdout,
-			       "TRACE UNDOING[2]: LSA = %lld|%ld, Rv_index = %s,\n"
+			       "TRACE UNDOING[2]: LSA = %lld|%lld, Rv_index = %s,\n"
 			       "      volid = %d, pageid = %d, offset = %hd,\n", (long long int) rcv_lsa.pageid,
-			       rcv_lsa.offset, rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid,
-			       rcv.offset);
+			       (long long) rcv_lsa.offset, rv_rcvindex_string (rcvindex), rcv_vpid.volid,
+			       rcv_vpid.pageid, rcv.offset);
 		      fflush (stdout);
 		    }
 #endif /* !NDEBUG */

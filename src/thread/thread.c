@@ -1352,8 +1352,8 @@ thread_return_all_transactions_entries (void)
 void
 thread_print_entry_info (THREAD_ENTRY * thread_p)
 {
-  fprintf (stderr, "THREAD_ENTRY(tid(%ld),client_id(%d),tran_index(%d),rid(%d),status(%d))\n", thread_p->tid,
-	   thread_p->client_id, thread_p->tran_index, thread_p->rid, thread_p->status);
+  fprintf (stderr, "THREAD_ENTRY(tid(%lld),client_id(%d),tran_index(%d),rid(%d),status(%d))\n",
+	   (long long) thread_p->tid, thread_p->client_id, thread_p->tran_index, thread_p->rid, thread_p->status);
 
   if (thread_p->conn_entry != NULL)
     {
@@ -2222,8 +2222,8 @@ thread_dump_threads (void)
     {
       thread_p = &thread_Manager.thread_array[i];
 
-      fprintf (stderr, "thread %d(tid(%ld),client_id(%d),tran_index(%d),rid(%d),status(%s),interrupt(%d))\n",
-	       thread_p->index, thread_p->tid, thread_p->client_id, thread_p->tran_index, thread_p->rid,
+      fprintf (stderr, "thread %d(tid(%lld),client_id(%d),tran_index(%d),rid(%d),status(%s),interrupt(%d))\n",
+	       thread_p->index, (long long) thread_p->tid, thread_p->client_id, thread_p->tran_index, thread_p->rid,
 	       status[thread_p->status], thread_p->interrupted);
 
       (void) thread_rc_track_dump_all (thread_p, stderr);

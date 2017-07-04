@@ -289,7 +289,7 @@ static void sort_spage_initialize (PAGE_PTR pgptr, INT16 slots_type, INT16 align
 
 static INT16 sort_spage_get_numrecs (PAGE_PTR pgptr);
 static INT16 sort_spage_insert (PAGE_PTR pgptr, RECDES * recdes);
-static SCAN_CODE sort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, int peek_p);
+static SCAN_CODE sort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_p);
 static int sort_spage_offsetcmp (const void *s1, const void *s2);
 static int sort_spage_compact (PAGE_PTR pgptr);
 static INT16 sort_spage_find_free (PAGE_PTR pgptr, SLOT ** sptr, INT16 length, INT16 type, INT16 * space);
@@ -635,7 +635,7 @@ sort_spage_insert (PAGE_PTR pgptr, RECDES * recdes)
  *       return value.
  */
 static SCAN_CODE
-sort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, int peek_p)
+sort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_p)
 {
   SLOTTED_PAGE_HEADER *sphdr;
   SLOT *sptr;
@@ -657,7 +657,7 @@ sort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, int peek_p
    * address of the record in the buffer. Otherwise, the record is copied
    * onto the area specified by the descriptor
    */
-  if (peek_p == PEEK)
+  if (peek_p == true)
     {
       recdes->area_size = -1;
       recdes->data = (char *) pgptr + sptr->roffset;

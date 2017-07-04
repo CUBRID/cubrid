@@ -124,7 +124,7 @@ static char *locator_pack_lockset_objects (char *packed, LC_LOCKSET * lockset);
 static char *locator_unpack_lockset_header (char *unpacked, LC_LOCKSET * lockset);
 static char *locator_unpack_lockset_classes (char *unpacked, LC_LOCKSET * lockset);
 static char *locator_unpack_lockset_objects (char *unpacked, LC_LOCKSET * lockset);
-static int locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length, int max_classes, int quit_on_errors);
+static int locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length, int max_classes, bool quit_on_errors);
 #if defined(CUBRID_DEBUG)
 static void locator_dump_lockhint_info (FILE * out_fp, LC_LOCKHINT * lockhint);
 static void locator_dump_lockhint_classes (FILE * out_fp, LC_LOCKHINT * lockhint);
@@ -1613,7 +1613,7 @@ locator_unpack_lockset (LC_LOCKSET * lockset, bool unpack_classes, bool unpack_o
  * NOTE: Allocate a lockhint areas.
  */
 LC_LOCKHINT *
-locator_allocate_lockhint (int max_classes, int quit_on_errors)
+locator_allocate_lockhint (int max_classes, bool quit_on_errors)
 {
   LC_LOCKHINT *lockhint = NULL;
   int length;
@@ -1681,7 +1681,7 @@ locator_allocate_lockhint (int max_classes, int quit_on_errors)
  * NOTE:
  */
 static int
-locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length, int max_classes, int quit_on_errors)
+locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length, int max_classes, bool quit_on_errors)
 {
   if (lockhint == NULL || length < SSIZEOF (*lockhint))
     {

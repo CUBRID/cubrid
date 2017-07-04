@@ -84,7 +84,7 @@ typedef enum
 
 #define BTREE_IS_PRIMARY_KEY(unique_pk) ((unique_pk) & BTREE_CONSTRAINT_PRIMARY_KEY)
 #define BTREE_IS_UNIQUE(unique_pk)  ((unique_pk) & BTREE_CONSTRAINT_UNIQUE)
-#define BTREE_IS_PART_KEY_DESC(btid_int) ((btid_int)->part_key_desc == true)
+#define BTREE_IS_PART_KEY_DESC(btid_int) ((btid_int)->part_key_desc != 0)
 
 
 #define BTREE_NORMAL_KEY 0
@@ -117,7 +117,7 @@ struct btid_int
 {				/* Internal btree block */
   BTID *sys_btid;
   int unique_pk;		/* if it is an unique index, is PK */
-  int part_key_desc;		/* the last partial-key domain is desc */
+  bool part_key_desc;		/* the last partial-key domain is desc */
   TP_DOMAIN *key_type;
   TP_DOMAIN *nonleaf_key_type;	/* With prefix keys, the domain of the non leaf keys might be different.  It will be
 				 * different when the domain of index is one of the fixed character types.  In that

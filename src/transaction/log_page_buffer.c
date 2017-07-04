@@ -10284,7 +10284,7 @@ error:
 int
 logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *to_db_fullname,
 				const char *to_logpath, const char *to_prefix_logname, const char *toext_path,
-				const char *fileof_vols_and_renamepaths, int extern_rename, bool force_delete)
+				const char *fileof_vols_and_renamepaths, bool extern_rename, bool force_delete)
 {
   char from_volname[PATH_MAX];	/* Name of new volume */
   char to_volname[PATH_MAX];	/* Name of "to" volume */
@@ -11535,17 +11535,17 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tfirst log page id : %lld\n", (long long int) log_Gl.hdr.fpageid);
 
-  fprintf (outfp, "\tcurrent log append lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.append_lsa.pageid,
-	   log_Gl.hdr.append_lsa.offset);
+  fprintf (outfp, "\tcurrent log append lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.append_lsa.pageid,
+	   (long long) log_Gl.hdr.append_lsa.offset);
 
-  fprintf (outfp, "\tlast log append lsa : (%lld, %ld)\n", (long long int) log_Gl.append.prev_lsa.pageid,
-	   log_Gl.append.prev_lsa.offset);
+  fprintf (outfp, "\tlast log append lsa : (%lld, %lld)\n", (long long int) log_Gl.append.prev_lsa.pageid,
+	   (long long) log_Gl.append.prev_lsa.offset);
 
-  fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld, %ld)\n",
-	   (long long int) log_Gl.append.nxio_lsa.pageid, log_Gl.append.nxio_lsa.offset);
+  fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld, %lld)\n",
+	   (long long int) log_Gl.append.nxio_lsa.pageid, (long long) log_Gl.append.nxio_lsa.offset);
 
-  fprintf (outfp, "\tcheckpoint lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.chkpt_lsa.pageid,
-	   log_Gl.hdr.chkpt_lsa.offset);
+  fprintf (outfp, "\tcheckpoint lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.chkpt_lsa.pageid,
+	   (long long) log_Gl.hdr.chkpt_lsa.offset);
 
   fprintf (outfp, "\tnext archive page id : %lld\n", (long long int) log_Gl.hdr.nxarv_pageid);
 
@@ -11557,17 +11557,17 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tlast archive number deleted : %d\n", log_Gl.hdr.last_deleted_arv_num);
 
-  fprintf (outfp, "\tbackup level 0 lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.bkup_level0_lsa.pageid,
-	   log_Gl.hdr.bkup_level0_lsa.offset);
+  fprintf (outfp, "\tbackup level 0 lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.bkup_level0_lsa.pageid,
+	   (long long) log_Gl.hdr.bkup_level0_lsa.offset);
 
-  fprintf (outfp, "\tbackup level 1 lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.bkup_level1_lsa.pageid,
-	   log_Gl.hdr.bkup_level1_lsa.offset);
+  fprintf (outfp, "\tbackup level 1 lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.bkup_level1_lsa.pageid,
+	   (long long) log_Gl.hdr.bkup_level1_lsa.offset);
 
-  fprintf (outfp, "\tbackup level 2 lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.bkup_level2_lsa.pageid,
-	   log_Gl.hdr.bkup_level2_lsa.offset);
+  fprintf (outfp, "\tbackup level 2 lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.bkup_level2_lsa.pageid,
+	   (long long) log_Gl.hdr.bkup_level2_lsa.offset);
 
-  fprintf (outfp, "\tMVCC op lsa : (%lld, %ld)\n", (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid,
-	   log_Gl.hdr.mvcc_op_log_lsa.offset);
+  fprintf (outfp, "\tMVCC op lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid,
+	   (long long) log_Gl.hdr.mvcc_op_log_lsa.offset);
 
   fprintf (outfp, "\tLast block oldest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.last_block_oldest_mvccid);
 

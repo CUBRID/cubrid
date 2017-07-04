@@ -899,7 +899,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   PR_TYPE *pr_type;
   OR_BUF buf;
   int length;
-  int list_on;
+  bool list_on;
   int tpl_len;
   char *ptr;
 
@@ -1075,7 +1075,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   PR_TYPE *pr_type;
   OR_BUF buf;
   int length;
-  int list_on;
+  bool list_on;
   int tpl_len;
   char *ptr;
 

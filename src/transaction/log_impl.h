@@ -930,7 +930,7 @@ struct log_header
   PGLENGTH db_iopagesize;	/* Size of pages in the database. For safety reasons this value is recorded in the log
 				 * to make sure that the database is always run with the same page size */
   PGLENGTH db_logpagesize;	/* Size of log pages in the database. */
-  int is_shutdown;		/* Was the log shutdown ? */
+  bool is_shutdown;		/* Was the log shutdown ? */
   TRANID next_trid;		/* Next Transaction identifier */
   MVCCID mvcc_next_id;		/* Next MVCC ID */
   int avg_ntrans;		/* Number of average transactions */
@@ -1594,7 +1594,7 @@ struct log_tdes
   int tran_index;		/* Index onto transaction table */
   TRANID trid;			/* Transaction identifier */
 
-  int isloose_end;
+  bool isloose_end;
   TRAN_STATE state;		/* Transaction state (e.g., Active, aborted) */
   TRAN_ISOLATION isolation;	/* Isolation level */
   int wait_msecs;		/* Wait until this number of milliseconds for locks; also see xlogtb_reset_wait_msecs */
@@ -1862,7 +1862,7 @@ struct log_global
   LOG_LSA rcv_phase_lsa;	/* LSA of phase (e.g. Restart) */
 
 #if defined(SERVER_MODE)
-  int backup_in_progress;
+  bool backup_in_progress;
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */
@@ -2109,7 +2109,7 @@ extern int logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 extern int logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *to_db_fullname,
 					   const char *to_logpath, const char *to_prefix_logname,
 					   const char *toext_path, const char *fileof_vols_and_renamepaths,
-					   int extern_rename, bool force_delete);
+					   bool extern_rename, bool force_delete);
 extern int logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, bool force_delete);
 extern int logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -2244,7 +2244,7 @@ STATIC_INLINE int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attr
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
-extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set);
+extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool set);
 extern bool logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index, int set);
 extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking);
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);

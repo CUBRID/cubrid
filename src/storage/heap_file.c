@@ -677,7 +677,7 @@ static int heap_ovf_get_capacity (THREAD_ENTRY * thread_p, const OID * ovf_oid, 
 static int heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 					   HEAP_SCANCACHE ** scan_cache);
 static int heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
-					  const OID * class_oid, int cache_last_fix_page, int is_queryscan,
+					  const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
 					  int is_indexscan, MVCC_SNAPSHOT * mvcc_snapshot);
 static int heap_scancache_force_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 static int heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
@@ -686,7 +686,7 @@ static int heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, con
 static int heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 static int heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool scan_state);
 static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
-				       int ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
+				       bool ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
 static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
@@ -695,7 +695,7 @@ static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 
 static int heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info);
 #endif
 
-static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, int islast_reset);
+static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_reset);
 static int heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
@@ -777,17 +777,17 @@ static char *heap_bestspace_to_string (char *buf, int buf_size, const HEAP_BESTS
 static int fill_string_to_buffer (char **start, char *end, const char *str);
 
 static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, RECDES forward_recdes,
-				       PGBUF_WATCHER * page_watcher, HEAP_SCANCACHE * scan_cache, int ispeeking,
+				       PGBUF_WATCHER * page_watcher, HEAP_SCANCACHE * scan_cache, bool ispeeking,
 				       DB_VALUE ** record_info);
 static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
-				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, bool ispeeking,
 				     bool reversed_direction, DB_VALUE ** cache_recordinfo);
 
 static SCAN_CODE heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * hfid, const VPID * vpid,
 				     const PAGE_PTR pgptr, DB_VALUE ** page_info);
 static int heap_scancache_start_chain_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * new_scan_cache,
 					      HEAP_SCANCACHE * old_scan_cache, OID * next_row_version);
-static SCAN_CODE heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, int ispeeking,
+static SCAN_CODE heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool ispeeking,
 					  OID * forward_oid, RECDES * recdes);
 static void heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR * p_addr);
 static void heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVINDEX rcvindex);
@@ -1883,7 +1883,7 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
       heap_Classrepr_cache.num_fix_entries--;
       pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
 #endif /* DEBUG_CLASSREPR_CACHE */
-      if (cache_entry->force_decache == true)
+      if (cache_entry->force_decache != 0)
 	{
 	  /* cache_entry is already removed from LRU list. */
 
@@ -6587,7 +6587,7 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
  */
 static int
 heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
-			       const OID * class_oid, int cache_last_fix_page, int is_queryscan, int is_indexscan,
+			       const OID * class_oid, int cache_last_fix_page, bool is_queryscan, int is_indexscan,
 			       MVCC_SNAPSHOT * mvcc_snapshot)
 {
   LOCK class_lock = NULL_LOCK;
@@ -7172,7 +7172,7 @@ heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
  * condition is indicated.
  */
 static SCAN_CODE
-heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, int ispeeking, int chn,
+heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool ispeeking, int chn,
 		      MVCC_SNAPSHOT * mvcc_snapshot)
 {
   RECDES chn_recdes;		/* Used when we need to compare the cache coherency number and we are not peeking */
@@ -7185,7 +7185,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
    * valid cached object.
    */
 
-  if (ispeeking == PEEK)
+  if (ispeeking == true)
     {
       scan = spage_get_record (thread_p, pgptr, slotid, recdes, PEEK);
       if (scan != S_SUCCESS)
@@ -7627,14 +7627,14 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
    * keep the page latched while the recdes don't go out of scope. If ispeeking is COPY, we must have a preallocated
    * area to copy to. This means either scan_cache is not NULL (and scan_cache->area can be used) or recdes->data is 
    * not NULL (and recdes->area_size defines how much can be copied). */
-  assert ((context->ispeeking == PEEK)
-	  || (context->ispeeking == COPY && (scan_cache_p != NULL || context->recdes_p->data != NULL)));
+  assert ((context->ispeeking == true)
+	  || (context->ispeeking == false && (scan_cache_p != NULL || context->recdes_p->data != NULL)));
 
   switch (context->record_type)
     {
     case REC_RELOCATION:
       /* Don't peek REC_RELOCATION. */
-      if (scan_cache_p != NULL && (context->ispeeking == PEEK || context->recdes_p->data == NULL)
+      if (scan_cache_p != NULL && (context->ispeeking != 0 || context->recdes_p->data == NULL)
 	  && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache_p, context->recdes_p,
 						   DB_PAGESIZE * 2) != NO_ERROR)
 	{
@@ -7645,7 +7645,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
       return spage_get_record (thread_p, context->fwd_page_watcher.pgptr, context->forward_oid.slotid,
 			       context->recdes_p, COPY);
     case REC_BIGONE:
-      return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking, &context->forward_oid,
+      return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking == true, &context->forward_oid,
 				      context->recdes_p);
     case REC_HOME:
       if (scan_cache_p != NULL && context->ispeeking == COPY && context->recdes_p->data == NULL
@@ -7685,7 +7685,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
  */
 static SCAN_CODE
 heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-		    HEAP_SCANCACHE * scan_cache, int ispeeking, bool reversed_direction, DB_VALUE ** cache_recordinfo)
+		    HEAP_SCANCACHE * scan_cache, bool ispeeking, bool reversed_direction, DB_VALUE ** cache_recordinfo)
 {
   VPID vpid;
   VPID *vpidptr_incache;
@@ -9344,7 +9344,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 		     HEAP_CACHE_ATTRINFO * attr_info)
 {
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
-  int getall;			/* Want all attribute values */
+  bool getall;			/* Want all attribute values */
   int i;
   int ret = NO_ERROR;
 
@@ -9591,7 +9591,7 @@ exit_on_error:
  */
 
 static int
-heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, int islast_reset)
+heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_reset)
 {
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int num_found_attrs;		/* Num of found attributes */
@@ -18321,7 +18321,8 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
  */
 static SCAN_CODE
 heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, RECDES forward_recdes,
-		      PGBUF_WATCHER * page_watcher, HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** record_info)
+		      PGBUF_WATCHER * page_watcher, HEAP_SCANCACHE * scan_cache, bool ispeeking,
+		      DB_VALUE ** record_info)
 {
   SPAGE_SLOT *slot_p = NULL;
   SCAN_CODE scan = S_SUCCESS;
@@ -18750,7 +18751,7 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
  * recdes(in/out)   : record descriptor that will contain its content
  */
 SCAN_CODE
-heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, int ispeeking, OID * forward_oid,
+heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool ispeeking, OID * forward_oid,
 			 RECDES * recdes)
 {
   SCAN_CODE scan = S_SUCCESS;

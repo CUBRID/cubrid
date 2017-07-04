@@ -2013,7 +2013,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   hdr_ptr = (LOG_HEADER *) (log_pgptr->area);
   if (entry->copy_from_first_phy_page == true)
     {
-      hdr_ptr->nxarv_phy_pageid = nxarv_phy_pageid;
+      hdr_ptr->nxarv_phy_pageid = (LOG_PHY_PAGEID) nxarv_phy_pageid;
       hdr_ptr->nxarv_pageid = nxarv_pageid;
       hdr_ptr->nxarv_num = nxarv_num;
     }

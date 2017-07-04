@@ -412,7 +412,7 @@ extern LC_LOCKSET *locator_allocate_and_unpack_lockset (char *unpacked, int unpa
 							bool unpack_objects, bool reg_unpacked);
 extern int locator_pack_lockset (LC_LOCKSET * lockset, bool pack_classes, bool pack_objects);
 extern int locator_unpack_lockset (LC_LOCKSET * lockset, bool unpack_classes, bool unpack_objects);
-extern LC_LOCKHINT *locator_allocate_lockhint (int max_classes, int quit_on_errors);
+extern LC_LOCKHINT *locator_allocate_lockhint (int max_classes, bool quit_on_errors);
 extern LC_LOCKHINT *locator_reallocate_lockhint (LC_LOCKHINT * lockhint, int max_classes);
 extern void locator_free_lockhint (LC_LOCKHINT * lockhint);
 extern int locator_pack_lockhint (LC_LOCKHINT * lockhint, bool pack_classes);

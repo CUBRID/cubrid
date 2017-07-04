@@ -951,8 +951,8 @@ void
 css_print_conn_entry_info (CSS_CONN_ENTRY * conn)
 {
   fprintf (stderr,
-	   "CONN_ENTRY: %p, next(%p), idx(%d),fd(%d),request_id(%d),transaction_id(%d),client_id(%d)\n",
-	   conn, conn->next, conn->idx, conn->fd, conn->request_id, conn->transaction_id, conn->client_id);
+	   "CONN_ENTRY: %p, next(%p), idx(%d),fd(%lld),request_id(%d),transaction_id(%d),client_id(%d)\n",
+	   conn, conn->next, conn->idx, (long long) conn->fd, conn->request_id, conn->transaction_id, conn->client_id);
 }
 
 /*

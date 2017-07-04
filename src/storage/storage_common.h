@@ -492,6 +492,13 @@ typedef int TRANID;		/* Transaction identifier */
 
 typedef enum
 {
+  LOCK_COMPAT_UNKNOWN,
+  LOCK_COMPAT_YES,
+  LOCK_COMPAT_NO,
+} LOCK_COMPATIBILITY;
+
+typedef enum
+{
   /* Don't change the initialization since they reflect the elements of lock_Conv and lock_Comp */
   NA_LOCK = 0,			/* N/A lock */
   INCON_NON_TWO_PHASE_LOCK = 1,	/* Incompatible 2 phase lock. */

@@ -1716,18 +1716,18 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Stats: \n");
   fprintf (fp, "Max size:                   %d\n", xcache_Soft_capacity);
   fprintf (fp, "Current entry count:        %d\n", ATOMIC_INC_32 (&xcache_Entry_count, 0));
-  fprintf (fp, "Lookups:                    %ld\n", XCACHE_STAT_GET (lookups));
-  fprintf (fp, "Hits:                       %ld\n", XCACHE_STAT_GET (hits));
-  fprintf (fp, "Miss:                       %ld\n", XCACHE_STAT_GET (miss));
-  fprintf (fp, "Inserts:                    %ld\n", XCACHE_STAT_GET (inserts));
-  fprintf (fp, "Found at insert:            %ld\n", XCACHE_STAT_GET (found_at_insert));
-  fprintf (fp, "Recompiles:                 %ld\n", XCACHE_STAT_GET (recompiles));
-  fprintf (fp, "Failed recompiles:          %ld\n", XCACHE_STAT_GET (failed_recompiles));
-  fprintf (fp, "Deletes:                    %ld\n", XCACHE_STAT_GET (deletes));
-  fprintf (fp, "Fix:                        %ld\n", XCACHE_STAT_GET (fix));
-  fprintf (fp, "Unfix:                      %ld\n", XCACHE_STAT_GET (unfix));
-  fprintf (fp, "Cache cleanups:             %ld\n", XCACHE_STAT_GET (cleanups));
-  fprintf (fp, "Deletes at cleanup:	    %ld\n", XCACHE_STAT_GET (deletes_at_cleanup));
+  fprintf (fp, "Lookups:                    %lld\n", (long long) XCACHE_STAT_GET (lookups));
+  fprintf (fp, "Hits:                       %lld\n", (long long) XCACHE_STAT_GET (hits));
+  fprintf (fp, "Miss:                       %lld\n", (long long) XCACHE_STAT_GET (miss));
+  fprintf (fp, "Inserts:                    %lld\n", (long long) XCACHE_STAT_GET (inserts));
+  fprintf (fp, "Found at insert:            %lld\n", (long long) XCACHE_STAT_GET (found_at_insert));
+  fprintf (fp, "Recompiles:                 %lld\n", (long long) XCACHE_STAT_GET (recompiles));
+  fprintf (fp, "Failed recompiles:          %lld\n", (long long) XCACHE_STAT_GET (failed_recompiles));
+  fprintf (fp, "Deletes:                    %lld\n", (long long) XCACHE_STAT_GET (deletes));
+  fprintf (fp, "Fix:                        %lld\n", (long long) XCACHE_STAT_GET (fix));
+  fprintf (fp, "Unfix:                      %lld\n", (long long) XCACHE_STAT_GET (unfix));
+  fprintf (fp, "Cache cleanups:             %lld\n", (long long) XCACHE_STAT_GET (cleanups));
+  fprintf (fp, "Deletes at cleanup:	    %lld\n", (long long) XCACHE_STAT_GET (deletes_at_cleanup));
   /* add overflow, RT checks. */
 
   fprintf (fp, "\nEntries:\n");
@@ -1742,7 +1742,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       fprintf (fp, "            } \n");
       fprintf (fp, "  fix_count = %d \n", xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK);
       fprintf (fp, "  cache flags = %08x \n", xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FLAGS_MASK);
-      fprintf (fp, "  reference count = %ld \n", ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
+      fprintf (fp, "  reference count = %lld \n", (long long) ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
       fprintf (fp, "  time second last used = %lld \n", (long long) xcache_entry->time_last_used.tv_sec);
       if (xcache_uses_clones ())
 	{

@@ -1663,9 +1663,10 @@ logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
   fprintf (out_fp, "    Active top system operations for tran:\n");
   for (i = topops_p->last; i >= 0; i--)
     {
-      fprintf (out_fp, " Head = %lld|%ld, Posp_Head = %lld|%ld\n",
-	       (long long int) topops_p->stack[i].lastparent_lsa.pageid, topops_p->stack[i].lastparent_lsa.offset,
-	       (long long int) topops_p->stack[i].posp_lsa.pageid, topops_p->stack[i].posp_lsa.offset);
+      fprintf (out_fp, " Head = %lld|%lld, Posp_Head = %lld|%lld\n",
+	       (long long int) topops_p->stack[i].lastparent_lsa.pageid,
+	       (long long) topops_p->stack[i].lastparent_lsa.offset, (long long int) topops_p->stack[i].posp_lsa.pageid,
+	       (long long) topops_p->stack[i].posp_lsa.offset);
     }
 }
 
@@ -1882,7 +1883,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       tdes->num_unique_btrees = 0;
       tdes->max_unique_btrees = 0;
     }
-  if (tdes->interrupt == true)
+  if (tdes->interrupt == (int) true)
     {
       tdes->interrupt = false;
 #if defined (HAVE_ATOMIC_BUILTINS)
@@ -3095,7 +3096,7 @@ xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set)
  *              so that the next caller obtains an interrupt.
  */
 bool
-logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set)
+logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool set)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
@@ -3104,10 +3105,10 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set
       tdes = LOG_FIND_TDES (tran_index);
       if (tdes != NULL && tdes->trid != NULL_TRANID)
 	{
-	  if (tdes->interrupt != set)
+	  if (tdes->interrupt != (int) set)
 	    {
 #if defined (HAVE_ATOMIC_BUILTINS)
-	      tdes->interrupt = set;
+	      tdes->interrupt = (int) set;
 	      if (set == true)
 		{
 		  ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, 1);
@@ -3161,7 +3162,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set
 static bool
 logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear, bool * continue_checking)
 {
-  int interrupt;
+  bool interrupt;
   INT64 now;
 #if !defined(SERVER_MODE)
   struct timeval tv;
@@ -5095,7 +5096,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 					  next_trans_status_history->long_tran_mvccids,
 					  next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
 	advance_oldest_active_mvccid:
-	  if ((int)next_trans_status_history->version == version)
+	  if ((int) next_trans_status_history->version == version)
 	    {
 	      old_lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
 	      if (old_lowest_active_mvccid < lowest_active_mvccid)
@@ -6083,7 +6084,7 @@ end_completed:
 				      next_trans_status_history->long_tran_mvccids,
 				      next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
     advance_oldest_active_mvccid:
-      if ((int)next_trans_status_history->version == version)
+      if ((int) next_trans_status_history->version == version)
 	{
 	  old_lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
 	  if (old_lowest_active_mvccid < lowest_active_mvccid)

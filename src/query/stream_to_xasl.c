@@ -2751,7 +2751,6 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 {
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
-  int unpack_intval;
 
   stx_build_list_proc->output_columns = (DB_VALUE **) 0;
   stx_build_list_proc->upddel_oid_locator_ehids = NULL;

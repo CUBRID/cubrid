@@ -1400,8 +1400,8 @@ disk_rv_dump_set_creation_time (FILE * fp, int length_ignore, void *data)
 
   change = (DISK_RECV_CHANGE_CREATION *) data;
 
-  fprintf (fp, "Label = %s, Db_creation = %lld, chkpt = %lld|%ld\n", change->vol_fullname,
-	   (long long) change->db_creation, (long long int) change->chkpt_lsa.pageid, change->chkpt_lsa.offset);
+  fprintf (fp, "Label = %s, Db_creation = %lld, chkpt = %lld|%lld\n", change->vol_fullname,
+	   (long long) change->db_creation, (long long) change->chkpt_lsa.pageid, (long long) change->chkpt_lsa.offset);
 }
 
 /*
@@ -2901,8 +2901,8 @@ disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
 
   tmp_time = (time_t) vhdr->db_creation;
   (void) ctime_r (&tmp_time, time_val);
-  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%ld\n", time_val,
-		  (long long int) vhdr->chkpt_lsa.pageid, vhdr->chkpt_lsa.offset);
+  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%lld\n", time_val,
+		  (long long) vhdr->chkpt_lsa.pageid, (long long) vhdr->chkpt_lsa.offset);
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);
   (void) fprintf (fp, " db_charset = %d\n", vhdr->db_charset);
@@ -4085,7 +4085,7 @@ retry:
   return NO_ERROR;
 
 error:
-  nreserved = context.vsidp - reserved_sectors;
+  nreserved = (int) (context.vsidp - reserved_sectors);
   if (nreserved > 0)
     {
       int iter_vsid;

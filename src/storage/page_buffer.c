@@ -993,7 +993,7 @@ static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_
 static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
 					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again);
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
-static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous, bool * locked);
+static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
 static int pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous);
 static int pgbuf_bcb_safe_flush_force_unlock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous);
@@ -2882,7 +2882,7 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
  *       time unlike page invalidation task.
  */
 void
-pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
+pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page)
 {
   /* caller flushes page but does not really care if page really makes it to disk. or doesn't know what to do in that
    * case... I recommend against using it. */
@@ -2890,7 +2890,7 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
     {
       ASSERT_ERROR ();
     }
-  if (free_page == FREE)
+  if (free_page == true)
     {
       pgbuf_unfix (thread_p, pgptr);
     }
@@ -4278,7 +4278,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
  *   free_page(in): Free the page too ?
  */
 void
-pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
+pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page)
 {
   PGBUF_BCB *bufptr;
 
@@ -4304,7 +4304,7 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
   pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
 
   /* If free request is given, unfix the page. */
-  if (free_page == FREE)
+  if (free_page == true)
     {
       pgbuf_unfix (thread_p, pgptr);
     }
@@ -5608,9 +5608,6 @@ STATIC_INLINE int
 pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode,
 			  int buf_lock_acquired, PGBUF_LATCH_CONDITION condition, bool * is_latch_wait)
 {
-#if defined(SERVER_MODE)
-  THREAD_ENTRY *victim_thrd_entry;
-#endif /* SERVER_MODE */
   PGBUF_HOLDER *holder = NULL;
   int request_fcnt = 1;
   bool is_page_idle;
@@ -7918,7 +7915,7 @@ pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, in
  * locked (out)     : output if bcb is locked.
  */
 static int
-pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous, bool * locked)
+pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked)
 {
   int error_code = NO_ERROR;
 
@@ -12155,8 +12152,6 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
       if (pgptr == NULL)
 	{
-	  DISK_ISVALID valid;
-
 	  er_status = er_errid ();
 	  if (er_status == ER_INTERRUPTED)
 	    {

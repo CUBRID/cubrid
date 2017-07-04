@@ -163,7 +163,7 @@ static int catcls_put_or_value_into_record (THREAD_ENTRY * thread_p, OR_VALUE * 
 
 static int catcls_insert_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * root_oid);
 static int catcls_delete_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p);
-static int catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * old_value, int *uflag,
+static int catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * old_value, bool * uflag,
 				 UPDATE_INPLACE_STYLE force_in_place);
 static int catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid, OID * root_oid,
 				   OID * class_oid, HFID * hfid, HEAP_SCANCACHE * scan);
@@ -3885,7 +3885,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   OR_VALUE *attrs, *old_attrs;
   OR_VALUE *subset_p, *attr_p;
   int old_chn;
-  int uflag = false;
+  bool uflag = false;
   int i, j, k;
   int error = NO_ERROR;
 
@@ -4624,7 +4624,7 @@ exit:
  *   force_in_place(in): UPDATE_INPLACE style
  */
 static int
-catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * old_value_p, int *uflag,
+catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * old_value_p, bool * uflag,
 		      UPDATE_INPLACE_STYLE force_in_place)
 {
   OR_VALUE *subset_p = NULL, *old_subset_p = NULL;

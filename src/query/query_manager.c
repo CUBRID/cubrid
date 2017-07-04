@@ -2394,7 +2394,7 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page, LO
       pgbuf_set_dirty (thread_p, page_p, free_page);
     }
 #if defined (SERVER_MODE)
-  else if (free_page == FREE)
+  else if (free_page == (int) FREE)
     {
       assert (page_type == QMGR_MEMBUF_PAGE);
     }

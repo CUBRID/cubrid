@@ -98,7 +98,7 @@ extern LC_FIND_CLASSNAME xlocator_find_lockhint_class_oids (THREAD_ENTRY * threa
 							    const char **many_classnames, LOCK * many_locks,
 							    int *many_need_subclasses, LC_PREFETCH_FLAGS * many_flags,
 							    OID * guessed_class_oids, int *guessed_class_chns,
-							    int quit_on_errors, LC_LOCKHINT ** hlock,
+							    bool quit_on_errors, LC_LOCKHINT ** hlock,
 							    LC_COPYAREA ** fetch_area);
 extern int xlocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_area);
 extern int xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,

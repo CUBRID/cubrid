@@ -1262,7 +1262,6 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
 {
   EHASH_DIR_HEADER *dir_header_p;
   PAGE_PTR dir_page_p;
-  bool save_check_interrupt;
 
   if (ehid_p == NULL)
     {

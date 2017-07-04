@@ -177,7 +177,7 @@ struct indx_scan_id
   ATTR_ID *vstr_ids;		/* attr id array of variable string */
   int num_vstr;			/* num of variable string attrs */
   BTREE_SCAN bt_scan;		/* index scan info. structure */
-  int one_range;		/* a single range? */
+  bool one_range;		/* a single range? */
   int curr_keyno;		/* current key number */
   int curr_oidno;		/* current oid number */
   OID *curr_oidp;		/* current oid pointer */
