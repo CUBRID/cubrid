@@ -3909,6 +3909,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "schema_def";
     case PT_CONV_TZ:
       return "conv_tz";
+    case PT_JSON_CONTAINS:
+      return "json_contains";
     default:
       return "unknown opcode";
     }
@@ -10054,6 +10056,17 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " abs(");
       q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_CONTAINS:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      r3 = pt_print_bytes (parser, p->info.expr.arg3);
+
+      q = pt_append_nulstring (parser, q, " json_contains(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_POWER:
@@ -17958,6 +17971,9 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_WIDTH_BUCKET:
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.expr.arg3));
+        case PT_JSON_CONTAINS:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
 	default:
 	  return false;
 	}
@@ -18397,6 +18413,7 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
     case PT_CRC32:
+    case PT_JSON_CONTAINS:
       return true;
     case PT_TZ_OFFSET:
     default:

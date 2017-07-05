@@ -1528,6 +1528,7 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
+  PT_JSON_CONTAINS,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE

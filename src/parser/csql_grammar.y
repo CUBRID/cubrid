@@ -303,7 +303,8 @@ static FUNCTION_MAP functions[] = {
   {"utc_timestamp", PT_UTC_TIMESTAMP},
   {"crc32", PT_CRC32},
   {"schema_def", PT_SCHEMA_DEF},
-  {"conv_tz", PT_CONV_TZ}
+  {"conv_tz", PT_CONV_TZ},
+  {"json_contains", PT_JSON_CONTAINS}
 };
 
 
@@ -25252,6 +25253,17 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a1->next = NULL;
       a2->next = NULL;
       a3->next = NULL;
+
+      node = parser_make_expression (this_parser, key->op, a1, a2, a3);
+      return node;
+    case PT_JSON_CONTAINS:
+      if (c != 2)
+	return NULL;
+
+      a1 = args;
+      a2 = a1->next;
+      a1->next = NULL;
+      a2->next = NULL;
 
       node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;

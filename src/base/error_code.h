@@ -1539,7 +1539,9 @@
 #define ER_BUILDVALUE_IN_REC_CTE		    -1195
 #define ER_CTE_MAX_RECURSION_REACHED		    -1196
 
-#define ER_LAST_ERROR                               -1197
+#define ER_INVALID_JSON                             -1197
+
+#define ER_LAST_ERROR                               -1198
 
 /*
  * CAUTION!
