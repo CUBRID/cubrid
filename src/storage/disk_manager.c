@@ -1215,6 +1215,11 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       disk_log ("disk_rv_undo_format", "remove volume %d", volid);
     }
+  if (disk_Cache->perm_purpose_info.extend_info.volid_extend == volid)
+    {
+      /* no longer true */
+      disk_Cache->perm_purpose_info.extend_info.volid_extend = NULL_VOLID;
+    }
 
   ret = disk_unformat (thread_p, (char *) rcv->data);
   /* we need to remove from volume info file too... the only way is to recreate it. */
@@ -1603,6 +1608,8 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   DKNSECTS nsect_temp_extended = 0;
 #endif /* SERVER_MODE */
 
+  bool check_interrupt = thread_get_check_interrupt (thread_p);
+  bool continue_check = false;
   int error_code = NO_ERROR;
 
   /* How this works:
@@ -1664,7 +1671,9 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 
       log_sysop_start (thread_p);
 
+      (void) thread_set_check_interrupt (thread_p, false);
       error_code = disk_volume_expand (thread_p, extend_info->volid_extend, voltype, to_expand, &nsect_free_new);
+      (void) thread_set_check_interrupt (thread_p, check_interrupt);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1674,6 +1683,12 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 
       log_sysop_commit (thread_p);
       assert (nsect_free_new >= to_expand);
+
+      if (extend_info->nsect_total == extend_info->nsect_max)
+	{
+	  /* this cannot be extended any longer. make sure it's not going to be used for that. */
+	  extend_info->volid_extend = NULL_VOLID;
+	}
 
       disk_log ("disk_extend", "expanded volume %d by %d sectors for %s.", extend_info->volid_extend, nsect_free_new,
 		disk_type_to_string (extend_info->voltype));
@@ -1705,6 +1720,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 #endif /* SERVER_MODE */
 	  return NO_ERROR;
 	}
+      assert (extend_info->nsect_total == extend_info->nsect_max);
     }
   assert (nsect_extend > 0);
 
@@ -1720,6 +1736,15 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       volext.path = NULL;
       volext.name = NULL;
 
+      if (check_interrupt)
+	{
+	  if (logtb_is_interrupted (thread_p, true, &continue_check))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      return ER_INTERRUPTED;
+	    }
+	}
+
       /* set size to remaining sectors */
       volext.nsect_total = nsect_extend + DISK_SYS_NSECT_SIZE (volext.nsect_max);
       /* but size cannot exceed max */
@@ -1730,7 +1755,9 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       volext.nsect_total = DISK_SECTS_ROUND_UP (volext.nsect_total);
 
       /* add new volume */
+      (void) thread_set_check_interrupt (thread_p, false);
       error_code = disk_add_volume (thread_p, &volext, &volid_new, &nsect_free_new);
+      (void) thread_set_check_interrupt (thread_p, check_interrupt);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
