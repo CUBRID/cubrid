@@ -15051,14 +15051,21 @@ mr_index_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
 static int
 mr_data_lengthval_json (DB_VALUE * value, int disk)
 {
-    if (DB_IS_NULL (value) || value->data.json.json_body == NULL)
-      {
-      return sizeof (int);
-      } 
-    else 
-      {
-        return sizeof (int) + strlen (value->data.json.json_body);
-      }
+  if (!disk)
+    {
+    return sizeof (char *);
+    }
+  else
+    {
+      if (DB_IS_NULL (value) || value->data.json.json_body == NULL)
+        {
+          return sizeof (int);
+        }
+      else
+        {
+          return sizeof (int) + strlen (value->data.json.json_body);
+        }
+    }
 }
 
 static int
