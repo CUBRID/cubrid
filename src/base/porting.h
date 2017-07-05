@@ -458,7 +458,7 @@ extern char *stristr (const char *s, const char *find);
 #define strlen(s1)  ((int) strlen(s1))
 #define CAST_STRLEN (int)
 #define CAST_BUFLEN (int)
-#if _FILE_OFFSET_BITS == 32
+#if defined(_FILE_OFFSET_BITS) && _FILE_OFFSET_BITS == 32
 #define OFF_T_MAX  INT_MAX
 #else
 #define OFF_T_MAX  LLONG_MAX
@@ -776,7 +776,7 @@ extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 #endif //!_WIN64
 #endif //defined (WINDOWS)
 
-#if (__cplusplus < 201103)
+#if !defined(WINDOWS) && __cplusplus < 201103L
 #define static_assert(a, b)
 #endif
 

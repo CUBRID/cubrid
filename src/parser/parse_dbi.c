@@ -1579,7 +1579,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_DB_VALUE:
     case DB_TYPE_TABLE:
     case DB_TYPE_RESULTSET:
-    case DB_TYPE_ELO://vapa!!!
+    case DB_TYPE_ELO:		//vapa!!!
       break;
     }
 

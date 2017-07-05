@@ -132,7 +132,7 @@ if(MSVC)
 endif(MSVC)
 
 # Language setting
-enable_language(C CXX)
+#enable_language(C CXX)
 
 # System check
 if(UNIX)
@@ -166,7 +166,9 @@ else(UNIX)
   string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replaceIncFlag ${CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO})
   set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
   #SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
-  SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /WX /wd4820" )
+  SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
+  SET( CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} /W3" )
+  set (CMAKE_CXX_STANDARD 11)
 endif(UNIX)
 
 # check target platform

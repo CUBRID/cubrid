@@ -379,5 +379,7 @@ util_hide_password (char *arg)
     }
 
   memset (arg, '*', strlen (arg));
+#else
+  (void) arg;
 #endif /* LINUX */
 }
