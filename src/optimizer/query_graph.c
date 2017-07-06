@@ -730,7 +730,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
   env->nterms = 0;
   env->neqclasses = 0;
 
-  QO_INFINITY = infinity ();
+  QO_INFINITY = UTIL_infinity ();
 
   return env;
 

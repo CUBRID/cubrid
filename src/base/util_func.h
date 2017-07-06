@@ -32,7 +32,7 @@
 #include <math.h>
 
 #define UTIL_PID_ENVVAR_NAME         "UTIL_PID"
-#define infinity()     (HUGE_VAL)
+#define UTIL_infinity()     (HUGE_VAL)
 
 #if defined(WINDOWS)
 #define SLEEP_MILISEC(SEC, MSEC)        Sleep((SEC) * 1000 + (MSEC))
