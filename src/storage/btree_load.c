@@ -3954,7 +3954,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) ISCAN_OID_BUFFER_SIZE);
       ret = DISK_ERROR;
-      goto error;
+      goto end;
     }
 
   isid.oid_list->capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
@@ -3964,7 +3964,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
   isid.copy_buf = (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
   if (isid.copy_buf == NULL)
     {
-      goto error;
+      goto end;
     }
   isid.copy_buf_len = DBVAL_BUFSIZE;
 
@@ -3979,7 +3979,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 			 NULL, NULL, false, NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
-      goto error;
+      goto end;
     }
 
   /* Go through each leaf of the foreign key. */
@@ -3988,7 +3988,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
       curr_fk_pageptr = load_args->leaf.pgptr;
 
       load_args->leaf.pgptr =
-	pgbuf_fix (thread_p, &load_args->leaf.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	pgbuf_fix (thread_p, &load_args->leaf.vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (load_args->leaf.pgptr == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
@@ -4045,7 +4045,8 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 		  ret = ER_FK_INVALID;
 		  goto end;
 		}
-	      /* Value was found, proceed with the next one. */
+
+	      /* Value was found, proceed with the next value */
 	    }
 	  else
 	    {
@@ -4073,6 +4074,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 		    {
 		      /* We found the values are equal, go on with next step. */
 		      found_p = true;
+		      slot_id++;
 		    }
 		  else
 		    {
@@ -4099,7 +4101,8 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 		  /* Check whether the key no longer resides in the current page. If so, restart scan from top. */
 		  if (!found_p && slot_id > pk_key_cnt)
 		    {
-		      pk_leaf = NULL;
+		      pgbuf_unfix_and_init (thread_p, pk_leaf);
+		      //pk_leaf = NULL;
 		    }
 		}
 	    }
@@ -4108,7 +4111,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 
 	}
 
-      pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
+      pgbuf_unfix (thread_p, load_args->leaf.pgptr);
 
       load_args->leaf.vpid = next_vpid;
       load_args->leaf.pgptr = next_pageptr;
@@ -4136,15 +4139,25 @@ end:
 
   if (load_args->leaf.pgptr)
     {
-      pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
+      pgbuf_unfix (thread_p, load_args->leaf.pgptr);
+    }
+
+  if (first_pageptr)
+    {
+      pgbuf_unfix (thread_p, first_pageptr);
+    }
+
+  if (isid.oid_list->oidp)
+    {
+      free (isid.oid_list->oidp);
+    }
+
+  if (isid.copy_buf)
+    {
+      db_private_free_and_init (thread_p, isid.copy_buf);
     }
 
   return ret;
-
-error:
-
-  return ret;
-
 }
 
 
