@@ -3905,7 +3905,6 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
   int adv = 0;
   char *val_print = NULL;
 
-
   DB_MAKE_NULL (&fk_key);
   DB_MAKE_NULL (&pk_key);
 
@@ -3926,16 +3925,9 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 
   BTREE_INIT_SCAN (&bt_scan);
 
+  /* Dummy parameters. */
   isid.oid_list = &oid_list;
   isid.oid_list->oid_cnt = 0;
-  isid.oid_list->oidp = (OID *) malloc (ISCAN_OID_BUFFER_CAPACITY);
-  if (isid.oid_list->oidp == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) ISCAN_OID_BUFFER_SIZE);
-      ret = DISK_ERROR;
-      goto end;
-    }
-
   isid.oid_list->capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
   isid.oid_list->max_oid_cnt = isid.oid_list->capacity;
   isid.oid_list->next_list = NULL;
@@ -3952,6 +3944,14 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
   db_make_null (&key_val_range.key2);
   key_val_range.range = INF_INF;
   key_val_range.num_index_term = 0;
+
+  /* Lock the primary key class. */
+  ret = lock_object (thread_p, sort_args->fk_refcls_oid, oid_Root_class_oid, SIX_LOCK, LK_COND_LOCK);
+  if (ret != LK_GRANTED)
+    {
+      ret = er_errid ();
+      goto end;
+    }
 
   /* search index */
   if (btree_prepare_bts (thread_p, &bt_scan, sort_args->fk_refcls_pk_btid, &isid, &key_val_range, NULL, NULL,
@@ -4038,6 +4038,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 	      /* We try to resume the search in the current leaf. */
 	      while (!found_p && slot_id < pk_key_cnt)
 		{
+		  /* Try to get the value from the next slot. */
 		  ret = get_value_from_leaf_slot (thread_p, &(bt_scan.btid_int), pk_leaf, slot_id + 1, &pk_key);
 
 		  if (ret != NO_ERROR)
@@ -4046,7 +4047,6 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 		    }
 
 		  /* We need to compare the current value with the new value from the primary key. */
-
 		  ret = btree_compare_key (&pk_key, &fk_key, bt_scan.btid_int.key_type, 1, 0, NULL);
 
 		  if (ret == DB_EQ)
@@ -4081,7 +4081,6 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 		  if (!found_p && slot_id > pk_key_cnt)
 		    {
 		      pgbuf_unfix_and_init (thread_p, pk_leaf);
-		      //pk_leaf = NULL;
 		    }
 		}
 	    }
@@ -4124,11 +4123,6 @@ end:
   if (first_pageptr)
     {
       pgbuf_unfix (thread_p, first_pageptr);
-    }
-
-  if (isid.oid_list->oidp)
-    {
-      free (isid.oid_list->oidp);
     }
 
   if (isid.copy_buf)
