@@ -1154,12 +1154,27 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VOLID volid = (VOLID) rcv->offset;
   int ret = NO_ERROR;
 
-  if (volid == disk_Cache->nvols_perm - 1)
+  /* we need to undo volume create. this is logged at the start of disk_format, so we may be in one of next situations:
+   *   1. not recovery, an error must have occurred during disk_add_volume execution. it was not yet added to cache,
+   *      so all this has to do is unformat (the number of volumes will be decremented by disk_add_volume).
+   *      condition: LOG_ISRESTARTED () == true
+   *   2. recovery, but crash occurred before volume is registered in system. volume is not loaded to cache, so all
+   *      this has to do it unformat.
+   *      condition: LOG_ISRESTARTED () == false AND volid >= disk_Cache->nvols_perm
+   *   3. recovery, and crash occurred after volume was registered in system, but before completing the action. the
+   *      volume was loaded in cache during restart. we need to remove it completely from cache. volid is last in cache
+   *      in this case.
+   *      condition: LOG_ISRESTARTED () == false AND volid == disk_Cache->nvols_perm - 1
+   */
+
+  if (!LOG_ISRESTARTED () && volid == disk_Cache->nvols_perm - 1)
     {
       VPID vpid_volheader;
       PAGE_PTR page_volheader = NULL;
       DKNSECTS total = 0, max = 0;
       DKNSECTS free = 0;
+
+      /* case 3. remove volume from disk cache completely. */
 
       er_stack_push ();
 
@@ -1203,22 +1218,24 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       disk_Cache->perm_purpose_info.extend_info.nsect_total -= total;
       disk_Cache->perm_purpose_info.extend_info.nsect_max -= max;
 
+      if (disk_Cache->perm_purpose_info.extend_info.volid_extend == volid)
+	{
+	  /* no longer true */
+	  disk_Cache->perm_purpose_info.extend_info.volid_extend = NULL_VOLID;
+	}
+
       disk_log ("disk_rv_undo_format", "remove volume %d from cache (free = %d, total = %d, max = %d).",
 		volid, free, total, max);
     }
   else
     {
-      /* must be next volume that was not added yet to cache or a temporary volume */
-      assert (disk_Cache->nvols_perm <= volid);
+      /* case 1 or 2. disk cache is not updated here. */
+      assert (disk_Cache->nvols_perm <= volid || (LOG_ISRESTARTED () && (disk_Cache->nvols_perm - 1 == volid)));
       assert (disk_Cache->vols[volid].purpose == DISK_UNKNOWN_PURPOSE);
       assert (disk_Cache->vols[volid].nsect_free == 0);
+      assert (disk_Cache->perm_purpose_info.extend_info.volid_extend != volid);
 
       disk_log ("disk_rv_undo_format", "remove volume %d", volid);
-    }
-  if (disk_Cache->perm_purpose_info.extend_info.volid_extend == volid)
-    {
-      /* no longer true */
-      disk_Cache->perm_purpose_info.extend_info.volid_extend = NULL_VOLID;
     }
 
   ret = disk_unformat (thread_p, (char *) rcv->data);
@@ -2135,14 +2152,13 @@ exit:
     {
       log_sysop_abort (thread_p);
 
+      /* undo incrementing volume count. rollback won't do it. */
       if (extinfo->voltype == DB_TEMPORARY_VOLTYPE)
 	{
-	  /* undo format does not update cache on temporary volumes */
 	  disk_Cache->nvols_temp--;
 	}
-      else if (error_code == ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG || error_code == ER_DISK_UNKNOWN_PURPOSE)
+      else
 	{
-	  /* undo format is not logged, and number of volumes will not be updated. */
 	  disk_Cache->nvols_perm--;
 	}
     }
