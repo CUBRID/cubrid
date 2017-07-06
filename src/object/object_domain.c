@@ -3214,7 +3214,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_DATETIMELTZ:
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_SHORT:
-    case DB_TYPE_JSON:
+        case DB_TYPE_JSON:
 	  /* domains without parameters, return the built-in domain */
 	  domain = tp_domain_resolve_default (value_type);
 	  break;
@@ -10290,17 +10290,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       break;
     case DB_TYPE_JSON:
         switch (original_type)
-        {
-            case DB_TYPE_CHAR:
-            {
-                target->domain.general_info.type = DB_TYPE_JSON;
-                target->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (DB_GET_STRING_SIZE (src) + 1));
-                target->domain.general_info.is_null = 0;
-                strcpy (target->data.json.json_body, DB_GET_STRING (src));
-                target->need_clear = true;
-                break;
-            }
-        }
+          {
+              case DB_TYPE_CHAR:
+                {
+                    target->data.json.document = new rapidjson::Document();
+                    target->data.json.document->Parse (DB_GET_STRING (src));
+
+                    target->domain.general_info.type = DB_TYPE_JSON;
+                    target->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (DB_GET_STRING_SIZE (src) + 1));
+                    target->domain.general_info.is_null = 0;
+                    memcpy (target->data.json.json_body, DB_GET_STRING (src), DB_GET_STRING_SIZE (src));
+                    target->data.json.json_body[DB_GET_STRING_SIZE (src)] = '\0';
+
+                    target->need_clear = true;
+                    break;
+                }
+          }
         break;
     default:
       status = DOMAIN_INCOMPATIBLE;

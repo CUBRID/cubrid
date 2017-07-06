@@ -46,6 +46,7 @@
 #include "intl_support.h"
 #include "virtual_object.h"
 #include "object_template.h"
+#include "rapidjson/error/en.h"
 
 #define SET_PARSER_ERROR_AND_FREE_NODE(parser, result, default_msg_id)	      \
   do {									      \
@@ -625,19 +626,29 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->info.value.data_value.d = DB_GET_DOUBLE (val);
       break;
     case DB_TYPE_JSON:
-      length = strlen(val->data.json.json_body);
-      result->info.value.data_value.json.json_body = (char *) db_private_alloc (NULL,  (length + 1));
-      memcpy (result->info.value.data_value.json.json_body, val->data.json.json_body, length);
-      result->info.value.data_value.json.json_body[length] = '\0';
-      result->data_type = parser_new_node (parser, PT_DATA_TYPE);
-      if (result->data_type == NULL)
+      if (val->data.json.document->HasParseError ())
         {
-          parser_free_node (parser, result);
-          result = NULL;
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+                  rapidjson::GetParseError_En (val->data.json.document->GetParseError()), val->data.json.document->GetErrorOffset());
+          PT_ERRORc (parser, result, er_msg ());
+          break;
         }
       else
         {
-          result->data_type->type_enum = result->type_enum;
+          length = strlen(val->data.json.json_body);
+          result->info.value.data_value.json.json_body = (char *) db_private_alloc (NULL,  (length + 1));
+          memcpy (result->info.value.data_value.json.json_body, val->data.json.json_body, length);
+          result->info.value.data_value.json.json_body[length] = '\0';
+          result->data_type = parser_new_node (parser, PT_DATA_TYPE);
+          if (result->data_type == NULL)
+            {
+              parser_free_node (parser, result);
+              result = NULL;
+            }
+          else
+            {
+              result->data_type->type_enum = result->type_enum;
+            }
         }
       break;
     case DB_TYPE_NUMERIC:

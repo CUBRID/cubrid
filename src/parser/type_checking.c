@@ -16862,20 +16862,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_JSON_CONTAINS:
       if (!DB_IS_NULL (arg1))
         {
-          char * json_body = arg1->data.json.json_body;
           char * value = arg2->data.ch.medium.buf;
-          char * path;
-          rapidjson::Document json_obj;
-          rapidjson::ParseResult parse_result = json_obj.Parse (json_body);
           int has_member;
 
-          if (!parse_result)
-            {
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2, rapidjson::GetParseError_En(parse_result.Code()), parse_result.Offset());
-              PT_ERRORc (parser, o1, er_msg ());
-              return 0;
-            }
-          has_member = (int) json_obj.HasMember (value);
+          has_member = (int) arg1->data.json.document->HasMember (value);
           DB_MAKE_INT (result, has_member);
         }
       else

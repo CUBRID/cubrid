@@ -30,9 +30,11 @@
 #ident "$Id$"
 
 #include "config.h"
-
 #include "dbdef.h"
 
+#if defined (__cplusplus)
+  #include "rapidjson/document.h"
+#endif
 /*
  * DB_MAX_IDENTIFIER_LENGTH -
  * This constant defines the maximum length of an identifier
@@ -843,10 +845,13 @@ struct db_enumeration
   unsigned short count;		/* count of enumeration elements */
 };
 
-typedef struct db_json DB_JSON;
-struct db_json {
-    char * json_body;
-};
+#if defined (__cplusplus)
+  typedef struct db_json DB_JSON;
+  struct db_json {
+        char * json_body;
+        rapidjson::Document * document;
+  };
+#endif
 
 /* A union of all of the possible basic type values.  This is used in the
  * definition of the DB_VALUE which is the fundamental structure used
@@ -881,7 +886,9 @@ union db_data
   DB_CHAR ch;
   DB_RESULTSET rset;
   DB_ENUM_ELEMENT enumeration;
-  DB_JSON json;
+  #if defined (__cplusplus)
+    DB_JSON json;
+  #endif
 };
 
 /* This is the primary structure used for passing values in and out of

@@ -66,6 +66,7 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
+#include "rapidjson/document.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
@@ -2073,7 +2074,9 @@ pr_clear_value (DB_VALUE * value)
           if (value->need_clear)
           {
             db_private_free (NULL, value->data.json.json_body);
+            delete value->data.json.document;
             value->data.json.json_body = NULL;
+            value->data.json.document = NULL;
           }
           break;
     case DB_TYPE_OBJECT:
@@ -14835,6 +14838,7 @@ static void
 mr_initmem_json (void *mem, TP_DOMAIN * domain)
 {
   ((DB_JSON *) mem)->json_body = NULL;
+  ((DB_JSON *) mem)->document = NULL;
 }
 
 /*
@@ -14855,8 +14859,10 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     {
         int len = strlen (value->data.json.json_body);
         ((DB_JSON *) memptr)->json_body = (char *) db_private_alloc (NULL, len+1);
+        ((DB_JSON *) memptr)->document = new rapidjson::Document ();
         memcpy (((DB_JSON *) memptr)->json_body, value->data.json.json_body, len);
         ((DB_JSON *) memptr)->json_body[len] = '\0';
+        ((DB_JSON *) memptr)->document->CopyFrom(*value->data.json.document, ((DB_JSON *) memptr)->document->GetAllocator());
     }
 
   return error;
@@ -14878,7 +14884,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
       if (!copy)
 	{
-        db_make_json (value, json_obj->json_body);
+        db_make_json (value, json_obj->json_body, json_obj->document);
         value->need_clear = false;
 	}
       else
@@ -14886,6 +14892,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
         int len = strlen (json_obj->json_body);
 	  /* return it with a NULL terminator */
 	  char * new_ = (char *) db_private_alloc (NULL, len + 1);
+          rapidjson::Document * document = new rapidjson::Document ();
 	  if (new_ == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -14895,7 +14902,8 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    {
 	      memcpy (new_, value->data.json.json_body, len);
 	      new_[len] = '\0';
-	      db_make_json (value, new_);
+	      document->CopyFrom (*json_obj->document, document->GetAllocator ());
+	      db_make_json (value, new_, document);
 	      value->need_clear = true;
 	    }
 	}
@@ -14927,7 +14935,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
     }
   else if (memptr != NULL)
     {
-      DB_JSON *json_obj = (DB_JSON *) memptr;
+      DB_JSON * json_obj = (DB_JSON *) memptr;
       if (json_obj != NULL && json_obj->json_body != NULL)
 	{
 	  len = strlen (json_obj->json_body);
@@ -14968,14 +14976,15 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 static void
 mr_freemem_json (void *memptr)
 {
-  char *cur;
+  DB_JSON * cur;
 
   if (memptr != NULL)
     {
-      cur = *(char **) memptr;
+      cur = (DB_JSON *) memptr;
       if (cur != NULL)
 	{
-	  db_private_free_and_init (NULL, cur);
+	  db_private_free_and_init (NULL, cur->json_body);
+          delete cur->document;
 	}
     }
 }
@@ -14986,6 +14995,7 @@ mr_initval_json (DB_VALUE * value, int precision, int scale)
   db_value_domain_init (value, DB_TYPE_JSON, precision, scale);
   value->need_clear = false;
   value->data.json.json_body = NULL;
+  value->data.json.document = NULL;
 }
 
 static int
@@ -15009,13 +15019,16 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       if (copy)
         {
           dest->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (len + 1));
+          dest->data.json.document = new rapidjson::Document ();
           memcpy (dest->data.json.json_body, src->data.json.json_body, (size_t) len);
+          dest->data.json.document->CopyFrom (*src->data.json.document, dest->data.json.document->GetAllocator());
           dest->data.json.json_body[len] = '\0';
           dest->need_clear = true;
         }
       else
         {
           dest->data.json.json_body = src->data.json.json_body;
+          dest->data.json.document = src->data.json.document;
           dest->need_clear = false;
         }
     }
@@ -15132,6 +15145,8 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
     else
     {
       value->data.json.json_body = str;
+      value->data.json.document = new rapidjson::Document ();
+      value->data.json.document->Parse (str);
       value->domain.general_info.is_null = 0;
       value->need_clear = true;
     }
