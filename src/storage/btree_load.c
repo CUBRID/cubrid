@@ -3216,27 +3216,6 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  return SORT_ERROR_OCCURRED;
 	}
 
-      /* TODO: Remove this!! */
-      /*
-         if (sort_args->fk_refcls_oid && !OID_ISNULL (sort_args->fk_refcls_oid))
-         {
-         if (snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
-         {
-         if (btree_check_foreign_key (thread_p, &sort_args->class_ids[cur_class], &sort_args->hfids[cur_class],
-         &sort_args->cur_oid, dbvalue_ptr, sort_args->n_attrs,
-         sort_args->fk_refcls_oid, sort_args->fk_refcls_pk_btid,
-         sort_args->fk_name) != NO_ERROR)
-         {
-         if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
-         {
-         pr_clear_value (dbvalue_ptr);
-         }
-         return SORT_ERROR_OCCURRED;
-         }
-         }
-         }
-       */
-
       value_has_null = 0;	/* init */
       if (DB_IS_NULL (dbvalue_ptr) || btree_multicol_key_has_null (dbvalue_ptr))
 	{

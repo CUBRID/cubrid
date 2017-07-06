@@ -32996,20 +32996,3 @@ btree_op_type_to_string (int op_type)
       return "** UNKNOWN OP TYPE **";
     }
 }
-
-/*
-int something_something(int something)
-{
-  int error_code = NO_ERROR;
-  BTREE_FIND_UNIQUE_HELPER *find_unique_helper = NULL;
-  RECDES record;
-
-
-#if defined (SERVER_MODE)
-  bool try_cond_lock = false;
-  bool was_page_refixed = false;
-#endif
-
-  return error_code;
-}
-*/
