@@ -1231,9 +1231,11 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       /* case 1 or 2. disk cache is not updated here. */
       assert (disk_Cache->nvols_perm <= volid || (LOG_ISRESTARTED () && (disk_Cache->nvols_perm - 1 == volid)));
-      assert (disk_Cache->vols[volid].purpose == DISK_UNKNOWN_PURPOSE);
       assert (disk_Cache->vols[volid].nsect_free == 0);
       assert (disk_Cache->perm_purpose_info.extend_info.volid_extend != volid);
+
+      /* make sure purpose is reset */
+      disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
 
       disk_log ("disk_rv_undo_format", "remove volume %d", volid);
     }
