@@ -25426,8 +25426,7 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
   char *invalid_pos = NULL;
   int composed_size;
 
-  if (intl_check_string ((char *) str, str_size, &invalid_pos,
-			 LANG_SYS_CODESET) == 1)
+  if (intl_check_string ((char *) str, str_size, &invalid_pos, LANG_SYS_CODESET) == INTL_UTF8_INVALID)
     {
       PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR, -(ER_INVALID_CHAR),
 		  (invalid_pos != NULL) ? invalid_pos - str : 0);
@@ -25477,7 +25476,7 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
   char *invalid_pos = NULL;
   int composed_size;
 
-  if (intl_check_string (str, str_size, &invalid_pos, codeset) != 0)
+  if (intl_check_string (str, str_size, &invalid_pos, codeset) != INTL_UTF8_VALID)
     {
       PT_ERRORmf (parser, NULL,
 		  MSGCAT_SET_ERROR, -(ER_INVALID_CHAR),

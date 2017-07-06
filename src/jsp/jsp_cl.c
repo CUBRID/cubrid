@@ -680,7 +680,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       err = ER_SP_INVALID_TYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, name_str,
-	      (int)real_type == (int)SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
+	      (int) real_type == (int) SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
       goto error;
     }
 
@@ -2281,7 +2281,7 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
 
   size_in = strlen (val);
 
-  if (intl_check_string (val, size_in, &invalid_pos, lang_get_client_charset ()) != 0)
+  if (intl_check_string (val, size_in, &invalid_pos, lang_get_client_charset ()) != INTL_UTF8_VALID)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - val);
       return NULL;

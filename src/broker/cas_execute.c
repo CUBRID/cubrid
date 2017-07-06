@@ -3890,7 +3890,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 
 	val_size--;
 
-	if (intl_check_string (value, val_size, &invalid_pos, lang_get_client_charset ()) != 0)
+	if (intl_check_string (value, val_size, &invalid_pos, lang_get_client_charset ()) != INTL_UTF8_VALID)
 	  {
 	    char msg[12];
 	    off_t p = invalid_pos != NULL ? (invalid_pos - value) : 0;
@@ -3960,7 +3960,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 
 	val_size--;
 
-	if (intl_check_string (value, val_size, &invalid_pos, lang_get_client_charset ()) != 0)
+	if (intl_check_string (value, val_size, &invalid_pos, lang_get_client_charset ()) != INTL_UTF8_VALID)
 	  {
 	    char msg[12];
 	    off_t p = invalid_pos != NULL ? (invalid_pos - value) : 0;
