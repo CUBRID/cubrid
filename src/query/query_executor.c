@@ -612,8 +612,8 @@ static int *tranid_lfind (const int *key, const int *base, int *nmemb);
 static int bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_index, int *len_son_index,
 				int cnt);
 static DB_VALUE_COMPARE_RESULT bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1);
-static int bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
-			      int *start_colp);
+static DB_VALUE_COMPARE_RESULT bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+						  int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 						 int *start_colp, int collation);
 static void qexec_resolve_domains_on_sort_list (SORT_LIST * order_list, REGU_VARIABLE_LIST reference_regu_list);
@@ -17954,10 +17954,10 @@ bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1)
  * bf2df_str_cmpdisk () -
  *   return: DB_LT, DB_EQ, or DB_GT
  */
-static int
+static DB_VALUE_COMPARE_RESULT
 bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  int c = DB_UNK;
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
   char *str1, *str2;
   int str_length1, str1_compressed_length = 0, str1_decompressed_length = 0;
   int str_length2, str2_compressed_length = 0, str2_decompressed_length = 0;
@@ -17977,7 +17977,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
-      return (int) bf2df_str_compare ((unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2);
+      return bf2df_str_compare ((unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2);
     }
 
   assert (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
@@ -18078,7 +18078,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
       db_private_free_and_init (NULL, string2);
     }
 
-  return (int) c;
+  return c;
 
 cleanup:
   if (string1 != NULL && alloced_string1 == true)
@@ -18091,7 +18091,7 @@ cleanup:
       db_private_free_and_init (NULL, string2);
     }
 
-  return (int) DB_UNK;
+  return DB_UNK;
 }
 
 /*
