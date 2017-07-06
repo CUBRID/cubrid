@@ -457,28 +457,6 @@ struct btree_find_unique_helper
   OID locked_class_oid;		/* Locked object class OID. */
 #endif				/* SERVER_MODE */
 };
-/* BTREE_FIND_UNIQUE_HELPER static initializer. */
-#if defined (SERVER_MODE)
-#define BTREE_FIND_UNIQUE_HELPER_INITIALIZER \
-  { OID_INITIALIZER, /* oid */ \
-    OID_INITIALIZER, /* match_class_oid */ \
-    NULL_LOCK, /* lock_mode */ \
-    NULL, /* snapshot */ \
-    false, /* found_object */ \
-    PERF_UTIME_TRACKER_INITIALIZER, /* time_track */ \
-    OID_INITIALIZER, /* locked_oid */ \
-    OID_INITIALIZER /* locked_class_oid */ \
-  }
-#else	/* !SERVER_MODE */		   /* SA_MODE */
-#define BTREE_FIND_UNIQUE_HELPER_INITIALIZER \
-  { OID_INITIALIZER, /* oid */ \
-    OID_INITIALIZER, /* match_class_oid */ \
-    NULL_LOCK, /* lock_mode */ \
-    NULL, /* snapshot */ \
-    false, /* found_object */ \
-    PERF_UTIME_TRACKER_INITIALIZER /* time_track */ \
-  }
-#endif /* !SA_MODE */
 
 /* BTREE_REC_SATISFIES_SNAPSHOT_HELPER -
  * Structure used as helper for btree_record_satisfies_snapshot function.
@@ -1313,8 +1291,6 @@ static int btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR 
 static int btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R,
 			     VPID * P_vpid, VPID * Q_vpid, VPID * R_vpid, BTREE_NODE_TYPE node_type, DB_VALUE * key,
 			     BTREE_INSERT_HELPER * helper, VPID * child_vpid);
-static PAGE_PTR btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
-				  INT16 * slot_id, bool * found_p);
 static int btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS, BTREE_STATS * stat_info_p);
 static PAGE_PTR btree_find_leftmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 					  BTREE_STATS * stat_info_p);
@@ -14029,7 +14005,7 @@ exit_on_error:
  * Note: Search the B+tree index to locate the page and record that contains
  *	 the key, or would contain the key if the key was to be located.
  */
-static PAGE_PTR
+PAGE_PTR
 btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid, INT16 * slot_id,
 		  bool * found_p)
 {
@@ -33020,3 +32996,20 @@ btree_op_type_to_string (int op_type)
       return "** UNKNOWN OP TYPE **";
     }
 }
+
+/*
+int something_something(int something)
+{
+  int error_code = NO_ERROR;
+  BTREE_FIND_UNIQUE_HELPER *find_unique_helper = NULL;
+  RECDES record;
+
+
+#if defined (SERVER_MODE)
+  bool try_cond_lock = false;
+  bool was_page_refixed = false;
+#endif
+
+  return error_code;
+}
+*/

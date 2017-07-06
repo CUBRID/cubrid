@@ -30,6 +30,7 @@
 #include <assert.h>
 
 #include "btree_load.h"
+#include "btree.h"
 #include "storage_common.h"
 #include "locator_sr.h"
 #include "file_io.h"
@@ -143,6 +144,8 @@ static PAGE_PTR btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_ar
 static int btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, OID * first_oid,
 			    MVCC_REC_HEADER * p_mvcc_rec_header, LOAD_ARGS * load_args);
 static int btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *arg);
+static int get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_ptr,
+				     int slot_id, DB_VALUE * key);
 #if defined(CUBRID_DEBUG)
 static int btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args);
 #endif /* defined(CUBRID_DEBUG) */
@@ -158,6 +161,8 @@ static void list_print (const BTREE_NODE * this_list);
 #endif /* defined(CUBRID_DEBUG) */
 static int btree_pack_root_header (RECDES * Rec, BTREE_ROOT_HEADER * header, TP_DOMAIN * key_type);
 static void btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta, RECDES * recdes);
+
+static int btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void *sort_args_local);
 
 /*
  * btree_get_node_header () -
@@ -894,6 +899,13 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
       /* No need to deal with overflow pages anymore */
       load_args->ovf.pgptr = NULL;
+
+      /* Check the correctness of the foreign key, if any. */
+      if (has_fk)
+	{
+	  if (btree_check_fk_consistency (thread_p, load_args, sort_args) != NO_ERROR)
+	    goto error;
+	}
 
       /* Build the non leaf nodes of the btree; Root page id will be assigned here */
 
@@ -3204,23 +3216,26 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  return SORT_ERROR_OCCURRED;
 	}
 
-      if (sort_args->fk_refcls_oid && !OID_ISNULL (sort_args->fk_refcls_oid))
-	{
-	  if (snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
-	    {
-	      if (btree_check_foreign_key (thread_p, &sort_args->class_ids[cur_class], &sort_args->hfids[cur_class],
-					   &sort_args->cur_oid, dbvalue_ptr, sort_args->n_attrs,
-					   sort_args->fk_refcls_oid, sort_args->fk_refcls_pk_btid,
-					   sort_args->fk_name) != NO_ERROR)
-		{
-		  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
-		    {
-		      pr_clear_value (dbvalue_ptr);
-		    }
-		  return SORT_ERROR_OCCURRED;
-		}
-	    }
-	}
+      /* TODO: Remove this!! */
+      /*
+         if (sort_args->fk_refcls_oid && !OID_ISNULL (sort_args->fk_refcls_oid))
+         {
+         if (snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
+         {
+         if (btree_check_foreign_key (thread_p, &sort_args->class_ids[cur_class], &sort_args->hfids[cur_class],
+         &sort_args->cur_oid, dbvalue_ptr, sort_args->n_attrs,
+         sort_args->fk_refcls_oid, sort_args->fk_refcls_pk_btid,
+         sort_args->fk_name) != NO_ERROR)
+         {
+         if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
+         {
+         pr_clear_value (dbvalue_ptr);
+         }
+         return SORT_ERROR_OCCURRED;
+         }
+         }
+         }
+       */
 
       value_has_null = 0;	/* init */
       if (DB_IS_NULL (dbvalue_ptr) || btree_multicol_key_has_null (dbvalue_ptr))
@@ -3877,4 +3892,287 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
       return PERF_PAGE_BTREE_ROOT;
     }
   return PERF_PAGE_BTREE_ROOT;
+}
+
+static int
+btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void *sort_args_local)
+{
+  SORT_ARGS *sort_args = (SORT_ARGS *) sort_args_local;
+  LOAD_ARGS *load_args = (LOAD_ARGS *) load_args_local;
+  DB_VALUE fk_key, pk_key;
+  int error = NO_ERROR, i;
+  int fk_key_cnt, pk_key_cnt;
+  RECDES temp_recdes;
+  BTREE_NODE_HEADER *fk_header = NULL, *pk_header = NULL;
+  VPID next_vpid;
+  int ret = NO_ERROR;
+  LEAF_REC leaf_pnt;
+  int first_key_offset;
+  bool clear_last_key = false, clear_first_key = false;
+  PAGE_PTR next_pageptr = NULL, pk_leaf = NULL;
+  VPID first_vpid;
+  PAGE_PTR first_pageptr;
+  PAGE_PTR curr_fk_pageptr = NULL;
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  INDX_SCAN_ID isid;
+  BTREE_ISCAN_OID_LIST oid_list;
+  BTREE_SCAN bt_scan;
+  KEY_VAL_RANGE key_val_range;
+  int key_found = 0;
+  int search_has_started = 0;
+  int slot_id = 0;
+  VPID pk_vpid = VPID_INITIALIZER;
+  bool found_p = false;
+  int adv = 0;
+  char *val_print = NULL;
+
+
+  DB_MAKE_NULL (&fk_key);
+  DB_MAKE_NULL (&pk_key);
+
+  first_vpid = load_args->leaf.vpid;
+  first_pageptr = load_args->leaf.pgptr;
+
+  load_args->leaf.vpid = load_args->vpid_first_leaf;
+
+  /* Initialize index scan on primary key btid. */
+
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
+    {
+      return DISK_ERROR;
+    }
+
+  scan_init_index_scan (&isid, NULL, mvcc_snapshot);
+
+  BTREE_INIT_SCAN (&bt_scan);
+
+  isid.oid_list = &oid_list;
+  isid.oid_list->oid_cnt = 0;
+  isid.oid_list->oidp = (OID *) malloc (ISCAN_OID_BUFFER_CAPACITY);
+  if (isid.oid_list->oidp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) ISCAN_OID_BUFFER_SIZE);
+      ret = DISK_ERROR;
+      goto error;
+    }
+
+  isid.oid_list->capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
+  isid.oid_list->max_oid_cnt = isid.oid_list->capacity;
+  isid.oid_list->next_list = NULL;
+  /* alloc index key copy_buf */
+  isid.copy_buf = (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
+  if (isid.copy_buf == NULL)
+    {
+      goto error;
+    }
+  isid.copy_buf_len = DBVAL_BUFSIZE;
+
+  isid.check_not_vacuumed = true;
+  db_make_null (&key_val_range.key1);
+  db_make_null (&key_val_range.key2);
+  key_val_range.range = INF_INF;
+  key_val_range.num_index_term = 0;
+
+  /* search index */
+  if (btree_prepare_bts (thread_p, &bt_scan, sort_args->fk_refcls_pk_btid, &isid, &key_val_range, NULL, NULL,
+			 NULL, NULL, false, NULL) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto error;
+    }
+
+  /* Go through each leaf of the foreign key. */
+  while (!VPID_ISNULL (&(load_args->leaf.vpid)))
+    {
+      curr_fk_pageptr = load_args->leaf.pgptr;
+
+      load_args->leaf.pgptr =
+	pgbuf_fix (thread_p, &load_args->leaf.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (load_args->leaf.pgptr == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (ret);
+	  goto end;
+	}
+
+      (void) pgbuf_check_page_ptype (thread_p, load_args->leaf.pgptr, PAGE_BTREE);
+      fk_key_cnt = btree_node_number_of_keys (thread_p, load_args->leaf.pgptr);
+
+      fk_header = btree_get_node_header (thread_p, load_args->leaf.pgptr);
+      if (fk_header == NULL)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	}
+
+      next_vpid = fk_header->next_vpid;
+
+      for (i = 0; i < fk_key_cnt; i++)
+	{
+	  found_p = false;
+
+	  /* Read foreign key from record. */
+	  if (spage_get_record (thread_p, load_args->leaf.pgptr, i + 1, &temp_recdes, PEEK) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      ret = ER_FAILED;
+	      goto end;
+	    }
+
+	  ret =
+	    btree_read_record (thread_p, load_args->btid, load_args->leaf.pgptr, &temp_recdes, &fk_key, &leaf_pnt,
+			       BTREE_LEAF_NODE, &clear_first_key, &first_key_offset, PEEK_KEY_VALUE, NULL);
+
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto end;
+	    }
+
+	  /* Search through the primary key index. */
+	  if (pk_leaf == NULL)
+	    {
+	      /* No search has been initiated yet, we start from root. */
+	      pk_leaf =
+		btree_locate_key (thread_p, &(bt_scan.btid_int), &fk_key, &(bt_scan.C_vpid), &slot_id, &found_p);
+
+	      if (found_p == 0)
+		{
+		  /* Value was not found at all, it means the foreign key is invalid. */
+		  val_print = pr_valstring (&fk_key);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
+			  (val_print ? val_print : "unknown value"));
+		  ret = ER_FK_INVALID;
+		  goto end;
+		}
+	      /* Value was found, proceed with the next one. */
+	    }
+	  else
+	    {
+	      /* Get the header of the current leaf. */
+	      pk_header = btree_get_node_header (thread_p, pk_leaf);
+
+	      /* Get the number of keys in current leaf.  */
+	      pk_key_cnt = btree_node_number_of_keys (thread_p, pk_leaf);
+
+	      /* We try to resume the search in the current leaf. */
+	      while (!found_p && slot_id < pk_key_cnt)
+		{
+		  ret = get_value_from_leaf_slot (thread_p, &(bt_scan.btid_int), pk_leaf, slot_id + 1, &pk_key);
+
+		  if (ret != NO_ERROR)
+		    {
+		      goto end;
+		    }
+
+		  /* We need to compare the current value with the new value from the primary key. */
+
+		  ret = btree_compare_key (&pk_key, &fk_key, bt_scan.btid_int.key_type, 1, 0, NULL);
+
+		  if (ret == DB_EQ)
+		    {
+		      /* We found the values are equal, go on with next step. */
+		      found_p = true;
+		    }
+		  else
+		    {
+		      if (adv == 0 && ret != adv)
+			{
+			  adv = (ret == DB_LT) ? 1 : -1;
+			}
+		      else
+			{
+			  /*  Last value that was found was either greater, or lower than the current value
+			   *  from the primary key, while the new one is the other way around. Which means the value
+			   *  that we are looking for does not exist anymore.
+			   */
+			  val_print = pr_valstring (&fk_key);
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
+				  (val_print ? val_print : "unknown value"));
+			  ret = ER_FK_INVALID;
+			  goto end;
+			}
+
+		      slot_id += adv;
+		    }
+
+		  /* Check whether the key no longer resides in the current page. If so, restart scan from top. */
+		  if (!found_p && slot_id > pk_key_cnt)
+		    {
+		      pk_leaf = NULL;
+		    }
+		}
+	    }
+	  pr_clear_value (&fk_key);
+	  pr_clear_value (&pk_key);
+
+	}
+
+      pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
+
+      load_args->leaf.vpid = next_vpid;
+      load_args->leaf.pgptr = next_pageptr;
+      next_pageptr = NULL;
+
+    }
+
+  load_args->leaf.vpid = first_vpid;
+  load_args->leaf.pgptr = first_pageptr;
+end:
+
+  if (!DB_IS_NULL (&fk_key))
+    {
+      pr_clear_value (&fk_key);
+    }
+  if (!DB_IS_NULL (&pk_key))
+    {
+      pr_clear_value (&pk_key);
+    }
+
+  if (pk_leaf)
+    {
+      pgbuf_unfix_and_init (thread_p, pk_leaf);
+    }
+
+  if (load_args->leaf.pgptr)
+    {
+      pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
+    }
+
+  return ret;
+
+error:
+
+  return ret;
+
+}
+
+
+static int
+get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_ptr, int slot_id, DB_VALUE * key)
+{
+  LEAF_REC leaf;
+  bool clear_first_key = false;
+  int first_key_offset = 0;
+  RECDES record;
+  int ret = NO_ERROR;
+
+  if (spage_get_record (thread_p, leaf_ptr, slot_id + 1, &record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      ret = ER_FAILED;
+      return ret;
+    }
+
+  ret =
+    btree_read_record (thread_p, btid_int, leaf_ptr, &record, key,
+		       &leaf, BTREE_LEAF_NODE, &clear_first_key, &first_key_offset, PEEK_KEY_VALUE, NULL);
+
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ret;
+    }
+
+  return ret;
 }
