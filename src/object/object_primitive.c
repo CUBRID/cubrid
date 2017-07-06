@@ -7945,13 +7945,7 @@ mr_data_cmpdisk_set (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_set (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  DB_VALUE_COMPARE_RESULT c;
-  int setc;
-
-  setc = set_compare_order (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
-  c = MR_CMP_RETURN_CODE (setc);
-
-  return c;
+  return set_compare_order (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
 }
 
 /*
@@ -8086,13 +8080,7 @@ static DB_VALUE_COMPARE_RESULT
 mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
-  DB_VALUE_COMPARE_RESULT c;
-  int setc;
-
-  setc = set_seq_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
-  c = MR_CMP_RETURN_CODE (setc);
-
-  return c;
+  return set_seq_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
 }
 
 /*
@@ -8892,13 +8880,7 @@ mr_data_cmpdisk_vobj (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_vobj (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  DB_VALUE_COMPARE_RESULT c;
-  int vobjc;
-
-  vobjc = vobj_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
-  c = MR_CMP_RETURN_CODE (vobjc);
-
-  return c;
+  return vobj_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
 }
 
 /*

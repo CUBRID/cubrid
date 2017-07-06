@@ -10634,8 +10634,7 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
        */
       if (s1 && s2)
 	{
-	  int setc = set_compare (s1, s2, do_coercion);
-	  result = DB_INT_TO_COMPARE_RESULT (setc);
+	  result = set_compare (s1, s2, do_coercion);
 	}
       else
 	{
