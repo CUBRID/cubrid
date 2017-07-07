@@ -19416,7 +19416,7 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
     }
 
   assert_release (ret == NO_ERROR);
-  (void) thread_set_check_interrupt (thread_p, false);
+  (void) thread_set_check_interrupt (thread_p, check_interrupt);
 
   return ret;
 }
