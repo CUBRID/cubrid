@@ -1100,7 +1100,6 @@ int g_original_buffer_len;
 %token CLASS
 %token CLASSES
 %token CLOB_
-%token CLOSE
 %token COALESCE
 %token COLLATE
 %token COLUMN
@@ -1273,7 +1272,6 @@ int g_original_buffer_len;
 %token OFF_
 %token ON_
 %token ONLY
-%token OPEN
 %token OPTIMIZATION
 %token OPTION
 %token OR
@@ -1471,6 +1469,7 @@ int g_original_buffer_len;
 %token <cptr> CHARSET
 %token <cptr> CHR
 %token <cptr> CLOB_TO_CHAR
+%token <cptr> CLOSE
 %token <cptr> COLLATION
 %token <cptr> COLUMNS
 %token <cptr> COMMENT
@@ -1535,6 +1534,7 @@ int g_original_buffer_len;
 %token <cptr> NTILE
 %token <cptr> NULLS
 %token <cptr> OFFSET
+%token <cptr> OPEN
 %token <cptr> OWNER
 %token <cptr> PAGE
 %token <cptr> PARTITIONING
@@ -20300,6 +20300,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}		
+	| CLOSE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			    p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}		
 	| COLLATION
 		{{
 
@@ -20790,6 +20800,16 @@ identifier
 
 		DBG_PRINT}}
 	| OFFSET
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| OPEN
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

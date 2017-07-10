@@ -1842,8 +1842,12 @@ css_free_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENTRY * entry)
     {
       if (entry->thrd_entry)
 	{
+	  thread_lock_entry (entry->thrd_entry);
+
 	  assert (entry->thrd_entry->resume_status == THREAD_CSS_QUEUE_SUSPENDED);
-	  thread_wakeup (entry->thrd_entry, THREAD_CSS_QUEUE_RESUMED);
+	  thread_wakeup_already_had_mutex (entry->thrd_entry, THREAD_CSS_QUEUE_RESUMED);
+
+	  thread_unlock_entry (entry->thrd_entry);
 	}
 
       entry->next = conn->free_wait_queue_list;

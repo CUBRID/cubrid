@@ -754,7 +754,7 @@ uso: %1$s diagdb [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
   -o, --output-file=FILE       reindirizzare i messaggi di output a FILE; predefinito: nessuno\n\
-      --emergency              emergency restart; default: none\n\
+      --emergency              riavvio di emergenza; predefinito: nessuno\n\
   -d, --dump-type=TIPO         TIPO di dump\n\
                                -1 dump tutto\n\
                                 1 dump file tables\n\
@@ -963,8 +963,8 @@ genlocale: Genera locale shared library usando file di input LDML.\n\
 uso: %1$s genlocale [OPZIONE] [language-string]\n\
 \n\
 language-string       locale language string per quale si genera shared library.\n\
-              Se language-string no è specificato, tutte le lingue da 'cubrid_locales.txt'\n\
-              saranno trattati.\n\
+                      Se language-string no è specificato, tutte le lingue da 'cubrid_locales.txt'\n\
+                      saranno trattati.\n\
 opzioni valide:\n\
   -v, --verbose               attivare i messaggi dettagliati di stato; predefinito : non attivo\n\
   -i, --input-ldml-file       percorso di file di input LDML. Solo quando la language-string è dato.\n
@@ -979,8 +979,8 @@ dumplocale: Scarica il contenuto di locale shared library precedentemente genera
 uso: %1$s dumplocale [OPZIONE] [language-string]\n\
 \n\
 language-string       locale language string per quale si genera shared library.\n\
-              Se language-string no è specificato, tutte le lingue da 'cubrid_locales.txt'\n\
-              saranno trattati.\n\
+                      Se language-string no è specificato, tutte le lingue da 'cubrid_locales.txt'\n\
+                      saranno trattati.\n\
 opzioni valide:\n\
   -i, --input-file    path per input locale shared library (precedentemente generato).\n\
                       Può essere utilizzato solo quando il language-string non è dato.\n\
@@ -1028,8 +1028,8 @@ usage: %1$s synccolldb [OPTION] nome-database\n\
 \n\
 opzioni valide:\n\
   -c, --check-only    Controlla le collations del database con collations di sistema.\n\
-              Se la sincronizzazione di collations è necessario, il codice di errore 1 viene restituito.\n\
-              Visualizza un rapporto di collations incompatibili.\n\
+                      Se la sincronizzazione di collations è necessario, il codice di errore 1 viene restituito.\n\
+                      Visualizza un rapporto di collations incompatibili.\n\
   -f, --force-only    Aggiornamenti delle collations di database per essere lo stesso le collations di nuova configurazione del sistema.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
@@ -1111,7 +1111,7 @@ uso: %s dump_tz [OPTION]\n\
 opzioni valide:\n\
   -c, --list-countries      mostra la lista dei paesi attualmente supportati\n\
   -l, --leap-seconds        mostra la lista dei secondi bisestili\n\
-  -s, --summary         mostra una sintesi dei dati di fuso orario discarica\n\
+  -s, --summary             mostra una sintesi dei dati di fuso orario discarica\n\
   -z, --list-zones          mostra l'elenco dei fusi orari attualmente supportati\n\
   -d, --zone-id=ZONE_ID|ALL visualizzazione delle informazioni sul fuso orario disponibili correlate\n\
                             a un fuso orario con la ZONE_ID o per\n\

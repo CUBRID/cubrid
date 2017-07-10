@@ -540,6 +540,11 @@ struct file_tracker_reuse_heap_context
 typedef int (*FILE_TRACK_ITEM_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 				     int index_item, bool * stop, void *args);
 
+/* Since indexes are built with SIX_LOCK, which allows check access an immature index file.
+ * To skip checking an immature index, check it with IX_LOCK which is incompatible with SIX_LOCK.
+ */
+#define FILE_GET_TRACKER_LOCK_MODE(file_type) (((file_type) == FILE_BTREE) ? IX_LOCK : SCH_S_LOCK)
+
 /************************************************************************/
 /* End of structures, globals and macro's                               */
 /************************************************************************/
@@ -940,6 +945,8 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
       assert (fhead->n_sector_total == fhead->n_sector_full);
     }
 
+  er_stack_push ();
+
   FILE_HEADER_GET_PART_FTAB (fhead, part_table);
   if (fhead->n_sector_partial == 0)
     {
@@ -949,13 +956,14 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
   else
     {
       int part_cnt = 0;
+
       assert (!file_extdata_is_empty (part_table) || !VPID_ISNULL (&part_table->vpid_next));
+
       if (file_extdata_all_item_count (thread_p, part_table, &part_cnt) != NO_ERROR)
 	{
 	  /* thread might be interrupted; give up checking */
 	  ASSERT_ERROR ();
-	  er_clear ();
-	  return;
+	  goto exit;
 	}
       assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_partial == part_cnt);
     }
@@ -970,17 +978,22 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
       else
 	{
 	  int full_cnt = 0;
+
 	  assert (!file_extdata_is_empty (full_table) || !VPID_ISNULL (&full_table->vpid_next));
+
 	  if (file_extdata_all_item_count (thread_p, full_table, &full_cnt) != NO_ERROR)
 	    {
 	      /* thread might be interrupted; give up checking */
 	      ASSERT_ERROR ();
-	      er_clear ();
-	      return;
+	      goto exit;
 	    }
 	  assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_full == full_cnt);
 	}
     }
+
+exit:
+  /* forget any error of the function */
+  er_stack_pop ();
 #endif /* !NDEBUG */
 }
 
@@ -2659,10 +2672,8 @@ exit:
 static int
 file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count)
 {
-
   return file_extdata_apply_funcs (thread_p, extdata, file_extdata_add_item_count, count, NULL, NULL, false, NULL,
 				   NULL);
-
 }
 
 /*
@@ -9759,6 +9770,9 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
   FILE_HEADER *fhead = NULL;
   FILE_DESCRIPTORS des_new;
   int error_code = NO_ERROR;
+#if defined (SERVER_MODE)
+  bool is_dropped = false;
+#endif
 
   assert (log_check_system_op_is_started (thread_p));
 
@@ -9774,6 +9788,26 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
   /* get vfid */
   context->hfid_out->vfid.volid = item->volid;
   context->hfid_out->vfid.fileid = item->fileid;
+
+#if defined (SERVER_MODE)
+  /* we need it to check vacuum won't consider this dropped. */
+  error_code = vacuum_is_file_dropped (thread_p, &is_dropped, &context->hfid_out->vfid,
+				       logtb_get_current_mvccid (thread_p));
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      VFID_SET_NULL (&context->hfid_out->vfid);
+      return error_code;
+    }
+  if (is_dropped)
+    {
+      file_log ("file_tracker_item_reuse_heap", "can't reuse heap file %d|%d with mvccid %llu because vacuum thinks it "
+		"is dropped.\n", VFID_AS_ARGS (&context->hfid_out->vfid),
+		(unsigned long long) logtb_get_current_mvccid (thread_p));
+      VFID_SET_NULL (&context->hfid_out->vfid);
+      return NO_ERROR;
+    }
+#endif
 
   /* reuse this heap. but we need to update its descriptor first. */
   FILE_GET_HEADER_VPID (&context->hfid_out->vfid, &vpid_fhead);
@@ -10269,7 +10303,8 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     }
 
   /* try conditional lock */
-  if (lock_object (thread_p, class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK) != LK_GRANTED)
+  if (lock_object (thread_p, class_oid, oid_Root_class_oid, FILE_GET_TRACKER_LOCK_MODE (desired_type),
+		   LK_COND_LOCK) != LK_GRANTED)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CANNOT_CHECK_FILE, 5, item->volid, item->fileid,
 	      OID_AS_ARGS (class_oid));
@@ -10328,7 +10363,7 @@ file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_f
   if (!OID_ISNULL (class_oid))
     {
       /* now that we fixed tracker header page, we no longer need lock protection. */
-      lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
+      lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, FILE_GET_TRACKER_LOCK_MODE (desired_ftype), true);
       OID_SET_NULL (class_oid);
     }
 
