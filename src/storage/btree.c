@@ -5847,7 +5847,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
 		       &find_fk_object);
   if (error_code != NO_ERROR)
     {
-      assert_release (false);
+      ASSERT_ERROR ();
       return error_code;
     }
   /* Execute scan. */
