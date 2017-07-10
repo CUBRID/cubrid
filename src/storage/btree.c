@@ -1508,7 +1508,7 @@ static int btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * 
 					    bool * stop, void *args);
 
 static int btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
-static int btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
+
 static int btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, int *key_count,
 						      BTREE_NODE_HEADER ** node_header_ptr, VPID * next_vpid);
 static int btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
@@ -24169,7 +24169,7 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
  * thread_p (in)  : Thread entry.
  * bts (in/out)	  : B-tree scan helper.
  */
-static int
+int
 btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   int inc_slot;			/* Slot incremental value to advance to next key. */

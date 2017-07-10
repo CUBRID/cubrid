@@ -731,4 +731,6 @@ extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, vo
 
 extern PAGE_PTR btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
 				  INT16 * slot_id, bool * found_p);
+extern int btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
+
 #endif /* _BTREE_H_ */
