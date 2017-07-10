@@ -771,7 +771,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      pt_desired_type = p->type_enum;
 
-	      if ((int)pt_desired_type == (int)DB_TYPE_BLOB || (int)pt_desired_type == (int)DB_TYPE_CLOB)
+	      if ((int) pt_desired_type == (int) DB_TYPE_BLOB || (int) pt_desired_type == (int) DB_TYPE_CLOB)
 		{
 		  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -8986,7 +8986,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
   /* drop indexes */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_drop_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names, false,
@@ -9009,7 +9009,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
   /* add indexes */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
@@ -13172,7 +13172,7 @@ do_drop_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_list)
 
   for (constr = constr_info_list; constr != NULL; constr = constr->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constr->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
 	{
 	  error =
 	    sm_drop_constraint (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names, 0,
@@ -13213,7 +13213,7 @@ do_recreate_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_lis
 
   for (constr = constr_info_list; constr != NULL; constr = constr->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constr->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names,
@@ -14856,7 +14856,7 @@ do_save_all_indexes (MOP classmop, SM_CONSTRAINT_INFO ** saved_index_info_listpp
 
   for (c = class_->constraints; c; c = c->next)
     {
-      if ((int)c->type == (int)DB_CONSTRAINT_NOT_NULL)
+      if ((int) c->type == (int) DB_CONSTRAINT_NOT_NULL)
 	{
 	  continue;
 	}
@@ -14896,7 +14896,7 @@ do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_drop_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names, false,
@@ -14934,7 +14934,7 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,

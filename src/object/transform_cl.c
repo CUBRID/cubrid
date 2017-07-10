@@ -4334,7 +4334,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
   TF_STATUS status;
   int rc = 0;
   volatile int prop_free = 0;
-  unsigned int repid;
+  int repid;
 
   /* should we assume this ? */
   if (!tf_Metaclass_class.mc_n_variable)
@@ -4401,7 +4401,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
 	}
       else
 	{
-	  assert ((unsigned int) class_->repid == (repid & ~OR_OFFSET_SIZE_FLAG));
+	  assert (class_->repid == (repid & ~OR_OFFSET_SIZE_FLAG));
 	  class_to_disk (buf, (SM_CLASS *) class_);
 	}
 

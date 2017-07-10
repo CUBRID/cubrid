@@ -16486,7 +16486,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      contextp->sql_plan_alloc_size = size;
 	      contextp->sql_plan_text[0] = '\0';
 	    }
-	  else if (contextp->sql_plan_alloc_size - strlen (contextp->sql_plan_text) < (long)plan_len)
+	  else if (contextp->sql_plan_alloc_size - strlen (contextp->sql_plan_text) < (long) plan_len)
 	    {
 	      char *ptr;
 	      int size = (contextp->sql_plan_alloc_size + (int) plan_len) * 2;
@@ -16835,7 +16835,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 	      prev_o_num = o_num;
 	      oid_ptr = (OID *) lsearch (oid, o_list, &o_num, sizeof (OID), oid_compare);
 
-	      if (o_num > prev_o_num && (long)o_num > (*nump))
+	      if (o_num > prev_o_num && (long) o_num > (*nump))
 		{
 		  int is_class = 0;
 
@@ -17043,7 +17043,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * seria
 
   prev_o_num = o_num;
   (void) lsearch (serial_oid_p, o_list, &o_num, sizeof (OID), oid_compare);
-  if (o_num > prev_o_num && o_num > (size_t) *nump)
+  if (o_num > prev_o_num && o_num > (size_t) * nump)
     {
       *(t_list + o_num - 1) = XASL_SERIAL_OID_TCARD;	/* init #pages */
       *(lck_list + o_num - 1) = (int) NULL_LOCK;

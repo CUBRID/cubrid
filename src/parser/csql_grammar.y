@@ -1697,7 +1697,7 @@ stmt
 				pos = g_original_buffer_len;
 			      }
 
-			    g_query_string = (char*)(this_parser->original_buffer + pos);
+			    g_query_string = (char*) (this_parser->original_buffer + pos);
 			
 			    while (char_isspace (*g_query_string))
 			      {
@@ -2812,13 +2812,13 @@ create_stmt
 			    node->info.serial.start_val = CONTAINER_AT_0($6);
 			    node->info.serial.increment_val = CONTAINER_AT_1($6);
 			    node->info.serial.max_val = CONTAINER_AT_2 ($6);
-			    node->info.serial.no_max = (int)TO_NUMBER (CONTAINER_AT_3 ($6));
+			    node->info.serial.no_max = (int) TO_NUMBER (CONTAINER_AT_3 ($6));
 			    node->info.serial.min_val = CONTAINER_AT_4 ($6);
-			    node->info.serial.no_min = (int)TO_NUMBER (CONTAINER_AT_5 ($6));
-			    node->info.serial.cyclic = (int)TO_NUMBER (CONTAINER_AT_6 ($6));
-			    node->info.serial.no_cyclic = (int)TO_NUMBER (CONTAINER_AT_7 ($6));
+			    node->info.serial.no_min = (int) TO_NUMBER (CONTAINER_AT_5 ($6));
+			    node->info.serial.cyclic = (int) TO_NUMBER (CONTAINER_AT_6 ($6));
+			    node->info.serial.no_cyclic = (int) TO_NUMBER (CONTAINER_AT_7 ($6));
 			    node->info.serial.cached_num_val = CONTAINER_AT_8 ($6);
-			    node->info.serial.no_cache = (int)TO_NUMBER (CONTAINER_AT_9 ($6));
+			    node->info.serial.no_cache = (int) TO_NUMBER (CONTAINER_AT_9 ($6));
 			    node->info.serial.comment = $7;
 			  }
 

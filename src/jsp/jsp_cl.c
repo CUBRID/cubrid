@@ -117,7 +117,7 @@ static int windows_socket_startup (void);
 static void windows_socket_shutdown (void);
 #endif /* WINDOWS */
 
-static unsigned int jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
+static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static int jsp_get_argument_count (const SP_ARGS * sp_args);
 static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
@@ -603,7 +603,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   PT_NODE *sp_name, *sp_owner, *sp_comment;
   const char *name_str, *owner_str, *comment_str = NULL;
-  PT_MISC_TYPE type, real_type;
+  PT_MISC_TYPE type;
+  SP_TYPE_ENUM real_type;
   MOP sp_mop, new_owner;
   DB_VALUE user_val, sp_type_val;
   int save;
@@ -675,12 +676,12 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto error;
     }
 
-  real_type = (PT_MISC_TYPE) DB_GET_INT (&sp_type_val);
+  real_type = (SP_TYPE_ENUM) DB_GET_INT (&sp_type_val);
   if (real_type != jsp_map_pt_misc_to_sp_type (type))
     {
       err = ER_SP_INVALID_TYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, name_str,
-	      (int) real_type == (int) SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
+	      real_type == SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
       goto error;
     }
 
@@ -724,7 +725,7 @@ error:
  * Note:
  */
 
-static unsigned int
+static SP_TYPE_ENUM
 jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum)
 {
   if (pt_enum == PT_SP_PROCEDURE)
@@ -1153,7 +1154,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
 {
   MOP sp_mop, arg_mop, owner;
   DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, temp;
-  PT_MISC_TYPE real_type;
+  SP_TYPE_ENUM real_type;
   DB_SET *arg_set_p;
   int save, i, arg_cnt;
   int err;
@@ -1191,7 +1192,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
       goto error;
     }
 
-  real_type = (PT_MISC_TYPE) DB_GET_INT (&sp_type_val);
+  real_type = (SP_TYPE_ENUM) DB_GET_INT (&sp_type_val);
   if (real_type != jsp_map_pt_misc_to_sp_type (expected_type))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_TYPE, 2, name,
