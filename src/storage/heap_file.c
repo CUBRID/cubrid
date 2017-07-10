@@ -2265,6 +2265,7 @@ heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * cla
   HEAP_CLASSREPR_HASH *hash_anchor;
   OR_CLASSREP *repr = NULL;
   OR_CLASSREP *repr_from_record = NULL;
+  OR_CLASSREP *repr_last = NULL;
   REPR_ID last_reprid;
   int r;
 
@@ -2309,9 +2310,64 @@ search_begin:
 
   if (cache_entry == NULL)
     {
+      if (repr_from_record == NULL)
+	{
+	  /* note: we need to read class record from heap page. however, latching a page and holding mutex is never a
+	   *       good idea, and it can generate ugly deadlocks. but in most cases, we won't have concurrency here,
+	   *       so let's try a conditional latch on page of class. if that doesn't work, release the hash mutex,
+	   *       read representation from heap and restart the process to ensure consistency. */
+	  VPID vpid_of_class;
+	  PAGE_PTR page_of_class = NULL;
+	  VPID_GET_FROM_OID (&vpid_of_class, class_oid);
+	  page_of_class = pgbuf_fix (thread_p, &vpid_of_class, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+	  if (page_of_class == NULL)
+	    {
+	      /* we cannot hold mutex */
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	    }
+	  repr_from_record = heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, reprid);
+	  if (repr_from_record == NULL)
+	    {
+	      ASSERT_ERROR ();
+
+	      if (page_of_class != NULL)
+		{
+		  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+		  pgbuf_unfix_and_init (thread_p, page_of_class);
+		}
+	      goto exit;
+	    }
+	  if (reprid == NULL_REPRID)
+	    {
+	      reprid = last_reprid;
+	    }
+	  if (reprid != last_reprid && repr_last == NULL)
+	    {
+	      repr_last = heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, last_reprid);
+	      if (repr_last == NULL)
+		{
+		  /* can we accept this case? */
+		}
+	    }
+	  if (page_of_class == NULL)
+	    {
+	      /* hash mutex was released, we need to restart search. */
+	      goto search_begin;
+	    }
+	  else
+	    {
+	      pgbuf_unfix_and_init (thread_p, page_of_class);
+	      /* hash mutex was kept */
+	      /* fall through */
+	    }
+	}
+      assert (repr_from_record != NULL);
+      assert (last_reprid != NULL_REPRID);
+
 #ifdef SERVER_MODE
       /* class_oid was not found. Lock class_oid. heap_classrepr_lock_class () release hash_anchor->hash_lock */
-      if (heap_classrepr_lock_class (thread_p, hash_anchor, class_oid) != LOCK_ACQUIRED)
+      r = heap_classrepr_lock_class (thread_p, hash_anchor, class_oid);
+      if (r != LOCK_ACQUIRED)
 	{
 	  if (r == NEED_TO_RETRY)
 	    {
@@ -2324,15 +2380,6 @@ search_begin:
 	    }
 	}
 #endif
-
-      repr = heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, reprid);
-      if (repr == NULL)
-	{
-#ifdef SERVER_MODE
-	  (void) heap_classrepr_unlock_class (hash_anchor, class_oid, true);
-#endif
-	  goto exit;
-	}
 
       /* Get free entry */
       cache_entry = heap_classrepr_entry_alloc ();
@@ -2377,11 +2424,6 @@ search_begin:
 	  memset (cache_entry->repr, 0, cache_entry->max_reprid * sizeof (OR_CLASSREP *));
 	}
 
-      if (reprid == NULL_REPRID)
-	{
-	  reprid = last_reprid;
-	}
-
       if (reprid <= NULL_REPRID || reprid > last_reprid || reprid > cache_entry->max_reprid)
 	{
 	  assert (false);
@@ -2402,15 +2444,16 @@ search_begin:
 	  goto exit;
 	}
 
-      cache_entry->repr[reprid] = repr;
+      cache_entry->repr[reprid] = repr_from_record;
+      repr = cache_entry->repr[reprid];
+      repr_from_record = NULL;
       cache_entry->last_reprid = last_reprid;
-
       if (reprid != last_reprid)
 	{			/* if last repr is not cached */
 	  /* normally, we should not access heap record while keeping mutex in cache entry. however, this entry was not
 	   * yet attached to cache, so no one will get its mutex yet */
-	  cache_entry->repr[last_reprid] =
-	    heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, last_reprid);
+	  cache_entry->repr[last_reprid] = repr_last;
+	  repr_last = NULL;
 	}
 
       cache_entry->fcnt = 1;
@@ -2490,6 +2533,10 @@ exit:
   if (repr_from_record != NULL)
     {
       or_free_classrep (repr_from_record);
+    }
+  if (repr_last != NULL)
+    {
+      or_free_classrep (repr_last);
     }
   return repr;
 }
