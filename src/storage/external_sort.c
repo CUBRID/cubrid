@@ -1852,7 +1852,7 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
       long left_vector_size, right_vector_size;
       char **left_vector, **right_vector;
       PX_TREE_NODE *left_px_node, *right_px_node;
-      int i, j, k;		// Used in the merge logic
+      int i, j, k;		/* Used in the merge logic */
 
       assert_release (child_right > 0);
 
@@ -1863,11 +1863,8 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 
       /* do new child first */
       right_vector = vector + left_vector_size;
-      right_px_node = px_sort_assign (thread_p, sort_param, px_node->px_id + child_right, buff + left_vector_size, right_vector, right_vector_size, child_height, 0	/* px_myself: 
-																					 * set 
-																					 * as 
-																					 * root 
-																					 */ );
+      right_px_node = px_sort_assign (thread_p, sort_param, px_node->px_id + child_right, buff + left_vector_size,
+				      right_vector, right_vector_size, child_height, 0 /* px_myself: set as root */ );
       if (right_px_node == NULL)
 	{
 	  goto exit_on_error;
@@ -2257,7 +2254,6 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
       switch (status)
 	{
 	case SORT_ERROR_OCCURRED:
-	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  assert (error != NO_ERROR);
 	  goto exit_on_error;
@@ -2285,17 +2281,16 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		  pthread_mutex_unlock (&(sort_param->px_mtx));
 #endif /* SERVER_MODE */
 
-		  px_node = px_sort_assign (thread_p, sort_param, 0, index_buff, index_area, numrecs, sort_param->px_height_max, 0	/* px_myself: 
-																	 * set 
-																	 * as 
-																	 * root 
-																	 */ );
+		  px_node = px_sort_assign (thread_p, sort_param, 0, index_buff, index_area, numrecs,
+					    sort_param->px_height_max, 0 /* px_myself: set as root */ );
 		  if (px_node == NULL)
 		    {
+		      error = ER_FAILED;
 		      goto exit_on_error;
 		    }
 
-		  if (px_sort_myself (thread_p, px_node) != NO_ERROR)
+		  error = px_sort_myself (thread_p, px_node);
+		  if (error != NO_ERROR)
 		    {
 		      goto exit_on_error;
 		    }
@@ -2313,6 +2308,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 
 	      if (index_area == NULL || numrecs < 0)
 		{
+		  error = ER_FAILED;
 		  goto exit_on_error;
 		}
 
@@ -2421,7 +2417,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		    }
 		  else
 		    {
-		      assert (er_errid () != NO_ERROR);
+		      ASSERT_ERROR ();
 		      error = er_errid ();
 		    }
 
@@ -2533,11 +2529,13 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 				    0 /* px_myself: set as root */ );
 	  if (px_node == NULL)
 	    {
+	      error = ER_FAILED;
 	      goto exit_on_error;
 	    }
 
 	  if (px_sort_myself (thread_p, px_node) != NO_ERROR)
 	    {
+	      error = ER_FAILED;
 	      goto exit_on_error;
 	    }
 
@@ -2553,6 +2551,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 
       if (index_area == NULL || numrecs < 0)
 	{
+	  error = ER_FAILED;
 	  goto exit_on_error;
 	}
 
@@ -2633,9 +2632,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	      || sort_retrieve_longrec (thread_p, &temp_recdes, &long_recdes) == NULL
 	      || (*sort_param->put_fn) (thread_p, &long_recdes, sort_param->put_arg) != NO_ERROR)
 	    {
-	      assert (er_errid () != NO_ERROR);
+	      ASSERT_ERROR ();
 	      error = er_errid ();
-	      assert (error != NO_ERROR);
 	      goto exit_on_error;
 	    }
 	}
@@ -3128,9 +3126,8 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  if (sort_retrieve_longrec (thread_p, &smallest_elem_ptr[i], &long_recdes[i]) == NULL)
 		    {
-		      assert (er_errid () != NO_ERROR);
+		      ASSERT_ERROR ();
 		      error = er_errid ();
-		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
@@ -3154,11 +3151,11 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      for (p = s->next; p; p = p->next)
 		{
 		  /* compare s, p */
-		  data1 = (smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
-		    ? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data);
+		  data1 = ((smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
+			   ? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data));
 
-		  data2 = (smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-		    ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data);
+		  data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
+			   ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
 
 		  cmp = (*compare) (data1, data2, compare_arg);
 		  if (cmp > 0)
@@ -3176,11 +3173,11 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	    {
 	      p = s->next;
 
-	      data1 = (smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
-		? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data);
+	      data1 = ((smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
+		       ? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data));
 
-	      data2 = (smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-		? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data);
+	      data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
+		       ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
 
 	      cmp = (*compare) (data1, data2, compare_arg);
 	      if (cmp == 0)
@@ -3212,18 +3209,17 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  if (sort_retrieve_longrec (thread_p, &last_elem_ptr, &last_long_recdes) == NULL)
 		    {
-		      assert (er_errid () != NO_ERROR);
+		      ASSERT_ERROR ();
 		      error = er_errid ();
-		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
 
 	      /* STEP 2: compare last, p */
-	      data1 = (last_elem_ptr.type == REC_BIGONE) ? &(last_long_recdes.data) : &(last_elem_ptr.data);
+	      data1 = ((last_elem_ptr.type == REC_BIGONE) ? &(last_long_recdes.data) : &(last_elem_ptr.data));
 
-	      data2 = (smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-		? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data);
+	      data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
+		       ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
 
 	      last_elem_cmp = (*compare) (data1, data2, compare_arg);
 	    }
@@ -3432,9 +3428,8 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  if (sort_retrieve_longrec (thread_p, &smallest_elem_ptr[min], &long_recdes[min]) == NULL)
 		    {
-		      assert (er_errid () != NO_ERROR);
+		      ASSERT_ERROR ();
 		      error = er_errid ();
-		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
@@ -3467,11 +3462,11 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			}
 
 		      /* compare s, p */
-		      data1 = (smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
-			? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data);
+		      data1 = ((smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
+			       ? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data));
 
-		      data2 = (smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-			? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data);
+		      data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
+			       ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
 
 		      cmp = (*compare) (data1, data2, compare_arg);
 		      if (cmp > 0)
@@ -3519,18 +3514,18 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			    {
 			      if (sort_retrieve_longrec (thread_p, &last_elem_ptr, &last_long_recdes) == NULL)
 				{
-				  assert (er_errid () != NO_ERROR);
+				  ASSERT_ERROR ();
 				  error = er_errid ();
-				  assert (error != NO_ERROR);
 				  goto bailout;
 				}
 			    }
 
 			  /* STEP 2: compare last, p */
-			  data1 = (last_elem_ptr.type == REC_BIGONE) ? &(last_long_recdes.data) : &(last_elem_ptr.data);
+			  data1 = ((last_elem_ptr.type == REC_BIGONE)
+				   ? &(last_long_recdes.data) : &(last_elem_ptr.data));
 
-			  data2 = (smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-			    ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data);
+			  data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
+				   ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
 
 			  last_elem_cmp = (*compare) (data1, data2, compare_arg);
 			}
@@ -3909,9 +3904,8 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  if (sort_retrieve_longrec (thread_p, &smallest_elem_ptr[i], &long_recdes[i]) == NULL)
 		    {
-		      assert (er_errid () != NO_ERROR);
+		      ASSERT_ERROR ();
 		      error = er_errid ();
-		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
@@ -3931,11 +3925,11 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  do_swap = false;
 
-		  data1 = (smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
-		    ? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data);
+		  data1 = ((smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
+			   ? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data));
 
-		  data2 = (smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-		    ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data);
+		  data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
+			   ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
 
 		  cmp = (*compare) (data1, data2, compare_arg);
 		  if (cmp > 0)
@@ -3975,18 +3969,17 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  if (sort_retrieve_longrec (thread_p, &last_elem_ptr, &last_long_recdes) == NULL)
 		    {
-		      assert (er_errid () != NO_ERROR);
+		      ASSERT_ERROR ();
 		      error = er_errid ();
-		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
 
 	      /* STEP 2: compare last, p */
-	      data1 = (last_elem_ptr.type == REC_BIGONE) ? &(last_long_recdes.data) : &(last_elem_ptr.data);
+	      data1 = ((last_elem_ptr.type == REC_BIGONE) ? &(last_long_recdes.data) : &(last_elem_ptr.data));
 
-	      data2 = (smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-		? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data);
+	      data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
+		       ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
 
 	      cmp = (*compare) (data1, data2, compare_arg);
 	      if (cmp <= 0)
@@ -4190,9 +4183,8 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  if (sort_retrieve_longrec (thread_p, &smallest_elem_ptr[min], &long_recdes[min]) == NULL)
 		    {
-		      assert (er_errid () != NO_ERROR);
+		      ASSERT_ERROR ();
 		      error = er_errid ();
-		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
@@ -4216,11 +4208,11 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 		      do_swap = false;
 
-		      data1 = (smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
-			? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data);
+		      data1 = ((smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
+			       ? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data));
 
-		      data2 = (smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-			? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data);
+		      data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
+			       ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
 
 		      cmp = (*compare) (data1, data2, compare_arg);
 		      if (cmp > 0)
@@ -4263,18 +4255,18 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			    {
 			      if (sort_retrieve_longrec (thread_p, &last_elem_ptr, &last_long_recdes) == NULL)
 				{
-				  assert (er_errid () != NO_ERROR);
+				  ASSERT_ERROR ();
 				  error = er_errid ();
-				  assert (error != NO_ERROR);
 				  goto bailout;
 				}
 			    }
 
 			  /* STEP 2: compare last, p */
-			  data1 = (last_elem_ptr.type == REC_BIGONE) ? &(last_long_recdes.data) : &(last_elem_ptr.data);
+			  data1 =
+			    ((last_elem_ptr.type == REC_BIGONE) ? &(last_long_recdes.data) : &(last_elem_ptr.data));
 
-			  data2 = (smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-			    ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data);
+			  data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
+				   ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
 
 			  cmp = (*compare) (data1, data2, compare_arg);
 			  if (cmp <= 0)

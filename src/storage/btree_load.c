@@ -131,7 +131,7 @@ struct load_args
   VPID vpid_first_leaf;
 };
 
-static bool btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
+static int btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
 static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VPID * pageid,
 				    LOAD_ARGS * load_args, int node_level);
 static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls, int n_oids, int n_keys);
@@ -1129,7 +1129,7 @@ error:
  * Then it saves the last leaf page (and the last overflow page,
  * if there is one) to the disk.
  */
-static bool
+static int
 btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 {
   INT16 slotid;

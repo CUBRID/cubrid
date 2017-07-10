@@ -12727,12 +12727,12 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 {
   PT_NODE_TYPE n;
 
-  if (!p && !q)
+  if (p == NULL && q == NULL)
     {
       return 0;
     }
 
-  if (!p || !q)
+  if (p == NULL || q == NULL)
     {
       return 1;
     }
@@ -12772,12 +12772,12 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
       /* A recursive call on arg2 should work, except that we have not yet recognised common sub-path expressions
        * However, it is also sufficient and true that the left path be strictly equal and arg2's names match. That even 
        * allows us to use this very function to implement recognition of common path expressions. */
-      if (!p->info.dot.arg2 || !q->info.dot.arg2)
+      if (p->info.dot.arg2 == NULL || q->info.dot.arg2 == NULL)
 	{
 	  return 1;
 	}
 
-      if (!(p->info.dot.arg2->node_type == PT_NAME) || !(q->info.dot.arg2->node_type == PT_NAME))
+      if (p->info.dot.arg2->node_type != PT_NAME || q->info.dot.arg2->node_type != PT_NAME)
 	{
 	  return 1;
 	}
@@ -12810,12 +12810,12 @@ pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
 {
   PT_NODE_TYPE n;
 
-  if (!p && !q)
+  if (p == NULL && q == NULL)
     {
       return 0;
     }
 
-  if (!p || !q)
+  if (p == NULL || q == NULL)
     {
       return 1;
     }

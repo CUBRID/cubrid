@@ -1008,7 +1008,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
       if (num_objs > 0)
 	{
 	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &packed_desc, &received_size);
-	  assert (packed_desc_size == received_size);
+	  assert (csserror || packed_desc_size == received_size);
 	}
 
       if (csserror)

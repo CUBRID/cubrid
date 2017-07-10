@@ -9294,6 +9294,11 @@ exit_on_error:
       qexec_close_scan (thread_p, specp);
     }
 
+  if (del_lob_info_list != NULL)
+    {
+      qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
+    }
+
   if (mvcc_reev_classes != NULL)
     {
       db_private_free (thread_p, mvcc_reev_classes);
@@ -9982,6 +9987,11 @@ exit_on_error:
     {
       qexec_end_scan (thread_p, specp);
       qexec_close_scan (thread_p, specp);
+    }
+
+  if (del_lob_info_list != NULL)
+    {
+      qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
     }
 
   if (internal_classes)
@@ -11802,10 +11812,13 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (mvcc_snapshot == NULL)
 	{
-	  goto exit_on_error;
+	  GOTO_EXIT_ON_ERROR;
 	}
 
-      (void) heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, false, mvcc_snapshot);
+      if (heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, false, mvcc_snapshot) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
       scan_cache_end_needed = true;
 
       /* must choose corresponding lock_mode for scan_operation_type. 
@@ -11853,25 +11866,30 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	   * was a selector variable in the query.  we can optimize this further to pass from the compiler whether this 
 	   * check is necessary or not. */
 	  bool found = false;
+
 	  for (specp = xasl->spec_list;
 	       specp && specp->type == TARGET_CLASS && !XASL_IS_FLAGED (xasl, XASL_OBJFETCH_IGNORE_CLASSOID);
 	       specp = specp->next)
 	    {
 	      PARTITION_SPEC_TYPE *current = NULL;
+
 	      if (OID_EQ (&ACCESS_SPEC_CLS_OID (specp), &cls_oid))
 		{
 		  /* found it */
 		  break;
 		}
+
 	      if (!specp->pruned && specp->type == TARGET_CLASS)
 		{
 		  /* cls_oid might still refer to this spec through a partition. See if we already pruned this spec and 
 		   * search through partitions for the appropriate class */
 		  PARTITION_SPEC_TYPE *partition_spec = NULL;
 		  int granted;
+
 		  if (partition_prune_spec (thread_p, &xasl_state->vd, specp) != NO_ERROR)
 		    {
-		      GOTO_EXIT_ON_ERROR;
+		      status = ER_FAILED;
+		      goto wrapup;
 		    }
 		  for (partition_spec = specp->parts; partition_spec != NULL; partition_spec = partition_spec->next)
 		    {
@@ -11880,10 +11898,12 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 				       LK_UNCOND_LOCK);
 		      if (granted != LK_GRANTED)
 			{
-			  GOTO_EXIT_ON_ERROR;
+			  status = ER_FAILED;
+			  goto wrapup;
 			}
 		    }
 		}
+
 	      current = specp->parts;
 	      found = false;
 	      while (current != NULL)
@@ -12457,8 +12477,11 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 
 	      if (scan_cache_inited == false)
 		{
-		  (void) heap_scancache_start (thread_p, &scan_cache, class_hfid, class_oid, false, false,
-					       mvcc_snapshot);
+		  if (heap_scancache_start (thread_p, &scan_cache, class_hfid, class_oid, false, false,
+					    mvcc_snapshot) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 		  scan_cache_inited = true;
 		  COPY_OID (&last_cached_class_oid, class_oid);
 		}

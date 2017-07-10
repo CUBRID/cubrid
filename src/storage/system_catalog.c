@@ -4436,6 +4436,7 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
   DISK_REPR *old_repr_p = NULL;
   CLS_INFO *class_info_p = NULL;
   OID rep_dir;
+  int err;
 
   new_repr_id = (REPR_ID) or_rep_id (record_p);
   if (new_repr_id == NULL_REPRID)
@@ -4483,7 +4484,12 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
 					old_repr_p->n_variable);
 
 	  catalog_free_representation_and_init (old_repr_p);
-	  catalog_drop (thread_p, class_oid_p, current_repr_id);
+	  err = catalog_drop (thread_p, class_oid_p, current_repr_id);
+	  if (err != NO_ERROR)
+	    {
+	      orc_free_diskrep (disk_repr_p);
+	      return err;
+	    }
 	}
     }
 
@@ -5470,7 +5476,8 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
 
 	  catalog_access_info.class_oid = &partitions[i];
 	  catalog_access_info.dir_oid = &dir_oid;
-	  if (catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, S_LOCK) != NO_ERROR)
+	  error = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, S_LOCK);
+	  if (error != NO_ERROR)
 	    {
 	      goto exit_cleanup;
 	    }
@@ -5934,14 +5941,6 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * 
 
   assert (BO_IS_SERVER_RESTARTED () == true);
 
-  OID_GET_VIRTUAL_CLASS_OF_DIR_OID (catalog_access_info->class_oid, &virtual_class_dir_oid);
-  if (catalog_access_info->need_unlock == true)
-    {
-      current_lock = catalog_access_info->is_update ? X_LOCK : S_LOCK;
-      lock_unlock_object_donot_move_to_non2pl (thread_p, catalog_access_info->dir_oid, &virtual_class_dir_oid,
-					       current_lock);
-    }
-
   if (catalog_access_info->is_update == true)
     {
       if (error != NO_ERROR)
@@ -5976,6 +5975,14 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * 
 #if !defined (NDEBUG)
   assert (catalog_access_info->is_systemop_started == false);
 #endif
+
+  OID_GET_VIRTUAL_CLASS_OF_DIR_OID (catalog_access_info->class_oid, &virtual_class_dir_oid);
+  if (catalog_access_info->need_unlock == true)
+    {
+      current_lock = catalog_access_info->is_update ? X_LOCK : S_LOCK;
+      lock_unlock_object_donot_move_to_non2pl (thread_p, catalog_access_info->dir_oid, &virtual_class_dir_oid,
+					       current_lock);
+    }
 
   catalog_access_info->access_started = false;
   catalog_access_info->is_update = false;

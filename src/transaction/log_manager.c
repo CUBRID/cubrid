@@ -3864,7 +3864,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	{
 	  /* we should be doing rollback or undo recovery */
 	  assert (tdes->state == TRAN_UNACTIVE_ABORTED || tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED
-		  || (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE && is_rv_finish_postpone));
+		  || (is_rv_finish_postpone && (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
+						|| tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)));
 	}
       else if (log_record->type == LOG_SYSOP_END_LOGICAL_UNDO || log_record->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{

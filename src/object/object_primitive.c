@@ -11058,7 +11058,9 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	{
 	  dest->data.ch.info.is_max_string = true;
 	  dest->domain.general_info.is_null = 0;
+	  dest->domain.char_info.collation_id = DB_GET_STRING_COLLATION (src);
 	  dest->data.ch.medium.compressed_buf = NULL;
+	  dest->data.ch.medium.codeset = DB_GET_STRING_CODESET (src);
 	  dest->data.ch.medium.compressed_size = DB_UNCOMPRESSABLE;
 	  dest->data.ch.info.compressed_need_clear = false;
 	}

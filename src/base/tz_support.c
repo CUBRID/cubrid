@@ -46,6 +46,7 @@
 #endif
 #include "authenticate.h"
 #include "db.h"
+#include "boot_sr.h"
 
 typedef struct tz_decode_info TZ_DECODE_INFO;
 struct tz_decode_info
@@ -762,21 +763,32 @@ tz_get_session_tz_region (TZ_REGION * tz_region)
 {
   TZ_REGION *session_tz_region;
 
-#if !defined(SERVER_MODE)
+#if defined(CS_MODE)
   session_tz_region = tz_get_client_tz_region_session ();
   *tz_region = *session_tz_region;
-#else
-  session_tz_region = tz_get_server_tz_region_session ();
-  if (session_tz_region != NULL)
+#else /* SERVER or SA_MODE */
+  if (BO_IS_SERVER_RESTARTED ())
     {
-      *tz_region = *session_tz_region;
+#if defined(SERVER_MODE)
+      session_tz_region = tz_get_server_tz_region_session ();
+#else
+      session_tz_region = tz_get_client_tz_region_session ();
+#endif /* SERVER_MODE */
+      if (session_tz_region != NULL)
+	{
+	  *tz_region = *session_tz_region;
+	}
+      else
+	{
+	  /* A session could not be found with this thread, use invalid region */
+	  *tz_region = *tz_get_invalid_tz_region ();
+	}
     }
   else
     {
-      /* A session could not be found with this thread, use invalid region */
-      *tz_region = *tz_get_invalid_tz_region ();
+      *tz_region = tz_Region_system;
     }
-#endif
+#endif /* CS_MODE */
 }
 
 /*
@@ -1717,6 +1729,9 @@ tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc, const TZ_ID * tz_id, DB_
       total_offset = tz_info.offset;
       if (total_offset == TZ_INVALID_OFFSET)
 	{
+#if !defined (CS_MODE)
+	  assert (BO_IS_SERVER_RESTARTED ());
+#endif
 	  err_status = ER_TZ_INTERNAL_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 	}
@@ -3058,6 +3073,9 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool
       total_offset_sec = tz_info->offset;
       if (total_offset_sec == TZ_INVALID_OFFSET)
 	{
+#if !defined (CS_MODE)
+	  assert (BO_IS_SERVER_RESTARTED ());
+#endif
 	  err_status = ER_TZ_INTERNAL_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 	}
@@ -4121,6 +4139,9 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr, const int tzr_size, char *tzds
 
       if (tz_info.offset == TZ_INVALID_OFFSET)
 	{
+#if !defined (CS_MODE)
+	  assert (BO_IS_SERVER_RESTARTED ());
+#endif
 	  er_status = ER_TZ_INTERNAL_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
 	  return er_status;
@@ -5490,7 +5511,7 @@ set_new_zone_id (TZ_DECODE_INFO * tz_info)
   timezone_name = tz_Timezone_data.names[tz_info->zone.zone_id].name;
   tz_set_data (tz_get_new_timezone_data ());
   new_zone_id = tz_get_zone_id_by_name (timezone_name, strlen (timezone_name));
-  if (new_zone_id == (unsigned int)-1)
+  if (new_zone_id == (unsigned int) -1)
     {
       err_status = ER_TZ_INVALID_TIMEZONE;
     }

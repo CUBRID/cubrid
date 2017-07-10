@@ -637,8 +637,6 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 	value->domain.general_info.is_null = 0;
       }
       break;
-      /* TODO: The string "\377" (one character of code 255) is not a perfect representation of the maximum value of a
-       * string's domain. We should find a better way to do this. */
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->data.ch.info.style = MEDIUM_STRING;
@@ -3521,7 +3519,7 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
 DB_DOMAIN *
 db_type_to_db_domain (const DB_TYPE type)
 {
-  
+
   DB_DOMAIN *result = NULL;
 
   switch (type)

@@ -351,8 +351,8 @@ options valids:\n\
   -E, --extended-volume-path=CHEMIN    CHEMIN de répertoire des volumes d'informations complémentaires;\n\
                                        par défaut: même chemin que les volumes de base de données o\n\
                                        le chemin donné dans control-file\n\
-  -i, --control-file=FICHIER    renomme les volumes existants sur plusieurs sites écrites dans le FICHIER de contrôle; par défaut: aucun\n\
-  -d, --delete-backup           supprime les volumes de sauvegarde; par défaut: ne pas supprimer\n
+  -i, --control-file=FICHIER           renomme les volumes existants sur plusieurs sites écrites dans le FICHIER de contrôle; par défaut: aucun\n\
+  -d, --delete-backup                  supprime les volumes de sauvegarde; par défaut: ne pas supprimer\n
 
 $set 9 MSGCAT_UTIL_SET_MASTER
 11 Un processus %1$s est déjà en cours d'exécution.\n
@@ -482,24 +482,24 @@ unloaddb: Exporte des objets et des schémas de la base de données.\n\
 usage: %1$s unloaddb [OPTION] database-name\n\
 \n\
 options valids:\n\
-  -u, --user=ID               ID d'utilisateur pour l'accès à la base de données, par défaut: "dba"\n\
-  -p, --password=MOT-DE-PASSE MOT DE PASSE d'utilisateur; par défaut: aucun\n\
-  -i, --input-class-file=FICHIER   FICHIER d'entrée des noms de tables; par défaut: sauvegarde toutes les classes\n\
-      --include-reference     comprennent les tables référencées; avec l'option -i; par défaut: désactivé\n\
-      --input-class-only      comprennent seulement la classe spécifiée; avec l'option -i; par défaut: désactivé\n\
-      --lo-count=NOMBRE       NOMBRE de fichiers lo par un répertoire; par défaut: 0\n\
-      --estimated-size=NOMBRE estimation du NOMBRE des instances; par défaut: auto calculée\n\
-      --cached-pages=NOMBRE   NOMBRE de pages mises en cache; par défaut: 100\n\
-  -O, --output-path=CHEMIN    CHEMIN de répertoire de sortie, par défaut: répertoire de travail\n\
-  -s, --schema-only           sauvegarde seulement le schéma; par défaut: schéma et les objets\n\
-  -d, --data-only             sauvegarde seulement les objets; par défaut: schéma et les objets\n\
+  -u, --user=ID                   ID d'utilisateur pour l'accès à la base de données, par défaut: "dba"\n\
+  -p, --password=MOT-DE-PASSE     MOT DE PASSE d'utilisateur; par défaut: aucun\n\
+  -i, --input-class-file=FICHIER  FICHIER d'entrée des noms de tables; par défaut: sauvegarde toutes les classes\n\
+      --include-reference         comprennent les tables référencées; avec l'option -i; par défaut: désactivé\n\
+      --input-class-only          comprennent seulement la classe spécifiée; avec l'option -i; par défaut: désactivé\n\
+      --lo-count=NOMBRE           NOMBRE de fichiers lo par un répertoire; par défaut: 0\n\
+      --estimated-size=NOMBRE     estimation du NOMBRE des instances; par défaut: auto calculée\n\
+      --cached-pages=NOMBRE       NOMBRE de pages mises en cache; par défaut: 100\n\
+  -O, --output-path=CHEMIN        CHEMIN de répertoire de sortie, par défaut: répertoire de travail\n\
+  -s, --schema-only               sauvegarde seulement le schéma; par défaut: schéma et les objets\n\
+  -d, --data-only                 sauvegarde seulement les objets; par défaut: schéma et les objets\n\
       --output-prefix=PRÉFIXE     PRÉFIXE pour les fichiers de sortie, par défaut: le nom de de base de données\n\
-      --hash-file=FICHIER     FICHIER pour hachage; valeur par défaut: générer par tmpnam ()\n\
-  -v, --verbose               active les messages verbeux d'état; par défaut: désactivé\n\
-      --use-delimiter         utilise '"' dans les endroits où un identificateur commence ou se termine; par défaut: ne pas utiliser\n\
-  -S, --SA-mode               exécution en mode autonome\n\
-  -C, --CS-mode               exécution en mode client-serveur\n\
-      --datafile-per-class    créer un fichier objet pour chaque classe; par défaut: désactivé
+      --hash-file=FICHIER         FICHIER pour hachage; valeur par défaut: générer par tmpnam ()\n\
+  -v, --verbose                   active les messages verbeux d'état; par défaut: désactivé\n\
+      --use-delimiter             utilise '"' dans les endroits où un identificateur commence ou se termine; par défaut: ne pas utiliser\n\
+  -S, --SA-mode                   exécution en mode autonome\n\
+  -C, --CS-mode                   exécution en mode client-serveur\n\
+      --datafile-per-class        créer un fichier objet pour chaque classe; par défaut: désactivé
 
 
 
@@ -636,21 +636,21 @@ checkdb: Vérifier la cohérence de la base de données.\n\
 usage: %1$s checkdb [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
 options valids:\n\
-  -S, --SA-mode                exécution en mode autonome\n\
-  -C, --CS-mode                exécution en mode client-serveur\n\
-  -r, --repair                 répare quand incohérence est trouvée\n\
+  -S, --SA-mode                   exécution en mode autonome\n\
+  -C, --CS-mode                   exécution en mode client-serveur\n\
+  -r, --repair                    répare quand incohérence est trouvée\n\
   -i, --input-class-file=FICHIER  FICHIER d'entrée des noms de classe\n\
-                               par défaut: vérifier toutes les classes\
-  -I, --index-name             nom de l'index qui ne sera vérifié que\n\
-                               par défaut: vérifier tous les indices\n\
-      --check-prev-link        vérifier uniquement les liens précédents des indices\n\
-      --repair-prev-link       réparer les chaînes précédentes indices\n\
-      --check-file-tracker     vérifiez toutes les pages attribuées au fichier\n\
-      --check-heap             vérifiez toutes les pages des fichiers HEAP\n\
-      --check-catalog          vérifier la cohérence du catalogue\n\
-      --check-btree            vérifiez tous les indices btree\n\
-      --check-class-name       vérifier la cohérence des noms de classe\n\
-      --check-btree-entries    vérifiez les entrées de la cohérence de btree\n
+                                  par défaut: vérifier toutes les classes\
+  -I, --index-name                nom de l'index qui ne sera vérifié que\n\
+                                  par défaut: vérifier tous les indices\n\
+      --check-prev-link           vérifier uniquement les liens précédents des indices\n\
+      --repair-prev-link          réparer les chaînes précédentes indices\n\
+      --check-file-tracker        vérifiez toutes les pages attribuées au fichier\n\
+      --check-heap                vérifiez toutes les pages des fichiers HEAP\n\
+      --check-catalog             vérifier la cohérence du catalogue\n\
+      --check-btree               vérifiez tous les indices btree\n\
+      --check-class-name          vérifier la cohérence des noms de classe\n\
+      --check-btree-entries       vérifiez les entrées de la cohérence de btree\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
@@ -757,18 +757,18 @@ usage: %1$s diagdb [OPTION] database-name\n\
 \n\
 options valids:\n\
   -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n\
-      --emergency              emergency restart; default: none\n\
-  -d, --dump-type=TYPE         TYPE de sauvegarde\n\
-                               -1 sauvegarde tout\n\
-                                1 sauvegarde les tables\n\
-                                2 sauvegarde capacités des fichiers\n\
-                                3 sauvegarde capacités des tas\n\
-                                4 sauvegarde capacités des indexes\n\
-                                5 sauvegarde noms des classes\n\
-                                6 sauvegarde bitmaps du disque\n\
-                                7 sauvegarde catalogue\n\
-                                8 sauvegarde journal\n\
-                                9 sauvegarde tas\n
+      --emergency             redémarrage d'urgence; par défaut: aucun\n\
+  -d, --dump-type=TYPE        TYPE de sauvegarde\n\
+                              -1 sauvegarde tout\n\
+                               1 sauvegarde les tables\n\
+                               2 sauvegarde capacités des fichiers\n\
+                               3 sauvegarde capacités des tas\n\
+                               4 sauvegarde capacités des indexes\n\
+                               5 sauvegarde noms des classes\n\
+                               6 sauvegarde bitmaps du disque\n\
+                               7 sauvegarde catalogue\n\
+                               8 sauvegarde journal\n\
+                               9 sauvegarde tas\n
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
@@ -949,7 +949,7 @@ options valids:\n\
   -L, --copied-log-path=CHEMIN  CHEMIN de volumes du journal copiés; affiche les informations du journal copié\n\
   -p, --page=ID                 id de page; par défaut : 0\n\
   -v, --verbose                 active les messages verbeux d'état; par défaut: désactivé\n\
-  -i, --interval=S            print information every S secs\n
+  -i, --interval=S              print information every S secs\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb ne peut pas fonctionner en mode autonome.\n
@@ -966,8 +966,8 @@ genlocale: Génère bibliothèque partagée locale à l'aide du fichier(s) d'ent
 usage: %1$s genlocale [OPTION] [language-string]\n\
 \n\
 language-string       chaîne de paramètres régionaux pour laquelle générer la bibliothèque partagée.\n\
-              Si aucune chaîne de paramètres régionaux est donné, toutes les langues dans\n\
-              'cubrid_locales.txt' seront traitées.\n\
+                      Si aucune chaîne de paramètres régionaux est donné, toutes les langues dans\n\
+                      'cubrid_locales.txt' seront traitées.\n\
 options valids:\n\
   -v, --verbose            active les messages verbeux d'état; par défaut: désactivé\n\
   -i, --input-ldml-file    chemin de fichier LDML d'entrée. Valide seulement lorsque le\n\
@@ -1038,8 +1038,8 @@ usage: %1$s synccolldb [OPTION] database-name\n\
 \n\
 options valides:\n\
   -c, --check-only    Vérifie les classements des bases de données avec collation du système.\n\
-              Si la synchronisation des classements est nécessaire, code d'erreur 1 est retourné.\n\
-              Affiche un rapport des classements incompatibles.\n\
+                      Si la synchronisation des classements est nécessaire, code d'erreur 1 est retourné.\n\
+                      Affiche un rapport des classements incompatibles.\n\
   -f, --force-only    Mises à jour des classements dans les bases de données d'être les mêmes que les classements de sytem nouvelle configuration.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
@@ -1092,13 +1092,13 @@ usage: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 options valides:\n\
   -i, --input-folder    chemin d'accès à un dossier d'entrée contenant une version des\n\
-            fichiers du base de données d'IANA pour les fuseaux horaires.\n\
-            Valeur par défaut: $CUBRID/timezones/tzdata\n\
+                        fichiers du base de données d'IANA pour les fuseaux horaires.\n\
+                        Valeur par défaut: $CUBRID/timezones/tzdata\n\
   -g, --gen-mode=TYPE   contrôle la sortie de gen_tz, en se basant sur le TYPE:\n\
             TYPE:\n\
             1. NEW (par défaut): générer les fichiers source de fuseau(x) horaire(s)\n\
-            pour la bibliothèque partagée, sans tenir compte de versions précédentes;\n\
-            également générer un fichier source contenant tous les noms des pays\n\
+                        pour la bibliothèque partagée, sans tenir compte de versions précédentes;\n\
+                        également générer un fichier source contenant tous les noms des pays\n\
                         et des fuseaux horaires (destiné pour l'usage du développeur,\n\
                         à être intégré dans une future version de CUBRID).\n\
             2. EXTEND : Générer un fichier source de timezone en utilisant le données\n\
@@ -1110,7 +1110,7 @@ options valides:\n\
                         sont récupérées à partir de la bibliothèque de timezone existante.\n\
                         Si la première phase d'extension ne permet pas de rendre toutes\n\
                         les données compatibles avec l'arrière, toutes les lignes de toutes\n\
-                        les tables ayant des types de données avec timezone seront mises à jour.
+                        les tables ayant des types de données avec timezone seront mises à jour.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 L'ID du fuseau indiqué n'est pas compris dans la plage admissible. Utilisez -z pour voir tous\n\
@@ -1122,12 +1122,12 @@ usage: %s dump_tz [OPTION]\n\
 options valides:\n\
   -c, --list-countries      montre la liste des pays actuellement supportées\n\
   -l, --leap-seconds        montre la liste des secondes bissextiles\n\
-  -s, --summary         montre un récapitulatif de données fuseau horaire\n\
-  -z, --list-zones      montre la liste des fuseaux horaires actuellement supportées\n\
+  -s, --summary             montre un récapitulatif de données fuseau horaire\n\
+  -z, --list-zones          montre la liste des fuseaux horaires actuellement supportées\n\
   -d, --zone-id=ZONE_ID|ALL montre les informations disponibles relatives au fuseau horaire\n\
-                ayant le fourni ZONE_ID ou pour tous les fuseaux horaires. L'ID\n\
-                d'un fuseau horaire peut être obtenu à partir de la liste laquelle\n\
-                s'affiche à l'aide de l'option -z.\n
+                            ayant le fourni ZONE_ID ou pour tous les fuseaux horaires. L'ID\n\
+                            d'un fuseau horaire peut être obtenu à partir de la liste laquelle\n\
+                            s'affiche à l'aide de l'option -z.\n
 
 $set 53 MSGCAT_UTIL_SET_RESTORESLAVE
 20 Restauration d'esclave a été annulée ou un erreur est survenu.\n
