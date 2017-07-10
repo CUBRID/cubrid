@@ -5639,13 +5639,13 @@ btree_generate_prefix_domain (BTID_INT * btid)
  *
  * Note: This captures the interesting header info into the BTID_INT structure.
  */
-int
+DISK_ISVALID
 btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid)
 {
-  int rc;
+  DISK_ISVALID rc;
   OR_BUF buf;
 
-  rc = NO_ERROR;
+  rc = DISK_VALID;
 
   btid->unique_pk = root_header->unique_pk;
 
@@ -7564,7 +7564,7 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
 
   btid_int.sys_btid = btid;
   valid = btree_glean_root_header_info (thread_p, root_header, &btid_int);
-  if (valid != NO_ERROR)
+  if (valid != DISK_VALID)
     {
       goto error;
     }
