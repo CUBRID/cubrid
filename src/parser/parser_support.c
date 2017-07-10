@@ -10080,7 +10080,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
 			   LANG_SYS_COLLATION, NULL);
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
-  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (const DB_C_CHAR)"", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);//vapa!!!
+  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (const DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);	//vapa!!!
 
   for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)
     {
@@ -11785,7 +11785,7 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
       return ER_FAILED;
     }
   count = or_packed_domain_size (domain, 0);
-  if (count > (int)DB_ENUM_ELEMENTS_MAX_AGG_SIZE)
+  if (count > (int) DB_ENUM_ELEMENTS_MAX_AGG_SIZE)
     {
       PT_ERRORm (parser, dt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ENUM_AGG_STRINGS_SIZE_TOO_LARGE);
       err = ER_FAILED;

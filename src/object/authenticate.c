@@ -4487,13 +4487,15 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		  if (ins_bits)
 		    {
 		      error =
-			au_insert_new_auth (Au_user, user, class_mop, ins_bits, (grant_option) ? ins_bits : DB_AUTH_NONE);
+			au_insert_new_auth (Au_user, user, class_mop, ins_bits,
+					    (grant_option) ? ins_bits : DB_AUTH_NONE);
 		    }
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
 		      error =
-			au_update_new_auth (Au_user, user, class_mop, upd_bits, (grant_option) ? upd_bits : DB_AUTH_NONE);
+			au_update_new_auth (Au_user, user, class_mop, upd_bits,
+					    (grant_option) ? upd_bits : DB_AUTH_NONE);
 		    }
 		}
 

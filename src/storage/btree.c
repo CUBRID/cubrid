@@ -7563,9 +7563,9 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
     }
 
   btid_int.sys_btid = btid;
-  valid = btree_glean_root_header_info (thread_p, root_header, &btid_int);
-  if (valid != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
     {
+      valid = DISK_ERROR;
       goto error;
     }
 

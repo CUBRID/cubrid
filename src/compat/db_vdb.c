@@ -1365,8 +1365,8 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
 	      /* the type of result of some command is integer */
 	      qtype->db_type = DB_TYPE_INTEGER;
 	      break;
-            default://vapa!!!
-              break;
+	    default:
+	      break;
 	    }
 	}
     }

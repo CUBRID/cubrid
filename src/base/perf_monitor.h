@@ -817,6 +817,7 @@ extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
 #ifdef __cplusplus
+/* TODO: it looks ugly now, but it should be fixed with stat tool patch */
 
 /*
  *  Add/set stats section.
@@ -1260,7 +1261,7 @@ perfmon_is_perf_tracking_force (bool always_collect)
   return pstat_Global.initialized && (always_collect || pstat_Global.n_watchers > 0);
 }
 
-#endif//__cplusplus
+#endif /* __cplusplus */
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
@@ -1275,7 +1276,6 @@ struct perfmon_client_stat_info
   UINT64 *old_global_stats;
   UINT64 *current_global_stats;
 };
-
 
 extern bool perfmon_Iscollecting_stats;
 
