@@ -1894,9 +1894,9 @@ pthread_create (pthread_t * thread, const pthread_attr_t * attr,
 }
 
 void
-pthread_exit (void *ptr)
+pthread_exit (THREAD_RET_T ptr)
 {
-  _endthreadex ((unsigned int) reinterpret_cast < unsigned long long >(ptr));	//vapa!!!
+  _endthreadex (ptr);
 }
 
 pthread_t
