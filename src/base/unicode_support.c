@@ -1205,7 +1205,7 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
 
       cp = intl_utf8_to_cp ((unsigned char *) str_cursor, remaining_bytes, (unsigned char **) &str_next);
 
-      first_cp_size = (int) (str_next - str_cursor);
+      first_cp_size = CAST_STRLEN (str_next - str_cursor);
       remaining_bytes -= first_cp_size;
 
       match_found = false;
@@ -1243,7 +1243,7 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
     match_not_found:
       if (!match_found)
 	{
-	  byte_count = (int) (str_next - str_cursor);
+	  byte_count = CAST_STRLEN (str_next - str_cursor);
 	  memcpy (&(composed_str[composed_index]), str_cursor, byte_count);
 	  composed_index += byte_count;
 	  str_cursor += byte_count;
@@ -1314,8 +1314,8 @@ unicode_string_need_decompose (char *str_in, const int size_in, int *decomp_size
   src_end = str_in + size_in;
   while (src_cursor < src_end)
     {
-      cp = intl_utf8_to_cp ((unsigned char *) src_cursor, (int) (src_end - src_cursor), (unsigned char **) &next);
-      bytes_read = (int) (next - src_cursor);
+      cp = intl_utf8_to_cp ((unsigned char *) src_cursor, CAST_STRLEN (src_end - src_cursor), (unsigned char **) &next);
+      bytes_read = CAST_STRLEN (next - src_cursor);
 
       decomp_index = (cp < MAX_UNICODE_CHARS) ? norm->list_full_decomp[cp] : -1;
       if (decomp_index > -1)
@@ -1381,8 +1381,8 @@ unicode_decompose_string (char *str_in, const int size_in, char *str_out, int *s
   src_end = str_in + size_in;
   while (src_cursor < src_end)
     {
-      cp = intl_utf8_to_cp ((unsigned char *) src_cursor, (int) (src_end - src_cursor), (unsigned char **) &next);
-      bytes_read = (int) (next - src_cursor);
+      cp = intl_utf8_to_cp ((unsigned char *) src_cursor, CAST_STRLEN (src_end - src_cursor), (unsigned char **) &next);
+      bytes_read = CAST_STRLEN (next - src_cursor);
       decomp_index = (cp < MAX_UNICODE_CHARS) ? norm->list_full_decomp[cp] : -1;
       if (decomp_index > -1)
 	{
@@ -1397,7 +1397,7 @@ unicode_decompose_string (char *str_in, const int size_in, char *str_out, int *s
       src_cursor = next;
     }
 
-  *size_out = (int) (dest_cursor - str_out);
+  *size_out = CAST_STRLEN (dest_cursor - str_out);
 }
 #endif /* SERVER_MODE */
 /*

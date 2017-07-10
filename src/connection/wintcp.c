@@ -834,6 +834,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       hp = gethostbyname (host);
       if (hp == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
 	  return ER_CSS_WINSOCK_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);

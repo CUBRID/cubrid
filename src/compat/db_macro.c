@@ -3519,7 +3519,6 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
 DB_DOMAIN *
 db_type_to_db_domain (const DB_TYPE type)
 {
-
   DB_DOMAIN *result = NULL;
 
   switch (type)

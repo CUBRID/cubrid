@@ -63,8 +63,8 @@
                                       ? true : false )
 
 #define DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
-                                    ( ((int)(c) == (int)DB_CONSTRAINT_REVERSE_UNIQUE  || \
-                                       (int)(c) == (int)DB_CONSTRAINT_REVERSE_INDEX)     \
+                                    ( ((DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_UNIQUE  || \
+                                       (DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_INDEX)     \
                                       ? true : false )
 
 #define DB_IS_CONSTRAINT_FAMILY(c) \
@@ -366,7 +366,7 @@ typedef struct sm_class_constraint DB_CONSTRAINT;
 typedef struct sm_function_index_info DB_FUNCTION_INDEX_INFO;
 
 
-/* Types of constraints that may be applied to applibutes.  This type
+/* Types of constraints that may be applied to attributes.  This type
    is used by the db_add_constraint()/db_drop_constraint() API functions. */
 typedef enum
 {
@@ -378,7 +378,7 @@ typedef enum
   DB_CONSTRAINT_REVERSE_INDEX = 4,
   DB_CONSTRAINT_PRIMARY_KEY = 5,
   DB_CONSTRAINT_FOREIGN_KEY = 6
-} DB_CONSTRAINT_TYPE;
+} DB_CONSTRAINT_TYPE;		/* TODO: only one enum for DB_CONSTRAINT_TYPE and SM_CONSTRAINT_TYPE */
 
 typedef enum
 {

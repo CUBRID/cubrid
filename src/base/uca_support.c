@@ -1119,9 +1119,8 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 
 	  while (tailor_next < tailor_end)
 	    {
-	      unsigned int tailor_cp = intl_utf8_to_cp (tailor_curr,
-							(int) (tailor_end - tailor_curr),
-							&tailor_next);
+	      unsigned int tailor_cp =
+		intl_utf8_to_cp (tailor_curr, CAST_STRLEN (tailor_end - tailor_curr), &tailor_next);
 
 	      assert (lc->tail_coll.sett_max_cp >= 0);
 	      if (tailor_cp >= (unsigned int) lc->tail_coll.sett_max_cp)
