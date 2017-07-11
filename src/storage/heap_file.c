@@ -7233,7 +7233,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
    * valid cached object.
    */
 
-  if (ispeeking == true)
+  if (ispeeking == PEEK)
     {
       scan = spage_get_record (thread_p, pgptr, slotid, recdes, PEEK);
       if (scan != S_SUCCESS)

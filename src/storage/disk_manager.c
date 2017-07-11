@@ -5954,7 +5954,7 @@ STATIC_INLINE bool
 disk_compatible_type_and_purpose (DB_VOLTYPE type, DB_VOLPURPOSE purpose)
 {
   /* temporary type with permanent purpose is not compatible */
-  return type == DB_PERMANENT_VOLTYPE || (int) purpose == (int) DB_TEMPORARY_VOLTYPE;
+  return type == DB_PERMANENT_VOLTYPE || purpose == DB_TEMPORARY_DATA_PURPOSE;
 }
 
 /*
