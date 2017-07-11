@@ -11535,17 +11535,14 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tfirst log page id : %lld\n", (long long int) log_Gl.hdr.fpageid);
 
-  fprintf (outfp, "\tcurrent log append lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.append_lsa.pageid,
-	   (long long) log_Gl.hdr.append_lsa.offset);
+  fprintf (outfp, "\tcurrent log append lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 
-  fprintf (outfp, "\tlast log append lsa : (%lld, %lld)\n", (long long int) log_Gl.append.prev_lsa.pageid,
-	   (long long) log_Gl.append.prev_lsa.offset);
+  fprintf (outfp, "\tlast log append lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.append.prev_lsa));
 
-  fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld, %lld)\n",
-	   (long long int) log_Gl.append.nxio_lsa.pageid, (long long) log_Gl.append.nxio_lsa.offset);
+  fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld|%d)\n",
+	   LSA_AS_ARGS (&log_Gl.append.nxio_lsa));
 
-  fprintf (outfp, "\tcheckpoint lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.chkpt_lsa.pageid,
-	   (long long) log_Gl.hdr.chkpt_lsa.offset);
+  fprintf (outfp, "\tcheckpoint lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa));
 
   fprintf (outfp, "\tnext archive page id : %lld\n", (long long int) log_Gl.hdr.nxarv_pageid);
 
@@ -11557,17 +11554,13 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tlast archive number deleted : %d\n", log_Gl.hdr.last_deleted_arv_num);
 
-  fprintf (outfp, "\tbackup level 0 lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.bkup_level0_lsa.pageid,
-	   (long long) log_Gl.hdr.bkup_level0_lsa.offset);
+  fprintf (outfp, "\tbackup level 0 lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.bkup_level0_lsa));
 
-  fprintf (outfp, "\tbackup level 1 lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.bkup_level1_lsa.pageid,
-	   (long long) log_Gl.hdr.bkup_level1_lsa.offset);
+  fprintf (outfp, "\tbackup level 1 lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.bkup_level1_lsa));
 
-  fprintf (outfp, "\tbackup level 2 lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.bkup_level2_lsa.pageid,
-	   (long long) log_Gl.hdr.bkup_level2_lsa.offset);
+  fprintf (outfp, "\tbackup level 2 lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.bkup_level2_lsa));
 
-  fprintf (outfp, "\tMVCC op lsa : (%lld, %lld)\n", (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid,
-	   (long long) log_Gl.hdr.mvcc_op_log_lsa.offset);
+  fprintf (outfp, "\tMVCC op lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
   fprintf (outfp, "\tLast block oldest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.last_block_oldest_mvccid);
 

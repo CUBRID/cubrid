@@ -1771,9 +1771,8 @@ locator_print_class_name (FILE * outfp, const void *key, void *ent, void *args)
 	  str_action = "UNKNOWN";
 	  break;
 	}
-      fprintf (outfp, "           action = %s, OID = %d|%d|%d, Save_Lsa = %lld|%lld\n", str_action, action->oid.volid,
-	       action->oid.pageid, action->oid.slotid, (long long int) action->savep_lsa.pageid,
-	       (long long) action->savep_lsa.offset);
+      fprintf (outfp, "           action = %s, OID = %d|%d|%d, Save_Lsa = %lld|%d\n", str_action, action->oid.volid,
+	       action->oid.pageid, action->oid.slotid, LSA_AS_ARGS (&action->savep_lsa));
       action = action->prev;
     }
 

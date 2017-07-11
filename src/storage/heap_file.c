@@ -7675,8 +7675,8 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
    * keep the page latched while the recdes don't go out of scope. If ispeeking is COPY, we must have a preallocated
    * area to copy to. This means either scan_cache is not NULL (and scan_cache->area can be used) or recdes->data is 
    * not NULL (and recdes->area_size defines how much can be copied). */
-  assert ((context->ispeeking == true)
-	  || (context->ispeeking == false && (scan_cache_p != NULL || context->recdes_p->data != NULL)));
+  assert ((context->ispeeking == PEEK)
+	  || (context->ispeeking == COPY && (scan_cache_p != NULL || context->recdes_p->data != NULL)));
 
   switch (context->record_type)
     {
@@ -7693,7 +7693,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
       return spage_get_record (thread_p, context->fwd_page_watcher.pgptr, context->forward_oid.slotid,
 			       context->recdes_p, COPY);
     case REC_BIGONE:
-      return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking == true, &context->forward_oid,
+      return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking, &context->forward_oid,
 				      context->recdes_p);
     case REC_HOME:
       if (scan_cache_p != NULL && context->ispeeking == COPY && context->recdes_p->data == NULL

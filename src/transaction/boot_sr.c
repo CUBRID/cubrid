@@ -2012,7 +2012,10 @@ boot_make_session_server_key (void)
   memcpy (boot_Server_session_key, &t, sizeof (UINT32));
   int err = css_hostname_to_ip (boot_Host_name, ip);
   if (err != NO_ERROR)
-    return err;
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
   boot_Server_session_key[4] = ip[0];
   boot_Server_session_key[5] = ip[1];
   boot_Server_session_key[6] = ip[2];
@@ -2180,8 +2183,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   boot_Host_name[MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
 
   COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), db->pathname, db_name);
-  if (boot_make_session_server_key () != NO_ERROR)
+  error_code = boot_make_session_server_key ();
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 

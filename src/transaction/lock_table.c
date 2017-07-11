@@ -28,10 +28,6 @@
 
 #include "storage_common.h"
 
-#ifndef DB_NA
-#define DB_NA           2
-#endif
-
 /*
  *
  *                       LOCK COMPATIBILITY TABLE
