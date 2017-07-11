@@ -2394,6 +2394,11 @@ search_begin:
 	  (void) heap_classrepr_unlock_class (hash_anchor, class_oid, true);
 #endif
 
+	  if (repr_last != NULL)
+	    {
+	      or_free_classrep (repr_last);
+	    }
+
 	  /* return disk repr when repr cache is full */
 	  return repr_from_record;
 	}
