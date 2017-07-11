@@ -18567,7 +18567,6 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
   if (dom_type == DB_TYPE_MIDXKEY)
     {
       /* safe code */
-      int midxc;
       if (key1_type != DB_TYPE_MIDXKEY)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (key1_type),
@@ -18583,10 +18582,8 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
-      midxc =
-	pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
-			    &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
-      c = DB_INT_TO_COMPARE_RESULT (midxc);	/* fixme(rem) */
+      c = pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
+			      &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc)
