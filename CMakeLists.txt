@@ -1129,3 +1129,10 @@ if(WIN32)
 endif(WIN32)
 
 include(CPack)
+
+include(ExternalProject)
+set(EXTERNAL_INSTALL_LOCATION ${CMAKE_BINARY_DIR}/external)
+ExternalProject_Add(rapidjson
+URL https://github.com/miloyip/rapidjson/archive/version1.1.0.zip
+CMAKE_ARGS -DCMAKE_PREFIX:STRING=${EXTERNAL_INSTALL_LOCATION}
+)
