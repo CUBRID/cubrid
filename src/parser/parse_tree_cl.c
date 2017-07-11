@@ -4010,6 +4010,10 @@ pt_show_function (FUNC_TYPE c)
       return "insert";
     case F_ELT:
       return "elt";
+    case F_JSON_OBJECT:
+      return "json_object";
+    case F_JSON_ARRAY:
+      return "json_array";
     default:
       return "unknown function";
     }

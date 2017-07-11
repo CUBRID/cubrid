@@ -90,7 +90,7 @@ typedef enum
 
 /* "normal" functions, arguments are values */
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
-  F_INSERT_SUBSTRING, F_ELT,
+  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY,
 
 /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
   PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
@@ -470,7 +470,8 @@ typedef enum
   T_CURRENT_TIMESTAMP,
   T_CURRENT_DATE,
   T_CURRENT_TIME,
-  T_CONV_TZ
+  T_CONV_TZ,
+  T_JSON_CONTAINS
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

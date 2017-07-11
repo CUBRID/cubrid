@@ -201,6 +201,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TIMEDIFF:
     case T_CURRENT_VALUE:
     case T_CHR:
+    case T_JSON_CONTAINS:
       /* fetch lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
@@ -2618,6 +2619,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       break;
 
+    case T_JSON_CONTAINS:
+      if (qdata_json_contains_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+      break;
+
     case T_CONCAT:
       if (arithptr->rightptr != NULL)
 	{
@@ -4032,6 +4040,125 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	  switch (funcp->ftype)
 	    {
+            case F_JSON_ARRAY:
+              {
+                DB_VALUE *value;
+                REGU_VARIABLE_LIST operand;
+                int error_status = NO_ERROR;
+                int no_args = 0, index = 0;
+                DB_VALUE ** args;
+                int i;
+
+                operand = funcp->operand;
+
+                while (operand != NULL)
+                  {
+                    no_args++;
+                    operand = operand->next;
+                  }
+
+                args = (DB_VALUE **) db_private_alloc (NULL, sizeof(DB_VALUE *) * no_args);
+                operand = funcp->operand;
+
+                while (operand != NULL)
+                  {
+                    error_status = fetch_peek_dbval (thread_p, &operand->value, vd, NULL, obj_oid, tpl, &value);
+                    if (error_status != NO_ERROR)
+                      {
+                        db_private_free (NULL, args);
+                        goto exit_on_error;
+                      }
+                    args[index++] = value;
+
+                    operand = operand->next;
+                  }
+
+                assert (index == no_args);
+
+                if (db_json_array (funcp->value, args, no_args) != NO_ERROR)
+                  {
+                    db_private_free (NULL, args);
+                    goto exit_on_error;
+                  }
+
+                operand = funcp->operand;
+
+                while (operand != NULL)
+                  {
+                    if (!REGU_VARIABLE_IS_FLAGED (&(operand->value), REGU_VARIABLE_FETCH_ALL_CONST))
+                      {
+                        not_const++;
+                        break;
+                      }
+                    operand = operand->next;
+                  }
+
+                  db_private_free (NULL, args);
+              }
+              break;
+            case F_JSON_OBJECT:
+              {
+                DB_VALUE *key, *value;
+                REGU_VARIABLE_LIST operand;
+                int error_status = NO_ERROR;
+                int no_args = 0, index = 0;
+                DB_VALUE ** args;
+                int i;
+
+                operand = funcp->operand;
+
+                while (operand != NULL)
+                  {
+                    no_args++;
+                    operand = operand->next;
+                  }
+
+                args = (DB_VALUE **) db_private_alloc (NULL, sizeof(DB_VALUE *) * no_args);
+                operand = funcp->operand;
+
+                while (operand != NULL)
+                  {
+                    error_status = fetch_peek_dbval (thread_p, &operand->value, vd, NULL, obj_oid, tpl, &key);
+                    if (error_status != NO_ERROR)
+                      {
+                        db_private_free (NULL, args);
+                        goto exit_on_error;
+                      }
+                    error_status = fetch_peek_dbval (thread_p, &operand->next->value, vd, NULL, obj_oid, tpl, &value);
+                    if (error_status != NO_ERROR)
+                      {
+                        db_private_free (NULL, args);
+                        goto exit_on_error;
+                      }
+                    args[index++] = key;
+                    args[index++] = value;
+
+                    operand = operand->next->next;
+                  }
+
+                assert (index == no_args);
+
+                if (db_json_object (funcp->value, args, no_args) != NO_ERROR)
+                  {
+                    db_private_free (NULL, args);
+                    goto exit_on_error;
+                  }
+
+                operand = funcp->operand;
+
+                while (operand != NULL)
+                  {
+                    if (!REGU_VARIABLE_IS_FLAGED (&(operand->value), REGU_VARIABLE_FETCH_ALL_CONST))
+                      {
+                        not_const++;
+                        break;
+                      }
+                    operand = operand->next;
+                  }
+
+                  db_private_free (NULL, args);
+              }
+              break;
 	    case F_INSERT_SUBSTRING:
 	      /* should sync with qdata_insert_substring_function () */
 	      {
@@ -4197,6 +4324,8 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	case F_INSERT_SUBSTRING:
 	case F_ELT:
+        case F_JSON_OBJECT:
+        case F_JSON_ARRAY:
 	  break;
 
 	default:

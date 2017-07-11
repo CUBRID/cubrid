@@ -59,6 +59,7 @@
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/error/en.h"
+#include "rapidjson/stringbuffer.h"
 
 #define SET_EXPECTED_DOMAIN(node, dom) \
   do \
@@ -12281,7 +12282,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       break;
 
     case PT_FUNCTION_HOLDER:
-      if (node->info.function.function_type == F_ELT || node->info.function.function_type == F_INSERT_SUBSTRING)
+      if (node->info.function.function_type == F_ELT ||
+          node->info.function.function_type == F_INSERT_SUBSTRING ||
+          node->info.function.function_type == F_JSON_OBJECT ||
+          node->info.function.function_type == F_JSON_ARRAY)
 	{
 	  assert (dt == NULL);
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
@@ -13062,6 +13066,87 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
 
+    case F_JSON_OBJECT:
+      {
+        PT_TYPE_ENUM supported_key_types[] = {PT_TYPE_CHAR};
+        PT_TYPE_ENUM supported_value_types[] = {PT_TYPE_CHAR, PT_TYPE_INTEGER};
+        PT_TYPE_ENUM unsupported_type;
+        unsigned int num_bad = 0, len, i, found_supported = 0;
+
+        PT_NODE *arg = arg_list;
+        PT_TYPE_ENUM *current_types = supported_value_types;
+
+        while (arg)
+          {
+            if (current_types == supported_key_types)
+              {
+                current_types = supported_value_types;
+                len = sizeof (supported_value_types) / sizeof (supported_value_types[0]);
+              }
+            else
+              {
+               current_types = supported_key_types;
+               len = sizeof (supported_key_types) / sizeof (supported_key_types[0]);
+              }
+            found_supported = 0;
+            for (i = 0; i < len; i++)
+              {
+                if (arg->type_enum == current_types[i])
+                  {
+                    found_supported = 1;
+                    break;
+                  }
+              }
+            if (!found_supported)
+              {
+                unsupported_type = arg->type_enum;
+                break;
+              }
+
+            arg = arg->next;
+          }
+        if (!found_supported)
+          {
+            arg_type = PT_TYPE_NONE;
+            PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+                          pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+          }
+      }
+      break;
+    case F_JSON_ARRAY:
+      {
+        PT_TYPE_ENUM supported_types[] = {PT_TYPE_CHAR, PT_TYPE_INTEGER};
+        PT_TYPE_ENUM unsupported_type;
+        int len = sizeof (supported_types) / sizeof (supported_types[0]), i, found_supported_type = 0;
+
+        PT_NODE *arg = arg_list;
+
+        while (arg)
+          {
+            found_supported_type = 0;
+            for (i = 0; i < len; i++)
+              {
+                if (supported_types[i] == arg->type_enum)
+                  {
+                    found_supported_type = 1;
+                    break;
+                  }
+              }
+            if (!found_supported_type)
+              {
+                unsupported_type = arg->type_enum;
+                break;
+              }
+            arg = arg->next;
+          }
+        if (!found_supported_type)
+        {
+          arg_type = PT_TYPE_NONE;
+          PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+                        pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+        }
+      }
+      break;
     case F_ELT:
       {
 	/* all types used in the arguments list */
@@ -13387,7 +13472,12 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->data_type = NULL;
 
 	  break;
+        case F_JSON_OBJECT:
+        case F_JSON_ARRAY:
+          node->type_enum = PT_TYPE_JSON;
+          node->data_type = pt_make_prim_data_type (parser, PT_TYPE_JSON);
 
+          break;
 	case PT_MEDIAN:
 	case PT_PERCENTILE_CONT:
 	case PT_PERCENTILE_DISC:
@@ -14676,7 +14766,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  db_make_null (result);
 	}
       break;
-
     case PT_CONCAT_WS:
       if (DB_VALUE_TYPE (arg3) == DB_TYPE_NULL)
 	{
@@ -20182,6 +20271,20 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
     case F_ELT:
       error = db_string_elt (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  return 0;
+	}
+      break;
+    case F_JSON_OBJECT:
+      error = db_json_object (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  return 0;
+	}
+      break;
+    case F_JSON_ARRAY:
+      error = db_json_array (result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  return 0;

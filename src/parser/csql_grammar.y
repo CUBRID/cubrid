@@ -1187,6 +1187,8 @@ int g_original_buffer_len;
 %token FROM
 %token FULL
 %token FUNCTION
+%token FUN_JSON_ARRAY
+%token FUN_JSON_OBJECT
 %token GENERAL
 %token GET
 %token GLOBAL
@@ -14612,7 +14614,7 @@ pseudo_column
 
 
 reserved_func
-	: COUNT '(' '*' ')'
+        : COUNT '(' '*' ')'
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
@@ -15945,6 +15947,45 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_INDEX_PREFIX, $4, $6, $8);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+        | FUN_JSON_OBJECT '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_OBJECT, args_list);
+		    if (len < 1 || len % 2 != 0)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_object");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+
+        | FUN_JSON_ARRAY '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY, args_list);
+		    if (len < 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_array");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 

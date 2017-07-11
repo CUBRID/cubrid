@@ -57,6 +57,9 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
+#include "rapidjson/document.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
 
 #define BYTE_SIZE               (8)
 #define QSTR_VALUE_PRECISION(value)                                       \
@@ -3031,6 +3034,80 @@ db_string_elt (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
     {
       DB_MAKE_NULL (result);
     }
+
+  return NO_ERROR;
+}
+
+int
+db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i;
+  int len;
+  rapidjson::StringBuffer str_buf;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(str_buf);
+
+  if (num_args <= 0)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  result->domain.general_info.is_null = 0;
+  result->need_clear = true;
+  result->data.json.document = new rapidjson::Document ();
+  result->data.json.document->SetObject ();
+  result->domain.general_info.type = DB_TYPE_JSON;
+
+  for (i = 0; i < num_args; i+=2)
+    {
+      result->data.json.document->AddMember (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
+                                             rapidjson::StringRef (arg[i+1]->data.ch.medium.buf),
+                                             result->data.json.document->GetAllocator ());
+    }
+
+  result->data.json.document->Accept (writer);
+  len = strlen (str_buf.GetString());
+
+  result->data.json.json_body = (char *) db_private_alloc (NULL, len + 1);
+  memcpy (result->data.json.json_body, str_buf.GetString(), len);
+  result->data.json.json_body[len] = '\0';
+
+  return NO_ERROR;
+}
+
+int
+db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i;
+  int len;
+  rapidjson::StringBuffer str_buf;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(str_buf);
+  rapidjson::Value array (rapidjson::kArrayType);
+
+  if (num_args <= 0)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  result->domain.general_info.is_null = 0;
+  result->need_clear = true;
+  result->data.json.document = new rapidjson::Document ();
+  result->data.json.document->SetArray ();
+  result->domain.general_info.type = DB_TYPE_JSON;
+
+  for (i = 0; i < num_args; i++)
+    {
+      result->data.json.document->PushBack (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
+                                            result->data.json.document->GetAllocator ());
+    }
+
+  result->data.json.document->Accept (writer);
+  len = strlen (str_buf.GetString());
+
+  result->data.json.json_body = (char *) db_private_alloc (NULL, len + 1);
+  memcpy (result->data.json.json_body, str_buf.GetString(), len);
+  result->data.json.json_body[len] = '\0';
 
   return NO_ERROR;
 }

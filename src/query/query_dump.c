@@ -1395,6 +1395,10 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "INSERT_SUBSTRING";
     case F_ELT:
       return "ELT";
+    case F_JSON_OBJECT:
+      return "JSON_OBJECT";
+    case F_JSON_ARRAY:
+      return "JSON_ARRAY";
     default:
       return "***UNKNOWN***";
     }
