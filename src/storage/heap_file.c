@@ -112,7 +112,7 @@ static int rv;
 #define HEAP_GUESS_NUM_ATTRS_REFOIDS 100
 #define HEAP_GUESS_NUM_INDEXED_ATTRS 100
 
-#define HEAP_CLASSREPR_MAXCACHE	100
+#define HEAP_CLASSREPR_MAXCACHE	1024
 
 #define HEAP_STATS_ENTRY_MHT_EST_SIZE 1000
 #define HEAP_STATS_ENTRY_FREELIST_SIZE 1000
@@ -2269,6 +2269,8 @@ heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * cla
   REPR_ID last_reprid;
   int r;
 
+  *idx_incache = -1;
+
   hash_anchor = &heap_Classrepr->hash_table[REPR_HASH (class_oid)];
 
   /* search entry with class_oid from hash chain */
@@ -2385,15 +2387,15 @@ search_begin:
       cache_entry = heap_classrepr_entry_alloc ();
       if (cache_entry == NULL)
 	{
-	  /* if all cache entry is busy, allocate memory for repr. */
-	  *idx_incache = -1;
+	  /* if all cache entry is busy, return disk repr. */
 
 #ifdef SERVER_MODE
 	  /* free lock for class_oid */
 	  (void) heap_classrepr_unlock_class (hash_anchor, class_oid, true);
 #endif
 
-	  goto exit;
+	  /* return disk repr when repr cache is full */
+	  return repr_from_record;
 	}
 
       /* check if cache_entry->repr[last_reprid] is valid. */
