@@ -2327,6 +2327,12 @@ search_begin:
 	      /* we cannot hold mutex */
 	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	    }
+	  else if (spage_get_record_type (page_of_class, class_oid->slotid) != REC_HOME)
+	    {
+	      /* things get too complicated when we need to do ordered fix. */
+	      pgbuf_unfix_and_init (thread_p, page_of_class);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	    }
 	  repr_from_record = heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, reprid);
 	  if (repr_from_record == NULL)
 	    {
