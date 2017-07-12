@@ -3876,20 +3876,25 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
   return PERF_PAGE_BTREE_ROOT;
 }
 
+/*
+ * btree_check_fk_consistency () -
+ *
+ *    return:				- NO_ERROR or error code.
+ *    load_args_local(in):		- Information about the foreign key
+ *    sort_args_local(in):		- Information about the primary key
+ *
+ */
 static int
 btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void *sort_args_local)
 {
   SORT_ARGS *sort_args = (SORT_ARGS *) sort_args_local;
   LOAD_ARGS *load_args = (LOAD_ARGS *) load_args_local;
   DB_VALUE fk_key, pk_key;
-  int error = NO_ERROR, i;
+  int error = NO_ERROR;
   int fk_key_cnt = -1, pk_key_cnt;
-  RECDES temp_recdes;
   BTREE_NODE_HEADER *fk_header = NULL, *pk_header = NULL;
   VPID vpid;
   int ret = NO_ERROR;
-  LEAF_REC leaf_pnt;
-  int first_key_offset;
   bool clear_last_key = false, clear_first_key = false;
   PAGE_PTR next_pageptr = NULL, pk_leaf = NULL;
   VPID first_vpid;
@@ -4013,7 +4018,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 	  pk_key_cnt = btree_node_number_of_keys (thread_p, pk_leaf);
 
 	  /* We try to resume the search in the current leaf. */
-	  while (!found_p && slot_id < pk_key_cnt)
+	  while (!found_p && slot_id <= pk_key_cnt)
 	    {
 	      /* Try to get the value from the next slot. */
 	      ret = get_value_from_leaf_slot (thread_p, &(pk_bt_scan.btid_int), pk_leaf, slot_id, &pk_key);
@@ -4034,11 +4039,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 		}
 	      else
 		{
-		  if (adv == 0 && ret != adv)
-		    {
-		      adv = (ret == DB_LT) ? 1 : -1;
-		    }
-		  else
+		  if (adv == ret)
 		    {
 		      /*  Last value that was found was either greater, or lower than the current value
 		       *  from the primary key, while the new one is the other way around. Which means the value
@@ -4051,7 +4052,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 		      goto end;
 		    }
 
-		  slot_id += adv;
+		  slot_id += 1;
 		}
 
 	      /* Check whether the key no longer resides in the current page. If so, restart scan from top. */
@@ -4071,6 +4072,11 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 
     }
 end:
+
+  if (curr_fk_pageptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, curr_fk_pageptr);
+    }
 
   if (pk_leaf)
     {
@@ -4108,6 +4114,16 @@ end:
   return ret;
 }
 
+/*
+ * get_value_from_leaf_slot () -
+ *
+ *   return:			  - NO_ERROR or error code.
+ *   btid_int(in):		  - The structure of the B-tree where the leaf resides.
+ *   leaf_ptr(in):		  - The leaf where the value needs to be extracted from.
+ *   slot_id(in):		  - The slot from where the value must be pulled.
+ *   key(out):			  - The value requested.
+ *
+ */
 static int
 get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_ptr, int slot_id, DB_VALUE * key)
 {
@@ -4117,7 +4133,7 @@ get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
   RECDES record;
   int ret = NO_ERROR;
 
-  if (spage_get_record (thread_p, leaf_ptr, slot_id + 1, &record, PEEK) != S_SUCCESS)
+  if (spage_get_record (thread_p, leaf_ptr, slot_id, &record, PEEK) != S_SUCCESS)
     {
       assert_release (false);
       ret = ER_FAILED;
@@ -4137,6 +4153,23 @@ get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
   return ret;
 }
 
+/*
+ * advance_to_next_slot_and_fix_page () -
+ *
+ *   return:			  - NO_ERROR or error code
+ *   btid(in):			  - B-tree structure
+ *   vpid(in/out):		  - VPID of the current page
+ *   pg_ptr(in/out):		  - Page pointer for the current page.
+ *   slot_id(in/out):		  - Slot id of the current/next value.
+ *   key(out):			  - Requested key.
+ *   key_cnt(in/out):		  - Number of keys in current page.
+ *   header(in/out):		  - The header of the current page.
+ *
+ *  Note:
+ *    - slot_id will point towards the current slot from where the value
+ *	will be extracted at the beginning of the function;
+ *	on exit, it will point towards the next value that needs to be extracted.
+ */
 static int
 advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, PAGE_PTR * pg_ptr,
 				   int *slot_id, DB_VALUE * key, bool is_desc, int *key_cnt,
@@ -4154,7 +4187,7 @@ advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPI
       assert (local_header != NULL);
       assert (*key_cnt != -1);
       /* Check if the slot required actually fits in the page. */
-      if (*slot_id == -1 || *slot_id == *key_cnt)
+      if (*slot_id == 0 || *slot_id == *key_cnt + 1)
 	{
 	  /* No longer fits in page, need to get the next page. */
 	  /* Get the corresponding next vpid. */
@@ -4211,7 +4244,7 @@ advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPI
   /* Check if this is the first time we try to get a value from this page. */
   if (*slot_id == -1)
     {
-      *slot_id = is_desc ? *key_cnt - 1 : 0;
+      *slot_id = is_desc ? *key_cnt : 1;
     }
 
   ret = get_value_from_leaf_slot (thread_p, btid, page, *slot_id, key);
