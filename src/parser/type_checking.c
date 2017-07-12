@@ -13069,7 +13069,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_JSON_OBJECT:
       {
         PT_TYPE_ENUM supported_key_types[] = {PT_TYPE_CHAR};
-        PT_TYPE_ENUM supported_value_types[] = {PT_TYPE_CHAR, PT_TYPE_INTEGER};
+        PT_TYPE_ENUM supported_value_types[] = {PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON};
         PT_TYPE_ENUM unsupported_type;
         unsigned int num_bad = 0, len, i, found_supported = 0;
 
@@ -13111,11 +13111,15 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
             PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
                           pt_show_function (fcode), pt_show_type_enum (unsupported_type));
           }
+        else
+          {
+            arg_type = PT_TYPE_JSON;
+          }
       }
       break;
     case F_JSON_ARRAY:
       {
-        PT_TYPE_ENUM supported_types[] = {PT_TYPE_CHAR, PT_TYPE_INTEGER};
+        PT_TYPE_ENUM supported_types[] = {PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON};
         PT_TYPE_ENUM unsupported_type;
         int len = sizeof (supported_types) / sizeof (supported_types[0]), i, found_supported_type = 0;
 
@@ -13140,11 +13144,15 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
             arg = arg->next;
           }
         if (!found_supported_type)
-        {
-          arg_type = PT_TYPE_NONE;
-          PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-                        pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-        }
+          {
+            arg_type = PT_TYPE_NONE;
+            PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+                          pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+          }
+        else
+          {
+            arg_type = PT_TYPE_JSON;
+          }
       }
       break;
     case F_ELT:
@@ -13474,8 +13482,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
         case F_JSON_OBJECT:
         case F_JSON_ARRAY:
-          node->type_enum = PT_TYPE_JSON;
-          node->data_type = pt_make_prim_data_type (parser, PT_TYPE_JSON);
+          node->type_enum = arg_type;
+          node->data_type = pt_make_prim_data_type (parser, arg_type);
 
           break;
 	case PT_MEDIAN:
