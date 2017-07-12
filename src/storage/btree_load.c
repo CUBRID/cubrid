@@ -3952,6 +3952,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
       is_desc = true;
     }
 
+  /* Get the corresponding leaf of the foreign key. */
   if (!is_desc)
     {
       /* Get first leaf vpid. */
@@ -3998,6 +3999,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 	    }
 
 	  /* Value was found, proceed with the next value */
+	  slot_id++;
 	}
       else
 	{
@@ -4056,20 +4058,16 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 		}
 	    }
 	}
-      pr_clear_value (&fk_key);
+
+      if (found_p == true)
+	{
+	  pr_clear_value (&fk_key);
+	}
+
       pr_clear_value (&pk_key);
 
     }
 end:
-
-  if (!DB_IS_NULL (&fk_key))
-    {
-      pr_clear_value (&fk_key);
-    }
-  if (!DB_IS_NULL (&pk_key))
-    {
-      pr_clear_value (&pk_key);
-    }
 
   if (pk_leaf)
     {
@@ -4084,6 +4082,24 @@ end:
   if (first_pageptr)
     {
       pgbuf_unfix (thread_p, first_pageptr);
+    }
+
+  if (found_p == false && ret == NO_ERROR)
+    {
+      /* The search has ended, but the last value from the foreign key was not found. */
+      val_print = pr_valstring (&fk_key);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
+	      (val_print ? val_print : "unknown value"));
+      ret = ER_FK_INVALID;
+    }
+
+  if (!DB_IS_NULL (&fk_key))
+    {
+      pr_clear_value (&fk_key);
+    }
+  if (!DB_IS_NULL (&pk_key))
+    {
+      pr_clear_value (&pk_key);
     }
 
   return ret;
