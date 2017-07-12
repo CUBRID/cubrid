@@ -161,7 +161,10 @@ static void list_print (const BTREE_NODE * this_list);
 #endif /* defined(CUBRID_DEBUG) */
 static int btree_pack_root_header (RECDES * Rec, BTREE_ROOT_HEADER * header, TP_DOMAIN * key_type);
 static void btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta, RECDES * recdes);
-
+static int
+advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, PAGE_PTR * pg_ptr,
+				   int *slot_id, DB_VALUE * key, bool is_desc, int *key_cnt,
+				   BTREE_NODE_HEADER ** header);
 static int btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void *sort_args_local);
 
 /*
