@@ -308,7 +308,7 @@ xcache_initialize (THREAD_ENTRY * thread_p)
       return error_code;
     }
 
-  xcache_Cleanup_array = malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
+  xcache_Cleanup_array = (XCACHE_CLEANUP_CANDIDATE *) malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
   if (xcache_Cleanup_array == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -424,7 +424,7 @@ xcache_entry_init (void *entry)
 
   XASL_ID_SET_NULL (&xcache_entry->xasl_id);
   xcache_entry->stream.xasl_id = NULL;
-  xcache_entry->stream.xasl_stream = NULL;
+  xcache_entry->stream.buffer = NULL;
 
   xcache_entry->free_data_on_uninit = false;
   xcache_entry->initialized = true;
@@ -496,9 +496,9 @@ xcache_entry_uninit (void *entry)
 	  xcache_entry->one_clone.xasl_buf = NULL;
 	  xcache_entry->cache_clones_capacity = 1;
 	}
-      if (xcache_entry->stream.xasl_stream != NULL)
+      if (xcache_entry->stream.buffer != NULL)
 	{
-	  free_and_init (xcache_entry->stream.xasl_stream);
+	  free_and_init (xcache_entry->stream.buffer);
 	}
     }
   else
@@ -957,8 +957,8 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
       save_heapid = db_change_private_heap (thread_p, 0);
     }
   error_code =
-    stx_map_stream_to_xasl (thread_p, &xclone->xasl, use_xasl_clone, (*xcache_entry)->stream.xasl_stream,
-			    (*xcache_entry)->stream.xasl_stream_size, &xclone->xasl_buf);
+    stx_map_stream_to_xasl (thread_p, &xclone->xasl, use_xasl_clone, (*xcache_entry)->stream.buffer,
+			    (*xcache_entry)->stream.buffer_size, &xclone->xasl_buf);
   if (save_heapid != 0)
     {
       /* Restore heap id. */
@@ -1015,7 +1015,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
    * Setting tv_sec is enough.
    */
   (void) gettimeofday (&time_last_used, NULL);
-  ATOMIC_TAS_32 (&xcache_entry->time_last_used.tv_sec, time_last_used.tv_sec);
+  ATOMIC_TAS (&xcache_entry->time_last_used.tv_sec, time_last_used.tv_sec);
 
   XCACHE_STAT_INC (unfix);
   ATOMIC_INC_64 (&xcache_entry->ref_count, 1);
@@ -1216,7 +1216,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 
   assert (xcache_entry != NULL && *xcache_entry == NULL);
   assert (stream != NULL);
-  assert (stream->xasl_stream != NULL || !context->recompile_xasl);
+  assert (stream->buffer != NULL || !context->recompile_xasl);
 
   if (!xcache_Enabled)
     {
@@ -1485,7 +1485,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	{
 	  free (sql_hash_text);
 	}
-      free_and_init (stream->xasl_stream);
+      free_and_init (stream->buffer);
     }
   else
     {
@@ -1496,7 +1496,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	}
 
       /* XASL stream was used. Remove from argument. */
-      stream->xasl_stream = NULL;
+      stream->buffer = NULL;
     }
 
   return NO_ERROR;
@@ -1716,18 +1716,18 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Stats: \n");
   fprintf (fp, "Max size:                   %d\n", xcache_Soft_capacity);
   fprintf (fp, "Current entry count:        %d\n", ATOMIC_INC_32 (&xcache_Entry_count, 0));
-  fprintf (fp, "Lookups:                    %ld\n", XCACHE_STAT_GET (lookups));
-  fprintf (fp, "Hits:                       %ld\n", XCACHE_STAT_GET (hits));
-  fprintf (fp, "Miss:                       %ld\n", XCACHE_STAT_GET (miss));
-  fprintf (fp, "Inserts:                    %ld\n", XCACHE_STAT_GET (inserts));
-  fprintf (fp, "Found at insert:            %ld\n", XCACHE_STAT_GET (found_at_insert));
-  fprintf (fp, "Recompiles:                 %ld\n", XCACHE_STAT_GET (recompiles));
-  fprintf (fp, "Failed recompiles:          %ld\n", XCACHE_STAT_GET (failed_recompiles));
-  fprintf (fp, "Deletes:                    %ld\n", XCACHE_STAT_GET (deletes));
-  fprintf (fp, "Fix:                        %ld\n", XCACHE_STAT_GET (fix));
-  fprintf (fp, "Unfix:                      %ld\n", XCACHE_STAT_GET (unfix));
-  fprintf (fp, "Cache cleanups:             %ld\n", XCACHE_STAT_GET (cleanups));
-  fprintf (fp, "Deletes at cleanup:	    %ld\n", XCACHE_STAT_GET (deletes_at_cleanup));
+  fprintf (fp, "Lookups:                    %lld\n", (long long) XCACHE_STAT_GET (lookups));
+  fprintf (fp, "Hits:                       %lld\n", (long long) XCACHE_STAT_GET (hits));
+  fprintf (fp, "Miss:                       %lld\n", (long long) XCACHE_STAT_GET (miss));
+  fprintf (fp, "Inserts:                    %lld\n", (long long) XCACHE_STAT_GET (inserts));
+  fprintf (fp, "Found at insert:            %lld\n", (long long) XCACHE_STAT_GET (found_at_insert));
+  fprintf (fp, "Recompiles:                 %lld\n", (long long) XCACHE_STAT_GET (recompiles));
+  fprintf (fp, "Failed recompiles:          %lld\n", (long long) XCACHE_STAT_GET (failed_recompiles));
+  fprintf (fp, "Deletes:                    %lld\n", (long long) XCACHE_STAT_GET (deletes));
+  fprintf (fp, "Fix:                        %lld\n", (long long) XCACHE_STAT_GET (fix));
+  fprintf (fp, "Unfix:                      %lld\n", (long long) XCACHE_STAT_GET (unfix));
+  fprintf (fp, "Cache cleanups:             %lld\n", (long long) XCACHE_STAT_GET (cleanups));
+  fprintf (fp, "Deletes at cleanup:	    %lld\n", (long long) XCACHE_STAT_GET (deletes_at_cleanup));
   /* add overflow, RT checks. */
 
   fprintf (fp, "\nEntries:\n");
@@ -1742,7 +1742,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       fprintf (fp, "            } \n");
       fprintf (fp, "  fix_count = %d \n", xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK);
       fprintf (fp, "  cache flags = %08x \n", xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FLAGS_MASK);
-      fprintf (fp, "  reference count = %ld \n", ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
+      fprintf (fp, "  reference count = %lld \n", (long long) ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
       fprintf (fp, "  time second last used = %lld \n", (long long) xcache_entry->time_last_used.tv_sec);
       if (xcache_uses_clones ())
 	{

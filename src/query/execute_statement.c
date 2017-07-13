@@ -2949,7 +2949,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement)
     {
       /* skip ddl execution in case of parameter or opt. level */
-      if (pt_is_ddl_statement (statement) == true)
+      if (pt_is_ddl_statement (statement) != 0)
 	{
 	  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
 	    {
@@ -2976,7 +2976,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        * error. */
 
       /* disable data replication log for schema replication log types in HA mode */
-      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF && is_stmt_based_repl_type (statement))
+      if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
 	{
 	  need_stmt_replication = true;
 
@@ -3436,7 +3436,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
   /* skip ddl execution in case of parameter or opt. level */
-  if (pt_is_ddl_statement (statement) == true)
+  if (pt_is_ddl_statement (statement) != 0)
     {
       if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
 	{
@@ -3462,7 +3462,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* for the subset of nodes which represent top level statements, process them; for any other node, return an error */
 
   /* disable data replication log for schema replication log types in HA mode */
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF && is_stmt_based_repl_type (statement))
+  if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
     {
       need_stmt_based_repl = true;
 
@@ -4772,7 +4772,7 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	/* 'cost' is referenced by 'val', it should be allocated from heap, and will be freed when free 'val' if set
 	 * 'need_clear' to 'true' */
-	cost = db_private_alloc (NULL, 2);
+	cost = (char *) db_private_alloc (NULL, 2);
 	if (cost == NULL)
 	  {
 	    return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5736,7 +5736,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* allocate classes_names array */
-  classes_names = db_private_alloc (NULL, num_classes * sizeof (char *));
+  classes_names = (char **) db_private_alloc (NULL, num_classes * sizeof (char *));
   if (classes_names == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5744,7 +5744,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* allocate locks array */
-  locks = db_private_alloc (NULL, num_classes * sizeof (LOCK));
+  locks = (LOCK *) db_private_alloc (NULL, num_classes * sizeof (LOCK));
   if (locks == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5752,14 +5752,14 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* allocate need_subclasses array */
-  need_subclasses = db_private_alloc (NULL, num_classes * sizeof (int));
+  need_subclasses = (int *) db_private_alloc (NULL, num_classes * sizeof (int));
   if (need_subclasses == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }
 
-  flags = db_private_alloc (NULL, num_classes * sizeof (LC_PREFETCH_FLAGS));
+  flags = (LC_PREFETCH_FLAGS *) db_private_alloc (NULL, num_classes * sizeof (LC_PREFETCH_FLAGS));
   if (flags == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -6361,7 +6361,6 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE returnval, trigger_name_val, user_val;
   bool has_trigger_comment = false;
   TR_TRIGGER *trigger;
-  MOP mop1, mop2;
   int count;
   bool has_savepoint = false;
 
@@ -8122,16 +8121,16 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       error =
-	prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
+	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
 				   parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
 				   query_flag);
       AU_RESTORE (au_save);
     }
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream.xasl_stream)
+  if (stream.buffer)
     {
-      free_and_init (stream.xasl_stream);
+      free_and_init (stream.buffer);
     }
 
   if (list_id)
@@ -8245,11 +8244,11 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique, PT_NODE 
 		  if (has_unique_temp)
 		    {
 		      *has_unique = 1;
-		      spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
+		      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_HAS_UNIQUE);
 		    }
 		  else
 		    {
-		      spec->info.spec.flag |= PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE;
+		      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE);
 		    }
 		}
 	      else
@@ -8883,7 +8882,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL
 	       * file id returned */
-	      if (stream.xasl_stream && (err >= NO_ERROR))
+	      if (stream.buffer && (err >= NO_ERROR))
 		{
 		  err = prepare_query (contextp, &stream);
 
@@ -8901,9 +8900,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       * updated. */
 
 	      /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-	      if (stream.xasl_stream)
+	      if (stream.buffer)
 		{
-		  free_and_init (stream.xasl_stream);
+		  free_and_init (stream.buffer);
 		}
 	      statement->use_plan_cache = 0;
 	    }
@@ -9683,16 +9682,16 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       error =
-	prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
+	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
 				   parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
 				   query_flag);
       AU_RESTORE (au_save);
     }
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream.xasl_stream)
+  if (stream.buffer)
     {
-      free_and_init (stream.xasl_stream);
+      free_and_init (stream.buffer);
     }
 
   if (list_id)
@@ -10142,7 +10141,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 
 	      /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL
 	       * file id returned */
-	      if (stream.xasl_stream && (err >= NO_ERROR))
+	      if (stream.buffer && (err >= NO_ERROR))
 		{
 		  err = prepare_query (contextp, &stream);
 		  if (err != NO_ERROR)
@@ -10159,9 +10158,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	       * updated. */
 
 	      /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-	      if (stream.xasl_stream)
+	      if (stream.buffer)
 		{
-		  free_and_init (stream.xasl_stream);
+		  free_and_init (stream.buffer);
 		}
 	      statement->use_plan_cache = 0;
 	    }
@@ -10747,7 +10746,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = er_errid ();
 	}
 
-      if (stream.xasl_stream && (error >= NO_ERROR))
+      if (stream.buffer && (error >= NO_ERROR))
 	{
 	  error = prepare_query (contextp, &stream);
 	  if (error != NO_ERROR)
@@ -10763,9 +10762,9 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* As a result of query preparation of the server, the XASL cache for this query will be created or updated. */
 
       /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-      if (stream.xasl_stream)
+      if (stream.buffer)
 	{
-	  free_and_init (stream.xasl_stream);
+	  free_and_init (stream.buffer);
 	}
 
       statement->use_plan_cache = 0;
@@ -10850,7 +10849,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = er_errid ();
     }
 
-  if (error == NO_ERROR && stream.xasl_stream != NULL)
+  if (error == NO_ERROR && stream.buffer != NULL)
     {
       int au_save;
       QUERY_FLAG query_flag;
@@ -10862,21 +10861,21 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  query_flag |= TRIGGER_IS_INVOLVED;
 	}
 
-      assert (stream.xasl_stream_size > 0);
+      assert (stream.buffer_size > 0);
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       error =
-	prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
+	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
 				   (parser->host_var_count + parser->auto_param_count), parser->host_variables,
 				   &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream.xasl_stream)
+  if (stream.buffer)
     {
-      free_and_init (stream.xasl_stream);
+      free_and_init (stream.buffer);
     }
 
   if (list_id)
@@ -11495,7 +11494,8 @@ do_create_odku_stmt (PARSER_CONTEXT * parser, PT_NODE * insert)
       return NULL;
     }
 
-  insert->info.insert.spec->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
+  insert->info.insert.spec->info.spec.flag =
+    (PT_SPEC_FLAG) (insert->info.insert.spec->info.spec.flag | PT_SPEC_FLAG_UPDATE);
 
   update = parser_new_node (parser, PT_UPDATE);
   if (update == NULL)
@@ -11599,13 +11599,13 @@ do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** o
       return NO_ERROR;
     }
 
-  unique_btids = db_private_alloc (NULL, unique_count * sizeof (BTID));
+  unique_btids = (BTID *) db_private_alloc (NULL, unique_count * sizeof (BTID));
   if (unique_btids == NULL)
     {
       error = ER_FAILED;
       goto cleanup;
     }
-  unique_keys = db_private_alloc (NULL, unique_count * sizeof (DB_VALUE));
+  unique_keys = (DB_VALUE *) db_private_alloc (NULL, unique_count * sizeof (DB_VALUE));
   if (unique_keys == NULL)
     {
       error = ER_FAILED;
@@ -12414,7 +12414,7 @@ cleanup:
     }
 
   /* restore flags */
-  statement->info.insert.spec->info.spec.flag = flag;
+  statement->info.insert.spec->info.spec.flag = (PT_SPEC_FLAG) flag;
 
   if (*otemplate != NULL && error != NO_ERROR)
     {
@@ -12800,7 +12800,7 @@ cleanup:
   if (update != NULL)
     {
       /* restore flags */
-      statement->info.insert.spec->info.spec.flag = flag;
+      statement->info.insert.spec->info.spec.flag = (PT_SPEC_FLAG) flag;
       update->info.update.assignment = NULL;
       update->info.update.spec = NULL;
       if (update->info.update.check_where != NULL)
@@ -13813,16 +13813,16 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (error >= NO_ERROR)
 	    {
 	      error =
-		prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
+		prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
 					   parser->host_var_count + parser->auto_param_count, parser->host_variables,
 					   &list_id, query_flag);
 	    }
 	  statement->etc = list_id;
 
 	  /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-	  if (stream.xasl_stream)
+	  if (stream.buffer)
 	    {
-	      free_and_init (stream.xasl_stream);
+	      free_and_init (stream.buffer);
 	    }
 
 	  if (error >= NO_ERROR)
@@ -14011,7 +14011,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL file id
        * returned */
-      if (stream.xasl_stream && (err == NO_ERROR))
+      if (stream.buffer && (err == NO_ERROR))
 	{
 	  err = prepare_query (contextp, &stream);
 	  if (err != NO_ERROR)
@@ -14027,9 +14027,9 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* As a result of query preparation of the server, the XASL cache for this query will be created or updated. */
 
       /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-      if (stream.xasl_stream)
+      if (stream.buffer)
 	{
-	  free_and_init (stream.xasl_stream);
+	  free_and_init (stream.buffer);
 	}
       statement->use_plan_cache = 0;
     }
@@ -14569,7 +14569,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   repl_stmt.db_user = db_get_user_name ();
 
-  if (pt_is_ddl_statement (statement) == true)
+  if (pt_is_ddl_statement (statement) != 0)
     {
       repl_stmt.sys_prm_context = sysprm_print_parameters_for_ha_repl ();
     }
@@ -14747,7 +14747,7 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   error =
-    prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
+    prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
 			       parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
 			       query_flag);
 
@@ -14760,9 +14760,9 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 end:
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream.xasl_stream)
+  if (stream.buffer)
     {
-      free_and_init (stream.xasl_stream);
+      free_and_init (stream.buffer);
     }
 
   /* mark the end of another level of xasl packing */
@@ -15734,7 +15734,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* generate MERGE XASL */
 	  contextp->xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd, &non_nulls_ins, default_expr_attrs);
 
-	  stream.xasl_stream = NULL;
+	  stream.buffer = NULL;
 
 	  if (contextp->xasl && (err >= NO_ERROR))
 	    {
@@ -15773,7 +15773,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* cache the XASL */
-	  if (stream.xasl_stream && (err >= NO_ERROR))
+	  if (stream.buffer && (err >= NO_ERROR))
 	    {
 	      err = prepare_query (contextp, &stream);
 	      if (err != NO_ERROR)
@@ -15787,9 +15787,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_exit_packing_buf ();
 
 	  /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-	  if (stream.xasl_stream)
+	  if (stream.buffer)
 	    {
-	      free_and_init (stream.xasl_stream);
+	      free_and_init (stream.buffer);
 	    }
 	  statement->use_plan_cache = 0;
 	  statement->xasl_id = stream.xasl_id;

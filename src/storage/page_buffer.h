@@ -265,7 +265,7 @@ extern int pgbuf_initialize (void);
 extern void pgbuf_finalize (void);
 extern PAGE_PTR pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
 				      PGBUF_LATCH_MODE request_mode, int retry);
-extern void pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page);
+extern void pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page);
 #if !defined(NDEBUG)
 
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
@@ -363,7 +363,7 @@ extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int
 extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				   bool do_fetch);
 
-extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page);
+extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page);
 #define pgbuf_set_dirty_and_free(thread_p, pgptr) pgbuf_set_dirty (thread_p, pgptr, FREE); pgptr = NULL
 
 extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);

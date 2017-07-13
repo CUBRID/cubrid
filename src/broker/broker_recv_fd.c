@@ -77,7 +77,7 @@ recv_fd (int fd, int *rid, char *driver_info)
   msg.msg_accrights = (caddr_t) & new_fd;	/* address of descriptor */
   msg.msg_accrightslen = sizeof (new_fd);	/* receive 1 descriptor */
 #else
-  if (cmptr == NULL && (cmptr = malloc (CONTROLLEN)) == NULL)
+  if (cmptr == NULL && (cmptr = (cmsghdr *) malloc (CONTROLLEN)) == NULL)
     exit (99);
   msg.msg_control = (void *) cmptr;
   msg.msg_controllen = CONTROLLEN;

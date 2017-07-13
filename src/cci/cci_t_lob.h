@@ -69,7 +69,6 @@ typedef struct
 /************************************************************************
  * EXPORTED FUNCTION PROTOTYPES						*
  ************************************************************************/
-
 extern INT64 t_lob_get_size (char *pack_bytes);
 extern void t_lob_set_size (T_LOB * lob, INT64 new_size);
 

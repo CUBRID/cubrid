@@ -794,7 +794,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
       return TF_ERROR;
     }
 
-  expected_size = object_size (class_, obj, &offset_size);
+  expected_size = object_size (class_, obj, (int *) &offset_size);
   if ((expected_size + OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE) > record->area_size)
     {
       record->length = -expected_size;
@@ -3039,7 +3039,8 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		      assert (false);
 		    }
 		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
-		  att->default_value.default_expr.default_expr_type = DB_GET_INT (&def_expr_type);
+		  att->default_value.default_expr.default_expr_type =
+		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr_type);
 
 		  /* get default expression format (arg2 of expr) */
 		  if (set_get_element_nocopy (def_expr_seq, 2, &def_expr_format) != NO_ERROR)
@@ -3065,7 +3066,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		}
 	      else
 		{
-		  att->default_value.default_expr.default_expr_type = DB_GET_INT (&value);
+		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&value);
 		}
 
 	      pr_clear_value (&value);
@@ -4333,7 +4334,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
   TF_STATUS status;
   int rc = 0;
   volatile int prop_free = 0;
-  unsigned int repid;
+  int repid;
 
   /* should we assume this ? */
   if (!tf_Metaclass_class.mc_n_variable)

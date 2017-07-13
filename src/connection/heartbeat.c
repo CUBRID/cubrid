@@ -533,7 +533,7 @@ hb_pack_server_name (const char *server_name, int *name_length, const char *log_
       p_len = strlen (pid_string) + 1;
       *name_length = n_len + l_len + r_len + e_len + p_len + 5;
 
-      packed_name = malloc (*name_length);
+      packed_name = (char *) malloc (*name_length);
       if (packed_name == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (*name_length));

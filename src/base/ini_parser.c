@@ -30,7 +30,6 @@
 #define INI_BUFSIZ         	(512)
 #define INI_INVALID_KEY		((char*)-1)
 
-typedef enum ini_line_status INI_LINE_STATUS;
 enum ini_line_status
 {
   LINE_UNPROCESSED,
@@ -40,6 +39,7 @@ enum ini_line_status
   LINE_SECTION,
   LINE_VALUE
 };
+typedef enum ini_line_status INI_LINE_STATUS;
 
 static void *ini_dblalloc (void *ptr, int size);
 static unsigned int ini_table_hash (char *key);
