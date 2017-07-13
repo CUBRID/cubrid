@@ -4029,7 +4029,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 		}
 
 	      /* We need to compare the current value with the new value from the primary key. */
-	      ret = btree_compare_key (&pk_key, &fk_key, pk_bt_scan.btid_int.key_type, 1, 0, NULL);
+	      ret = btree_compare_key (&pk_key, &fk_key, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
 
 	      if (ret == DB_EQ)
 		{
