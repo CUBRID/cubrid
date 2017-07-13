@@ -174,7 +174,7 @@ struct xasl_id
 {
   SHA1Hash sha1;		/* SHA-1 hash generated from query string. */
   /*volatile */ INT32 cache_flag;
-  /* Multiple-purpose field used to handle XASL cache. *///vapa!!!
+  /* Multiple-purpose field used to handle XASL cache. */
   CACHE_TIME time_stored;	/* when this XASL plan stored */
 };				/* XASL plan file identifier */
 
