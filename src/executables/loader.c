@@ -68,7 +68,10 @@
 #include "dbval.h"
 
 extern bool No_oid_hint;
-extern int loader_yylineno;
+extern "C"
+{
+  extern int loader_yylineno;
+}
 
 #define LDR_MAX_ARGS 32
 
@@ -2188,7 +2191,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE *
 
   precision = att->domain->precision;
 
-  intl_char_count ((unsigned char *) str, len, att->domain->codeset, &char_count);
+  intl_char_count ((unsigned char *) str, len, (INTL_CODESET) att->domain->codeset, &char_count);
 
   if (char_count > precision)
     {
@@ -2201,7 +2204,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE *
       const char *p;
       int truncate_size;
 
-      intl_char_size ((unsigned char *) str, precision, att->domain->codeset, &truncate_size);
+      intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) att->domain->codeset, &truncate_size);
 
       for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
 	{
@@ -2258,7 +2261,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
   int char_count = 0;
 
   precision = att->domain->precision;
-  intl_char_count ((unsigned char *) str, len, att->domain->codeset, &char_count);
+  intl_char_count ((unsigned char *) str, len, (INTL_CODESET) att->domain->codeset, &char_count);
 
   if (char_count > precision)
     {
@@ -2271,7 +2274,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
       const char *p;
       int truncate_size;
 
-      intl_char_size ((unsigned char *) str, precision, att->domain->codeset, &truncate_size);
+      intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) att->domain->codeset, &truncate_size);
       for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
 	{
 	  if (*p != ' ')
@@ -2349,7 +2352,7 @@ ldr_bstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 
   dest_size = (len + 7) / 8;
 
-  CHECK_PTR (err, bstring = db_private_alloc (NULL, dest_size + 1));
+  CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
 
   if (qstr_bit_to_bin (bstring, dest_size, (char *) str, len) != len)
     {
@@ -2431,7 +2434,7 @@ ldr_xstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 
   dest_size = (len + 1) / 2;
 
-  CHECK_PTR (err, bstring = db_private_alloc (NULL, dest_size + 1));
+  CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
 
   if (qstr_hex_to_bin (bstring, dest_size, (char *) str, len) != len)
     {
@@ -3401,7 +3404,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * va
   if (new_len > 0)
     {
       DB_TYPE type;
-      const char *size_sp, *size_ep;
+      char *size_sp, *size_ep;
       const char *locator_sp, *locator_ep;
       const char *meta_sp, *meta_ep;
 
@@ -3419,7 +3422,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * va
 	}
 
       /* size */
-      size_sp = str + 1;
+      size_sp = (char *) (str + 1);
       size_ep = strchr (size_sp, '|');
       if (size_ep == NULL || size_ep - size_sp == 0)
 	{
@@ -3458,7 +3461,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * va
 	  goto error_exit;
 	}
 
-      locator = db_private_alloc (NULL, locator_ep - locator_sp + 1);
+      locator = (char *) db_private_alloc (NULL, locator_ep - locator_sp + 1);
       if (locator == NULL)
 	{
 	  goto error_exit;
@@ -3468,7 +3471,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * va
 
       if (meta_ep - meta_sp > 0)
 	{
-	  meta_data = db_private_alloc (NULL, meta_ep - meta_sp + 1);
+	  meta_data = (char *) db_private_alloc (NULL, meta_ep - meta_sp + 1);
 	  if (meta_data == NULL)
 	    {
 	      goto error_exit;
@@ -3533,7 +3536,7 @@ ldr_elo_ext_db_elo (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
   PARSE_ELO_STR (str, new_len);
   if (new_len >= 8196)
     {
-      name = malloc (new_len);
+      name = (char *) malloc (new_len);
 
       if (name == NULL)
 	{
@@ -4031,7 +4034,7 @@ ldr_monetary_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * v
 
   if (len >= 2
       && intl_is_currency_symbol ((const char *) p, &currency_type, &symbol_size,
-				  CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR))
+				  (CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR)))
     {
       token += symbol_size;
     }
@@ -4837,7 +4840,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   CHECK_ERR (err,
 	     db_get_attribute_descriptor (context->cls, attr_name, context->attribute_type == LDR_ATTRIBUTE_CLASS, true,
 					  &attdesc->attdesc));
-  comp_ptr = (void *) (&attdesc->att);
+  comp_ptr = (SM_COMPONENT **) (&attdesc->att);
   CHECK_ERR (err, sm_get_descriptor_component (context->cls, attdesc->attdesc, 1,	/* for update */
 					       &class_, comp_ptr));
 
@@ -5081,7 +5084,7 @@ ldr_refresh_attrs (LDR_CONTEXT * context)
       db_free_attribute_descriptor (attdesc->attdesc);
       attdesc->attdesc = db_attdesc;
       /* Get refreshed attribute */
-      comp_ptr = (void *) &attdesc->att;
+      comp_ptr = (SM_COMPONENT **) & attdesc->att;
       CHECK_ERR (err, sm_get_descriptor_component (context->cls, attdesc->attdesc, 1,	/* for update */
 						   &class_, comp_ptr));
     }
@@ -5366,7 +5369,7 @@ construct_instance (LDR_CONTEXT * context)
 	{
 	  attdesc = &context->attrs[context->next_attr];
 
-	  comp_ptr = (void *) &attdesc->att;
+	  comp_ptr = (SM_COMPONENT **) & attdesc->att;
 	  err = sm_get_descriptor_component (context->cls, attdesc->attdesc, 1, &class_, comp_ptr);
 
 	  if (!err)
@@ -6260,7 +6263,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	  {
 	    LDR_STRING *str = (LDR_STRING *) c->val;
 
-	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
+	    (*ldr_act) (ldr_Current_context, str->val, str->size, (LDR_TYPE) c->type);
 	    FREE_STRING (str);
 	  }
 	  break;
@@ -6273,7 +6276,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
 	    char *full_mon_str_p = full_mon_str;
 	    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
-	    char *curr_str = intl_get_money_esc_ISO_symbol (mon->currency_type);
+	    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
 	    unsigned int full_mon_str_len = (strlen (str->val) + strlen (curr_str));
 
 	    if (full_mon_str_len >= sizeof (full_mon_str))
@@ -6284,7 +6287,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	    strcpy (full_mon_str_p, curr_str);
 	    strcat (full_mon_str_p, str->val);
 
-	    (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), c->type);
+	    (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), (LDR_TYPE) c->type);
 	    if (full_mon_str_p != full_mon_str)
 	      {
 		free_and_init (full_mon_str_p);
@@ -6303,7 +6306,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	  {
 	    LDR_STRING *str = (LDR_STRING *) c->val;
 
-	    (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), c->type);
+	    (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), (LDR_TYPE) c->type);
 	    FREE_STRING (str);
 	  }
 	  break;

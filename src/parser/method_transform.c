@@ -2449,7 +2449,7 @@ meth_move_hierarchical_to_derived (PARSER_CONTEXT * parser, PT_SELECT_INFO * sta
   statement_info->after_cb_filter = NULL;
 
   /* reset flags */
-  statement_info->check_cycles = 0;
+  statement_info->check_cycles = CONNECT_BY_CYCLES_ERROR;
   statement_info->single_table_opt = 0;
 }
 

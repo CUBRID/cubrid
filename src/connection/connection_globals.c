@@ -174,7 +174,7 @@ css_get_required_conn_num_for_ha (void)
 #if defined (SA_MODE)
   curr_ha_mode = util_get_ha_mode_for_sa_utils ();
 #else /* SA_MODE */
-  curr_ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
+  curr_ha_mode = HA_GET_MODE ();
 #endif /* !SA_MODE */
 
   if (curr_ha_mode == HA_MODE_OFF)
@@ -188,7 +188,7 @@ css_get_required_conn_num_for_ha (void)
   ha_node_list_p = prm_get_string_value (PRM_ID_HA_NODE_LIST);
   num_of_nodes = util_get_num_of_ha_nodes (ha_node_list_p);
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA)
+  if (HA_GET_MODE () == HA_MODE_REPLICA)
     {
       /* one applylogdb and prefetchlogdb for each node */
       return num_of_nodes * 2 + prefetcher_max_thread_count;

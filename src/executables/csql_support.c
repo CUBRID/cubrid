@@ -168,7 +168,7 @@ csql_get_real_path (const char *pathname)
       return NULL;
     }
 
-  return pathname;
+  return (char *) pathname;
 #else /* ! WINDOWS */
   static char real_path[PATH_MAX];	/* real path name */
   char home[PATH_MAX];
@@ -932,7 +932,7 @@ csql_edit_contents_expand (int required_size)
     {
       new_alloc_size *= 2;
     }
-  csql_Edit_contents.contents = realloc (csql_Edit_contents.contents, new_alloc_size);
+  csql_Edit_contents.contents = (char *) realloc (csql_Edit_contents.contents, new_alloc_size);
   if (csql_Edit_contents.contents == NULL)
     {
       csql_Edit_contents.alloc_size = 0;

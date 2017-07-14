@@ -221,8 +221,7 @@
   ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
 #endif
 #define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
-  ((thrd) ? (thrd)->tran_index = (index) : \
-            thread_set_current_tran_index ((thrd), (index)))
+  ((thrd) ? (void) ((thrd)->tran_index = (index)) : thread_set_current_tran_index ((thrd), (index)))
 #else /* SERVER_MODE */
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
@@ -414,21 +413,21 @@ extern int db_Disable_modifications;
 
 #define MAX_NUM_EXEC_QUERY_HISTORY                      100
 
-typedef enum log_flush LOG_FLUSH;
 enum log_flush
 { LOG_DONT_NEED_FLUSH, LOG_NEED_FLUSH };
+typedef enum log_flush LOG_FLUSH;
 
-typedef enum log_setdirty LOG_SETDIRTY;
 enum log_setdirty
 { LOG_DONT_SET_DIRTY, LOG_SET_DIRTY };
+typedef enum log_setdirty LOG_SETDIRTY;
 
-typedef enum log_getnewtrid LOG_GETNEWTRID;
 enum log_getnewtrid
 { LOG_DONT_NEED_NEWTRID, LOG_NEED_NEWTRID };
+typedef enum log_getnewtrid LOG_GETNEWTRID;
 
-typedef enum log_wrote_eot_log LOG_WRITE_EOT_LOG;
 enum log_wrote_eot_log
 { LOG_NEED_TO_WRITE_EOT_LOG, LOG_ALREADY_WROTE_EOT_LOG };
+typedef enum log_wrote_eot_log LOG_WRITE_EOT_LOG;
 
 /*
  * Specify up to int bits of permanent status indicators.
@@ -532,16 +531,15 @@ struct log_group_commit_info
 #define LOG_GROUP_COMMIT_INFO_INITIALIZER \
   { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
 
-typedef enum logwr_mode LOGWR_MODE;
 enum logwr_mode
 {
   LOGWR_MODE_ASYNC = 1,
   LOGWR_MODE_SEMISYNC,
   LOGWR_MODE_SYNC
 };
+typedef enum logwr_mode LOGWR_MODE;
 #define LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK	(0x80000000)
 
-typedef enum logwr_status LOGWR_STATUS;
 enum logwr_status
 {
   LOGWR_STATUS_WAIT,
@@ -550,6 +548,7 @@ enum logwr_status
   LOGWR_STATUS_DELAY,
   LOGWR_STATUS_ERROR
 };
+typedef enum logwr_status LOGWR_STATUS;
 
 typedef struct logwr_entry LOGWR_ENTRY;
 struct logwr_entry
@@ -638,7 +637,6 @@ struct log_append_info
     PTHREAD_MUTEX_INITIALIZER}
 #endif
 
-typedef enum log_2pc_execute LOG_2PC_EXECUTE;
 enum log_2pc_execute
 {
   LOG_2PC_EXECUTE_FULL,		/* For the root coordinator */
@@ -649,6 +647,7 @@ enum log_2pc_execute
 					 * phase of 2PC. The root coordinator has decided an abort decision with or
 					 * without going to the first phase (i.e., prepare) of the 2PC */
 };
+typedef enum log_2pc_execute LOG_2PC_EXECUTE;
 
 typedef struct log_2pc_gtrinfo LOG_2PC_GTRINFO;
 struct log_2pc_gtrinfo
@@ -675,7 +674,6 @@ struct log_topops_addresses
 				 * since it is reset during recovery to the last reference postpone address. */
 };
 
-typedef enum log_topops_type LOG_TOPOPS_TYPE;
 enum log_topops_type
 {
   LOG_TOPOPS_NORMAL,
@@ -683,6 +681,7 @@ enum log_topops_type
   LOG_TOPOPS_COMPENSATE_SYSOP_ABORT,
   LOG_TOPOPS_POSTPONE
 };
+typedef enum log_topops_type LOG_TOPOPS_TYPE;
 
 typedef struct log_topops_stack LOG_TOPOPS_STACK;
 struct log_topops_stack
@@ -728,7 +727,6 @@ struct modified_class_entry
        LOB_UNKNOWN -> LOB_TRANSIENT_DELETED
 
  */
-typedef enum lob_locator_state LOB_LOCATOR_STATE;
 enum lob_locator_state
 {
   LOB_UNKNOWN,
@@ -738,6 +736,7 @@ enum lob_locator_state
   LOB_PERMANENT_DELETED,
   LOB_NOT_FOUND
 };
+typedef enum lob_locator_state LOB_LOCATOR_STATE;
 
 /* lob entry */
 typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
@@ -751,13 +750,13 @@ typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
  */
 RB_HEAD (lob_rb_root, lob_locator_entry);
 
-typedef enum tran_abort_reason TRAN_ABORT_REASON;
 enum tran_abort_reason
 {
   TRAN_NORMAL = 0,
   TRAN_ABORT_DUE_DEADLOCK = 1,
   TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION = 2
 };
+typedef enum tran_abort_reason TRAN_ABORT_REASON;
 
 typedef struct log_unique_stats LOG_UNIQUE_STATS;
 struct log_unique_stats
@@ -777,13 +776,13 @@ struct log_tran_btid_unique_stats
   LOG_UNIQUE_STATS global_stats;	/* statistics loaded from index */
 };
 
-typedef enum count_optim_state COUNT_OPTIM_STATE;
 enum count_optim_state
 {
   COS_NOT_LOADED = 0,		/* the global statistics was not loaded yet */
   COS_TO_LOAD = 1,		/* the global statistics must be loaded when snapshot is taken */
   COS_LOADED = 2		/* the global statistics were loaded */
 };
+typedef enum count_optim_state COUNT_OPTIM_STATE;
 
 #define TRAN_UNIQUE_STATS_CHUNK_SIZE  128	/* size of the memory chunk for unique statistics */
 
@@ -931,7 +930,7 @@ struct log_header
   PGLENGTH db_iopagesize;	/* Size of pages in the database. For safety reasons this value is recorded in the log
 				 * to make sure that the database is always run with the same page size */
   PGLENGTH db_logpagesize;	/* Size of log pages in the database. */
-  int is_shutdown;		/* Was the log shutdown ? */
+  bool is_shutdown;		/* Was the log shutdown ? */
   TRANID next_trid;		/* Next Transaction identifier */
   MVCCID mvcc_next_id;		/* Next MVCC ID */
   int avg_ntrans;		/* Number of average transactions */
@@ -1127,7 +1126,6 @@ struct log_bgarv_header
 #define LOG_BGARV_HEADER_INITIALIZER \
   { /* magic */ {'0'}, 0, 0, NULL_PAGEID, NULL_PAGEID, NULL_PAGEID }
 
-typedef enum log_rectype LOG_RECTYPE;
 enum log_rectype
 {
   /* In order of likely of appearance in the log */
@@ -1231,14 +1229,15 @@ enum log_rectype
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
+typedef enum log_rectype LOG_RECTYPE;
 
-typedef enum log_repl_flush LOG_REPL_FLUSH;
 enum log_repl_flush
 {
   LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
   LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
   LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit and rollback */
 };
+typedef enum log_repl_flush LOG_REPL_FLUSH;
 
 /* Definitions used to identify UNDO/REDO/UNDOREDO log record data types */
 
@@ -1414,7 +1413,6 @@ struct log_rec_start_postpone
 };
 
 /* types of end system operation */
-typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
 enum log_sysop_end_type
 {
   LOG_SYSOP_END_COMMIT,		/* permanent changes */
@@ -1424,6 +1422,7 @@ enum log_sysop_end_type
   LOG_SYSOP_END_LOGICAL_COMPENSATE,	/* logical compensate */
   LOG_SYSOP_END_LOGICAL_RUN_POSTPONE	/* logical run postpone */
 };
+typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
 #define LOG_SYSOP_END_TYPE_CHECK(type) \
   assert ((type) == LOG_SYSOP_END_COMMIT \
           || (type) == LOG_SYSOP_END_ABORT \
@@ -1595,7 +1594,7 @@ struct log_tdes
   int tran_index;		/* Index onto transaction table */
   TRANID trid;			/* Transaction identifier */
 
-  int isloose_end;
+  bool isloose_end;
   TRAN_STATE state;		/* Transaction state (e.g., Active, aborted) */
   TRAN_ISOLATION isolation;	/* Isolation level */
   int wait_msecs;		/* Wait until this number of milliseconds for locks; also see xlogtb_reset_wait_msecs */
@@ -1710,7 +1709,6 @@ struct log_crumb
 };
 
 /* state of recovery process */
-typedef enum log_recvphase LOG_RECVPHASE;
 enum log_recvphase
 {
   LOG_RESTARTED,		/* Normal processing.. recovery has been executed. */
@@ -1719,6 +1717,7 @@ enum log_recvphase
   LOG_RECOVERY_UNDO_PHASE,	/* Undoing phase */
   LOG_RECOVERY_FINISH_2PC_PHASE	/* Finishing up transactions that were in 2PC protocol at the time of the crash */
 };
+typedef enum log_recvphase LOG_RECVPHASE;
 
 typedef struct log_archives LOG_ARCHIVES;
 struct log_archives
@@ -1863,7 +1862,7 @@ struct log_global
   LOG_LSA rcv_phase_lsa;	/* LSA of phase (e.g. Restart) */
 
 #if defined(SERVER_MODE)
-  int backup_in_progress;
+  bool backup_in_progress;
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */
@@ -1955,9 +1954,9 @@ typedef struct log_logging_stat
 } LOG_LOGGING_STAT;
 
 
-typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
 enum log_cs_access_mode
 { LOG_CS_FORCE_USE, LOG_CS_SAFE_READER };
+typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
 
 
 #if !defined(SERVER_MODE)
@@ -2110,7 +2109,7 @@ extern int logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 extern int logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *to_db_fullname,
 					   const char *to_logpath, const char *to_prefix_logname,
 					   const char *toext_path, const char *fileof_vols_and_renamepaths,
-					   int extern_rename, bool force_delete);
+					   bool extern_rename, bool force_delete);
 extern int logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, bool force_delete);
 extern int logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -2245,7 +2244,7 @@ STATIC_INLINE int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attr
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
-extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set);
+extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool set);
 extern bool logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index, int set);
 extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking);
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);

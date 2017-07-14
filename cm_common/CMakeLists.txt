@@ -23,6 +23,14 @@ set(CMSTAT_SOURCES
   ${CM_COMMON_DIR}/cm_utils.c
   ${CM_COMMON_DIR}/cm_broker_jni.c
   )
+SET_SOURCE_FILES_PROPERTIES(
+    ${CMSTAT_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
+SET_SOURCE_FILES_PROPERTIES(
+    ${CM_COMMON_DIR}/cm_broker_jni.c
+    PROPERTIES LANGUAGE C
+  )
 if(WIN32)
   list(APPEND ${CMAKE_SOURCE_DIR}/win/cmstat/version.rc)
 endif(WIN32)
@@ -48,6 +56,10 @@ set(CMDEP_SOURCES
   ${CM_COMMON_DIR}/cm_nameval.c
   ${CM_COMMON_DIR}/cm_utils.c
   )
+SET_SOURCE_FILES_PROPERTIES(
+    ${CMDEP_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
 add_library(cmdep SHARED ${CMDEP_SOURCES})
 set_target_properties(cmdep PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 set_target_properties(cmdep PROPERTIES PUBLIC_HEADER "${CM_COMMON_DIR}/cm_dep.h")
@@ -64,6 +76,10 @@ endif()
 set(CUB_JOBSA_SOURCES
   ${CM_COMMON_DIR}/cm_class_info_sa.c
   )
+SET_SOURCE_FILES_PROPERTIES(
+  ${CUB_JOBSA_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
 if(WIN32)
   list(APPEND CUB_JOBSA_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
@@ -73,6 +89,10 @@ target_link_libraries(cub_jobsa cubridsa)
 
 set(CUB_SAINFO_SOURCES
   ${CM_COMMON_DIR}/cm_trigger_info_sa.c
+  )
+SET_SOURCE_FILES_PROPERTIES(
+  ${CUB_SAINFO_SOURCES}
+  PROPERTIES LANGUAGE CXX
   )
 if(WIN32)
   list(APPEND CUB_SAINFO_SOURCES ${CMAKE_BINARY_DIR}/version.rc)

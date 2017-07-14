@@ -41,12 +41,6 @@
 
 /* Quick set argument check */
 
-#define CHECKNULL(thing) \
-  if ((thing) == NULL) { \
-    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-    return(ER_OBJ_INVALID_ARGUMENTS); \
-    }
-
 /* this needs to go into the pr_ level */
 
 #define SET_FIX_VALUE(value) \
@@ -193,10 +187,13 @@ extern bool set_ismember (DB_COLLECTION * set, DB_VALUE * value);
 extern int set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercion);
 extern int set_convert_oids_to_objects (DB_COLLECTION * set);
 extern DB_TYPE set_get_type (DB_COLLECTION * set);
-extern int set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order);
-extern int set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion);
-extern int set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order);
-extern int vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order);
+extern DB_VALUE_COMPARE_RESULT set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion,
+						  int total_order);
+extern DB_VALUE_COMPARE_RESULT set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion);
+extern DB_VALUE_COMPARE_RESULT set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion,
+						int total_order);
+extern DB_VALUE_COMPARE_RESULT vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion,
+					     int total_order);
 extern TP_DOMAIN_STATUS set_check_domain (DB_COLLECTION * set, TP_DOMAIN * domain);
 extern TP_DOMAIN *set_get_domain (DB_COLLECTION * set);
 
@@ -215,7 +212,7 @@ extern int set_optimize (DB_COLLECTION * ref);
 
 /* These are lower level functions intended only for the transformer */
 
-extern int setvobj_compare (COL * set1, COL * set2, int do_coercion, int total_order);
+extern DB_VALUE_COMPARE_RESULT setvobj_compare (COL * set1, COL * set2, int do_coercion, int total_order);
 
 /* intended for use only by the object manager (obj) */
 
@@ -273,8 +270,8 @@ extern int setobj_size (COL * col);
 extern int setobj_cardinality (COL * col);
 extern bool setobj_isempty (COL * col);
 extern bool setobj_ismember (COL * col, DB_VALUE * proposed_value, int check_null);
-extern int setobj_compare (COL * set1, COL * set2, int do_coercion);
-extern int setobj_compare_order (COL * set1, COL * set2, int do_coercion, int total_order);
+extern DB_VALUE_COMPARE_RESULT setobj_compare (COL * set1, COL * set2, int do_coercion);
+extern DB_VALUE_COMPARE_RESULT setobj_compare_order (COL * set1, COL * set2, int do_coercion, int total_order);
 extern int setobj_difference (COL * set1, COL * set2, COL * result);
 extern int setobj_union (COL * set1, COL * set2, COL * result);
 extern int setobj_intersection (COL * set1, COL * set2, COL * result);

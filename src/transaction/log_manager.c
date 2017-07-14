@@ -212,7 +212,7 @@ static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const I
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
 static int log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-				    const char *prefix_logname, int ismedia_crash, BO_RESTART_ARG * r_args,
+				    const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args,
 				    bool init_emergency);
 #if defined(SERVER_MODE)
 static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -308,7 +308,7 @@ static int log_is_valid_locator (const char *locator);
 
 static void log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, void *arg);
 static void log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
-					 void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * class,
+					 void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * clazz,
 							   void *arg), void *arg);
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
 					     bool release, bool decache_classrepr);
@@ -1018,7 +1018,7 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
  */
 static int
 log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			 const char *prefix_logname, int ismedia_crash, BO_RESTART_ARG * r_args, bool init_emergency)
+			 const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args, bool init_emergency)
 {
   LOG_RECORD_HEADER *eof;	/* End of log record */
   REL_FIXUP_FUNCTION *disk_compatibility_functions = NULL;
@@ -4890,7 +4890,7 @@ extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, L
  */
 static void
 log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
-			     void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * class, void *arg),
+			     void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * clazz, void *arg),
 			     void *arg)
 {
   MODIFIED_CLASS_ENTRY *t = NULL;
@@ -4982,8 +4982,8 @@ log_is_valid_locator (const char *locator)
     {
       char *key, *meta;
 
-      key = LOCATOR_KEY (locator);
-      meta = LOCATOR_META (locator);
+      key = (char *) LOCATOR_KEY (locator);
+      meta = (char *) LOCATOR_META (locator);
       if (key && meta && (key > meta))
 	{
 	  return true;
@@ -5019,7 +5019,7 @@ xlog_find_lob_locator (THREAD_ENTRY * thread_p, const char *locator, char *real_
     {
       LOB_LOCATOR_ENTRY *entry, find;
 
-      find.key = LOCATOR_KEY (locator);
+      find.key = (char *) LOCATOR_KEY (locator);
       find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
       /* Find entry from red-black tree (see base/rb_tree.h) */
       entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
@@ -5065,17 +5065,17 @@ xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  key = LOCATOR_KEY (locator);
+  key = (char *) LOCATOR_KEY (locator);
   key_len = strlen (key);
 
-  entry = malloc (sizeof (LOB_LOCATOR_ENTRY) + key_len);
+  entry = (LOB_LOCATOR_ENTRY *) malloc (sizeof (LOB_LOCATOR_ENTRY) + key_len);
   if (entry == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOB_LOCATOR_ENTRY) + key_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  savept = malloc (sizeof (LOB_SAVEPOINT_ENTRY));
+  savept = (LOB_SAVEPOINT_ENTRY *) malloc (sizeof (LOB_SAVEPOINT_ENTRY));
   if (savept == NULL)
     {
       free_and_init (entry);
@@ -5129,7 +5129,7 @@ xlog_change_state_of_locator (THREAD_ENTRY * thread_p, const char *locator, cons
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  find.key = LOCATOR_KEY (locator);
+  find.key = (char *) LOCATOR_KEY (locator);
   find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
   entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
 
@@ -5144,7 +5144,7 @@ xlog_change_state_of_locator (THREAD_ENTRY * thread_p, const char *locator, cons
 	{
 	  LOB_SAVEPOINT_ENTRY *savept;
 
-	  savept = malloc (sizeof (LOB_SAVEPOINT_ENTRY));
+	  savept = (LOB_SAVEPOINT_ENTRY *) malloc (sizeof (LOB_SAVEPOINT_ENTRY));
 	  if (savept == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOB_SAVEPOINT_ENTRY));
@@ -5198,7 +5198,7 @@ xlog_drop_lob_locator (THREAD_ENTRY * thread_p, const char *locator)
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  find.key = LOCATOR_KEY (locator);
+  find.key = (char *) LOCATOR_KEY (locator);
   find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
   /* Remove entry that matches 'find' entry from the red-black tree. see base/rb_tree.h for more information */
   entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
@@ -6408,7 +6408,7 @@ log_repl_data_dump (FILE * out_fp, int length, void *data)
   PARSER_VARCHAR *buf;
   PARSER_CONTEXT *parser;
 
-  ptr = data;
+  ptr = (char *) data;
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_mem_value (ptr, &value);
 
@@ -6430,7 +6430,7 @@ log_repl_schema_dump (FILE * out_fp, int length, void *data)
   char *class_name;
   char *sql;
 
-  ptr = data;
+  ptr = (char *) data;
   ptr = or_unpack_int (ptr, &statement_type);
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_string_nocopy (ptr, &sql);
@@ -6553,9 +6553,8 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   (long long) offsetof (LOG_PAGE, area), time_val, log_header_p->db_release, log_header_p->db_compatibility,
 	   log_header_p->db_iopagesize, log_header_p->db_logpagesize, log_header_p->is_shutdown,
 	   log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id, log_header_p->avg_ntrans,
-	   log_header_p->avg_nlocks, log_header_p->npages, (long long int) log_header_p->fpageid,
-	   (long long int) log_header_p->append_lsa.pageid, log_header_p->append_lsa.offset,
-	   (long long int) log_header_p->chkpt_lsa.pageid, log_header_p->chkpt_lsa.offset);
+	   log_header_p->avg_nlocks, log_header_p->npages, (long long) log_header_p->fpageid,
+	   LSA_AS_ARGS (&log_header_p->append_lsa), LSA_AS_ARGS (&log_header_p->chkpt_lsa));
 
   fprintf (out_fp,
 	   "     Next_archive_pageid = %lld at active_phy_pageid = %d,\n"
@@ -6564,10 +6563,9 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n     Log_prefix = %s\n",
 	   (long long int) log_header_p->nxarv_pageid, log_header_p->nxarv_phy_pageid, log_header_p->nxarv_num,
 	   log_header_p->last_arv_num_for_syscrashes, log_header_p->last_deleted_arv_num,
-	   log_header_p->has_logging_been_skipped, (long long int) log_header_p->bkup_level0_lsa.pageid,
-	   (int) log_header_p->bkup_level0_lsa.offset, (long long int) log_header_p->bkup_level1_lsa.pageid,
-	   (int) log_header_p->bkup_level1_lsa.offset, (long long int) log_header_p->bkup_level2_lsa.pageid,
-	   (int) log_header_p->bkup_level2_lsa.offset, log_header_p->prefix_name);
+	   log_header_p->has_logging_been_skipped, LSA_AS_ARGS (&log_header_p->bkup_level0_lsa),
+	   LSA_AS_ARGS (&log_header_p->bkup_level1_lsa), LSA_AS_ARGS (&log_header_p->bkup_level2_lsa),
+	   log_header_p->prefix_name);
 }
 
 static LOG_PAGE *
@@ -6770,7 +6768,7 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
   fprintf (out_fp,
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Run postpone (Redo/After) length = %d, corresponding"
 	   " to\n         Postpone record with LSA = %lld|%d\n", run_posp->data.volid, run_posp->data.pageid,
-	   run_posp->data.offset, run_posp->length, (long long int) run_posp->ref_lsa.pageid, run_posp->ref_lsa.offset);
+	   run_posp->data.offset, run_posp->length, LSA_AS_ARGS (&run_posp->ref_lsa));
 
   redo_length = run_posp->length;
   rcvindex = run_posp->data.rcvindex;
@@ -6822,7 +6820,7 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (compensate->data.rcvindex));
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Compensate length = %d, Next_to_UNDO = %lld|%d\n",
 	   compensate->data.volid, compensate->data.pageid, compensate->data.offset, compensate->length,
-	   (long long int) compensate->undo_nxlsa.pageid, compensate->undo_nxlsa.offset);
+	   LSA_AS_ARGS (&compensate->undo_nxlsa));
 
   length_compensate = compensate->length;
   rcvindex = compensate->data.rcvindex;
@@ -6844,7 +6842,7 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_posp), log_lsa, log_page_p);
   start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %d\n",
-	   (long long int) start_posp->posp_lsa.pageid, start_posp->posp_lsa.offset);
+	   LSA_AS_ARGS (&start_posp->posp_lsa));
 
   return log_page_p;
 }
@@ -6876,7 +6874,7 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
 
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
   repl_log = (LOG_REC_REPLICATION *) ((char *) log_page_p->area + log_lsa->offset);
-  fprintf (out_fp, ", Target log lsa = %lld|%d\n", (long long int) repl_log->lsa.pageid, repl_log->lsa.offset);
+  fprintf (out_fp, ", Target log lsa = %lld|%d\n", LSA_AS_ARGS (&repl_log->lsa));
   length = repl_log->length;
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
@@ -7083,7 +7081,7 @@ log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 
   chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Num_trans = %d,\n", chkpt->ntrans);
-  fprintf (out_fp, "     Redo_LSA = %lld|%d\n", (long long int) chkpt->redo_lsa.pageid, chkpt->redo_lsa.offset);
+  fprintf (out_fp, "     Redo_LSA = %lld|%d\n", LSA_AS_ARGS (&chkpt->redo_lsa));
 
   length_active_tran = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
   length_topope = (sizeof (LOG_INFO_CHKPT_SYSOP) * chkpt->ntops);
@@ -7107,8 +7105,7 @@ log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*savept), log_lsa, log_page_p);
   savept = (LOG_REC_SAVEPT *) ((char *) log_page_p->area + log_lsa->offset);
 
-  fprintf (out_fp, ", Prev_savept_Lsa = %lld|%d, length = %d,\n", (long long int) savept->prv_savept.pageid,
-	   savept->prv_savept.offset, savept->length);
+  fprintf (out_fp, ", Prev_savept_Lsa = %lld|%d, length = %d,\n", LSA_AS_ARGS (&savept->prv_savept), savept->length);
 
   length_save_point = savept->length;
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*savept), log_lsa, log_page_p);
@@ -7483,8 +7480,8 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 		|| (!LSA_EQ (&next_lsa, &log_rec->forw_lsa) && !LSA_ISNULL (&log_rec->forw_lsa)))
 	      {
 		fprintf (out_fp, "\n\n>>>>>****\n");
-		fprintf (out_fp, "Guess next address = %lld|%d for LSA = %lld|%d\n", (long long int) next_lsa.pageid,
-			 next_lsa.offset, (long long int) lsa.pageid, lsa.offset);
+		fprintf (out_fp, "Guess next address = %lld|%d for LSA = %lld|%d\n",
+			 LSA_AS_ARGS (&next_lsa), LSA_AS_ARGS (&lsa));
 		fprintf (out_fp, "<<<<<****\n");
 	      }
 	  }
@@ -9613,7 +9610,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], header->has_logging_been_skipped);
   idx++;
 
-  str = logpb_perm_status_to_string (header->perm_status);
+  str = logpb_perm_status_to_string ((LOG_PSTATUS) header->perm_status);
   db_make_string (out_values[idx], str);
   idx++;
 
@@ -9641,11 +9638,11 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
       goto exit_on_error;
     }
 
-  str = css_ha_server_state_string (header->ha_server_state);
+  str = css_ha_server_state_string ((HA_SERVER_STATE) header->ha_server_state);
   db_make_string (out_values[idx], str);
   idx++;
 
-  str = logwr_log_ha_filestat_to_string (header->ha_file_status);
+  str = logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT) header->ha_file_status);
   db_make_string (out_values[idx], str);
   idx++;
 

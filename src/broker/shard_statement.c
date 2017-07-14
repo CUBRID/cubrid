@@ -953,9 +953,9 @@ shard_stmt_save_prepare_request (T_SHARD_STMT * stmt_p, bool has_shard_val_hint,
 
 	  /* 4. set length */
 	  stmt_p->request_buffer_length = (req_msg_size + expand_size);
-	  set_data_length (stmt_p->request_buffer, stmt_p->request_buffer_length - MSG_HEADER_SIZE);
+	  set_data_length ((char *) stmt_p->request_buffer, stmt_p->request_buffer_length - MSG_HEADER_SIZE);
 
-	  tmp_prepare_req = proxy_dup_msg (stmt_p->request_buffer);
+	  tmp_prepare_req = proxy_dup_msg ((char *) stmt_p->request_buffer);
 	  if (tmp_prepare_req == NULL)
 	    {
 	      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to duplicate prepare request.");

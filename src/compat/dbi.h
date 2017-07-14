@@ -30,13 +30,13 @@
 
 #include <stdio.h>
 #include <time.h>
-#include "error_code.h"
 #include "dbtype.h"
 #include "dbdef.h"
 #include "db_date.h"
 #include "db_elo.h"
 #include "db_query.h"
 #include "databases_file.h"
+#include "error_code.h"
 
 #define db_utime_to_string db_timestamp_to_string
 #define db_string_to_utime db_string_to_timestamp

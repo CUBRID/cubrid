@@ -40,7 +40,7 @@ void *test_circular_queue_producer (void *param);
 static struct timeval start_time;
 
 static void
-begin (char *test_name)
+begin (const char *test_name)
 {
 #define MSG_LEN 60
   int i;
@@ -101,7 +101,7 @@ test_circular_queue_consumer (void *param)
 	  local_nconsumed = ATOMIC_INC_64 (&global_nconsumed, 1);
 	  if (local_nconsumed % 100000 == 0)
 	    {
-	      printf (" Consumed %d entries \n", local_nconsumed);
+	      printf (" Consumed %ld entries \n", local_nconsumed);
 	    }
 	}
     }
@@ -126,7 +126,7 @@ test_circular_queue_producer (void *param)
 	  local_nproduced = ATOMIC_INC_64 (&global_nproduced, 1);
 	  if (local_nproduced % 100000 == 0)
 	    {
-	      printf (" Produced %d entries \n", local_nproduced);
+	      printf (" Produced %ld entries \n", local_nproduced);
 	    }
 	}
 

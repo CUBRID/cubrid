@@ -78,13 +78,13 @@ extern int method_Num_method_jsp_calls;
 /* We have two valid types of membuf used by temporary file. */
 #define QMGR_IS_VALID_MEMBUF_TYPE(m)    ((m) == TEMP_FILE_MEMBUF_NORMAL || (m) == TEMP_FILE_MEMBUF_KEY_BUFFER)
 
-typedef enum qmgr_page_type QMGR_PAGE_TYPE;
 enum qmgr_page_type
 {
   QMGR_UNKNOWN_PAGE,
   QMGR_MEMBUF_PAGE,
   QMGR_TEMP_FILE_PAGE
 };
+typedef enum qmgr_page_type QMGR_PAGE_TYPE;
 
 /*
  *       		     ALLOCATION STRUCTURES
@@ -914,7 +914,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
    * returned if found in the cache. 
    */
 
-  if (stream->xasl_stream == NULL && context->recompile_xasl)
+  if (stream->buffer == NULL && context->recompile_xasl)
     {
       /* Recompile requested by no xasl_stream is provided. */
       assert_release (false);
@@ -934,15 +934,15 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
 	{
 	  /* Found entry. */
 	  XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
-	  if (stream->xasl_stream == NULL && stream->xasl_header != NULL)
+	  if (stream->buffer == NULL && stream->xasl_header != NULL)
 	    {
 	      /* also header was requested. */
-	      qfile_load_xasl_node_header (thread_p, stream->xasl_stream, stream->xasl_header);
+	      qfile_load_xasl_node_header (thread_p, stream->buffer, stream->xasl_header);
 	    }
 	  xcache_unfix (thread_p, cache_entry_p);
 	  goto exit_on_end;
 	}
-      if (stream->xasl_stream == NULL)
+      if (stream->buffer == NULL)
 	{
 	  /* No entry found. */
 	  if (recompile_due_to_threshold)
@@ -955,10 +955,10 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
     }
   /* Add new entry to xasl cache. */
   assert (cache_entry_p == NULL);
-  assert (stream->xasl_stream != NULL);
+  assert (stream->buffer != NULL);
 
   /* get some information from the XASL stream */
-  p = or_unpack_int ((char *) stream->xasl_stream, &header_size);
+  p = or_unpack_int ((char *) stream->buffer, &header_size);
   p = or_unpack_int (p, &dbval_cnt);
   p = or_unpack_oid (p, &creator_oid);
   p = or_unpack_int (p, &n_oid_list);
@@ -2394,7 +2394,7 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page, LO
       pgbuf_set_dirty (thread_p, page_p, free_page);
     }
 #if defined (SERVER_MODE)
-  else if (free_page == FREE)
+  else if (free_page == (int) FREE)
     {
       assert (page_type == QMGR_MEMBUF_PAGE);
     }

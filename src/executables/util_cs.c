@@ -528,7 +528,7 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
       sm_downcase_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
       cls_mop = locator_find_class (name);
 
-      obj = (void *) &cls_sm;
+      obj = (MOBJ *) & cls_sm;
       ws_find (cls_mop, obj);
       if (cls_sm == NULL || cls_sm->class_type != SM_CLASS_CT)
 	{
@@ -1598,9 +1598,9 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
   else if (dump_level == TRANDUMP_QUERY_INFO)
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_QUERY_INFO_ENTRY),
-	       tran_info->tran_index, tran_get_tranlist_state_name (tran_info->state), tran_info->process_id,
-	       tran_info->program_name, tran_info->query_exec_info.query_time, tran_info->query_exec_info.tran_time,
-	       (buf == NULL ? "-1" : buf),
+	       tran_info->tran_index, tran_get_tranlist_state_name (tran_info->state),
+	       tran_info->process_id, tran_info->program_name, tran_info->query_exec_info.query_time,
+	       tran_info->query_exec_info.tran_time, (buf == NULL ? "-1" : buf),
 	       ((tran_info->query_exec_info.sql_id) ? tran_info->query_exec_info.sql_id : "*** empty ***"),
 	       ((tran_info->query_exec_info.query_stmt) ? query_buf : " "));
     }
@@ -1941,7 +1941,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
 	  ptr = kill_tran_index;
 
-	  tmp = strchr (ptr, delimiter);
+	  tmp = (char *) strchr (ptr, delimiter);
 	  while (*ptr != '\0' && tmp)
 	    {
 	      if (list_size >= MAX_KILLTRAN_INDEX_LIST_NUM)
@@ -1967,7 +1967,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
 	      tran_index_list[list_size++] = value;
 	      ptr = tmp + 1;
-	      tmp = strchr (ptr, delimiter);
+	      tmp = (char *) strchr (ptr, delimiter);
 	    }
 
 	  result = parse_int (&value, ptr, 10);
@@ -2412,6 +2412,9 @@ check_server_ha_mode (void)
 /*
  * changemode() - changemode main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
+ *
+ * TODO: this is really confusing. changemode utility actually changes HA state and not HA mode. They are two different
+ *       things.
  */
 int
 changemode (UTIL_FUNCTION_ARG * arg)
@@ -2428,7 +2431,8 @@ changemode (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   char *mode_name;
-  int mode = -1, error;
+  int error;
+  HA_SERVER_STATE ha_state = HA_SERVER_STATE_NA;
   bool force;
   int timeout;
 
@@ -2460,9 +2464,10 @@ changemode (UTIL_FUNCTION_ARG * arg)
   /* check mode_name option argument */
   if (mode_name != NULL)
     {
-      if (changemode_keyword (&mode, &mode_name) != NO_ERROR)
+      int keyval = -1;
+      if (changemode_keyword (&keyval, &mode_name) != NO_ERROR)
 	{
-	  if (sscanf (mode_name, "%d", &mode) != 1)
+	  if (sscanf (mode_name, "%d", &keyval) != 1)
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message
 				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
@@ -2470,7 +2475,9 @@ changemode (UTIL_FUNCTION_ARG * arg)
 	      goto error_exit;
 	    }
 	}
-      if (!(mode == HA_SERVER_STATE_ACTIVE || mode == HA_SERVER_STATE_STANDBY || mode == HA_SERVER_STATE_MAINTENANCE))
+      ha_state = (HA_SERVER_STATE) keyval;
+      if (!(ha_state == HA_SERVER_STATE_ACTIVE || ha_state == HA_SERVER_STATE_STANDBY
+	    || ha_state == HA_SERVER_STATE_MAINTENANCE))
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
@@ -2497,7 +2504,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_NOT_HA_MODE));
@@ -2506,18 +2513,19 @@ changemode (UTIL_FUNCTION_ARG * arg)
 
   if (mode_name == NULL)
     {
-      /* display the value of current mode */
-      mode = boot_change_ha_mode (HA_SERVER_MODE_NA, false, timeout);
+      /* display the value of current ha_state */
+      ha_state = boot_change_ha_mode (HA_SERVER_STATE_NA, false, timeout);
     }
   else
     {
-      /* change server's HA mode */
-      mode = boot_change_ha_mode (mode, force, timeout);
+      /* change server's HA state */
+      ha_state = boot_change_ha_mode (ha_state, force, timeout);
     }
-  if (mode != HA_SERVER_MODE_NA)
+  if (ha_state != HA_SERVER_STATE_NA)
     {
+      int keyval = (int) ha_state;
       mode_name = NULL;
-      if (changemode_keyword (&mode, &mode_name) != NO_ERROR)
+      if (changemode_keyword (&keyval, &mode_name) != NO_ERROR)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
 		   (mode_name ? mode_name : "unknown"));
@@ -2528,6 +2536,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_SERVER_MODE),
 		   database_name, mode_name);
 	}
+      ha_state = (HA_SERVER_STATE) keyval;
     }
   else
     {
@@ -2644,7 +2653,7 @@ prefetchlogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       /* initialize heartbeat */
       error = hb_process_init (database_name, log_path, HB_PTYPE_PREFETCHLOGDB);
@@ -2698,7 +2707,7 @@ retry:
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       fprintf (stderr,
 	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PREFETCHLOGDB, PREFETCHLOGDB_MSG_NOT_HA_MODE));
@@ -2876,7 +2885,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (start_pageid < NULL_PAGEID && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (start_pageid < NULL_PAGEID && !HA_DISABLED ())
     {
       error = hb_process_init (database_name, log_path, HB_PTYPE_COPYLOGDB);
       if (error != NO_ERROR)
@@ -2922,7 +2931,7 @@ retry:
   /* PRM_LOG_BACKGROUND_ARCHIVING is always true in CUBRID HA */
   sysprm_set_to_default (prm_get_name (PRM_ID_LOG_BACKGROUND_ARCHIVING), true);
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_NOT_HA_MODE));
       (void) db_shutdown ();
@@ -3084,7 +3093,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       /* initialize heartbeat */
       error = hb_process_init (database_name, log_path, HB_PTYPE_APPLYLOGDB);
@@ -3099,7 +3108,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA)
+  if (HA_GET_MODE () == HA_MODE_REPLICA)
     {
       replica_time_bound_str = prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
       if (replica_time_bound_str != NULL)
@@ -3147,7 +3156,7 @@ retry:
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB, APPLYLOGDB_MSG_NOT_HA_MODE));
       (void) db_shutdown ();
@@ -3220,6 +3229,7 @@ backupdb_sig_interrupt_handler (int sig_no)
 STATIC_INLINE char *
 spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit)
 {
+#define UNIT_STR(un) (((un) == SPACEDB_SIZE_UNIT_MBYTES) ? 'M' : ((un) == SPACEDB_SIZE_UNIT_GBYTES) ? 'G' : 'T')
   int pgsize, i;
   double size;
 
@@ -3245,21 +3255,20 @@ spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit
 		  break;
 		}
 	    }
+	  sprintf (buf, "%9.1f %c", size, UNIT_STR (i));
 	}
       else
 	{
-	  i = size_unit;
-	  for (; size_unit > SPACEDB_SIZE_UNIT_PAGE; size_unit--)
+	  for (i = size_unit; i > (int) SPACEDB_SIZE_UNIT_PAGE; i--)
 	    {
 	      size /= 1024;
 	    }
+	  sprintf (buf, "%9.1f %c", size, UNIT_STR (size_unit));
 	}
-
-      sprintf (buf, "%9.1f %c", size,
-	       (i == SPACEDB_SIZE_UNIT_MBYTES) ? 'M' : (i == SPACEDB_SIZE_UNIT_GBYTES) ? 'G' : 'T');
     }
 
   return buf;
+#undef UNIT_STR
 }
 
 /*
@@ -3351,7 +3360,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       goto print_applyinfo_usage;
     }
 
-  check_replica_info = (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA);
+  check_replica_info = (HA_GET_MODE () == HA_MODE_REPLICA);
   pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
 
@@ -3417,7 +3426,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      goto check_applied_info_end;
 	    }
 
-	  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+	  if (HA_DISABLED ())
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message
 				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_NOT_HA_MODE));

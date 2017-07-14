@@ -292,7 +292,7 @@ ut_set_keepalive (int sock)
 
   optlen = sizeof (optval);
   optval = 1;			/* true for SO_KEEPALIVE */
-  setsockopt (sock, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen);
+  setsockopt (sock, SOL_SOCKET, SO_KEEPALIVE, (const char *) &optval, optlen);
 
   return 0;
 }
@@ -506,7 +506,7 @@ ut_is_appl_server_ready (int pid, char *ready_flag)
 
   for (i = 0; i < SERVICE_READY_WAIT_COUNT; i++)
     {
-      if (*ready_flag == true)
+      if (*ready_flag != 0)
 	{
 	  return true;
 	}

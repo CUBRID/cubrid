@@ -132,8 +132,10 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* root_class_hfid */ {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID},
   /* data page_size */ -1, /* log page_size */ -1,
   /* disk_compatibility */ 0.0,
-  /* ha_server_state */ -1,
-  /* server_session_key */ {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+  /* ha_server_state */ HA_SERVER_STATE_NA,
+  /* server_session_key */ {(char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF,
+			    (char) 0xFF},
+  //vapa!!!
   INTL_CODESET_NONE,
   NULL
 };
@@ -1197,7 +1199,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
 #if defined(CS_MODE)
-  if (lang_set_charset (boot_Server_credential.db_charset) != NO_ERROR)
+  if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
@@ -3848,7 +3850,7 @@ boot_add_charsets (MOP class_mop)
       DB_MAKE_INTEGER (&val, i);
       db_put_internal (obj, CT_DBCHARSET_CHARSET_ID, &val);
 
-      charset_name = (char *) lang_charset_cubrid_name (i);
+      charset_name = (char *) lang_charset_cubrid_name ((INTL_CODESET) i);
       if (charset_name == NULL)
 	{
 	  return ER_LANG_CODESET_NOT_AVAILABLE;
@@ -5591,14 +5593,14 @@ boot_get_host_connected (void)
   return boot_Host_connected;
 }
 
-int
+HA_SERVER_STATE
 boot_get_ha_server_state (void)
 {
   return boot_Server_credential.ha_server_state;
 }
 
 /*
- * boot_get_lob_path - return the lob path which is recevied from the server
+ * boot_get_lob_path - return the lob path which is received from the server
  */
 const char *
 boot_get_lob_path (void)
