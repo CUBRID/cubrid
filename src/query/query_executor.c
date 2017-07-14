@@ -14503,9 +14503,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 #endif /* NDEBUG */
 
 #if defined(ENABLE_SYSTEMTAP)
-  char *query_str = NULL;
+  const char *query_str = NULL;
   int client_id = -1;
-  char *db_user = NULL;
+  const char *db_user = NULL;
   LOG_TDES *tdes = NULL;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -14588,7 +14588,10 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   query_str = qmgr_get_query_sql_user_text (thread_p, query_id, tran_index);
 
-  CUBRID_QUERY_EXEC_START (query_str ? query_str : "unknown", query_id, client_id, db_user ? db_user : "unknown");
+  query_str = (query_str ? query_str : "unknown");
+  db_user = (db_user ? db_user : "unknown");
+
+  CUBRID_QUERY_EXEC_START (query_str, query_id, client_id, db_user);
 #endif /* ENABLE_SYSTEMTAP */
 
   /* form the value descriptor to represent positional values */
@@ -14765,8 +14768,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
 end:
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_QUERY_EXEC_END (query_str ? query_str : "unknown", query_id, client_id, db_user ? db_user : "unknown",
-			 (er_errid () != NO_ERROR));
+  CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
   return list_id;
 }
