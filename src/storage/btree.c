@@ -1379,9 +1379,6 @@ static void btree_leaf_record_handle_first_overflow (THREAD_ENTRY * thread_p, RE
 						     char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 static int btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * rec, int offset,
 				      BTREE_NODE_TYPE node_type);
-static int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
-						    int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
-						    MVCC_SNAPSHOT * mvcc_snapshot);
 static int btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec, int oid_offset,
 					      BTREE_NODE_TYPE node_type, int *max_visible_oids,
 					      MVCC_SNAPSHOT * mvcc_snapshot);
@@ -2434,7 +2431,7 @@ error:
  * 			   If limit is reached, counting is stopped and current count is returned.
  * mvcc_snapshot (in)	 : Snapshot for visibility test.
  */
-static int
+int
 btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 					 int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
 					 MVCC_SNAPSHOT * mvcc_snapshot)

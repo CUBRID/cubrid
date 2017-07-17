@@ -164,8 +164,10 @@ static void btree_rv_save_root_head (int null_delta, int oid_delta, int key_delt
 static int
 advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, PAGE_PTR * pg_ptr,
 				   int *slot_id, DB_VALUE * key, bool is_desc, int *key_cnt,
-				   BTREE_NODE_HEADER ** header);
+				   BTREE_NODE_HEADER ** header, MVCC_SNAPSHOT * mvcc);
 static int btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void *sort_args_local);
+static int get_number_of_items (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
+				MVCC_SNAPSHOT * mvcc_snapshot);
 
 /*
  * btree_get_node_header () -
@@ -3906,7 +3908,7 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
   BTREE_SCAN pk_bt_scan;
   int key_found = 0;
   int search_has_started = 0;
-  int slot_id = 0;
+  INT16 slot_id = 0;
   int fk_slot_id = -1;
   VPID pk_vpid = VPID_INITIALIZER;
   bool found_p = false;
@@ -3927,6 +3929,9 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
     {
       return DISK_ERROR;
     }
+
+  /* Set the MVCC snapshot to dirty. */
+  mvcc_snapshot->snapshot_fnc = mvcc_satisfies_dirty;
 
   /* Initialize index scan on primary key btid. */
   scan_init_index_scan (&pk_isid, NULL, mvcc_snapshot);
@@ -3975,7 +3980,21 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
   while (true)
     {
       ret = advance_to_next_slot_and_fix_page (thread_p, sort_args->btid, &vpid, &curr_fk_pageptr, &fk_slot_id,
-					       &fk_key, sort_args->key_type->is_desc, &fk_key_cnt, &fk_header);
+					       &fk_key, sort_args->key_type->is_desc, &fk_key_cnt, &fk_header,
+					       mvcc_snapshot);
+      if (ret == NO_ERROR && DB_IS_NULL (&fk_key))
+	{
+	  /* No visible items in current leaf. Go to next leaf. */
+	  vpid = fk_header->next_vpid;
+
+	  /* Unfix current page. */
+	  pgbuf_unfix_and_init (thread_p, curr_fk_pageptr);
+
+	  curr_fk_pageptr = NULL;
+	  fk_slot_id = -1;
+
+	}
+
       if (ret != NO_ERROR)
 	{
 	  goto end;
@@ -4173,23 +4192,25 @@ get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 static int
 advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, PAGE_PTR * pg_ptr,
 				   int *slot_id, DB_VALUE * key, bool is_desc, int *key_cnt,
-				   BTREE_NODE_HEADER ** header)
+				   BTREE_NODE_HEADER ** header, MVCC_SNAPSHOT * mvcc)
 {
   int ret = NO_ERROR;
   VPID next_vpid;
   PAGE_PTR page = *pg_ptr;
   BTREE_NODE_HEADER *local_header = *header;
-  int adv = 0;
+  int adv = 0, num_visible = -1;
+  bool first_scan = false;
 
+start_alg:
   if (page != NULL)
     {
       /* Scan has already started. key_cnt and header must be set. */
       assert (local_header != NULL);
       assert (*key_cnt != -1);
       /* Check if the slot required actually fits in the page. */
-      if (*slot_id == 0 || *slot_id == *key_cnt + 1)
+      if (*slot_id == 0 || *slot_id == *key_cnt + 1 || num_visible == 0)
 	{
-	  /* No longer fits in page, need to get the next page. */
+	  /* No longer fits in page, need to get the next page, or no visibile oids in current page. */
 	  /* Get the corresponding next vpid. */
 	  next_vpid = is_desc ? local_header->prev_vpid : local_header->next_vpid;
 
@@ -4222,6 +4243,7 @@ advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPI
 	  ASSERT_ERROR_AND_SET (ret);
 	  return ret;
 	}
+      first_scan = true;
     }
 
   /* Check page. */
@@ -4237,6 +4259,22 @@ advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPI
     {
       /* Get number of keys in page. */
       *key_cnt = btree_node_number_of_keys (thread_p, page);
+    }
+
+  /* Get the number of visible oids if its the first scan of the current leaf. */
+  if (num_visible == -1)
+    {
+      num_visible = get_number_of_items (thread_p, btid, page, mvcc);
+      if (num_visible == 0)
+	{
+	  goto start_alg;
+	}
+      if (num_visible < 0)
+	{
+	  /* Error. */
+	  ret = num_visible;
+	  goto end;
+	}
     }
 
   adv = is_desc ? -1 : 1;
@@ -4256,4 +4294,43 @@ end:
   *header = local_header;
   *pg_ptr = page;
   return ret;
+}
+
+static int
+get_number_of_items (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, MVCC_SNAPSHOT * mvcc_snapshot)
+{
+  RECDES record;
+  LEAF_REC leaf;
+  int num_visible = 0;
+  int key_offset = 0;
+  int ret = NO_ERROR;
+  DB_VALUE key;
+  bool clear_key;
+
+  DB_MAKE_NULL (&key);
+
+  /* Get the record. */
+  if (spage_get_record (thread_p, pg_ptr, 1, &record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      ret = ER_FAILED;
+      return ret;
+    }
+
+  /* Read the record. */
+  ret =
+    btree_read_record (thread_p, btid, pg_ptr, &record, &key,
+		       &leaf, BTREE_LEAF_NODE, &clear_key, &key_offset, PEEK_KEY_VALUE, NULL);
+
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ret;
+    }
+
+
+  num_visible =
+    btree_get_num_visible_from_leaf_and_ovf (thread_p, btid, &record, key_offset, &leaf, NULL, mvcc_snapshot);
+
+  return num_visible;
 }
