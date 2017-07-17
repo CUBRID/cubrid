@@ -520,29 +520,6 @@ struct btree_object_info
 #define BTREE_OBJECT_INFO_INITIALIZER \
   { OID_INITIALIZER, OID_INITIALIZER, BTREE_MVCC_INFO_INITIALIZER }
 
-/* BTREE_FIND_UNIQUE_HELPER static initializer. */
-#if defined (SERVER_MODE)
-#define BTREE_FIND_UNIQUE_HELPER_INITIALIZER \
-{ OID_INITIALIZER, /* oid */ \
-  OID_INITIALIZER, /* match_class_oid */ \
-  NULL_LOCK, /* lock_mode */ \
-  NULL, /* snapshot */ \
-  false, /* found_object */ \
-  PERF_UTIME_TRACKER_INITIALIZER, /* time_track */ \
-  OID_INITIALIZER, /* locked_oid */ \
-  OID_INITIALIZER /* locked_class_oid */ \
-}
-#else	/* !SERVER_MODE */		   /* SA_MODE */
-#define BTREE_FIND_UNIQUE_HELPER_INITIALIZER \
-{ OID_INITIALIZER, /* oid */ \
-  OID_INITIALIZER, /* match_class_oid */ \
-  NULL_LOCK, /* lock_mode */ \
-  NULL, /* snapshot */ \
-  false, /* found_object */ \
-  PERF_UTIME_TRACKER_INITIALIZER /* time_track */ \
-}
-#endif /* !SA_MODE */
-
 /* BTREE_RANGE_SCAN_PROCESS_KEY_FUNC -
  * btree_range_scan internal function that is called for each key that passes
  * range/filter checks.
@@ -729,9 +706,8 @@ extern unsigned int btree_hash_btid (void *btid, int hash_size);
 extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
 extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 
-extern PAGE_PTR btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
-				  INT16 * slot_id, bool * found_p);
-extern int btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
+extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
+			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);
 extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 						    int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
 						    MVCC_SNAPSHOT * mvcc_snapshot);

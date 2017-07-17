@@ -144,8 +144,8 @@ static PAGE_PTR btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_ar
 static int btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, OID * first_oid,
 			    MVCC_REC_HEADER * p_mvcc_rec_header, LOAD_ARGS * load_args);
 static int btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *arg);
-static int get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_ptr,
-				     int slot_id, DB_VALUE * key);
+static int btree_get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_ptr,
+					   int slot_id, DB_VALUE * key);
 #if defined(CUBRID_DEBUG)
 static int btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args);
 #endif /* defined(CUBRID_DEBUG) */
@@ -161,13 +161,12 @@ static void list_print (const BTREE_NODE * this_list);
 #endif /* defined(CUBRID_DEBUG) */
 static int btree_pack_root_header (RECDES * Rec, BTREE_ROOT_HEADER * header, TP_DOMAIN * key_type);
 static void btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta, RECDES * recdes);
-static int
-advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, PAGE_PTR * pg_ptr,
-				   int *slot_id, DB_VALUE * key, bool is_desc, int *key_cnt,
-				   BTREE_NODE_HEADER ** header, MVCC_SNAPSHOT * mvcc);
-static int btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void *sort_args_local);
-static int get_number_of_items (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
-				MVCC_SNAPSHOT * mvcc_snapshot);
+static int btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid,
+						    PAGE_PTR * pg_ptr, int *slot_id, DB_VALUE * key, bool is_desc,
+						    int *key_cnt, BTREE_NODE_HEADER ** header, MVCC_SNAPSHOT * mvcc);
+static int btree_load_check_fk (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_local, SORT_ARGS * sort_args_local);
+static int btree_get_number_of_items (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
+				      MVCC_SNAPSHOT * mvcc_snapshot);
 
 /*
  * btree_get_node_header () -
@@ -908,7 +907,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       /* Check the correctness of the foreign key, if any. */
       if (has_fk)
 	{
-	  if (btree_check_fk_consistency (thread_p, load_args, sort_args) != NO_ERROR)
+	  if (btree_load_check_fk (thread_p, load_args, sort_args) != NO_ERROR)
 	    goto error;
 	}
 
@@ -3879,94 +3878,64 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
 }
 
 /*
- * btree_check_fk_consistency () -
+ * btree_load_check_fk () -
  *
  *    return:				- NO_ERROR or error code.
  *    load_args_local(in):		- Information about the foreign key
  *    sort_args_local(in):		- Information about the primary key
  *
  */
-static int
-btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void *sort_args_local)
+int
+btree_load_check_fk (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_local, SORT_ARGS * sort_args_local)
 {
-  SORT_ARGS *sort_args = (SORT_ARGS *) sort_args_local;
-  LOAD_ARGS *load_args = (LOAD_ARGS *) load_args_local;
+  SORT_ARGS *sort_args = sort_args_local;
+  LOAD_ARGS *load_args = load_args_local;
   DB_VALUE fk_key, pk_key;
-  int error = NO_ERROR;
   int fk_key_cnt = -1, pk_key_cnt;
   BTREE_NODE_HEADER *fk_header = NULL, *pk_header = NULL;
   VPID vpid;
   int ret = NO_ERROR;
-  bool clear_last_key = false, clear_first_key = false;
-  PAGE_PTR next_pageptr = NULL, pk_leaf = NULL;
-  VPID first_vpid;
-  PAGE_PTR first_pageptr;
   PAGE_PTR curr_fk_pageptr = NULL;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   INDX_SCAN_ID pk_isid;
-  BTREE_ISCAN_OID_LIST pk_oid_list;
   BTREE_SCAN pk_bt_scan;
-  int key_found = 0;
-  int search_has_started = 0;
-  INT16 slot_id = 0;
   int fk_slot_id = -1;
-  VPID pk_vpid = VPID_INITIALIZER;
-  bool found_p = false;
-  int adv = 0;
+  bool found = false;
+  int advance_direction = 0;
   char *val_print = NULL;
-  bool is_desc = false;
+  bool is_fk_scan_desc = false;
+  MVCC_SNAPSHOT mvcc_snapshot_dirty;
+  int lock_ret = LK_GRANTED;
 
   DB_MAKE_NULL (&fk_key);
   DB_MAKE_NULL (&pk_key);
-
-  first_vpid = load_args->leaf.vpid;
-  first_pageptr = load_args->leaf.pgptr;
-
-  load_args->leaf.vpid = load_args->vpid_first_leaf;
-
-  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (mvcc_snapshot == NULL)
-    {
-      return DISK_ERROR;
-    }
-
-  /* Set the MVCC snapshot to dirty. */
-  mvcc_snapshot->snapshot_fnc = mvcc_satisfies_dirty;
+  mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
 
   /* Initialize index scan on primary key btid. */
-  scan_init_index_scan (&pk_isid, NULL, mvcc_snapshot);
+  scan_init_index_scan (&pk_isid, NULL, NULL);
   BTREE_INIT_SCAN (&pk_bt_scan);
-  (pk_isid).oid_list = &pk_oid_list;
-  (pk_isid).oid_list->oid_cnt = 0;
-  (pk_isid).oid_list->capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
-  (pk_isid).oid_list->max_oid_cnt = pk_isid.oid_list->capacity;
-  (pk_isid).oid_list->next_list = NULL;
   (pk_isid).copy_buf_len = DBVAL_BUFSIZE;
   (pk_isid).check_not_vacuumed = true;
 
   /* Lock the primary key class. */
-  ret = lock_object (thread_p, sort_args->fk_refcls_oid, oid_Root_class_oid, SIX_LOCK, LK_COND_LOCK);
-  if (ret != LK_GRANTED)
+  lock_ret = lock_object (thread_p, sort_args->fk_refcls_oid, oid_Root_class_oid, SIX_LOCK, LK_COND_LOCK);
+  if (lock_ret != LK_GRANTED)
     {
-      ret = er_errid ();
-      goto end;
+      ASSERT_ERROR_AND_SET (ret);
+      return ret;
     }
 
   /* Primary key index search prepare */
   if (btree_prepare_bts (thread_p, &pk_bt_scan, sort_args->fk_refcls_pk_btid, &pk_isid, NULL, NULL, NULL,
 			 NULL, NULL, false, NULL) != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      goto end;
+      ASSERT_ERROR ();
+      return ret;
     }
 
-  if (sort_args->key_type->is_desc)
-    {
-      is_desc = true;
-    }
+  is_fk_scan_desc = sort_args->key_type->is_desc != pk_bt_scan.btid_int.key_type->is_desc;
 
   /* Get the corresponding leaf of the foreign key. */
-  if (!is_desc)
+  if (!is_fk_scan_desc)
     {
       /* Get first leaf vpid. */
       vpid = load_args->vpid_first_leaf;
@@ -3977,14 +3946,18 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
       vpid = load_args->leaf.vpid;
     }
 
+  /* Init slot id */
+  pk_bt_scan.slot_id = 0;
+
   while (true)
     {
-      ret = advance_to_next_slot_and_fix_page (thread_p, sort_args->btid, &vpid, &curr_fk_pageptr, &fk_slot_id,
-					       &fk_key, sort_args->key_type->is_desc, &fk_key_cnt, &fk_header,
-					       mvcc_snapshot);
+      ret = btree_advance_to_next_slot_and_fix_page (thread_p, sort_args->btid, &vpid, &curr_fk_pageptr, &fk_slot_id,
+						     &fk_key, sort_args->key_type->is_desc, &fk_key_cnt, &fk_header,
+						     &mvcc_snapshot_dirty);
       if (ret != NO_ERROR)
 	{
-	  goto end;
+	  ASSERT_ERROR ();
+	  break;
 	}
 
       if (curr_fk_pageptr == NULL)
@@ -3994,40 +3967,51 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 	}
 
       /* We got the value from the foreign key, now search through the primary key index. */
-      found_p = false;
+      found = false;
       /* Search through the primary key index. */
-      if (pk_leaf == NULL)
+      if (pk_bt_scan.C_page == NULL)
 	{
 	  /* No search has been initiated yet, we start from root. */
-	  pk_leaf =
-	    btree_locate_key (thread_p, &(pk_bt_scan.btid_int), &fk_key, &(pk_bt_scan.C_vpid), &slot_id, &found_p);
+	  ret =
+	    btree_locate_key (thread_p, &(pk_bt_scan.btid_int), &fk_key, &(pk_bt_scan.C_vpid), &(pk_bt_scan.slot_id),
+			      &(pk_bt_scan.C_page), &found);
 
-	  if (found_p == 0)
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      break;
+	    }
+	  else if (!found)
 	    {
 	      /* Value was not found at all, it means the foreign key is invalid. */
 	      val_print = pr_valstring (&fk_key);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 		      (val_print ? val_print : "unknown value"));
 	      ret = ER_FK_INVALID;
-	      goto end;
+	      break;
+	    }
+	  else
+	    {
+	      assert (pk_bt_scan.C_page != NULL);
 	    }
 
 	  /* Value was found, proceed with the next value */
-	  slot_id++;
+	  pk_bt_scan.slot_id++;
 	}
       else
 	{
 	  /* Get the header of the current leaf. */
-	  pk_header = btree_get_node_header (thread_p, pk_leaf);
+	  pk_header = btree_get_node_header (thread_p, pk_bt_scan.C_page);
 
 	  /* Get the number of keys in current leaf.  */
-	  pk_key_cnt = btree_node_number_of_keys (thread_p, pk_leaf);
+	  pk_key_cnt = btree_node_number_of_keys (thread_p, pk_bt_scan.C_page);
 
 	  /* We try to resume the search in the current leaf. */
-	  while (!found_p && slot_id <= pk_key_cnt)
+	  while (!found && pk_bt_scan.slot_id <= pk_key_cnt)
 	    {
 	      /* Try to get the value from the next slot. */
-	      ret = get_value_from_leaf_slot (thread_p, &(pk_bt_scan.btid_int), pk_leaf, slot_id, &pk_key);
+	      ret = btree_get_value_from_leaf_slot (thread_p, &(pk_bt_scan.btid_int), pk_bt_scan.C_page,
+						    pk_bt_scan.slot_id, &pk_key);
 
 	      if (ret != NO_ERROR)
 		{
@@ -4040,12 +4024,12 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 	      if (ret == DB_EQ)
 		{
 		  /* We found the values are equal, go on with next step. */
-		  found_p = true;
-		  slot_id++;
+		  found = true;
+		  pk_bt_scan.slot_id++;
 		}
 	      else
 		{
-		  if (adv == ret)
+		  if (advance_direction == ret)
 		    {
 		      /*  Last value that was found was either greater, or lower than the current value
 		       *  from the primary key, while the new one is the other way around. Which means the value
@@ -4058,18 +4042,18 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
 		      goto end;
 		    }
 
-		  slot_id += 1;
+		  pk_bt_scan.slot_id += 1;
 		}
 
 	      /* Check whether the key no longer resides in the current page. If so, restart scan from top. */
-	      if (!found_p && slot_id > pk_key_cnt)
+	      if (!found && pk_bt_scan.slot_id > pk_key_cnt)
 		{
-		  pgbuf_unfix_and_init (thread_p, pk_leaf);
+		  pgbuf_unfix_and_init (thread_p, pk_bt_scan.C_page);
 		}
 	    }
 	}
 
-      if (found_p == true)
+      if (found == true)
 	{
 	  pr_clear_value (&fk_key);
 	}
@@ -4084,9 +4068,9 @@ end:
       pgbuf_unfix_and_init (thread_p, curr_fk_pageptr);
     }
 
-  if (pk_leaf)
+  if (pk_bt_scan.C_page)
     {
-      pgbuf_unfix_and_init (thread_p, pk_leaf);
+      pgbuf_unfix_and_init (thread_p, pk_bt_scan.C_page);
     }
 
   if (load_args->leaf.pgptr)
@@ -4094,12 +4078,7 @@ end:
       pgbuf_unfix (thread_p, load_args->leaf.pgptr);
     }
 
-  if (first_pageptr)
-    {
-      pgbuf_unfix (thread_p, first_pageptr);
-    }
-
-  if (found_p == false && ret == NO_ERROR)
+  if (found == false && ret == NO_ERROR)
     {
       /* The search has ended, but the last value from the foreign key was not found. */
       val_print = pr_valstring (&fk_key);
@@ -4121,7 +4100,7 @@ end:
 }
 
 /*
- * get_value_from_leaf_slot () -
+ * btree_get_value_from_leaf_slot () -
  *
  *   return:			  - NO_ERROR or error code.
  *   btid_int(in):		  - The structure of the B-tree where the leaf resides.
@@ -4131,7 +4110,8 @@ end:
  *
  */
 static int
-get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_ptr, int slot_id, DB_VALUE * key)
+btree_get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_ptr, int slot_id,
+				DB_VALUE * key)
 {
   LEAF_REC leaf;
   bool clear_first_key = false;
@@ -4160,7 +4140,7 @@ get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 }
 
 /*
- * advance_to_next_slot_and_fix_page () -
+ * btree_advance_to_next_slot_and_fix_page () -
  *
  *   return:			  - NO_ERROR or error code
  *   btid(in):			  - B-tree structure
@@ -4177,9 +4157,9 @@ get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
  *	on exit, it will point towards the next value that needs to be extracted.
  */
 static int
-advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, PAGE_PTR * pg_ptr,
-				   int *slot_id, DB_VALUE * key, bool is_desc, int *key_cnt,
-				   BTREE_NODE_HEADER ** header, MVCC_SNAPSHOT * mvcc)
+btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, PAGE_PTR * pg_ptr,
+					 int *slot_id, DB_VALUE * key, bool is_desc, int *key_cnt,
+					 BTREE_NODE_HEADER ** header, MVCC_SNAPSHOT * mvcc)
 {
   int ret = NO_ERROR;
   VPID next_vpid;
@@ -4251,7 +4231,7 @@ start_alg:
   /* Get the number of visible oids if its the first scan of the current leaf. */
   if (num_visible == -1)
     {
-      num_visible = get_number_of_items (thread_p, btid, page, mvcc);
+      num_visible = btree_get_number_of_items (thread_p, btid, page, mvcc);
       if (num_visible == 0)
 	{
 	  goto start_alg;
@@ -4272,7 +4252,7 @@ start_alg:
       *slot_id = is_desc ? *key_cnt : 1;
     }
 
-  ret = get_value_from_leaf_slot (thread_p, btid, page, *slot_id, key);
+  ret = btree_get_value_from_leaf_slot (thread_p, btid, page, *slot_id, key);
 
   *slot_id += adv;
 
@@ -4284,7 +4264,7 @@ end:
 }
 
 /*
- *  get_number_of_items():-	Gets number of visible oids from a page.
+ *  btree_get_number_of_items():-	Gets number of visible oids from a page.
  *
  *  thread_p(in):		    -	Thread entry.
  *  btid(in):			    -	B-tree info.
@@ -4295,7 +4275,7 @@ end:
  */
 
 static int
-get_number_of_items (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, MVCC_SNAPSHOT * mvcc_snapshot)
+btree_get_number_of_items (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, MVCC_SNAPSHOT * mvcc_snapshot)
 {
   RECDES record;
   LEAF_REC leaf;

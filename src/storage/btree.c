@@ -457,6 +457,28 @@ struct btree_find_unique_helper
   OID locked_class_oid;		/* Locked object class OID. */
 #endif				/* SERVER_MODE */
 };
+/* BTREE_FIND_UNIQUE_HELPER static initializer. */
+#if defined (SERVER_MODE)
+#define BTREE_FIND_UNIQUE_HELPER_INITIALIZER \
+{ OID_INITIALIZER, /* oid */ \
+  OID_INITIALIZER, /* match_class_oid */ \
+  NULL_LOCK, /* lock_mode */ \
+  NULL, /* snapshot */ \
+  false, /* found_object */ \
+  PERF_UTIME_TRACKER_INITIALIZER, /* time_track */ \
+  OID_INITIALIZER, /* locked_oid */ \
+  OID_INITIALIZER /* locked_class_oid */ \
+}
+#else	/* !SERVER_MODE */		   /* SA_MODE */
+#define BTREE_FIND_UNIQUE_HELPER_INITIALIZER \
+{ OID_INITIALIZER, /* oid */ \
+  OID_INITIALIZER, /* match_class_oid */ \
+  NULL_LOCK, /* lock_mode */ \
+  NULL, /* snapshot */ \
+  false, /* found_object */ \
+  PERF_UTIME_TRACKER_INITIALIZER /* time_track */ \
+}
+#endif /* !SA_MODE */
 
 /* BTREE_REC_SATISFIES_SNAPSHOT_HELPER -
  * Structure used as helper for btree_record_satisfies_snapshot function.
@@ -1505,7 +1527,7 @@ static int btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * 
 					    bool * stop, void *args);
 
 static int btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
-
+static int btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, int *key_count,
 						      BTREE_NODE_HEADER ** node_header_ptr, VPID * next_vpid);
 static int btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
@@ -14008,11 +14030,13 @@ exit_on_error:
  * Note: Search the B+tree index to locate the page and record that contains
  *	 the key, or would contain the key if the key was to be located.
  */
-PAGE_PTR
+int
 btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid, INT16 * slot_id,
-		  bool * found_p)
+		  PAGE_PTR * leaf_page_out, bool * found_p)
 {
   PAGE_PTR leaf_page = NULL;	/* Leaf node page pointer. */
+  int error = NO_ERROR;
+
   /* Search key result. */
   BTREE_SEARCH_KEY_HELPER search_key = BTREE_SEARCH_KEY_HELPER_INITIALIZER;
 
@@ -14027,14 +14051,14 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, 
   *found_p = false;
 
   /* Advance in b-tree following key until leaf node is reached. */
-  if (btree_search_key_and_apply_functions (thread_p, btid_int->sys_btid, NULL, key, NULL, NULL,
-					    btree_advance_and_find_key, slot_id, NULL, NULL, &search_key,
-					    &leaf_page) != NO_ERROR)
+  error = btree_search_key_and_apply_functions (thread_p, btid_int->sys_btid, NULL, key, NULL, NULL,
+						btree_advance_and_find_key, slot_id, NULL, NULL, &search_key,
+						&leaf_page);
+  if (error != NO_ERROR)
     {
-      /* Error */
-      ASSERT_ERROR ();
       assert (leaf_page == NULL);
-      return NULL;
+      *leaf_page_out = NULL;
+      return error;
     }
   assert (leaf_page != NULL);
 
@@ -14046,8 +14070,10 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, 
       /* Output leaf node page VPID. */
       pgbuf_get_vpid (leaf_page, pg_vpid);
     }
-  /* Return leaf node page pointer. */
-  return leaf_page;
+  /* Assign leaf node page pointer. */
+  *leaf_page_out = leaf_page;
+
+  return error;
 }
 
 /*
@@ -23948,12 +23974,12 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   else
     {
       /* Has lower limit. Try to locate the key. */
-      bts->C_page =
-	btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key, &bts->C_vpid, &bts->slot_id, &found);
-      if (bts->C_page == NULL)
+      error_code =
+	btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key, &bts->C_vpid, &bts->slot_id,
+			  &(bts->C_page), &found);
+      if (error_code != NO_ERROR)
 	{
-	  /* Error locating or fixing leaf. */
-	  ASSERT_ERROR_AND_SET (error_code);
+	  ASSERT_ERROR ();
 	  return error_code;
 	}
       if (!found && bts->use_desc_index)
@@ -24127,10 +24153,11 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   bts->force_restart_from_root = false;
 
   /* Search key from top. */
-  bts->C_page = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, &bts->C_vpid, &bts->slot_id, &found);
-  if (bts->C_page == NULL)
+  error_code = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, &bts->C_vpid, &bts->slot_id,
+				 &(bts->C_page), &found);
+  if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error_code);
+      ASSERT_ERROR ();
       return error_code;
     }
   /* Safe guard. */
@@ -24180,7 +24207,7 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
  * thread_p (in)  : Thread entry.
  * bts (in/out)	  : B-tree scan helper.
  */
-int
+static int
 btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   int inc_slot;			/* Slot incremental value to advance to next key. */
