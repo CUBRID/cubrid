@@ -4296,6 +4296,17 @@ end:
   return ret;
 }
 
+/*
+ *  get_number_of_items():-	Gets number of visible oids from a page.
+ *
+ *  thread_p(in):		    -	Thread entry.
+ *  btid(in):			    -	B-tree info.
+ *  pg_ptr(in):			    -	Page pointer.
+ *  mvcc_snapshot(in):		    -	The MVCC snapshot.
+ *
+ *  return: Number of visible items, or error code if any error occurs.	    
+ */
+
 static int
 get_number_of_items (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, MVCC_SNAPSHOT * mvcc_snapshot)
 {
