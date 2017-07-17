@@ -3982,19 +3982,6 @@ btree_check_fk_consistency (THREAD_ENTRY * thread_p, void *load_args_local, void
       ret = advance_to_next_slot_and_fix_page (thread_p, sort_args->btid, &vpid, &curr_fk_pageptr, &fk_slot_id,
 					       &fk_key, sort_args->key_type->is_desc, &fk_key_cnt, &fk_header,
 					       mvcc_snapshot);
-      if (ret == NO_ERROR && DB_IS_NULL (&fk_key))
-	{
-	  /* No visible items in current leaf. Go to next leaf. */
-	  vpid = fk_header->next_vpid;
-
-	  /* Unfix current page. */
-	  pgbuf_unfix_and_init (thread_p, curr_fk_pageptr);
-
-	  curr_fk_pageptr = NULL;
-	  fk_slot_id = -1;
-
-	}
-
       if (ret != NO_ERROR)
 	{
 	  goto end;
