@@ -162,7 +162,7 @@ static void list_print (const BTREE_NODE * this_list);
 static int btree_pack_root_header (RECDES * Rec, BTREE_ROOT_HEADER * header, TP_DOMAIN * key_type);
 static void btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta, RECDES * recdes);
 static int btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid,
-						    PAGE_PTR * pg_ptr, int *slot_id, DB_VALUE * key, bool is_desc,
+						    PAGE_PTR * pg_ptr, INT16 * slot_id, DB_VALUE * key, bool is_desc,
 						    int *key_cnt, BTREE_NODE_HEADER ** header, MVCC_SNAPSHOT * mvcc);
 static int btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args_local,
 				const SORT_ARGS * sort_args_local);
@@ -3763,14 +3763,14 @@ int
 btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const SORT_ARGS * sort_args)
 {
   DB_VALUE fk_key, pk_key;
-  int fk_key_cnt = -1, pk_key_cnt;
+  int fk_key_cnt = -1, pk_key_cnt = -1;
   BTREE_NODE_HEADER *fk_header = NULL, *pk_header = NULL;
   VPID vpid;
   int ret = NO_ERROR;
   PAGE_PTR curr_fk_pageptr = NULL, old_page = NULL;
   INDX_SCAN_ID pk_isid;
   BTREE_SCAN pk_bt_scan;
-  int fk_slot_id = -1;
+  INT16 fk_slot_id = -1;
   bool found = false;
   int advance_direction = 0;
   char *val_print = NULL;
@@ -3891,18 +3891,12 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	}
       else
 	{
-	  /* Get the header of the current leaf. */
-	  pk_header = btree_get_node_header (thread_p, pk_bt_scan.C_page);
-
-	  /* Get the number of keys in current leaf.  */
-	  pk_key_cnt = btree_node_number_of_keys (thread_p, pk_bt_scan.C_page);
-
 	  /* We try to resume the search in the current leaf. */
 	  while (!found && pk_bt_scan.slot_id <= pk_key_cnt)
 	    {
-	      /* Try to get the value from the next slot. */
-	      ret = btree_get_value_from_leaf_slot (thread_p, &(pk_bt_scan.btid_int), pk_bt_scan.C_page,
-						    pk_bt_scan.slot_id, &pk_key);
+	      ret = btree_advance_to_next_slot_and_fix_page (thread_p, &(pk_bt_scan.btid_int), &(pk_bt_scan.C_vpid),
+							     &(pk_bt_scan.C_page), &(pk_bt_scan.slot_id), &pk_key,
+							     is_fk_scan_desc, &pk_key_cnt, &(pk_header), NULL);
 
 	      if (ret != NO_ERROR)
 		{
@@ -4043,7 +4037,7 @@ btree_get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PA
  */
 static int
 btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, PAGE_PTR * pg_ptr,
-					 int *slot_id, DB_VALUE * key, bool is_desc, int *key_cnt,
+					 INT16 * slot_id, DB_VALUE * key, bool is_desc, int *key_cnt,
 					 BTREE_NODE_HEADER ** header, MVCC_SNAPSHOT * mvcc)
 {
   int ret = NO_ERROR;
@@ -4127,7 +4121,7 @@ start_alg:
     }
 
   /* Get the number of visible oids if its the first scan of the current leaf. */
-  if (num_visible == -1)
+  if (mvcc != NULL && num_visible == -1)
     {
       num_visible = btree_get_number_of_items (thread_p, btid, page, mvcc);
       if (num_visible == 0)
