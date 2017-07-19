@@ -680,6 +680,9 @@ extern void btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p, char *dat
 					      OR_BUF * key_buf);
 extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
 				     DB_VALUE * key);
+extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OID * oid, DB_VALUE * keyval,
+				    int n_attrs, OID * pk_cls_oid, BTID * pk_btid, const char *fk_name);
+
 extern void btree_get_root_vpid_from_btid (THREAD_ENTRY * thread_p, BTID * btid, VPID * root_vpid);
 extern int btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * btid_out);
 
