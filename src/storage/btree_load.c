@@ -164,7 +164,8 @@ static void btree_rv_save_root_head (int null_delta, int oid_delta, int key_delt
 static int btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid,
 						    PAGE_PTR * pg_ptr, int *slot_id, DB_VALUE * key, bool is_desc,
 						    int *key_cnt, BTREE_NODE_HEADER ** header, MVCC_SNAPSHOT * mvcc);
-static int btree_load_check_fk (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_local, SORT_ARGS * sort_args_local);
+static int btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args_local,
+				const SORT_ARGS * sort_args_local);
 static int btree_get_number_of_items (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
 				      MVCC_SNAPSHOT * mvcc_snapshot);
 
@@ -3886,16 +3887,14 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
  *
  */
 int
-btree_load_check_fk (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_local, SORT_ARGS * sort_args_local)
+btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const SORT_ARGS * sort_args)
 {
-  SORT_ARGS *sort_args = sort_args_local;
-  LOAD_ARGS *load_args = load_args_local;
   DB_VALUE fk_key, pk_key;
   int fk_key_cnt = -1, pk_key_cnt;
   BTREE_NODE_HEADER *fk_header = NULL, *pk_header = NULL;
   VPID vpid;
   int ret = NO_ERROR;
-  PAGE_PTR curr_fk_pageptr = NULL;
+  PAGE_PTR curr_fk_pageptr = NULL, old_page = NULL;
   INDX_SCAN_ID pk_isid;
   BTREE_SCAN pk_bt_scan;
   int fk_slot_id = -1;
@@ -3905,6 +3904,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_local, SORT_
   bool is_fk_scan_desc = false;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
   int lock_ret = LK_GRANTED;
+  DB_VALUE_COMPARE_RESULT compare_ret;
 
   DB_MAKE_NULL (&fk_key);
   DB_MAKE_NULL (&pk_key);
@@ -3925,13 +3925,15 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_local, SORT_
     }
 
   /* Primary key index search prepare */
-  if (btree_prepare_bts (thread_p, &pk_bt_scan, sort_args->fk_refcls_pk_btid, &pk_isid, NULL, NULL, NULL,
-			 NULL, NULL, false, NULL) != NO_ERROR)
+  ret = btree_prepare_bts (thread_p, &pk_bt_scan, sort_args->fk_refcls_pk_btid, &pk_isid, NULL, NULL, NULL,
+			   NULL, NULL, false, NULL);
+  if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
       return ret;
     }
 
+  /* Set the order. */
   is_fk_scan_desc = sort_args->key_type->is_desc != pk_bt_scan.btid_int.key_type->is_desc;
 
   /* Get the corresponding leaf of the foreign key. */
@@ -3966,8 +3968,17 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_local, SORT_
 	  break;
 	}
 
+      if (DB_IS_NULL (&fk_key))
+	{
+	  /* Only way to get this is by having no visible objects in the foreign key. */
+	  /* Must be checked!! */
+	  break;
+	}
+
       /* We got the value from the foreign key, now search through the primary key index. */
       found = false;
+
+    start_primary_search:
       /* Search through the primary key index. */
       if (pk_bt_scan.C_page == NULL)
 	{
@@ -3995,6 +4006,13 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_local, SORT_
 	      assert (pk_bt_scan.C_page != NULL);
 	    }
 
+	  /* Unfix old page, if any. */
+	  if (old_page != NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, old_page);
+	    }
+
+
 	  /* Value was found, proceed with the next value */
 	  pk_bt_scan.slot_id++;
 	}
@@ -4019,37 +4037,35 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_local, SORT_
 		}
 
 	      /* We need to compare the current value with the new value from the primary key. */
-	      ret = btree_compare_key (&pk_key, &fk_key, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
+	      compare_ret = btree_compare_key (&pk_key, &fk_key, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
 
-	      if (ret == DB_EQ)
+	      if (compare_ret == DB_EQ)
 		{
-		  /* We found the values are equal, go on with next step. */
-		  found = true;
-		  pk_bt_scan.slot_id++;
+		  /* Found value, stop searching in pk. */
+		  break;
+		}
+	      else if (compare_ret == DB_LT)
+		{
+		  /* No match yet. Advance in pk. */
+		  pk_bt_scan.slot_id += 1;
+		  continue;
 		}
 	      else
 		{
-		  if (advance_direction == ret)
-		    {
-		      /*  Last value that was found was either greater, or lower than the current value
-		       *  from the primary key, while the new one is the other way around. Which means the value
-		       *  that we are looking for does not exist anymore.
-		       */
-		      val_print = pr_valstring (&fk_key);
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
-			      (val_print ? val_print : "unknown value"));
-		      ret = ER_FK_INVALID;
-		      goto end;
-		    }
-
-		  pk_bt_scan.slot_id += 1;
+		  /* Fk is invalid. Set error. */
+		  val_print = pr_valstring (&fk_key);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
+			  (val_print ? val_print : "unknown value"));
+		  ret = ER_FK_INVALID;
+		  goto end;
 		}
-
-	      /* Check whether the key no longer resides in the current page. If so, restart scan from top. */
-	      if (!found && pk_bt_scan.slot_id > pk_key_cnt)
-		{
-		  pgbuf_unfix_and_init (thread_p, pk_bt_scan.C_page);
-		}
+	    }
+	  /* Check whether the key no longer resides in the current page. If so, restart scan from top. */
+	  if (!found && pk_bt_scan.slot_id > pk_key_cnt)
+	    {
+	      old_page = pk_bt_scan.C_page;
+	      pk_bt_scan.C_page = NULL;
+	      goto start_primary_search;
 	    }
 	}
 
@@ -4062,6 +4078,11 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_local, SORT_
 
     }
 end:
+
+  if (old_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, old_page);
+    }
 
   if (curr_fk_pageptr != NULL)
     {
@@ -4076,15 +4097,6 @@ end:
   if (load_args->leaf.pgptr)
     {
       pgbuf_unfix (thread_p, load_args->leaf.pgptr);
-    }
-
-  if (found == false && ret == NO_ERROR)
-    {
-      /* The search has ended, but the last value from the foreign key was not found. */
-      val_print = pr_valstring (&fk_key);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
-	      (val_print ? val_print : "unknown value"));
-      ret = ER_FK_INVALID;
     }
 
   if (!DB_IS_NULL (&fk_key))
@@ -4167,6 +4179,13 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
   BTREE_NODE_HEADER *local_header = *header;
   int adv = 0, num_visible = -1;
   bool first_scan = false;
+  PAGE_PTR old_page = NULL;
+
+  /* Clear current key, if any. */
+  if (!DB_IS_NULL (key))
+    {
+      pr_clear_value (key);
+    }
 
 start_alg:
   if (page != NULL)
@@ -4177,18 +4196,18 @@ start_alg:
       /* Check if the slot required actually fits in the page. */
       if (*slot_id == 0 || *slot_id == *key_cnt + 1 || num_visible == 0)
 	{
-	  /* No longer fits in page, need to get the next page, or no visibile oids in current page. */
+	  /* No longer fits in page, or no visible oids in current page. Need to go to the next page. */
 	  /* Get the corresponding next vpid. */
 	  next_vpid = is_desc ? local_header->prev_vpid : local_header->next_vpid;
-
-	  /* Unfix current page. */
-	  pgbuf_unfix_and_init (thread_p, page);
 
 	  /* If next_vpid is NULL, it means the search has ended. */
 	  if (VPID_ISNULL (&next_vpid))
 	    {
 	      goto end;
 	    }
+
+	  /* Save the old page. */
+	  old_page = page;
 
 	  /* Set correct VPID. */
 	  *vpid = next_vpid;
@@ -4211,6 +4230,12 @@ start_alg:
 	  return ret;
 	}
       first_scan = true;
+
+      /* Unfix the old page, if any. */
+      if (old_page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, old_page);
+	}
     }
 
   /* Check page. */
