@@ -33,6 +33,8 @@
 #include <sys/time.h>
 #endif
 
+#include "log_applier.h"
+
 #include "porting.h"
 #include "utility.h"
 #include "environment_variable.h"
@@ -44,7 +46,6 @@
 #include "object_accessor.h"
 #include "locator_cl.h"
 #include "connection_cl.h"
-#include "log_applier.h"
 #include "network_interface_cl.h"
 #include "transform.h"
 #include "file_io.h"

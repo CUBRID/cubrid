@@ -55,7 +55,7 @@
 #include "set_object.h"
 #include "language_support.h"
 #include "intl_support.h"
-#include "object_primitive.h"
+#include "log_impl.h"
 /* this must be the last header file included! */
 #include "dbval.h"
 
@@ -536,6 +536,27 @@ mht_numhash (const void *key, const unsigned int ht_size)
   assert (key != NULL);
 
   return (*(const unsigned int *) key) % ht_size;
+}
+
+/*
+ * mht_logpageidhash - hash a LOG_PAGEID key
+ *   return: hash value
+ *   key(in): void pointer to LOG_PAGEID key to hash
+ *   ht_size(in): size of hash table
+ */
+unsigned int
+mht_logpageidhash (const void *key, unsigned int htsize)
+{
+  assert (key != NULL);
+
+  if ((*(const LOG_PAGEID *) key) == LOGPB_HEADER_PAGE_ID)
+    {
+      return 0;
+    }
+
+  assert ((*(const LOG_PAGEID *) key) >= 0);
+
+  return (*(const LOG_PAGEID *) key) % htsize;
 }
 
 /*
