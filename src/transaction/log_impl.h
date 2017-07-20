@@ -726,6 +726,10 @@ struct log_rec_ha_server_state
 #define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system transaction index. */
 #define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
 
+#if !defined (NDEBUG) && !defined (WINDOWS)
+extern int logtb_collect_local_clients (int **local_client_pids);
+#endif /* !defined (NDEBUG) && !defined (WINDOWS) */
+
 /************************************************************************/
 /* End of part shared with client.                                      */
 /************************************************************************/
@@ -2378,10 +2382,6 @@ extern void logtb_reset_bit_area_start_mvccid (void);
 
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);
-
-#if !defined (NDEBUG)
-extern int logtb_collect_local_clients (int **local_client_pids);
-#endif /* !NDEBUG */
 
 extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 

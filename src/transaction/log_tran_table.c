@@ -6855,7 +6855,7 @@ xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name)
   return existed;
 }
 
-#if !defined (NDEBUG)
+#if !defined (NDEBUG) && !defined (WINDOWS)
 int
 logtb_collect_local_clients (int **local_clients_pids)
 {
@@ -6887,7 +6887,7 @@ logtb_collect_local_clients (int **local_clients_pids)
   *local_clients_pids = table;
   return num_client;
 }
-#endif /* !NDEBUG */
+#endif /* !defined (NDEBUG) && !defined (WINDOWS) */
 
 /*
  * logtb_descriptors_start_scan () -  start scan function for tran descriptors
