@@ -1313,4 +1313,51 @@ typedef enum
 #define SERIAL_ATTR_CACHED_NUM    "cached_num"
 #define SERIAL_ATTR_COMMENT       "comment"
 
+#define PEEK          true	/* Peek for a slotted record */
+#define COPY          false	/* Don't peek, but copy a slotted record */
+
+enum
+{
+/* Unknown record type */
+  REC_UNKNOWN = 0,
+
+/* Record without content, just the address */
+  REC_ASSIGN_ADDRESS = 1,
+
+/* Home of record */
+  REC_HOME = 2,
+
+/* No the original home of record.  part of relocation process */
+  REC_NEWHOME = 3,
+
+/* Record describe new home of record */
+  REC_RELOCATION = 4,
+
+/* Record describe location of big record */
+  REC_BIGONE = 5,
+
+/* Slot does not describe any record.
+ * A record was stored in this slot.  Slot cannot be reused. 
+ */
+  REC_MARKDELETED = 6,
+
+/* Slot does not describe any record.
+ * A record was stored in this slot.  Slot will be reused. 
+ */
+  REC_DELETED_WILL_REUSE = 7,
+
+/* unused reserved record type */
+  REC_RESERVED_TYPE_8 = 8,
+  REC_RESERVED_TYPE_9 = 9,
+  REC_RESERVED_TYPE_10 = 10,
+  REC_RESERVED_TYPE_11 = 11,
+  REC_RESERVED_TYPE_12 = 12,
+  REC_RESERVED_TYPE_13 = 13,
+  REC_RESERVED_TYPE_14 = 14,
+  REC_RESERVED_TYPE_15 = 15,
+/* 4bit record type max */
+  REC_4BIT_USED_TYPE_MAX = REC_DELETED_WILL_REUSE,
+  REC_4BIT_TYPE_MAX = REC_RESERVED_TYPE_15
+};
+
 #endif /* _STORAGE_COMMON_H_ */

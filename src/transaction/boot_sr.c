@@ -62,7 +62,6 @@
 #include "locator_sr.h"
 #include "heap_file.h"
 //#include "locator.h"
-#include "slotted_page.h"
 //#include "extendible_hash.h"
 #include "system_catalog.h"
 //#include "transaction_sr.h"
@@ -93,6 +92,7 @@
 #include "tz_support.h"
 //#include "tsc_timer.h"
 #include "filter_pred_cache.h"
+#include "slotted_page.h"
 
 #if defined(SERVER_MODE)
 //#include "connection_error.h"

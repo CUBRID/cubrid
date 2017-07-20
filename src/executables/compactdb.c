@@ -48,7 +48,6 @@
 #include "utility.h"
 #include "authenticate.h"
 #include "transaction_cl.h"
-#include "slotted_page.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

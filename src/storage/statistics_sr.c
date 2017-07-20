@@ -43,7 +43,6 @@
 #include "heap_file.h"
 #include "boot_sr.h"
 #include "partition.h"
-#include "slotted_page.h"
 #include "object_primitive.h"
 //#include "db.h"
 

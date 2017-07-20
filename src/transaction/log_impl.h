@@ -669,6 +669,50 @@ struct log_rec_mvcc_redo
   MVCCID mvccid;		/* MVCC Identifier for transaction */
 };
 
+/* replication log structure */
+typedef struct log_rec_replication LOG_REC_REPLICATION;
+struct log_rec_replication
+{
+  LOG_LSA lsa;
+  int length;
+  int rcvindex;
+};
+
+/* Log the time of termination of transaction */
+typedef struct log_rec_donetime LOG_REC_DONETIME;
+struct log_rec_donetime
+{
+  INT64 at_time;		/* Database creation time. For safety reasons */
+};
+
+#define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
+  ((LOG_RECORD_HEADER *) ((log_page_p)->area + (lsa)->offset))
+
+/* Definitions used to identify UNDO/REDO/UNDOREDO log record data types */
+
+/* Is record type UNDO */
+#define LOG_IS_UNDO_RECORD_TYPE(type) \
+  (((type) == LOG_UNDO_DATA) || ((type) == LOG_MVCC_UNDO_DATA))
+
+/* Is record type REDO */
+#define LOG_IS_REDO_RECORD_TYPE(type) \
+  (((type) == LOG_REDO_DATA) || ((type) == LOG_MVCC_REDO_DATA))
+
+/* Is record type UNDOREDO */
+#define LOG_IS_UNDOREDO_RECORD_TYPE(type) \
+  (((type) == LOG_UNDOREDO_DATA) || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_DIFF_UNDOREDO_DATA) || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+#define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
+  ((type) == LOG_DIFF_UNDOREDO_DATA || (type) == LOG_MVCC_DIFF_UNDOREDO_DATA)
+
+/* Is record type used a MVCC operation */
+#define LOG_IS_MVCC_OP_RECORD_TYPE(type) \
+  (((type) == LOG_MVCC_UNDO_DATA) \
+   || ((type) == LOG_MVCC_REDO_DATA) \
+   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
 /************************************************************************/
 /* End of part shared with client.                                      */
 /************************************************************************/
@@ -775,9 +819,6 @@ struct log_rec_mvcc_redo
 
 #define LOG_APPEND_PTR() ((char *)log_Gl.append.log_pgptr->area \
                           + log_Gl.hdr.append_lsa.offset)
-
-#define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
-  ((LOG_RECORD_HEADER *) ((log_page_p)->area + (lsa)->offset))
 
 #define LOG_READ_ALIGN(thread_p, lsa, log_pgptr) \
   do \
@@ -1381,34 +1422,9 @@ enum log_repl_flush
 };
 typedef enum log_repl_flush LOG_REPL_FLUSH;
 
-/* Definitions used to identify UNDO/REDO/UNDOREDO log record data types */
-
-/* Is record type UNDO */
-#define LOG_IS_UNDO_RECORD_TYPE(type) \
-  (((type) == LOG_UNDO_DATA) || ((type) == LOG_MVCC_UNDO_DATA))
-
-/* Is record type REDO */
-#define LOG_IS_REDO_RECORD_TYPE(type) \
-  (((type) == LOG_REDO_DATA) || ((type) == LOG_MVCC_REDO_DATA))
-
-/* Is record type UNDOREDO */
-#define LOG_IS_UNDOREDO_RECORD_TYPE(type) \
-  (((type) == LOG_UNDOREDO_DATA) || ((type) == LOG_MVCC_UNDOREDO_DATA) \
-   || ((type) == LOG_DIFF_UNDOREDO_DATA) || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
-
-#define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
-  ((type) == LOG_DIFF_UNDOREDO_DATA || (type) == LOG_MVCC_DIFF_UNDOREDO_DATA)
-
 /* Definitions used to identify MVCC log records. Used by log manager and
  * vacuum.
  */
-
-/* Is record type used a MVCC operation */
-#define LOG_IS_MVCC_OP_RECORD_TYPE(type) \
-  (((type) == LOG_MVCC_UNDO_DATA) \
-   || ((type) == LOG_MVCC_REDO_DATA) \
-   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
-   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 
 /* Is log record for a heap MVCC operation */
 #define LOG_IS_MVCC_HEAP_OPERATION(rcvindex) \
@@ -1538,15 +1554,6 @@ struct log_rec_chkpt
   int ntops;			/* Total number of system operations */
 };
 
-/* replication log structure */
-typedef struct log_rec_replication LOG_REC_REPLICATION;
-struct log_rec_replication
-{
-  LOG_LSA lsa;
-  int length;
-  int rcvindex;
-};
-
 /* Transaction descriptor */
 typedef struct log_info_chkpt_trans LOG_INFO_CHKPT_TRANS;
 struct log_info_chkpt_trans
@@ -1611,13 +1618,6 @@ typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
 struct log_rec_2pc_particp_ack
 {
   int particp_index;		/* Index of the acknowledging participant */
-};
-
-/* Log the time of termination of transaction */
-typedef struct log_rec_donetime LOG_REC_DONETIME;
-struct log_rec_donetime
-{
-  INT64 at_time;		/* Database creation time. For safety reasons */
 };
 
 /* Log the change of the server's HA state */

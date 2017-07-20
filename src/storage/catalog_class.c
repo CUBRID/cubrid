@@ -55,7 +55,6 @@
 #include "object_primitive.h"
 #include "query_dump.h"
 #include "db_date.h"
-#include "slotted_page.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

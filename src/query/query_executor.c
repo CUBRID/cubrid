@@ -46,7 +46,6 @@
 #include "xasl_cache.h"
 #include "stream_to_xasl.h"
 #include "query_manager.h"
-#include "slotted_page.h"
 #include "extendible_hash.h"
 #include "replication.h"
 #include "db_elo.h"

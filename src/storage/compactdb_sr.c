@@ -43,7 +43,6 @@
 #include "set_object.h"
 #include "xserver_interface.h"
 #include "server_interface.h"
-#include "slotted_page.h"
 
 static bool compact_started = false;
 static int last_tran_index = -1;
