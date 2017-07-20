@@ -7269,7 +7269,9 @@ check_applied_info_end:
 
 	  if (LA_LOG_IS_IN_ARCHIVE (page_num))
 	    {
+#if 0
 	      la_print_log_arv_header (database_name, la_Info.arv_log.log_hdr, verbose);
+#endif
 	    }
 	  printf ("Log page %lld (phy: %lld pageid: %lld, offset %d)\n", (long long int) page_num,
 		  (long long int) la_log_phypageid (page_num), (long long int) logpage->hdr.logical_pageid,

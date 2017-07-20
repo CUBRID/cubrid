@@ -39,8 +39,8 @@
 #include "external_sort.h"
 #include "binaryheap.h"
 #include "object_representation_sr.h"
-#include "heap_file.h"
 #include "scan_manager.h"
+#include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /*

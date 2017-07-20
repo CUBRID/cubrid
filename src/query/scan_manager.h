@@ -159,11 +159,7 @@ struct index_skip_scan
   KEY_RANGE *skipped_range;	/* range used for iterating the distinct values on the first index column */
 };
 
-/* Forward definition. */
-struct btree_iscan_oid_list;
-typedef struct btree_iscan_oid_list BTREE_ISCAN_OID_LIST;
-
-typedef struct indx_scan_id INDX_SCAN_ID;
+/* typedef struct indx_scan_id INDX_SCAN_ID; - already defined in btree.h */
 struct indx_scan_id
 {
   INDX_INFO *indx_info;		/* index information */
@@ -179,7 +175,7 @@ struct indx_scan_id
   int curr_oidno;		/* current oid number */
   OID *curr_oidp;		/* current oid pointer */
   char *copy_buf;		/* index key copy_buf pointer info */
-  struct btree_iscan_oid_list *oid_list;	/* list of object OID's */
+  BTREE_ISCAN_OID_LIST *oid_list;	/* list of object OID's */
   int oids_count;		/* Generic value of OID count that should be common for all index scan types. */
   OID cls_oid;			/* class object identifier */
   int copy_buf_len;		/* index key copy_buf length info */

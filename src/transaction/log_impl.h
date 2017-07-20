@@ -713,6 +713,19 @@ struct log_rec_donetime
    || ((type) == LOG_MVCC_UNDOREDO_DATA) \
    || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 
+/* Log the change of the server's HA state */
+typedef struct log_rec_ha_server_state LOG_REC_HA_SERVER_STATE;
+struct log_rec_ha_server_state
+{
+  int state;			/* ha_Server_state */
+  int dummy;			/* dummy for alignment */
+
+  INT64 at_time;		/* time recorded by active server */
+};
+
+#define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system transaction index. */
+#define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
+
 /************************************************************************/
 /* End of part shared with client.                                      */
 /************************************************************************/
@@ -867,9 +880,6 @@ struct log_rec_donetime
 #define LOG_2PC_NULL_GTRID        (-1)
 #define LOG_2PC_OBTAIN_LOCKS      true
 #define LOG_2PC_DONT_OBTAIN_LOCKS false
-
-#define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system transaction index. */
-#define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
 
 #if defined(SERVER_MODE)
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
@@ -1618,16 +1628,6 @@ typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
 struct log_rec_2pc_particp_ack
 {
   int particp_index;		/* Index of the acknowledging participant */
-};
-
-/* Log the change of the server's HA state */
-typedef struct log_rec_ha_server_state LOG_REC_HA_SERVER_STATE;
-struct log_rec_ha_server_state
-{
-  int state;			/* ha_Server_state */
-  int dummy;			/* dummy for alignment */
-
-  INT64 at_time;		/* time recorded by active server */
 };
 
 typedef struct log_rcv_tdes LOG_RCV_TDES;
