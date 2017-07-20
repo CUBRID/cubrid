@@ -9,7 +9,6 @@ install:
   - cinst ant -i
 
 build_script:
-  - md build
-  - cd /d build
-  - cmake -G "%CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ..
-  - cmake --build . --config %BUILD_TYPE%
+  - cmake -E make_directory build
+  - cmake -E chdir build cmake -G "%CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ..
+  - cmake --build build --config %BUILD_TYPE%
