@@ -23,14 +23,18 @@
 
 #include "porting.h"
 #include "lock_free.h"
-#include "class_object.h"
 #include "object_domain.h"
-#include "object_template.h"
 #include "set_object.h"
 #include <stdio.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include <assert.h>
+
+#undef SERVER_MODE
+/* suppress SERVER_MODE while including client module headers */
+#include "class_object.h"
+#include "object_template.h"
+#define SERVER_MODE
 
 
 /* areate_create info */

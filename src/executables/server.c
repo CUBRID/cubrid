@@ -58,6 +58,7 @@
 #endif /* WINDOWS */
 #if !defined(WINDOWS)
 #include "heartbeat.h"
+#include "log_impl.h"
 #endif
 
 #if defined(WINDOWS)
