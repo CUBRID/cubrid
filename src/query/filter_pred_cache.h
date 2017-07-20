@@ -27,7 +27,8 @@
 #ident "$Id$"
 
 #include "btree.h"
-#include "query_opfunc.h"
+#include "xasl.h"
+/* #include "query_opfunc_.h" */
 
 extern int fpcache_initialize (THREAD_ENTRY * thread_p);
 extern void fpcache_finalize (THREAD_ENTRY * thread_p);

@@ -25,27 +25,31 @@
 
 #include <assert.h>
 
-#include "porting.h"
-#include "utility.h"
+#include "tz_support.h"
+
+//#include "porting.h"
+//#include "utility.h"
 #include "db_date.h"
 #include "environment_variable.h"
 #include "chartype.h"
 #include "error_manager.h"
-#include "thread.h"
+//#include "thread.h"
 #if !defined(WINDOWS)
 #include <dlfcn.h>
 #include <unistd.h>
 #endif
-
-#include "tz_support.h"
 #include "system_parameter.h"
-#include "memory_alloc.h"
+//#include "memory_alloc.h"
 #include "show_scan.h"
 #if !defined (CS_MODE)
 #include "session.h"
 #endif
+#if !defined (SERVER_MODE)
 #include "authenticate.h"
 #include "db.h"
+#endif /* !defined (SERVER_MODE) */
+
+/* #include "db_.h" */
 #include "boot_sr.h"
 
 typedef struct tz_decode_info TZ_DECODE_INFO;

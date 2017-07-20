@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #include <stdio.h>
+/* fixme(rem): this breaks the separation of log module from client. */
 #include "log_impl.h"
 
 typedef struct logwr_context LOGWR_CONTEXT;

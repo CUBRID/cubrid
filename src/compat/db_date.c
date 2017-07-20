@@ -28,17 +28,21 @@
 #include <math.h>
 #include <time.h>
 
-#include "porting.h"
-#include "chartype.h"
-#include "misc_string.h"
-#include "error_manager.h"
-#include "dbtype.h"
 #include "db_date.h"
-#include "dbi.h"
-#include "system_parameter.h"
-#include "intl_support.h"
-#include "query_opfunc.h"
+
+#include "error_manager.h"
+//#include "porting.h"
+#include "chartype.h"
+//#include "misc_string.h"
+
+//#include "dbtype.h"
+//#include "dbi.h"
+//#include "system_parameter.h"
+//#include "intl_support.h"
+/* todo(rem) #include "query_opfunc_.h" */
 #include "tz_support.h"
+#include "numeric_opfunc.h"
+#include "object_representation.h"
 
 /* used in conversion to julian */
 #define IGREG1     	(15 + 31L * (10 + 12L * 1582))

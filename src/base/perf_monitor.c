@@ -32,7 +32,6 @@
 #include <sys/resource.h>
 #endif /* WINDOWS */
 #include "perf_monitor.h"
-#include "network_interface_cl.h"
 #include "error_manager.h"
 
 #if !defined(SERVER_MODE)
@@ -57,13 +56,12 @@
 #include "databases_file.h"
 #endif /* SERVER_MODE */
 
+#if !defined (CS_MODE)
+#include <string.h>
+
 #include "thread.h"
 #include "log_impl.h"
 #include "session.h"
-
-#if !defined(CS_MODE)
-#include <string.h>
-
 #include "error_manager.h"
 #include "log_manager.h"
 #include "system_parameter.h"
@@ -82,8 +80,11 @@
 #define pthread_mutex_unlock(a)
 static int rv;
 #endif /* SERVER_MODE */
-#endif /* !CS_MODE */
+#endif /* !defined (CS_MODE) */
 
+#if !defined (SERVER_MODE)
+#include "network_interface_cl.h"
+#endif /* !defined (SERVER_MODE) */
 
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
@@ -2751,6 +2752,7 @@ perfmon_stat_module_name (const int module)
   return "ERROR";
 }
 
+#if !defined (CS_MODE)
 /*
  * perfmon_get_module_type () -
  */
@@ -2798,6 +2800,7 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
 
   return module_type;
 }
+#endif /* !defined (CS_MODE) */
 
 /*
  * perf_stat_page_type_name () -
@@ -4610,9 +4613,12 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 STATIC_INLINE void
 perfmon_get_peek_stats (UINT64 * stats)
 {
+  /* fixme(rem) */
+#if !defined (CS_MODE)
   stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = xcache_get_entry_count ();
   stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
   stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
+#endif /* !defined (CS_MODE) */
 }
 
 /*

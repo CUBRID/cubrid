@@ -38,7 +38,7 @@
 #include "language_support.h"
 #include "environment_variable.h"
 #include "log_comm.h"
-#include "log_manager.h"
+/* todo(rem) #include "log_manager.h" */
 
 /*
  * COMPATIBILITY_RULE - Structure that encapsulates compatibility rules.

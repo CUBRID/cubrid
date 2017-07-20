@@ -53,6 +53,7 @@
 #include "system_parameter.h"
 #include "network_interface_cl.h"
 #include "object_template.h"
+#include "db.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

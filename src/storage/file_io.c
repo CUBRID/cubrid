@@ -73,18 +73,14 @@
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
-#include "critical_section.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
 #include "util_func.h"
 #include "perf_monitor.h"
 #include "environment_variable.h"
-#include "page_buffer.h"
 #include "connection_error.h"
 #include "release_string.h"
-#include "xserver_interface.h"
-#include "log_manager.h"
-#include "perf_monitor.h"
+#include "log_impl.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -94,11 +90,20 @@
 #include "connection_error.h"
 #include "network_interface_sr.h"
 #include "job_queue.h"
+//#include "critical_section.h"
 #endif /* SERVER_MODE */
+
+#if !defined (CS_MODE)
+#include "page_buffer.h"
+#include "xserver_interface.h"
+#endif /* !defined (CS_MODE) */
 
 #include "intl_support.h"
 #include "tsc_timer.h"
 
+/************************************************************************/
+/* TODO: why is this in client module?                                  */
+/************************************************************************/
 
 /*
  * Message id in the set MSGCAT_SET_IO
@@ -4407,9 +4412,11 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
 {
   int success = NO_ERROR;
   APPLY_ARG arg = { 0 };
+#if defined (SERVER_MODE) || defined (SA_MODE)
   PERF_UTIME_TRACKER time_track;
 
   PERF_UTIME_TRACKER_START (thread_p, &time_track);
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
   arg.vol_id = NULL_VOLID;
 
@@ -4429,7 +4436,9 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
 
   er_stack_pop ();
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
   PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_FILE_IOSYNC_ALL);
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
   return success;
 }

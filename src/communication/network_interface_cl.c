@@ -38,27 +38,28 @@
 #include "boot_cl.h"
 #else
 #include "xserver_interface.h"
-#endif
 #include "boot_sr.h"
 #include "locator_sr.h"
+#include "query_executor.h"
+#include "transaction_sr.h"
+#include "jsp_sr.h"
+#include "vacuum.h"
+#include "serial.h"
+#endif
 #include "oid.h"
 #include "error_manager.h"
 #include "object_representation.h"
 #include "log_comm.h"
 #include "log_writer.h"
 #include "arithmetic.h"
-#include "serial.h"
-#include "query_executor.h"
 #include "transaction_cl.h"
 #include "language_support.h"
 #include "statistics.h"
 #include "system_parameter.h"
-#include "transaction_sr.h"
-#include "jsp_sr.h"
 #include "replication.h"
 #include "es.h"
-#include "vacuum.h"
-
+#include "db.h"
+#include "db_query.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap

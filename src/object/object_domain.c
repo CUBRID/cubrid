@@ -34,43 +34,39 @@
 #include <math.h>
 #include <errno.h>
 
-#include "memory_alloc.h"
-#include "area_alloc.h"
-
-#include "mprec.h"
-#include "object_representation.h"
-#include "db.h"
-
-#include "object_primitive.h"
 #include "object_domain.h"
 
-#include "work_space.h"
-#if !defined (SERVER_MODE)
-#include "virtual_object.h"
-#include "object_accessor.h"
-#else /* SERVER_MODE */
-#include "object_accessor.h"
-#endif /* !SERVER_MODE */
+#include "object_primitive.h"
+#include "numeric_opfunc.h"
+#include "dbdef.h"
+//#include "memory_alloc.h"
+//#include "area_alloc.h"
+#include "db_date.h"
+#include "mprec.h"
+//#include "object_representation.h"
+//#include "db.h"
 #include "set_object.h"
-
 #include "string_opfunc.h"
-#include "cnv.h"
-#include "cnverr.h"
+//#include "cnv.h"
+//#include "cnverr.h"
 #include "tz_support.h"
-
+//#include "server_interface.h"
+#include "chartype.h"
 #if !defined (SERVER_MODE)
+#include "work_space.h"
+#include "virtual_object.h"
+//#include "object_accessor.h"
 #include "schema_manager.h"
 #include "locator_cl.h"
+#include "object_template.h"
+#include "dbi.h"
+#else /* SERVER_MODE */
+//#include "connection_error.h"
+//#include "language_support.h"
+//#include "xserver_interface.h"
 #endif /* !SERVER_MODE */
 
-#if defined (SERVER_MODE)
-#include "connection_error.h"
-#include "language_support.h"
-#include "xserver_interface.h"
-#endif /* SERVER_MODE */
 
-#include "server_interface.h"
-#include "chartype.h"
 
 
 /* this must be the last header file included!!! */
@@ -1131,6 +1127,9 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 	{
 	  new_dm->class_mop = class_obj;
 	  new_dm->self_ref = 0;
+#if defined (SERVER_MODE)
+	  assert_release (false);
+#else /* !defined (SERVER_MODE) */
 	  /* 
 	   * For compatibility on the server side, class objects must have
 	   * the oid in the domain match the oid in the class object.
@@ -1139,6 +1138,7 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 	    {
 	      new_dm->class_oid = class_obj->oid_info.oid;
 	    }
+#endif /* !SERVER_MODE */
 	}
 
       /* 
@@ -1549,6 +1549,9 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_OBJECT:
     case DB_TYPE_SUB:
 
+#if defined (SERVER_MODE)
+      assert_release (false);
+#else /* !defined (SERVER_MODE) */
       /* 
        * if "exact" is zero, we should be checking the subclass hierarchy of
        * dom1 to see id dom2 is in it !
@@ -1584,6 +1587,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	{
 	  match = 1;
 	}
+#endif /* defined (SERVER_MODE) */
       break;
 
     case DB_TYPE_VARIABLE:
@@ -1969,6 +1973,10 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_OBJECT:
     case DB_TYPE_SUB:
 
+#if defined (SERVER_MODE)
+      assert_release (false);
+#else /* !defined (SERVER_MODE) */
+
       while (domain)
 	{
 	  /* 
@@ -2015,6 +2023,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	  *ins_pos = domain;
 	  domain = domain->next_list;
 	}
+#endif /* !defined (SERVER_MODE) */
       break;
 
     case DB_TYPE_VARIABLE:
@@ -2719,6 +2728,9 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_m
 	}
       else
 	{
+#if defined (SERVER_MODE)
+	  assert_release (false);
+#else /* defined (SERVER_MODE) */
 	  /* 
 	   * We have a mixture of OID & MOPS, it probably isn't necessary to be
 	   * this general but try to avoid assuming the class OIDs have been set
@@ -2738,6 +2750,7 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_m
 		  break;	/* found */
 		}
 	    }
+#endif /* defined (SERVER_MODE) */
 	}
     }
 
@@ -10694,8 +10707,10 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
   int coercion, char_conv;
   DB_VALUE *v1, *v2;
   DB_TYPE vtype1, vtype2;
+#if !defined (SERVER_MODE)
   DB_OBJECT *mop;
   DB_IDENTIFIER *oid1, *oid2;
+#endif	/* !defined (SERVER_MODE) */
   bool use_collation_of_v1 = false;
   bool use_collation_of_v2 = false;
   DB_VALUE_COMPARE_RESULT result = DB_UNK;
@@ -10743,6 +10758,13 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
        */
       if (vtype1 != vtype2)
 	{
+#if defined (SERVER_MODE)
+	  if (vtype1 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_OBJECT)
+	    {
+	      assert_release (false);
+	      return DB_UNK;
+	    }
+#else /* !defined (SERVER_MODE) */
 	  if (vtype1 == DB_TYPE_OBJECT)
 	    {
 	      if (vtype2 == DB_TYPE_OID)
@@ -10778,6 +10800,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		    }
 		}
 	    }
+#endif /* !defined (SERVER_MODE) */
 
 	  /* 
 	   * If value types aren't exact, try coercion.

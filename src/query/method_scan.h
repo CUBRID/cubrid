@@ -27,9 +27,14 @@
 
 #ident "$Id$"
 
-#include "db.h"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+/* #include "db_.h" */
 #include "dbtype.h"
-#include "query_opfunc.h"
+/* #include "query_opfunc_.h" */
+#include "regu_var.h"
 #ifndef SERVER_MODE
 #include "work_space.h"
 #include "cursor.h"

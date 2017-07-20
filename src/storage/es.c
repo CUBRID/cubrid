@@ -25,14 +25,25 @@
 
 #include <assert.h>
 
-#include "error_code.h"
+#include "es.h"
+
 #include "system_parameter.h"
 #include "error_manager.h"
-#include "network_interface_cl.h"
-#include "es.h"
+
 #include "es_posix.h"
 #include "es_owfs.h"
+
+#if !defined (CS_MODE)
 #include "log_manager.h"
+#endif /* !defined (CS_MODE) */
+
+#if !defined (SERVER_MODE)
+#include "network_interface_cl.h"
+#endif /* !defined (SERVER_MODE) */
+
+/************************************************************************/
+/* TODO: why is this on client?                                         */
+/************************************************************************/
 
 /*
  * es_storage_type - to be set by es_init() and to be reset by es_final()

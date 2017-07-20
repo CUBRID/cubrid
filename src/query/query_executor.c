@@ -31,57 +31,47 @@
 #include <math.h>
 #include <search.h>
 #include <sys/timeb.h>
+
+#include "query_executor.h"
+
+#include "porting.h"
+#include "error_manager.h"
+#include "partition.h"
+#include "query_opfunc.h"
+#include "fetch.h"
+#include "dbtype.h"
+#include "object_primitive.h"
+#include "list_file.h"
+#include "extendible_hash.h"
+#include "xasl_cache.h"
+#include "stream_to_xasl.h"
+#include "query_manager.h"
+#include "slotted_page.h"
+#include "extendible_hash.h"
+#include "replication.h"
+#include "db_elo.h"
+#include "locator_sr.h"
+#include "xserver_interface.h"
+#include "tz_support.h"
+#include "session.h"
+#include "db_date.h"
+#include "btree_load.h"
+#if defined(SERVER_MODE) && defined(DIAG_DEVEL)
+#include "perf_monitor.h"
+#endif
+#include "query_dump.h"
+
 #if defined(SERVER_MODE)
 #include "jansson.h"
 #endif
 
-#include "porting.h"
-#include "error_manager.h"
-#include "memory_alloc.h"
-#include "oid.h"
-#include "slotted_page.h"
-#include "heap_file.h"
-#include "page_buffer.h"
-#include "extendible_hash.h"
-#include "locator_sr.h"
-#include "btree.h"
-#include "replication.h"
-#include "xserver_interface.h"
-#include "regex38a.h"
-#include "statistics_sr.h"
-
-#if defined(SERVER_MODE)
-#include "connection_error.h"
-#include "thread.h"
-#endif /* SERVER_MODE */
-
-#include "query_manager.h"
-#include "fetch.h"
-#include "transaction_sr.h"
-#include "system_parameter.h"
-#include "memory_hash.h"
-#include "parser.h"
-#include "set_object.h"
-#include "session.h"
-#include "btree_load.h"
-#if defined(CUBRID_DEBUG)
-#include "environment_variable.h"
-#endif /* CUBRID_DEBUG */
-
-#if defined(SERVER_MODE) && defined(DIAG_DEVEL)
-#include "perf_monitor.h"
-#endif
-
-#include "partition.h"
-#include "tsc_timer.h"
-#include "xasl_generation.h"
-#include "transaction_cl.h"
-#include "query_executor.h"
-#include "dbi.h"
-
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+
+#if defined (SA_MODE)
+#include "transaction_cl.h"	/* for interrupt */
+#endif /* defined (SA_MODE) */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -376,6 +366,13 @@ enum analytic_stage
 typedef enum analytic_stage ANALYTIC_STAGE;
 
 #define QEXEC_GET_BH_TOPN_TUPLE(heap, index) (*(TOPN_TUPLE **) BH_ELEMENT (heap, index))
+
+typedef enum
+{
+  TOPN_SUCCESS,
+  TOPN_OVERFLOW,
+  TOPN_FAILURE
+} TOPN_STATUS;
 
 static DB_LOGICAL qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_list, XASL_STATE * xasl_state,
@@ -1119,6 +1116,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
       ret = NO_ERROR;
 
+#if defined (ENABLE_COMPOSITE_LOCK)
       /* At this moment composite locking is not used, but it can be activated at some point in the future. So we leave 
        * it as it is. */
       if (false)
@@ -1137,6 +1135,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
+#endif /* defined (ENABLE_COMPOSITE_LOCK) */
     }
 
   if (xasl->type == BUILDLIST_PROC || xasl->type == BUILD_SCHEMA_PROC)
@@ -1919,7 +1918,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_key, is_final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_pred, is_final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_rest, is_final);
-	  if (p->access == INDEX)
+	  if (p->access == ACCESS_METHOD_INDEX)
 	    {
 	      INDX_INFO *indx_info;
 
@@ -2101,9 +2100,11 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool is_final)
   /* clear the head node */
   pg_cnt += qexec_clear_xasl_head (thread_p, xasl);
 
+#if defined (ENABLE_COMPOSITE_LOCK)
   /* free alloced memory for composite locking */
   assert (xasl->composite_lock.lockcomp.class_list == NULL);
   lock_abort_composite_lock (&xasl->composite_lock);
+#endif /* defined (ENABLE_COMPOSITE_LOCK) */
 
   /* clear the body node */
   if (xasl->aptr_list)
@@ -2318,7 +2319,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool is_final)
 		qexec_clear_db_val_list (buildlist->g_val_list->valp);
 	      }
 	    pg_cnt += qexec_clear_agg_list (xasl, buildlist->g_agg_list, is_final);
-	    pg_cnt += qexec_clear_arith_list (xasl, buildlist->g_outarith_list, is_final);
 	    pg_cnt += qexec_clear_pred (xasl, buildlist->g_having_pred, is_final);
 	    pg_cnt += qexec_clear_pred (xasl, buildlist->g_grbynum_pred, is_final);
 	    if (buildlist->g_grbynum_val)
@@ -4617,7 +4617,9 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
   if (XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
     {
+#if defined (ENABLE_COMPOSITE_LOCK)
       gbstate.composite_lock = &xasl->composite_lock;
+#endif /* defined (ENABLE_COMPOSITE_LOCK) */
       gbstate.upd_del_class_cnt = xasl->upd_del_class_cnt;
     }
   else
@@ -6426,36 +6428,36 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   switch (curr_spec->type)
     {
     case TARGET_CLASS:
-      if (curr_spec->access == SEQUENTIAL)
+      if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL)
 	{
 	  /* open a sequential heap file scan */
 	  scan_type = S_HEAP_SCAN;
 	  indx_info = NULL;
 	}
-      else if (curr_spec->access == SEQUENTIAL_RECORD_INFO)
+      else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
 	{
 	  /* open a sequential heap file scan that reads record info */
 	  scan_type = S_HEAP_SCAN_RECORD_INFO;
 	  indx_info = NULL;
 	}
-      else if (curr_spec->access == SEQUENTIAL_PAGE_SCAN)
+      else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
 	{
 	  /* open a sequential heap file scan that reads page info */
 	  scan_type = S_HEAP_PAGE_SCAN;
 	  indx_info = NULL;
 	}
-      else if (curr_spec->access == INDEX)
+      else if (curr_spec->access == ACCESS_METHOD_INDEX)
 	{
 	  /* open an indexed heap file scan */
 	  scan_type = S_INDX_SCAN;
 	  indx_info = curr_spec->indexptr;
 	}
-      else if (curr_spec->access == INDEX_KEY_INFO)
+      else if (curr_spec->access == ACCESS_METHOD_INDEX_KEY_INFO)
 	{
 	  scan_type = S_INDX_KEY_INFO_SCAN;
 	  indx_info = curr_spec->indexptr;
 	}
-      else if (curr_spec->access == INDEX_NODE_INFO)
+      else if (curr_spec->access == ACCESS_METHOD_INDEX_NODE_INFO)
 	{
 	  scan_type = S_INDX_NODE_INFO_SCAN;
 	  indx_info = curr_spec->indexptr;
@@ -6646,8 +6648,8 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
       switch (curr_spec->type)
 	{
 	case TARGET_CLASS:
-	  if (curr_spec->access == SEQUENTIAL || curr_spec->access == SEQUENTIAL_RECORD_INFO
-	      || curr_spec->access == SEQUENTIAL_PAGE_SCAN)
+	  if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
 	    }
@@ -6801,20 +6803,22 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       /* initialize scan */
       if ((xasl->curr_spec->type == TARGET_CLASS || xasl->curr_spec->type == TARGET_CLASS_ATTR)
 	  && xasl->curr_spec->parts != NULL && xasl->curr_spec->curent == NULL
-	  && xasl->curr_spec->access != INDEX_NODE_INFO)
+	  && xasl->curr_spec->access != ACCESS_METHOD_INDEX_NODE_INFO)
 	{
 	  /* initialize the scan_id for partitioned classes */
-	  if (xasl->curr_spec->access == SEQUENTIAL || xasl->curr_spec->access == SEQUENTIAL_RECORD_INFO)
+	  if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL
+	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
 	    {
 	      class_oid = &xasl->curr_spec->s_id.s.hsid.cls_oid;
 	      class_hfid = &xasl->curr_spec->s_id.s.hsid.hfid;
 	    }
-	  else if (xasl->curr_spec->access == SEQUENTIAL_PAGE_SCAN)
+	  else if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
 	    {
 	      class_oid = &xasl->curr_spec->s_id.s.hpsid.cls_oid;
 	      class_hfid = &xasl->curr_spec->s_id.s.hpsid.hfid;
 	    }
-	  else if (xasl->curr_spec->access == INDEX || xasl->curr_spec->access == INDEX_KEY_INFO)
+	  else if (xasl->curr_spec->access == ACCESS_METHOD_INDEX
+		   || xasl->curr_spec->access == ACCESS_METHOD_INDEX_KEY_INFO)
 	    {
 	      class_oid = &xasl->curr_spec->s_id.s.isid.cls_oid;
 	      class_hfid = &xasl->curr_spec->s_id.s.isid.hfid;
@@ -7451,7 +7455,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
   QUERY_ID query_id = spec->s_id.s.isid.indx_cov.query_id;
   OID class_oid;
   HFID class_hfid;
-  INDX_ID index_id;
+  BTID btid;
 
   if (spec->type != TARGET_CLASS && spec->type != TARGET_CLASS_ATTR)
     {
@@ -7497,7 +7501,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
       HFID_COPY (&class_hfid, &ACCESS_SPEC_HFID (spec));
       if (IS_ANY_INDEX_ACCESS (spec->access))
 	{
-	  index_id = spec->indx_id;
+	  btid = spec->btid;
 	}
     }
   else
@@ -7506,13 +7510,14 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
       HFID_COPY (&class_hfid, &spec->curent->hfid);
       if (IS_ANY_INDEX_ACCESS (spec->access))
 	{
-	  index_id = spec->curent->indx_id;
+	  btid = spec->curent->btid;
 	}
     }
-  if (spec->type == TARGET_CLASS && (spec->access == SEQUENTIAL || spec->access == SEQUENTIAL_RECORD_INFO))
+  if (spec->type == TARGET_CLASS
+      && (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO))
     {
       HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
-      SCAN_TYPE scan_type = (spec->access == SEQUENTIAL) ? S_HEAP_SCAN : S_HEAP_SCAN_RECORD_INFO;
+      SCAN_TYPE scan_type = (spec->access == ACCESS_METHOD_SEQUENTIAL) ? S_HEAP_SCAN : S_HEAP_SCAN_RECORD_INFO;
       int i = 0;
       if (hsidp->caches_inited)
 	{
@@ -7538,7 +7543,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 			     spec->s.cls_node.attrids_rest, spec->s.cls_node.cache_rest,
 			     scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved);
     }
-  else if (spec->type == TARGET_CLASS && spec->access == SEQUENTIAL_PAGE_SCAN)
+  else if (spec->type == TARGET_CLASS && spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
     {
       HEAP_PAGE_SCAN_ID *hpsidp = &spec->s_id.s.hpsid;
       SCAN_TYPE scan_type = S_HEAP_PAGE_SCAN;
@@ -7555,7 +7560,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	scan_open_heap_page_scan (thread_p, &spec->s_id, val_list, vd, &class_oid, &class_hfid, spec->where_pred,
 				  scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved);
     }
-  else if (spec->type == TARGET_CLASS && spec->access == INDEX)
+  else if (spec->type == TARGET_CLASS && spec->access == ACCESS_METHOD_INDEX)
     {
       INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
       if (isidp->caches_inited)
@@ -7578,7 +7583,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	  isidp->caches_inited = false;
 	}
       idxptr = spec->indexptr;
-      idxptr->indx_id = index_id;
+      idxptr->btid = btid;
       spec->s_id.s.isid.scancache_inited = false;
       spec->s_id.s.isid.caches_inited = false;
 
@@ -7706,8 +7711,9 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	    {
 	      /* only one count(*) function */
 	      ACCESS_SPEC_TYPE *specp = xasl->spec_list;
-	      if (specp->next == NULL && specp->access == INDEX && specp->s.cls_node.cls_regu_list_pred == NULL
-		  && specp->where_pred == NULL && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid)
+	      if (specp->next == NULL && specp->access == ACCESS_METHOD_INDEX
+		  && specp->s.cls_node.cls_regu_list_pred == NULL && specp->where_pred == NULL
+		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid)
 		  && !SCAN_IS_INDEX_COVERED (&specp->s_id.s.isid))
 		{
 		  /* count(*) query will scan an index but does not have a data-filter */
@@ -12666,7 +12672,7 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
 
   /* Single table, index scan, with keylimit that has lower value */
   if (xasl->scan_ptr == NULL && xasl->spec_list != NULL && xasl->spec_list->next == NULL
-      && xasl->spec_list->access == INDEX && xasl->spec_list->indexptr
+      && xasl->spec_list->access == ACCESS_METHOD_INDEX && xasl->spec_list->indexptr
       && xasl->spec_list->indexptr->key_info.key_limit_l)
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
@@ -13154,6 +13160,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 
   distinct_needed = (xasl->option == Q_DISTINCT) ? true : false;
 
+#if defined (ENABLE_COMPOSITE_LOCK)
   /* Acquire the lockset if composite locking is enabled. */
   if ((COMPOSITE_LOCK (xasl->scan_op_type) || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && (!XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG)))
@@ -13163,6 +13170,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	  return ER_FAILED;
 	}
     }
+#endif /* defined (ENABLE_COMPOSITE_LOCK) */
 
   switch (xasl->type)
     {
@@ -13730,6 +13738,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       multi_upddel = QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl);
+#if defined (ENABLE_COMPOSITE_LOCK)
       if (COMPOSITE_LOCK (xasl->scan_op_type) || multi_upddel)
 	{
 	  if (lock_initialize_composite_lock (thread_p, &xasl->composite_lock) != NO_ERROR)
@@ -13738,6 +13747,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
+#endif /* defined (ENABLE_COMPOSITE_LOCK) */
 
       if (qexec_for_update_set_class_locks (thread_p, xasl) != NO_ERROR)
 	{
@@ -14278,6 +14288,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	}
 
+#if defined (ENABLE_COMPOSITE_LOCK)
       if ((COMPOSITE_LOCK (xasl->scan_op_type) || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
 	  && XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
 	{
@@ -14286,6 +14297,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
+#endif /* defined (ENABLE_COMPOSITE_LOCK) */
 
 #if 0				/* DO NOT DELETE ME !!! - yaw: for future work */
       if (xasl->list_id->tuple_cnt == 0)
@@ -14445,8 +14457,10 @@ exit_on_error:
       qexec_free_agg_hash_context (thread_p, &xasl->proc.buildlist);
     }
 
+#if defined (ENABLE_COMPOSITE_LOCK)
   /* free alloced memory for composite locking */
   lock_abort_composite_lock (&xasl->composite_lock);
+#endif /* defined (ENABLE_COMPOSITE_LOCK) */
 
   xasl->status = XASL_FAILURE;
 
@@ -15006,7 +15020,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       assert (xasl->spec_list->s_id.status == S_CLOSED);
       qexec_replace_prior_regu_vars_pred (thread_p, xasl->spec_list->where_pred, xasl);
       qexec_replace_prior_regu_vars_pred (thread_p, xasl->spec_list->where_key, xasl);
-      if (xasl->spec_list->access == INDEX && xasl->spec_list->indexptr)
+      if (xasl->spec_list->access == ACCESS_METHOD_INDEX && xasl->spec_list->indexptr)
 	{
 	  key_info_p = &xasl->spec_list->indexptr->key_info;
 	  key_ranges_cnt = key_info_p->key_cnt;
@@ -19168,7 +19182,8 @@ query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     {
       for (spec_list = xasl->spec_list; spec_list != NULL; spec_list = spec_list->next)
 	{
-	  if (spec_list->access != INDEX || spec_list->type != TARGET_CLASS || spec_list->s_id.type != S_INDX_SCAN)
+	  if (spec_list->access != ACCESS_METHOD_INDEX || spec_list->type != TARGET_CLASS
+	      || spec_list->s_id.type != S_INDX_SCAN)
 	    {
 	      continue;
 	    }
@@ -21495,7 +21510,7 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list, UPDDEL_CL
 	    {
 	      /* lock all update classes */
 
-	      assert (specp->access == SEQUENTIAL);
+	      assert (specp->access == ACCESS_METHOD_SEQUENTIAL);
 
 	      for (i = 0; i < query_classes_count; i++)
 		{

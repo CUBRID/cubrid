@@ -53,6 +53,8 @@
 #include "xasl_support.h"
 #include "network_interface_cl.h"
 #include "view_transform.h"
+#include "xasl_to_stream.h"
+#include "parser_support.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

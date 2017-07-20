@@ -30,15 +30,17 @@
 
 #include "system_parameter.h"
 #include "error_manager.h"
-#include "memory_alloc.h"
-#include "object_representation.h"
+//#include "memory_alloc.h"
+//#include "object_representation.h"
 #include "heap_file.h"
-#include "slotted_page.h"
+//#include "slotted_page.h"
 #include "fetch.h"
 #include "list_file.h"
-
 #include "object_primitive.h"
 #include "set_object.h"
+#include "xasl.h"
+#include "dbtype.h"
+#include "query_executor.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

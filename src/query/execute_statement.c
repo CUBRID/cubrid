@@ -75,7 +75,7 @@
 #include "xasl_generation.h"
 #include "virtual_object.h"
 #include "xasl_support.h"
-#include "query_opfunc.h"
+/* todo(rem) #include "query_opfunc_.h" */
 #include "environment_variable.h"
 #include "set_object.h"
 #include "intl_support.h"
@@ -83,7 +83,10 @@
 #include "view_transform.h"
 #include "network_interface_cl.h"
 #include "arithmetic.h"
-#include "serial.h"
+//#include "serial.h"
+#include "xasl_to_stream.h"
+#include "query_cl.h"
+#include "parser_support.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

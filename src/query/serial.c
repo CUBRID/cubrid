@@ -28,22 +28,14 @@
 #include <assert.h>
 #include <errno.h>
 
-#include "intl_support.h"
-#include "error_code.h"
-#include "db.h"
-#include "memory_alloc.h"
-#include "arithmetic.h"
 #include "serial.h"
-#include "query_evaluator.h"
-#include "query_executor.h"
+#include "memory_hash.h"
+#include "storage_common.h"
 #include "heap_file.h"
-#include "page_buffer.h"
-#include "log_manager.h"
-#include "transaction_sr.h"
-#include "replication.h"
+#include "object_primitive.h"
 #include "server_interface.h"
 #include "xserver_interface.h"
-#include "transform.h"
+#include "slotted_page.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

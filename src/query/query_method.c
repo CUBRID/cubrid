@@ -34,7 +34,7 @@
 #include "object_representation.h"
 #include "network.h"
 #include "network_interface_cl.h"
-#include "scan_manager.h"
+/* todo(rem) #include "scan_manager.h" */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

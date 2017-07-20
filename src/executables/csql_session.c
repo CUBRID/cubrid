@@ -36,6 +36,7 @@
 #include "network_interface_cl.h"
 #include "unicode_support.h"
 #include "transaction_cl.h"
+#include "db.h"
 
 /* for short usage of `csql_append_more_line()' and error check */
 #define	APPEND_MORE_LINE(indent, line)	\

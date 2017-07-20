@@ -71,6 +71,7 @@
 #include "vacuum.h"
 #include "show_scan.h"
 #include "network.h"
+#include "db_date.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */

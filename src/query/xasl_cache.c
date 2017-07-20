@@ -30,10 +30,11 @@
 #include "query_executor.h"
 #include "list_file.h"
 #include "binaryheap.h"
-#include "xasl_generation.h"
+//#include "xasl_generation.h"
 #include "statistics_sr.h"
 #include "thread.h"
 #include "query_manager.h"
+#include "stream_to_xasl.h"
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)

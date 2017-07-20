@@ -72,7 +72,8 @@
 #include "event_log.h"
 #include "tsc_timer.h"
 #include "vacuum.h"
-#include "sha1.h"
+#include "object_primitive.h"
+#include "tz_support.h"
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)

@@ -29,15 +29,19 @@
 
 #include "config.h"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include <stdio.h>
 
 #include "dbtype.h"
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "external_sort.h"
-#include "query_executor.h"
-#include "query_list.h"
-#include "query_evaluator.h"
+/* #include "query_executor_.h" */
+#include "xasl.h"
+/* #include "query_evaluator_.h" */
 #include "log_comm.h"
 #include "object_domain.h"
 #include "thread.h"

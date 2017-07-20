@@ -7000,6 +7000,7 @@ la_shutdown (void)
   return;
 }
 
+#if 0
 /*
  * la_print_log_header () -
  */
@@ -7082,6 +7083,7 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
     }
   printf ("%-30s : %d\n", "Archive number", hdr->arv_num);
 }
+#endif /* 0 */
 
 /*
  * la_log_page_check() - test the transaction log
@@ -7214,8 +7216,11 @@ check_applied_info_end:
       *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
       *copied_append_lsa = la_Info.act_log.log_hdr->append_lsa;
 
+#if 0
+      /* fixme(rem) */
       printf ("\n *** Copied Active Info. *** \n");
       la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
+#endif /*  0 */
     }
 
   if (check_copied_info && (page_num > 1))

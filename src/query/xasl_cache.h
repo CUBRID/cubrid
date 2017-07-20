@@ -26,8 +26,12 @@
 
 #ident "$Id$"
 
-#include "query_list.h"
-#include "query_opfunc.h"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+#include "xasl.h"
+/* #include "query_opfunc_.h" */
 
 /* Objects related to XASL cache entries. The information includes the object OID, the lock required to use the XASL
  * cache entry and the heap file cardinality.
@@ -60,6 +64,23 @@ struct xasl_clone
 };
 #define XASL_CLONE_INITIALIZER { NULL, NULL }
 #define XASL_CLONE_AS_ARGS(clone) (clone)->xasl, (clone)->xasl_buf
+
+/*
+ * EXECUTION_INFO: query strings: user text, hash string and dumped plan.
+ */
+typedef struct execution_info EXECUTION_INFO;
+struct execution_info
+{
+  char *sql_hash_text;		/* rewritten query string which is used as hash key */
+  char *sql_user_text;		/* original query statement that user input */
+  char *sql_plan_text;		/* plans for this query */
+};
+#define EXEINFO_HASH_TEXT_STRING(einfo) ((einfo)->sql_hash_text ? (einfo)->sql_hash_text : "UNKNOWN HASH TEXT")
+#define EXEINFO_USER_TEXT_STRING(einfo) ((einfo)->sql_user_text ? (einfo)->sql_user_text : "UNKNOWN USER TEXT")
+#define EXEINFO_PLAN_TEXT_STRING(einfo) ((einfo)->sql_plan_text ? (einfo)->sql_plan_text : "UNKNOWN PLAN TEXT")
+
+#define EXEINFO_AS_ARGS(einfo)	\
+  EXEINFO_USER_TEXT_STRING(einfo), EXEINFO_PLAN_TEXT_STRING(einfo), EXEINFO_HASH_TEXT_STRING(einfo)
 
 /* This really belongs more to the query manager rather than query executor. */
 /* XASL cache entry type definition */

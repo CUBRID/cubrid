@@ -28,6 +28,10 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* defined (SERVER_MODE) */
+
 #include <stdio.h>
 #include <time.h>
 #include "dbtype.h"
@@ -170,9 +174,6 @@ extern int db_check_authorization (DB_OBJECT * op, DB_AUTH auth);
 extern int db_check_authorization_and_grant_option (MOP op, DB_AUTH auth);
 extern int db_get_class_privilege (DB_OBJECT * op, unsigned int *auth);
 
-extern int db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2);
-extern void db_value_fprint (FILE * fp, const DB_VALUE * value);
-
 /*  Serial value manipulation */
 extern int db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value);
 extern int db_get_serial_next_value (const char *serial_name, DB_VALUE * serial_value);
@@ -209,65 +210,6 @@ extern int db_fetch_list (DB_OBJLIST * objects, DB_FETCH_MODE mode, int quit_on_
 extern int db_fetch_set (DB_COLLECTION * set, DB_FETCH_MODE mode, int quit_on_error);
 extern int db_fetch_seq (DB_SEQ * set, DB_FETCH_MODE mode, int quit_on_error);
 extern int db_fetch_composition (DB_OBJECT * object, DB_FETCH_MODE mode, int max_level, int quit_on_error);
-
-/* Collection functions */
-extern DB_COLLECTION *db_col_create (DB_TYPE type, int size, DB_DOMAIN * domain);
-extern DB_COLLECTION *db_col_copy (DB_COLLECTION * col);
-extern int db_col_filter (DB_COLLECTION * col);
-extern int db_col_free (DB_COLLECTION * col);
-
-extern int db_col_coerce (DB_COLLECTION * col, DB_DOMAIN * domain);
-
-extern int db_col_size (DB_COLLECTION * col);
-extern int db_col_cardinality (DB_COLLECTION * col);
-extern DB_TYPE db_col_type (DB_COLLECTION * col);
-extern DB_DOMAIN *db_col_domain (DB_COLLECTION * col);
-extern int db_col_ismember (DB_COLLECTION * col, DB_VALUE * value);
-extern int db_col_find (DB_COLLECTION * col, DB_VALUE * value, int starting_index, int *found_index);
-extern int db_col_add (DB_COLLECTION * col, DB_VALUE * value);
-extern int db_col_drop (DB_COLLECTION * col, DB_VALUE * value, int all);
-extern int db_col_drop_element (DB_COLLECTION * col, int element_index);
-
-extern int db_col_drop_nulls (DB_COLLECTION * col);
-
-extern int db_col_get (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-extern int db_col_put (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-extern int db_col_insert (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-
-extern int db_col_print (DB_COLLECTION * col);
-extern int db_col_fprint (FILE * fp, DB_COLLECTION * col);
-
-/* Set and sequence functions.
-   These are now obsolete. Please use the generic collection functions
-   "db_col*" instead */
-extern DB_COLLECTION *db_set_create (DB_OBJECT * classobj, const char *name);
-extern DB_COLLECTION *db_set_create_basic (DB_OBJECT * classobj, const char *name);
-extern DB_COLLECTION *db_set_create_multi (DB_OBJECT * classobj, const char *name);
-extern DB_COLLECTION *db_seq_create (DB_OBJECT * classobj, const char *name, int size);
-extern int db_set_free (DB_COLLECTION * set);
-extern int db_set_filter (DB_COLLECTION * set);
-extern int db_set_add (DB_COLLECTION * set, DB_VALUE * value);
-extern int db_set_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-extern int db_set_drop (DB_COLLECTION * set, DB_VALUE * value);
-extern int db_set_size (DB_COLLECTION * set);
-extern int db_set_cardinality (DB_COLLECTION * set);
-extern int db_set_ismember (DB_COLLECTION * set, DB_VALUE * value);
-extern int db_set_isempty (DB_COLLECTION * set);
-extern int db_set_has_null (DB_COLLECTION * set);
-extern int db_set_print (DB_COLLECTION * set);
-extern DB_TYPE db_set_type (DB_COLLECTION * set);
-extern DB_COLLECTION *db_set_copy (DB_COLLECTION * set);
-extern int db_seq_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-extern int db_seq_put (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-extern int db_seq_insert (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-extern int db_seq_drop (DB_COLLECTION * set, int element_index);
-extern int db_seq_size (DB_COLLECTION * set);
-extern int db_seq_cardinality (DB_COLLECTION * set);
-extern int db_seq_print (DB_COLLECTION * set);
-extern int db_seq_find (DB_COLLECTION * set, DB_VALUE * value, int element_index);
-extern int db_seq_free (DB_SEQ * seq);
-extern int db_seq_filter (DB_SEQ * seq);
-extern DB_SEQ *db_seq_copy (DB_SEQ * seq);
 
 /* Class definition */
 extern DB_OBJECT *db_create_class (const char *name);
@@ -331,7 +273,6 @@ extern int db_get_client_type (void);
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
 extern int db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val);
-extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 
 extern void db_clear_host_status (void);
 extern void db_set_host_status (char *hostname, int status);
@@ -406,7 +347,6 @@ extern int db_attribute_is_indexed (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_reverse_indexed (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_shared (DB_ATTRIBUTE * attribute);
 extern int db_attribute_length (DB_ATTRIBUTE * attribute);
-extern DB_DOMAIN *db_type_to_db_domain (DB_TYPE type);
 
 extern DB_DOMAIN *db_domain_next (const DB_DOMAIN * domain);
 extern DB_TYPE db_domain_type (const DB_DOMAIN * domain);

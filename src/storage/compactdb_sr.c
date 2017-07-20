@@ -32,14 +32,18 @@
 
 #include <assert.h>
 
-#include "porting.h"
+#include "thread.h"
+#include "heap_file.h"
+#include "dbtype.h"
+//#include "porting.h"
 #include "boot_sr.h"
-#include "memory_alloc.h"
+//#include "memory_alloc.h"
 #include "locator_sr.h"
-#include "query_manager.h"
+//#include "query_manager.h"
 #include "set_object.h"
 #include "xserver_interface.h"
 #include "server_interface.h"
+#include "slotted_page.h"
 
 static bool compact_started = false;
 static int last_tran_index = -1;

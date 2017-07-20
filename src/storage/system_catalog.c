@@ -28,30 +28,31 @@
 
 #include <time.h>
 
-#include "error_manager.h"
 #include "system_catalog.h"
-#include "log_manager.h"
-#include "memory_hash.h"
-#include "page_buffer.h"
+#include "error_manager.h"
+
+//#include "log_manager.h"
+//#include "memory_hash.h"
+//#include "page_buffer.h"
 #include "file_manager.h"
-#include "file_io.h"
+//#include "file_io.h"
 #include "slotted_page.h"
-#include "oid.h"
+//#include "oid.h"
 #include "extendible_hash.h"
-#include "memory_alloc.h"
-#include "object_representation_sr.h"
-#include "object_representation.h"
+//#include "memory_alloc.h"
+//#include "object_representation_sr.h"
+//#include "object_representation.h"
 #include "boot_sr.h"
 #include "btree_load.h"
 #include "heap_file.h"
-#include "storage_common.h"
+//#include "storage_common.h"
 #include "xserver_interface.h"
 #include "statistics_sr.h"
 #include "partition.h"
-#include "lock_free.h"
-
+//#include "lock_free.h"
+#include "object_primitive.h"
 #if defined(SERVER_MODE)
-#include "connection_error.h"
+//#include "connection_error.h"
 #endif /* SERVER_MODE */
 
 #if !defined(SERVER_MODE)

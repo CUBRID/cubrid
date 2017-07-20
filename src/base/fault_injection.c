@@ -30,7 +30,9 @@
 #include "fault_injection.h"
 
 #include "system_parameter.h"
+#if !defined (CS_MODE)
 #include "log_impl.h"
+#endif /* CS_MODE */
 
 #if !defined(NDEBUG)
 

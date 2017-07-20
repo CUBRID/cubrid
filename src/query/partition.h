@@ -25,8 +25,14 @@
 #ifndef _PARTITION_H_
 #define _PARTITION_H_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "thread.h"
-#include "query_executor.h"
+#include "xasl.h"
+#include "query_opfunc.h"
+/* #include "query_executor_.h" */
 
 /* object for caching objects used in multi row modify statements for each
  * partition

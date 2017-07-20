@@ -27,15 +27,16 @@
 
 #include <assert.h>
 
-#include "db.h"
 #include "transaction_sr.h"
+
+//#include "db.h"
 #include "locator_sr.h"
 #include "log_manager.h"
-#include "log_impl.h"
-#include "wait_for_graph.h"
-#include "thread.h"
+//#include "log_impl.h"
+//#include "wait_for_graph.h"
+//#include "thread.h"
 #if defined(SERVER_MODE)
-#include "server_support.h"
+//#include "server_support.h"
 #endif
 #include "xserver_interface.h"
 #if defined(ENABLE_SYSTEMTAP)

@@ -23,12 +23,17 @@
 
 #include <assert.h>
 #include "partition.h"
+
 #include "heap_file.h"
-#include "object_representation.h"
-#include "object_representation_sr.h"
-#include "object_domain.h"
+//#include "object_representation.h"
+//#include "object_representation_sr.h"
+//#include "object_domain.h"
 #include "fetch.h"
+#include "dbtype.h"
+#include "stream_to_xasl.h"
+#include "query_executor.h"
 #include "dbval.h"
+#include "object_primitive.h"
 
 typedef enum match_status
 {
@@ -876,12 +881,12 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
       goto cleanup;
     }
 
-  if (pinfo->spec->access == INDEX || pinfo->spec->access == INDEX_KEY_INFO)
+  if (pinfo->spec->access == ACCESS_METHOD_INDEX || pinfo->spec->access == ACCESS_METHOD_INDEX_KEY_INFO)
     {
       /* we have to load information about the index used so we can duplicate it for each partition */
       is_index = true;
       master_oid = &ACCESS_SPEC_CLS_OID (pinfo->spec);
-      master_btid = &pinfo->spec->indexptr->indx_id.i.btid;
+      master_btid = &pinfo->spec->indexptr->btid;
       error =
 	heap_get_indexinfo_of_btid (pinfo->thread_p, master_oid, master_btid, NULL, NULL, NULL, NULL, &btree_name,
 				    NULL);
@@ -917,8 +922,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 
       if (is_index)
 	{
-	  error = heap_get_index_with_name (pinfo->thread_p, &spec[i].oid, btree_name, &spec[i].indx_id.i.btid);
-	  spec[i].indx_id.type = T_BTID;
+	  error = heap_get_index_with_name (pinfo->thread_p, &spec[i].oid, btree_name, &spec[i].btid);
 
 	  if (error != NO_ERROR)
 	    {
@@ -2855,7 +2859,8 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE 
   pinfo.spec = spec;
   pinfo.vd = vd;
 
-  if (spec->access == SEQUENTIAL || spec->access == SEQUENTIAL_RECORD_INFO || spec->access == SEQUENTIAL_PAGE_SCAN)
+  if (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+      || spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
     {
       error = partition_prune_heap_scan (&pinfo);
     }
@@ -2879,7 +2884,7 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE 
 	}
       else
 	{
-	  BTID *btid = &spec->indexptr->indx_id.i.btid;
+	  BTID *btid = &spec->indexptr->btid;
 	  error = partition_get_position_in_key (&pinfo, btid);
 	  if (error != NO_ERROR)
 	    {

@@ -51,6 +51,7 @@
 #include "perf_monitor.h"
 #include "event_log.h"
 #include "util_func.h"
+#include "tz_support.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */

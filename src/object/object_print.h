@@ -27,14 +27,17 @@
 
 #ident "$Id$"
 
-#include "parser.h"
+//#include "parser.h"
+#include "dbtype.h"
+
+#if !defined (SERVER_MODE)
+#include "parse_tree.h"
 
 #define OBJ_SPRINT_DB_FLOAT(buf, value)       \
   sprintf(buf, "%#.*g", DB_FLOAT_DECIMAL_PRECISION, value)
 #define OBJ_SPRINT_DB_DOUBLE(buf, value)      \
   sprintf(buf, "%#.*g", DB_DOUBLE_DECIMAL_PRECISION, value)
 
-#if !defined (SERVER_MODE)
 /* HELP STRUCTURES */
 /*
  * CLASS_HELP
@@ -154,35 +157,14 @@ extern void help_free_names (char **names);
 
 
 /* Class/Instance printing */
-
 extern void help_fprint_obj (FILE * fp, MOP obj);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern void help_print_obj (MOP obj);
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/* Command help */
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern void help_print_command (DB_HELP_COMMAND cmd);
-extern void help_fprint_command (FILE * fp, DB_HELP_COMMAND cmd);
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* Class name help */
-
 extern char **help_class_names (const char *qualifier);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern char **help_base_class_names (void);
-extern void help_print_class_names (const char *qualifier);
-#endif /* ENABLE_UNUSED_FUNCTION */
 extern void help_free_class_names (char **names);
 extern void help_fprint_class_names (FILE * fp, const char *qualifier);
 
 /* Misc help */
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern void help_fprint_all_classes (FILE * fp);
-extern void help_fprint_resident_instances (FILE * fp, MOP op);
-#endif /* ENABLE_UNUSED_FUNCTION */
 extern void help_print_info (const char *command, FILE * fpp);
 extern int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
 
@@ -190,7 +172,7 @@ extern void help_print_trigger (const char *name, FILE * fpp);
 
 extern PARSER_VARCHAR *obj_print_describe_class (const PARSER_CONTEXT * parser, CLASS_HELP * class_schema,
 						 DB_OBJECT * class_op);
-#endif /* !SERVER_MODE */
+
 
 extern PARSER_VARCHAR *describe_money (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 				       const DB_MONETARY * value);
@@ -201,10 +183,11 @@ extern PARSER_VARCHAR *describe_value2 (const PARSER_CONTEXT * inparser, PARSER_
 					const DB_VALUE * value);
 extern PARSER_VARCHAR *describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const char *str,
 					size_t str_length, int max_token_length);
+extern char *describe_comment (PARSER_CONTEXT * parser, const char *comment);
+#endif /* !SERVER_MODE */
+
 extern void help_fprint_value (FILE * fp, const DB_VALUE * value);
 extern int help_sprint_value (const DB_VALUE * value, char *buffer, int max_length);
-
-extern char *describe_comment (PARSER_CONTEXT * parser, const char *comment);
 extern void help_fprint_describe_comment (FILE * fp, const char *comment);
 
 #if defined(CUBRID_DEBUG)

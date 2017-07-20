@@ -43,44 +43,51 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "porting.h"
 #include "log_manager.h"
-#include "log_impl.h"
-#include "log_comm.h"
+
+//#include "porting.h"
+//#include "log_impl.h"
+//#include "log_comm.h"
 #include "recovery.h"
-#include "lock_manager.h"
-#include "memory_alloc.h"
-#include "storage_common.h"
-#include "release_string.h"
-#include "system_parameter.h"
-#include "error_manager.h"
+//#include "lock_manager.h"
+//#include "memory_alloc.h"
+//#include "storage_common.h"
+//#include "release_string.h"
+//#include "system_parameter.h"
+//#include "error_manager.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
-#include "file_io.h"
-#include "disk_manager.h"
-#include "file_manager.h"
+//#include "file_io.h"
+//#include "disk_manager.h"
+//#include "file_manager.h"
 #include "query_manager.h"
 #include "message_catalog.h"
 #include "environment_variable.h"
-#include "wait_for_graph.h"
+//#include "wait_for_graph.h"
 #if defined(SERVER_MODE)
-#include "connection_defs.h"
-#include "connection_error.h"
-#include "thread.h"
+//#include "connection_defs.h"
+//#include "connection_error.h"
+//#include "thread.h"
 #include "job_queue.h"
 #include "server_support.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"
-#include "object_print.h"
-#include "replication.h"
-#include "es.h"
-#include "memory_hash.h"
+//#include "object_print.h"
+//#include "replication.h"
+//#include "es.h"
+//#include "memory_hash.h"
 #include "partition.h"
-#include "connection_support.h"
 #include "log_writer.h"
 #include "filter_pred_cache.h"
-
+#include "heap_file.h"
+#include "slotted_page.h"
+#include "object_primitive.h"
+#include "db_date.h"
 #include "fault_injection.h"
+
+#if defined (SA_MODE)
+#include "connection_support.h"
+#endif /* defined (SA_MODE) */
 
 #if !defined(SERVER_MODE)
 
@@ -6402,6 +6409,8 @@ log_hexa_dump (FILE * out_fp, int length, void *data)
 static void
 log_repl_data_dump (FILE * out_fp, int length, void *data)
 {
+#if 0
+  /* fixme */
   char *ptr;
   char *class_name;
   DB_VALUE value;
@@ -6420,6 +6429,7 @@ log_repl_data_dump (FILE * out_fp, int length, void *data)
       parser_free_parser (parser);
     }
   pr_clear_value (&value);
+#endif
 }
 
 static void

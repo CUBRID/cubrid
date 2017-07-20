@@ -22,6 +22,10 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* defined (SERVER_MODE) */
+
 #include "memory_alloc.h"
 #include "dbtype.h"
 #include "dbdef.h"

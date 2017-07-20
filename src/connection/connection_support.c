@@ -82,7 +82,9 @@
 #endif
 
 #include "storage_common.h"
+#if !defined (CS_MODE)
 #include "heap_file.h"
+#endif /* !defined (CS_MODE) */
 #include "dbval.h"
 #include "db_date.h"
 #include "show_scan.h"

@@ -50,7 +50,6 @@
 #include "system_parameter.h"
 #include "perf_monitor.h"
 #include "util_func.h"
-#include "log_impl.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */

@@ -28,30 +28,15 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "storage_common.h"
-#include "system_parameter.h"
-#include "xserver_interface.h"
-#include "error_manager.h"
-#include "log_manager.h"
-#if defined(SERVER_MODE)
-#include "log_impl.h"
-#endif /* SERVER_MODE */
-#include "critical_section.h"
-#include "wait_for_graph.h"
-#include "page_buffer.h"
 #include "query_manager.h"
-#include "query_opfunc.h"
+#include "object_primitive.h"
+#include "xserver_interface.h"
+#include "query_executor.h"
+#include "stream_to_xasl.h"
 #include "session.h"
-#include "xasl_cache.h"
 #include "filter_pred_cache.h"
-
-#if defined (SERVER_MODE)
-#include "connection_defs.h"
-#include "job_queue.h"
-#include "connection_error.h"
-#endif
-#include "thread.h"
 #include "md5.h"
+
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
@@ -92,6 +77,14 @@ typedef enum qmgr_page_type QMGR_PAGE_TYPE;
  * A resource mechanism used to effectively handle memory allocation for the
  * query entry structures.
  */
+
+#define OID_BLOCK_ARRAY_SIZE    10
+typedef struct oid_block_list
+{
+  struct oid_block_list *next;
+  int last_oid_idx;
+  OID oid_array[OID_BLOCK_ARRAY_SIZE];
+} OID_BLOCK_LIST;
 
 typedef struct qmgr_tran_entry QMGR_TRAN_ENTRY;
 struct qmgr_tran_entry

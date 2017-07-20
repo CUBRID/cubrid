@@ -42,11 +42,11 @@
 #include "language_support.h"
 #include "object_print.h"
 #include "optimizer.h"
-#include "serial.h"
 #include "system_parameter.h"
 #include "show_meta.h"
 #include "virtual_object.h"
 #include "set_object.h"
+#include "dbi.h"
 
 #define SAFENUM(node, field)    ((node) ? (node)->field : -1)
 #define PT_MEMB_BUF_SIZE        100

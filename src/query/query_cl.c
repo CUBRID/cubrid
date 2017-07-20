@@ -18,7 +18,7 @@
  */
 
 /*
- * query.c - Query processor main interface
+ * query_cl.c - Query processor main interface
  */
 
 #ident "$Id$"
@@ -30,13 +30,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#include "error_manager.h"
-#include "work_space.h"
-#include "object_representation.h"
-#include "db.h"
-#include "schema_manager.h"
-#include "xasl_support.h"
-#include "server_interface.h"
+#include "query_cl.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"

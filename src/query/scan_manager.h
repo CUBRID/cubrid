@@ -21,6 +21,16 @@
 /*
  * Scan (Server Side)
  */
+
+#ifndef _SCAN_MANAGER_H_
+#define _SCAN_MANAGER_H_
+
+#ident "$Id$"
+
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include <time.h>
 #if defined(SERVER_MODE)
 #include "jansson.h"
@@ -28,15 +38,11 @@
 
 #include "btree.h"		/* TODO: for BTREE_SCAN */
 
-#ifndef _SCAN_MANAGER_H_
-#define _SCAN_MANAGER_H_
-
-#ident "$Id$"
-
 #include "oid.h"		/* for OID */
 #include "storage_common.h"	/* for PAGEID */
 #include "heap_file.h"		/* for HEAP_SCANCACHE */
 #include "method_scan.h"	/* for METHOD_SCAN_BUFFER */
+#include "query_evaluator.h"
 
 /*
  *       	TYPEDEFS RELATED TO THE SCAN DATA STRUCTURES
@@ -90,16 +96,6 @@ struct heap_page_scan_id
   DB_VALUE **cache_page_info;	/* values for page headers */
   REGU_VARIABLE_LIST page_info_regu_list;	/* regulator variable for page info */
 };				/* Heap File Scan Identifier used to scan pages only (e.g. headers) */
-
-typedef struct key_val_range KEY_VAL_RANGE;
-struct key_val_range
-{
-  RANGE range;
-  DB_VALUE key1;
-  DB_VALUE key2;
-  bool is_truncated;
-  int num_index_term;		/* #terms associated with index key range */
-};
 
 typedef struct indx_cov INDX_COV;
 struct indx_cov
@@ -165,6 +161,7 @@ struct index_skip_scan
 
 /* Forward definition. */
 struct btree_iscan_oid_list;
+typedef struct btree_iscan_oid_list BTREE_ISCAN_OID_LIST;
 
 typedef struct indx_scan_id INDX_SCAN_ID;
 struct indx_scan_id
@@ -343,17 +340,6 @@ struct scan_id_struct
   SCAN_STATS scan_stats;
   bool scan_immediately_stop;
 };				/* Scan Identifier */
-
-/* Structure used in condition reevaluation at SELECT */
-typedef struct mvcc_scan_reev_data MVCC_SCAN_REEV_DATA;
-struct mvcc_scan_reev_data
-{
-  FILTER_INFO *range_filter;	/* filter for range predicate. Used only at index scan */
-  FILTER_INFO *key_filter;	/* key filter */
-  FILTER_INFO *data_filter;	/* data filter */
-
-  QPROC_QUALIFICATION *qualification;	/* address of a variable that contains qualification value */
-};
 
 #define SCAN_IS_INDEX_COVERED(iscan_id_p) \
   ((iscan_id_p)->indx_cov.list_id != NULL)

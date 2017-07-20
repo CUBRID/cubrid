@@ -35,6 +35,10 @@
 #include "dbdef.h"
 #include "class_object.h"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* defined (SERVER_MODE) */
+
 /*
  * Authorization Class Names
  */

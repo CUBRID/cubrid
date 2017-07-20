@@ -718,6 +718,31 @@ struct vpid
 
 #define VPID_AS_ARGS(vpidp) (vpidp)->volid, (vpidp)->pageid
 
+/* Set a vpid with values of volid and pageid */
+#define VPID_SET(vpid_ptr, volid_value, pageid_value)	      \
+  do {							      \
+    (vpid_ptr)->volid  = (volid_value);			      \
+    (vpid_ptr)->pageid = (pageid_value);		      \
+  } while(0)
+
+/* Set the vpid to an invalid one */
+#define VPID_SET_NULL(vpid_ptr) VPID_SET(vpid_ptr, NULL_VOLID, NULL_PAGEID)
+
+/* copy a VPID */
+#define  VPID_COPY(dest_ptr, src_ptr)                      \
+  do {							   \
+    *(dest_ptr) = *(src_ptr);				   \
+  } while (0)
+
+/* vpid1 == vpid2 ? */
+#define VPID_EQ(vpid_ptr1, vpid_ptr2)                         \
+  ((vpid_ptr1) == (vpid_ptr2) ||                              \
+   ((vpid_ptr1)->pageid == (vpid_ptr2)->pageid &&             \
+    (vpid_ptr1)->volid  == (vpid_ptr2)->volid))
+
+/* Is vpid NULL ? */
+#define VPID_ISNULL(vpid_ptr) ((vpid_ptr)->pageid == NULL_PAGEID)
+
 typedef struct vsid VSID;	/* REAL SECTOR IDENTIFIER */
 struct vsid
 {
@@ -1022,6 +1047,14 @@ typedef unsigned char *DB_C_NUMERIC;
 typedef void *DB_C_POINTER;
 typedef DB_IDENTIFIER DB_C_IDENTIFIER;
 
+typedef enum
+{
+  V_FALSE = 0,
+  V_TRUE = 1,
+  V_UNKNOWN = 2,
+  V_ERROR = -1
+} DB_LOGICAL;
+
 extern DB_VALUE *db_value_create (void);
 extern DB_VALUE *db_value_copy (DB_VALUE * value);
 extern int db_value_clone (DB_VALUE * src, DB_VALUE * dest);
@@ -1029,6 +1062,7 @@ extern int db_value_clear (DB_VALUE * value);
 extern int db_value_free (DB_VALUE * value);
 extern int db_value_clear_array (DB_VALUE_ARRAY * value_array);
 extern void db_value_print (const DB_VALUE * value);
+extern void db_value_fprint (FILE * fp, const DB_VALUE * value);
 extern int db_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const DB_DOMAIN * desired_domain);
 
 extern int db_value_equal (const DB_VALUE * value1, const DB_VALUE * value2);
@@ -1062,6 +1096,17 @@ extern DB_CURRENCY db_value_get_monetary_currency (const DB_VALUE * value);
 extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
 extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
 extern int db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount);
+extern int db_value_alter_type (DB_VALUE * value, DB_TYPE type);
+
+#define DB_MAKE_OID(value, oid)						\
+  do {									\
+    if ((db_value_domain_init(value, DB_TYPE_OID, 0, 0)) == NO_ERROR)	\
+	(void)db_make_oid(value, oid);				        \
+  } while (0)
+
+#define DB_GET_OID(value)		(db_get_oid(value))
+extern int db_make_oid (DB_VALUE * value, const OID * oid);
+extern OID *db_get_oid (const DB_VALUE * value);
 
 #ifdef __cplusplus
 extern "C"
@@ -1186,4 +1231,66 @@ extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
 
+/* Collection functions */
+extern DB_COLLECTION *db_col_create (DB_TYPE type, int size, DB_DOMAIN * domain);
+extern DB_COLLECTION *db_col_copy (DB_COLLECTION * col);
+extern int db_col_filter (DB_COLLECTION * col);
+extern int db_col_free (DB_COLLECTION * col);
+
+extern int db_col_coerce (DB_COLLECTION * col, DB_DOMAIN * domain);
+
+extern int db_col_size (DB_COLLECTION * col);
+extern int db_col_cardinality (DB_COLLECTION * col);
+extern DB_TYPE db_col_type (DB_COLLECTION * col);
+extern DB_DOMAIN *db_col_domain (DB_COLLECTION * col);
+extern int db_col_ismember (DB_COLLECTION * col, DB_VALUE * value);
+extern int db_col_find (DB_COLLECTION * col, DB_VALUE * value, int starting_index, int *found_index);
+extern int db_col_add (DB_COLLECTION * col, DB_VALUE * value);
+extern int db_col_drop (DB_COLLECTION * col, DB_VALUE * value, int all);
+extern int db_col_drop_element (DB_COLLECTION * col, int element_index);
+
+extern int db_col_drop_nulls (DB_COLLECTION * col);
+
+extern int db_col_get (DB_COLLECTION * col, int element_index, DB_VALUE * value);
+extern int db_col_put (DB_COLLECTION * col, int element_index, DB_VALUE * value);
+extern int db_col_insert (DB_COLLECTION * col, int element_index, DB_VALUE * value);
+
+extern int db_col_print (DB_COLLECTION * col);
+extern int db_col_fprint (FILE * fp, DB_COLLECTION * col);
+
+/* Set and sequence functions.
+   These are now obsolete. Please use the generic collection functions
+   "db_col*" instead */
+extern int db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2);
+extern DB_COLLECTION *db_set_create (DB_OBJECT * classobj, const char *name);
+extern DB_COLLECTION *db_set_create_basic (DB_OBJECT * classobj, const char *name);
+extern DB_COLLECTION *db_set_create_multi (DB_OBJECT * classobj, const char *name);
+extern DB_COLLECTION *db_seq_create (DB_OBJECT * classobj, const char *name, int size);
+extern int db_set_free (DB_COLLECTION * set);
+extern int db_set_filter (DB_COLLECTION * set);
+extern int db_set_add (DB_COLLECTION * set, DB_VALUE * value);
+extern int db_set_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
+extern int db_set_drop (DB_COLLECTION * set, DB_VALUE * value);
+extern int db_set_size (DB_COLLECTION * set);
+extern int db_set_cardinality (DB_COLLECTION * set);
+extern int db_set_ismember (DB_COLLECTION * set, DB_VALUE * value);
+extern int db_set_isempty (DB_COLLECTION * set);
+extern int db_set_has_null (DB_COLLECTION * set);
+extern int db_set_print (DB_COLLECTION * set);
+extern DB_TYPE db_set_type (DB_COLLECTION * set);
+extern DB_COLLECTION *db_set_copy (DB_COLLECTION * set);
+extern int db_seq_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
+extern int db_seq_put (DB_COLLECTION * set, int element_index, DB_VALUE * value);
+extern int db_seq_insert (DB_COLLECTION * set, int element_index, DB_VALUE * value);
+extern int db_seq_drop (DB_COLLECTION * set, int element_index);
+extern int db_seq_size (DB_COLLECTION * set);
+extern int db_seq_cardinality (DB_COLLECTION * set);
+extern int db_seq_print (DB_COLLECTION * set);
+extern int db_seq_find (DB_COLLECTION * set, DB_VALUE * value, int element_index);
+extern int db_seq_free (DB_SEQ * seq);
+extern int db_seq_filter (DB_SEQ * seq);
+extern DB_SEQ *db_seq_copy (DB_SEQ * seq);
+
+extern DB_DOMAIN *db_type_to_db_domain (DB_TYPE type);
+extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 #endif /* _DBTYPE_H_ */

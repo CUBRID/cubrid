@@ -33,6 +33,10 @@
 #include <stdio.h>
 #include <time.h>
 
+#if defined (CS_MODE)
+#else /* defined (CS_MODE) */
+#include "thread.h"
+#endif /* defined (CS_MODE) */
 #include "porting.h"
 #include "storage_common.h"
 #include "release_string.h"
@@ -40,7 +44,6 @@
 #include "memory_hash.h"
 #include "lzoconf.h"
 #include "lzo1x.h"
-#include "thread.h"
 
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
 

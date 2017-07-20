@@ -49,16 +49,16 @@
 #include "xasl_support.h"
 #include "optimizer.h"
 #include "object_primitive.h"
-#include "heap_file.h"
 #include "object_representation.h"
-#include "query_opfunc.h"
+/* todo(rem) #include "query_opfunc_.h" */
 #include "parser_support.h"
 #include "system_parameter.h"
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "object_print.h"
-#include "btree_load.h"
+/* todo(rem) #include "btree_load_.h" */
 #include "show_meta.h"
+#include "db.h"
 
 #define DEFAULT_VAR "."
 
@@ -85,8 +85,10 @@ struct pt_host_vars
   (pt_is_dot_node (node) || pt_is_attr (node) || pt_is_query (node) \
    || (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_GROUPBYNUM_NC)))
 
+/* fixme(rem) */
 #define DB_ENUM_ELEMENTS_MAX_AGG_SIZE \
-  (DB_PAGESIZE - offsetof (BTREE_ROOT_HEADER, packed_key_domain) - 1)
+  /* (DB_PAGESIZE - offsetof (BTREE_ROOT_HEADER, packed_key_domain) - 1) */ \
+  DB_PAGESIZE
 
 int qp_Packing_er_code = NO_ERROR;
 
@@ -4637,7 +4639,6 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
   ptr->type = type;
   ptr->option = Q_ALL;
   ptr->iscan_oid_order = prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER);
-  ptr->topn_items = NULL;
   ptr->scan_op_type = S_SELECT;
 
   switch (type)
@@ -4652,7 +4653,6 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
       break;
 
     case BUILDLIST_PROC:
-      ptr->proc.buildlist.upddel_oid_locator_ehids = NULL;
       break;
 
     case BUILDVALUE_PROC:
@@ -4758,7 +4758,7 @@ static void
 regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
 {
   ptr->type = type;
-  ptr->access = SEQUENTIAL;
+  ptr->access = ACCESS_METHOD_SEQUENTIAL;
   ptr->indexptr = NULL;
   ptr->where_key = NULL;
   ptr->where_pred = NULL;
@@ -4800,11 +4800,6 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
       ACCESS_SPEC_XASL_NODE (ptr) = NULL;
       ACCESS_SPEC_METHOD_SIG_LIST (ptr) = NULL;
     }
-
-  memset ((void *) &ptr->s_id, 0, sizeof (SCAN_ID));
-  ptr->grouped_scan = false;
-  ptr->fixed_scan = false;
-  ptr->qualified_block = false;
   ptr->single_fetch = (QPROC_SINGLE_FETCH) false;
   ptr->s_dbval = NULL;
   ptr->next = NULL;

@@ -47,11 +47,11 @@
 #include "memory_hash.h"
 #include "memory_alloc.h"
 #include "locator_cl.h"
-#include "locator_sr.h"
+/* todo(rem) #include "locator_sr_.h" */
 #include "schema_manager.h"
-#include "heap_file.h"
+/* todo(rem) #include "heap_file_.h" */
 #include "locator.h"
-#include "slotted_page.h"
+/* todo(rem) #include "slotted_page.h" */
 #include "transform_cl.h"
 #include "object_accessor.h"
 #include "set_object.h"

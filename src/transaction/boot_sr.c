@@ -42,60 +42,64 @@
 #endif /* WINDOWS */
 #include <assert.h>
 
-#include "porting.h"
-#include "chartype.h"
 #include "boot_sr.h"
-#include "misc_string.h"
-#include "storage_common.h"
-#include "memory_alloc.h"
+
+//#include "porting.h"
+#include "chartype.h"
+
+//#include "misc_string.h"
+//#include "storage_common.h"
+//#include "memory_alloc.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-#include "file_io.h"
-#include "page_buffer.h"
-#include "log_impl.h"
-#include "log_manager.h"
-#include "disk_manager.h"
-#include "lock_manager.h"
+#include "object_primitive.h"
+//#include "file_io.h"
+//#include "page_buffer.h"
+//#include "log_impl.h"
+//#include "log_manager.h"
+//#include "disk_manager.h"
+//#include "lock_manager.h"
 #include "locator_sr.h"
 #include "heap_file.h"
-#include "locator.h"
+//#include "locator.h"
 #include "slotted_page.h"
-#include "extendible_hash.h"
+//#include "extendible_hash.h"
 #include "system_catalog.h"
-#include "transaction_sr.h"
+//#include "transaction_sr.h"
 #include "transform.h"
-#include "release_string.h"
-#include "log_comm.h"
-#include "critical_section.h"
+//#include "release_string.h"
+//#include "log_comm.h"
+//#include "critical_section.h"
 #include "databases_file.h"
-#include "query_manager.h"
+//#include "query_manager.h"
 #include "language_support.h"
 #include "message_catalog.h"
-#include "perf_monitor.h"
+//#include "perf_monitor.h"
 #include "set_object.h"
-#include "object_domain.h"
-#include "area_alloc.h"
-#include "environment_variable.h"
+//#include "object_domain.h"
+//#include "area_alloc.h"
+//#include "environment_variable.h"
 #include "util_func.h"
 #include "intl_support.h"
-#if defined(SERVER_MODE)
-#include "connection_error.h"
-#include "connection_sr.h"
-#include "server_support.h"
-#include "tsc_timer.h"
-#endif /* SERVER_MODE */
 #include "serial.h"
 #include "server_interface.h"
 #include "jsp_sr.h"
-#include "thread.h"
+//#include "thread.h"
 #include "xserver_interface.h"
-#include "es.h"
+//#include "es.h"
 #include "session.h"
-#include "partition.h"
+//#include "partition.h"
 #include "event_log.h"
 #include "tz_support.h"
-#include "tsc_timer.h"
+//#include "tsc_timer.h"
 #include "filter_pred_cache.h"
+
+#if defined(SERVER_MODE)
+//#include "connection_error.h"
+#include "connection_sr.h"
+#include "server_support.h"
+//#include "tsc_timer.h"
+#endif /* SERVER_MODE */
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -106,10 +110,6 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-
-#if !defined (SERVER_MODE)
-#include "transaction_cl.h"
-#endif
 
 #define BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE  \
   (1250 * (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE))	/* 5 Mbytes */

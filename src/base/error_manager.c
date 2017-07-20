@@ -59,11 +59,15 @@
 #include <netdb.h>
 #endif /* SOLARIS */
 
+#include <setjmp.h>
+
+#include "error_manager.h"
+
 #include "porting.h"
 #include "chartype.h"
-#include "language_support.h"
+//#include "language_support.h"
 #include "memory_alloc.h"
-#include "storage_common.h"
+//#include "storage_common.h"
 #include "system_parameter.h"
 #include "object_representation.h"
 #include "message_catalog.h"
@@ -71,15 +75,13 @@
 #include "environment_variable.h"
 #if defined (SERVER_MODE)
 #include "thread.h"
+#include "critical_section.h"
+#include "log_impl.h"
 #else /* SERVER_MODE */
 #include "transaction_cl.h"
 #endif /* !SERVER_MODE */
-#include "critical_section.h"
-#include "error_manager.h"
-#include "error_code.h"
-#include "memory_hash.h"
+//#include "memory_hash.h"
 #include "stack_dump.h"
-#include "log_impl.h"
 
 #if defined (WINDOWS)
 #include "wintcp.h"
@@ -107,10 +109,15 @@ static int er_csect_enter_log_file (void);
 #define ER_CSECT_ENTER_LOG_FILE() NO_ERROR
 #define ER_CSECT_EXIT_LOG_FILE()
 #endif
+
+#if !defined (SERVER_MODE)
+#define csect_enter(a,b,c) NO_ERROR
+#define csect_exit(a,b)
+#endif /* !defined (SERVER_MODE) */
+
 /*
- * These are done via complied constants rather than the message
- * catalog, because they must be avilable if the message catalog is not
- * available.
+ * These are done via complied constants rather than the message catalog, because they must be available if the message
+ * catalog is not available.
  */
 static const char *er_severity_string[] = { "FATAL ERROR", "ERROR", "SYNTAX ERROR", "WARNING", "NOTIFICATION" };
 
@@ -903,7 +910,7 @@ er_file_open (const char *path)
     }
   free_and_init (tpath);
 
-  /* note: in "a+" mode, output is alwarys appended */
+  /* note: in "a+" mode, output is always appended */
   fp = fopen (path, "r+");
   if (fp != NULL)
     {
