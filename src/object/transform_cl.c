@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include "porting.h"
 #include "memory_alloc.h"

@@ -35,6 +35,7 @@
 #endif
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <assert.h>
 
 #include "db.h"
 #include "authenticate.h"

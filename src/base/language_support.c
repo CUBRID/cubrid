@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <langinfo.h>
 #endif

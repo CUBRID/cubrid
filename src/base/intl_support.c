@@ -5156,7 +5156,7 @@ intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned 
   const unsigned char *p_end;
   unsigned char *p_out = NULL;
   unsigned char *next_utf8;
-  int status = 0, next_utf8_size = 0;
+  int status = 0;
   unsigned int unicode_cp = 0;
 
   assert (in_size > 0);
@@ -5821,7 +5821,6 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned ch
   const unsigned char *p = in_buf;
   const unsigned char *p_end = NULL;
   const unsigned char *curr_char = NULL;
-  bool has_invalid_chars = false;
   unsigned char *p_out = NULL;
 
   p_out = (unsigned char *) *out_buf;

@@ -28,6 +28,7 @@
 #include "config.h"
 
 #include <stdio.h>
+#include <assert.h>
 
 #include "set_object.h"
 //#include "area_alloc.h"

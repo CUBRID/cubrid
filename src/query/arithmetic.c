@@ -30,6 +30,7 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
+#include <assert.h>
 #if defined(SOLARIS)
 #include <ieeefp.h>
 #endif

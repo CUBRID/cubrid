@@ -83,6 +83,10 @@
 //#include "memory_hash.h"
 #include "stack_dump.h"
 
+#if defined (LINUX)
+#include "memory_hash.h"
+#endif /* defined (LINUX) */
+
 #if defined (WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -99,13 +103,13 @@ syslog (long priority, const char *message, ...)
 #if defined (SERVER_MODE)
 #define ER_CSECT_ENTER_LOG_FILE() (csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT))
 #define ER_CSECT_EXIT_LOG_FILE() (csect_exit (NULL, CSECT_ER_LOG_FILE))
-#elif defined (CS_MODE)
+/* #elif defined (CS_MODE)
 static pthread_mutex_t er_log_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int er_csect_enter_log_file (void);
 
 #define ER_CSECT_ENTER_LOG_FILE() er_csect_enter_log_file()
-#define ER_CSECT_EXIT_LOG_FILE() pthread_mutex_unlock (&er_log_file_mutex)
-#else /* SA_MODE */
+#define ER_CSECT_EXIT_LOG_FILE() pthread_mutex_unlock (&er_log_file_mutex) */
+#else /* SA_MODE || CS_MODE */
 #define ER_CSECT_ENTER_LOG_FILE() NO_ERROR
 #define ER_CSECT_EXIT_LOG_FILE()
 #endif
@@ -3632,6 +3636,7 @@ er_vsprintf (THREAD_ENTRY * thread_p, ER_FMT * fmt, va_list * ap)
   return NO_ERROR;
 }
 
+#if 0
 #if defined(CS_MODE)
 /*
  * er_csect_enter_log_file -
@@ -3644,4 +3649,5 @@ er_csect_enter_log_file (void)
   ret = pthread_mutex_lock (&er_log_file_mutex);
   return ret;
 }
+#endif
 #endif

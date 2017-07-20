@@ -31,6 +31,7 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <string.h>
+#include <assert.h>
 
 #include "system_parameter.h"
 #include "error_manager.h"

@@ -37,6 +37,7 @@
 
 #include <jni.h>
 #include <locale.h>
+#include <assert.h>
 
 #include "jsp_sr.h"
 

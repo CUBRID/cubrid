@@ -31,6 +31,7 @@
 #include <winsock2.h>
 #endif /* WINDOWS */
 #include <setjmp.h>
+#include <assert.h>
 
 #include "object_representation.h"
 //#include "object_domain.h"

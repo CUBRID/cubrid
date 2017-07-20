@@ -28,6 +28,7 @@
 #ident "$Id$"
 
 #if defined(LINUX)
+#include "memory_hash.h"
 extern MHT_TABLE *fname_table;
 #endif
 

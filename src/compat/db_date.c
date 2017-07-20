@@ -30,6 +30,8 @@
 
 #include "db_date.h"
 
+#include <assert.h>
+
 #include "error_manager.h"
 //#include "porting.h"
 #include "chartype.h"
@@ -3491,7 +3493,6 @@ db_date_parse_date (char const *str, int str_len, DB_DATE * date)
 static const char *
 parse_for_timestamp (const char *buf, int buf_len, DB_DATE * date, DB_TIME * time, bool allow_msec)
 {
-  int error = NO_ERROR;
   const char *p;
 
   /* First try to parse a date followed by a time. */
@@ -3559,7 +3560,6 @@ parse_datetime (const char *buf, int buf_len, DB_DATETIME * datetime)
 {
   DB_DATE date = 0;
   unsigned int mtime;
-  int error = NO_ERROR;
   const char *p;
 
   /* First try to parse a date followed by a time. */
