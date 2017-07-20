@@ -24103,7 +24103,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       /* Has lower limit. Try to locate the key. */
       error_code =
 	btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key, &bts->C_vpid, &bts->slot_id,
-			  &(bts->C_page), &found);
+			  &bts->C_page, &found);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -24281,7 +24281,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   /* Search key from top. */
   error_code = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, &bts->C_vpid, &bts->slot_id,
-				 &(bts->C_page), &found);
+				 &bts->C_page, &found);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
