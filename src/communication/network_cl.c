@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 /* for performance metering */
 #if !defined(WINDOWS)

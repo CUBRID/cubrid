@@ -28,6 +28,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <signal.h>
+#include <assert.h>
 
 #include "porting.h"
 #include "csql.h"

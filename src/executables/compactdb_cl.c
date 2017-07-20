@@ -23,6 +23,8 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <assert.h>
+
 #include "porting.h"
 #include "dbtype.h"
 #include "dbdef.h"

@@ -24,6 +24,7 @@
 #ident "$Id$"
 
 #include <ctype.h>
+#include <assert.h>
 
 #include "config.h"
 

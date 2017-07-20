@@ -31,6 +31,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <fcntl.h>
+#include <assert.h>
 #if defined (WINDOWS)
 #include <io.h>
 #else

@@ -27,6 +27,7 @@
 
 #ident "$Id$"
 
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <pthread.h>
 #endif /* not WINDOWS */

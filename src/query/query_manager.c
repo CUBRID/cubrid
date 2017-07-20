@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include "query_manager.h"
 #include "object_primitive.h"

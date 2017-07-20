@@ -33,6 +33,7 @@
 #include <time.h>
 #include <float.h>
 #include <limits.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <netinet/in.h>
 #endif /* !WINDOWS */

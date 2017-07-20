@@ -26,6 +26,8 @@
 #ifndef _XASL_H_
 #define _XASL_H_
 
+#include <assert.h>
+
 #include "storage_common.h"
 #include "memory_hash.h"
 #include "string_opfunc.h"

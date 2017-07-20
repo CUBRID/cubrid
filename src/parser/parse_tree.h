@@ -32,6 +32,8 @@
 #ident "$Id$"
 
 #include <setjmp.h>
+#include <assert.h>
+
 #include "jansson.h"
 
 #include "config.h"

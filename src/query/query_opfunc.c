@@ -29,6 +29,7 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
+#include <assert.h>
 
 #include "query_opfunc.h"
 

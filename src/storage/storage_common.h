@@ -33,6 +33,7 @@
 #include <limits.h>
 #include <time.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include "porting.h"
 #include "dbdef.h"

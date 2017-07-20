@@ -31,6 +31,8 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include <assert.h>
+
 #if defined(WINDOWS)
 #include "porting.h"
 #else /* ! WINDOWS */

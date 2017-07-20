@@ -34,6 +34,7 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <dbgHelp.h>
+#include <assert.h>
 
 #else /* WINDOWS */
 #include <sys/resource.h>

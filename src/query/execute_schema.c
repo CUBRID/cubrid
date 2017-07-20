@@ -27,6 +27,7 @@
 
 #include <stdarg.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "error_manager.h"
 #include "parser.h"

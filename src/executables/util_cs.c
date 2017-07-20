@@ -32,6 +32,7 @@
 #include <ctype.h>
 #include <signal.h>
 #include <errno.h>
+#include <assert.h>
 
 #include "utility.h"
 #include "error_manager.h"

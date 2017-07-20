@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 #if defined(WINDOWS)
 #include <process.h>		/* for getpid() */
 #include <winsock2.h>		/* for struct timeval */

@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <sys/types.h>
 #include <sys/param.h>

@@ -30,6 +30,7 @@
 #include <math.h>
 #include <search.h>
 #include <stddef.h>
+#include <assert.h>
 
 #include "list_file.h"
 

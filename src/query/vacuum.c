@@ -22,6 +22,7 @@
  *
  */
 #include "vacuum.h"
+
 #include "thread.h"
 #include "mvcc.h"
 #include "page_buffer.h"

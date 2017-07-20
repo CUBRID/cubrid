@@ -27,6 +27,10 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+
+#include "db_query.h"
+
 #include "error_manager.h"
 #include "storage_common.h"
 #include "object_representation.h"
@@ -34,7 +38,6 @@
 #include "class_object.h"
 #include "db.h"
 #include "xasl_support.h"
-#include "db_query.h"
 #include "server_interface.h"
 #include "system_parameter.h"
 #include "xasl_generation.h"

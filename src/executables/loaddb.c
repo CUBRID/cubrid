@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #if !defined (WINDOWS)
 #include <unistd.h>

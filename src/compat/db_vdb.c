@@ -30,6 +30,8 @@
 #include <stdarg.h>
 #include <sys/timeb.h>
 #include <time.h>
+#include <assert.h>
+
 #include "db.h"
 #include "dbi.h"
 #include "db_query.h"
@@ -44,7 +46,7 @@
 #include "schema_manager.h"
 #include "view_transform.h"
 #include "execute_statement.h"
-						/* todo(rem) #include "xasl_generation.h" *//* TODO: remove */
+											    /* todo(rem) #include "xasl_generation.h" *//* TODO: remove */
 #include "locator_cl.h"
 #include "server_interface.h"
 /* todo(rem) #include "query_manager.h" */

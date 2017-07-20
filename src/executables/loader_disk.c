@@ -23,6 +23,8 @@
 
 #ident "$Id$"
 
+#include <assert.h>
+
 #include "config.h"
 
 #include "porting.h"

@@ -31,6 +31,7 @@
 #endif /* SERVER_MODE */
 
 #include <stdarg.h>
+#include <assert.h>
 
 #include "error_manager.h"
 #include "memory_alloc.h"

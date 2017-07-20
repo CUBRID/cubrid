@@ -31,6 +31,7 @@
 #include <string.h>
 #include <signal.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include <sys/stat.h>
 #if defined(WINDOWS)
