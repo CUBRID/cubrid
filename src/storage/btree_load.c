@@ -3786,8 +3786,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   /* Initialize index scan on primary key btid. */
   scan_init_index_scan (&pk_isid, NULL, NULL);
   BTREE_INIT_SCAN (&pk_bt_scan);
-  (pk_isid).copy_buf_len = DBVAL_BUFSIZE;
-  (pk_isid).check_not_vacuumed = true;
+  pk_isid.copy_buf_len = DBVAL_BUFSIZE;
+  pk_isid.check_not_vacuumed = true;
 
   /* Lock the primary key class. */
   lock_ret = lock_object (thread_p, sort_args->fk_refcls_oid, oid_Root_class_oid, SIX_LOCK, LK_COND_LOCK);
@@ -3857,8 +3857,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	{
 	  /* No search has been initiated yet, we start from root. */
 	  ret =
-	    btree_locate_key (thread_p, &(pk_bt_scan.btid_int), &fk_key, &(pk_bt_scan.C_vpid), &(pk_bt_scan.slot_id),
-			      &(pk_bt_scan.C_page), &found);
+	    btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
+			      &pk_bt_scan.C_page, &found);
 
 	  if (ret != NO_ERROR)
 	    {
@@ -3885,7 +3885,6 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      pgbuf_unfix_and_init (thread_p, old_page);
 	    }
 
-
 	  /* Value was found, proceed with the next value */
 	  pk_bt_scan.slot_id++;
 	}
@@ -3894,9 +3893,9 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  /* We try to resume the search in the current leaf. */
 	  while (!found && pk_bt_scan.slot_id <= pk_key_cnt)
 	    {
-	      ret = btree_advance_to_next_slot_and_fix_page (thread_p, &(pk_bt_scan.btid_int), &(pk_bt_scan.C_vpid),
-							     &(pk_bt_scan.C_page), &(pk_bt_scan.slot_id), &pk_key,
-							     is_fk_scan_desc, &pk_key_cnt, &(pk_header), NULL);
+	      ret = btree_advance_to_next_slot_and_fix_page (thread_p, &pk_bt_scan.btid_int, &pk_bt_scan.C_vpid,
+							     &pk_bt_scan.C_page, &pk_bt_scan.slot_id, &pk_key,
+							     is_fk_scan_desc, &pk_key_cnt, &pk_header, NULL);
 
 	      if (ret != NO_ERROR)
 		{
@@ -4128,6 +4127,7 @@ start_alg:
 	{
 	  goto start_alg;
 	}
+
       if (num_visible < 0)
 	{
 	  /* Error. */
