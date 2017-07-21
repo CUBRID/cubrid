@@ -1526,7 +1526,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char *leading_str = NULL;
 	char *trailing_str = NULL;
-	DB_CURRENCY currency = ((DB_GET_MONETARY (value))->type);
+	DB_MONETARY *mon = DB_GET_MONETARY (value);
+	DB_CURRENCY currency = mon->type;
 
 	if (default_monetary_profile.currency_symbol)
 	  {
@@ -1541,7 +1542,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	  }
 
 	result =
-	  (DB_GET_MONETARY (value) == NULL) ? NULL : double_to_string ((DB_GET_MONETARY (value))->amount,
+	  (DB_GET_MONETARY (value) == NULL) ? NULL : double_to_string (mon->amount,
 								       default_monetary_profile.fieldwidth,
 								       default_monetary_profile.decimalplaces,
 								       default_monetary_profile.leadingsign,
@@ -1685,7 +1686,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	const char *str;
 	char *decomposed = NULL;
 
-	if (db_get_enum_short (value) == 0 && db_get_enum_string (value) == NULL)
+	if (DB_GET_ENUM_SHORT (value) == 0 && DB_GET_ENUM_STRING (value) == NULL)
 	  {
 	    /* ENUM special error value */
 	    str = "";

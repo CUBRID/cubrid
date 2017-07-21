@@ -100,46 +100,12 @@ typedef struct set_iterator
   int position;			/* current element index */
 } SET_ITERATOR;
 
-/*
- * struct setobj
- * The internal structure of a setobj data struct is private to this module.
- * all access to this structure should be encapsulated via function calls.
- */
-typedef SETOBJ COL;
-
-struct setobj
-{
-
-  DB_TYPE coltype;
-  int size;			/* valid indexes from 0 to size -1 aka the number of represented values in the
-				 * collection */
-  int lastinsert;		/* the last value insertion point 0 to size. */
-  int topblock;			/* maximum index of an allocated block. This is the maximum non-NULL db_value pointer
-				 * index of array. array[topblock] should be non-NULL. array[topblock+1] will be a NULL 
-				 * pointer for future expansion. */
-  int arraytop;			/* maximum indexable pointer in array the valid indexes for array are 0 to arraytop
-				 * inclusive Generally this may be greater than topblock */
-  int topblockcount;		/* This is the max index of the top block Since it may be shorter than a standard sized 
-				 * block for space efficicency. */
-  DB_VALUE **array;
-
-  /* not stored on disk, attached at run time by the schema */
-  struct tp_domain *domain;
-
-  /* external reference list */
-  DB_COLLECTION *references;
-
-  /* clear if we can't guarentee sort order, always on for sequences */
-  unsigned sorted:1;
-
-  /* set if we can't guarentee that there are no temporary OID's in here */
-  unsigned may_have_temporary_oids:1;
-};
 
 /* Creation */
 extern AREA *Set_Ref_Area;	/* Area for allocation of set reference structures */
 extern AREA *Set_Obj_Area;	/* Area for allocation of set object structures */
 
+typedef SETOBJ COL;
 extern DB_COLLECTION *set_create (DB_TYPE type, int initial_size);
 extern int set_area_init (void);
 extern void set_area_final (void);
@@ -290,12 +256,12 @@ extern int setobj_drop_seq_element (COL * col, int index);
 extern int setobj_find_seq_element (COL * col, DB_VALUE * value, int index);
 extern COL *setobj_coerce (COL * col, TP_DOMAIN * domain, bool implicit_coercion);
 extern void setobj_print (FILE * fp, COL * col);
-extern DB_TYPE setobj_type (COL * set);
 extern TP_DOMAIN *setobj_domain (COL * set);
 extern void setobj_put_domain (COL * set, TP_DOMAIN * domain);
 extern int setobj_put_value (COL * col, int index, DB_VALUE * value);
 extern DB_COLLECTION *setobj_get_reference (COL * set);
 extern int setobj_release (COL * set);
 extern int setobj_build_domain_from_col (COL * col, TP_DOMAIN ** set_domain);
+extern DB_TYPE setobj_type (COL * set);
 
 #endif /* _SET_OBJECT_H_ */

@@ -30,6 +30,7 @@
 
 #include <stdio.h>
 #include "object_representation.h"
+#include "es.h"
 
 extern int elo_create (DB_ELO * elo);
 
@@ -43,6 +44,7 @@ extern int elo_delete (DB_ELO * elo, bool force_delete);
 extern off_t elo_size (DB_ELO * elo);
 extern ssize_t elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count);
 extern ssize_t elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count);
+
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int elo_get_meta (const DB_ELO * elo, const char *key, char *buf, int bufsz);

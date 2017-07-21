@@ -41,13 +41,6 @@
 
 /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
 
-#define NULL_VOLID  (-1)	/* Value of an invalid volume identifier */
-#define NULL_SECTID (-1)	/* Value of an invalid sector identifier */
-#define NULL_PAGEID (-1)	/* Value of an invalid page identifier */
-#define NULL_SLOTID (-1)	/* Value of an invalid slot identifier */
-#define NULL_OFFSET (-1)	/* Value of an invalid offset */
-#define NULL_FILEID (-1)	/* Value of an invalid file identifier */
-
 #define VOLID_MAX       SHRT_MAX
 #define PAGEID_MAX      INT_MAX
 #define SECTID_MAX      INT_MAX

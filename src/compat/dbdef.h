@@ -28,7 +28,7 @@
 
 #ident "$Id$"
 
-#include "cubrid_api.h"
+#include "cubrid_api.h"		/* todo: there are stuff in cubrid_api not included in dbi_compat */
 
 #define TRAN_ASYNC_WS_BIT                        0x10	/* 1 0000 */
 #define TRAN_ISO_LVL_BITS                        0x0F	/* 0 1111 */
@@ -135,10 +135,13 @@ typedef enum
   DB_AUTH_INSERT = 2,
   DB_AUTH_UPDATE = 4,
   DB_AUTH_DELETE = 8,
+  /* todo: these are missing from dbi_compat */
+  /* ----> */
   DB_AUTH_REPLACE = DB_AUTH_DELETE | DB_AUTH_INSERT,
   DB_AUTH_INSERT_UPDATE = DB_AUTH_UPDATE | DB_AUTH_INSERT,
   DB_AUTH_UPDATE_DELETE = DB_AUTH_UPDATE | DB_AUTH_DELETE,
   DB_AUTH_INSERT_UPDATE_DELETE = DB_AUTH_INSERT_UPDATE | DB_AUTH_DELETE,
+  /* <---- */
   DB_AUTH_ALTER = 16,
   DB_AUTH_INDEX = 32,
   DB_AUTH_EXECUTE = 64
@@ -211,7 +214,6 @@ typedef struct sm_method_argument DB_METHARG;
 typedef struct sm_method_file DB_METHFILE;
 typedef struct sm_resolution DB_RESOLUTION;
 typedef struct sm_query_spec DB_QUERY_SPEC;
-typedef struct tp_domain DB_DOMAIN;
 
 /* These are handles to attribute and method descriptors that can
    be used for optimized lookup during repeated operations.
@@ -320,7 +322,6 @@ typedef enum
  * elsewhere and it is not necessary for database applications to
  * understand its contents.
  */
-typedef struct db_object DB_OBJECT, *MOP;
 
 /* Structure defining the common list link header used by the general
  * list routines.  Any structure in the db_ layer that are linked in
@@ -399,6 +400,8 @@ typedef unsigned int SESSION_ID;
 #define DB_EMPTY_SESSION			0
 /* uninitialized value for row count */
 #define DB_ROW_COUNT_NOT_SET			-2
+
+/* todo: the remaining dbdef was not in dbi_compat */
 #define SERVER_SESSION_KEY_SIZE			8
 
 typedef struct dbdef_vol_ext_info DBDEF_VOL_EXT_INFO;

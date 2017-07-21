@@ -220,7 +220,6 @@ extern int db_col_coerce (DB_COLLECTION * col, DB_DOMAIN * domain);
 
 extern int db_col_size (DB_COLLECTION * col);
 extern int db_col_cardinality (DB_COLLECTION * col);
-extern DB_TYPE db_col_type (DB_COLLECTION * col);
 extern DB_DOMAIN *db_col_domain (DB_COLLECTION * col);
 extern int db_col_ismember (DB_COLLECTION * col, DB_VALUE * value);
 extern int db_col_find (DB_COLLECTION * col, DB_VALUE * value, int starting_index, int *found_index);

@@ -273,7 +273,6 @@ extern int db_error_code_test (void);
 extern const char *db_error_string_test (int level);
 
 extern int db_make_oid (DB_VALUE * value, const OID * oid);
-extern OID *db_get_oid (const DB_VALUE * value);
 extern int db_value_alter_type (DB_VALUE * value, DB_TYPE type);
 
 #if !defined(_DBTYPE_H_)

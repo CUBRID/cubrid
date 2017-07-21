@@ -28,11 +28,62 @@
 #define _DBTYPE_H_
 
 #ident "$Id$"
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <string.h>
 
-#include "config.h"
+/* Need to check this again and to possibly remove them!! */
 
-#include "dbdef.h"
+/***********************************/
+/* What we need from system.h */
+#ifndef bool
+#define bool char
+#endif
 
+#ifndef false
+#define false 0
+#endif
+
+#ifndef true
+#define true 1
+#endif
+
+/***********************************/
+
+/* From string_opfunc.h */
+#define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
+                                 ((s)==DB_TYPE_VARCHAR))
+#define QSTR_IS_NATIONAL_CHAR(s) (((s)==DB_TYPE_NCHAR) || \
+                                 ((s)==DB_TYPE_VARNCHAR))
+#define QSTR_IS_BIT(s)           (((s)==DB_TYPE_BIT) || \
+                                 ((s)==DB_TYPE_VARBIT))
+#define QSTR_IS_ANY_CHAR(s)	(QSTR_IS_CHAR(s) || QSTR_IS_NATIONAL_CHAR(s))
+#define QSTR_IS_ANY_CHAR_OR_BIT(s)		(QSTR_IS_ANY_CHAR(s) \
+                                                 || QSTR_IS_BIT(s))
+
+/* From object_domain.h */
+/*
+ * We probably should make this 0 rather than -1 so that we can more easily
+ * represent precisions with unsigned integers.  Zero is not a valid
+ * precision.
+ */
+#define TP_FLOATING_PRECISION_VALUE -1
+
+/* The maximum length of the partition expression after it is processed */
+/* TODO: Needs to be moved from here!! */
+#define DB_MAX_PARTITION_EXPR_LENGTH 2048
+
+typedef enum
+{
+  SMALL_STRING,
+  MEDIUM_STRING,
+  LARGE_STRING
+} STRING_STYLE;
+
+
+typedef struct db_object DB_OBJECT, *MOP;
+typedef struct tp_domain DB_DOMAIN;
 /*
  * DB_MAX_IDENTIFIER_LENGTH -
  * This constant defines the maximum length of an identifier
@@ -73,7 +124,7 @@
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
 
-/* The upper limit for a numeber that can be represented by a numeric type */
+/* The upper limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_OVERFLOW_LIMIT 1e38
 
 /* The lower limit for a number that can be represented by a numeric type */
@@ -156,7 +207,7 @@
 /* This constant defines the default precision of DB_TYPE_TIME. */
 #define DB_TIME_PRECISION      8
 
-/* This constant defines the default precision of DB_TIMETZ_PRECISION. */
+/* This constant defines the default precision */
 #define DB_TIMETZ_PRECISION   DB_TIME_PRECISION
 
 /* This constant defines the default precision of DB_TYPE_DATE. */
@@ -176,17 +227,6 @@
 
 /* This constant defines the default scale of DB_TYPE_DATETIME. */
 #define DB_DATETIME_DECIMAL_SCALE      3
-
-/* The maximum length of the partition expression after it is processed */
-#define DB_MAX_PARTITION_EXPR_LENGTH 2048
-
-/* Defines the state of a value as not being compressable due to its bad compression size or 
- * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
- */
-#define DB_UNCOMPRESSABLE -1
-
-/* Defines the state of a value not being yet prompted for a compression process. */
-#define DB_NOT_YET_COMPRESSED 0
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
@@ -294,14 +334,14 @@
 #define DB_MAKE_ERROR(value, errcode) db_make_error(value, errcode)
 
 #define DB_MAKE_METHOD_ERROR(value, errcode, errmsg) \
-           db_make_method_error(value, errcode, errmsg)
+	   db_make_method_error(value, errcode, errmsg)
 
 #define DB_MAKE_SMALLINT(value, num) db_make_short(value, num)
 
 #define DB_MAKE_SHORT DB_MAKE_SMALLINT
 
 #define DB_MAKE_NUMERIC(value, num, precision, scale) \
-        db_make_numeric(value, num, precision, scale)
+	   db_make_numeric(value, num, precision, scale)
 
 #define DB_MAKE_BIT(value, bit_length, bit_str, bit_str_bit_size) \
         db_make_bit(value, bit_length, bit_str, bit_str_bit_size)
@@ -349,6 +389,7 @@
 
 #define DB_VALUE_SCALE(value)           db_value_scale(value)
 
+
 #define DB_GET_INTEGER(value)           db_get_int(value)
 
 #define DB_GET_INT                      DB_GET_INTEGER
@@ -371,17 +412,6 @@
 
 #define DB_GET_MULTISET(value)          db_get_set(value)
 
-/* obsolete */
-#define DB_GET_MULTI_SET DB_GET_MULTISET
-
-#define DB_GET_LIST(value)              db_get_set(value)
-
-#define DB_GET_SEQUENCE DB_GET_LIST
-
-/* obsolete */
-#define DB_GET_SEQ DB_GET_SEQUENCE
-
-/* new preferred interface */
 #define DB_GET_COLLECTION(value)        db_get_set(value)
 
 #define DB_GET_MIDXKEY(value)           db_get_midxkey(value)
@@ -390,18 +420,17 @@
 
 #define DB_GET_TIME(value)              db_get_time(value)
 
-#define DB_GET_TIMETZ(value)		db_get_timetz(value)
+#define DB_GET_TIMETZ(value)          db_get_timetz(value)
 
 #define DB_GET_DATE(value)              db_get_date(value)
 
 #define DB_GET_TIMESTAMP(value)         db_get_timestamp(value)
-#define DB_GET_UTIME DB_GET_TIMESTAMP
 
-#define DB_GET_TIMESTAMPTZ(value)	db_get_timestamptz(value)
+#define DB_GET_TIMESTAMPTZ(value)     db_get_timestamptz(value)
 
 #define DB_GET_DATETIME(value)          db_get_datetime(value)
 
-#define DB_GET_DATETIMETZ(value)	db_get_datetimetz(value)
+#define DB_GET_DATETIMETZ(value)      db_get_datetimetz(value)
 
 #define DB_GET_MONETARY(value)          db_get_monetary(value)
 
@@ -436,6 +465,35 @@
 #define DB_GET_ENUM_CODESET(value) db_get_enum_codeset(value)
 
 #define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
+
+/* obsolete */
+#define DB_GET_MULTI_SET DB_GET_MULTISET
+
+#define DB_GET_LIST(value)              db_get_set(value)
+
+#define DB_GET_SEQUENCE DB_GET_LIST
+
+#define DB_GET_ENUM_STRING(v) db_get_enum_string(v)
+
+#define DB_GET_ENUM_SHORT(v) db_get_enum_short(v)
+
+#define DB_GET_ENUM_STRING_SIZE(v) db_get_enum_string_size(v)
+
+/* obsolete */
+#define DB_GET_SEQ DB_GET_SEQUENCE
+
+/* todo: Add these to dbi_compat.h */
+#if !defined(SERVER_MODE) || defined(NDEBUG)
+#define NO_SERVER_OR_DEBUG_MODE
+#endif
+
+/* Defines the state of a value as not being compressable due to its bad compression size or 
+ * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+ */
+#define DB_UNCOMPRESSABLE -1
+
+/* Defines the state of a value not being yet prompted for a compression process. */
+#define DB_NOT_YET_COMPRESSED 0
 
 #define DB_GET_COMPRESSED_SIZE(value) db_get_compressed_size(value)
 
@@ -569,7 +627,7 @@ union db_domain_info
 };
 
 /* types used for the representation of bigint values. */
-typedef INT64 DB_BIGINT;
+typedef long long DB_BIGINT;
 
 /* Structure used for the representation of time values. */
 typedef unsigned int DB_TIME;
@@ -660,6 +718,24 @@ struct db_monetary
   DB_CURRENCY type;
 };
 
+typedef struct db_set SETREF;
+struct db_set
+{
+  /* 
+   * a garbage collector ticket is not required for the "owner" field as
+   * the entire set references area is registered for scanning in area_grow.
+   */
+  struct db_object *owner;
+  struct db_set *ref_link;
+  struct setobj *set;
+  char *disk_set;
+  DB_DOMAIN *disk_domain;
+  int attribute;
+  int ref_count;
+  int disk_size;
+  bool need_clear;
+};
+
 /* Definition for the collection descriptor structure. The structures for
  * the collection descriptors and the sequence descriptors are identical
  * internally but not all db_collection functions can be used with sequences
@@ -667,7 +743,7 @@ struct db_monetary
  * recognize the type of set being used, type it appropriately and only
  * call those db_ functions defined for that type.
  */
-typedef struct db_collection DB_COLLECTION;
+typedef struct db_set DB_COLLECTION;
 typedef DB_COLLECTION DB_MULTISET;
 typedef DB_COLLECTION DB_SEQ;
 typedef DB_COLLECTION DB_SET;
@@ -710,8 +786,8 @@ struct db_midxkey
 typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
 struct vpid
 {
-  INT32 pageid;			/* Page identifier */
-  INT16 volid;			/* Volume identifier where the page resides */
+  int pageid;			/* Page identifier */
+  short volid;			/* Volume identifier where the page resides */
 };
 #define VPID_INITIALIZER \
   { NULL_PAGEID, NULL_VOLID }
@@ -721,8 +797,8 @@ struct vpid
 typedef struct vsid VSID;	/* REAL SECTOR IDENTIFIER */
 struct vsid
 {
-  INT32 sectid;			/* Sector identifier */
-  INT16 volid;			/* Volume identifier where the sector resides */
+  int sectid;			/* Sector identifier */
+  short volid;			/* Volume identifier where the sector resides */
 };
 #define VSID_INITIALIZER { NULL_SECTID, NULL_VOLID }
 #define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->sectid
@@ -730,8 +806,8 @@ struct vsid
 typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
 struct vfid
 {
-  INT32 fileid;			/* File identifier */
-  INT16 volid;			/* Volume identifier where the file resides */
+  int fileid;			/* File identifier */
+  short volid;			/* Volume identifier where the file resides */
 };
 #define VFID_INITIALIZER \
   { NULL_FILEID, NULL_VOLID }
@@ -749,7 +825,7 @@ enum db_elo_type
 
 struct db_elo
 {
-  INT64 size;
+  long long size;
   char *locator;
   char *meta_data;
   DB_ELO_TYPE type;
@@ -846,6 +922,7 @@ struct db_enumeration
  * definition of the DB_VALUE which is the fundamental structure used
  * in passing data in and out of the db_ function layer.
  */
+
 
 typedef union db_data DB_DATA;
 union db_data
@@ -1022,6 +1099,90 @@ typedef unsigned char *DB_C_NUMERIC;
 typedef void *DB_C_POINTER;
 typedef DB_IDENTIFIER DB_C_IDENTIFIER;
 
+/************************************************************************/
+/* TODO:Decide how do we handle the references copied from other headers*/
+/************************************************************************/
+
+/* From dbi.h */
+extern DB_TYPE db_col_type (DB_COLLECTION * col);
+
+
+/* MACROS FOR ERROR CHECKING */
+/* These should be used at the start of every db_ function so we can check
+   various validations before executing. */
+
+/* Argument checking macros */
+#define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
+  do {                                                                         \
+    if((obj) == NULL) {                                                        \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_2ARGS_RETURN_EXPR(obj1, obj2, expr)                              \
+  do {                                                                         \
+    if((obj1) == NULL || (obj2) == NULL) {                                     \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, expr)                        \
+  do {                                                                         \
+    if((obj1) == NULL || (obj2) == NULL || (obj3) == NULL) {                   \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_1ARG_NULL(obj)        \
+  CHECK_1ARG_RETURN_EXPR(obj, NULL)
+
+#define CHECK_2ARGS_NULL(obj1, obj2)    \
+  CHECK_2ARGS_RETURN_EXPR(obj1,obj2,NULL)
+
+#define CHECK_3ARGS_NULL(obj1, obj2, obj3) \
+  CHECK_3ARGS_RETURN_EXPR(obj1,obj2,obj3,NULL)
+
+#define CHECK_1ARG_FALSE(obj)  \
+  CHECK_1ARG_RETURN_EXPR(obj,false)
+
+#define CHECK_1ARG_TRUE(obj)   \
+  CHECK_1ARG_RETURN_EXPR(obj, true)
+
+#define CHECK_1ARG_ERROR(obj)  \
+  CHECK_1ARG_RETURN_EXPR(obj,ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_ERROR_WITH_TYPE(obj, TYPE)  \
+  CHECK_1ARG_RETURN_EXPR(obj,(TYPE)ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_MINUSONE(obj) \
+  CHECK_1ARG_RETURN_EXPR(obj,-1)
+
+#define CHECK_2ARGS_ERROR(obj1, obj2)   \
+  CHECK_2ARGS_RETURN_EXPR(obj1, obj2, ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_3ARGS_ERROR(obj1, obj2, obj3) \
+  CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_ZERO(obj)     \
+  CHECK_1ARG_RETURN_EXPR(obj, 0)
+
+#define CHECK_1ARG_ZERO_WITH_TYPE(obj1, RETURN_TYPE)     \
+  CHECK_1ARG_RETURN_EXPR(obj1, (RETURN_TYPE) 0)
+
+#define CHECK_2ARGS_ZERO(obj1, obj2)    \
+  CHECK_2ARGS_RETURN_EXPR(obj1,obj2, 0)
+
+#define CHECK_1ARG_UNKNOWN(obj1)        \
+  CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
+
+/* From db_date.h */
+extern int db_date_encode (DB_DATE * date, int month, int day, int year);
+extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
+extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
+
 extern DB_VALUE *db_value_create (void);
 extern DB_VALUE *db_value_copy (DB_VALUE * value);
 extern int db_value_clone (DB_VALUE * src, DB_VALUE * dest);
@@ -1062,6 +1223,23 @@ extern DB_CURRENCY db_value_get_monetary_currency (const DB_VALUE * value);
 extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
 extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
 extern int db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount);
+extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
+extern int db_make_string (DB_VALUE * value, const char *str);
+extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
+extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
+			   const int bit_str_bit_size);
+
+extern int db_make_set (DB_VALUE * value, DB_C_SET * set);
+extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
+extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
+extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
+			 const int codeset, const int collation_id);
+extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+			    const int char_str_byte_size, const int codeset, const int collation_id);
+extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
+			  const int codeset, const int collation_id);
+extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+			     const int nchar_str_byte_size, const int codeset, const int collation_id);
 
 /*
  * DB_MAKE_ value constructors.
@@ -1070,74 +1248,80 @@ extern int db_value_put_monetary_amount_as_double (DB_VALUE * value, const doubl
  * arguments. It is not necessary to use these macros but is usually more
  * convenient.
  */
+
+extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
+extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
+extern int db_value_put_numeric (DB_VALUE * value, DB_C_NUMERIC num);
+extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
+extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
+extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
+extern int db_value_put_char (DB_VALUE * value, DB_C_CHAR str, int size);
+extern int db_value_put_varbit (DB_VALUE * value, DB_C_BIT str, int size);
+extern int db_value_put_bit (DB_VALUE * value, DB_C_BIT str, int size);
+
+extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
+extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
+extern int valcnv_convert_value_to_string (DB_VALUE * value);
+
+extern char *db_get_method_error_msg (void);
+
+extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
+
+extern OID *db_get_oid (const DB_VALUE * value);
+extern DB_CURRENCY db_get_currency_default (void);
+extern int db_get_string_codeset (const DB_VALUE * value);
+extern int db_get_string_collation (const DB_VALUE * value);
+extern int db_get_enum_codeset (const DB_VALUE * value);
+extern int db_get_enum_collation (const DB_VALUE * value);
+
+/************************************************************************/
+/* TODO:Decide how do we handle the references copied from other headers*/
+/************************************************************************/
+
+/* From storage_common.h */
+#define NULL_VOLID  (-1)	/* Value of an invalid volume identifier */
+#define NULL_SECTID (-1)	/* Value of an invalid sector identifier */
+#define NULL_PAGEID (-1)	/* Value of an invalid page identifier */
+#define NULL_SLOTID (-1)	/* Value of an invalid slot identifier */
+#define NULL_OFFSET (-1)	/* Value of an invalid offset */
+#define NULL_FILEID (-1)	/* Value of an invalid file identifier */
+
+extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
+
+#ifdef SERVER_MODE
+#include "db_macro.i"
+#else
 extern int db_make_null (DB_VALUE * value);
 extern int db_make_int (DB_VALUE * value, const int num);
-extern int db_make_float (DB_VALUE * value, const DB_C_FLOAT num);
-extern int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num);
-extern int db_make_object (DB_VALUE * value, DB_C_OBJECT * obj);
-extern int db_make_set (DB_VALUE * value, DB_C_SET * set);
-extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
-extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
-extern int db_make_collection (DB_VALUE * value, DB_C_SET * set);
+extern int db_make_short (DB_VALUE * value, const short num);
+extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
+extern int db_make_float (DB_VALUE * value, const float num);
+extern int db_make_double (DB_VALUE * value, const double num);
+extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
+extern int db_make_string_copy (DB_VALUE * value, const char *str);
+extern int db_make_object (DB_VALUE * value, DB_OBJECT * obj);
+extern int db_make_collection (DB_VALUE * value, DB_COLLECTION * col);
 extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
-extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
-extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
+extern int db_make_pointer (DB_VALUE * value, void *ptr);
+extern int db_make_time (DB_VALUE * value, const int hour, const int min, const int sec);
 extern int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value);
 extern int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value);
-extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
-extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
-extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
-extern int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
-extern int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val);
-extern int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val);
+extern int db_make_date (DB_VALUE * value, const int mon, const int day, const int year);
+extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount);
+extern int db_make_timestamp (DB_VALUE * value, const DB_TIMESTAMP timeval);
+extern int db_make_timestampltz (DB_VALUE * value, const DB_TIMESTAMP ts_val);
+extern int db_make_timestamptz (DB_VALUE * value, const DB_TIMESTAMPTZ * ts_tz_val);
 extern int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime);
 extern int db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime);
 extern int db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz);
-extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount);
-extern int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr);
-extern int db_make_error (DB_VALUE * value, const int errcode);
-extern int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg);
-extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
-extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
-extern int db_make_string (DB_VALUE * value, const char *str);
-extern int db_make_string_copy (DB_VALUE * value, const char *str);
-extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
-extern int db_value_put_numeric (DB_VALUE * value, DB_C_NUMERIC num);
-extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
-extern int db_value_put_bit (DB_VALUE * value, DB_C_BIT str, int size);
-extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
-			   const int bit_str_bit_size);
-extern int db_value_put_varbit (DB_VALUE * value, DB_C_BIT str, int size);
-extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
-			 const int codeset, const int collation_id);
-extern int db_value_put_char (DB_VALUE * value, DB_C_CHAR str, int size);
-extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
-			    const int char_str_byte_size, const int codeset, const int collation_id);
-extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
-extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
-			  const int codeset, const int collation_id);
-extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
-extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
-			     const int nchar_str_byte_size, const int codeset, const int collation_id);
-extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
-
 extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size, unsigned char codeset,
 				const int collation_id);
-
-extern DB_CURRENCY db_get_currency_default (void);
-
+extern int db_make_error (DB_VALUE * value, const int errcode);
+extern int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg);
 extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
-
-/*
- * DB_GET_ accessor macros.
- * These macros can be used to extract a particular value from a
- * DB_VALUE structure. No type checking is done so you need to make sure
- * that the type is correct.
- */
 extern int db_get_int (const DB_VALUE * value);
 extern DB_C_SHORT db_get_short (const DB_VALUE * value);
 extern DB_BIGINT db_get_bigint (const DB_VALUE * value);
-extern DB_C_CHAR db_get_string (const DB_VALUE * value);
 extern DB_C_FLOAT db_get_float (const DB_VALUE * value);
 extern DB_C_DOUBLE db_get_double (const DB_VALUE * value);
 extern DB_OBJECT *db_get_object (const DB_VALUE * value);
@@ -1155,28 +1339,18 @@ extern DB_MONETARY *db_get_monetary (const DB_VALUE * value);
 extern int db_get_error (const DB_VALUE * value);
 extern DB_ELO *db_get_elo (const DB_VALUE * value);
 extern DB_C_NUMERIC db_get_numeric (const DB_VALUE * value);
-extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
-extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
 extern DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
 extern int db_get_string_size (const DB_VALUE * value);
-extern DB_C_SHORT db_get_enum_short (const DB_VALUE * value);
-extern DB_C_CHAR db_get_enum_string (const DB_VALUE * value);
-extern int db_get_enum_string_size (const DB_VALUE * value);
-extern DB_C_CHAR db_get_method_error_msg (void);
-
 extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
-
-extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
-extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
-extern int db_get_string_codeset (const DB_VALUE * value);
-extern int db_get_string_collation (const DB_VALUE * value);
-extern int valcnv_convert_value_to_string (DB_VALUE * value);
-
-extern int db_get_enum_codeset (const DB_VALUE * value);
-extern int db_get_enum_collation (const DB_VALUE * value);
-
+extern char *db_get_enum_string (const DB_VALUE * value);
+extern unsigned short db_get_enum_short (const DB_VALUE * value);
+extern int db_get_enum_string_size (const DB_VALUE * value);
+extern DB_C_CHAR db_get_string (const DB_VALUE * value);
+extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
 extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
+
+#endif
 
 #endif /* _DBTYPE_H_ */

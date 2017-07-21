@@ -30,6 +30,7 @@
 
 #include "porting.h"
 #include "dbdef.h"
+#include "dbtype.h"
 
 typedef struct LDR_CONTEXT LDR_CONTEXT;
 

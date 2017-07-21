@@ -32,7 +32,6 @@
 #include <stdio.h>
 
 #include "error_manager.h"
-#include "error_code.h"
 #include "porting.h"
 
 typedef enum

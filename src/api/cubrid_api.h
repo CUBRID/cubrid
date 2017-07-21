@@ -26,6 +26,7 @@
 
 #include "config.h"
 #include <stdlib.h>
+
 #include "error_code.h"
 
 #define IS_VALID_ISOLATION_LEVEL(isolation_level) \

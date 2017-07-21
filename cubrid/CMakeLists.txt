@@ -264,6 +264,11 @@ install(FILES
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   RENAME dbi.h
   )
+  
+install(FILES
+  ${COMPAT_DIR}/dbtype.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )  
 
 
 # install pdb files for debugging on windows

@@ -1121,24 +1121,6 @@ struct db_reference
   int attribute;
 };
 
-typedef struct db_set SETREF;
-struct db_set
-{
-  /* 
-   * a garbage collector ticket is not required for the "owner" field as
-   * the entire set references area is registered for scanning in area_grow.
-   */
-  struct db_object *owner;
-  struct db_set *ref_link;
-  struct setobj *set;
-  char *disk_set;
-  DB_DOMAIN *disk_domain;
-  int attribute;
-  int ref_count;
-  int disk_size;
-  bool need_clear;
-};
-
 /*
  * SETOBJ
  *    This is the primitive set object header.
