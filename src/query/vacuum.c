@@ -5448,8 +5448,16 @@ vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p)
   /* Return first pageid from first block in vacuum data table */
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
+      /* this is for debug, suppress log archive purging. */
+      return 0;
+    }
+#if defined (SA_MODE)
+  if (vacuum_Data.is_vacuum_complete)
+    {
+      /* no log archives are needed for vacuum any longer. */
       return NULL_PAGEID;
     }
+#endif /* defined (SA_MODE) */
   return vacuum_Data.keep_from_log_pageid;
 }
 
