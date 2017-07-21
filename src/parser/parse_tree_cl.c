@@ -2349,7 +2349,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
   sb.body[0] = 0;
   if (prev)
     {
-      strcat_with_realloc (&sb, (const char *) prev->bytes);	//vapa!!!
+      strcat_with_realloc (&sb, (const char *) prev->bytes);
     }
 
   while (p->next)
@@ -2363,7 +2363,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 	      strcat_with_realloc (&sb, ", ");
 	    }
 
-	  strcat_with_realloc (&sb, (const char *) r->bytes);	//vapa!!!
+	  strcat_with_realloc (&sb, (const char *) r->bytes);
 	  prev = r;
 	}
       if (0 < parser->max_print_len && parser->max_print_len < sb.length)
@@ -9899,16 +9899,16 @@ pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * sb, PT_NODE * t, P
 
   if (lhs && rhs1)
     {
-      strcat_with_realloc (sb, (const char *) lhs->bytes);	//vapa!!!
+      strcat_with_realloc (sb, (const char *) lhs->bytes);
       strcat_with_realloc (sb, (char *) op1);
-      strcat_with_realloc (sb, (const char *) rhs1->bytes);	//vapa!!!
+      strcat_with_realloc (sb, (const char *) rhs1->bytes);
 
       if (rhs2)
 	{
 	  strcat_with_realloc (sb, " and ");
-	  strcat_with_realloc (sb, (const char *) lhs->bytes);	//vapa!!!
+	  strcat_with_realloc (sb, (const char *) lhs->bytes);
 	  strcat_with_realloc (sb, (char *) op2);
-	  strcat_with_realloc (sb, (const char *) rhs2->bytes);	//vapa!!!
+	  strcat_with_realloc (sb, (const char *) rhs2->bytes);
 	}
     }
 }
