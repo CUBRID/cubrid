@@ -6857,10 +6857,6 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   /* Get first log pageid needed for vacuum before locking LOG_CS. */
   vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
-  if (vacuum_first_pageid == NULL_PAGEID)
-    {
-      return 0;			/* none is deleted */
-    }
 
   LOG_CS_ENTER (thread_p);
 
