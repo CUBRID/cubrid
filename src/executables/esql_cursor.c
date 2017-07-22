@@ -207,7 +207,7 @@ pp_print_cursors (FILE * fp)
   if (pp_cursor_table->get_symbol_count (pp_cursor_table))
     {
       fputs (pp_get_msg (EX_CURSOR_SET, MSG_TABLE_TITLE), fp);
-      pp_cursor_table->print_table (pp_cursor_table, (void (*)()) pp_print_cursor, fp, 1);	//vapa!!!
+      pp_cursor_table->print_table (pp_cursor_table, (void (*)()) pp_print_cursor, fp, 1);	//TODO: get rid of function pointer conversion
     }
 }
 

@@ -2367,7 +2367,7 @@ qe_col_get (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char *oid_str,
 
   ADD_ARG_BYTES (&net_buf, &col_cmd, 1);
   ADD_ARG_OBJECT (&net_buf, &oid);
-  ADD_ARG_STR (&net_buf, (char *) col_attr, strlen (col_attr) + 1, con_handle->charset);	//vapa!!!
+  ADD_ARG_STR (&net_buf, col_attr, strlen (col_attr) + 1, con_handle->charset);
 
   if (net_buf.err_code < 0)
     {

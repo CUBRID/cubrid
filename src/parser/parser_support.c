@@ -7257,7 +7257,7 @@ pt_make_outer_select_for_show_stmt (PARSER_CONTEXT * parser, PT_NODE * inner_sel
     }
 
   from_item->info.spec.derived_table = inner_select;
-  from_item->info.spec.meta_class = PT_MISC_NONE;	//vapa!!!
+  from_item->info.spec.meta_class = PT_MISC_NONE;
   from_item->info.spec.range_var = alias_subquery;
   from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
   from_item->info.spec.join_type = PT_JOIN_NONE;
@@ -7335,7 +7335,7 @@ pt_make_outer_select_for_show_columns (PARSER_CONTEXT * parser, PT_NODE * inner_
   inner_select->info.query.is_subquery = PT_IS_SUBQUERY;
   alias_subquery = pt_name (parser, select_alias);
   from_item->info.spec.derived_table = inner_select;
-  from_item->info.spec.meta_class = PT_MISC_NONE;	//vapa!!!
+  from_item->info.spec.meta_class = PT_MISC_NONE;
   from_item->info.spec.range_var = alias_subquery;
   from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
   from_item->info.spec.join_type = PT_JOIN_NONE;
@@ -7885,7 +7885,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     alias_subquery = pt_name (parser, "constraints_pri_key");
 
     from_item->info.spec.derived_table = sub_query;
-    from_item->info.spec.meta_class = PT_MISC_NONE;	//vapa!!!
+    from_item->info.spec.meta_class = PT_MISC_NONE;
     from_item->info.spec.range_var = alias_subquery;
     from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
     from_item->info.spec.join_type = PT_JOIN_NONE;
@@ -7951,7 +7951,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     alias_subquery = pt_name (parser, "constraints_uni_key");
 
     from_item->info.spec.derived_table = sub_query;
-    from_item->info.spec.meta_class = PT_MISC_NONE;	//vapa!!!
+    from_item->info.spec.meta_class = PT_MISC_NONE;
     from_item->info.spec.range_var = alias_subquery;
     from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
     from_item->info.spec.join_type = PT_JOIN_NONE;
@@ -8017,7 +8017,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     assert (alias_subquery != NULL);
 
     from_item->info.spec.derived_table = sub_query;
-    from_item->info.spec.meta_class = PT_MISC_NONE;	//vapa!!!
+    from_item->info.spec.meta_class = PT_MISC_NONE;
     from_item->info.spec.range_var = alias_subquery;
     from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
     from_item->info.spec.join_type = PT_JOIN_NONE;
@@ -8756,7 +8756,7 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type, PT_NODE * ar
     }
   from_item->info.spec.derived_table = showstmt_info;
   from_item->info.spec.derived_table_type = PT_IS_SHOWSTMT;
-  from_item->info.spec.meta_class = PT_MISC_NONE;	//vapa!!!
+  from_item->info.spec.meta_class = PT_MISC_NONE;
   from_item->info.spec.join_type = PT_JOIN_NONE;
 
   if (like_or_where_expr != NULL)
@@ -9416,7 +9416,7 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
     table_col->info.name.meta_class = PT_NORMAL;
 
     from_item->info.spec.derived_table = table_col;
-    from_item->info.spec.meta_class = PT_MISC_NONE;	//vapa!!!
+    from_item->info.spec.meta_class = PT_MISC_NONE;
     from_item->info.spec.range_var = alias_table;
     from_item->info.spec.as_attr_list = alias_col;
     from_item->info.spec.derived_table_type = PT_IS_SET_EXPR;
@@ -10075,7 +10075,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
 			   LANG_SYS_COLLATION, NULL);
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
-  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (const DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);	//vapa!!!
+  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (const DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
   for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)
     {

@@ -233,7 +233,7 @@ hl_register_lea_heap (void)
       hms->base_size = LEA_HEAP_BASE_SIZE - (size_t) ((char *) hms->base - (char *) hms);
       MMAP_TRACE_H_INIT (&hms->header, NULL);
 
-      hms->ms = (mstate) create_mspace_with_base (hms->base, hms->base_size, 0);	//vapa!!!
+      hms->ms = (mstate) create_mspace_with_base (hms->base, hms->base_size, 0);
       if (hms->ms == NULL)
 	{
 	  free (hms);
