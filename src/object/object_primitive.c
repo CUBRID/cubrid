@@ -41,13 +41,11 @@
 #include "string_opfunc.h"
 #include "tz_support.h"
 #include "file_io.h"
-
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #include "virtual_object.h"
 #include "transform_cl.h"
 #include "dbi.h"
-//#include "locator_cl.h"
 #endif /* !defined (SERVER_MODE) */
 
 /* this must be the last header file included!!! */

@@ -34,19 +34,9 @@
 #include <assert.h>
 
 #include "object_representation.h"
-//#include "object_domain.h"
 #include "error_manager.h"
 #include "oid.h"
-//#include "storage_common.h"
-/* todo(rem) #include "query_opfunc_.h" */
-//#include "class_object.h"
-//#include "db.h"
 #include "set_object.h"
-#if defined (SERVER_MODE)
-//#include "thread.h"
-#else /* !defined (SERVER_MODE) */
-//#include "locator_cl.h"
-#endif /* !defined (SERVER_MODE) */
 #include "file_io.h"
 #include "regu_var.h"
 #include "object_primitive.h"

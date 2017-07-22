@@ -30,18 +30,12 @@
 
 #include "method_scan.h"
 
-//#include "xasl_support.h"
-//#include "network.h"
 #include "network_interface_sr.h"	/* TODO: should not be here */
 #ifndef	SERVER_MODE
 #include "object_accessor.h"
 #include "dbi.h"
 #include "authenticate.h"
 #endif
-
-
-//#include "scan_manager.h"
-//#include "xserver_interface.h"
 #include "xasl.h"
 
 #if defined (SA_MODE)

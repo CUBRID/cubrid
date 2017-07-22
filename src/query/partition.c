@@ -25,15 +25,12 @@
 #include "partition.h"
 
 #include "heap_file.h"
-//#include "object_representation.h"
-//#include "object_representation_sr.h"
-//#include "object_domain.h"
 #include "fetch.h"
 #include "dbtype.h"
 #include "stream_to_xasl.h"
 #include "query_executor.h"
-#include "dbval.h"
 #include "object_primitive.h"
+#include "dbval.h"
 
 typedef enum match_status
 {

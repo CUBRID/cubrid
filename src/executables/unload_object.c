@@ -48,11 +48,8 @@
 #include "memory_hash.h"
 #include "memory_alloc.h"
 #include "locator_cl.h"
-/* todo(rem) #include "locator_sr_.h" */
 #include "schema_manager.h"
-/* todo(rem) #include "heap_file_.h" */
 #include "locator.h"
-/* todo(rem) #include "slotted_page.h" */
 #include "transform_cl.h"
 #include "object_accessor.h"
 #include "set_object.h"

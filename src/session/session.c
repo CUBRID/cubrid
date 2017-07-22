@@ -34,21 +34,15 @@
 #include "session.h"
 
 #include "jansson.h"
-//#include "porting.h"
 #include "critical_section.h"
-//#include "memory_hash.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-//#include "db.h"
-//#include "query_executor.h"
 #include "environment_variable.h"
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
-//#include "log_impl.h"
 #else /* !defined (SERVER_MODE) = defined (SA_MODE) */
 #include "db.h"
 #endif /* defined (SA_MODE) */
-//#include "xserver_interface.h"
 #include "lock_free.h"
 #include "object_primitive.h"
 #include "dbtype.h"

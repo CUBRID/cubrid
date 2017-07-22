@@ -37,7 +37,7 @@
 #if defined(CS_MODE)
 #include "server_interface.h"
 #include "boot_cl.h"
-#else
+#else /* !defined (CS_MODE) == defined (SA_MODE) */
 #include "xserver_interface.h"
 #include "boot_sr.h"
 #include "locator_sr.h"
@@ -46,7 +46,7 @@
 #include "jsp_sr.h"
 #include "vacuum.h"
 #include "serial.h"
-#endif
+#endif /* defined (SA_MODE) */
 #include "oid.h"
 #include "error_manager.h"
 #include "object_representation.h"

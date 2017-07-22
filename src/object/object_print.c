@@ -33,19 +33,8 @@
 #include <assert.h>
 
 #include "object_print.h"
-//#include "porting.h"
-
-
 
 #include "error_manager.h"
-//#include "memory_alloc.h"
-
-//#include "locator_cl.h"
-//#include "object_accessor.h"
-//#include "db.h"
-
-
-//#include "message_catalog.h"
 #if !defined (SERVER_MODE)
 #include "chartype.h"
 #include "misc_string.h"
@@ -61,17 +50,6 @@
 #include "class_object.h"
 #include "work_space.h"
 #endif /* !defined (SERVER_MODE) */
-//#include "statistics.h"
-//#include "server_interface.h"
-//#include "execute_schema.h"
-
-
-
-
-//#include "dbtype.h"
-//#include "language_support.h"
-//#include "string_opfunc.h"
-
 #include "dbval.h"		/* this must be the last header file included!!! */
 
 #if !defined(SERVER_MODE)

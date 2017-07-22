@@ -29,33 +29,16 @@
 #include <assert.h>
 
 #include "system_catalog.h"
-#include "error_manager.h"
 
-//#include "storage_common.h"
+#include "error_manager.h"
 #include "heap_file.h"
-//#include "btree.h"
-//#include "oid.h"
-//#include "object_representation.h"
-//#include "object_representation_sr.h"
 #include "transform.h"
 #include "set_object.h"
 #include "locator_sr.h"
-//#include "memory_hash.h"
-//#include "system_parameter.h"
-//#include "class_object.h"
-//#include "critical_section.h"
 #include "xserver_interface.h"
-//#include "memory_alloc.h"
-//#include "language_support.h"
-//#include "numeric_opfunc.h"
-//#include "string_opfunc.h"
-//#include "dbtype.h"
-//#include "db_date.h"
-//#include "mvcc.h"
 #include "object_primitive.h"
 #include "query_dump.h"
 #include "db_date.h"
-
 /* this must be the last header file included!!! */
 #include "dbval.h"
 

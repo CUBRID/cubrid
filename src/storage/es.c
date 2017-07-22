@@ -29,7 +29,6 @@
 
 #include "system_parameter.h"
 #include "error_manager.h"
-
 #include "es_posix.h"
 #include "es_owfs.h"
 

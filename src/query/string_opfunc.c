@@ -45,14 +45,12 @@
 #include "db_date.h"
 #include "misc_string.h"
 #include "md5.h"
-//#include "porting.h"
 #include "crypt_opfunc.h"
 #include "base64.h"
 #include "tz_support.h"
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "db_elo.h"
-
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"

@@ -508,10 +508,10 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
       qdump_print_predicate (spec_list_p->where_range);
     }
 
-#if !defined (CS_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
   fprintf (foutput, "\n  grouped scan=%d", spec_list_p->grouped_scan);
   fprintf (foutput, ",fixed scan=%d", spec_list_p->fixed_scan);
-#endif /* !defined (CS_MODE) */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
   fprintf (foutput, ",single fetch=%d", spec_list_p->single_fetch);
 
   if (spec_list_p->s_dbval)

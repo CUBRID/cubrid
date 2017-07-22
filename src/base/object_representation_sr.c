@@ -34,17 +34,9 @@
 #include "object_representation_sr.h"
 
 #include "error_manager.h"
-//#include "oid.h"
-//#include "storage_common.h"
 #include "object_representation.h"
-//#include "system_catalog.h"
-//#include "object_domain.h"
 #include "set_object.h"
 #include "btree_load.h"
-//#include "page_buffer.h"
-//#include "heap_file.h"
-//#include "class_object.h"
-//#include "partition.h"
 #include "dbtype.h"
 #include "object_primitive.h"
 

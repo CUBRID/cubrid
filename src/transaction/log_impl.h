@@ -42,7 +42,6 @@
 #include "rb_tree.h"
 #include "connection_globals.h"
 #include "recovery.h"
-
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "es.h"
 #include "mvcc.h"
@@ -50,7 +49,7 @@
 #include "thread.h"
 #include "lock_manager.h"
 #include "vacuum.h"
-#endif /* #if defined (SERVER_MODE) || defined (SA_MODE) */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
@@ -2418,5 +2417,5 @@ logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
     }
 }
 
-#endif /* !defined (CS_MODE) */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

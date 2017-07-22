@@ -38,7 +38,6 @@
 #include "parser.h"
 #include "release_string.h"
 #include "parser.h"
-/* todo(rem) #include "query_executor_.h" */
 
 /*
  * These #defines are used in conjunction with assert() to announce

@@ -45,13 +45,8 @@
 #include "log_writer.h"
 #include "language_support.h"
 #include "log_impl.h"
-/* todo(rem) #include "query_executor_.h" */
 #include "parse_tree.h"
 #include "xasl.h"
-
-#if defined (SERVER_MODE)
-#error network_interface_cl.h does not belong to server module.
-#endif /* SERVER_MODE */
 
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;

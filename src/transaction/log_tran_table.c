@@ -47,44 +47,18 @@
 #include <assert.h>
 
 #include "log_impl.h"
-//#include "log_manager.h"
-//#include "log_comm.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-//#include "porting.h"
 #include "xserver_interface.h"
-
-
-//#include "recovery.h"
-
-//#include "release_string.h"
-//#include "memory_alloc.h"
-
-//#include "storage_common.h"
-//#include "file_io.h"
-//#include "disk_manager.h"
-//#include "page_buffer.h"
-//#include "lock_manager.h"
-//#include "wait_for_graph.h"
 #include "file_manager.h"
-//#include "critical_section.h"
 #include "query_manager.h"
-//#include "perf_monitor.h"
-//#include "object_representation.h"
-//#include "connection_defs.h"
 #if defined(SERVER_MODE)
-//#include "thread.h"
 #endif /* SERVER_MODE */
-//#include "rb_tree.h"
-//#include "mvcc.h"
-//#include "vacuum.h"
 #include "partition.h"
 #include "btree_load.h"
 #include "serial.h"
-//#include "tsc_timer.h"
 #include "show_scan.h"
 #include "boot_sr.h"
-//#include "replication.h"
 #include "db_date.h"
 
 #if defined (SA_MODE)

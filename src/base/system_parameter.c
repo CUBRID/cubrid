@@ -1057,9 +1057,9 @@ bool PRM_QO_DUMP = false;
 static bool prm_qo_dump_default = false;
 static unsigned int prm_qo_dump_flag = 0;
 
-#if defined (CS_MODE)
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
 #define CSS_MAX_CLIENT_COUNT 2000
-#endif /* defined (CS_MODE) */
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 int PRM_CSS_MAX_CLIENTS = 100;
 static int prm_css_max_clients_default = 100;
 static int prm_css_max_clients_lower = 10;
@@ -1176,7 +1176,7 @@ static int prm_pb_sync_on_nflush_lower = 1;
 static int prm_pb_sync_on_nflush_upper = INT_MAX;
 static unsigned int prm_pb_sync_on_nflush_flag = 0;
 
-#if defined (CS_MODE)
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
 typedef enum
 {
   PGBUF_DEBUG_NO_PAGE_VALIDATION,
@@ -1184,7 +1184,7 @@ typedef enum
   PGBUF_DEBUG_PAGE_VALIDATION_FREE,
   PGBUF_DEBUG_PAGE_VALIDATION_ALL
 } PGBUF_DEBUG_PAGE_VALIDATION_LEVEL;
-#endif /* defined (CS_MODE) */
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 int PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL = PGBUF_DEBUG_NO_PAGE_VALIDATION;
 #if !defined(NDEBUG)
 static int prm_pb_debug_page_validation_level_default = PGBUF_DEBUG_PAGE_VALIDATION_FETCH;

@@ -32,7 +32,6 @@
 #include "misc_string.h"
 #include "error_manager.h"
 #include "parser.h"
-/* todo(rem) #include "query_executor_.h" */
 #include "xasl_generation.h"
 #include "xasl_support.h"
 #include "db.h"
@@ -47,12 +46,10 @@
 #include "set_object.h"
 #include "object_print.h"
 #include "object_representation.h"
-/* todo(rem) #include "heap_file_.h" */
 #include "intl_support.h"
 #include "system_parameter.h"
 #include "execute_schema.h"
 #include "porting.h"
-/* todo(rem) #include "list_file_.h" */
 #include "execute_statement.h"
 #include "query_graph.h"
 #include "transform.h"

@@ -34,7 +34,6 @@
 #include "storage_common.h"
 #include "object_representation.h"
 #include "object_domain.h"
-/* todo(rem) #include "query_executor_.h" */
 #include "xasl.h"
 #include "class_object.h"
 

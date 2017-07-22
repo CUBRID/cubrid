@@ -36,20 +36,14 @@
 
 #include "fetch.h"
 
-//#include "porting.h"
 #include "thread.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-/* #include "db.h" */
 #include "storage_common.h"
-//#include "memory_alloc.h"
-//#include "oid.h"
 #include "object_primitive.h"
-//#include "object_representation.h"
 #include "arithmetic.h"
 #include "serial.h"
 #include "session.h"
-//#include "list_file.h"
 #include "string_opfunc.h"
 #include "server_interface.h"
 #include "query_opfunc.h"

@@ -34,66 +34,31 @@
 #include <string.h>
 #include <errno.h>
 
-#include "porting.h"
 #include "heap_file.h"
 
-//#include "storage_common.h"
-//#include "memory_alloc.h"
-//#include "system_parameter.h"
-//#include "oid.h"
-//#include "error_manager.h"
-//#include "locator.h"
-//#include "file_io.h"
-//#include "page_buffer.h"
-//#include "file_manager.h"
-//#include "disk_manager.h"
+#include "porting.h"
 #include "slotted_page.h"
 #include "overflow_file.h"
-//#include "object_representation.h"
-//#include "object_representation_sr.h"
-//#include "log_manager.h"
-//#include "lock_manager.h"
-//#include "memory_hash.h"
-//#include "critical_section.h"
 #include "boot_sr.h"
 #include "locator_sr.h"
 #include "btree.h"
-//#include "thread.h"           /* MAX_NTHRDS */
 #include "transform.h"		/* for CT_SERIAL_NAME */
 #include "serial.h"
 #include "object_primitive.h"
-//#include "dbtype.h"
-//#include "db.h"
-//#include "object_print.h"
 #include "xserver_interface.h"
-//#include "boot_sr.h"
 #include "chartype.h"
 #include "query_executor.h"
 #include "fetch.h"
 #include "server_interface.h"
-//#include "page_buffer.h"
 #include "db_elo.h"
 #include "string_opfunc.h"
 #include "xasl.h"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
-//
-///* For getting and dumping attributes */
-//#include "language_support.h"
-//
-///* For creating multi-column sequence keys (sets) */
 #include "set_object.h"
-//
-//#if defined (SERVER_MODE)
-//#include "connection_error.h"
-//#endif
-//
-//#include "tsc_timer.h"
-
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */

@@ -4705,7 +4705,7 @@ qe_is_shard (T_CON_HANDLE * con_handle)
 
 #if defined(WINDOWS)
 int
-encode_string (char *str, int size, char **target, char *charset)
+encode_string (const char *str, int size, char **target, char *charset)
 {
   int nLength;
   char *tmp_string;

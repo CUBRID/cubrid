@@ -31,32 +31,18 @@
 #include <assert.h>
 
 #include "set_object.h"
-//#include "area_alloc.h"
-//#include "memory_alloc.h"
 #include "error_manager.h"
-//#include "dbtype.h"
-//#include "dbdef.h"
-//#include "object_representation.h"
-//#include "object_domain.h"
 #include "object_primitive.h"
 #include "object_print.h"
-//#include "environment_variable.h"
-//#include "system_parameter.h"
-//#include "oid.h"
-//#include "server_interface.h"
+
 
 #if !defined(SERVER_MODE)
-//#include "work_space.h"
-//#include "authenticate.h"
 #include "locator_cl.h"
-//#include "class_object.h"
 #include "object_accessor.h"
 #include "transaction_cl.h"
 #include "virtual_object.h"
 #include "parser.h"
 #else /* !SERVER_MODE */
-//#include "thread.h"
-//#include "connection_error.h"
 #endif
 
 /* this must be the last header file included!!! */

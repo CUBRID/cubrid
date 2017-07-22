@@ -31,7 +31,6 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
-/* todo(rem) #include "query_executor_.h" */
 #include "parser.h"
 #include "object_domain.h"
 #include "dbtype.h"

@@ -32,7 +32,6 @@
 #include "thread.h"
 #include "xasl.h"
 #include "query_opfunc.h"
-/* #include "query_executor_.h" */
 
 /* object for caching objects used in multi row modify statements for each
  * partition

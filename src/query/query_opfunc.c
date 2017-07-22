@@ -34,24 +34,13 @@
 #include "query_opfunc.h"
 
 #include "system_parameter.h"
-
 #include "error_manager.h"
-//#include "memory_alloc.h"
-//#include "object_representation.h"
-//#include "external_sort.h"
-//#include "extendible_hash.h"
-
 #include "fetch.h"
 #include "list_file.h"
-//#include "xasl_support.h"
 #include "object_primitive.h"
-//#include "object_domain.h"
 #include "set_object.h"
-//#include "page_buffer.h"
-
 #include "query_executor.h"
 #include "databases_file.h"
-//#include "partition.h"
 #include "tz_support.h"
 #include "numeric_opfunc.h"
 #include "db_date.h"

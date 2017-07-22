@@ -27,7 +27,6 @@
 
 #ident "$Id$"
 
-//#include "parser.h"
 #include "dbtype.h"
 
 #if !defined (SERVER_MODE)

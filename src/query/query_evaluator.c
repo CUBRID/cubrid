@@ -30,10 +30,7 @@
 
 #include "system_parameter.h"
 #include "error_manager.h"
-//#include "memory_alloc.h"
-//#include "object_representation.h"
 #include "heap_file.h"
-//#include "slotted_page.h"
 #include "fetch.h"
 #include "list_file.h"
 #include "object_primitive.h"

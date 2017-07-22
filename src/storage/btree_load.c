@@ -31,18 +31,8 @@
 
 #include "btree_load.h"
 
-//#include "storage_common.h"
-//#include "locator_sr.h"
-//#include "file_io.h"
-//#include "page_buffer.h"
 #include "external_sort.h"
-//#include "slotted_page.h"
 #include "heap_file.h"
-//#include "file_manager.h"
-//#include "disk_manager.h"
-//#include "memory_alloc.h"
-//#include "db.h"
-//#include "log_impl.h"
 #include "xserver_interface.h"
 #include "xasl.h"
 #include "stream_to_xasl.h"

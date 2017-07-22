@@ -38,26 +38,10 @@
 #include "system_parameter.h"
 #include "message_catalog.h"
 #include "slotted_page.h"
-//#include "porting.h"
-//#include "log_impl.h"
-//#include "log_comm.h"
-
 #include "boot_sr.h"
 #include "locator_sr.h"
-//#include "disk_manager.h"
 #include "page_buffer.h"
-//#include "file_io.h"
-//#include "storage_common.h"
-
-//#include "memory_alloc.h"
-
-
-#if defined(SERVER_MODE)
-//#include "connection_error.h"
-//#include "thread.h"
-#endif /* SERVER_MODE */
 #include "log_compress.h"
-//#include "vacuum.h"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,

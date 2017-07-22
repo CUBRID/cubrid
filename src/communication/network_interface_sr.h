@@ -31,7 +31,6 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-					   /* todo(rem) #include "query_opfunc_.h"	*//* for VACOMM stuff */
 #include "thread.h"
 #include "xasl.h"
 #include "list_file.h"

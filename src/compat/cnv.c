@@ -36,7 +36,6 @@
 #include <wchar.h>
 
 #include "porting.h"
-/* #include "db.h" */
 #include "adjustable_array.h"
 #include "intl_support.h"
 #include "memory_alloc.h"

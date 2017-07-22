@@ -50,13 +50,11 @@
 #include "optimizer.h"
 #include "object_primitive.h"
 #include "object_representation.h"
-/* todo(rem) #include "query_opfunc_.h" */
 #include "parser_support.h"
 #include "system_parameter.h"
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "object_print.h"
-/* todo(rem) #include "btree_load_.h" */
 #include "show_meta.h"
 #include "db.h"
 
@@ -85,10 +83,10 @@ struct pt_host_vars
   (pt_is_dot_node (node) || pt_is_attr (node) || pt_is_query (node) \
    || (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_GROUPBYNUM_NC)))
 
-/* fixme(rem) */
-#define DB_ENUM_ELEMENTS_MAX_AGG_SIZE \
-  /* (DB_PAGESIZE - offsetof (BTREE_ROOT_HEADER, packed_key_domain) - 1) */ \
-  DB_PAGESIZE
+/* reserve half a page for the total enum domain size. we used to consider BTREE_ROOT_HEADER size here, but this is
+ * client and we no longer have that information. but half of page should be enough... the alternative is to get
+ * that info from server. */
+#define DB_ENUM_ELEMENTS_MAX_AGG_SIZE (DB_PAGESIZE / 2)
 
 int qp_Packing_er_code = NO_ERROR;
 

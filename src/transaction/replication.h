@@ -34,7 +34,6 @@
 #include "oid.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
-
 #if defined(SERVER_MODE) || defined(SA_MODE)
 #include "log_impl.h"
 #include "thread.h"

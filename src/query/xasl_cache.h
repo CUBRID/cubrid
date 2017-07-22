@@ -31,7 +31,6 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "xasl.h"
-/* #include "query_opfunc_.h" */
 
 /* Objects related to XASL cache entries. The information includes the object OID, the lock required to use the XASL
  * cache entry and the heap file cardinality.

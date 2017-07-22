@@ -35,47 +35,10 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include <time.h>
-#if defined(SERVER_MODE)
-//#include "jansson.h"
-//#include "memory_hash.h"
-#endif
 
-//#include "storage_common.h"
-//#include "oid.h"
-//#include "lock_manager.h"
-//#include "scan_manager.h"
-//#include "thread.h"
-//#include "external_sort.h"
-//#include "xasl_cache.h"
 #include "xasl.h"
 
-/*
- * Start procedure information
- */
-
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
- * Moved to a public place to allow for streaming queries to setup
- * the list file up front.
- */
-			/* XASL Tree State Information */
 
 typedef struct upddel_class_instances_lock_info UPDDEL_CLASS_INSTANCE_LOCK_INFO;
 struct upddel_class_instances_lock_info

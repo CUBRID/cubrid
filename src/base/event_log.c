@@ -47,7 +47,6 @@
 #include "xasl_cache.h"
 #include "object_primitive.h"
 
-
 #define EVENT_LOG_FILE_DIR "server"
 
 static FILE *event_Fp = NULL;

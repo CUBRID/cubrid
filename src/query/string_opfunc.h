@@ -37,10 +37,9 @@
 #include "regex38a.h"
 #include "language_support.h"
 #include "object_domain.h"
-
 #if !defined (CS_MODE)
 #include "thread.h"
-#endif /* !CS_MODE */
+#endif /* !defined (CS_MODE) */
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))

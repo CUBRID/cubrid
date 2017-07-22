@@ -53,13 +53,11 @@
 #include "util_func.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
-#else /* WINDOWS */
+#else /* !defined (WINDOWS) */
 #include "tcp.h"
-#endif /* WINDOWS */
-#if !defined(WINDOWS)
 #include "heartbeat.h"
 #include "log_impl.h"
-#endif
+#endif /* !defined (WINDOWS) */
 
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name);

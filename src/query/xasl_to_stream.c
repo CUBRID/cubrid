@@ -34,14 +34,11 @@
 #include "xasl_to_stream.h"
 
 #include "error_manager.h"
-/* todo(rem) #include "query_executor_.h" */
 #include "server_interface.h"
 #include "class_object.h"
 #include "object_primitive.h"
 #include "work_space.h"
 #include "memory_alloc.h"
-/* todo(rem) #include "heap_file_.h" */
-
 
 /* memory alignment unit - to align stored XASL tree nodes */
 #define	ALIGN_UNIT	sizeof(double)

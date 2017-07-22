@@ -34,18 +34,16 @@
 #include <string.h>
 
 #include "mprec.h"
-/* todo(rem) #include "query_opfunc.h" */
 #include "numeric_opfunc.h"
-//#include "db.h"
 #include "db_date.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "byte_order.h"
 #include "object_primitive.h"
 
-#if !defined(CS_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread.h"
-#endif /* !defined(CS_MODE) */
+#endif	/* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

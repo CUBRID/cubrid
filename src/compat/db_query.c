@@ -41,7 +41,6 @@
 #include "server_interface.h"
 #include "system_parameter.h"
 #include "xasl_generation.h"
-/* todo(rem) #include "query_executor_.h" */
 #include "network_interface_cl.h"
 
 #include "dbval.h"		/* this must be the last header file included!!! */

@@ -30,11 +30,9 @@
 #include "query_method.h"
 #include "object_accessor.h"
 #include "jsp_cl.h"
-
 #include "object_representation.h"
 #include "network.h"
 #include "network_interface_cl.h"
-/* todo(rem) #include "scan_manager.h" */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

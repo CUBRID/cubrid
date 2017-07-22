@@ -39,9 +39,7 @@
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "external_sort.h"
-/* #include "query_executor_.h" */
 #include "xasl.h"
-/* #include "query_evaluator_.h" */
 #include "log_comm.h"
 #include "object_domain.h"
 #include "thread.h"

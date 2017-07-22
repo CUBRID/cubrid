@@ -41,7 +41,6 @@
 #include "cursor.h"
 #include "parser_support.h"
 #include "virtual_object.h"
-/* todo(rem) #include "page_buffer_.h" */
 #include "network_interface_cl.h"
 
 /* this must be the last header file included!!! */

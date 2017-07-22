@@ -32,7 +32,6 @@
 #include "query_executor.h"
 #include "list_file.h"
 #include "binaryheap.h"
-//#include "xasl_generation.h"
 #include "statistics_sr.h"
 #include "thread.h"
 #include "query_manager.h"

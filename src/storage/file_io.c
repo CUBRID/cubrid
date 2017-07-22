@@ -90,7 +90,6 @@
 #include "connection_error.h"
 #include "network_interface_sr.h"
 #include "job_queue.h"
-//#include "critical_section.h"
 #endif /* SERVER_MODE */
 
 #if !defined (CS_MODE)

@@ -27,7 +27,6 @@
 
 #ident "$Id$"
 
-/* todo(rem) #include "query_opfunc_.h" */
 #include "perf_monitor.h"
 #include "locator.h"
 #include "log_comm.h"
@@ -254,7 +253,6 @@ enum net_server_request
 #define NET_CAP_HA_REPLICA              0x00000004
 #define NET_CAP_HA_IGNORE_REPL_DELAY	0x00000002
 
-/* todo(rem) moved this here. */
 typedef enum
 {				/* Responses to a query */
   QUERY_END = 1,		/* Normal end of query */

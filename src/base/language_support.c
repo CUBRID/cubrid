@@ -35,13 +35,12 @@
 #include "language_support.h"
 
 #include "chartype.h"
-//#include "misc_string.h"
 #include "environment_variable.h"
 #include "memory_hash.h"
 #include "util_func.h"
 #if !defined(WINDOWS)
 #include <dlfcn.h>
-#endif
+#endif /* !defined (WINDOWS) */
 #include "db_date.h"
 #include "string_opfunc.h"
 

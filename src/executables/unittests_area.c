@@ -36,7 +36,6 @@
 #include "object_template.h"
 #define SERVER_MODE
 
-
 /* areate_create info */
 typedef struct area_create_info AREA_CREATE_INFO;
 struct area_create_info

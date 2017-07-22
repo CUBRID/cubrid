@@ -116,8 +116,6 @@ struct xasl_node_header
     } \
   while (0)
 
-
-
 /************************************************************************/
 /* Enumerations                                                         */
 /************************************************************************/
@@ -153,11 +151,6 @@ typedef struct method_spec_node METHOD_SPEC_TYPE;
 typedef struct reguval_list_spec_node REGUVAL_LIST_SPEC_TYPE;
 typedef union hybrid_node HYBRID_NODE;
 
-/* OTHER */
-
-
-
-
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
@@ -171,8 +164,6 @@ typedef struct aggregate_hash_key AGGREGATE_HASH_KEY;
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-
-
 
 /************************************************************************/
 /* XASL TREE                                                            */
@@ -198,14 +189,7 @@ typedef enum
   CTE_PROC
 } PROC_TYPE;
 
-
-
-
-
-
-
-/* To handle selected update list,
-   click counter related */
+/* To handle selected update list, click counter related */
 typedef struct selupd_list SELUPD_LIST;
 struct selupd_list
 {
@@ -611,7 +595,6 @@ do {												    \
     } \
   while (0)
 
-
 /************************************************************************/
 /* XASL stream                                                          */
 /************************************************************************/
@@ -628,7 +611,6 @@ struct xasl_stream
   char *buffer;
   int buffer_size;
 };
-
 
 #define XASL_STREAM_HEADER_PTR(stream) \
     ((char *) (stream))
@@ -683,16 +665,6 @@ struct xasl_stream
                             GET_XASL_HEADER_N_OID_LIST(header) * sizeof(OID) + \
                             GET_XASL_HEADER_N_OID_LIST(header) * sizeof(int))) = (cnt))
 
-
-
-
-
-
-/************************************************************************/
-/* REGU VAR                                                             */
-/************************************************************************/
-
-
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /* aggregate evaluation hash value */
 struct aggregate_hash_value
@@ -711,26 +683,7 @@ struct aggregate_hash_key
   bool free_values;		/* true if values need to be freed */
   DB_VALUE **values;		/* value array */
 };
-
-
-
-
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /************************************************************************/
 /* access spec                                                          */
@@ -830,8 +783,6 @@ struct set_spec_node
   REGU_VARIABLE *set_ptr;	/* set regu variable */
 };
 
-
-
 #define VACOMM_BUFFER_HEADER_SIZE           (OR_INT_SIZE * 3)
 #define VACOMM_BUFFER_HEADER_LENGTH_OFFSET  (0)
 #define VACOMM_BUFFER_HEADER_STATUS_OFFSET  (OR_INT_SIZE)
@@ -851,8 +802,6 @@ typedef enum
   VACOMM_BUFFER_ABORT
 } VACOMM_BUFFER_CLIENT_ACTION;
 
-
-
 struct method_spec_node
 {
   REGU_VARIABLE_LIST method_regu_list;	/* regulator variable list */
@@ -861,7 +810,6 @@ struct method_spec_node
   /* arguments */
   METHOD_SIG_LIST *method_sig_list;	/* method signature list */
 };
-
 
 struct reguval_list_spec_node
 {
@@ -991,7 +939,6 @@ struct partition_spec_node
   BTID btid;			/* index id */
   PARTITION_SPEC_TYPE *next;	/* next partition */
 };
-
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 struct access_spec_node

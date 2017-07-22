@@ -33,10 +33,9 @@
 #include <stdio.h>
 #include <time.h>
 
-#if defined (CS_MODE)
-#else /* defined (CS_MODE) */
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread.h"
-#endif /* defined (CS_MODE) */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #include "porting.h"
 #include "storage_common.h"
 #include "release_string.h"

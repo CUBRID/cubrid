@@ -34,11 +34,8 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "jansson.h"
-
 #include "config.h"
-
-/* todo(rem) #include "query_evaluator_.h" */
+#include "jansson.h"
 #include "cursor.h"
 #include "string_opfunc.h"
 #include "message_catalog.h"

@@ -31,7 +31,6 @@
 
 #include <stdio.h>
 #include "error_manager.h"
-/* todo(rem) #include "object_representation.h" */
 #include "area_alloc.h"
 
 #define DOM_GET_ENUMERATION(dom) \

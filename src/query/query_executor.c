@@ -55,19 +55,16 @@
 #include "session.h"
 #include "db_date.h"
 #include "btree_load.h"
+#include "query_dump.h"
 #if defined(SERVER_MODE) && defined(DIAG_DEVEL)
 #include "perf_monitor.h"
 #endif
-#include "query_dump.h"
-
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE)
 #include "jansson.h"
-#endif
-
-#if defined(ENABLE_SYSTEMTAP)
-#include "probes.h"
-#endif /* ENABLE_SYSTEMTAP */
-
+#endif /* defined (SERVER_MODE)
+          #if defined(ENABLE_SYSTEMTAP)
+          #include "probes.h"
+          #endif /* ENABLE_SYSTEMTAP */
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */

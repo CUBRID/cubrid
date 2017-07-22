@@ -43,7 +43,6 @@
 #include "load_object.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
-/* todo(rem) #include "log_manager.h" */
 #include "chartype.h"
 #include "schema_manager.h"
 #include "transform.h"

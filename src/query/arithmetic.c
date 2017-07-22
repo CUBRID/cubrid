@@ -37,12 +37,8 @@
 
 #include "arithmetic.h"
 #include "error_manager.h"
-//#include "memory_alloc.h"
-//#include "object_representation.h"
 #include "object_primitive.h"
 #include "numeric_opfunc.h"
-/* #include "db.h" */
-/* todo(rem) #include "query_opfunc.h" */
 #include "crypt_opfunc.h"
 #include "string_opfunc.h"
 #include "db_date.h"

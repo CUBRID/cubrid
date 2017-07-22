@@ -97,7 +97,7 @@ struct attr_descr_node
     } \
   while (0)
 
-#if !defined (CS_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  *       	   ESQL POSITIONAL VALUES RELATED TYPEDEFS
  */
@@ -121,7 +121,7 @@ struct xasl_state
   QUERY_ID query_id;		/* Query associated with XASL */
   int qp_xasl_line;		/* Error line */
 };
-#endif /* !defined (CS_MODE) */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
 /* Predicate                                                            */
@@ -315,14 +315,14 @@ struct aggregate_accumulator
   bool clear_value2_at_clone_decache;	/* true, if need to clear value2 at clone decache */
 };
 
-#if !defined (CS_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct aggregate_accumulator_domain AGGREGATE_ACCUMULATOR_DOMAIN;
 struct aggregate_accumulator_domain
 {
   TP_DOMAIN *value_dom;		/* domain of value */
   TP_DOMAIN *value2_dom;	/* domain of value2 */
 };
-#endif /* !defined (CS_MODE) */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 typedef struct aggregate_percentile_info AGGREGATE_PERCENTILE_INFO;
 struct aggregate_percentile_info
@@ -331,7 +331,7 @@ struct aggregate_percentile_info
   REGU_VARIABLE *percentile_reguvar;
 };
 
-#if !defined (CS_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct aggregate_dist_percent_info AGGREGATE_DIST_PERCENT_INFO;
 struct aggregate_dist_percent_info
 {
@@ -339,15 +339,15 @@ struct aggregate_dist_percent_info
   int list_len;
   int nlargers;
 };
-#endif /* !defined (CS_MODE) */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 typedef union aggregate_specific_function_info AGGREGATE_SPECIFIC_FUNCTION_INFO;
 union aggregate_specific_function_info
 {
   AGGREGATE_PERCENTILE_INFO percentile;	/* PERCENTILE_CONT and PERCENTILE_DISC */
-#if !defined (CS_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
   AGGREGATE_DIST_PERCENT_INFO dist_percent;	/* CUME_DIST and PERCENT_RANK */
-#endif				/* !defined (CS_MODE) */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
 typedef struct analytic_ntile_function_info ANALYTIC_NTILE_FUNCTION_INFO;
@@ -395,7 +395,6 @@ struct function_node
   REGU_VARIABLE_LIST operand;	/* operands */
   FUNC_TYPE ftype;		/* function to call */
 };
-
 
 struct regu_variable_node
 {
@@ -474,9 +473,9 @@ struct aggregate_list_node
   SORT_LIST *sort_list;		/* for sorting elements before aggregation; used by GROUP_CONCAT */
   AGGREGATE_SPECIFIC_FUNCTION_INFO info;	/* variables for specific functions */
   AGGREGATE_ACCUMULATOR accumulator;	/* holds runtime values, only for evaluation */
-#if !defined (CS_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
   AGGREGATE_ACCUMULATOR_DOMAIN accumulator_domain;	/* holds domain info on accumulator */
-#endif				/* !CS_MODE */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
 struct analytic_list_node

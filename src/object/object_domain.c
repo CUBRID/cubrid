@@ -36,39 +36,23 @@
 #include <assert.h>
 
 #include "object_domain.h"
-
 #include "object_primitive.h"
 #include "numeric_opfunc.h"
 #include "dbdef.h"
-//#include "memory_alloc.h"
-//#include "area_alloc.h"
 #include "db_date.h"
 #include "mprec.h"
-//#include "object_representation.h"
-//#include "db.h"
 #include "set_object.h"
 #include "string_opfunc.h"
-//#include "cnv.h"
-//#include "cnverr.h"
 #include "tz_support.h"
-//#include "server_interface.h"
 #include "chartype.h"
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #include "virtual_object.h"
-//#include "object_accessor.h"
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "object_template.h"
 #include "dbi.h"
-#else /* SERVER_MODE */
-//#include "connection_error.h"
-//#include "language_support.h"
-//#include "xserver_interface.h"
-#endif /* !SERVER_MODE */
-
-
-
+#endif /* !defined (SERVER_MODE) */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -10711,7 +10695,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 #if !defined (SERVER_MODE)
   DB_OBJECT *mop;
   DB_IDENTIFIER *oid1, *oid2;
-#endif	/* !defined (SERVER_MODE) */
+#endif /* !defined (SERVER_MODE) */
   bool use_collation_of_v1 = false;
   bool use_collation_of_v2 = false;
   DB_VALUE_COMPARE_RESULT result = DB_UNK;
