@@ -1535,7 +1535,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_SUB:
 
 #if defined (SERVER_MODE)
-      assert_release (false);
+      match = OID_EQ (&dom1->class_oid, &dom2->class_oid);
 #else /* !defined (SERVER_MODE) */
       /* 
        * if "exact" is zero, we should be checking the subclass hierarchy of
@@ -1567,12 +1567,12 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	      match = OID_EQ (WS_OID (dom1->class_mop), &dom2->class_oid);
 	    }
 	}
+#endif /* defined (SERVER_MODE) */
 
       if (match == 0 && exact == TP_SET_MATCH && dom1->class_mop == NULL && OID_ISNULL (&dom1->class_oid))
 	{
 	  match = 1;
 	}
-#endif /* defined (SERVER_MODE) */
       break;
 
     case DB_TYPE_VARIABLE:
