@@ -1959,7 +1959,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_SUB:
 
 #if defined (SERVER_MODE)
-      assert_release (false);
+      /* not match for these types on server... fall through. */
 #else /* !defined (SERVER_MODE) */
 
       while (domain)
