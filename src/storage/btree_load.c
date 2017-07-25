@@ -3829,144 +3829,144 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   while (true)
     {
       ret = btree_advance_to_next_slot_and_fix_page (thread_p, sort_args->btid, &vpid, &curr_fk_pageptr, &fk_slot_id,
-						                                           &fk_key, is_fk_scan_desc, &fk_node_key_cnt,
-						                                           &fk_node_header, NULL);
+						     &fk_key, is_fk_scan_desc, &fk_node_key_cnt, &fk_node_header, NULL);
       if (ret != NO_ERROR)
-	      {
-	        ASSERT_ERROR ();
-	        break;
-	      }
+	{
+	  ASSERT_ERROR ();
+	  break;
+	}
 
       if (curr_fk_pageptr == NULL)
-	      {
-	        /* Search has ended. */
-	        break;
-	      }
+	{
+	  /* Search has ended. */
+	  break;
+	}
 
       if (DB_IS_NULL (&fk_key))
-	      {
-	        /* Only way to get this is by having no visible objects in the foreign key. */
-	        /* Must be checked!! */
-	        break;
-	      }
+	{
+	  /* Only way to get this is by having no visible objects in the foreign key. */
+	  /* Must be checked!! */
+	  break;
+	}
 
       /* We got the value from the foreign key, now search through the primary key index. */
       found = false;
 
       /* Search through the primary key index. */
       if (pk_bt_scan.C_page == NULL)
-	      {
-	        /* No search has been initiated yet, we start from root. */
-	        ret =
-	          btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
-			            &pk_bt_scan.C_page, &found);
+	{
+	  /* No search has been initiated yet, we start from root. */
+	  ret =
+	    btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
+			      &pk_bt_scan.C_page, &found);
 
-	        if (ret != NO_ERROR)
-	          {
-	            ASSERT_ERROR ();
-	            break;
-	          }
-	        else if (!found)
-	          {
-	            /* Value was not found at all, it means the foreign key is invalid. */
-	            val_print = pr_valstring (&fk_key);
-	            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
-		            (val_print ? val_print : "unknown value"));
-	            ret = ER_FK_INVALID;
-              free(val_print);
-	            break;
-	          }
-	        else
-	          {
-              /* Make sure there is at least one visible object. */
-              ret = btree_has_any_visible(thread_p, &pk_bt_scan.btid_int, pk_bt_scan.C_page, &mvcc_snapshot_dirty,
-                                        &pk_has_visible);
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      break;
+	    }
+	  else if (!found)
+	    {
+	      /* Value was not found at all, it means the foreign key is invalid. */
+	      val_print = pr_valstring (&fk_key);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
+		      (val_print ? val_print : "unknown value"));
+	      ret = ER_FK_INVALID;
+	      free (val_print);
+	      break;
+	    }
+	  else
+	    {
+	      /* Make sure there is at least one visible object. */
+	      ret = btree_has_any_visible (thread_p, &pk_bt_scan.btid_int, pk_bt_scan.C_page, &mvcc_snapshot_dirty,
+					   &pk_has_visible);
 
-              if (ret != NO_ERROR)
-                {
-                  break;
-                }
-              
-              if (!pk_has_visible)
-                {
-                  /* No visible object in current page, but the key was located here. Should not happen often. */
-                  val_print = pr_valstring(&fk_key);
-                  er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
-                          (val_print ? val_print : "unknown value"));
-                  ret = ER_FK_INVALID;
-                  free(val_print);
-                  break;
-                }
-	            assert (pk_bt_scan.C_page != NULL);
-	          }
+	      if (ret != NO_ERROR)
+		{
+		  break;
+		}
 
-	        /* Unfix old page, if any. */
-	        if (old_page != NULL)
-	          {
-	            pgbuf_unfix_and_init (thread_p, old_page);
-	          }
-	      }
-      else
-	      {
-	        /* We try to resume the search in the current leaf. */
-	        while (!found)
-	          {
-	            ret = btree_advance_to_next_slot_and_fix_page (thread_p, &pk_bt_scan.btid_int, &pk_bt_scan.C_vpid,
-							           &pk_bt_scan.C_page, &pk_bt_scan.slot_id, &pk_key,
-							           false, &pk_node_key_cnt, &pk_node_header, &mvcc_snapshot_dirty);
-
-	            if (ret != NO_ERROR)
-		            {
-		              goto end;
-		            }
-
-              if (pk_bt_scan.C_page == NULL)
-                {
-                  /* The primary key has ended, but the value from foreign key was not found. */
-                  /* Fk is invalid. Set error. */
-                  val_print = pr_valstring(&fk_key);
-                  er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
-                    (val_print ? val_print : "unknown value"));
-                  ret = ER_FK_INVALID;
-                  free(val_print);
-                  goto end;
-                }
-
-	            /* We need to compare the current value with the new value from the primary key. */
-	            compare_ret = btree_compare_key (&pk_key, &fk_key, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
-
-	            if (compare_ret == DB_EQ)
-		            {
-		              /* Found value, stop searching in pk. */
-		              break;
-		            }
-	            else if (compare_ret == DB_LT)
-		            {
-		              /* No match yet. Advance in pk. */
-		              continue;
-		            }
-	            else
-		            {
-		              /* Fk is invalid. Set error. */
-		              val_print = pr_valstring (&fk_key);
-		              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
-			              (val_print ? val_print : "unknown value"));
-		              ret = ER_FK_INVALID;
-                  free(val_print);
-		              goto end;
-		            }
-	          }
-	        if (!found && pk_bt_scan.slot_id > pk_node_key_cnt)
-	          {
-	            old_page = pk_bt_scan.C_page;
-	            pk_bt_scan.C_page = NULL;
-	          }
+	      if (!pk_has_visible)
+		{
+		  /* No visible object in current page, but the key was located here. Should not happen often. */
+		  val_print = pr_valstring (&fk_key);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
+			  (val_print ? val_print : "unknown value"));
+		  ret = ER_FK_INVALID;
+		  free (val_print);
+		  break;
+		}
+	      assert (pk_bt_scan.C_page != NULL);
 	    }
 
+	  /* Unfix old page, if any. */
+	  if (old_page != NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, old_page);
+	    }
+	}
+      else
+	{
+	  /* We try to resume the search in the current leaf. */
+	  while (!found)
+	    {
+	      ret = btree_advance_to_next_slot_and_fix_page (thread_p, &pk_bt_scan.btid_int, &pk_bt_scan.C_vpid,
+							     &pk_bt_scan.C_page, &pk_bt_scan.slot_id, &pk_key,
+							     false, &pk_node_key_cnt, &pk_node_header,
+							     &mvcc_snapshot_dirty);
+
+	      if (ret != NO_ERROR)
+		{
+		  goto end;
+		}
+
+	      if (pk_bt_scan.C_page == NULL)
+		{
+		  /* The primary key has ended, but the value from foreign key was not found. */
+		  /* Fk is invalid. Set error. */
+		  val_print = pr_valstring (&fk_key);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
+			  (val_print ? val_print : "unknown value"));
+		  ret = ER_FK_INVALID;
+		  free (val_print);
+		  goto end;
+		}
+
+	      /* We need to compare the current value with the new value from the primary key. */
+	      compare_ret = btree_compare_key (&pk_key, &fk_key, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
+
+	      if (compare_ret == DB_EQ)
+		{
+		  /* Found value, stop searching in pk. */
+		  break;
+		}
+	      else if (compare_ret == DB_LT)
+		{
+		  /* No match yet. Advance in pk. */
+		  continue;
+		}
+	      else
+		{
+		  /* Fk is invalid. Set error. */
+		  val_print = pr_valstring (&fk_key);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
+			  (val_print ? val_print : "unknown value"));
+		  ret = ER_FK_INVALID;
+		  free (val_print);
+		  goto end;
+		}
+	    }
+	  if (!found && pk_bt_scan.slot_id > pk_node_key_cnt)
+	    {
+	      old_page = pk_bt_scan.C_page;
+	      pk_bt_scan.C_page = NULL;
+	    }
+	}
+
       if (found == true)
-	      {
-	        pr_clear_value (&fk_key);
-	      }
+	{
+	  pr_clear_value (&fk_key);
+	}
 
       pr_clear_value (&pk_key);
 
@@ -4118,57 +4118,57 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
     {
       *slot_id = *slot_id + (is_desc ? -1 : 1);
       if (*slot_id == 0 || *slot_id >= *key_cnt + 1)
-	      {
-	        next_vpid = is_desc ? local_header->prev_vpid : local_header->next_vpid;
-	        if (VPID_ISNULL (&next_vpid))
-	          {
-	            /* No next page. unfix current one. */
-	            pgbuf_unfix_and_init (thread_p, page);
-	            break;
-	          }
-	        else
-	          {
-	            old_page = page;
-	            page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	            if (page == NULL)
-		            {
-		              ASSERT_ERROR_AND_SET (ret);
-		              return ret;
-		            }
+	{
+	  next_vpid = is_desc ? local_header->prev_vpid : local_header->next_vpid;
+	  if (VPID_ISNULL (&next_vpid))
+	    {
+	      /* No next page. unfix current one. */
+	      pgbuf_unfix_and_init (thread_p, page);
+	      break;
+	    }
+	  else
+	    {
+	      old_page = page;
+	      page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      if (page == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (ret);
+		  return ret;
+		}
 
-	            /* unfix old page */
-	            pgbuf_unfix_and_init (thread_p, old_page);
-	            *slot_id = is_desc ? *key_cnt : 1;
+	      /* unfix old page */
+	      pgbuf_unfix_and_init (thread_p, old_page);
+	      *slot_id = is_desc ? *key_cnt : 1;
 
-	            /* Get the new header. */
-	            local_header = btree_get_node_header (thread_p, page);
+	      /* Get the new header. */
+	      local_header = btree_get_node_header (thread_p, page);
 
-	            /* Get number of keys in new page. */
-	            *key_cnt = btree_node_number_of_keys (thread_p, page);
-	          }
-	      }
+	      /* Get number of keys in new page. */
+	      *key_cnt = btree_node_number_of_keys (thread_p, page);
+	    }
+	}
 
       if (mvcc != NULL)
-	      {
-	        ret = btree_has_any_visible (thread_p, btid, page, mvcc, &has_visible);
-	        if (ret != NO_ERROR)
-	          {
-	            return ret;
-	          }
+	{
+	  ret = btree_has_any_visible (thread_p, btid, page, mvcc, &has_visible);
+	  if (ret != NO_ERROR)
+	    {
+	      return ret;
+	    }
 
-	        if (!has_visible)
-	          {
-	            continue;
-	          }
-	      }
+	  if (!has_visible)
+	    {
+	      continue;
+	    }
+	}
       /* We have visible items. Fall through. */
       break;
     }
 
   if (page != NULL)
     {
-      ret = btree_get_value_from_leaf_slot(thread_p, btid, page, *slot_id, key);
-    }  
+      ret = btree_get_value_from_leaf_slot (thread_p, btid, page, *slot_id, key);
+    }
 
   *header = local_header;
   *pg_ptr = page;
