@@ -65,7 +65,7 @@ static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
 static int get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE op_type, DB_VALUE * db_value);
 static int get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
-static int get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
+static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
 
 /*
  * fetch_peek_arith () -
@@ -1655,7 +1655,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (get_year_month_or_day (peek_right, arithptr->opcode, arithptr->value) != NO_ERROR)
+      else if (get_date_weekday (peek_right, arithptr->opcode, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
