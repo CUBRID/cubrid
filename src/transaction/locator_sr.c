@@ -128,7 +128,7 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
-extern INT64 vacuum_Global_oldest_active_blockers_counter;
+extern volatile INT64 vacuum_Global_oldest_active_blockers_counter;
 
 bool locator_Dont_check_foreign_key = false;
 

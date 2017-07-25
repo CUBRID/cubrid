@@ -63,6 +63,7 @@
 /* TRANS_STATUS_HISTORY_MAX_SIZE must be a power of 2*/
 #define TRANS_STATUS_HISTORY_MAX_SIZE 2048
 
+/* COMPUTE_OLDEST_MVCCID_STARTED is used to protect against parallel computation of oldest active MVCCID. */
 #define COMPUTE_OLDEST_MVCCID_STARTED	    ((INT64) 0x8000000000000000)
 
 #if defined(SERVER_MODE)

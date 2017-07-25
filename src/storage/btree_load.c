@@ -131,7 +131,7 @@ struct load_args
   VPID vpid_first_leaf;
 };
 
-extern INT64 vacuum_Global_oldest_active_blockers_counter;
+extern volatile INT64 vacuum_Global_oldest_active_blockers_counter;
 
 static int btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
 static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VPID * pageid,

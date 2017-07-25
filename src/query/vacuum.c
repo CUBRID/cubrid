@@ -309,7 +309,8 @@ volatile MVCCID vacuum_Global_oldest_active_mvccid;
 /* When transactions run some complex operations on heap files (upgrade domain, reorganize partitions), concurrent
  * access with vacuum workers can create problems. They avoid it by blocking vacuum_Global_oldest_active_mvccid updates
  * and by running vacuum manually.
- * This is a counter that tracks blocking transactions.
+ * This is a counter that tracks blocking transactions. This global variable is used to not allow parallel computation
+ * of oldest active MVCCID.
  */
 volatile INT64 vacuum_Global_oldest_active_blockers_counter;
 /* vacuum_Save_log_hdr_oldest_mvccid is used to estimate oldest unvacuumed MVCCID in the corner-case of empty vacuum
@@ -4095,6 +4096,10 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
       local_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
       ATOMIC_STORE_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
       ATOMIC_TAS_64 (&vacuum_Global_oldest_active_blockers_counter, 0);
+    }
+  else
+    {
+      assert (false);
     }
 
   error_code = vacuum_recover_lost_block_data (thread_p);

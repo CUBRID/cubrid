@@ -118,7 +118,7 @@
 #define pthread_mutex_unlock(a)
 #endif /* not SERVER_MODE */
 
-extern INT64 vacuum_Global_oldest_active_blockers_counter;
+extern volatile INT64 vacuum_Global_oldest_active_blockers_counter;
 
 static const int LOG_MAX_NUM_CONTIGUOUS_TDES = INT_MAX / sizeof (LOG_TDES);
 static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% */
