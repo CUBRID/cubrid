@@ -1403,7 +1403,7 @@ static int btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_i
 				      BTREE_NODE_TYPE node_type);
 static int btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec, int oid_offset,
 					      BTREE_NODE_TYPE node_type, int *max_visible_oids,
-					      MVCC_SNAPSHOT * mvcc_snapshot);
+					      MVCC_SNAPSHOT * mvcc_snapshot, int *num_visible);
 static int btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * first_ovfl_vpid,
 						    int *num_visible_oids, int *max_visible_oids,
 						    MVCC_SNAPSHOT * mvcc_snapshot);
@@ -2397,10 +2397,10 @@ btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTID_INT * bti
 	}
       assert (ovfl_copy_rec.length % 4 == 0);
 
-      num_node_visible_oids =
+      ret =
 	btree_record_get_num_visible_oids (thread_p, btid, &ovfl_copy_rec, 0, BTREE_OVERFLOW_NODE,
-					   p_max_page_visible_oids, mvcc_snapshot);
-      if (num_node_visible_oids < 0)
+					   p_max_page_visible_oids, mvcc_snapshot, &num_visible_oids);
+      if (ret != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2443,7 +2443,7 @@ error:
 /*
  * btree_get_num_visible_from_leaf_and_ovf () - Get the number of visible objects in record.
  *
- * return		 : Number of visible objects or negative value for errors.
+ * return		 : error_code .
  * thread_p (in)	 : Thread entry.
  * btid_int (in)	 : B-tree info.
  * leaf_record (in)	 : Leaf record descriptor.
@@ -2452,33 +2452,35 @@ error:
  * max_visible_oids (in) : Non-null value if there is limit of objects to count. 
  * 			   If limit is reached, counting is stopped and current count is returned.
  * mvcc_snapshot (in)	 : Snapshot for visibility test.
+ * num_visible(out)      : Number of visible items.
  */
 int
 btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 					 int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
-					 MVCC_SNAPSHOT * mvcc_snapshot)
+					 MVCC_SNAPSHOT * mvcc_snapshot, int *num_visible)
 {
-  int num_visible = 0;		/* Count visible objects in record. */
-  int error_code = 0;		/* Error code. */
+  int error_code = NO_ERROR;	/* Error code. */
   int num_ovf_visible = 0;	/* Overflow pages visible objects count. */
 
+  *num_visible = 0;
+
   /* Get number of visible objects from leaf record. */
-  num_visible =
+  error_code =
     btree_record_get_num_visible_oids (thread_p, btid_int, leaf_record, offset_after_key, BTREE_LEAF_NODE,
-				       max_visible_oids, mvcc_snapshot);
-  if (num_visible < 0)
+				       max_visible_oids, mvcc_snapshot, num_visible);
+  if (error_code != NO_ERROR)
     {
       /* Error occurred */
       ASSERT_ERROR ();
-      return num_visible;
+      return error_code;
     }
   if (max_visible_oids != NULL)
     {
-      (*max_visible_oids) -= num_visible;
+      (*max_visible_oids) -= *num_visible;
       if (*max_visible_oids <= 0)
 	{
 	  /* The maximum count of visible objects has been reached. Stop now. */
-	  return num_visible;
+	  return error_code;
 	}
     }
 
@@ -2498,12 +2500,13 @@ btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * bti
     }
 
   /* Return result */
-  return (num_visible + num_ovf_visible);
+  *num_visible = *num_visible + num_ovf_visible;
+  return error_code;
 }
 
 /*
  * btree_record_get_num_visible_oids () - get number of visible OIDS
- *   return: number of visible OIDs
+ *   return: error code.
  *   thread_p(in): thread entry
  *   btid(in): B+tree index identifier
  *   rec(in): record descriptor
@@ -2511,10 +2514,12 @@ btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * bti
  *   node_type(in): node type
  *   max_visible_oids(in): max visible oids to search for
  *   mvcc_snapshot(in): MVCC snapshot
+ *   num_visible(out): Number of visible oids.
  */
 static int
 btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec, int oid_offset,
-				   BTREE_NODE_TYPE node_type, int *max_visible_oids, MVCC_SNAPSHOT * mvcc_snapshot)
+				   BTREE_NODE_TYPE node_type, int *max_visible_oids, MVCC_SNAPSHOT * mvcc_snapshot,
+				   int *num_visible)
 {
   int mvcc_flags = 0, rec_oid_cnt = 0, length = 0;
   bool have_mvcc_fixed_size = false;
@@ -2522,6 +2527,9 @@ btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, REC
   BTREE_MVCC_INFO mvcc_info;
   OR_BUF buf;
   bool is_first = true;
+  int error_code = NO_ERROR;
+
+  *num_visible = -1;
 
   /* Assert expected arguments. */
   assert (btid != NULL);
@@ -2531,7 +2539,9 @@ btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, REC
 
   if (mvcc_snapshot == NULL)
     {
-      return -1;
+      *num_visible = -1;
+      error_code = ER_FAILED;
+      return error_code;
     }
   length = rec->length;
   if (btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
@@ -2546,25 +2556,28 @@ btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, REC
       mvcc_flags = btree_record_object_get_mvcc_flags (buf.ptr);
 
       /* Skip object OID */
-      if (or_advance (&buf, OR_OID_SIZE) != NO_ERROR)
+      error_code = or_advance (&buf, OR_OID_SIZE);
+      if (error_code != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  return error_code;
 	}
 
       if (BTREE_IS_UNIQUE (btid->unique_pk)
 	  && (node_type == BTREE_OVERFLOW_NODE || !is_first || btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_CLASS_OID)))
 	{
 	  /* Skip class OID */
-	  if (or_advance (&buf, OR_OID_SIZE) != NO_ERROR)
+	  error_code = or_advance (&buf, OR_OID_SIZE);
+	  if (error_code != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      return error_code;
 	    }
 	}
 
       /* Get MVCC information */
-      if (btree_or_get_mvccinfo (&buf, &mvcc_info, mvcc_flags) != NO_ERROR)
+      error_code = btree_or_get_mvccinfo (&buf, &mvcc_info, mvcc_flags);
+      if (error_code != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  return error_code;
 	}
       /* TODO */
       /* Isn't it better to create snapshot function for BTREE_MVCC_INFO? */
@@ -2581,7 +2594,8 @@ btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, REC
 	{
 	  if (rec_oid_cnt >= *max_visible_oids)
 	    {
-	      return rec_oid_cnt;
+	      *num_visible = rec_oid_cnt;
+	      return error_code;
 	    }
 	}
 
@@ -2593,7 +2607,9 @@ btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, REC
       is_first = false;
     }
 
-  return rec_oid_cnt;
+  *num_visible = rec_oid_cnt;
+
+  return error_code;
 }
 
 /*
@@ -6389,10 +6405,10 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
       /* Is there any visible objects? */
       max_visible_oids = 1;
-      num_visible_oids =
+      ret =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, &BTS->btid_int, &rec, offset, &leaf_pnt, &max_visible_oids,
-						 mvcc_snapshot);
-      if (num_visible_oids < 0)
+						 mvcc_snapshot, &num_visible_oids);
+      if (ret != NO_ERROR)
 	{
 	  /* Error. */
 	  goto exit_on_error;
@@ -14020,11 +14036,12 @@ exit_on_error:
 
 /*
  * btree_locate_key () - Locate leaf node in b-tree for the given key.
- *   return: Leaf node page pointer.
+ *   return: error code.
  *   btid_int (in) : B+tree index info.
  *   key (in) : Key to locate
  *   pg_vpid (out) : Outputs Leaf node page VPID.
  *   slot_id (out) : Outputs slot ID of key if found, or slot ID of key if it was to be inserted.
+ *	 leaf_page_out(out): Page pointer
  *   found_p (out) : Outputs true if key was found and false otherwise.
  *
  * Note: Search the B+tree index to locate the page and record that contains
@@ -14056,6 +14073,7 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, 
 						&leaf_page);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       assert (leaf_page == NULL);
       *leaf_page_out = NULL;
       return error;
@@ -27675,12 +27693,12 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 
       /* Count visible objects considering transaction snapshot. */
       mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      num_visible =
+      error_code =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, leaf_record, offset_after_key, &leaf_info,
-						 &max_visible_oids, mvcc_snapshot);
-      if (num_visible < 0)
+						 &max_visible_oids, mvcc_snapshot, &num_visible);
+      if (error_code < 0)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
+	  ASSERT_ERROR ();
 	  return error_code;
 	}
       else if (num_visible > 0)
@@ -27745,12 +27763,12 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	  is_key_record_read = true;
 
 	  /* Count visible (not dirty) objects. */
-	  num_visible =
+	  error_code =
 	    btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, leaf_record, offset_after_key, &leaf_info,
-						     NULL, &mvcc_snapshot_dirty);
-	  if (num_visible < 0)
+						     NULL, &mvcc_snapshot_dirty, &num_visible);
+	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR_AND_SET (error_code);
+	      ASSERT_ERROR ();
 	      return error_code;
 	    }
 	}
@@ -28443,12 +28461,12 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
   if (insert_helper->is_unique_multi_update && !insert_helper->is_ha_enabled && BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
       snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
-      num_visible =
+      error_code =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_info, NULL,
-						 &snapshot_dirty);
-      if (num_visible < 0)
+						 &snapshot_dirty, &num_visible);
+      if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
       /* Even though multiple visible objects are allowed, they cannot exceed two visible objects (insert does not
@@ -28604,6 +28622,7 @@ btree_key_record_check_no_visible (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   bool dummy_clear_key;
   int num_visible;
   MVCC_SNAPSHOT dirty_snapshot;
+  int error_code = NO_ERROR;
 
   dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
 
@@ -28619,10 +28638,10 @@ btree_key_record_check_no_visible (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       return;
     }
 
-  num_visible = btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_rec_info,
-							 NULL, &dirty_snapshot);
+  error_code = btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_rec_info,
+							NULL, &dirty_snapshot, &num_visible);
 
-  assert (num_visible == 0 || (num_visible < 0 && er_errid () != NO_ERROR));
+  assert ((error_code == NO_ERROR && num_visible == 0) || error_code != NO_ERROR);
 }
 #endif /* !NDEBUG */
 
@@ -30676,12 +30695,12 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
-      num_visible_oids =
+      error_code =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &leaf_record, offset_after_key, &leaf_rec_info,
-						 &max_visible_oids, &mvcc_snapshot_dirty);
-      if (num_visible_oids < 0)
+						 &max_visible_oids, &mvcc_snapshot_dirty, &num_visible_oids);
+      if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
       else if (num_visible_oids > 0)

@@ -713,6 +713,6 @@ extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VA
 			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);
 extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 						    int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
-						    MVCC_SNAPSHOT * mvcc_snapshot);
+						    MVCC_SNAPSHOT * mvcc_snapshot, int *num_visible);
 
 #endif /* _BTREE_H_ */
