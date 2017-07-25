@@ -1112,18 +1112,18 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 	{
 	  new_dm->class_mop = class_obj;
 	  new_dm->self_ref = 0;
-#if defined (SERVER_MODE)
-	  assert_release (false);
-#else /* !defined (SERVER_MODE) */
 	  /* 
 	   * For compatibility on the server side, class objects must have
 	   * the oid in the domain match the oid in the class object.
 	   */
 	  if (class_obj)
 	    {
+#if defined (SERVER_MODE)
+	      assert_release (false);
+#else /* !defined (SERVER_MODE) */
 	      new_dm->class_oid = class_obj->oid_info.oid;
-	    }
 #endif /* !SERVER_MODE */
+	    }
 	}
 
       /* 
