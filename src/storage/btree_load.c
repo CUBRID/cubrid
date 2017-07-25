@@ -131,6 +131,8 @@ struct load_args
   VPID vpid_first_leaf;
 };
 
+extern INT64 vacuum_Global_oldest_active_blockers_counter;
+
 static int btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
 static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VPID * pageid,
 				    LOAD_ARGS * load_args, int node_level);
@@ -630,6 +632,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
   unsigned short alignment = BTREE_MAX_ALIGN;
+  MVCCID local_oldest_active_mvccid;
 #if !defined(NDEBUG)
   int track_id;
 #endif
@@ -694,8 +697,31 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
   btid_int.nonleaf_key_type = btree_generate_prefix_domain (&btid_int);
 
+  /* Be sure that nobody else computes oldest MVCCID. */
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes->block_global_oldest_active_until_commit == false)
+    {
+      /* Be sure that nobody else computes oldest MVCCID. */
+      local_oldest_active_mvccid = logtb_get_oldest_active_mvccid_with_blocking (thread_p);
+      if (vacuum_Global_oldest_active_blockers_counter == COMPUTE_OLDEST_MVCCID_STARTED)
+	{
+	  /* Allow to others to update the oldest active MVCCID. */
+	  ATOMIC_TAS_64 (&vacuum_Global_oldest_active_blockers_counter, 0);
+	}
+      else
+	{
+	  assert (vacuum_Global_oldest_active_blockers_counter > 0);
+	}
+    }
+  else
+    {
+      assert (vacuum_Global_oldest_active_blockers_counter > 0);
+      /* We can use vacuum_Global_oldest_active_mvccid now, since nobody else can update it. */
+      local_oldest_active_mvccid = vacuum_get_global_oldest_active_mvccid ();
+    }
+
   /* Initialize the fields of sorting argument structures */
-  sort_args->lowest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+  sort_args->lowest_active_mvccid = local_oldest_active_mvccid;
   sort_args->unique_pk = unique_pk;
   sort_args->not_null_flag = not_null_flag;
   sort_args->hfids = hfids;
@@ -763,7 +789,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   sort_args->scancache_inited = 1;
 
   /* After building index acquire lock on table, the transaction has deadlock priority */
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
   if (tdes)
     {
       tdes->has_deadlock_priority = true;

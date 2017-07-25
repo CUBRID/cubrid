@@ -63,6 +63,8 @@
 /* TRANS_STATUS_HISTORY_MAX_SIZE must be a power of 2*/
 #define TRANS_STATUS_HISTORY_MAX_SIZE 2048
 
+#define COMPUTE_OLDEST_MVCCID_STARTED	    ((INT64) 0x8000000000000000)
+
 #if defined(SERVER_MODE)
 #define LOG_CS_ENTER(thread_p) \
         csect_enter((thread_p), CSECT_LOG, INF_WAIT)
@@ -2278,7 +2280,7 @@ extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);
 extern int logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					 void **ctx);
 extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
-
+extern MVCCID logtb_get_oldest_active_mvccid_with_blocking (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p);
 extern int logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p);
 

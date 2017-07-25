@@ -128,7 +128,7 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
-extern INT32 vacuum_Global_oldest_active_blockers_counter;
+extern INT64 vacuum_Global_oldest_active_blockers_counter;
 
 bool locator_Dont_check_foreign_key = false;
 
@@ -12171,20 +12171,26 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
 
   if (tdes->block_global_oldest_active_until_commit == false)
     {
-      /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
-      ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
+      /* Be sure that nobody else computes oldest MVCCID. */
+      threshold_mvccid = logtb_get_oldest_active_mvccid_with_blocking (thread_p);
+      assert (vacuum_Global_oldest_active_blockers_counter == COMPUTE_OLDEST_MVCCID_STARTED
+	      || vacuum_Global_oldest_active_blockers_counter > 0);
+
+      if (ATOMIC_INC_64 (&vacuum_Global_oldest_active_blockers_counter, 0LL) == COMPUTE_OLDEST_MVCCID_STARTED)
+	{
+	  /* Allow to others to get oldest MVCCID. Do not allow to advance with oldest MVCCID. */
+	  ATOMIC_TAS_64 (&vacuum_Global_oldest_active_blockers_counter, 1);
+	}
+
+      /* The counter will be decremented at the end of transaction */
       tdes->block_global_oldest_active_until_commit = true;
     }
   else
     {
       assert (vacuum_Global_oldest_active_blockers_counter > 0);
+      /* We can use vacuum_Global_oldest_active_mvccid now, since nobody else can update it. */
+      threshold_mvccid = vacuum_get_global_oldest_active_mvccid ();
     }
-
-  /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM compute
-   * oldest active mvccid, but didn't set yet vacuum_Global_oldest_active_mvccid, current transaction uses the old
-   * value of vacuum_Global_oldest_active_mvccid, then VACUUM uses updated value of vacuum_Global_oldest_active_mvccid. 
-   * In such scenario, VACUUM can remove heap records that can't be removed by the current thread. */
-  threshold_mvccid = logtb_get_oldest_active_mvccid (thread_p);
 
   /* VACUUM all cleanable heap objects before upgrading the domain */
   error = heap_vacuum_all_objects (thread_p, &upd_scancache, threshold_mvccid);
@@ -12776,23 +12782,25 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
       if (tdes->block_global_oldest_active_until_commit == false)
 	{
-	  /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
+	  /* Be sure that nobody else computes oldest MVCCID. */
+	  threshold_mvccid = logtb_get_oldest_active_mvccid_with_blocking (thread_p);
+	  assert (vacuum_Global_oldest_active_blockers_counter == COMPUTE_OLDEST_MVCCID_STARTED
+		  || vacuum_Global_oldest_active_blockers_counter > 0);
+
+	  if (ATOMIC_INC_64 (&vacuum_Global_oldest_active_blockers_counter, 0LL) == COMPUTE_OLDEST_MVCCID_STARTED)
+	    {
+	      /* Allow to others to get oldest MVCCID. Do not allow to advance with oldest MVCCID. */
+	      ATOMIC_TAS_64 (&vacuum_Global_oldest_active_blockers_counter, 1);
+	    }
+
+	  /* the counter will be decremented at the end of transaction */
 	  tdes->block_global_oldest_active_until_commit = true;
 	}
       else
 	{
+	  /* We can use vacuum_Global_oldest_active_mvccid now, since nobody else can update it. */
 	  assert (vacuum_Global_oldest_active_blockers_counter > 0);
-	}
-
-      if (threshold_mvccid == MVCCID_NULL)
-	{
-	  /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM
-	   * compute oldest active mvccid, but didn't set yet vacuum_Global_oldest_active_mvccid, current transaction
-	   * uses the old value of vacuum_Global_oldest_active_mvccid, then VACUUM uses updated value of
-	   * vacuum_Global_oldest_active_mvccid.
-	   * In such scenario, VACUUM can remove heap records that can't be removed by the current thread. */
-	  threshold_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+	  threshold_mvccid = vacuum_get_global_oldest_active_mvccid ();
 	}
 
       /* VACUUM all cleanable heap objects before upgrading the domain */
