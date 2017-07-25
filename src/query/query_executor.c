@@ -61,10 +61,10 @@
 #endif
 #if defined (SERVER_MODE)
 #include "jansson.h"
-#endif /* defined (SERVER_MODE)
-          #if defined(ENABLE_SYSTEMTAP)
-          #include "probes.h"
-          #endif /* ENABLE_SYSTEMTAP */
+#endif /* defined (SERVER_MODE) */
+#if defined(ENABLE_SYSTEMTAP)
+#include "probes.h"
+#endif /* ENABLE_SYSTEMTAP */
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
