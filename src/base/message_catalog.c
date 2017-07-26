@@ -24,11 +24,21 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "porting.h"
+#include "message_catalog.h"
+#include "environment_variable.h"
+#include "error_code.h"
+#include "error_manager.h"
+#include "language_support.h"
+#if defined(WINDOWS)
+#include "intl_support.h"
+#endif
 
 #undef HAVE_NL_TYPES_H
 #ifdef HAVE_NL_TYPES_H
 #include <nl_types.h>
 #else /* HAVE_NL_TYPES_H */
+
 /*
  * Note: stems from FreeBSD nl_type.h and msgcat.c.
  */
@@ -50,16 +60,6 @@
 #include <string.h>
 #include <limits.h>
 #include <stdio.h>
-
-#include "porting.h"
-#include "message_catalog.h"
-#include "environment_variable.h"
-#include "error_code.h"
-#include "error_manager.h"
-#include "language_support.h"
-#if defined(WINDOWS)
-#include "intl_support.h"
-#endif
 
 /*
  * MESSAGE CATALOG FILE FORMAT.
