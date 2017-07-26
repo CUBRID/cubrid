@@ -1264,7 +1264,9 @@ $ LOADDB
 1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
 1196 Maximum recursions %1$d reached executing CTE.
 1197 Invalid json: %1$s (%2$d)
-1198 Last Error
+1198 A json object must be provided
+1199 The provided json schema is invalid //TODO add more details
+1200 Last Error
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
 2 No error message available.
