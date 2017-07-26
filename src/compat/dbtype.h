@@ -554,6 +554,7 @@ union db_domain_info
   {
     unsigned char is_null;
     unsigned char type;
+    char * schema_raw;
   } general_info;
   struct numeric_info
   {

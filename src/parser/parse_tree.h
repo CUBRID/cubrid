@@ -38,6 +38,9 @@
 #include "message_catalog.h"
 #include "authenticate.h"
 #include "system_parameter.h"
+#if defined (__cplusplus)
+#include "rapidjson/schema.h"
+#endif
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -2109,6 +2112,10 @@ struct pt_data_type_info
   bool has_cs_spec;		/* this is used only when defining collatable types: true if charset was explicitly
 				 * set, false otherwise (charset defaulted to that of the system) */
   PT_MISC_TYPE inout;		/* input or output method parameter */
+  PARSER_VARCHAR * json_schema;
+#if defined (__cplusplus)
+  rapidjson::SchemaValidator * schema_validator;
+#endif
 };
 
 
@@ -3035,7 +3042,10 @@ typedef DB_DATETIME PT_DATETIME;
 typedef DB_DATETIMETZ PT_DATETIMETZ;
 typedef struct
 {
-    char *json_body;
+    char * json_body;
+#if defined (__cplusplus)
+    rapidjson::Document * document;
+#endif
 } PT_JSON;
 
 /* enum currency types */

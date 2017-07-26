@@ -16962,6 +16962,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
           char * value = arg2->data.ch.medium.buf;
           int has_member;
 
+          if (!arg1->data.json.document->IsObject ())
+            {
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
+              PT_ERRORc (parser, o1, er_msg ());
+              return 0;
+            }
+
           has_member = (int) arg1->data.json.document->HasMember (value);
           DB_MAKE_INT (result, has_member);
         }

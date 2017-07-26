@@ -3934,6 +3934,20 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
   t = pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
   switch (t)
     {
+    case PT_TYPE_JSON:
+      assert (domain->schema_raw != NULL);
+      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+	{
+	  return NULL;
+	}
+      result->type_enum = t;
+      result->info.data_type.schema_validator = domain->schema_validator;
+      result->info.data_type.json_schema = pt_append_bytes(parser,
+                                                           NULL,
+                                                           domain->schema_raw,
+                                                           strlen (domain->schema_raw));
+      break;
+
     case PT_TYPE_NUMERIC:
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
@@ -4384,6 +4398,7 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * at
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_ENUMERATION:
+    case PT_TYPE_JSON:
       attr->data_type = pt_domain_to_data_type (parser, dom);
       break;
     default:

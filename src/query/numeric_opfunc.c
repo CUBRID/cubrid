@@ -42,6 +42,10 @@
 #include "system_parameter.h"
 #include "byte_order.h"
 
+#if defined (__cplusplus)
+using namespace std; /* for fpclassify */
+#endif
+
 #if defined(SERVER_MODE)
 #include "thread.h"
 #endif

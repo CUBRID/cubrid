@@ -1016,6 +1016,7 @@ int g_original_buffer_len;
 %type <cptr> uint_text
 %type <cptr> of_integer_real_literal
 %type <cptr> integer_text
+%type <cptr> json_schema
 /*}}}*/
 
 /* define rule type (container) */
@@ -1189,6 +1190,7 @@ int g_original_buffer_len;
 %token FUNCTION
 %token FUN_JSON_ARRAY
 %token FUN_JSON_OBJECT
+%token FUN_JSON_MERGE
 %token GENERAL
 %token GET
 %token GLOBAL
@@ -15967,7 +15969,6 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-
         | FUN_JSON_ARRAY '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
@@ -15982,6 +15983,25 @@ reserved_func
 				    MSGCAT_SET_PARSER_SEMANTIC,
 				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
 				    "json_array");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_MERGE '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_MERGE, args_list);
+		    if (len < 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_merge");
 		    }
 
 		    $$ = node;
@@ -18718,6 +18738,21 @@ opt_varying
 		DBG_PRINT}}
 	;
 
+json_schema
+		: /* empty */
+			{{
+
+				$$ = 0;
+
+			DBG_PRINT}}
+		| '(' CHAR_STRING ')'
+			{{
+
+				$$ = $2;
+
+			DBG_PRINT}}
+		;
+
 primitive_type
 	: INTEGER opt_padding
 		{{
@@ -18871,13 +18906,28 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
-    | JSON
-        {{
-
+	| JSON json_schema
+	    {{
+			const char * json_schema_str = $2;
 			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_JSON), NULL);
-			$$ = ctn;
+			PT_TYPE_ENUM type = PT_TYPE_JSON;
+			PT_NODE * dt = parser_new_node (this_parser, PT_DATA_TYPE);
 
+			if (dt && json_schema_str)
+				{
+					dt->type_enum = type;
+					dt->info.data_type.json_schema = pt_append_bytes (this_parser,
+                                                                                          NULL,
+                                                                                          json_schema_str,
+                                                                                          strlen (json_schema_str));
+					SET_CONTAINER_2 (ctn, FROM_NUMBER (type), dt);
+				}
+			else
+				{
+					SET_CONTAINER_2 (ctn, FROM_NUMBER (type), NULL);
+				}
+
+			$$ = ctn;
 		DBG_PRINT}}
 	| OBJECT
 		{{

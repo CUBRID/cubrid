@@ -67,6 +67,8 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 #include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
@@ -14807,7 +14809,7 @@ PR_TYPE tp_VarNChar = {
 PR_TYPE *tp_Type_varnchar = &tp_VarNChar;
 
 PR_TYPE tp_Json = {
-	"json", DB_TYPE_JSON, 1, sizeof (DB_JSON), sizeof (DB_JSON),
+	"json", DB_TYPE_JSON, 1, sizeof (DB_JSON), 0,
 	4,
 	help_fprint_value,
 	help_sprint_value,
@@ -14841,11 +14843,6 @@ mr_initmem_json (void *mem, TP_DOMAIN * domain)
   ((DB_JSON *) mem)->document = NULL;
 }
 
-/*
- * The main difference between "memory" strings and "value" strings is that
- * the length tag is stored as an in-line prefix in the memory block allocated
- * to hold the string characters.
- */
 static int
 mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
@@ -14886,10 +14883,14 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	{
         db_make_json (value, json_obj->json_body, json_obj->document);
         value->need_clear = false;
+        value->domain.general_info.schema_raw = domain->schema_raw;
 	}
       else
 	{
-        int len = strlen (json_obj->json_body);
+        int len = strlen (json_obj->json_body), len2 = 0;
+        if (domain->schema_raw) {
+          len2 = strlen (domain->schema_raw);
+        }
 	  /* return it with a NULL terminator */
 	  char * new_ = (char *) db_private_alloc (NULL, len + 1);
           rapidjson::Document * document = new rapidjson::Document ();
@@ -14906,6 +14907,11 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	      db_make_json (value, new_, document);
 	      value->need_clear = true;
 	    }
+          if (len2 > 0) {
+            value->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, len2+1);
+            memcpy (value->domain.general_info.schema_raw, domain->schema_raw, len2);
+            value->domain.general_info.schema_raw[len2] = '\0';
+          }
 	}
     }
   return error;
@@ -15011,25 +15017,38 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
-      int len;
+      int len, len2 = 0;
 
       db_value_domain_init (dest, DB_TYPE_JSON, DB_DEFAULT_PRECISION, 0);
       dest->domain.general_info.is_null = 0;
       len = strlen (src->data.json.json_body);
+      if (src->domain.general_info.schema_raw) {
+          len2 = strlen (src->domain.general_info.schema_raw);
+      }
       if (copy)
         {
           dest->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (len + 1));
           dest->data.json.document = new rapidjson::Document ();
           memcpy (dest->data.json.json_body, src->data.json.json_body, (size_t) len);
           dest->data.json.document->CopyFrom (*src->data.json.document, dest->data.json.document->GetAllocator());
+          rapidjson::StringBuffer buffer;
+          rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+          dest->data.json.document->Accept (writer);
+          printf ("mr_setval_json=%s\n", buffer.GetString());
           dest->data.json.json_body[len] = '\0';
           dest->need_clear = true;
-        }
+          if (len2 > 0) {
+            dest->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len2 + 1));
+            memcpy (dest->domain.general_info.schema_raw, src->domain.general_info.schema_raw, len2);
+            dest->domain.general_info.schema_raw[len2] = '\0';
+          }
+      }
       else
         {
           dest->data.json.json_body = src->data.json.json_body;
           dest->data.json.document = src->data.json.document;
           dest->need_clear = false;
+          dest->domain.general_info.schema_raw = src->domain.general_info.schema_raw;
         }
     }
 

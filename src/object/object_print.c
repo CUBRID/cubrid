@@ -466,7 +466,13 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	  sprintf (temp_buffer, "(%d)", precision);
 	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);
 	  break;
-
+        case DB_TYPE_JSON:
+          if (temp_domain->schema_raw)
+            {
+              sprintf (temp_buffer, "(%s)", temp_domain->schema_raw);
+            }
+          buffer = pt_append_nulstring (parser, buffer, temp_buffer);
+          break;
 	case DB_TYPE_NUMERIC:
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  ustr_upper (temp_buffer);

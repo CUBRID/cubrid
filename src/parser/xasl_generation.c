@@ -21841,6 +21841,9 @@ pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
       value->domain.numeric_info.precision = dt->info.data_type.precision;
       value->domain.numeric_info.scale = dt->info.data_type.dec_precision;
       break;
+    case DB_TYPE_JSON:
+      value->domain.general_info.schema_raw = (char *) dt->info.data_type.json_schema->bytes;
+      break;
 
     default:
       ;				/* Do nothing. This suppresses compiler's warnings. */

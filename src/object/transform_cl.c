@@ -2024,6 +2024,8 @@ domain_size (TP_DOMAIN * domain)
 
   size += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
 
+  size += string_disk_size (domain->schema_raw);
+
   return (size);
 }
 
@@ -2052,11 +2054,15 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   /* VARIABLE OFFSET TABLE */
   start = buf->ptr;
   offset = tf_Metaclass_domain.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_domain.mc_n_variable);
+
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
 
   or_put_offset (buf, offset);
   offset += enumeration_size (&DOM_GET_ENUMERATION (domain));
+
+  or_put_offset (buf, offset);
+  offset += string_disk_size (domain->schema_raw);
 
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -2073,6 +2079,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 			tf_Metaclass_domain.mc_repid);
 
   put_enumeration (buf, &DOM_GET_ENUMERATION (domain));
+  put_string (buf, domain->schema_raw);
 
   if (start + offset != buf->ptr)
     {
@@ -2100,6 +2107,7 @@ disk_to_domain2 (OR_BUF * buf)
   DB_TYPE typeid_;
   OID oid;
   int rc = NO_ERROR;
+  rapidjson::Document * document = new rapidjson::Document();
 
   vars = read_var_table (buf, tf_Metaclass_domain.mc_n_variable);
   if (vars == NULL)
@@ -2127,7 +2135,6 @@ disk_to_domain2 (OR_BUF * buf)
       assert (domain->collation_id == LANG_COLL_ISO_BINARY);
       domain->codeset = INTL_CODESET_ISO88591;
     }
-
   /* 
    * Read the domain class OID without promoting it to a MOP.
    * Could use readval, and extract the OID out of the already swizzled
@@ -2157,6 +2164,18 @@ disk_to_domain2 (OR_BUF * buf)
       return NULL;
     }
 
+  domain->schema_raw = get_string (buf, vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length);
+  if (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length > 0)
+    {
+      document->Parse (domain->schema_raw);
+      rapidjson::SchemaDocument * schema = new rapidjson::SchemaDocument(*document);
+      domain->schema_validator = new rapidjson::SchemaValidator (*schema);
+    }
+  else
+    {
+      domain->schema_validator = NULL;
+    }
+
   free_var_table (vars);
 
   return (domain);
@@ -2181,11 +2200,11 @@ disk_to_domain (OR_BUF * buf)
   TP_DOMAIN *domain;
 
   domain = disk_to_domain2 (buf);
+
   if (domain != NULL)
     {
       domain = tp_domain_cache (domain);
     }
-
   return domain;
 }
 

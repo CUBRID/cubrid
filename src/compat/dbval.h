@@ -391,6 +391,8 @@
       ((INTL_CODESET) ((v)->data.enumeration.str_val.info.codeset))
 #define DB_GET_ENUM_COLLATION(v) \
       ((v)->domain.char_info.collation_id)
+#define DB_GET_JSON_SCHEMA(v) \
+      ((v)->domain.general_info.schema_raw)
 
 #define db_value_is_null(v) DB_IS_NULL(v)
 #define db_value_type(v) DB_VALUE_TYPE(v)
@@ -441,6 +443,7 @@
 #define db_get_enum_string_size(v) DB_GET_ENUM_STRING_SIZE(v)
 #define db_get_enum_codeset(v) DB_GET_ENUM_CODESET(v)
 #define db_get_enum_collation(v) DB_GET_ENUM_COLLATION(v)
+#define db_get_json_schema(v) DB_GET_JSON_SCHEMA(v)
 
 #define db_make_null(v) \
     ((v)->domain.general_info.type = DB_TYPE_NULL, \

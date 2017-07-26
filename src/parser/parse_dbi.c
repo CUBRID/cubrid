@@ -626,29 +626,21 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->info.value.data_value.d = DB_GET_DOUBLE (val);
       break;
     case DB_TYPE_JSON:
-      if (val->data.json.document->HasParseError ())
+      length = strlen (val->data.json.json_body);
+      result->info.value.data_value.json.json_body = (char *) db_private_alloc (NULL,  (length + 1));
+      memcpy (result->info.value.data_value.json.json_body, val->data.json.json_body, length);
+      result->info.value.data_value.json.json_body[length] = '\0';
+      result->info.value.data_value.json.document = new rapidjson::Document();
+      result->info.value.data_value.json.document->CopyFrom (*val->data.json.document, result->info.value.data_value.json.document->GetAllocator());
+      result->data_type = parser_new_node (parser, PT_DATA_TYPE);
+      if (result->data_type == NULL)
         {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-                  rapidjson::GetParseError_En (val->data.json.document->GetParseError()), val->data.json.document->GetErrorOffset());
-          PT_ERRORc (parser, result, er_msg ());
-          break;
+          parser_free_node (parser, result);
+          result = NULL;
         }
       else
         {
-          length = strlen(val->data.json.json_body);
-          result->info.value.data_value.json.json_body = (char *) db_private_alloc (NULL,  (length + 1));
-          memcpy (result->info.value.data_value.json.json_body, val->data.json.json_body, length);
-          result->info.value.data_value.json.json_body[length] = '\0';
-          result->data_type = parser_new_node (parser, PT_DATA_TYPE);
-          if (result->data_type == NULL)
-            {
-              parser_free_node (parser, result);
-              result = NULL;
-            }
-          else
-            {
-              result->data_type->type_enum = result->type_enum;
-            }
+          result->data_type->type_enum = result->type_enum;
         }
       break;
     case DB_TYPE_NUMERIC:
@@ -1484,6 +1476,9 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
     case PT_TYPE_ENUMERATION:
       name = "enum";
       break;
+    case PT_TYPE_JSON:
+      name = "json";
+      break;
     }
 
   return name;
@@ -1763,6 +1758,8 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
   DB_ENUMERATION enumeration;
   int collation_id = 0;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_NORMAL;
+  rapidjson::SchemaValidator * validator = NULL;
+  char * raw_schema = NULL;
 
   if (dt == NULL)
     {
@@ -1798,8 +1795,28 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
     case DB_TYPE_BIGINT:
-    case DB_TYPE_JSON:
       return pt_type_enum_to_db_domain (dt->type_enum);
+
+    case DB_TYPE_JSON:
+      if (dt->info.data_type.json_schema)
+        {
+          rapidjson::Document * document = new rapidjson::Document();
+          if (document->Parse ((const char *)dt->info.data_type.json_schema->bytes).HasParseError ())
+            {
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON_SCHEMA, 0);
+              return NULL;
+            }
+          rapidjson::SchemaDocument * schema = new rapidjson::SchemaDocument (*document);
+          validator = new rapidjson::SchemaValidator (*schema);
+          raw_schema = (char *) db_private_alloc (NULL, dt->info.data_type.json_schema->length + 1);
+          memcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes, dt->info.data_type.json_schema->length);
+          raw_schema[dt->info.data_type.json_schema->length] = '\0';
+          break;
+        }
+      else
+        {
+          return pt_type_enum_to_db_domain (dt->type_enum);
+        }
 
     case DB_TYPE_OBJECT:
       /* first check if its a VOBJ */
@@ -1920,6 +1937,8 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       retval->enumeration.collation_id = collation_id;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
+      retval->schema_validator = validator;
+      retval->schema_raw = raw_schema;
     }
   else
     {
@@ -1969,6 +1988,8 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
   int error = NO_ERROR;
   TP_DOMAIN_COLL_ACTION collation_flag;
 
+  rapidjson::SchemaValidator * schema_validator = NULL;
+
   if (dt == NULL)
     {
       return (DB_DOMAIN *) NULL;
@@ -2005,8 +2026,11 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_OID:
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_BIGINT:
-    case DB_TYPE_JSON:
       return pt_type_enum_to_db_domain (type);
+
+    case DB_TYPE_JSON:
+      schema_validator = dt->info.data_type.schema_validator;
+      break;
 
     case DB_TYPE_OBJECT:
       /* first check if its a VOBJ */
@@ -2103,6 +2127,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
       retval->collation_id = collation_id;
       retval->collation_flag = collation_flag;
       retval->enumeration.collation_id = collation_id;
+      retval->schema_validator = schema_validator;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
     }
@@ -3403,6 +3428,13 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       strcpy (db_value->data.json.json_body, (const char *) value->info.value.data_value.str->bytes);
       value->info.value.db_value_is_in_workspace = false;
       db_value->need_clear = true;
+      if (value->info.data_type.json_schema)
+        {
+          int len = value->info.data_type.json_schema->length;
+          db_value->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len+1));
+          memcpy (db_value->domain.general_info.schema_raw, (const char *) value->info.data_type.json_schema->bytes, len);
+          db_value->domain.general_info.schema_raw[len] = '\0';
+        }
       *more_type_info_needed = (value->data_type == NULL);
       break;
 

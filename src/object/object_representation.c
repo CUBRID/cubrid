@@ -4428,6 +4428,7 @@ or_decode (const char *buffer, char *dest, int size)
 #define OR_DOMAIN_BUILTIN_FLAG		(0x100)	/* for NULL type only */
 #define OR_DOMAIN_ENUMERATION_FLAG	(0x100)	/* for enumeration type only */
 #define OR_DOMAIN_ENUM_COLL_FLAG	(0x200)	/* for enumeration type only */
+#define OR_DOMAIN_SCHEMA_FLAG		(0x400) /* for json */
 
 #define OR_DOMAIN_SCALE_MASK		(0xFF00)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
@@ -4545,7 +4546,13 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	    }
 	  size += or_packed_enumeration_size (&DOM_GET_ENUMERATION (d));
 	  break;
-
+        case DB_TYPE_JSON:
+          if (d->schema_raw)
+            {
+              size += OR_INT_SIZE;
+              size += strlen (d->schema_raw);
+            }
+          break;
 	default:
 	  break;
 	}
@@ -4588,7 +4595,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 {
   unsigned int carrier, extended_precision, extended_scale;
   int precision, scale;
-  int has_oid, has_subdomain, has_enum;
+  int has_oid, has_subdomain, has_enum, has_schema;
   bool has_collation;
   TP_DOMAIN *d;
   DB_TYPE id;
@@ -4648,6 +4655,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
       has_subdomain = 0;
       has_enum = 0;
       has_collation = false;
+      has_schema = 0;
 
       switch (id)
 	{
@@ -4768,7 +4776,12 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	      has_enum = 1;
 	    }
 	  break;
-
+        case DB_TYPE_JSON:
+          if (d->schema_raw)
+            {
+              carrier |= OR_DOMAIN_SCHEMA_FLAG;
+              has_schema = 1;
+            }
 	default:
 	  break;
 	}
@@ -4852,6 +4865,23 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	}
 
+      if (has_schema)
+        {
+          int len = strlen (d->schema_raw);
+
+          rc = or_put_int (buf, len);
+          if (rc != NO_ERROR)
+            {
+              return rc;
+            }
+
+          rc = or_put_data (buf, d->schema_raw, len);
+          if (rc != NO_ERROR)
+            {
+              return rc;
+            }
+        }
+
       /* 
        * Recurse on the sub domains if necessary, note that we don't
        * pass the NULL bit down here because that applies only to the
@@ -4881,7 +4911,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 {
   TP_DOMAIN *domain, *last, *d;
   unsigned int carrier, precision, scale, codeset, has_classoid, has_setdomain, has_enum, collation_id,
-    collation_storage;
+    collation_storage, has_schema;
   bool more, auto_precision, is_desc, has_collation;
   DB_TYPE type;
   int index;
@@ -4935,6 +4965,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	  has_classoid = 0;
 	  has_setdomain = 0;
 	  has_enum = 0;
+	  has_schema = 0;
 	  auto_precision = false;
 	  has_collation = false;
 
@@ -5023,7 +5054,9 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      has_enum = carrier & OR_DOMAIN_ENUMERATION_FLAG;
 	      has_collation = ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) == OR_DOMAIN_ENUM_COLL_FLAG);
 	      break;
-
+            case DB_TYPE_JSON:
+              has_schema = carrier & OR_DOMAIN_SCHEMA_FLAG;
+              break;
 	    default:
 	      break;
 	    }
@@ -5147,6 +5180,30 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		}
 	    }
 
+         if (has_schema)
+          {
+              int schema_len = or_get_int (buf, &rc);
+
+              if (rc != NO_ERROR)
+                {
+                  goto error;
+                }
+              if (schema_len > 0)
+                {
+                  rapidjson::Document * document = new rapidjson::Document ();
+                  d->schema_raw = (char *) db_private_alloc (NULL, schema_len+1);
+
+                  rc = or_get_data (buf, d->schema_raw, schema_len);
+                  if (rc != NO_ERROR)
+                    {
+                      goto error;
+                    }
+                  document->Parse (d->schema_raw);
+                  rapidjson::SchemaDocument * schema = new rapidjson::SchemaDocument(*document);
+                  d->schema_validator = new rapidjson::SchemaValidator (*schema);
+                }
+            }
+
 	  /* 
 	   * Recurse to get set sub-domains if there are any, note that
 	   * we don't pass the is_null flag down here since NULLness only
@@ -5223,6 +5280,9 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
   domain = last = dom = setdomain = NULL;
   precision = scale = 0;
+
+  char * schema_raw = NULL;
+  rapidjson::SchemaValidator * schema_validator = NULL;
 
   more = true;
   while (more)
@@ -5476,7 +5536,31 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  }
 	      }
 	      break;
+            case DB_TYPE_JSON:
+              {
+                if ((carrier & OR_DOMAIN_SCHEMA_FLAG) != 0)
+		  {
+		    int schema_len = or_get_int (buf, &rc);
 
+                    if (rc != NO_ERROR)
+                        {
+                          goto error;
+                        }
+                    rapidjson::Document * document = new rapidjson::Document ();
+                    schema_raw = (char *) db_private_alloc (NULL, schema_len+1);
+
+                    rc = or_get_data (buf, schema_raw, schema_len);
+                    if (rc != NO_ERROR)
+                      {
+                        goto error;
+                      }
+                    document->Parse (schema_raw);
+                    rapidjson::SchemaDocument * schema = new rapidjson::SchemaDocument(*document);
+                    schema_validator = new rapidjson::SchemaValidator (*schema);
+		  }
+
+                break;
+              }
 	    default:
 	      break;
 	    }
@@ -5494,6 +5578,10 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
 	      switch (type)
 		{
+                case DB_TYPE_JSON:
+                  dom->schema_raw = schema_raw;
+                  dom->schema_validator = schema_validator;
+                  break;
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_CHAR:
@@ -6825,6 +6913,10 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	    {
 	      db_enum_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	    }
+          else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
+            {
+              value->domain.general_info.schema_raw = domain->schema_raw;
+            }
 	}
       else
 	{

@@ -991,6 +991,7 @@ enum
 {
   ORC_DOMAIN_SETDOMAIN_INDEX = 0,
   ORC_DOMAIN_ENUMERATION_INDEX = 1,
+  ORC_DOMAIN_SCHEMA_JSON_OFFSET = 2,
 
   /* add a new one above */
 

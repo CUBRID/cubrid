@@ -33,7 +33,9 @@
 #include "error_manager.h"
 #include "object_representation.h"
 #include "area_alloc.h"
-
+#if defined (__cplusplus)
+#include "rapidjson/schema.h"
+#endif
 #define DOM_GET_ENUMERATION(dom) \
     ((dom)->enumeration)
 #define DOM_GET_ENUM_ELEMENTS(dom) \
@@ -106,6 +108,11 @@ typedef struct tp_domain
 
   /* run-time flag used during domain comparison */
   unsigned is_visited:1;
+
+#if defined (__cplusplus)
+  rapidjson::SchemaValidator * schema_validator; /* schema validator if type is json */
+  char * schema_raw;
+#endif
 } TP_DOMAIN;
 
 

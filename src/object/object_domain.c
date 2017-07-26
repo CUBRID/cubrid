@@ -75,6 +75,7 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
+#include "rapidjson/error/en.h"
 
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -187,7 +188,9 @@ extern unsigned int db_on_server;
   1,            /* is_cached */                        \
   0,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
-  0				/* is_visited */
+  0,		/* is_visited */			\
+  NULL,		/* json_raw */				\
+  NULL		/* json_validator */			\
 
 /* Same as above, but leaves off the prec and scale, and sets the codeset */
 #define DOMAIN_INIT2(codeset, coll)                    \
@@ -203,8 +206,9 @@ extern unsigned int db_on_server;
   1,            /* is_cached */                        \
   1,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
-  0				/* is_visited */
-
+  0,		/* is_visited */			\
+  NULL,		/* json_raw */				\
+  NULL		/* json_validator */			\
 /*
  * Same as DOMAIN_INIT but it sets the is_parameterized flag.
  * Used for things that don't have a precision but which are parameterized in
@@ -225,7 +229,9 @@ extern unsigned int db_on_server;
   1,            /* is_cached */                        \
   1,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
-  0				/* is_visited */
+  0,		/* is_visited */			\
+  NULL,		/* json_raw */				\
+  NULL		/* json_validator */			\
 
 /* Same as DOMAIN_INIT but set the prec and scale. */
 #define DOMAIN_INIT4(prec, scale)                      \
@@ -243,7 +249,9 @@ extern unsigned int db_on_server;
   1,            /* is_cached */                        \
   0,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
-  0				/* is_visited */
+  0,		/* is_visited */			\
+  NULL,		/* json_raw */				\
+  NULL		/* json_validator */			\
 
 TP_DOMAIN tp_Null_domain = { NULL, NULL, &tp_Null, DOMAIN_INIT };
 TP_DOMAIN tp_Short_domain = { NULL, NULL, &tp_Short, DOMAIN_INIT4 (DB_SHORT_PRECISION, 0) };
@@ -332,7 +340,7 @@ TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar, DB_MAX_VARNCHAR_PRECI
 };
 
 TP_DOMAIN tp_Json_domain = {NULL, NULL, &tp_Json, TP_FLOATING_PRECISION_VALUE, 0,
-                            DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)};
+                            DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY) };
 
 /* These must be in DB_TYPE order */
 static TP_DOMAIN *tp_Domains[] = {
@@ -967,7 +975,13 @@ tp_domain_free (TP_DOMAIN * dom)
 
       /* NULL things that might be problems for garbage collection */
       dom->class_mop = NULL;
-
+      /*if (dom->schema_raw) {
+        db_private_free_and_init (NULL, dom->schema_raw);
+      }
+      if (dom->schema_validator) {
+        delete dom->schema_validator;
+        dom->schema_validator = NULL; //TODO release memory without breaking (we need to deep copy pointers)
+      }*/
       /* 
        * sub-domains are always completely owned by their root domain,
        * they cannot be cached anywhere else.
@@ -1312,6 +1326,8 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	      new_domain->self_ref = d->self_ref;
 	      new_domain->is_parameterized = d->is_parameterized;
 	      new_domain->is_desc = d->is_desc;
+	      new_domain->schema_validator = d->schema_validator;
+	      new_domain->schema_raw = d->schema_raw;
 
 	      if (d->type->id == DB_TYPE_ENUMERATION)
 		{
@@ -1542,13 +1558,28 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_DATE:
     case DB_TYPE_MONETARY:
     case DB_TYPE_SHORT:
-    case DB_TYPE_JSON:
       /* 
        * these domains have no parameters, they match if the types are the
        * same.
        */
       match = 1;
       break;
+
+    case DB_TYPE_JSON:
+      if (dom1->schema_raw && dom2->schema_raw)
+        {
+          match = !(strcmp (dom1->schema_raw, dom2->schema_raw));
+        }
+      else if (!dom1->schema_raw && !dom2->schema_raw)
+        {
+          match = 1;
+        }
+      else
+        {
+          match = 0;
+        }
+      break;
+
 
     case DB_TYPE_VOBJ:
     case DB_TYPE_OBJECT:
@@ -2195,6 +2226,26 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    domain = domain->next_list;
 	  }
       }
+      break;
+
+    case DB_TYPE_JSON:
+      while (domain)
+        {
+          if (transient->schema_raw && domain->schema_raw) {
+              match = !(strcmp (domain->schema_raw, transient->schema_raw));
+          } else if (!transient->schema_raw && !domain->schema_raw) {
+              match = 1;
+          } else {
+              match = 0;
+          }
+
+          if (match)
+            {
+              break;
+            }
+          *ins_pos = domain;
+	  domain = domain->next_list;
+        }
       break;
 
     case DB_TYPE_VARCHAR:
@@ -3214,7 +3265,6 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_DATETIMELTZ:
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_SHORT:
-        case DB_TYPE_JSON:
 	  /* domains without parameters, return the built-in domain */
 	  domain = tp_domain_resolve_default (value_type);
 	  break;
@@ -3317,7 +3367,6 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	   */
 	  domain = tp_domain_resolve_default (value_type);
 	  break;
-
 	case DB_TYPE_NUMERIC:
 	  /* must find one with a matching precision and scale */
 	  if (dbuf == NULL)
@@ -3385,7 +3434,24 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_ELO:
 	  assert (false);
 	  break;
-	}
+        case DB_TYPE_JSON:
+          if (dbuf == NULL)
+	    {
+	      domain = tp_domain_new (value_type);
+	      if (domain == NULL)
+		{
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      domain = dbuf;
+	      domain_init (domain, value_type);
+	    }
+	  domain->schema_raw = db_get_json_schema (val);
+          break;
+
+        }
     }
 
   return domain;
@@ -4278,6 +4344,24 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 		}
 	    }
 	}
+    }
+  else if (vtype == DB_TYPE_JSON)
+    {
+      assert (value->data.json.json_body != NULL);
+      assert (value->data.json.document != NULL);
+
+      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
+	{
+          if (d->schema_validator != NULL)
+            {
+              bool result = value->data.json.document->Accept (*d->schema_validator);
+              if (result)
+                {
+                  best = d;
+                  break;
+                }
+            }
+        }
     }
   else
     {
@@ -7223,6 +7307,23 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  pr_clone_value ((DB_VALUE *) src, dest);
 		}
 	      return (status);
+            case DB_TYPE_JSON:
+              {
+                bool result;
+                if (!desired_domain->schema_validator) {
+                  result = true;
+                } else {
+                  result = src->data.json.document->Accept (*desired_domain->schema_validator);
+                }
+
+                if (result) {
+                  pr_clone_value ((DB_VALUE *) src, dest);
+                  return (status);
+                } else {
+                  printf ("json was rejected by schema!\n");
+                }
+                break;
+              }
 	    default:
 	      /* pr_is_string_type(desired_type) - NEED MORE CONSIDERATION */
 	      break;
@@ -10296,6 +10397,27 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
                     target->data.json.document = new rapidjson::Document();
                     target->data.json.document->Parse (DB_GET_STRING (src));
 
+                    if (desired_domain->schema_validator)
+                      {
+                        desired_domain->schema_validator->Reset ();
+                      }
+
+                    if (target->data.json.document->HasParseError ())
+                      {
+                        /*er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+                                rapidjson::GetParseError_En (target->data.json.document->GetParseError()), target->data.json.document->GetErrorOffset());*/
+                        //PT_ERRORc (parser, result, er_msg ());
+                        status = DOMAIN_INCOMPATIBLE;
+                        break;
+                        //TODO Find a way to show this error to the screen
+                      }
+                    if (desired_domain->schema_validator &&
+                        !target->data.json.document->Accept (*desired_domain->schema_validator))
+                      {
+                        status = DOMAIN_INCOMPATIBLE;
+                        break;
+                      }
+
                     target->domain.general_info.type = DB_TYPE_JSON;
                     target->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (DB_GET_STRING_SIZE (src) + 1));
                     target->domain.general_info.is_null = 0;
@@ -10305,6 +10427,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
                     target->need_clear = true;
                     break;
                 }
+              default:
+                status = DOMAIN_INCOMPATIBLE;
+                break;
           }
         break;
     default:

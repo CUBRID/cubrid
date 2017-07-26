@@ -61,6 +61,7 @@ static META_ATTRIBUTE domain_atts[] = {
   {"class", DB_TYPE_OBJECT, 1, META_CLASS_NAME, 0, 0, NULL},
   {"enumeration", DB_TYPE_SET, 1, NULL, 0, 0, NULL},
   {"set_domain", DB_TYPE_SET, 1, META_DOMAIN_NAME, 1, 0, NULL},
+  {"json_schema", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
 
