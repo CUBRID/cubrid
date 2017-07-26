@@ -711,6 +711,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       else
 	{
 	  assert (vacuum_Global_oldest_active_blockers_counter > 0);
+	  ATOMIC_INC_64 (&vacuum_Global_oldest_active_blockers_counter, -1);
 	}
     }
   else
