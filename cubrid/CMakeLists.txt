@@ -23,6 +23,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
+  ${COMPAT_DIR}/db_json.c
   )
 
 set(THREAD_SOURCES

@@ -2164,16 +2164,17 @@ disk_to_domain2 (OR_BUF * buf)
       return NULL;
     }
 
-  domain->schema_raw = get_string (buf, vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length);
   if (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length > 0)
     {
-      document->Parse (domain->schema_raw);
-      rapidjson::SchemaDocument * schema = new rapidjson::SchemaDocument(*document);
-      domain->schema_validator = new rapidjson::SchemaValidator (*schema);
+      char * str = get_string (buf, vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length);
+      domain->schema_raw = (char *) malloc (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length + 1);
+      memcpy (domain->schema_raw, str, vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length);
+      domain->schema_raw[vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length] = '\0';
+      domain->validation_obj = get_validator_from_schema_string (domain->schema_raw, &rc);
     }
   else
     {
-      domain->schema_validator = NULL;
+      domain->validation_obj = NULL;
     }
 
   free_var_table (vars);

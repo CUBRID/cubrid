@@ -14881,16 +14881,17 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
       if (!copy)
 	{
-        db_make_json (value, json_obj->json_body, json_obj->document);
-        value->need_clear = false;
-        value->domain.general_info.schema_raw = domain->schema_raw;
+          db_make_json (value, json_obj->json_body, json_obj->document);
+          value->need_clear = false;
+          value->domain.general_info.schema_raw = domain->schema_raw;
 	}
       else
-	{
-        int len = strlen (json_obj->json_body), len2 = 0;
-        if (domain->schema_raw) {
-          len2 = strlen (domain->schema_raw);
-        }
+        {
+          int len = strlen (json_obj->json_body), len2 = 0;
+          if (domain->schema_raw)
+            {
+              len2 = strlen (domain->schema_raw);
+            }
 	  /* return it with a NULL terminator */
 	  char * new_ = (char *) db_private_alloc (NULL, len + 1);
           rapidjson::Document * document = new rapidjson::Document ();
@@ -14907,11 +14908,16 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	      db_make_json (value, new_, document);
 	      value->need_clear = true;
 	    }
-          if (len2 > 0) {
-            value->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, len2+1);
-            memcpy (value->domain.general_info.schema_raw, domain->schema_raw, len2);
-            value->domain.general_info.schema_raw[len2] = '\0';
-          }
+          if (len2 > 0)
+            {
+              value->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, len2+1);
+              memcpy (value->domain.general_info.schema_raw, domain->schema_raw, len2);
+              value->domain.general_info.schema_raw[len2] = '\0';
+            }
+          else
+            {
+              value->domain.general_info.schema_raw = NULL;
+            }
 	}
     }
   return error;
@@ -15022,9 +15028,10 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       db_value_domain_init (dest, DB_TYPE_JSON, DB_DEFAULT_PRECISION, 0);
       dest->domain.general_info.is_null = 0;
       len = strlen (src->data.json.json_body);
-      if (src->domain.general_info.schema_raw) {
-          len2 = strlen (src->domain.general_info.schema_raw);
-      }
+      if (src->domain.general_info.schema_raw)
+        {
+            len2 = strlen (src->domain.general_info.schema_raw);
+        }
       if (copy)
         {
           dest->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (len + 1));
@@ -15037,11 +15044,12 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
           printf ("mr_setval_json=%s\n", buffer.GetString());
           dest->data.json.json_body[len] = '\0';
           dest->need_clear = true;
-          if (len2 > 0) {
-            dest->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len2 + 1));
-            memcpy (dest->domain.general_info.schema_raw, src->domain.general_info.schema_raw, len2);
-            dest->domain.general_info.schema_raw[len2] = '\0';
-          }
+          if (len2 > 0)
+            {
+              dest->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len2 + 1));
+              memcpy (dest->domain.general_info.schema_raw, src->domain.general_info.schema_raw, len2);
+              dest->domain.general_info.schema_raw[len2] = '\0';
+            }
       }
       else
         {

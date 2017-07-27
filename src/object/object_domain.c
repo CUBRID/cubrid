@@ -975,13 +975,19 @@ tp_domain_free (TP_DOMAIN * dom)
 
       /* NULL things that might be problems for garbage collection */
       dom->class_mop = NULL;
-      /*if (dom->schema_raw) {
-        db_private_free_and_init (NULL, dom->schema_raw);
-      }
-      if (dom->schema_validator) {
-        delete dom->schema_validator;
-        dom->schema_validator = NULL; //TODO release memory without breaking (we need to deep copy pointers)
-      }*/
+      if (dom->type->id == DB_TYPE_JSON && dom->schema_raw)
+        {
+          assert (dom->validation_obj != NULL);
+
+          free_and_init (dom->schema_raw);
+          delete dom->validation_obj->document;
+          delete dom->validation_obj->schema;
+          delete dom->validation_obj->validator;
+
+          free (dom->validation_obj);
+          dom->validation_obj = NULL;
+        }
+
       /* 
        * sub-domains are always completely owned by their root domain,
        * they cannot be cached anywhere else.
@@ -1316,6 +1322,8 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	    }
 	  else
 	    {
+              int schema_len = 0, error;
+
 	      /* copy over the domain parameters */
 	      new_domain->class_mop = d->class_mop;
 	      new_domain->class_oid = d->class_oid;
@@ -1326,8 +1334,16 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	      new_domain->self_ref = d->self_ref;
 	      new_domain->is_parameterized = d->is_parameterized;
 	      new_domain->is_desc = d->is_desc;
-	      new_domain->schema_validator = d->schema_validator;
-	      new_domain->schema_raw = d->schema_raw;
+              if (d->type->id == DB_TYPE_JSON && d->schema_raw)
+                {
+                  assert (d->validation_obj != NULL);
+                  schema_len = strlen (d->schema_raw);
+
+                  new_domain->validation_obj = get_copy_of_validator (d->validation_obj, d->schema_raw);
+                  new_domain->schema_raw = (char *) malloc (schema_len+1);
+                  memcpy (new_domain->schema_raw, d->schema_raw, schema_len);
+                  new_domain->schema_raw[schema_len] = '\0';
+                }
 
 	      if (d->type->id == DB_TYPE_ENUMERATION)
 		{
@@ -3448,7 +3464,13 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	      domain = dbuf;
 	      domain_init (domain, value_type);
 	    }
-	  domain->schema_raw = db_get_json_schema (val);
+          if (db_get_json_schema (val))
+            {
+              int len = strlen (db_get_json_schema (val));
+              domain->schema_raw = (char *) malloc (len+1);
+              memcpy(domain->schema_raw, db_get_json_schema (val), len);
+              domain->schema_raw[len] = '\0';
+            }
           break;
 
         }
@@ -4352,9 +4374,9 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 
       for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 	{
-          if (d->schema_validator != NULL)
+          if (d->validation_obj != NULL)
             {
-              bool result = value->data.json.document->Accept (*d->schema_validator);
+              bool result = value->data.json.document->Accept (*d->validation_obj->validator);
               if (result)
                 {
                   best = d;
@@ -7310,17 +7332,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
             case DB_TYPE_JSON:
               {
                 bool result;
-                if (!desired_domain->schema_validator) {
+                if (!desired_domain->validation_obj) {
                   result = true;
                 } else {
-                  result = src->data.json.document->Accept (*desired_domain->schema_validator);
+                  result = src->data.json.document->Accept (*desired_domain->validation_obj->validator);
                 }
 
                 if (result) {
                   pr_clone_value ((DB_VALUE *) src, dest);
                   return (status);
                 } else {
-                  printf ("json was rejected by schema!\n");
+                  printf ("json was rejected by schema!\n"); /* TODO ADD PROPER ERROR THROW */
                 }
                 break;
               }
@@ -10397,9 +10419,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
                     target->data.json.document = new rapidjson::Document();
                     target->data.json.document->Parse (DB_GET_STRING (src));
 
-                    if (desired_domain->schema_validator)
+                    if (desired_domain->validation_obj->validator)
                       {
-                        desired_domain->schema_validator->Reset ();
+                        desired_domain->validation_obj->validator->Reset ();
                       }
 
                     if (target->data.json.document->HasParseError ())
@@ -10411,8 +10433,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
                         break;
                         //TODO Find a way to show this error to the screen
                       }
-                    if (desired_domain->schema_validator &&
-                        !target->data.json.document->Accept (*desired_domain->schema_validator))
+                    if (desired_domain->validation_obj->validator &&
+                        !target->data.json.document->Accept (*desired_domain->validation_obj->validator))
                       {
                         status = DOMAIN_INCOMPATIBLE;
                         break;

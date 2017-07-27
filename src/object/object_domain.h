@@ -35,6 +35,7 @@
 #include "area_alloc.h"
 #if defined (__cplusplus)
 #include "rapidjson/schema.h"
+#include "db_json.h"
 #endif
 #define DOM_GET_ENUMERATION(dom) \
     ((dom)->enumeration)
@@ -110,7 +111,7 @@ typedef struct tp_domain
   unsigned is_visited:1;
 
 #if defined (__cplusplus)
-  rapidjson::SchemaValidator * schema_validator; /* schema validator if type is json */
+  DB_JSON_VALIDATION_OBJECT * validation_obj; /* schema validator if type is json */
   char * schema_raw;
 #endif
 } TP_DOMAIN;

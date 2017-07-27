@@ -1758,8 +1758,9 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
   DB_ENUMERATION enumeration;
   int collation_id = 0;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_NORMAL;
-  rapidjson::SchemaValidator * validator = NULL;
+  DB_JSON_VALIDATION_OBJECT * validator = NULL;
   char * raw_schema = NULL;
+  int rc;
 
   if (dt == NULL)
     {
@@ -1800,15 +1801,17 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
         {
-          rapidjson::Document * document = new rapidjson::Document();
-          if (document->Parse ((const char *)dt->info.data_type.json_schema->bytes).HasParseError ())
+          validator = get_validator_from_schema_string ((const char *)dt->info.data_type.json_schema->bytes, &rc);
+          if (!validator)
             {
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON_SCHEMA, 0);
-              return NULL;
+              if (rc != NO_ERROR)
+                {
+                  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, rc, 0);
+                  return NULL;
+                }
+              assert (false); /* we shouldn't get here */
             }
-          rapidjson::SchemaDocument * schema = new rapidjson::SchemaDocument (*document);
-          validator = new rapidjson::SchemaValidator (*schema);
-          raw_schema = (char *) db_private_alloc (NULL, dt->info.data_type.json_schema->length + 1);
+          raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
           memcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes, dt->info.data_type.json_schema->length);
           raw_schema[dt->info.data_type.json_schema->length] = '\0';
           break;
@@ -1937,7 +1940,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       retval->enumeration.collation_id = collation_id;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
-      retval->schema_validator = validator;
+      retval->validation_obj = validator;
       retval->schema_raw = raw_schema;
     }
   else
@@ -1988,7 +1991,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
   int error = NO_ERROR;
   TP_DOMAIN_COLL_ACTION collation_flag;
 
-  rapidjson::SchemaValidator * schema_validator = NULL;
+  DB_JSON_VALIDATION_OBJECT * validator = NULL;
 
   if (dt == NULL)
     {
@@ -2029,7 +2032,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
       return pt_type_enum_to_db_domain (type);
 
     case DB_TYPE_JSON:
-      schema_validator = dt->info.data_type.schema_validator;
+      validator = dt->info.data_type.validation_obj;
       break;
 
     case DB_TYPE_OBJECT:
@@ -2127,7 +2130,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
       retval->collation_id = collation_id;
       retval->collation_flag = collation_flag;
       retval->enumeration.collation_id = collation_id;
-      retval->schema_validator = schema_validator;
+      retval->validation_obj = validator;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
     }

@@ -2114,7 +2114,7 @@ struct pt_data_type_info
   PT_MISC_TYPE inout;		/* input or output method parameter */
   PARSER_VARCHAR * json_schema;
 #if defined (__cplusplus)
-  rapidjson::SchemaValidator * schema_validator;
+  DB_JSON_VALIDATION_OBJECT * validation_obj;
 #endif
 };
 

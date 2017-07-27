@@ -2381,6 +2381,7 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
       sb.Clear();
       dest_sci->schema_validator->GetInvalidDocumentPointer().StringifyUriFragment(sb);
       printf("Invalid document: %s\n", sb.GetString());
+      /*TODO ADD PROPER ERROR THROW */
       }
       return result;
     }
@@ -11124,7 +11125,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	{
 	  sci.prec = lhs->data_type->info.data_type.precision;
 	  sci.scale = lhs->data_type->info.data_type.dec_precision;
-          sci.schema_validator = lhs->data_type->info.data_type.schema_validator;
+	  sci.schema_validator = lhs->data_type->info.data_type.validation_obj->validator;
 	}
 
       if (PT_HAS_COLLATION (lhs->type_enum))

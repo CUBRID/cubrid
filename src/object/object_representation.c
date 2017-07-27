@@ -5190,17 +5190,18 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
                 }
               if (schema_len > 0)
                 {
-                  rapidjson::Document * document = new rapidjson::Document ();
-                  d->schema_raw = (char *) db_private_alloc (NULL, schema_len+1);
+                  d->schema_raw = (char *) malloc (schema_len+1);
 
                   rc = or_get_data (buf, d->schema_raw, schema_len);
                   if (rc != NO_ERROR)
                     {
                       goto error;
                     }
-                  document->Parse (d->schema_raw);
-                  rapidjson::SchemaDocument * schema = new rapidjson::SchemaDocument(*document);
-                  d->schema_validator = new rapidjson::SchemaValidator (*schema);
+                  d->schema_raw[schema_len] = '\0';
+                  d->validation_obj = get_validator_from_schema_string (d->schema_raw, &rc);
+
+                  assert (d->validation_obj != 0);
+                  assert (rc == NO_ERROR);
                 }
             }
 
@@ -5282,7 +5283,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
   precision = scale = 0;
 
   char * schema_raw = NULL;
-  rapidjson::SchemaValidator * schema_validator = NULL;
+  DB_JSON_VALIDATION_OBJECT * validator = NULL;
 
   more = true;
   while (more)
@@ -5546,17 +5547,18 @@ unpack_domain (OR_BUF * buf, int *is_null)
                         {
                           goto error;
                         }
-                    rapidjson::Document * document = new rapidjson::Document ();
-                    schema_raw = (char *) db_private_alloc (NULL, schema_len+1);
+                    schema_raw = (char *) malloc (schema_len+1);
 
                     rc = or_get_data (buf, schema_raw, schema_len);
                     if (rc != NO_ERROR)
                       {
                         goto error;
                       }
-                    document->Parse (schema_raw);
-                    rapidjson::SchemaDocument * schema = new rapidjson::SchemaDocument(*document);
-                    schema_validator = new rapidjson::SchemaValidator (*schema);
+                    schema_raw[schema_len] = '\0';
+                    validator = get_validator_from_schema_string (schema_raw, &rc);
+
+                    assert (validator != NULL);
+                    assert (rc == NO_ERROR);
 		  }
 
                 break;
@@ -5580,7 +5582,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		{
                 case DB_TYPE_JSON:
                   dom->schema_raw = schema_raw;
-                  dom->schema_validator = schema_validator;
+                  dom->validation_obj = validator;
                   break;
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:

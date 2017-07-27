@@ -3941,7 +3941,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	  return NULL;
 	}
       result->type_enum = t;
-      result->info.data_type.schema_validator = domain->schema_validator;
+      result->info.data_type.validation_obj = domain->validation_obj;
       result->info.data_type.json_schema = pt_append_bytes(parser,
                                                            NULL,
                                                            domain->schema_raw,
