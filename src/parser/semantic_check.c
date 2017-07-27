@@ -12812,7 +12812,6 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	  return 1;
 	}
 
-      if (!(p->info.dot.arg2->node_type == PT_NAME) || !(q->info.dot.arg2->node_type == PT_NAME))
 	{
 	  return 1;
 	}

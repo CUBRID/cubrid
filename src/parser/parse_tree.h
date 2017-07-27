@@ -509,7 +509,7 @@
 #define PT_IS_NUMBERING_AFTER_EXECUTION(op) \
         ( ((op) == PT_INST_NUM || \
            (op) == PT_ROWNUM || \
-           (int)(op) == (int)PT_GROUPBY_NUM || \
+           /*(int)(op) == (int)PT_GROUPBY_NUM || - TODO: this does not belong here. */ \
            (op) == PT_ORDERBY_NUM) ? true : false )
 
 #define PT_IS_SERIAL(op) \

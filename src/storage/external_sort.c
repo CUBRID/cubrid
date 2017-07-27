@@ -657,7 +657,7 @@ sort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_
    * address of the record in the buffer. Otherwise, the record is copied
    * onto the area specified by the descriptor
    */
-  if (peek_p == true)
+  if (peek_p == PEEK)
     {
       recdes->area_size = -1;
       recdes->data = (char *) pgptr + sptr->roffset;

@@ -87,13 +87,13 @@ typedef struct pr_type
   int (*index_readval) (OR_BUF * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len);
   /* btree value compare */
-  int (*index_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion, int total_order,
-			int *start_colp);
+    DB_VALUE_COMPARE_RESULT (*index_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion,
+					      int total_order, int *start_colp);
   /* free memory for swap or GC */
   void (*freemem) (void *memptr);
   /* memory value compare */
-  int (*data_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion, int total_order,
-		       int *start_colp);
+    DB_VALUE_COMPARE_RESULT (*data_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion,
+					     int total_order, int *start_colp);
   /* db value compare */
     DB_VALUE_COMPARE_RESULT (*cmpval) (DB_VALUE * value, DB_VALUE * value2, int do_coercion, int total_order,
 				       int *start_colp, int collation);
@@ -318,9 +318,10 @@ extern int pr_free_ext_value (DB_VALUE * value);
 
 /* Special transformation functions */
 
-extern int pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order,
-			       int num_index_term, int *start_colp, int *result_size1, int *result_size2,
-			       int *diff_column, bool * dom_is_desc, bool * next_dom_is_desc);
+extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
+						   int total_order, int num_index_term, int *start_colp,
+						   int *result_size1, int *result_size2, int *diff_column,
+						   bool * dom_is_desc, bool * next_dom_is_desc);
 extern int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain);
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
 					  char **prev_ptrp);

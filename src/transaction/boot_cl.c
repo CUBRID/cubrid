@@ -135,7 +135,6 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* ha_server_state */ HA_SERVER_STATE_NA,
   /* server_session_key */ {(char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF,
 			    (char) 0xFF},
-  //vapa!!!
   INTL_CODESET_NONE,
   NULL
 };

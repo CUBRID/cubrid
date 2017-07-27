@@ -684,7 +684,7 @@ typedef int pthread_key_t;
 
 int pthread_create (pthread_t * thread, const pthread_attr_t * attr,
 		    THREAD_RET_T (THREAD_CALLING_CONVENTION * start_routine) (void *), void *arg);
-void pthread_exit (void *ptr);
+void pthread_exit (THREAD_RET_T ptr);
 pthread_t pthread_self (void);
 int pthread_join (pthread_t thread, void **value_ptr);
 

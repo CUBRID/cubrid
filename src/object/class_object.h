@@ -101,9 +101,9 @@
 	                                       SM_CONSTRAINT_REVERSE_INDEX)
 
 #define SM_IS_CONSTRAINT_UNIQUE_FAMILY(c) \
-        (((int)(c) == (int)SM_CONSTRAINT_UNIQUE          || \
-	  (int)(c) == (int)SM_CONSTRAINT_PRIMARY_KEY     || \
-	  (int)(c) == (int)SM_CONSTRAINT_REVERSE_UNIQUE)    \
+        (((c) == SM_CONSTRAINT_UNIQUE          || \
+	  (c) == SM_CONSTRAINT_PRIMARY_KEY     || \
+	  (c) == SM_CONSTRAINT_REVERSE_UNIQUE)    \
           ? true : false )
 
 #define SM_IS_CONSTRAINT_INDEX_FAMILY(c) \
@@ -125,7 +125,7 @@
 
 #define SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY(c) \
         ((SM_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
-         (int)(c) == (int)SM_CONSTRAINT_FOREIGN_KEY)        \
+         (c) == SM_CONSTRAINT_FOREIGN_KEY)        \
          ? true : false )
 
 #define SM_IS_INDEX_FAMILY(c) \
@@ -795,7 +795,7 @@ struct sm_class
   unsigned int flags;
   unsigned int virtual_cache_local_schema_id;
   unsigned int virtual_cache_global_schema_id;
-  unsigned int virtual_cache_snapshot_version;
+  int virtual_cache_snapshot_version;
 
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
   unsigned post_load_cleanup:1;	/* set if post load cleanup has occurred */

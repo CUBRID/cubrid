@@ -117,7 +117,7 @@ static int rv;
 #define HEAP_GUESS_NUM_ATTRS_REFOIDS 100
 #define HEAP_GUESS_NUM_INDEXED_ATTRS 100
 
-#define HEAP_CLASSREPR_MAXCACHE	100
+#define HEAP_CLASSREPR_MAXCACHE	1024
 
 #define HEAP_STATS_ENTRY_MHT_EST_SIZE 1000
 #define HEAP_STATS_ENTRY_FREELIST_SIZE 1000
@@ -2270,8 +2270,11 @@ heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * cla
   HEAP_CLASSREPR_HASH *hash_anchor;
   OR_CLASSREP *repr = NULL;
   OR_CLASSREP *repr_from_record = NULL;
+  OR_CLASSREP *repr_last = NULL;
   REPR_ID last_reprid;
   int r;
+
+  *idx_incache = -1;
 
   hash_anchor = &heap_Classrepr->hash_table[REPR_HASH (class_oid)];
 
@@ -2314,9 +2317,70 @@ search_begin:
 
   if (cache_entry == NULL)
     {
+      if (repr_from_record == NULL)
+	{
+	  /* note: we need to read class record from heap page. however, latching a page and holding mutex is never a
+	   *       good idea, and it can generate ugly deadlocks. but in most cases, we won't have concurrency here,
+	   *       so let's try a conditional latch on page of class. if that doesn't work, release the hash mutex,
+	   *       read representation from heap and restart the process to ensure consistency. */
+	  VPID vpid_of_class;
+	  PAGE_PTR page_of_class = NULL;
+	  VPID_GET_FROM_OID (&vpid_of_class, class_oid);
+	  page_of_class = pgbuf_fix (thread_p, &vpid_of_class, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+	  if (page_of_class == NULL)
+	    {
+	      /* we cannot hold mutex */
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	    }
+	  else if (spage_get_record_type (page_of_class, class_oid->slotid) != REC_HOME)
+	    {
+	      /* things get too complicated when we need to do ordered fix. */
+	      pgbuf_unfix_and_init (thread_p, page_of_class);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	    }
+	  repr_from_record = heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, reprid);
+	  if (repr_from_record == NULL)
+	    {
+	      ASSERT_ERROR ();
+
+	      if (page_of_class != NULL)
+		{
+		  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+		  pgbuf_unfix_and_init (thread_p, page_of_class);
+		}
+	      goto exit;
+	    }
+	  if (reprid == NULL_REPRID)
+	    {
+	      reprid = last_reprid;
+	    }
+	  if (reprid != last_reprid && repr_last == NULL)
+	    {
+	      repr_last = heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, last_reprid);
+	      if (repr_last == NULL)
+		{
+		  /* can we accept this case? */
+		}
+	    }
+	  if (page_of_class == NULL)
+	    {
+	      /* hash mutex was released, we need to restart search. */
+	      goto search_begin;
+	    }
+	  else
+	    {
+	      pgbuf_unfix_and_init (thread_p, page_of_class);
+	      /* hash mutex was kept */
+	      /* fall through */
+	    }
+	}
+      assert (repr_from_record != NULL);
+      assert (last_reprid != NULL_REPRID);
+
 #ifdef SERVER_MODE
       /* class_oid was not found. Lock class_oid. heap_classrepr_lock_class () release hash_anchor->hash_lock */
-      if (heap_classrepr_lock_class (thread_p, hash_anchor, class_oid) != LOCK_ACQUIRED)
+      r = heap_classrepr_lock_class (thread_p, hash_anchor, class_oid);
+      if (r != LOCK_ACQUIRED)
 	{
 	  if (r == NEED_TO_RETRY)
 	    {
@@ -2330,28 +2394,24 @@ search_begin:
 	}
 #endif
 
-      repr = heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, reprid);
-      if (repr == NULL)
-	{
-#ifdef SERVER_MODE
-	  (void) heap_classrepr_unlock_class (hash_anchor, class_oid, true);
-#endif
-	  goto exit;
-	}
-
       /* Get free entry */
       cache_entry = heap_classrepr_entry_alloc ();
       if (cache_entry == NULL)
 	{
-	  /* if all cache entry is busy, allocate memory for repr. */
-	  *idx_incache = -1;
+	  /* if all cache entry is busy, return disk repr. */
 
 #ifdef SERVER_MODE
 	  /* free lock for class_oid */
 	  (void) heap_classrepr_unlock_class (hash_anchor, class_oid, true);
 #endif
 
-	  goto exit;
+	  if (repr_last != NULL)
+	    {
+	      or_free_classrep (repr_last);
+	    }
+
+	  /* return disk repr when repr cache is full */
+	  return repr_from_record;
 	}
 
       /* check if cache_entry->repr[last_reprid] is valid. */
@@ -2382,11 +2442,6 @@ search_begin:
 	  memset (cache_entry->repr, 0, cache_entry->max_reprid * sizeof (OR_CLASSREP *));
 	}
 
-      if (reprid == NULL_REPRID)
-	{
-	  reprid = last_reprid;
-	}
-
       if (reprid <= NULL_REPRID || reprid > last_reprid || reprid > cache_entry->max_reprid)
 	{
 	  assert (false);
@@ -2407,15 +2462,16 @@ search_begin:
 	  goto exit;
 	}
 
-      cache_entry->repr[reprid] = repr;
+      cache_entry->repr[reprid] = repr_from_record;
+      repr = cache_entry->repr[reprid];
+      repr_from_record = NULL;
       cache_entry->last_reprid = last_reprid;
-
       if (reprid != last_reprid)
 	{			/* if last repr is not cached */
 	  /* normally, we should not access heap record while keeping mutex in cache entry. however, this entry was not
 	   * yet attached to cache, so no one will get its mutex yet */
-	  cache_entry->repr[last_reprid] =
-	    heap_classrepr_get_from_record (thread_p, &last_reprid, class_oid, class_recdes, last_reprid);
+	  cache_entry->repr[last_reprid] = repr_last;
+	  repr_last = NULL;
 	}
 
       cache_entry->fcnt = 1;
@@ -2495,6 +2551,10 @@ exit:
   if (repr_from_record != NULL)
     {
       or_free_classrep (repr_from_record);
+    }
+  if (repr_last != NULL)
+    {
+      or_free_classrep (repr_last);
     }
   return repr;
 }
@@ -7186,7 +7246,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
    * valid cached object.
    */
 
-  if (ispeeking == true)
+  if (ispeeking == PEEK)
     {
       scan = spage_get_record (thread_p, pgptr, slotid, recdes, PEEK);
       if (scan != S_SUCCESS)
@@ -7628,8 +7688,8 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
    * keep the page latched while the recdes don't go out of scope. If ispeeking is COPY, we must have a preallocated
    * area to copy to. This means either scan_cache is not NULL (and scan_cache->area can be used) or recdes->data is 
    * not NULL (and recdes->area_size defines how much can be copied). */
-  assert ((context->ispeeking == true)
-	  || (context->ispeeking == false && (scan_cache_p != NULL || context->recdes_p->data != NULL)));
+  assert ((context->ispeeking == PEEK)
+	  || (context->ispeeking == COPY && (scan_cache_p != NULL || context->recdes_p->data != NULL)));
 
   switch (context->record_type)
     {
@@ -7646,7 +7706,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
       return spage_get_record (thread_p, context->fwd_page_watcher.pgptr, context->forward_oid.slotid,
 			       context->recdes_p, COPY);
     case REC_BIGONE:
-      return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking == true, &context->forward_oid,
+      return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking, &context->forward_oid,
 				      context->recdes_p);
     case REC_HOME:
       if (scan_cache_p != NULL && context->ispeeking == COPY && context->recdes_p->data == NULL
@@ -21690,7 +21750,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       /* the old overflow record is no longer needed, it was linked only by old home */
       if (heap_ovf_delete (thread_p, &context->hfid, &context->ovf_oid, NULL) == NULL)
 	{
-	  assert (false);
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}

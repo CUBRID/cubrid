@@ -6299,7 +6299,7 @@ sm_virtual_queries (PARSER_CONTEXT * parser, DB_OBJECT * class_object)
 	  recache = true;
 	}
       else if ((cl->virtual_cache_global_schema_id != sm_global_schema_version ())
-	       && (cl->virtual_cache_snapshot_version != (unsigned int)ws_get_mvcc_snapshot_version ()))
+	       && (cl->virtual_cache_snapshot_version != ws_get_mvcc_snapshot_version ()))
 	{
 	  /* Recache if somebody else bumped schema version and if we are not protected by current snapshot. We don't
 	   * want to recache virtual queries already cached in current statement preparation (most of all, because we

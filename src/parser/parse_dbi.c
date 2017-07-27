@@ -1585,7 +1585,11 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_DB_VALUE:
     case DB_TYPE_TABLE:
     case DB_TYPE_RESULTSET:
-    case DB_TYPE_ELO:		//vapa!!!
+      break;
+
+    case DB_TYPE_ELO:
+      /* obsolete. */
+      assert (false);
       break;
     }
 
@@ -1897,7 +1901,11 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_VARIABLE:
     case DB_TYPE_TABLE:
     case DB_TYPE_RESULTSET:
+      break;
+
     case DB_TYPE_ELO:
+      /* obsolete */
+      assert (false);
       break;
     }
 
@@ -2103,7 +2111,11 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_VARIABLE:
     case DB_TYPE_TABLE:
     case DB_TYPE_RESULTSET:
+      break;
+
     case DB_TYPE_ELO:
+      /* obsolete */
+      assert (false);
       break;
     }
 

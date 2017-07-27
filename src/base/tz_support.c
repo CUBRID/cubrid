@@ -5511,7 +5511,7 @@ set_new_zone_id (TZ_DECODE_INFO * tz_info)
   timezone_name = tz_Timezone_data.names[tz_info->zone.zone_id].name;
   tz_set_data (tz_get_new_timezone_data ());
   new_zone_id = tz_get_zone_id_by_name (timezone_name, strlen (timezone_name));
-  if (new_zone_id == (unsigned int)-1)
+  if (new_zone_id == (unsigned int) -1)
     {
       err_status = ER_TZ_INVALID_TIMEZONE;
     }

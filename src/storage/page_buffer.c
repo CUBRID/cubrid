@@ -2890,7 +2890,7 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page)
     {
       ASSERT_ERROR ();
     }
-  if (free_page == true)
+  if (free_page == FREE)
     {
       pgbuf_unfix (thread_p, pgptr);
     }
@@ -4305,7 +4305,7 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page)
   pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
 
   /* If free request is given, unfix the page. */
-  if (free_page == true)
+  if (free_page == FREE)
     {
       pgbuf_unfix (thread_p, pgptr);
     }

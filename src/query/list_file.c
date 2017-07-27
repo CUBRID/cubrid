@@ -1262,7 +1262,7 @@ qfile_is_last_page_full (QFILE_LIST_ID * list_id_p, int tuple_length, bool is_ov
   bool result;
 
   assert (tuple_length >= 0 && list_id_p->last_offset >= 0);
-  result = (unsigned int) tuple_length + (unsigned int) list_id_p->last_offset > (unsigned int)DB_PAGESIZE;
+  result = tuple_length + list_id_p->last_offset > DB_PAGESIZE;
 
   if (result && !is_ovf_page)
     {

@@ -1663,10 +1663,8 @@ logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
   fprintf (out_fp, "    Active top system operations for tran:\n");
   for (i = topops_p->last; i >= 0; i--)
     {
-      fprintf (out_fp, " Head = %lld|%lld, Posp_Head = %lld|%lld\n",
-	       (long long int) topops_p->stack[i].lastparent_lsa.pageid,
-	       (long long) topops_p->stack[i].lastparent_lsa.offset, (long long int) topops_p->stack[i].posp_lsa.pageid,
-	       (long long) topops_p->stack[i].posp_lsa.offset);
+      fprintf (out_fp, " Head = %lld|%d, Posp_Head = %lld|%d\n",
+	       LSA_AS_ARGS (&topops_p->stack[i].lastparent_lsa), LSA_AS_ARGS (&topops_p->stack[i].posp_lsa));
     }
 }
 

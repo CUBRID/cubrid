@@ -1347,9 +1347,9 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
   num_as_bytes[num_byte_count] = '\0';
 
   if ((codeset == INTL_CODESET_UTF8
-       && intl_check_utf8 ((const unsigned char *) num_as_bytes, num_byte_count, &invalid_pos) != 0)
+       && intl_check_utf8 ((const unsigned char *) num_as_bytes, num_byte_count, &invalid_pos) != INTL_UTF8_VALID)
       || (codeset == INTL_CODESET_KSC5601_EUC
-	  && intl_check_euckr ((const unsigned char *) num_as_bytes, num_byte_count, &invalid_pos) != 0))
+	  && intl_check_euckr ((const unsigned char *) num_as_bytes, num_byte_count, &invalid_pos) != INTL_UTF8_VALID))
     {
       DB_MAKE_NULL (res);
       db_private_free (NULL, num_as_bytes);

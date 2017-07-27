@@ -5020,7 +5020,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
 
-      if (is_peeking == true && hsidp->scan_cache.page_watcher.pgptr != NULL
+      if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
 	  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 	{
 	  is_peeking = COPY;
@@ -5217,7 +5217,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      return S_ERROR;
 	    }
 
-	  if (is_peeking == true && hsidp->scan_cache.page_watcher.pgptr != NULL
+	  if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
 	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 	    {
 	      is_peeking = COPY;
@@ -5255,7 +5255,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  return S_ERROR;
 		}
 
-	      if (is_peeking == true && hsidp->scan_cache.page_watcher.pgptr != NULL
+	      if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
 		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 		{
 		  is_peeking = COPY;

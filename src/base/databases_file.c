@@ -1330,7 +1330,7 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
 	}
       else
 	{
-	  len = (int) (next_sep - current_host);
+	  len = CAST_STRLEN (next_sep - current_host);
 
 	  if (len == hostname_len && strncmp (current_host, hostname, len) == 0)
 	    {

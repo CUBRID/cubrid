@@ -612,8 +612,8 @@ static int *tranid_lfind (const int *key, const int *base, int *nmemb);
 static int bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_index, int *len_son_index,
 				int cnt);
 static DB_VALUE_COMPARE_RESULT bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1);
-static int bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
-			      int *start_colp);
+static DB_VALUE_COMPARE_RESULT bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+						  int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 						 int *start_colp, int collation);
 static void qexec_resolve_domains_on_sort_list (SORT_LIST * order_list, REGU_VARIABLE_LIST reference_regu_list);
@@ -14503,9 +14503,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 #endif /* NDEBUG */
 
 #if defined(ENABLE_SYSTEMTAP)
-  char *query_str = NULL;
+  const char *query_str = NULL;
   int client_id = -1;
-  char *db_user = NULL;
+  const char *db_user = NULL;
   LOG_TDES *tdes = NULL;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -14588,7 +14588,10 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   query_str = qmgr_get_query_sql_user_text (thread_p, query_id, tran_index);
 
-  CUBRID_QUERY_EXEC_START (query_str ? query_str : "unknown", query_id, client_id, db_user ? db_user : "unknown");
+  query_str = (query_str ? query_str : "unknown");
+  db_user = (db_user ? db_user : "unknown");
+
+  CUBRID_QUERY_EXEC_START (query_str, query_id, client_id, db_user);
 #endif /* ENABLE_SYSTEMTAP */
 
   /* form the value descriptor to represent positional values */
@@ -14765,8 +14768,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
 end:
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_QUERY_EXEC_END (query_str ? query_str : "unknown", query_id, client_id, db_user ? db_user : "unknown",
-			 (er_errid () != NO_ERROR));
+  CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
   return list_id;
 }
@@ -17977,10 +17979,10 @@ bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1)
  * bf2df_str_cmpdisk () -
  *   return: DB_LT, DB_EQ, or DB_GT
  */
-static int
+static DB_VALUE_COMPARE_RESULT
 bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  int c = DB_UNK;
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
   char *str1, *str2;
   int str_length1, str1_compressed_length = 0, str1_decompressed_length = 0;
   int str_length2, str2_compressed_length = 0, str2_decompressed_length = 0;
@@ -18000,7 +18002,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
-      return (int) bf2df_str_compare ((unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2);
+      return bf2df_str_compare ((unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2);
     }
 
   assert (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
@@ -18101,7 +18103,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
       db_private_free_and_init (NULL, string2);
     }
 
-  return (int) c;
+  return c;
 
 cleanup:
   if (string1 != NULL && alloced_string1 == true)
@@ -18114,7 +18116,7 @@ cleanup:
       db_private_free_and_init (NULL, string2);
     }
 
-  return (int) DB_UNK;
+  return DB_UNK;
 }
 
 /*

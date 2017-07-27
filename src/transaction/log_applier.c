@@ -6641,7 +6641,7 @@ la_commit_transaction (void)
       ws_cull_mops_per_apply = LA_WS_CULL_MOPS_PER_APPLY;
     }
 
-  if ((long unsigned)diff_time >= ws_cull_mops_interval || diff_applied_item >= ws_cull_mops_per_apply)
+  if ((long unsigned) diff_time >= ws_cull_mops_interval || diff_applied_item >= ws_cull_mops_per_apply)
     {
       ws_filter_dirty ();
       ws_cull_mops ();
@@ -7136,18 +7136,12 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
 	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.creation_time);
 	  printf ("%-30s : %s\n", "DB creation time", timebuf);
 
-	  printf ("%-30s : %lld | %d\n", "Last committed LSA", (long long int) ha_apply_info.committed_lsa.pageid,
-		  (int) ha_apply_info.committed_lsa.offset);
-	  printf ("%-30s : %lld | %ld\n", "Last committed replog LSA",
-		  (long long int) ha_apply_info.committed_rep_lsa.pageid, ha_apply_info.committed_rep_lsa.offset);
-	  printf ("%-30s : %lld | %ld\n", "Last append LSA", (long long int) ha_apply_info.append_lsa.pageid,
-		  ha_apply_info.append_lsa.offset);
-	  printf ("%-30s : %lld | %ld\n", "Last EOF LSA", (long long int) ha_apply_info.eof_lsa.pageid,
-		  ha_apply_info.eof_lsa.offset);
-	  printf ("%-30s : %lld | %ld\n", "Final LSA", (long long int) ha_apply_info.final_lsa.pageid,
-		  ha_apply_info.final_lsa.offset);
-	  printf ("%-30s : %lld | %ld\n", "Required LSA", (long long int) ha_apply_info.required_lsa.pageid,
-		  ha_apply_info.required_lsa.offset);
+	  printf ("%-30s : %lld | %d\n", "Last committed LSA", LSA_AS_ARGS (&ha_apply_info.committed_lsa));
+	  printf ("%-30s : %lld | %d\n", "Last committed replog LSA", LSA_AS_ARGS (&ha_apply_info.committed_rep_lsa));
+	  printf ("%-30s : %lld | %d\n", "Last append LSA", LSA_AS_ARGS (&ha_apply_info.append_lsa));
+	  printf ("%-30s : %lld | %d\n", "Last EOF LSA", LSA_AS_ARGS (&ha_apply_info.eof_lsa));
+	  printf ("%-30s : %lld | %d\n", "Final LSA", LSA_AS_ARGS (&ha_apply_info.final_lsa));
+	  printf ("%-30s : %lld | %d\n", "Required LSA", LSA_AS_ARGS (&ha_apply_info.required_lsa));
 
 	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.log_record_time);
 	  printf ("%-30s : %s\n", "Log record time", timebuf);
@@ -7887,8 +7881,7 @@ lp_prefetch_log_record (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg
     {
       if (la_does_page_exist (final->pageid) == LA_PAGE_EXST_IN_ARCHIVE_LOG)
 	{
-	  snprintf (buffer, sizeof (buffer), "process last log record in archive. LSA: %lld|%ld",
-		    (long long int) final->pageid, final->offset);
+	  snprintf (buffer, sizeof (buffer), "process last log record in archive. LSA: %lld|%d", LSA_AS_ARGS (final));
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
 	  final->pageid++;

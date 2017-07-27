@@ -427,7 +427,7 @@ numeric_init_pow_of_2 (void)
 static DEC_STRING *
 numeric_get_pow_of_2 (int exp)
 {
-  assert (exp < (int)(DB_NUMERIC_BUF_SIZE * 16 - 3));	/* exp < 253 */
+  assert (exp < (int) (DB_NUMERIC_BUF_SIZE * 16 - 3));	/* exp < 253 */
 
 #if !defined(SERVER_MODE)
   /* If this is the first time to call this routine, initialize */

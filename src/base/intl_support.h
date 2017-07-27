@@ -179,6 +179,14 @@ enum currency_check_mode
 };
 typedef enum currency_check_mode CURRENCY_CHECK_MODE;
 
+enum intl_utf8_validity
+{
+  INTL_UTF8_VALID,
+  INTL_UTF8_INVALID,
+  INTL_UTF8_TRUNCATED,
+};
+typedef enum intl_utf8_validity INTL_UTF8_VALIDITY;
+
 /* map of lengths of UTF-8 characters */
 extern const unsigned char *const intl_Len_utf8_char;
 
@@ -275,7 +283,7 @@ extern "C"
 #endif
   extern int intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n);
 #if !defined (SERVER_MODE)
-  extern int intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET codeset);
+  extern INTL_UTF8_VALIDITY intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET codeset);
   extern bool intl_is_bom_magic (const char *buf, const int size);
 #endif
   extern int intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq);
@@ -318,8 +326,8 @@ extern "C"
   extern char *intl_get_money_ISO88591_symbol (const DB_CURRENCY currency);
   extern int intl_get_currency_symbol_position (const DB_CURRENCY currency);
   extern int intl_count_utf8_chars (unsigned char *s, int length_in_bytes);
-  extern int intl_check_utf8 (const unsigned char *buf, int size, char **pos);
-  extern int intl_check_euckr (const unsigned char *buf, int size, char **pos);
+  extern INTL_UTF8_VALIDITY intl_check_utf8 (const unsigned char *buf, int size, char **pos);
+  extern INTL_UTF8_VALIDITY intl_check_euckr (const unsigned char *buf, int size, char **pos);
   extern int intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf,
 				    int *out_size);
   extern void intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf,

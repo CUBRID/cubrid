@@ -171,6 +171,7 @@ extern int btree_get_next_overflow_vpid (THREAD_ENTRY * thread_p, PAGE_PTR page_
 #define BTREE_MVCC_SET_HEADER_FIXED_SIZE(p_mvcc_rec_header) \
   do \
     { \
+      assert (p_mvcc_rec_header != NULL); \
       if (!((p_mvcc_rec_header)->mvcc_flag & OR_MVCC_FLAG_VALID_INSID)) \
         { \
           (p_mvcc_rec_header)->mvcc_flag |= OR_MVCC_FLAG_VALID_INSID; \

@@ -540,6 +540,11 @@ struct file_tracker_reuse_heap_context
 typedef int (*FILE_TRACK_ITEM_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 				     int index_item, bool * stop, void *args);
 
+/* Since indexes are built with SIX_LOCK, which allows check access an immature index file.
+ * To skip checking an immature index, check it with IX_LOCK which is incompatible with SIX_LOCK.
+ */
+#define FILE_GET_TRACKER_LOCK_MODE(file_type) (((file_type) == FILE_BTREE) ? IX_LOCK : SCH_S_LOCK)
+
 /************************************************************************/
 /* End of structures, globals and macro's                               */
 /************************************************************************/
@@ -10298,7 +10303,8 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     }
 
   /* try conditional lock */
-  if (lock_object (thread_p, class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK) != LK_GRANTED)
+  if (lock_object (thread_p, class_oid, oid_Root_class_oid, FILE_GET_TRACKER_LOCK_MODE (desired_type),
+		   LK_COND_LOCK) != LK_GRANTED)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CANNOT_CHECK_FILE, 5, item->volid, item->fileid,
 	      OID_AS_ARGS (class_oid));
@@ -10357,7 +10363,7 @@ file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_f
   if (!OID_ISNULL (class_oid))
     {
       /* now that we fixed tracker header page, we no longer need lock protection. */
-      lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
+      lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, FILE_GET_TRACKER_LOCK_MODE (desired_ftype), true);
       OID_SET_NULL (class_oid);
     }
 

@@ -1623,6 +1623,9 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval exec_begin, exec_end;
   char *eid_string;
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  char *plan = NULL;
+#endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) */
   int driver_query_timeout;
   int arg_index = 0;
   char auto_commit_mode;
@@ -1741,7 +1744,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-	  char *plan = db_get_execution_plan ();
+	  plan = db_get_execution_plan ();
 
 	  if (plan != NULL && plan[0] != '\0')
 	    {

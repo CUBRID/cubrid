@@ -5849,7 +5849,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
 		       &find_fk_object);
   if (error_code != NO_ERROR)
     {
-      assert_release (false);
+      ASSERT_ERROR ();
       return error_code;
     }
   /* Execute scan. */
@@ -7565,6 +7565,7 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
   btid_int.sys_btid = btid;
   if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
     {
+      valid = DISK_ERROR;
       goto error;
     }
 
@@ -18558,7 +18559,6 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
   if (dom_type == DB_TYPE_MIDXKEY)
     {
       /* safe code */
-      int midxc;
       if (key1_type != DB_TYPE_MIDXKEY)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (key1_type),
@@ -18574,10 +18574,8 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
-      midxc =
-	pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
-			    &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
-      c = DB_INT_TO_COMPARE_RESULT (midxc);
+      c = pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
+			      &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc)
@@ -19346,6 +19344,8 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
   bool clear_key = false;
   int key_type = BTREE_NORMAL_KEY;
 
+  bool check_interrupt = false;
+
   assert_release (btid_int != NULL);
   assert_release (page_ptr != NULL);
 
@@ -19356,6 +19356,7 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
   header = btree_get_node_header (thread_p, page_ptr);
   if (header == NULL)
     {
+      assert (false);
       return ER_FAILED;
     }
 
@@ -19394,6 +19395,9 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
       return NO_ERROR;
     }
 
+  /* don't let interrupts break our verification */
+  check_interrupt = thread_set_check_interrupt (thread_p, false);
+
   node_type = (header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
   if (node_type == BTREE_NON_LEAF_NODE)
@@ -19406,6 +19410,7 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
     }
 
   assert_release (ret == NO_ERROR);
+  (void) thread_set_check_interrupt (thread_p, check_interrupt);
 
   return ret;
 }
@@ -19548,7 +19553,8 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
   header = btree_get_node_header (thread_p, page_ptr);
   if (header == NULL)
     {
-      return ER_FAILED;
+      assert (false);
+      goto exit_on_error;
     }
 
   prev_vpid = header->prev_vpid;
@@ -19567,7 +19573,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
 	{
 	  btree_dump_page (thread_p, stdout, NULL, btid_int, NULL, page_ptr, NULL, 2, 2);
 	  assert (false);
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
       error =
 	btree_read_record_without_decompression (thread_p, btid_int, &rec, &lower_fence_key, &leaf_pnt, BTREE_LEAF_NODE,
@@ -19576,7 +19582,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
 	{
 	  btree_dump_page (thread_p, stdout, NULL, btid_int, NULL, page_ptr, NULL, 2, 2);
 	  assert (false);
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
     }
   /* There must be two fences to have common prefix. */
@@ -19725,7 +19731,6 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
 	{
 	  btree_dump_page (thread_p, stdout, NULL, btid_int, NULL, page_ptr, NULL, 2, 2);
 	  assert (false);
-	  btree_clear_key_value (&clear_prev_key, &prev_key);
 	  goto exit_on_error;
 	}
 

@@ -6139,7 +6139,7 @@ pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from)
       new_name->info.name.resolved = from->info.spec.range_var->info.name.original;
       /* set type enum to the expected type */
       new_name->type_enum = pt_db_to_type_enum (pt_Reserved_name_table[i].type);
-      if ((int)new_name->type_enum == (int)DB_TYPE_OBJECT)
+      if (new_name->type_enum == PT_TYPE_OBJECT)
 	{
 	  new_name->data_type =
 	    pt_domain_to_data_type (parser,
