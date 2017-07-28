@@ -27696,7 +27696,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
       error_code =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, leaf_record, offset_after_key, &leaf_info,
 						 &max_visible_oids, mvcc_snapshot, &num_visible);
-      if (error_code < 0)
+      if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return error_code;
