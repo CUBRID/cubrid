@@ -3775,7 +3775,7 @@ cleanup:
 
 /*
  * partition_attrinfo_get_key () - retrieves the appropiate partitioning key
- *			    from a given index key, by which prunning will be
+ *			    from a given index key, by which pruning will be
  *			    performed.
  * return : error code or NO_ERROR
  * thread_p (in) :
