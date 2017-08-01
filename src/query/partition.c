@@ -3515,7 +3515,6 @@ int
 partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, HFID * class_hfid,
 			     BTID * btid)
 {
-
   int error = NO_ERROR, pos = 0;
   OID partition_oid;
   HFID partition_hfid;
@@ -3869,6 +3868,22 @@ cleanup:
   return error;
 }
 
+/*
+ *  btree_get_pruning_partition_index ():     - Gets the index of the partition where the key resides.
+ *
+ *  return :                              - NO_ERROR or error code.
+ *
+ *  pcontext (in)                         - Context of the partitions.
+ *  key(in)                               - The key to be located.
+ *  class_oid(in/out)                     - The correct OID of the object that contains the key.
+ *  btid(in/out)                          - The correct BTID of the tree that contains the key.
+ *  position(out)                         - The number of the partition that holds the key.
+ *
+ *  NOTE:
+ *            - At the entry of the function, btid and class_oid should refer to the btid and oid, respectively,
+ *              of the root table on which the partitions are created. This ensures the correctness of the btid,
+ *              and class_oid on function exit.
+ */
 int
 btree_get_prunning_partition_index (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, BTID * btid,
 				    int *position)
