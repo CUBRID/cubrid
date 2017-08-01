@@ -58,7 +58,6 @@
 #define HB_STOP_WAITING_TIME_IN_SECS			(1)
 
 /* heartbeat resource process type */
-typedef enum hb_proc_type HB_PROC_TYPE;
 enum hb_proc_type
 {
   HB_PTYPE_SERVER = 0,
@@ -67,6 +66,7 @@ enum hb_proc_type
   HB_PTYPE_PREFETCHLOGDB = 3,
   HB_PTYPE_MAX
 };
+typedef enum hb_proc_type HB_PROC_TYPE;
 #define HB_PTYPE_SERVER_STR             "HA-server"
 #define HB_PTYPE_COPYLOGDB_STR          "HA-copylogdb"
 #define HB_PTYPE_APPLYLOGDB_STR         "HA-applylogdb"

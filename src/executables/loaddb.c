@@ -56,9 +56,14 @@
 #if defined (SA_MODE)
 extern bool locator_Dont_check_foreign_key;	/* from locator_sr.h */
 #endif
-
-extern void do_loader_parse (FILE * fp);
-
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void do_loader_parse (FILE * fp);
+#ifdef __cplusplus
+}
+#endif
 #define LOADDB_INIT_DEBUG()
 #define LOADDB_DEBUG_PRINTF(x)
 
@@ -335,7 +340,7 @@ run_proc (char *path, char *cmd_line)
 	  (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
 	   GetLastError (), MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) & lpMsgBuf, 0, NULL))
 	{
-	  printf ("%s\n", lpMsgBuf);
+	  printf ("%s\n", (const char *) lpMsgBuf);
 	  LocalFree (lpMsgBuf);
 	}
 

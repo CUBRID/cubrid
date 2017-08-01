@@ -427,7 +427,7 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p, char
   char buf[BUFFER_SIZE], *key, *data;
 
   snprintf (buf, BUFFER_SIZE, "%p%s", address, lib_file_name_p);
-  data = mht_get (fname_table, buf);
+  data = (char *) mht_get (fname_table, buf);
   if (data != NULL)
     {
       snprintf (buffer, buffer_size, data);

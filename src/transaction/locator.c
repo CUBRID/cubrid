@@ -124,7 +124,7 @@ static char *locator_pack_lockset_objects (char *packed, LC_LOCKSET * lockset);
 static char *locator_unpack_lockset_header (char *unpacked, LC_LOCKSET * lockset);
 static char *locator_unpack_lockset_classes (char *unpacked, LC_LOCKSET * lockset);
 static char *locator_unpack_lockset_objects (char *unpacked, LC_LOCKSET * lockset);
-static int locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length, int max_classes, int quit_on_errors);
+static int locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length, int max_classes, bool quit_on_errors);
 #if defined(CUBRID_DEBUG)
 static void locator_dump_lockhint_info (FILE * out_fp, LC_LOCKHINT * lockhint);
 static void locator_dump_lockhint_classes (FILE * out_fp, LC_LOCKHINT * lockhint);
@@ -469,7 +469,6 @@ locator_reallocate_copy_area_by_length (LC_COPYAREA * old_area, int new_length)
   int i, last_obj_offset = -1;
   int last_obj_length = 0;
   int old_content_length = 0;
-  char *ptr;
 
   if (old_area == NULL)
     {
@@ -1614,7 +1613,7 @@ locator_unpack_lockset (LC_LOCKSET * lockset, bool unpack_classes, bool unpack_o
  * NOTE: Allocate a lockhint areas.
  */
 LC_LOCKHINT *
-locator_allocate_lockhint (int max_classes, int quit_on_errors)
+locator_allocate_lockhint (int max_classes, bool quit_on_errors)
 {
   LC_LOCKHINT *lockhint = NULL;
   int length;
@@ -1682,7 +1681,7 @@ locator_allocate_lockhint (int max_classes, int quit_on_errors)
  * NOTE:
  */
 static int
-locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length, int max_classes, int quit_on_errors)
+locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length, int max_classes, bool quit_on_errors)
 {
   if (lockhint == NULL || length < SSIZEOF (*lockhint))
     {
@@ -2538,7 +2537,7 @@ locator_unpack_oid_set_to_new (THREAD_ENTRY * thread_p, char *buffer)
 	  ptr = or_unpack_hfid (ptr, &class_oidset->hfid);
 	  ptr = or_unpack_int (ptr, &class_oidset->num_oids);
 
-	  class_oidset->oids = db_private_alloc (thread_p, sizeof (LC_OIDMAP) * class_oidset->num_oids);
+	  class_oidset->oids = (LC_OIDMAP *) db_private_alloc (thread_p, sizeof (LC_OIDMAP) * class_oidset->num_oids);
 	  if (class_oidset->oids == NULL)
 	    {
 	      goto memory_error;

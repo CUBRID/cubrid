@@ -795,7 +795,7 @@ struct sm_class
   unsigned int flags;
   unsigned int virtual_cache_local_schema_id;
   unsigned int virtual_cache_global_schema_id;
-  unsigned int virtual_cache_snapshot_version;
+  int virtual_cache_snapshot_version;
 
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
   unsigned post_load_cleanup:1;	/* set if post load cleanup has occurred */

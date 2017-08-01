@@ -855,13 +855,13 @@ fh_dump (FH_TABLE * ht)
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_KEY_TYPE),
 	   ht->key_type == FH_OID_KEY ? oid_string : int_string);
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_PAGE_HEADERS),
-	   (unsigned long) ht->pg_hdr);
+	   (unsigned long) (unsigned long long) ht->pg_hdr);
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_LAST_PAGE_HEADER),
-	   (unsigned long) ht->pg_hdr_last);
+	   (unsigned long) (unsigned long long) ht->pg_hdr_last);
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_FREE_PAGE_HEADER),
-	   (unsigned long) ht->pg_hdr_free);
+	   (unsigned long) (unsigned long long) ht->pg_hdr_free);
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_PAGE_BITMAP),
-	   (unsigned long) ht->bitmap);
+	   (unsigned long) (unsigned long long) ht->bitmap);
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_PAGE_BITMAP_SIZE),
 	   ht->bitmap_size);
 }

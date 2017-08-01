@@ -41,7 +41,6 @@
 #include "intl_support.h"
 
 /* format type of condition argument */
-typedef enum co_format_type CO_FORMAT_TYPE;
 enum co_format_type
 {
   FORMAT_INTEGER = 0,
@@ -53,6 +52,7 @@ enum co_format_type
   FORMAT_LONG_DOUBLE,
   FORMAT_UNKNOWN
 };
+typedef enum co_format_type CO_FORMAT_TYPE;
 
 /* condition argument value structure */
 typedef struct co_argument CO_ARGUMENT;

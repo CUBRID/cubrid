@@ -1692,6 +1692,7 @@ typedef enum db_class_modification_status
 
 typedef enum
 {
+  CUBRID_STMT_NONE = -1,
   CUBRID_STMT_ALTER_CLASS,
   CUBRID_STMT_ALTER_SERIAL,
   CUBRID_STMT_COMMIT_WORK,
@@ -2604,12 +2605,12 @@ struct db_datetimetz
   TZ_ID tz_id;			/* zone id */
 };
 
-typedef enum tz_region_type TZ_REGION_TYPE;
 enum tz_region_type
 {
   TZ_REGION_OFFSET = 0,
   TZ_REGION_ZONE = 1
 };
+typedef enum tz_region_type TZ_REGION_TYPE;
 
 typedef struct tz_region TZ_REGION;
 struct tz_region
@@ -2714,7 +2715,6 @@ struct vfid
   short volid;			/* Volume identifier where the file reside */
 };
 
-typedef enum db_elo_type DB_ELO_TYPE;
 typedef struct db_elo DB_ELO;
 
 enum db_elo_type
@@ -2722,6 +2722,7 @@ enum db_elo_type
   ELO_NULL,
   ELO_FBO
 };
+typedef enum db_elo_type DB_ELO_TYPE;
 
 struct db_elo
 {

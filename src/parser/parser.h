@@ -263,7 +263,7 @@ extern "C"
   extern void mq_free_virtual_query_cache (PARSER_CONTEXT * parser);
   extern PARSER_CONTEXT *mq_virtual_queries (DB_OBJECT * class_obj);
 
-  extern int pt_node_to_cmd_type (PT_NODE * node);
+  extern CUBRID_STMT_TYPE pt_node_to_cmd_type (PT_NODE * node);
 
   extern int pt_check_if_query (PARSER_CONTEXT * parser, PT_NODE * stmt);
 

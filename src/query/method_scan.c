@@ -572,7 +572,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     {
       method_clear_scan_buffer (scan_buffer_p);
       ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
-      return crs_result;
+      return (SCAN_CODE) crs_result;
     }
 }
 #endif /* !SERVER_MODE */

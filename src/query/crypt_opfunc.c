@@ -277,7 +277,7 @@ crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
     }
   else
     {
-      padding_src_len = ceil ((double) src_len / AES128_BLOCK_LEN) * AES128_BLOCK_LEN;
+      padding_src_len = (int) ceil ((double) src_len / AES128_BLOCK_LEN) * AES128_BLOCK_LEN;
       pad = padding_src_len - src_len;
     }
 

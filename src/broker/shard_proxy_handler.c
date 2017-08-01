@@ -1561,19 +1561,19 @@ proxy_handler_process (void)
   /* process cas response message */
   while ((msg = shard_queue_dequeue (&handler_p->cas_rcv_q)) != NULL)
     {
-      proxy_handler_process_cas_event (msg);
+      proxy_handler_process_cas_event ((T_PROXY_EVENT *) msg);
     }
 
   /* process client retry message */
   while ((msg = shard_queue_dequeue (&handler_p->cli_ret_q)) != NULL)
     {
-      proxy_handler_process_client_event (msg);
+      proxy_handler_process_client_event ((T_PROXY_EVENT *) msg);
     }
 
   /* process client request message */
   while ((msg = shard_queue_dequeue (&handler_p->cli_rcv_q)) != NULL)
     {
-      proxy_handler_process_client_event (msg);
+      proxy_handler_process_client_event ((T_PROXY_EVENT *) msg);
     }
 
   return;

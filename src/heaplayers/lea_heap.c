@@ -223,18 +223,17 @@ hl_register_lea_heap (void)
     {
       HL_MSPACE *hms;
 
-      hms = malloc (LEA_HEAP_BASE_SIZE);
+      hms = (HL_MSPACE *) malloc (LEA_HEAP_BASE_SIZE);
       if (hms == NULL)
 	{
 	  return 0;
 	}
 
       hms->base = (char *) hms + ((sizeof (*hms) + 7U) & ~7U);
-      hms->base_size =
-	LEA_HEAP_BASE_SIZE - (size_t) ((char *) hms->base - (char *) hms);
+      hms->base_size = LEA_HEAP_BASE_SIZE - (size_t) ((char *) hms->base - (char *) hms);
       MMAP_TRACE_H_INIT (&hms->header, NULL);
 
-      hms->ms = create_mspace_with_base (hms->base, hms->base_size, 0);
+      hms->ms = (mstate) create_mspace_with_base (hms->base, hms->base_size, 0);
       if (hms->ms == NULL)
 	{
 	  free (hms);
@@ -286,7 +285,7 @@ hl_clear_lea_heap (UINTPTR heap_id)
       if (hms != NULL)
 	{
 	  destroy_mspace_internal (hms);
-	  hms->ms = create_mspace_with_base (hms->base, hms->base_size, 0);
+	  hms->ms = (mstate) create_mspace_with_base (hms->base, hms->base_size, 0);
 	  assert (hms->ms != NULL);
 	}
     }
@@ -343,8 +342,7 @@ hl_lea_alloc (UINTPTR heap_id, size_t sz)
 	  p = mspace_malloc (hms->ms, sz);
 	  if (p == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sz);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sz);
 	    }
 
 	  return p;
@@ -379,8 +377,7 @@ hl_lea_realloc (UINTPTR heap_id, void *ptr, size_t sz)
 	  p = mspace_realloc (hms->ms, ptr, sz);
 	  if (p == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sz);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sz);
 	    }
 
 	  return p;

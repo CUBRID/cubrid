@@ -966,7 +966,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (s1, f2));
+	  DB_MAKE_FLOAT (result, (float) fmod ((float) s1, f2));
 	}
       break;
     case DB_TYPE_CHAR:
@@ -994,7 +994,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (s1, d2));
+	  DB_MAKE_DOUBLE (result, (double) fmod ((double) s1, d2));
 	}
       break;
     case DB_TYPE_NUMERIC:
@@ -1005,7 +1005,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  dtmp = fmod (s1, d2);
+	  dtmp = fmod ((double) s1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
@@ -1115,7 +1115,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (i1, f2));
+	  DB_MAKE_FLOAT (result, (float) fmod ((float) i1, f2));
 	}
       break;
     case DB_TYPE_CHAR:
@@ -1143,7 +1143,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (i1, d2));
+	  DB_MAKE_DOUBLE (result, (double) fmod ((double) i1, d2));
 	}
       break;
     case DB_TYPE_NUMERIC:
@@ -1154,7 +1154,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  dtmp = fmod (i1, d2);
+	  dtmp = fmod ((double) i1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
@@ -1167,7 +1167,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod (i1, d2));
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod ((double) i1, d2));
 	}
       break;
     default:
@@ -1264,7 +1264,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod ((double) bi1, f2));
+	  DB_MAKE_FLOAT (result, (float) fmod ((double) bi1, (double) f2));
 	}
       break;
     case DB_TYPE_CHAR:
@@ -1376,7 +1376,7 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (f1, s2));
+	  DB_MAKE_FLOAT (result, (float) fmod (f1, (float) s2));
 	}
       break;
     case DB_TYPE_INTEGER:
@@ -1387,7 +1387,7 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (f1, i2));
+	  DB_MAKE_FLOAT (result, (float) fmod (f1, (float) i2));
 	}
       break;
     case DB_TYPE_BIGINT:
@@ -1398,7 +1398,7 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (f1, (double) bi2));
+	  DB_MAKE_FLOAT (result, (float) fmod ((double) f1, (double) bi2));
 	}
       break;
     case DB_TYPE_FLOAT:
@@ -1449,7 +1449,7 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, fmod (f1, d2));
+	  DB_MAKE_DOUBLE (result, fmod ((double) f1, d2));
 	}
       break;
     case DB_TYPE_MONETARY:
@@ -1520,7 +1520,7 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (d1, s2));
+	  DB_MAKE_DOUBLE (result, (double) fmod (d1, (double) s2));
 	}
       break;
     case DB_TYPE_INTEGER:
@@ -1531,7 +1531,7 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (d1, i2));
+	  DB_MAKE_DOUBLE (result, (double) fmod (d1, (double) i2));
 	}
       break;
     case DB_TYPE_BIGINT:
@@ -1704,7 +1704,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  dtmp = fmod (d1, s2);
+	  dtmp = fmod (d1, (double) s2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
@@ -1717,7 +1717,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  dtmp = fmod (d1, i2);
+	  dtmp = fmod (d1, (double) i2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
@@ -1744,7 +1744,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, fmod (d1, f2));
+	  DB_MAKE_DOUBLE (result, fmod (d1, (double) f2));
 	}
       break;
     case DB_TYPE_CHAR:
@@ -4319,7 +4319,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
     case DB_TYPE_NUMERIC:
-      buf = db_private_alloc (NULL, 128);
+      buf = (char *) db_private_alloc (NULL, 128);
       if (buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 128);

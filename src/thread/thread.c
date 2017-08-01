@@ -23,6 +23,11 @@
 
 #ident "$Id$"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "config.h"
 
 #include <stdio.h>
@@ -182,7 +187,7 @@ struct thread_daemon
   DAEMON_THREAD_MONITOR *daemon_monitor;
   THREAD_DAEMON_TYPE type;
   int shutdown_sequence;
-  void *daemon_function;
+    THREAD_RET_T (THREAD_CALLING_CONVENTION * daemon_function) (void *);
 };
 
 static THREAD_DAEMON *thread_Daemons = NULL;
@@ -1262,12 +1267,12 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 
   if (entry_p->log_zip_undo)
     {
-      log_zip_free (entry_p->log_zip_undo);
+      log_zip_free ((LOG_ZIP *) entry_p->log_zip_undo);
       entry_p->log_zip_undo = NULL;
     }
   if (entry_p->log_zip_redo)
     {
-      log_zip_free (entry_p->log_zip_redo);
+      log_zip_free ((LOG_ZIP *) entry_p->log_zip_redo);
       entry_p->log_zip_redo = NULL;
     }
   if (entry_p->log_data_ptr)
@@ -1347,8 +1352,8 @@ thread_return_all_transactions_entries (void)
 void
 thread_print_entry_info (THREAD_ENTRY * thread_p)
 {
-  fprintf (stderr, "THREAD_ENTRY(tid(%ld),client_id(%d),tran_index(%d),rid(%d),status(%d))\n", thread_p->tid,
-	   thread_p->client_id, thread_p->tran_index, thread_p->rid, thread_p->status);
+  fprintf (stderr, "THREAD_ENTRY(tid(%lld),client_id(%d),tran_index(%d),rid(%d),status(%d))\n",
+	   (long long) thread_p->tid, thread_p->client_id, thread_p->tran_index, thread_p->rid, thread_p->status);
 
   if (thread_p->conn_entry != NULL)
     {
@@ -2217,8 +2222,8 @@ thread_dump_threads (void)
     {
       thread_p = &thread_Manager.thread_array[i];
 
-      fprintf (stderr, "thread %d(tid(%ld),client_id(%d),tran_index(%d),rid(%d),status(%s),interrupt(%d))\n",
-	       thread_p->index, thread_p->tid, thread_p->client_id, thread_p->tran_index, thread_p->rid,
+      fprintf (stderr, "thread %d(tid(%lld),client_id(%d),tran_index(%d),rid(%d),status(%s),interrupt(%d))\n",
+	       thread_p->index, (long long) thread_p->tid, thread_p->client_id, thread_p->tran_index, thread_p->rid,
 	       status[thread_p->status], thread_p->interrupted);
 
       (void) thread_rc_track_dump_all (thread_p, stderr);

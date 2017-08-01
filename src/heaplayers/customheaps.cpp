@@ -22,7 +22,8 @@ class TheFixedHeapType :
   public LockedHeap<SpinLockType,FreelistHeap<ZoneHeap<mallocHeap,0> > > {};
 
 // initialize & finalize
-extern "C" UINTPTR hl_register_fixed_heap (int chunk_size)
+UINTPTR
+hl_register_fixed_heap (int chunk_size)
 {
   TheFixedHeapType * th = new TheFixedHeapType;
   if (th)
@@ -33,7 +34,8 @@ extern "C" UINTPTR hl_register_fixed_heap (int chunk_size)
   return 0;
 }
 
-extern "C" void hl_unregister_fixed_heap (UINTPTR heap_id)
+void
+hl_unregister_fixed_heap (UINTPTR heap_id)
 {
   TheFixedHeapType * th = (TheFixedHeapType *) heap_id;
   if (th)
@@ -43,7 +45,8 @@ extern "C" void hl_unregister_fixed_heap (UINTPTR heap_id)
 }
 
 // alloc & free
-extern "C" void * hl_fixed_alloc (UINTPTR heap_id, size_t sz)
+void *
+hl_fixed_alloc (UINTPTR heap_id, size_t sz)
 {
   TheFixedHeapType * th = (TheFixedHeapType *) heap_id;
   if (th)
@@ -53,7 +56,8 @@ extern "C" void * hl_fixed_alloc (UINTPTR heap_id, size_t sz)
   return NULL;
 }
 
-extern "C" void hl_fixed_free (UINTPTR heap_id, void * ptr)
+void
+hl_fixed_free (UINTPTR heap_id, void * ptr)
 {
   TheFixedHeapType * th = (TheFixedHeapType *) heap_id;
   if (th)
@@ -71,7 +75,8 @@ class TheObstackHeapType :
   public SizeHeap<ObstackHeap<0,mallocHeap> > {};
 
 // initialize & finalize
-extern "C" UINTPTR hl_register_ostk_heap (int chunk_size)
+UINTPTR
+hl_register_ostk_heap (int chunk_size)
 {
   TheObstackHeapType * th = new TheObstackHeapType;
   if (th)
@@ -82,7 +87,8 @@ extern "C" UINTPTR hl_register_ostk_heap (int chunk_size)
   return 0;
 }
 
-extern "C" void hl_clear_ostk_heap (UINTPTR heap_id)
+void
+hl_clear_ostk_heap (UINTPTR heap_id)
 {
   TheObstackHeapType * th = (TheObstackHeapType *) heap_id;
   if (th)
@@ -91,7 +97,8 @@ extern "C" void hl_clear_ostk_heap (UINTPTR heap_id)
     }
 }
 
-extern "C" void hl_unregister_ostk_heap (UINTPTR heap_id)
+void
+hl_unregister_ostk_heap (UINTPTR heap_id)
 {
   TheObstackHeapType * th = (TheObstackHeapType *) heap_id;
   if (th)
@@ -101,7 +108,8 @@ extern "C" void hl_unregister_ostk_heap (UINTPTR heap_id)
 }
 
 // alloc & free
-extern "C" void * hl_ostk_alloc (UINTPTR heap_id, size_t sz)
+void *
+hl_ostk_alloc (UINTPTR heap_id, size_t sz)
 {
   TheObstackHeapType * th = (TheObstackHeapType *) heap_id;
   if (th)
@@ -111,7 +119,8 @@ extern "C" void * hl_ostk_alloc (UINTPTR heap_id, size_t sz)
   return NULL;
 }
 
-extern "C" void * hl_ostk_realloc (UINTPTR heap_id, void *ptr, size_t sz)
+void *
+hl_ostk_realloc (UINTPTR heap_id, void *ptr, size_t sz)
 {
   TheObstackHeapType * th = (TheObstackHeapType *) heap_id;
   if (th)
@@ -128,7 +137,8 @@ extern "C" void * hl_ostk_realloc (UINTPTR heap_id, void *ptr, size_t sz)
   return NULL;
 }
 
-extern "C" void hl_ostk_free (UINTPTR heap_id, void * ptr)
+void
+hl_ostk_free (UINTPTR heap_id, void * ptr)
 {
   TheObstackHeapType * th = (TheObstackHeapType *) heap_id;
   if (th)
@@ -148,7 +158,8 @@ class TheKingsleyHeapType :
   public ANSIWrapper<KingsleyHeap<AdaptHeap<DLList, TopHeap>, TopHeap> > {};
 
 // initialize & finalize
-extern "C" UINTPTR hl_register_kingsley_heap (/*int chunk_size*/)
+UINTPTR
+hl_register_kingsley_heap (/*int chunk_size*/)
 {
   TheKingsleyHeapType * th = new TheKingsleyHeapType;
   if (th)
@@ -160,7 +171,8 @@ extern "C" UINTPTR hl_register_kingsley_heap (/*int chunk_size*/)
 }
 
 /*
-extern "C" void hl_clear_kingsley_heap (unsigned int heap_id)
+void
+hl_clear_kingsley_heap (unsigned int heap_id)
 {
   TheKingsleyHeapType * th = (TheKingsleyHeapType *) heap_id;
   if (th)
@@ -170,7 +182,8 @@ extern "C" void hl_clear_kingsley_heap (unsigned int heap_id)
 }
 */
 
-extern "C" void hl_unregister_kingsley_heap (UINTPTR heap_id)
+void
+hl_unregister_kingsley_heap (UINTPTR heap_id)
 {
   TheKingsleyHeapType * th = (TheKingsleyHeapType *) heap_id;
   if (th)
@@ -180,7 +193,8 @@ extern "C" void hl_unregister_kingsley_heap (UINTPTR heap_id)
 }
 
 // alloc & free
-extern "C" void * hl_kingsley_alloc (UINTPTR heap_id, size_t sz)
+void *
+hl_kingsley_alloc (UINTPTR heap_id, size_t sz)
 {
   TheKingsleyHeapType * th = (TheKingsleyHeapType *) heap_id;
   if (th)
@@ -190,7 +204,8 @@ extern "C" void * hl_kingsley_alloc (UINTPTR heap_id, size_t sz)
   return NULL;
 }
 
-extern "C" void * hl_kingsley_realloc (UINTPTR heap_id, void *ptr, size_t sz)
+void *
+hl_kingsley_realloc (UINTPTR heap_id, void *ptr, size_t sz)
 {
   TheKingsleyHeapType * th = (TheKingsleyHeapType *) heap_id;
   if (th)
@@ -206,7 +221,8 @@ extern "C" void * hl_kingsley_realloc (UINTPTR heap_id, void *ptr, size_t sz)
   return NULL;
 }
 
-extern "C" void hl_kingsley_free (UINTPTR heap_id, void * ptr)
+void
+hl_kingsley_free (UINTPTR heap_id, void * ptr)
 {
   TheKingsleyHeapType * th = (TheKingsleyHeapType *) heap_id;
   if (th)

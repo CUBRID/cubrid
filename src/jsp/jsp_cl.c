@@ -117,11 +117,11 @@ static int windows_socket_startup (void);
 static void windows_socket_shutdown (void);
 #endif /* WINDOWS */
 
-static unsigned int jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
+static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static int jsp_get_argument_count (const SP_ARGS * sp_args);
 static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-					      int data_type, int mode, const char *arg_comment);
+					      PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
 				     PT_NODE * param_list, const char *java_method, const char *comment);
@@ -603,7 +603,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   PT_NODE *sp_name, *sp_owner, *sp_comment;
   const char *name_str, *owner_str, *comment_str = NULL;
-  PT_MISC_TYPE type, real_type;
+  PT_MISC_TYPE type;
+  SP_TYPE_ENUM real_type;
   MOP sp_mop, new_owner;
   DB_VALUE user_val, sp_type_val;
   int save;
@@ -675,7 +676,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto error;
     }
 
-  real_type = (PT_MISC_TYPE) DB_GET_INT (&sp_type_val);
+  real_type = (SP_TYPE_ENUM) DB_GET_INT (&sp_type_val);
   if (real_type != jsp_map_pt_misc_to_sp_type (type))
     {
       err = ER_SP_INVALID_TYPE;
@@ -724,7 +725,7 @@ error:
  * Note:
  */
 
-static unsigned int
+static SP_TYPE_ENUM
 jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum)
 {
   if (pt_enum == PT_SP_PROCEDURE)
@@ -799,8 +800,8 @@ jsp_get_argument_count (const SP_ARGS * sp_args)
  */
 
 static int
-jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index, int data_type,
-				   int mode, const char *arg_comment)
+jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
+				   PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -856,7 +857,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_int (&value, jsp_map_pt_misc_to_sp_mode ((PT_MISC_TYPE) mode));
+  db_make_int (&value, jsp_map_pt_misc_to_sp_mode (mode));
   err = dbt_put_internal (obt_p, SP_ATTR_MODE, &value);
   if (err != NO_ERROR)
     {
@@ -1153,7 +1154,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
 {
   MOP sp_mop, arg_mop, owner;
   DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, temp;
-  PT_MISC_TYPE real_type;
+  SP_TYPE_ENUM real_type;
   DB_SET *arg_set_p;
   int save, i, arg_cnt;
   int err;
@@ -1191,7 +1192,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
       goto error;
     }
 
-  real_type = (PT_MISC_TYPE) DB_GET_INT (&sp_type_val);
+  real_type = (SP_TYPE_ENUM) DB_GET_INT (&sp_type_val);
   if (real_type != jsp_map_pt_misc_to_sp_type (expected_type))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_TYPE, 2, name,
@@ -2281,7 +2282,7 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
 
   size_in = strlen (val);
 
-  if (intl_check_string (val, size_in, &invalid_pos, lang_get_client_charset ()) != 0)
+  if (intl_check_string (val, size_in, &invalid_pos, lang_get_client_charset ()) != INTL_UTF8_VALID)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - val);
       return NULL;
@@ -2293,7 +2294,7 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
       char *composed;
       bool is_composed = false;
 
-      composed = db_private_alloc (NULL, composed_size + 1);
+      composed = (char *) db_private_alloc (NULL, composed_size + 1);
       if (composed == NULL)
 	{
 	  return NULL;

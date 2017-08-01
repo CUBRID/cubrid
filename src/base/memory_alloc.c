@@ -130,7 +130,7 @@ ansisql_strcasecmp (const char *s, const char *t)
 
   min_length = s_length < t_length ? s_length : t_length;
 
-  cmp_val = intl_identifier_ncasecmp (s, t, min_length);
+  cmp_val = intl_identifier_ncasecmp (s, t, (int) min_length);
 
   /* If not equal for shorter length, return */
   if (cmp_val)
@@ -484,7 +484,7 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
 	  size_t req_sz;
 
 	  req_sz = private_request_size (size);
-	  h = hl_lea_alloc (private_heap_id, req_sz);
+	  h = (PRIVATE_MALLOC_HEADER *) hl_lea_alloc (private_heap_id, req_sz);
 
 	  if (h != NULL)
 	    {
@@ -616,7 +616,7 @@ db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
 	      size_t req_sz;
 
 	      req_sz = private_request_size (size);
-	      new_h = hl_lea_realloc (private_heap_id, h, req_sz);
+	      new_h = (PRIVATE_MALLOC_HEADER *) hl_lea_realloc (private_heap_id, h, req_sz);
 	      if (new_h == NULL)
 		{
 		  return NULL;
@@ -665,7 +665,7 @@ db_private_strdup (void *thrd, const char *s)
     }
 
   len = strlen (s);
-  cp = db_private_alloc (thrd, len + 1);
+  cp = (char *) db_private_alloc (thrd, len + 1);
 
   if (cp != NULL)
     {
