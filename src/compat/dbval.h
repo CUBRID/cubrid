@@ -632,6 +632,7 @@
     (v)->data.json.document = (d), \
     (v)->domain.general_info.is_null = 0, \
     (v)->need_clear = false, \
+    (v)->domain.general_info.schema_raw = NULL, \
     NO_ERROR)
 
 #define db_make_midxkey(v, m) \

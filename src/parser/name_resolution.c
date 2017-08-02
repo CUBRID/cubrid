@@ -3935,17 +3935,26 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
   switch (t)
     {
     case PT_TYPE_JSON:
-      assert (domain->schema_raw != NULL);
       if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
 	{
 	  return NULL;
 	}
       result->type_enum = t;
-      result->info.data_type.validation_obj = domain->validation_obj;
-      result->info.data_type.json_schema = pt_append_bytes(parser,
-                                                           NULL,
-                                                           domain->schema_raw,
-                                                           strlen (domain->schema_raw));
+      if (domain->schema_raw != NULL)
+        {
+          assert (domain->validation_obj != NULL);
+
+          result->info.data_type.validation_obj = domain->validation_obj;
+          result->info.data_type.json_schema = pt_append_bytes(parser,
+                                                                NULL,
+                                                                domain->schema_raw,
+                                                                strlen (domain->schema_raw));
+        }
+      else
+        {
+          result->info.data_type.validation_obj = NULL;
+          result->info.data_type.json_schema = NULL;
+        }
       break;
 
     case PT_TYPE_NUMERIC:

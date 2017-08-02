@@ -10448,7 +10448,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
                     target->data.json.document = new rapidjson::Document();
                     target->data.json.document->Parse (DB_GET_STRING (src));
 
-                    if (desired_domain->validation_obj->validator)
+                    if (desired_domain->validation_obj)
                       {
                         desired_domain->validation_obj->validator->Reset ();
                       }
@@ -10459,7 +10459,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
                                 rapidjson::GetParseError_En (target->data.json.document->GetParseError()), target->data.json.document->GetErrorOffset());
                         return DOMAIN_ERROR;
                       }
-                    if (desired_domain->validation_obj->validator &&
+                    if (desired_domain->validation_obj &&
                         !target->data.json.document->Accept (*desired_domain->validation_obj->validator))
                       {
                         rapidjson::StringBuffer sb1, sb2;
@@ -10476,6 +10476,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
                     target->domain.general_info.type = DB_TYPE_JSON;
                     target->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (DB_GET_STRING_SIZE (src) + 1));
                     target->domain.general_info.is_null = 0;
+                    target->domain.general_info.schema_raw = NULL;
                     memcpy (target->data.json.json_body, DB_GET_STRING (src), DB_GET_STRING_SIZE (src));
                     target->data.json.json_body[DB_GET_STRING_SIZE (src)] = '\0';
 

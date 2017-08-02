@@ -15023,6 +15023,10 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
         {
             len2 = strlen (src->domain.general_info.schema_raw);
         }
+      else
+        {
+          dest->domain.general_info.schema_raw = NULL;
+        }
       if (copy)
         {
           dest->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (len + 1));
