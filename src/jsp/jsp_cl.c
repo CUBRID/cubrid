@@ -2226,7 +2226,8 @@ jsp_unpack_float_value (char *buffer, DB_VALUE * retval)
 static char *
 jsp_unpack_double_value (char *buffer, DB_VALUE * retval)
 {
-  double val, result;
+  UINT64 val;
+  double result;
 
   memcpy ((char *) (&val), buffer, OR_DOUBLE_SIZE);
   OR_GET_DOUBLE (&val, &result);
@@ -2535,7 +2536,8 @@ jsp_unpack_object_value (char *buffer, DB_VALUE * retval)
 static char *
 jsp_unpack_monetary_value (char *buffer, DB_VALUE * retval)
 {
-  double val, result;
+  UINT64 val;
+  double result;
   char *ptr;
 
   ptr = buffer;
