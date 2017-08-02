@@ -1,15 +1,15 @@
 #include "db_json.h"
 
-DB_JSON_VALIDATION_OBJECT * get_validator_from_schema_string (const char * schema_raw, int * rc)
+DB_JSON_VALIDATION_OBJECT * get_validator_from_schema_string (const char * schema_raw)
 {
-  assert (rc != 0);
-
   rapidjson::Document * doc = new rapidjson::Document();
   DB_JSON_VALIDATION_OBJECT * val_obj;
 
   if (doc->Parse (schema_raw).HasParseError ())
     {
-      *rc = ER_INVALID_JSON_SCHEMA;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+              rapidjson::GetParseError_En (doc->GetParseError()),
+              doc->GetErrorOffset());
       return NULL;
     }
 
@@ -18,7 +18,6 @@ DB_JSON_VALIDATION_OBJECT * get_validator_from_schema_string (const char * schem
   val_obj->validator = new rapidjson::SchemaValidator (*val_obj->schema);
   val_obj->document = doc;
 
-  *rc = NO_ERROR;
   return val_obj;
 }
 

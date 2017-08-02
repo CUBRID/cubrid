@@ -2361,29 +2361,12 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
       /* collections might not have the same domain */
       return false;
     }
-  else if (dest_sci->type_enum == PT_TYPE_JSON && dest_sci->schema_validator != NULL)
+  else if (dest_sci->type_enum == PT_TYPE_JSON)
     {
-      assert (src->info.value.data_value.json.document != NULL);
-
-      dest_sci->schema_validator->Reset ();
-
-      bool result = src->info.value.data_value.json.document->Accept (*dest_sci->schema_validator);
-      rapidjson::StringBuffer buffer;
-      rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-      src->info.value.data_value.json.document->Accept (writer);
-      printf ("is_comp_without_cast json=%s\n", buffer.GetString());
-
-      if (!result) {
-      rapidjson::StringBuffer sb;
-      dest_sci->schema_validator->GetInvalidSchemaPointer().StringifyUriFragment(sb);
-      printf("Invalid schema: %s\n", sb.GetString());
-      printf("Invalid keyword: %s\n", dest_sci->schema_validator->GetInvalidSchemaKeyword());
-      sb.Clear();
-      dest_sci->schema_validator->GetInvalidDocumentPointer().StringifyUriFragment(sb);
-      printf("Invalid document: %s\n", sb.GetString());
-      /*TODO ADD PROPER ERROR THROW */
-      }
-      return result;
+      /* it is possible to provide a json that is rejected by the schema,
+       * so we need to check whether the schema accepts it or not when we cast
+       */
+      return dest_sci->schema_validator == NULL;
     }
 
   return true;			/* is compatible, no need to cast */
@@ -11125,7 +11108,10 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	{
 	  sci.prec = lhs->data_type->info.data_type.precision;
 	  sci.scale = lhs->data_type->info.data_type.dec_precision;
-	  sci.schema_validator = lhs->data_type->info.data_type.validation_obj->validator;
+          if (lhs->type_enum == PT_TYPE_JSON && lhs->data_type->info.data_type.validation_obj)
+            {
+              sci.schema_validator = lhs->data_type->info.data_type.validation_obj->validator;
+            }
 	}
 
       if (PT_HAS_COLLATION (lhs->type_enum))

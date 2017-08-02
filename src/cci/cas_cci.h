@@ -351,10 +351,11 @@ typedef enum
   CCI_U_TYPE_TIMESTAMPLTZ = 30,
   CCI_U_TYPE_DATETIMETZ = 31,
   CCI_U_TYPE_DATETIMELTZ = 32,
+  CCI_U_TYPE_JSON = 33,
   /* Disabled type */
-  CCI_U_TYPE_TIMETZ = 33,	/* internal use only - RESERVED */
+  CCI_U_TYPE_TIMETZ = 34,	/* internal use only - RESERVED */
   /* end of disabled types */
-  CCI_U_TYPE_LAST = CCI_U_TYPE_DATETIMELTZ
+  CCI_U_TYPE_LAST = CCI_U_TYPE_JSON
 } T_CCI_U_TYPE;
 
 typedef unsigned char T_CCI_U_EXT_TYPE;

@@ -13068,8 +13068,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_OBJECT:
       {
-        PT_TYPE_ENUM supported_key_types[] = {PT_TYPE_CHAR};
-        PT_TYPE_ENUM supported_value_types[] = {PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON};
+        PT_TYPE_ENUM supported_key_types[] = {PT_TYPE_CHAR, PT_TYPE_MAYBE};
+        PT_TYPE_ENUM supported_value_types[] = {PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON, PT_TYPE_MAYBE};
         PT_TYPE_ENUM unsupported_type;
         unsigned int num_bad = 0, len, i, found_supported = 0;
 
@@ -18561,8 +18561,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      db_make_null (result);
 	      return 1;
 	    }
-	  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		       pt_short_print (parser, o1), pt_show_type_enum (rTyp));
+          if (dom_status == DOMAIN_INCOMPATIBLE)
+            {
+              PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+                        pt_short_print (parser, o1), pt_show_type_enum (rTyp));
+            }
+          else if (dom_status == DOMAIN_ERROR)
+            {
+              PT_ERRORc (parser, o1, er_msg ());
+            }
 	  return 0;
 	}
       else

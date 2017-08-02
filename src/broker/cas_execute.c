@@ -345,8 +345,9 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_TIMESTAMPLTZ,	/* 37 */
   CCI_U_TYPE_DATETIMETZ,	/* 38 */
   CCI_U_TYPE_DATETIMELTZ,	/* 39 */
-  CCI_U_TYPE_TIMETZ,		/* 40 */
-  CCI_U_TYPE_TIMETZ		/* 41 */
+  CCI_U_TYPE_JSON,              /* 40 */
+  CCI_U_TYPE_TIMETZ,		/* 41 */
+  CCI_U_TYPE_TIMETZ		/* 42 */
 };
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -3425,6 +3426,12 @@ ux_set_utype_for_datetimeltz (char u_type)
   cas_u_type[DB_TYPE_DATETIMELTZ] = u_type;
 }
 
+void
+ux_set_utype_for_json (char u_type)
+{
+  cas_u_type[DB_TYPE_JSON] = u_type;
+}
+
 int
 ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 		unsigned int query_seq_num)
@@ -5065,7 +5072,21 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	add_res_data_lob_handle (net_buf, &cas_lob, ext_col_type, &data_size);
       }
       break;
+    case DB_TYPE_JSON:
+      {
+	const char * str;
+	int dummy = 0;
+	int bytes_size = 0;
+	int decomp_size;
+	char *decomposed = NULL;
+	bool need_decomp = false;
 
+	str = val->data.json.json_body;
+	bytes_size = strlen (str);
+
+	add_res_data_string (net_buf, str, bytes_size, ext_col_type, DB_GET_STRING_CODESET (val), &data_size);
+      }
+      break;
     default:
       net_buf_cp_int (net_buf, -1, NULL);	/* null */
       data_size = 4;

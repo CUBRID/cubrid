@@ -1943,6 +1943,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
     {
       ux_set_utype_for_enum (CCI_U_TYPE_STRING);
+      ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
@@ -1969,6 +1970,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
     {
       ux_set_utype_for_enum (CCI_U_TYPE_ENUM);
+      ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 

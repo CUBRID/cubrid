@@ -2170,7 +2170,9 @@ disk_to_domain2 (OR_BUF * buf)
       domain->schema_raw = (char *) malloc (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length + 1);
       memcpy (domain->schema_raw, str, vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length);
       domain->schema_raw[vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length] = '\0';
-      domain->validation_obj = get_validator_from_schema_string (domain->schema_raw, &rc);
+      domain->validation_obj = get_validator_from_schema_string (domain->schema_raw);
+
+      assert (domain->validation_obj != NULL);
     }
   else
     {

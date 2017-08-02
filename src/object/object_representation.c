@@ -4782,6 +4782,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
               carrier |= OR_DOMAIN_SCHEMA_FLAG;
               has_schema = 1;
             }
+            break;
 	default:
 	  break;
 	}
@@ -5198,10 +5199,9 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
                       goto error;
                     }
                   d->schema_raw[schema_len] = '\0';
-                  d->validation_obj = get_validator_from_schema_string (d->schema_raw, &rc);
+                  d->validation_obj = get_validator_from_schema_string (d->schema_raw);
 
                   assert (d->validation_obj != 0);
-                  assert (rc == NO_ERROR);
                 }
             }
 
@@ -5555,10 +5555,9 @@ unpack_domain (OR_BUF * buf, int *is_null)
                         goto error;
                       }
                     schema_raw[schema_len] = '\0';
-                    validator = get_validator_from_schema_string (schema_raw, &rc);
+                    validator = get_validator_from_schema_string (schema_raw);
 
                     assert (validator != NULL);
-                    assert (rc == NO_ERROR);
 		  }
 
                 break;

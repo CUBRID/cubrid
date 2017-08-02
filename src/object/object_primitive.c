@@ -920,9 +920,9 @@ static int mr_lengthval_json_internal (DB_VALUE * value, int disk, int align);
 static int mr_writeval_json_internal (OR_BUF * buf, DB_VALUE * value, int align);
 static int mr_readval_json_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 					 char *copy_buf, int copy_buf_len, int align);
-static int mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				      int *start_colp);
-static int mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 				     int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 			       int collation);
@@ -15029,10 +15029,6 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
           dest->data.json.document = new rapidjson::Document ();
           memcpy (dest->data.json.json_body, src->data.json.json_body, (size_t) len);
           dest->data.json.document->CopyFrom (*src->data.json.document, dest->data.json.document->GetAllocator());
-          rapidjson::StringBuffer buffer;
-          rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-          dest->data.json.document->Accept (writer);
-          printf ("mr_setval_json=%s\n", buffer.GetString());
           dest->data.json.json_body[len] = '\0';
           dest->need_clear = true;
           if (len2 > 0)
@@ -15195,20 +15191,20 @@ mr_readval_json_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
     return mr_readval_string_internal(buf, &str, domain, size, copy, copy_buf, copy_buf_len, align);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 			   int *start_colp)
 {
-    return mr_index_cmpdisk_string (mem1, mem2, domain, do_coercion, total_order, start_colp);
-    assert(false);
-  return NO_ERROR;
+  DB_VALUE_COMPARE_RESULT c;
+  return mr_index_cmpdisk_string (mem1, mem2, domain, do_coercion, total_order, start_colp);
 }
 
-static int
+static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-    return mr_data_cmpdisk_string (mem1, mem2, domain, do_coercion, total_order, start_colp);
-  return NO_ERROR;
+  DB_VALUE_COMPARE_RESULT c;
+  return c;
+
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -15220,8 +15216,6 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
     convert_json_to_string (value1, &str);
     convert_json_to_string (value2, &str2);
     return mr_cmpval_string (&str, &str2, do_coercion, total_order, start_colp, collation);
-    assert(false);
-    return c;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

@@ -76,6 +76,7 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 #include "rapidjson/error/en.h"
+#include "rapidjson/stringbuffer.h"
 
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -1129,6 +1130,8 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
       new_dm->precision = precision;
       new_dm->scale = scale;
       new_dm->setdomain = setdomain;
+      new_dm->schema_raw = NULL;
+      new_dm->validation_obj = NULL;
 
 #if !defined (NDEBUG)
       if (domain_type == DB_TYPE_MIDXKEY)
@@ -3470,7 +3473,19 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
               domain->schema_raw = (char *) malloc (len+1);
               memcpy(domain->schema_raw, db_get_json_schema (val), len);
               domain->schema_raw[len] = '\0';
+              domain->validation_obj = get_validator_from_schema_string (domain->schema_raw);
+
+              assert (domain->validation_obj != NULL);
             }
+          else
+            {
+              domain->schema_raw = NULL;
+            }
+
+          if (dbuf == NULL)
+	    {
+	      domain = tp_domain_cache (domain);
+	    }
           break;
 
         }
@@ -7332,18 +7347,32 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
             case DB_TYPE_JSON:
               {
                 bool result;
-                if (!desired_domain->validation_obj) {
-                  result = true;
-                } else {
-                  result = src->data.json.document->Accept (*desired_domain->validation_obj->validator);
-                }
+                if (!desired_domain->validation_obj)
+                  {
+                    result = true;
+                  }
+                else
+                  {
+                    desired_domain->validation_obj->validator->Reset ();
+                    result = src->data.json.document->Accept (*desired_domain->validation_obj->validator);
+                  }
 
-                if (result) {
-                  pr_clone_value ((DB_VALUE *) src, dest);
-                  return (status);
-                } else {
-                  printf ("json was rejected by schema!\n"); /* TODO ADD PROPER ERROR THROW */
-                }
+                if (result)
+                  {
+                    pr_clone_value ((DB_VALUE *) src, dest);
+                    return (status);
+                  }
+                else
+                  {
+                    rapidjson::StringBuffer sb1, sb2;
+
+                    desired_domain->validation_obj->validator->GetInvalidSchemaPointer().StringifyUriFragment(sb1);
+                    desired_domain->validation_obj->validator->GetInvalidDocumentPointer().StringifyUriFragment(sb2);
+                    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALIDATED_BY_SCHEMA, 3, sb1.GetString(),
+                                                                                                desired_domain->validation_obj->validator->GetInvalidSchemaKeyword(), 
+                                                                                                sb2.GetString());
+                    return DOMAIN_ERROR;
+                  }
                 break;
               }
 	    default:
@@ -10426,18 +10455,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
                     if (target->data.json.document->HasParseError ())
                       {
-                        /*er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-                                rapidjson::GetParseError_En (target->data.json.document->GetParseError()), target->data.json.document->GetErrorOffset());*/
-                        //PT_ERRORc (parser, result, er_msg ());
-                        status = DOMAIN_INCOMPATIBLE;
-                        break;
-                        //TODO Find a way to show this error to the screen
+                        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+                                rapidjson::GetParseError_En (target->data.json.document->GetParseError()), target->data.json.document->GetErrorOffset());
+                        return DOMAIN_ERROR;
                       }
                     if (desired_domain->validation_obj->validator &&
                         !target->data.json.document->Accept (*desired_domain->validation_obj->validator))
                       {
-                        status = DOMAIN_INCOMPATIBLE;
-                        break;
+                        rapidjson::StringBuffer sb1, sb2;
+
+                        desired_domain->validation_obj->validator->GetInvalidSchemaPointer().StringifyUriFragment(sb1);
+                        desired_domain->validation_obj->validator->GetInvalidDocumentPointer().StringifyUriFragment(sb2);
+                        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALIDATED_BY_SCHEMA, 3, sb1.GetString(),
+                                                                                                    desired_domain->validation_obj->validator->GetInvalidSchemaKeyword(), 
+                                                                                                    sb2.GetString());
+
+                        return DOMAIN_ERROR;
                       }
 
                     target->domain.general_info.type = DB_TYPE_JSON;

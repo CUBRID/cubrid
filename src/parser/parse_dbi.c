@@ -641,6 +641,11 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       else
         {
           result->data_type->type_enum = result->type_enum;
+          if (db_get_json_schema (val) && strlen (db_get_json_schema (val)) > 0)
+            {
+              result->data_type->info.data_type.json_schema = pt_append_bytes (parser, NULL, db_get_json_schema (val), strlen (db_get_json_schema (val)));
+              result->data_type->info.data_type.validation_obj = get_validator_from_schema_string (db_get_json_schema (val));
+            }
         }
       break;
     case DB_TYPE_NUMERIC:
@@ -1805,15 +1810,11 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
         {
-          validator = get_validator_from_schema_string ((const char *)dt->info.data_type.json_schema->bytes, &rc);
+          validator = get_validator_from_schema_string ((const char *)dt->info.data_type.json_schema->bytes);
           if (!validator)
             {
-              if (rc != NO_ERROR)
-                {
-                  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, rc, 0);
-                  return NULL;
-                }
-              assert (false); /* we shouldn't get here */
+              /* this means an error has been set */
+              return NULL;
             }
           raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
           memcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes, dt->info.data_type.json_schema->length);
@@ -1998,6 +1999,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
   DB_ENUMERATION enumeration;
   int error = NO_ERROR;
   TP_DOMAIN_COLL_ACTION collation_flag;
+  char * raw_schema = NULL;
 
   DB_JSON_VALIDATION_OBJECT * validator = NULL;
 
@@ -2040,8 +2042,23 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
       return pt_type_enum_to_db_domain (type);
 
     case DB_TYPE_JSON:
-      validator = dt->info.data_type.validation_obj;
-      break;
+      if (dt->info.data_type.json_schema)
+        {
+          validator = get_validator_from_schema_string ((const char *)dt->info.data_type.json_schema->bytes);
+          if (!validator)
+            {
+              /* this means an error has been set */
+              return NULL;
+            }
+          raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
+          memcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes, dt->info.data_type.json_schema->length);
+          raw_schema[dt->info.data_type.json_schema->length] = '\0';
+          break;
+        }
+      else
+        {
+          return pt_type_enum_to_db_domain (dt->type_enum);
+        }
 
     case DB_TYPE_OBJECT:
       /* first check if its a VOBJ */
@@ -2143,6 +2160,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
       retval->collation_flag = collation_flag;
       retval->enumeration.collation_id = collation_id;
       retval->validation_obj = validator;
+      retval->schema_raw = raw_schema;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
     }
@@ -2804,7 +2822,6 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_JSON:
       /* 
        * Nothing more to do for these guys; their type is completely
        * described by the type_enum.  Why don't we care about precision
@@ -2878,6 +2895,16 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 
     case DB_TYPE_OBJECT:
       dt = pt_get_object_data_type (parser, val);
+      break;
+
+    case DB_TYPE_JSON:
+      dt = parser_new_node (parser, PT_DATA_TYPE);
+      if (dt)
+	{
+	  dt->type_enum = node->type_enum;
+	  dt->info.data_type.json_schema = pt_append_bytes (parser, NULL, val->data.json.json_body, strlen (val->data.json.json_body));
+	  dt->info.data_type.validation_obj = get_validator_from_schema_string (val->data.json.json_body);
+	}
       break;
 
     default:
