@@ -69,6 +69,7 @@
 #if defined (WINDOWS)
 #define IMPORT_VAR 	__declspec(dllimport)
 #define EXPORT_VAR 	__declspec(dllexport)
+#include <WinBase.h>
 #else
 #define IMPORT_VAR 	extern
 #define EXPORT_VAR
@@ -776,7 +777,7 @@ extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 #endif //!_WIN64
 #endif //defined (WINDOWS)
 
-#if !defined(WINDOWS) && __cplusplus < 201103L
+#if (!defined (WINDOWS) && __cplusplus < 201103L) || (defined (WINDOWS) && _MSC_VER <= 1500)
 #define static_assert(a, b)
 #endif
 
@@ -785,7 +786,11 @@ template < typename T, typename V > inline T ATOMIC_INC_32 (volatile T * ptr, V 
   static_assert (sizeof (T) == sizeof (UINT32), "Not 32bit");
   static_assert (sizeof (V) == sizeof (UINT32), "Not 32bit");
 #if defined (WINDOWS)
+#if _MSC_VER <= 1500
+  return InterlockedExchangeAdd (reinterpret_cast < volatile LONG * >(ptr), amount) +amount;
+#else
   return InterlockedExchangeAdd (reinterpret_cast < volatile UINT32 * >(ptr), amount) +amount;
+#endif
 #else
   return __sync_add_and_fetch (ptr, amount);
 #endif
@@ -797,7 +802,11 @@ template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS_32 (vol
   static_assert (sizeof (V1) == sizeof (UINT32), "Not 32bit");
   static_assert (sizeof (V2) == sizeof (UINT32), "Not 32bit");
 #if defined (WINDOWS)
+#if _MSC_VER <= 1500
+  return InterlockedCompareExchange (reinterpret_cast < volatile LONG * >(ptr), swap_val, cmp_val) == cmp_val;
+#else
   return InterlockedCompareExchange (reinterpret_cast < volatile UINT32 * >(ptr), swap_val, cmp_val) == cmp_val;
+#endif
 #else
   return __sync_bool_compare_and_swap (ptr, cmp_val, swap_val);
 #endif
@@ -808,7 +817,11 @@ template < typename T, typename V > inline T ATOMIC_TAS_32 (volatile T * ptr, V 
   static_assert (sizeof (T) == sizeof (UINT32), "Not 32bit");
   static_assert (sizeof (V) <= sizeof (UINT32), "Not 32bit");
 #if defined (WINDOWS)
+#if _MSC_VER <= 1500
+  return InterlockedExchange (reinterpret_cast < volatile LONG * >(ptr), amount);
+#else
   return InterlockedExchange (reinterpret_cast < volatile UINT32 * >(ptr), amount);
+#endif
 #else
   return __sync_lock_test_and_set (ptr, amount);
 #endif

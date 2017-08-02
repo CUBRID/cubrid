@@ -9773,11 +9773,11 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 	    {
 	      COPY_OID (&real_class_oid, &res_ptr->key.oid);
 	    }
-	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
-	    {
-	      /* ignore */
-	      er_clear ();
-	    }
+
+	  /* never propagate an error to get class name and keep the existing error if any. */
+	  er_stack_push ();
+	  (void) heap_get_class_name (thread_p, &real_class_oid, &classname);
+	  er_stack_pop ();
 
 	  if (classname != NULL)
 	    {
@@ -9800,12 +9800,11 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 	    {
 	      COPY_OID (&real_class_oid, &res_ptr->key.class_oid);
 	    }
-	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
-	    {
-	      /* ignore */
-	      er_clear ();
 
-	    }
+	  /* never propagate an error to get class name and keep the existing error if any. */
+	  er_stack_push ();
+	  (void) heap_get_class_name (thread_p, &real_class_oid, &classname);
+	  er_stack_pop ();
 
 	  if (classname != NULL)
 	    {

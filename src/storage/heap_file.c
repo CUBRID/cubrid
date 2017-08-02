@@ -7661,15 +7661,10 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
 }
 
 /*
- * heap_get_record_data_when_all_ready () - Get record data when all required
- *					    information is known. This can
- *					    work only for record types that
- *					    actually have data: REC_HOME,
- *					    REC_RELOCATION and REC_BIGONE.
- *					    Required information: home_page,
- *					    forward_oid and forward page for
- *					    REC_RELOCATION and REC_BIGONE,
- *					    and record type.
+ * heap_get_record_data_when_all_ready () - Get record data when all required information is known. This can work only
+ *                                          for record types that actually have data: REC_HOME, REC_RELOCATION and
+ *                                          REC_BIGONE. Required information: home_page, forward_oid and forward page
+ *                                          for REC_RELOCATION and REC_BIGONE, and record type.
  *
  * return	      : SCAN_CODE: S_SUCCESS, S_ERROR, S_DOESNT_FIT.
  * thread_p (in)      : Thread entry.

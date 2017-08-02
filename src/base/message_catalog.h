@@ -92,11 +92,11 @@ extern "C"
   extern char *msgcat_message (int, int, int);
 
 /* message catalog description  */
-  struct msg_catd
+  typedef struct msg_catd
   {
     const char *file;		/* file name of this message catalog */
     void *catd;			/* nl_catd from POSIX catopen() */
-  };
+  } *MSG_CATD;
 
   typedef struct msg_catd* MSG_CATD;
 
