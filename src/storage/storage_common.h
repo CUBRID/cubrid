@@ -492,9 +492,9 @@ typedef int TRANID;		/* Transaction identifier */
 
 typedef enum
 {
-  LOCK_COMPAT_UNKNOWN,
+  LOCK_COMPAT_NO = 0,
   LOCK_COMPAT_YES,
-  LOCK_COMPAT_NO,
+  LOCK_COMPAT_UNKNOWN,
 } LOCK_COMPATIBILITY;
 
 typedef enum
