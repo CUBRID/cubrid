@@ -15988,7 +15988,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_MERGE '(' expression_list ')'
+        | FUN_JSON_MERGE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
