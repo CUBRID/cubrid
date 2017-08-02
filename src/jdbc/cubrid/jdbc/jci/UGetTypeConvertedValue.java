@@ -349,6 +349,16 @@ abstract public class UGetTypeConvertedValue {
 		throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 	}
 
+	static public String getJson(Object data) throws UJciException {
+		if (data == null) {
+			return null;
+		} else if (data instanceof String) {
+			return (String) data;
+		}
+
+		throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+	}
+
 	static private String getHexaDecimalString(byte[] data) {
 		String stringData = "", aByteString;
 		int temp = 0, halfByte;
