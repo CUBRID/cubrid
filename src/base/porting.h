@@ -776,7 +776,7 @@ extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 #endif //!_WIN64
 #endif //defined (WINDOWS)
 
-#if !defined(WINDOWS) && __cplusplus < 201103L
+#if (!defined (WINDOWS) && __cplusplus < 201103L) || (defined (WINDOWS) && _MSC_VER < 2010)
 #define static_assert(a, b)
 #endif
 
