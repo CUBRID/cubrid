@@ -37,7 +37,7 @@ rem set default value
 set VERSION=0
 set VERSION_FILE=VERSION
 set BUILD_NUMBER=0
-set BUILD_GENERATOR="Visual Studio 9 2008"
+set BUILD_GENERATOR="Visual Studio 10 2010"
 set BUILD_TARGET=x64
 set BUILD_MODE=Release
 set BUILD_TYPE=RelWithDebInfo
