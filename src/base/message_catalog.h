@@ -98,8 +98,6 @@ extern "C"
     void *catd;			/* nl_catd from POSIX catopen() */
   } *MSG_CATD;
 
-  typedef struct msg_catd* MSG_CATD;
-
 /* base functions for message catalog support */
   extern MSG_CATD msgcat_open (const char *);
   extern MSG_CATD msgcat_get_descriptor (int cat_id);
