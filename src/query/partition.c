@@ -3886,7 +3886,7 @@ cleanup:
  */
 int
 partition_prune_partition_index (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, BTID * btid,
-				    int *position)
+				 int *position)
 {
   int error = NO_ERROR;
   int pos = 0;
