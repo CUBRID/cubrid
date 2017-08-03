@@ -1565,24 +1565,6 @@ public class UStatement {
 		return null;
 	}
 
-	synchronized public String getJson(int index) {
-		/*
-		 * currently we only return String
-		 */
-		errorHandler = new UError(relatedConnection);
-		Object obj = beforeGetXXX(index);
-		if (obj == null)
-			return null;
-
-		try {
-			return (UGetTypeConvertedValue.getJson(obj));
-		} catch (UJciException e) {
-			e.toUError(errorHandler);
-		}
-
-		return null;
-	}
-
 	public boolean isClosed() {
 		return isClosed;
 	}
@@ -2166,7 +2148,6 @@ public class UStatement {
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
-		case UUType.U_TYPE_JSON:
 			if (charsetName != null && charsetName.equals("BINARY")) {
 				return inBuffer.readBinaryString (dataSize);
 			} else {

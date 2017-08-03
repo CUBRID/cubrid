@@ -142,7 +142,6 @@ static const char *type_str_tbl[] = {
   "TIMESTAMPLTZ",		/* CCI_U_TYPE_TIMESTAMPLTZ */
   "DATETIMETZ",			/* CCI_U_TYPE_DATETIMETZ */
   "DATETIMELTZ",		/* CCI_U_TYPE_DATETIMELTZ */
-  "JSON",			/* CCI_U_TYPE_JSON */
   "TIMETZ",			/* CCI_U_TYPE_TIMETZ */
 };
 
@@ -2208,7 +2207,6 @@ bind_value_print (char type, void *net_value, bool slow_log)
     case CCI_U_TYPE_VARBIT:
     case CCI_U_TYPE_NUMERIC:
     case CCI_U_TYPE_ENUM:
-    case CCI_U_TYPE_JSON:
       {
 	char *str_val;
 	int val_size;

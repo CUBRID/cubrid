@@ -583,20 +583,6 @@ public class CUBRIDResultSet implements ResultSet {
 		return stream;
 	}
 
-	public synchronized String getJson (int columnIndex) throws SQLException {
-		checkIsOpen();
-		beforeGetValue(columnIndex);
-
-		String value;
-		synchronized (u_stmt) {
-			value = u_stmt.getJson(columnIndex - 1);
-			error = u_stmt.getRecentError();
-		}
-
-		checkGetXXXError();
-		return value;
-	}
-
 	public synchronized String getString(String columnName) throws SQLException {
 		return getString(findColumn(columnName));
 	}
@@ -664,10 +650,6 @@ public class CUBRIDResultSet implements ResultSet {
 	public synchronized InputStream getBinaryStream(String columnName)
 	        throws SQLException {
 		return getBinaryStream(findColumn(columnName));
-	}
-
-	public synchronized String getJson (String columnName) throws SQLException {
-		return getJson (findColumn (columnName));
 	}
 
 	public synchronized SQLWarning getWarnings() throws SQLException {
