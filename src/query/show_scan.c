@@ -316,7 +316,7 @@ showstmt_alloc_array_context (THREAD_ENTRY * thread_p, int num_total, int num_co
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx;
 
-  ctx = db_private_alloc (thread_p, sizeof (SHOWSTMT_ARRAY_CONTEXT));
+  ctx = (SHOWSTMT_ARRAY_CONTEXT *) db_private_alloc (thread_p, sizeof (SHOWSTMT_ARRAY_CONTEXT));
   if (ctx == NULL)
     {
       return NULL;
@@ -325,7 +325,7 @@ showstmt_alloc_array_context (THREAD_ENTRY * thread_p, int num_total, int num_co
   ctx->num_used = 0;
   ctx->num_cols = num_cols;
   ctx->num_total = num_total;
-  ctx->tuples = db_private_alloc (thread_p, sizeof (DB_VALUE *) * num_total);
+  ctx->tuples = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * num_total);
   if (ctx->tuples == NULL)
     {
       goto on_error;

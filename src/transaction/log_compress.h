@@ -29,7 +29,6 @@
 
 #ident "$Id$"
 
-#include "memory_alloc.h"
 #include "lzoconf.h"
 #include "lzo1x.h"
 

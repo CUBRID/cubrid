@@ -457,7 +457,7 @@ partition_cache_entry_to_pruning_context (PRUNING_CONTEXT * pinfo, PARTITION_CAC
 
   pinfo->attr_id = entry_p->attr_id;
 
-  pinfo->partition_type = pinfo->partitions[0].partition_type;
+  pinfo->partition_type = (DB_PARTITION_TYPE) pinfo->partitions[0].partition_type;
 
   return NO_ERROR;
 }
@@ -1024,7 +1024,7 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 	}
 
       /* check misc_operand for EXTRACT, etc */
-      if (left->value.arithptr->misc_operand != left->value.arithptr->misc_operand)
+      if (left->value.arithptr->misc_operand != right->value.arithptr->misc_operand)
 	{
 	  return false;
 	}
@@ -2320,7 +2320,7 @@ reload_from_cache:
       goto error_return;
     }
 
-  pinfo->partition_type = master->partition_type;
+  pinfo->partition_type = (DB_PARTITION_TYPE) master->partition_type;
   pinfo->root_repr_id = master->rep_id;
 
   pinfo->attr_id = partition_get_attribute_id (pinfo->partition_pred->func_regu);
@@ -3520,7 +3520,7 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * c
   HFID partition_hfid;
   BTID partition_btid;
 
-  error = btree_get_prunning_partition_index (pcontext, key, class_oid, btid, &pos);
+  error = partition_prune_partition_index (pcontext, key, class_oid, btid, &pos);
 
   if (error != NO_ERROR)
     {
@@ -3869,7 +3869,7 @@ cleanup:
 }
 
 /*
- *  btree_get_pruning_partition_index ():     - Gets the index of the partition where the key resides.
+ *  partition_prune_partition_index ():     - Gets the index of the partition where the key resides.
  *
  *  return :                              - NO_ERROR or error code.
  *
@@ -3885,7 +3885,7 @@ cleanup:
  *              and class_oid on function exit.
  */
 int
-btree_get_prunning_partition_index (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, BTID * btid,
+partition_prune_partition_index (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, BTID * btid,
 				    int *position)
 {
   int error = NO_ERROR;

@@ -2367,7 +2367,7 @@ er_get_area_error (void *buffer, int *length)
   len = (OR_INT_SIZE * 3) + strlen (msg) + 1;
   *length = len = (*length > len) ? len : *length;
 
-  ptr = buffer;
+  ptr = (char *) buffer;
   OR_PUT_INT (ptr, (int) (er_entry_p->err_id));
   ptr += OR_INT_SIZE;
   OR_PUT_INT (ptr, (int) (er_entry_p->severity));
@@ -2503,7 +2503,6 @@ int
 er_stack_push (void)
 {
   THREAD_ENTRY *thread_p;
-  ER_MSG *new_er_entry_p;
   ER_MSG *er_entry_p;
 
   thread_p = thread_get_thread_entry_info ();
@@ -2529,7 +2528,6 @@ int
 er_stack_push_if_exists (void)
 {
   THREAD_ENTRY *thread_p;
-  ER_MSG *new_er_entry_p;
   ER_MSG *er_entry_p;
 
   thread_p = thread_get_thread_entry_info ();

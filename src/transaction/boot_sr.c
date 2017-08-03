@@ -140,14 +140,14 @@ struct boot_dbparm
   VFID dropped_files_vfid;	/* Vacuum dropped files file identifier */
 };
 
-typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
 enum remove_temp_vol_action
 { REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
+typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
 
 extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p);
-extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char *lang_buf,
+extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
 					  const int lang_buf_size, char *timezone_checksum);
 extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
 extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
@@ -242,7 +242,8 @@ static void boot_check_db_at_num_shutdowns (bool force_nshutdowns);
 static void boot_shutdown_server_at_exit (void);
 #endif /* SERVER_MODE */
 
-static int boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path, const char *log_prefix);
+static INTL_CODESET boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path,
+						     const char *log_prefix);
 STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 /*
@@ -2001,7 +2002,7 @@ exit_on_error:
   return NULL_TRAN_INDEX;
 }
 
-static void
+static int
 boot_make_session_server_key (void)
 {
   UINT32 t;
@@ -2009,11 +2010,17 @@ boot_make_session_server_key (void)
 
   t = (UINT32) time (NULL);
   memcpy (boot_Server_session_key, &t, sizeof (UINT32));
-  css_hostname_to_ip (boot_Host_name, ip);
+  int err = css_hostname_to_ip (boot_Host_name, ip);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
   boot_Server_session_key[4] = ip[0];
   boot_Server_session_key[5] = ip[1];
   boot_Server_session_key[6] = ip[2];
   boot_Server_session_key[7] = ip[3];
+  return NO_ERROR;
 }
 
 /*
@@ -2047,12 +2054,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
 #if defined(SERVER_MODE)
-  int common_ha_mode;
+  HA_MODE common_ha_mode;
 #endif
   int error_code = NO_ERROR;
   char *prev_err_msg;
-  int db_charset_db_header = INTL_CODESET_NONE;
-  int db_charset_db_root = INTL_CODESET_NONE;
+  INTL_CODESET db_charset_db_header = INTL_CODESET_NONE;
+  INTL_CODESET db_charset_db_root = INTL_CODESET_NONE;
   char db_lang[LANG_MAX_LANGNAME + 1];
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
@@ -2094,7 +2101,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  common_ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
+  common_ha_mode = HA_GET_MODE ();
 #endif /* SERVER_MODE */
 
   if (db_name == NULL)
@@ -2176,7 +2183,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   boot_Host_name[MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
 
   COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), db->pathname, db_name);
-  boot_make_session_server_key ();
+  error_code = boot_make_session_server_key ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   if (boot_volume_info_log_path (log_path) == NULL)
     {
@@ -2204,11 +2216,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && !HA_DISABLED ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
 	      prm_get_name (PRM_ID_HA_MODE), css_ha_mode_string (common_ha_mode), db_name,
-	      css_ha_mode_string (prm_get_integer_value (PRM_ID_HA_MODE)));
+	      css_ha_mode_string (HA_GET_MODE ()));
       error_code = ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS;
       goto error;
     }
@@ -2689,7 +2701,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* set number of hosts */
   css_set_ha_num_of_hosts (db->num_hosts);
   /* set server's starting mode for HA according to the 'ha_mode' parameter */
-  css_change_ha_server_state (thread_p, prm_get_integer_value (PRM_ID_HA_SERVER_STATE), false,
+  css_change_ha_server_state (thread_p, (HA_SERVER_STATE) prm_get_integer_value (PRM_ID_HA_SERVER_STATE), false,
 			      HA_CHANGE_MODE_IMMEDIATELY, true);
 #endif
 
@@ -3046,7 +3058,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 #if defined (SERVER_MODE)
       server_credential->ha_server_state = css_ha_server_state ();
 #else
-      server_credential->ha_server_state = prm_get_integer_value (PRM_ID_HA_SERVER_STATE);
+      server_credential->ha_server_state = (HA_SERVER_STATE) prm_get_integer_value (PRM_ID_HA_SERVER_STATE);
 #endif
       memcpy (server_credential->server_session_key, boot_Server_session_key, SERVER_SESSION_KEY_SIZE);
       server_credential->db_charset = lang_charset ();
@@ -3836,7 +3848,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	  snprintf (new_lob_pathbuf, sizeof (new_lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, new_lob_path);
 	  new_lob_path = new_lob_pathbuf;
 	  es_type = ES_POSIX;
-	  p = strchr (new_lob_path, ':') + 1;
+	  p = (char *) strchr (new_lob_path, ':') + 1;
 	  break;
 	case ES_POSIX:
 	  p = strchr (strcpy (new_lob_pathbuf, new_lob_path), ':') + 1;
@@ -5060,8 +5072,8 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
   int error_code = NO_ERROR;
-  int db_charset_db_header = INTL_CODESET_ERROR;
-  int db_charset_db_root;
+  INTL_CODESET db_charset_db_header = INTL_CODESET_ERROR;
+  INTL_CODESET db_charset_db_root = INTL_CODESET_ERROR;
   char dummy_timezone_checksum[32 + 1];
   char db_lang[LANG_MAX_LANGNAME];
 
@@ -5664,15 +5676,16 @@ boot_set_skip_check_ct_classes (bool val)
  *   log_path(in):
  *   log_prefix(in):
  */
-static int
+static INTL_CODESET
 boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path, const char *log_prefix)
 {
-  int vol_header_db_charset = INTL_CODESET_ERROR;
-  int log_header_db_charset = INTL_CODESET_ERROR;
+  INTL_CODESET vol_header_db_charset = INTL_CODESET_ERROR;
+  INTL_CODESET log_header_db_charset = INTL_CODESET_ERROR;
 
-  log_header_db_charset = log_get_charset_from_header_page (thread_p, boot_Db_full_name, log_path, log_prefix);
+  log_header_db_charset =
+    (INTL_CODESET) log_get_charset_from_header_page (thread_p, boot_Db_full_name, log_path, log_prefix);
 
-  if (disk_get_boot_db_charset (thread_p, LOG_DBFIRST_VOLID, &vol_header_db_charset) == NULL)
+  if (disk_get_boot_db_charset (thread_p, LOG_DBFIRST_VOLID, &vol_header_db_charset) != NO_ERROR)
     {
       vol_header_db_charset = INTL_CODESET_ERROR;
     }

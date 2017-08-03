@@ -97,7 +97,7 @@ es_init (const char *uri)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, uri);
     }
 
-  srand (time (NULL));
+  srand ((unsigned int) time (NULL));
 
   return ret;
 }
@@ -394,7 +394,7 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
       ret = es_posix_copy_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
       er_log_debug (ARG_FILE_LINE, "es_copy_file: es_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #else /* CS_MODE */
-      ret = xes_posix_copy_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
+      ret = xes_posix_copy_file (ES_POSIX_PATH_POS (in_uri), (char *) metaname, ES_POSIX_PATH_POS (out_uri));
       er_log_debug (ARG_FILE_LINE, "es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* SERVER_MODE || SA_MODE */
     }
@@ -574,7 +574,7 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri)
   length = or_packed_string_length (uri, NULL);
 
   /* Check there is enough space in data buffer to pack the string */
-  assert (length <= ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE - INT_ALIGNMENT);
+  assert (length <= (int) (ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE - INT_ALIGNMENT));
 
   /* Align buffer to prepare for packing string */
   data = PTR_ALIGN (data_buf, INT_ALIGNMENT);

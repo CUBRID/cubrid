@@ -70,6 +70,7 @@ typedef enum
 
 typedef enum
 {
+  METHOD_IS_NONE = 0,
   METHOD_IS_INSTANCE_METHOD = 1,
   METHOD_IS_CLASS_METHOD
 } METHOD_TYPE;
@@ -139,8 +140,8 @@ struct xasl_stream
   XASL_ID *xasl_id;
   XASL_NODE_HEADER *xasl_header;
 
-  char *xasl_stream;
-  int xasl_stream_size;
+  char *buffer;
+  int buffer_size;
 };
 
 

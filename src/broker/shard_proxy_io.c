@@ -683,13 +683,13 @@ proxy_io_make_set_db_parameter_ok (char *driver_info, char **buffer)
 int
 proxy_io_make_ex_get_isolation_level (char *driver_info, char **buffer, void *argv)
 {
-  return proxy_io_make_ex_get_int (driver_info, buffer, argv);
+  return proxy_io_make_ex_get_int (driver_info, buffer, (int *) argv);
 }
 
 int
 proxy_io_make_ex_get_lock_timeout (char *driver_info, char **buffer, void *argv)
 {
-  return proxy_io_make_ex_get_int (driver_info, buffer, argv);
+  return proxy_io_make_ex_get_int (driver_info, buffer, (int *) argv);
 }
 
 int
@@ -4153,7 +4153,7 @@ proxy_io_initialize (void)
       return -1;
     }
 
-  ep_Event = calloc (max_Socket, sizeof (struct epoll_event));
+  ep_Event = (epoll_event *) calloc (max_Socket, sizeof (struct epoll_event));
   if (ep_Event == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory for epoll event. (error:%d[%s]).", errno,
@@ -4479,7 +4479,7 @@ proxy_get_driver_info_by_ctx (T_PROXY_CONTEXT * ctx_p)
     'C', 'U', 'B', 'R', 'K',
     CAS_CLIENT_JDBC,
     CAS_PROTO_INDICATOR | CURRENT_PROTOCOL,
-    BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT,
+    (char) BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT,
     0,
     0
   };
@@ -4509,7 +4509,7 @@ proxy_get_driver_info_by_fd (T_SOCKET_IO * sock_io_p)
     'C', 'U', 'B', 'R', 'K',
     CAS_CLIENT_JDBC,
     CAS_PROTO_INDICATOR | CURRENT_PROTOCOL,
-    BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT,
+    (char) BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT,
     0,
     0
   };

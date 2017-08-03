@@ -122,7 +122,7 @@ drand48_r (struct drand48_data *buffer, double *result)
 int
 rand_r (unsigned int *seedp)
 {
-  int ret;
+  unsigned int ret;
   if (rand_s (&ret) == 0)
     {
       return ret;

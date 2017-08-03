@@ -84,7 +84,7 @@ typedef enum
 
 #define BTREE_IS_PRIMARY_KEY(unique_pk) ((unique_pk) & BTREE_CONSTRAINT_PRIMARY_KEY)
 #define BTREE_IS_UNIQUE(unique_pk)  ((unique_pk) & BTREE_CONSTRAINT_UNIQUE)
-#define BTREE_IS_PART_KEY_DESC(btid_int) ((btid_int)->part_key_desc == true)
+#define BTREE_IS_PART_KEY_DESC(btid_int) ((btid_int)->part_key_desc != 0)
 
 
 #define BTREE_NORMAL_KEY 0
@@ -143,13 +143,13 @@ struct btree_keyrange
 /* Forward definition. */
 struct indx_scan_id;
 
-typedef enum bts_key_status BTS_KEY_STATUS;
 enum bts_key_status
 {
   BTS_KEY_IS_NOT_VERIFIED,
   BTS_KEY_IS_VERIFIED,
   BTS_KEY_IS_CONSUMED,
 };
+typedef enum bts_key_status BTS_KEY_STATUS;
 
 /* Btree range search scan structure */
 /* TODO: Move fields used to select visible objects only from BTREE_SCAN to
@@ -461,7 +461,6 @@ struct btree_node_scan
  * be added or removed, delete MVCCID can be added/removed or insert MVCCID
  * can be removed.
  */
-typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 enum btree_op_purpose
 {
   BTREE_OP_NO_OP,		/* No op. */
@@ -491,6 +490,7 @@ enum btree_op_purpose
 
   BTREE_OP_NOTIFY_VACUUM	/* Notify vacuum of an object in need of cleanup. */
 };
+typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 
 /* BTREE_MVCC_INFO -
  * Structure used to store b-tree specific MVCC information.
@@ -715,4 +715,13 @@ extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTI
 						    int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
 						    MVCC_SNAPSHOT * mvcc_snapshot, int *num_visible);
 
+extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
+			       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
+			       OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
+extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
+			      void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset, int copy,
+			      BTREE_SCAN * bts);
+extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
+						  int do_coercion, int total_order, int *start_colp);
+extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 #endif /* _BTREE_H_ */

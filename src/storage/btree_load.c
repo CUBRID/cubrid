@@ -3720,63 +3720,6 @@ btree_node_number_of_keys (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
 }
 
 /*
- * btree_get_btree_node_type_from_page () -
- *
- *   return:
- *   page_ptr(in):
- *
- */
-int
-btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
-{
-  RECDES header_record;
-  SPAGE_HEADER *page_header_p;
-  int root_header_fixed_size = (int) offsetof (BTREE_ROOT_HEADER, packed_key_domain);
-
-  assert (page_ptr != NULL);
-
-  page_header_p = (SPAGE_HEADER *) page_ptr;
-
-  if (page_header_p->num_slots <= 0 || spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
-    {
-      return PERF_PAGE_BTREE_GENERIC;
-    }
-
-  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER))
-    {
-      return PERF_PAGE_BTREE_OVF;
-    }
-  else if (header_record.length == sizeof (BTREE_NODE_HEADER))
-    {
-      BTREE_NODE_HEADER *header;
-
-      header = (BTREE_NODE_HEADER *) header_record.data;
-      if (header != NULL)
-	{
-	  if (header->node_level > 1)
-	    {
-	      return PERF_PAGE_BTREE_NONLEAF;
-	    }
-	  else
-	    {
-	      return PERF_PAGE_BTREE_LEAF;
-	    }
-	}
-      else
-	{
-	  return PERF_PAGE_UNKNOWN;
-	}
-    }
-  else
-    {
-      assert (header_record.length >= root_header_fixed_size);
-
-      return PERF_PAGE_BTREE_ROOT;
-    }
-  return PERF_PAGE_BTREE_ROOT;
-}
-
-/*
  * btree_load_check_fk () - Checks if the current foreign key that needs to be loaded
  *							is passing all the requirements.
  *
@@ -3948,7 +3891,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  BTID_COPY (&pk_btid, sort_args->fk_refcls_pk_btid);
 
 	  /* Get the correct oid, btid and partition of the key we are looking for. */
-	  ret = btree_get_prunning_partition_index (&pcontext, &fk_key, &pk_oid, &pk_btid, &pos);
+	  ret = partition_prune_partition_index (&pcontext, &fk_key, &pk_oid, &pk_btid, &pos);
 	  if (ret != NO_ERROR)
 	    {
 	      break;

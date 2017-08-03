@@ -686,7 +686,7 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
       return ret_val;
     }
 
-  if (ret_val == true)
+  if (ret_val != 0)
     {
       return 1;
     }
@@ -1165,7 +1165,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	    {
 	      pt_evaluate_tree_having_serial (parser, arg1, &opd1, 1);
 	    }
-	  type1 = (PT_TYPE_ENUM) pt_db_to_type_enum ((DB_TYPE) opd1.domain.general_info.type);
+	  type1 = pt_db_to_type_enum ((DB_TYPE) opd1.domain.general_info.type);
 	  if (arg2 && !pt_has_error (parser))
 	    {
 	      pt_evaluate_tree_having_serial (parser, arg2, &opd2, 1);

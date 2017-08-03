@@ -4907,7 +4907,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	       */
 	      if (pt_status == ER_QPROC_INVALID_XASLNODE && used_cached_statement)
 		{
-		  parser_free_parser (act->parser);
+		  parser_free_parser ((PARSER_CONTEXT *) act->parser);
 		  act->parser = NULL;
 		  act->statement = NULL;
 
@@ -6999,7 +6999,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   char *newname, *oldname;
   char *tr_name = NULL;
   int save;
-  MOP mop1, mop2;
   bool has_savepoint = false;
 
   /* Do we need to disable authorization just for check_authorization ? */
@@ -7274,7 +7273,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 
   if (error == NO_ERROR)
     {
-      oldcomment = trigger->comment;
+      oldcomment = (char *) trigger->comment;
       assert (comment != NULL);
       trigger->comment = strdup (comment);
       if (trigger->comment == NULL)

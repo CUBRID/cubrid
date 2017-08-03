@@ -158,7 +158,7 @@ ISS_OP_TYPE;
 typedef struct index_skip_scan INDEX_SKIP_SCAN;
 struct index_skip_scan
 {
-  int use;
+  bool use;
   ISS_OP_TYPE current_op;	/* one of the ISS_OP_ flags */
   KEY_RANGE *skipped_range;	/* range used for iterating the distinct values on the first index column */
 };
@@ -177,7 +177,7 @@ struct indx_scan_id
   ATTR_ID *vstr_ids;		/* attr id array of variable string */
   int num_vstr;			/* num of variable string attrs */
   BTREE_SCAN bt_scan;		/* index scan info. structure */
-  int one_range;		/* a single range? */
+  bool one_range;		/* a single range? */
   int curr_keyno;		/* current key number */
   int curr_oidno;		/* current oid number */
   OID *curr_oidp;		/* current oid pointer */

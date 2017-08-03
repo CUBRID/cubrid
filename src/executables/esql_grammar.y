@@ -333,7 +333,6 @@ static int g_cursor_type;
 
 static bool repeat_option;
 static PTR_VEC id_list;
-static HOST_LOD *input_refs, *output_refs;
 static bool already_translated;
 static bool structs_allowed;
 static bool hvs_allowed;

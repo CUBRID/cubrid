@@ -112,22 +112,22 @@
 #define NOT_FOUND -1
 
 /* B'0001 0000 0000 0000' */
-#define BTREE_LEAF_RECORD_FENCE 0x1000
+#define BTREE_LEAF_RECORD_FENCE ((short) 0x1000)
 /* B'0010 0000 0000 0000' */
-#define BTREE_LEAF_RECORD_OVERFLOW_OIDS 0x2000
+#define BTREE_LEAF_RECORD_OVERFLOW_OIDS ((short) 0x2000)
 /* B'0100 0000 0000 0000' */
-#define BTREE_LEAF_RECORD_OVERFLOW_KEY 0x4000
+#define BTREE_LEAF_RECORD_OVERFLOW_KEY ((short) 0x4000)
 /* B'1000 0000 0000 0000' */
-#define BTREE_LEAF_RECORD_CLASS_OID 0x8000
+#define BTREE_LEAF_RECORD_CLASS_OID ((short) 0x8000)
 /* B'1111 0000 0000 0000' */
-#define BTREE_LEAF_RECORD_MASK 0xF000
+#define BTREE_LEAF_RECORD_MASK ((short) 0xF000)
 
 /* B'0100 0000 0000 0000' */
-#define BTREE_OID_HAS_MVCC_INSID 0x4000
+#define BTREE_OID_HAS_MVCC_INSID ((short) 0x4000)
 /* B'1000 0000 0000 0000' */
-#define BTREE_OID_HAS_MVCC_DELID 0x8000
+#define BTREE_OID_HAS_MVCC_DELID ((short) 0x8000)
 /* B'1100 0000 0000 0000' */
-#define BTREE_OID_MVCC_FLAGS_MASK 0xC000
+#define BTREE_OID_MVCC_FLAGS_MASK ((short) 0xC000)
 
 #define BTREE_OID_HAS_MVCC_INSID_AND_DELID \
   (BTREE_OID_HAS_MVCC_INSID | BTREE_OID_HAS_MVCC_DELID)
@@ -1123,7 +1123,6 @@ struct btree_delete_helper
   while (false)
 
 /* Debug identifiers to help with detecting recovery issues. */
-typedef enum btree_rv_debug_id BTREE_RV_DEBUG_ID;
 enum btree_rv_debug_id
 {
   BTREE_RV_REDO_NO_ID = 0,
@@ -1145,6 +1144,7 @@ enum btree_rv_debug_id
   BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD,
   BTREE_RV_DEBUG_ID_INS_REM_LEAF_LAST
 };
+typedef enum btree_rv_debug_id BTREE_RV_DEBUG_ID;
 
 /* b-tree debug logging */
 #define btree_log(prefix, msg, ...) \
@@ -1273,8 +1273,8 @@ static int btree_start_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid_i
 				      VPID * first_overflow_vpid, VPID * near_vpid, VPID * new_vpid,
 				      PAGE_PTR * new_page_ptr);
 static int btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * Rec,
-						    DB_VALUE * key, void *rec_header, int node_type, bool * clear_key,
-						    int *offset, int copy);
+						    DB_VALUE * key, void *rec_header, BTREE_NODE_TYPE node_type,
+						    bool * clear_key, int *offset, int copy);
 static PAGE_PTR btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID * near_vpid);
 static int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
 				      INT16 * slot_id, VPID * child_vpid);
@@ -3926,7 +3926,7 @@ btree_get_disk_size_of_key (DB_VALUE * key)
  * any case.
  */
 int
-btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key, int node_type,
+btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key, BTREE_NODE_TYPE node_type,
 		    int key_type, int key_len, bool during_loading, OID * class_oid, OID * oid,
 		    BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
 {
@@ -4085,7 +4085,8 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
  */
 int
 btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * rec, DB_VALUE * key,
-		   void *rec_header, int node_type, bool * clear_key, int *offset, int copy_key, BTREE_SCAN * bts)
+		   void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset, int copy_key,
+		   BTREE_SCAN * bts)
 {
   int n_prefix = COMMON_PREFIX_UNKNOWN;
   int error;
@@ -4173,7 +4174,8 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
  */
 static int
 btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec, DB_VALUE * key,
-					 void *rec_header, int node_type, bool * clear_key, int *offset, int copy_key)
+					 void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset,
+					 int copy_key)
 {
   OR_BUF buf;
   VPID overflow_vpid;
@@ -7572,9 +7574,9 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
     }
 
   btid_int.sys_btid = btid;
-  valid = btree_glean_root_header_info (thread_p, root_header, &btid_int);
-  if (valid != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
     {
+      valid = DISK_ERROR;
       goto error;
     }
 
@@ -15062,7 +15064,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       bts->index_scan_idp = index_scan_id_p;
       if (index_scan_id_p->indx_info != NULL)
 	{
-	  bts->use_desc_index = index_scan_id_p->indx_info->use_desc_index;
+	  bts->use_desc_index = index_scan_id_p->indx_info->use_desc_index != 0;
 	}
       else
 	{
@@ -16035,7 +16037,7 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
   /* copy use desc index information in the BTS to have it available in the b-tree functions. */
   if (index_scan_id_p->indx_info)
     {
-      bts->use_desc_index = index_scan_id_p->indx_info->use_desc_index;
+      bts->use_desc_index = index_scan_id_p->indx_info->use_desc_index != 0;
     }
   else
     {
@@ -18540,11 +18542,11 @@ btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
   return NO_ERROR;
 }
 
-int
+DB_VALUE_COMPARE_RESULT
 btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int do_coercion, int total_order,
 		   int *start_colp)
 {
-  int c = DB_UNK;
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_TYPE key1_type, key2_type;
   DB_TYPE dom_type;
   int dummy_size1, dummy_size2, dummy_diff_column;
@@ -18878,7 +18880,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       /* just insert on last position available */
       assert (multi_range_opt->cnt < multi_range_opt->size);
 
-      curr_item = db_private_alloc (thread_p, sizeof (RANGE_OPT_ITEM));
+      curr_item = (RANGE_OPT_ITEM *) db_private_alloc (thread_p, sizeof (RANGE_OPT_ITEM));
       if (curr_item == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -26029,7 +26031,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
    * slightly different. */
   insert_helper.is_unique_multi_update = unique_stat_info != NULL && op_type == MULTI_ROW_UPDATE;
   /* Is HA enabled? The above exception will no longer apply. */
-  insert_helper.is_ha_enabled = prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF;
+  insert_helper.is_ha_enabled = !HA_DISABLED ();
 
   /* Add more insert_helper initialization here. */
 
@@ -28834,7 +28836,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
       has_debug_info = true;
 
       /* Get BTREE_RV_DEBUG_ID */
-      rv_debug_id = OR_GET_INT (rcv_data_ptr);
+      rv_debug_id = (BTREE_RV_DEBUG_ID) OR_GET_INT (rcv_data_ptr);
       rcv_data_ptr += OR_INT_SIZE;
 
       /* Read unique_pk flag. */
@@ -33182,4 +33184,61 @@ btree_op_type_to_string (int op_type)
       assert (false);
       return "** UNKNOWN OP TYPE **";
     }
+}
+
+/*
+ * btree_get_btree_node_type_from_page () -
+ *
+ *   return:
+ *   page_ptr(in):
+ *
+ */
+PERF_PAGE_TYPE
+btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
+{
+  RECDES header_record;
+  SPAGE_HEADER *page_header_p;
+  int root_header_fixed_size = (int) offsetof (BTREE_ROOT_HEADER, packed_key_domain);
+
+  assert (page_ptr != NULL);
+
+  page_header_p = (SPAGE_HEADER *) page_ptr;
+
+  if (page_header_p->num_slots <= 0 || spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
+    {
+      return PERF_PAGE_BTREE_GENERIC;
+    }
+
+  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER))
+    {
+      return PERF_PAGE_BTREE_OVF;
+    }
+  else if (header_record.length == sizeof (BTREE_NODE_HEADER))
+    {
+      BTREE_NODE_HEADER *header;
+
+      header = (BTREE_NODE_HEADER *) header_record.data;
+      if (header != NULL)
+	{
+	  if (header->node_level > 1)
+	    {
+	      return PERF_PAGE_BTREE_NONLEAF;
+	    }
+	  else
+	    {
+	      return PERF_PAGE_BTREE_LEAF;
+	    }
+	}
+      else
+	{
+	  return PERF_PAGE_UNKNOWN;
+	}
+    }
+  else
+    {
+      assert (header_record.length >= root_header_fixed_size);
+
+      return PERF_PAGE_BTREE_ROOT;
+    }
+  return PERF_PAGE_BTREE_ROOT;
 }
