@@ -328,6 +328,7 @@ if(WIN32)
     ${ESQL_LEXER_OUTPUT}
     PROPERTIES COMPILE_FLAGS /WX-
   )
+  set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS "${COMPILE_FLAGS} -Og-")
   target_compile_definitions(cubridcs PRIVATE YY_NO_UNISTD_H)
   if(TARGET_PLATFORM_BITS EQUAL 32)
     target_compile_definitions(cubridcs PRIVATE _USE_32BIT_TIME_T)

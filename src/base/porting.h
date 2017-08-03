@@ -28,10 +28,6 @@
 #ident "$Id$"
 
 #include "config.h"
-// #ifdef __cplusplus
-// extern "C"
-// {
-// #endif
 
 #if defined (AIX)
 #include <sys/socket.h>
@@ -69,6 +65,7 @@
 #if defined (WINDOWS)
 #define IMPORT_VAR 	__declspec(dllimport)
 #define EXPORT_VAR 	__declspec(dllexport)
+#include <WinBase.h>
 #else
 #define IMPORT_VAR 	extern
 #define EXPORT_VAR
@@ -753,9 +750,9 @@ void *pthread_getspecific (pthread_key_t key);
               __sync_synchronize()
 #endif
 #endif
-#endif //defined (WINDOWS)
+#endif /* defined (WINDOWS) */
 
-#endif //__cplusplus
+#endif /* __cplusplus */
 
 #if defined(HAVE_ATOMIC_BUILTINS)
 
@@ -773,79 +770,91 @@ extern UINT64 win32_compare_exchange64 (UINT64 volatile *val_ptr, UINT64 swap_va
 extern UINT64 win32_exchange_add64 (UINT64 volatile *ptr, UINT64 amount);
 extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 
-#endif //!_WIN64
-#endif //defined (WINDOWS)
+#endif /* !_WIN64 */
+#endif /* defined (WINDOWS) */
 
-#if !defined(WINDOWS) && __cplusplus < 201103L
+#if (!defined (WINDOWS) && __cplusplus < 201103L) || (defined (WINDOWS) && _MSC_VER <= 1500)
 #define static_assert(a, b)
 #endif
 
-template < typename T, typename V > inline T ATOMIC_INC_32 (volatile T * ptr, V amount)
+/* *INDENT-OFF* */
+template <typename T, typename V> inline T ATOMIC_INC_32 (volatile T *ptr, V amount)
 {
   static_assert (sizeof (T) == sizeof (UINT32), "Not 32bit");
   static_assert (sizeof (V) == sizeof (UINT32), "Not 32bit");
 #if defined (WINDOWS)
-  return InterlockedExchangeAdd (reinterpret_cast < volatile UINT32 * >(ptr), amount) +amount;
+#if _MSC_VER <= 1500
+  return InterlockedExchangeAdd (reinterpret_cast <volatile LONG *>(ptr), amount) + amount;
+#else
+  return InterlockedExchangeAdd (reinterpret_cast <volatile UINT32 *>(ptr), amount) + amount;
+#endif
 #else
   return __sync_add_and_fetch (ptr, amount);
 #endif
 }
 
-template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS_32 (volatile T * ptr, V1 cmp_val, V2 swap_val)
+template <typename T, typename V1, typename V2> inline bool ATOMIC_CAS_32 (volatile T *ptr, V1 cmp_val, V2 swap_val)
 {
   static_assert (sizeof (T) == sizeof (UINT32), "Not 32bit");
   static_assert (sizeof (V1) == sizeof (UINT32), "Not 32bit");
   static_assert (sizeof (V2) == sizeof (UINT32), "Not 32bit");
 #if defined (WINDOWS)
-  return InterlockedCompareExchange (reinterpret_cast < volatile UINT32 * >(ptr), swap_val, cmp_val) == cmp_val;
+#if _MSC_VER <= 1500
+  return InterlockedCompareExchange (reinterpret_cast <volatile LONG *>(ptr), swap_val, cmp_val) == cmp_val;
+#else
+  return InterlockedCompareExchange (reinterpret_cast <volatile UINT32 *>(ptr), swap_val, cmp_val) == cmp_val;
+#endif
 #else
   return __sync_bool_compare_and_swap (ptr, cmp_val, swap_val);
 #endif
 }
 
-template < typename T, typename V > inline T ATOMIC_TAS_32 (volatile T * ptr, V amount)
+template <typename T, typename V> inline T ATOMIC_TAS_32 (volatile T *ptr, V amount)
 {
   static_assert (sizeof (T) == sizeof (UINT32), "Not 32bit");
   static_assert (sizeof (V) <= sizeof (UINT32), "Not 32bit");
 #if defined (WINDOWS)
-  return InterlockedExchange (reinterpret_cast < volatile UINT32 * >(ptr), amount);
+#if _MSC_VER <= 1500
+  return InterlockedExchange (reinterpret_cast <volatile LONG *>(ptr), amount);
+#else
+  return InterlockedExchange (reinterpret_cast <volatile UINT32 *>(ptr), amount);
+#endif
 #else
   return __sync_lock_test_and_set (ptr, amount);
 #endif
 }
 
-template < typename T, typename V > inline T ATOMIC_INC_64 (volatile T * ptr, V amount)
+template <typename T, typename V> inline T ATOMIC_INC_64 (volatile T *ptr, V amount)
 {
   static_assert (sizeof (T) == sizeof (UINT64), "Not 64bit");
-  //static_assert(sizeof(V) == sizeof(UINT64), "Not 64bit");
 #if defined (_WIN64)
-  return InterlockedExchangeAdd64 (reinterpret_cast < volatile INT64 * >(ptr), amount) +amount;
+  return InterlockedExchangeAdd64 (reinterpret_cast <volatile INT64 *>(ptr), amount) + amount;
 #elif defined(WINDOWS)
-  return win32_exchange_add64 (reinterpret_cast < volatile UINT64 * >(ptr), amount) +amount;
+  return win32_exchange_add64 (reinterpret_cast <volatile UINT64 *>(ptr), amount) + amount;
 #else
   return __sync_add_and_fetch (ptr, amount);
 #endif
 }
 
-template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS_64 (volatile T * ptr, V1 cmp_val, V2 swap_val)
+template <typename T, typename V1, typename V2> inline bool ATOMIC_CAS_64 (volatile T *ptr, V1 cmp_val, V2 swap_val)
 {
   static_assert (sizeof (T) == sizeof (UINT64), "Not 64bit");
 #if defined (_WIN64)
-  return InterlockedCompareExchange64 (reinterpret_cast < volatile INT64 * >(ptr), swap_val, cmp_val) == cmp_val;
+  return InterlockedCompareExchange64 (reinterpret_cast <volatile INT64 *>(ptr), swap_val, cmp_val) == cmp_val;
 #elif defined(WINDOWS)
-  return win32_compare_exchange64 (reinterpret_cast < volatile UINT64 * >(ptr), swap_val, cmp_val) == cmp_val;
+  return win32_compare_exchange64 (reinterpret_cast <volatile UINT64 *>(ptr), swap_val, cmp_val) == cmp_val;
 #else
   return __sync_bool_compare_and_swap (ptr, cmp_val, swap_val);
 #endif
 }
 
-template < typename T, typename V > inline T ATOMIC_TAS_64 (volatile T * ptr, V amount)
+template <typename T, typename V> inline T ATOMIC_TAS_64 (volatile T *ptr, V amount)
 {
   static_assert (sizeof (T) == sizeof (UINT64), "Not 64bit");
 #if defined (_WIN64)
-  return InterlockedExchange64 (reinterpret_cast < volatile INT64 * >(ptr), amount);
+  return InterlockedExchange64 (reinterpret_cast <volatile INT64 *>(ptr), amount);
 #elif defined(WINDOWS)
-  return win32_exchange64 (reinterpret_cast < volatile UINT64 * >(ptr), amount);
+  return win32_exchange64 (reinterpret_cast <volatile UINT64 *>(ptr), amount);
 #else
   return __sync_lock_test_and_set (ptr, amount);
 #endif
@@ -853,72 +862,67 @@ template < typename T, typename V > inline T ATOMIC_TAS_64 (volatile T * ptr, V 
 
 namespace dispatch
 {
-  template < bool B > struct Bool2Type
-  {
-    enum
-    { value = B };
-  };
+  template <bool B> struct Bool2Type
+    {
+      enum { value = B };
+    };
 
-    template < typename T, typename V1, typename V2 > inline bool atomic_cas (volatile T * ptr, V1 cmp_val, V2 swap_val,
-									      Bool2Type < true > /*_is_64_bit*/ )
-  {
-    return ATOMIC_CAS_64 (ptr, cmp_val, swap_val);
-  }
+  template <typename T, typename V1, typename V2> inline bool atomic_cas (volatile T *ptr, V1 cmp_val, V2 swap_val,
+									  Bool2Type <true> /*_is_64_bit*/ )
+    {
+      return ATOMIC_CAS_64 (ptr, cmp_val, swap_val);
+    }
 
-  template < typename T, typename V1, typename V2 > inline bool atomic_cas (volatile T * ptr, V1 cmp_val, V2 swap_val,
-									    Bool2Type < false > /*_is_64_bit*/ )
-  {
-    return ATOMIC_CAS_32 (ptr, cmp_val, swap_val);
-  }
+  template <typename T, typename V1, typename V2> inline bool atomic_cas (volatile T *ptr, V1 cmp_val, V2 swap_val,
+									  Bool2Type <false> /*_is_64_bit*/ )
+    {
+      return ATOMIC_CAS_32 (ptr, cmp_val, swap_val);
+    }
 
-  template < typename T, typename V > inline T atomic_tas (volatile T * ptr, V amount,
-							   Bool2Type < true > /*_is_64_bit*/ )
-  {
-    return ATOMIC_TAS_64 (ptr, amount);
-  }
+  template <typename T, typename V> inline T atomic_tas (volatile T *ptr, V amount, Bool2Type <true> /*_is_64_bit*/ )
+    {
+      return ATOMIC_TAS_64 (ptr, amount);
+    }
 
-  template < typename T, typename V > inline T atomic_tas (volatile T * ptr, V amount,
-							   Bool2Type < false > /*_is_64_bit*/ )
-  {
-    return ATOMIC_TAS_32 (ptr, amount);
-  }
-}				//namespace dispatch
+  template <typename T, typename V> inline T atomic_tas (volatile T * ptr, V amount, Bool2Type <false> /*_is_64_bit*/ )
+    {
+      return ATOMIC_TAS_32 (ptr, amount);
+    }
+}				/* namespace dispatch */
 
-template < typename T, typename V > inline T ATOMIC_TAS (volatile T * ptr, V amount)
+template <typename T, typename V> inline T ATOMIC_TAS (volatile T *ptr, V amount)
 {
-  return dispatch::atomic_tas (ptr, amount, dispatch::Bool2Type < sizeof (T) == sizeof (UINT64) > ());
+  return dispatch::atomic_tas (ptr, amount, dispatch::Bool2Type <sizeof (T) == sizeof (UINT64)> ());
 }
 
-template < typename T, typename V1, typename V2 > inline bool ATOMIC_CAS (volatile T * ptr, V1 cmp_val, V2 swap_val)
+template <typename T, typename V1, typename V2> inline bool ATOMIC_CAS (volatile T *ptr, V1 cmp_val, V2 swap_val)
 {
-  return dispatch::atomic_cas (ptr, cmp_val, swap_val, dispatch::Bool2Type < sizeof (T) == sizeof (UINT64) > ());
+  return dispatch::atomic_cas (ptr, cmp_val, swap_val, dispatch::Bool2Type <sizeof (T) == sizeof (UINT64)> ());
 }
 
-template < typename T > inline T * ATOMIC_TAS_ADDR (T * volatile *ptr, T * new_val)
+template <typename T> inline T *ATOMIC_TAS_ADDR (T * volatile *ptr, T *new_val)
 {
 #if defined (WINDOWS)
-  return static_cast < T * >(InterlockedExchangePointer (reinterpret_cast < volatile PVOID * >(ptr), new_val));
+  return static_cast <T *>(InterlockedExchangePointer (reinterpret_cast <volatile PVOID *>(ptr), new_val));
 #else
   return __sync_lock_test_and_set (ptr, new_val);
 #endif
 }
 
-template < typename T > inline bool ATOMIC_CAS_ADDR (T * volatile *ptr, T * cmp_val, T * swap_val)
+template <typename T> inline bool ATOMIC_CAS_ADDR (T * volatile *ptr, T *cmp_val, T *swap_val)
 {
 #if defined (WINDOWS)
-  return InterlockedCompareExchangePointer (reinterpret_cast < volatile PVOID * >(ptr), swap_val, cmp_val) == cmp_val;
+  return InterlockedCompareExchangePointer (reinterpret_cast <volatile PVOID *>(ptr), swap_val, cmp_val) == cmp_val;
 #else
   return __sync_bool_compare_and_swap (ptr, cmp_val, swap_val);
 #endif
 }
-
-//#define ATOMIC_LOAD_64(ptr) (*(ptr))
-//#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
+/* *INDENT-ON* */
 
 #define ATOMIC_LOAD_64(ptr) ATOMIC_INC_64(ptr, 0)
 #define ATOMIC_STORE_64(ptr, val) ATOMIC_TAS(ptr, val)
 
-#endif //defined(HAVE_ATOMIC_BUILTINS)
+#endif /* defined(HAVE_ATOMIC_BUILTINS) */
 
 #if defined (WINDOWS)
 extern double strtod_win (const char *str, char **end_ptr);

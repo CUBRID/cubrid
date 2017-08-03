@@ -203,10 +203,15 @@ extern TP_DOMAIN_STATUS set_check_domain (DB_COLLECTION * set, TP_DOMAIN * domai
 extern TP_DOMAIN *set_get_domain (DB_COLLECTION * set);
 
 /* Debugging functions */
-
-extern void set_fprint (FILE * fp, DB_COLLECTION * set);
-extern void set_print (DB_COLLECTION * set);
-
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void set_fprint (FILE * fp, DB_COLLECTION * set);
+  extern void set_print (DB_COLLECTION * set);
+#ifdef __cplusplus
+}
+#endif
 /* shut down */
 
 extern void set_final (void);

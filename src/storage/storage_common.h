@@ -493,9 +493,9 @@ typedef int TRANID;		/* Transaction identifier */
 
 typedef enum
 {
-  LOCK_COMPAT_UNKNOWN,
+  LOCK_COMPAT_NO = 0,
   LOCK_COMPAT_YES,
-  LOCK_COMPAT_NO,
+  LOCK_COMPAT_UNKNOWN,
 } LOCK_COMPATIBILITY;
 
 typedef enum
@@ -1164,7 +1164,7 @@ typedef struct xasl_id XASL_ID;
 struct xasl_id
 {
   SHA1Hash sha1;		/* SHA-1 hash generated from query string. */
-  /*volatile */ INT32 cache_flag;
+  INT32 cache_flag;
   /* Multiple-purpose field used to handle XASL cache. */
   CACHE_TIME time_stored;	/* when this XASL plan stored */
 };				/* XASL plan file identifier */

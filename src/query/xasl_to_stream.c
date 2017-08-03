@@ -5828,7 +5828,6 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + OR_INT_SIZE	/* g_hkey_size */
 	   + OR_INT_SIZE	/* g_func_count */
 	   + PTR_SIZE		/* g_agg_list */
-	   + PTR_SIZE		/* g_outarith_list */
 	   + PTR_SIZE		/* a_func_list */
 	   + PTR_SIZE		/* a_regu_list */
 	   + PTR_SIZE		/* a_outptr_list */

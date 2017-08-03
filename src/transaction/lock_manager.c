@@ -1639,7 +1639,7 @@ lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index,
 	      compat = lock_Comp[lock][non2pl->granted_mode];
 	      assert (compat != LOCK_COMPAT_UNKNOWN);
 
-	      if (compat == false)
+	      if (compat == LOCK_COMPAT_NO)
 		{
 		  non2pl->granted_mode = INCON_NON_TWO_PHASE_LOCK;
 		  tran_lock->num_incons_non2pl += 1;
@@ -1900,9 +1900,8 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	{
 	  (void) logtb_find_client_name_host_pid (wait_for[i], &client_prog_name, &client_user_name, &client_host_name,
 						  &client_pid);
-	  n =
-	    sprintf (ptr, "%s%s@%s|%s(%d)", ((i == 0) ? "" : ", "), client_user_name, client_host_name,
-		     client_prog_name, client_pid);
+	  n = sprintf (ptr, "%s%s@%s|%s(%d)", ((i == 0) ? "" : ", "), client_user_name, client_host_name,
+		       client_prog_name, client_pid);
 	  ptr += n;
 	}
     }
@@ -2457,7 +2456,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   LK_ENTRY *prev_check;
   LK_ENTRY *check, *i, *prev;
   LOCK mode;
-  int compat;
+  LOCK_COMPATIBILITY compat;
 
   /* The caller is holding a resource mutex */
 
@@ -2478,7 +2477,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       compat = lock_Comp[check->blocked_mode][mode];
       assert (compat != LOCK_COMPAT_UNKNOWN);
 
-      if (compat == false)
+      if (compat == LOCK_COMPAT_NO)
 	{
 	  break;		/* stop the granting */
 	}
@@ -2580,7 +2579,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   LOCK mode;
   bool change_total_waiters_mode = false;
   int error_code = NO_ERROR;
-  int compat;
+  LOCK_COMPATIBILITY compat;
 
   /* The caller is holding a resource mutex */
 
@@ -2592,7 +2591,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       compat = lock_Comp[check->blocked_mode][res_ptr->total_holders_mode];
       assert (compat != LOCK_COMPAT_UNKNOWN);
 
-      if (compat == false)
+      if (compat == LOCK_COMPAT_NO)
 	{
 	  break;		/* stop the granting */
 	}
@@ -2710,7 +2709,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
   LK_ENTRY *prev_check;
   LK_ENTRY *check, *i;
   LOCK mode;
-  int compat;
+  LOCK_COMPATIBILITY compat;
 
   /* the caller is holding a resource mutex */
 
@@ -3198,7 +3197,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   int rv;
   LK_TRAN_LOCK *tran_lock;
   bool is_instant_duration;
-  int compat1, compat2;
+  LOCK_COMPATIBILITY compat1, compat2;
   bool is_res_mutex_locked = false;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -4532,7 +4531,7 @@ lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_ind
   LK_ENTRY *next;
   LK_TRAN_LOCK *tran_lock;
   int rv;
-  int compat;
+  LOCK_COMPATIBILITY compat;
 
   /* The caller is holding a resource mutex */
 
@@ -7741,7 +7740,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   LK_WFG_NODE *TWFG_node;
   LK_WFG_EDGE *TWFG_edge;
   int i, rv;
-  int compat1, compat2;
+  LOCK_COMPATIBILITY compat1, compat2;
   int tran_index;
   FILE *log_fp;
 
@@ -9659,7 +9658,8 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 {
   LK_ENTRY *entry;
   LK_RES *res_ptr = NULL;
-  int compat1, compat2, rv, indent = 2;
+  LOCK_COMPATIBILITY compat1, compat2;
+  int rv, indent = 2;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -9677,8 +9677,9 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
       compat1 = lock_Comp[entry->granted_mode][wait_entry->blocked_mode];
       compat2 = lock_Comp[entry->blocked_mode][wait_entry->blocked_mode];
+      assert (compat1 != LOCK_COMPAT_UNKNOWN && compat2 != LOCK_COMPAT_UNKNOWN);
 
-      if (compat1 == false || compat2 == false)
+      if (compat1 == LOCK_COMPAT_NO || compat2 == LOCK_COMPAT_NO)
 	{
 	  event_log_print_client_info (entry->tran_index, indent);
 
@@ -9705,8 +9706,9 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 	}
 
       compat1 = lock_Comp[entry->blocked_mode][wait_entry->blocked_mode];
+      assert (compat1 != LOCK_COMPAT_UNKNOWN);
 
-      if (compat1 == false)
+      if (compat1 == LOCK_COMPAT_NO)
 	{
 	  event_log_print_client_info (entry->tran_index, indent);
 
@@ -9773,11 +9775,11 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 	    {
 	      COPY_OID (&real_class_oid, &res_ptr->key.oid);
 	    }
-	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
-	    {
-	      /* ignore */
-	      er_clear ();
-	    }
+
+	  /* never propagate an error to get class name and keep the existing error if any. */
+	  er_stack_push ();
+	  (void) heap_get_class_name (thread_p, &real_class_oid, &classname);
+	  er_stack_pop ();
 
 	  if (classname != NULL)
 	    {
@@ -9800,12 +9802,11 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 	    {
 	      COPY_OID (&real_class_oid, &res_ptr->key.class_oid);
 	    }
-	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
-	    {
-	      /* ignore */
-	      er_clear ();
 
-	    }
+	  /* never propagate an error to get class name and keep the existing error if any. */
+	  er_stack_push ();
+	  (void) heap_get_class_name (thread_p, &real_class_oid, &classname);
+	  er_stack_pop ();
 
 	  if (classname != NULL)
 	    {
