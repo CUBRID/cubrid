@@ -74,4 +74,4 @@ struct heap_cache_attrinfo
   HEAP_ATTRVALUE *values;	/* Value for the attributes */
 };
 
-#endif	/* _HEAP_ATTRINFO_H_ */
+#endif /* _HEAP_ATTRINFO_H_ */

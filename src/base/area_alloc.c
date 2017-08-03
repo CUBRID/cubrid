@@ -43,7 +43,7 @@
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
-#endif	/* !defined (SERVER_MODE) */
+#endif /* !defined (SERVER_MODE) */
 
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
