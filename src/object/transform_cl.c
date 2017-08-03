@@ -2107,7 +2107,6 @@ disk_to_domain2 (OR_BUF * buf)
   DB_TYPE typeid_;
   OID oid;
   int rc = NO_ERROR;
-  rapidjson::Document * document = new rapidjson::Document();
 
   vars = read_var_table (buf, tf_Metaclass_domain.mc_n_variable);
   if (vars == NULL)

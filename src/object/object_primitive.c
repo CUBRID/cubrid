@@ -6491,14 +6491,14 @@ mr_data_writemem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
       or_put_int (buf, or_packed_string_length (elo->locator, NULL) - OR_INT_SIZE);
       if (elo->locator != NULL)
 	{
-	  or_put_string (buf, elo->locator);
+	  or_put_string_aligned (buf, elo->locator);
 	}
 
       /* meta_data */
       or_put_int (buf, or_packed_string_length (elo->meta_data, NULL) - OR_INT_SIZE);
       if (elo->meta_data != NULL)
 	{
-	  or_put_string (buf, elo->meta_data);
+	  or_put_string_aligned (buf, elo->meta_data);
 	}
 
       /* type */
