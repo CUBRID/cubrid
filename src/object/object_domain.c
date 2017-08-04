@@ -976,7 +976,7 @@ tp_domain_free (TP_DOMAIN * dom)
 
       /* NULL things that might be problems for garbage collection */
       dom->class_mop = NULL;
-      if (dom->type->id == DB_TYPE_JSON && dom->schema_raw)
+      if (dom->type->id == DB_TYPE_JSON && dom->schema_raw != NULL)
         {
           assert (dom->validation_obj != NULL);
 
@@ -1337,7 +1337,7 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	      new_domain->self_ref = d->self_ref;
 	      new_domain->is_parameterized = d->is_parameterized;
 	      new_domain->is_desc = d->is_desc;
-              if (d->type->id == DB_TYPE_JSON && d->schema_raw)
+              if (d->type->id == DB_TYPE_JSON && d->schema_raw != NULL)
                 {
                   assert (d->validation_obj != NULL);
                   schema_len = strlen (d->schema_raw);
@@ -1585,11 +1585,11 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
       break;
 
     case DB_TYPE_JSON:
-      if (dom1->schema_raw && dom2->schema_raw)
+      if (dom1->schema_raw != NULL && dom2->schema_raw != NULL)
         {
           match = !(strcmp (dom1->schema_raw, dom2->schema_raw));
         }
-      else if (!dom1->schema_raw && !dom2->schema_raw)
+      else if (dom1->schema_raw == NULL && dom2->schema_raw == NULL)
         {
           match = 1;
         }
@@ -2250,9 +2250,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_JSON:
       while (domain)
         {
-          if (transient->schema_raw && domain->schema_raw) {
-              match = !(strcmp (domain->schema_raw, transient->schema_raw));
-          } else if (!transient->schema_raw && !domain->schema_raw) {
+          if (transient->schema_raw != NULL && domain->schema_raw != NULL) {
+              match = (strcmp (domain->schema_raw, transient->schema_raw) == 0);
+          } else if (transient->schema_raw == NULL && domain->schema_raw == NULL) {
               match = 1;
           } else {
               match = 0;
@@ -7347,7 +7347,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
             case DB_TYPE_JSON:
               {
                 bool result;
-                if (!desired_domain->validation_obj)
+                if (desired_domain->validation_obj == NULL)
                   {
                     result = true;
                   }
