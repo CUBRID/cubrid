@@ -4,11 +4,11 @@
 
 #include "STAT_TOOL_Snapshot.hpp"
 
-StatToolSnapshot::StatToolSnapshot () : StatToolStatisticsColumn()
+StatToolSnapshot::StatToolSnapshot () : StatToolStatisticsColumn<UINT64>()
 {
 }
 
-StatToolSnapshot::StatToolSnapshot (time_t seconds, time_t seconds2) : StatToolStatisticsColumn()
+StatToolSnapshot::StatToolSnapshot (time_t seconds, time_t seconds2) : StatToolStatisticsColumn<UINT64>()
 {
   isDifference = true;
   this->timestamp = *localtime (&seconds);
@@ -17,7 +17,7 @@ StatToolSnapshot::StatToolSnapshot (time_t seconds, time_t seconds2) : StatToolS
   rawStats = (UINT64 *) malloc (sizeof (UINT64) * perfmeta_get_values_count ());
 }
 
-StatToolSnapshot::StatToolSnapshot (time_t seconds) : StatToolStatisticsColumn()
+StatToolSnapshot::StatToolSnapshot (time_t seconds) : StatToolStatisticsColumn<UINT64>()
 {
   isDifference = false;
   memset (&secondTimeStamp, 0, sizeof (struct tm));
@@ -26,7 +26,7 @@ StatToolSnapshot::StatToolSnapshot (time_t seconds) : StatToolStatisticsColumn()
   this->timestamp = *localtime (&seconds);
 }
 
-StatToolSnapshot::StatToolSnapshot (const StatToolSnapshot &other) : StatToolStatisticsColumn()
+StatToolSnapshot::StatToolSnapshot (const StatToolSnapshot &other) : StatToolStatisticsColumn<UINT64>()
 {
   this->timestamp = other.timestamp;
   perfmeta_copy_stats (rawStats, other.rawStats);

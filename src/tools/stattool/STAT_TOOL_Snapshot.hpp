@@ -19,6 +19,7 @@ class StatToolColumnInterface
     virtual void printColumnValue (FILE *stream, int offset) = 0;
     virtual bool isStatZero (int index) = 0;
     virtual void printColumnValueForComputedRatio (FILE *stream, int offset) = 0;
+    virtual ~StatToolColumnInterface () {};
 };
 
 template <class T>
@@ -80,7 +81,7 @@ class StatToolSnapshot : public StatToolStatisticsColumn<UINT64>
 class StatToolFauxSnapshotWithFloatColumn : public StatToolStatisticsColumn<float>
 {
   public:
-    StatToolFauxSnapshotWithFloatColumn() : StatToolStatisticsColumn()
+    StatToolFauxSnapshotWithFloatColumn() : StatToolStatisticsColumn<float>()
     {
     }
     void printColumnValue (FILE *stream, int offset)

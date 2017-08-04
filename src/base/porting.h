@@ -37,6 +37,24 @@
 #include <sys/socket.h>
 #endif
 
+#if defined (WINDOWS)
+#include <fcntl.h>
+#include <direct.h>
+#include <process.h>
+#include <sys/timeb.h>
+#include <time.h>
+#include <sys/locking.h>
+#include <windows.h>
+#include <winbase.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <assert.h>
+#include <io.h>			/* todo: to fix the compile error coming from redefining lseek */
+#else /*!defined (WINDOWS) */
+#include <sys/time.h>
+#endif /*!defined (WINDOWS) */
+
 #if !defined (__GNUC__)
 #define __attribute__(X)
 #endif
@@ -111,20 +129,6 @@
    || (sizeof (long long unsigned) <= sizeof (size_t)))
 
 #if defined (WINDOWS)
-#include <fcntl.h>
-#include <direct.h>
-#include <process.h>
-#include <sys/timeb.h>
-#include <time.h>
-#include <sys/locking.h>
-#include <windows.h>
-#include <winbase.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <errno.h>
-#include <assert.h>
-#include <io.h>			/* todo: to fix the compile error coming from redefining lseek */
-
 #if !defined (ENOMSG)
 /* not defined errno on Windows */
 #define ENOMSG      100
