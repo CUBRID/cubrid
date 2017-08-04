@@ -359,7 +359,7 @@
 
 #define OR_GET_MONETARY(ptr, value) \
   do { \
-    double pack_value; \
+    UINT64 pack_value; \
     (value)->type = (DB_CURRENCY) OR_GET_INT (((char *) (ptr)) + OR_MONETARY_TYPE); \
     memcpy ((char *) (&pack_value), ((char *) (ptr)) + OR_MONETARY_AMOUNT, OR_DOUBLE_SIZE); \
     OR_GET_DOUBLE (&pack_value, &(value)->amount); \
@@ -370,7 +370,7 @@
 
 #define OR_PUT_MONETARY(ptr, value) \
   do { \
-    double pack_value; \
+    UINT64 pack_value; \
     OR_PUT_INT (((char *) (ptr)) + OR_MONETARY_TYPE, (int) (value)->type); \
     OR_PUT_DOUBLE (&pack_value, &((value)->amount)); \
     memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, &pack_value, OR_DOUBLE_SIZE); \

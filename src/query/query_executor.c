@@ -3616,10 +3616,7 @@ qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_TUP
       return;
     }
 
-  /* 
-   * Read the incoming tuple into DB_VALUEs and do the necessary
-   * aggregation...
-   */
+  /* Read the incoming tuple into DB_VALUEs and do the necessary aggregation...  */
   if (fetch_val_list (thread_p, gbstate->g_regu_list, &gbstate->xasl_state->vd, NULL, NULL, tpl, peek) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -4474,7 +4471,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
 	      /* load values in list and aggregate first tuple */
 	      qdata_load_agg_hvalue_in_agg_list (value, gbstate.g_dim[0].d_agg_list, false);
-	      qexec_gby_agg_tuple (thread_p, &gbstate, value->first_tuple.tpl, true);
+	      qexec_gby_agg_tuple (thread_p, &gbstate, value->first_tuple.tpl, PEEK);
 
 	      /* finalize */
 	      qexec_gby_finalize_group_dim (thread_p, &gbstate, NULL);
@@ -18740,7 +18737,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   SORT_LIST *sort_col = NULL;
   bool all_cols_equal = false;
   SCAN_CODE scan_code;
-  QFILE_TUPLE_RECORD tuple_rec;
+  QFILE_TUPLE_RECORD tuple_rec = { NULL, 0 };
   REGU_VARIABLE_LIST regu_list;
   int tuple_cnt = 0;
   DB_VALUE val;
@@ -18935,7 +18932,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 	  qexec_gby_finalize_group_dim (thread_p, &gbstate, NULL);
 	}
 
-      qexec_gby_agg_tuple (thread_p, &gbstate, tuple_rec.tpl, PEEK);
+      qexec_gby_agg_tuple (thread_p, &gbstate, tuple_rec.tpl, COPY);
 
       gbstate.input_recs++;
     }
