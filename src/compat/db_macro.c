@@ -507,10 +507,10 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       break;
       /* case DB_TYPE_TABLE: internal use only */
     case DB_TYPE_JSON:
-        value->domain.general_info.is_null = 1;
-        value->need_clear = false;
-        value->data.json.json_body = NULL;
-        break;
+      value->domain.general_info.is_null = 1;
+      value->need_clear = false;
+      value->data.json.json_body = NULL;
+      break;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);
@@ -690,9 +690,9 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       break;
       /* case DB_TYPE_TABLE: internal use only */
     case DB_TYPE_JSON:
-        value->domain.general_info.is_null = 1;
-        value->data.json.json_body = NULL;
-        value->need_clear = false;
+      value->domain.general_info.is_null = 1;
+      value->data.json.json_body = NULL;
+      value->need_clear = false;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);

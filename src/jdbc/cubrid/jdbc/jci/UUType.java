@@ -50,7 +50,7 @@ import cubrid.sql.CUBRIDTimetz;
 import cubrid.sql.CUBRIDTimestamptz;
 
 /**
- * CUBRID Data Typeï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ classï¿½Ì´ï¿½.
+ * CUBRID Data TypeÀ» Á¤ÀÇÇØ ³õÀº classÀÌ´Ù.
  * 
  * since 1.0
  */

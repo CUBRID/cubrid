@@ -2112,9 +2112,9 @@ struct pt_data_type_info
   bool has_cs_spec;		/* this is used only when defining collatable types: true if charset was explicitly
 				 * set, false otherwise (charset defaulted to that of the system) */
   PT_MISC_TYPE inout;		/* input or output method parameter */
-  PARSER_VARCHAR * json_schema;
+  PARSER_VARCHAR *json_schema;
 #if defined (__cplusplus)
-  DB_JSON_VALIDATION_OBJECT * validation_obj;
+  DB_JSON_VALIDATION_OBJECT *validation_obj;
 #endif
 };
 
@@ -3042,7 +3042,7 @@ typedef DB_DATETIME PT_DATETIME;
 typedef DB_DATETIMETZ PT_DATETIMETZ;
 typedef struct
 {
-    char * json_body;
+  char *json_body;
 #if defined (__cplusplus)
     rapidjson::Document * document;
 #endif

@@ -1986,6 +1986,7 @@ public class UStatement {
 			errorHandler.setErrorCode(UErrorCode.ER_WAS_NULL);
 			return null;
 		}
+
 		return obj;
 	}
 
@@ -2225,6 +2226,7 @@ public class UStatement {
 		if (fetchedTupleNumber < 0) {
 			fetchedTupleNumber = 0;
 		}
+
 		tuples = new UResultTuple[fetchedTupleNumber];
 		for (int i = 0; i < fetchedTupleNumber; i++) {
 			readATuple(i, inBuffer);

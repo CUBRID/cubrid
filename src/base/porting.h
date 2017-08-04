@@ -329,15 +329,15 @@ extern int free_space (const char *, int);
 #else /* WINDOWS */
 
 #if !defined (HAVE_CTIME_R)
-#  error "HAVE_CTIME_R"
+#error "HAVE_CTIME_R"
 #endif
 
 #if !defined (HAVE_LOCALTIME_R)
-#  error "HAVE_LOCALTIME_R"
+#error "HAVE_LOCALTIME_R"
 #endif
 
 #if !defined (HAVE_DRAND48_R)
-#  error "HAVE_DRAND48_R"
+#error "HAVE_DRAND48_R"
 #endif
 
 

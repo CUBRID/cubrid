@@ -96,7 +96,7 @@
 #define         UNUSABLE_DATABASES_FLAG_MASK 0x20
 
 #if defined(WINDOWS) && !defined(PRId64)
-# define PRId64 "lld"
+#define PRId64 "lld"
 #endif
 
 typedef enum
