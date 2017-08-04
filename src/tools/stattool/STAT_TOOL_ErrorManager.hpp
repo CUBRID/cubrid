@@ -5,7 +5,7 @@
 #ifndef CUBRID_ERRORMANAGER_H
 #define CUBRID_ERRORMANAGER_H
 
-#define MAX_LINE_LEN 256
+#include "config.h"
 
 #include <vector>
 #include <string>
@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream>
+
+#define MAX_LINE_LEN 256
 
 class ErrorManager
 {

@@ -5,9 +5,12 @@
 #ifndef CUBRID_PLOTEXECUTOR_H
 #define CUBRID_PLOTEXECUTOR_H
 
+#include "config.h"
+
+#include <algorithm>
+
 #include "STAT_TOOL_CommandExecutor.hpp"
 #include "STAT_TOOL_Utils.hpp"
-#include <algorithm>
 
 class PlotExecutor : public CommandExecutor
 {

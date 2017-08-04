@@ -5,7 +5,10 @@
 #ifndef CUBRID_SHOWEXECUTOR_H
 #define CUBRID_SHOWEXECUTOR_H
 
+#include "config.h"
+
 #include <algorithm>
+
 #include "STAT_TOOL_ErrorManager.hpp"
 #include "STAT_TOOL_CommandExecutor.hpp"
 #include "STAT_TOOL_SnapshotSet.hpp"
@@ -32,14 +35,14 @@ class ShowExecutor : public CommandExecutor
     std::vector<StatToolColumnInterface *> snapshots;
 
     void customDumpStatsInTableForm (const std::vector<StatToolColumnInterface *> &snapshots, FILE *stream,
-				     int show_complex,
-				     int show_zero);
+                                     int show_complex,
+                                     int show_zero);
     void printTimerToFileInTableForm (FILE *stream, int stat_index,
-				      const std::vector<StatToolColumnInterface *> &snapshots,
-				      int show_zero, int show_header);
+                                      const std::vector<StatToolColumnInterface *> &snapshots,
+                                      int show_zero, int show_header);
     void statDumpInFileInTableForm (FILE *stream, PSTAT_METADATA *stat,
-				    const std::vector<StatToolColumnInterface *> &snapshots,
-				    int show_zeroes);
+                                    const std::vector<StatToolColumnInterface *> &snapshots,
+                                    int show_zeroes);
 };
 
 #endif //CUBRID_SHOWEXECUTOR_H

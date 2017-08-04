@@ -5,12 +5,12 @@
 #ifndef CUBRID_UTILS_H
 #define CUBRID_UTILS_H
 
-extern "C" {
-#include <perf_metadata.h>
-}
+#include "config.h"
 
 #include <vector>
 #include <typeinfo>
+
+#include "perf_metadata.h"
 #include "STAT_TOOL_Snapshot.hpp"
 #include "STAT_TOOL_SnapshotSet.hpp"
 #include "STAT_TOOL_CommandExecutor.hpp"
@@ -38,7 +38,7 @@ class Utils
 
     static std::vector<StatToolSnapshotSet *> loadedSets;
     static const std::vector<std::pair<std::string, std::string> > possibleArguments;
-private:
+  private:
     static std::vector<std::pair<std::string, std::string> > initPossibleArguments();
 };
 

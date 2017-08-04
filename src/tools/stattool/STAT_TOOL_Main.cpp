@@ -1,3 +1,6 @@
+
+#include "config.h"
+
 #include <iostream>
 #include "STAT_TOOL_Utils.hpp"
 #if defined (WINDOWS)
@@ -15,17 +18,21 @@ main (int argc, char **argv)
 
   Utils::init ();
 
-  if (argc > 1) {
-    for (unsigned int i = 0; i < Utils::possibleArguments.size(); i++) {
-      if (Utils::possibleArguments[i].first.compare (argv[1]) == 0) {
-	error = Utils::processArguments (argv, argc, quit);
-        if (error != ErrorManager::NO_ERRORS) {
-          std::cout << "Usage: " << Utils::possibleArguments[i].second << std::endl;
+  if (argc > 1)
+    {
+      for (unsigned int i = 0; i < Utils::possibleArguments.size(); i++)
+        {
+          if (Utils::possibleArguments[i].first.compare (argv[1]) == 0)
+            {
+              error = Utils::processArguments (argv, argc, quit);
+              if (error != ErrorManager::NO_ERRORS)
+                {
+                  std::cout << "Usage: " << Utils::possibleArguments[i].second << std::endl;
+                }
+              break;
+            }
         }
-	break;
-      }
     }
-  }
 
   while (!quit)
     {
@@ -53,8 +60,8 @@ main (int argc, char **argv)
       error = executor->parseCommandAndInit ();
       if (error != ErrorManager::NO_ERRORS)
         {
-	  printf ("Usage: ");
-	  executor->printUsage ();
+          printf ("Usage: ");
+          executor->printUsage ();
         }
       else
         {

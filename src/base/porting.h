@@ -123,6 +123,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <assert.h>
+#include <io.h>			/* todo: to fix the compile error coming from redefining lseek */
 
 #if !defined (ENOMSG)
 /* not defined errno on Windows */
@@ -456,7 +457,9 @@ extern int itona (int i, char *s, size_t n);
 
 extern char *stristr (const char *s, const char *find);
 
+#if 0
 #define strlen(s1)  ((int) strlen(s1))
+#endif
 #define CAST_STRLEN (int)
 #define CAST_BUFLEN (int)
 #if defined(_FILE_OFFSET_BITS) && _FILE_OFFSET_BITS == 32

@@ -5,6 +5,8 @@
 #ifndef CUBRID_LOADEXECUTOR_H
 #define CUBRID_LOADEXECUTOR_H
 
+#include "config.h"
+
 #include "STAT_TOOL_CommandExecutor.hpp"
 #include "STAT_TOOL_SnapshotSet.hpp"
 

@@ -185,7 +185,7 @@ PlotExecutor::execute()
           time_t seconds = Utils::loadedSets[plotData[i].first]->getSnapshots()[j]->getSeconds ()
                            -Utils::loadedSets[plotData[i].first]->getRelativeSeconds();
           UINT64 value = Utils::loadedSets[plotData[i].first]->getSnapshots ()[j]->getStatValueFromName (variable.c_str ());
-          fprintf (gnuplotPipe, "%ld %lld\n", seconds, (long long) value);
+          fprintf (gnuplotPipe, "%lld %lld\n", (long long) seconds, (long long) value);
         }
 
       fprintf (gnuplotPipe, "e\n");

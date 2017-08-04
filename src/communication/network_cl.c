@@ -54,6 +54,7 @@
 #include "db.h"
 #include "client_support.h"
 #include "perf_monitor.h"
+#include "perf_client.h"
 #include "log_writer.h"
 
 /*

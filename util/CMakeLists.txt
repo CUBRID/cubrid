@@ -82,6 +82,7 @@ set(STATTTOL_UNIT_TESTS_SOURCES
         ${BASE_DIR}/perf_metadata.c
         ${BASE_DIR}/porting.c
 )
+SET_SOURCE_FILES_PROPERTIES(${STATTTOL_UNIT_TESTS_SOURCES} PROPERTIES LANGUAGE CXX)
 add_executable(stattool_unittests ${STATTTOL_UNIT_TESTS_SOURCES})
 target_compile_definitions(stattool_unittests PRIVATE ${COMMON_DEFS})
 target_include_directories(stattool_unittests PRIVATE ${EP_INCLUDES})
@@ -109,6 +110,7 @@ set(STATISTICS_TOOL_SOURCES
         ${BASE_DIR}/perf_metadata.c
         ${BASE_DIR}/porting.c
 )
+SET_SOURCE_FILES_PROPERTIES(${STATISTICS_TOOL_SOURCES} PROPERTIES LANGUAGE CXX)
 add_executable(stattool ${STATISTICS_TOOL_SOURCES})
 target_compile_definitions(stattool PRIVATE ${COMMON_DEFS})
 target_include_directories(stattool PRIVATE ${EP_INCLUDES})

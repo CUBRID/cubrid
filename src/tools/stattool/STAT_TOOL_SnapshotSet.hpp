@@ -5,21 +5,20 @@
 #ifndef CUBRID_STATISTICSFILE_H
 #define CUBRID_STATISTICSFILE_H
 
-#include <vector>
-#include <string>
-#include <ctime>
-#include "STAT_TOOL_Utils.hpp"
-#include <iostream>
-#include <assert.h>
-#include "STAT_TOOL_ErrorManager.hpp"
-#include "STAT_TOOL_Snapshot.hpp"
+#include "config.h"
 
-extern "C"
-{
 #include <stdio.h>
 #include <stdlib.h>
 #include <system.h>
-}
+#include <vector>
+#include <string>
+#include <ctime>
+#include <iostream>
+#include <assert.h>
+
+#include "STAT_TOOL_Utils.hpp"
+#include "STAT_TOOL_ErrorManager.hpp"
+#include "STAT_TOOL_Snapshot.hpp"
 
 class StatToolSnapshot;
 

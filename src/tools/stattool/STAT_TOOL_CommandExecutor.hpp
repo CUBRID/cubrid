@@ -5,14 +5,14 @@
 #ifndef CUBRID_COMMANDEXECUTOR_H
 #define CUBRID_COMMANDEXECUTOR_H
 
+#include "config.h"
+
 #include <string>
 #include <vector>
 #include <sstream>
-#include "STAT_TOOL_ErrorManager.hpp"
 
-extern "C" {
 #include "perf_metadata.h"
-}
+#include "STAT_TOOL_ErrorManager.hpp"
 
 class CommandExecutor
 {

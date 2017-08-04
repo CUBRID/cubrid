@@ -5,14 +5,14 @@
 #ifndef CUBRID_STAT_TOOL_AGGREGATEEXECUTOR_H
 #define CUBRID_STAT_TOOL_AGGREGATEEXECUTOR_H
 
-#include "STAT_TOOL_CommandExecutor.hpp"
-#include "STAT_TOOL_SnapshotSet.hpp"
+#include "config.h"
+
 #include <vector>
 #include <sstream>
-
-extern "C" {
 #include <stdlib.h>
-}
+
+#include "STAT_TOOL_CommandExecutor.hpp"
+#include "STAT_TOOL_SnapshotSet.hpp"
 
 class StatToolSnapshotSet;
 

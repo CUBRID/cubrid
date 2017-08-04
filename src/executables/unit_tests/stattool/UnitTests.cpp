@@ -123,7 +123,8 @@ UnitTests::testLoad_GoodFile_checkSnapshots ()
           bool check = true;
           for (unsigned int i = 0; i < Utils::loadedSets[0]->getSnapshots ().size(); i++)
             {
-              check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[i]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds () == SECONDS_GAP * (i+1));
+              check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[i]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds () ==
+                        SECONDS_GAP * (i+1));
             }
           return Utils::loadedSets[0]->getSnapshots ().size() == NUM_OF_SNAPSHOTS && check;
         }
@@ -258,11 +259,14 @@ UnitTests::testStatFileClass_Test2()
         {
           bool check = true;
           index = Utils::loadedSets[0]->getSnapshotIndexBySeconds (150);
-          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == 200;
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index]->timestamp) -
+                    Utils::loadedSets[0]->getRelativeSeconds ()) == 200;
           index = Utils::loadedSets[0]->getSnapshotIndexBySeconds (0);
-          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == SECONDS_GAP;
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index]->timestamp) -
+                    Utils::loadedSets[0]->getRelativeSeconds ()) == SECONDS_GAP;
           index = Utils::loadedSets[0]->getSnapshotIndexBySeconds (100000);
-          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == SECONDS_GAP *
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index]->timestamp) -
+                    Utils::loadedSets[0]->getRelativeSeconds ()) == SECONDS_GAP *
                    NUM_OF_SNAPSHOTS;
           return check;
         }
@@ -309,11 +313,14 @@ UnitTests::testStatFileClass_Test3()
           Utils::loadedSets[0]->getIndicesOfSnapshotsByArgument ("b(100)", index1, index2);
           check &= (index1 == -1 && index2 == -1);
           Utils::loadedSets[0]->getIndicesOfSnapshotsByArgument ("a(150)", index1, index2);
-          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index2]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == 200;
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index2]->timestamp) -
+                    Utils::loadedSets[0]->getRelativeSeconds ()) == 200;
           check &= (index1 == 0);
           Utils::loadedSets[0]->getIndicesOfSnapshotsByArgument ("a(150-670)", index1, index2);
-          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index1]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == 200;
-          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index2]->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == 700;
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index1]->timestamp) -
+                    Utils::loadedSets[0]->getRelativeSeconds ()) == 200;
+          check &= (mktime (&Utils::loadedSets[0]->getSnapshots ()[index2]->timestamp) -
+                    Utils::loadedSets[0]->getRelativeSeconds ()) == 700;
 
           snapshot1 = Utils::loadedSets[0]->getSnapshotByArgument ("a(420)");
           check &= (mktime (&snapshot1->timestamp) - Utils::loadedSets[0]->getRelativeSeconds ()) == 500;
@@ -650,6 +657,8 @@ UnitTests::testAggregate_HappyPath ()
 void
 UnitTests::disableStdout()
 {
+#if !defined (WINDOWS)
+  /* STDOUT_FILENO is not recognized */
   if (isStdoutEnabled)
     {
       stdoutBackupFd = CROSS_DUP (STDOUT_FILENO);
@@ -658,11 +667,14 @@ UnitTests::disableStdout()
       CROSS_DUP2 (fileno (nullOut), STDOUT_FILENO);
       isStdoutEnabled = false;
     }
+#endif /* !defined (WINDOWS) */
 }
 
 void
 UnitTests::enableStdout()
 {
+#if !defined (WINDOWS)
+  /* STDOUT_FILENO is not recognized */
   if (!isStdoutEnabled)
     {
       fflush (stdout);
@@ -671,6 +683,7 @@ UnitTests::enableStdout()
       close (stdoutBackupFd);
       isStdoutEnabled = true;
     }
+#endif /* !defined (WINDOWS) */
 }
 
 UINT64 *
@@ -687,6 +700,7 @@ UnitTests::generateRandomStats (long long max)
 }
 
 void
-UnitTests::simpleCleanUp () {
+UnitTests::simpleCleanUp ()
+{
   Utils::loadedSets.clear ();
 }
