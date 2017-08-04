@@ -40,7 +40,6 @@
  * NOTE: some of these are totally dependent on report-writer's
  * rendering library.
  */
-#define MAX_JSON_DISPLAY_LENGTH       32
 #define	MAX_SHORT_DISPLAY_LENGTH	  6
 #define	MAX_INTEGER_DISPLAY_LENGTH	  11
 #define	MAX_BIGINT_DISPLAY_LENGTH	  20
@@ -333,9 +332,6 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
 	case DB_TYPE_MONETARY:
 	  attr_lengths[i] = MAX (MAX_MONETARY_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
-    case DB_TYPE_JSON:
-        attr_lengths[i] = MAX (MAX_JSON_DISPLAY_LENGTH, attr_name_lengths[i]);
-        break;
 	default:
 	  attr_lengths[i] = -MAX_DEFAULT_DISPLAY_LENGTH;
 	  break;

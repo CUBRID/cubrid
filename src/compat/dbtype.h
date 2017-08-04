@@ -537,17 +537,17 @@ extern "C"
     DB_TYPE_TIMESTAMPLTZ = 37,
     DB_TYPE_DATETIMETZ = 38,
     DB_TYPE_DATETIMELTZ = 39,
-  DB_TYPE_JSON = 40,
+    DB_TYPE_JSON = 40,
     /* Disabled types */
-  DB_TYPE_TIMETZ = 41,		/* internal use only - RESERVED */
-  DB_TYPE_TIMELTZ = 42,		/* internal use only - RESERVED */
+    DB_TYPE_TIMETZ = 41,	/* internal use only - RESERVED */
+    DB_TYPE_TIMELTZ = 42,	/* internal use only - RESERVED */
     /* end of disabled types */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
     DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
     DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
     DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP */
 
-  DB_TYPE_LAST = DB_TYPE_JSON
+    DB_TYPE_LAST = DB_TYPE_JSON
   } DB_TYPE;
 
 /* Domain information stored in DB_VALUE structures. */
@@ -558,7 +558,7 @@ extern "C"
     {
       unsigned char is_null;
       unsigned char type;
-    char * schema_raw;
+      char *schema_raw;
     } general_info;
     struct numeric_info
     {
@@ -852,9 +852,10 @@ extern "C"
 
 #if defined (__cplusplus)
   typedef struct db_json DB_JSON;
-  struct db_json {
-        char * json_body;
-        rapidjson::Document * document;
+  struct db_json
+  {
+    char *json_body;
+      rapidjson::Document * document;
   };
 #endif
 
@@ -891,9 +892,9 @@ extern "C"
     DB_CHAR ch;
     DB_RESULTSET rset;
     DB_ENUM_ELEMENT enumeration;
-  #if defined (__cplusplus)
+#if defined (__cplusplus)
     DB_JSON json;
-  #endif
+#endif
   };
 
 /* This is the primary structure used for passing values in and out of

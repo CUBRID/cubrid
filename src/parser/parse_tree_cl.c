@@ -4125,7 +4125,7 @@ pt_show_type_enum (PT_TYPE_ENUM t)
     case PT_TYPE_MONETARY:
       return "monetary";
     case PT_TYPE_JSON:
-        return "json";
+      return "json";
     case PT_TYPE_MAYBE:
       return "uncertain";
 
@@ -16294,8 +16294,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       if ((p->info.value.print_charset == false
 	   && !(parser->custom_print & (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
 	  || (p->type_enum != PT_TYPE_CHAR && p->type_enum != PT_TYPE_VARCHAR) || (prt_cs == LANG_SYS_CODESET
-										   && (parser->
-										       custom_print &
+										   && (parser->custom_print &
 										       PT_SUPPRESS_CHARSET_PRINT))
 	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && p->info.value.has_cs_introducer == false))
 	{
@@ -17975,7 +17974,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_WIDTH_BUCKET:
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.expr.arg3));
-        case PT_JSON_CONTAINS:
+	case PT_JSON_CONTAINS:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
 	default:

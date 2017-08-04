@@ -43,7 +43,7 @@
 #include "byte_order.h"
 
 #if defined (__cplusplus)
-using namespace std; /* for fpclassify */
+using namespace std;		/* for fpclassify */
 #endif
 
 #if defined(SERVER_MODE)
@@ -95,6 +95,7 @@ static double numeric_Upper_limit[10] = {
   (double) DB_INT32_MAX / 1e8,
   (double) DB_INT32_MAX / 1e9
 };
+
 static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };

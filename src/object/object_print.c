@@ -466,13 +466,13 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	  sprintf (temp_buffer, "(%d)", precision);
 	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);
 	  break;
-        case DB_TYPE_JSON:
-          if (temp_domain->schema_raw)
-            {
-              sprintf (temp_buffer, "(%s)", temp_domain->schema_raw);
-            }
-          buffer = pt_append_nulstring (parser, buffer, temp_buffer);
-          break;
+	case DB_TYPE_JSON:
+	  if (temp_domain->schema_raw)
+	    {
+	      sprintf (temp_buffer, "(%s)", temp_domain->schema_raw);
+	    }
+	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);
+	  break;
 	case DB_TYPE_NUMERIC:
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  ustr_upper (temp_buffer);
@@ -4046,9 +4046,9 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	    }
 
 	  break;
-    case DB_TYPE_JSON:
-        buffer = pt_append_nulstring (parser, buffer, value->data.json.json_body);
-        break;
+	case DB_TYPE_JSON:
+	  buffer = pt_append_nulstring (parser, buffer, value->data.json.json_body);
+	  break;
 	case DB_TYPE_MIDXKEY:
 	  midxkey = DB_GET_MIDXKEY (value);
 	  if (midxkey != NULL)
@@ -4275,9 +4275,9 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;
-    case DB_TYPE_JSON:
-        buffer = describe_data (parser, buffer, value);
-        break;
+	case DB_TYPE_JSON:
+	  buffer = describe_data (parser, buffer, value);
+	  break;
 	case DB_TYPE_TIME:
 	  buffer = pt_append_nulstring (parser, buffer, "time '");
 	  buffer = describe_data (parser, buffer, value);

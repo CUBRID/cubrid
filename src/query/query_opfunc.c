@@ -224,11 +224,11 @@ static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_D
 
 static int
 qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-                    QFILE_TUPLE tuple);
+		   QFILE_TUPLE tuple);
 
 static int
 qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-                    QFILE_TUPLE tuple);
+		  QFILE_TUPLE tuple);
 
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *, int, DB_VALUE **) =
 {
@@ -6511,7 +6511,7 @@ qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VAL
 int
 qdata_json_contains_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
-  char * value = dbval2_p->data.ch.medium.buf;
+  char *value = dbval2_p->data.ch.medium.buf;
   int has_member;
 
   has_member = (int) dbval1_p->data.json.document->HasMember (value);
@@ -10482,13 +10482,13 @@ error_exit:
 
 static int
 qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-                    QFILE_TUPLE tuple)
+		   QFILE_TUPLE tuple)
 {
   DB_VALUE *key, *value;
   REGU_VARIABLE_LIST operand;
   int error_status = NO_ERROR;
   int no_args = 0, index = 0;
-  DB_VALUE ** args;
+  DB_VALUE **args;
 
   /* should sync with fetch_peek_dbval () */
 
@@ -10504,21 +10504,21 @@ qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
       operand = operand->next;
     }
 
-  args = (DB_VALUE **) db_private_alloc (NULL, sizeof(DB_VALUE *) * no_args);
+  args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
   operand = function_p->operand;
 
   while (operand != NULL)
     {
       error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &key);
       if (error_status != NO_ERROR)
-        {
-          goto error_exit;
-        }
+	{
+	  goto error_exit;
+	}
       error_status = fetch_peek_dbval (thread_p, &operand->next->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
       if (error_status != NO_ERROR)
-        {
-          goto error_exit;
-        }
+	{
+	  goto error_exit;
+	}
       args[index++] = key;
       args[index++] = value;
 
@@ -10542,13 +10542,13 @@ error_exit:
 
 static int
 qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-                    QFILE_TUPLE tuple)
+		  QFILE_TUPLE tuple)
 {
   DB_VALUE *value;
   REGU_VARIABLE_LIST operand;
   int error_status = NO_ERROR;
   int no_args = 0, index = 0;
-  DB_VALUE ** args;
+  DB_VALUE **args;
 
   /* should sync with fetch_peek_dbval () */
 
@@ -10564,16 +10564,16 @@ qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR
       operand = operand->next;
     }
 
-  args = (DB_VALUE **) db_private_alloc (NULL, sizeof(DB_VALUE *) * no_args);
+  args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
   operand = function_p->operand;
 
   while (operand != NULL)
     {
       error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
       if (error_status != NO_ERROR)
-        {
-          goto error_exit;
-        }
+	{
+	  goto error_exit;
+	}
       args[index++] = value;
 
       operand = operand->next;

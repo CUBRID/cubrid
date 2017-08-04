@@ -67,7 +67,7 @@ typedef struct seman_compatible_info
   int prec;
   int scale;
 #if defined (__cplusplus)
-  rapidjson::SchemaValidator * schema_validator;
+    rapidjson::SchemaValidator * schema_validator;
 #endif
   PT_COLL_INFER coll_infer;
   const PT_NODE *ref_att;	/* column node having current compat info */
@@ -11108,10 +11108,10 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	{
 	  sci.prec = lhs->data_type->info.data_type.precision;
 	  sci.scale = lhs->data_type->info.data_type.dec_precision;
-          if (lhs->type_enum == PT_TYPE_JSON && lhs->data_type->info.data_type.validation_obj)
-            {
-              sci.schema_validator = lhs->data_type->info.data_type.validation_obj->validator;
-            }
+	  if (lhs->type_enum == PT_TYPE_JSON && lhs->data_type->info.data_type.validation_obj)
+	    {
+	      sci.schema_validator = lhs->data_type->info.data_type.validation_obj->validator;
+	    }
 	}
 
       if (PT_HAS_COLLATION (lhs->type_enum))
@@ -12798,9 +12798,9 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	  return 1;
 	}
 
-	{
-	  return 1;
-	}
+      {
+	return 1;
+      }
 
       if (pt_str_compare (p->info.dot.arg2->info.name.original, q->info.dot.arg2->info.name.original, CASE_INSENSITIVE))
 	{

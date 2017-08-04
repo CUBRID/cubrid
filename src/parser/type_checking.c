@@ -12283,9 +12283,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 
     case PT_FUNCTION_HOLDER:
       if (node->info.function.function_type == F_ELT ||
-          node->info.function.function_type == F_INSERT_SUBSTRING ||
-          node->info.function.function_type == F_JSON_OBJECT ||
-          node->info.function.function_type == F_JSON_ARRAY)
+	  node->info.function.function_type == F_INSERT_SUBSTRING ||
+	  node->info.function.function_type == F_JSON_OBJECT || node->info.function.function_type == F_JSON_ARRAY)
 	{
 	  assert (dt == NULL);
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
@@ -13068,91 +13067,91 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_OBJECT:
       {
-        PT_TYPE_ENUM supported_key_types[] = {PT_TYPE_CHAR, PT_TYPE_MAYBE};
-        PT_TYPE_ENUM supported_value_types[] = {PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON, PT_TYPE_MAYBE};
-        PT_TYPE_ENUM unsupported_type;
-        unsigned int num_bad = 0, len, i, found_supported = 0;
+	PT_TYPE_ENUM supported_key_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_value_types[] = { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM unsupported_type;
+	unsigned int num_bad = 0, len, i, found_supported = 0;
 
-        PT_NODE *arg = arg_list;
-        PT_TYPE_ENUM *current_types = supported_value_types;
+	PT_NODE *arg = arg_list;
+	PT_TYPE_ENUM *current_types = supported_value_types;
 
-        while (arg)
-          {
-            if (current_types == supported_key_types)
-              {
-                current_types = supported_value_types;
-                len = sizeof (supported_value_types) / sizeof (supported_value_types[0]);
-              }
-            else
-              {
-               current_types = supported_key_types;
-               len = sizeof (supported_key_types) / sizeof (supported_key_types[0]);
-              }
-            found_supported = 0;
-            for (i = 0; i < len; i++)
-              {
-                if (arg->type_enum == current_types[i])
-                  {
-                    found_supported = 1;
-                    break;
-                  }
-              }
-            if (!found_supported)
-              {
-                unsupported_type = arg->type_enum;
-                break;
-              }
+	while (arg)
+	  {
+	    if (current_types == supported_key_types)
+	      {
+		current_types = supported_value_types;
+		len = sizeof (supported_value_types) / sizeof (supported_value_types[0]);
+	      }
+	    else
+	      {
+		current_types = supported_key_types;
+		len = sizeof (supported_key_types) / sizeof (supported_key_types[0]);
+	      }
+	    found_supported = 0;
+	    for (i = 0; i < len; i++)
+	      {
+		if (arg->type_enum == current_types[i])
+		  {
+		    found_supported = 1;
+		    break;
+		  }
+	      }
+	    if (!found_supported)
+	      {
+		unsupported_type = arg->type_enum;
+		break;
+	      }
 
-            arg = arg->next;
-          }
-        if (!found_supported)
-          {
-            arg_type = PT_TYPE_NONE;
-            PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-                          pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-          }
-        else
-          {
-            arg_type = PT_TYPE_JSON;
-          }
+	    arg = arg->next;
+	  }
+	if (!found_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+	  }
+	else
+	  {
+	    arg_type = PT_TYPE_JSON;
+	  }
       }
       break;
     case F_JSON_ARRAY:
       {
-        PT_TYPE_ENUM supported_types[] = {PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON};
-        PT_TYPE_ENUM unsupported_type;
-        int len = sizeof (supported_types) / sizeof (supported_types[0]), i, found_supported_type = 0;
+	PT_TYPE_ENUM supported_types[] = { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON };
+	PT_TYPE_ENUM unsupported_type;
+	int len = sizeof (supported_types) / sizeof (supported_types[0]), i, found_supported_type = 0;
 
-        PT_NODE *arg = arg_list;
+	PT_NODE *arg = arg_list;
 
-        while (arg)
-          {
-            found_supported_type = 0;
-            for (i = 0; i < len; i++)
-              {
-                if (supported_types[i] == arg->type_enum)
-                  {
-                    found_supported_type = 1;
-                    break;
-                  }
-              }
-            if (!found_supported_type)
-              {
-                unsupported_type = arg->type_enum;
-                break;
-              }
-            arg = arg->next;
-          }
-        if (!found_supported_type)
-          {
-            arg_type = PT_TYPE_NONE;
-            PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-                          pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-          }
-        else
-          {
-            arg_type = PT_TYPE_JSON;
-          }
+	while (arg)
+	  {
+	    found_supported_type = 0;
+	    for (i = 0; i < len; i++)
+	      {
+		if (supported_types[i] == arg->type_enum)
+		  {
+		    found_supported_type = 1;
+		    break;
+		  }
+	      }
+	    if (!found_supported_type)
+	      {
+		unsupported_type = arg->type_enum;
+		break;
+	      }
+	    arg = arg->next;
+	  }
+	if (!found_supported_type)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+	  }
+	else
+	  {
+	    arg_type = PT_TYPE_JSON;
+	  }
       }
       break;
     case F_ELT:
@@ -13480,12 +13479,12 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->data_type = NULL;
 
 	  break;
-        case F_JSON_OBJECT:
-        case F_JSON_ARRAY:
-          node->type_enum = arg_type;
-          node->data_type = pt_make_prim_data_type (parser, arg_type);
+	case F_JSON_OBJECT:
+	case F_JSON_ARRAY:
+	  node->type_enum = arg_type;
+	  node->data_type = pt_make_prim_data_type (parser, arg_type);
 
-          break;
+	  break;
 	case PT_MEDIAN:
 	case PT_PERCENTILE_CONT:
 	case PT_PERCENTILE_DISC:
@@ -16958,24 +16957,24 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
     case PT_JSON_CONTAINS:
       if (!DB_IS_NULL (arg1))
-        {
-          char * value = arg2->data.ch.medium.buf;
-          int has_member;
+	{
+	  char *value = arg2->data.ch.medium.buf;
+	  int has_member;
 
-          if (!arg1->data.json.document->IsObject ())
-            {
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
-              PT_ERRORc (parser, o1, er_msg ());
-              return 0;
-            }
+	  if (!arg1->data.json.document->IsObject ())
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
+	      PT_ERRORc (parser, o1, er_msg ());
+	      return 0;
+	    }
 
-          has_member = (int) arg1->data.json.document->HasMember (value);
-          DB_MAKE_INT (result, has_member);
-        }
+	  has_member = (int) arg1->data.json.document->HasMember (value);
+	  DB_MAKE_INT (result, has_member);
+	}
       else
-        {
-          DB_MAKE_INT (result, 0);
-        }
+	{
+	  DB_MAKE_INT (result, 0);
+	}
       break;
     case PT_POWER:
       error = db_power_dbval (result, arg1, arg2);
@@ -18561,15 +18560,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      db_make_null (result);
 	      return 1;
 	    }
-          if (dom_status == DOMAIN_INCOMPATIBLE)
-            {
-              PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-                        pt_short_print (parser, o1), pt_show_type_enum (rTyp));
-            }
-          else if (dom_status == DOMAIN_ERROR)
-            {
-              PT_ERRORc (parser, o1, er_msg ());
-            }
+	  if (dom_status == DOMAIN_INCOMPATIBLE)
+	    {
+	      PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			   pt_short_print (parser, o1), pt_show_type_enum (rTyp));
+	    }
+	  else if (dom_status == DOMAIN_ERROR)
+	    {
+	      PT_ERRORc (parser, o1, er_msg ());
+	    }
 	  return 0;
 	}
       else

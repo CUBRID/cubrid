@@ -345,9 +345,8 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_TIMESTAMPLTZ,	/* 37 */
   CCI_U_TYPE_DATETIMETZ,	/* 38 */
   CCI_U_TYPE_DATETIMELTZ,	/* 39 */
-  CCI_U_TYPE_JSON,              /* 40 */
-  CCI_U_TYPE_TIMETZ,		/* 41 */
-  CCI_U_TYPE_TIMETZ		/* 42 */
+  CCI_U_TYPE_TIMETZ,		/* 40 */
+  CCI_U_TYPE_TIMETZ		/* 41 */
 };
 
 static T_FETCH_FUNC fetch_func[] = {

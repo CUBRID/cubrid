@@ -2774,7 +2774,7 @@ or_get_data (OR_BUF * buf, char *data, int length)
  *    the total length may be more than that returned by strlen.
  */
 int
-or_put_string (OR_BUF * buf, char *str)
+or_put_string_aligned (OR_BUF * buf, char *str)
 {
   int len, bits, pad;
   int rc = NO_ERROR;
@@ -4549,8 +4549,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
         case DB_TYPE_JSON:
           if (d->schema_raw)
             {
-              size += OR_INT_SIZE;
-              size += strlen (d->schema_raw);
+              size += or_packed_string_length (d->schema_raw, NULL);
             }
           break;
 	default:
@@ -4868,15 +4867,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
       if (has_schema)
         {
-          int len = strlen (d->schema_raw);
-
-          rc = or_put_int (buf, len);
-          if (rc != NO_ERROR)
-            {
-              return rc;
-            }
-
-          rc = or_put_data (buf, d->schema_raw, len);
+          rc = or_put_string_alined_with_length (buf, d->schema_raw);
           if (rc != NO_ERROR)
             {
               return rc;
@@ -5183,27 +5174,17 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
          if (has_schema)
           {
-              int schema_len = or_get_int (buf, &rc);
+              buf->ptr = or_unpack_string_alloc (buf->ptr, &d->schema_raw);
 
               if (rc != NO_ERROR)
                 {
                   goto error;
                 }
-              if (schema_len > 0)
-                {
-                  d->schema_raw = (char *) malloc (schema_len+1);
+              d->validation_obj = get_validator_from_schema_string (d->schema_raw);
 
-                  rc = or_get_data (buf, d->schema_raw, schema_len);
-                  if (rc != NO_ERROR)
-                    {
-                      goto error;
-                    }
-                  d->schema_raw[schema_len] = '\0';
-                  d->validation_obj = get_validator_from_schema_string (d->schema_raw);
-
-                  assert (d->validation_obj != 0);
-                }
-            }
+              or_align (buf, OR_INT_SIZE);
+              assert (d->validation_obj != 0);
+          }
 
 	  /* 
 	   * Recurse to get set sub-domains if there are any, note that
@@ -5541,23 +5522,16 @@ unpack_domain (OR_BUF * buf, int *is_null)
               {
                 if ((carrier & OR_DOMAIN_SCHEMA_FLAG) != 0)
 		  {
-		    int schema_len = or_get_int (buf, &rc);
+                    buf->ptr = or_unpack_string_alloc (buf->ptr, &schema_raw);
 
-                    if (rc != NO_ERROR)
-                        {
-                          goto error;
-                        }
-                    schema_raw = (char *) malloc (schema_len+1);
-
-                    rc = or_get_data (buf, schema_raw, schema_len);
                     if (rc != NO_ERROR)
                       {
                         goto error;
                       }
-                    schema_raw[schema_len] = '\0';
                     validator = get_validator_from_schema_string (schema_raw);
 
-                    assert (validator != NULL);
+                    or_align (buf, OR_INT_SIZE);
+                    assert (validator != 0);
 		  }
 
                 break;
@@ -8708,6 +8682,37 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
     }
 
   return ptr;
+}
+
+/*
+ *  this function also adds
+ *  the length of the string to the buffer
+ */
+
+int
+or_put_string_alined_with_length (OR_BUF * buf, char * str)
+{
+  int len, bits, pad;
+  int rc = NO_ERROR;
+
+  if (str == NULL)
+    {
+      return rc;
+    }
+  len = strlen (str) + 1;
+
+  rc = or_put_int (buf, len);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  rc = or_put_data (buf, str, len);
+  if (rc == NO_ERROR)
+    {
+      or_align (buf, OR_INT_SIZE);
+    }
+  return rc;
 }
 
 /*

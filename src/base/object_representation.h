@@ -359,7 +359,7 @@
 
 #define OR_GET_MONETARY(ptr, value) \
   do { \
-    double pack_value; \
+    UINT64 pack_value; \
     (value)->type = (DB_CURRENCY) OR_GET_INT (((char *) (ptr)) + OR_MONETARY_TYPE); \
     memcpy ((char *) (&pack_value), ((char *) (ptr)) + OR_MONETARY_AMOUNT, OR_DOUBLE_SIZE); \
     OR_GET_DOUBLE (&pack_value, &(value)->amount); \
@@ -370,7 +370,7 @@
 
 #define OR_PUT_MONETARY(ptr, value) \
   do { \
-    double pack_value; \
+    UINT64 pack_value; \
     OR_PUT_INT (((char *) (ptr)) + OR_MONETARY_TYPE, (int) (value)->type); \
     OR_PUT_DOUBLE (&pack_value, &((value)->amount)); \
     memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, &pack_value, OR_DOUBLE_SIZE); \
@@ -1402,7 +1402,8 @@ extern int or_put_date (OR_BUF * buf, DB_DATE * date);
 extern int or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval);
 extern int or_put_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz);
 extern int or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary);
-extern int or_put_string (OR_BUF * buf, char *string);
+extern int or_put_string_aligned (OR_BUF * buf, char *string);
+extern int or_put_string_alined_with_length (OR_BUF * buf, char *str);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_put_binary (OR_BUF * buf, DB_BINARY * binary);
 #endif
