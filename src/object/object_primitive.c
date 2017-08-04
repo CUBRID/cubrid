@@ -151,9 +151,8 @@ extern unsigned int db_on_server;
 
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
-  
-static void
-convert_json_to_string(DB_VALUE * json_value, DB_VALUE * string_clone);
+
+static void convert_json_to_string (DB_VALUE * json_value, DB_VALUE * string_clone);
 static void mr_initmem_string (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -911,24 +910,24 @@ static int mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_lengthval_json (DB_VALUE * value, int disk);
 static int mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				     char *copy_buf, int copy_buf_len);
+				 char *copy_buf, int copy_buf_len);
 static int mr_index_lengthval_json (DB_VALUE * value);
 static int mr_index_writeval_json (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				      char *copy_buf, int copy_buf_len);
+				  char *copy_buf, int copy_buf_len);
 static int mr_lengthval_json_internal (DB_VALUE * value, int disk, int align);
 static int mr_writeval_json_internal (OR_BUF * buf, DB_VALUE * value, int align);
 static int mr_readval_json_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-					 char *copy_buf, int copy_buf_len, int align);
-static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
-				      int *start_colp);
-static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
-				     int *start_colp);
-static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-			       int collation);
+				     char *copy_buf, int copy_buf_len, int align);
+static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+						      int total_order, int *start_colp);
+static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+						     int total_order, int *start_colp);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					       int *start_colp, int collation);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int mr_cmpval_json2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
-				int *start_colp);
+			    int *start_colp);
 #endif
 /*
  * Value_area
@@ -2072,15 +2071,15 @@ pr_clear_value (DB_VALUE * value)
 
   switch (db_type)
     {
-      case DB_TYPE_JSON:
-          if (value->need_clear)
-          {
-            db_private_free (NULL, value->data.json.json_body);
-            delete value->data.json.document;
-            value->data.json.json_body = NULL;
-            value->data.json.document = NULL;
-          }
-          break;
+    case DB_TYPE_JSON:
+      if (value->need_clear)
+	{
+	  db_private_free (NULL, value->data.json.json_body);
+	  delete value->data.json.document;
+	  value->data.json.json_body = NULL;
+	  value->data.json.document = NULL;
+	}
+      break;
     case DB_TYPE_OBJECT:
       /* we need to be sure to NULL the object pointer so that this db_value does not cause garbage collection problems 
        * by retaining an object pointer. */
@@ -14800,29 +14799,29 @@ PR_TYPE tp_VarNChar = {
 PR_TYPE *tp_Type_varnchar = &tp_VarNChar;
 
 PR_TYPE tp_Json = {
-	"json", DB_TYPE_JSON, 1, sizeof (DB_JSON), 0,
-	4,
-	help_fprint_value,
-	help_sprint_value,
-        mr_initmem_json,
-	mr_initval_json,
-	mr_setmem_json,
-	mr_getmem_json,
-	mr_setval_json,
-	mr_data_lengthmem_json,
-	mr_data_lengthval_json,
-	mr_data_writemem_json,
-	mr_data_readmem_json,
-	mr_data_writeval_json,
-	mr_data_readval_json,
-	mr_index_lengthmem_json,
-	mr_index_lengthval_json,
-	mr_index_writeval_json,
-	mr_index_readval_json,
-	mr_index_cmpdisk_json,
-	mr_freemem_json,
-	mr_data_cmpdisk_json,
-	mr_cmpval_json
+  "json", DB_TYPE_JSON, 1, sizeof (DB_JSON), 0,
+  4,
+  help_fprint_value,
+  help_sprint_value,
+  mr_initmem_json,
+  mr_initval_json,
+  mr_setmem_json,
+  mr_getmem_json,
+  mr_setval_json,
+  mr_data_lengthmem_json,
+  mr_data_lengthval_json,
+  mr_data_writemem_json,
+  mr_data_readmem_json,
+  mr_data_writeval_json,
+  mr_data_readval_json,
+  mr_index_lengthmem_json,
+  mr_index_lengthval_json,
+  mr_index_writeval_json,
+  mr_index_readval_json,
+  mr_index_cmpdisk_json,
+  mr_freemem_json,
+  mr_data_cmpdisk_json,
+  mr_cmpval_json
 };
 
 PR_TYPE *tp_Type_json = &tp_Json;
@@ -14841,16 +14840,17 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
   if (value == NULL || DB_IS_NULL (value))
     {
-	  mr_initmem_json (memptr, domain);
-	}
+      mr_initmem_json (memptr, domain);
+    }
   else
     {
-        int len = strlen (value->data.json.json_body);
-        ((DB_JSON *) memptr)->json_body = (char *) db_private_alloc (NULL, len+1);
-        ((DB_JSON *) memptr)->document = new rapidjson::Document ();
-        memcpy (((DB_JSON *) memptr)->json_body, value->data.json.json_body, len);
-        ((DB_JSON *) memptr)->json_body[len] = '\0';
-        ((DB_JSON *) memptr)->document->CopyFrom(*value->data.json.document, ((DB_JSON *) memptr)->document->GetAllocator());
+      int len = strlen (value->data.json.json_body);
+      ((DB_JSON *) memptr)->json_body = (char *) db_private_alloc (NULL, len + 1);
+      ((DB_JSON *) memptr)->document = new rapidjson::Document ();
+      memcpy (((DB_JSON *) memptr)->json_body, value->data.json.json_body, len);
+      ((DB_JSON *) memptr)->json_body[len] = '\0';
+      ((DB_JSON *) memptr)->document->CopyFrom (*value->data.json.document,
+						((DB_JSON *) memptr)->document->GetAllocator ());
     }
 
   return error;
@@ -14860,8 +14860,8 @@ static int
 mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
   int error = NO_ERROR;
-  DB_JSON * json_obj = (DB_JSON *) memptr;
-  
+  DB_JSON *json_obj = (DB_JSON *) memptr;
+
   if (json_obj == NULL || json_obj->json_body == NULL)
     {
       db_value_domain_init (value, DB_TYPE_JSON, domain->precision, 0);
@@ -14872,20 +14872,20 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
       if (!copy)
 	{
-          db_make_json (value, json_obj->json_body, json_obj->document);
-          value->need_clear = false;
-          value->domain.general_info.schema_raw = domain->schema_raw;
+	  db_make_json (value, json_obj->json_body, json_obj->document);
+	  value->need_clear = false;
+	  value->domain.general_info.schema_raw = domain->schema_raw;
 	}
       else
-        {
-          int len = strlen (json_obj->json_body), len2 = 0;
-          if (domain->schema_raw)
-            {
-              len2 = strlen (domain->schema_raw);
-            }
+	{
+	  int len = strlen (json_obj->json_body), len2 = 0;
+	  if (domain->schema_raw)
+	    {
+	      len2 = strlen (domain->schema_raw);
+	    }
 	  /* return it with a NULL terminator */
-	  char * new_ = (char *) db_private_alloc (NULL, len + 1);
-          rapidjson::Document * document = new rapidjson::Document ();
+	  char *new_ = (char *) db_private_alloc (NULL, len + 1);
+	  rapidjson::Document * document = new rapidjson::Document ();
 	  if (new_ == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -14899,16 +14899,16 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	      db_make_json (value, new_, document);
 	      value->need_clear = true;
 	    }
-          if (len2 > 0)
-            {
-              value->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, len2+1);
-              memcpy (value->domain.general_info.schema_raw, domain->schema_raw, len2);
-              value->domain.general_info.schema_raw[len2] = '\0';
-            }
-          else
-            {
-              value->domain.general_info.schema_raw = NULL;
-            }
+	  if (len2 > 0)
+	    {
+	      value->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, len2 + 1);
+	      memcpy (value->domain.general_info.schema_raw, domain->schema_raw, len2);
+	      value->domain.general_info.schema_raw[len2] = '\0';
+	    }
+	  else
+	    {
+	      value->domain.general_info.schema_raw = NULL;
+	    }
 	}
     }
   return error;
@@ -14938,7 +14938,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
     }
   else if (memptr != NULL)
     {
-      DB_JSON * json_obj = (DB_JSON *) memptr;
+      DB_JSON *json_obj = (DB_JSON *) memptr;
       if (json_obj != NULL && json_obj->json_body != NULL)
 	{
 	  len = strlen (json_obj->json_body);
@@ -14951,13 +14951,14 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 static int
 mr_index_lengthmem_json (void *memptr, TP_DOMAIN * domain)
 {
-    assert(false);
+  assert (false);
+  return 0;
 }
 
 static void
 mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
-    assert(false);
+  assert (false);
 }
 
 
@@ -14972,14 +14973,14 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 static void
 mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-    assert(false);
+  assert (false);
   return mr_data_readmem_string (buf, memptr, domain, size);
 }
 
 static void
 mr_freemem_json (void *memptr)
 {
-  DB_JSON * cur;
+  DB_JSON *cur;
 
   if (memptr != NULL)
     {
@@ -14987,7 +14988,7 @@ mr_freemem_json (void *memptr)
       if (cur != NULL)
 	{
 	  db_private_free_and_init (NULL, cur->json_body);
-          delete cur->document;
+	  delete cur->document;
 	}
     }
 }
@@ -15020,35 +15021,35 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       dest->domain.general_info.is_null = 0;
       len = strlen (src->data.json.json_body);
       if (src->domain.general_info.schema_raw)
-        {
-            len2 = strlen (src->domain.general_info.schema_raw);
-        }
+	{
+	  len2 = strlen (src->domain.general_info.schema_raw);
+	}
       else
-        {
-          dest->domain.general_info.schema_raw = NULL;
-        }
+	{
+	  dest->domain.general_info.schema_raw = NULL;
+	}
       if (copy)
-        {
-          dest->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (len + 1));
-          dest->data.json.document = new rapidjson::Document ();
-          memcpy (dest->data.json.json_body, src->data.json.json_body, (size_t) len);
-          dest->data.json.document->CopyFrom (*src->data.json.document, dest->data.json.document->GetAllocator());
-          dest->data.json.json_body[len] = '\0';
-          dest->need_clear = true;
-          if (len2 > 0)
-            {
-              dest->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len2 + 1));
-              memcpy (dest->domain.general_info.schema_raw, src->domain.general_info.schema_raw, len2);
-              dest->domain.general_info.schema_raw[len2] = '\0';
-            }
-      }
+	{
+	  dest->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (len + 1));
+	  dest->data.json.document = new rapidjson::Document ();
+	  memcpy (dest->data.json.json_body, src->data.json.json_body, (size_t) len);
+	  dest->data.json.document->CopyFrom (*src->data.json.document, dest->data.json.document->GetAllocator ());
+	  dest->data.json.json_body[len] = '\0';
+	  dest->need_clear = true;
+	  if (len2 > 0)
+	    {
+	      dest->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len2 + 1));
+	      memcpy (dest->domain.general_info.schema_raw, src->domain.general_info.schema_raw, len2);
+	      dest->domain.general_info.schema_raw[len2] = '\0';
+	    }
+	}
       else
-        {
-          dest->data.json.json_body = src->data.json.json_body;
-          dest->data.json.document = src->data.json.document;
-          dest->need_clear = false;
-          dest->domain.general_info.schema_raw = src->domain.general_info.schema_raw;
-        }
+	{
+	  dest->data.json.json_body = src->data.json.json_body;
+	  dest->data.json.document = src->data.json.document;
+	  dest->need_clear = false;
+	  dest->domain.general_info.schema_raw = src->domain.general_info.schema_raw;
+	}
     }
 
   return error;
@@ -15057,26 +15058,26 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 static int
 mr_index_lengthval_json (DB_VALUE * value)
 {
-    DB_VALUE str;
-    convert_json_to_string (value, &str);
-    return mr_index_lengthval_string (&str);
+  DB_VALUE str;
+  convert_json_to_string (value, &str);
+  return mr_index_lengthval_string (&str);
 }
 
 static int
 mr_index_writeval_json (OR_BUF * buf, DB_VALUE * value)
 {
-    DB_VALUE str;
-    convert_json_to_string (value, &str);
-    return mr_index_writeval_string (buf, &str);
+  DB_VALUE str;
+  convert_json_to_string (value, &str);
+  return mr_index_writeval_string (buf, &str);
 }
 
 static int
 mr_index_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			   int copy_buf_len)
+		       int copy_buf_len)
 {
-    DB_VALUE str;
-    convert_json_to_string (value, &str);
-   return mr_index_readval_string (buf, &str, domain, size, copy, copy_buf, copy_buf_len);
+  DB_VALUE str;
+  convert_json_to_string (value, &str);
+  return mr_index_readval_string (buf, &str, domain, size, copy, copy_buf, copy_buf_len);
 }
 
 static int
@@ -15084,75 +15085,83 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
 {
   if (!disk)
     {
-    return sizeof (char *);
+      return sizeof (char *);
     }
   else
     {
       if (DB_IS_NULL (value) || value->data.json.json_body == NULL)
-        {
-          return sizeof (int);
-        }
+	{
+	  return sizeof (int);
+	}
       else
-        {
-          return sizeof (int) + strlen (value->data.json.json_body);
-        }
+	{
+	  return sizeof (int) + strlen (value->data.json.json_body);
+	}
     }
 }
 
 static int
 mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 {
-    int len, rc;
+  int len, rc;
 
-    if (DB_IS_NULL (value)) {
+  if (DB_IS_NULL (value))
+    {
       rc = or_put_int (buf, 0);
-      if (rc != NO_ERROR) {
-        ASSERT_ERROR ();
-        return rc;
-      }
-    } else {
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return rc;
+	}
+    }
+  else
+    {
       assert (value->data.json.json_body != NULL);
 
       len = strlen (value->data.json.json_body);
       rc = or_put_int (buf, len);
-      if (rc != NO_ERROR) {
-        ASSERT_ERROR ();
-        return rc;
-      }
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return rc;
+	}
 
       rc = or_put_data (buf, value->data.json.json_body, len);
-      if (rc != NO_ERROR) {
-        ASSERT_ERROR ();
-        return rc;
-      }
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return rc;
+	}
     }
-    
-    return NO_ERROR;
+
+  return NO_ERROR;
 }
 
 static int
 mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-                      int copy_buf_len)
+		      int copy_buf_len)
 {
-    int len, rc;
-    char * str;
-    
-    len = or_get_int (buf, &rc);
-    if (rc != NO_ERROR) {
-        ASSERT_ERROR ();
-        return rc;
+  int len, rc;
+  char *str;
+
+  len = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return rc;
     }
 
-    str = (char *) db_private_alloc (NULL, len + 1);
-    assert (str != NULL);
-    rc = or_get_data (buf, str, len);
-    str[len] = '\0';
-    if (rc != NO_ERROR) {
-        ASSERT_ERROR ();
-        return rc;
+  str = (char *) db_private_alloc (NULL, len + 1);
+  assert (str != NULL);
+  rc = or_get_data (buf, str, len);
+  str[len] = '\0';
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return rc;
     }
 
-    if (!strlen (str))
+  if (!strlen (str))
     {
       DB_MAKE_NULL (value);
       value->domain.general_info.is_null = 1;
@@ -15160,7 +15169,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
       value->data.json.json_body = NULL;
       db_private_free (NULL, str);
     }
-    else
+  else
     {
       value->data.json.json_body = str;
       value->data.json.document = new rapidjson::Document ();
@@ -15169,8 +15178,8 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
       value->need_clear = true;
     }
 
-    value->domain.general_info.type = DB_TYPE_JSON;
-    return NO_ERROR;
+  value->domain.general_info.type = DB_TYPE_JSON;
+  return NO_ERROR;
 }
 
 /*
@@ -15180,24 +15189,23 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 static int
 mr_lengthval_json_internal (DB_VALUE * value, int disk, int align)
 {
-    DB_VALUE str;
-    convert_json_to_string (value, &str);
-    return mr_lengthval_string_internal (&str, disk, align);
+  DB_VALUE str;
+  convert_json_to_string (value, &str);
+  return mr_lengthval_string_internal (&str, disk, align);
   return NO_ERROR;
 }
 
 static int
 mr_readval_json_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-			      char *copy_buf, int copy_buf_len, int align)
+			  char *copy_buf, int copy_buf_len, int align)
 {
-    DB_VALUE str;
-    convert_json_to_string (value, &str);
-    return mr_readval_string_internal(buf, &str, domain, size, copy, copy_buf, copy_buf_len, align);
+  DB_VALUE str;
+  convert_json_to_string (value, &str);
+  return mr_readval_string_internal (buf, &str, domain, size, copy, copy_buf, copy_buf_len, align);
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
-			   int *start_colp)
+mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c;
   return mr_index_cmpdisk_string (mem1, mem2, domain, do_coercion, total_order, start_colp);
@@ -15212,20 +15220,18 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		    int collation)
+mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-    DB_VALUE_COMPARE_RESULT c;
-    DB_VALUE str, str2;
-    convert_json_to_string (value1, &str);
-    convert_json_to_string (value2, &str2);
-    return mr_cmpval_string (&str, &str2, do_coercion, total_order, start_colp, collation);
+  DB_VALUE_COMPARE_RESULT c;
+  DB_VALUE str, str2;
+  convert_json_to_string (value1, &str);
+  convert_json_to_string (value2, &str2);
+  return mr_cmpval_string (&str, &str2, do_coercion, total_order, start_colp, collation);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
-mr_cmpval_json2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
-		     int *start_colp)
+mr_cmpval_json2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order, int *start_colp)
 {
   int c;
   unsigned char *string1, *string2;
@@ -15252,28 +15258,28 @@ mr_cmpval_json2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerci
 #endif
 
 static void
-convert_json_to_string(DB_VALUE * json_value, DB_VALUE * string_clone)
+convert_json_to_string (DB_VALUE * json_value, DB_VALUE * string_clone)
 {
-    /*int len = strlen (json_value->data.json.json_body);
-    
-    memcpy (str_value->data.ch.medium.buf, json_value->data.json.json_body, len);
-    str_value->data.ch.medium.buf[len] = '\0';
-    str_value->data.ch.medium.size = len;*/
-    if (DB_IS_NULL (json_value))
-      {
-          DB_MAKE_NULL (string_clone);
-      }
-    else
+  /*int len = strlen (json_value->data.json.json_body);
+
+     memcpy (str_value->data.ch.medium.buf, json_value->data.json.json_body, len);
+     str_value->data.ch.medium.buf[len] = '\0';
+     str_value->data.ch.medium.size = len; */
+  if (DB_IS_NULL (json_value))
     {
-        /* init */
-        db_make_string (string_clone, json_value->data.json.json_body);
-        string_clone->need_clear = false;
-        string_clone->domain.general_info.is_null = 0;
+      DB_MAKE_NULL (string_clone);
     }
-    /*DB_VALUE * res = db_private_alloc (NULL, sizeof (DB_VALUE));
-    db_make_string (res, strdup (json_value->data.json.json_body));
-    
-    return res;*/
+  else
+    {
+      /* init */
+      db_make_string (string_clone, json_value->data.json.json_body);
+      string_clone->need_clear = false;
+      string_clone->domain.general_info.is_null = 0;
+    }
+  /*DB_VALUE * res = db_private_alloc (NULL, sizeof (DB_VALUE));
+     db_make_string (res, strdup (json_value->data.json.json_body));
+
+     return res; */
 }
 
 /*

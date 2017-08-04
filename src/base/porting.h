@@ -456,7 +456,13 @@ extern int itona (int i, char *s, size_t n);
 
 extern char *stristr (const char *s, const char *find);
 
+#if 0
+/* TODO: this causes a compile error on windows, since it uses in its headers std::strlen. anyway, this is an ugly hack
+ *       too.
+ *       now, we have hundreds of annoying warnings of casts from size_t to int. so either rename this define and all
+ *       its usages, or replaces all occurrences of strlen with (int) strlen. either way, all project is changed. */
 #define strlen(s1)  ((int) strlen(s1))
+#endif
 #define CAST_STRLEN (int)
 #define CAST_BUFLEN (int)
 #if defined(_FILE_OFFSET_BITS) && _FILE_OFFSET_BITS == 32

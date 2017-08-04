@@ -399,9 +399,7 @@ endif(UNIX)
 
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 
-if(UNIX)
-  add_dependencies(cubridsa ${EP_TARGETS})
-endif(UNIX)
+add_dependencies(cubridsa ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})

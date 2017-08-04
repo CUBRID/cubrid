@@ -410,6 +410,10 @@ check_function_exists(open_memstream HAVE_OPEN_MEMSTREAM)
 check_function_exists(strdup HAVE_STRDUP)
 check_function_exists(strlcpy HAVE_STRLCPY)
 
+if(WIN32)
+  set(NOMINMAX 1)
+endif(WIN32)
+
 include(CheckIncludeFile)
 check_include_file(err.h HAVE_ERR_H)
 check_include_file(getopt.h HAVE_GETOPT_H)
@@ -955,6 +959,25 @@ if(WIN32)
   list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
 
+# rapidjson
+ExternalProject_Add(rapidjson
+
+  # tried URL but archive gets downloaded every time. URL_MD5 may help
+  GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git"
+  GIT_TAG "v1.1.0"
+
+  # don't install
+  INSTALL_COMMAND ""
+
+  # don't build test, doc and examples
+  CMAKE_CACHE_ARGS -DRAPIDJSON_BUILD_TESTS:string=off
+                   -DRAPIDJSON_BUILD_DOC:string=off
+                   -DRAPIDJSON_BUILD_EXAMPLES:string=off
+)
+# add to include directories
+include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
+# add to external project targets
+list(APPEND EP_TARGETS rapidjson)
 
 # include subdirectories
 add_subdirectory(cas)
@@ -1129,10 +1152,3 @@ if(WIN32)
 endif(WIN32)
 
 include(CPack)
-
-include(ExternalProject)
-set(EXTERNAL_INSTALL_LOCATION ${CMAKE_BINARY_DIR}/external)
-ExternalProject_Add(rapidjson
-URL https://github.com/miloyip/rapidjson/archive/version1.1.0.zip
-CMAKE_ARGS -DCMAKE_PREFIX:STRING=${EXTERNAL_INSTALL_LOCATION}
-)
