@@ -1651,6 +1651,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_WEEKDAY:
+    case T_DAYOFWEEK:
       if (DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
