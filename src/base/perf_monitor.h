@@ -146,9 +146,6 @@ STATIC_INLINE void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int perfmon_get_activation_flag (void) __attribute__ ((ALWAYS_INLINE));
 
-#ifdef __cplusplus
-/* TODO: it looks ugly now, but it should be fixed with stat tool patch */
-
 /*
  *  Add/set stats section.
  */
@@ -591,10 +588,6 @@ perfmon_is_perf_tracking_force (bool always_collect)
   return pstat_Global.initialized && (always_collect || pstat_Global.n_watchers > 0);
 }
 
-#endif /* __cplusplus */
-
-typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
-typedef enum t_diag_value_settype T_DIAG_VALUE_SETTYPE;
 #ifndef DIFF_TIMEVAL
 #define DIFF_TIMEVAL(start, end, elapsed) \
     do { \
