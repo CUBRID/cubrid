@@ -679,14 +679,14 @@ catcls_find_btid_of_class_name (THREAD_ENTRY * thread_p, BTID * btid_p)
       BTID_COPY (btid_p, &(att_repr_p->bt_stats->btid));
     }
 
-  catalog_free_representation (repr_p);
+  catalog_free_representation_and_init (repr_p);
   return NO_ERROR;
 
 error:
 
   if (repr_p)
     {
-      catalog_free_representation (repr_p);
+      catalog_free_representation_and_init (repr_p);
     }
 
   return error;
@@ -1249,11 +1249,15 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 {
   OR_VALUE *attrs;
   DB_VALUE *attr_val_p;
-  DB_VALUE default_expr, val;
-  DB_SEQ *att_props;
+  DB_VALUE default_expr, val, db_value_default_expr_type, db_value_default_expr_format, db_value_default_expr_op;
+  int default_expr_type, default_expr_op = NULL_DEFAULT_EXPRESSION_OPERATOR;
+  DB_SEQ *def_expr_seq = NULL;
+  DB_SEQ *att_props = NULL;
   OR_VARINFO *vars = NULL;
   int size;
   int error = NO_ERROR;
+  const char *default_expr_type_string = NULL;
+  char *def_expr_format_string = NULL;
 
   error = catcls_expand_or_value_by_def (value_p, &ct_Attribute);
   if (error != NO_ERROR)
@@ -1344,20 +1348,24 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 
       if (or_val == NULL || or_val->sub.count < 8)
 	{
+	  error = ER_FAILED;
 	  goto error;
 	}
       or_val = or_val[0].sub.value;
       if (or_val == NULL)
 	{
+	  error = ER_FAILED;
 	  goto error;
 	}
       or_val = &or_val[7];
       if (!TP_IS_SET_TYPE (DB_VALUE_TYPE (&or_val->value))
 	  || DB_GET_ENUM_SHORT (attr_val_p) > or_val->value.data.set->set->size)
 	{
+	  error = ER_FAILED;
 	  goto error;
 	}
-      if (set_get_element (DB_GET_SET (&or_val->value), DB_GET_ENUM_SHORT (attr_val_p) - 1, &val) != NO_ERROR)
+      error = set_get_element (DB_GET_SET (&or_val->value), DB_GET_ENUM_SHORT (attr_val_p) - 1, &val);
+      if (error != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1374,12 +1382,77 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   or_get_value (buf_p, &val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), vars[ORC_ATT_PROPERTIES_INDEX].length, true);
   att_props = DB_GET_SEQUENCE (&val);
   attr_val_p = &attrs[8].value;
+  db_make_null (&default_expr);
   if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
     {
-      char *str_val;
+      char *str_val = NULL;
+      const char *default_expr_op_string = NULL;
+      int len;
 
-      str_val = (char *) db_private_alloc (thread_p, strlen ("UNIX_TIMESTAMP") + 1);
+      if (DB_VALUE_TYPE (&default_expr) == DB_TYPE_SEQUENCE)
+	{
+	  assert (set_size (DB_PULL_SEQUENCE (&default_expr)) == 3);
+	  def_expr_seq = DB_PULL_SEQUENCE (&default_expr);
 
+	  error = set_get_element_nocopy (def_expr_seq, 0, &db_value_default_expr_op);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  assert (DB_VALUE_TYPE (&db_value_default_expr_op) == DB_TYPE_INTEGER
+		  && DB_GET_INT (&db_value_default_expr_op) == (int) T_TO_CHAR);
+	  default_expr_op = T_TO_CHAR;
+
+	  error = set_get_element_nocopy (def_expr_seq, 1, &db_value_default_expr_type);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  default_expr_type = DB_GET_INT (&db_value_default_expr_type);
+
+	  error = set_get_element_nocopy (def_expr_seq, 2, &db_value_default_expr_format);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  if (!db_value_is_null (&db_value_default_expr_format))
+	    {
+#if !defined(NDEBUG)
+	      {
+		DB_TYPE db_value_type = db_value_type (&db_value_default_expr_format);
+		assert (db_value_type == DB_TYPE_NULL || db_value_type == DB_TYPE_CHAR
+			|| db_value_type == DB_TYPE_NCHAR || db_value_type == DB_TYPE_VARCHAR
+			|| db_value_type == DB_TYPE_VARNCHAR);
+	      }
+#endif
+	      assert (DB_VALUE_TYPE (&db_value_default_expr_format) == DB_TYPE_STRING);
+	      def_expr_format_string = DB_GET_STRING (&db_value_default_expr_format);
+	    }
+	}
+      else
+	{
+	  default_expr_type = DB_GET_INT (&default_expr);
+	}
+
+      default_expr_type_string = db_default_expression_string (default_expr_type);
+      if (default_expr_type_string == NULL)
+	{
+	  pr_clear_value (&default_expr);
+	  pr_clear_value (&val);
+	  assert (false);
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto error;
+	}
+
+      default_expr_op_string = qdump_operator_type_string (default_expr_op);
+
+      len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
+	     + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_expr_type_string)
+	     + (def_expr_format_string ? strlen (def_expr_format_string) : 0));
+
+      str_val = (char *) db_private_alloc (thread_p, len + 1);
       if (str_val == NULL)
 	{
 	  pr_clear_value (&default_expr);
@@ -1388,70 +1461,36 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  goto error;
 	}
 
-      switch (DB_GET_INT (&default_expr))
+      if (default_expr_op == T_TO_CHAR)
 	{
-	case DB_DEFAULT_SYSTIME:
-	  strcpy (str_val, "SYS_TIME");
-	  break;
-
-	case DB_DEFAULT_SYSDATE:
-	  strcpy (str_val, "SYS_DATE");
-	  break;
-
-	case DB_DEFAULT_SYSDATETIME:
-	  strcpy (str_val, "SYS_DATETIME");
-	  break;
-
-	case DB_DEFAULT_SYSTIMESTAMP:
-	  strcpy (str_val, "SYS_TIMESTAMP");
-	  break;
-
-	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  strcpy (str_val, "UNIX_TIMESTAMP");
-	  break;
-
-	case DB_DEFAULT_USER:
-	  strcpy (str_val, "USER");
-	  break;
-
-	case DB_DEFAULT_CURR_USER:
-	  strcpy (str_val, "CURRENT_USER");
-	  break;
-
-	case DB_DEFAULT_CURRENTTIME:
-	  strcpy (str_val, "CURRENT_TIME");
-	  break;
-
-	case DB_DEFAULT_CURRENTDATE:
-	  strcpy (str_val, "CURRENT_DATE");
-	  break;
-
-	case DB_DEFAULT_CURRENTDATETIME:
-	  strcpy (str_val, "CURRENT_DATETIME");
-	  break;
-
-	case DB_DEFAULT_CURRENTTIMESTAMP:
-	  strcpy (str_val, "CURRENT_TIMESTAMP");
-	  break;
-
-	default:
-	  pr_clear_value (&default_expr);
-	  pr_clear_value (&val);
-	  assert (false);
-	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  db_private_free_and_init (thread_p, str_val);
-	  goto error;
-	  break;
+	  strcpy (str_val, default_expr_op_string);
+	  strcat (str_val, "(");
+	  strcat (str_val, default_expr_type_string);
+	  if (def_expr_format_string)
+	    {
+	      strcat (str_val, ", \'");
+	      strcat (str_val, def_expr_format_string);
+	      strcat (str_val, "\'");
+	    }
+	  strcat (str_val, ")");
+	}
+      else
+	{
+	  if (default_expr_type_string)
+	    {
+	      strcpy (str_val, default_expr_type_string);
+	    }
 	}
 
       pr_clear_value (attr_val_p);	/* clean old default value */
       DB_MAKE_STRING (attr_val_p, str_val);
+      attr_val_p->need_clear = true;
     }
   else
     {
       valcnv_convert_value_to_string (attr_val_p);
     }
+  pr_clear_value (&default_expr);
   pr_clear_value (&val);
   attr_val_p->need_clear = true;
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
@@ -1639,6 +1678,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
       TP_DOMAIN *domain = tp_domain_construct (DB_TYPE_SEQUENCE, NULL, 0, 0, string_dom);
       if (domain == NULL)
 	{
+	  error = ER_FAILED;
 	  goto error;
 	}
       domain = tp_domain_cache (domain);
@@ -2410,10 +2450,12 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		  pr_clear_value (&val);
 		  if (set_get_element (seq, l, &val) != NO_ERROR)
 		    {
+		      error = ER_FAILED;
 		      goto error;
 		    }
 		  if (DB_VALUE_TYPE (&val) != DB_TYPE_SEQUENCE)
 		    {
+		      error = ER_FAILED;
 		      goto error;
 		    }
 
@@ -2830,7 +2872,7 @@ catcls_reorder_attributes_by_repr (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 	    }
 	}
     }
-  catalog_free_representation (repr_p);
+  catalog_free_representation_and_init (repr_p);
 
   return NO_ERROR;
 
@@ -2838,7 +2880,7 @@ error:
 
   if (repr_p)
     {
-      catalog_free_representation (repr_p);
+      catalog_free_representation_and_init (repr_p);
     }
 
   return error;
@@ -3302,12 +3344,12 @@ catcls_put_or_value_into_record (THREAD_ENTRY * thread_p, OR_VALUE * value_p, in
   error = catcls_put_or_value_into_buffer (value_p, chn, buf_p, class_oid_p, repr_p);
   if (error != NO_ERROR)
     {
-      catalog_free_representation (repr_p);
+      catalog_free_representation_and_init (repr_p);
       return error;
     }
 
   record_p->length = (int) (buf_p->ptr - buf_p->buffer);
-  catalog_free_representation (repr_p);
+  catalog_free_representation_and_init (repr_p);
 
   return NO_ERROR;
 }
@@ -3393,7 +3435,7 @@ catcls_get_or_value_from_record (THREAD_ENTRY * thread_p, RECDES * record_p, OID
       goto error;
     }
 
-  catalog_free_representation (repr_p);
+  catalog_free_representation_and_init (repr_p);
   return value_p;
 
 error:
@@ -3405,7 +3447,7 @@ error:
 
   if (repr_p)
     {
-      catalog_free_representation (repr_p);
+      catalog_free_representation_and_init (repr_p);
     }
 
   return NULL;
@@ -3487,7 +3529,7 @@ catcls_insert_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * root_oi
   db_make_sequence (&value_p->value, oid_set_p);
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
 
   return NO_ERROR;
 
@@ -3505,7 +3547,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   return error;
@@ -3577,7 +3619,7 @@ catcls_delete_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
     }
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
 
   return NO_ERROR;
 
@@ -3590,7 +3632,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   return error;
@@ -4024,7 +4066,7 @@ catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record_p)
     }
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
   catcls_free_or_value (value_p);
 
   return NO_ERROR;
@@ -4038,7 +4080,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   if (value_p)
@@ -4110,7 +4152,7 @@ catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p, OID 
   csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
 
   return NO_ERROR;
 
@@ -4123,7 +4165,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   return ER_FAILED;
@@ -4189,7 +4231,7 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p, RECD
     }
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
   catcls_free_or_value (value_p);
 
   return NO_ERROR;
@@ -4203,7 +4245,7 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   if (value_p)
@@ -4661,7 +4703,8 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
     }
 
   hfid_p = &cls_info_p->ci_hfid;
-  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, class_oid_p, MULTI_ROW_UPDATE, NULL) != NO_ERROR)
+  error = heap_scancache_start_modify (thread_p, &scan, hfid_p, class_oid_p, MULTI_ROW_UPDATE, NULL);
+  if (error != NO_ERROR)
     {
       goto error;
     }
@@ -4680,6 +4723,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 
       if (DB_VALUE_TYPE (&oid_val) != DB_TYPE_OID)
 	{
+	  error = ER_FAILED;
 	  goto error;
 	}
 
@@ -4712,6 +4756,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 
 	  if (DB_VALUE_TYPE (&oid_val) != DB_TYPE_OID)
 	    {
+	      error = ER_FAILED;
 	      goto error;
 	    }
 
@@ -4753,7 +4798,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
     }
 
   heap_scancache_end_modify (thread_p, &scan);
-  catalog_free_class_info (cls_info_p);
+  catalog_free_class_info_and_init (cls_info_p);
 
   return NO_ERROR;
 
@@ -4770,12 +4815,12 @@ error:
 
   if (cls_info_p)
     {
-      catalog_free_class_info (cls_info_p);
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
+  assert (error != NO_ERROR);
   return error;
 }
-
 
 /*
  * catcls_get_db_collation () - get infomation on all collation in DB

@@ -423,6 +423,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 #endif /* !SERVER_MODE */
 	      continue;
 	    }
+	  er_log_debug (ARG_FILE_LINE, "css_readn: %s", strerror (errno));
 	  return -1;
 	}
       else
@@ -430,6 +431,8 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
 	      errno = EINVAL;
+	      er_log_debug (ARG_FILE_LINE, "css_readn: %s %s", (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"),
+			    strerror (errno));
 	      return -1;
 	    }
 	}
@@ -472,9 +475,9 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 #if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
 #endif /* !SERVER_MODE */
-#ifdef CUBRID_DEBUG
-	  er_log_debug (ARG_FILE_LINE, "css_readn: returning error n %d, errno %d\n", n, errno);
-#endif
+
+	  er_log_debug (ARG_FILE_LINE, "css_readn: returning error n %d, errno %s\n", n, strerror (errno));
+
 	  return n;		/* error, return < 0 */
 	}
       nleft -= n;
@@ -915,9 +918,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 
   if (bytes_written > 0)
     {
-#ifdef CUBRID_DEBUG
       er_log_debug (ARG_FILE_LINE, "css_vector_send: retry called for %d\n", bytes_written);
-#endif
+
       for (i = 0; i < *len; i++)
 	{
 	  if ((*vec)[i].iov_len <= (size_t) bytes_written)
@@ -948,6 +950,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 	    {
 	      continue;
 	    }
+
+	  er_log_debug (ARG_FILE_LINE, "css_vector_send: EINTR %s\n", strerror (errno));
 	  return -1;
 	}
       else if (n == 0)
@@ -961,6 +965,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
 	      errno = EINVAL;
+	      er_log_debug (ARG_FILE_LINE, "css_vector_send: %s %s\n",
+			    (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"), strerror (errno));
 	      return -1;
 	    }
 	}
@@ -988,9 +994,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 #if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
 #endif /* !SERVER_MODE */
-#ifdef CUBRID_DEBUG
-	  er_log_debug (ARG_FILE_LINE, "css_vector_send: returning error n %d, errno %d\n", n, errno);
-#endif
+
+	  er_log_debug (ARG_FILE_LINE, "css_vector_send: returning error n %d, errno %s\n", n, strerror (errno));
 	  return n;		/* error, return < 0 */
 	}
     }
@@ -1040,7 +1045,7 @@ css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p, ssize_t total_le
 
 /*
  * css_net_send() - send a record to the other end.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   fd(in): socket descripter
  *   buff(in): buffer for data will be sent
  *   len(in): length for data will be sent
@@ -1063,7 +1068,7 @@ css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len, int timeout)
 
 /*
  * css_net_send2() - send a record to the other end.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in): connection entry
  *   fd(in): socket descripter
  *   buff1(in): buffer for data will be sent
@@ -1091,7 +1096,7 @@ css_net_send2 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
 
 /*
  * css_net_send3() - send a record to the other end.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in): connection entry
  *   fd(in): socket descripter
  *   buff1(in): buffer for data will be sent
@@ -1123,7 +1128,7 @@ css_net_send3 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
 
 /*
  * css_net_send4() - Send a record to the other end.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in): connection entry
  *   fd(in): socket descripter
  *   buff1(in): buffer for data will be sent
@@ -1159,7 +1164,7 @@ css_net_send4 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
 #if defined(CS_MODE) || defined(SA_MODE)
 /*
  * css_net_send5() - Send a record to the other end.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   param(in):
  *
  * Note: Used by client and server.
@@ -1187,7 +1192,7 @@ css_net_send5 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
 
 /*
  * css_net_send6() - Send a record to the other end.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in): connection entry
  *   fd(in): socket descripter
  *   buff1(in): buffer for data will be sent
@@ -1229,7 +1234,7 @@ css_net_send6 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
 #if defined(CS_MODE) || defined(SA_MODE)
 /*
  * css_net_send7() - Send a record to the other end.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   param(in):
  *
  * Note: Used by client and server.
@@ -1260,7 +1265,7 @@ css_net_send7 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
 
 /*
  * css_net_send8() - Send a record to the other end.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in): connection entry
  *   fd(in): socket descripter
  *   buff1(in): buffer for data will be sent
@@ -1309,7 +1314,7 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * css_net_send_large_data() -
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in): connection entry
  *   header_array(in):
  *   data_array(in):
@@ -1360,7 +1365,7 @@ css_net_send_large_data (CSS_CONN_ENTRY * conn, NET_HEADER * header_array, const
 
 /*
  * css_net_send_large_data_with_arg() -
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in): connection entry
  *   header_buffer(in):
  *   header_len(in):
@@ -1418,7 +1423,7 @@ css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn, const char *header_buff
 
 /*
  * css_net_send_buffer_only() - send a buffer only to the other end.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   fd(in): socket descripter
  *   buff(in): buffer for data will be sent
  *   len(in): length for data will be sent
@@ -1439,7 +1444,7 @@ css_net_send_buffer_only (CSS_CONN_ENTRY * conn, const char *buff, int len, int 
 
 /*
  * css_net_read_header() -
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   fd(in): socket descripter
  *   buffer(out): buffer for date be read
  *   maxlen(out): count of bytes was read
@@ -1472,7 +1477,7 @@ css_set_net_header (NET_HEADER * header_p, int type, short function_code, int re
 
 /*
  * css_send_request_with_data_buffer () - transfer a request to the server.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in): connection entry
  *   request(in): request number
  *   request_id(out): request id
@@ -1527,7 +1532,7 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned 
 #if defined(CS_MODE) || defined(SA_MODE)
 /*
  * css_send_request_no_reply () - transfer a request to the server (no reply)
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in):
  *   request(in):
  *   request_id(in):
@@ -1560,7 +1565,7 @@ css_send_request_no_reply (CSS_CONN_ENTRY * conn, int request, unsigned short *r
 
 /*
  * css_send_req_with_2_buffers () - transfer a request to the server
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in):
  *   request(in):
  *   request_id(out):
@@ -1612,7 +1617,7 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short 
 
 /*
  * css_send_req_with_3_buffers () - transfer a request to the server
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in):
  *   request(in):
  *   request_id(in):
@@ -1769,7 +1774,7 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request, unsigned sho
 /*
  * css_send_request() - to send a request to the server without registering
  *                      a data buffer.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in):
  *   command(in): request command
  *   request_id(out): request id
@@ -1786,7 +1791,7 @@ css_send_request (CSS_CONN_ENTRY * conn, int command, unsigned short *request_id
 
 /*
  * css_send_data() - transfer a data packet to the client.
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *   conn(in): connection entry
  *   rid(in): request id
  *   buffer(in): buffer for data will be sent
@@ -1814,7 +1819,7 @@ css_send_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer, in
 #if defined(SERVER_MODE)
 /*
 * css_send_two_data() - transfer a data packet to the client.
-*   return: enum css_error_code (See connectino_defs.h)
+*   return: enum css_error_code (See connection_defs.h)
 *   conn(in): connection entry
 *   rid(in): request id
 *   buffer1(in): buffer for data will be sent
@@ -1846,7 +1851,7 @@ css_send_two_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer
 
 /*
 * css_send_three_data() - transfer a data packet to the client.
-*   return: enum css_error_code (See connectino_defs.h)
+*   return: enum css_error_code (See connection_defs.h)
 *   conn(in): connection entry
 *   rid(in): request id
 *   buffer1(in): buffer for data will be sent
@@ -1885,7 +1890,7 @@ css_send_three_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buff
 
 /*
 * css_send_four_data() - transfer a data packet to the client.
-*   return: enum css_error_code (See connectino_defs.h)
+*   return: enum css_error_code (See connection_defs.h)
 *   conn(in): connection entry
 *   rid(in): request id
 *   buffer1(in): buffer for data will be sent
@@ -1933,7 +1938,7 @@ css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffe
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
 * css_send_large_data() - transfer a data packet to the client.
-*   return: enum css_error_code (See connectino_defs.h)
+*   return: enum css_error_code (See connection_defs.h)
 *   conn(in): connection entry
 *   rid(in): request id
 *   buffers(in):
@@ -1975,7 +1980,7 @@ css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char **buf
 
 /*
 * css_send_error() - transfer an error packet to the client.
-*   return:  enum css_error_code (See connectino_defs.h)
+*   return:  enum css_error_code (See connection_defs.h)
 *   conn(in): connection entry
 *   rid(in): request id
 *   buffer(in): buffer for data will be sent
@@ -2004,7 +2009,7 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer, i
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_local_host_name -
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *
  *   conn(in): conn entry
  *   hostname(out): host name
@@ -2028,7 +2033,7 @@ css_local_host_name (CSS_CONN_ENTRY * conn, char *hostname, size_t namelen)
 
 /*
  * css_peer_host_name -
- *   return: enum css_error_code (See connectino_defs.h)
+ *   return: enum css_error_code (See connection_defs.h)
  *
  *   conn(in): conn entry
  *   hostname(out): host name

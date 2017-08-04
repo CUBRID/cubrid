@@ -4104,7 +4104,7 @@ cleanup:
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
 
   return error_code;
@@ -5566,18 +5566,14 @@ logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid)
     }
 
   /* free class representation */
-  error_code = heap_classrepr_free (classrepr, &classrepr_cacheindex);
-  if (error_code != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
 
   return NO_ERROR;
 
 exit_on_error:
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
 
   return (error_code == NO_ERROR && (error_code = er_errid ()) == NO_ERROR) ? ER_FAILED : error_code;
@@ -6737,6 +6733,8 @@ logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   int error = NO_ERROR;
+
+  assert (!BTID_IS_NULL (btid));
 
 #if !defined(NDEBUG)
   {

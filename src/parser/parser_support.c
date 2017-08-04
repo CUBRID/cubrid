@@ -4851,9 +4851,10 @@ regu_index_init (INDX_INFO * ptr)
   ptr->key_info.key_cnt = 0;
   ptr->key_info.key_ranges = NULL;
   ptr->key_info.is_constant = false;
+  ptr->key_info.key_limit_reset = false;
+  ptr->key_info.is_user_given_keylimit = false;
   ptr->key_info.key_limit_l = NULL;
   ptr->key_info.key_limit_u = NULL;
-  ptr->key_info.key_limit_reset = false;
   ptr->orderby_desc = 0;
   ptr->groupby_desc = 0;
   ptr->use_desc_index = 0;
@@ -11054,26 +11055,20 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
   /* Built_in */
   {
     PT_NODE *if_node = NULL;
+    PT_NODE *pred = NULL;
 
-    {
-      PT_NODE *pred = NULL;
-
-      pred = pt_make_pred_name_int_val (parser, PT_EQ, "built_in", 0);
-      if_node = pt_make_if_with_strings (parser, pred, "No", "Yes", "Built_in");
-    }
+    pred = pt_make_pred_name_int_val (parser, PT_EQ, "built_in", 0);
+    if_node = pt_make_if_with_strings (parser, pred, "No", "Yes", "Built_in");
     sub_query->info.query.q.select.list = parser_append_node (if_node, sub_query->info.query.q.select.list);
   }
 
   /* Expansions */
   {
     PT_NODE *if_node = NULL;
+    PT_NODE *pred = NULL;
 
-    {
-      PT_NODE *pred = NULL;
-
-      pred = pt_make_pred_name_int_val (parser, PT_EQ, "expansions", 0);
-      if_node = pt_make_if_with_strings (parser, pred, "No", "Yes", "Expansions");
-    }
+    pred = pt_make_pred_name_int_val (parser, PT_EQ, "expansions", 0);
+    if_node = pt_make_if_with_strings (parser, pred, "No", "Yes", "Expansions");
     sub_query->info.query.q.select.list = parser_append_node (if_node, sub_query->info.query.q.select.list);
   }
 
@@ -11164,7 +11159,6 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
     node->info.query.order_by = parser_append_node (order_by_item, node->info.query.order_by);
   }
 
-
   if (like_or_where_expr != NULL)
     {
       PT_NODE *where_item = NULL;
@@ -11188,13 +11182,11 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
       assert (like_where_syntax == 0);
     }
 
-
   return node;
 }
 
 /*
- * pt_get_query_limit_from_limit () - get the value of the LIMIT clause of a
- *				      query
+ * pt_get_query_limit_from_limit () - get the value of the LIMIT clause of a query
  * return : error code or NO_ERROR
  * parser (in)	      : parser context
  * limit (in)	      : limit node
@@ -11203,7 +11195,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
  * Note: this function get the LIMIT clause value of a query as a
  *  DB_TYPE_BIGINT value. If the LIMIT clause contains a lower limit, the
  *  returned value is computed as lower bound + range. (i.e.: if it was
- *  specified as LIMIT x, y this function returns x+y)
+ *  specified as LIMIT :offset, :row_count this function returns :offset + :row_count)
  */
 static int
 pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val)
@@ -11224,7 +11216,8 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
   save_set_host_var = parser->set_host_var;
   parser->set_host_var = 1;
 
-  assert (limit->node_type == PT_VALUE || limit->node_type == PT_HOST_VAR);
+  assert (limit->node_type == PT_VALUE || limit->node_type == PT_HOST_VAR || limit->node_type == PT_EXPR);
+
   pt_evaluate_tree_having_serial (parser, limit, limit_val, 1);
   if (pt_has_error (parser))
     {
@@ -11234,6 +11227,7 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
 
   if (DB_IS_NULL (limit_val))
     {
+      /* probably value is not bound yet */
       goto cleanup;
     }
 
@@ -11249,8 +11243,10 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
 
       DB_MAKE_NULL (&range);
 
-      /* LIMIT x,y => return x + y */
-      assert (limit->next->node_type == PT_VALUE || limit->next->node_type == PT_HOST_VAR);
+      /* LIMIT :offset, :row_count => return :offset + :row_count */
+      assert (limit->next->node_type == PT_VALUE || limit->next->node_type == PT_HOST_VAR
+	      || limit->next->node_type == PT_EXPR);
+
       pt_evaluate_tree_having_serial (parser, limit->next, &range, 1);
       if (pt_has_error (parser))
 	{
@@ -11260,6 +11256,7 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
 
       if (DB_IS_NULL (&range))
 	{
+	  /* probably value is not bound yet */
 	  goto cleanup;
 	}
 
@@ -11295,6 +11292,7 @@ int
 pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val)
 {
   assert_release (limit_val != NULL);
+
   DB_MAKE_NULL (limit_val);
 
   if (query == NULL || !PT_IS_QUERY (query))
@@ -11311,6 +11309,7 @@ pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * l
     {
       int error = NO_ERROR;
       bool has_limit = false;
+
       error = pt_get_query_limit_from_orderby_for (parser, query->info.query.orderby_for, limit_val, &has_limit);
       if (error != NO_ERROR || !has_limit)
 	{
@@ -11322,8 +11321,7 @@ pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * l
 }
 
 /*
- * pt_check_ordby_num_for_multi_range_opt () - checks if limit/order by for is
- *					       valid for multi range opt
+ * pt_check_ordby_num_for_multi_range_opt () - checks if limit/order by for is valid for multi range opt
  *
  * return	       : true/false
  * parser (in)	       : parser context
@@ -11338,7 +11336,6 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query
 					bool * cannot_eval)
 {
   DB_VALUE limit_val;
-
   int save_set_host_var;
   bool valid = false;
 
@@ -11402,20 +11399,17 @@ end:
 }
 
 /*
- * pt_get_query_limit_from_orderby_for () - get upper limit value for
- *					    orderby_for expression
+ * pt_get_query_limit_from_orderby_for () - get upper limit value for orderby_for expression
  *
  * return	      : true if a valid order by for expression, else false
  * parser (in)	      : parser context
  * orderby_for (in)   : order by for node
  * upper_limit (out)  : DB_VALUE pointer that will save the upper limit
  *
- * Note:  Only operations that can reduce to ORDERBY_NUM () </<= VALUE are
- *	  allowed:
+ * Note:  Only operations that can reduce to ORDERBY_NUM () </<= VALUE are allowed:
  *	  1. ORDERBY_NUM () LE/LT EXPR (which evaluates to a value).
  *	  2. EXPR (which evaluates to a values) GE/GT ORDERBY_NUM ().
- *	  3. Any number of #1 and #2 expressions linked by PT_AND logical
- *	     operator.
+ *	  3. Any number of #1 and #2 expressions linked by PT_AND logical operator.
  *	  Lower limits are allowed.
  */
 static int
@@ -12003,4 +11997,45 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
   *continue_walk = PT_STOP_WALK;
 
   return node;
+}
+
+/*
+ * pt_get_default_value_from_attrnode () - get default value from data default node
+ * return : error code or NO_ERROR
+ *
+ * parser (in)		  : parser context
+ * data_default_node (in) : attribute node
+ * default_expr (out)	  : default expression
+ */
+void
+pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
+						  DB_DEFAULT_EXPR * default_expr)
+{
+  PT_NODE *pt_default_expr = NULL;
+  DB_VALUE *db_value_default_expr_format = NULL;
+  assert (parser != NULL && default_expr != NULL);
+
+  classobj_initialize_default_expr (default_expr);
+  if (data_default_node != NULL)
+    {
+      assert (data_default_node->node_type == PT_DATA_DEFAULT);
+      default_expr->default_expr_type = data_default_node->info.data_default.default_expr_type;
+
+      pt_default_expr = data_default_node->info.data_default.default_value;
+      if (pt_default_expr && pt_default_expr->node_type == PT_EXPR)
+	{
+	  if (pt_default_expr->info.expr.op == PT_TO_CHAR)
+	    {
+	      default_expr->default_expr_op = T_TO_CHAR;
+	      assert (pt_default_expr->info.expr.arg2 != NULL
+		      && pt_default_expr->info.expr.arg2->node_type == PT_VALUE);
+
+	      if (PT_IS_CHAR_STRING_TYPE (pt_default_expr->info.expr.arg2->type_enum))
+		{
+		  db_value_default_expr_format = pt_value_to_db (parser, pt_default_expr->info.expr.arg2);
+		  default_expr->default_expr_format = DB_GET_STRING (db_value_default_expr_format);
+		}
+	    }
+	}
+    }
 }

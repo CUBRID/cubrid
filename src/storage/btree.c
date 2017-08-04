@@ -1868,17 +1868,17 @@ btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
 int
 btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 {
-  FILE_OVF_BTREE_DES btdes_ovf;
+  FILE_DESCRIPTORS des;
 
   VFID_SET_NULL (&btid->ovfid);
 
   /* initialize description of overflow heap file */
-  btdes_ovf.btid = *btid->sys_btid;	/* structure copy */
-  btdes_ovf.class_oid = btid->topclass_oid;
-  assert (!OID_ISNULL (&btdes_ovf.class_oid));
+  memset (&des, 0, sizeof (des));
+  des.btree_key_overflow.btid = *btid->sys_btid;	/* structure copy */
+  des.btree_key_overflow.class_oid = btid->topclass_oid;
+  assert (!OID_ISNULL (&des.btree_key_overflow.class_oid));
   /* create file with at least 3 pages */
-  return file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, (FILE_DESCRIPTORS *) (&btdes_ovf),
-				  &btid->ovfid);
+  return file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, &des, &btid->ovfid);
 }
 
 /*
@@ -4013,7 +4013,6 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
       error_code = btree_store_overflow_key (thread_p, btid, key, key_len, node_type, &key_vpid);
       if (error_code != NO_ERROR)
 	{
-	  assert_release (false);
 	  return error_code;
 	}
 
@@ -7562,7 +7561,8 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
     }
 
   btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
+  valid = btree_glean_root_header_info (thread_p, root_header, &btid_int);
+  if (valid != NO_ERROR)
     {
       goto error;
     }
@@ -7619,16 +7619,37 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
   if (heap_get_indexinfo_of_btid (thread_p, &fdes.btree.class_oid, btid, NULL, NULL, NULL, NULL, &btname, NULL) !=
       NO_ERROR)
     {
+      if (er_errid () == NO_ERROR)
+	{
+	  /* this is sometimes expected. I found a case when index was just loaded, but class object was not updated
+	   * yet. heap_get_indexinfo_of_btid is ambiguously handled, it does not set errors, but returns error code.
+	   * this crashes in ASSERT_ERROR safe-guards.
+	   *
+	   * this is, for now, a quick fix to avoid the safe-guard. I hope it won't hide other issues.
+	   */
+	  er_log_debug (ARG_FILE_LINE, "btree_check_by_btid on (%d, %d|%d) failed, because index info could not be "
+			"fetched. it is possible that index is still loading... \n", BTID_AS_ARGS (btid));
+	  valid = DISK_VALID;
+	}
       goto exit_on_end;
     }
 
   valid = btree_check_tree (thread_p, &fdes.btree.class_oid, btid, btname);
+  if (valid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  else if (valid == DISK_INVALID)
+    {
+      assert (false);
+    }
 
 exit_on_end:
   if (btname)
     {
       free_and_init (btname);
     }
+  assert (valid != DISK_INVALID);
 
   return valid;
 }
@@ -7636,7 +7657,7 @@ exit_on_end:
 int
 btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 {
-  OR_CLASSREP *cls_repr;
+  OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr_idx;
   int cache_idx = -1;
   int i;
@@ -7673,7 +7694,7 @@ btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 
   if (cls_repr != NULL)
     {
-      heap_classrepr_free (cls_repr, &cache_idx);
+      heap_classrepr_free_and_init (cls_repr, &cache_idx);
     }
 
   return error;
@@ -7688,7 +7709,7 @@ btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 DISK_ISVALID
 btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * idx_btid)
 {
-  OR_CLASSREP *cls_repr;
+  OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr;
   BTID btid;
   int i;
@@ -7736,7 +7757,7 @@ btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * idx_bti
 
   if (cls_repr)
     {
-      heap_classrepr_free (cls_repr, &cache_idx);
+      heap_classrepr_free_and_init (cls_repr, &cache_idx);
     }
 
   return rv;
@@ -7821,6 +7842,7 @@ retry_repair:
       header = btree_get_node_header (thread_p, current_pgptr);
       if (header == NULL)
 	{
+	  valid = DISK_ERROR;
 	  goto exit_repair;
 	}
 
@@ -7864,6 +7886,7 @@ retry_repair:
       header = btree_get_node_header (thread_p, next_pgptr);
       if (header == NULL)
 	{
+	  valid = DISK_ERROR;
 	  goto exit_repair;
 	}
 
@@ -7950,7 +7973,7 @@ exit_repair:
 static DISK_ISVALID
 btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, bool repair)
 {
-  OR_CLASSREP *cls_repr;
+  OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr;
   int i;
   int cache_idx = -1;
@@ -7988,7 +8011,7 @@ btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid, BTID * 
   lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, true);
   if (cls_repr)
     {
-      heap_classrepr_free (cls_repr, &cache_idx);
+      heap_classrepr_free_and_init (cls_repr, &cache_idx);
     }
 
   return valid;
@@ -10664,6 +10687,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   if (spage_update (thread_p, leaf_page, search_key->slotid, leaf_rec) != SP_SUCCESS)
     {
       assert_release (false);
+      ret = ER_FAILED;
       goto error;
     }
 
@@ -11751,7 +11775,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     {
       if (btree_search_leaf_page (thread_p, btid, page_ptr, key, &search_key) != NO_ERROR)
 	{
-	  assert (false);
+	  ASSERT_ERROR ();
 	  goto error;
 	}
       found = (search_key.result == BTREE_KEY_FOUND);
@@ -12590,17 +12614,18 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   if (qheader == NULL)
     {
       assert_release (false);
+      ret = ER_FAILED;
       goto exit_on_error;
     }
 
   sep_key = btree_find_split_point (thread_p, btid, Q, &leftcnt, key, helper, &clear_sep_key);
-  assert (leftcnt <= key_cnt && leftcnt >= 0);
   if (sep_key == NULL || DB_IS_NULL (sep_key))
     {
       er_log_debug (ARG_FILE_LINE, "btree_split_node: Null middle key after split. Operation Ignored.\n");
       ASSERT_ERROR_AND_SET (ret);
       goto exit_on_error;
     }
+  assert (leftcnt <= key_cnt && leftcnt >= 0);
 
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
@@ -12726,6 +12751,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       assert (j > 0);
       if (spage_insert_at (thread_p, R, j++, &rec) != SP_SUCCESS)
 	{
+	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
     }
@@ -13443,12 +13469,12 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    ********************************************************************/
 
   sep_key = btree_find_split_point (thread_p, btid, P, &leftcnt, key, helper, &clear_sep_key);
-  assert (leftcnt <= key_cnt && leftcnt >= 0);
   if (sep_key == NULL || DB_IS_NULL (sep_key))
     {
       er_log_debug (ARG_FILE_LINE, "btree_split_root: Null middle key after split. Operation Ignored.\n");
       goto exit_on_error;
     }
+  assert (leftcnt <= key_cnt && leftcnt >= 0);
 
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
@@ -14730,74 +14756,78 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 	      ;
 	    }
 
-	  minmax = key_minmax;	/* init */
-	  if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
+	  if (midxkey->min_max_val.position == -1)
 	    {
-	      if (!part_key_desc)
-		{		/* CASE 1, 2 */
-		  if (dp->is_desc != true)
-		    {		/* CASE 1 */
-		      ;		/* nop */
+	      /* If min_max_val was not set, set it here. */
+	      minmax = key_minmax;	/* init */
+	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
+		{
+		  if (!part_key_desc)
+		    {		/* CASE 1, 2 */
+		      if (dp->is_desc != true)
+			{	/* CASE 1 */
+			  ;	/* nop */
+			}
+		      else
+			{	/* CASE 2 */
+			  minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+			}
 		    }
 		  else
-		    {		/* CASE 2 */
-		      minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+		    {		/* CASE 3, 4 */
+		      if (dp->is_desc != true)
+			{	/* CASE 3 */
+			  minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+			}
+		      else
+			{	/* CASE 4 */
+			  ;	/* nop */
+			}
 		    }
 		}
-	      else
-		{		/* CASE 3, 4 */
-		  if (dp->is_desc != true)
-		    {		/* CASE 3 */
-		      minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+	      else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
+		{
+		  if (!part_key_desc)
+		    {		/* CASE 1, 2 */
+		      if (dp->is_desc != true)
+			{	/* CASE 1 */
+			  ;	/* nop */
+			}
+		      else
+			{	/* CASE 2 */
+			  minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
+			}
 		    }
 		  else
-		    {		/* CASE 4 */
-		      ;		/* nop */
+		    {		/* CASE 3, 4 */
+		      if (dp->is_desc != true)
+			{	/* CASE 3 */
+			  minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
+			}
+		      else
+			{	/* CASE 4 */
+			  ;	/* nop */
+			}
 		    }
 		}
-	    }
-	  else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
-	    {
-	      if (!part_key_desc)
-		{		/* CASE 1, 2 */
-		  if (dp->is_desc != true)
-		    {		/* CASE 1 */
-		      ;		/* nop */
-		    }
-		  else
-		    {		/* CASE 2 */
-		      minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
-		    }
-		}
-	      else
-		{		/* CASE 3, 4 */
-		  if (dp->is_desc != true)
-		    {		/* CASE 3 */
-		      minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
-		    }
-		  else
-		    {		/* CASE 4 */
-		      ;		/* nop */
-		    }
-		}
-	    }
 
-	  if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
-	    {
-	      if (dsize < keysize)
+	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
+		{
+		  if (dsize < keysize)
+		    {
+		      midxkey->min_max_val.position = dsize;
+		      midxkey->min_max_val.type = MIN_COLUMN;
+		    }
+		}
+	      else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
 		{
 		  midxkey->min_max_val.position = dsize;
-		  midxkey->min_max_val.type = MIN_COLUMN;
+		  midxkey->min_max_val.type = MAX_COLUMN;
 		}
-	    }
-	  else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
-	    {
-	      midxkey->min_max_val.position = dsize;
-	      midxkey->min_max_val.type = MAX_COLUMN;
-	    }
-	  else
-	    {
-	      err = ER_FAILED;
+	      else
+		{
+		  err = ER_FAILED;
+		}
 	    }
 
 	  num_dbvals = 0;
@@ -14815,7 +14845,6 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 
 	  db_private_free_and_init (NULL, dbvals);
 	}
-
     }
   else if (
 	    /* check if they are string or bit type */
@@ -18191,6 +18220,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
     {
       if (heap_get_indexinfo_of_btid (thread_p, class_oid, btid, NULL, NULL, NULL, NULL, &index_name, NULL) != NO_ERROR)
 	{
+	  er_clear ();
 	  index_name = NULL;
 	}
     }
@@ -20354,7 +20384,7 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
   int i, error = NO_ERROR;
   OID oid;
   OR_CLASSREP *classrep = NULL;
-  int idx_in_cache;
+  int idx_in_cache = -1;
   SHOW_INDEX_SCAN_CTX *ctx = NULL;
   LC_FIND_CLASSNAME status;
   OR_PARTITION *parts = NULL;
@@ -20457,7 +20487,7 @@ cleanup:
 
   if (classrep != NULL)
     {
-      heap_classrepr_free (classrep, &idx_in_cache);
+      heap_classrepr_free_and_init (classrep, &idx_in_cache);
     }
 
   if (parts != NULL)
@@ -20501,7 +20531,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   OR_CLASSREP *classrep = NULL;
   SHOW_INDEX_SCAN_CTX *ctx = NULL;
   OID *class_oid_p = NULL;
-  int idx_in_cache;
+  int idx_in_cache = -1;
   int selected_index = 0;
   int i, index_idx, oid_idx;
   char columns[256] = { 0 };
@@ -20576,7 +20606,7 @@ cleanup:
 
   if (classrep != NULL)
     {
-      heap_classrepr_free (classrep, &idx_in_cache);
+      heap_classrepr_free_and_init (classrep, &idx_in_cache);
     }
 
   if (class_name != NULL)
@@ -21067,6 +21097,7 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAG
   if (spage_update (thread_p, page_ptr, slot_id, rec) != SP_SUCCESS)
     {
       assert_release (false);
+      ret = ER_FAILED;
       goto exit_on_error;
     }
 
@@ -24055,6 +24086,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 		      ASSERT_ERROR ();
 		      return error_code;
 		    }
+		  assert (search_key.result != BTREE_KEY_NOTFOUND);
 		}
 	      switch (search_key.result)
 		{
@@ -24082,6 +24114,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
 		case BTREE_KEY_SMALLER:
 		case BTREE_KEY_BIGGER:
+		case BTREE_KEY_NOTFOUND:
 		  /* Key is no longer in this leaf node. Locate key by advancing from root. */
 		  /* Fall through. */
 		  break;
@@ -26573,6 +26606,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      pgbuf_unfix_and_init (thread_p, new_page2);
 
 	      /* Error */
+	      error_code = ER_FAILED;
 	      goto error;
 	    }
 	  assert (*crt_page != NULL);
@@ -26583,6 +26617,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	    {
 	      /* Unexpected. */
 	      assert (false);
+	      error_code = ER_FAILED;
 	      goto error;
 	    }
 
@@ -26862,10 +26897,6 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
 error:
   /* Error. */
-  if (is_system_op_started)
-    {
-      log_sysop_abort (thread_p);
-    }
   if (new_page1 != NULL)
     {
       pgbuf_unfix_and_init (thread_p, new_page1);
@@ -26873,6 +26904,15 @@ error:
   if (new_page2 != NULL)
     {
       pgbuf_unfix_and_init (thread_p, new_page2);
+    }
+  if (is_system_op_started)
+    {
+      /*
+       * Abort system operation, before after unfixing newpage1 and newpage2 and before unfixing child page.
+       * Thus, new_page1 and newpage2 are deallocated during abort, so fix count must be 0.
+       * Also, we have to be sure that no other transaction modify the child page, in order to correctly restore it.
+       */
+      log_sysop_abort (thread_p);
     }
   if (child_page != NULL)
     {
@@ -28444,10 +28484,11 @@ btree_key_record_check_no_visible (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       assert (false);
       return;
     }
-  num_visible =
-    btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_rec_info, NULL,
-					     &dirty_snapshot);
-  assert (num_visible == 0);
+
+  num_visible = btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, &record, offset_after_key, &leaf_rec_info,
+							 NULL, &dirty_snapshot);
+
+  assert (num_visible == 0 || (num_visible < 0 && er_errid () != NO_ERROR));
 }
 #endif /* !NDEBUG */
 
@@ -30096,7 +30137,8 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
       /* Fix right page. */
       VPID_COPY (&right_vpid, &non_leaf_rec_info.pnt);
 #if defined (SERVER_MODE)
-      if (pgbuf_is_io_stressful () && spage_get_free_space (thread_p, child_page) < (int) (DB_PAGESIZE * 0.75f))
+      if (pgbuf_is_io_stressful () && spage_get_free_space (thread_p, child_page) < (int) (DB_PAGESIZE * 0.75f)
+	  && spage_number_of_slots (child_page) > 2)
 	{
 	  /* avoid fetching "cold" neighbor pages, that are not in page buffer. at the same time, we should avoid doing
 	   * zero merges. so if we have a strong indicator that merge is possible (e.g. current page is almost empty)
@@ -30258,7 +30300,7 @@ error:
 
   if (is_system_op_started)
     {
-      /* Abort system operation. */
+      /* Abort system operation, before unfixing the pages to be sure that no other transaction modify the pages. */
       log_sysop_abort (thread_p);
     }
 
@@ -32789,15 +32831,16 @@ btree_hash_btid (void *btid, int hash_size)
 int
 btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid)
 {
-  FILE_BTREE_DES des;
+  FILE_DESCRIPTORS des;
   VPID vpid_root;
 
   int error_code = NO_ERROR;
 
-  des.class_oid = *class_oid;
-  des.attr_id = attrid;
+  memset (&des, 0, sizeof (des));
+  des.btree.class_oid = *class_oid;
+  des.btree.attr_id = attrid;
 
-  error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, (FILE_DESCRIPTORS *) (&des), &btid->vfid);
+  error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, &des, &btid->vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

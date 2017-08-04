@@ -127,6 +127,7 @@ struct boot_dbparm
   EHID classname_table;		/* The hash file of class names */
 #endif
   CTID ctid;			/* The catalog file */
+  /* TODO: Remove me */
   VFID query_vfid;		/* Query file */
   char rootclass_name[10];	/* Name of the root class */
   OID rootclass_oid;		/* OID of the root class */
@@ -203,14 +204,11 @@ static int boot_Server_process_id = 1;
 
 /* Functions */
 static int boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID * dbparm_oid);
-static int boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_ACTION delete_action);
+static int boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel);
 
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action);
-static int boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *ignore_vlabel,
-				     void *delete_action_arg);
-#if 0
-static int boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid);
-#endif
+static int boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel);
+static void boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid);
 static void boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_addmore_vols);
 static int boot_find_rest_volumes (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args, VOLID volid,
@@ -221,9 +219,8 @@ static int boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvo
 							 void *args), void *args);
 
 static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
-					 int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel,
-						     void *args), void *args, bool forward_dir,
-					 bool check_before_access);
+					 int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel),
+					 bool forward_dir, bool check_before_access);
 static int boot_check_permanent_volumes (THREAD_ENTRY * thread_p);
 static int boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *ignore_arg);
 static char *boot_find_new_db_path (char *db_pathbuf, const char *fileof_vols_and_wherepaths);
@@ -516,69 +513,35 @@ boot_get_lob_path (void)
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
  *   volid(in): Volume identifier to remove
- *   delete_action(in): ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION if logical heap operation 
- *				are not needed
  *
  * Note: Remove a volume from the database. The deletion of the volume is done
  *       independently of the destiny of the current transaction. That is,
  *       if this function finishes successfully the removal is made permanent,
  *       if the function fails, whatever was done is aborted.
- *       Currently, we do not allow to remove permananet volumes. In the future
+ *       Currently, we do not allow to remove permanent volumes. In the future
  *       we may allow the removal of any volume but the primary volume
  *       (LOG_DBFIRST_VOLID).
  */
 static int
-boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_ACTION delete_action)
+boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel)
 {
-  char *vlabel = NULL;
-  int vol_fd;
-  int error_code = NO_ERROR;
-  bool log_sysop_started = false;
-
-  disk_lock_extend ();
-
-  /* 
-   * Make sure that this is a temporary volume
-   */
-
+  /* Make sure that this is a temporary volume */
   if (volid < boot_Db_parm->temp_last_volid)
     {
       if (volid >= LOG_DBFIRST_VOLID && volid <= boot_Db_parm->last_volid)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1,
 		  fileio_get_volume_label (volid, PEEK));
-	  error_code = ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
+	  return ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
 	}
       else
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_VOLID, 1, volid);
-	  error_code = ER_FILE_UNKNOWN_VOLID;
+	  return ER_FILE_UNKNOWN_VOLID;
 	}
-      goto end;
     }
 
-  /* 
-   * Find the name of the volume to remove
-   */
-
-  vlabel = fileio_get_volume_label (volid, ALLOC_COPY);
-
-  if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
-    {
-      /* 
-       * Start a TOP SYSTEM OPERATION.
-       * This top system operation will be either ABORTED (case of failure) or
-       * COMMITTED independently of the current transaction, so that the volume
-       * is removed immediately.
-       */
-      log_sysop_start (thread_p);
-      log_sysop_started = true;
-    }
-
-  /* 
-   * Do the following for temporary volumes
-   */
-
+  /* Do the following for temporary volumes */
   boot_Db_parm->temp_nvols--;
   if (boot_Db_parm->temp_nvols <= 0)
     {
@@ -589,69 +552,12 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
       boot_Db_parm->temp_last_volid = volid + 1;
     }
 
-  if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
-    {
-      error_code = boot_db_parm_update_heap (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  boot_Db_parm->temp_nvols++;
-	  if (boot_Db_parm->temp_nvols == 1)
-	    {
-	      boot_Db_parm->temp_last_volid = volid;
-	    }
-	  else if (volid < boot_Db_parm->temp_last_volid)
-	    {
-	      boot_Db_parm->temp_last_volid = volid;
-	    }
-	  goto end;
-	}
-
-      /* 
-       * Flush the Dbparm object.. Not needed but it is good to do it, so that
-       * during restart time we can mount every known volume. During media crash
-       * that may not be possible... irrelevant..
-       */
-      heap_flush (thread_p, boot_Db_parm_oid);
-
-      vol_fd = fileio_get_volume_descriptor (boot_Db_parm->hfid.vfid.volid);
-      (void) fileio_synchronize (thread_p, vol_fd, vlabel);
-    }
-
-  /* 
-   * The volume is not know by the system any longer. Remove it from disk
-   */
+  /* The volume is not known by the system any longer. */
   (void) pgbuf_invalidate_all (thread_p, volid);
 
-  if (vlabel)
-    {
-      error_code = disk_unformat (thread_p, vlabel);
-      if (error_code != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
+  fileio_unformat (thread_p, vlabel);
 
-  if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
-    {
-      log_sysop_commit (thread_p);
-      log_sysop_started = false;
-    }
-
-end:
-
-  if (log_sysop_started == true && error_code != NO_ERROR)
-    {
-      log_sysop_abort (thread_p);
-    }
-
-  if (vlabel)
-    {
-      free (vlabel);
-    }
-  disk_unlock_extend ();
-
-  return error_code;
+  return NO_ERROR;
 }
 
 /*
@@ -1013,21 +919,15 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 /*
  * boot_remove_all_temp_volumes () - remove all temporary volumes from the database
  *
- * return :NO_ERROR if all OK, ER_ status otherwise
+ * return: NO_ERROR if all OK, ER_ status otherwise
  */
 static int
 boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action)
 {
   int error_code = NO_ERROR;
-  REMOVE_TEMP_VOL_ACTION delete_action_arg;
 
-  delete_action_arg = ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION;
-
-  /* 
-   * if volumes exist beyond bo_Dbparm.temp_last_volid,
-   * we remove the volumes.
-   * there is no logging to add or remove a temporary temp volume,
-   * but logging to update bo_Dbparm.
+  /* if volumes exist beyond bo_Dbparm.temp_last_volid, we remove the volumes.
+   * there is no logging to add or remove a temporary temp volume, but logging to update bo_Dbparm.
    * so, unknown volumes can be possible to exist.
    */
   if (!BO_IS_SERVER_RESTARTED ())
@@ -1037,39 +937,29 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
 
   if (boot_Db_parm->temp_nvols == 0)
     {
-      return error_code;
+      assert (boot_Db_parm->temp_last_volid == NULL_VOLID);
+      return NO_ERROR;
     }
 
-  boot_find_rest_temp_volumes (thread_p, NULL_VOLID, boot_xremove_temp_volume, (void *) &delete_action_arg, true, true);
+  boot_find_rest_temp_volumes (thread_p, NULL_VOLID, boot_xremove_temp_volume, true, true);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
     {
-      return error_code;
+      return NO_ERROR;
     }
 
   if (boot_Db_parm->temp_nvols != 0 || boot_Db_parm->temp_last_volid != NULL_VOLID)
     {
+      /* something bad happened. Reset it anyway. */
       boot_Db_parm->temp_nvols = 0;
       boot_Db_parm->temp_last_volid = NULL_VOLID;
-
-      error_code = boot_db_parm_update_heap (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
-	}
-      if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
-	{
-	  assert_release (false);
-	  return ER_FAILED;
-	}
     }
-  else
+
+  error_code = boot_db_parm_update_heap (thread_p);
+  if (error_code != NO_ERROR)
     {
-      if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
-	{
-	  error_code = ER_FAILED;
-	}
+      ASSERT_ERROR ();
+      return error_code;
     }
 
   return error_code;
@@ -1081,33 +971,26 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
  *   volid(in): Volume identifier to remove
- *   ignore_vlabel(in): Volume label (Unused)
- *   delete_action_arg: pointer to user data (physical delete flag)
+ *   vlabel(in): Volume label
  *
  * Note: Pass control to boot_remove_temp_volume to remove the temporary volume.
  */
 static int
-boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *ignore_vlabel, void *delete_action_arg)
+boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel)
 {
-  REMOVE_TEMP_VOL_ACTION delete_action =
-    ((delete_action_arg != NULL) ? *(REMOVE_TEMP_VOL_ACTION *) delete_action_arg : REMOVE_TEMP_VOL_DEFAULT_ACTION);
-
-  return boot_remove_temp_volume (thread_p, volid, delete_action);
+  return boot_remove_temp_volume (thread_p, volid, vlabel);
 }
 
-/*
- * boot_remove_unknown_temp_volumes () -
- *
- * return: none
- */
 static void
-boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
+boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid)
 {
-  VOLID temp_volid;
-  char temp_vol_fullname[PATH_MAX];
   const char *temp_path;
   const char *temp_name;
   char *alloc_tempath = NULL;
+
+  assert (temp_vol_fullname != NULL);
+
+  temp_vol_fullname[0] = '\0';
 
   alloc_tempath = (char *) malloc (strlen (boot_Db_full_name) + 1);
   if (alloc_tempath == NULL)
@@ -1122,6 +1005,25 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
     }
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
+  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
+
+  if (alloc_tempath)
+    {
+      free_and_init (alloc_tempath);
+    }
+}
+
+/*
+ * boot_remove_unknown_temp_volumes () -
+ *
+ * return: none
+ */
+static void
+boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
+{
+  VOLID temp_volid;
+  char temp_vol_fullname[PATH_MAX];
+
   if (boot_Db_parm->temp_last_volid == NULL_VOLID)
     {
       temp_volid = LOG_MAX_DBVOLID;
@@ -1133,18 +1035,13 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
 
   for (; temp_volid > boot_Db_parm->last_volid; temp_volid--)
     {
-      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
+      boot_make_temp_volume_fullname (temp_vol_fullname, temp_volid);
       if (!fileio_is_volume_exist (temp_vol_fullname))
 	{
 	  break;
 	}
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
       fileio_unformat (thread_p, temp_vol_fullname);
-    }
-
-  if (alloc_tempath)
-    {
-      free_and_init (alloc_tempath);
     }
 }
 
@@ -1158,8 +1055,7 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
  *   fun(in): Function to call on volid, vlabel, and arguments
  *   args(in): Extra arguments for function to call
  *
- * Note: The given function is called for every single volume which is
- *              different from the given one.
+ * Note: The given function is called for every single volume which is different from the given one.
  */
 static int
 boot_find_rest_volumes (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args, VOLID volid,
@@ -1183,90 +1079,76 @@ boot_find_rest_volumes (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args, VOLID 
       return error_code;
     }
 
-  boot_find_rest_temp_volumes (thread_p, volid, fun, args, false, true);
+  /* We don't want to mount temp vols during bootstrapping,
+   * since temp vols might be inaccessible for a crash case and will be removed soon.
+   */
 
   return error_code;
 }
 
 /*
- * boot_find_rest_permanent_volumes () - call function on the rest of permanent vols
- *                                  of database
+ * boot_find_rest_permanent_volumes () - call function on the rest of permanent vols of database
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
- *   newvolpath(in): restore the database and log volumes to the path
- *                   specified in the database-loc-file.
+ *   newvolpath(in): restore the database and log volumes to the path specified in the database-loc-file.
  *   use_volinfo(in): use volinfo indicator
  *   volid(in): Volume identifier
  *   fun(in): Function to call on volid, vlabel, and arguments
  *   args(in): Extra arguments for function to call
  *
- * Note: The given function is called for every single permanent volume
- *       which is different from the given one.
+ * Note: The given function is called for every single permanent volume which is different from the given one.
  */
 static int
 boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool use_volinfo, VOLID volid,
 				  int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel, void *args),
 				  void *args)
 {
-  VOLID num_vols = 0;
-  VOLID curr_volid = LOG_DBFIRST_VOLID;
-  char *curr_vol_fullname;
-  VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
-  char next_vol_fullname[PATH_MAX];	/* Next volume name */
+  DKNVOLS num_vols = 0;
   int error_code = NO_ERROR;
 
   if (newvolpath || !use_volinfo
       || (num_vols = logpb_scan_volume_info (thread_p, NULL, volid, LOG_DBFIRST_VOLID, fun, args)) == -1)
     {
-      /* 
-       * Don't use volinfo .. or could not find volinfo
-       */
+      /* Don't use volume info .. or could not find volume info .. or it was bad */
+      VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
+      char next_vol_fullname[PATH_MAX];	/* Next volume name */
+
+      num_vols = 0;
 
       /* First the primary volume, then the rest of the volumes */
-      num_vols = 0;
-      curr_vol_fullname = next_vol_fullname;
-      strcpy (curr_vol_fullname, boot_Db_full_name);
-
       /* 
-       * Do not assume that all the volumes are mounted. This function may be
-       * called to mount the volumes. Thus, request to current volume for the
-       * next volume instead of going directly through the volume identifier.
+       * Do not assume that all the volumes are mounted. This function may be called to mount the volumes.
+       * Thus, request to current volume for the next volume instead of going directly through the volume identifier.
        */
-      do
+      strcpy (next_vol_fullname, boot_Db_full_name);
+      for (next_volid = LOG_DBFIRST_VOLID; next_volid != NULL_VOLID;)
 	{
 	  num_vols++;
-	  if (curr_volid != volid)
+	  if (next_volid != volid)
 	    {
-	      error_code = (*fun) (thread_p, curr_volid, curr_vol_fullname, args);
+	      error_code = (*fun) (thread_p, next_volid, next_vol_fullname, args);
 	      if (error_code != NO_ERROR)
 		{
 		  return error_code;
 		}
 	    }
-	  if (disk_get_link (thread_p, curr_volid, &next_volid, next_vol_fullname) == NULL)
+	  /* update next_volid and next_vol_fullname */
+	  if (disk_get_link (thread_p, next_volid, &next_volid, next_vol_fullname) == NULL)
 	    {
 	      return ER_FAILED;
 	    }
-
-	  curr_volid = next_volid;
 	}
-      while (curr_volid != NULL_VOLID);
 
       if (use_volinfo == true)
 	{
-	  /* 
-	   * The volinfo was not found.. Recreate it with the current information
-	   */
+	  /* The volume info was not found.. Recreate it with the current information */
 	  (void) logpb_recreate_volume_info (thread_p);
 	}
     }
   else
     {
-      /* 
-       * Add the volume that was ignored, as long as it is in the range of a
-       * valid one
-       */
+      /* Add the volume that was ignored, as long as it is in the range of a valid one */
       if (volid != NULL_VOLID && volid >= LOG_DBFIRST_VOLID && volid <= boot_Db_parm->last_volid)
 	{
 	  num_vols++;
@@ -1297,23 +1179,19 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 }
 
 /*
- * bo_find_rest_tempvols () - call function on the rest of temporary vols of the
- *                            database
+ * bo_find_rest_tempvols () - call function on the rest of temporary vols of the database
  *
  *   volid(in): Volume identifier
  *   fun(in): Function to call on volid, vlabel, and arguments
- *   args(in): Extra arguments for function to call
- *   forward_dir(in): direction of accesing the tempvols (forward/backward)
- *   check_before_access(in): if true, check the existence of volume before
- *                            access
+ *   forward_dir(in): direction of accessing the tempvols (forward/backward)
+ *   check_before_access(in): if true, check the existence of volume before access
  *
- * Note: The given function is called for every single temporary volume
- *       which is different from the given one.
+ * Note: The given function is called for every single temporary volume which is different from the given one.
  */
 static void
 boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
-			     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel, void *args),
-			     void *args, bool forward_dir, bool check_before_access)
+			     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel),
+			     bool forward_dir, bool check_before_access)
 {
   VOLID temp_volid;
   char temp_vol_fullname[PATH_MAX];
@@ -1367,7 +1245,7 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
 		    }
 		  if (go_to_access)
 		    {		/* Call the function */
-		      (void) (*fun) (thread_p, temp_volid, temp_vol_fullname, args);
+		      (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
 		    }
 		}
 	    }
@@ -1395,7 +1273,7 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
 		    }
 		  if (go_to_access)
 		    {		/* Call the function */
-		      (void) (*fun) (thread_p, temp_volid, temp_vol_fullname, args);
+		      (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
 		    }
 		}
 	    }
@@ -2326,8 +2204,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
-
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
@@ -2406,6 +2282,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
 #endif /* !SERVER_MODE */
+
+  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   /* 
    * Compose the full name of the database and find location of logs
@@ -2488,7 +2366,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      assert_release (false);
       goto error;
     }
 
@@ -2558,9 +2436,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
-  /* restore from backup should be prevented from other changes of the database (includes vacuum) */
-  if ((r_args == NULL || r_args->is_restore_from_backup == false)
-      && prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
       /* load and recovery vacuum data and dropped files */
       error_code = vacuum_data_load_and_recover (thread_p);
@@ -2679,6 +2555,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * system parameter
    */
 
+  /* todo: I am not sure we really need a transaction here. but since we are hurrying to release 10.1 and we don't have
+   *       time to do changes that may have a significant impact on database behavior, I'd rather keep this for now.
+   *       We should rethink the boot_Db_parm implementation altogether and we can come back to this when we do it. */
   tran_index =
     logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 			     TRAN_DEFAULT_ISOLATION_LEVEL ());
@@ -2694,26 +2573,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
-  /* If there is an existing query area, delete it. */
-  if (boot_Db_parm->query_vfid.volid != NULL_VOLID)
-    {
-      (void) file_destroy (thread_p, &boot_Db_parm->query_vfid, true);
-      boot_Db_parm->query_vfid.fileid = NULL_FILEID;
-      boot_Db_parm->query_vfid.volid = NULL_VOLID;
-
-      error_code = boot_db_parm_update_heap (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
-      if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
-	{
-	  assert_release (false);
-	  goto error;
-	}
-    }
-
   if (boot_Lob_path[0] != '\0')
     {
       error_code = es_init (boot_Lob_path);
@@ -2727,11 +2586,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
     }
 
-  if (tran_index != NULL_TRAN_INDEX)
+  if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
     {
-      logtb_release_tran_index (thread_p, tran_index);
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto error;
     }
-
+  logtb_free_tran_index (thread_p, tran_index);
+  tran_index = NULL_TRAN_INDEX;
   logtb_set_to_system_tran_index (thread_p);
 
   if (!tf_Metaclass_class.mc_n_variable)
@@ -2789,6 +2651,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Completely vacuum database. */
   if (r_args == NULL || r_args->is_restore_from_backup == false)
     {
+      er_clear ();		/* forget any warning or error to start vacuumming */
       xvacuum (thread_p);
     }
 #endif
@@ -2884,6 +2747,11 @@ error:
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_RESTART_SERVER, 1, "");
+    }
+
+  if (tran_index != NULL_TRAN_INDEX)
+    {
+      logtb_free_tran_index (thread_p, tran_index);
     }
 
   session_states_finalize (thread_p);
@@ -3252,7 +3120,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  thread_p->tran_index = save_index;
 
 #if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_CONN_END (-1, NULL);
+	  CUBRID_CONN_END (-1, "NULL");
 #endif /* ENABLE_SYSTEMTAP */
 
 	  return NO_ERROR;
@@ -3276,7 +3144,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	{
 
 #if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_CONN_END (-1, NULL);
+	  CUBRID_CONN_END (-1, "NULL");
 #endif /* ENABLE_SYSTEMTAP */
 
 	  return NO_ERROR;
@@ -3328,21 +3196,12 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
   CSS_CONN_ENTRY *conn;
   LOG_TDES *tdes;
   int client_id;
-  int r;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-      if (thread_p == NULL)
-	{
-	  return;
-	}
-    }
 
   conn = thread_p->conn_entry;
 
-  r = rmutex_lock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
+  /* sboot_notify_unregister_client should hold conn->rmutex. 
+   * Please see the comment of sboot_notify_unregister_client.
+   */
 
   client_id = conn->client_id;
   tdes = LOG_FIND_TDES (tran_index);
@@ -3353,9 +3212,6 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  conn->status = CONN_CLOSING;
 	}
     }
-
-  r = rmutex_unlock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
 }
 #endif /* SERVER_MODE */
 
@@ -4914,7 +4770,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      assert_release (false);
       goto error;
     }
 
@@ -6036,7 +5892,13 @@ boot_db_parm_update_heap (THREAD_ENTRY * thread_p)
    * otherwise it will try to read it from cache using root class OID. which actually has its own heap file and its own
    * heap file type.
    */
-  heap_scancache_start_modify (thread_p, &scan_cache, &boot_Db_parm->hfid, NULL, SINGLE_ROW_UPDATE, NULL);
+  error_code = heap_scancache_start_modify (thread_p, &scan_cache, &boot_Db_parm->hfid, NULL, SINGLE_ROW_UPDATE, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
   /* hack the class to avoid heap_scancache_check_with_hfid. */
   scan_cache.node.class_oid = *oid_Root_class_oid;
   heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,

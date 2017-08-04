@@ -634,8 +634,6 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
 	value->domain.general_info.is_null = 0;
       }
       break;
-      /* TODO: The string "\377" (one character of code 255) is not a perfect representation of the maximum value of a
-       * string's domain. We should find a better way to do this. */
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->data.ch.info.style = MEDIUM_STRING;
@@ -6825,4 +6823,43 @@ db_get_compressed_size (DB_VALUE * value)
   assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
 
   return value->data.ch.medium.compressed_size;
+}
+
+/*
+ * db_default_expression_string() - 
+ * return : string opcode of default expression
+ * default_expr_type(in):
+ */
+const char *
+db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
+{
+  switch (default_expr_type)
+    {
+    case DB_DEFAULT_NONE:
+      return NULL;
+    case DB_DEFAULT_SYSDATE:
+      return "SYS_DATE";
+    case DB_DEFAULT_SYSDATETIME:
+      return "SYS_DATETIME";
+    case DB_DEFAULT_SYSTIMESTAMP:
+      return "SYS_TIMESTAMP";
+    case DB_DEFAULT_UNIX_TIMESTAMP:
+      return "UNIX_TIMESTAMP()";
+    case DB_DEFAULT_USER:
+      return "USER()";
+    case DB_DEFAULT_CURR_USER:
+      return "CURRENT_USER";
+    case DB_DEFAULT_CURRENTDATETIME:
+      return "CURRENT_DATETIME";
+    case DB_DEFAULT_CURRENTTIMESTAMP:
+      return "CURRENT_TIMESTAMP";
+    case DB_DEFAULT_CURRENTTIME:
+      return "CURRENT_TIME";
+    case DB_DEFAULT_CURRENTDATE:
+      return "CURRENT_DATE";
+    case DB_DEFAULT_SYSTIME:
+      return "SYS_TIME";
+    default:
+      return NULL;
+    }
 }

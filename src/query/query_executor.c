@@ -75,6 +75,8 @@
 #include "partition.h"
 #include "tsc_timer.h"
 #include "xasl_generation.h"
+#include "query_executor.h"
+#include "dbi.h"
 
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
@@ -552,6 +554,8 @@ static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNIN
 static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid, UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec);
 
+static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				     bool * empty_result);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -834,7 +838,7 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_li
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  COPY_OID (&instance_oid, DB_GET_OID (dbval));
+	  SAFE_COPY_OID (&instance_oid, DB_GET_OID (dbval));
 
 	  if (default_cls_oid != NULL)
 	    {
@@ -866,7 +870,7 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_li
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      COPY_OID (&class_oid, DB_GET_OID (dbval));
+	      SAFE_COPY_OID (&class_oid, DB_GET_OID (dbval));
 	    }
 
 	  ret = lock_add_composite_lock (thread_p, composite_lock, &instance_oid, &class_oid);
@@ -983,7 +987,7 @@ qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
   DB_TYPE typ;
   int ret = NO_ERROR, idx, rem_cnt = 0;
   EHID *ehid = NULL;
-  OID oid;
+  OID oid, key_oid;
   EH_SEARCH eh_search;
 
   if (xasl == NULL || xasl->type != BUILDLIST_PROC || xasl->proc.buildlist.upddel_oid_locator_ehids == NULL)
@@ -1026,7 +1030,10 @@ qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 
 	  /* Get the appropriate hash file and check if the OID exists in the file */
 	  ehid = &xasl->proc.buildlist.upddel_oid_locator_ehids[idx];
-	  eh_search = ehash_search (thread_p, ehid, DB_GET_OID (dbval), &oid);
+
+	  SAFE_COPY_OID (&key_oid, DB_GET_OID (dbval));
+
+	  eh_search = ehash_search (thread_p, ehid, &key_oid, &oid);
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
@@ -1036,7 +1043,7 @@ qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 	      break;
 	    case EH_KEY_NOTFOUND:
 	      /* The OID was not processed so insert it in the hash file */
-	      if (ehash_insert (thread_p, ehid, DB_GET_OID (dbval), DB_GET_OID (dbval)) == NULL)
+	      if (ehash_insert (thread_p, ehid, &key_oid, &key_oid) == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -2183,6 +2190,16 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
       if (xasl->orderby_limit)
 	{
 	  pg_cnt += qexec_clear_regu_var (xasl, xasl->orderby_limit, final);
+	}
+
+      if (xasl->limit_offset)
+	{
+	  pg_cnt += qexec_clear_regu_var (xasl, xasl->limit_offset, final);
+	}
+
+      if (xasl->limit_offset)
+	{
+	  pg_cnt += qexec_clear_regu_var (xasl, xasl->limit_offset, final);
 	}
 
       if (xasl->limit_row_count)
@@ -9272,6 +9289,11 @@ exit_on_error:
       qexec_close_scan (thread_p, specp);
     }
 
+  if (del_lob_info_list != NULL)
+    {
+      qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
+    }
+
   if (mvcc_reev_classes != NULL)
     {
       db_private_free (thread_p, mvcc_reev_classes);
@@ -9960,6 +9982,11 @@ exit_on_error:
     {
       qexec_end_scan (thread_p, specp);
       qexec_close_scan (thread_p, specp);
+    }
+
+  if (del_lob_info_list != NULL)
+    {
+      qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
     }
 
   if (internal_classes)
@@ -10776,6 +10803,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   DB_VALUE oid_val;
   int is_autoincrement_set = 0;
   int month, day, year, hour, minute, second, millisecond;
+  DB_VALUE insert_val, format_val, lang_val;
+  char *lang_str = NULL;
+  int flag;
+  TP_DOMAIN *result_domain;
+  bool has_user_format;
 
   aptr = xasl->aptr_list;
   val_no = insert->num_vals;
@@ -10872,6 +10904,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     {
       num_default_expr = 0;
     }
+
+  DB_MAKE_NULL (&insert_val);
   for (k = 0; k < num_default_expr; k++)
     {
       OR_ATTRIBUTE *attr;
@@ -10891,36 +10925,90 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
       DB_MAKE_NULL (new_val);
       insert->vals[k] = new_val;
-      switch (attr->current_default_value.default_expr)
+
+      switch (attr->current_default_value.default_expr.default_expr_type)
 	{
 	case DB_DEFAULT_SYSTIME:
+	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
+	  db_make_time (&insert_val, hour, minute, second);
+	  break;
+
 	case DB_DEFAULT_CURRENTTIME:
-	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  db_make_time (insert->vals[k], hour, minute, second);
+	  {
+	    DB_TIME cur_time, db_time;
+	    const char *t_source, *t_dest;
+	    int len_source, len_dest;
+
+	    t_source = tz_get_system_timezone ();
+	    t_dest = tz_get_session_local_timezone ();
+	    len_source = strlen (t_source);
+	    len_dest = strlen (t_dest);
+	    db_time = xasl_state->vd.sys_datetime.time / 1000;
+	    error = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
+	    DB_MAKE_ENCODED_TIME (&insert_val, &cur_time);
+	  }
 	  break;
+
 	case DB_DEFAULT_SYSDATE:
-	case DB_DEFAULT_CURRENTDATE:
 	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  db_make_date (insert->vals[k], month, day, year);
+	  db_make_date (&insert_val, month, day, year);
 	  break;
+
+	case DB_DEFAULT_CURRENTDATE:
+	  {
+	    TZ_REGION system_tz_region, session_tz_region;
+	    DB_DATETIME dest_dt;
+
+	    tz_get_system_tz_region (&system_tz_region);
+	    tz_get_session_tz_region (&session_tz_region);
+	    error =
+	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
+					    &dest_dt, NULL, NULL);
+	    DB_MAKE_ENCODED_DATE (&insert_val, &dest_dt.date);
+	  }
+	  break;
+
 	case DB_DEFAULT_SYSDATETIME:
-	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
+	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
 	  break;
+
 	case DB_DEFAULT_SYSTIMESTAMP:
-	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
-	  error = db_datetime_to_timestamp (insert->vals[k], insert->vals[k]);
+	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
+	  error = db_datetime_to_timestamp (&insert_val, &insert_val);
 	  break;
+
 	case DB_DEFAULT_CURRENTDATETIME:
-	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
+	  {
+	    TZ_REGION system_tz_region, session_tz_region;
+	    DB_DATETIME dest_dt;
+
+	    tz_get_system_tz_region (&system_tz_region);
+	    tz_get_session_tz_region (&session_tz_region);
+	    error =
+	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
+					    &dest_dt, NULL, NULL);
+	    DB_MAKE_DATETIME (&insert_val, &dest_dt);
+	  }
 	  break;
+
 	case DB_DEFAULT_CURRENTTIMESTAMP:
-	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
-	  error = db_datetime_to_timestamp (insert->vals[k], insert->vals[k]);
+	  {
+	    DB_DATE tmp_date;
+	    DB_TIME tmp_time;
+	    DB_TIMESTAMP tmp_timestamp;
+
+	    tmp_date = xasl_state->vd.sys_datetime.date;
+	    tmp_time = xasl_state->vd.sys_datetime.time / 1000;
+	    db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
+	    db_make_timestamp (&insert_val, tmp_timestamp);
+	  }
 	  break;
+
 	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
-	  error = db_unix_timestamp (insert->vals[k], insert->vals[k]);
+	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
+	  error = db_unix_timestamp (&insert_val, &insert_val);
 	  break;
+
 	case DB_DEFAULT_USER:
 	  {
 	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -10932,9 +11020,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      {
 		int len = strlen (tdes->client.db_user) + strlen (tdes->client.host_name) + 2;
 		temp = db_private_alloc (thread_p, len);
-		if (!temp)
+		if (temp == NULL)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
+		    GOTO_EXIT_ON_ERROR;
 		  }
 		else
 		  {
@@ -10943,10 +11032,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    strcat (temp, tdes->client.host_name);
 		  }
 	      }
-	    DB_MAKE_STRING (insert->vals[k], temp);
-	    insert->vals[k]->need_clear = true;
+
+	    DB_MAKE_STRING (&insert_val, temp);
+	    insert_val.need_clear = true;
 	  }
 	  break;
+
 	case DB_DEFAULT_CURR_USER:
 	  {
 	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -10958,9 +11049,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      {
 		temp = tdes->client.db_user;
 	      }
-	    DB_MAKE_STRING (insert->vals[k], temp);
+	    DB_MAKE_STRING (&insert_val, temp);
 	  }
 	  break;
+
 	case DB_DEFAULT_NONE:
 	  if (attr->current_default_value.val_length <= 0)
 	    {
@@ -10979,7 +11071,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  switch (_setjmp (buf.env))
 		    {
 		    case 0:
-		      error = (*(pr_type->data_readval)) (&buf, insert->vals[k], attr->domain,
+		      error = (*(pr_type->data_readval)) (&buf, &insert_val, attr->domain,
 							  attr->current_default_value.val_length, copy, NULL, 0);
 		      if (error != NO_ERROR)
 			{
@@ -10994,6 +11086,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	    }
 	  break;
+
 	default:
 	  assert (0);
 	  error = ER_FAILED;
@@ -11001,12 +11094,65 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  break;
 	}
 
+      if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
+	{
+	  assert (attr->current_default_value.default_expr.default_expr_type != DB_DEFAULT_NONE);
+	  if (attr->current_default_value.default_expr.default_expr_format != NULL)
+	    {
+	      db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
+	      has_user_format = 1;
+	    }
+	  else
+	    {
+	      db_make_null (&format_val);
+	      has_user_format = 0;
+	    }
+
+	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+	  db_make_int (&lang_val, flag);
+
+	  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
+	    {
+	      /* TO_CHAR returns a string value, we need to pass an expected domain of the result */
+	      if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&insert_val)))
+		{
+		  result_domain = NULL;
+		}
+	      else if (DB_IS_NULL (&format_val))
+		{
+		  result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+		}
+	      else
+		{
+		  result_domain = tp_domain_resolve_value (&format_val, NULL);
+		}
+	    }
+	  else
+	    {
+	      result_domain = attr->domain;
+	    }
+
+	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain);
+
+	  if (has_user_format)
+	    {
+	      pr_clear_value (&format_val);
+	    }
+	}
+      else
+	{
+	  pr_clone_value (&insert_val, insert->vals[k]);
+	}
+
+      pr_clear_value (&insert_val);
+
       if (error != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (attr->current_default_value.default_expr == DB_DEFAULT_NONE)
+      if (attr->current_default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
 	{
 	  /* skip the value cast */
 	  continue;
@@ -11569,7 +11715,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   int dead_end = false;
   int unqualified_dead_end = false;
   FETCH_PROC_NODE *fetch = &xasl->proc.fetch;
-  OID *dbvaloid = NULL;
+  OID dbvaloid = OID_INITIALIZER;
 
   /* the fetch_res represents whether current node in a path expression is successfully completed to the end, or failed */
   fetch->fetch_res = false;
@@ -11584,7 +11730,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       /* check for virtual objects */
       if (DB_VALUE_DOMAIN_TYPE (fetch->arg) != DB_TYPE_VOBJ)
 	{
-	  dbvaloid = DB_GET_OID (fetch->arg);
+	  SAFE_COPY_OID (&dbvaloid, DB_GET_OID (fetch->arg));
 	}
       else
 	{
@@ -11593,11 +11739,11 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
 	  if ((db_set_size (setp) == 3) && (db_set_get (setp, 1, &dbval) == NO_ERROR)
 	      && (db_set_get (setp, 2, &dbval1) == NO_ERROR)
-	      && (DB_IS_NULL (&dbval) || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID)
-					  && OID_ISNULL (DB_GET_OID (&dbval))))
+	      && (DB_IS_NULL (&dbval)
+		  || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID) && OID_ISNULL (DB_GET_OID (&dbval))))
 	      && (DB_VALUE_DOMAIN_TYPE (&dbval1) == DB_TYPE_OID))
 	    {
-	      dbvaloid = DB_GET_OID (&dbval1);
+	      SAFE_COPY_OID (&dbvaloid, DB_GET_OID (&dbval1));
 	    }
 	  else
 	    {
@@ -11606,7 +11752,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
 
       /* object is non_existent ? */
-      if (OID_ISNULL (dbvaloid))
+      if (OID_ISNULL (&dbvaloid))
 	{
 	  dead_end = true;
 	}
@@ -11661,10 +11807,13 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (mvcc_snapshot == NULL)
 	{
-	  goto exit_on_error;
+	  GOTO_EXIT_ON_ERROR;
 	}
 
-      (void) heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, false, mvcc_snapshot);
+      if (heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, false, mvcc_snapshot) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
       scan_cache_end_needed = true;
 
       /* must choose corresponding lock_mode for scan_operation_type. 
@@ -11672,7 +11821,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       lock_mode = locator_get_lock_mode_from_op_type (scan_operation_type);
 
       /* fetch the object and the class oid */
-      scan = locator_get_object (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, lock_mode,
+      scan = locator_get_object (thread_p, &dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, lock_mode,
 				 PEEK, NULL_CHN);
       if (scan != S_SUCCESS)
 	{
@@ -11712,25 +11861,30 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	   * was a selector variable in the query.  we can optimize this further to pass from the compiler whether this 
 	   * check is necessary or not. */
 	  bool found = false;
+
 	  for (specp = xasl->spec_list;
 	       specp && specp->type == TARGET_CLASS && !XASL_IS_FLAGED (xasl, XASL_OBJFETCH_IGNORE_CLASSOID);
 	       specp = specp->next)
 	    {
 	      PARTITION_SPEC_TYPE *current = NULL;
+
 	      if (OID_EQ (&ACCESS_SPEC_CLS_OID (specp), &cls_oid))
 		{
 		  /* found it */
 		  break;
 		}
+
 	      if (!specp->pruned && specp->type == TARGET_CLASS)
 		{
 		  /* cls_oid might still refer to this spec through a partition. See if we already pruned this spec and 
 		   * search through partitions for the appropriate class */
 		  PARTITION_SPEC_TYPE *partition_spec = NULL;
 		  int granted;
+
 		  if (partition_prune_spec (thread_p, &xasl_state->vd, specp) != NO_ERROR)
 		    {
-		      GOTO_EXIT_ON_ERROR;
+		      status = ER_FAILED;
+		      goto wrapup;
 		    }
 		  for (partition_spec = specp->parts; partition_spec != NULL; partition_spec = partition_spec->next)
 		    {
@@ -11739,10 +11893,12 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 				       LK_UNCOND_LOCK);
 		      if (granted != LK_GRANTED)
 			{
-			  GOTO_EXIT_ON_ERROR;
+			  status = ER_FAILED;
+			  goto wrapup;
 			}
 		    }
 		}
+
 	      current = specp->parts;
 	      found = false;
 	      while (current != NULL)
@@ -11796,7 +11952,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  fetch_init_val_list (specp->s.cls_node.cls_regu_list_rest);
 
 	  /* read the predicate values from the heap into the scancache */
-	  status = heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_pred);
+	  status = heap_attrinfo_read_dbvalues (thread_p, &dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_pred);
 	  if (status != NO_ERROR)
 	    {
 	      goto wrapup;
@@ -11806,7 +11962,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  if (xasl->val_list != NULL)
 	    {
 	      status =
-		fetch_val_list (thread_p, specp->s.cls_node.cls_regu_list_pred, &xasl_state->vd, NULL, dbvaloid, NULL,
+		fetch_val_list (thread_p, specp->s.cls_node.cls_regu_list_pred, &xasl_state->vd, NULL, &dbvaloid, NULL,
 				COPY);
 	      if (status != NO_ERROR)
 		{
@@ -11818,7 +11974,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  ev_res = V_UNKNOWN;
 	  if (specp->where_pred)
 	    {
-	      ev_res = eval_pred (thread_p, specp->where_pred, &xasl_state->vd, dbvaloid);
+	      ev_res = eval_pred (thread_p, specp->where_pred, &xasl_state->vd, &dbvaloid);
 	      if (ev_res == V_ERROR)
 		{
 		  status = ER_FAILED;
@@ -11837,7 +11993,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      fetch->fetch_res = true;
 	      /* read the rest of the values from the heap */
 	      status =
-		heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_rest);
+		heap_attrinfo_read_dbvalues (thread_p, &dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_rest);
 	      if (status != NO_ERROR)
 		{
 		  goto wrapup;
@@ -11847,7 +12003,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      if (xasl->val_list != NULL)
 		{
 		  status =
-		    fetch_val_list (thread_p, specp->s.cls_node.cls_regu_list_rest, &xasl_state->vd, NULL, dbvaloid,
+		    fetch_val_list (thread_p, specp->s.cls_node.cls_regu_list_rest, &xasl_state->vd, NULL, &dbvaloid,
 				    NULL, COPY);
 		  if (status != NO_ERROR)
 		    {
@@ -12316,8 +12472,11 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 
 	      if (scan_cache_inited == false)
 		{
-		  (void) heap_scancache_start (thread_p, &scan_cache, class_hfid, class_oid, false, false,
-					       mvcc_snapshot);
+		  if (heap_scancache_start (thread_p, &scan_cache, class_hfid, class_oid, false, false,
+					    mvcc_snapshot) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 		  scan_cache_inited = true;
 		  COPY_OID (&last_cached_class_oid, class_oid);
 		}
@@ -13211,6 +13370,78 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 }
 
 /*
+ * qexec_check_limit_clause () - checks validity of limit clause
+ *   return: NO_ERROR, or ER_code
+ *   xasl(in): XASL Tree pointer
+ *   xasl_state(in): XASL state information
+ *   empty_result(out): true if no result will be generated
+ *
+ */
+static int
+qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool * empty_result)
+{
+  DB_VALUE *limit_valp;
+  DB_VALUE zero_val;
+  DB_VALUE_COMPARE_RESULT cmp_with_zero;
+
+  /* init output */
+  *empty_result = false;
+
+  DB_MAKE_INT (&zero_val, 0);
+
+  if (xasl->limit_offset != NULL)
+    {
+      /* limit_offset should be greater than 0. Otherwise, raises an error. */
+      if (fetch_peek_dbval (thread_p, xasl->limit_offset, &xasl_state->vd, NULL, NULL, NULL, &limit_valp) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
+      if (cmp_with_zero != DB_GT && cmp_with_zero != DB_EQ)
+	{
+	  /* still want better error code */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+	  return ER_FAILED;
+	}
+    }
+
+  if (xasl->limit_row_count != NULL)
+    {
+      /* When limit_row_count is
+       *   > 0, go to execute the query.
+       *   = 0, no result will be generated. stop execution for optimization.
+       *   < 0, raise an error.
+       */
+      if (fetch_peek_dbval (thread_p, xasl->limit_row_count, &xasl_state->vd, NULL, NULL, NULL, &limit_valp) !=
+	  NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
+      if (cmp_with_zero == DB_GT)
+	{
+	  /* validated */
+	  return NO_ERROR;
+	}
+      else if (cmp_with_zero == DB_EQ)
+	{
+	  *empty_result = true;
+	  return NO_ERROR;
+	}
+      else
+	{
+	  /* still want better error code */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * qexec_execute_mainblock_internal () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -13239,6 +13470,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   int old_wait_msecs, wait_msecs;
   int error;
   DB_LOGICAL limit_zero;
+  bool empty_result = false;
   bool scan_immediately_stop = false;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   bool instant_lock_mode_started = false;
@@ -13248,10 +13480,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
    * Pre_processing
    */
 
-  if (xasl->limit_row_count)
+  if (xasl->limit_offset != NULL || xasl->limit_row_count != NULL)
     {
-      limit_zero = eval_limit_count_is_0 (thread_p, xasl->limit_row_count, &xasl_state->vd);
-      if (limit_zero == V_TRUE)
+      if (qexec_check_limit_clause (thread_p, xasl, xasl_state, &empty_result) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      if (empty_result == true)
 	{
 	  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL))
 	    {
@@ -14266,6 +14502,15 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   char *query_str = NULL;
   int client_id = -1;
   char *db_user = NULL;
+  LOG_TDES *tdes = NULL;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      client_id = tdes->client_id;
+      db_user = tdes->client.db_user;
+    }
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(CUBRID_DEBUG)
@@ -14339,7 +14584,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   query_str = qmgr_get_query_sql_user_text (thread_p, query_id, tran_index);
 
-  CUBRID_QUERY_EXEC_START (query_str, query_id, client_id, db_user);
+  CUBRID_QUERY_EXEC_START (query_str ? query_str : "unknown", query_id, client_id, db_user ? db_user : "unknown");
 #endif /* ENABLE_SYSTEMTAP */
 
   /* form the value descriptor to represent positional values */
@@ -14516,7 +14761,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
 end:
 #if defined(ENABLE_SYSTEMTAP)
-  CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, (er_errid () != NO_ERROR));
+  CUBRID_QUERY_EXEC_END (query_str ? query_str : "unknown", query_id, client_id, db_user ? db_user : "unknown",
+			 (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
   return list_id;
 }
@@ -21460,15 +21706,17 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     }
 
   class_name = or_class_name (&class_record);
-  /* class name */
-  db_make_string (out_values[0], class_name);
-  /* packed */
-  db_make_null (out_values[8]);
-  /* index type */
-  db_make_string (out_values[10], "BTREE");
-
   for (i = 0; i < rep->n_indexes; i++)
     {
+      /* class name */
+      db_make_string (out_values[0], class_name);
+
+      /* packed */
+      db_make_null (out_values[8]);
+
+      /* index type */
+      db_make_string (out_values[10], "BTREE");
+
       index = rep->indexes + i;
       /* Non_unique */
       non_unique = btree_is_unique_type (index->type) ? 0 : 1;
@@ -21629,6 +21877,12 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  free_and_init (comment);
 	}
+
+      /* needs to clear db_value content if is allocated during qexec_end_one_iteration */
+      for (j = 0; j < size_values; j++)
+	{
+	  pr_clear_value (out_values[j]);
+	}
     }
 
   for (i = 0; i < rep->n_attributes; i++)
@@ -21643,8 +21897,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   free_and_init (attr_ids);
   free_and_init (attr_names);
 
-  catalog_free_representation (disk_repr_p);
-  (void) heap_classrepr_free (rep, &idx_incache);
+  catalog_free_representation_and_init (disk_repr_p);
+  heap_classrepr_free_and_init (rep, &idx_incache);
   if (heap_scancache_end (thread_p, &scan) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -21710,12 +21964,12 @@ exit_on_error:
 
   if (disk_repr_p)
     {
-      catalog_free_representation (disk_repr_p);
+      catalog_free_representation_and_init (disk_repr_p);
     }
 
   if (rep)
     {
-      (void) heap_classrepr_free (rep, &idx_incache);
+      heap_classrepr_free_and_init (rep, &idx_incache);
     }
 
   heap_scancache_end (thread_p, &scan);
@@ -21970,6 +22224,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	      || (data_stat != DATA_STATUS_OK))
 	    {
 	      pr_clear_value (penum_arg1);
+	      pr_clear_value (penum_arg2);
 	      goto exit_on_error;
 	    }
 	  pr_clear_value (penum_arg1);
@@ -21983,6 +22238,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 		  || (data_stat != DATA_STATUS_OK))
 		{
 		  pr_clear_value (penum_arg1);
+		  pr_clear_value (penum_arg2);
 		  goto exit_on_error;
 		}
 	    }
@@ -21992,10 +22248,12 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 		  || (data_stat != DATA_STATUS_OK))
 		{
 		  pr_clear_value (penum_arg1);
+		  pr_clear_value (penum_arg2);
 		  goto exit_on_error;
 		}
 	    }
 	  pr_clear_value (penum_arg1);
+	  pr_clear_value (penum_arg2);
 	}
 
       penum_temp = penum_arg1;
@@ -22059,7 +22317,6 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	    }
 	}
 
-
       pset_arg1 = &set_arg1;
       pset_arg2 = &set_arg2;
       pset_result = &set_result;
@@ -22079,9 +22336,11 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	    {
 	      free_and_init (ordered_names);
 	      pr_clear_value (pset_arg1);
+	      pr_clear_value (pset_arg2);
 	      goto exit_on_error;
 	    }
 	  pr_clear_value (pset_arg1);
+	  pr_clear_value (pset_arg2);
 
 	  if (setdomain->next != NULL)
 	    {
@@ -22226,7 +22485,8 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   OR_CLASSREP *rep = NULL;
   OR_INDEX *index = NULL;
   OR_ATTRIBUTE *index_att = NULL;
-  char *attr_name = NULL;
+  char *attr_name = NULL, *default_value_string = NULL;
+  const char *default_expr_type_string = NULL, *default_expr_format = NULL;
   char *attr_comment = NULL;
   OR_ATTRIBUTE *volatile attrepr = NULL;
   DB_VALUE **out_values = NULL;
@@ -22250,7 +22510,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   int all_class_attr_lengths[3];
   bool full_columns = false;
   char *string = NULL;
-  int alloced_string = 0;
+  int alloced_string = 0, len;
   HL_HEAPID save_heapid = 0;
 
   if (xasl == NULL || xasl_state == NULL)
@@ -22436,57 +22696,53 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  idx_val++;
 
 	  /* default values */
-	  if (attrepr->default_value.default_expr != DB_DEFAULT_NONE)
+	  alloced_string = 0;
+	  if (attrepr->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
-	      switch (attrepr->default_value.default_expr)
+	      const char *default_expr_op_string = NULL;
+
+	      default_expr_type_string =
+		db_default_expression_string (attrepr->default_value.default_expr.default_expr_type);
+
+	      if (attrepr->default_value.default_expr.default_expr_op == T_TO_CHAR)
 		{
-		case DB_DEFAULT_NONE:
-		  break;
-		case DB_DEFAULT_SYSTIME:
-		  db_make_string (out_values[idx_val], "SYS_TIME");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_SYSDATE:
-		  db_make_string (out_values[idx_val], "SYS_DATE");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_SYSDATETIME:
-		  db_make_string (out_values[idx_val], "SYS_DATETIME");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_SYSTIMESTAMP:
-		  db_make_string (out_values[idx_val], "SYS_TIMESTAMP");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_CURRENTTIME:
-		  db_make_string (out_values[idx_val], "CURRENT_TIME");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_CURRENTDATE:
-		  db_make_string (out_values[idx_val], "CURRENT_DATE");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_CURRENTDATETIME:
-		  db_make_string (out_values[idx_val], "CURRENT_DATETIME");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_CURRENTTIMESTAMP:
-		  db_make_string (out_values[idx_val], "CURRENT_TIMESTAMP");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_UNIX_TIMESTAMP:
-		  db_make_string (out_values[idx_val], "UNIX_TIMESTAMP");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_USER:
-		  db_make_string (out_values[idx_val], "USER");
-		  idx_val++;
-		  break;
-		case DB_DEFAULT_CURR_USER:
-		  db_make_string (out_values[idx_val], "CURRENT_USER");
-		  idx_val++;
-		  break;
+		  default_expr_op_string =
+		    qdump_operator_type_string (attrepr->default_value.default_expr.default_expr_op);
+		  default_expr_format = attrepr->default_value.default_expr.default_expr_format;
+
+		  len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
+			 + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_expr_type_string)
+			 + (default_expr_format ? strlen (default_expr_format) : 0));
+
+		  default_value_string = (char *) malloc (len + 1);
+		  if (default_value_string == NULL)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
+		  strcpy (default_value_string, default_expr_op_string);
+		  strcat (default_value_string, "(");
+		  strcat (default_value_string, default_expr_type_string);
+		  if (default_expr_format)
+		    {
+		      strcat (default_value_string, ", \'");
+		      strcat (default_value_string, default_expr_format);
+		      strcat (default_value_string, "\'");
+		    }
+
+		  strcat (default_value_string, ")");
+
+		  db_make_string (out_values[idx_val], default_value_string);
+		  out_values[idx_val]->need_clear = true;
 		}
+	      else
+		{
+		  if (default_expr_type_string)
+		    {
+		      db_make_string (out_values[idx_val], default_expr_type_string);
+		    }
+		}
+	      idx_val++;
 	    }
 	  else if (attrepr->current_default_value.value == NULL || attrepr->current_default_value.val_length <= 0)
 	    {
@@ -22576,7 +22832,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
   free_and_init (out_values);
 
-  (void) heap_classrepr_free (rep, &idx_incache);
+  heap_classrepr_free_and_init (rep, &idx_incache);
   if (heap_scancache_end (thread_p, &scan) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -22614,7 +22870,7 @@ exit_on_error:
 
   if (rep)
     {
-      (void) heap_classrepr_free (rep, &idx_incache);
+      heap_classrepr_free_and_init (rep, &idx_incache);
     }
 
   heap_scancache_end (thread_p, &scan);
@@ -23543,6 +23799,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
       status = tp_value_cast (&ubound_val, &ubound_val, &tp_Integer_domain, 1);
       if (status != DOMAIN_COMPATIBLE)
 	{
+	  pr_clear_value (&ubound_val);
 	  return NO_ERROR;
 	}
     }

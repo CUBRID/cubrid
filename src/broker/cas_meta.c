@@ -30,7 +30,7 @@
 
 #define SET_BIT(C,B)	(C) |= (B)
 #define CLEAR_BIT(C,B)	(C) &= ~(B)
-#define IS_SET_BIT(C,B)	((C) & (B)) == (B)
+#define IS_SET_BIT(C,B)	(((C) & (B)) == (B))
 
 static char broker_info[BROKER_INFO_SIZE] = {
   CAS_DBMS_CUBRID,

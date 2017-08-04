@@ -9630,7 +9630,7 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
   regu_var = NULL;
   key_infop->key_cnt = 0;
   key_infop->key_ranges = NULL;
-  key_infop->is_constant = 1;
+  key_infop->is_constant = true;
 
   for (i = 0; i < nterms; i++)
     {
@@ -9746,7 +9746,7 @@ pt_to_range_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, boo
   regu_var1 = regu_var2 = NULL;
   key_infop->key_cnt = 0;
   key_infop->key_ranges = NULL;
-  key_infop->is_constant = 1;
+  key_infop->is_constant = true;
 
   for (i = 0; i < nterms; i++)
     {
@@ -9925,7 +9925,7 @@ pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool
   regu_var_list = NULL;
   key_infop->key_cnt = 0;
   key_infop->key_ranges = NULL;
-  key_infop->is_constant = 1;
+  key_infop->is_constant = true;
   n_elem = 0;
 
   /* get number of elements of the IN predicate */
@@ -10235,7 +10235,7 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms,
   regu_var_list1 = regu_var_list2 = NULL;
   key_infop->key_cnt = 0;
   key_infop->key_ranges = NULL;
-  key_infop->is_constant = 1;
+  key_infop->is_constant = true;
   n_elem = 0;
 
   /* get number of elements of the RANGE predicate */
@@ -10613,11 +10613,14 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
   TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
   /* at least one of them should be NULL, although they both can */
-  assert (!key_limit || !limit_infop);
+  assert (key_limit == NULL || limit_infop == NULL);
 
   limit_u = key_limit;
-  if (limit_u)
+  if (limit_u != NULL)
     {
+      /* user explicitly specifies keylimit */
+      key_infop->is_user_given_keylimit = true;
+
       if (limit_u->type_enum == PT_TYPE_MAYBE)
 	{
 	  limit_u->expected_domain = dom_bigint;
@@ -10629,7 +10632,7 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
 	}
 
       limit_l = limit_u->next;
-      if (limit_l)
+      if (limit_l != NULL)
 	{
 	  if (limit_l->type_enum == PT_TYPE_MAYBE)
 	    {
@@ -10643,15 +10646,15 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
 	}
     }
 
-  if (limit_infop)
+  if (limit_infop != NULL)
     {
       regu_var_u = limit_infop->upper;
       regu_var_l = limit_infop->lower;
     }
 
-  if (key_infop->key_limit_u)
+  if (key_infop->key_limit_u != NULL)
     {
-      if (regu_var_u)
+      if (regu_var_u != NULL)
 	{
 	  key_infop->key_limit_u = pt_make_regu_arith (key_infop->key_limit_u, regu_var_u, NULL, T_LEAST, dom_bigint);
 	  if (key_infop->key_limit_u == NULL)
@@ -10666,9 +10669,9 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
       key_infop->key_limit_u = regu_var_u;
     }
 
-  if (key_infop->key_limit_l)
+  if (key_infop->key_limit_l != NULL)
     {
-      if (regu_var_l)
+      if (regu_var_l != NULL)
 	{
 	  key_infop->key_limit_l =
 	    pt_make_regu_arith (key_infop->key_limit_l, regu_var_l, NULL, T_GREATEST, dom_bigint);
@@ -14967,18 +14970,18 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   buildlist = &xasl->proc.buildlist;
   xasl->next = NULL;
 
+  xasl->limit_row_count = NULL;
+  xasl->limit_offset = NULL;
+
   limit = select_node->info.query.limit;
   if (limit)
     {
       if (limit->next)
 	{
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
       xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
-    }
-  else
-    {
-      xasl->limit_row_count = NULL;
     }
 
   /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
@@ -16120,6 +16123,7 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	  limit = node->info.query.limit;
 	  if (limit->next)
 	    {
+	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	      limit = limit->next;
 	    }
 	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -16213,6 +16217,7 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 	  limit = non_recursive_part->info.query.limit;
 	  if (limit->next)
 	    {
+	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	      limit = limit->next;
 	    }
 	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -19525,6 +19530,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (limit->next)
 	{
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
       xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -20336,6 +20342,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
       if (limit->next)
 	{
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
       xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -23522,7 +23529,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_SHA_ONE:
 	case T_SHA_TWO:
 	case T_LPAD:
-	case PT_RPAD:
+	case T_RPAD:
 	case T_REPLACE:
 	case T_TRANSLATE:
 	case T_ADD_MONTHS:
@@ -23535,7 +23542,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_MONTH:
 	case T_DAY:
 	case T_HOUR:
-	case PT_MINUTE:
+	case T_MINUTE:
 	case T_SECOND:
 	case T_QUARTER:
 	case T_WEEKDAY:

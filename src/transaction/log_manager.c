@@ -1649,6 +1649,9 @@ log_final (THREAD_ENTRY * thread_p)
 
   LOG_CS_ENTER (thread_p);
 
+  /* reset log_Gl.rcv_phase */
+  log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
+
   if (log_Gl.trantable.area == NULL)
     {
       LOG_CS_EXIT (thread_p);
@@ -3839,15 +3842,12 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
   else
     {
       LOG_PRIOR_NODE *node = NULL;
-      TRAN_STATE save_state;
 
       /* we are here because either system operation is not empty, or this is the end of a logical system operation.
        * we don't actually allow empty logical system operation because it might hide a logic flaw. however, there are
        * unusual cases when a logical operation does not really require logging (see RVPGBUF_FLUSH_PAGE). if you create
        * such a case, you should add a dummy log record to trick this assert. */
       assert (!LSA_ISNULL (&tdes->tail_lsa) && LSA_GT (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)));
-
-      save_state = tdes->state;
 
       /* now that we have access to tdes, we can do some updates on log record and sanity checks */
       if (log_record->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
@@ -3864,7 +3864,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	{
 	  /* we should be doing rollback or undo recovery */
 	  assert (tdes->state == TRAN_UNACTIVE_ABORTED || tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED
-		  || (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE && is_rv_finish_postpone));
+		  || (is_rv_finish_postpone && (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
+						|| tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)));
 	}
       else if (log_record->type == LOG_SYSOP_END_LOGICAL_UNDO || log_record->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{
@@ -3896,9 +3897,6 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 
       /* Remember last partial result */
       LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
-
-      /* Restore transaction state. */
-      tdes->state = save_state;
     }
 
   log_sysop_end_final (thread_p, tdes);
@@ -6676,7 +6674,7 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Undo(Before) length = %d, Redo(After) length = %d,\n",
 	   mvcc_undoredo->undoredo.data.volid, mvcc_undoredo->undoredo.data.pageid, mvcc_undoredo->undoredo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.ulength), (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.rlength));
-  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = (%lld, %d), \n     VFID = (%d, %d)",
+  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
 	   (long long int) mvcc_undoredo->mvccid,
 	   (long long int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undoredo->vacuum_info.vfid.volid,
@@ -6713,7 +6711,7 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
 	   mvcc_undo->undo.data.volid, mvcc_undo->undo.data.pageid, mvcc_undo->undo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undo->undo.length));
-  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = (%lld, %d), \n     VFID = (%d, %d)",
+  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
 	   (long long int) mvcc_undo->mvccid, (long long int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undo->vacuum_info.vfid.volid,
 	   mvcc_undo->vacuum_info.vfid.fileid);
@@ -6998,7 +6996,7 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
       fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
 	       sysop_end->mvcc_undo.undo.data.volid, sysop_end->mvcc_undo.undo.data.pageid,
 	       sysop_end->mvcc_undo.undo.data.offset, (int) GET_ZIP_LEN (sysop_end->mvcc_undo.undo.length));
-      fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = (%lld, %d), \n     VFID = (%d, %d)",
+      fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
 	       (unsigned long long int) sysop_end->mvcc_undo.mvccid,
 	       LSA_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa),
 	       VFID_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.vfid));
@@ -8454,6 +8452,7 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
 		       const char *data)
 {
   LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
+  TRAN_STATE save_state = tdes->state;
 
   if (LSA_ISNULL (LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
     {
@@ -8468,17 +8467,19 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
 
   sysop_start_postpone.sysop_end = *sysop_end;
   sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
-  tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
   log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
 
   if (VACUUM_IS_THREAD_VACUUM (thread_p)
       && vacuum_do_postpone_from_cache (thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
     {
       /* Do postpone was run from cached postpone entries. */
+      tdes->state = save_state;
       return;
     }
 
   log_do_postpone (thread_p, tdes, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes));
+
+  tdes->state = save_state;
 }
 
 /*

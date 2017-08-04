@@ -150,6 +150,7 @@ static PT_NODE *pt_make_default_value (PARSER_CONTEXT * parser, const char *clas
 #endif /* ENABLE_UNUSED_FUNCTION */
 static void pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter);
 static PT_NODE *pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list);
+static PT_NODE *pt_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -1471,6 +1472,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
       /* its name is class_name.attribute_name */
       i_attr->info.attr_def.attr_name = name = pt_name (parser, db_attribute_name (attributes));
       name->info.name.resolved = pt_append_string (parser, NULL, class_name);
+      PT_NAME_INFO_SET_FLAG (name, PT_NAME_REAL_TABLE);
       name->info.name.meta_class = (db_attribute_is_shared (attributes) ? PT_SHARED : PT_NORMAL);
 
       /* set its data type */
@@ -3946,6 +3948,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
   PT_NODE *node_ptr;
   PT_NODE *data_default;
   PT_NODE *prev;
+  bool has_query;
 
   if (pt_has_error (parser))
     {
@@ -3960,6 +3963,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
     }
 
   prev = NULL;
+  has_query = false;
   for (data_default = data_default_list; data_default; data_default = data_default->next)
     {
       save_next = data_default->next;
@@ -3967,24 +3971,11 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 
       default_value = data_default->info.data_default.default_value;
 
-      if (PT_IS_QUERY (default_value))
+      (void) parser_walk_tree (parser, default_value, pt_find_query, &has_query, NULL, NULL);
+      if (has_query)
 	{
-	  PT_NODE *subquery_list = NULL;
-	  default_value = pt_compile (parser, default_value);
-	  if (default_value == NULL || pt_has_error (parser))
-	    {
-	      /* compilation error */
-	      goto end;
-	    }
-	  subquery_list = pt_get_subquery_list (default_value);
-	  if (subquery_list && subquery_list->next)
-	    {
-	      /* cannot allow more than one column */
-	      char *str = pt_short_print (parser, default_value);
-	      PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SINGLE_VALUE,
-			  (str != NULL ? str : "\0"));
-	      goto end;
-	    }
+	  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_SUBQUERY_NOT_ALLOWED_IN_DEFAULT_CLAUSE);
 	  /* skip other checks */
 	  goto end;
 	}
@@ -4017,6 +4008,30 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_NESTED_EXPR_NOT_ALLOWED,
 		      pt_show_binopcode (node_ptr->info.expr.op));
 	  goto end;
+	}
+
+      if (PT_IS_EXPR_NODE (default_value) && default_value->info.expr.op == PT_TO_CHAR
+	  && PT_IS_EXPR_NODE (default_value->info.expr.arg1))
+	{
+	  int op_type = -1;
+
+	  if (PT_IS_EXPR_NODE (default_value->info.expr.arg2))
+	    {
+	      /* nested expressions in arg2 are not supported */
+	      op_type = default_value->info.expr.arg2->info.expr.op;
+	    }
+	  else if (node_ptr == NULL)
+	    {
+	      /* nested expressions in arg1 are not supported except sys date, time and user. */
+	      op_type = default_value->info.expr.arg1->info.expr.op;
+	    }
+
+	  if (op_type != -1)
+	    {
+	      PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_NESTED_EXPR_NOT_ALLOWED,
+			  pt_show_binopcode (op_type));
+	      goto end;
+	    }
 	}
 
       node_ptr = NULL;
@@ -4149,6 +4164,31 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 }
 
 /*
+ * pt_find_query () - search for a query
+ *
+ * result	  : parser tree node
+ * parser(in)	  : parser
+ * tree(in)	  : parser tree node
+ * arg(in/out)	  : true, if the query is found
+ * continue_walk  : Continue walk.
+ */
+static PT_NODE *
+pt_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_query = (bool *) arg;
+  assert (has_query != NULL);
+
+  if (PT_IS_QUERY (tree))
+    {
+      *has_query = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+
+/*
  * pt_find_default_expression () - find a default expression
  *
  * result	  :
@@ -4160,14 +4200,26 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 static PT_NODE *
 pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  PT_NODE **default_expr = (PT_NODE **) arg;
+  PT_NODE **default_expr = (PT_NODE **) arg, *node = NULL;
 
   if (tree == NULL || !PT_IS_EXPR_NODE (tree))
     {
       *continue_walk = PT_STOP_WALK;
+      return tree;
     }
 
-  switch (tree->info.expr.op)
+  if (tree->info.expr.op == PT_TO_CHAR && tree->info.expr.arg1 != NULL && PT_IS_EXPR_NODE (tree->info.expr.arg1))
+    {
+      /* The correctness of TO_CHAR expression is done a little bit later after obtaining system time. */
+      assert (tree->info.expr.arg2 != NULL);
+      node = tree->info.expr.arg1;
+    }
+  else
+    {
+      node = tree;
+    }
+
+  switch (node->info.expr.op)
     {
     case PT_SYS_TIME:
     case PT_SYS_DATE:
@@ -7671,10 +7723,13 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   PT_NODE *attr, *col;
   PT_NODE *columns = pt_get_select_list (parser, qry);
   PT_NODE *default_data = NULL;
-  PT_NODE *default_value = NULL;
+  PT_NODE *default_value = NULL, *default_op_value = NULL;
   PT_NODE *spec, *entity_name;
   DB_OBJECT *obj;
   DB_ATTRIBUTE *col_attr;
+  const char *lang_str;
+  int flag = 0;
+  bool has_user_format;
 
   /* Import default value from referenced table for those attributes in the the view that have no default value. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
@@ -7706,14 +7761,14 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		}
 
 	      if (DB_IS_NULL (&col_attr->default_value.value)
-		  && (col_attr->default_value.default_expr == DB_DEFAULT_NONE))
+		  && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
 		{
 		  /* don't create any default node if default value is null unless default expression type is not
 		   * DB_DEFAULT_NONE */
 		  continue;
 		}
 
-	      if (col_attr->default_value.default_expr == DB_DEFAULT_NONE)
+	      if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
 		{
 		  default_value = pt_dbval_to_value (parser, &col_attr->default_value.value);
 		  if (!default_value)
@@ -7731,15 +7786,55 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		    }
 		  default_data->info.data_default.default_value = default_value;
 		  default_data->info.data_default.shared = PT_DEFAULT;
-		  default_data->info.data_default.default_expr = DB_DEFAULT_NONE;
+		  default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 		}
 	      else
 		{
-		  default_value = parser_new_node (parser, PT_EXPR);
-		  if (default_value)
+		  default_op_value = parser_new_node (parser, PT_EXPR);
+		  if (default_op_value != NULL)
 		    {
-		      default_value->info.expr.op =
-			pt_op_type_from_default_expr_type (col_attr->default_value.default_expr);
+		      default_op_value->info.expr.op =
+			pt_op_type_from_default_expr_type (col_attr->default_value.default_expr.default_expr_type);
+
+		      if (col_attr->default_value.default_expr.default_expr_op != T_TO_CHAR)
+			{
+			  default_value = default_op_value;
+			}
+		      else
+			{
+			  PT_NODE *arg1, *arg2, *arg3;
+			  arg1 = default_op_value;
+			  has_user_format = col_attr->default_value.default_expr.default_expr_format ? 1 : 0;
+			  arg2 = pt_make_string_value (parser,
+						       col_attr->default_value.default_expr.default_expr_format);
+			  if (arg2 == NULL)
+			    {
+			      parser_free_tree (parser, default_op_value);
+			      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			      goto error;
+			    }
+
+			  arg3 = parser_new_node (parser, PT_VALUE);
+			  if (arg3 == NULL)
+			    {
+			      parser_free_tree (parser, default_op_value);
+			      parser_free_tree (parser, arg2);
+			    }
+			  arg3->type_enum = PT_TYPE_INTEGER;
+			  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+			  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+			  arg3->info.value.data_value.i = (long) flag;
+
+			  default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+			  if (default_value == NULL)
+			    {
+			      parser_free_tree (parser, default_op_value);
+			      parser_free_tree (parser, arg2);
+			      parser_free_tree (parser, arg3);
+			      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			      goto error;
+			    }
+			}
 		    }
 		  else
 		    {
@@ -7756,7 +7851,8 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		    }
 		  default_data->info.data_default.default_value = default_value;
 		  default_data->info.data_default.shared = PT_DEFAULT;
-		  default_data->info.data_default.default_expr = col_attr->default_value.default_expr;
+		  default_data->info.data_default.default_expr_type =
+		    col_attr->default_value.default_expr.default_expr_type;
 		}
 	      attr->info.attr_def.data_default = default_data;
 	    }
@@ -12631,12 +12727,12 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 {
   PT_NODE_TYPE n;
 
-  if (!p && !q)
+  if (p == NULL && q == NULL)
     {
       return 0;
     }
 
-  if (!p || !q)
+  if (p == NULL || q == NULL)
     {
       return 1;
     }
@@ -12676,12 +12772,12 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
       /* A recursive call on arg2 should work, except that we have not yet recognised common sub-path expressions
        * However, it is also sufficient and true that the left path be strictly equal and arg2's names match. That even 
        * allows us to use this very function to implement recognition of common path expressions. */
-      if (!p->info.dot.arg2 || !q->info.dot.arg2)
+      if (p->info.dot.arg2 == NULL || q->info.dot.arg2 == NULL)
 	{
 	  return 1;
 	}
 
-      if (!p->info.dot.arg2->node_type == PT_NAME || !q->info.dot.arg2->node_type == PT_NAME)
+      if (p->info.dot.arg2->node_type != PT_NAME || q->info.dot.arg2->node_type != PT_NAME)
 	{
 	  return 1;
 	}
@@ -12714,12 +12810,12 @@ pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
 {
   PT_NODE_TYPE n;
 
-  if (!p && !q)
+  if (p == NULL && q == NULL)
     {
       return 0;
     }
 
-  if (!p || !q)
+  if (p == NULL || q == NULL)
     {
       return 1;
     }
@@ -13455,7 +13551,8 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
   arg = node->info.expr.arg1;
 
   /* OIDs don't have default value */
-  if (arg == NULL || arg->node_type != PT_NAME || arg->info.name.meta_class == PT_OID_ATTR)
+  if (arg == NULL || arg->node_type != PT_NAME || arg->info.name.meta_class == PT_OID_ATTR
+      || !PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_REAL_TABLE))
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_JUST_COLUMN_NAME);
       return ER_FAILED;
@@ -15751,7 +15848,8 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
     {
       PT_NODE *active = (fold_as == STATEMENT_SET_FOLD_AS_ARG1 ? arg1 : arg2);
 
-      if (PT_IS_QUERY_NODE_TYPE (active) && active->info.query.with != NULL && union_node->info.query.with != NULL)
+      if (PT_IS_QUERY_NODE_TYPE (active->node_type) && active->info.query.with != NULL
+	  && union_node->info.query.with != NULL)
 	{
 	  fold_as = STATEMENT_SET_FOLD_NOTHING;
 	}

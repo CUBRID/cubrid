@@ -6619,7 +6619,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		  strcat (table_name_buf, "'");
 
 		  snprintf (query_buf, sizeof (query_buf) - 1,
-			    "select attr_name, data_type from _db_attribute where class_of.class_name = [%s]",
+			    "select attr_name, data_type from _db_attribute where class_of.class_name = %s",
 			    table_name_buf);
 		  error = execute_query (query_buf, &result2);
 		  if (error < 0)
@@ -6699,9 +6699,9 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			  strcat (update_query, column_name);
 			  strcat (update_query, "])");
 
-			  strcat (update_query, "[");
+			  strcat (where_query, "[");
 			  strcat (where_query, column_name);
-			  strcat (update_query, "]");
+			  strcat (where_query, "]");
 			  strcat (where_query, "!=");
 			  strcat (where_query, "conv_tz([");
 			  strcat (where_query, column_name);

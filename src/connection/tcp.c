@@ -886,7 +886,7 @@ css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd)
   while (true)
     {
       *newfd = accept (sockfd, (struct sockaddr *) &cli_addr, &clilen);
-      if (IS_INVALID_SOCKET (*newfd) < 0)
+      if (IS_INVALID_SOCKET (*newfd))
 	{
 	  if (errno == EINTR)
 	    {
