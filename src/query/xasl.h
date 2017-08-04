@@ -500,30 +500,36 @@ struct cte_proc_node
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
-#define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v)						    \
-do {												    \
-    XASL_NODE *_x = REGU_VARIABLE_XASL(r);							    \
-												    \
-    /* check for xasl node                                               */			    \
-    if (_x) {											    \
-        if (XASL_IS_FLAGED(_x, XASL_LINK_TO_REGU_VARIABLE)) {					    \
-            /* clear correlated subquery list files                      */			    \
-            if ((_x)->status == XASL_CLEARED							    \
-		|| (_x)->status == XASL_INITIALIZED) {						    \
-                /* execute xasl query                                    */			    \
-                if (qexec_execute_mainblock((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR)     \
-		  {										    \
-		    (_x)->status = XASL_FAILURE;						    \
-		  }										    \
-            } /* else: already evaluated. success or failure */					    \
-        } else {										    \
-            /* currently, not-supported unknown case                     */			    \
-            (_x)->status = XASL_FAILURE; /* return error              */			    \
-        }											    \
-    }												    \
-} while (0)
+#define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v) \
+  do \
+    { \
+      XASL_NODE *_x = REGU_VARIABLE_XASL(r); \
+      \
+      /* check for xasl node */ \
+      if (_x) \
+	{ \
+	  if (XASL_IS_FLAGED (_x, XASL_LINK_TO_REGU_VARIABLE)) \
+	    { \
+	      /* clear correlated subquery list files */ \
+	      if ((_x)->status == XASL_CLEARED || (_x)->status == XASL_INITIALIZED) \
+		{ \
+		  /* execute xasl query */ \
+		  if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \
+		    { \
+		      (_x)->status = XASL_FAILURE; \
+		    } \
+		} \
+	    } \
+	  else \
+	    { \
+	      /* currently, not-supported unknown case */ \
+	      (_x)->status = XASL_FAILURE; /* return error */ \
+	    } \
+	} \
+    } \
+  while (0)
 
-#define CHECK_REGU_VARIABLE_XASL_STATUS(r)                                    \
+#define CHECK_REGU_VARIABLE_XASL_STATUS(r) \
     (REGU_VARIABLE_XASL(r) ? (REGU_VARIABLE_XASL(r))->status : XASL_SUCCESS)
 
 #define QPROC_IS_INTERPOLATION_FUNC(func_p) \
@@ -579,9 +585,9 @@ do {												    \
 #define OR_PACK_XASL_ID(PTR, X) \
   do \
     { \
-      assert ((X) != NULL);				      \
-      PTR = or_pack_sha1 (PTR, &(X)->sha1);		      \
-      OR_PACK_CACHE_TIME (PTR, &(X)->time_stored);            \
+      assert ((X) != NULL); \
+      PTR = or_pack_sha1 (PTR, &(X)->sha1); \
+      OR_PACK_CACHE_TIME (PTR, &(X)->time_stored); \
     } \
   while (0)
 
@@ -589,9 +595,9 @@ do {												    \
 #define OR_UNPACK_XASL_ID(PTR, X) \
   do \
     { \
-      assert ((X) != NULL);				      \
-      PTR = or_unpack_sha1 (PTR, &(X)->sha1);		      \
-      OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored));	      \
+      assert ((X) != NULL); \
+      PTR = or_unpack_sha1 (PTR, &(X)->sha1); \
+      OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored)); \
     } \
   while (0)
 

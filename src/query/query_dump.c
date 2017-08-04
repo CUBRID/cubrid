@@ -2903,9 +2903,8 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	    }
 	  else if (spec->access == ACCESS_METHOD_INDEX)
 	    {
-	      if (heap_get_indexinfo_of_btid
-		  (NULL, &(cls_node->cls_oid), &spec->indexptr->btid, NULL, NULL, NULL, NULL, &index_name,
-		   NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid (NULL, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL, NULL,
+					      &index_name, NULL) == NO_ERROR)
 		{
 		  if (class_name != NULL && index_name != NULL)
 		    {
@@ -3224,9 +3223,8 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	    }
 	  else if (spec->access == ACCESS_METHOD_INDEX)
 	    {
-	      if (heap_get_indexinfo_of_btid
-		  (NULL, &(cls_node->cls_oid), &spec->indexptr->btid, NULL, NULL, NULL, NULL, &index_name,
-		   NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid (NULL, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL, NULL,
+					      &index_name, NULL) == NO_ERROR)
 		{
 		  if (class_name != NULL && index_name != NULL)
 		    {

@@ -199,8 +199,7 @@ struct mvcc_reev_data
   DB_LOGICAL filter_result;	/* the result of reevaluation if successful */
 };
 
-#define INIT_FILTER_INFO_FOR_SCAN_REEV(p_scan_id, p_range_filter, \
-					p_key_filter, p_data_filter)  \
+#define INIT_FILTER_INFO_FOR_SCAN_REEV(p_scan_id, p_range_filter, p_key_filter, p_data_filter) \
   do \
     { \
       assert ((p_scan_id) != NULL); \
@@ -210,7 +209,7 @@ struct mvcc_reev_data
 	  if ((FILTER_INFO *) (p_range_filter) != NULL)  \
 	    { \
 	      scan_init_filter_info ((p_range_filter), \
-				     &(p_idx_scan_id)->range_pred,  \
+				     &(p_idx_scan_id)->range_pred, \
 				     &(p_idx_scan_id)->range_attrs, \
 				     (p_scan_id)->val_list, (p_scan_id)->vd, \
 				     &(p_idx_scan_id)->cls_oid, 0, NULL, \
@@ -231,44 +230,43 @@ struct mvcc_reev_data
 	  if ((FILTER_INFO *) (p_data_filter) != NULL) \
 	    { \
 	      scan_init_filter_info ((p_data_filter), \
-				     &(p_idx_scan_id)->scan_pred,  \
+				     &(p_idx_scan_id)->scan_pred, \
 				     &(p_idx_scan_id)->pred_attrs, \
 				     (p_scan_id)->val_list, \
 				     (p_scan_id)->vd, &(p_idx_scan_id)->cls_oid, \
-				      0, NULL, NULL, NULL);	\
+				      0, NULL, NULL, NULL); \
 	    } \
 	} \
       else if ((p_scan_id)->type == S_HEAP_SCAN) \
 	{ \
 	  HEAP_SCAN_ID * p_heap_scan_id = &(p_scan_id)->s.hsid; \
-	  if ((FILTER_INFO  *) (p_data_filter) != NULL)  \
+	  if ((FILTER_INFO *) (p_data_filter) != NULL) \
 	    { \
 	      scan_init_filter_info ((p_data_filter), \
-				     &(p_heap_scan_id)->scan_pred,  \
+				     &(p_heap_scan_id)->scan_pred, \
 				     &(p_heap_scan_id)->pred_attrs, \
 				     (p_scan_id)->val_list, \
 				     (p_scan_id)->vd, \
 				     &(p_heap_scan_id)->cls_oid, \
 				     0, NULL, NULL, NULL); \
 	    } \
-	  if ((FILTER_INFO  *) (p_range_filter) != NULL)  \
+	  if ((FILTER_INFO *) (p_range_filter) != NULL) \
 	    { \
 	      memset (p_range_filter, 0, sizeof (FILTER_INFO)); \
 	    } \
-	  if ((FILTER_INFO  *) (p_key_filter) != NULL) \
-	   { \
+	  if ((FILTER_INFO *) (p_key_filter) != NULL) \
+	    { \
 	      memset (p_key_filter, 0, sizeof (FILTER_INFO)); \
-	   } \
+	    } \
 	} \
     } \
-    while (0)
+  while (0)
 
-#define INIT_SCAN_REEV_DATA(p_mvcc_sel_reev_data, p_range_filter, \
-			    p_key_filter, p_data_filter, p_qualification) \
+#define INIT_SCAN_REEV_DATA(p_mvcc_sel_reev_data, p_range_filter, p_key_filter, p_data_filter, p_qualification) \
   do \
     { \
       assert ((p_mvcc_sel_reev_data) != NULL); \
-      if (((FILTER_INFO  *) (p_range_filter) != NULL) && ((p_range_filter)->scan_pred != NULL) \
+      if (((FILTER_INFO *) (p_range_filter) != NULL) && ((p_range_filter)->scan_pred != NULL) \
           && ((p_range_filter)->scan_pred->regu_list != NULL)) \
 	{ \
 	  (p_mvcc_sel_reev_data)->range_filter = (p_range_filter); \
@@ -277,30 +275,29 @@ struct mvcc_reev_data
 	{ \
 	  (p_mvcc_sel_reev_data)->range_filter = NULL; \
 	} \
-      if (((FILTER_INFO  *) (p_key_filter) != NULL) && ((p_key_filter)->scan_pred != NULL) \
+      if (((FILTER_INFO *) (p_key_filter) != NULL) && ((p_key_filter)->scan_pred != NULL) \
           && ((p_key_filter)->scan_pred->regu_list != NULL)) \
 	{ \
 	  (p_mvcc_sel_reev_data)->key_filter = (p_key_filter); \
 	} \
-      else  \
+      else \
 	{ \
 	  (p_mvcc_sel_reev_data)->key_filter = NULL; \
 	} \
-      if (((FILTER_INFO  *) (p_data_filter) != NULL) && ((p_data_filter)->scan_pred != NULL) \
+      if (((FILTER_INFO *) (p_data_filter) != NULL) && ((p_data_filter)->scan_pred != NULL) \
 	  && ((p_data_filter)->scan_pred->regu_list != NULL)) \
 	{ \
 	  (p_mvcc_sel_reev_data)->data_filter = (p_data_filter); \
 	} \
-      else  \
+      else \
 	{ \
 	  (p_mvcc_sel_reev_data)->data_filter = NULL; \
 	} \
       (p_mvcc_sel_reev_data)->qualification = (p_qualification); \
     } \
-    while (0)
+  while (0)
 
-#define SET_MVCC_SELECT_REEV_DATA(p_mvcc_reev_data, p_mvcc_sel_reev_data, \
-				  reev_filter_result) \
+#define SET_MVCC_SELECT_REEV_DATA(p_mvcc_reev_data, p_mvcc_sel_reev_data, reev_filter_result) \
   do \
     { \
       assert ((p_mvcc_reev_data) != NULL); \
@@ -310,8 +307,7 @@ struct mvcc_reev_data
     } \
   while (0)
 
-#define SET_MVCC_UPDATE_REEV_DATA(p_mvcc_reev_data, p_mvcc_upddel_reev_data, \
-				  reev_filter_result) \
+#define SET_MVCC_UPDATE_REEV_DATA(p_mvcc_reev_data, p_mvcc_upddel_reev_data, reev_filter_result) \
   do \
     { \
       (p_mvcc_reev_data)->type = REEV_DATA_UPDDEL; \
