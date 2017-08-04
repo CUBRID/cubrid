@@ -99,7 +99,6 @@ typedef INT32 LOLENGTH;		/* Length for a large object */
 
 /* Log address structure */
 
-typedef struct log_lsa LOG_LSA;	/* Log address identifier */
 struct log_lsa
 {
   INT64 pageid:48;		/* Log page identifier : 6 bytes length */
@@ -107,7 +106,14 @@ struct log_lsa
   /* The offset field is defined as 16bit-INT64 type (not short), because of alignment in windows */
 };
 
-#define LSA_COPY(lsa_ptr1, lsa_ptr2) *(lsa_ptr1) = *(lsa_ptr2)
+typedef struct log_lsa LOG_LSA;	/* Log address identifier */
+STATIC_INLINE void
+LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
+{
+  plsa1->pageid = plsa2->pageid;
+  plsa1->offset = plsa2->offset;
+}
+
 #define LSA_SET_NULL(lsa_ptr)\
   do {									      \
     (lsa_ptr)->pageid = NULL_PAGEID;                                          \
@@ -483,6 +489,13 @@ typedef int TRANID;		/* Transaction identifier */
 
 #define COMPOSITE_LOCK(scan_op_type)	(scan_op_type != S_SELECT)
 #define READONLY_SCAN(scan_op_type)	(scan_op_type == S_SELECT)
+
+typedef enum
+{
+  LOCK_COMPAT_NO = 0,
+  LOCK_COMPAT_YES,
+  LOCK_COMPAT_UNKNOWN,
+} LOCK_COMPATIBILITY;
 
 typedef enum
 {

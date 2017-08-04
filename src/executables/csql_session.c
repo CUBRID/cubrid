@@ -234,7 +234,7 @@ csql_help_schema (const char *class_name)
     {
       bool is_composed = false;
 
-      class_name_composed = malloc (composed_size + 1);
+      class_name_composed = (char *) malloc (composed_size + 1);
       if (class_name_composed == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -491,7 +491,7 @@ csql_help_trigger (const char *trigger_name)
 	{
 	  bool is_composed = false;
 
-	  trigger_name_composed = malloc (composed_size + 1);
+	  trigger_name_composed = (char *) malloc (composed_size + 1);
 	  if (trigger_name_composed == NULL)
 	    {
 	      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;

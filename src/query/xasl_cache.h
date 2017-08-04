@@ -41,13 +41,13 @@ struct xcache_related_object
   int tcard;
 };
 
-typedef enum xcache_cleanup_reason XCACHE_CLEANUP_REASON;
 enum xcache_cleanup_reason
 {
   XCACHE_CLEANUP_NONE,		/* no cleanup is required */
   XCACHE_CLEANUP_FULL,
   XCACHE_CLEANUP_TIMEOUT
 };
+typedef enum xcache_cleanup_reason XCACHE_CLEANUP_REASON;
 
 /* XASL cache clones - XASL nodes cached for fast usage.
  *
@@ -99,7 +99,7 @@ struct xasl_cache_ent
   pthread_mutex_t cache_clones_mutex;
 
   /* RT check */
-  struct timeval time_last_rt_check;
+  INT64 time_last_rt_check;
 
   bool initialized;
 };

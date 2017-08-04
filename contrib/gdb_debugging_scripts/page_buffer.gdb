@@ -594,31 +594,46 @@ define pgbuf_flush_show_all
 end
   
 # pgbuf_show_lru_dirties
+# $arg0 - lru index
+#
+# Print counters on LRU related to count of LRU3 and count of dirties in each LRU3
+#
+define pgbuf_show_lru_dirties
+  set $lru_idx = $arg0
+  set $lru_list = &pgbuf_Pool.buf_LRU_list[$lru_idx]
+  set $dist = 0
+  set $bcb = $lru_list->bottom
+  set $actual_lru3_cnt = 0
+  set $first_dirty_dist = 0
+  set $dirty_cnt = 0
+
+  while $bcb != 0
+    if ($bcb->flags & (int) 0x80000000) != 0
+      set $dirty_cnt = $dirty_cnt + 1
+      if $first_dirty_dist == 0
+        set $first_dirty_dist = $dist
+      end
+    end
+    if ($bcb->flags & PGBUF_ZONE_MASK) != PGBUF_LRU_3_ZONE
+      loop_break
+    end
+    set $actual_lru3_cnt = $actual_lru3_cnt + 1
+    set $bcb = $bcb->prev_BCB
+    set $dist = $dist + 1
+  end
+
+  printf "LRU: %d, count_lru3:%d (actual:%d), total:%d, dirties:%d, first_dirty_dist:%d\n", $lru_idx, $lru_list->count_lru3, $actual_lru3_cnt, $lru_list->count_lru3 + $lru_list->count_lru2 + $lru_list->count_lru1, $dirty_cnt, $first_dirty_dist
+end
+
+# pgbuf_show_all_lru_dirties
 # No arguments
 # 
 # Print counters on each LRU related to count of LRU3 and count of dirties in each LRU3
 #
-define pgbuf_show_lru_dirties
+define pgbuf_show_all_lru_dirties
   set $i = 0
   while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
-    set $lru_list = &pgbuf_Pool.buf_LRU_list[$i]
-    set $bcb = $lru_list->bottom
-	set $actual_lru3_cnt = 0
-	
-	set $dirty_cnt = 0
-	while $bcb != 0
-	   if ($bcb->flags & (int) 0x80000000) != 0
-	      set $dirty_cnt = $dirty_cnt + 1
-	   end
-	   if ($bcb->flags & PGBUF_ZONE_MASK) != PGBUF_LRU_3_ZONE
-	      loop_break
-	   end
-	   set $actual_lru3_cnt = $actual_lru3_cnt + 1
-	   set $bcb = $bcb->prev_BCB
-	end
-	
-     printf "LRU: %d, count_lru3:%d (actual:%d), total:%d, dirties:%d\n", $i, $lru_list->count_lru3, $actual_lru3_cnt, $lru_list->count_lru3 + $lru_list->count_lru2 + $lru_list->count_lru1, $dirty_cnt
-	 
+    pgbuf_show_lru_dirties $i
     set $i = $i + 1
   end
 end

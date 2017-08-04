@@ -544,7 +544,7 @@ struct buildlist_proc_node
   DB_VALUE *a_instnum_val;	/* inst_num() value for query with analytic */
   int a_instnum_flag;		/* inst_num() flag for query with analytic */
   int g_grbynum_flag;		/* stop or continue grouping? */
-  int g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
+  bool g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
   int g_hash_eligible;		/* eligible for hash aggregate evaluation */
   int g_output_first_tuple;	/* output first tuple of each group */
   int g_hkey_size;		/* group by key size */
@@ -619,12 +619,12 @@ struct update_assignment
 };
 
 /* type of reevaluation */
-typedef enum mvcc_reev_data_type MVCC_REEV_DATA_TYPE;
 enum mvcc_reev_data_type
 {
   REEV_DATA_UPDDEL = 0,
   REEV_DATA_SCAN
 };
+typedef enum mvcc_reev_data_type MVCC_REEV_DATA_TYPE;
 
 /* data for MVCC condition reevaluation */
 typedef struct mvcc_update_reev_data MVCC_UPDDEL_REEV_DATA;
@@ -907,7 +907,8 @@ struct xasl_node
   PRED_EXPR *instnum_pred;	/* inst_num() predicate */
   DB_VALUE *instnum_val;	/* inst_num() value result */
   DB_VALUE *save_instnum_val;	/* inst_num() value kept after being substi- tuted for ordbynum_val; */
-  REGU_VARIABLE *limit_row_count;	/* the record count from a limit clause */
+  REGU_VARIABLE *limit_offset;	/* offset of limit clause */
+  REGU_VARIABLE *limit_row_count;	/* the record count from limit clause */
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
 
@@ -1058,7 +1059,7 @@ extern QFILE_LIST_ID *qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * 
 extern int qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				    UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 extern int qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
-extern int qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final);
+extern int qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool is_final);
 extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT * pred_filter,
 				     bool dealloc_dbvalues);
 extern int qexec_clear_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * pred_filter);
@@ -1104,5 +1105,7 @@ extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, R
 extern void qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent);
 extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent);
 #endif /* SERVER_MODE */
+extern const char *qdump_operator_type_string (OPERATOR_TYPE optype);
+extern const char *qdump_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 extern const char *qdump_function_type_string (FUNC_TYPE ftype);
 #endif /* _QUERY_EXECUTOR_H_ */

@@ -28,9 +28,9 @@
 #include "porting.h"
 #include "cas_protocol.h"
 
-#define SET_BIT(C,B)	(C) |= (B)
-#define CLEAR_BIT(C,B)	(C) &= ~(B)
-#define IS_SET_BIT(C,B)	((C) & (B)) == (B)
+#define SET_BIT(C,B)	((C) |= (B))
+#define CLEAR_BIT(C,B)	((C) &= ~(B))
+#define IS_SET_BIT(C,B)	(((C) & (B)) == (B))
 
 static char broker_info[BROKER_INFO_SIZE] = {
   CAS_DBMS_CUBRID,
@@ -38,7 +38,7 @@ static char broker_info[BROKER_INFO_SIZE] = {
   CAS_STATEMENT_POOLING_ON,
   CCI_PCONNECT_ON,
   CAS_PROTO_PACK_CURRENT_NET_VER,
-  BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT,
+  (char) BROKER_RENEWED_ERROR_CODE | (char) BROKER_SUPPORT_HOLDABLE_RESULT,
   0,
   0
 };
@@ -227,7 +227,7 @@ cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooli
   broker_info[BROKER_INFO_CCI_PCONNECT] = (cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF);
 
   broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
-  broker_info[BROKER_INFO_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
+  broker_info[BROKER_INFO_FUNCTION_FLAG] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
   broker_info[BROKER_INFO_RESERVED2] = 0;
   broker_info[BROKER_INFO_RESERVED3] = 0;
 }

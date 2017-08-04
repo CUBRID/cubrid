@@ -98,7 +98,7 @@ static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_typ
 				    time_t * stop_at, bool * did_incom_recovery, bool * may_use_checkpoint,
 				    bool * may_need_synch_checkpoint_2pc);
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
-				   LOG_LSA * end_redo_lsa, int ismedia_crash, time_t * stopat,
+				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
 			       time_t * stopat);
@@ -413,7 +413,7 @@ end:
   /* Convert thread back to system transaction. */
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
+      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE) save_thread_type);
     }
   else
     {
@@ -1261,15 +1261,6 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
       /* this is not a valid situation */
       assert_release (false);
     }
-  else if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-    {
-      /* only transaction run postpones are acceptable */
-      assert (sysop_start_posp->sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE);
-      assert (sysop_start_posp->sysop_end.run_postpone.is_sysop_postpone == false);
-
-      /* no undo */
-      LSA_SET_NULL (&tdes->undo_nxlsa);
-    }
   else if (sysop_start_posp->sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
     {
       if (sysop_start_posp->sysop_end.run_postpone.is_sysop_postpone)
@@ -1521,21 +1512,17 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 	}
       break;
 
-    case LOG_SYSOP_END_LOGICAL_UNDO:
-    case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
-      /* can be used in all states, but cannot have postpones. so it doesn't commit_start_postpone.
-       * note: if we add postpones to logical undo, it will have to save previous state... maybe it is a good idea to
-       *       do this for all types of end system op. */
-      break;
-
     case LOG_SYSOP_END_COMMIT:
       assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
+    case LOG_SYSOP_END_LOGICAL_UNDO:
+    case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
+      /* todo: I think it will be safer to save previous states in nested system operations, rather than rely on context
+       *       to guess it. we should consider that for cherry. */
       commit_start_postpone = true;
       break;
 
     case LOG_SYSOP_END_LOGICAL_COMPENSATE:
       /* compensate undo */
-      assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
       tdes->undo_nxlsa = sysop_end->compensate_lsa;
       commit_start_postpone = true;
       break;
@@ -1598,9 +1585,12 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       assert (tdes->topops.last == 0);
       if (commit_start_postpone)
 	{
-	  /* change state to previous state */
-	  if (sysop_end->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+	  /* change state to previous state, which is either TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE or 
+	   * TRAN_UNACTIVE_UNILATERALLY_ABORTED. Use tdes->rcv.tran_start_postpone_lsa to determine which case it is. */
+	  if (!LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa))
 	    {
+	      /* this must be after start postpone */
+	      assert (LSA_LE (&tdes->rcv.tran_start_postpone_lsa, &sysop_end->lastparent_lsa));
 	      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 	    }
 	  else
@@ -2368,7 +2358,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 
 static void
 log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa, LOG_LSA * end_redo_lsa,
-		       int is_media_crash, time_t * stop_at, bool * did_incom_recovery, INT64 * num_redo_log_records)
+		       bool is_media_crash, time_t * stop_at, bool * did_incom_recovery, INT64 * num_redo_log_records)
 {
   LOG_LSA checkpoint_lsa = { -1, -1 };
   LOG_LSA lsa;			/* LSA of log record to analyse */
@@ -3066,13 +3056,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		{
 		  fprintf (stdout,
 			   "TRACE REDOING[1]: LSA = %lld|%d, Rv_index = %s,\n"
-			   "      volid = %d, pageid = %d, offset = %d,\n", (long long int) rcv_lsa.pageid,
-			   (int) rcv_lsa.offset, rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid,
-			   rcv.offset);
+			   "      volid = %d, pageid = %d, offset = %d,\n", LSA_AS_ARGS (&rcv_lsa),
+			   rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %lld|%d\n", (long long int) rcv_page_lsaptr->pageid,
-			       rcv_page_lsaptr->offset);
+		      fprintf (stdout, "      page_lsa = %lld|%d\n", LSA_AS_ARGS (rcv_page_lsaptr));
 		    }
 		  else
 		    {
@@ -3147,10 +3135,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  LOG_LSA null_lsa = LSA_INITIALIZER;
 
 		  /* Reset log header MVCC info */
-		  vacuum_reset_log_header_cache (thread_p);
-
-		  /* Reset vacuum recover LSA */
-		  vacuum_notify_server_crashed (&null_lsa);
+		  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 		}
 
 	      /* 
@@ -3206,13 +3191,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		{
 		  fprintf (stdout,
 			   "TRACE REDOING[2]: LSA = %lld|%d, Rv_index = %s,\n"
-			   "      volid = %d, pageid = %d, offset = %d,\n", (long long int) rcv_lsa.pageid,
-			   (int) rcv_lsa.offset, rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid,
-			   rcv.offset);
+			   "      volid = %d, pageid = %d, offset = %d,\n", LSA_AS_ARGS (&rcv_lsa),
+			   rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %lld|%d\n", (long long int) rcv_page_lsaptr->pageid,
-			       rcv_page_lsaptr->offset);
+		      fprintf (stdout, "      page_lsa = %lld|%d\n", LSA_AS_ARGS (rcv_page_lsaptr));
 		    }
 		  else
 		    {
@@ -3253,8 +3236,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 #if !defined(NDEBUG)
 	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		{
-		  fprintf (stdout, "TRACE EXT REDOING[3]: LSA = %lld|%d, Rv_index = %s\n",
-			   (long long int) rcv_lsa.pageid, rcv_lsa.offset, rv_rcvindex_string (rcvindex));
+		  fprintf (stdout, "TRACE EXT REDOING[3]: LSA = %lld|%d, Rv_index = %s\n", LSA_AS_ARGS (&rcv_lsa),
+			   rv_rcvindex_string (rcvindex));
 		  fflush (stdout);
 		}
 #endif /* !NDEBUG */
@@ -3327,13 +3310,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		{
 		  fprintf (stdout,
 			   "TRACE REDOING[4]: LSA = %lld|%d, Rv_index = %s,\n"
-			   "      volid = %d, pageid = %d, offset = %d,\n", (long long int) rcv_lsa.pageid,
-			   (int) rcv_lsa.offset, rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid,
-			   rcv.offset);
+			   "      volid = %d, pageid = %d, offset = %d,\n", LSA_AS_ARGS (&rcv_lsa),
+			   rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %lld|%d\n", (long long int) rcv_page_lsaptr->pageid,
-			       rcv_page_lsaptr->offset);
+		      fprintf (stdout, "      page_lsa = %lld|%d\n", LSA_AS_ARGS (rcv_page_lsaptr));
 		    }
 		  else
 		    {
@@ -3415,13 +3396,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		{
 		  fprintf (stdout,
 			   "TRACE REDOING[5]: LSA = %lld|%d, Rv_index = %s,\n"
-			   "      volid = %d, pageid = %d, offset = %d,\n", (long long int) rcv_lsa.pageid,
-			   (int) rcv_lsa.offset, rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid,
-			   rcv.offset);
+			   "      volid = %d, pageid = %d, offset = %d,\n", LSA_AS_ARGS (&rcv_lsa),
+			   rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %lld|%d\n", (long long int) rcv_page_lsaptr->pageid,
-			       rcv_page_lsaptr->offset);
+		      fprintf (stdout, "      page_lsa = %lld|%d\n", LSA_AS_ARGS (rcv_page_lsaptr));
 		    }
 		  else
 		    {
@@ -3913,6 +3892,7 @@ log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  db_private_free (thread_p, undo_buffer);
 	}
 
+      assert (sysop_start_postpone.sysop_end.type != LOG_SYSOP_END_ABORT);
       if (sysop_start_postpone.sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
 	{
 	  if (sysop_start_postpone.sysop_end.run_postpone.is_sysop_postpone)
@@ -3932,9 +3912,21 @@ log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	      tdes->posp_nxlsa = sysop_start_postpone.sysop_end.run_postpone.postpone_lsa;
 	    }
 	}
+      else if (!LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa))
+	{
+	  /* this must be after start postpone */
+	  assert (LSA_LE (&tdes->rcv.tran_start_postpone_lsa, &sysop_start_postpone.sysop_end.lastparent_lsa));
+	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+
+	  /* note: this is for nested system operations inside a transaction logical run postpone. this is not really,
+	   * fully correct, covering all cases. however it should work for file_tracker_unregister case.
+	   *
+	   * however, to have a robust recovery in the future, no matter how complicated the nesting of operations,
+	   * we should considering saving previous states.
+	   */
+	}
       else
 	{
-	  assert (sysop_start_postpone.sysop_end.type != LOG_SYSOP_END_ABORT);
 	  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
 	  tdes->undo_nxlsa = tdes->tail_lsa;
 	}
@@ -4070,7 +4062,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       log_recovery_finish_postpone (thread_p, tdes);
 
       /* Restore thread */
-      VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
+      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE) save_thread_type);
     }
 }
 
@@ -4126,7 +4118,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
       worker->state = VACUUM_WORKER_STATE_RECOVERY;
 
       /* Restore thread */
-      VACUUM_RESTORE_THREAD (thread_p, save_thread_type);
+      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE) save_thread_type);
     }
 }
 
@@ -4157,6 +4149,9 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* nothing after tdes->rcv.atomic_sysop_start_lsa */
       assert (LSA_EQ (&tdes->rcv.atomic_sysop_start_lsa, &tdes->undo_nxlsa));
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      er_log_debug (ARG_FILE_LINE, "(trid = %d) Nothing after atomic sysop (%lld|%d), nothing to rollback.\n",
+		    tdes->trid, LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+      return;
     }
   assert (tdes->topops.last <= 0);
 
@@ -4192,6 +4187,11 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       er_log_debug (ARG_FILE_LINE,
 		    "(trid = %d) Nested atomic sysop  (%lld|%d) after sysop start postpone (%lld|%d). \n", tdes->trid,
 		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa), LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "(trid = %d) Atomic sysop (%lld|%d). Rollback. \n", tdes->trid,
+		    LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
     }
 
   /* rollback. simulate a new system op */
@@ -4476,9 +4476,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    {
 		      fprintf (stdout,
 			       "TRACE UNDOING[2]: LSA = %lld|%d, Rv_index = %s,\n"
-			       "      volid = %d, pageid = %d, offset = %d,\n", (long long int) rcv_lsa.pageid,
-			       rcv_lsa.offset, rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid,
-			       rcv.offset);
+			       "      volid = %d, pageid = %d, offset = %hd,\n", LSA_AS_ARGS (&rcv_lsa),
+			       rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid, rcv.offset);
 		      fflush (stdout);
 		    }
 #endif /* !NDEBUG */

@@ -327,7 +327,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   char *db_page_str;
   char *log_volume_str;
   char *log_page_str;
-  TZ_DATA *tzd;
+  const TZ_DATA *tzd;
 
   char required_size[16];
 
@@ -607,7 +607,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   (void) lang_db_put_charset ();
 
   tzd = tz_get_data ();
-  if (put_timezone_checksum (tzd->checksum) != NO_ERROR)
+  if (put_timezone_checksum ((char *) tzd->checksum) != NO_ERROR)
     {
       goto error_exit;
     }
@@ -881,7 +881,9 @@ print_backup_info (char *database_name, BO_RESTART_ARG * restart_arg)
       goto exit;
     }
 
-  error_code = fileio_list_restore (NULL, BO_DB_FULLNAME, from_volbackup, restart_arg->level, restart_arg->newvolpath);
+  error_code =
+    fileio_list_restore (NULL, BO_DB_FULLNAME, from_volbackup, (FILEIO_BACKUP_LEVEL) restart_arg->level,
+			 restart_arg->newvolpath);
 exit:
   if (dir != NULL)
     {
@@ -1462,7 +1464,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  diag = utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
+  diag = (DIAGDUMP_TYPE) utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
 
   if (diag != DIAGDUMP_LOG && utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2415,7 +2417,7 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 			    err_status, true);
 	  goto error;
 	}
-      lf->locale_name = malloc (strlen (locale_str) + 1);
+      lf->locale_name = (char *) malloc (strlen (locale_str) + 1);
       if (lf->locale_name == NULL)
 	{
 	  err_status = ER_LOC_INIT;
@@ -2504,7 +2506,7 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 	}
 
 #if defined(WINDOWS)
-      FreeLibrary (loclib_handle);
+      FreeLibrary ((HMODULE) loclib_handle);
 #else
       dlclose (loclib_handle);
 #endif
@@ -3474,7 +3476,7 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
   copy_log_base = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
   if (copy_log_base == NULL || *copy_log_base == '\0')
     {
-      copy_log_base = envvar_get ("DATABASES");
+      copy_log_base = (char *) envvar_get ("DATABASES");
       if (copy_log_base == NULL)
 	{
 	  return ER_FAILED;
@@ -3610,7 +3612,7 @@ delete_all_slave_ha_apply_info (char *database_name, char *master_host_name)
   copy_log_base = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
   if (copy_log_base == NULL || *copy_log_base == '\0')
     {
-      copy_log_base = envvar_get ("DATABASES");
+      copy_log_base = (char *) envvar_get ("DATABASES");
       if (copy_log_base == NULL)
 	{
 	  return ER_FAILED;
@@ -3922,6 +3924,16 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       tz_gen_type = TZ_GEN_TYPE_EXTEND;
 
       db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+
+#if !defined (WINDOWS)
+      /* workaround for Linux: gen_tz process should be restarted after each database migration, since globals variables
+       * from shared libcubrid.so are not properly reset at db_shutdown */
+      if (db_name == NULL)
+	{
+	  goto print_gen_tz_usage;
+	}
+#endif /* !WINDOWS */
+
       if (db_name != NULL && check_database_name (db_name) != NO_ERROR)
 	{
 	  exit_status = EXIT_FAILURE;
@@ -4036,7 +4048,10 @@ exit:
 
   if (exit_status != EXIT_SUCCESS)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      if (er_inited == true)
+	{
+	  fprintf (stderr, "%s\n", db_error_string (3));
+	}
 
       if (need_db_shutdown == true)
 	{

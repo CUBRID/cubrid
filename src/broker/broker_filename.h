@@ -59,7 +59,6 @@
 
 #define ACCESS_LOG_DENIED_FILENAME_POSTFIX ".denied"
 
-typedef enum t_cubrid_file_id T_CUBRID_FILE_ID;
 enum t_cubrid_file_id
 {
   FID_CUBRID_BROKER_CONF,
@@ -85,6 +84,7 @@ enum t_cubrid_file_id
   FID_SHARD_PROXY_LOG_DIR,
   MAX_CUBRID_FILE
 };
+typedef enum t_cubrid_file_id T_CUBRID_FILE_ID;
 
 typedef struct t_cubrid_file_info T_CUBRID_FILE_INFO;
 struct t_cubrid_file_info

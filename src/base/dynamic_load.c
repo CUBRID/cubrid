@@ -1746,7 +1746,7 @@ dl_initiate_module (void)
     }
 #endif /* !SOLARIS && !LINUX && !AIX */
 
-  dl_Debug = getenv ("DL_DEBUG") != (int) NULL;
+  dl_Debug = (getenv ("DL_DEBUG") != NULL);
 
   dl_Loader = (DYNAMIC_LOADER *) malloc (sizeof (DYNAMIC_LOADER));
   if (dl_Loader == NULL)

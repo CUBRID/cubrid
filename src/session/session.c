@@ -210,7 +210,7 @@ session_state_alloc (void)
 {
   SESSION_STATE *state;
 
-  state = malloc (sizeof (SESSION_STATE));
+  state = (SESSION_STATE *) malloc (sizeof (SESSION_STATE));
   if (state != NULL)
     {
       pthread_mutex_init (&state->mutex, NULL);
@@ -574,25 +574,35 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
     {
       SESSION_ID old_id = thread_p->conn_entry->session_id;
 
+      /* session_check_session should clear session_p, right? add safe-guard if necessary. */
+
       assert (thread_p->conn_entry->session_p->id == old_id);
 
       ret = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &old_id, (void **) &session_p);
-      if (ret != NO_ERROR || session_p == NULL)
+      if (ret != NO_ERROR)
 	{
-	  return ret;
+	  assert (false);
+	  return ER_FAILED;
 	}
-
-      assert (session_p == thread_p->conn_entry->session_p);
+      if (session_p == NULL)
+	{
+	  thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+	  thread_p->conn_entry->session_p = NULL;
+	}
+      else
+	{
+	  assert (session_p == thread_p->conn_entry->session_p);
 
 #if !defined(NDEBUG)
-      session_state_verify_ref_count (thread_p, session_p);
+	  session_state_verify_ref_count (thread_p, session_p);
 #endif
-      thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
-      thread_p->conn_entry->session_p = NULL;
-      session_state_decrease_ref_count (thread_p, session_p);
+	  thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+	  thread_p->conn_entry->session_p = NULL;
+	  session_state_decrease_ref_count (thread_p, session_p);
 
-      logtb_set_current_user_active (thread_p, false);
-      pthread_mutex_unlock (&session_p->mutex);
+	  logtb_set_current_user_active (thread_p, false);
+	  pthread_mutex_unlock (&session_p->mutex);
+	}
     }
 #endif
 
@@ -693,15 +703,20 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
     }
 
 #if defined (SERVER_MODE)
-  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL)
+  assert (session_p->ref_count > 0);
+
+  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL
+      && thread_p->conn_entry->session_p == session_p)
     {
       thread_p->conn_entry->session_p = NULL;
       thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+
+      session_state_decrease_ref_count (thread_p, session_p);
     }
-
-  assert (session_p->ref_count > 0);
-
-  session_state_decrease_ref_count (thread_p, session_p);
+  else
+    {
+      /* do we accept this case?? if we don't, add safe-guard here. */
+    }
 
   logtb_set_current_user_active (thread_p, false);
 
@@ -761,9 +776,19 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
       assert (thread_p->conn_entry->session_p->id == old_id);
 
       error = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &old_id, (void **) &session_p);
-      if (error != NO_ERROR || session_p == NULL)
+      if (error != NO_ERROR)
 	{
+	  assert (false);
 	  return error;
+	}
+      if (session_p == NULL)
+	{
+	  /* the session in connection entry no longer exists... */
+	  /* todo: add safe guard if we cannot accept this case */
+	  thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+	  thread_p->conn_entry->session_p = NULL;
+
+	  return ER_FAILED;
 	}
 
       assert (session_p == thread_p->conn_entry->session_p);
@@ -848,7 +873,7 @@ session_remove_expired_sessions (struct timeval *timeout)
       lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
       while (true)
 	{
-	  state = lf_hash_iterate (&it);
+	  state = (SESSION_STATE *) lf_hash_iterate (&it);
 	  if (state == NULL)
 	    {
 	      finished = true;
@@ -2179,7 +2204,7 @@ session_states_dump (THREAD_ENTRY * thread_p)
   fprintf (stdout, "\nSESSION COUNT = %d\n", session_count);
 
   lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
-  for (state = lf_hash_iterate (&it); state != NULL; state = lf_hash_iterate (&it))
+  for (state = (SESSION_STATE *) lf_hash_iterate (&it); state != NULL; state = (SESSION_STATE *) lf_hash_iterate (&it))
     {
       session_dump_session (state);
     }

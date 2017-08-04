@@ -680,7 +680,7 @@ typedef enum
 } BOOL_OP;
 
 typedef enum
-{ R_EQ = 1, R_NE, R_GT, R_GE, R_LT, R_LE, R_NULL, R_EXISTS, R_LIKE,
+{ R_NONE = 0, R_EQ = 1, R_NE, R_GT, R_GE, R_LT, R_LE, R_NULL, R_EXISTS, R_LIKE,
   R_EQ_SOME, R_NE_SOME, R_GT_SOME, R_GE_SOME, R_LT_SOME,
   R_LE_SOME, R_EQ_ALL, R_NE_ALL, R_GT_ALL, R_GE_ALL, R_LT_ALL,
   R_LE_ALL, R_SUBSET, R_SUPERSET, R_SUBSETEQ, R_SUPERSETEQ, R_EQ_TORDER,
@@ -815,7 +815,6 @@ struct filter_info
 #define	PCOL_PARENTPOS_TUPLE_OFFSET	5
 #define	PCOL_FIRST_TUPLE_OFFSET		PCOL_PARENTPOS_TUPLE_OFFSET
 
-extern DB_LOGICAL eval_limit_count_is_0 (THREAD_ENTRY * thread_p, REGU_VARIABLE * rv, VAL_DESCR * vd);
 extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
 extern DB_LOGICAL eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
 extern DB_LOGICAL eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);

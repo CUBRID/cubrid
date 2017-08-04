@@ -95,6 +95,8 @@ static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void
 static void qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_NODE ** fromp,
 								PT_NODE ** wherep);
 static PT_NODE *qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void qo_do_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
+static void qo_do_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
 /*
@@ -1770,17 +1772,15 @@ qo_reduce_order_by_for (PARSER_CONTEXT * parser, PT_NODE * node)
       grp_num->info.function.all_or_distinct = PT_ALL;
 
       /* replace orderby_num() to groupby_num() */
-      node->info.query.orderby_for = pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, grp_num, false	/* loc_check: 
-															 * DEFAULT 
-															 */ ,
+      node->info.query.orderby_for = pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, grp_num,
+							 false /* loc_check: DEFAULT */ ,
 							 0 /* type: DEFAULT */ ,
 							 false /* dont_replace: DEFAULT */ );
 
       /* Even though node->info.q.query.q.select has no orderby_num so far, it is a safe guard to prevent potential
        * rewrite problem. */
-      node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, grp_num, false	/* loc_check: 
-																 * DEFAULT 
-																 */ ,
+      node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, grp_num,
+							   false /* loc_check: DEFAULT */ ,
 							   0 /* type: DEFAULT */ ,
 							   false /* dont_replace: DEFAULT */ );
 
@@ -2060,17 +2060,17 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		  PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
 
 		  /* replace orderby_num() to inst_num() */
-		  node->info.query.orderby_for = pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, ins_num, false	/* loc_check: 
-																	 * DEFAULT 
-																	 */ ,
-								     0 /* type: DEFAULT */ ,
-								     false /* dont_replace: DEFAULT */ );
+		  node->info.query.orderby_for =
+		    pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, ins_num,
+					false /* loc_check: DEFAULT */ ,
+					0 /* type: DEFAULT */ ,
+					false /* dont_replace: DEFAULT */ );
 
-		  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, ins_num, false	/* loc_check: 
-																	 * DEFAULT 
-																	 */ ,
-								       0 /* type: DEFAULT */ ,
-								       false /* dont_replace: DEFAULT */ );
+		  node->info.query.q.select.list =
+		    pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, ins_num,
+					false /* loc_check: DEFAULT */ ,
+					0 /* type: DEFAULT */ ,
+					false /* dont_replace: DEFAULT */ );
 
 		  node->info.query.q.select.where =
 		    parser_append_node (node->info.query.orderby_for, node->info.query.q.select.where);
@@ -2109,9 +2109,8 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		  grp_num->info.function.all_or_distinct = PT_ALL;
 
 		  /* replace orderby_num() to groupby_num() */
-		  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, grp_num, false	/* loc_check: 
-																	 * DEFAULT 
-																	 */ ,
+		  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num,
+								       grp_num, false /* loc_check: DEFAULT */ ,
 								       0 /* type: DEFAULT */ ,
 								       false /* dont_replace: DEFAULT */ );
 
@@ -4131,7 +4130,7 @@ qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1, DB_VALUE * val2
       return (op2 == op1) ? CompResultEqual : CompResultLess;
     }
 
-  rc = (DB_VALUE_COMPARE_RESULT) tp_value_compare (val1, val2, 1, 1);
+  rc = tp_value_compare (val1, val2, 1, 1);
   if (rc == DB_EQ)
     {
       /* (val1, op1) == (val2, op2) */
@@ -6546,7 +6545,6 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
   PT_NODE *limit, *derived;
   PT_NODE **merge_upd_wherep, **merge_ins_wherep, **merge_del_wherep;
   PT_NODE **orderby_for_p;
-  PT_NODE **limit_ptr;
   PT_NODE **show_argp;
   bool call_auto_parameterize = false;
 
@@ -6666,18 +6664,28 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, PT_INST_NUM, false);
 	  if (limit != NULL)
 	    {
+	      PT_NODE *limit_node;
+
 	      node->info.query.rewrite_limit = 0;
+
+	      /* to move limit clause to derived */
+	      limit_node = node->info.query.limit;
+	      node->info.query.limit = NULL;
 
 	      derived = mq_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)
 		{
 		  PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
+
 		  assert (derived->info.query.q.select.where == NULL);
 		  derived->info.query.q.select.where = limit;
-		  derived->info.query.limit = parser_copy_tree_list (parser, node->info.query.limit);
+
+		  wherep = &derived->info.query.q.select.where;
 
 		  node = derived;
 		}
+
+	      node->info.query.limit = limit_node;
 	    }
 	}
 
@@ -7242,52 +7250,16 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       *show_argp = result_list;
     }
 
-  limit_ptr = NULL;
   /* auto parameterize for limit clause */
-  switch (node->node_type)
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) || node->node_type == PT_UPDATE || node->node_type == PT_DELETE)
     {
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-    case PT_SELECT:
-      if (node->info.query.limit)
+      qo_do_auto_parameterize_limit_clause (parser, node);
+
+      /* auto parameterize for keylimit clause */
+      if (node->node_type == PT_SELECT || node->node_type == PT_UPDATE || node->node_type == PT_DELETE)
 	{
-	  limit_ptr = &node->info.query.limit;
-	  /* It is enough to check only the count of limit clause whether the query generates an empty result set. */
-	  if (node->info.query.limit->next)
-	    {
-	      limit_ptr = &node->info.query.limit->next;
-	    }
+	  qo_do_auto_parameterize_keylimit_clause (parser, node);
 	}
-      break;
-    case PT_UPDATE:
-      if (node->info.update.limit)
-	{
-	  limit_ptr = &node->info.update.limit;
-	  /* It is enough to check only the count of limit clause whether the query generates an empty result set. */
-	  if (node->info.update.limit->next)
-	    {
-	      limit_ptr = &node->info.update.limit->next;
-	    }
-	}
-      break;
-    case PT_DELETE:
-      if (node->info.delete_.limit)
-	{
-	  limit_ptr = &node->info.delete_.limit;
-	  /* It is enough to check only the count of limit clause whether the query generates an empty result set. */
-	  if (node->info.delete_.limit->next)
-	    {
-	      limit_ptr = &node->info.delete_.limit->next;
-	    }
-	}
-      break;
-    default:
-      break;
-    }
-  if (limit_ptr != NULL && pt_is_const_not_hostvar (*limit_ptr) && !PT_IS_NULL_NODE (*limit_ptr))
-    {
-      *limit_ptr = pt_rewrite_to_auto_param (parser, *limit_ptr);
     }
 
   if (node->node_type == PT_SELECT)
@@ -7302,6 +7274,236 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   return node;
+}
+
+static void
+qo_do_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *limit_offsetp, *limit_row_countp;
+  PT_NODE *new_limit_offsetp, *new_limit_row_countp;
+
+  if (node == NULL)
+    {
+      return;
+    }
+
+  limit_offsetp = NULL;
+  limit_row_countp = NULL;
+
+  switch (node->node_type)
+    {
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_SELECT:
+      if (node->info.query.limit == NULL)
+	{
+	  return;
+	}
+
+      if (node->info.query.limit->next != NULL)
+	{
+	  limit_offsetp = node->info.query.limit;
+	  limit_row_countp = node->info.query.limit->next;
+	  limit_offsetp->next = NULL;	/* cut */
+	}
+      else
+	{
+	  limit_offsetp = NULL;
+	  limit_row_countp = node->info.query.limit;
+	}
+      break;
+
+    case PT_UPDATE:
+      if (node->info.update.limit == NULL)
+	{
+	  return;
+	}
+
+      if (node->info.update.limit->next != NULL)
+	{
+	  limit_offsetp = node->info.update.limit;
+	  limit_row_countp = node->info.update.limit->next;
+	  limit_offsetp->next = NULL;	/* cut */
+	}
+      else
+	{
+	  limit_offsetp = NULL;
+	  limit_row_countp = node->info.update.limit;
+	}
+      break;
+
+    case PT_DELETE:
+      if (node->info.delete_.limit == NULL)
+	{
+	  return;
+	}
+
+      if (node->info.delete_.limit->next != NULL)
+	{
+	  limit_offsetp = node->info.delete_.limit;
+	  limit_row_countp = node->info.delete_.limit->next;
+	  limit_offsetp->next = NULL;	/* cut */
+	}
+      else
+	{
+	  limit_offsetp = NULL;
+	  limit_row_countp = node->info.delete_.limit;
+	}
+      break;
+
+    default:
+      return;
+    }
+
+  new_limit_offsetp = limit_offsetp;
+  if (limit_offsetp != NULL && !PT_IS_NULL_NODE (limit_offsetp))
+    {
+      if (pt_is_const_not_hostvar (limit_offsetp))
+	{
+	  new_limit_offsetp = pt_rewrite_to_auto_param (parser, limit_offsetp);
+	}
+#if 0
+      else if (PT_IS_EXPR_NODE (limit_offsetp))
+	{
+	  /* We may optimize to auto parameterize expressions in limit clause. However, I don't think it is practical.
+	   * Full constant expressions, e.g, (0+2) is folded as constant and eventually parameterized as a hostvar.
+	   * Expressions which include a const would be mixed use of a constant and a hostvar, e.g, (0+?).
+	   * If you really want to optimize this case too, you can add a function to parameterize an expression node.
+	   */
+	}
+#endif
+    }
+
+  new_limit_row_countp = limit_row_countp;
+  if (limit_row_countp != NULL && !PT_IS_NULL_NODE (limit_row_countp))
+    {
+      if (pt_is_const_not_hostvar (limit_row_countp))
+	{
+	  new_limit_row_countp = pt_rewrite_to_auto_param (parser, limit_row_countp);
+	}
+#if 0
+      else if (PT_IS_EXPR_NODE (limit_row_countp))
+	{
+	  /* We may optimize to auto parameterize expressions in limit clause. However, I don't think it is practical.
+	   * Full constant expressions, e.g, (0+2) is folded as constant and eventually parameterized as a hostvar.
+	   * Expressions which include a const would be mixed use of a constant and a hostvar, e.g, (0+?).
+	   * If you really want to optimize this case too, you can add a function to parameterize an expression node.
+	   */
+	}
+#endif
+    }
+
+  switch (node->node_type)
+    {
+    case PT_UPDATE:
+      if (limit_offsetp != NULL)
+	{
+	  node->info.update.limit = new_limit_offsetp;
+	  node->info.update.limit->next = new_limit_row_countp;
+	}
+      else
+	{
+	  node->info.update.limit = new_limit_row_countp;
+	  node->info.update.limit->next = NULL;
+	}
+      break;
+    case PT_DELETE:
+      if (limit_offsetp != NULL)
+	{
+	  node->info.delete_.limit = new_limit_offsetp;
+	  node->info.delete_.limit->next = new_limit_row_countp;
+	}
+      else
+	{
+	  node->info.delete_.limit = new_limit_row_countp;
+	  node->info.delete_.limit->next = NULL;
+	}
+      break;
+    default:
+      if (limit_offsetp != NULL)
+	{
+	  node->info.query.limit = new_limit_offsetp;
+	  node->info.query.limit->next = new_limit_row_countp;
+	}
+      else
+	{
+	  node->info.query.limit = new_limit_row_countp;
+	  node->info.query.limit->next = NULL;
+	}
+      break;
+    }
+}
+
+static void
+qo_do_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *using_index = NULL;
+  PT_NODE *key_limit_lower_boundp, *key_limit_upper_boundp;
+
+  if (node == NULL)
+    {
+      return;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      using_index = node->info.query.q.select.using_index;
+      break;
+
+    case PT_UPDATE:
+      using_index = node->info.update.using_index;
+      break;
+
+    case PT_DELETE:
+      using_index = node->info.delete_.using_index;
+      break;
+
+    default:
+      return;
+    }
+
+  while (using_index != NULL)
+    {
+      /* it may include keylimit clause */
+
+      key_limit_lower_boundp = key_limit_upper_boundp = NULL;
+
+      if (using_index->info.name.indx_key_limit != NULL)
+	{
+	  key_limit_upper_boundp = using_index->info.name.indx_key_limit;
+	  key_limit_lower_boundp = using_index->info.name.indx_key_limit->next;
+
+	  using_index->info.name.indx_key_limit->next = NULL;
+	}
+
+      if (key_limit_upper_boundp != NULL)
+	{
+	  if (pt_is_const_not_hostvar (key_limit_upper_boundp) && !PT_IS_NULL_NODE (key_limit_upper_boundp))
+	    {
+	      using_index->info.name.indx_key_limit = pt_rewrite_to_auto_param (parser, key_limit_upper_boundp);
+	    }
+	  else
+	    {
+	      using_index->info.name.indx_key_limit = key_limit_upper_boundp;
+	    }
+	}
+
+      if (key_limit_lower_boundp != NULL)
+	{
+	  if (pt_is_const_not_hostvar (key_limit_lower_boundp) && !PT_IS_NULL_NODE (key_limit_lower_boundp))
+	    {
+	      using_index->info.name.indx_key_limit->next = pt_rewrite_to_auto_param (parser, key_limit_lower_boundp);
+	    }
+	  else
+	    {
+	      using_index->info.name.indx_key_limit->next = key_limit_lower_boundp;
+	    }
+	}
+
+      using_index = using_index->next;
+    }
 }
 
 /*

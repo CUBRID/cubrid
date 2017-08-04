@@ -51,8 +51,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
-extern int parser_function_code;
-
+extern "C"
+{
+  extern int parser_function_code;
+}
 
 #define PT_NAMES_HASH_SIZE                50
 
@@ -625,7 +627,7 @@ pt_bind_reserved_name (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * spe
 	  reserved_name->info.name.spec_id = spec->info.spec.id;
 	  reserved_name->info.name.resolved = spec->info.spec.range_var->info.name.original;
 	  reserved_name->info.name.meta_class = PT_RESERVED;
-	  reserved_name->info.name.reserved_id = i;
+	  reserved_name->info.name.reserved_id = (PT_RESERVED_NAME_ID) i;
 	  reserved_name->type_enum = pt_db_to_type_enum (pt_Reserved_name_table[i].type);
 	  if (reserved_name->type_enum == PT_TYPE_OBJECT)
 	    {
@@ -1501,7 +1503,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
     {
       for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
 	{
-	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr))
+	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr.default_expr_type))
 	    {
 	      node->si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
@@ -1688,12 +1690,14 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  if (node->info.query.q.select.hint & PT_HINT_SELECT_RECORD_INFO)
 	    {
 	      /* mark spec to scan for record info */
-	      node->info.query.q.select.from->info.spec.flag |= PT_SPEC_FLAG_RECORD_INFO_SCAN;
+	      node->info.query.q.select.from->info.spec.flag =
+		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_RECORD_INFO_SCAN);
 	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
 	    {
 	      /* mark spec to scan for heap page headers */
-	      node->info.query.q.select.from->info.spec.flag |= PT_SPEC_FLAG_PAGE_INFO_SCAN;
+	      node->info.query.q.select.from->info.spec.flag =
+		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_PAGE_INFO_SCAN);
 	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_KEY_INFO)
 	    {
@@ -1711,7 +1715,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      using_index->etc = (void *) PT_IDX_HINT_FORCE;
 
 	      /* mark spec to scan for index key info */
-	      node->info.query.q.select.from->info.spec.flag |= PT_SPEC_FLAG_KEY_INFO_SCAN;
+	      node->info.query.q.select.from->info.spec.flag =
+		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_KEY_INFO_SCAN);
 	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_BTREE_NODE_INFO)
 	    {
@@ -1729,7 +1734,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      using_index->etc = (void *) PT_IDX_HINT_FORCE;
 
 	      /* mark spec to scan for index key info */
-	      node->info.query.q.select.from->info.spec.flag |= PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN;
+	      node->info.query.q.select.from->info.spec.flag =
+		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN);
 	    }
 	}
 
@@ -3218,6 +3224,9 @@ int
 pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
 {
   DB_ATTRIBUTE *att = NULL;
+  const char *lang_str;
+  int flag = 0;
+  bool has_user_format;
 
   if (name->node_type != PT_NAME)
     {
@@ -3248,12 +3257,55 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
       return ER_FAILED;
     }
 
-  if (att->default_value.default_expr != DB_DEFAULT_NONE)
+  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
       /* if the default value is an expression, make a node for it */
-      PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->default_value.default_expr);
+      PT_OP_TYPE op;
+      PT_NODE *default_op_value_node;
+
+      op = pt_op_type_from_default_expr_type (att->default_value.default_expr.default_expr_type);
       assert (op != (PT_OP_TYPE) 0);
-      name->info.name.default_value = pt_expression_0 (parser, op);
+      default_op_value_node = pt_expression_0 (parser, op);
+
+      if (att->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+	{
+	  name->info.name.default_value = default_op_value_node;
+	}
+      else
+	{
+	  PT_NODE *arg1, *arg2, *arg3;
+	  arg1 = default_op_value_node;
+	  has_user_format = att->default_value.default_expr.default_expr_format ? 1 : 0;
+	  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
+	  if (arg2 == NULL)
+	    {
+	      parser_free_tree (parser, default_op_value_node);
+	      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+
+	  arg3 = parser_new_node (parser, PT_VALUE);
+	  if (arg3 == NULL)
+	    {
+	      parser_free_tree (parser, default_op_value_node);
+	      parser_free_tree (parser, arg2);
+	      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+	  arg3->type_enum = PT_TYPE_INTEGER;
+	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+	  arg3->info.value.data_value.i = (long) flag;
+
+	  name->info.name.default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+	  if (name->info.name.default_value == NULL)
+	    {
+	      parser_free_tree (parser, default_op_value_node);
+	      parser_free_tree (parser, arg2);
+	      parser_free_tree (parser, arg3);
+	      return ER_FAILED;
+	    }
+	}
     }
   else
     {
@@ -3287,6 +3339,9 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
   DB_ATTRIBUTE *att = 0;
   DB_OBJECT *db = 0;
   PT_NODE *cname = flat;
+  const char *lang_str;
+  int flag = 0;
+  bool has_user_format;
 
   if (!flat || !attr)
     {
@@ -3340,12 +3395,56 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	      /* default value was already set */
 	      return 1;
 	    }
-	  if (att->default_value.default_expr != DB_DEFAULT_NONE)
+	  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
 	      /* if the default value is an expression, make a node for it */
-	      PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->default_value.default_expr);
+	      PT_OP_TYPE op;
+	      PT_NODE *default_op_value_node;
+
+	      op = pt_op_type_from_default_expr_type (att->default_value.default_expr.default_expr_type);
 	      assert (op != (PT_OP_TYPE) 0);
-	      attr->info.name.default_value = pt_expression_0 (parser, op);
+	      default_op_value_node = pt_expression_0 (parser, op);
+
+	      if (att->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+		{
+		  attr->info.name.default_value = default_op_value_node;
+		}
+	      else
+		{
+		  PT_NODE *arg1, *arg2, *arg3;
+		  arg1 = default_op_value_node;
+		  has_user_format = att->default_value.default_expr.default_expr_format ? 1 : 0;
+		  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
+		  if (arg2 == NULL)
+		    {
+		      parser_free_tree (parser, default_op_value_node);
+		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      return 0;
+		    }
+
+		  arg3 = parser_new_node (parser, PT_VALUE);
+		  if (arg3 == NULL)
+		    {
+		      parser_free_tree (parser, default_op_value_node);
+		      parser_free_tree (parser, arg2);
+		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      return 0;
+		    }
+		  arg3->type_enum = PT_TYPE_INTEGER;
+		  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+		  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+		  arg3->info.value.data_value.i = (long) flag;
+
+		  attr->info.name.default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+		  if (attr->info.name.default_value == NULL)
+		    {
+		      parser_free_tree (parser, default_op_value_node);
+		      parser_free_tree (parser, arg2);
+		      parser_free_tree (parser, arg3);
+		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      return 0;
+		    }
+		}
 	    }
 	  else
 	    {
@@ -3832,7 +3931,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
   PT_NODE *result = NULL, *s, *result_last_node = NULL, *entity = NULL;
   PT_TYPE_ENUM t;
 
-  t = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
+  t = pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
   switch (t)
     {
     case PT_TYPE_NUMERIC:
@@ -4270,7 +4369,7 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * at
 
   dom = db_attribute_domain (att);
   attr->etc = dom;		/* used for getting additional db-specific domain information in the Versant driver */
-  attr->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
+  attr->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
   switch (attr->type_enum)
     {
     case PT_TYPE_OBJECT:
@@ -4416,6 +4515,10 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
 
       corr_name->info.name.spec_id = exposed_spec->info.spec.id;
       corr_name->info.name.resolved = exposed_spec->info.spec.range_var->info.name.original;
+      if (PT_IS_SPEC_REAL_TABLE (exposed_spec))
+	{
+	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_REAL_TABLE);
+	}
 
       /* attach the data type */
       corr_name->type_enum = PT_TYPE_OBJECT;
@@ -4594,6 +4697,11 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	  in_node->info.name.resolved = savespec->info.spec.range_var->info.name.original;
 	  in_node->info.name.partition = savespec->info.spec.range_var->info.name.partition;
 
+	  if (PT_IS_SPEC_REAL_TABLE (savespec))
+	    {
+	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_REAL_TABLE);
+	    }
+
 	  savespec = pt_unwhacked_spec (parser, scope, savespec);
 
 	  *p_entity = savespec;
@@ -4662,6 +4770,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	      in_node->info.name.meta_class = PT_META_CLASS;
 	      in_node->info.name.spec_id = class_spec->info.spec.id;
 	      in_node->info.name.resolved = class_spec->info.spec.range_var->info.name.original;
+	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_REAL_TABLE);
 	      /* attach the data type */
 	      in_node->type_enum = PT_TYPE_OBJECT;
 	      if (class_spec->info.spec.flat_entity_list)
@@ -4781,6 +4890,10 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    {
 	      /* only mark it resolved if it was found! transfer the info from arg1 to arg2 */
 	      arg2->info.name.resolved = arg1->info.name.resolved;
+	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_REAL_TABLE))
+		{
+		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_REAL_TABLE);
+		}
 	      /* don't loose list */
 	      arg2->next = in_node->next;
 	      /* save alias */
@@ -4834,6 +4947,10 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 
 	      /* A meta class attribute, transfer the class info from arg1 to arg2 */
 	      arg2->info.name.resolved = arg1->info.name.resolved;
+	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_REAL_TABLE))
+		{
+		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_REAL_TABLE);
+		}
 	      /* don't lose list */
 	      arg2->next = in_node->next;
 	      /* save alias */
@@ -5915,6 +6032,10 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	  while (q)
 	    {
 	      q->info.name.resolved = p->info.spec.range_var->info.name.original;
+	      if (PT_IS_SPEC_REAL_TABLE (p))
+		{
+		  PT_NAME_INFO_SET_FLAG (q, PT_NAME_REAL_TABLE);
+		}
 	      q = q->next;
 	    }
 	  p = p->next;
@@ -6003,7 +6124,7 @@ pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from)
       new_name->info.name.resolved = from->info.spec.range_var->info.name.original;
       /* set type enum to the expected type */
       new_name->type_enum = pt_db_to_type_enum (pt_Reserved_name_table[i].type);
-      if (new_name->type_enum == DB_TYPE_OBJECT)
+      if (new_name->type_enum == PT_TYPE_OBJECT)
 	{
 	  new_name->data_type =
 	    pt_domain_to_data_type (parser,
@@ -6239,7 +6360,8 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       const char *name = db_attr->header.name;
 
-      if (db_attr->default_value.default_expr == DB_DEFAULT_NONE && DB_IS_NULL (&db_attr->default_value.value))
+      if (db_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+	  && DB_IS_NULL (&db_attr->default_value.value))
 	{
 	  continue;
 	}
@@ -6530,7 +6652,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       /* clear hint if no matched any item */
       if (*index_ss == NULL)
 	{
-	  node->info.query.q.select.hint &= ~PT_HINT_INDEX_SS;
+	  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint & ~PT_HINT_INDEX_SS);
 	}
     }
 
@@ -6545,7 +6667,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       /* clear hint if no matched any item */
       if (*index_ls == NULL)
 	{
-	  node->info.query.q.select.hint &= ~PT_HINT_INDEX_LS;
+	  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint & ~PT_HINT_INDEX_LS);
 	}
     }
 
@@ -7001,13 +7123,13 @@ generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list, NATURA
        */
       if (pt_cur->alias_print)
 	{
-	  attr_cur->name = pt_cur->alias_print;
+	  attr_cur->name = (char *) pt_cur->alias_print;
 	}
       else
 	{
 	  if (pt_cur->node_type == PT_NAME)
 	    {
-	      attr_cur->name = pt_cur->info.name.original;
+	      attr_cur->name = (char *) pt_cur->info.name.original;
 	    }
 	}
 
@@ -7063,8 +7185,8 @@ generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN
 	}
 
       attr_cur->next = NULL;
-      attr_cur->name = db_attribute_name (db_attr_cur);
-      attr_cur->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (db_attribute_type (db_attr_cur));
+      attr_cur->name = (char *) db_attribute_name (db_attr_cur);
+      attr_cur->type_enum = pt_db_to_type_enum (db_attribute_type (db_attr_cur));
       attr_cur->meta_class = (db_attribute_is_shared (db_attr_cur) ? PT_SHARED : PT_NORMAL);
 
       if (attr_head == NULL)
@@ -7245,6 +7367,11 @@ pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec, NATURAL_JOIN_ATTR_IN
   else
     {
       assert (PT_SPEC_IS_DERIVED (spec));
+    }
+
+  if (PT_IS_SPEC_REAL_TABLE (spec))
+    {
+      PT_NAME_INFO_SET_FLAG (name, PT_NAME_REAL_TABLE);
     }
 
   name->info.name.spec_id = spec->info.spec.id;
@@ -7547,7 +7674,7 @@ pt_resolve_group_having_alias_pt_name (PARSER_CONTEXT * parser, PT_NODE ** node_
       return;
     }
 
-  n_str = node->info.name.original;
+  n_str = (char *) node->info.name.original;
 
   for (col = select_list; col != NULL; col = col->next)
     {
@@ -7807,7 +7934,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 			      node->info.name.original);
 		  return NULL;
 		}
-	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	  parser_free_tree (parser, statement->info.query.q.select.for_update);
 	  statement->info.query.q.select.for_update = NULL;
@@ -7817,7 +7944,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  /* Flag all specs */
 	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
-	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	}
     }
@@ -8204,7 +8331,7 @@ pt_insert_entity (PARSER_CONTEXT * parser, PT_NODE * path, PT_NODE * prev_entity
       res1 = arg1->data_type;
     }
 
-  if (!res || !res->node_type == PT_DATA_TYPE || !res->info.data_type.entity)
+  if (!res || !(res->node_type == PT_DATA_TYPE) || !res->info.data_type.entity)
     {
       /* if we have a path, it must be from a known entity list */
       PT_INTERNAL_ERROR (parser, "resolution");
@@ -8591,7 +8718,7 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return false;
     }
 
-  node->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
+  node->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
   switch (node->type_enum)
     {
     case PT_TYPE_OBJECT:
@@ -8631,6 +8758,7 @@ static PT_NODE *
 pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
 {
   PT_NODE *new_node;
+  int error = NO_ERROR;
 
   /* initialize the new node with the corresponding fields from the PT_FUNCTION node. */
   new_node = parser_new_node (parser, PT_METHOD_CALL);
@@ -8665,10 +8793,14 @@ pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG 
 
       parser_walk_leaves (parser, new_node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
-      new_node->type_enum =
-	(PT_TYPE_ENUM) pt_db_to_type_enum ((DB_TYPE)
-					   jsp_get_return_type (new_node->info.method_call.method_name->info.name.
-								original));
+      /* returns either error or DB_TYPE... */
+      error = jsp_get_return_type (new_node->info.method_call.method_name->info.name.original);
+      if (error < 0)
+	{
+	  PT_INTERNAL_ERROR (parser, "jsp_get_return_type");
+	  return NULL;
+	}
+      new_node->type_enum = pt_db_to_type_enum ((DB_TYPE) error);
 
       d = pt_type_enum_to_db_domain (new_node->type_enum);
       d = tp_domain_cache (d);
@@ -8849,6 +8981,10 @@ pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser, PT_NODE * res_list, 
     {
       node->info.name.spec_id = entity->info.spec.id;
       node->info.name.resolved = entity->info.spec.entity_name->info.name.original;
+      if (PT_IS_SPEC_REAL_TABLE (entity))
+	{
+	  PT_NAME_INFO_SET_FLAG (node, PT_NAME_REAL_TABLE);
+	}
       node->info.name.meta_class = PT_CLASS;
     }
 
@@ -9608,7 +9744,7 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 		  {
 		    PARSER_VARCHAR *alias;
 		    alias = pt_print_bytes (parser, att);
-		    col = pt_name (parser, alias->bytes);
+		    col = pt_name (parser, (const char *) alias->bytes);
 		  }
 		else
 		  {		/* generate column name */

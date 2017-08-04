@@ -494,7 +494,7 @@ db_compile_statement_local (DB_SESSION * session)
   PT_NODE *statement = NULL;
   PT_NODE *statement_result = NULL;
   DB_QUERY_TYPE *qtype;
-  int cmd_type;
+  CUBRID_STMT_TYPE cmd_type;
   int err;
   static long seed = 0;
 
@@ -1294,7 +1294,7 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
 {
   PT_NODE *statement;
   DB_QUERY_TYPE *qtype;
-  int cmd_type;
+  CUBRID_STMT_TYPE cmd_type;
 
   /* obvious error checking - invalid parameter */
   if (!session || !session->parser)
@@ -1365,6 +1365,8 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
 	      /* the type of result of some command is integer */
 	      qtype->db_type = DB_TYPE_INTEGER;
 	      break;
+	    default:
+	      break;
 	    }
 	}
     }
@@ -1416,6 +1418,8 @@ db_get_start_line (DB_SESSION * session, int stmt)
  * return : stmt's node type
  * session(in): contains the SQL query that has been compiled
  * stmt(in): statement id returned by a successful compilation
+ *
+ * todo: is this acceptable? to return both error code and statement type?
  */
 int
 db_get_statement_type (DB_SESSION * session, int stmt)
@@ -2044,7 +2048,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list, DB_
       current_value = current_value->next;
     }
 
-  values.vals = malloc (values.size * sizeof (DB_VALUE));
+  values.vals = (DB_VALUE *) malloc (values.size * sizeof (DB_VALUE));
   if (values.vals == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, values.size * sizeof (DB_VALUE));
@@ -2509,7 +2513,7 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	}
       if (tp_value_cast_preserve_domain (hv, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	{
-	  d = pt_type_enum_to_db_domain (TP_DOMAIN_TYPE (hv_dom));
+	  d = pt_type_enum_to_db_domain (pt_db_to_type_enum (TP_DOMAIN_TYPE (hv_dom)));
 	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
 		       d);
 	  tp_domain_free (d);

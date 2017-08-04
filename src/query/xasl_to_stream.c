@@ -257,7 +257,7 @@ static char *xts_process_regu_variable_list (char *ptr, const REGU_VARIABLE_LIST
  * Note: map the XASL tree into linear byte stream of disk
  * representation. On successful return, `*xasl_stream'
  * will have the address of memory containing the linearly
- * mapped xasl stream, `*xasl_stream_size' will have the
+ * mapped xasl stream, `*buffer_size' will have the
  * # of bytes allocated for the stream
  *
  * Note: the caller should be responsible for free the memory of
@@ -336,10 +336,10 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   p = or_pack_int (p, body_size);
 
   /* set result */
-  stream->xasl_stream = xts_Stream_buffer;
-  stream->xasl_stream_size = xts_Free_offset_in_stream;
+  stream->buffer = xts_Stream_buffer;
+  stream->buffer_size = xts_Free_offset_in_stream;
 
-  if (stream->xasl_stream_size <= 0)
+  if (stream->buffer_size <= 0)
     {
       assert (false);
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
@@ -2819,6 +2819,13 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->ordbynum_flag);
 
+  offset = xts_save_regu_variable (xasl->limit_offset);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   offset = xts_save_regu_variable (xasl->limit_row_count);
   if (offset == ER_FAILED)
     {
@@ -4585,6 +4592,8 @@ xts_process_key_info (char *ptr, const KEY_INFO * key_info)
     }
 
   ptr = or_pack_int (ptr, key_info->is_constant);
+  ptr = or_pack_int (ptr, key_info->key_limit_reset);
+  ptr = or_pack_int (ptr, key_info->is_user_given_keylimit);
 
   offset = xts_save_regu_variable (key_info->key_limit_l);
   if (offset == ER_FAILED)
@@ -4599,8 +4608,6 @@ xts_process_key_info (char *ptr, const KEY_INFO * key_info)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
-
-  ptr = or_pack_int (ptr, key_info->key_limit_reset);
 
   return ptr;
 }
@@ -5626,6 +5633,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* instnum_val */
 	   + PTR_SIZE		/* save_instnum_val */
 	   + OR_INT_SIZE	/* instnum_flag */
+	   + PTR_SIZE		/* limit_offset */
 	   + PTR_SIZE		/* limit_row_count */
 	   + PTR_SIZE		/* fptr_list */
 	   + PTR_SIZE		/* scan_ptr */
@@ -6556,9 +6564,10 @@ xts_sizeof_key_info (const KEY_INFO * key_info)
   size += (OR_INT_SIZE		/* key_cnt */
 	   + PTR_SIZE		/* key_ranges */
 	   + OR_INT_SIZE	/* is_constant */
+	   + OR_INT_SIZE	/* key_limit_reset */
+	   + OR_INT_SIZE	/* is_user_given_keylimit */
 	   + PTR_SIZE		/* key_limit_l */
-	   + PTR_SIZE		/* key_limit_u */
-	   + OR_INT_SIZE);	/* key_limit_reset */
+	   + PTR_SIZE);		/* key_limit_u */
 
   return size;
 }

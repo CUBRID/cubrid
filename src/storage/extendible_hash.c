@@ -192,7 +192,7 @@ struct ehash_repetition
  */
 /* TODO: ~0: M2 64-bit */
 #define GETBITS(value, pos, n) \
-  ( ((value) >> ( EHASH_HASH_KEY_BITS - (pos) - (n) + 1)) & (~(~0 << (n))) )
+  ( ((value) >> ( EHASH_HASH_KEY_BITS - (pos) - (n) + 1)) & (~(~0UL << (n))) )
   /* Plus 1 since bits are numbered from 1 to 32 */
 
 /*
@@ -1262,7 +1262,6 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
 {
   EHASH_DIR_HEADER *dir_header_p;
   PAGE_PTR dir_page_p;
-  bool save_check_interrupt;
 
   if (ehid_p == NULL)
     {

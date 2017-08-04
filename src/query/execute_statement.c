@@ -402,6 +402,11 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   char *user_name;
   DB_DATETIME *datetime;
   int month, day, year, hour, minute, second, millisecond;
+  DB_VALUE default_value, format_val, lang_val;
+  char *lang_str = NULL;
+  int flag;
+  TP_DOMAIN *result_domain = NULL;
+  bool has_user_format;
 
   assert (class_name->node_type == PT_NAME);
 
@@ -413,61 +418,117 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      if (att->default_value.default_expr != DB_DEFAULT_NONE)
+      if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	{
-	  switch (att->default_value.default_expr)
+	  switch (att->default_value.default_expr.default_expr_type)
 	    {
 	    case DB_DEFAULT_SYSTIME:
-	    case DB_DEFAULT_CURRENTTIME:
 	      if (DB_IS_NULL (&parser->sys_datetime))
 		{
-		  db_make_null (&att->default_value.value);
+		  db_make_null (&default_value);
 		}
 	      else
 		{
 		  db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (&parser->sys_datetime), &month, &day, &year,
 				      &hour, &minute, &second, &millisecond);
-		  db_make_time (&att->default_value.value, hour, minute, second);
+		  db_make_time (&default_value, hour, minute, second);
+		}
+	      break;
+	    case DB_DEFAULT_CURRENTTIME:
+	      if (DB_IS_NULL (&parser->sys_datetime))
+		{
+		  db_make_null (&default_value);
+		}
+	      else
+		{
+		  DB_TIME cur_time, db_time;
+		  const char *t_source, *t_dest;
+		  DB_DATETIME *datetime;
+
+		  datetime = DB_GET_DATETIME (&parser->sys_datetime);
+		  t_source = tz_get_system_timezone ();
+		  t_dest = tz_get_session_local_timezone ();
+		  db_time = datetime->time / 1000;
+		  error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
+						       strlen (t_dest), &cur_time);
+		  DB_MAKE_ENCODED_TIME (&default_value, &cur_time);
 		}
 	      break;
 	    case DB_DEFAULT_SYSDATE:
 	      if (DB_IS_NULL (&parser->sys_datetime))
 		{
-		  db_make_null (&att->default_value.value);
+		  db_make_null (&default_value);
 		}
 	      else
 		{
 		  datetime = DB_GET_DATETIME (&parser->sys_datetime);
-		  error = db_value_put_encoded_date (&att->default_value.value, &datetime->date);
+		  error = db_value_put_encoded_date (&default_value, &datetime->date);
 		}
 	      break;
 	    case DB_DEFAULT_SYSDATETIME:
-	      error = pr_clone_value (&parser->sys_datetime, &att->default_value.value);
+	      error = pr_clone_value (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_SYSTIMESTAMP:
-	      error = db_datetime_to_timestamp (&parser->sys_datetime, &att->default_value.value);
+	      error = db_datetime_to_timestamp (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_UNIX_TIMESTAMP:
-	      error = db_unix_timestamp (&parser->sys_datetime, &att->default_value.value);
+	      error = db_unix_timestamp (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_USER:
 	      user_name = db_get_user_and_host_name ();
-	      error = db_make_string (&att->default_value.value, user_name);
-	      att->default_value.value.need_clear = true;
+	      error = db_make_string (&default_value, user_name);
+	      default_value.need_clear = true;
 	      break;
 	    case DB_DEFAULT_CURR_USER:
 	      user_name = db_get_user_name ();
-	      error = DB_MAKE_STRING (&att->default_value.value, user_name);
-	      att->default_value.value.need_clear = true;
+	      error = DB_MAKE_STRING (&default_value, user_name);
+	      default_value.need_clear = true;
 	      break;
 	    case DB_DEFAULT_CURRENTDATE:
-	      error = pr_clone_value (&parser->sys_datetime, &att->default_value.value);
-	      break;
 	    case DB_DEFAULT_CURRENTDATETIME:
-	      error = pr_clone_value (&parser->sys_datetime, &att->default_value.value);
+	      if (DB_IS_NULL (&parser->sys_datetime))
+		{
+		  db_make_null (&default_value);
+		}
+	      else
+		{
+		  TZ_REGION system_tz_region, session_tz_region;
+		  DB_DATETIME dest_dt;
+		  DB_DATETIME *src_dt;
+
+		  src_dt = DB_GET_DATETIME (&parser->sys_datetime);
+		  tz_get_system_tz_region (&system_tz_region);
+		  tz_get_session_tz_region (&session_tz_region);
+		  error =
+		    tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
+		  if (att->default_value.default_expr.default_expr_type == DB_DEFAULT_CURRENTDATE)
+		    {
+		      DB_MAKE_ENCODED_DATE (&default_value, &dest_dt.date);
+		    }
+		  else
+		    {
+		      DB_MAKE_DATETIME (&default_value, &dest_dt);
+		    }
+		}
 	      break;
 	    case DB_DEFAULT_CURRENTTIMESTAMP:
-	      error = db_datetime_to_timestamp (&parser->sys_datetime, &att->default_value.value);
+	      if (DB_IS_NULL (&parser->sys_datetime))
+		{
+		  db_make_null (&default_value);
+		}
+	      else
+		{
+		  DB_DATE tmp_date;
+		  DB_TIME tmp_time;
+		  DB_TIMESTAMP tmp_timestamp;
+		  DB_DATETIME *sys_datetime;
+
+		  sys_datetime = DB_GET_DATETIME (&parser->sys_datetime);
+		  tmp_date = sys_datetime->date;
+		  tmp_time = sys_datetime->time / 1000;
+		  db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
+		  db_make_timestamp (&default_value, tmp_timestamp);
+		}
 	      break;
 	    default:
 	      break;
@@ -477,6 +538,63 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	    {
 	      break;
 	    }
+
+	  if (att->default_value.default_expr.default_expr_op == T_TO_CHAR)
+	    {
+	      if (att->default_value.default_expr.default_expr_format != NULL)
+		{
+		  has_user_format = 1;
+		  db_make_string (&format_val, att->default_value.default_expr.default_expr_format);
+		}
+	      else
+		{
+		  has_user_format = 0;
+		  db_make_null (&format_val);
+		}
+
+	      lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+	      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+	      db_make_int (&lang_val, flag);
+
+	      if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (att->domain)))
+		{
+		  /* TO_CHAR returns a string value, we need to pass an expected domain of the result */
+		  if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&default_value)))
+		    {
+		      result_domain = NULL;
+		    }
+		  else if (DB_IS_NULL (&format_val))
+		    {
+		      result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+		    }
+		  else
+		    {
+		      result_domain = tp_domain_resolve_value (&format_val, NULL);
+		    }
+		}
+	      else
+		{
+		  result_domain = att->domain;
+		}
+
+	      error = db_to_char (&default_value, &format_val, &lang_val, &att->default_value.value, result_domain);
+
+	      if (has_user_format)
+		{
+		  pr_clear_value (&format_val);
+		}
+
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
+	    }
+	  else
+	    {
+	      pr_clone_value (&default_value, &att->default_value.value);
+	    }
+
+	  db_value_clear (&default_value);
 
 	  /* make sure the default value can be used for this attribute */
 	  dom_status = tp_value_cast (&att->default_value.value, &att->default_value.value, att->domain, false);
@@ -2659,11 +2777,11 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
       db_make_string (&value, comment);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
+      pr_clear_value (&value);
       if (error < 0)
 	{
 	  goto end;
 	}
-      pr_clear_value (&value);
     }
 
   serial_object = dbt_finish_object (obj_tmpl);
@@ -2831,7 +2949,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement)
     {
       /* skip ddl execution in case of parameter or opt. level */
-      if (pt_is_ddl_statement (statement) == true)
+      if (pt_is_ddl_statement (statement) != 0)
 	{
 	  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
 	    {
@@ -2858,7 +2976,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        * error. */
 
       /* disable data replication log for schema replication log types in HA mode */
-      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF && is_stmt_based_repl_type (statement))
+      if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
 	{
 	  need_stmt_replication = true;
 
@@ -3318,7 +3436,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
   /* skip ddl execution in case of parameter or opt. level */
-  if (pt_is_ddl_statement (statement) == true)
+  if (pt_is_ddl_statement (statement) != 0)
     {
       if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
 	{
@@ -3344,7 +3462,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* for the subset of nodes which represent top level statements, process them; for any other node, return an error */
 
   /* disable data replication log for schema replication log types in HA mode */
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF && is_stmt_based_repl_type (statement))
+  if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
     {
       need_stmt_based_repl = true;
 
@@ -4654,7 +4772,7 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	/* 'cost' is referenced by 'val', it should be allocated from heap, and will be freed when free 'val' if set
 	 * 'need_clear' to 'true' */
-	cost = db_private_alloc (NULL, 2);
+	cost = (char *) db_private_alloc (NULL, 2);
 	if (cost == NULL)
 	  {
 	    return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5618,7 +5736,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* allocate classes_names array */
-  classes_names = db_private_alloc (NULL, num_classes * sizeof (char *));
+  classes_names = (char **) db_private_alloc (NULL, num_classes * sizeof (char *));
   if (classes_names == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5626,7 +5744,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* allocate locks array */
-  locks = db_private_alloc (NULL, num_classes * sizeof (LOCK));
+  locks = (LOCK *) db_private_alloc (NULL, num_classes * sizeof (LOCK));
   if (locks == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5634,14 +5752,14 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* allocate need_subclasses array */
-  need_subclasses = db_private_alloc (NULL, num_classes * sizeof (int));
+  need_subclasses = (int *) db_private_alloc (NULL, num_classes * sizeof (int));
   if (need_subclasses == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }
 
-  flags = db_private_alloc (NULL, num_classes * sizeof (LC_PREFETCH_FLAGS));
+  flags = (LC_PREFETCH_FLAGS *) db_private_alloc (NULL, num_classes * sizeof (LC_PREFETCH_FLAGS));
   if (flags == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -6243,7 +6361,6 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE returnval, trigger_name_val, user_val;
   bool has_trigger_comment = false;
   TR_TRIGGER *trigger;
-  MOP mop1, mop2;
   int count;
   bool has_savepoint = false;
 
@@ -6346,6 +6463,9 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  db_make_string (&user_val, trigger_owner_name);
 
 		  au_change_trigger_owner_method (t->op, &returnval, &trigger_name_val, &user_val);
+
+		  pr_clear_value (&trigger_name_val);
+		  pr_clear_value (&user_val);
 
 		  if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
 		    {
@@ -8001,16 +8121,16 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       error =
-	prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
+	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
 				   parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
 				   query_flag);
       AU_RESTORE (au_save);
     }
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream.xasl_stream)
+  if (stream.buffer)
     {
-      free_and_init (stream.xasl_stream);
+      free_and_init (stream.buffer);
     }
 
   if (list_id)
@@ -8124,11 +8244,11 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique, PT_NODE 
 		  if (has_unique_temp)
 		    {
 		      *has_unique = 1;
-		      spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
+		      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_HAS_UNIQUE);
 		    }
 		  else
 		    {
-		      spec->info.spec.flag |= PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE;
+		      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE);
 		    }
 		}
 	      else
@@ -8762,7 +8882,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL
 	       * file id returned */
-	      if (stream.xasl_stream && (err >= NO_ERROR))
+	      if (stream.buffer && (err >= NO_ERROR))
 		{
 		  err = prepare_query (contextp, &stream);
 
@@ -8780,9 +8900,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       * updated. */
 
 	      /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-	      if (stream.xasl_stream)
+	      if (stream.buffer)
 		{
-		  free_and_init (stream.xasl_stream);
+		  free_and_init (stream.buffer);
 		}
 	      statement->use_plan_cache = 0;
 	    }
@@ -9562,16 +9682,16 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       error =
-	prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
+	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
 				   parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
 				   query_flag);
       AU_RESTORE (au_save);
     }
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream.xasl_stream)
+  if (stream.buffer)
     {
-      free_and_init (stream.xasl_stream);
+      free_and_init (stream.buffer);
     }
 
   if (list_id)
@@ -10021,7 +10141,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 
 	      /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL
 	       * file id returned */
-	      if (stream.xasl_stream && (err >= NO_ERROR))
+	      if (stream.buffer && (err >= NO_ERROR))
 		{
 		  err = prepare_query (contextp, &stream);
 		  if (err != NO_ERROR)
@@ -10038,9 +10158,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	       * updated. */
 
 	      /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-	      if (stream.xasl_stream)
+	      if (stream.buffer)
 		{
-		  free_and_init (stream.xasl_stream);
+		  free_and_init (stream.buffer);
 		}
 	      statement->use_plan_cache = 0;
 	    }
@@ -10626,7 +10746,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = er_errid ();
 	}
 
-      if (stream.xasl_stream && (error >= NO_ERROR))
+      if (stream.buffer && (error >= NO_ERROR))
 	{
 	  error = prepare_query (contextp, &stream);
 	  if (error != NO_ERROR)
@@ -10642,9 +10762,9 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* As a result of query preparation of the server, the XASL cache for this query will be created or updated. */
 
       /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-      if (stream.xasl_stream)
+      if (stream.buffer)
 	{
-	  free_and_init (stream.xasl_stream);
+	  free_and_init (stream.buffer);
 	}
 
       statement->use_plan_cache = 0;
@@ -10729,7 +10849,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = er_errid ();
     }
 
-  if (error == NO_ERROR && stream.xasl_stream != NULL)
+  if (error == NO_ERROR && stream.buffer != NULL)
     {
       int au_save;
       QUERY_FLAG query_flag;
@@ -10741,21 +10861,21 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  query_flag |= TRIGGER_IS_INVOLVED;
 	}
 
-      assert (stream.xasl_stream_size > 0);
+      assert (stream.buffer_size > 0);
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       error =
-	prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
+	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
 				   (parser->host_var_count + parser->auto_param_count), parser->host_variables,
 				   &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream.xasl_stream)
+  if (stream.buffer)
     {
-      free_and_init (stream.xasl_stream);
+      free_and_init (stream.buffer);
     }
 
   if (list_id)
@@ -11374,7 +11494,8 @@ do_create_odku_stmt (PARSER_CONTEXT * parser, PT_NODE * insert)
       return NULL;
     }
 
-  insert->info.insert.spec->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
+  insert->info.insert.spec->info.spec.flag =
+    (PT_SPEC_FLAG) (insert->info.insert.spec->info.spec.flag | PT_SPEC_FLAG_UPDATE);
 
   update = parser_new_node (parser, PT_UPDATE);
   if (update == NULL)
@@ -11478,13 +11599,13 @@ do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** o
       return NO_ERROR;
     }
 
-  unique_btids = db_private_alloc (NULL, unique_count * sizeof (BTID));
+  unique_btids = (BTID *) db_private_alloc (NULL, unique_count * sizeof (BTID));
   if (unique_btids == NULL)
     {
       error = ER_FAILED;
       goto cleanup;
     }
-  unique_keys = db_private_alloc (NULL, unique_count * sizeof (DB_VALUE));
+  unique_keys = (DB_VALUE *) db_private_alloc (NULL, unique_count * sizeof (DB_VALUE));
   if (unique_keys == NULL)
     {
       error = ER_FAILED;
@@ -12293,7 +12414,7 @@ cleanup:
     }
 
   /* restore flags */
-  statement->info.insert.spec->info.spec.flag = flag;
+  statement->info.insert.spec->info.spec.flag = (PT_SPEC_FLAG) flag;
 
   if (*otemplate != NULL && error != NO_ERROR)
     {
@@ -12679,7 +12800,7 @@ cleanup:
   if (update != NULL)
     {
       /* restore flags */
-      statement->info.insert.spec->info.spec.flag = flag;
+      statement->info.insert.spec->info.spec.flag = (PT_SPEC_FLAG) flag;
       update->info.update.assignment = NULL;
       update->info.update.spec = NULL;
       if (update->info.update.check_where != NULL)
@@ -12779,7 +12900,7 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spe
   while (attr)
     {
       if (db_attribute_is_non_null (attr) && db_value_is_null (db_attribute_default (attr))
-	  && attr->default_value.default_expr == DB_DEFAULT_NONE
+	  && attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
 	  && (is_attr_not_in_insert_list (parser, attr_list, db_attribute_name (attr)) || has_default_values_list)
 	  && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
 	{
@@ -13692,16 +13813,16 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (error >= NO_ERROR)
 	    {
 	      error =
-		prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
+		prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
 					   parser->host_var_count + parser->auto_param_count, parser->host_variables,
 					   &list_id, query_flag);
 	    }
 	  statement->etc = list_id;
 
 	  /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-	  if (stream.xasl_stream)
+	  if (stream.buffer)
 	    {
-	      free_and_init (stream.xasl_stream);
+	      free_and_init (stream.buffer);
 	    }
 
 	  if (error >= NO_ERROR)
@@ -13890,7 +14011,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL file id
        * returned */
-      if (stream.xasl_stream && (err == NO_ERROR))
+      if (stream.buffer && (err == NO_ERROR))
 	{
 	  err = prepare_query (contextp, &stream);
 	  if (err != NO_ERROR)
@@ -13906,9 +14027,9 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* As a result of query preparation of the server, the XASL cache for this query will be created or updated. */
 
       /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-      if (stream.xasl_stream)
+      if (stream.buffer)
 	{
-	  free_and_init (stream.xasl_stream);
+	  free_and_init (stream.buffer);
 	}
       statement->use_plan_cache = 0;
     }
@@ -14448,7 +14569,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   repl_stmt.db_user = db_get_user_name ();
 
-  if (pt_is_ddl_statement (statement) == true)
+  if (pt_is_ddl_statement (statement) != 0)
     {
       repl_stmt.sys_prm_context = sysprm_print_parameters_for_ha_repl ();
     }
@@ -14626,7 +14747,7 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   error =
-    prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
+    prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
 			       parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
 			       query_flag);
 
@@ -14639,9 +14760,9 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 end:
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream.xasl_stream)
+  if (stream.buffer)
     {
-      free_and_init (stream.xasl_stream);
+      free_and_init (stream.buffer);
     }
 
   /* mark the end of another level of xasl packing */
@@ -15613,7 +15734,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* generate MERGE XASL */
 	  contextp->xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd, &non_nulls_ins, default_expr_attrs);
 
-	  stream.xasl_stream = NULL;
+	  stream.buffer = NULL;
 
 	  if (contextp->xasl && (err >= NO_ERROR))
 	    {
@@ -15652,7 +15773,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* cache the XASL */
-	  if (stream.xasl_stream && (err >= NO_ERROR))
+	  if (stream.buffer && (err >= NO_ERROR))
 	    {
 	      err = prepare_query (contextp, &stream);
 	      if (err != NO_ERROR)
@@ -15666,9 +15787,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_exit_packing_buf ();
 
 	  /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-	  if (stream.xasl_stream)
+	  if (stream.buffer)
 	    {
-	      free_and_init (stream.xasl_stream);
+	      free_and_init (stream.buffer);
 	    }
 	  statement->use_plan_cache = 0;
 	  statement->xasl_id = stream.xasl_id;

@@ -457,7 +457,7 @@ partition_cache_entry_to_pruning_context (PRUNING_CONTEXT * pinfo, PARTITION_CAC
 
   pinfo->attr_id = entry_p->attr_id;
 
-  pinfo->partition_type = pinfo->partitions[0].partition_type;
+  pinfo->partition_type = (DB_PARTITION_TYPE) pinfo->partitions[0].partition_type;
 
   return NO_ERROR;
 }
@@ -1024,7 +1024,7 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 	}
 
       /* check misc_operand for EXTRACT, etc */
-      if (left->value.arithptr->misc_operand != left->value.arithptr->misc_operand)
+      if (left->value.arithptr->misc_operand != right->value.arithptr->misc_operand)
 	{
 	  return false;
 	}
@@ -2320,7 +2320,7 @@ reload_from_cache:
       goto error_return;
     }
 
-  pinfo->partition_type = master->partition_type;
+  pinfo->partition_type = (DB_PARTITION_TYPE) master->partition_type;
   pinfo->root_repr_id = master->rep_id;
 
   pinfo->attr_id = partition_get_attribute_id (pinfo->partition_pred->func_regu);
@@ -3399,7 +3399,7 @@ cleanup:
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
   if (error != NO_ERROR)
     {

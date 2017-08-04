@@ -36,6 +36,11 @@ if(WIN32)
   list(APPEND CASCCI_SOURCES ${BASE_DIR}/rand.c)
 endif(WIN32)
 
+SET_SOURCE_FILES_PROPERTIES(
+  ${CASCCI_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
 add_library(cascci SHARED ${CASCCI_SOURCES})
 set_target_properties(cascci PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 set_target_properties(cascci PROPERTIES PUBLIC_HEADER "${CCI_DIR}/cas_cci.h;${BROKER_DIR}/cas_error.h")

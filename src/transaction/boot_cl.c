@@ -132,8 +132,9 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* root_class_hfid */ {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID},
   /* data page_size */ -1, /* log page_size */ -1,
   /* disk_compatibility */ 0.0,
-  /* ha_server_state */ -1,
-  /* server_session_key */ {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+  /* ha_server_state */ HA_SERVER_STATE_NA,
+  /* server_session_key */ {(char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF,
+			    (char) 0xFF},
   INTL_CODESET_NONE,
   NULL
 };
@@ -832,6 +833,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
+  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
+
   /* initialize the "areas" memory manager, requires prm_ */
   area_init ();
   locator_initialize_areas ();
@@ -1195,7 +1198,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
 #if defined(CS_MODE)
-  if (lang_set_charset (boot_Server_credential.db_charset) != NO_ERROR)
+  if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
@@ -2731,7 +2734,7 @@ boot_define_index_key (MOP class_mop)
 
   DB_MAKE_INTEGER (&prefix_default, -1);
 
-  error_code = smt_set_attribute_default (def, "key_prefix_length", 0, &prefix_default, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "key_prefix_length", 0, &prefix_default, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3253,7 +3256,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "current_val", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "current_val", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3264,7 +3267,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "increment_val", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "increment_val", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3289,7 +3292,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "cyclic", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "cyclic", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3300,7 +3303,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "started", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "started", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3329,7 +3332,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "cached_num", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "cached_num", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3846,7 +3849,7 @@ boot_add_charsets (MOP class_mop)
       DB_MAKE_INTEGER (&val, i);
       db_put_internal (obj, CT_DBCHARSET_CHARSET_ID, &val);
 
-      charset_name = (char *) lang_charset_cubrid_name (i);
+      charset_name = (char *) lang_charset_cubrid_name ((INTL_CODESET) i);
       if (charset_name == NULL)
 	{
 	  return ER_LANG_CODESET_NOT_AVAILABLE;
@@ -5589,14 +5592,14 @@ boot_get_host_connected (void)
   return boot_Host_connected;
 }
 
-int
+HA_SERVER_STATE
 boot_get_ha_server_state (void)
 {
   return boot_Server_credential.ha_server_state;
 }
 
 /*
- * boot_get_lob_path - return the lob path which is recevied from the server
+ * boot_get_lob_path - return the lob path which is received from the server
  */
 const char *
 boot_get_lob_path (void)

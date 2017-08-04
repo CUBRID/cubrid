@@ -183,7 +183,9 @@ int yybuffer_pos;
 [cC][lL][oO][bB]_[tT][oO]_[cC][hH][aA][rR]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return CLOB_TO_CHAR; }
-[cC][lL][oO][sS][eE]							{ begin_token(yytext);   return CLOSE; }
+[cC][lL][oO][sS][eE]							{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return CLOSE; }
 [cC][oO][aA][lL][eE][sS][cC][eE]					{ begin_token(yytext);   return COALESCE; }
 [cC][oO][lL][lL][aA][tT][eE]						{ begin_token(yytext);   return COLLATE; }
 [cC][oO][lL][lL][aA][tT][iI][oO][nN]					{ begin_token(yytext);
@@ -547,7 +549,9 @@ int yybuffer_pos;
 										return OFFSET; }
 [oO][nN]								{ begin_token(yytext);   return ON_; }
 [oO][nN][lL][yY]							{ begin_token(yytext);   return ONLY; }
-[oO][pP][eE][nN]							{ begin_token(yytext);   return OPEN; }
+[oO][pP][eE][nN]							{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return OPEN; }
 [oO][pP][tT][iI][mM][iI][zZ][aA][tT][iI][oO][nN]			{ begin_token(yytext);   return OPTIMIZATION; }
 [oO][pP][tT][iI][oO][nN]						{ begin_token(yytext);   return OPTION; }
 [oO][rR]								{ begin_token(yytext);   return OR; }

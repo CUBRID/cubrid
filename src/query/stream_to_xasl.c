@@ -1923,6 +1923,20 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
+      xasl->limit_offset = NULL;
+    }
+  else
+    {
+      xasl->limit_offset = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->limit_offset == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
       xasl->limit_row_count = NULL;
     }
   else
@@ -2272,7 +2286,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &xasl->cat_fetched);
 
   ptr = or_unpack_int (ptr, &tmp);
-  xasl->scan_op_type = tmp;
+  xasl->scan_op_type = (SCAN_OPERATION_TYPE) tmp;
 
   ptr = or_unpack_int (ptr, &xasl->upd_del_class_cnt);
 
@@ -4624,7 +4638,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   access_spec->pruned = false;
 
   ptr = or_unpack_int (ptr, &val);
-  access_spec->flags = val;
+  access_spec->flags = (ACCESS_SPEC_FLAG) val;
 
   return ptr;
 
@@ -4733,6 +4747,7 @@ static char *
 stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 {
   int offset;
+  int i;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &key_info->key_cnt);
@@ -4753,7 +4768,14 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 	}
     }
 
-  ptr = or_unpack_int (ptr, &key_info->is_constant);
+  ptr = or_unpack_int (ptr, &i);
+  key_info->is_constant = (bool) i;
+
+  ptr = or_unpack_int (ptr, &i);
+  key_info->key_limit_reset = (bool) i;
+
+  ptr = or_unpack_int (ptr, &i);
+  key_info->is_user_given_keylimit = (bool) i;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4784,8 +4806,6 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 	  return NULL;
 	}
     }
-
-  ptr = or_unpack_int (ptr, &key_info->key_limit_reset);
 
   return ptr;
 }
@@ -5111,7 +5131,7 @@ stx_build_showstmt_spec_type (THREAD_ENTRY * thread_p, char *ptr, SHOWSTMT_SPEC_
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &val);
-  showstmt_spec_type->show_type = val;
+  showstmt_spec_type->show_type = (SHOWSTMT_TYPE) val;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -6740,7 +6760,7 @@ stx_alloc_struct (THREAD_ENTRY * thread_p, int size)
 
       p_size = MAX (size, xasl_unpack_info->packed_size);
       p_size = MAKE_ALIGN (p_size);	/* alignment */
-      ptr = db_private_alloc (thread_p, p_size);
+      ptr = (char *) db_private_alloc (thread_p, p_size);
       if (ptr == NULL)
 	{
 	  return NULL;		/* error */
@@ -6808,10 +6828,10 @@ stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_
   body_offset = xasl_stream_size * UNPACK_SCALE;
   body_offset = MAKE_ALIGN (body_offset);
 #if defined(SERVER_MODE)
-  xasl_unpack_info = db_private_alloc (thread_p, head_offset + body_offset);
+  xasl_unpack_info = (XASL_UNPACK_INFO *) db_private_alloc (thread_p, head_offset + body_offset);
   stx_set_xasl_unpack_info_ptr (thread_p, xasl_unpack_info);
 #else /* SERVER_MODE */
-  xasl_unpack_info = db_private_alloc (NULL, head_offset + body_offset);
+  xasl_unpack_info = (XASL_UNPACK_INFO *) db_private_alloc (NULL, head_offset + body_offset);
 #endif /* SERVER_MODE */
   if (xasl_unpack_info == NULL)
     {

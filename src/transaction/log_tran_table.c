@@ -23,6 +23,12 @@
 
 #ident "$Id$"
 
+
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "config.h"
 
 #include <stdio.h>
@@ -1658,8 +1664,7 @@ logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
   for (i = topops_p->last; i >= 0; i--)
     {
       fprintf (out_fp, " Head = %lld|%d, Posp_Head = %lld|%d\n",
-	       (long long int) topops_p->stack[i].lastparent_lsa.pageid, topops_p->stack[i].lastparent_lsa.offset,
-	       (long long int) topops_p->stack[i].posp_lsa.pageid, topops_p->stack[i].posp_lsa.offset);
+	       LSA_AS_ARGS (&topops_p->stack[i].lastparent_lsa), LSA_AS_ARGS (&topops_p->stack[i].posp_lsa));
     }
 }
 
@@ -1812,7 +1817,7 @@ logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * snapshot)
       /* allocate only once */
       size = NUM_TOTAL_TRAN_INDICES * OR_MVCCID_SIZE;
 
-      snapshot->long_tran_mvccids = malloc (size);
+      snapshot->long_tran_mvccids = (MVCCID *) malloc (size);
       if (snapshot->long_tran_mvccids == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
@@ -1876,7 +1881,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       tdes->num_unique_btrees = 0;
       tdes->max_unique_btrees = 0;
     }
-  if (tdes->interrupt == true)
+  if (tdes->interrupt == (int) true)
     {
       tdes->interrupt = false;
 #if defined (HAVE_ATOMIC_BUILTINS)
@@ -3089,7 +3094,7 @@ xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set)
  *              so that the next caller obtains an interrupt.
  */
 bool
-logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set)
+logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool set)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
@@ -3098,10 +3103,10 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set
       tdes = LOG_FIND_TDES (tran_index);
       if (tdes != NULL && tdes->trid != NULL_TRANID)
 	{
-	  if (tdes->interrupt != set)
+	  if (tdes->interrupt != (int) set)
 	    {
 #if defined (HAVE_ATOMIC_BUILTINS)
-	      tdes->interrupt = set;
+	      tdes->interrupt = (int) set;
 	      if (set == true)
 		{
 		  ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, 1);
@@ -3155,7 +3160,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set
 static bool
 logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear, bool * continue_checking)
 {
-  int interrupt;
+  bool interrupt;
   INT64 now;
 #if !defined(SERVER_MODE)
   struct timeval tv;
@@ -3849,7 +3854,7 @@ logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool cre
     }
 
   /* search */
-  unique_stats = mht_get (tdes->log_upd_stats.unique_stats_hash, btid);
+  unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS *) mht_get (tdes->log_upd_stats.unique_stats_hash, btid);
 
   if (unique_stats == NULL && create)
     {
@@ -4104,7 +4109,7 @@ cleanup:
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
 
   return error_code;
@@ -5089,7 +5094,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 					  next_trans_status_history->long_tran_mvccids,
 					  next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
 	advance_oldest_active_mvccid:
-	  if (next_trans_status_history->version == version)
+	  if ((int) next_trans_status_history->version == version)
 	    {
 	      old_lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
 	      if (old_lowest_active_mvccid < lowest_active_mvccid)
@@ -5566,18 +5571,14 @@ logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid)
     }
 
   /* free class representation */
-  error_code = heap_classrepr_free (classrepr, &classrepr_cacheindex);
-  if (error_code != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
 
   return NO_ERROR;
 
 exit_on_error:
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
 
   return (error_code == NO_ERROR && (error_code = er_errid ()) == NO_ERROR) ? ER_FAILED : error_code;
@@ -6081,7 +6082,7 @@ end_completed:
 				      next_trans_status_history->long_tran_mvccids,
 				      next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
     advance_oldest_active_mvccid:
-      if (next_trans_status_history->version == version)
+      if ((int) next_trans_status_history->version == version)
 	{
 	  old_lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
 	  if (old_lowest_active_mvccid < lowest_active_mvccid)
@@ -6738,6 +6739,8 @@ logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid)
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   int error = NO_ERROR;
 
+  assert (!BTID_IS_NULL (btid));
+
 #if !defined(NDEBUG)
   {
     VPID root_vpid;
@@ -6776,7 +6779,8 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
   lf_hash_create_iterator (&it, t_entry, &log_Gl.unique_stats_table.unique_stats_hash);
-  for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL; stats = lf_hash_iterate (&it))
+  for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL;
+       stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it))
     {
       /* reflect only if some changes were logged */
       if (!LSA_ISNULL (&stats->last_log_lsa))
@@ -7029,7 +7033,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* Client_type */
-      str = boot_client_type_to_string (tdes->client.client_type);
+      str = boot_client_type_to_string ((BOOT_CLIENT_TYPE) tdes->client.client_type);
       error = db_make_string_copy (&vals[idx], str);
       idx++;
       if (error != NO_ERROR)

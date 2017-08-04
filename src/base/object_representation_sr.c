@@ -272,11 +272,10 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
       att->position = or_att->position;
       att->val_length = or_att->default_value.val_length;
       att->value = or_att->default_value.value;
-      att->default_expr = or_att->default_value.default_expr;
       or_att->default_value.value = NULL;
       att->classoid = or_att->classoid;
 
-      /* initialize B+tree statisitcs information */
+      /* initialize B+tree statistics information */
 
       n_btstats = att->n_btstats = or_att->n_btids;
       if (n_btstats > 0)
@@ -2322,12 +2321,13 @@ or_get_current_representation (RECDES * record, int do_indexes)
   OR_CLASSREP *rep;
   OR_ATTRIBUTE *att;
   OID oid;
-  char *start, *ptr, *attset, *diskatt, *valptr, *dptr, *valptr1, *valptr2;
-  int i, start_offset, offset, vallen, n_fixed, n_variable, vallen1, vallen2;
+  char *start, *ptr, *attset, *diskatt, *original_val_ptr, *dptr, *properties_val_ptr, *current_val_ptr;
+  int i, start_offset, offset, original_val_len, n_fixed, n_variable, properties_val_len, current_val_len;
   int n_shared_attrs, n_class_attrs;
   OR_BUF buf;
-  DB_VALUE val, def_expr;
-  DB_SEQ *att_props = NULL;
+  DB_VALUE properties_val, def_expr_op, def_expr, def_expr_type, def_expr_format;
+  char *def_expr_format_str = NULL;
+  DB_SEQ *att_props = NULL, *def_expr_set = NULL;
 
   rep = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
   if (rep == NULL)
@@ -2353,13 +2353,14 @@ or_get_current_representation (RECDES * record, int do_indexes)
   n_variable = OR_GET_INT (ptr + ORC_VARIABLE_COUNT_OFFSET);
   n_shared_attrs = OR_GET_INT (ptr + ORC_SHARED_COUNT_OFFSET);
   n_class_attrs = OR_GET_INT (ptr + ORC_CLASS_ATTR_COUNT_OFFSET);
+
   rep->n_attributes = n_fixed + n_variable;
   rep->n_variable = n_variable;
   rep->n_shared_attrs = n_shared_attrs;
   rep->n_class_attrs = n_class_attrs;
   rep->n_indexes = 0;
 
-  if (rep->n_attributes)
+  if (rep->n_attributes > 0)
     {
       rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
       if (rep->attributes == NULL)
@@ -2371,7 +2372,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
     }
 
-  if (rep->n_shared_attrs)
+  if (rep->n_shared_attrs > 0)
     {
       rep->shared_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
       if (rep->shared_attrs == NULL)
@@ -2383,7 +2384,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       memset (rep->shared_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
     }
 
-  if (rep->n_class_attrs)
+  if (rep->n_class_attrs > 0)
     {
       rep->class_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
       if (rep->class_attrs == NULL)
@@ -2409,19 +2410,16 @@ or_get_current_representation (RECDES * record, int do_indexes)
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
       /* find out where the original default value is kept */
-      valptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX));
+      original_val_ptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX));
+      original_val_len = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX);
 
-      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX);
+      current_val_ptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
+      current_val_len = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
 
-      valptr2 = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
+      properties_val_ptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_PROPERTIES_INDEX));
+      properties_val_len = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_PROPERTIES_INDEX);
 
-      vallen2 = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
-
-      valptr1 = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_PROPERTIES_INDEX));
-
-      vallen1 = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_PROPERTIES_INDEX);
-
-      or_init (&buf, valptr1, vallen1);
+      or_init (&buf, properties_val_ptr, properties_val_len);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2489,40 +2487,115 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	  att->location = i - n_fixed;
 	}
 
-      /* get the current default value */
-      if (vallen2)
+      /* get the current default value - constant */
+      if (current_val_len > 0)
 	{
-	  if (or_get_current_default_value (att, valptr2, vallen2) == 0)
+	  if (or_get_current_default_value (att, current_val_ptr, current_val_len) == 0)
 	    {
 	      goto error_cleanup;
 	    }
 	}
 
-      /* get the default value, this could be using a new DB_VALUE ? */
-      if (vallen)
+      /* get the default value - constant, this could be using a new DB_VALUE ? */
+      if (original_val_len > 0)
 	{
-	  if (or_get_default_value (att, valptr, vallen) == 0)
+	  if (or_get_default_value (att, original_val_ptr, original_val_len) == 0)
 	    {
 	      goto error_cleanup;
 	    }
 	}
 
-      att->default_value.default_expr = DB_DEFAULT_NONE;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
-      if (vallen1 > 0)
+      /* get the default expression. */
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
+      if (properties_val_len > 0)
 	{
-	  db_make_null (&val);
+	  db_make_null (&properties_val);
 	  db_make_null (&def_expr);
-	  or_get_value (&buf, &val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), vallen1, true);
-	  att_props = DB_GET_SEQUENCE (&val);
+	  db_make_null (&def_expr_op);
+	  db_make_null (&def_expr_format);
+
+	  or_get_value (&buf, &properties_val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), properties_val_len, true);
+	  att_props = DB_GET_SEQUENCE (&properties_val);
+
 	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
 	    {
-	      att->default_value.default_expr = DB_GET_INT (&def_expr);
-	      att->current_default_value.default_expr = DB_GET_INT (&def_expr);
+	      /* We have two cases: simple and complex expression. */
+	      if (DB_VALUE_TYPE (&def_expr) == DB_TYPE_SEQUENCE)
+		{
+		  /*
+		   * We can't have an attribute with default expression and default value simultaneously. However,
+		   * in some situations attr->default_value.value contains the value of default expression. This happens
+		   * when the client executes the query on broker side and use attr->default_value.value to cache
+		   * the default expression value. Then the broker can modify the schema and send to server the default
+		   * expression and its cached value. Another option may be to clear default value on broker side,
+		   * but may lead to inconsistency.
+		   */
+
+		  /* Currently, we allow only (T_TO_CHAR(int), default_expr(int), default_expr_format(string)) */
+		  assert (set_size (DB_PULL_SEQUENCE (&def_expr)) == 3);
+
+		  def_expr_set = DB_PULL_SEQUENCE (&def_expr);
+
+		  /* get and cache default expression operator - op of expr */
+		  if (set_get_element_nocopy (def_expr_set, 0, &def_expr_op) != NO_ERROR)
+		    {
+		      assert (false);
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&properties_val);
+		      goto error_cleanup;
+		    }
+		  assert (DB_VALUE_TYPE (&def_expr_op) == DB_TYPE_INTEGER
+			  && DB_GET_INT (&def_expr_op) == (int) T_TO_CHAR);
+		  att->default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
+		  att->current_default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
+
+		  /* get and cache default expression type - arg1 of expr */
+		  if (set_get_element_nocopy (def_expr_set, 1, &def_expr_type) != NO_ERROR)
+		    {
+		      assert (false);
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&properties_val);
+		      goto error_cleanup;
+		    }
+		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
+		  att->default_value.default_expr.default_expr_type =
+		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr_type);
+		  att->current_default_value.default_expr.default_expr_type =
+		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr_type);
+
+		  /* get and cache default expression format - arg2 of expr */
+		  if (set_get_element_nocopy (def_expr_set, 2, &def_expr_format) != NO_ERROR)
+		    {
+		      assert (false);
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&properties_val);
+		      goto error_cleanup;
+		    }
+
+		  if (!db_value_is_null (&def_expr_format))
+		    {
+#if !defined (NDEBUG)
+		      DB_TYPE db_value_type = db_value_type (&def_expr_format);
+		      assert (db_value_type == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type));
+#endif
+		      def_expr_format_str = DB_GET_STRING (&def_expr_format);
+		      att->default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
+		      att->current_default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
+		    }
+		}
+	      else
+		{
+		  /* simple expressions like SYS_DATE */
+		  assert (DB_VALUE_TYPE (&def_expr) == DB_TYPE_INTEGER);
+
+		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr);
+		  att->current_default_value.default_expr.default_expr_type =
+		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr);
+		}
 	    }
 
 	  pr_clear_value (&def_expr);
-	  pr_clear_value (&val);
+	  pr_clear_value (&properties_val);
 	}
     }
 
@@ -2536,9 +2609,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
       /* find out where the current default value is kept */
-      valptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
-
-      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
+      current_val_ptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
+      current_val_len = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2559,10 +2631,10 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->position = i;
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
-      att->default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->default_value.default_expr);
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;	/* structure copy */
 
@@ -2590,9 +2662,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->location = 0;
 
       /* get the default value, it is the container for the shared value */
-      if (vallen)
+      if (current_val_len > 0)
 	{
-	  if (or_get_default_value (att, valptr, vallen) == 0)
+	  if (or_get_default_value (att, current_val_ptr, current_val_len) == 0)
 	    {
 	      goto error_cleanup;
 	    }
@@ -2621,9 +2693,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
       /* find out where the current default value is kept */
-      valptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
-
-      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
+      current_val_ptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
+      current_val_len = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2637,10 +2708,10 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->position = i;
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
-      att->default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->default_value.default_expr);
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;
 
@@ -2668,9 +2739,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->location = 0;
 
       /* get the default value, it is the container for the class attr value */
-      if (vallen)
+      if (current_val_len > 0)
 	{
-	  if (or_get_default_value (att, valptr, vallen) == 0)
+	  if (or_get_default_value (att, current_val_ptr, current_val_len) == 0)
 	    {
 	      goto error_cleanup;
 	    }
@@ -2880,10 +2951,10 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       att->position = i;
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
-      att->default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->default_value.default_expr);
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
 
       /* We won't know if there are any B-tree ID's for unique constraints until we read the class property list later
        * on */
@@ -3079,10 +3150,10 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  att->position = j;
 	  att->default_value.val_length = 0;
 	  att->default_value.value = NULL;
-	  att->default_value.default_expr = DB_DEFAULT_NONE;
+	  classobj_initialize_default_expr (&att->default_value.default_expr);
 	  att->current_default_value.val_length = 0;
 	  att->current_default_value.value = NULL;
-	  att->current_default_value.default_expr = DB_DEFAULT_NONE;
+	  classobj_initialize_default_expr (&att->current_default_value.default_expr);
 
 	  /* We won't know if there are any B-tree ID's for unique constraints until we read the class property list
 	   * later on */
@@ -3487,144 +3558,166 @@ or_free_classrep (OR_CLASSREP * rep)
   OR_INDEX *index;
   OR_FOREIGN_KEY *fk, *fk_next;
 
-  if (rep != NULL)
+  if (rep == NULL)
     {
-      if (rep->attributes != NULL)
-	{
-	  for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
-	    {
-	      if (att->default_value.value != NULL)
-		{
-		  free_and_init (att->default_value.value);
-		}
-
-	      if (att->current_default_value.value != NULL)
-		{
-		  free_and_init (att->current_default_value.value);
-		}
-
-	      if (att->btids != NULL && att->btids != att->btid_pack)
-		{
-		  free_and_init (att->btids);
-		}
-	    }
-	  free_and_init (rep->attributes);
-	}
-
-      if (rep->shared_attrs != NULL)
-	{
-	  for (i = 0, att = rep->shared_attrs; i < rep->n_shared_attrs; i++, att++)
-	    {
-	      if (att->default_value.value != NULL)
-		{
-		  free_and_init (att->default_value.value);
-		}
-
-	      if (att->current_default_value.value != NULL)
-		{
-		  free_and_init (att->current_default_value.value);
-		}
-
-	      if (att->btids != NULL && att->btids != att->btid_pack)
-		{
-		  free_and_init (att->btids);
-		}
-	    }
-	  free_and_init (rep->shared_attrs);
-	}
-
-      if (rep->class_attrs != NULL)
-	{
-	  for (i = 0, att = rep->class_attrs; i < rep->n_class_attrs; i++, att++)
-	    {
-	      if (att->default_value.value != NULL)
-		{
-		  free_and_init (att->default_value.value);
-		}
-
-	      if (att->current_default_value.value != NULL)
-		{
-		  free_and_init (att->current_default_value.value);
-		}
-
-	      if (att->btids != NULL && att->btids != att->btid_pack)
-		{
-		  free_and_init (att->btids);
-		}
-	    }
-	  free_and_init (rep->class_attrs);
-	}
-
-      if (rep->indexes != NULL)
-	{
-	  for (i = 0, index = rep->indexes; i < rep->n_indexes; i++, index++)
-	    {
-	      if (index->atts != NULL)
-		{
-		  free_and_init (index->atts);
-		}
-
-	      if (index->btname != NULL)
-		{
-		  free_and_init (index->btname);
-		}
-
-	      if (index->filter_predicate)
-		{
-		  if (index->filter_predicate->pred_string)
-		    {
-		      free_and_init (index->filter_predicate->pred_string);
-		    }
-
-		  if (index->filter_predicate->pred_stream)
-		    {
-		      free_and_init (index->filter_predicate->pred_stream);
-		    }
-
-		  free_and_init (index->filter_predicate);
-		}
-
-	      if (index->asc_desc != NULL)
-		{
-		  free_and_init (index->asc_desc);
-		}
-
-	      if (index->attrs_prefix_length != NULL)
-		{
-		  free_and_init (index->attrs_prefix_length);
-		}
-
-	      if (index->fk)
-		{
-		  for (fk = index->fk; fk; fk = fk_next)
-		    {
-		      fk_next = fk->next;
-		      if (fk->fkname)
-			{
-			  free_and_init (fk->fkname);
-			}
-		      free_and_init (fk);
-		    }
-		}
-	      if (index->func_index_info)
-		{
-		  if (index->func_index_info->expr_string)
-		    {
-		      free_and_init (index->func_index_info->expr_string);
-		    }
-		  if (index->func_index_info->expr_stream)
-		    {
-		      free_and_init (index->func_index_info->expr_stream);
-		    }
-		  free_and_init (index->func_index_info);
-		}
-	    }
-
-	  free_and_init (rep->indexes);
-	}
-
-      free_and_init (rep);
+      return;
     }
+
+  if (rep->attributes != NULL)
+    {
+      for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
+	{
+	  if (att->default_value.value != NULL)
+	    {
+	      free_and_init (att->default_value.value);
+	    }
+
+	  if (att->default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->current_default_value.value != NULL)
+	    {
+	      free_and_init (att->current_default_value.value);
+	    }
+
+	  if (att->current_default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->current_default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->btids != NULL && att->btids != att->btid_pack)
+	    {
+	      free_and_init (att->btids);
+	    }
+	}
+      free_and_init (rep->attributes);
+    }
+
+  if (rep->shared_attrs != NULL)
+    {
+      for (i = 0, att = rep->shared_attrs; i < rep->n_shared_attrs; i++, att++)
+	{
+	  if (att->default_value.value != NULL)
+	    {
+	      free_and_init (att->default_value.value);
+	    }
+
+	  if (att->default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->current_default_value.value != NULL)
+	    {
+	      free_and_init (att->current_default_value.value);
+	    }
+
+	  if (att->current_default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->current_default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->btids != NULL && att->btids != att->btid_pack)
+	    {
+	      free_and_init (att->btids);
+	    }
+	}
+      free_and_init (rep->shared_attrs);
+    }
+
+  if (rep->class_attrs != NULL)
+    {
+      for (i = 0, att = rep->class_attrs; i < rep->n_class_attrs; i++, att++)
+	{
+	  if (att->default_value.value != NULL)
+	    {
+	      free_and_init (att->default_value.value);
+	    }
+
+	  if (att->current_default_value.value != NULL)
+	    {
+	      free_and_init (att->current_default_value.value);
+	    }
+
+	  if (att->btids != NULL && att->btids != att->btid_pack)
+	    {
+	      free_and_init (att->btids);
+	    }
+	}
+      free_and_init (rep->class_attrs);
+    }
+
+  if (rep->indexes != NULL)
+    {
+      for (i = 0, index = rep->indexes; i < rep->n_indexes; i++, index++)
+	{
+	  if (index->atts != NULL)
+	    {
+	      free_and_init (index->atts);
+	    }
+
+	  if (index->btname != NULL)
+	    {
+	      free_and_init (index->btname);
+	    }
+
+	  if (index->filter_predicate)
+	    {
+	      if (index->filter_predicate->pred_string)
+		{
+		  free_and_init (index->filter_predicate->pred_string);
+		}
+
+	      if (index->filter_predicate->pred_stream)
+		{
+		  free_and_init (index->filter_predicate->pred_stream);
+		}
+
+	      free_and_init (index->filter_predicate);
+	    }
+
+	  if (index->asc_desc != NULL)
+	    {
+	      free_and_init (index->asc_desc);
+	    }
+
+	  if (index->attrs_prefix_length != NULL)
+	    {
+	      free_and_init (index->attrs_prefix_length);
+	    }
+
+	  if (index->fk)
+	    {
+	      for (fk = index->fk; fk; fk = fk_next)
+		{
+		  fk_next = fk->next;
+		  if (fk->fkname)
+		    {
+		      free_and_init (fk->fkname);
+		    }
+		  free_and_init (fk);
+		}
+	    }
+	  if (index->func_index_info)
+	    {
+	      if (index->func_index_info->expr_string)
+		{
+		  free_and_init (index->func_index_info->expr_string);
+		}
+	      if (index->func_index_info->expr_stream)
+		{
+		  free_and_init (index->func_index_info->expr_stream);
+		}
+	      free_and_init (index->func_index_info);
+	    }
+	}
+
+      free_and_init (rep->indexes);
+    }
+
+  free_and_init (rep);
 }
 
 /*
@@ -3793,7 +3886,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	    }
 
 	  assert (*string == NULL);
-	  *string = db_private_alloc (NULL, decompressed_length + 1);
+	  *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
 	  if (*string == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);

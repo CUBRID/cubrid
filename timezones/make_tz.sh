@@ -24,9 +24,9 @@ show_usage ()
   echo "                 a new C file containing all timezone names is generated,"
   echo "                 and it must be included in CUBRID src before the new"
   echo "                 timezone library can be used."
-  echo "    -d arg  Set the database name used when in extend mode"
-  echo "    -a Write the checksum in all the available databases on disk"
-  echo "	The -d and the -a options are mutual exclusive"
+  echo "                 WARNING: Please backup all your databases; this mode will"
+  echo "                 attempt to migrate user data of all databases found in"
+  echo "                 \$CUBRID_DATABASES\databases.txt"
   echo "    -? | -h Show this help message and exit"
   echo ""
   echo " EXAMPLES"
@@ -39,16 +39,12 @@ show_usage ()
 BUILD_TARGET=64bit
 BUILD_MODE=release
 TZ_GEN_MODE=new
-DATABASE_NAME=""
-ALL=""
 
-while getopts ":t:m:g:d:ha" opt; do
+while getopts ":t:m:g:h" opt; do
 	case $opt in
 		t ) BUILD_TARGET="$OPTARG";;
 		m ) BUILD_MODE="$OPTARG";;
 		g ) TZ_GEN_MODE="$OPTARG";;
-		d ) DATABASE_NAME="$OPTARG";;
-		a ) ALL="all";;
 		h|\?|* ) show_usage; exit 1;;
 	esac
 done
@@ -90,27 +86,39 @@ case $TZ_GEN_MODE in
 		;;
 esac
 
+if [ "$CUBRID_DATABASES" = "" ]; then
+	echo "Error: CUBRID_DATABASES variable is not set!"
+	exit 1
+fi
+
+if [ "$CUBRID" = "" ]; then
+	echo "Error: CUBRID variable is not set!"
+	exit 1
+fi
+	
 echo " Running $APP_NAME with parameters:"
 echo "         BUILD_TARGET = $BUILD_TARGET"
 echo "         BUILD_MODE   = $BUILD_MODE"
 echo "         TZ_GEN_MODE  = $TZ_GEN_MODE"
-if [ "$TZ_GEN_MODE" = "extend" ]; then
-	if ! [[ "$DATABASE_NAME" = "" || "$ALL" = "" ]]; then
-		echo "The database option and the all option are mutual exclusive!"
-		exit 1
-	elif ! [ "$DATABASE_NAME" = "" ]; then
-		echo "         DATABASE_NAME  = $DATABASE_NAME"
-	elif [ "$ALL" = "" ]; then
-		echo "The extend option must have either the -d option or the -a option"
-		exit 1
-	fi
-	fi
-echo ""
 
 echo "Generating timezone C file in mode $TZ_GEN_MODE"
 
-if ! [ "$DATABASE_NAME" = "" ]; then
-	PS=$(cubrid gen_tz -g $TZ_GEN_MODE $DATABASE_NAME 2>&1)
+
+if [ "$TZ_GEN_MODE" = "extend" ]; then
+	ALL_DATABASES=$(awk '{ if (!($1 ~ "#")) print $1}' $CUBRID_DATABASES/databases.txt)
+	if [ "$ALL_DATABASES" = "" ]; then
+		echo 'There are no databases in '$CUBRID_DATABASES/databases.txt
+		echo 'Use '$0' without extend argument'
+		exit 1
+	fi
+	for DATABASE_NAME in $ALL_DATABASES; do 
+		PS=$(cubrid gen_tz -g $TZ_GEN_MODE $DATABASE_NAME 2>&1)
+		if [ $? -ne 0 ]; then
+			echo 'Error while upgrading timezone user data for database ' $DATABASE_NAME
+			echo 'Some of your databases might have been changed and needs to be restored!'
+			exit 1
+		fi		
+	done
 else
 	PS=$(cubrid gen_tz -g $TZ_GEN_MODE 2>&1)
 fi

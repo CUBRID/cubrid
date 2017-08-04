@@ -356,7 +356,7 @@ extern const TZ_COUNTRY tz_countries[];
 
 #define PRINT_STRING_VAR_TO_C_FILE(fp, valname, val)			  \
   do {                                                                    \
-      fprintf (fp, "\n"SHLIB_EXPORT_PREFIX"const char "valname"[] = ");   \
+      fprintf (fp, "\n" SHLIB_EXPORT_PREFIX "const char " valname "[] = ");   \
       PRINT_STRING_TO_C_FILE (fp, val, strlen (val));			  \
       fprintf (fp, ";\n");                                                \
   } while (0);
@@ -566,7 +566,7 @@ trim_comments_whitespaces (char *str)
 static int
 tzc_check_new_package_validity (const char *input_folder)
 {
-  bool err_status = NO_ERROR;
+  int err_status = NO_ERROR;
   FILE *fp;
   int i;
   char temp_path[PATH_MAX];
@@ -5022,7 +5022,7 @@ xml_start_mapZone (void *data, const char **attr)
   int i;
 
   assert (data != NULL);
-  tz = XML_USER_DATA (pd);
+  tz = (TZ_DATA *) XML_USER_DATA (pd);
 
   if (xml_get_att_value (attr, "other", &windows_zone) == 0 && xml_get_att_value (attr, "territory", &territory) == 0
       && xml_get_att_value (attr, "type", &iana_zone) == 0)
@@ -6619,7 +6619,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		  strcat (table_name_buf, "'");
 
 		  snprintf (query_buf, sizeof (query_buf) - 1,
-			    "select attr_name, data_type from _db_attribute where class_of.class_name = [%s]",
+			    "select attr_name, data_type from _db_attribute where class_of.class_name = %s",
 			    table_name_buf);
 		  error = execute_query (query_buf, &result2);
 		  if (error < 0)
@@ -6699,9 +6699,9 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			  strcat (update_query, column_name);
 			  strcat (update_query, "])");
 
-			  strcat (update_query, "[");
+			  strcat (where_query, "[");
 			  strcat (where_query, column_name);
-			  strcat (update_query, "]");
+			  strcat (where_query, "]");
 			  strcat (where_query, "!=");
 			  strcat (where_query, "conv_tz([");
 			  strcat (where_query, column_name);

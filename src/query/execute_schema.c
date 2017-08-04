@@ -68,6 +68,11 @@
 #define UNIQUE_SAVEPOINT_ALTER_INDEX "aLTERiNDEX"
 #define UNIQUE_SAVEPOINT_CHANGE_DEF_COLL "cHANGEdEFAULTcOLL"
 #define UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT "cHANGEtBLcOMMENT"
+#define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
+#define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
+#define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
+#define UNIQUE_SAVEPOINT_GRANT_USER "gRANTuSER"
+#define UNIQUE_SAVEPOINT_REVOKE_USER "rEVOKEuSER"
 
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH 128
@@ -280,6 +285,8 @@ static int get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribut
 
 static int do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser, PT_NODE * alter, MOP class_mop);
 
+static int do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * alter, MOP class_mop);
+
 static int do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * alter, PT_NODE * attr_list,
 						       int attr_count, MOP class_mop);
 
@@ -398,6 +405,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *slist;
   PT_NODE *tmp_node = NULL;
   PT_TYPE_ENUM pt_desired_type;
+  PT_NODE *temp_val, *def_val, *initial_def_val = NULL;
 #if 0
   HFID *hfid;
 #endif
@@ -411,6 +419,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   unsigned int save_custom;
   PT_NODE *super_node = NULL;
   MOP super_class;
+  DB_DEFAULT_EXPR default_expr;
 
   entity_name = alter->info.alter.entity_name->info.name.original;
   if (entity_name == NULL)
@@ -762,7 +771,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      pt_desired_type = p->type_enum;
 
-	      if (pt_desired_type == DB_TYPE_BLOB || pt_desired_type == DB_TYPE_CLOB)
+	      if (pt_desired_type == PT_TYPE_BLOB || pt_desired_type == PT_TYPE_CLOB)
 		{
 		  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -933,9 +942,49 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      break;
 	    }
 	  db_desired_type = TP_DOMAIN_TYPE (def_domain);
-
-	  if (d->info.data_default.default_expr == DB_DEFAULT_NONE)
+	  pt_desired_type = (PT_TYPE_ENUM) pt_db_to_type_enum (db_desired_type);
+	  data_type = pt_domain_to_data_type (parser, def_domain);
+	  if (data_type == NULL)
 	    {
+	      PT_ERRORm (parser, n, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      error = ER_FAILED;
+	      break;
+	    }
+
+	  def_val = d->info.data_default.default_value;
+	  if (d->info.data_default.default_expr_type == DB_DEFAULT_NONE)
+	    {
+	      initial_def_val = parser_copy_tree (parser, def_val);
+	      if (initial_def_val == NULL)
+		{
+		  error = ER_FAILED;
+		  break;
+		}
+	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, pt_desired_type, data_type,
+							 d->info.data_default.default_expr_type);
+	      if (error != NO_ERROR)
+		{
+		  if (pt_has_error (parser))
+		    {
+		      /* forget previous one to set the better error */
+		      pt_reset_error (parser);
+		    }
+
+		  if (error == ER_IT_DATA_OVERFLOW)
+		    {
+		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+				   pt_short_print (parser, initial_def_val), pt_short_print (parser, data_type));
+		    }
+		  else
+		    {
+		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+				   pt_short_print (parser, initial_def_val), pt_short_print (parser, data_type));
+		    }
+
+		  parser_free_tree (parser, data_type);
+		  break;
+		}
+
 	      pt_evaluate_tree (parser, d->info.data_default.default_value, &src_val, 1);
 
 	      /* Fix CUBRIDSUS-8035. FOR Primary Key situation, we will throw another ERROR in function
@@ -943,6 +992,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      if (DB_IS_NULL (&src_val) && (def_attr->flags & SM_ATTFLAG_NON_NULL)
 		  && !(def_attr->flags & SM_ATTFLAG_PRIMARY_KEY))
 		{
+		  db_value_clear (&src_val);
+		  parser_free_tree (parser, data_type);
 		  ERROR1 (error, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, attr_name);
 		  break;
 		}
@@ -958,17 +1009,63 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	  else
 	    {
-	      PT_NODE *def_val = d->info.data_default.default_value;
 	      def_val = pt_semantic_type (parser, def_val, NULL);
 	      if (pt_has_error (parser) || def_val == NULL)
 		{
+		  parser_free_tree (parser, data_type);
 		  pt_report_to_ersys (parser, PT_SEMANTIC);
 		  error = er_errid ();
 		  break;
 		}
 
 	      pt_evaluate_tree_having_serial (parser, def_val, &src_val, 1);
-	      smt_set_attribute_default (ctemplate, attr_name, 0, &src_val, d->info.data_default.default_expr);
+	      if (pt_has_error (parser))
+		{
+		  parser_free_tree (parser, data_type);
+		  pt_report_to_ersys (parser, PT_SEMANTIC);
+		  error = er_errid ();
+		  break;
+		}
+
+	      temp_val = pt_dbval_to_value (parser, &src_val);
+	      if (temp_val == NULL)
+		{
+		  parser_free_tree (parser, data_type);
+		  db_value_clear (&src_val);
+		  pt_report_to_ersys (parser, PT_SEMANTIC);
+		  error = er_errid ();
+		  break;
+		}
+
+	      error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, pt_desired_type, data_type,
+							 d->info.data_default.default_expr_type);
+	      db_value_clear (&src_val);
+	      temp_val->info.value.db_value_is_in_workspace = 0;
+	      parser_free_node (parser, temp_val);
+	      if (error != NO_ERROR)
+		{
+		  if (pt_has_error (parser))
+		    {
+		      /* forget previous one to set the better error */
+		      pt_reset_error (parser);
+		    }
+
+		  if (error == ER_IT_DATA_OVERFLOW)
+		    {
+		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+				   pt_short_print (parser, def_val), pt_short_print (parser, data_type));
+		    }
+		  else
+		    {
+		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+				   pt_short_print (parser, def_val), pt_short_print (parser, data_type));
+		    }
+		  parser_free_tree (parser, data_type);
+		  break;
+		}
+
+	      pt_get_default_expression_from_data_default_node (parser, d, &default_expr);
+	      smt_set_attribute_default (ctemplate, attr_name, 0, &src_val, &default_expr);
 	    }
 	  if (pt_has_error (parser))
 	    {
@@ -982,6 +1079,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      break;
 	    }
 
+	  parser_free_tree (parser, data_type);
 	  pr_clear_value (&src_val);
 	  pr_clear_value (&dest_val);
 	}
@@ -1160,6 +1258,11 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
+  if (initial_def_val != NULL)
+    {
+      parser_free_tree (parser, initial_def_val);
+    }
+
   /* Process resolution list if appropriate */
   if (error == NO_ERROR)
     {
@@ -1201,6 +1304,20 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   if (alter_code == PT_ADD_ATTR_MTHD)
     {
       error = do_update_new_notnull_cols_without_default (parser, alter, vclass);
+      if (error != NO_ERROR)
+	{
+	  if (error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	    }
+	  return error;
+	}
+
+      /*
+       * if we ADD COLUMN with DEFAULT expression the existing rows will be filled with default expression for the 
+       * new column. That's because we need to set the column value right now (the default expression may be date/time).
+       */
+      error = do_update_new_cols_with_default_expression (parser, alter, vclass);
       if (error != NO_ERROR)
 	{
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -1616,6 +1733,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *spec_list, *s_list, *spec;
   PT_NODE *entity_list, *entity;
   int grant_option;
+  bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1632,13 +1750,21 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       grant_option = false;
     }
 
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_GRANT_USER);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  set_savepoint = true;
+
   for (user = user_list; user != NULL; user = user->next)
     {
       user_obj = db_find_user (user->info.name.original);
       if (user_obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto end;
 	}
 
       auth_list = auth_cmd_list;
@@ -1656,17 +1782,24 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  if (class_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
-		      return er_errid ();
+		      error = er_errid ();
+		      goto end;
 		    }
 
 		  error = db_grant (user_obj, class_mop, db_auth, grant_option);
 		  if (error != NO_ERROR)
 		    {
-		      return error;
+		      goto end;
 		    }
 		}
 	    }
 	}
+    }
+
+end:
+  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_GRANT_USER);
     }
 
   return error;
@@ -1689,6 +1822,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_AUTH db_auth;
   PT_NODE *spec_list, *s_list, *spec;
   PT_NODE *entity_list, *entity;
+  bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1696,13 +1830,21 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   auth_cmd_list = statement->info.revoke.auth_cmd_list;
   spec_list = statement->info.revoke.spec_list;
 
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_REVOKE_USER);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  set_savepoint = true;
+
   for (user = user_list; user != NULL; user = user->next)
     {
       user_obj = db_find_user (user->info.name.original);
       if (user_obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto end;
 	}
 
       auth_list = auth_cmd_list;
@@ -1720,17 +1862,24 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  if (class_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
-		      return er_errid ();
+		      error = er_errid ();
+		      goto end;
 		    }
 
 		  error = db_revoke (user_obj, class_mop, db_auth);
 		  if (error != NO_ERROR)
 		    {
-		      return error;
+		      goto end;
 		    }
 		}
 	    }
 	}
+    }
+
+end:
+  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_REVOKE_USER);
     }
 
   return error;
@@ -1751,16 +1900,16 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *node, *node2;
   const char *user_name, *password, *comment;
   const char *group_name, *member_name;
+  bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (statement == NULL)
+  if (parser == NULL || statement == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  user = NULL;
   node = statement->info.create_user.user_name;
   if (node == NULL || node->node_type != PT_NAME || node->info.name.original == NULL)
     {
@@ -1769,6 +1918,12 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   user_name = node->info.name.original;
+  if (user_name == NULL)
+    {
+      error = ER_AU_INVALID_USER;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      return error;
+    }
 
   /* first, check if user_name is in group or member clause */
   for (node = statement->info.create_user.groups; node != NULL; node = node->next)
@@ -1831,100 +1986,120 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
-  if (parser == NULL || statement == NULL || user_name == NULL)
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_USER_ENTITY);
+  if (error != NO_ERROR)
     {
-      error = ER_AU_INVALID_USER;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      return error;
     }
-  else
+  set_savepoint = true;
+
+  exists = 0;
+  user = db_add_user (user_name, &exists);
+  if (user == NULL)
     {
-      exists = 0;
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+  else if (exists)
+    {
+      error = ER_AU_USER_EXISTS;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, user_name);
+      goto end;
+    }
 
-      user = db_add_user (user_name, &exists);
-      if (user == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
-      else if (exists)
-	{
-	  error = ER_AU_USER_EXISTS;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, user_name);
-	}
-      else
-	{
-	  node = statement->info.create_user.password;
-	  password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
-	  if (error == NO_ERROR && password)
-	    {
-	      error = au_set_password (user, password);
-	    }
+  /* Now treats optional password, group, member and comment of the created user */
 
-	  node = statement->info.create_user.groups;
-	  group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-	  if (error == NO_ERROR && group_name)
-	    do
-	      {
-		group = db_find_user (group_name);
-
-		if (group == NULL)
-		  {
-		    assert (er_errid () != NO_ERROR);
-		    error = er_errid ();
-		  }
-		else
-		  {
-		    error = db_add_member (group, user);
-		  }
-
-		node = node->next;
-		group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-	      }
-	    while (error == NO_ERROR && group_name);
-
-	  node = statement->info.create_user.members;
-	  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-	  if (error == NO_ERROR && member_name != NULL)
-	    {
-	      do
-		{
-		  member = db_find_user (member_name);
-
-		  if (member == NULL)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		    }
-		  else
-		    {
-		      error = db_add_member (user, member);
-		    }
-
-		  node = node->next;
-		  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-		}
-	      while (error == NO_ERROR && member_name != NULL);
-	    }
-
-	  /* comment */
-	  node = statement->info.create_user.comment;
-	  if (error == NO_ERROR && node != NULL)
-	    {
-	      assert (node->node_type == PT_VALUE);
-	      comment = (char *) PT_VALUE_GET_BYTES (node);
-	      error = au_set_user_comment (user, comment);
-	    }
-	}
-
+  /* password */
+  node = statement->info.create_user.password;
+  password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
+  if (password != NULL)
+    {
+      error = au_set_password (user, password);
       if (error != NO_ERROR)
 	{
-	  if (user && exists == 0)
-	    {
-	      er_stack_push ();
-	      db_drop_user (user);
-	      er_stack_pop ();
-	    }
+	  goto end;
 	}
+    }
+
+  /* group */
+  node = statement->info.create_user.groups;
+  group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+  if (group_name != NULL)
+    {
+      do
+	{
+	  group = db_find_user (group_name);
+
+	  if (group == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+	  else
+	    {
+	      error = db_add_member (group, user);
+	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  node = node->next;
+	  group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	}
+      while (group_name != NULL);
+    }
+
+  /* member */
+  node = statement->info.create_user.members;
+  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+  if (member_name != NULL)
+    {
+      do
+	{
+	  member = db_find_user (member_name);
+
+	  if (member == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+	  else
+	    {
+	      error = db_add_member (user, member);
+	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  node = node->next;
+	  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	}
+      while (member_name != NULL);
+    }
+
+  /* comment */
+  node = statement->info.create_user.comment;
+  if (node != NULL)
+    {
+      assert (node->node_type == PT_VALUE);
+
+      comment = (char *) PT_VALUE_GET_BYTES (node);
+      error = au_set_user_comment (user, comment);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+end:
+  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CREATE_USER_ENTITY);
     }
 
   return error;
@@ -1943,10 +2118,11 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user = NULL;
   PT_NODE *node;
   const char *user_name;
+  bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (statement == NULL)
+  if (parser == NULL || statement == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
@@ -1955,19 +2131,33 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   node = statement->info.create_user.user_name;
   user_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
 
-  if (!parser || !statement || !user_name)
+  if (user_name == NULL)
     {
       error = ER_AU_INVALID_USER;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      return error;
     }
-  else
+
+  error = db_find_user_to_drop (user_name, &user);
+  if (error != NO_ERROR)
     {
-      error = db_find_user_to_drop (user_name, &user);
-      if (error == NO_ERROR)
-	{
-	  assert (user != NULL);
-	  error = db_drop_user (user);
-	}
+      return error;
+    }
+
+  assert (user != NULL);
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_DROP_USER_ENTITY);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  set_savepoint = true;
+
+  error = db_drop_user (user);
+
+  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_DROP_USER_ENTITY);
     }
 
   return error;
@@ -1986,10 +2176,11 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user;
   PT_NODE *node;
   const char *user_name, *password, *comment;
+  bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (statement == NULL)
+  if (parser == NULL || statement == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
@@ -1998,45 +2189,64 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   node = statement->info.alter_user.user_name;
   user_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
 
-  if (!parser || !statement || !user_name)
+  if (user_name == NULL)
     {
       error = ER_AU_INVALID_USER;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      return error;
     }
-  else
+
+  user = db_find_user (user_name);
+  if (user == NULL)
     {
-      user = db_find_user (user_name);
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      return error;
+    }
 
-      if (user == NULL)
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_USER_ENTITY);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  set_savepoint = true;
+
+  /* 
+   * here, both password and comment are optional,
+   * either password or comment shall exist,
+   * csql_grammar denies the error case with the missing of both.
+   */
+
+  /* password */
+  node = statement->info.alter_user.password;
+  if (node != NULL)
+    {
+      password = IS_STRING (node) ? GET_STRING (node) : NULL;
+      error = au_set_password (user, password);
+      if (error != NO_ERROR)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  goto end;
 	}
-      else
+    }
+
+  /* comment */
+  node = statement->info.alter_user.comment;
+  if (node != NULL)
+    {
+      assert (node->node_type == PT_VALUE);
+
+      comment = (char *) PT_VALUE_GET_BYTES (node);
+      error = au_set_user_comment (user, comment);
+      if (error != NO_ERROR)
 	{
-	  /* 
-	   * here, both password and comment are optional,
-	   * either password or comment shall exist,
-	   * csql_grammar denies the error case with the missing of both.
-	   */
-
-	  /* password */
-	  node = statement->info.alter_user.password;
-	  if (node != NULL)
-	    {
-	      password = IS_STRING (node) ? GET_STRING (node) : NULL;
-	      error = au_set_password (user, password);
-	    }
-
-	  /* comment */
-	  node = statement->info.alter_user.comment;
-	  if (node != NULL)
-	    {
-	      assert (node->node_type == PT_VALUE);
-	      comment = (char *) PT_VALUE_GET_BYTES (node);
-	      error = au_set_user_comment (user, comment);
-	    }
+	  goto end;
 	}
+    }
+
+end:
+  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ALTER_USER_ENTITY);
     }
 
   return error;
@@ -2473,7 +2683,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 {
   int error = NO_ERROR;
   int i = 0, nnames = 0;
-  DB_CONSTRAINT_TYPE ctype = -1;
+  DB_CONSTRAINT_TYPE ctype = DB_CONSTRAINT_NONE;
   const PT_NODE *c = NULL, *n = NULL;
   char **attnames = NULL;
   int *asc_desc = NULL;
@@ -6017,7 +6227,7 @@ do_reorganize_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTIT
 	  else if (names_count >= allocated - 1)
 	    {
 	      /* need to reallocate */
-	      char **new_buf = realloc (names, 10 * sizeof (char *));
+	      char **new_buf = (char **) realloc (names, 10 * sizeof (char *));
 	      if (new_buf == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 10 * sizeof (char *));
@@ -6713,11 +6923,11 @@ static int
 do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute, PT_NODE * constraints,
 		  bool error_on_not_normal)
 {
-  const char *attr_name;
+  const char *attr_name = NULL;
   int meta, shared;
   DB_VALUE stack_value;
   DB_VALUE *default_value = &stack_value;
-  PT_NODE *default_info;
+  PT_NODE *default_info = NULL, *default_info_expr_node = NULL, *default_expr_format_node = NULL;
   int error = NO_ERROR;
   TP_DOMAIN *attr_db_domain;
   MOP auto_increment_obj = NULL;
@@ -6726,7 +6936,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   bool add_first = false;
   const char *add_after_attr = NULL;
   PT_NODE *cnstr, *pk_attr, *comment;
-  DB_DEFAULT_EXPR_TYPE default_expr_type = DB_DEFAULT_NONE;
+  DB_DEFAULT_EXPR default_expr;
   PARSER_VARCHAR *comment_str = NULL;
 
   DB_MAKE_NULL (&stack_value);
@@ -6820,15 +7030,12 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       name_space = ID_ATTRIBUTE;
     }
 
-  default_info = attribute->info.attr_def.data_default;
-  if (default_info != NULL)
-    {
-      default_expr_type = default_info->info.data_default.default_expr;
-      default_value = &stack_value;
-    }
+  pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
+  default_value = &stack_value;
+
   error =
     smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space, add_first,
-				      add_after_attr, default_expr_type);
+				      add_after_attr, &default_expr);
 
   db_value_clear (&stack_value);
 
@@ -6905,7 +7112,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
   int error = NO_ERROR;
   const char *attr_name;
   MOP class_obj = NULL;
-  DB_DEFAULT_EXPR_TYPE default_expr = DB_DEFAULT_NONE;
+  DB_DEFAULT_EXPR *default_expr = NULL;
 
   DB_MAKE_NULL (&default_value);
 
@@ -8779,7 +8986,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
   /* drop indexes */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_drop_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names, false,
@@ -8802,7 +9009,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
   /* add indexes */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
@@ -9383,7 +9590,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 
 	      if (alter->info.alter.hint & PT_HINT_SKIP_UPDATE_NULL)
 		{
-		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, ci->att_names, 0);
+		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, (const char **) ci->att_names, 0);
 		}
 	      else if (!prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
 		{
@@ -9415,7 +9622,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ALTER_CHANGE_ADD_NOT_NULL_SET_HARD_DEFAULT, 0);
 		    }
-		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, ci->att_names, 0);
+		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, (const char **) ci->att_names, 0);
 		}
 	      else
 		{
@@ -9499,6 +9706,9 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
   db_make_string (&user_val, user->info.name.original);
 
   au_change_owner_method (obj, &returnval, &class_val, &user_val);
+
+  pr_clear_value (&class_val);
+  pr_clear_value (&user_val);
 
   if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
     {
@@ -9801,8 +10011,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   const char *new_name = NULL;
   const char *attr_name = NULL;
   PARSER_VARCHAR *comment_str = NULL;
-  DB_DEFAULT_EXPR_TYPE new_default_expr = DB_DEFAULT_NONE;
-  PT_NODE *comment;
+  DB_DEFAULT_EXPR new_default_expr;
+  PT_NODE *comment = NULL;
 
   assert (attr_chg_prop != NULL);
   assert (change_mode != NULL);
@@ -9878,11 +10088,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   /* default_value is either NULL or pointing to address of stack_value */
   assert (default_value == NULL || default_value == &stack_value);
   new_default = default_value;
-  new_default_expr = DB_DEFAULT_NONE;
-  if (attribute->info.attr_def.data_default)
-    {
-      new_default_expr = attribute->info.attr_def.data_default->info.data_default.default_expr;
-    }
+  pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &new_default_expr);
 
   attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
   if (attr_db_domain == NULL)
@@ -9900,7 +10106,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   error =
     smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL, attr_db_domain,
-					 attr_chg_prop->name_space, new_default, new_default_expr, change_first,
+					 attr_chg_prop->name_space, new_default, &new_default_expr, change_first,
 					 change_after_attr, &found_att);
   if (error != NO_ERROR)
     {
@@ -9934,7 +10140,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   if (is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_LOST))
     {
       pr_clear_value (&(found_att->default_value.value));
-      found_att->default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&found_att->default_value.default_expr);
 
       if (found_att->properties != NULL)
 	{
@@ -9962,7 +10168,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       /* delete current serial */
       int save;
       OID *oidp, serial_obj_id;
-      char *name = found_att->header.name;
+      const char *name = found_att->header.name;
 
       if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF))
 	{
@@ -10222,7 +10428,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
   if (!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
-      || att->default_value.default_expr != DB_DEFAULT_NONE)
+      || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
@@ -11689,7 +11895,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
  *
  *   return: Error code
  *   parser(in): Parser context
- *   curr_domain(in): Current domain of the atribute
+ *   curr_domain(in): Current domain of the attribute
  *   req_domain(in): Requested (new) domain of the attribute
  *   attr_chg_properties(out): structure summarizing the changed properties
  *   of attribute
@@ -12204,10 +12410,11 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 			  const char *classname)
 {
   int error = NO_ERROR;
-  PT_NODE *def_val = NULL;
-  DB_DEFAULT_EXPR_TYPE def_expr;
+  PT_NODE *def_val = NULL, *initial_def_val = NULL;
+  DB_DEFAULT_EXPR_TYPE def_expr_type;
   PT_TYPE_ENUM desired_type = attribute->type_enum;
   bool has_self_ref = false;
+  const char *data_type_print;
 
   assert (attribute->node_type == PT_ATTR_DEF);
 
@@ -12217,13 +12424,14 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       return NO_ERROR;
     }
 
-  def_expr = attribute->info.attr_def.data_default->info.data_default.default_expr;
+  def_expr_type = attribute->info.attr_def.data_default->info.data_default.default_expr_type;
   def_val = attribute->info.attr_def.data_default->info.data_default.default_value;
   def_val = pt_semantic_check (parser, def_val);
   if (pt_has_error (parser) || def_val == NULL)
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
-      return er_errid ();
+      error = er_errid ();
+      goto exit;
     }
 
   if (classname != NULL && attribute->data_type != NULL)
@@ -12241,6 +12449,14 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	}
     }
 
+  initial_def_val = parser_copy_tree (parser, def_val);
+  if (initial_def_val == NULL)
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error = er_errid ();
+      goto exit;
+    }
+
   if (has_self_ref)
     {
       /* We are creating a new class, and expected domain of default value has a self reference. Class cannot be
@@ -12255,14 +12471,15 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  /* Should we even be here? */
 	  PT_INTERNAL_ERROR (parser, "Self referencing attribute unexpected type.");
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto exit;
 	}
       /* Desired type either PT_TYPE_OBJECT or collection type. */
 
       /* We allow default value if: 1. Not a default expression. 2. Value is NULL or value is empty set and collection
        * type is expected. */
       value = &def_val->info.value.db_value;
-      if (def_expr == DB_DEFAULT_NONE
+      if (def_expr_type == DB_DEFAULT_NONE
 	  && (db_value_is_null (value)
 	      || (desired_type != PT_TYPE_OBJECT && TP_IS_SET_TYPE (value->domain.general_info.type)
 		  && value->data.set->set->size == 0)))
@@ -12276,55 +12493,74 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  if (desired_type == PT_TYPE_OBJECT)
 	    {
 	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			   pt_short_print (parser, def_val), classname);
+			   pt_short_print (parser, initial_def_val), classname);
 	    }
 	  else
 	    {
 	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			   pt_short_print (parser, def_val), pt_show_type_enum (desired_type));
+			   pt_short_print (parser, initial_def_val), pt_show_type_enum (desired_type));
 	    }
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto exit;
 	}
     }
   else
     {
       /* try to coerce the default value into the attribute type */
-      if (def_expr == DB_DEFAULT_NONE)
+      if (def_expr_type == DB_DEFAULT_NONE)
 	{
-	  error = pt_coerce_value (parser, def_val, def_val, desired_type, attribute->data_type);
+	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, attribute->data_type,
+						     def_expr_type);
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      goto exit_on_coerce_error;
 	    }
 	}
       else
 	{
-	  DB_VALUE src, dest;
-	  TP_DOMAIN *d = NULL;
+	  DB_VALUE src;
+	  PT_NODE *temp_val;
 
 	  DB_MAKE_NULL (&src);
-	  DB_MAKE_NULL (&dest);
 
 	  def_val = pt_semantic_type (parser, def_val, NULL);
 	  if (pt_has_error (parser) || def_val == NULL)
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	      return er_errid ();
+	      error = er_errid ();
+	      goto exit;
 	    }
 
 	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
-	  d = pt_type_enum_to_db_domain (desired_type);
-	  d = tp_domain_cache (d);
-	  if (tp_value_coerce (&src, &dest, d) != DOMAIN_COMPATIBLE)
+	  if (pt_has_error (parser))
 	    {
-	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			   pt_short_print (parser, def_val), pt_show_type_enum (desired_type));
-	      return ER_IT_INCOMPATIBLE_DATATYPE;
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	      error = er_errid ();
+	      goto exit;
+	    }
+
+	  temp_val = pt_dbval_to_value (parser, &src);
+	  if (temp_val == NULL)
+	    {
+	      db_value_clear (&src);
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	      error = er_errid ();
+	      goto exit;
+	    }
+
+	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
+						     def_expr_type);
+	  db_value_clear (&src);
+	  temp_val->info.value.db_value_is_in_workspace = 0;
+	  parser_free_node (parser, temp_val);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_coerce_error;
 	    }
 	}
 
-      if (def_expr == DB_DEFAULT_NONE)
+      if (def_expr_type == DB_DEFAULT_NONE)
 	{
 	  pt_evaluate_tree (parser, def_val, *default_value, 1);
 	}
@@ -12336,9 +12572,50 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       if (pt_has_error (parser))
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto exit;
 	}
     }
+
+exit:
+  if (initial_def_val != NULL)
+    {
+      parser_free_tree (parser, initial_def_val);
+    }
+  return error;
+
+exit_on_coerce_error:
+  if (pt_has_error (parser))
+    {
+      /* forget previous one to set the better error */
+      pt_reset_error (parser);
+    }
+
+  if (attribute->data_type != NULL)
+    {
+      data_type_print = pt_short_print (parser, attribute->data_type);
+    }
+  else
+    {
+      data_type_print = pt_show_type_enum ((PT_TYPE_ENUM) desired_type);
+    }
+
+  if (error == ER_IT_DATA_OVERFLOW)
+    {
+      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+		   pt_short_print (parser, initial_def_val), data_type_print);
+    }
+  else
+    {
+      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		   pt_short_print (parser, initial_def_val), data_type_print);
+    }
+
+  if (initial_def_val != NULL)
+    {
+      parser_free_tree (parser, initial_def_val);
+    }
+
   return error;
 }
 
@@ -12459,7 +12736,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
   int query_len, remaining, n;
 
   PT_NODE *attr;
-  int first = TRUE;
+  bool first = true;
   int error = NO_ERROR;
   int row_count = 0;
 
@@ -12512,7 +12789,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
       remaining -= n;
       q += n;
 
-      first = FALSE;
+      first = false;
     }
 
   /* Now just RUN thew query */
@@ -12529,6 +12806,96 @@ end:
   return error;
 }
 
+/*
+ * do_run_update_query_for_new_default_expression_fields() - worker function for
+ *    do_update_new_cols_with_default_expression().
+ *
+ *  parser(in): parser
+ *  alter(in): alter node
+ *  attr_list(in) attribute nodes list
+ *  attr_count(int): count attribute nodes
+ *  class_mop(in): class mop
+ *
+ * Note : It creates a complex UPDATE query and runs it.
+ */
+static int
+do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, PT_NODE * alter, PT_NODE * attr_list,
+						       int attr_count, MOP class_mop)
+{
+  char *query, *q;
+  int query_len, remaining, n;
+  PT_NODE *attr;
+  bool first = true;
+  int error = NO_ERROR;
+  int row_count = 0;
+
+  assert (parser && alter && attr_list);
+  assert (attr_count > 0);
+
+  /* Allocate enough for each attribute's name, its default value, and for the "UPDATE table_name" part of the query.
+   * 100 is more than the maximum length of any default value for an attribute, including three spaces, the comma sign
+   * and an equal. */
+
+  query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 100);
+  if (query_len > QUERY_MAX_SIZE)
+    {
+      ERROR1 (error, ER_UNEXPECTED, "Too many attributes.");
+      return error;
+    }
+
+  q = query = (char *) malloc (query_len + 1);
+  if (query == NULL)
+    {
+      ERROR1 (error, ER_OUT_OF_VIRTUAL_MEMORY, (size_t) (query_len + 1));
+      return error;
+    }
+
+  query[0] = 0;
+
+  /* Using UPDATE ALL to update the current class and all its children. */
+  n = snprintf (q, remaining, "UPDATE ALL [%s] SET ", alter->info.alter.entity_name->info.name.original);
+  if (n < 0)
+    {
+      ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
+      goto end;
+    }
+  remaining -= n;
+  q += n;
+
+  for (attr = attr_list; attr != NULL; attr = attr->next)
+    {
+      const char *sep = first ? "" : ", ";
+      char *data_default;
+
+      data_default = parser_print_tree (parser, attr->info.attr_def.data_default->info.data_default.default_value);
+      if (data_default == NULL)
+	{
+	  continue;
+	}
+
+      n = snprintf (q, remaining, "%s[%s] = %s", sep, attr->info.attr_def.attr_name->info.name.original, data_default);
+      if (n < 0)
+	{
+	  ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
+	  goto end;
+	}
+      remaining -= n;
+      q += n;
+
+      first = false;
+    }
+
+  /* Now just RUN the query */
+  error = do_run_update_query_for_class (query, class_mop, &row_count);
+
+end:
+  if (query)
+    {
+      free_and_init (query);
+    }
+
+  return error;
+}
 
 /*
  * is_attribute_primary_key() - Returns true if the attribute given is part
@@ -12678,6 +13045,93 @@ end:
 }
 
 /*
+ * do_update_new_cols_with_default_expression() : Populates the newly added columns with default expression
+ *
+ * return: error code
+ *
+ *   parser(in): Parser context
+ *   alter(in):  Parse tree of the statement
+ *
+ * Note: Used only on ALTER TABLE ... ADD COLUMN, and only AFTER the operation has been performed (i.e. the columns
+ * have been added to the schema, even though the transaction has not been committed).
+ *
+ */
+static int
+do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * alter, MOP class_mop)
+{
+  PT_NODE *relevant_attrs = NULL;
+  int error = NO_ERROR;
+  int attr_count = 0;
+  PT_NODE *pt_data_default = NULL, *pt_default_expr = NULL;
+  PT_NODE *attr = NULL;
+  PT_NODE *save = NULL;
+  PT_NODE *copy = NULL;
+  DB_DEFAULT_EXPR default_expr;
+
+  assert (alter->node_type == PT_ALTER);
+  assert (alter->info.alter.code == PT_ADD_ATTR_MTHD);
+
+  /* Look for attributes that have a DEFAULT expression. */
+  for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr; attr = attr->next)
+    {
+      pt_data_default = attr->info.attr_def.data_default;
+      if (pt_data_default == NULL)
+	{
+	  /* don't have default clause */
+	  continue;
+	}
+
+      pt_get_default_expression_from_data_default_node (parser, pt_data_default, &default_expr);
+      if (default_expr.default_expr_type == DB_DEFAULT_NONE)
+	{
+	  /* don't have default expression */
+	  continue;
+	}
+
+      if (!db_is_class (class_mop) || !db_class_has_instance (class_mop))
+	{
+	  continue;
+	}
+
+      /* now we have an interesting node. Copy it in our list. */
+      attr_count++;
+      save = attr->next;
+      attr->next = NULL;
+      copy = parser_copy_tree (parser, attr);
+      if (copy == NULL)
+	{
+	  attr->next = save;
+	  ERROR0 (error, ER_OUT_OF_VIRTUAL_MEMORY);
+	  parser_free_tree (parser, relevant_attrs);
+	  goto end;
+	}
+      relevant_attrs = parser_append_node (copy, relevant_attrs);
+      attr->next = save;
+    }
+
+  if (relevant_attrs == NULL)
+    {
+      /* no interesting attribute found, just leave */
+      goto end;
+    }
+
+  /* RUN an UPDATE query comprising all the attributes */
+  error = do_run_update_query_for_new_default_expression_fields (parser, alter, relevant_attrs, attr_count, class_mop);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+end:
+  if (relevant_attrs != NULL)
+    {
+      parser_free_tree (parser, relevant_attrs);
+    }
+
+  return error;
+}
+
+/*
  * do_run_upgrade_instances_domain() - proxy function for server function
  *				       'xlocator_upgrade_instances_domain'
  *
@@ -12718,7 +13172,7 @@ do_drop_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_list)
 
   for (constr = constr_info_list; constr != NULL; constr = constr->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constr->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
 	{
 	  error =
 	    sm_drop_constraint (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names, 0,
@@ -12759,7 +13213,7 @@ do_recreate_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_lis
 
   for (constr = constr_info_list; constr != NULL; constr = constr->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constr->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names,
@@ -12844,7 +13298,7 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
   assert (ptr_def == NULL || ptr_def == &def_value);
 
   if (ptr_def && DB_IS_NULL (ptr_def)
-      && attribute->info.attr_def.data_default->info.data_default.default_expr == DB_DEFAULT_NONE)
+      && attribute->info.attr_def.data_default->info.data_default.default_expr_type == DB_DEFAULT_NONE)
     {
       for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
 	{
@@ -14402,7 +14856,7 @@ do_save_all_indexes (MOP classmop, SM_CONSTRAINT_INFO ** saved_index_info_listpp
 
   for (c = class_->constraints; c; c = c->next)
     {
-      if (c->type == DB_CONSTRAINT_NOT_NULL)
+      if ((DB_CONSTRAINT_TYPE) c->type == DB_CONSTRAINT_NOT_NULL)
 	{
 	  continue;
 	}
@@ -14442,7 +14896,7 @@ do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_drop_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names, false,
@@ -14480,7 +14934,7 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,

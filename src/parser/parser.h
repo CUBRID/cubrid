@@ -217,6 +217,9 @@ extern "C"
 
   extern int pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
 			      PT_NODE * elem_type_list);
+  extern int pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
+						PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list,
+						DB_DEFAULT_EXPR_TYPE default_expr_type);
   extern PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_type, int p, int s,
 					PT_NODE * desired_dt);
   extern PT_NODE *pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM set_type,
@@ -260,7 +263,7 @@ extern "C"
   extern void mq_free_virtual_query_cache (PARSER_CONTEXT * parser);
   extern PARSER_CONTEXT *mq_virtual_queries (DB_OBJECT * class_obj);
 
-  extern int pt_node_to_cmd_type (PT_NODE * node);
+  extern CUBRID_STMT_TYPE pt_node_to_cmd_type (PT_NODE * node);
 
   extern int pt_check_if_query (PARSER_CONTEXT * parser, PT_NODE * stmt);
 
@@ -632,6 +635,8 @@ extern "C"
 
   extern PT_NODE *pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
+  extern void pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
+								DB_DEFAULT_EXPR * default_expr);
 #ifdef __cplusplus
 }
 #endif

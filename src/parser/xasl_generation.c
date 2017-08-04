@@ -1548,7 +1548,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		PT_NODE *arg1, *arg2, *lower, *upper;
 		PRED_EXPR *pred1, *pred2;
 		REGU_VARIABLE *regu;
-		REL_OP op1 = 0, op2 = 0;
+		REL_OP op1 = R_NONE, op2 = R_NONE;
 
 		arg1 = node->info.expr.arg1;
 		regu = pt_to_regu_variable (parser, arg1, UNBOX_AS_VALUE);
@@ -5642,7 +5642,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  TP_DOMAIN *domain;
 	  if (TP_IS_CHAR_TYPE (typ))
 	    {
-	      domain = pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM) pt_db_to_type_enum (typ));
+	      domain = pt_xasl_type_enum_to_domain (pt_db_to_type_enum (typ));
 	      regu->domain = tp_domain_copy (domain, false);
 	      if (regu->domain != NULL)
 		{
@@ -5661,7 +5661,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	    }
 	  else
 	    {
-	      regu->domain = pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM) pt_db_to_type_enum (typ));
+	      regu->domain = pt_xasl_type_enum_to_domain (pt_db_to_type_enum (typ));
 	    }
 	}
 
@@ -9191,7 +9191,7 @@ pt_to_regu_reserved_name (PARSER_CONTEXT * parser, PT_NODE * attr)
       return NULL;
     }
   reserved_id = attr->info.name.reserved_id;
-  index = pt_reserved_id_to_valuelist_index (parser, reserved_id);
+  index = pt_reserved_id_to_valuelist_index (parser, (PT_RESERVED_NAME_ID) reserved_id);
   if (index == RESERVED_NAME_INVALID)
     {
       return NULL;
@@ -9630,7 +9630,7 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
   regu_var = NULL;
   key_infop->key_cnt = 0;
   key_infop->key_ranges = NULL;
-  key_infop->is_constant = 1;
+  key_infop->is_constant = true;
 
   for (i = 0; i < nterms; i++)
     {
@@ -9746,7 +9746,7 @@ pt_to_range_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, boo
   regu_var1 = regu_var2 = NULL;
   key_infop->key_cnt = 0;
   key_infop->key_ranges = NULL;
-  key_infop->is_constant = 1;
+  key_infop->is_constant = true;
 
   for (i = 0; i < nterms; i++)
     {
@@ -9925,7 +9925,7 @@ pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool
   regu_var_list = NULL;
   key_infop->key_cnt = 0;
   key_infop->key_ranges = NULL;
-  key_infop->is_constant = 1;
+  key_infop->is_constant = true;
   n_elem = 0;
 
   /* get number of elements of the IN predicate */
@@ -10235,7 +10235,7 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms,
   regu_var_list1 = regu_var_list2 = NULL;
   key_infop->key_cnt = 0;
   key_infop->key_ranges = NULL;
-  key_infop->is_constant = 1;
+  key_infop->is_constant = true;
   n_elem = 0;
 
   /* get number of elements of the RANGE predicate */
@@ -10613,11 +10613,14 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
   TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
   /* at least one of them should be NULL, although they both can */
-  assert (!key_limit || !limit_infop);
+  assert (key_limit == NULL || limit_infop == NULL);
 
   limit_u = key_limit;
-  if (limit_u)
+  if (limit_u != NULL)
     {
+      /* user explicitly specifies keylimit */
+      key_infop->is_user_given_keylimit = true;
+
       if (limit_u->type_enum == PT_TYPE_MAYBE)
 	{
 	  limit_u->expected_domain = dom_bigint;
@@ -10629,7 +10632,7 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
 	}
 
       limit_l = limit_u->next;
-      if (limit_l)
+      if (limit_l != NULL)
 	{
 	  if (limit_l->type_enum == PT_TYPE_MAYBE)
 	    {
@@ -10643,15 +10646,15 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
 	}
     }
 
-  if (limit_infop)
+  if (limit_infop != NULL)
     {
       regu_var_u = limit_infop->upper;
       regu_var_l = limit_infop->lower;
     }
 
-  if (key_infop->key_limit_u)
+  if (key_infop->key_limit_u != NULL)
     {
-      if (regu_var_u)
+      if (regu_var_u != NULL)
 	{
 	  key_infop->key_limit_u = pt_make_regu_arith (key_infop->key_limit_u, regu_var_u, NULL, T_LEAST, dom_bigint);
 	  if (key_infop->key_limit_u == NULL)
@@ -10666,9 +10669,9 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
       key_infop->key_limit_u = regu_var_u;
     }
 
-  if (key_infop->key_limit_l)
+  if (key_infop->key_limit_l != NULL)
     {
-      if (regu_var_l)
+      if (regu_var_l != NULL)
 	{
 	  key_infop->key_limit_l =
 	    pt_make_regu_arith (key_infop->key_limit_l, regu_var_l, NULL, T_GREATEST, dom_bigint);
@@ -11851,7 +11854,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	    {
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
-		  access->flags |= ACCESS_SPEC_FLAG_FOR_UPDATE;
+		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_FOR_UPDATE);
 		}
 
 	      access->next = access_list;
@@ -14457,7 +14460,7 @@ static ANALYTIC_EVAL_TYPE *
 pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta, ANALYTIC_EVAL_TYPE * eval,
 			     PT_NODE ** sort_list_index, ANALYTIC_INFO * info)
 {
-  ANALYTIC_EVAL_TYPE *new = NULL, *new2 = NULL, *tail;
+  ANALYTIC_EVAL_TYPE *newa = NULL, *new2 = NULL, *tail;
   ANALYTIC_TYPE *func_p;
 
   assert (meta != NULL && info != NULL);
@@ -14511,8 +14514,8 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		  return NULL;
 		}
 
-	      new = pt_build_analytic_eval_list (parser, meta->children[1], NULL, sort_list_index, info);
-	      if (new == NULL)
+	      newa = pt_build_analytic_eval_list (parser, meta->children[1], NULL, sort_list_index, info);
+	      if (newa == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
@@ -14527,8 +14530,8 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		  return NULL;
 		}
 
-	      new = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
-	      if (new == NULL)
+	      newa = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
+	      if (newa == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
@@ -14536,8 +14539,8 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	    }
 	  else
 	    {
-	      new = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
-	      if (new == NULL)
+	      newa = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
+	      if (newa == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
@@ -14551,10 +14554,10 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		}
 	    }
 
-	  if (new != NULL && new2 != NULL)
+	  if (newa != NULL && new2 != NULL)
 	    {
 	      /* link new to new2 */
-	      tail = new;
+	      tail = newa;
 	      while (tail->next != NULL)
 		{
 		  tail = tail->next;
@@ -14564,7 +14567,7 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 
 	  if (eval == NULL)
 	    {
-	      eval = new;
+	      eval = newa;
 	    }
 	  else
 	    {
@@ -14574,7 +14577,7 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		{
 		  tail = tail->next;
 		}
-	      tail->next = new;
+	      tail->next = newa;
 	    }
 	}
     }
@@ -14712,7 +14715,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
   /* compose every compatible metadomains from each possible prefix length */
   while (level > 0)
     {
-      ANALYTIC_KEY_METADOMAIN new = analitic_key_metadomain_Initializer;
+      ANALYTIC_KEY_METADOMAIN newa = analitic_key_metadomain_Initializer;
       ANALYTIC_KEY_METADOMAIN best = analitic_key_metadomain_Initializer;
       int new_destroyed = -1, best_destroyed = -1;
 
@@ -14728,13 +14731,13 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	  for (j = 0; j < af_meta[i].links_count; j++)
 	    {
 	      /* build composite metadomain */
-	      pt_metadomains_compatible (&af_meta[i], af_meta[i].links[j], &new, &new_destroyed, level);
+	      pt_metadomains_compatible (&af_meta[i], af_meta[i].links[j], &newa, &new_destroyed, level);
 
 	      /* see if it's better than current best */
 	      if (new_destroyed < best_destroyed || best_destroyed == -1)
 		{
 		  best_destroyed = new_destroyed;
-		  best = new;
+		  best = newa;
 		}
 
 	      if (best_destroyed == 0)
@@ -14816,7 +14819,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
   ret = NULL;
   for (i = 0; i < af_count; i++)
     {
-      ANALYTIC_EVAL_TYPE *new, *tail;
+      ANALYTIC_EVAL_TYPE *newa, *tail;
 
       if (af_meta[i].demoted)
 	{
@@ -14825,8 +14828,8 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	}
 
       /* build new list */
-      new = pt_build_analytic_eval_list (parser, &af_meta[i], NULL, sc_index, info);
-      if (new == NULL)
+      newa = pt_build_analytic_eval_list (parser, &af_meta[i], NULL, sc_index, info);
+      if (newa == NULL)
 	{
 	  /* error has already been set */
 	  return NULL;
@@ -14836,7 +14839,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
       if (ret == NULL)
 	{
 	  /* first top level metadomain */
-	  ret = new;
+	  ret = newa;
 	}
       else
 	{
@@ -14848,7 +14851,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	    }
 
 	  /* link */
-	  tail->next = new;
+	  tail->next = newa;
 	}
     }
 
@@ -14860,22 +14863,22 @@ fallback:
   sort_list = info->sort_lists;
   while (func_p)
     {
-      ANALYTIC_EVAL_TYPE *new = regu_analytic_eval_alloc ();
+      ANALYTIC_EVAL_TYPE *newa = regu_analytic_eval_alloc ();
 
       /* new eval structure */
-      if (new == NULL)
+      if (newa == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "regu alloc");
 	  return NULL;
 	}
       else if (ret == NULL)
 	{
-	  ret = new;
+	  ret = newa;
 	}
       else
 	{
-	  new->next = ret;
-	  ret = new;
+	  newa->next = ret;
+	  ret = newa;
 	}
 
       /* set up sort list */
@@ -14967,18 +14970,18 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   buildlist = &xasl->proc.buildlist;
   xasl->next = NULL;
 
+  xasl->limit_row_count = NULL;
+  xasl->limit_offset = NULL;
+
   limit = select_node->info.query.limit;
   if (limit)
     {
       if (limit->next)
 	{
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
       xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
-    }
-  else
-    {
-      xasl->limit_row_count = NULL;
     }
 
   /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
@@ -15251,15 +15254,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 	  while (node != NULL)
 	    {
-	      PT_NODE *final, *to_ex_list = NULL, *save_next;
+	      PT_NODE *final_node, *to_ex_list = NULL, *save_next;
 
 	      /* save next and unlink node */
 	      save_next = node->next;
 	      node->next = NULL;
 
 	      /* get final select list node */
-	      final = pt_to_analytic_final_node (parser, node, &to_ex_list, &buildlist->a_instnum_flag);
-	      if (final == NULL)
+	      final_node = pt_to_analytic_final_node (parser, node, &to_ex_list, &buildlist->a_instnum_flag);
+	      if (final_node == NULL)
 		{
 		  /* error was set somewhere - clean up */
 		  parser_free_tree (parser, node);
@@ -15271,7 +15274,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 	      /* append nodes to list */
 	      select_list_ex = parser_append_node (to_ex_list, select_list_ex);
-	      select_list_final = parser_append_node (final, select_list_final);
+	      select_list_final = parser_append_node (final_node, select_list_final);
 
 	      /* modify sort spec adjustment counter to account for new nodes */
 	      assert (final_idx < final_count);
@@ -16097,15 +16100,15 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
       /* save info for derived table size estimation */
       switch (type)
 	{
-	case PT_UNION:
+	case UNION_PROC:
 	  xasl->projected_size = MAX (left->projected_size, right->projected_size);
 	  xasl->cardinality = left->cardinality + right->cardinality;
 	  break;
-	case PT_DIFFERENCE:
+	case DIFFERENCE_PROC:
 	  xasl->projected_size = left->projected_size;
 	  xasl->cardinality = left->cardinality;
 	  break;
-	case PT_INTERSECTION:
+	case INTERSECTION_PROC:
 	  xasl->projected_size = MAX (left->projected_size, right->projected_size);
 	  xasl->cardinality = MIN (left->cardinality, right->cardinality);
 	  break;
@@ -16120,6 +16123,7 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	  limit = node->info.query.limit;
 	  if (limit->next)
 	    {
+	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	      limit = limit->next;
 	    }
 	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -16213,6 +16217,7 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 	  limit = non_recursive_part->info.query.limit;
 	  if (limit->next)
 	    {
+	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	      limit = limit->next;
 	    }
 	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -16428,7 +16433,9 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   if (xasl != NULL && plan != NULL)
     {
       size_t plan_len, sizeloc;
-      char *ptr, *sql_plan = "";
+      char *ptr;
+      char sql_plan_empty[] = "";
+      char *sql_plan = sql_plan_empty;
       COMPILE_CONTEXT *contextp = &parser->context;
 
       FILE *fp = port_open_memstream (&ptr, &sizeloc);
@@ -16470,7 +16477,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  if (contextp->sql_plan_alloc_size == 0)
 	    {
 	      int size = MAX (1024, (int) plan_len * 2);
-	      contextp->sql_plan_text = parser_alloc (parser, size);
+	      contextp->sql_plan_text = (char *) parser_alloc (parser, size);
 	      if (contextp->sql_plan_text == NULL)
 		{
 		  goto exit;
@@ -16479,12 +16486,12 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      contextp->sql_plan_alloc_size = size;
 	      contextp->sql_plan_text[0] = '\0';
 	    }
-	  else if (contextp->sql_plan_alloc_size - strlen (contextp->sql_plan_text) < plan_len)
+	  else if (contextp->sql_plan_alloc_size - strlen (contextp->sql_plan_text) < (long) plan_len)
 	    {
 	      char *ptr;
 	      int size = (contextp->sql_plan_alloc_size + (int) plan_len) * 2;
 
-	      ptr = parser_alloc (parser, size);
+	      ptr = (char *) parser_alloc (parser, size);
 	      if (ptr == NULL)
 		{
 		  goto exit;
@@ -16782,7 +16789,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
   int index;
   int lock = (int) NULL_LOCK;
 #if defined(WINDOWS)
-  int o_num, o_size, prev_o_num;
+  unsigned int o_num, o_size, prev_o_num;
 #else
   size_t o_num, o_size, prev_o_num;
 #endif
@@ -16828,7 +16835,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 	      prev_o_num = o_num;
 	      oid_ptr = (OID *) lsearch (oid, o_list, &o_num, sizeof (OID), oid_compare);
 
-	      if (o_num > prev_o_num && o_num > (*nump))
+	      if (o_num > prev_o_num && (long) o_num > (*nump))
 		{
 		  int is_class = 0;
 
@@ -16883,7 +16890,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 	      if (o_num >= o_size)
 		{
 		  o_size += OID_LIST_GROWTH;
-		  oldptr = (void *) o_list;
+		  oldptr = (OID *) o_list;
 		  o_list = (OID *) realloc (o_list, o_size * sizeof (OID));
 		  if (o_list == NULL)
 		    {
@@ -16892,7 +16899,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 		      goto error;
 		    }
 
-		  oldptr = (void *) lck_list;
+		  oldptr = (OID *) lck_list;
 		  lck_list = (int *) realloc (lck_list, o_size * sizeof (int));
 		  if (lck_list == NULL)
 		    {
@@ -16903,7 +16910,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 		      goto error;
 		    }
 
-		  oldptr = (void *) t_list;
+		  oldptr = (OID *) t_list;
 		  t_list = (int *) realloc (t_list, o_size * sizeof (int));
 		  if (t_list == NULL)
 		    {
@@ -16979,7 +16986,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * seria
   int *t_list = NULL;
   void *oldptr = NULL;
 #if defined(WINDOWS)
-  int o_num, o_size, prev_o_num;
+  unsigned int o_num, o_size, prev_o_num;
 #else
   size_t o_num, o_size, prev_o_num;
 #endif
@@ -17036,7 +17043,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * seria
 
   prev_o_num = o_num;
   (void) lsearch (serial_oid_p, o_list, &o_num, sizeof (OID), oid_compare);
-  if (o_num > prev_o_num && o_num > (int) *nump)
+  if (o_num > prev_o_num && o_num > (size_t) * nump)
     {
       *(t_list + o_num - 1) = XASL_SERIAL_OID_TCARD;	/* init #pages */
       *(lck_list + o_num - 1) = (int) NULL_LOCK;
@@ -18314,7 +18321,7 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 
   select_stmt->is_system_generated_stmt = node->is_system_generated_stmt;
 
-  select_stmt->info.query.q.select.hint |= hint_flags;
+  select_stmt->info.query.q.select.hint = (PT_HINT_ENUM) (select_stmt->info.query.q.select.hint | hint_flags);
   select_stmt->recompile = node->recompile;
 
   if (hint_flags & PT_HINT_ORDERED)
@@ -18462,7 +18469,7 @@ pt_mvcc_flag_specs_cond_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_N
 	  spec->info.spec.referenced_attrs = real_refs;
 	  continue;
 	}
-      spec->info.spec.flag |= PT_SPEC_FLAG_MVCC_COND_REEV;
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_MVCC_COND_REEV);
 
       spec->info.spec.referenced_attrs = real_refs;
       parser_free_tree (parser, node);
@@ -18506,7 +18513,7 @@ pt_mvcc_flag_specs_assign_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT
 	  node = mq_get_references (parser, ah.rhs, spec);
 	  if (node != NULL)
 	    {
-	      spec->info.spec.flag |= PT_SPEC_FLAG_MVCC_ASSIGN_REEV;
+	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_MVCC_ASSIGN_REEV);
 	      spec->info.spec.referenced_attrs = real_refs;
 	      parser_free_tree (parser, node);
 	      break;
@@ -18726,7 +18733,7 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
     {
       if (spec->info.spec.flag & spec_flag)
 	{
-	  spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	}
 
       if (spec->info.spec.derived_table != NULL && spec->info.spec.derived_table->node_type == PT_SELECT)
@@ -19013,7 +19020,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 	  PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_MULTI_UPDATE_AGG);
 
 	  /* can't use hash aggregation for this, might mess up order */
-	  statement->info.query.q.select.hint |= PT_HINT_NO_HASH_AGGREGATE;
+	  statement->info.query.q.select.hint =
+	    (PT_HINT_ENUM) (statement->info.query.q.select.hint | PT_HINT_NO_HASH_AGGREGATE);
 	  /* The locking at update/delete stage does not work with GROUP BY, so, we will lock at SELECT stage. */
 	  PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
 	}
@@ -19223,11 +19231,13 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL;
 	       cl_name_node = cl_name_node->next)
 	    {
-	      cl_name_node->info.spec.flag &= ~PT_SPEC_FLAG_MVCC_COND_REEV;
+	      cl_name_node->info.spec.flag =
+		(PT_SPEC_FLAG) (cl_name_node->info.spec.flag & ~PT_SPEC_FLAG_MVCC_COND_REEV);
 	    }
 	  for (cl_name_node = from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
 	    {
-	      cl_name_node->info.spec.flag &= ~PT_SPEC_FLAG_MVCC_COND_REEV;
+	      cl_name_node->info.spec.flag =
+		(PT_SPEC_FLAG) (cl_name_node->info.spec.flag & ~PT_SPEC_FLAG_MVCC_COND_REEV);
 	    }
 	}
 
@@ -19525,6 +19535,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (limit->next)
 	{
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
       xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -19836,11 +19847,13 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
        * select statements) */
       for (p = aptr_statement->info.query.q.select.from; p != NULL; p = p->next)
 	{
-	  p->info.spec.flag &= ~(PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV);
+	  p->info.spec.flag =
+	    (PT_SPEC_FLAG) (p->info.spec.flag & ~(PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV));
 	}
       for (p = from; p != NULL; p = p->next)
 	{
-	  p->info.spec.flag &= ~(PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV);
+	  p->info.spec.flag =
+	    (PT_SPEC_FLAG) (p->info.spec.flag & ~(PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV));
 	}
     }
 
@@ -20336,6 +20349,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
       if (limit->next)
 	{
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
       xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
@@ -21242,7 +21256,7 @@ pt_fix_pseudocolumns_pos_regu_list (PARSER_CONTEXT * parser, PT_NODE * node_list
 	  && (node->info.expr.op == PT_LEVEL || node->info.expr.op == PT_CONNECT_BY_ISLEAF
 	      || node->info.expr.op == PT_CONNECT_BY_ISCYCLE))
 	{
-	  rl->value.vfetch_to = node->etc;
+	  rl->value.vfetch_to = (DB_VALUE *) node->etc;
 	}
 
       node = saved;
@@ -23522,7 +23536,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_SHA_ONE:
 	case T_SHA_TWO:
 	case T_LPAD:
-	case PT_RPAD:
+	case T_RPAD:
 	case T_REPLACE:
 	case T_TRANSLATE:
 	case T_ADD_MONTHS:
@@ -23535,7 +23549,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_MONTH:
 	case T_DAY:
 	case T_HOUR:
-	case PT_MINUTE:
+	case T_MINUTE:
 	case T_SECOND:
 	case T_QUARTER:
 	case T_WEEKDAY:

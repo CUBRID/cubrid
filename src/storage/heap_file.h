@@ -85,6 +85,17 @@
     } \
   while (0)
 
+#define heap_classrepr_free_and_init(class_repr, idxp) \
+  do \
+    { \
+      if ((class_repr) != NULL) \
+        { \
+          heap_classrepr_free ((class_repr), (idxp)); \
+          (class_repr) = NULL; \
+        } \
+    } \
+  while (0)
+
 /*
  * Heap scan structures
  */
@@ -128,7 +139,7 @@ struct heap_scancache
   LOCK page_latch;		/* Indicates the latch/lock to be acquired on heap pages. Its value may be NULL_LOCK
 				 * when it is secure to skip lock on heap pages. For example, the class of the heap has 
 				 * been locked with either S_LOCK, SIX_LOCK, or X_LOCK */
-  int cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
+  bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
   PGBUF_WATCHER page_watcher;
   char *area;			/* Pointer to last left fixed memory allocated */
   int area_size;		/* Size of allocated area */
@@ -263,13 +274,13 @@ typedef enum
   HEAP_OPERATION_UPDATE
 } HEAP_OPERATION_TYPE;
 
-typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
 enum update_inplace_style
 {
   UPDATE_INPLACE_NONE = 0,	/* None */
   UPDATE_INPLACE_CURRENT_MVCCID = 1,	/* non-MVCC in-place update style with current MVCC ID. */
   UPDATE_INPLACE_OLD_MVCCID = 2	/* non-MVCC in-place update style with old MVCC ID. Preserves old MVCC ID */
 };
+typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
 
 /* Currently mvcc update is also executed inplace, but coresponds to UPDATE_INPLACE_NONE. TODO: Refactor */
 #define HEAP_IS_UPDATE_INPLACE(update_inplace_style) \
@@ -379,7 +390,7 @@ struct heap_get_context
   PGBUF_WATCHER fwd_page_watcher;	/* forward page */
 
   /* retrieving parameters */
-  int ispeeking;		/* PEEK or COPY */
+  bool ispeeking;		/* PEEK or COPY */
   int old_chn;			/* Cache number coherency */
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
@@ -664,8 +675,7 @@ extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 				   int old_chn);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
-extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
-					   PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
+extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan,
 					   NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,

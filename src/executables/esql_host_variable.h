@@ -118,7 +118,6 @@ typedef HASH_TAB SYMTAB;
 typedef struct cursor CURSOR;
 typedef struct stmt STMT;
 typedef struct host_lod HOST_LOD;
-typedef enum link_class LINK_CLASS;
 
 struct host_lod			/* list or descriptor */
 {
@@ -220,6 +219,7 @@ enum link_class
   DECLARATOR = 0,
   SPECIFIER = 1
 };
+typedef enum link_class LINK_CLASS;
 
 struct link
 {
@@ -306,14 +306,23 @@ struct stmt
   int sid;
 };
 
-extern C_TYPE pp_get_type (HOST_REF * ref);
-extern char *pp_get_precision (HOST_REF * ref);
-extern char *pp_get_input_size (HOST_REF * ref);
-extern char *pp_get_output_size (HOST_REF * ref);
-extern char *pp_get_expr (HOST_REF * ref);
-extern char *pp_get_addr_expr (HOST_REF * ref);
-extern char *pp_get_ind_expr (HOST_REF * ref);
-extern char *pp_get_ind_addr_expr (HOST_REF * ref);
-extern void pp_print_host_ref (HOST_REF * ref, FILE * fp);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
-#endif /* _ESQL_HOST_VARIABLE_H_ */
+  extern C_TYPE pp_get_type (HOST_REF * ref);
+  extern char *pp_get_precision (HOST_REF * ref);
+  extern char *pp_get_input_size (HOST_REF * ref);
+  extern char *pp_get_output_size (HOST_REF * ref);
+  extern char *pp_get_expr (HOST_REF * ref);
+  extern char *pp_get_addr_expr (HOST_REF * ref);
+  extern char *pp_get_ind_expr (HOST_REF * ref);
+  extern char *pp_get_ind_addr_expr (HOST_REF * ref);
+  extern void pp_print_host_ref (HOST_REF * ref, FILE * fp);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif				/* _ESQL_HOST_VARIABLE_H_ */

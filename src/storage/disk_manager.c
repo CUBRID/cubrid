@@ -396,7 +396,7 @@ STATIC_INLINE void disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
 static int disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RESERVE_CONTEXT * context);
 static DISK_ISVALID disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VOLUME_HEADER * volheader,
 					     SECTID sectid, bool debug_crash);
-static int disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context);
+static int disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context, bool * did_extend);
 STATIC_INLINE void disk_reserve_from_cache_vols (DB_VOLTYPE type, DISK_RESERVE_CONTEXT * context)
   __attribute__ ((ALWAYS_INLINE));
 static int disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * expand_info,
@@ -626,8 +626,14 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       /* Even though the volume header page is not completed at this moment, to write REDO log for the header page is
        * crucial for redo recovery since disk_map_init and disk_set_link will write their redo logs. These functions
        * will access the header page during restart recovery. Another REDO log for RVDK_FORMAT will be written to
-       * completely log the header page including the volume link. */
-      addr.offset = 0;		/* Header is located at position zero */
+       * completely log the header page including the volume link.
+       *
+       * TODO: I think this log entry and comment are obsolete. In fact disk_stab_init and disk_set_link will not access
+       *       this volume header page during recovery. However, I don't like to change this without a thorough
+       *       examination, although it does bring a lot of pain. I will just use the addr.offset field to make each
+       *       RVDK_FORMAT calls recovery detectable.
+       */
+      addr.offset = -1;		/* First call is marked with offset -1. */
       log_append_redo_data (thread_p, RVDK_FORMAT, &addr, sizeof (*vhdr) + disk_vhdr_length_of_varfields (vhdr), vhdr);
     }
 
@@ -1148,12 +1154,59 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VOLID volid = (VOLID) rcv->offset;
   int ret = NO_ERROR;
 
-  ret = disk_unformat (thread_p, (char *) rcv->data);
-  log_append_dboutside_redo (thread_p, RVLOG_OUTSIDE_LOGICAL_REDO_NOOP, 0, NULL);
+  /* we need to undo volume create. this is logged at the start of disk_format, so we may be in one of next situations:
+   *   1. not recovery, an error must have occurred during disk_add_volume execution. it was not yet added to cache,
+   *      so all this has to do is unformat (the number of volumes will be decremented by disk_add_volume).
+   *      condition: LOG_ISRESTARTED () == true
+   *   2. recovery, but crash occurred before volume is registered in system. volume is not loaded to cache, so all
+   *      this has to do it unformat.
+   *      condition: LOG_ISRESTARTED () == false AND volid >= disk_Cache->nvols_perm
+   *   3. recovery, and crash occurred after volume was registered in system, but before completing the action. the
+   *      volume was loaded in cache during restart. we need to remove it completely from cache. volid is last in cache
+   *      in this case.
+   *      condition: LOG_ISRESTARTED () == false AND volid == disk_Cache->nvols_perm - 1
+   */
 
-  if (volid == disk_Cache->nvols_perm - 1)
+  if (!LOG_ISRESTARTED () && volid == disk_Cache->nvols_perm - 1)
     {
+      VPID vpid_volheader;
+      PAGE_PTR page_volheader = NULL;
+      DKNSECTS total = 0, max = 0;
+      DKNSECTS free = 0;
+
+      /* case 3. remove volume from disk cache completely. */
+
+      er_stack_push ();
+
+      /* we need page to remove total/max from disk cache. however, it must be allocated. */
+      vpid_volheader.volid = volid;
+      vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
+      ret = pgbuf_fix_if_not_deallocated (thread_p, &vpid_volheader, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
+					  &page_volheader);
+      if (ret != NO_ERROR)
+	{
+	  /* what is this error?? */
+	  assert_release (false);
+	}
+      else if (page_volheader == NULL)
+	{
+	  /* volume was not created. fall through. */
+	  assert (disk_Cache->vols[volid].nsect_free == 0);
+	}
+      else
+	{
+	  /* get total/max from header */
+	  DISK_VOLUME_HEADER *volheader = (DISK_VOLUME_HEADER *) page_volheader;
+	  total = volheader->nsect_total;
+	  max = volheader->nsect_max;
+
+	  pgbuf_unfix (thread_p, page_volheader);
+	}
+
+      er_stack_pop ();
+
       /* volume was added to cache. now remove it */
+      free = disk_Cache->vols[volid].nsect_free;
       disk_cache_lock_reserve_for_purpose (disk_Cache->vols[volid].purpose);
       disk_cache_update_vol_free (volid, -disk_Cache->vols[volid].nsect_free);
       disk_cache_unlock_reserve_for_purpose (disk_Cache->vols[volid].purpose);
@@ -1161,16 +1214,38 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       assert (disk_Cache->vols[volid].nsect_free == 0);
       disk_Cache->nvols_perm--;
       disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
+
+      disk_Cache->perm_purpose_info.extend_info.nsect_total -= total;
+      disk_Cache->perm_purpose_info.extend_info.nsect_max -= max;
+
+      if (disk_Cache->perm_purpose_info.extend_info.volid_extend == volid)
+	{
+	  /* no longer true */
+	  disk_Cache->perm_purpose_info.extend_info.volid_extend = NULL_VOLID;
+	}
+
+      disk_log ("disk_rv_undo_format", "remove volume %d from cache (free = %d, total = %d, max = %d).",
+		volid, free, total, max);
     }
   else
     {
-      /* must be next volume that was not added yet to cache or a temporary volume */
-      assert (disk_Cache->nvols_perm <= volid);
-      assert (disk_Cache->vols[volid].purpose == DISK_UNKNOWN_PURPOSE);
+      /* case 1 or 2. disk cache is not updated here. */
+      assert (disk_Cache->nvols_perm <= volid || (LOG_ISRESTARTED () && (disk_Cache->nvols_perm - 1 == volid)));
       assert (disk_Cache->vols[volid].nsect_free == 0);
+      assert (disk_Cache->perm_purpose_info.extend_info.volid_extend != volid);
+
+      /* make sure purpose is reset */
+      disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
+
+      disk_log ("disk_rv_undo_format", "remove volume %d", volid);
     }
 
-  return NO_ERROR;
+  ret = disk_unformat (thread_p, (char *) rcv->data);
+  /* we need to remove from volume info file too... the only way is to recreate it. */
+  (void) logpb_recreate_volume_info (thread_p);
+  log_append_dboutside_redo (thread_p, RVLOG_OUTSIDE_LOGICAL_REDO_NOOP, 0, NULL);
+
+  return ret;
 }
 
 /*
@@ -1183,7 +1258,11 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   int error_code = NO_ERROR;
   DISK_VOLUME_HEADER *volheader;
+  bool is_first_call = rcv->offset == -1;
+  DKNSECTS nsect_free = 0;
+  DKNSECTS nsect_diff;
 
+  rcv->offset = 0;
   (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_VOLHEADER);
   error_code = log_rv_copy_char (thread_p, rcv);
   assert (error_code == NO_ERROR);
@@ -1191,25 +1270,59 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   disk_verify_volume_header (thread_p, rcv->pgptr);
   volheader = (DISK_VOLUME_HEADER *) rcv->pgptr;
 
+  if (is_first_call)
+    {
+      /* don't update disk cache. if the volume is successfully created, another disk_rv_redo_format call will follow,
+       * and we can update disk cache then. */
+
+      disk_log ("disk_rv_redo_format", "first call for volume %d at lsa %lld|%d", volheader->volid,
+		PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr));
+      return NO_ERROR;
+    }
+
+  /* this is the second call of disk_rv_redo_format. we need to update disk cache too.
+   * you may be tempted to think that this is a new volume and that all of it must be empty. oh well, even though you
+   * are right most of the time, we can have this beautiful case:
+   * 1. volume is successfully created.
+   * 2. some sectors are reserved.
+   * 3. some (or all) sector table pages are flushed to disk, but not the volume header page.
+   * 4. other sectors are reserved.
+   * 5. server crashes.
+   *
+   * while we are here, the sectors reserved in step #2 are already found in sector table pages, so the assumption that
+   * whole volume is empty is wrong. we need to count the sectors to make sure we are not wrong. */
+
   if (disk_Cache->nvols_perm == volheader->volid)
     {
       /* add to disk cache */
       disk_Cache->nvols_perm++;
       disk_Cache->vols[volheader->volid].purpose = volheader->purpose;
       disk_Cache->vols[volheader->volid].nsect_free = 0;
-      disk_cache_lock_reserve_for_purpose (volheader->purpose);
-      disk_cache_update_vol_free (volheader->volid,
-				  volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1);
-      disk_cache_unlock_reserve_for_purpose (volheader->purpose);
+
+      disk_Cache->perm_purpose_info.extend_info.nsect_total += volheader->nsect_total;
+      disk_Cache->perm_purpose_info.extend_info.nsect_max += volheader->nsect_max;
     }
-  else
+
+  /* fix cache... */
+  error_code = disk_stab_iterate_units_all (thread_p, volheader, PGBUF_LATCH_READ, disk_stab_count_free, &nsect_free);
+  if (error_code != NO_ERROR)
     {
-      /* disk_rv_redo_format is called twice. it must be already added. */
-      assert (disk_Cache->nvols_perm == volheader->volid + 1);
-      assert (disk_Cache->vols[volheader->volid].purpose == volheader->purpose);
-      assert (disk_Cache->vols[volheader->volid].nsect_free
-	      == volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1);
+      assert_release (false);
+      return error_code;
     }
+  nsect_diff = nsect_free - disk_Cache->vols[volheader->volid].nsect_free;
+  if (nsect_diff != 0)
+    {
+      disk_cache_lock_reserve_for_purpose (volheader->purpose);
+      disk_cache_update_vol_free (volheader->volid, nsect_diff);
+      disk_cache_unlock_reserve_for_purpose (volheader->purpose);
+
+      /* there, I fixed it */
+    }
+
+  disk_log ("disk_rv_redo_format", "second call for volume %d at lsa %lld|%d, free = %d, total = %d, max = %d",
+	    volheader->volid, PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr), nsect_free, volheader->nsect_total,
+	    volheader->nsect_max);
 
   return error_code;
 }
@@ -1311,8 +1424,8 @@ disk_rv_dump_set_creation_time (FILE * fp, int length_ignore, void *data)
 
   change = (DISK_RECV_CHANGE_CREATION *) data;
 
-  fprintf (fp, "Label = %s, Db_creation = %lld, chkpt = %lld|%d\n", change->vol_fullname,
-	   (long long) change->db_creation, (long long int) change->chkpt_lsa.pageid, change->chkpt_lsa.offset);
+  fprintf (fp, "Label = %s, Db_creation = %lld, chkpt = %lld|%lld\n", change->vol_fullname,
+	   (long long) change->db_creation, (long long) change->chkpt_lsa.pageid, (long long) change->chkpt_lsa.offset);
 }
 
 /*
@@ -1514,6 +1627,8 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   DKNSECTS nsect_temp_extended = 0;
 #endif /* SERVER_MODE */
 
+  bool check_interrupt = thread_get_check_interrupt (thread_p);
+  bool continue_check = false;
   int error_code = NO_ERROR;
 
   /* How this works:
@@ -1572,13 +1687,27 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       assert (extend_info->volid_extend != NULL_VOLID);
 
       to_expand = MIN (nsect_extend, max - total);
+
+      log_sysop_start (thread_p);
+
+      (void) thread_set_check_interrupt (thread_p, false);
       error_code = disk_volume_expand (thread_p, extend_info->volid_extend, voltype, to_expand, &nsect_free_new);
+      (void) thread_set_check_interrupt (thread_p, check_interrupt);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
 	  return error_code;
 	}
+
+      log_sysop_commit (thread_p);
       assert (nsect_free_new >= to_expand);
+
+      if (extend_info->nsect_total == extend_info->nsect_max)
+	{
+	  /* this cannot be extended any longer. make sure it's not going to be used for that. */
+	  extend_info->volid_extend = NULL_VOLID;
+	}
 
       disk_log ("disk_extend", "expanded volume %d by %d sectors for %s.", extend_info->volid_extend, nsect_free_new,
 		disk_type_to_string (extend_info->voltype));
@@ -1610,12 +1739,13 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 #endif /* SERVER_MODE */
 	  return NO_ERROR;
 	}
+      assert (extend_info->nsect_total == extend_info->nsect_max);
     }
   assert (nsect_extend > 0);
 
   /* add new volume(s) */
   volext.nsect_max = extend_info->nsect_vol_max;
-  volext.comments = reserve_context != NULL ? "Forced Volume Extension" : "Automatic Volume Extension";
+  volext.comments = "Automatic Volume Extension";
   volext.voltype = voltype;
   volext.purpose = voltype == DB_PERMANENT_VOLTYPE ? DB_PERMANENT_DATA_PURPOSE : DB_TEMPORARY_DATA_PURPOSE;
   volext.overwrite = false;
@@ -1624,6 +1754,15 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
     {
       volext.path = NULL;
       volext.name = NULL;
+
+      if (check_interrupt)
+	{
+	  if (logtb_is_interrupted (thread_p, true, &continue_check))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      return ER_INTERRUPTED;
+	    }
+	}
 
       /* set size to remaining sectors */
       volext.nsect_total = nsect_extend + DISK_SYS_NSECT_SIZE (volext.nsect_max);
@@ -1635,7 +1774,9 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       volext.nsect_total = DISK_SECTS_ROUND_UP (volext.nsect_total);
 
       /* add new volume */
+      (void) thread_set_check_interrupt (thread_p, false);
       error_code = disk_add_volume (thread_p, &volext, &volid_new, &nsect_free_new);
+      (void) thread_set_check_interrupt (thread_p, check_interrupt);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1713,6 +1854,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   DISK_RECV_INIT_PAGES_INFO log_data;
   int npages;
   bool do_logging;
+  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
   int error_code = NO_ERROR;
 
   assert (nsect_extend > 0);
@@ -1729,15 +1871,16 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   if (fileio_expand (thread_p, volid, npages, voltype) != npages)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
+      goto exit;
     }
 
   /* fix volume header */
   error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_WRITE, &page_volheader, &volheader);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      return error_code;
+      assert_release (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto exit;
     }
 
   assert (volheader->type == voltype);
@@ -1766,8 +1909,13 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   /* success */
   /* caller will update cache */
 
-  pgbuf_unfix (thread_p, page_volheader);
-  return NO_ERROR;
+exit:
+  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+  if (page_volheader != NULL)
+    {
+      pgbuf_unfix (thread_p, page_volheader);
+    }
+  return error_code;
 }
 
 /*
@@ -1782,6 +1930,10 @@ disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   DISK_VOLUME_HEADER *volheader = (DISK_VOLUME_HEADER *) rcv->pgptr;
   DKNSECTS nsect_extend = *(DKNSECTS *) rcv->data;
+  DISK_STAB_CURSOR start_cursor;
+  DISK_STAB_CURSOR end_cursor;
+  int nfree = 0;
+  int error_code = NO_ERROR;
 
   assert (rcv->length == sizeof (nsect_extend));
   assert (volheader->type == DB_PERMANENT_VOLTYPE);
@@ -1791,10 +1943,35 @@ disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   volheader->nsect_total += nsect_extend;
   disk_verify_volume_header (thread_p, rcv->pgptr);
 
+  /* we may think that all these are new sectors, free to reserve, but that may not always be true:
+   * 1. volume is extended.
+   * 2. some of the sectors in the extended sectors are reserved.
+   * 3. sector table pages are flushed to disk.
+   * 4. other sectors are reserved.
+   * 5. server crashes.
+   *
+   * at this point, sectors reserved in step #2 are already set and they cannot be considered free. */
+
+  disk_stab_cursor_set_at_sectid (volheader, volheader->nsect_total - nsect_extend, &start_cursor);
+  disk_stab_cursor_set_at_end (volheader, &end_cursor);
+
+  error_code =
+    disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_READ, &start_cursor, &end_cursor, disk_stab_count_free,
+			     &nfree);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return error_code;
+    }
+  assert (nfree <= nsect_extend);
+
   disk_Cache->perm_purpose_info.extend_info.nsect_total += nsect_extend;
   disk_cache_lock_reserve_for_purpose (DB_PERMANENT_DATA_PURPOSE);
-  disk_cache_update_vol_free (volheader->volid, nsect_extend);
+  disk_cache_update_vol_free (volheader->volid, nfree);
   disk_cache_unlock_reserve_for_purpose (DB_PERMANENT_DATA_PURPOSE);
+
+  disk_log ("disk_rv_volhead_extend_redo", "extended volume %d total sectors %d (out of which %d were free). "
+	    "volume header lsa %lld|%d", volheader->volid, nsect_extend, nfree, PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr));
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
@@ -1848,6 +2025,12 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
   /* make sure the total and max size are rounded */
   extinfo->nsect_max = DISK_SECTS_ROUND_UP (extinfo->nsect_max);
   extinfo->nsect_total = DISK_SECTS_ROUND_UP (extinfo->nsect_total);
+
+  disk_log ("disk_add_volume", "add new %s volume with purpose %s:\n" "\tname=%s\n" "\tcomments=%s\n" "\tpath=%s\n"
+	    "\tfullname = %s\n" "\ttotal sectors = %d\n" "\tmax sectors = %d", disk_type_to_string (extinfo->voltype),
+	    disk_purpose_to_string (extinfo->purpose), extinfo->name ? extinfo->name : "(UNKNOWN)",
+	    extinfo->comments ? extinfo->comments : "(UNKNOWN)", extinfo->path ? extinfo->path : "(UNKNOWN)",
+	    fullname, extinfo->nsect_total, extinfo->nsect_max);
 
 #if !defined (WINDOWS)
   {
@@ -1971,14 +2154,13 @@ exit:
     {
       log_sysop_abort (thread_p);
 
+      /* undo incrementing volume count. rollback won't do it. */
       if (extinfo->voltype == DB_TEMPORARY_VOLTYPE)
 	{
-	  /* undo format does not update cache on temporary volumes */
 	  disk_Cache->nvols_temp--;
 	}
-      else if (error_code == ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG || error_code == ER_DISK_UNKNOWN_PURPOSE)
+      else
 	{
-	  /* undo format is not logged, and number of volumes will not be updated. */
 	  disk_Cache->nvols_perm--;
 	}
     }
@@ -2770,8 +2952,8 @@ disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
 
   tmp_time = (time_t) vhdr->db_creation;
   (void) ctime_r (&tmp_time, time_val);
-  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%d\n", time_val,
-		  (long long int) vhdr->chkpt_lsa.pageid, vhdr->chkpt_lsa.offset);
+  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%lld\n", time_val,
+		  (long long) vhdr->chkpt_lsa.pageid, (long long) vhdr->chkpt_lsa.offset);
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);
   (void) fprintf (fp, " db_charset = %d\n", vhdr->db_charset);
@@ -3553,6 +3735,10 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   disk_cache_update_vol_free (volid, -nsect);
   disk_cache_unlock_reserve_for_purpose (purpose);
 
+  disk_log ("disk_rv_reserve_sectors", "reserved %d sectors in " PGBUF_PAGE_STATE_MSG ("sector table page")
+	    "\n\tstab_unit = " BIT64_HEXA_PRINT_FORMAT "\n\trv_unit = " BIT64_HEXA_PRINT_FORMAT,
+	    nsect, PGBUF_PAGE_STATE_ARGS (rcv->pgptr), *stab_unit, rv_unit);
+
   csect_exit (thread_p, CSECT_DISK_CHECK);
   return NO_ERROR;
 }
@@ -3629,6 +3815,10 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   disk_cache_lock_reserve_for_purpose (purpose);
   disk_cache_update_vol_free (volid, nsect);
   disk_cache_unlock_reserve_for_purpose (purpose);
+
+  disk_log ("disk_rv_unreserve_sectors", "unreserved %d sectors in " PGBUF_PAGE_STATE_MSG ("sector table page")
+	    "\n\tstab_unit = " BIT64_HEXA_PRINT_FORMAT "\n\trv_unit = " BIT64_HEXA_PRINT_FORMAT,
+	    nsect, PGBUF_PAGE_STATE_ARGS (rcv->pgptr), *stab_unit, rv_unit);
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
   return NO_ERROR;
@@ -3878,6 +4068,9 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   VOLID banned_volid = NULL_VOLID;
   int iter;
   DISK_RESERVE_CONTEXT context;
+  int nreserved;
+  bool retried = false;
+  bool did_extend = false;
   int error_code = NO_ERROR;
 
   assert (purpose == DB_PERMANENT_DATA_PURPOSE || purpose == DB_TEMPORARY_DATA_PURPOSE);
@@ -3896,6 +4089,7 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
       return ER_FAILED;
     }
 
+retry:
   disk_log ("disk_reserve_sectors", "reserve %d sectors for %s.", n_sectors, disk_purpose_to_string (purpose));
 
   log_sysop_start (thread_p);
@@ -3916,7 +4110,7 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   context.n_cache_vol_reserve = 0;
   context.purpose = purpose;
 
-  error_code = disk_reserve_from_cache (thread_p, &context);
+  error_code = disk_reserve_from_cache (thread_p, &context, &did_extend);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -3936,26 +4130,30 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   /* Should have enough sectors. */
   assert ((context.vsidp - reserved_sectors) == n_sectors);
 
+  csect_exit (thread_p, CSECT_DISK_CHECK);
   /* attach sys op to outer */
   log_sysop_attach_to_outer (thread_p);
 
-  csect_exit (thread_p, CSECT_DISK_CHECK);
+#if !defined (NDEBUG)
+  if (did_extend)
+    {
+      /* safe-guard: catch inconsistencies early */
+      assert (disk_check (thread_p, false) != DISK_INVALID);
+    }
+#endif /* !NDEBUG */
 
   return NO_ERROR;
 
 error:
-
-  /* abort any changes */
-  log_sysop_abort (thread_p);
-
-  if (purpose == DB_TEMPORARY_DATA_PURPOSE)
+  nreserved = (int) (context.vsidp - reserved_sectors);
+  if (nreserved > 0)
     {
-      /* nothing was logged. we need to revert any partial allocations we may have made. */
-      int nreserved = context.vsidp - reserved_sectors;
-      if (nreserved > 0)
+      int iter_vsid;
+
+      if (purpose == DB_TEMPORARY_DATA_PURPOSE)
 	{
+	  /* nothing was logged. we need to revert any partial allocations we may have made. */
 	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
-	  int iter_vsid;
 
 	  qsort (reserved_sectors, nreserved, sizeof (VSID), disk_compare_vsids);
 	  if (disk_unreserve_ordered_sectors_without_csect (thread_p, purpose, nreserved, reserved_sectors) != NO_ERROR)
@@ -3963,28 +4161,24 @@ error:
 	      assert_release (false);
 	    }
 	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
-
-	  /* we'll need to remove reservations for the rest of sectors (that were not allocated from disk). but first,
-	   * let's avoid removing the reservations for the ones we allocated from disk and rollbacked (they have been
-	   * removed from cache too) */
-	  for (iter_vsid = 0; iter_vsid < nreserved; iter_vsid++)
-	    {
-	      /* search vsid in volumes */
-	      for (iter = 0; iter < context.n_cache_vol_reserve; iter++)
-		{
-		  if (reserved_sectors[iter_vsid].volid == context.cache_vol_reserve[iter].volid)
-		    {
-		      context.cache_vol_reserve[iter].nsect--;
-		      break;
-		    }
-		}
-	      assert (iter < context.n_cache_vol_reserve);
-	    }
 	}
-    }
-  else
-    {
-      /* changes reverted by log_sysop_abort */
+
+      /* we'll need to remove reservations for the rest of sectors (that were not allocated from disk). but first,
+       * let's avoid removing the reservations for the ones we allocated from disk and rollbacked (they have been
+       * removed from cache too) */
+      for (iter_vsid = 0; iter_vsid < nreserved; iter_vsid++)
+	{
+	  /* search vsid in volumes */
+	  for (iter = 0; iter < context.n_cache_vol_reserve; iter++)
+	    {
+	      if (reserved_sectors[iter_vsid].volid == context.cache_vol_reserve[iter].volid)
+		{
+		  context.cache_vol_reserve[iter].nsect--;
+		  break;
+		}
+	    }
+	  assert (iter < context.n_cache_vol_reserve);
+	}
     }
 
   /* undo cache reserve */
@@ -3992,6 +4186,40 @@ error:
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
 
+  /* abort any changes */
+  log_sysop_abort (thread_p);
+
+  if (error_code == ER_INTERRUPTED	/* interrupted error */
+      || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE
+      || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ )
+    {
+      /* this is expected. */
+      return error_code;
+    }
+  /* this is not. */
+  assert_release (false);
+
+  /* let's try to do something about this. */
+
+  if (retried)
+    {
+      /* already tried... this is not a good sign */
+      _er_log_debug (ARG_FILE_LINE, "disk_reserve_sectors retried and failed! error_code = %d \n", error_code);
+      return error_code;
+    }
+
+  /* disk_check should fix any cache inconsistencies */
+  if (disk_check (thread_p, true) == DISK_INVALID)
+    {
+      /* oh, it was bad */
+      error_code = NO_ERROR;
+      er_clear ();
+      retried = true;
+      goto retry;
+    }
+
+  /* it was not disk cache... */
+  _er_log_debug (ARG_FILE_LINE, "disk_reserve_sectors failed unexpectedly! error_code = %d \n", error_code);
   return error_code;
 }
 
@@ -4005,9 +4233,10 @@ error:
  * return           : Error code
  * thread_p (in)    : Thread entry
  * context (in/out) : Reserve context
+ * did_extend (out) :
  */
 static int
-disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context)
+disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context, bool * did_extend)
 {
   DISK_EXTEND_INFO *extend_info;
   DKNSECTS save_remaining;
@@ -4141,6 +4370,8 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       assert_release (false);
       return ER_FAILED;
     }
+
+  *did_extend = true;
 
   /* all cache reservations were made */
   return NO_ERROR;
@@ -5126,11 +5357,18 @@ xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
       return DB_PERMANENT_DATA_PURPOSE;
     }
 
+  if (volid < LOG_DBFIRST_VOLID)
+    {
+      /* system volumes */
+      return DISK_UNKNOWN_PURPOSE;
+    }
+
   if (!disk_is_valid_volid (volid))
     {
       assert (false);
       return DISK_UNKNOWN_PURPOSE;
     }
+
   return disk_get_volpurpose (volid);
 }
 
@@ -5377,29 +5615,32 @@ xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid)
 
 /*
  * disk_get_boot_db_charset () - Find the system boot charset
- *   return: hfid on success or NULL on failure
+ *   return: error code
  *   volid(in): Permanent volume identifier
  *   db_charset(out): System boot charset
  */
-int *
-disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, int *db_charset)
+int
+disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, INTL_CODESET * db_charset)
 {
   DISK_VOLUME_HEADER *vhdr;
   PAGE_PTR pgptr = NULL;
 
+  int error_code = NO_ERROR;
+
   assert (db_charset != NULL);
 
-  if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &vhdr) != NO_ERROR)
+  error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &vhdr);
+  if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return NULL;
+      return error_code;
     }
 
-  *db_charset = vhdr->db_charset;
+  *db_charset = (INTL_CODESET) vhdr->db_charset;
 
   pgbuf_unfix_and_init (thread_p, pgptr);
 
-  return db_charset;
+  return NO_ERROR;
 }
 
 /*
@@ -5489,7 +5730,7 @@ STATIC_INLINE DB_VOLPURPOSE
 disk_get_volpurpose (VOLID volid)
 {
   assert (disk_Cache != NULL);
-  assert (disk_is_valid_volid (volid));
+  assert (LOG_DBFIRST_VOLID <= volid && disk_is_valid_volid (volid));
 
   return disk_Cache->vols[volid].purpose;
 }
@@ -5713,7 +5954,7 @@ STATIC_INLINE bool
 disk_compatible_type_and_purpose (DB_VOLTYPE type, DB_VOLPURPOSE purpose)
 {
   /* temporary type with permanent purpose is not compatible */
-  return type == DB_PERMANENT_VOLTYPE || purpose == DB_TEMPORARY_VOLTYPE;
+  return type == DB_PERMANENT_VOLTYPE || purpose == DB_TEMPORARY_DATA_PURPOSE;
 }
 
 /*
@@ -5807,6 +6048,17 @@ disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
 	      fileio_get_volume_label (volid, PEEK));
+      valid = DISK_INVALID;
+    }
+
+  /* permanent volume is un-maxed if and only if it is the auto-extend volume */
+  if (volheader->purpose == DB_PERMANENT_DATA_PURPOSE && volheader->nsect_max > volheader->nsect_total
+      && disk_Cache->perm_purpose_info.extend_info.volid_extend != volid)
+    {
+      /* inconsistent! */
+      assert_release (false);
+
+      /* how to repair?? */
       valid = DISK_INVALID;
     }
 

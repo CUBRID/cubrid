@@ -88,7 +88,7 @@ db_ws_alloc (size_t size)
       size_t req_sz;
 
       req_sz = private_request_size (size);
-      h = hl_lea_alloc (ws_Heap_id, req_sz);
+      h = (PRIVATE_MALLOC_HEADER *) hl_lea_alloc (ws_Heap_id, req_sz);
 
       if (h != NULL)
 	{
@@ -151,7 +151,7 @@ db_ws_realloc (void *ptr, size_t size)
 	  size_t req_sz;
 
 	  req_sz = private_request_size (size);
-	  new_h = hl_lea_realloc (ws_Heap_id, h, req_sz);
+	  new_h = (PRIVATE_MALLOC_HEADER *) hl_lea_realloc (ws_Heap_id, h, req_sz);
 	  if (new_h == NULL)
 	    {
 	      return NULL;

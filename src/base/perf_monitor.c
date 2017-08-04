@@ -38,6 +38,18 @@
 #include "xasl_cache.h"
 
 PSTAT_GLOBAL pstat_Global;
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_INSERT_PREPARE, "heap_insert_prepare"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_INSERT_EXECUTE, "heap_insert_execute"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_INSERT_LOG, "heap_insert_log"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_DELETE_PREPARE, "heap_delete_prepare"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_DELETE_EXECUTE, "heap_delete_execute"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_DELETE_LOG, "heap_delete_log"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_UPDATE_PREPARE, "heap_update_prepare"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_UPDATE_EXECUTE, "heap_update_execute"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_UPDATE_LOG, "heap_update_log"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_PREPARE, "heap_vacuum_prepare"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_EXECUTE, "heap_vacuum_execute"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_LOG, "heap_vacuum_log"),
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
 					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 
@@ -161,7 +173,7 @@ perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
   UINT64 *stats;
   int i;
   UINT64 *stats_ptr;
-  UINT64 copied;
+  UINT64 copied = 0;
 
   stats = perfmon_server_get_stats (thread_p);
   if (stats != NULL)
@@ -407,6 +419,26 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
 }
 
 /*
+  unsigned int snapshot;
+  unsigned int rec_type;
+  unsigned int visibility;
+      for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
+	   snapshot++)
+	  for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
+	       rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
+	      for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
+		   visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
+  unsigned int snapshot;
+  unsigned int rec_type;
+  unsigned int visibility;
+  for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
+       snapshot++)
+      for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
+	   rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
+	  for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
+	       visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
+  unsigned int lock_mode;
+      for (lock_mode = (unsigned int) NA_LOCK; lock_mode <= (unsigned int) SCH_M_LOCK; lock_mode++)
  * perfmon_initialize () - Computes the metadata values & allocates/initializes global/transaction statistics values.
  *
  * return	  : NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY.

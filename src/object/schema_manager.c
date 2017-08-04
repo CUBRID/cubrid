@@ -1594,7 +1594,7 @@ sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
 #if defined(SOLARIS) || defined(LINUX) || defined(AIX)
       error = sm_link_dynamic_methods (links, (const char **) sorted_names);
 #else /* SOLARIS || LINUX || AIX */
-      error = sm_link_dynamic_methods (links, sorted_names, commands);
+      error = sm_link_dynamic_methods (links, (const char **) sorted_names, (const char **) commands);
 #endif /* SOLARIS || LINUX || AIX */
       if (commands != NULL)
 	{
@@ -1829,7 +1829,7 @@ sm_prelink_methods (DB_OBJLIST * classes)
 #if defined(SOLARIS) || defined(LINUX) || defined(AIX)
 	  error = sm_link_dynamic_methods (total_links, (const char **) names);
 #else /* SOLARIS || LINUX || AIX */
-	  error = sm_link_dynamic_methods (total_links, names, NULL);
+	  error = sm_link_dynamic_methods (total_links, (const char **) names, NULL);
 #endif /* SOLARIS || LINUX || AIX */
 	  db_ws_free (names);
 	}
@@ -5410,16 +5410,17 @@ sm_att_auto_increment (MOP classop, const char *name)
  *   classop(in): class object
  *   name(in): attribute
  *   value(out): the default value of the specified attribute
+ *   default_expr(out): default expression
  */
 
 int
-sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAULT_EXPR_TYPE * function_code)
+sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAULT_EXPR ** default_expr)
 {
   SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *att = NULL;
   int error = NO_ERROR;
 
-  assert (value != NULL);
+  assert (value != NULL && default_expr != NULL);
 
   error = db_value_clear (value);
   if (error != NO_ERROR)
@@ -5439,7 +5440,7 @@ sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAUL
       goto error_exit;
     }
 
-  *function_code = att->default_value.default_expr;
+  *default_expr = &att->default_value.default_expr;
   return error;
 
 error_exit:
@@ -5663,7 +5664,7 @@ sm_class_check_uniques (MOP classop)
 		    }
 		  else
 		    {
-		      buf_start = malloc (buf_size);
+		      buf_start = (char *) malloc (buf_size);
 		      if (buf_start == NULL)
 			{
 			  error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -8858,7 +8859,7 @@ flatten_trigger_cache (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 
   if (def->triggers != NULL)
     {
-      flat_triggers = tr_copy_schema_cache (def->triggers, NULL);
+      flat_triggers = tr_copy_schema_cache ((TR_SCHEMA_CACHE *) def->triggers, NULL);
     }
   else
     {
@@ -8880,7 +8881,7 @@ flatten_trigger_cache (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	  /* if the class is being edited, be sure and get its updated trigger cache */
 	  if (class_->new_ != NULL)
 	    {
-	      super_triggers = class_->new_->triggers;
+	      super_triggers = (TR_SCHEMA_CACHE *) class_->new_->triggers;
 	    }
 	  else
 	    {

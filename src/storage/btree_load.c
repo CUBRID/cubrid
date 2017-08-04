@@ -131,7 +131,7 @@ struct load_args
   VPID vpid_first_leaf;
 };
 
-static bool btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
+static int btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
 static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VPID * pageid,
 				    LOAD_ARGS * load_args, int node_level);
 static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls, int n_oids, int n_keys);
@@ -149,11 +149,12 @@ static int btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args)
 static int btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC * out_func, void *out_args);
 static SORT_STATUS btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
 static int compare_driver (const void *first, const void *second, void *arg);
-static int add_list (BTREE_NODE ** list, VPID * pageid);
-static void remove_first (BTREE_NODE ** list);
-static int length_list (const BTREE_NODE * this_list);
+static int list_add (BTREE_NODE ** list, VPID * pageid);
+static void list_remove_first (BTREE_NODE ** list);
+static void list_clear (BTREE_NODE * list);
+static int list_length (const BTREE_NODE * this_list);
 #if defined(CUBRID_DEBUG)
-static void print_list (const BTREE_NODE * this_list);
+static void list_print (const BTREE_NODE * this_list);
 #endif /* defined(CUBRID_DEBUG) */
 static int btree_pack_root_header (RECDES * Rec, BTREE_ROOT_HEADER * header, TP_DOMAIN * key_type);
 static void btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta, RECDES * recdes);
@@ -625,7 +626,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
   void *func_unpack_info = NULL;
-  bool btree_id_complete = false, has_fk;
+  bool has_fk;
+  BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
   unsigned short alignment = BTREE_MAX_ALIGN;
 #if !defined(NDEBUG)
@@ -650,6 +652,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->leaf_nleaf_recdes.data = NULL;
   load_args->ovf_recdes.data = NULL;
   load_args->out_recdes = NULL;
+  load_args->push_list = NULL;
+  load_args->pop_list = NULL;
 
   /* 
    * Start a TOP SYSTEM OPERATION.
@@ -678,7 +682,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
-
 
   /* 
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
@@ -835,7 +838,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
   /* Allocate a root page and save the page_id */
   *load_args->btid->sys_btid = *btid;
-  btree_id_complete = true;
+  btid_global_stats = *btid;
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -1016,9 +1019,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
 error:
 
-  if (btree_id_complete)
+  if (!BTID_IS_NULL (&btid_global_stats))
     {
-      logtb_delete_global_unique_stats (thread_p, btid);
+      logtb_delete_global_unique_stats (thread_p, &btid_global_stats);
     }
 
   if (sort_args->scancache_inited)
@@ -1061,6 +1064,17 @@ error:
     {
       pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
     }
+  if (load_args->push_list != NULL)
+    {
+      list_clear (load_args->push_list);
+      load_args->push_list = NULL;
+    }
+  if (load_args->pop_list != NULL)
+    {
+      list_clear (load_args->pop_list);
+      load_args->pop_list = NULL;
+    }
+
   if (sort_args->filter)
     {
       /* to clear db values from dbvalue regu variable */
@@ -1115,7 +1129,7 @@ error:
  * Then it saves the last leaf page (and the last overflow page,
  * if there is one) to the disk.
  */
-static bool
+static int
 btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 {
   INT16 slotid;
@@ -1289,7 +1303,7 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VP
       load_args->nleaf.pgptr = NULL;
 
       /* Insert the pageid to the linked list */
-      if (add_list (&load_args->push_list, &load_args->nleaf.vpid) != NO_ERROR)
+      if (list_add (&load_args->push_list, &load_args->nleaf.vpid) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -1580,7 +1594,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   load_args->nleaf.pgptr = NULL;
 
   /* Insert the pageid to the linked list */
-  ret = add_list (&load_args->push_list, &load_args->nleaf.vpid);
+  ret = list_add (&load_args->push_list, &load_args->nleaf.vpid);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1599,7 +1613,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   load_args->pop_list = load_args->push_list;
   load_args->push_list = NULL;
 
-  while (length_list (load_args->pop_list) > 1)
+  while (list_length (load_args->pop_list) > 1)
     {
       node_level++;
 
@@ -1684,11 +1698,11 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  pgbuf_unfix_and_init (thread_p, cur_nleafpgptr);
 
 	  /* Remove this pageid from the pop list */
-	  remove_first (&load_args->pop_list);
+	  list_remove_first (&load_args->pop_list);
 
 	  btree_clear_key_value (&clear_first_key, &first_key);
 	}
-      while (length_list (load_args->pop_list) > 0);
+      while (list_length (load_args->pop_list) > 0);
 
       /* FLUSH LAST NON-LEAF PAGE */
 
@@ -1708,7 +1722,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       load_args->nleaf.pgptr = NULL;
 
       /* Insert the pageid to the linked list */
-      ret = add_list (&load_args->push_list, &load_args->nleaf.vpid);
+      ret = list_add (&load_args->push_list, &load_args->nleaf.vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1722,7 +1736,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
     }
 
   /* Deallocate the last node (only one exists) */
-  remove_first (&load_args->pop_list);
+  list_remove_first (&load_args->pop_list);
 
   /******************************************
       PHASE III: Update the root page
@@ -2937,7 +2951,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
 
   return ret;
@@ -2950,7 +2964,7 @@ exit_on_error:
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -3605,7 +3619,7 @@ compare_driver (const void *first, const void *second, void *arg)
  */
 
 /*
- * add_list () -
+ * list_add () -
  *   return: NO_ERROR
  *   list(in): which list to add
  *   pageid(in): what value to put to the new node
@@ -3613,7 +3627,7 @@ compare_driver (const void *first, const void *second, void *arg)
  * Note: This function adds a new node to the end of the given list.
  */
 static int
-add_list (BTREE_NODE ** list, VPID * pageid)
+list_add (BTREE_NODE ** list, VPID * pageid)
 {
   BTREE_NODE *new_node;
   BTREE_NODE *next_node;
@@ -3651,14 +3665,14 @@ exit_on_error:
 }
 
 /*
- * remove_first () -
+ * list_remove_first () -
  *   return: nothing
  *   list(in):
  *
  * Note: This function removes the first node of the given list (if it has one).
  */
 static void
-remove_first (BTREE_NODE ** list)
+list_remove_first (BTREE_NODE ** list)
 {
   BTREE_NODE *temp;
 
@@ -3671,7 +3685,25 @@ remove_first (BTREE_NODE ** list)
 }
 
 /*
- * length_list () -
+ * list_clear () -
+ *   return: nothing
+ *   list(in):
+ */
+static void
+list_clear (BTREE_NODE * list)
+{
+  BTREE_NODE *p, *next;
+
+  for (p = list; p != NULL; p = next)
+    {
+      next = p->next;
+
+      os_free_and_init (p);
+    }
+}
+
+/*
+ * list_length () -
  *   return: int
  *   this_list(in): which list
  *
@@ -3679,7 +3711,7 @@ remove_first (BTREE_NODE ** list)
  * given linked list.
  */
 static int
-length_list (const BTREE_NODE * this_list)
+list_length (const BTREE_NODE * this_list)
 {
   int length = 0;
 
@@ -3694,7 +3726,7 @@ length_list (const BTREE_NODE * this_list)
 
 #if defined(CUBRID_DEBUG)
 /*
- * print_list () -
+ * list_print () -
  *   return: this_list
  *   this_list(in): which list to print
  *
@@ -3702,7 +3734,7 @@ length_list (const BTREE_NODE * this_list)
  * It is used for debugging purposes.
  */
 static void
-print_list (const BTREE_NODE * this_list)
+list_print (const BTREE_NODE * this_list)
 {
   while (this_list != NULL)
     {
@@ -3722,7 +3754,7 @@ void
 btree_load_foo_debug (void)
 {
   (void) btree_dump_sort_output (NULL, NULL);
-  print_list (NULL);
+  list_print (NULL);
 }
 #endif /* CUBRID_DEBUG */
 
@@ -3788,61 +3820,4 @@ btree_node_number_of_keys (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
   assert_release (key_cnt >= 0);
 
   return key_cnt;
-}
-
-/*
- * btree_get_btree_node_type_from_page () -
- *
- *   return:
- *   page_ptr(in):
- *
- */
-int
-btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
-{
-  RECDES header_record;
-  SPAGE_HEADER *page_header_p;
-  int root_header_fixed_size = (int) offsetof (BTREE_ROOT_HEADER, packed_key_domain);
-
-  assert (page_ptr != NULL);
-
-  page_header_p = (SPAGE_HEADER *) page_ptr;
-
-  if (page_header_p->num_slots <= 0 || spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
-    {
-      return PERF_PAGE_BTREE_GENERIC;
-    }
-
-  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER))
-    {
-      return PERF_PAGE_BTREE_OVF;
-    }
-  else if (header_record.length == sizeof (BTREE_NODE_HEADER))
-    {
-      BTREE_NODE_HEADER *header;
-
-      header = (BTREE_NODE_HEADER *) header_record.data;
-      if (header != NULL)
-	{
-	  if (header->node_level > 1)
-	    {
-	      return PERF_PAGE_BTREE_NONLEAF;
-	    }
-	  else
-	    {
-	      return PERF_PAGE_BTREE_LEAF;
-	    }
-	}
-      else
-	{
-	  return PERF_PAGE_UNKNOWN;
-	}
-    }
-  else
-    {
-      assert (header_record.length >= root_header_fixed_size);
-
-      return PERF_PAGE_BTREE_ROOT;
-    }
-  return PERF_PAGE_BTREE_ROOT;
 }

@@ -501,7 +501,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  fetch_flag = 0;
 	}
 
-      if (srv_handle->auto_commit_mode == true)
+      if (srv_handle->auto_commit_mode != 0)
 	{
 	  auto_commit_mode = true;
 	  forward_only_cursor = true;
@@ -1430,7 +1430,7 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   if (err_code < 0)
     {
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   if (attr_name_size < 1)
@@ -1621,7 +1621,9 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval exec_begin, exec_end;
   char *eid_string;
-  char *plan;
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  char *plan = NULL;
+#endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) */
   int driver_query_timeout;
   int arg_index = 0;
   char auto_commit_mode;
@@ -1949,7 +1951,7 @@ fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
     {
       ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   if (err_code < 0)

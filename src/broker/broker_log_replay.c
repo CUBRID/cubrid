@@ -66,13 +66,13 @@
           } \
         } while (0)
 
-typedef enum temp_read_result READ_RESULT;
 enum temp_read_result
 {
   READ_STOP = -1,
   READ_CONTINUE = 0,
   READ_SUCCESS = 1
 };
+typedef enum temp_read_result READ_RESULT;
 
 typedef struct t_sql_info T_SQL_INFO;
 struct t_sql_info
@@ -540,7 +540,7 @@ log_prepare (FILE * cci_errfp, FILE * pass_sql, int con, char *sql_log, T_SQL_IN
   char *endp;
   char *rewrite_query;
   T_CCI_ERROR err_buf;
-  T_CCI_CUBRID_STMT cmd_type = -1;
+  T_CCI_CUBRID_STMT cmd_type = CUBRID_STMT_NONE;
 
   sql_log = ut_get_execute_type (sql_log, &prepare_flag, &execute_flag);
   if (sql_log == NULL)
@@ -827,7 +827,7 @@ log_bind_value (int req, T_STRING * linebuf, char *sql_log, char *output_result,
     }
   else
     {
-      cci_bind_param (req, bind_idx, CCI_A_TYPE_STR, value_p, type, 0);
+      cci_bind_param (req, bind_idx, CCI_A_TYPE_STR, value_p, (T_CCI_U_TYPE) type, 0);
     }
 
   if (remain_bind_buf <= 0)

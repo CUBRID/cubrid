@@ -910,6 +910,7 @@ EXPORTS
     dbt_set_object_id
     db_get_execution_plan
     db_set_execution_plan
+    db_default_expression_string
 ; elo
 	db_elo_copy_structure
 	db_elo_free_structure

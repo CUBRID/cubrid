@@ -35,7 +35,6 @@
 
 #define ADJ_AR_EOA -1
 
-typedef enum adj_err_code ADJ_ERR_CODE;
 enum adj_err_code
 {
   ADJ_NOERROR = 0,
@@ -51,6 +50,7 @@ enum adj_err_code
   ADJ_ERR_BAD_LENGTH = -10,
   ADJ_ERR_BAD_ADJ_ARR_PTR = -99
 };
+typedef enum adj_err_code ADJ_ERR_CODE;
 
 typedef struct adj_array ADJ_ARRAY;
 struct adj_array

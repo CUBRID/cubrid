@@ -63,8 +63,8 @@
                                       ? true : false )
 
 #define DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
-                                    ( ((c) == DB_CONSTRAINT_REVERSE_UNIQUE  || \
-                                       (c) == DB_CONSTRAINT_REVERSE_INDEX)     \
+                                    ( ((DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_UNIQUE  || \
+                                       (DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_INDEX)     \
                                       ? true : false )
 
 #define DB_IS_CONSTRAINT_FAMILY(c) \
@@ -100,6 +100,7 @@ typedef enum
   DB_NE = 2,			/* not equal because types incomparable */
   DB_SUPERSET = 3		/* strict superset for set types.  */
 } DB_VALUE_COMPARE_RESULT;
+#define DB_INT_TO_COMPARE_RESULT(c) ((c) == 0 ? DB_EQ : ((c) > 0 ? DB_GT : DB_LT))
 
 /* Object fetch and locking constants.  These are used to specify
    a lock mode when fetching objects using of the explicit fetch and
@@ -365,10 +366,11 @@ typedef struct sm_class_constraint DB_CONSTRAINT;
 typedef struct sm_function_index_info DB_FUNCTION_INDEX_INFO;
 
 
-/* Types of constraints that may be applied to applibutes.  This type
+/* Types of constraints that may be applied to attributes.  This type
    is used by the db_add_constraint()/db_drop_constraint() API functions. */
 typedef enum
 {
+  DB_CONSTRAINT_NONE = -1,
   DB_CONSTRAINT_UNIQUE = 0,
   DB_CONSTRAINT_INDEX = 1,
   DB_CONSTRAINT_NOT_NULL = 2,
@@ -376,7 +378,7 @@ typedef enum
   DB_CONSTRAINT_REVERSE_INDEX = 4,
   DB_CONSTRAINT_PRIMARY_KEY = 5,
   DB_CONSTRAINT_FOREIGN_KEY = 6
-} DB_CONSTRAINT_TYPE;
+} DB_CONSTRAINT_TYPE;		/* TODO: only one enum for DB_CONSTRAINT_TYPE and SM_CONSTRAINT_TYPE */
 
 typedef enum
 {
