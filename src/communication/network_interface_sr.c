@@ -3212,10 +3212,9 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		   + OR_INT_SIZE	/* page_size */
 		   + OR_INT_SIZE	/* log_page_size */
 		   + OR_FLOAT_SIZE	/* disk_compatibility */
-		   + OR_INT_SIZE);	/* ha_server_state */
-
-      area_size += OR_INT_SIZE;	/* db_charset */
-      area_size += or_packed_string_length (server_credential.db_lang, &strlen4);
+		   + OR_INT_SIZE	/* ha_server_state */
+		   + OR_INT_SIZE	/* db_charset */
+		   + or_packed_string_length (server_credential.db_lang, &strlen4) /* db_lang */ );
 
       area = (char *) db_private_alloc (thread_p, area_size);
       if (area == NULL)

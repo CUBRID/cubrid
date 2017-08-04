@@ -3554,22 +3554,31 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
       or_unpack_int (reply, &area_size);
       if (area_size > 0)
 	{
-	  int ha_state_to_int = (int) server_credential->ha_server_state;
+	  int ha_state_to_int;
+
 	  ptr = or_unpack_int (area, &tran_index);
+
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  *tran_state = (TRAN_STATE) temp_int;
+
 	  ptr = or_unpack_string (ptr, &server_credential->db_full_name);
 	  ptr = or_unpack_string (ptr, &server_credential->host_name);
 	  ptr = or_unpack_string (ptr, &server_credential->lob_path);
 	  ptr = or_unpack_int (ptr, &server_credential->process_id);
 	  ptr = or_unpack_oid (ptr, &server_credential->root_class_oid);
 	  ptr = or_unpack_hfid (ptr, &server_credential->root_class_hfid);
+
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  server_credential->page_size = (PGLENGTH) temp_int;
+
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  server_credential->log_page_size = (PGLENGTH) temp_int;
+
 	  ptr = or_unpack_float (ptr, &server_credential->disk_compatibility);
+
 	  ptr = or_unpack_int (ptr, &ha_state_to_int);
+	  server_credential->ha_server_state = (HA_SERVER_STATE) ha_state_to_int;
+
 	  ptr = or_unpack_int (ptr, &server_credential->db_charset);
 	  ptr = or_unpack_string (ptr, &server_credential->db_lang);
 	}
@@ -6471,7 +6480,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
 	    default:
 	      /* Clone value */
-	      if (db_value_clone ((DB_VALUE *) & dbvals[i], &server_db_values[i]) != NO_ERROR)
+	      if (db_value_clone ((DB_VALUE *) (&dbvals[i]), &server_db_values[i]) != NO_ERROR)
 		{
 		  goto cleanup;
 		}
