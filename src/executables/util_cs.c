@@ -104,7 +104,8 @@ static void intr_handler (int sig_no);
 
 static void backupdb_sig_interrupt_handler (int sig_no);
 STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
-static void print_timestamp (FILE * outfp);
+static void print_timestamp (FILE * outfp, time_t * result);
+static void get_timestamp (struct tm *timestamp);
 static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level);
 static int tranlist_cmp_f (const void *p1, const void *p2);
 static OID *util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_name, BTID * index_btid);
@@ -2235,16 +2236,26 @@ error_exit:
 }
 
 static void
-print_timestamp (FILE * outfp)
+print_timestamp (FILE * outfp, time_t * result)
 {
   time_t tloc;
   struct tm tmloc;
   char str[80];
 
   tloc = time (NULL);
+  memcpy (result, &tloc, sizeof (time_t));
   utility_localtime (&tloc, &tmloc);
   strftime (str, 80, "%a %B %d %H:%M:%S %Z %Y", &tmloc);
   fprintf (outfp, "\n\t%s\n", str);
+}
+
+void
+get_timestamp (struct tm *timestamp)
+{
+  time_t tloc;
+
+  tloc = time (NULL);
+  utility_localtime (&tloc, timestamp);
 }
 
 /*
@@ -2259,10 +2270,14 @@ statdump (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
+  const char *binary_output_file = NULL;
   int interval;
   bool cumulative;
   const char *substr;
   FILE *outfp = NULL;
+  FILE *bin_out_fp = NULL;
+  time_t current_time = time (NULL);
+  INT64 portable_time, swapped_time;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2276,7 +2291,9 @@ statdump (UTIL_FUNCTION_ARG * arg)
     }
 
   output_file = utility_get_option_string_value (arg_map, STATDUMP_OUTPUT_FILE_S, 0);
+  binary_output_file = utility_get_option_string_value (arg_map, STATDUMP_BINARY_OUTPUT_FILE_S, 0);
   interval = utility_get_option_int_value (arg_map, STATDUMP_INTERVAL_S);
+
   if (interval < 0)
     {
       goto print_statdump_usage;
@@ -2301,6 +2318,18 @@ statdump (UTIL_FUNCTION_ARG * arg)
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP, STATDUMP_MSG_BAD_OUTPUT),
 				 output_file);
+	  goto error_exit;
+	}
+    }
+
+  if (binary_output_file != NULL)
+    {
+      bin_out_fp = fopen (binary_output_file, "wb");
+      if (bin_out_fp == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP, STATDUMP_MSG_BAD_BINARY_OUTPUT),
+				 binary_output_file);
 	  goto error_exit;
 	}
     }
@@ -2340,10 +2369,23 @@ statdump (UTIL_FUNCTION_ARG * arg)
 #endif
     }
 
+  if (bin_out_fp != NULL)
+    {
+      portable_time = (INT64) current_time;
+      OR_PUT_INT64 (&swapped_time, &portable_time);
+      fwrite (&swapped_time, sizeof (INT64), 1, bin_out_fp);
+    }
   do
     {
-      print_timestamp (outfp);
-      if (histo_print_global_stats (outfp, cumulative, substr) != NO_ERROR)
+      print_timestamp (outfp, &current_time);
+
+      if (bin_out_fp != NULL)
+	{
+	  portable_time = (INT64) current_time;
+	  OR_PUT_INT64 (&swapped_time, &portable_time);
+	  fwrite (&swapped_time, sizeof (INT64), 1, bin_out_fp);
+	}
+      if (histo_print_global_stats (outfp, bin_out_fp, cumulative, substr) != NO_ERROR)
 	{
 	  histo_stop ();
 	  goto error_exit;
@@ -2362,6 +2404,8 @@ statdump (UTIL_FUNCTION_ARG * arg)
       fclose (outfp);
     }
 
+  fclose (bin_out_fp);
+
   return EXIT_SUCCESS;
 
 print_statdump_usage:
@@ -2373,6 +2417,10 @@ error_exit:
   if (outfp != stdout && outfp != NULL)
     {
       fclose (outfp);
+    }
+  if (bin_out_fp != NULL)
+    {
+      fclose (bin_out_fp);
     }
   return EXIT_FAILURE;
 #else /* CS_MODE */

@@ -27,7 +27,7 @@
 #include <fcntl.h>
 #include "tsc_timer.h"
 
-/*
+/*d
  * get_clockfreq() - get the CPU clock rate
  *   return: the CPU or Mainboard clock rate (KHz)
  */

@@ -63,7 +63,7 @@
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "connection_support.h"
-#include "perf_monitor.h"
+#include "perf_client.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if !defined(WINDOWS)
@@ -1620,7 +1620,7 @@ query_cancel (int signo)
   signal (signo, SIG_IGN);
   db_set_interrupt (1);
 #endif /* CAS_FOR_ORACLE */
-  as_info->num_interrupts %= MAX_DIAG_DATA_VALUE;
+  UNSIGNED_INC (as_info->num_interrupts);
   as_info->num_interrupts++;
 
   clock_gettime (CLOCK_REALTIME, &ts);
@@ -2040,8 +2040,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	      sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, true);
 	    }
 	}
-      as_info->num_transactions_processed %= MAX_DIAG_DATA_VALUE;
-      as_info->num_transactions_processed++;
+      UNSIGNED_INC (as_info->num_transactions_processed);
 
       /* should be OUT_TRAN in auto commit */
       CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
@@ -2054,13 +2053,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if ((func_code == CAS_FC_EXECUTE) || (func_code == CAS_FC_SCHEMA_INFO))
     {
-      as_info->num_requests_received %= MAX_DIAG_DATA_VALUE;
-      as_info->num_requests_received++;
+      UNSIGNED_INC (as_info->num_requests_received);
     }
   else if (func_code == CAS_FC_END_TRAN)
     {
-      as_info->num_transactions_processed %= MAX_DIAG_DATA_VALUE;
-      as_info->num_transactions_processed++;
+      UNSIGNED_INC (as_info->num_transactions_processed);
     }
 
   as_info->log_msg[0] = '\0';

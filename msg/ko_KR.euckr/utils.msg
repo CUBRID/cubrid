@@ -930,6 +930,8 @@ valid options:\n\
   -c, --cumulative             누적값을 출력\n\
   -i, --interval=S             매 S 초마다 통계를 출력\n\
   -s, --substr=STRING          지정한 문자열이 포함된 항목만 출력\n
+  -b, --binary-output-file=FILE		redirect binary dump to FILE; default: none\n
+61 Cannot create binary file '%1$s'\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA 암호 입력:

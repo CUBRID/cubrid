@@ -58,6 +58,7 @@
 #include "replication.h"
 #include "es.h"
 #include "vacuum.h"
+#include "perf_client.h"
 
 
 /*
@@ -7109,7 +7110,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
   int nr_statistic_values;
   int err = NO_ERROR;
 
-  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  nr_statistic_values = perfmeta_get_values_count ();
   reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
 
   if (reply == NULL)
@@ -7163,7 +7164,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
   int nr_statistic_values;
   int err = NO_ERROR;
 
-  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  nr_statistic_values = perfmeta_get_values_count ();
   reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
   if (reply == NULL)
     {
@@ -8748,14 +8749,14 @@ histo_print (FILE * stream)
 }
 
 int
-histo_print_global_stats (FILE * stream, bool cumulative, const char *substr)
+histo_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, const char *substr)
 {
   int err = NO_ERROR;
 
 #if defined (CS_MODE)
-  err = net_histo_print_global_stats (stream, cumulative, substr);
+  err = net_histo_print_global_stats (stream, bin_stream, cumulative, substr);
 #else /* CS_MODE */
-  err = perfmon_print_global_stats (stream, cumulative, substr);
+  err = perfmon_print_global_stats (stream, bin_stream, cumulative, substr);
 #endif /* !CS_MODE */
 
   return err;

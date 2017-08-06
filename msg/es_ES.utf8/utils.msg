@@ -930,6 +930,8 @@ opciones validas:\n\
   -c, --cumulative             imprimir estadisticas cumulativas\n\
   -i, --interval=S             imprimir estadisticas casa S segundos\n\
   -s, --substr=STRING          imprimir solo aquellos articulos de estadistica que emparejan con el substring\n
+  -b, --binary-output-file=FILE		redirect binary dump to FILE; default: none\n
+61 Cannot create binary file '%1$s'\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Introducir contrasena DBA:

@@ -4649,7 +4649,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     {
       perfmon_start_watch (thread_p);
 
-      base_stats = perfmon_allocate_values ();
+      base_stats = perfmeta_allocate_values ();
       if (base_stats == NULL)
 	{
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -4836,7 +4836,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
 	  if (base_stats == NULL)
 	    {
-	      base_stats = perfmon_allocate_values ();
+	      base_stats = perfmeta_allocate_values ();
 	      if (base_stats == NULL)
 		{
 		  css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -4844,13 +4844,13 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 		}
 	    }
 
-	  current_stats = perfmon_allocate_values ();
+	  current_stats = perfmeta_allocate_values ();
 	  if (current_stats == NULL)
 	    {
 	      css_send_abort_to_client (thread_p->conn_entry, rid);
 	      goto exit;
 	    }
-	  diff_stats = perfmon_allocate_values ();
+	  diff_stats = perfmeta_allocate_values ();
 	  if (diff_stats == NULL)
 	    {
 	      css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -4858,7 +4858,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	    }
 
 	  xperfmon_server_copy_stats (thread_p, current_stats);
-	  perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
+	  perfmeta_diff_stats (diff_stats, current_stats, base_stats);
 
 	  if (response_time >= trace_slow_msec)
 	    {
@@ -5808,8 +5808,8 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   int nr_statistic_values;
   UINT64 *stats = NULL;
 
-  nr_statistic_values = perfmon_get_number_of_statistic_values ();
-  stats = perfmon_allocate_values ();
+  nr_statistic_values = perfmeta_get_values_count ();
+  stats = perfmeta_allocate_values ();
 
   if (stats == NULL)
     {
@@ -5852,8 +5852,8 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *
   int nr_statistic_values;
   UINT64 *stats = NULL;
 
-  nr_statistic_values = perfmon_get_number_of_statistic_values ();
-  stats = perfmon_allocate_values ();
+  nr_statistic_values = perfmeta_get_values_count ();
+  stats = perfmeta_allocate_values ();
   if (stats == NULL)
     {
       ASSERT_ERROR ();

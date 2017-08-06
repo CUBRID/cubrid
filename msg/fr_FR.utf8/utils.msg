@@ -933,6 +933,8 @@ options valids:\n\
   -c, --cumulative             affiche les statistiques cumulatives\n\
   -i, --interval=S             affiche les statistiques toutes les S secondes\n\
   -s, --substr=CHAÎNE          affiche seulement les articles statistiques qui correspondent à le CHAÎNE\n
+  -b, --binary-output-file=FILE		redirect binary dump to FILE; default: none\n
+61 Cannot create binary file '%1$s'\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Entrez mot de passe DBA:

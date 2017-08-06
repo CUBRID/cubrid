@@ -929,6 +929,8 @@ valid options:\n\
   -c, --cumulative             総計を出力\n\
   -i, --interval=S             S秒の旅に通計を出力\n\
   -s, --substr=STRING          指定したストリングが含まれた項目だけ出力\n
+  -b, --binary-output-file=FILE		redirect binary dump to FILE; default: none\n
+61 Cannot create binary file '%1$s'\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBAパスワードを入力してください。:

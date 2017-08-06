@@ -37,6 +37,24 @@
 #include <sys/socket.h>
 #endif
 
+#if defined (WINDOWS)
+#include <fcntl.h>
+#include <direct.h>
+#include <process.h>
+#include <sys/timeb.h>
+#include <time.h>
+#include <sys/locking.h>
+#include <windows.h>
+#include <winbase.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <assert.h>
+#include <io.h>			/* todo: to fix the compile error coming from redefining lseek */
+#else /*!defined (WINDOWS) */
+#include <sys/time.h>
+#endif /*!defined (WINDOWS) */
+
 #if !defined (__GNUC__)
 #define __attribute__(X)
 #endif
@@ -111,19 +129,6 @@
    || (sizeof (long long unsigned) <= sizeof (size_t)))
 
 #if defined (WINDOWS)
-#include <fcntl.h>
-#include <direct.h>
-#include <process.h>
-#include <sys/timeb.h>
-#include <time.h>
-#include <sys/locking.h>
-#include <windows.h>
-#include <winbase.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <errno.h>
-#include <assert.h>
-
 #if !defined (ENOMSG)
 /* not defined errno on Windows */
 #define ENOMSG      100
@@ -329,15 +334,15 @@ extern int free_space (const char *, int);
 #else /* WINDOWS */
 
 #if !defined (HAVE_CTIME_R)
-#  error "HAVE_CTIME_R"
+#error "HAVE_CTIME_R"
 #endif
 
 #if !defined (HAVE_LOCALTIME_R)
-#  error "HAVE_LOCALTIME_R"
+#error "HAVE_LOCALTIME_R"
 #endif
 
 #if !defined (HAVE_DRAND48_R)
-#  error "HAVE_DRAND48_R"
+#error "HAVE_DRAND48_R"
 #endif
 
 
@@ -456,7 +461,9 @@ extern int itona (int i, char *s, size_t n);
 
 extern char *stristr (const char *s, const char *find);
 
+#if 0
 #define strlen(s1)  ((int) strlen(s1))
+#endif
 #define CAST_STRLEN (int)
 #define CAST_BUFLEN (int)
 #if defined(_FILE_OFFSET_BITS) && _FILE_OFFSET_BITS == 32
@@ -975,7 +982,41 @@ extern time_t mktime_for_win32 (struct tm *tm);
 #define PRIx64 "llx"
 #endif
 
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+
+#define swap64(x)  \
+  ((((unsigned long long) (x) & (0x00000000000000FFULL)) << 56) \
+   | (((unsigned long long) (x) & (0xFF00000000000000ULL)) >> 56) \
+   | (((unsigned long long) (x) & (0x000000000000FF00ULL)) << 40) \
+   | (((unsigned long long) (x) & (0x00FF000000000000ULL)) >> 40) \
+   | (((unsigned long long) (x) & (0x0000000000FF0000ULL)) << 24) \
+   | (((unsigned long long) (x) & (0x0000FF0000000000ULL)) >> 24) \
+   | (((unsigned long long) (x) & (0x00000000FF000000ULL)) << 8) \
+   | (((unsigned long long) (x) & (0x000000FF00000000ULL)) >> 8))
+
+#else /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
+#define swap64(x)        (x)
+#endif /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
+
+#define OR_GET_INT64(ptr, val) \
+  do { \
+    INT64 packed_value; \
+    memcpy (&packed_value, ptr, OR_INT64_SIZE); \
+    *((INT64*) (val)) = ((INT64) swap64 (packed_value)); \
+  } while (0)
+
+#define OR_PUT_INT64(ptr, val) \
+  do { \
+    INT64 packed_value; \
+    packed_value = ((INT64) swap64 (*(INT64*) val)); \
+    memcpy (ptr, &packed_value, OR_INT64_SIZE);\
+  } while (0)
+
+#define OR_INT64_SIZE           8
+
 extern int msleep (const long msec);
+
+#define UNSIGNED_INC(x) (x) = ((x) + 1 < 0 ? 0 : (x) + 1)
 
 #ifdef __cplusplus
 extern "C"
