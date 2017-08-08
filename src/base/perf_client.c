@@ -53,27 +53,22 @@ static void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_t
 static void
 perfmon_get_current_times (time_t * cpu_user_time, time_t * cpu_sys_time, time_t * elapsed_time)
 {
-#if defined (WINDOWS)
-  *cpu_user_time = 0;
-  *cpu_sys_time = 0;
-  *elapsed_time = 0;
-
-  *elapsed_time = time (NULL);
-#else /* WINDOWS */
-  struct rusage rusage;
-
   *cpu_user_time = 0;
   *cpu_sys_time = 0;
   *elapsed_time = 0;
 
   *elapsed_time = time (NULL);
 
-  if (getrusage (RUSAGE_SELF, &rusage) == 0)
+  #if !defined (WINDOWS)
+
+  struct rusage rusage_obj;
+
+  if (getrusage (RUSAGE_SELF, &rusage_obj) == 0)
     {
-      *cpu_user_time = rusage.ru_utime.tv_sec;
-      *cpu_sys_time = rusage.ru_stime.tv_sec;
+      *cpu_user_time = rusage_obj.ru_utime.tv_sec;
+      *cpu_sys_time = rusage_obj.ru_stime.tv_sec;
     }
-#endif /* WINDOWS */
+  #endif /*! WINDOWS */
 }
 
 /*
@@ -230,8 +225,8 @@ perfmon_get_stats (void)
 }
 
 /*
- *   perfmon_get_global_stats - Get the recorded client statistics
- *   return: client statistics
+ *   perfmon_get_global_stats - Get the recorded statistics from server to client.
+ *   Return : error_code
  */
 int
 perfmon_get_global_stats (void)
@@ -357,6 +352,12 @@ perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, c
       if (bin_stream != NULL)
 	{
 	  char *packed_stats = (char *) malloc (sizeof (UINT64) * perfmeta_get_values_count ());
+      if (packed_stats == NULL)
+        {
+          ASSERT_ERROR ();
+          err = ER_OUT_OF_VIRTUAL_MEMORY;
+          goto exit;
+        }
 	  perfmon_pack_stats (packed_stats, perfmon_Stat_info.current_global_stats);
 	  fwrite (packed_stats, sizeof (UINT64), (size_t) perfmeta_get_values_count (), bin_stream);
 	  free (packed_stats);
