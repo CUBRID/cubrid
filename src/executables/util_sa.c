@@ -680,6 +680,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
       csql (arg->command_name, &csql_arg);
     }
 
+  perfmon_finalize ();
+
   return EXIT_SUCCESS;
 
 print_create_usage:
@@ -695,6 +697,11 @@ error_exit:
   if (user_define_file != NULL)
     {
       fclose (user_define_file);
+    }
+
+  if (pstat_Global.initialized)
+    {
+      perfmon_finalize ();
     }
   return EXIT_FAILURE;
 }
