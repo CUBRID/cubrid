@@ -978,15 +978,12 @@ tp_domain_free (TP_DOMAIN * dom)
       dom->class_mop = NULL;
       if (dom->type->id == DB_TYPE_JSON && dom->schema_raw != NULL)
         {
-          assert (dom->validation_obj != NULL);
-
           free_and_init (dom->schema_raw);
-          delete dom->validation_obj->document;
-          delete dom->validation_obj->schema;
-          delete dom->validation_obj->validator;
+          delete dom->validation_obj.document;
+          delete dom->validation_obj.schema;
+          delete dom->validation_obj.validator;
 
-          free (dom->validation_obj);
-          dom->validation_obj = NULL;
+          memset (&dom->validation_obj, 0, sizeof (DB_JSON_VALIDATION_OBJECT));
         }
 
       /* 
@@ -1131,7 +1128,7 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
       new_dm->scale = scale;
       new_dm->setdomain = setdomain;
       new_dm->schema_raw = NULL;
-      new_dm->validation_obj = NULL;
+      memset (&new_dm->validation_obj, 0, sizeof (DB_JSON_VALIDATION_OBJECT));
 
 #if !defined (NDEBUG)
       if (domain_type == DB_TYPE_MIDXKEY)
@@ -1339,7 +1336,6 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	      new_domain->is_desc = d->is_desc;
               if (d->type->id == DB_TYPE_JSON && d->schema_raw != NULL)
                 {
-                  assert (d->validation_obj != NULL);
                   schema_len = strlen (d->schema_raw);
 
                   new_domain->validation_obj = get_copy_of_validator (d->validation_obj, d->schema_raw);
@@ -3475,7 +3471,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
               domain->schema_raw[len] = '\0';
               domain->validation_obj = get_validator_from_schema_string (domain->schema_raw);
 
-              assert (domain->validation_obj != NULL);
+              assert (er_errid() == NO_ERROR);
             }
           else
             {
@@ -4389,9 +4385,9 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 
       for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 	{
-          if (d->validation_obj != NULL)
+          if (d->validation_obj.validator != NULL)
             {
-              bool result = value->data.json.document->Accept (*d->validation_obj->validator);
+              bool result = value->data.json.document->Accept (*d->validation_obj.validator);
               if (result)
                 {
                   best = d;
@@ -7347,14 +7343,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
             case DB_TYPE_JSON:
               {
                 bool result;
-                if (desired_domain->validation_obj == NULL)
+                if (desired_domain->schema_raw == NULL)
                   {
                     result = true;
                   }
                 else
                   {
-                    desired_domain->validation_obj->validator->Reset ();
-                    result = src->data.json.document->Accept (*desired_domain->validation_obj->validator);
+                    desired_domain->validation_obj.validator->Reset ();
+                    result = src->data.json.document->Accept (*desired_domain->validation_obj.validator);
                   }
 
                 if (result)
@@ -7366,10 +7362,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
                   {
                     rapidjson::StringBuffer sb1, sb2;
 
-                    desired_domain->validation_obj->validator->GetInvalidSchemaPointer().StringifyUriFragment(sb1);
-                    desired_domain->validation_obj->validator->GetInvalidDocumentPointer().StringifyUriFragment(sb2);
+                    desired_domain->validation_obj.validator->GetInvalidSchemaPointer().StringifyUriFragment(sb1);
+                    desired_domain->validation_obj.validator->GetInvalidDocumentPointer().StringifyUriFragment(sb2);
                     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALIDATED_BY_SCHEMA, 3, sb1.GetString(),
-                                                                                                desired_domain->validation_obj->validator->GetInvalidSchemaKeyword(), 
+                                                                                                desired_domain->validation_obj.validator->GetInvalidSchemaKeyword(), 
                                                                                                 sb2.GetString());
                     return DOMAIN_ERROR;
                   }
@@ -10448,9 +10444,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
                     target->data.json.document = new rapidjson::Document();
                     target->data.json.document->Parse (DB_GET_STRING (src));
 
-                    if (desired_domain->validation_obj)
+                    if (desired_domain->validation_obj.validator != NULL)
                       {
-                        desired_domain->validation_obj->validator->Reset ();
+                        desired_domain->validation_obj.validator->Reset ();
                       }
 
                     if (target->data.json.document->HasParseError ())
@@ -10459,15 +10455,15 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
                                 rapidjson::GetParseError_En (target->data.json.document->GetParseError()), target->data.json.document->GetErrorOffset());
                         return DOMAIN_ERROR;
                       }
-                    if (desired_domain->validation_obj &&
-                        !target->data.json.document->Accept (*desired_domain->validation_obj->validator))
+                    if (desired_domain->validation_obj.validator != NULL &&
+                        !target->data.json.document->Accept (*desired_domain->validation_obj.validator))
                       {
                         rapidjson::StringBuffer sb1, sb2;
 
-                        desired_domain->validation_obj->validator->GetInvalidSchemaPointer().StringifyUriFragment(sb1);
-                        desired_domain->validation_obj->validator->GetInvalidDocumentPointer().StringifyUriFragment(sb2);
+                        desired_domain->validation_obj.validator->GetInvalidSchemaPointer().StringifyUriFragment(sb1);
+                        desired_domain->validation_obj.validator->GetInvalidDocumentPointer().StringifyUriFragment(sb2);
                         er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALIDATED_BY_SCHEMA, 3, sb1.GetString(),
-                                                                                                    desired_domain->validation_obj->validator->GetInvalidSchemaKeyword(), 
+                                                                                                    desired_domain->validation_obj.validator->GetInvalidSchemaKeyword(), 
                                                                                                     sb2.GetString());
 
                         return DOMAIN_ERROR;

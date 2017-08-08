@@ -2171,11 +2171,11 @@ disk_to_domain2 (OR_BUF * buf)
       domain->schema_raw[vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length] = '\0';
       domain->validation_obj = get_validator_from_schema_string (domain->schema_raw);
 
-      assert (domain->validation_obj != NULL);
+      assert (er_errid () == NO_ERROR);
     }
   else
     {
-      domain->validation_obj = NULL;
+      memset (&domain->validation_obj, 0, sizeof (DB_JSON_VALIDATION_OBJECT));
     }
 
   free_var_table (vars);

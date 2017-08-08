@@ -645,6 +645,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
             {
               result->data_type->info.data_type.json_schema = pt_append_bytes (parser, NULL, db_get_json_schema (val), strlen (db_get_json_schema (val)));
               result->data_type->info.data_type.validation_obj = get_validator_from_schema_string (db_get_json_schema (val));
+
+              assert (er_errid() == NO_ERROR);
             }
         }
       break;
@@ -1767,7 +1769,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
   DB_ENUMERATION enumeration;
   int collation_id = 0;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_NORMAL;
-  DB_JSON_VALIDATION_OBJECT * validator = NULL;
+  DB_JSON_VALIDATION_OBJECT validator;
   char * raw_schema = NULL;
   int rc;
 
@@ -1811,7 +1813,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       if (dt->info.data_type.json_schema)
         {
           validator = get_validator_from_schema_string ((const char *)dt->info.data_type.json_schema->bytes);
-          if (!validator)
+          if (er_errid() != NO_ERROR)
             {
               /* this means an error has been set */
               return NULL;
@@ -2001,7 +2003,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
   TP_DOMAIN_COLL_ACTION collation_flag;
   char * raw_schema = NULL;
 
-  DB_JSON_VALIDATION_OBJECT * validator = NULL;
+  DB_JSON_VALIDATION_OBJECT validator;
 
   if (dt == NULL)
     {
@@ -2045,7 +2047,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
       if (dt->info.data_type.json_schema)
         {
           validator = get_validator_from_schema_string ((const char *)dt->info.data_type.json_schema->bytes);
-          if (!validator)
+          if (er_errid() != NO_ERROR)
             {
               /* this means an error has been set */
               return NULL;
@@ -2904,6 +2906,8 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 	  dt->type_enum = node->type_enum;
 	  dt->info.data_type.json_schema = pt_append_bytes (parser, NULL, val->data.json.json_body, strlen (val->data.json.json_body));
 	  dt->info.data_type.validation_obj = get_validator_from_schema_string (val->data.json.json_body);
+
+      assert (er_errid () == NO_ERROR);
 	}
       break;
 

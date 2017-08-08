@@ -111,7 +111,7 @@ typedef struct tp_domain
   unsigned is_visited:1;
 
 #if defined (__cplusplus)
-  DB_JSON_VALIDATION_OBJECT *validation_obj;	/* schema validator if type is json */
+  DB_JSON_VALIDATION_OBJECT validation_obj;	/* schema validator if type is json */
   char *schema_raw;
 #endif
 } TP_DOMAIN;

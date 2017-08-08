@@ -3942,8 +3942,6 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       result->type_enum = t;
       if (domain->schema_raw != NULL)
         {
-          assert (domain->validation_obj != NULL);
-
           result->info.data_type.validation_obj = domain->validation_obj;
           result->info.data_type.json_schema = pt_append_bytes(parser,
                                                                 NULL,
@@ -3952,7 +3950,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
         }
       else
         {
-          result->info.data_type.validation_obj = NULL;
+          memset (&result->info.data_type.validation_obj, 0, sizeof (DB_JSON_VALIDATION_OBJECT));
           result->info.data_type.json_schema = NULL;
         }
       break;

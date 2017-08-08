@@ -11108,9 +11108,9 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	{
 	  sci.prec = lhs->data_type->info.data_type.precision;
 	  sci.scale = lhs->data_type->info.data_type.dec_precision;
-	  if (lhs->type_enum == PT_TYPE_JSON && lhs->data_type->info.data_type.validation_obj)
+	  if (lhs->type_enum == PT_TYPE_JSON && lhs->data_type->info.data_type.validation_obj.validator != NULL)
 	    {
-	      sci.schema_validator = lhs->data_type->info.data_type.validation_obj->validator;
+	      sci.schema_validator = lhs->data_type->info.data_type.validation_obj.validator;
 	    }
 	}
 

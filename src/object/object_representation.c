@@ -5183,7 +5183,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
               d->validation_obj = get_validator_from_schema_string (d->schema_raw);
 
               or_align (buf, OR_INT_SIZE);
-              assert (d->validation_obj != 0);
+              assert (er_errid() == NO_ERROR);
           }
 
 	  /* 
@@ -5264,7 +5264,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
   precision = scale = 0;
 
   char * schema_raw = NULL;
-  DB_JSON_VALIDATION_OBJECT * validator = NULL;
+  DB_JSON_VALIDATION_OBJECT validator;
+  memset (&validator, 0, sizeof (DB_JSON_VALIDATION_OBJECT));
 
   more = true;
   while (more)
@@ -5531,7 +5532,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
                     validator = get_validator_from_schema_string (schema_raw);
 
                     or_align (buf, OR_INT_SIZE);
-                    assert (validator != 0);
+                    assert (er_errid() == NO_ERROR);
 		  }
 
                 break;
