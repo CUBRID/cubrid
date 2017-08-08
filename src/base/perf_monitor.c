@@ -231,7 +231,6 @@ perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, i
   PERFMETA_COMPLEX_CURSOR cursor;
 
   assert (pstat_Global.initialized);
-  assert (amount > 0);
 
   /* todo: hm... how can we do this in a better way? */
   cursor.indices[0] = perfmon_get_module_type (thread_p);
