@@ -59,7 +59,7 @@ perfmon_get_current_times (time_t * cpu_user_time, time_t * cpu_sys_time, time_t
 
   *elapsed_time = time (NULL);
 
-  #if !defined (WINDOWS)
+#if !defined (WINDOWS)
 
   struct rusage rusage_obj;
 
@@ -68,7 +68,7 @@ perfmon_get_current_times (time_t * cpu_user_time, time_t * cpu_sys_time, time_t
       *cpu_user_time = rusage_obj.ru_utime.tv_sec;
       *cpu_sys_time = rusage_obj.ru_stime.tv_sec;
     }
-  #endif /*! WINDOWS */
+#endif /*! WINDOWS */
 }
 
 /*
@@ -352,12 +352,12 @@ perfmon_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, c
       if (bin_stream != NULL)
 	{
 	  char *packed_stats = (char *) malloc (sizeof (UINT64) * perfmeta_get_values_count ());
-      if (packed_stats == NULL)
-        {
-          ASSERT_ERROR ();
-          err = ER_OUT_OF_VIRTUAL_MEMORY;
-          goto exit;
-        }
+	  if (packed_stats == NULL)
+	    {
+	      ASSERT_ERROR ();
+	      err = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto exit;
+	    }
 	  perfmon_pack_stats (packed_stats, perfmon_Stat_info.current_global_stats);
 	  fwrite (packed_stats, sizeof (UINT64), (size_t) perfmeta_get_values_count (), bin_stream);
 	  free (packed_stats);
