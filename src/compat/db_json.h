@@ -15,7 +15,7 @@ struct db_json_validation
   rapidjson::SchemaValidator * validator;
 };
 
-DB_JSON_VALIDATION_OBJECT get_validator_from_schema_string (const char * schema_raw);
-DB_JSON_VALIDATION_OBJECT get_copy_of_validator (const DB_JSON_VALIDATION_OBJECT validator, const char * raw_schema);
+DB_JSON_VALIDATION_OBJECT get_validator_from_schema_string (const char *schema_raw);
+DB_JSON_VALIDATION_OBJECT get_copy_of_validator (const DB_JSON_VALIDATION_OBJECT validator, const char *raw_schema);
 
 #endif /* db_json.h */

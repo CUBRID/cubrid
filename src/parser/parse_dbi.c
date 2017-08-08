@@ -627,28 +627,32 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
     case DB_TYPE_JSON:
       length = strlen (val->data.json.json_body);
-      result->info.value.data_value.json.json_body = (char *) db_private_alloc (NULL,  (length + 1));
+      result->info.value.data_value.json.json_body = (char *) db_private_alloc (NULL, (length + 1));
       memcpy (result->info.value.data_value.json.json_body, val->data.json.json_body, length);
       result->info.value.data_value.json.json_body[length] = '\0';
-      result->info.value.data_value.json.document = new rapidjson::Document();
-      result->info.value.data_value.json.document->CopyFrom (*val->data.json.document, result->info.value.data_value.json.document->GetAllocator());
+      result->info.value.data_value.json.document = new rapidjson::Document ();
+      result->info.value.data_value.json.document->CopyFrom (*val->data.json.document,
+							     result->info.value.data_value.json.document->
+							     GetAllocator ());
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
-        {
-          parser_free_node (parser, result);
-          result = NULL;
-        }
+	{
+	  parser_free_node (parser, result);
+	  result = NULL;
+	}
       else
-        {
-          result->data_type->type_enum = result->type_enum;
-          if (db_get_json_schema (val) && strlen (db_get_json_schema (val)) > 0)
-            {
-              result->data_type->info.data_type.json_schema = pt_append_bytes (parser, NULL, db_get_json_schema (val), strlen (db_get_json_schema (val)));
-              result->data_type->info.data_type.validation_obj = get_validator_from_schema_string (db_get_json_schema (val));
+	{
+	  result->data_type->type_enum = result->type_enum;
+	  if (db_get_json_schema (val) && strlen (db_get_json_schema (val)) > 0)
+	    {
+	      result->data_type->info.data_type.json_schema =
+		pt_append_bytes (parser, NULL, db_get_json_schema (val), strlen (db_get_json_schema (val)));
+	      result->data_type->info.data_type.validation_obj =
+		get_validator_from_schema_string (db_get_json_schema (val));
 
-              assert (er_errid() == NO_ERROR);
-            }
-        }
+	      assert (er_errid () == NO_ERROR);
+	    }
+	}
       break;
     case DB_TYPE_NUMERIC:
       numeric_db_value_print ((DB_VALUE *) val, buf);
@@ -1770,7 +1774,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
   int collation_id = 0;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_NORMAL;
   DB_JSON_VALIDATION_OBJECT validator;
-  char * raw_schema = NULL;
+  char *raw_schema = NULL;
   int rc;
 
   if (dt == NULL)
@@ -1811,22 +1815,23 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
 
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
-        {
-          validator = get_validator_from_schema_string ((const char *)dt->info.data_type.json_schema->bytes);
-          if (er_errid() != NO_ERROR)
-            {
-              /* this means an error has been set */
-              return NULL;
-            }
-          raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
-          memcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes, dt->info.data_type.json_schema->length);
-          raw_schema[dt->info.data_type.json_schema->length] = '\0';
-          break;
-        }
+	{
+	  validator = get_validator_from_schema_string ((const char *) dt->info.data_type.json_schema->bytes);
+	  if (er_errid () != NO_ERROR)
+	    {
+	      /* this means an error has been set */
+	      return NULL;
+	    }
+	  raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
+	  memcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes,
+		  dt->info.data_type.json_schema->length);
+	  raw_schema[dt->info.data_type.json_schema->length] = '\0';
+	  break;
+	}
       else
-        {
-          return pt_type_enum_to_db_domain (dt->type_enum);
-        }
+	{
+	  return pt_type_enum_to_db_domain (dt->type_enum);
+	}
 
     case DB_TYPE_OBJECT:
       /* first check if its a VOBJ */
@@ -2001,7 +2006,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
   DB_ENUMERATION enumeration;
   int error = NO_ERROR;
   TP_DOMAIN_COLL_ACTION collation_flag;
-  char * raw_schema = NULL;
+  char *raw_schema = NULL;
 
   DB_JSON_VALIDATION_OBJECT validator;
 
@@ -2045,22 +2050,23 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
-        {
-          validator = get_validator_from_schema_string ((const char *)dt->info.data_type.json_schema->bytes);
-          if (er_errid() != NO_ERROR)
-            {
-              /* this means an error has been set */
-              return NULL;
-            }
-          raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
-          memcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes, dt->info.data_type.json_schema->length);
-          raw_schema[dt->info.data_type.json_schema->length] = '\0';
-          break;
-        }
+	{
+	  validator = get_validator_from_schema_string ((const char *) dt->info.data_type.json_schema->bytes);
+	  if (er_errid () != NO_ERROR)
+	    {
+	      /* this means an error has been set */
+	      return NULL;
+	    }
+	  raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
+	  memcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes,
+		  dt->info.data_type.json_schema->length);
+	  raw_schema[dt->info.data_type.json_schema->length] = '\0';
+	  break;
+	}
       else
-        {
-          return pt_type_enum_to_db_domain (dt->type_enum);
-        }
+	{
+	  return pt_type_enum_to_db_domain (dt->type_enum);
+	}
 
     case DB_TYPE_OBJECT:
       /* first check if its a VOBJ */
@@ -2904,10 +2910,11 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
       if (dt)
 	{
 	  dt->type_enum = node->type_enum;
-	  dt->info.data_type.json_schema = pt_append_bytes (parser, NULL, val->data.json.json_body, strlen (val->data.json.json_body));
+	  dt->info.data_type.json_schema =
+	    pt_append_bytes (parser, NULL, val->data.json.json_body, strlen (val->data.json.json_body));
 	  dt->info.data_type.validation_obj = get_validator_from_schema_string (val->data.json.json_body);
 
-      assert (er_errid () == NO_ERROR);
+	  assert (er_errid () == NO_ERROR);
 	}
       break;
 
@@ -3470,21 +3477,23 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
     case PT_TYPE_JSON:
       db_value->domain.general_info.type = DB_TYPE_JSON;
       db_value->domain.general_info.is_null = 0;
-      db_value->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (value->info.value.data_value.str->length + 1));
+      db_value->data.json.json_body =
+	(char *) db_private_alloc (NULL, (size_t) (value->info.value.data_value.str->length + 1));
       strcpy (db_value->data.json.json_body, (const char *) value->info.value.data_value.str->bytes);
       value->info.value.db_value_is_in_workspace = false;
       db_value->need_clear = true;
       if (value->info.data_type.json_schema)
-        {
-          int len = value->info.data_type.json_schema->length;
-          db_value->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len+1));
-          memcpy (db_value->domain.general_info.schema_raw, (const char *) value->info.data_type.json_schema->bytes, len);
-          db_value->domain.general_info.schema_raw[len] = '\0';
-        }
+	{
+	  int len = value->info.data_type.json_schema->length;
+	  db_value->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len + 1));
+	  memcpy (db_value->domain.general_info.schema_raw, (const char *) value->info.data_type.json_schema->bytes,
+		  len);
+	  db_value->domain.general_info.schema_raw[len] = '\0';
+	}
       else
-        {
-          db_value->domain.general_info.schema_raw = NULL;
-        }
+	{
+	  db_value->domain.general_info.schema_raw = NULL;
+	}
       *more_type_info_needed = (value->data_type == NULL);
       break;
 

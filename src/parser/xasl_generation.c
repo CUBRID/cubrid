@@ -6247,8 +6247,8 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	  break;
 	case F_INSERT_SUBSTRING:
 	case F_ELT:
-        case F_JSON_OBJECT:
-        case F_JSON_ARRAY:
+	case F_JSON_OBJECT:
+	case F_JSON_ARRAY:
 	  result_type = pt_node_to_db_type (function);
 	  break;
 	default:
@@ -7078,7 +7078,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
 		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ
-                  || node->info.expr.op == PT_JSON_CONTAINS)
+		  || node->info.expr.op == PT_JSON_CONTAINS)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if (node->info.expr.op == PT_CONCAT && node->info.expr.arg2 == NULL)
@@ -7549,8 +7549,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_CONCAT, domain);
 		  break;
 
-                case PT_JSON_CONTAINS:
-                  regu = pt_make_regu_arith (r1, r2, NULL, T_JSON_CONTAINS, domain);
+		case PT_JSON_CONTAINS:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_JSON_CONTAINS, domain);
 		  break;
 
 		case PT_CONCAT_WS:
@@ -21843,13 +21843,13 @@ pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
       break;
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
-        {
-          value->domain.general_info.schema_raw = (char *) dt->info.data_type.json_schema->bytes;
-        }
+	{
+	  value->domain.general_info.schema_raw = (char *) dt->info.data_type.json_schema->bytes;
+	}
       else
-        {
-          value->domain.general_info.schema_raw = NULL;
-        }
+	{
+	  value->domain.general_info.schema_raw = NULL;
+	}
       break;
 
     default:

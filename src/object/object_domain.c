@@ -210,11 +210,11 @@ extern unsigned int db_on_server;
   0,		/* is_visited */			\
   NULL,		/* json_raw */				\
   NULL		/* json_validator */			\
-/*
- * Same as DOMAIN_INIT but it sets the is_parameterized flag.
- * Used for things that don't have a precision but which are parameterized in
- * other ways.
- */
+				/*
+				 * Same as DOMAIN_INIT but it sets the is_parameterized flag.
+				 * Used for things that don't have a precision but which are parameterized in
+				 * other ways.
+				 */
 #define DOMAIN_INIT3                                   \
   0,            /* precision */                        \
   0,            /* scale */                            \
@@ -295,12 +295,15 @@ TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime, DOMAIN_INIT4 (DB_TIMESTAMP_
 TP_DOMAIN tp_Timestamptz_domain = { NULL, NULL, &tp_Timestamptz, DOMAIN_INIT4 (DB_TIMESTAMPTZ_PRECISION, 0) };
 TP_DOMAIN tp_Timestampltz_domain = { NULL, NULL, &tp_Timestampltz, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
 TP_DOMAIN tp_Date_domain = { NULL, NULL, &tp_Date, DOMAIN_INIT4 (DB_DATE_PRECISION, 0) };
+
 TP_DOMAIN tp_Datetime_domain = { NULL, NULL, &tp_Datetime,
   DOMAIN_INIT4 (DB_DATETIME_PRECISION, DB_DATETIME_DECIMAL_SCALE)
 };
+
 TP_DOMAIN tp_Datetimetz_domain = { NULL, NULL, &tp_Datetimetz,
   DOMAIN_INIT4 (DB_DATETIMETZ_PRECISION, DB_DATETIME_DECIMAL_SCALE)
 };
+
 TP_DOMAIN tp_Datetimeltz_domain = { NULL, NULL, &tp_Datetimeltz,
   DOMAIN_INIT4 (DB_DATETIME_PRECISION, DB_DATETIME_DECIMAL_SCALE)
 };
@@ -312,6 +315,7 @@ TP_DOMAIN tp_Pointer_domain = { NULL, NULL, &tp_Pointer, DOMAIN_INIT };
 TP_DOMAIN tp_Error_domain = { NULL, NULL, &tp_Error, DOMAIN_INIT };
 TP_DOMAIN tp_Vobj_domain = { NULL, NULL, &tp_Vobj, DOMAIN_INIT3 };
 TP_DOMAIN tp_Oid_domain = { NULL, NULL, &tp_Oid, DOMAIN_INIT3 };
+
 TP_DOMAIN tp_Enumeration_domain = { NULL, NULL, &tp_Enumeration, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
@@ -340,8 +344,9 @@ TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar, DB_MAX_VARNCHAR_PRECI
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-TP_DOMAIN tp_Json_domain = {NULL, NULL, &tp_Json, TP_FLOATING_PRECISION_VALUE, 0,
-                            DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY) };
+TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, TP_FLOATING_PRECISION_VALUE, 0,
+  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
+};
 
 /* These must be in DB_TYPE order */
 static TP_DOMAIN *tp_Domains[] = {
@@ -977,14 +982,14 @@ tp_domain_free (TP_DOMAIN * dom)
       /* NULL things that might be problems for garbage collection */
       dom->class_mop = NULL;
       if (dom->type->id == DB_TYPE_JSON && dom->schema_raw != NULL)
-        {
-          free_and_init (dom->schema_raw);
-          delete dom->validation_obj.document;
-          delete dom->validation_obj.schema;
-          delete dom->validation_obj.validator;
+	{
+	  free_and_init (dom->schema_raw);
+	  delete dom->validation_obj.document;
+	  delete dom->validation_obj.schema;
+	  delete dom->validation_obj.validator;
 
-          memset (&dom->validation_obj, 0, sizeof (DB_JSON_VALIDATION_OBJECT));
-        }
+	  memset (&dom->validation_obj, 0, sizeof (DB_JSON_VALIDATION_OBJECT));
+	}
 
       /* 
        * sub-domains are always completely owned by their root domain,
@@ -1322,7 +1327,7 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	    }
 	  else
 	    {
-              int schema_len = 0, error;
+	      int schema_len = 0, error;
 
 	      /* copy over the domain parameters */
 	      new_domain->class_mop = d->class_mop;
@@ -1334,15 +1339,15 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	      new_domain->self_ref = d->self_ref;
 	      new_domain->is_parameterized = d->is_parameterized;
 	      new_domain->is_desc = d->is_desc;
-              if (d->type->id == DB_TYPE_JSON && d->schema_raw != NULL)
-                {
-                  schema_len = strlen (d->schema_raw);
+	      if (d->type->id == DB_TYPE_JSON && d->schema_raw != NULL)
+		{
+		  schema_len = strlen (d->schema_raw);
 
-                  new_domain->validation_obj = get_copy_of_validator (d->validation_obj, d->schema_raw);
-                  new_domain->schema_raw = (char *) malloc (schema_len+1);
-                  memcpy (new_domain->schema_raw, d->schema_raw, schema_len);
-                  new_domain->schema_raw[schema_len] = '\0';
-                }
+		  new_domain->validation_obj = get_copy_of_validator (d->validation_obj, d->schema_raw);
+		  new_domain->schema_raw = (char *) malloc (schema_len + 1);
+		  memcpy (new_domain->schema_raw, d->schema_raw, schema_len);
+		  new_domain->schema_raw[schema_len] = '\0';
+		}
 
 	      if (d->type->id == DB_TYPE_ENUMERATION)
 		{
@@ -1582,17 +1587,17 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 
     case DB_TYPE_JSON:
       if (dom1->schema_raw != NULL && dom2->schema_raw != NULL)
-        {
-          match = !(strcmp (dom1->schema_raw, dom2->schema_raw));
-        }
+	{
+	  match = !(strcmp (dom1->schema_raw, dom2->schema_raw));
+	}
       else if (dom1->schema_raw == NULL && dom2->schema_raw == NULL)
-        {
-          match = 1;
-        }
+	{
+	  match = 1;
+	}
       else
-        {
-          match = 0;
-        }
+	{
+	  match = 0;
+	}
       break;
 
 
@@ -2245,22 +2250,27 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 
     case DB_TYPE_JSON:
       while (domain)
-        {
-          if (transient->schema_raw != NULL && domain->schema_raw != NULL) {
-              match = (strcmp (domain->schema_raw, transient->schema_raw) == 0);
-          } else if (transient->schema_raw == NULL && domain->schema_raw == NULL) {
-              match = 1;
-          } else {
-              match = 0;
-          }
+	{
+	  if (transient->schema_raw != NULL && domain->schema_raw != NULL)
+	    {
+	      match = (strcmp (domain->schema_raw, transient->schema_raw) == 0);
+	    }
+	  else if (transient->schema_raw == NULL && domain->schema_raw == NULL)
+	    {
+	      match = 1;
+	    }
+	  else
+	    {
+	      match = 0;
+	    }
 
-          if (match)
-            {
-              break;
-            }
-          *ins_pos = domain;
+	  if (match)
+	    {
+	      break;
+	    }
+	  *ins_pos = domain;
 	  domain = domain->next_list;
-        }
+	}
       break;
 
     case DB_TYPE_VARCHAR:
@@ -3449,8 +3459,8 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_ELO:
 	  assert (false);
 	  break;
-        case DB_TYPE_JSON:
-          if (dbuf == NULL)
+	case DB_TYPE_JSON:
+	  if (dbuf == NULL)
 	    {
 	      domain = tp_domain_new (value_type);
 	      if (domain == NULL)
@@ -3463,28 +3473,28 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	      domain = dbuf;
 	      domain_init (domain, value_type);
 	    }
-          if (db_get_json_schema (val))
-            {
-              int len = strlen (db_get_json_schema (val));
-              domain->schema_raw = (char *) malloc (len+1);
-              memcpy(domain->schema_raw, db_get_json_schema (val), len);
-              domain->schema_raw[len] = '\0';
-              domain->validation_obj = get_validator_from_schema_string (domain->schema_raw);
+	  if (db_get_json_schema (val))
+	    {
+	      int len = strlen (db_get_json_schema (val));
+	      domain->schema_raw = (char *) malloc (len + 1);
+	      memcpy (domain->schema_raw, db_get_json_schema (val), len);
+	      domain->schema_raw[len] = '\0';
+	      domain->validation_obj = get_validator_from_schema_string (domain->schema_raw);
 
-              assert (er_errid() == NO_ERROR);
-            }
-          else
-            {
-              domain->schema_raw = NULL;
-            }
+	      assert (er_errid () == NO_ERROR);
+	    }
+	  else
+	    {
+	      domain->schema_raw = NULL;
+	    }
 
-          if (dbuf == NULL)
+	  if (dbuf == NULL)
 	    {
 	      domain = tp_domain_cache (domain);
 	    }
-          break;
+	  break;
 
-        }
+	}
     }
 
   return domain;
@@ -4385,16 +4395,16 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 
       for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 	{
-          if (d->validation_obj.validator != NULL)
-            {
-              bool result = value->data.json.document->Accept (*d->validation_obj.validator);
-              if (result)
-                {
-                  best = d;
-                  break;
-                }
-            }
-        }
+	  if (d->validation_obj.validator != NULL)
+	    {
+	      bool result = value->data.json.document->Accept (*d->validation_obj.validator);
+	      if (result)
+		{
+		  best = d;
+		  break;
+		}
+	    }
+	}
     }
   else
     {
@@ -7340,37 +7350,36 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  pr_clone_value ((DB_VALUE *) src, dest);
 		}
 	      return (status);
-            case DB_TYPE_JSON:
-              {
-                bool result;
-                if (desired_domain->schema_raw == NULL)
-                  {
-                    result = true;
-                  }
-                else
-                  {
-                    desired_domain->validation_obj.validator->Reset ();
-                    result = src->data.json.document->Accept (*desired_domain->validation_obj.validator);
-                  }
+	    case DB_TYPE_JSON:
+	      {
+		bool result;
+		if (desired_domain->schema_raw == NULL)
+		  {
+		    result = true;
+		  }
+		else
+		  {
+		    desired_domain->validation_obj.validator->Reset ();
+		    result = src->data.json.document->Accept (*desired_domain->validation_obj.validator);
+		  }
 
-                if (result)
-                  {
-                    pr_clone_value ((DB_VALUE *) src, dest);
-                    return (status);
-                  }
-                else
-                  {
-                    rapidjson::StringBuffer sb1, sb2;
+		if (result)
+		  {
+		    pr_clone_value ((DB_VALUE *) src, dest);
+		    return (status);
+		  }
+		else
+		  {
+		    rapidjson::StringBuffer sb1, sb2;
 
-                    desired_domain->validation_obj.validator->GetInvalidSchemaPointer().StringifyUriFragment(sb1);
-                    desired_domain->validation_obj.validator->GetInvalidDocumentPointer().StringifyUriFragment(sb2);
-                    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALIDATED_BY_SCHEMA, 3, sb1.GetString(),
-                                                                                                desired_domain->validation_obj.validator->GetInvalidSchemaKeyword(), 
-                                                                                                sb2.GetString());
-                    return DOMAIN_ERROR;
-                  }
-                break;
-              }
+		    desired_domain->validation_obj.validator->GetInvalidSchemaPointer ().StringifyUriFragment (sb1);
+		    desired_domain->validation_obj.validator->GetInvalidDocumentPointer ().StringifyUriFragment (sb2);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALIDATED_BY_SCHEMA, 3, sb1.GetString (),
+			    desired_domain->validation_obj.validator->GetInvalidSchemaKeyword (), sb2.GetString ());
+		    return DOMAIN_ERROR;
+		  }
+		break;
+	      }
 	    default:
 	      /* pr_is_string_type(desired_type) - NEED MORE CONSIDERATION */
 	      break;
@@ -10437,53 +10446,53 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       }
       break;
     case DB_TYPE_JSON:
-        switch (original_type)
-          {
-              case DB_TYPE_CHAR:
-                {
-                    target->data.json.document = new rapidjson::Document();
-                    target->data.json.document->Parse (DB_GET_STRING (src));
+      switch (original_type)
+	{
+	case DB_TYPE_CHAR:
+	  {
+	    target->data.json.document = new rapidjson::Document ();
+	    target->data.json.document->Parse (DB_GET_STRING (src));
 
-                    if (desired_domain->validation_obj.validator != NULL)
-                      {
-                        desired_domain->validation_obj.validator->Reset ();
-                      }
+	    if (desired_domain->validation_obj.validator != NULL)
+	      {
+		desired_domain->validation_obj.validator->Reset ();
+	      }
 
-                    if (target->data.json.document->HasParseError ())
-                      {
-                        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-                                rapidjson::GetParseError_En (target->data.json.document->GetParseError()), target->data.json.document->GetErrorOffset());
-                        return DOMAIN_ERROR;
-                      }
-                    if (desired_domain->validation_obj.validator != NULL &&
-                        !target->data.json.document->Accept (*desired_domain->validation_obj.validator))
-                      {
-                        rapidjson::StringBuffer sb1, sb2;
+	    if (target->data.json.document->HasParseError ())
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+			rapidjson::GetParseError_En (target->data.json.document->GetParseError ()),
+			target->data.json.document->GetErrorOffset ());
+		return DOMAIN_ERROR;
+	      }
+	    if (desired_domain->validation_obj.validator != NULL &&
+		!target->data.json.document->Accept (*desired_domain->validation_obj.validator))
+	      {
+		rapidjson::StringBuffer sb1, sb2;
 
-                        desired_domain->validation_obj.validator->GetInvalidSchemaPointer().StringifyUriFragment(sb1);
-                        desired_domain->validation_obj.validator->GetInvalidDocumentPointer().StringifyUriFragment(sb2);
-                        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALIDATED_BY_SCHEMA, 3, sb1.GetString(),
-                                                                                                    desired_domain->validation_obj.validator->GetInvalidSchemaKeyword(), 
-                                                                                                    sb2.GetString());
+		desired_domain->validation_obj.validator->GetInvalidSchemaPointer ().StringifyUriFragment (sb1);
+		desired_domain->validation_obj.validator->GetInvalidDocumentPointer ().StringifyUriFragment (sb2);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALIDATED_BY_SCHEMA, 3, sb1.GetString (),
+			desired_domain->validation_obj.validator->GetInvalidSchemaKeyword (), sb2.GetString ());
 
-                        return DOMAIN_ERROR;
-                      }
+		return DOMAIN_ERROR;
+	      }
 
-                    target->domain.general_info.type = DB_TYPE_JSON;
-                    target->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (DB_GET_STRING_SIZE (src) + 1));
-                    target->domain.general_info.is_null = 0;
-                    target->domain.general_info.schema_raw = NULL;
-                    memcpy (target->data.json.json_body, DB_GET_STRING (src), DB_GET_STRING_SIZE (src));
-                    target->data.json.json_body[DB_GET_STRING_SIZE (src)] = '\0';
+	    target->domain.general_info.type = DB_TYPE_JSON;
+	    target->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (DB_GET_STRING_SIZE (src) + 1));
+	    target->domain.general_info.is_null = 0;
+	    target->domain.general_info.schema_raw = NULL;
+	    memcpy (target->data.json.json_body, DB_GET_STRING (src), DB_GET_STRING_SIZE (src));
+	    target->data.json.json_body[DB_GET_STRING_SIZE (src)] = '\0';
 
-                    target->need_clear = true;
-                    break;
-                }
-              default:
-                status = DOMAIN_INCOMPATIBLE;
-                break;
-          }
-        break;
+	    target->need_clear = true;
+	    break;
+	  }
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+      break;
     default:
       status = DOMAIN_INCOMPATIBLE;
       break;

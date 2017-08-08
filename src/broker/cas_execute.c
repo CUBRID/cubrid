@@ -5073,7 +5073,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       break;
     case DB_TYPE_JSON:
       {
-	const char * str;
+	const char *str;
 	int dummy = 0;
 	int bytes_size = 0;
 	int decomp_size;

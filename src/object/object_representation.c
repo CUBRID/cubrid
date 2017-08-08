@@ -4428,7 +4428,7 @@ or_decode (const char *buffer, char *dest, int size)
 #define OR_DOMAIN_BUILTIN_FLAG		(0x100)	/* for NULL type only */
 #define OR_DOMAIN_ENUMERATION_FLAG	(0x100)	/* for enumeration type only */
 #define OR_DOMAIN_ENUM_COLL_FLAG	(0x200)	/* for enumeration type only */
-#define OR_DOMAIN_SCHEMA_FLAG		(0x400) /* for json */
+#define OR_DOMAIN_SCHEMA_FLAG		(0x400)	/* for json */
 
 #define OR_DOMAIN_SCALE_MASK		(0xFF00)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
@@ -4546,12 +4546,12 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	    }
 	  size += or_packed_enumeration_size (&DOM_GET_ENUMERATION (d));
 	  break;
-        case DB_TYPE_JSON:
-          if (d->schema_raw)
-            {
-              size += or_packed_string_length (d->schema_raw, NULL);
-            }
-          break;
+	case DB_TYPE_JSON:
+	  if (d->schema_raw)
+	    {
+	      size += or_packed_string_length (d->schema_raw, NULL);
+	    }
+	  break;
 	default:
 	  break;
 	}
@@ -4775,13 +4775,13 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	      has_enum = 1;
 	    }
 	  break;
-        case DB_TYPE_JSON:
-          if (d->schema_raw)
-            {
-              carrier |= OR_DOMAIN_SCHEMA_FLAG;
-              has_schema = 1;
-            }
-            break;
+	case DB_TYPE_JSON:
+	  if (d->schema_raw)
+	    {
+	      carrier |= OR_DOMAIN_SCHEMA_FLAG;
+	      has_schema = 1;
+	    }
+	  break;
 	default:
 	  break;
 	}
@@ -4866,13 +4866,13 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	}
 
       if (has_schema)
-        {
-          rc = or_put_string_alined_with_length (buf, d->schema_raw);
-          if (rc != NO_ERROR)
-            {
-              return rc;
-            }
-        }
+	{
+	  rc = or_put_string_alined_with_length (buf, d->schema_raw);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
 
       /* 
        * Recurse on the sub domains if necessary, note that we don't
@@ -5046,9 +5046,9 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      has_enum = carrier & OR_DOMAIN_ENUMERATION_FLAG;
 	      has_collation = ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) == OR_DOMAIN_ENUM_COLL_FLAG);
 	      break;
-            case DB_TYPE_JSON:
-              has_schema = carrier & OR_DOMAIN_SCHEMA_FLAG;
-              break;
+	    case DB_TYPE_JSON:
+	      has_schema = carrier & OR_DOMAIN_SCHEMA_FLAG;
+	      break;
 	    default:
 	      break;
 	    }
@@ -5172,19 +5172,19 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		}
 	    }
 
-         if (has_schema)
-          {
-              buf->ptr = or_unpack_string_alloc (buf->ptr, &d->schema_raw);
+	  if (has_schema)
+	    {
+	      buf->ptr = or_unpack_string_alloc (buf->ptr, &d->schema_raw);
 
-              if (rc != NO_ERROR)
-                {
-                  goto error;
-                }
-              d->validation_obj = get_validator_from_schema_string (d->schema_raw);
+	      if (rc != NO_ERROR)
+		{
+		  goto error;
+		}
+	      d->validation_obj = get_validator_from_schema_string (d->schema_raw);
 
-              or_align (buf, OR_INT_SIZE);
-              assert (er_errid() == NO_ERROR);
-          }
+	      or_align (buf, OR_INT_SIZE);
+	      assert (er_errid () == NO_ERROR);
+	    }
 
 	  /* 
 	   * Recurse to get set sub-domains if there are any, note that
@@ -5263,7 +5263,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
   domain = last = dom = setdomain = NULL;
   precision = scale = 0;
 
-  char * schema_raw = NULL;
+  char *schema_raw = NULL;
   DB_JSON_VALIDATION_OBJECT validator;
   memset (&validator, 0, sizeof (DB_JSON_VALIDATION_OBJECT));
 
@@ -5519,24 +5519,24 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  }
 	      }
 	      break;
-            case DB_TYPE_JSON:
-              {
-                if ((carrier & OR_DOMAIN_SCHEMA_FLAG) != 0)
+	    case DB_TYPE_JSON:
+	      {
+		if ((carrier & OR_DOMAIN_SCHEMA_FLAG) != 0)
 		  {
-                    buf->ptr = or_unpack_string_alloc (buf->ptr, &schema_raw);
+		    buf->ptr = or_unpack_string_alloc (buf->ptr, &schema_raw);
 
-                    if (rc != NO_ERROR)
-                      {
-                        goto error;
-                      }
-                    validator = get_validator_from_schema_string (schema_raw);
+		    if (rc != NO_ERROR)
+		      {
+			goto error;
+		      }
+		    validator = get_validator_from_schema_string (schema_raw);
 
-                    or_align (buf, OR_INT_SIZE);
-                    assert (er_errid() == NO_ERROR);
+		    or_align (buf, OR_INT_SIZE);
+		    assert (er_errid () == NO_ERROR);
 		  }
 
-                break;
-              }
+		break;
+	      }
 	    default:
 	      break;
 	    }
@@ -5554,10 +5554,10 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
 	      switch (type)
 		{
-                case DB_TYPE_JSON:
-                  dom->schema_raw = schema_raw;
-                  dom->validation_obj = validator;
-                  break;
+		case DB_TYPE_JSON:
+		  dom->schema_raw = schema_raw;
+		  dom->validation_obj = validator;
+		  break;
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_CHAR:
@@ -6889,10 +6889,10 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	    {
 	      db_enum_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	    }
-          else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
-            {
-              value->domain.general_info.schema_raw = domain->schema_raw;
-            }
+	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
+	    {
+	      value->domain.general_info.schema_raw = domain->schema_raw;
+	    }
 	}
       else
 	{
@@ -8691,7 +8691,7 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
  */
 
 int
-or_put_string_alined_with_length (OR_BUF * buf, char * str)
+or_put_string_alined_with_length (OR_BUF * buf, char *str)
 {
   int len, bits, pad;
   int rc = NO_ERROR;
