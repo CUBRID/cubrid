@@ -196,6 +196,7 @@ if(UNIX)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
 else(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/wintcp.c)
+  list(APPEND BASE_SOURCES ${BASE_DIR}/getopt_long.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/rand.c)
 endif(UNIX)
 
