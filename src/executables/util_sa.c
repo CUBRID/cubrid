@@ -590,6 +590,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
+  status = perfmon_initialize (MAX_NTRANS);
+  if (status != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error_exit;
+    }
   db_login ("DBA", NULL);
   status =
     db_init (program_name, true, database_name, volume_path, NULL, log_path, lob_path, host_name, overwrite, comment,
