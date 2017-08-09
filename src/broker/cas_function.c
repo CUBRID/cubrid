@@ -53,7 +53,7 @@
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #include "cas_error_log.h"
 #else
-#include "perf_monitor.h"
+#include "perf_client.h"
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
 #include "broker_filename.h"
@@ -205,8 +205,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
     ut_check_timeout (&tran_start_time, &end_tran_end, shm_appl->long_transaction_time, &elapsed_sec, &elapsed_msec);
   if (timeout >= 0)
     {
-      as_info->num_long_transactions %= MAX_DIAG_DATA_VALUE;
-      as_info->num_long_transactions++;
+      UNSIGNED_INC (as_info->num_long_transactions);
     }
   if (err_code < 0 || errors_in_transaction > 0)
     {
@@ -681,8 +680,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       if (query_timeout >= 0)
 	{
-	  as_info->num_long_queries %= MAX_DIAG_DATA_VALUE;
-	  as_info->num_long_queries++;
+	  UNSIGNED_INC (as_info->num_long_queries);
 	}
 
       if (ret_code < 0)
@@ -1719,8 +1717,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
     {
       if (query_timeout >= 0)
 	{
-	  as_info->num_long_queries %= MAX_DIAG_DATA_VALUE;
-	  as_info->num_long_queries++;
+	  UNSIGNED_INC (as_info->num_long_queries);
 	}
 
       if (ret_code < 0)
@@ -2638,16 +2635,14 @@ update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * e
 
   if (err_info_p->err_number != ER_QPROC_INVALID_XASLNODE)
     {
-      as_info_p->num_error_queries %= MAX_DIAG_DATA_VALUE;
-      as_info_p->num_error_queries++;
+      UNSIGNED_INC (as_info_p->num_error_queries);
     }
 
   if (err_info_p->err_indicator == DBMS_ERROR_INDICATOR)
     {
       if (err_info_p->err_number == ER_BTREE_UNIQUE_FAILED || err_info_p->err_number == ER_UNIQUE_VIOLATION_WITHKEY)
 	{
-	  as_info_p->num_unique_error_queries %= MAX_DIAG_DATA_VALUE;
-	  as_info_p->num_unique_error_queries++;
+	  UNSIGNED_INC (as_info_p->num_unique_error_queries);
 	}
     }
 }

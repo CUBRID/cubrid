@@ -930,6 +930,8 @@ opzioni valide:\n\
   -c, --cumulative             stampa cumulativo stats\n\
   -i, --interval=S             stampa stats ogni S secs\n\
   -s, --substr=STRING          stampa stat item solo che corrisponde la sottostringa STRING\n
+  -b, --binary-output-file=FILE		redirect binary dump to FILE; default: none\n
+61 Cannot create binary file '%1$s'\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Inserire la password DBA:

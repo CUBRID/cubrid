@@ -67,6 +67,62 @@ if(UNIX)
   add_dependencies(csql ${EP_TARGETS})
 endif(UNIX)
 
+set(STATTTOL_UNIT_TESTS_SOURCES
+        ${STATTOOL_UNIT_TESTS_DIR}/stattool/main.cpp
+        ${STATTOOL_UNIT_TESTS_DIR}/stattool/UnitTests.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_SnapshotSet.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_Utils.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_CommandExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_PlotExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_ShowExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_LoadExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_ErrorManager.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_Snapshot.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_AggregateExecutor.cpp
+        ${BASE_DIR}/perf_metadata.c
+        ${BASE_DIR}/porting.c
+)
+SET_SOURCE_FILES_PROPERTIES(${STATTTOL_UNIT_TESTS_SOURCES} PROPERTIES LANGUAGE CXX)
+add_executable(stattool_unittests ${STATTTOL_UNIT_TESTS_SOURCES})
+target_compile_definitions(stattool_unittests PRIVATE ${COMMON_DEFS})
+target_include_directories(stattool_unittests PRIVATE ${EP_INCLUDES})
+if(UNIX)
+  target_link_libraries(stattool_unittests LINK_PRIVATE ${CMAKE_DL_LIBS})
+else(UNIX)
+  target_compile_definitions(stattool_unittests PRIVATE _CONSOLE)
+  target_link_libraries(stattool_unittests LINK_PRIVATE ws2_32)
+endif(UNIX)
+if(UNIX)
+  add_dependencies(stattool_unittests ${EP_TARGETS})
+endif(UNIX)
+
+set(STATISTICS_TOOL_SOURCES
+        ${TOOLS_DIR}/stattool/STAT_TOOL_Main.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_SnapshotSet.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_Utils.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_CommandExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_PlotExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_ShowExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_LoadExecutor.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_ErrorManager.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_Snapshot.cpp
+        ${TOOLS_DIR}/stattool/STAT_TOOL_AggregateExecutor.cpp
+        ${BASE_DIR}/perf_metadata.c
+        ${BASE_DIR}/porting.c
+)
+SET_SOURCE_FILES_PROPERTIES(${STATISTICS_TOOL_SOURCES} PROPERTIES LANGUAGE CXX)
+add_executable(stattool ${STATISTICS_TOOL_SOURCES})
+target_compile_definitions(stattool PRIVATE ${COMMON_DEFS})
+target_include_directories(stattool PRIVATE ${EP_INCLUDES})
+if(UNIX)
+    target_link_libraries(stattool LINK_PRIVATE ${CMAKE_DL_LIBS})
+else(UNIX)
+    target_compile_definitions(stattool PRIVATE _CONSOLE)
+    target_link_libraries(stattool LINK_PRIVATE ws2_32)
+endif(UNIX)
+if(UNIX)
+    add_dependencies(stattool ${EP_TARGETS})
+endif(UNIX)
 
 set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master.c
@@ -412,6 +468,8 @@ install(TARGETS
   cub_admin
   cubrid_esql
   convert_password
+  stattool
+  stattool_unittests
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header

@@ -930,6 +930,8 @@ statdump: 转储全局统计信息.\n\
   -c, --cumulative             打印累计状态\n\
   -i, --interval=S             每 S 秒打印一次状态\n\
   -s, --substr=STRING          只为匹配上得 子字符串打印状态\n
+  -b, --binary-output-file=FILE		redirect binary dump to FILE; default: none\n
+61 Cannot create binary file '%1$s'\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 输入 DBA 密码:

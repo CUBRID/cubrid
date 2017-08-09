@@ -709,7 +709,7 @@ error_exit:
 
       lang_final ();
       tz_unload ();
-      perfmon_finalize ();
+      perfmeta_final ();
 
 #if defined(WINDOWS)
       pc_final ();
@@ -1589,7 +1589,7 @@ boot_client_all_finalize (bool is_er_final)
 
       locator_free_areas ();
       sysprm_final ();
-      perfmon_finalize ();
+      perfmeta_final ();
       area_final ();
 
       msgcat_final ();

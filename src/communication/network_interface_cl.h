@@ -265,13 +265,13 @@ extern bool histo_is_supported (void);
 extern int histo_start (bool for_all_trans);
 extern int histo_stop (void);
 extern int histo_print (FILE * stream);
-extern int histo_print_global_stats (FILE * stream, bool cumulative, const char *substr);
+extern int histo_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, const char *substr);
 extern void histo_clear (void);
 
 extern int net_histo_start (bool for_all_trans);
 extern int net_histo_stop (void);
 extern int net_histo_print (FILE * stream);
-extern int net_histo_print_global_stats (FILE * stream, bool cumulative, const char *substr);
+extern int net_histo_print_global_stats (FILE * stream, FILE * bin_stream, bool cumulative, const char *substr);
 extern void net_histo_clear (void);
 
 extern int net_client_request_no_reply (int request, char *argbuf, int argsize);

@@ -929,6 +929,8 @@ gültige Optionen:\n\
   -c, --cumulative            kumulative Statistiken anzeigen \n\
   -i, --interval=S            Informationen jede S Sekunden drucken\n\
   -s, --substr=STRING         nur die Statistiken anzeigen, die zum String anpassen\n
+  -b, --binary-output-file=FILE		redirect binary dump to FILE; default: none\n
+61 Cannot create binary file '%1$s'\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA-Passwort eingeben:

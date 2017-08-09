@@ -35,7 +35,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/util_cs.c
-  )
+)
 
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
@@ -82,6 +82,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/perf.c
+  ${BASE_DIR}/perf_client.c
+  ${BASE_DIR}/perf_metadata.c
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/release_string.c

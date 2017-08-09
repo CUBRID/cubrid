@@ -39,7 +39,7 @@
 #include "cm_portable.h"
 #include "cm_execute_sa.h"
 #include "cm_defines.h"
-#include "perf_monitor.h"
+#include "perf_diag.h"
 #include "dbi.h"
 #include "utility.h"
 #include "environment_variable.h"
