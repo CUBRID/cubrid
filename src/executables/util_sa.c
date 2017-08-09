@@ -590,12 +590,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
-  status = perfmon_initialize (MAX_NTRANS);
-  if (status != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error_exit;
-    }
   db_login ("DBA", NULL);
   status =
     db_init (program_name, true, database_name, volume_path, NULL, log_path, lob_path, host_name, overwrite, comment,
@@ -680,8 +674,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
       csql (arg->command_name, &csql_arg);
     }
 
-  perfmon_finalize ();
-
   return EXIT_SUCCESS;
 
 print_create_usage:
@@ -697,11 +689,6 @@ error_exit:
   if (user_define_file != NULL)
     {
       fclose (user_define_file);
-    }
-
-  if (pstat_Global.initialized)
-    {
-      perfmon_finalize ();
     }
   return EXIT_FAILURE;
 }

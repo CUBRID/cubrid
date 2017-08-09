@@ -46,6 +46,341 @@ STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute_
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
 /*
+ * perfmon_get_module_type () -
+ */
+int
+perfmon_get_module_type (THREAD_ENTRY * thread_p)
+{
+  int thread_index;
+  int module_type;
+  static int first_vacuum_worker_idx = 0;
+  static int num_worker_threads = 0;
+
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  thread_index = thread_p->index;
+
+  if (first_vacuum_worker_idx == 0)
+    {
+      first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
+    }
+  if (num_worker_threads == 0)
+    {
+      num_worker_threads = thread_num_worker_threads ();
+    }
+#else
+  thread_index = 0;
+  first_vacuum_worker_idx = 100;
+#endif
+
+  if (thread_index >= 1 && thread_index <= num_worker_threads)
+    {
+      module_type = PERF_MODULE_USER;
+    }
+  else if (thread_index >= first_vacuum_worker_idx && thread_index < first_vacuum_worker_idx + VACUUM_MAX_WORKER_COUNT)
+    {
+      module_type = PERF_MODULE_VACUUM;
+    }
+  else
+    {
+      module_type = PERF_MODULE_SYSTEM;
+    }
+
+  return module_type;
+}
+
+/*
+  unsigned int snapshot;
+  unsigned int rec_type;
+  unsigned int visibility;
+      for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
+	   snapshot++)
+	  for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
+	       rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
+	      for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
+		   visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
+  unsigned int snapshot;
+  unsigned int rec_type;
+  unsigned int visibility;
+  for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
+       snapshot++)
+      for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
+	   rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
+	  for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
+	       visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
+  unsigned int lock_mode;
+      for (lock_mode = (unsigned int) NA_LOCK; lock_mode <= (unsigned int) SCH_M_LOCK; lock_mode++)
+ * perfmon_initialize () - Computes the metadata values & allocates/initializes global/transaction statistics values.
+ *
+ * return	  : NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY.
+ * num_trans (in) : For server/stand-alone mode to allocate transactions.
+ */
+int
+perfmon_initialize (int num_trans)
+{
+  int idx = 0;
+  int memsize = 0;
+  int rc;
+
+  pstat_Global.global_stats = NULL;
+  pstat_Global.n_trans = 0;
+  pstat_Global.tran_stats = NULL;
+  pstat_Global.is_watching = NULL;
+  pstat_Global.n_watchers = 0;
+  pstat_Global.initialized = false;
+  pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
+
+  rc = perfmeta_init ();
+  if (rc != NO_ERROR)
+    {
+      /* out of memory */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 0);
+      return rc;
+    }
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+
+#if !defined (HAVE_ATOMIC_BUILTINS)
+  (void) pthread_mutex_init (&pstat_Global.watch_lock, NULL);
+#endif /* !HAVE_ATOMIC_BUILTINS */
+
+  /* Allocate global stats. */
+  pstat_Global.global_stats = (UINT64 *) malloc (perfmeta_get_values_memsize ());
+  if (pstat_Global.global_stats == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, perfmeta_get_values_memsize ());
+      goto error;
+    }
+  memset (pstat_Global.global_stats, 0, perfmeta_get_values_memsize ());
+
+  assert (num_trans > 0);
+
+  pstat_Global.n_trans = num_trans + 1;	/* 1 more for easier indexing with tran_index */
+  memsize = pstat_Global.n_trans * sizeof (UINT64 *);
+  pstat_Global.tran_stats = (UINT64 **) malloc (memsize);
+  if (pstat_Global.tran_stats == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      goto error;
+    }
+  memsize = pstat_Global.n_trans * (int) perfmeta_get_values_memsize ();
+  pstat_Global.tran_stats[0] = (UINT64 *) malloc (memsize);
+  if (pstat_Global.tran_stats[0] == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      goto error;
+    }
+  memset (pstat_Global.tran_stats[0], 0, memsize);
+
+  for (idx = 1; idx < pstat_Global.n_trans; idx++)
+    {
+      pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + perfmeta_get_values_count () * idx;
+    }
+
+  memsize = pstat_Global.n_trans * sizeof (bool);
+  pstat_Global.is_watching = (bool *) malloc (memsize);
+  if (pstat_Global.is_watching == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      goto error;
+    }
+  memset (pstat_Global.is_watching, 0, memsize);
+
+  pstat_Global.n_watchers = 0;
+  pstat_Global.initialized = true;
+  return NO_ERROR;
+
+error:
+  perfmon_finalize ();
+  return ER_OUT_OF_VIRTUAL_MEMORY;
+#else
+  pstat_Global.initialized = true;
+  return NO_ERROR;
+#endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
+ * perfmon_finalize () - Frees all the allocated memory for performance monitor data structures
+ *
+ * return :
+ */
+
+void
+perfmon_finalize (void)
+{
+  perfmeta_final ();
+
+  if (pstat_Global.tran_stats != NULL)
+    {
+      if (pstat_Global.tran_stats[0] != NULL)
+	{
+	  free_and_init (pstat_Global.tran_stats[0]);
+	}
+      free_and_init (pstat_Global.tran_stats);
+    }
+  if (pstat_Global.is_watching != NULL)
+    {
+      free_and_init (pstat_Global.is_watching);
+    }
+  if (pstat_Global.global_stats != NULL)
+    {
+      free_and_init (pstat_Global.global_stats);
+    }
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#if !defined (HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_destroy (&pstat_Global.watch_lock);
+#endif /* !HAVE_ATOMIC_BUILTINS */
+#endif /* SERVER_MODE || SA_MODE */
+}
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+
+/*
+ * perfmon_start_watch () - Start watching performance statistics.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+void
+perfmon_start_watch (THREAD_ENTRY * thread_p)
+{
+  int tran_index;
+
+  assert (pstat_Global.initialized);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+
+  if (pstat_Global.is_watching[tran_index])
+    {
+      /* Already watching. */
+      return;
+    }
+
+#if defined (HAVE_ATOMIC_BUILTINS)
+  ATOMIC_INC_32 (&pstat_Global.n_watchers, 1);
+#else /* !HAVE_ATOMIC_BUILTINS */
+  pthread_mutex_lock (&pstat_Global.watch_lock);
+  pstat_Global.n_watchers++;
+  pthread_mutex_unlock (&pstat_Global.watch_lock);
+#endif /* !HAVE_ATOMIC_BUILTINS */
+
+  memset (pstat_Global.tran_stats[tran_index], 0, perfmeta_get_values_memsize ());
+  pstat_Global.is_watching[tran_index] = true;
+}
+
+/*
+ * perfmon_stop_watch () - Stop watching performance statistics.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+void
+perfmon_stop_watch (THREAD_ENTRY * thread_p)
+{
+  int tran_index;
+
+  assert (pstat_Global.initialized);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+
+  if (!pstat_Global.is_watching[tran_index])
+    {
+      /* Not watching. */
+      return;
+    }
+
+#if defined (HAVE_ATOMIC_BUILTINS)
+  ATOMIC_INC_32 (&pstat_Global.n_watchers, -1);
+#else /* !HAVE_ATOMIC_BUILTINS */
+  pthread_mutex_lock (&pstat_Global.watch_lock);
+  pstat_Global.n_watchers--;
+  pthread_mutex_unlock (&pstat_Global.watch_lock);
+#endif /* !HAVE_ATOMIC_BUILTINS */
+
+  pstat_Global.is_watching[tran_index] = false;
+}
+
+#endif /* SERVER_MODE || SA_MODE */
+
+/*
+ * perfmon_add_stat_at_offset () - Accumulate amount to statistic.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * psid (in)	 : Statistic ID.
+ * offset (in)   : offset at which to add the amount
+ * amount (in)	 : Amount to add.
+ */
+STATIC_INLINE void
+perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount)
+{
+  assert (pstat_Global.initialized);
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
+
+  /* Update statistics. */
+  perfmon_add_at_offset (thread_p, pstat_Metadata[psid].start_offset + offset, amount);
+}
+
+/*
+ * perfmon_allocate_packed_values_buffer () - Allocate perfmeta_get_values_memsize () bytes and verify alignment
+ * 
+ */
+char *
+perfmon_allocate_packed_values_buffer (void)
+{
+  char *buf;
+
+  buf = (char *) malloc (perfmeta_get_values_memsize ());
+  if (buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, perfmeta_get_values_memsize ());
+    }
+  ASSERT_ALIGN (buf, MAX_ALIGNMENT);
+
+  return buf;
+}
+
+/*
+ * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics
+ *		         
+ * return: void
+ *
+ *   stats (in): statistics array
+ */
+STATIC_INLINE void
+perfmon_get_peek_stats (UINT64 * stats)
+{
+  stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = xcache_get_entry_count ();
+  stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
+  stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
+
+  pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_DIRTY_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU1_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU2_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU3_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_VICT_CAND].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_DEALLOC_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_QUOTA].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_COUNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_HIGH_PRIO].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_LOW_PRIO].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_FLUSHED_BCBS_WAIT_FOR_ASSIGN].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_BIG_PRV_NUM].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
+}
+
+#if defined(SERVER_MODE) || defined(SA_MODE)
+
+/*
  * perfmon_server_is_stats_on - Is collecting server execution statistics
  *				for the current transaction index
  *   return: bool
@@ -354,332 +689,4 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
   perfmon_add_at_offset (thread_p, perfmeta_complex_cursor_get_offset (PSTAT_MVCC_SNAPSHOT_COUNTERS, &cursor), 1);
 }
 
-
-/*
- * perfmon_get_module_type () -
- */
-int
-perfmon_get_module_type (THREAD_ENTRY * thread_p)
-{
-  int thread_index;
-  int module_type;
-  static int first_vacuum_worker_idx = 0;
-  static int num_worker_threads = 0;
-
-#if defined (SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  thread_index = thread_p->index;
-
-  if (first_vacuum_worker_idx == 0)
-    {
-      first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
-    }
-  if (num_worker_threads == 0)
-    {
-      num_worker_threads = thread_num_worker_threads ();
-    }
-#else
-  thread_index = 0;
-  first_vacuum_worker_idx = 100;
-#endif
-
-  if (thread_index >= 1 && thread_index <= num_worker_threads)
-    {
-      module_type = PERF_MODULE_USER;
-    }
-  else if (thread_index >= first_vacuum_worker_idx && thread_index < first_vacuum_worker_idx + VACUUM_MAX_WORKER_COUNT)
-    {
-      module_type = PERF_MODULE_VACUUM;
-    }
-  else
-    {
-      module_type = PERF_MODULE_SYSTEM;
-    }
-
-  return module_type;
-}
-
-/*
-  unsigned int snapshot;
-  unsigned int rec_type;
-  unsigned int visibility;
-      for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
-	   snapshot++)
-	  for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
-	       rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
-	      for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
-		   visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
-  unsigned int snapshot;
-  unsigned int rec_type;
-  unsigned int visibility;
-  for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
-       snapshot++)
-      for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
-	   rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
-	  for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
-	       visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
-  unsigned int lock_mode;
-      for (lock_mode = (unsigned int) NA_LOCK; lock_mode <= (unsigned int) SCH_M_LOCK; lock_mode++)
- * perfmon_initialize () - Computes the metadata values & allocates/initializes global/transaction statistics values.
- *
- * return	  : NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY.
- * num_trans (in) : For server/stand-alone mode to allocate transactions.
- */
-int
-perfmon_initialize (int num_trans)
-{
-  int idx = 0;
-  int memsize = 0;
-  int rc;
-
-  pstat_Global.global_stats = NULL;
-  pstat_Global.n_trans = 0;
-  pstat_Global.tran_stats = NULL;
-  pstat_Global.is_watching = NULL;
-  pstat_Global.n_watchers = 0;
-  pstat_Global.initialized = false;
-  pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
-
-  rc = perfmeta_init ();
-  if (rc != NO_ERROR)
-    {
-      /* out of memory */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 0);
-      return rc;
-    }
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-
-#if !defined (HAVE_ATOMIC_BUILTINS)
-  (void) pthread_mutex_init (&pstat_Global.watch_lock, NULL);
-#endif /* !HAVE_ATOMIC_BUILTINS */
-
-  /* Allocate global stats. */
-  pstat_Global.global_stats = (UINT64 *) malloc (perfmeta_get_values_memsize ());
-  if (pstat_Global.global_stats == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, perfmeta_get_values_memsize ());
-      goto error;
-    }
-  memset (pstat_Global.global_stats, 0, perfmeta_get_values_memsize ());
-
-  assert (num_trans > 0);
-
-  pstat_Global.n_trans = num_trans + 1;	/* 1 more for easier indexing with tran_index */
-  memsize = pstat_Global.n_trans * sizeof (UINT64 *);
-  pstat_Global.tran_stats = (UINT64 **) malloc (memsize);
-  if (pstat_Global.tran_stats == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-      goto error;
-    }
-  memsize = pstat_Global.n_trans * (int) perfmeta_get_values_memsize ();
-  pstat_Global.tran_stats[0] = (UINT64 *) malloc (memsize);
-  if (pstat_Global.tran_stats[0] == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-      goto error;
-    }
-  memset (pstat_Global.tran_stats[0], 0, memsize);
-
-  for (idx = 1; idx < pstat_Global.n_trans; idx++)
-    {
-      pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + perfmeta_get_values_count () * idx;
-    }
-
-  memsize = pstat_Global.n_trans * sizeof (bool);
-  pstat_Global.is_watching = (bool *) malloc (memsize);
-  if (pstat_Global.is_watching == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-      goto error;
-    }
-  memset (pstat_Global.is_watching, 0, memsize);
-
-  pstat_Global.n_watchers = 0;
-  pstat_Global.initialized = true;
-  return NO_ERROR;
-
-error:
-  perfmon_finalize ();
-  return ER_OUT_OF_VIRTUAL_MEMORY;
-#else
-  pstat_Global.initialized = true;
-  return NO_ERROR;
 #endif /* SERVER_MODE || SA_MODE */
-}
-
-/*
- * perfmon_finalize () - Frees all the allocated memory for performance monitor data structures
- *
- * return :
- */
-
-void
-perfmon_finalize (void)
-{
-  perfmeta_final ();
-
-  if (pstat_Global.tran_stats != NULL)
-    {
-      if (pstat_Global.tran_stats[0] != NULL)
-	{
-	  free_and_init (pstat_Global.tran_stats[0]);
-	}
-      free_and_init (pstat_Global.tran_stats);
-    }
-  if (pstat_Global.is_watching != NULL)
-    {
-      free_and_init (pstat_Global.is_watching);
-    }
-  if (pstat_Global.global_stats != NULL)
-    {
-      free_and_init (pstat_Global.global_stats);
-    }
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#if !defined (HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_destroy (&pstat_Global.watch_lock);
-#endif /* !HAVE_ATOMIC_BUILTINS */
-#endif /* SERVER_MODE || SA_MODE */
-}
-
-/*
- * perfmon_start_watch () - Start watching performance statistics.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- */
-void
-perfmon_start_watch (THREAD_ENTRY * thread_p)
-{
-  int tran_index;
-
-  assert (pstat_Global.initialized);
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-
-  if (pstat_Global.is_watching[tran_index])
-    {
-      /* Already watching. */
-      return;
-    }
-
-#if defined (HAVE_ATOMIC_BUILTINS)
-  ATOMIC_INC_32 (&pstat_Global.n_watchers, 1);
-#else /* !HAVE_ATOMIC_BUILTINS */
-  pthread_mutex_lock (&pstat_Global.watch_lock);
-  pstat_Global.n_watchers++;
-  pthread_mutex_unlock (&pstat_Global.watch_lock);
-#endif /* !HAVE_ATOMIC_BUILTINS */
-
-  memset (pstat_Global.tran_stats[tran_index], 0, perfmeta_get_values_memsize ());
-  pstat_Global.is_watching[tran_index] = true;
-}
-
-/*
- * perfmon_stop_watch () - Stop watching performance statistics.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- */
-void
-perfmon_stop_watch (THREAD_ENTRY * thread_p)
-{
-  int tran_index;
-
-  assert (pstat_Global.initialized);
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-
-  if (!pstat_Global.is_watching[tran_index])
-    {
-      /* Not watching. */
-      return;
-    }
-
-#if defined (HAVE_ATOMIC_BUILTINS)
-  ATOMIC_INC_32 (&pstat_Global.n_watchers, -1);
-#else /* !HAVE_ATOMIC_BUILTINS */
-  pthread_mutex_lock (&pstat_Global.watch_lock);
-  pstat_Global.n_watchers--;
-  pthread_mutex_unlock (&pstat_Global.watch_lock);
-#endif /* !HAVE_ATOMIC_BUILTINS */
-
-  pstat_Global.is_watching[tran_index] = false;
-}
-
-/*
- * perfmon_add_stat_at_offset () - Accumulate amount to statistic.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * psid (in)	 : Statistic ID.
- * offset (in)   : offset at which to add the amount
- * amount (in)	 : Amount to add.
- */
-STATIC_INLINE void
-perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount)
-{
-  assert (pstat_Global.initialized);
-  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
-
-  /* Update statistics. */
-  perfmon_add_at_offset (thread_p, pstat_Metadata[psid].start_offset + offset, amount);
-}
-
-/*
- * perfmon_allocate_packed_values_buffer () - Allocate perfmeta_get_values_memsize () bytes and verify alignment
- * 
- */
-char *
-perfmon_allocate_packed_values_buffer (void)
-{
-  char *buf;
-
-  buf = (char *) malloc (perfmeta_get_values_memsize ());
-  if (buf == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, perfmeta_get_values_memsize ());
-    }
-  ASSERT_ALIGN (buf, MAX_ALIGNMENT);
-
-  return buf;
-}
-
-/*
- * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics
- *		         
- * return: void
- *
- *   stats (in): statistics array
- */
-STATIC_INLINE void
-perfmon_get_peek_stats (UINT64 * stats)
-{
-  stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = xcache_get_entry_count ();
-  stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
-  stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
-
-  pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_DIRTY_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LRU1_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LRU2_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LRU3_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_VICT_CAND].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_DEALLOC_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_QUOTA].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_COUNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_HIGH_PRIO].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_LOW_PRIO].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_FLUSHED_BCBS_WAIT_FOR_ASSIGN].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_BIG_PRV_NUM].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
-}

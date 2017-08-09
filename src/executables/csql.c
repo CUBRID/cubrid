@@ -491,13 +491,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	}
     }
 
-  status = perfmon_initialize (MAX_NTRANS);
-  if (status != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto fatal_error;
-    }
-
   if (initialize_csql_column_width_info_list () != CSQL_SUCCESS)
     {
       goto fatal_error;
@@ -754,10 +747,6 @@ fatal_error:
 	  csql_Is_histo_on = HISTO_OFF;
 	  histo_stop ();
 	}
-    }
-  if (pstat_Global.initialized)
-    {
-      perfmon_finalize ();
     }
 
   db_end_session ();

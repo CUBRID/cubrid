@@ -559,7 +559,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
     }
 
-  error_code = perfmeta_init ();
+  error_code = perfmon_initialize (MAX_NTRANS);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -839,7 +839,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   area_init ();
   locator_initialize_areas ();
 
-  error_code = perfmeta_init ();
+  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MODE */
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
