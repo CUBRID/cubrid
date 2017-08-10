@@ -349,7 +349,6 @@ EXPORTS
     db_fetch_list
     db_fetch_seq
     db_fetch_set
-    db_final_client_query_result
     db_find_class
     db_find_class_of_index
     db_find_event_triggers

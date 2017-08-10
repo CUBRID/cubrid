@@ -34,6 +34,7 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <dbgHelp.h>
+#include <assert.h>
 
 #else /* WINDOWS */
 #include <sys/resource.h>
@@ -50,15 +51,13 @@
 #include "system_parameter.h"
 #include "perf_monitor.h"
 #include "util_func.h"
-#include "log_impl.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
-#else /* WINDOWS */
+#else /* !defined (WINDOWS) */
 #include "tcp.h"
-#endif /* WINDOWS */
-#if !defined(WINDOWS)
 #include "heartbeat.h"
-#endif
+#include "log_impl.h"
+#endif /* !defined (WINDOWS) */
 
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name);

@@ -28,6 +28,10 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* defined (SERVER_MODE) */
+
 #include <stdarg.h>
 #include "area_alloc.h"
 #include "object_representation.h"

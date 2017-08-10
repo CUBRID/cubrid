@@ -33,6 +33,7 @@
 #include <time.h>
 #include <float.h>
 #include <limits.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <netinet/in.h>
 #endif /* !WINDOWS */
@@ -40,10 +41,8 @@
 #include "error_manager.h"
 #include "storage_common.h"
 #include "oid.h"
-#include "dbtype.h"
 #include "byte_order.h"
 #include "memory_alloc.h"
-#include "sha1.h"
 
 /*
  * NUMERIC TYPE SIZES
@@ -1280,7 +1279,7 @@ extern char *or_pack_errcode (char *ptr, int error);
 extern char *or_pack_oid (char *ptr, const OID * oid);
 extern char *or_pack_oid_array (char *ptr, int n, const OID * oids);
 extern char *or_pack_hfid (const char *ptr, const HFID * hfid);
-extern char *or_pack_btid (char *buf, BTID * btid);
+extern char *or_pack_btid (char *buf, const BTID * btid);
 extern char *or_pack_ehid (char *buf, EHID * btid);
 extern char *or_pack_recdes (char *buf, RECDES * recdes);
 extern char *or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa);
@@ -1526,5 +1525,10 @@ extern int or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL
 extern char *or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols,
 			      const SPACEDB_FILES * files);
 extern char *or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files);
+
+/* class object */
+extern int classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, int *pageid);
+extern void classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr);
+extern int classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

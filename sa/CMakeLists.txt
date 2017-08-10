@@ -164,7 +164,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/numeric_opfunc.c
-  ${QUERY_DIR}/query.c
+  ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c

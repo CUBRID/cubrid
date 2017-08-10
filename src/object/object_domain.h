@@ -31,7 +31,6 @@
 
 #include <stdio.h>
 #include "error_manager.h"
-#include "object_representation.h"
 #include "area_alloc.h"
 
 #define DOM_GET_ENUMERATION(dom) \
@@ -108,8 +107,6 @@ typedef struct tp_domain
   unsigned is_visited:1;
 } TP_DOMAIN;
 
-
-
 /*
  * We probably should make this 0 rather than -1 so that we can more easily
  * represent precisions with unsigned integers.  Zero is not a valid
@@ -141,7 +138,6 @@ typedef struct tp_alloc_context
 
 /* DOMAIN ALLOCATION */
 extern AREA *tp_Domain_area;
-
 
 /*
  * BUILT IN DOMAINS

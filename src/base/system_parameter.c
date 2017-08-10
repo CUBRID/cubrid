@@ -51,20 +51,23 @@
 #include "error_manager.h"
 #include "storage_common.h"
 #include "system_parameter.h"
-#include "xserver_interface.h"
 #include "util_func.h"
 #include "log_comm.h"
-#include "log_impl.h"
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "intl_support.h"
-#include "log_manager.h"
 #include "message_catalog.h"
 #include "language_support.h"
 #include "connection_defs.h"
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "server_support.h"
 #include "boot_sr.h"
+#include "page_buffer.h"
+#include "session.h"
+#include "vacuum.h"
+#include "log_impl.h"
+#include "log_manager.h"
+#include "xserver_interface.h"
 #endif /* SERVER_MODE */
 #if defined (LINUX)
 #include "stack_dump.h"
@@ -78,11 +81,6 @@
 #include "heartbeat.h"
 #include "log_applier.h"
 #include "utility.h"
-#include "page_buffer.h"
-#if !defined (CS_MODE)
-#include "session.h"
-#endif
-#include "vacuum.h"
 #include "tz_support.h"
 #include "perf_monitor.h"
 
@@ -975,6 +973,9 @@ static float prm_lk_run_deadlock_interval_default = 1.0f;
 static float prm_lk_run_deadlock_interval_lower = 0.1f;
 static unsigned int prm_lk_run_deadlock_interval_flag = 0;
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#define LOGPB_BUFFER_NPAGES_LOWER 128
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 int PRM_LOG_NBUFFERS = LOGPB_BUFFER_NPAGES_LOWER;
 static int prm_log_nbuffers_default = 16 * ONE_K;	/* 16k pages => 64M / 128M / 256M based on log page size */
 static int prm_log_nbuffers_lower = LOGPB_BUFFER_NPAGES_LOWER;
@@ -1056,6 +1057,9 @@ bool PRM_QO_DUMP = false;
 static bool prm_qo_dump_default = false;
 static unsigned int prm_qo_dump_flag = 0;
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#define CSS_MAX_CLIENT_COUNT 2000
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 int PRM_CSS_MAX_CLIENTS = 100;
 static int prm_css_max_clients_default = 100;
 static int prm_css_max_clients_lower = 10;
@@ -1172,6 +1176,15 @@ static int prm_pb_sync_on_nflush_lower = 1;
 static int prm_pb_sync_on_nflush_upper = INT_MAX;
 static unsigned int prm_pb_sync_on_nflush_flag = 0;
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+typedef enum
+{
+  PGBUF_DEBUG_NO_PAGE_VALIDATION,
+  PGBUF_DEBUG_PAGE_VALIDATION_FETCH,
+  PGBUF_DEBUG_PAGE_VALIDATION_FREE,
+  PGBUF_DEBUG_PAGE_VALIDATION_ALL
+} PGBUF_DEBUG_PAGE_VALIDATION_LEVEL;
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 int PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL = PGBUF_DEBUG_NO_PAGE_VALIDATION;
 #if !defined(NDEBUG)
 static int prm_pb_debug_page_validation_level_default = PGBUF_DEBUG_PAGE_VALIDATION_FETCH;
@@ -1931,6 +1944,10 @@ static int prm_vacuum_master_wakeup_interval_default = 10;
 static int prm_vacuum_master_wakeup_interval_lower = 1;
 static unsigned int prm_vacuum_master_wakeup_interval_flag = 0;
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#define VACUUM_LOG_BLOCK_PAGES_DEFAULT 0
+#define VACUUM_MAX_WORKER_COUNT 0
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 int PRM_VACUUM_LOG_BLOCK_PAGES = VACUUM_LOG_BLOCK_PAGES_DEFAULT;
 static int prm_vacuum_log_block_pages_default = VACUUM_LOG_BLOCK_PAGES_DEFAULT;
 static int prm_vacuum_log_block_pages_lower = 4;
@@ -1985,6 +2002,10 @@ static unsigned int prm_vacuum_prefetch_log_nbuffers_flag = 0;
 static int prm_vacuum_prefetch_log_nbuffers_lower =
   (VACUUM_MAX_WORKER_COUNT + 1) * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#define VACUUM_PREFETCH_LOG_MODE_MASTER 0
+#define VACUUM_PREFETCH_LOG_MODE_WORKERS 1
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 int PRM_VACUUM_PREFETCH_LOG_MODE = VACUUM_PREFETCH_LOG_MODE_WORKERS;
 static int prm_vacuum_prefetch_log_mode_default = VACUUM_PREFETCH_LOG_MODE_WORKERS;
 static unsigned int prm_vacuum_prefetch_log_mode_flag = 0;

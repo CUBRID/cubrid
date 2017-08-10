@@ -27,6 +27,8 @@
 
 #ident "$Id$"
 
+#include <assert.h>
+
 #include "btree.h"
 #include "object_representation.h"
 #include "error_manager.h"

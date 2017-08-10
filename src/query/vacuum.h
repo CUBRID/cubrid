@@ -24,6 +24,12 @@
 #ifndef _VACUUM_H_
 #define _VACUUM_H_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+#include <assert.h>
+
 #include "dbtype.h"
 #include "thread.h"
 #include "storage_common.h"

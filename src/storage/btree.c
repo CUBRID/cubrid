@@ -29,40 +29,31 @@
 #include <string.h>
 #include <assert.h>
 
+#include "btree.h"
+
 #include "btree_load.h"
-#include "storage_common.h"
-#include "error_manager.h"
-#include "page_buffer.h"
-#include "file_io.h"
 #include "file_manager.h"
 #include "slotted_page.h"
-#include "oid.h"
 #include "log_manager.h"
-#include "memory_alloc.h"
 #include "overflow_file.h"
 #include "xserver_interface.h"
-#include "btree.h"
 #include "scan_manager.h"
 #if defined(SERVER_MODE)
-#include "thread.h"
 #endif /* SERVER_MODE */
-#include "heap_file.h"
 #include "object_primitive.h"
-#include "list_file.h"
 #include "fetch.h"
-#include "connection_defs.h"
 #include "locator_sr.h"
-#include "network_interface_sr.h"
+#include "network_interface_sr.h"	/* TODO: remove; used for xcallback_console_print */
 #include "utility.h"
-#include "mvcc.h"
 #include "transform.h"
-
-#if !defined (SERVER_MODE)
-#include "transaction_cl.h"
-#endif
-
-#include "fault_injection.h"
+#include "partition.h"
+#include "query_executor.h"
+#include "object_primitive.h"
 #include "perf_monitor.h"
+#include "fault_injection.h"
+#if defined (SA_MODE)
+#include "transaction_cl.h"	/* for interrupt */
+#endif /* defined (SA_MODE) */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

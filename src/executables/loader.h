@@ -28,6 +28,7 @@
 
 #ident "$Id$"
 
+#include <stdint.h>
 #include "porting.h"
 #include "dbdef.h"
 

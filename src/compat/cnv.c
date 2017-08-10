@@ -36,7 +36,6 @@
 #include <wchar.h>
 
 #include "porting.h"
-#include "db.h"
 #include "adjustable_array.h"
 #include "intl_support.h"
 #include "memory_alloc.h"
@@ -49,8 +48,9 @@
 #include "cnverr.h"
 #if defined(SERVER_MODE)
 #include "thread.h"
-#endif
 #include "critical_section.h"
+#endif
+#include "db_date.h"
 #include "dbval.h"		/* this must be the last header file included!!! */
 
 #define BITS_IN_BYTE		8
@@ -126,6 +126,12 @@
 #define KOREAN_EUC_YEAR_SYMBOL      "\xb3\xe2"	/* nyeon */
 #define KOREAN_EUC_MONTH_SYMBOL     "\xbf\xf9"	/* wol */
 #define KOREAN_EUC_DAY_SYMBOL       "\xc0\xcf"	/* il */
+
+#if !defined (SERVER_MODE)
+/* no critical section */
+#define csect_enter(a, b, c) NO_ERROR
+#define csect_exit(a, b)
+#endif /* !defined (SERVER_MODE) */
 
 
 /* Format Descriptors */

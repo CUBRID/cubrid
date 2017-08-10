@@ -31,23 +31,16 @@
 #include <winsock2.h>
 #endif /* WINDOWS */
 #include <setjmp.h>
+#include <assert.h>
 
-#include "porting.h"
-#if !defined (SERVER_MODE)
-#include "locator_cl.h"
-#endif /* !SERVER_MODE */
 #include "object_representation.h"
-#include "object_domain.h"
 #include "error_manager.h"
 #include "oid.h"
-#include "storage_common.h"
-#include "query_opfunc.h"
-#include "class_object.h"
-#include "db.h"
 #include "set_object.h"
-#if defined (SERVER_MODE)
-#include "thread.h"
-#endif /* !SERVER_MODE */
+#include "file_io.h"
+#include "regu_var.h"
+#include "object_primitive.h"
+#include "query_list.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -3732,7 +3725,7 @@ or_unpack_ehid (char *ptr, EHID * ehid)
  *    btid(in): BTID value
  */
 char *
-or_pack_btid (char *ptr, BTID * btid)
+or_pack_btid (char *ptr, const BTID * btid)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 

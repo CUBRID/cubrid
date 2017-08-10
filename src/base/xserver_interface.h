@@ -33,6 +33,10 @@
 
 #include "config.h"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "error_manager.h"
 #include "storage_common.h"
 #include "boot.h"
@@ -44,6 +48,7 @@
 #include "thread.h"
 #include "replication.h"
 #include "query_manager.h"
+
 extern int xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
 				    BOOT_DB_PATH_INFO * db_path_info, bool db_overwrite, const char *file_addmore_vols,
 				    volatile DKNPAGES db_npages, PGLENGTH db_desired_pagesize,

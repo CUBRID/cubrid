@@ -31,6 +31,7 @@
 
 #include "thread.h"
 #include "query_list.h"
+#include "log_impl.h"
 
 #define EVENT_EMPTY_QUERY "***EMPTY***"
 

@@ -22,6 +22,7 @@
  *
  */
 #include "vacuum.h"
+
 #include "thread.h"
 #include "mvcc.h"
 #include "page_buffer.h"
@@ -34,9 +35,12 @@
 #include "lock_free.h"
 #include "perf_monitor.h"
 #include "dbtype.h"
-#include "transaction_cl.h"
 #include "util_func.h"
 #include "log_impl.h"
+
+#if defined (SA_MODE)
+#include "transaction_cl.h"	/* for interrupt */
+#endif /* defined (SA_MODE) */
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it

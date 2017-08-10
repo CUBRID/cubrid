@@ -158,7 +158,7 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
     }
   return (dwCount);
 #elif defined (HAVE_LIBGCRYPT) || defined (HAVE_RPC_DES_CRYPT_H)
-  int outlen, inlen, padding_size;
+  int outlen, inlen;
   int i;
   int padlen;
   unsigned char inbuf[2048];

@@ -29,6 +29,7 @@
 #include <stdarg.h>
 #include <signal.h>
 #include <setjmp.h>
+#include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
 #else /* !WINDOWS */

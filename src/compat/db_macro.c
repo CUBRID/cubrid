@@ -31,14 +31,13 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <string.h>
+#include <assert.h>
+
 #include "system_parameter.h"
 #include "error_manager.h"
-#include "language_support.h"
 #include "db.h"
 #include "object_print.h"
-#include "intl_support.h"
 #include "string_opfunc.h"
-#include "object_domain.h"
 #include "set_object.h"
 #include "cnv.h"
 #include "tz_support.h"
@@ -46,6 +45,8 @@
 #include "object_accessor.h"
 #endif
 #include "db_elo.h"
+#include "numeric_opfunc.h"
+#include "object_primitive.h"
 
 #define DB_NUMBER_ZERO	    0
 

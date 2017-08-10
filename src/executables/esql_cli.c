@@ -37,6 +37,8 @@
 #include <limits.h>
 #include <time.h>
 #include <errno.h>
+#include <assert.h>
+
 #include "misc_string.h"
 #include "error_manager.h"
 #include "system_parameter.h"

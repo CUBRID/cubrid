@@ -44,6 +44,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
 #ifdef WINDOWS
 #include <winsock2.h>
 #include <windows.h>

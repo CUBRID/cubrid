@@ -32,7 +32,6 @@
 #include "misc_string.h"
 #include "error_manager.h"
 #include "parser.h"
-#include "query_executor.h"
 #include "xasl_generation.h"
 #include "xasl_support.h"
 #include "db.h"
@@ -47,17 +46,17 @@
 #include "set_object.h"
 #include "object_print.h"
 #include "object_representation.h"
-#include "heap_file.h"
 #include "intl_support.h"
 #include "system_parameter.h"
 #include "execute_schema.h"
 #include "porting.h"
-#include "list_file.h"
 #include "execute_statement.h"
 #include "query_graph.h"
 #include "transform.h"
 #include "query_planner.h"
 #include "semantic_check.h"
+#include "query_dump.h"
+#include "parser_support.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -131,6 +130,10 @@ struct pred_regu_variable_p_list_node
   bool is_prior;		/* is it in PRIOR argument? */
 };
 
+#define SORT_SPEC_EQ(a, b) \
+  ((a)->info.sort_spec.pos_descr.pos_no == (b)->info.sort_spec.pos_descr.pos_no \
+   && (a)->info.sort_spec.asc_or_desc == (b)->info.sort_spec.asc_or_desc \
+   && (a)->info.sort_spec.nulls_first_or_last == (b)->info.sort_spec.nulls_first_or_last)
 
 static PRED_EXPR *pt_make_pred_term_not (const PRED_EXPR * arg1);
 static PRED_EXPR *pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const REL_OP rop,
@@ -229,7 +232,6 @@ static bool validate_regu_key_function_index (REGU_VARIABLE * regu_var);
 static XASL_NODE *pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
 static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * non_null_attrs,
 					   PT_NODE * default_expr_attrs);
-static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_append_assignment_references (PARSER_CONTEXT * parser, PT_NODE * assignments, PT_NODE * from,
 						 PT_NODE * select_list);
 static ODKU_INFO *pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl);
@@ -3005,110 +3007,6 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 }
 
 /*
- * pt_has_modified_class -
- *   return:
- *
- *   parser(in):
- *   statement(in/out):
- */
-DB_CLASS_MODIFICATION_STATUS
-pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  DB_CLASS_MODIFICATION_STATUS status = DB_CLASS_NOT_MODIFIED;
-
-  parser_walk_tree (parser, statement, pt_has_modified_class_helper, &status, NULL, NULL);
-
-  return status;
-}
-
-/*
- * pt_has_modified_class_helper -
- *   return:
- *
- *   parser(in):
- *   node(in/out):
- *   arg(in/out):
- *   continue_walk(in/out):
- */
-static PT_NODE *
-pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  DB_CLASS_MODIFICATION_STATUS *status = (DB_CLASS_MODIFICATION_STATUS *) arg;
-  PT_NODE *class_;
-  MOP clsmop = NULL;
-  SM_CLASS *sm_class = NULL;
-  int error = NO_ERROR;
-
-  if (*status != DB_CLASS_NOT_MODIFIED)
-    {
-      *continue_walk = PT_STOP_WALK;
-      return node;
-    }
-
-  *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type == PT_SPEC)
-    {
-      for (class_ = node->info.spec.flat_entity_list; class_; class_ = class_->next)
-	{
-	  clsmop = class_->info.name.db_object;
-
-	  if (clsmop == NULL)
-	    {
-	      continue;
-	    }
-
-	  if (clsmop->decached)
-	    {
-	      /* the class might be aborted. */
-	      *status = DB_CLASS_MODIFIED;
-	    }
-	  else
-	    {
-	      error = au_fetch_class_force (clsmop, &sm_class, AU_FETCH_READ);
-	      if (error != NO_ERROR)
-		{
-		  if (error == ER_HEAP_UNKNOWN_OBJECT)
-		    {
-		      /* the class might be dropped. */
-		      *status = DB_CLASS_MODIFIED;
-		    }
-		  else
-		    {
-		      *status = DB_CLASS_ERROR;
-		    }
-		}
-	    }
-	  if (*status != DB_CLASS_NOT_MODIFIED)
-	    {
-	      /* don't revisit leaves */
-	      *continue_walk = PT_STOP_WALK;
-	      break;
-	    }
-
-	  if (sm_get_class_type (sm_class) != SM_CLASS_CT)
-	    {
-	      continue;
-	    }
-
-	  if (class_->info.name.db_object_chn == NULL_CHN)
-	    {
-	      class_->info.name.db_object_chn = locator_get_cache_coherency_number (clsmop);
-	    }
-	  else if (class_->info.name.db_object_chn != locator_get_cache_coherency_number (clsmop))
-	    {
-	      *status = DB_CLASS_MODIFIED;
-
-	      /* don't revisit leaves */
-	      *continue_walk = PT_STOP_WALK;
-	      break;
-	    }
-	}
-    }
-
-  return node;
-}
-
-/*
  * pt_set_is_system_generated_stmt () - 
  *   return:
  *   parser(in):
@@ -4425,7 +4323,7 @@ pt_make_access_spec (TARGET_TYPE spec_type, ACCESS_METHOD access, INDX_INFO * in
   ACCESS_SPEC_TYPE *spec = NULL;
 
   /* validation check */
-  if (access == INDEX)
+  if (access == ACCESS_METHOD_INDEX)
     {
       assert (indexptr != NULL);
       if (indexptr)
@@ -4459,9 +4357,6 @@ pt_make_access_spec (TARGET_TYPE spec_type, ACCESS_METHOD access, INDX_INFO * in
       spec->where_range = where_range;
       spec->next = NULL;
       spec->pruning_type = DB_NOT_PARTITIONED_CLASS;
-      spec->pruned = false;
-      spec->curent = NULL;
-      spec->parts = NULL;
     }
 
   return spec;
@@ -4593,14 +4488,11 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * 
       return NULL;
     }
 
-  spec->parts = NULL;
-  spec->curent = NULL;
   if (sm_partitioned_class_type (class_, &spec->pruning_type, NULL, NULL) != NO_ERROR)
     {
       PT_ERRORc (parser, flat, er_msg ());
       return NULL;
     }
-  spec->pruned = false;
 
   spec->s.cls_node.cls_regu_list_key = attr_list_key;
   spec->s.cls_node.cls_regu_list_pred = attr_list_pred;
@@ -4639,19 +4531,19 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * 
   spec->s.cls_node.cache_range = cache_range;
   spec->s.cls_node.schema_type = schema_type;
   spec->s.cls_node.cache_reserved = cache_recordinfo;
-  if (access == SEQUENTIAL_RECORD_INFO)
+  if (access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
     {
       spec->s.cls_node.num_attrs_reserved = HEAP_RECORD_INFO_COUNT;
     }
-  else if (access == SEQUENTIAL_PAGE_SCAN)
+  else if (access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
     {
       spec->s.cls_node.num_attrs_reserved = HEAP_PAGE_INFO_COUNT;
     }
-  else if (access == INDEX_KEY_INFO)
+  else if (access == ACCESS_METHOD_INDEX_KEY_INFO)
     {
       spec->s.cls_node.num_attrs_reserved = BTREE_KEY_INFO_COUNT;
     }
-  else if (access == INDEX_NODE_INFO)
+  else if (access == ACCESS_METHOD_INDEX_NODE_INFO)
     {
       spec->s.cls_node.num_attrs_reserved = BTREE_NODE_INFO_COUNT;
     }
@@ -4712,7 +4604,7 @@ pt_make_showstmt_access_spec (PRED_EXPR * where_pred, SHOWSTMT_TYPE show_type, R
 {
   ACCESS_SPEC_TYPE *spec;
 
-  spec = pt_make_access_spec (TARGET_SHOWSTMT, SEQUENTIAL, NULL, NULL, where_pred, NULL);
+  spec = pt_make_access_spec (TARGET_SHOWSTMT, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, where_pred, NULL);
 
   if (spec)
     {
@@ -11195,8 +11087,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
     }
 
   /* BTID */
-  indx_infop->indx_id.type = T_BTID;
-  BTID_COPY (&(indx_infop->indx_id.i.btid), &(index_entryp->constraints->index_btid));
+  BTID_COPY (&indx_infop->btid, &index_entryp->constraints->index_btid);
 
   /* check for covered index scan */
   indx_infop->coverage = 0;	/* init */
@@ -11531,16 +11422,16 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	    {
 	      /* Heap scan */
 	      TARGET_TYPE scan_type;
-	      ACCESS_METHOD access_method = SEQUENTIAL;
+	      ACCESS_METHOD access_method = ACCESS_METHOD_SEQUENTIAL;
 
 	      /* determine access_method */
 	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_RECORD_INFO_SCAN))
 		{
-		  access_method = SEQUENTIAL_RECORD_INFO;
+		  access_method = ACCESS_METHOD_SEQUENTIAL_RECORD_INFO;
 		}
 	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PAGE_INFO_SCAN))
 		{
-		  access_method = SEQUENTIAL_PAGE_SCAN;
+		  access_method = ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN;
 		}
 
 	      /* for VALUES query, a new scan type is set */
@@ -11563,7 +11454,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  return NULL;
 		}
 
-	      if (access_method == SEQUENTIAL_PAGE_SCAN)
+	      if (access_method == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
 		{
 		  cache_pred = NULL;
 		  cache_rest = NULL;
@@ -11574,7 +11465,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		{
 		  cache_pred = regu_cache_attrinfo_alloc ();
 		  cache_rest = regu_cache_attrinfo_alloc ();
-		  if (access_method == SEQUENTIAL_RECORD_INFO)
+		  if (access_method == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
 		    {
 		      db_values_array_p = pt_make_reserved_value_list (parser, RESERVED_NAME_RECORD_INFO);
 		    }
@@ -11646,12 +11537,12 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_KEY_INFO_SCAN))
 		{
 		  reserved_type = RESERVED_NAME_KEY_INFO;
-		  access_method = INDEX_KEY_INFO;
+		  access_method = ACCESS_METHOD_INDEX_KEY_INFO;
 		}
 	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN))
 		{
 		  reserved_type = RESERVED_NAME_BTREE_NODE_INFO;
-		  access_method = INDEX_NODE_INFO;
+		  access_method = ACCESS_METHOD_INDEX_NODE_INFO;
 		}
 	      else
 		{
@@ -11828,11 +11719,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	      assert (index_info != NULL);
 	      access =
-		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS, INDEX, index_info,
-					   where_key, where, where_range, regu_attributes_key, regu_attributes_pred,
-					   regu_attributes_rest, regu_attributes_range, output_val_list,
-					   regu_var_list, cache_key, cache_pred, cache_rest, cache_range,
-					   NO_SCHEMA, NULL, NULL);
+		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS, ACCESS_METHOD_INDEX,
+					   index_info, where_key, where, where_range, regu_attributes_key,
+					   regu_attributes_pred, regu_attributes_rest, regu_attributes_range,
+					   output_val_list, regu_var_list, cache_key, cache_pred, cache_rest,
+					   cache_range, NO_SCHEMA, NULL, NULL);
 
 	      if (ipl_where_part)
 		{
@@ -11844,7 +11735,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	  if (access == NULL
 	      || (regu_attributes_pred == NULL && regu_attributes_rest == NULL && table_info->attribute_list != NULL
-		  && access->access == SEQUENTIAL) || pt_has_error (parser))
+		  && access->access == ACCESS_METHOD_SEQUENTIAL) || pt_has_error (parser))
 	    {
 	      /* an error condition */
 	      access = NULL;
@@ -11977,7 +11868,8 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
   parser->symbols->current_class = saved_current_class;
 
   access =
-    pt_make_list_access_spec (subquery_proc, SEQUENTIAL, NULL, where, regu_attributes_pred, regu_attributes_rest);
+    pt_make_list_access_spec (subquery_proc, ACCESS_METHOD_SEQUENTIAL, NULL, where, regu_attributes_pred,
+			      regu_attributes_rest);
 
   if (access && subquery_proc && (regu_attributes_pred || regu_attributes_rest || !spec->info.spec.as_attr_list))
     {
@@ -12014,7 +11906,7 @@ pt_to_set_expr_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
 
   where = pt_to_pred_expr (parser, where_part);
 
-  access = pt_make_set_access_spec (regu_set_expr, SEQUENTIAL, NULL, where, regu_attributes);
+  access = pt_make_set_access_spec (regu_set_expr, ACCESS_METHOD_SEQUENTIAL, NULL, where, regu_attributes);
 
   if (access && regu_set_expr && (regu_attributes || !spec->info.spec.as_attr_list))
     {
@@ -12056,7 +11948,8 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 
   regu_attributes = pt_to_position_regu_variable_list (parser, spec->info.spec.as_attr_list, NULL, NULL);
 
-  access = pt_make_cselect_access_spec (subquery_proc, method_sig_list, SEQUENTIAL, NULL, NULL, regu_attributes);
+  access =
+    pt_make_cselect_access_spec (subquery_proc, method_sig_list, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, regu_attributes);
 
   if (access && subquery_proc && method_sig_list && (regu_attributes || !spec->info.spec.as_attr_list))
     {
@@ -12150,7 +12043,9 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
   where = pt_to_pred_expr (parser, where_part);
   parser->symbols->current_class = saved_current_class;
 
-  access = pt_make_list_access_spec (cte_proc, SEQUENTIAL, NULL, where, regu_attributes_pred, regu_attributes_rest);
+  access =
+    pt_make_list_access_spec (cte_proc, ACCESS_METHOD_SEQUENTIAL, NULL, where, regu_attributes_pred,
+			      regu_attributes_rest);
 
   if (access && cte_proc && (regu_attributes_pred || regu_attributes_rest || !spec->info.spec.as_attr_list))
     {
@@ -13153,7 +13048,9 @@ pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * joi
   where = pt_to_pred_expr (parser, join_term);
   parser->symbols->current_class = saved_current_class;
 
-  access = pt_make_list_access_spec (xasl_to_scan, SEQUENTIAL, NULL, where, regu_attributes_pred, regu_attributes_rest);
+  access =
+    pt_make_list_access_spec (xasl_to_scan, ACCESS_METHOD_SEQUENTIAL, NULL, where, regu_attributes_pred,
+			      regu_attributes_rest);
 
   if (access)
     {
@@ -13482,7 +13379,8 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE pro
 	}
       free_and_init (attr_offsets);
 
-      xasl->spec_list = pt_make_list_access_spec (listfile, SEQUENTIAL, NULL, pred_expr, regu_attributes, NULL);
+      xasl->spec_list =
+	pt_make_list_access_spec (listfile, ACCESS_METHOD_SEQUENTIAL, NULL, pred_expr, regu_attributes, NULL);
 
       if (xasl->spec_list == NULL || xasl->val_list == NULL)
 	{
@@ -13999,9 +13897,9 @@ pt_to_buildschema_proc (PARSER_CONTEXT * parser, PT_NODE * select_node)
     }
 
   xasl->spec_list =
-    pt_make_class_access_spec (parser, flat, flat->info.name.db_object, TARGET_CLASS, SCHEMA, NULL, NULL, NULL, NULL,
-			       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, acces_schema_type, NULL,
-			       NULL);
+    pt_make_class_access_spec (parser, flat, flat->info.name.db_object, TARGET_CLASS, ACCESS_METHOD_SCHEMA, NULL, NULL,
+			       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+			       acces_schema_type, NULL, NULL);
 
   if (xasl->spec_list == NULL)
     {
@@ -15713,9 +15611,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  buildlist->after_groupby_list =
 	    pt_to_after_groupby (parser, select_node->info.query.q.select.group_by, select_node);
 
-	  /* this is not useful, set it to NULL it was set by the old parser, but not used anywhere */
-	  buildlist->g_outarith_list = NULL;
-
 	  /* This is a having subquery list. If it has correlated subqueries, they must be run each group */
 	  buildlist->eptr_list = pt_to_corr_subquery_list (parser, select_node->info.query.q.select.having, 0);
 
@@ -15749,7 +15644,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  buildlist->eptr_list = NULL;
 	  buildlist->g_with_rollup = 0;
 	}
-      buildlist->upddel_oid_locator_ehids = NULL;
 
       /* set index scan order */
       xasl->iscan_oid_order = ((orderby_skip) ? false : prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
@@ -17188,7 +17082,8 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 
 		  if (regu_attributes != NULL)
 		    {
-		      xasl->spec_list = pt_make_list_access_spec (aptr, SEQUENTIAL, NULL, NULL, regu_attributes, NULL);
+		      xasl->spec_list =
+			pt_make_list_access_spec (aptr, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, regu_attributes, NULL);
 		    }
 		}
 	      else
@@ -22076,7 +21971,8 @@ pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser, QO_PLAN * pla
     }
 
   /* check that we have index scan */
-  if (scan->spec_list->type != TARGET_CLASS || scan->spec_list->access != INDEX || !scan->spec_list->indexptr)
+  if (scan->spec_list->type != TARGET_CLASS || scan->spec_list->access != ACCESS_METHOD_INDEX
+      || !scan->spec_list->indexptr)
     {
       goto error_exit;
     }

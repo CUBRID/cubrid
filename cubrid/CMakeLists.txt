@@ -96,10 +96,6 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_sr.c
   )
 
-set(PARSER_SOURCES
-  ${PARSER_DIR}/parse_tree.c
-  )
-
 set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
@@ -234,7 +230,6 @@ add_library(cubrid SHARED
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
-  ${PARSER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}

@@ -26,6 +26,7 @@
 #include "filter_pred_cache.h"
 #include "lock_free.h"
 #include "query_executor.h"
+#include "stream_to_xasl.h"
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent

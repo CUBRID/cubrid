@@ -31,6 +31,7 @@
 #include <string.h>
 #include <locale.h>
 #include <limits.h>
+#include <assert.h>
 
 #if defined(AIX)
 #include <ctype.h>

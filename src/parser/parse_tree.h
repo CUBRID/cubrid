@@ -25,19 +25,23 @@
 #ifndef _PARSE_TREE_H_
 #define _PARSE_TREE_H_
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* SERVER_MODE */
+
 #ident "$Id$"
 
 #include <setjmp.h>
-#include "jansson.h"
+#include <assert.h>
 
 #include "config.h"
-
-#include "query_evaluator.h"
+#include "jansson.h"
 #include "cursor.h"
 #include "string_opfunc.h"
 #include "message_catalog.h"
 #include "authenticate.h"
 #include "system_parameter.h"
+#include "xasl.h"
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -3542,27 +3546,6 @@ typedef struct pt_plan_trace_info
 
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
-
-/*
- * COMPILE_CONTEXT cover from user input query string to gnerated xasl
- */
-typedef struct compile_context COMPILE_CONTEXT;
-struct compile_context
-{
-  struct xasl_node *xasl;
-
-  char *sql_user_text;		/* original query statement that user input */
-  int sql_user_text_len;	/* length of sql_user_text */
-
-  char *sql_hash_text;		/* rewrited query string which is used as hash key */
-
-  char *sql_plan_text;		/* plans for this query */
-  int sql_plan_alloc_size;	/* query_plan alloc size */
-  bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
-  bool recompile_xasl_pinned;	/* whether recompile again after xasl cache entry has been pinned */
-  bool recompile_xasl;
-  SHA1Hash sha1;
-};
 
 struct parser_context
 {

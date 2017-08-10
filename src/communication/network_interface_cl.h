@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* SERVER_MODE */
+
 #include <stdio.h>
 
 #include "dbdef.h"
@@ -40,8 +44,9 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "language_support.h"
-#include "log_comm.h"
-#include "query_executor.h"
+#include "log_impl.h"
+#include "parse_tree.h"
+#include "xasl.h"
 
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;

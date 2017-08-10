@@ -28,35 +28,21 @@
 #include "config.h"
 
 #include <stdio.h>
+#include <assert.h>
 
 #include "set_object.h"
-#include "area_alloc.h"
-#include "memory_alloc.h"
 #include "error_manager.h"
-#include "dbtype.h"
-#include "dbdef.h"
-#include "object_representation.h"
-#include "object_domain.h"
 #include "object_primitive.h"
 #include "object_print.h"
-#include "parse_tree.h"
-#include "db.h"
-#include "environment_variable.h"
-#include "system_parameter.h"
-#include "oid.h"
-#include "server_interface.h"
+
 
 #if !defined(SERVER_MODE)
-#include "work_space.h"
-#include "authenticate.h"
 #include "locator_cl.h"
-#include "class_object.h"
 #include "object_accessor.h"
 #include "transaction_cl.h"
 #include "virtual_object.h"
+#include "parser.h"
 #else /* !SERVER_MODE */
-#include "thread.h"
-#include "connection_error.h"
 #endif
 
 /* this must be the last header file included!!! */
@@ -105,7 +91,7 @@ typedef struct collect_block
   DB_VALUE val[1];
 } COL_BLOCK;
 
-typedef int (*SORT_CMP_FUNC) (const void *, const void *);
+typedef int (*SETOBJ_SORT_CMP_FUNC) (const void *, const void *);
 typedef int (*SETOBJ_OP) (COL * set1, COL * set2, COL * result);
 
 static long col_init = 0;
@@ -606,9 +592,9 @@ col_sort (COL * col)
   /* first sort each contigous block */
   for (i = 0; i < topblock; i++)
     {
-      qsort (col->array[i], COL_BLOCK_SIZE, sizeof (DB_VALUE), (SORT_CMP_FUNC) col_value_compare);
+      qsort (col->array[i], COL_BLOCK_SIZE, sizeof (DB_VALUE), (SETOBJ_SORT_CMP_FUNC) col_value_compare);
     }
-  qsort (col->array[topblock], OFFSET (top) + 1, sizeof (DB_VALUE), (SORT_CMP_FUNC) col_value_compare);
+  qsort (col->array[topblock], OFFSET (top) + 1, sizeof (DB_VALUE), (SETOBJ_SORT_CMP_FUNC) col_value_compare);
 
   /* now each block is a sorted run. We can sort the rest be successively merging runs until we have one run left */
   error = col_successive_merge (col, top);
@@ -1324,11 +1310,16 @@ col_put (COL * col, long colindex, DB_VALUE * val)
       /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
       if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
+#if defined (SERVER_MODE)
+	  assert_release (false);
+	  return ER_FAILED;
+#else /* !defined (SERVER_MODE) */
 	  DB_OBJECT *obj = DB_GET_OBJECT (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
 	      col->may_have_temporary_oids = 1;
 	    }
+#endif /* !defined (SERVER_MODE) */
 	}
 
       /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
@@ -1459,11 +1450,16 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
       /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
       if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
+#if defined (SERVER_MODE)
+	  assert_release (false);
+	  return ER_FAILED;
+#else /* !defined (SERVER_MODE) */
 	  DB_OBJECT *obj = DB_GET_OBJECT (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
 	      col->may_have_temporary_oids = 1;
 	    }
+#endif /* !defined (SERVER_MODE)s */
 	}
 
       /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
@@ -3231,7 +3227,7 @@ set_ismember (DB_COLLECTION * set, DB_VALUE * value)
   return (ismember);
 }
 
-
+#if !defined (SERVER_MODE)
 /*
  * set_issome() -
  *      return: int
@@ -3241,16 +3237,13 @@ set_ismember (DB_COLLECTION * set, DB_VALUE * value)
  *  do_coercion(in) :
  *
  */
-
 int
 set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercion)
 {
   COL *obj;
   int issome = -1;
   int error = NO_ERROR;
-#if !defined(SERVER_MODE)
   int pin;
-#endif
 
   error = set_get_setobj (set, &obj, 0);
   if (error != NO_ERROR)
@@ -3263,15 +3256,12 @@ set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercio
       return issome;
     }
 
-#if !defined(SERVER_MODE)
   pin = ws_pin (set->owner, 1);
-#endif
   issome = setobj_issome (value, obj, op, do_coercion);
-#if !defined(SERVER_MODE)
   (void) ws_pin (set->owner, pin);
-#endif
   return (issome);
 }
+#endif /* !defined (SERVER_MODE) */
 
 /*
  * set_convert_oids_to_objects() -
@@ -5558,6 +5548,7 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
   return error;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * setobj_issome()
  *      return: 1 if value compares successfully using op to some element
@@ -5571,7 +5562,6 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
  *      Compares value to the members of set using op.
  *      If any member compares favorably, returns 1
  */
-
 int
 setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion)
 {
@@ -5643,6 +5633,7 @@ setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion)
       return 0;
     }
 }
+#endif /* !defined (SERVER_MODE) */
 
 /*
  * setobj_convert_oids_to_objects() - This will convert all OID and VOBJ

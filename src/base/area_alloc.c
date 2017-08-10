@@ -38,17 +38,12 @@
 #include <string.h>
 #include <assert.h>
 
-#include "error_manager.h"
-#include "memory_alloc.h"
 #include "area_alloc.h"
-#include "work_space.h"
-#include "object_domain.h"
 #include "set_object.h"
-#if defined (SERVER_MODE)
-#include "thread.h"
-#include "connection_error.h"
-#endif
 
+#if !defined (SERVER_MODE)
+#include "work_space.h"
+#endif /* !defined (SERVER_MODE) */
 
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)

@@ -31,12 +31,16 @@
 #include <ctype.h>
 #include <string.h>
 #include <fcntl.h>
+#include <assert.h>
 #if defined (WINDOWS)
 #include <io.h>
 #else
 #include <unistd.h>
 #endif /* !WINDOWS */
 #include <errno.h>
+
+#include "loader.h"
+
 #include "porting.h"
 #include "utility.h"
 #include "dbi.h"
@@ -46,11 +50,9 @@
 #include "authenticate.h"
 #include "schema_manager.h"
 #include "object_accessor.h"
-
 #include "db.h"
 #include "loader_object_table.h"
 #include "load_object.h"
-#include "loader.h"
 #include "work_space.h"
 #include "message_catalog.h"
 #include "locator_cl.h"

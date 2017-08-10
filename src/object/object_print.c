@@ -32,33 +32,24 @@
 #include <ctype.h>
 #include <assert.h>
 
-#include "porting.h"
-#include "chartype.h"
-#include "misc_string.h"
+#include "object_print.h"
 
 #include "error_manager.h"
-#include "memory_alloc.h"
-#include "class_object.h"
+#if !defined (SERVER_MODE)
+#include "chartype.h"
+#include "misc_string.h"
+#include "dbi.h"
 #include "schema_manager.h"
-#include "locator_cl.h"
-#include "object_accessor.h"
-#include "db.h"
-#include "object_print.h"
-#include "set_object.h"
 #include "trigger_manager.h"
 #include "virtual_object.h"
-#include "message_catalog.h"
+#include "set_object.h"
+#include "parse_tree.h"
 #include "parser.h"
-#include "statistics.h"
-#include "server_interface.h"
-#include "execute_schema.h"
-#include "class_object.h"
-#include "network_interface_cl.h"
 #include "transaction_cl.h"
-
-#include "dbtype.h"
-#include "language_support.h"
-#include "string_opfunc.h"
+#include "network_interface_cl.h"
+#include "class_object.h"
+#include "work_space.h"
+#endif /* !defined (SERVER_MODE) */
 #include "dbval.h"		/* this must be the last header file included!!! */
 
 #if !defined(SERVER_MODE)
@@ -124,8 +115,6 @@ const int MAX_LINE = 4096;
 
 /* maximum lines per section */
 const int MAX_LINES = 1024;
-
-#endif /* !SERVER_MODE */
 /*
  * help_Max_set_elements
  *
@@ -135,8 +124,6 @@ const int MAX_LINES = 1024;
  */
 static int help_Max_set_elements = 20;
 
-
-
 static PARSER_VARCHAR *describe_set (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_SET * set);
 static PARSER_VARCHAR *describe_midxkey (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 					 const DB_MIDXKEY * midxkey);
@@ -145,7 +132,6 @@ static PARSER_VARCHAR *describe_float (const PARSER_CONTEXT * parser, PARSER_VAR
 static PARSER_VARCHAR *describe_bit_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 					    const DB_VALUE * value);
 
-#if !defined(SERVER_MODE)
 static void obj_print_free_strarray (char **strs);
 static char *obj_print_copy_string (const char *source);
 static const char **obj_print_convert_strlist (STRLIST * str_list);
@@ -3205,52 +3191,6 @@ help_class_names (const char *qualifier)
   return names;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * help_base_class_names () - Returns an array containing the names of
- *                            all base classes in the system.
- *   return: array of name strings
- *  Note :
- *      A "base class" is a class that has no super classes.
- *      The array must be freed with help_free_class_names().
- */
-
-char **
-help_base_class_names (void)
-{
-  DB_OBJLIST *mops, *m;
-  char **names;
-  const char *cname;
-  int count, i;
-
-  names = NULL;
-  mops = db_get_base_classes ();
-  /* vector fetch as many as possible */
-  (void) db_fetch_list (mops, DB_FETCH_READ, 0);
-
-  count = ws_list_length ((DB_LIST *) mops);
-  if (count)
-    {
-      names = (char **) malloc (sizeof (char *) * (count + 1));
-      if (names != NULL)
-	{
-	  for (i = 0, m = mops; i < count; i++, m = m->next)
-	    {
-	      cname = db_get_class_name (m->op);
-	      names[i] = obj_print_copy_string ((char *) cname);
-	    }
-	  names[count] = NULL;
-	}
-    }
-  if (mops != NULL)
-    {
-      db_objlist_free (mops);
-    }
-
-  return names;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * help_free_names () - Frees an array of class names built by
  *                      help_class_names() or help_base_class_names().
@@ -3309,22 +3249,6 @@ help_fprint_class_names (FILE * fp, const char *qualifier)
     }
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * help_print_class_names () - Prints the names of all classes
- *                             in the system to stdout.
- *   return: none
- *   qualifier(in):
- */
-
-void
-help_print_class_names (const char *qualifier)
-{
-  help_fprint_class_names (stdout, qualifier);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-
 /* MISC HELP FUNCTIONS */
 
 /*
@@ -3375,95 +3299,6 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
     }
   return total;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * help_fprint_all_classes () - Describe all classes in the system.
- *   return: none
- *   fp(in): file pointer
- *
- * Note:
- *    This should only be used for debugging and testing.
- *    It is not intended to be used by the API.
- */
-
-void
-help_fprint_all_classes (FILE * fp)
-{
-  LIST_MOPS *lmops;
-  int i;
-
-  if (au_check_user () == NO_ERROR)
-    {
-      lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ, NULL);
-      if (lmops != NULL)
-	{
-	  for (i = 0; i < lmops->num; i++)
-	    {
-	      if (!WS_IS_DELETED (lmops->mops[i]))
-		{
-		  help_fprint_obj (fp, lmops->mops[i]);
-		}
-	    }
-	  locator_free_list_mops (lmops);
-	}
-    }
-}
-
-/*
- * help_fprint_resident_instances () - Describe all resident instances of
- *                                     a class.
- *   return: none
- *   fp(in): file
- *   op(in): class object
- *
- * Note:
- *    Describe all resident instances of a class.
- *    Should only be used for testing purposes.  Not intended to be
- *    called by the API.
- */
-
-void
-help_fprint_resident_instances (FILE * fp, MOP op)
-{
-  MOP classmop = NULL;
-  SM_CLASS *class_;
-  LIST_MOPS *lmops;
-  int i;
-
-  if (locator_is_class (op, DB_FETCH_QUERY_READ))
-    {
-      if (!WS_IS_DELETED (op))
-	{
-	  classmop = op;
-	}
-    }
-  else
-    {
-      if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
-	{
-	  classmop = op->class_mop;
-	}
-    }
-
-  if (classmop != NULL)
-    {
-      /* cause the mops to be loaded into the workspace */
-      lmops = locator_get_all_mops (classmop, DB_FETCH_QUERY_READ);
-      if (lmops != NULL)
-	{
-	  for (i = 0; i < lmops->num; i++)
-	    {
-	      if (!WS_IS_DELETED (lmops->mops[i]))
-		{
-		  help_fprint_obj (fp, lmops->mops[i]);
-		}
-	    }
-	  locator_free_list_mops (lmops);
-	}
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* GENERAL INFO */
 
@@ -3633,7 +3468,6 @@ help_print_info (const char *command, FILE * fpp)
     }
 }
 
-#endif /* ! SERVER_MODE */
 /*
  * describe_set() - Print a description of the set
  *                  as null-terminated string
@@ -3880,9 +3714,7 @@ PARSER_VARCHAR *
 describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_VALUE * value)
 {
   OID *oid;
-#if !defined(SERVER_MODE)
   DB_OBJECT *obj;
-#endif
   DB_MONETARY *money;
   DB_SET *set;
   DB_ELO *elo;
@@ -3979,7 +3811,6 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	  break;
 
 	case DB_TYPE_OBJECT:
-#if !defined(SERVER_MODE)
 	  obj = db_get_object (value);
 	  if (obj == NULL)
 	    {
@@ -4005,7 +3836,6 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	  break;
 	  /* If we are on the server, fall thru to the oid case The value is probably nonsense, but that is safe to do.
 	   * This case should simply not occur. */
-#endif
 
 	case DB_TYPE_OID:
 	  oid = (OID *) db_get_oid (value);
@@ -4418,77 +4248,6 @@ describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const c
 }
 
 /*
- * help_fprint_value() -  Prints a description of the contents of a DB_VALUE
- *                        to the file
- *   return: none
- *   fp(in) : FILE stream pointer
- *   value(in) : value to print
- */
-
-void
-help_fprint_value (FILE * fp, const DB_VALUE * value)
-{
-  PARSER_VARCHAR *buffer;
-  PARSER_CONTEXT *parser;
-
-  parser = parser_create_parser ();
-  if (parser == NULL)
-    {
-      return;
-    }
-
-  buffer = describe_value (parser, NULL, value);
-  fprintf (fp, "%.*s", (int) pt_get_varchar_length (buffer), pt_get_varchar_bytes (buffer));
-  parser_free_parser (parser);
-}
-
-/*
- * help_sprint_value() - This places a printed representation of the supplied
- *                       value in a buffer.
- *   return: number of characters in description
- *   value(in) : value to describe
- *   buffer(in/out) : buffer to contain description
- *   max_length(in) : maximum chars in buffer
- *
- *  NOTE:
- *   This entire module needs to be much more careful about
- *   overflowing the internal "linebuf" buffer when using long
- *   strings.
- *   If the description will fit within the buffer, the number of characters
- *   used is returned, otherwise, -1 is returned.
- */
-int
-help_sprint_value (const DB_VALUE * value, char *buffer, int max_length)
-{
-  int length;
-  PARSER_VARCHAR *buf;
-  PARSER_CONTEXT *parser;
-
-  parser = parser_create_parser ();
-  if (parser == NULL)
-    {
-      return 0;
-    }
-
-  buf = pt_append_nulstring (parser, NULL, "");
-  buf = describe_value (parser, buf, value);
-  length = pt_get_varchar_length (buf);
-  if (length < max_length)
-    {
-      memcpy (buffer, (char *) pt_get_varchar_bytes (buf), length);
-      buffer[length] = 0;
-    }
-  else
-    {
-      length = -length;
-    }
-
-  parser_free_parser (parser);
-
-  return length;
-}
-
-/*
  * describe_comment() - Return the description string of a comment.
  *   return: a pointer to description string of a comment
  *   comment(in) : a comment string to be described
@@ -4519,6 +4278,84 @@ describe_comment (PARSER_CONTEXT * parser, const char *comment)
 
   return ((char *) pt_get_varchar_bytes (buffer));
 }
+#endif /* defined (SERVER_MODE) */
+
+/*
+ * help_fprint_value() -  Prints a description of the contents of a DB_VALUE
+ *                        to the file
+ *   return: none
+ *   fp(in) : FILE stream pointer
+ *   value(in) : value to print
+ */
+
+void
+help_fprint_value (FILE * fp, const DB_VALUE * value)
+{
+#if !defined (SERVER_MODE)
+  /* fixme */
+  PARSER_VARCHAR *buffer;
+  PARSER_CONTEXT *parser;
+
+  parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return;
+    }
+
+  buffer = describe_value (parser, NULL, value);
+  fprintf (fp, "%.*s", (int) pt_get_varchar_length (buffer), pt_get_varchar_bytes (buffer));
+  parser_free_parser (parser);
+#endif /* !defined (SERVER_MODE) */
+}
+
+/*
+ * help_sprint_value() - This places a printed representation of the supplied
+ *                       value in a buffer.
+ *   return: number of characters in description
+ *   value(in) : value to describe
+ *   buffer(in/out) : buffer to contain description
+ *   max_length(in) : maximum chars in buffer
+ *
+ *  NOTE:
+ *   This entire module needs to be much more careful about
+ *   overflowing the internal "linebuf" buffer when using long
+ *   strings.
+ *   If the description will fit within the buffer, the number of characters
+ *   used is returned, otherwise, -1 is returned.
+ */
+int
+help_sprint_value (const DB_VALUE * value, char *buffer, int max_length)
+{
+  int length = 0;
+#if !defined (SERVER_MODE)
+  /* fixme */
+  PARSER_VARCHAR *buf;
+  PARSER_CONTEXT *parser;
+
+  parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return 0;
+    }
+
+  buf = pt_append_nulstring (parser, NULL, "");
+  buf = describe_value (parser, buf, value);
+  length = pt_get_varchar_length (buf);
+  if (length < max_length)
+    {
+      memcpy (buffer, (char *) pt_get_varchar_bytes (buf), length);
+      buffer[length] = 0;
+    }
+  else
+    {
+      length = -length;
+    }
+
+  parser_free_parser (parser);
+#endif /* !defined (SERVER_MODE) */
+
+  return length;
+}
 
 /*
  * help_fprint_describe_comment() - Print description of a comment to a file.
@@ -4528,6 +4365,7 @@ describe_comment (PARSER_CONTEXT * parser, const char *comment)
 void
 help_fprint_describe_comment (FILE * fp, const char *comment)
 {
+#if !defined (SERVER_MODE)
   PARSER_CONTEXT *parser;
   char *desc = NULL;
 
@@ -4546,6 +4384,7 @@ help_fprint_describe_comment (FILE * fp, const char *comment)
   fprintf (fp, "%.*s", strlen (desc), desc);
 
   parser_free_parser (parser);
+#endif /* !defined (SERVER_MODE) */
 }
 
 #if defined(CUBRID_DEBUG)

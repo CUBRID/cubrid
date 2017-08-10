@@ -46,48 +46,24 @@
 #include <sys/stat.h>
 #include <assert.h>
 
-#include "porting.h"
-#include "xserver_interface.h"
 #include "log_impl.h"
-#include "log_manager.h"
-#include "log_comm.h"
-#include "recovery.h"
-#include "system_parameter.h"
-#include "release_string.h"
-#include "memory_alloc.h"
 #include "error_manager.h"
-#include "storage_common.h"
-#include "file_io.h"
-#include "disk_manager.h"
-#include "page_buffer.h"
-#include "lock_manager.h"
-#include "wait_for_graph.h"
+#include "system_parameter.h"
+#include "xserver_interface.h"
 #include "file_manager.h"
-#include "critical_section.h"
 #include "query_manager.h"
-#include "perf_monitor.h"
-#include "object_representation.h"
-#include "connection_defs.h"
 #if defined(SERVER_MODE)
-#include "thread.h"
 #endif /* SERVER_MODE */
-#include "rb_tree.h"
-#include "mvcc.h"
-#include "vacuum.h"
 #include "partition.h"
 #include "btree_load.h"
 #include "serial.h"
-#include "tsc_timer.h"
 #include "show_scan.h"
 #include "boot_sr.h"
+#include "db_date.h"
 
-#if defined(SERVER_MODE) || defined(SA_MODE)
-#include "replication.h"
-#endif
-
-#if !defined (SERVER_MODE)
-#include "transaction_cl.h"
-#endif
+#if defined (SA_MODE)
+#include "transaction_cl.h"	/* for interrupt */
+#endif /* defined (SA_MODE) */
 
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
@@ -6853,7 +6829,7 @@ xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name)
   return existed;
 }
 
-#if !defined (NDEBUG)
+#if !defined (NDEBUG) && !defined (WINDOWS)
 int
 logtb_collect_local_clients (int **local_clients_pids)
 {
@@ -6885,7 +6861,7 @@ logtb_collect_local_clients (int **local_clients_pids)
   *local_clients_pids = table;
   return num_client;
 }
-#endif /* !NDEBUG */
+#endif /* !defined (NDEBUG) && !defined (WINDOWS) */
 
 /*
  * logtb_descriptors_start_scan () -  start scan function for tran descriptors

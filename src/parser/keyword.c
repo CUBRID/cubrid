@@ -132,7 +132,7 @@ static KEYWORD_RECORD keywords[] = {
   {CURSOR, "CURSOR", 0},
   {CYCLE, "CYCLE", 0},
   {DATA, "DATA", 0},
-  {DATA_TYPE, "DATA_TYPE___", 0},
+  {DATA_TYPE___, "DATA_TYPE___", 0},
   {DATABASE, "DATABASE", 0},
   {Date, "DATE", 0},
   {DATE_ADD, "DATE_ADD", 1},

@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* defined (SERVER_MODE) */
+
 #include "config.h"
 
 #include "error_manager.h"
@@ -223,9 +227,6 @@ extern "C"
   extern void db_init_prepare_info (DB_PREPARE_INFO * info);
   extern int db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer);
   extern int db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer);
-#if defined (ENABLE_UNUSED_FUNCTION)
-  extern void db_final_client_query_result (void);
-#endif
 
   extern void db_set_execution_plan (char *plan, int length);
   extern char *db_get_execution_plan (void);

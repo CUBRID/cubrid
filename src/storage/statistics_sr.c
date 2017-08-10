@@ -29,24 +29,17 @@
 #include <string.h>
 #include <math.h>
 
-#include "xserver_interface.h"
-#include "memory_alloc.h"
 #include "statistics_sr.h"
-#include "object_representation.h"
-#include "error_manager.h"
-#include "storage_common.h"
-#include "system_catalog.h"
 #include "btree.h"
-#include "extendible_hash.h"
 #include "heap_file.h"
 #include "boot_sr.h"
 #include "partition.h"
-#include "db.h"
+#include "object_primitive.h"
 
 #define SQUARE(n) ((n)*(n))
 
 /* Used by the "stats_update_all_statistics" routine to create the list of all
-   classes from the extendible hashing directory used by the catalog manager. */
+   classes from the extensible hashing directory used by the catalog manager. */
 typedef struct class_id_list CLASS_ID_LIST;
 struct class_id_list
 {

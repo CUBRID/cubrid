@@ -31,46 +31,26 @@
 #include <assert.h>
 
 #include "locator_sr.h"
-#include "locator.h"
-#include "memory_alloc.h"
-#include "storage_common.h"
-#include "oid.h"
-#include "memory_hash.h"
 #include "error_manager.h"
 #include "xserver_interface.h"
 #include "list_file.h"
 #include "query_manager.h"
 #include "slotted_page.h"
-#include "extendible_hash.h"
-#include "btree.h"
 #include "btree_load.h"
 #include "heap_file.h"
-#include "object_representation.h"
-#include "object_representation_sr.h"
-#include "log_manager.h"
 #include "lock_manager.h"
-#include "system_catalog.h"
-#include "replication.h"
 #include "critical_section.h"
 #if defined(SERVER_MODE)
-#include "connection_error.h"
-#include "thread.h"
 #endif /* SERVER_MODE */
-#include "object_print.h"
 #include "object_primitive.h"
-#include "object_domain.h"
-#include "system_parameter.h"
-#include "log_impl.h"
-#include "transaction_sr.h"
 #include "boot_sr.h"
-#include "partition.h"
-#include "vacuum.h"
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-#include "db.h"
 #include "filter_pred_cache.h"
 #include "fetch.h"
+#include "query_executor.h"
+#include "xasl_cache.h"
 
 #if defined(DMALLOC)
 #include "dmalloc.h"
