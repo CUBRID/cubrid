@@ -1697,6 +1697,12 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   error =
     catcls_get_subset (thread_p, buf_p, vars[ORC_DOMAIN_SETDOMAIN_INDEX].length, &attrs[8],
 		       catcls_get_or_value_from_domain);
+
+  if (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length)
+    {
+      (*(tp_String.data_readval)) (buf_p, &attrs[9].value, NULL, -1, true, NULL, 0);
+    }
+
   if (error != NO_ERROR)
     {
       goto error;

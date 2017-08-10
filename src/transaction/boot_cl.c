@@ -2190,6 +2190,12 @@ boot_define_domain (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "json_schema", "string", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {

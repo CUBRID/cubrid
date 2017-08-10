@@ -333,7 +333,8 @@ static CT_ATTR ct_domain_atts[] = {
   {"collation_id", NULL_ATTRID, DB_TYPE_INTEGER},
   {"class_of", NULL_ATTRID, DB_TYPE_OBJECT},
   {"enumeration", NULL_ATTRID, DB_TYPE_SEQUENCE},
-  {"set_domains", NULL_ATTRID, DB_TYPE_SEQUENCE}
+  {"set_domains", NULL_ATTRID, DB_TYPE_SEQUENCE},
+  {"json_schema", NULL_ATTRID, DB_TYPE_STRING}
 };
 
 static CT_ATTR ct_method_atts[] = {

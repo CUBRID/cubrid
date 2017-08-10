@@ -15089,14 +15089,7 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
     }
   else
     {
-      if (DB_IS_NULL (value) || value->data.json.json_body == NULL)
-	{
-	  return sizeof (int);
-	}
-      else
-	{
-	  return sizeof (int) + strlen (value->data.json.json_body);
-	}
+      return or_packed_string_length (value->data.json.json_body, NULL);
     }
 }
 
@@ -15104,34 +15097,13 @@ static int
 mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 {
   int len, rc;
-
-  if (DB_IS_NULL (value))
+  assert (value->data.json.json_body != NULL);
+  
+  rc = or_put_string_alined_with_length (buf, value->data.json.json_body);
+  if (rc != NO_ERROR)
     {
-      rc = or_put_int (buf, 0);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return rc;
-	}
-    }
-  else
-    {
-      assert (value->data.json.json_body != NULL);
-
-      len = strlen (value->data.json.json_body);
-      rc = or_put_int (buf, len);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return rc;
-	}
-
-      rc = or_put_data (buf, value->data.json.json_body, len);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return rc;
-	}
+      ASSERT_ERROR ();
+      return rc;
     }
 
   return NO_ERROR;
@@ -15144,24 +15116,9 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   int len, rc;
   char *str;
 
-  len = or_get_int (buf, &rc);
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return rc;
-    }
+  buf->ptr = or_unpack_string (buf->ptr, &str);
 
-  str = (char *) db_private_alloc (NULL, len + 1);
-  assert (str != NULL);
-  rc = or_get_data (buf, str, len);
-  str[len] = '\0';
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return rc;
-    }
-
-  if (!strlen (str))
+  if (strlen (str) == 0)
     {
       DB_MAKE_NULL (value);
       value->domain.general_info.is_null = 1;

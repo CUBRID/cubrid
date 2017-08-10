@@ -855,7 +855,7 @@ extern "C"
   struct db_json
   {
     char *json_body;
-      rapidjson::Document * document;
+    rapidjson::Document * document;
   };
 #endif
 
