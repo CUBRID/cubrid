@@ -38,7 +38,7 @@
 #include "stream_to_xasl.h"
 #include "object_primitive.h"
 #include "query_executor.h"
-#include "partition.h"
+#include "partition_sr.h"
 #include "dbval.h"
 
 typedef struct sort_args SORT_ARGS;

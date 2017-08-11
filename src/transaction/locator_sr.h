@@ -44,7 +44,7 @@
 #include "disk_manager.h"
 #include "replication.h"
 #include "thread.h"
-#include "partition.h"
+#include "partition_sr.h"
 #include "query_evaluator.h"
 
 enum

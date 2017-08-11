@@ -22,7 +22,7 @@
  */
 
 #include <assert.h>
-#include "partition.h"
+#include "partition_sr.h"
 
 #include "heap_file.h"
 #include "fetch.h"

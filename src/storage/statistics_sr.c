@@ -33,7 +33,7 @@
 #include "btree.h"
 #include "heap_file.h"
 #include "boot_sr.h"
-#include "partition.h"
+#include "partition_sr.h"
 #include "object_primitive.h"
 
 #define SQUARE(n) ((n)*(n))

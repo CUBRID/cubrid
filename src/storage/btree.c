@@ -46,7 +46,7 @@
 #include "network_interface_sr.h"	/* TODO: remove; used for xcallback_console_print */
 #include "utility.h"
 #include "transform.h"
-#include "partition.h"
+#include "partition_sr.h"
 #include "query_executor.h"
 #include "object_primitive.h"
 #include "perf_monitor.h"

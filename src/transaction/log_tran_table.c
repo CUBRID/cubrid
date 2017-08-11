@@ -52,9 +52,7 @@
 #include "xserver_interface.h"
 #include "file_manager.h"
 #include "query_manager.h"
-#if defined(SERVER_MODE)
-#endif /* SERVER_MODE */
-#include "partition.h"
+#include "partition_sr.h"
 #include "btree_load.h"
 #include "serial.h"
 #include "show_scan.h"
