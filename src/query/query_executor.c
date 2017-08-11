@@ -36,7 +36,7 @@
 
 #include "porting.h"
 #include "error_manager.h"
-#include "partition.h"
+#include "partition_sr.h"
 #include "query_opfunc.h"
 #include "fetch.h"
 #include "dbtype.h"

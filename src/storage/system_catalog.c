@@ -39,7 +39,7 @@
 #include "heap_file.h"
 #include "xserver_interface.h"
 #include "statistics_sr.h"
-#include "partition.h"
+#include "partition_sr.h"
 #include "object_primitive.h"
 
 #if !defined(SERVER_MODE)

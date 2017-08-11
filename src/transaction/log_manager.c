@@ -56,7 +56,7 @@
 #include "server_support.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"
-#include "partition.h"
+#include "partition_sr.h"
 #include "log_writer.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
