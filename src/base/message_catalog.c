@@ -29,15 +29,10 @@
 #include "environment_variable.h"
 #include "error_code.h"
 #include "error_manager.h"
-#include "language_support.h"
+
 #if defined(WINDOWS)
 #include "intl_support.h"
 #endif
-
-#undef HAVE_NL_TYPES_H
-#ifdef HAVE_NL_TYPES_H
-#include <nl_types.h>
-#else /* HAVE_NL_TYPES_H */
 
 /*
  * Note: stems from FreeBSD nl_type.h and msgcat.c.
@@ -74,7 +69,12 @@
  * text strings.
  */
 
+#ifndef _NL_TYPES_H
+#define _NL_TYPES_H
+
 #define NLS_MAGIC      0xff88ff89
+
+typedef int nl_item;
 
 struct nls_cat_hdr
 {
@@ -474,8 +474,8 @@ load_msgcat (const char *path)
 #endif
   return catd;
 }
-#endif /* !HAVE_NL_TYPES_H */
-
+#endif /* ifndef nl types h */
+#include "language_support.h"
 /* system message catalog definition */
 struct msgcat_def
 {
