@@ -10477,13 +10477,15 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 		return DOMAIN_ERROR;
 	      }
+	    unsigned int str_size = DB_GET_STRING_SIZE (src);
+
 
 	    target->domain.general_info.type = DB_TYPE_JSON;
-	    target->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (DB_GET_STRING_SIZE (src) + 1));
+	    target->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (str_size + 1));
 	    target->domain.general_info.is_null = 0;
-	    target->domain.general_info.schema_raw = NULL;
-	    memcpy (target->data.json.json_body, DB_GET_STRING (src), DB_GET_STRING_SIZE (src));
-	    target->data.json.json_body[DB_GET_STRING_SIZE (src)] = '\0';
+	    db_get_json_schema (target) = NULL;
+	    memcpy (target->data.json.json_body, DB_GET_STRING (src), str_size);
+	    target->data.json.json_body[str_size] = '\0';
 
 	    target->need_clear = true;
 	    break;

@@ -14874,15 +14874,11 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	{
 	  db_make_json (value, json_obj->json_body, json_obj->document);
 	  value->need_clear = false;
-	  value->domain.general_info.schema_raw = domain->schema_raw;
 	}
       else
 	{
-	  int len = strlen (json_obj->json_body), len2 = 0;
-	  if (domain->schema_raw)
-	    {
-	      len2 = strlen (domain->schema_raw);
-	    }
+	  int len = strlen (json_obj->json_body);
+
 	  /* return it with a NULL terminator */
 	  char *new_ = (char *) db_private_alloc (NULL, len + 1);
 	  rapidjson::Document * document = new rapidjson::Document ();
@@ -14899,17 +14895,10 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	      db_make_json (value, new_, document);
 	      value->need_clear = true;
 	    }
-	  if (len2 > 0)
-	    {
-	      value->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, len2 + 1);
-	      memcpy (value->domain.general_info.schema_raw, domain->schema_raw, len2);
-	      value->domain.general_info.schema_raw[len2] = '\0';
-	    }
-	  else
-	    {
-	      value->domain.general_info.schema_raw = NULL;
-	    }
+
 	}
+      db_get_json_schema (value) = domain->schema_raw;
+
     }
   return error;
 }
