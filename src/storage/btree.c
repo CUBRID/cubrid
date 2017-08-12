@@ -2530,7 +2530,6 @@ btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, REC
 
   if (mvcc_snapshot == NULL)
     {
-      *num_visible = -1;
       error_code = ER_FAILED;
       return error_code;
     }
@@ -14034,7 +14033,7 @@ exit_on_error:
  *   key (in) : Key to locate
  *   pg_vpid (out) : Outputs Leaf node page VPID.
  *   slot_id (out) : Outputs slot ID of key if found, or slot ID of key if it was to be inserted.
- *	 leaf_page_out(out): Page pointer
+ *   leaf_page_out(out): Page pointer
  *   found_p (out) : Outputs true if key was found and false otherwise.
  *
  * Note: Search the B+tree index to locate the page and record that contains

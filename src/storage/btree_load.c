@@ -3715,12 +3715,11 @@ btree_node_number_of_keys (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
 }
 
 /*
- * btree_load_check_fk () - Checks if the current foreign key that needs to be loaded
- *							is passing all the requirements.
+ * btree_load_check_fk () - Checks if the current foreign key that needs to be loaded is passing all the requirements.
  *
- *    return:				- NO_ERROR or error code.
- *    load_args(in):			- Context for the loaded index (Includes leaf level of the foreign key)
- *    sort_args(in):			- Context for sorting (Includes info on primary key)
+ *   return: NO_ERROR or error code.
+ *   load_args(in): Context for the loaded index (Includes leaf level of the foreign key)
+ *   sort_args(in): Context for sorting (Includes info on primary key)
  *
  */
 int
@@ -3770,25 +3769,23 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
   /* Lock the primary key class. */
   lock_ret = lock_object (thread_p, sort_args->fk_refcls_oid, oid_Root_class_oid, SIX_LOCK, LK_COND_LOCK);
-
   if (lock_ret != LK_GRANTED)
     {
       ASSERT_ERROR_AND_SET (ret);
-      return ret;
+      goto end;
     }
 
   /* Primary key index search prepare */
-  ret =
-    btree_prepare_bts (thread_p, &pk_bt_scan, sort_args->fk_refcls_pk_btid, &pk_isid, NULL, NULL, NULL,
-		       NULL, NULL, false, NULL);
+  ret = btree_prepare_bts (thread_p, &pk_bt_scan, sort_args->fk_refcls_pk_btid, &pk_isid, NULL, NULL, NULL, NULL,
+			   NULL, false, NULL);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return ret;
+      goto end;
     }
 
   /* Set the order. */
-  is_fk_scan_desc = sort_args->key_type->is_desc != pk_bt_scan.btid_int.key_type->is_desc;
+  is_fk_scan_desc = (sort_args->key_type->is_desc != pk_bt_scan.btid_int.key_type->is_desc);
 
   /* Get the corresponding leaf of the foreign key. */
   if (!is_fk_scan_desc)
@@ -3924,10 +3921,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       if (pk_bt_scan.C_page == NULL)
 	{
 	  /* No search has been initiated yet, we start from root. */
-	  ret =
-	    btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
-			      &pk_bt_scan.C_page, &found);
-
+	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
+				  &pk_bt_scan.C_page, &found);
 	  if (ret != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -3946,9 +3941,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  else
 	    {
 	      /* Make sure there is at least one visible object. */
-	      ret =
-		btree_has_any_visible (thread_p, &pk_bt_scan.btid_int, pk_bt_scan.C_page, &mvcc_snapshot_dirty,
-				       &pk_has_visible);
+	      ret = btree_has_any_visible (thread_p, &pk_bt_scan.btid_int, pk_bt_scan.C_page, &mvcc_snapshot_dirty,
+					   &pk_has_visible);
 	      if (ret != NO_ERROR)
 		{
 		  break;
@@ -4039,6 +4033,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  partitions[pos].header = pk_node_header;
 	}
 
+      /* TODO - check potential leak of fk_key and pk_key */
       if (found == true)
 	{
 	  pr_clear_value (&fk_key);
@@ -4046,6 +4041,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
       pr_clear_value (&pk_key);
     }
+
 end:
 
   if (old_page != NULL)
@@ -4089,11 +4085,11 @@ end:
 /*
  * btree_get_value_from_leaf_slot () -
  *
- *   return:			  - NO_ERROR or error code.
- *   btid_int(in):		  - The structure of the B-tree where the leaf resides.
- *   leaf_ptr(in):		  - The leaf where the value needs to be extracted from.
- *   slot_id(in):		  - The slot from where the value must be pulled.
- *   key(out):			  - The value requested.
+ *   return: NO_ERROR or error code.
+ *   btid_int(in): The structure of the B-tree where the leaf resides.
+ *   leaf_ptr(in): The leaf where the value needs to be extracted from.
+ *   slot_id(in): The slot from where the value must be pulled.
+ *   key(out): The value requested.
  *
  */
 static int
@@ -4113,9 +4109,8 @@ btree_get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PA
       return ret;
     }
 
-  ret =
-    btree_read_record (thread_p, btid_int, leaf_ptr, &record, key,
-		       &leaf, BTREE_LEAF_NODE, &clear_first_key, &first_key_offset, PEEK_KEY_VALUE, NULL);
+  ret = btree_read_record (thread_p, btid_int, leaf_ptr, &record, key,
+			   &leaf, BTREE_LEAF_NODE, &clear_first_key, &first_key_offset, PEEK_KEY_VALUE, NULL);
 
   if (ret != NO_ERROR)
     {
@@ -4129,19 +4124,18 @@ btree_get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PA
 /*
  * btree_advance_to_next_slot_and_fix_page () -
  *
- *   return:			  - NO_ERROR or error code
- *   btid(in):			  - B-tree structure
- *   vpid(in/out):		  - VPID of the current page
- *   pg_ptr(in/out):		  - Page pointer for the current page.
- *   slot_id(in/out):		  - Slot id of the current/next value.
- *   key(out):			  - Requested key.
- *   key_cnt(in/out):		  - Number of keys in current page.
- *   header(in/out):		  - The header of the current page.
- *   mvcc(in):            - Needed for visibility check.
+ *   return: NO_ERROR or error code
+ *   btid(in): B-tree structure
+ *   vpid(in/out): VPID of the current page
+ *   pg_ptr(in/out): Page pointer for the current page.
+ *   slot_id(in/out): Slot id of the current/next value.
+ *   key(out): Requested key.
+ *   key_cnt(in/out): Number of keys in current page.
+ *   header(in/out): The header of the current page.
+ *   mvcc(in): Needed for visibility check.
  *
  *  Note:
- *
- *      - This function will advance to a next page without using conditional latches.
+ *      This function will advance to a next page without using conditional latches.
  *      Therefore, if this is used for a descending scan, it might not work properly
  *      unless concurrency is guaranteed.
  */
@@ -4154,7 +4148,6 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
   VPID next_vpid;
   PAGE_PTR page = *pg_ptr;
   BTREE_NODE_HEADER *local_header = *header;
-  int adv = 0, num_visible = -1;
   bool has_visible = false;
   PAGE_PTR old_page = NULL;
 
@@ -4202,7 +4195,8 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
   /* Advance to next key. */
   while (true)
     {
-      *slot_id = *slot_id + (is_desc ? -1 : 1);
+      *slot_id += (is_desc ? -1 : 1);
+
       if (*slot_id == 0 || *slot_id >= *key_cnt + 1)
 	{
 	  next_vpid = is_desc ? local_header->prev_vpid : local_header->next_vpid;
@@ -4248,6 +4242,7 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
 	      continue;
 	    }
 	}
+
       /* We have visible items. Fall through and get the key. */
       break;
     }
@@ -4259,17 +4254,18 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   *header = local_header;
   *pg_ptr = page;
+
   return ret;
 }
 
 /*
- *  btree_has_any_visible():-	States if the page has any visible oids.
+ *  btree_has_any_visible(): States if the page has any visible oids.
  *
- *  thread_p(in):		        -	Thread entry.
- *  btid(in):			          -	B-tree info.
- *  pg_ptr(in):			        -	Page pointer.
- *  mvcc_snapshot(in):		  -	The MVCC snapshot.
- *  has_visible(out):       - True or False
+ *  thread_p(in): Thread entry.
+ *  btid(in): B-tree info.
+ *  pg_ptr(in):	Page pointer.
+ *  mvcc_snapshot(in): The MVCC snapshot.
+ *  has_visible(out): True or False
  *
  *  return: error code if any error occurs.
  */
@@ -4282,10 +4278,8 @@ btree_has_any_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr
   int num_visible = 0;
   int key_offset = 0;
   int ret = NO_ERROR;
-  DB_VALUE key;
-  bool clear_key;
+  bool dummy_clear_key;
 
-  DB_MAKE_NULL (&key);
   *has_visible = false;
 
   if (mvcc_snapshot == NULL)
@@ -4303,10 +4297,9 @@ btree_has_any_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr
       return ret;
     }
 
-  /* Read the record. */
-  ret =
-    btree_read_record (thread_p, btid, pg_ptr, &record, &key,
-		       &leaf, BTREE_LEAF_NODE, &clear_key, &key_offset, PEEK_KEY_VALUE, NULL);
+  /* Read the record. - no need of actual key value */
+  ret = btree_read_record (thread_p, btid, pg_ptr, &record, NULL, &leaf, BTREE_LEAF_NODE, &dummy_clear_key,
+			   &key_offset, PEEK_KEY_VALUE, NULL);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4314,12 +4307,12 @@ btree_has_any_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr
     }
 
   /* Get the number of visible items. */
-  ret =
-    btree_get_num_visible_from_leaf_and_ovf (thread_p, btid, &record, key_offset, &leaf, NULL, mvcc_snapshot,
-					     &num_visible);
+  ret = btree_get_num_visible_from_leaf_and_ovf (thread_p, btid, &record, key_offset, &leaf, NULL, mvcc_snapshot,
+						 &num_visible);
   if (num_visible > 0)
     {
       *has_visible = true;
     }
+
   return ret;
 }
