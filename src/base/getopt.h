@@ -27,11 +27,14 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _GETOPT_H_
-#define _GETOPT_H_
+#ifndef ___GETOPT_H___
+#define ___GETOPT_H___
 
 #if !defined(WINDOWS)
 #include <sys/cdefs.h>
+#define DllImport
+#else
+#define DllImport  __declspec(dllimport)
 #endif
 
 /*
@@ -65,20 +68,14 @@ extern "C"
   int getopt_long (int, char *const *, const char *, const struct option *, int *);
 
 /* On some platforms, this is in libc, but not in a system header */
-#ifndef _OPTRESET_DECLARED
-#define _OPTRESET_DECLARED
   extern int optreset;
-#endif
-#ifndef _GETOPT_DECLARED
-#define _GETOPT_DECLARED
   extern char *optarg;
   extern int opterr;
-  extern int optind;
+  extern DllImport int optind;
   extern int optopt;
-#endif
 
 #ifdef __cplusplus
-};
+}
 #endif
 
-#endif /* !_GETOPT_H_ */
+#endif				/* !_GETOPT_H_ */
