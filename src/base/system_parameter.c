@@ -3439,7 +3439,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_MODE,
    PRM_NAME_HA_MODE,
-   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_FORCE_SERVER),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_HA | PRM_FORCE_SERVER),
    PRM_KEYWORD,
    &prm_ha_mode_flag,
    (void *) &prm_ha_mode_default,
