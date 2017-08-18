@@ -46,6 +46,9 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
+#include "rapidjson/document.h"
+#include "rapidjson/pointer.h"
+#include "rapidjson/writer.h"
 
 static int db_mod_short (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static int db_mod_int (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
@@ -5114,5 +5117,74 @@ error:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	}
       return error_status;
+    }
+}
+
+int
+db_json_type_dbval (const DB_VALUE *json, DB_VALUE *type_res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return DB_MAKE_CHAR (type_res, 4, "NULL", 4, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+    }
+  else
+    {
+      assert (json->data.json.json_body != NULL);
+      assert (json->data.json.document != NULL);
+      assert (!json->data.json.document->HasParseError());
+
+      if (json->data.json.document->IsArray())
+        {
+          return DB_MAKE_CHAR (type_res, 10, "JSON_ARRAY", 10, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+        }
+      else if (json->data.json.document->IsObject())
+        {
+          return DB_MAKE_CHAR (type_res, 11, "JSON_OBJECT", 11, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+        }
+      else if (json->data.json.document->IsInt())
+        {
+          return DB_MAKE_CHAR (type_res, 7, "INTEGER", 7, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+        }
+      else if (json->data.json.document->IsDouble())
+        {
+          return DB_MAKE_CHAR (type_res, 6, "DOUBLE", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+        }
+      else
+        {
+          /* we shouldn't get here */
+          assert (false);
+        }
+    }
+}
+
+int
+db_json_extract_dbval (const DB_VALUE *json, const DB_VALUE *path, DB_VALUE *json_res)
+{
+  rapidjson::Document *this_doc = json->data.json.document;
+  const char *raw_path = path->data.ch.medium.buf;
+  rapidjson::StringBuffer buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+  rapidjson::Value *resulting_json;
+  int len;
+
+  buffer.Clear();
+  rapidjson::Pointer p(raw_path);
+
+  if (p.IsValid() && (resulting_json = rapidjson::Pointer(raw_path).Get(*this_doc)) != NULL)
+    {
+      char *json_body;
+      rapidjson::Document *new_doc = new rapidjson::Document();
+      new_doc->CopyFrom(*resulting_json, new_doc->GetAllocator());
+      new_doc->Accept (writer);
+      json_body = (char *) db_private_alloc (NULL, strlen (buffer.GetString() + 1));
+      strcpy (json_body, buffer.GetString());
+      db_make_json (json_res, json_body, new_doc);
+
+      return NO_ERROR;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
     }
 }

@@ -33,8 +33,6 @@ extern "C"
 {
 #endif
 
-#define bool char
-
 #if defined(WINDOWS) && !defined(__GNUC__)
 #define int32_t __int32
 #define int64_t __int64
@@ -1550,8 +1548,9 @@ extern "C"
 #define ER_INVALID_JSON                             -1197
 #define ER_NO_JSON_OBJECT_PROVIDED                  -1198
 #define ER_JSON_INVALIDATED_BY_SCHEMA               -1199
+#define ER_JSON_INVALID_PATH                        -1200
 
-#define ER_LAST_ERROR                               -1200
+#define ER_LAST_ERROR                               -1201
 
 #define DB_TRUE 1
 #define DB_FALSE 0

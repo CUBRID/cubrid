@@ -304,7 +304,9 @@ static FUNCTION_MAP functions[] = {
   {"crc32", PT_CRC32},
   {"schema_def", PT_SCHEMA_DEF},
   {"conv_tz", PT_CONV_TZ},
-  {"json_contains", PT_JSON_CONTAINS}
+  {"json_contains", PT_JSON_CONTAINS},
+  {"json_type", PT_JSON_TYPE},
+  {"json_extract", PT_JSON_EXTRACT},
 };
 
 
@@ -25348,6 +25350,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
     case PT_JSON_CONTAINS:
+    case PT_JSON_EXTRACT:
       if (c != 2)
 	return NULL;
 
@@ -25356,7 +25359,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a1->next = NULL;
       a2->next = NULL;
 
-      node = parser_make_expression (this_parser, key->op, a1, a2, a3);
+      node = parser_make_expression (this_parser, key->op, a1, a2, NULL);
       return node;
 
 	case PT_DISK_SIZE:
@@ -25366,7 +25369,15 @@ parser_keyword_func (const char *name, PT_NODE * args)
        a1 = args;
        node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
        return node;
-	   
+    case PT_JSON_TYPE:
+      if (c != 1)
+        return NULL;
+
+      a1 = args;
+      a1->next = NULL;
+
+      node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
+      return node;
     case PT_STRCMP:
       if (c != 2)
 	return NULL;

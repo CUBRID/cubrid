@@ -471,7 +471,9 @@ typedef enum
   T_CURRENT_DATE,
   T_CURRENT_TIME,
   T_CONV_TZ,
-  T_JSON_CONTAINS
+  T_JSON_CONTAINS,
+  T_JSON_TYPE,
+  T_JSON_EXTRACT,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

@@ -1542,8 +1542,9 @@
 #define ER_INVALID_JSON                             -1197
 #define ER_NO_JSON_OBJECT_PROVIDED                  -1198
 #define ER_JSON_INVALIDATED_BY_SCHEMA               -1199
+#define ER_JSON_INVALID_PATH                        -1200
 
-#define ER_LAST_ERROR                               -1200
+#define ER_LAST_ERROR                               -1201
 
 /*
  * CAUTION!

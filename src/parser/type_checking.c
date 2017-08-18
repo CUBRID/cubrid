@@ -4961,6 +4961,41 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
+    case PT_JSON_TYPE:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_CHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+    case PT_JSON_EXTRACT:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_JSON;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
     default:
       return false;
     }
@@ -6956,6 +6991,8 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_SCHEMA_DEF:
     case PT_CONV_TZ:
     case PT_JSON_CONTAINS:
+    case PT_JSON_TYPE:
+    case PT_JSON_EXTRACT:
       return false;
 
     default:
@@ -16975,6 +17012,22 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  DB_MAKE_INT (result, 0);
 	}
+      break;
+    case PT_JSON_TYPE:
+      error = db_json_type_dbval (arg1, result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
+    case PT_JSON_EXTRACT:
+      error = db_json_extract_dbval (arg1, arg2, result);
+      if (error != NO_ERROR)
+        {
+          PT_ERRORc (parser, o1, er_msg());
+          return 0;
+        }
       break;
     case PT_POWER:
       error = db_power_dbval (result, arg1, arg2);

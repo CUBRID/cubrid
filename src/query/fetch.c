@@ -202,6 +202,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_CURRENT_VALUE:
     case T_CHR:
     case T_JSON_CONTAINS:
+    case T_JSON_EXTRACT:
       /* fetch lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
@@ -648,7 +649,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  goto error;
 	}
       break;
-
+    case T_JSON_TYPE:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       goto error;
@@ -2625,7 +2631,18 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  goto error;
 	}
       break;
-
+    case T_JSON_TYPE:
+      if (qdata_json_type_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+        {
+          goto error;
+        }
+      break;
+    case T_JSON_EXTRACT:
+      if (qdata_json_extract_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+        {
+          goto error;
+        }
+      break;
     case T_CONCAT:
       if (arithptr->rightptr != NULL)
 	{

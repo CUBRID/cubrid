@@ -1532,6 +1532,8 @@ typedef enum
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
   PT_JSON_CONTAINS,
+  PT_JSON_TYPE,
+  PT_JSON_EXTRACT,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE

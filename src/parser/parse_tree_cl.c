@@ -3911,6 +3911,10 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "conv_tz";
     case PT_JSON_CONTAINS:
       return "json_contains";
+    case PT_JSON_TYPE:
+      return "json_type";
+    case PT_JSON_EXTRACT:
+      return "json_extract";
     default:
       return "unknown opcode";
     }
@@ -10071,6 +10075,24 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ", ");
       q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_EXTRACT:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      r3 = pt_print_bytes (parser, p->info.expr.arg3);
+
+      q = pt_append_nulstring (parser, q, " json_extract(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_TYPE:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_type(");
+      q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_POWER:
@@ -16624,6 +16646,11 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
 
       break;
+    case PT_TYPE_JSON:
+      q = pt_append_nulstring (parser, q, "cast (\'");
+      q = pt_append_nulstring (parser, q, p->info.value.data_value.json.json_body);
+      q = pt_append_nulstring (parser, q, "\' as json)");
+      break;
     default:
       q = pt_append_nulstring (parser, q, "-- Unknown value type --");
       parser->print_type_ambiguity = 1;
@@ -17967,6 +17994,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_INET_NTOA:
 	case PT_CHARSET:
 	case PT_COLLATION:
+        case PT_JSON_TYPE:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
@@ -17975,6 +18003,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.expr.arg3));
 	case PT_JSON_CONTAINS:
+        case PT_JSON_EXTRACT:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
 	default:
@@ -18417,6 +18446,8 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_TO_TIME_TZ:
     case PT_CRC32:
     case PT_JSON_CONTAINS:
+    case PT_JSON_TYPE:
+    case PT_JSON_EXTRACT:
       return true;
     case PT_TZ_OFFSET:
     default:

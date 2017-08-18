@@ -66,4 +66,6 @@ extern int db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB
  */
 extern int db_sleep (DB_VALUE * result, DB_VALUE * value);
 extern int db_crc32_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_json_type_dbval (const DB_VALUE *json, DB_VALUE *type);
+extern int db_json_extract_dbval (const DB_VALUE *json, const DB_VALUE *path, DB_VALUE *json_res);
 #endif /* _ARITHMETIC_H_ */
