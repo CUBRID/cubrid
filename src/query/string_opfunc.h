@@ -198,6 +198,8 @@ extern int db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * p
 extern int db_string_elt (DB_VALUE * result, DB_VALUE * args[], int const num_args);
 extern int db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count);

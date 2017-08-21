@@ -711,7 +711,8 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
     {
       function_type = node->info.function.function_type;
       if (function_type == F_INSERT_SUBSTRING ||
-	  function_type == F_ELT || function_type == F_JSON_OBJECT || function_type == F_JSON_ARRAY)
+	  function_type == F_ELT || function_type == F_JSON_OBJECT || function_type == F_JSON_ARRAY ||
+	  function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE)
 	{
 	  return true;
 	}

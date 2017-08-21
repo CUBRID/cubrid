@@ -5234,6 +5234,8 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     case F_ELT:
     case F_JSON_OBJECT:
     case F_JSON_ARRAY:
+    case F_JSON_INSERT:
+    case F_JSON_REMOVE:
       break;
     default:
       return 0;			/* unsupported function */
@@ -15139,6 +15141,8 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case F_INSERT_SUBSTRING:
 	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
+	case F_JSON_INSERT:
+	case F_JSON_REMOVE:
 	  /* valid expression, nothing to do */
 	  break;
 	default:

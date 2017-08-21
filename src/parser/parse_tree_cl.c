@@ -4018,6 +4018,10 @@ pt_show_function (FUNC_TYPE c)
       return "json_object";
     case F_JSON_ARRAY:
       return "json_array";
+    case F_JSON_INSERT:
+      return "json_insert";
+    case F_JSON_REMOVE:
+      return "json_remove";
     default:
       return "unknown function";
     }
@@ -17994,7 +17998,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_INET_NTOA:
 	case PT_CHARSET:
 	case PT_COLLATION:
-        case PT_JSON_TYPE:
+	case PT_JSON_TYPE:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
@@ -18003,7 +18007,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.expr.arg3));
 	case PT_JSON_CONTAINS:
-        case PT_JSON_EXTRACT:
+	case PT_JSON_EXTRACT:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
 	default:

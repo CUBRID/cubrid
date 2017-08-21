@@ -3045,6 +3045,8 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int len;
   rapidjson::StringBuffer str_buf;
   rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
+  rapidjson::Document * new_doc;
+  char *str;
 
   if (num_args <= 0)
     {
@@ -3052,11 +3054,8 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  result->domain.general_info.is_null = 0;
-  result->need_clear = true;
-  result->data.json.document = new rapidjson::Document ();
-  result->data.json.document->SetObject ();
-  result->domain.general_info.type = DB_TYPE_JSON;
+  new_doc = new rapidjson::Document ();
+  new_doc->SetObject ();
 
   assert (num_args % 2 == 0);
 
@@ -3065,27 +3064,23 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (arg[i + 1]->domain.general_info.type)
 	{
 	case DB_TYPE_CHAR:
-	  result->data.json.document->AddMember (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
-						 rapidjson::StringRef (arg[i + 1]->data.ch.medium.buf),
-						 result->data.json.document->GetAllocator ());
+	  new_doc->AddMember (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
+			      rapidjson::StringRef (arg[i + 1]->data.ch.medium.buf), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_INTEGER:
-	  result->data.json.document->AddMember (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
-						 rapidjson::Value ().SetInt (arg[i + 1]->data.i),
-						 result->data.json.document->GetAllocator ());
+	  new_doc->AddMember (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
+			      rapidjson::Value ().SetInt (arg[i + 1]->data.i), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_JSON:
 	  if (arg[i + 1]->data.json.document->IsArray ())
 	    {
-	      result->data.json.document->AddMember (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
-						     arg[i + 1]->data.json.document->GetArray (),
-						     result->data.json.document->GetAllocator ());
+	      new_doc->AddMember (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
+				  arg[i + 1]->data.json.document->GetArray (), new_doc->GetAllocator ());
 	    }
 	  else if (arg[i + 1]->data.json.document->IsObject ())
 	    {
-	      result->data.json.document->AddMember (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
-						     arg[i + 1]->data.json.document->GetObject (),
-						     result->data.json.document->GetAllocator ());
+	      new_doc->AddMember (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
+				  arg[i + 1]->data.json.document->GetObject (), new_doc->GetAllocator ());
 	    }
 	  else
 	    {
@@ -3095,12 +3090,12 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  result->data.json.document->Accept (writer);
-  len = strlen (str_buf.GetString ());
+  new_doc->Accept (writer);
 
-  result->data.json.json_body = (char *) db_private_alloc (NULL, len + 1);
-  memcpy (result->data.json.json_body, str_buf.GetString (), len);
-  result->data.json.json_body[len] = '\0';
+  str = (char *) db_private_alloc (NULL, strlen (str_buf.GetString ()) + 1);
+  strcpy (str, str_buf.GetString ());
+
+  db_make_json (result, str, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3112,6 +3107,8 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int len;
   rapidjson::StringBuffer str_buf;
   rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
+  rapidjson::Document * new_doc;
+  char *str;
 
   if (num_args <= 0)
     {
@@ -3119,34 +3116,27 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  result->domain.general_info.is_null = 0;
-  result->need_clear = true;
-  result->data.json.document = new rapidjson::Document ();
-  result->data.json.document->SetArray ();
-  result->domain.general_info.type = DB_TYPE_JSON;
+  new_doc = new rapidjson::Document ();
+  new_doc->SetArray ();
 
   for (i = 0; i < num_args; i++)
     {
       switch (arg[i]->domain.general_info.type)
 	{
 	case DB_TYPE_CHAR:
-	  result->data.json.document->PushBack (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
-						result->data.json.document->GetAllocator ());
+	  new_doc->PushBack (rapidjson::StringRef (arg[i]->data.ch.medium.buf), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_INTEGER:
-	  result->data.json.document->PushBack (rapidjson::Value ().SetInt (arg[i]->data.i),
-						result->data.json.document->GetAllocator ());
+	  new_doc->PushBack (rapidjson::Value ().SetInt (arg[i]->data.i), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_JSON:
 	  if (arg[i]->data.json.document->IsArray ())
 	    {
-	      result->data.json.document->PushBack (arg[i]->data.json.document->GetArray (),
-						    result->data.json.document->GetAllocator ());
+	      new_doc->PushBack (arg[i]->data.json.document->GetArray (), new_doc->GetAllocator ());
 	    }
 	  else if (arg[i]->data.json.document->IsObject ())
 	    {
-	      result->data.json.document->PushBack (arg[i]->data.json.document->GetObject (),
-						    result->data.json.document->GetAllocator ());
+	      new_doc->PushBack (arg[i]->data.json.document->GetObject (), new_doc->GetAllocator ());
 	    }
 	  else
 	    {
@@ -3156,12 +3146,100 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  result->data.json.document->Accept (writer);
-  len = strlen (str_buf.GetString ());
+  new_doc->Accept (writer);
 
-  result->data.json.json_body = (char *) db_private_alloc (NULL, len + 1);
-  memcpy (result->data.json.json_body, str_buf.GetString (), len);
-  result->data.json.json_body[len] = '\0';
+  str = (char *) db_private_alloc (NULL, strlen (str_buf.GetString ()) + 1);
+  strcpy (str, str_buf.GetString ());
+
+  db_make_json (result, str, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i;
+  rapidjson::StringBuffer str_buf;
+  rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
+  rapidjson::Document * new_doc;
+  char *str;
+
+  if (num_args < 3)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  new_doc = new rapidjson::Document ();
+  rapidjson::Document * main_doc = arg[0]->data.json.document;
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      rapidjson::Pointer p (arg[i]->data.ch.medium.buf);
+
+      if (!p.IsValid ())
+	{
+	  continue;
+	}
+
+      switch (arg[i + 1]->domain.general_info.type)
+	{
+	case DB_TYPE_CHAR:
+	  p.Set (*main_doc, rapidjson::StringRef (arg[i + 1]->data.ch.medium.buf));
+	  break;
+	case DB_TYPE_JSON:
+	  p.Set (*main_doc, *arg[i + 1]->data.json.document);
+	  break;
+	}
+    }
+
+  new_doc->CopyFrom (*main_doc, new_doc->GetAllocator ());
+  new_doc->Accept (writer);
+  str = (char *) db_private_alloc (NULL, strlen (str_buf.GetString ()) + 1);
+  strcpy (str, str_buf.GetString ());
+
+  db_make_json (result, str, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i;
+  rapidjson::StringBuffer str_buf;
+  rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
+  rapidjson::Document * new_doc;
+  char *str;
+
+  if (num_args < 2)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  new_doc = new rapidjson::Document ();
+  rapidjson::Document * main_doc = arg[0]->data.json.document;
+
+  for (i = 1; i < num_args; i++)
+    {
+      rapidjson::Pointer p (arg[i]->data.ch.medium.buf);
+
+      if (!p.IsValid ())
+	{
+	  continue;
+	}
+
+      p.Erase (*main_doc);
+    }
+
+  new_doc->CopyFrom (*main_doc, new_doc->GetAllocator ());
+  new_doc->Accept (writer);
+  str = (char *) db_private_alloc (NULL, strlen (str_buf.GetString ()) + 1);
+  strcpy (str, str_buf.GetString ());
+
+  db_make_json (result, str, new_doc, true);
 
   return NO_ERROR;
 }

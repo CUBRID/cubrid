@@ -5121,7 +5121,7 @@ error:
 }
 
 int
-db_json_type_dbval (const DB_VALUE *json, DB_VALUE *type_res)
+db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
 {
   if (DB_IS_NULL (json))
     {
@@ -5131,54 +5131,54 @@ db_json_type_dbval (const DB_VALUE *json, DB_VALUE *type_res)
     {
       assert (json->data.json.json_body != NULL);
       assert (json->data.json.document != NULL);
-      assert (!json->data.json.document->HasParseError());
+      assert (!json->data.json.document->HasParseError ());
 
-      if (json->data.json.document->IsArray())
-        {
-          return DB_MAKE_CHAR (type_res, 10, "JSON_ARRAY", 10, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-        }
-      else if (json->data.json.document->IsObject())
-        {
-          return DB_MAKE_CHAR (type_res, 11, "JSON_OBJECT", 11, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-        }
-      else if (json->data.json.document->IsInt())
-        {
-          return DB_MAKE_CHAR (type_res, 7, "INTEGER", 7, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-        }
-      else if (json->data.json.document->IsDouble())
-        {
-          return DB_MAKE_CHAR (type_res, 6, "DOUBLE", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-        }
+      if (json->data.json.document->IsArray ())
+	{
+	  return DB_MAKE_CHAR (type_res, 10, "JSON_ARRAY", 10, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	}
+      else if (json->data.json.document->IsObject ())
+	{
+	  return DB_MAKE_CHAR (type_res, 11, "JSON_OBJECT", 11, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	}
+      else if (json->data.json.document->IsInt ())
+	{
+	  return DB_MAKE_CHAR (type_res, 7, "INTEGER", 7, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	}
+      else if (json->data.json.document->IsDouble ())
+	{
+	  return DB_MAKE_CHAR (type_res, 6, "DOUBLE", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	}
       else
-        {
-          /* we shouldn't get here */
-          assert (false);
-        }
+	{
+	  /* we shouldn't get here */
+	  assert (false);
+	}
     }
 }
 
 int
-db_json_extract_dbval (const DB_VALUE *json, const DB_VALUE *path, DB_VALUE *json_res)
+db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
 {
-  rapidjson::Document *this_doc = json->data.json.document;
+  rapidjson::Document * this_doc = json->data.json.document;
   const char *raw_path = path->data.ch.medium.buf;
   rapidjson::StringBuffer buffer;
-  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-  rapidjson::Value *resulting_json;
+  rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
+  rapidjson::Value * resulting_json;
   int len;
 
-  buffer.Clear();
-  rapidjson::Pointer p(raw_path);
+  buffer.Clear ();
+  rapidjson::Pointer p (raw_path);
 
-  if (p.IsValid() && (resulting_json = rapidjson::Pointer(raw_path).Get(*this_doc)) != NULL)
+  if (p.IsValid () && (resulting_json = rapidjson::Pointer (raw_path).Get (*this_doc)) != NULL)
     {
       char *json_body;
-      rapidjson::Document *new_doc = new rapidjson::Document();
-      new_doc->CopyFrom(*resulting_json, new_doc->GetAllocator());
+      rapidjson::Document * new_doc = new rapidjson::Document ();
+      new_doc->CopyFrom (*resulting_json, new_doc->GetAllocator ());
       new_doc->Accept (writer);
-      json_body = (char *) db_private_alloc (NULL, strlen (buffer.GetString() + 1));
-      strcpy (json_body, buffer.GetString());
-      db_make_json (json_res, json_body, new_doc);
+      json_body = (char *) db_private_alloc (NULL, strlen (buffer.GetString () + 1));
+      strcpy (json_body, buffer.GetString ());
+      db_make_json (json_res, json_body, new_doc, true);
 
       return NO_ERROR;
     }

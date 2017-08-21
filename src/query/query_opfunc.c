@@ -232,6 +232,13 @@ qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 static int
 qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		  QFILE_TUPLE tuple);
+static int
+qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple);
+
+static int
+qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple);
 
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *, int, DB_VALUE **) =
 {
@@ -6524,7 +6531,7 @@ qdata_json_contains_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * 
 }
 
 int
-qdata_json_type_dbval (DB_VALUE *dbval1_p, DB_VALUE *result_p, TP_DOMAIN *domain_p)
+qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
   if (DB_IS_NULL (dbval1_p))
     {
@@ -6534,56 +6541,55 @@ qdata_json_type_dbval (DB_VALUE *dbval1_p, DB_VALUE *result_p, TP_DOMAIN *domain
     {
       assert (dbval1_p->data.json.json_body != NULL);
       assert (dbval1_p->data.json.document != NULL);
-      assert (!dbval1_p->data.json.document->HasParseError());
+      assert (!dbval1_p->data.json.document->HasParseError ());
 
-      if (dbval1_p->data.json.document->IsArray())
-        {
-          DB_MAKE_CHAR (result_p, 10, "JSON_ARRAY", 10, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-        }
-      else if (dbval1_p->data.json.document->IsObject())
-        {
-          DB_MAKE_CHAR (result_p, 11, "JSON_OBJECT", 11, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-        }
-      else if (dbval1_p->data.json.document->IsInt())
-        {
-          DB_MAKE_CHAR (result_p, 7, "INTEGER", 7, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-        }
-      else if (dbval1_p->data.json.document->IsDouble())
-        {
-          DB_MAKE_CHAR (result_p, 6, "DOUBLE", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-        }
+      if (dbval1_p->data.json.document->IsArray ())
+	{
+	  DB_MAKE_CHAR (result_p, 10, "JSON_ARRAY", 10, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	}
+      else if (dbval1_p->data.json.document->IsObject ())
+	{
+	  DB_MAKE_CHAR (result_p, 11, "JSON_OBJECT", 11, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	}
+      else if (dbval1_p->data.json.document->IsInt ())
+	{
+	  DB_MAKE_CHAR (result_p, 7, "INTEGER", 7, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	}
+      else if (dbval1_p->data.json.document->IsDouble ())
+	{
+	  DB_MAKE_CHAR (result_p, 6, "DOUBLE", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	}
       else
-        {
-          /* we shouldn't get here */
-          assert (false);
-        }
+	{
+	  /* we shouldn't get here */
+	  assert (false);
+	}
     }
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 
 int
-qdata_json_extract_dbval (const DB_VALUE *json, const DB_VALUE *path, DB_VALUE *json_res, TP_DOMAIN *domain_p)
+qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
 {
-  rapidjson::Document *this_doc = json->data.json.document;
+  rapidjson::Document * this_doc = json->data.json.document;
   const char *raw_path = path->data.ch.medium.buf;
   rapidjson::StringBuffer buffer;
-  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-  rapidjson::Value *resulting_json;
+  rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
+  rapidjson::Value * resulting_json;
   int len;
 
-  buffer.Clear();
-  rapidjson::Pointer p(raw_path);
+  buffer.Clear ();
+  rapidjson::Pointer p (raw_path);
 
-  if (p.IsValid() && (resulting_json = rapidjson::Pointer(raw_path).Get(*this_doc)) != NULL)
+  if (p.IsValid () && (resulting_json = rapidjson::Pointer (raw_path).Get (*this_doc)) != NULL)
     {
       char *json_body;
-      rapidjson::Document *new_doc = new rapidjson::Document();
-      new_doc->CopyFrom(*resulting_json, new_doc->GetAllocator());
+      rapidjson::Document * new_doc = new rapidjson::Document ();
+      new_doc->CopyFrom (*resulting_json, new_doc->GetAllocator ());
       new_doc->Accept (writer);
-      json_body = (char *) db_private_alloc (NULL, strlen (buffer.GetString() + 1));
-      strcpy (json_body, buffer.GetString());
-      db_make_json (json_res, json_body, new_doc);
-      json_res->need_clear = true;
+      json_body = (char *) db_private_alloc (NULL, strlen (buffer.GetString () + 1));
+      strcpy (json_body, buffer.GetString ());
+      db_make_json (json_res, json_body, new_doc, true);
 
       return NO_ERROR;
     }
@@ -6593,6 +6599,7 @@ qdata_json_extract_dbval (const DB_VALUE *json, const DB_VALUE *path, DB_VALUE *
       return ER_JSON_INVALID_PATH;
     }
 }
+
 /*
  * qdata_strcat_dbval () -
  *   return:
@@ -8926,6 +8933,10 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
       return qdata_json_object (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
     case F_JSON_ARRAY:
       return qdata_json_array (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+    case F_JSON_INSERT:
+      return qdata_json_insert (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+    case F_JSON_REMOVE:
+      return qdata_json_remove (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_FAILED;
@@ -10655,6 +10666,114 @@ qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR
   assert (index == no_args);
 
   if (db_json_array (function_p->value, args, no_args) != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  db_private_free (NULL, args);
+  return NO_ERROR;
+
+error_exit:
+  db_private_free (NULL, args);
+  return error_status;
+}
+
+static int
+qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple)
+{
+  DB_VALUE *value;
+  REGU_VARIABLE_LIST operand;
+  int error_status = NO_ERROR;
+  int no_args = 0, index = 0;
+  DB_VALUE **args;
+
+  /* should sync with fetch_peek_dbval () */
+
+  assert (function_p);
+  assert (function_p->value);
+  assert (function_p->operand);
+
+  operand = function_p->operand;
+
+  while (operand != NULL)
+    {
+      no_args++;
+      operand = operand->next;
+    }
+
+  args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
+  operand = function_p->operand;
+
+  while (operand != NULL)
+    {
+      error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+      if (error_status != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      args[index++] = value;
+
+      operand = operand->next;
+    }
+
+  assert (index == no_args);
+
+  if (db_json_insert (function_p->value, args, no_args) != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  db_private_free (NULL, args);
+  return NO_ERROR;
+
+error_exit:
+  db_private_free (NULL, args);
+  return error_status;
+}
+
+static int
+qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple)
+{
+  DB_VALUE *value;
+  REGU_VARIABLE_LIST operand;
+  int error_status = NO_ERROR;
+  int no_args = 0, index = 0;
+  DB_VALUE **args;
+
+  /* should sync with fetch_peek_dbval () */
+
+  assert (function_p);
+  assert (function_p->value);
+  assert (function_p->operand);
+
+  operand = function_p->operand;
+
+  while (operand != NULL)
+    {
+      no_args++;
+      operand = operand->next;
+    }
+
+  args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
+  operand = function_p->operand;
+
+  while (operand != NULL)
+    {
+      error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+      if (error_status != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      args[index++] = value;
+
+      operand = operand->next;
+    }
+
+  assert (index == no_args);
+
+  if (db_json_remove (function_p->value, args, no_args) != NO_ERROR)
     {
       goto error_exit;
     }

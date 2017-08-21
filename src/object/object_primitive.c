@@ -14872,8 +14872,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
       if (!copy)
 	{
-	  db_make_json (value, json_obj->json_body, json_obj->document);
-	  value->need_clear = false;
+	  db_make_json (value, json_obj->json_body, json_obj->document, false);
 	}
       else
 	{
@@ -14892,8 +14891,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	      memcpy (new_, value->data.json.json_body, len);
 	      new_[len] = '\0';
 	      document->CopyFrom (*json_obj->document, document->GetAllocator ());
-	      db_make_json (value, new_, document);
-	      value->need_clear = true;
+	      db_make_json (value, new_, document, true);
 	    }
 
 	}
@@ -15087,7 +15085,7 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 {
   int len, rc;
   assert (value->data.json.json_body != NULL);
-  
+
   rc = or_put_string_alined_with_length (buf, value->data.json.json_body);
   if (rc != NO_ERROR)
     {

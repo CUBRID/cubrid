@@ -219,6 +219,8 @@ int yybuffer_pos;
 [cC][oO][uU][nN][tT]							{ begin_token(yytext);   return COUNT; }
 [jJ][sS][oO][nN][_][oO][bB][jJ][eE][cC][tT]                             { begin_token(yytext);   return FUN_JSON_OBJECT;}
 [jJ][sS][oO][nN][_][aA][rR][rR][aA][yY]                                 { begin_token(yytext);   return FUN_JSON_ARRAY;}
+[jJ][sS][oO][nN][_][iI][nN][sS][eE][rR][tT]                             { begin_token(yytext);   return FUN_JSON_INSERT;}
+[jJ][sS][oO][nN][_][rR][eE][mM][oO][vV][eE]                             { begin_token(yytext);   return FUN_JSON_REMOVE;}
 [cC][rR][eE][aA][tT][eE]						{ begin_token(yytext);   return CREATE; }
 [cC][rR][oO][sS][sS]							{ begin_token(yytext);   return CROSS; }
 [cC][rR][iI][tT][iI][cC][aA][lL]					{ begin_token(yytext);

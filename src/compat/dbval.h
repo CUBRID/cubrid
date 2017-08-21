@@ -626,12 +626,12 @@
      (v)->need_clear = false, \
      NO_ERROR)
 
-#define db_make_json(v, j, d) \
+#define db_make_json(v, j, d, cl) \
     ((v)->domain.general_info.type = DB_TYPE_JSON, \
     (v)->data.json.json_body = (j), \
     (v)->data.json.document = (d), \
     (v)->domain.general_info.is_null = 0, \
-    (v)->need_clear = false, \
+    (v)->need_clear = cl, \
     (v)->domain.general_info.schema_raw = NULL, \
     NO_ERROR)
 
