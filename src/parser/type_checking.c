@@ -13196,7 +13196,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case F_JSON_INSERT:
       {
-	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_JSON, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_val_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
@@ -13265,7 +13265,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case F_JSON_REMOVE:
       {
-	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_JSON, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int num_bad = 0, len, i, found_supported = 0;
@@ -13647,9 +13647,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:
 	case F_JSON_REMOVE:
-	  node->type_enum = arg_type;
-	  node->data_type = pt_make_prim_data_type (parser, arg_type);
-
+	  node->type_enum = PT_TYPE_JSON;
 	  break;
 	case PT_MEDIAN:
 	case PT_PERCENTILE_CONT:

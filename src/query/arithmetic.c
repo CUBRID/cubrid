@@ -5149,6 +5149,10 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
 	{
 	  return DB_MAKE_CHAR (type_res, 6, "DOUBLE", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
 	}
+      else if (json->data.json.document->IsString())
+        {
+          return DB_MAKE_CHAR (type_res, 6, "STRING", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+        }
       else
 	{
 	  /* we shouldn't get here */
