@@ -6247,11 +6247,13 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	  break;
 	case F_INSERT_SUBSTRING:
 	case F_ELT:
-	case F_JSON_OBJECT:
+	  result_type = pt_node_to_db_type (function);
+	  break;
+        case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:
 	case F_JSON_REMOVE:
-	  result_type = pt_node_to_db_type (function);
+	  result_type = DB_TYPE_JSON;
 	  break;
 	default:
 	  PT_ERRORf (parser, function, "Internal error in generate(%d)", __LINE__);

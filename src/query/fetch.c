@@ -4092,11 +4092,11 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 		assert (index == no_args);
 
-		if (db_json_array (funcp->value, args, no_args) != NO_ERROR)
+		/*if (db_json_array (funcp->value, args, no_args) != NO_ERROR)
 		  {
 		    db_private_free (NULL, args);
 		    goto exit_on_error;
-		  }
+		  }*/
 
 		operand = funcp->operand;
 
@@ -4155,11 +4155,11 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 		assert (index == no_args);
 
-		if (db_json_object (funcp->value, args, no_args) != NO_ERROR)
+		/*if (db_json_object (funcp->value, args, no_args) != NO_ERROR)
 		  {
 		    db_private_free (NULL, args);
 		    goto exit_on_error;
-		  }
+		  }*/
 
 		operand = funcp->operand;
 
@@ -4228,11 +4228,11 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 		assert (index == no_args);
 
-		if (db_json_insert (funcp->value, args, no_args) != NO_ERROR)
+		/*if (db_json_insert (funcp->value, args, no_args) != NO_ERROR)
 		  {
 		    db_private_free (NULL, args);
 		    goto exit_on_error;
-		  }
+		  }*/
 
 		operand = funcp->operand;
 
@@ -4293,11 +4293,11 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 		assert (index == no_args);
 
-		if (db_json_remove (funcp->value, args, no_args) != NO_ERROR)
+		/*if (db_json_remove (funcp->value, args, no_args) != NO_ERROR)
 		  {
 		    db_private_free (NULL, args);
 		    goto exit_on_error;
-		  }
+		  }*/
 
 		operand = funcp->operand;
 
