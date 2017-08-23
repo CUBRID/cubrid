@@ -641,6 +641,11 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 	}
     }
 
+  if (db_value.need_clear)
+    {
+      pr_clear_value (&db_value);
+    }
+
   if (lengths)
     {
       *lengths = len;

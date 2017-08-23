@@ -302,6 +302,10 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       value->data.enumeration.str_val.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
+    case DB_TYPE_JSON:
+      value->data.json.json_body = NULL;
+      value->data.json.document = NULL;
+      break;
 
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
@@ -333,7 +337,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_SHORT:
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
-    case DB_TYPE_JSON:
       break;
 
     default:
