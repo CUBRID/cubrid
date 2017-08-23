@@ -5082,8 +5082,6 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
 	str = val->data.json.json_body;
 	bytes_size = strlen (str);
-
-        cas_log_debug (ARG_FILE_LINE, "aici:str=%s len=%d ex=%d\n", str, bytes_size,(int) ext_col_type);
         
 	add_res_data_string (net_buf, str, bytes_size, 0, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
       }

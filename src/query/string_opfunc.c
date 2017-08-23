@@ -3208,7 +3208,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
                         rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
                 return ER_INVALID_JSON;
               }
-            p.Set (*new_doc, doc);
+            p.Set (*new_doc, rapidjson::StringRef(arg[i+1]->data.ch.medium.buf));
           }
 	  break;
 	case DB_TYPE_JSON:
