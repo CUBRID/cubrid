@@ -3201,14 +3201,14 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	{
 	case DB_TYPE_CHAR:
           {
-            rapidjson::Document doc;
-            if (doc.Parse (arg[i+1]->data.ch.medium.buf).HasParseError ())
+            rapidjson::Document *doc = new rapidjson::Document();
+            if (doc->Parse (arg[i+1]->data.ch.medium.buf).HasParseError ())
               {
                 er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-                        rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
+                        rapidjson::GetParseError_En (doc->GetParseError ()), doc->GetErrorOffset ());
                 return ER_INVALID_JSON;
               }
-            p.Set (*new_doc, rapidjson::StringRef(arg[i+1]->data.ch.medium.buf));
+            p.Set (*new_doc, *doc);
           }
 	  break;
 	case DB_TYPE_JSON:
