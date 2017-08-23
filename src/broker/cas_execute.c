@@ -5083,7 +5083,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	str = val->data.json.json_body;
 	bytes_size = strlen (str);
 
-	add_res_data_string (net_buf, str, bytes_size, ext_col_type, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
+	add_res_data_string (net_buf, str, bytes_size, CCI_U_TYPE_STRING, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
       }
       break;
     default:
