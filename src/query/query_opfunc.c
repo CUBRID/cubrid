@@ -6569,6 +6569,23 @@ qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * dom
 }
 
 int
+qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  if (DB_IS_NULL (dbval1_p))
+    {
+      DB_MAKE_INT (result_p, 1);
+    }
+  else
+    {
+      rapidjson::Document doc;
+      int has_error = doc.Parse(dbval1_p->data.ch.medium.buf).HasParseError() ? 0 : 1;
+      DB_MAKE_INT (result_p, has_error);
+    }
+
+  return qdata_coerce_result_to_domain (result_p, domain_p);
+}
+
+int
 qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
 {
   rapidjson::Document * this_doc = json->data.json.document;

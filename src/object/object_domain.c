@@ -77,6 +77,7 @@
 #include "dbval.h"
 #include "rapidjson/error/en.h"
 #include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -10058,6 +10059,24 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      break;
 	    }
 	  break;
+        case DB_TYPE_JSON:
+          {
+            rapidjson::StringBuffer buffer;
+            rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
+            const char *json_str;
+            char *new_str;
+            int len;
+
+            src->data.json.document->Accept (writer);
+            json_str = buffer.GetString();
+            len = strlen (json_str);
+
+            new_str = (char *) db_private_alloc (NULL, len+1);
+            strcpy (new_str, json_str);
+
+            err = DB_MAKE_CHAR (target, len, new_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+          }
+          break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -10478,7 +10497,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		return DOMAIN_ERROR;
 	      }
 	    unsigned int str_size = DB_GET_STRING_SIZE (src);
-
 
 	    target->domain.general_info.type = DB_TYPE_JSON;
 	    target->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (str_size + 1));

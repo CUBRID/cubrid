@@ -5162,6 +5162,21 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
 }
 
 int
+db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return DB_MAKE_INT (type_res, 1);
+    }
+  else
+    {
+      rapidjson::Document doc;
+      int has_error = doc.Parse(json->data.ch.medium.buf).HasParseError() ? 0 : 1;
+      return DB_MAKE_INT (type_res, has_error);
+    }
+}
+
+int
 db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
 {
   rapidjson::Document * this_doc = json->data.json.document;

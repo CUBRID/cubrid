@@ -68,4 +68,5 @@ extern int db_sleep (DB_VALUE * result, DB_VALUE * value);
 extern int db_crc32_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_json_type_dbval (const DB_VALUE *json, DB_VALUE *type);
 extern int db_json_extract_dbval (const DB_VALUE *json, const DB_VALUE *path, DB_VALUE *json_res);
+extern int db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res);
 #endif /* _ARITHMETIC_H_ */
