@@ -5700,6 +5700,10 @@ thread_resume_status_to_string (int resume_status)
       return "LOGWR_SUSPENDED";
     case THREAD_LOGWR_RESUMED:
       return "LOGWR_RESUMED";
+    case THREAD_DWB_BLOCK_QUEUE_SUSPENDED:
+      return "DWB_BLOCK_QUEUE_SUSPENDED";
+    case THREAD_DWB_BLOCK_QUEUE_RESUMED:
+      return "DWB_BLOCK_QUEUE_RESUMED";
     }
   return "UNKNOWN";
 }

@@ -396,6 +396,55 @@ typedef enum
 #define PGBUF_LRU_ZONE_MIN_RATIO 0.05f
 #define PGBUF_LRU_ZONE_MAX_RATIO 0.90f
 
+#if defined (SERVER_MODE)
+#define PGBUF_DWB_MAX_BLOCKS	    32
+
+#define PGBUF_DWB_NUM_TOTAL_BLOCKS	   (pgbuf_Double_Write.num_blocks)
+#define PGBUF_DWB_NUM_TOTAL_PAGES	   (pgbuf_Double_Write.num_pages)
+#define PGBUF_DWB_BLOCK_NUM_TOTAL_PAGES	   (pgbuf_Double_Write.num_block_pages)
+
+/* Get position. */
+#define PGBUF_DWB_GET_POSITION(position_with_blocks_status) \
+  ((position_with_blocks_status) && 0xffffffff)
+
+/* Get block number from global position. */
+#define PGBUF_DWB_GET_BLOCK_NO_FROM_POSITION(position_with_blocks_status) \
+  ((unsigned int)PGBUF_DWB_GET_POSITION (position_with_blocks_status) / PGBUF_DWB_NUM_TOTAL_BLOCKS)
+
+/* Check whether the write in specified block was started. */
+#define PGBUF_DWB_IS_BLOCK_WRITE_STARTED(position_with_blocks_status, block_position) \
+  ((position_with_blocks_status) & (UINT64)(1 << (63 - (block_position))))
+
+/* Start block writing. */
+#define PGBUF_DWB_START_BLOCK_WRITING(position_with_blocks_status, block_position) \
+  ((position_with_blocks_status) | (UINT64)(1 << (63 - (block_position))))
+
+/* Check whether the write in specified block was ending. */
+#define PGBUF_DWB_IS_BLOCK_WRITE_ENDED(position_with_blocks_status, block_position) \
+  (!((position_with_blocks_status) & (UINT64)(1 << (63 - (block_position)))))
+
+/* Ends block writing. */
+#define PGBUF_DWB_ENDS_BLOCK_WRITING(position_with_blocks_status, block_position) \
+  ((position_with_blocks_status) & ~(UINT64)(1 << (63 - (block_position))))
+
+/* Compute the position with write started in specified block. */
+#define PGBUF_DWB_GET_POSITION_WITH_BLOCK_WRITE_STARTED(position_with_blocks_status, block_position) \
+  ((position_with_blocks_status | (UINT64)(1 << (63 - block_position))))
+
+/* Get next global position with block status */
+#define PGBUF_DWB_GET_NEXT_POSITION_WITH_BLOCKS_STATUS(position_with_blocks_status) \
+  ((PGBUF_DWB_GET_POSITION (position_with_blocks_status)) == (PGBUF_DWB_NUM_TOTAL_PAGES - 1) \
+    ? ((position_with_blocks_status) & 0xffffffff00000000) : ((position_with_blocks_status) + 1))
+
+/* Get position in block from global position with block status. */
+#define PGBUF_DWB_GET_POSITION_IN_BLOCK(position_with_blocks_status) \
+  ((position_with_blocks_status) & ((PGBUF_DWB_NUM_TOTAL_BLOCKS) - 1))
+
+/* Get previous block position. */
+#define PGBUF_DWB_GET_PREV_BLOCK_NO(block_position) \
+  ((block_position) > 0 ? (block_position - 1) : (PGBUF_DWB_NUM_TOTAL_BLOCKS - 1))
+#endif
+
 /* buffer lock return value */
 enum
 {
@@ -467,6 +516,59 @@ struct pgbuf_batch_flush_helper
   PGBUF_BCB *pages_bufptr[2 * PGBUF_MAX_NEIGHBOR_PAGES - 1];
   VPID vpids[2 * PGBUF_MAX_NEIGHBOR_PAGES - 1];
 };
+
+/* Double write queue entry */
+typedef struct pgbuf_double_write_wait_queue_entry PGBUF_DWB_WAIT_QUEUE_ENTRY;
+struct pgbuf_double_write_wait_queue_entry
+{
+  void *data;			/* queue entry data */
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *next;	/* next queue entry */
+};
+
+
+/* Double write queue  */
+typedef struct pgbuf_double_write_wait_queue PGBUF_DWB_WAIT_QUEUE;
+struct pgbuf_double_write_wait_queue
+{
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *head;	/* queue head */
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *tail;	/* queue tail */
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *free_list;	/* queue free list */
+
+  int count;			/* count */
+  int free_count;		/* free count */
+};
+
+#if defined (SERVER_MODE)
+/* a block in double write buffer */
+typedef struct pgbuf_double_write_block PGBUF_DWB_BLOCK;
+struct pgbuf_double_write_block
+{
+  pthread_mutex_t mutex;	/* mutex to protect the queue */
+  PGBUF_DWB_WAIT_QUEUE *wait_queue;	/* wait queue for the current block */
+
+  char *write_buffer;		/* the write buffer, where pages are written */
+  volatile unsigned int count_write_buffer_filled_pages;	/* the number of pages filled in write buffer */
+  volatile UINT64 version;	/* block version */
+  VPID *vpids;			/* the VPIDs of pages stored in write buffer */
+};
+
+/* The double write buffer type */
+typedef struct pgbuf_double_write_buffer PGBUF_DWB;
+struct pgbuf_double_write_buffer
+{
+  PGBUF_DWB_BLOCK blocks[PGBUF_DWB_MAX_BLOCKS];	/* the double write blocks */
+  unsigned int num_blocks;	/* the number of total blocks in double write buffer */
+  unsigned int num_pages;	/* the number of total pages in double write buffer,
+				 * the pages may be accessed only through blocks.
+				 */
+  unsigned int num_block_pages;	/* the number of total pages in a block */
+
+  UINT64 volatile double_write_position_with_blocks_status;	/* the current position in double write buffer,
+								 * the most significant bits keep the state of each
+								 * blocks in double write buffer - 1 started, 0 ended
+								 */
+};
+#endif
 
 /* BCB holder entry */
 struct pgbuf_holder
@@ -870,6 +972,11 @@ struct pgbuf_ps_info
 static PGBUF_BUFFER_POOL pgbuf_Pool;	/* The buffer Pool */
 static PGBUF_BATCH_FLUSH_HELPER pgbuf_Flush_helper;
 
+#if defined (SERVER_MODE)
+/* Double write buffer */
+static PGBUF_DWB pgbuf_Double_Write;
+#endif
+
 HFID *pgbuf_ordered_null_hfid = NULL;
 
 #if defined(CUBRID_DEBUG)
@@ -1202,6 +1309,46 @@ STATIC_INLINE bool pgbuf_is_hit_ratio_low (void);
 
 static void pgbuf_flags_mask_sanity_check (void);
 static void pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru);
+
+#if defined (SERVER_MODE)
+/* DWB wait queue functions */
+static void pgbuf_dwb_init_wait_queue (PGBUF_DWB_WAIT_QUEUE * wait_queue);
+
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *pgbuf_dwb_make_wait_queue_entry (PGBUF_DWB_WAIT_QUEUE * wait_queue, void *data);
+
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *pgbuf_dwb_block_add_wait_queue_entry (PGBUF_DWB_WAIT_QUEUE * wait_queue, void *data);
+
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *pgbuf_dwb_block_disconnect_wait_queue_entry (PGBUF_DWB_WAIT_QUEUE * wait_queue,
+										void *data);
+
+static void pgbuf_dwb_block_free_wait_queue_entry (PGBUF_DWB_WAIT_QUEUE * wait_queue,
+						   PGBUF_DWB_WAIT_QUEUE_ENTRY * wait_queue_entry, bool needs_wakeup);
+
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *pgbuf_dwb_block_remove_wait_queue_entry (PGBUF_DWB_BLOCK * dwb_block, void *data,
+									    int (*func) (void *));
+
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *pgbuf_dwb_block_destroy_wait_queue (PGBUF_DWB_BLOCK * dwb_block,
+								       int (*func) (void *));
+
+
+/* DWB functions */
+static int pgbuf_dwb_find_valid_write_buffer_values (unsigned int *p_double_write_buffer_size,
+						     unsigned int *p_num_blocks);
+
+static int pgbuf_dwb_create (THREAD_ENTRY * thread_entry);
+
+static int pgbuf_dwb_destroy (THREAD_ENTRY * thread_entry);
+
+static int pgbuf_dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no);
+
+static int pgbuf_dwb_signal_waiting_thread (void *data);
+
+static void pgbuf_dwb_signal_block_completion (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * dwb_block);
+
+static int pgbuf_dwb_flush_block (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * block);
+
+static int pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
+#endif
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -15816,3 +15963,705 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
     }
 #endif /* !NDEBUG */
 }
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_dwb_init_wait_queue () - intialize wait queue
+ *
+ * return   : nothing
+ * wait_queue (in) : wait queue
+ */
+static void
+pgbuf_dwb_init_wait_queue (PGBUF_DWB_WAIT_QUEUE * wait_queue)
+{
+  wait_queue->head = NULL;
+  wait_queue->tail = NULL;
+  wait_queue->count = 0;
+
+  wait_queue->free_list = NULL;
+  wait_queue->free_count = 0;
+}
+
+/*
+ * pgbuf_dwb_make_wait_queue_entry () - make wait queue entry
+ *
+ * return   : queue entry
+ * wait_queue (in) : wait queue
+ * data (in): data
+ *
+ *  Note: Currently we add only thread entry in queue entry. In future we may add several informations.
+ */
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *
+pgbuf_dwb_make_wait_queue_entry (PGBUF_DWB_WAIT_QUEUE * wait_queue, void *data)
+{
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *wait_queue_entry;
+
+  assert (wait_queue != NULL && data != NULL);
+
+  if (wait_queue->free_list != NULL)
+    {
+      wait_queue_entry = wait_queue->free_list;
+      wait_queue->free_list = wait_queue->free_list->next;
+      wait_queue->free_count--;
+    }
+  else
+    {
+      wait_queue_entry = (PGBUF_DWB_WAIT_QUEUE_ENTRY *) malloc (sizeof (PGBUF_DWB_WAIT_QUEUE_ENTRY));
+      if (wait_queue_entry == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PGBUF_DWB_WAIT_QUEUE_ENTRY));
+	  return NULL;
+	}
+    }
+
+  wait_queue_entry->data = data;
+  return wait_queue_entry;
+}
+
+ /*
+  * pgbuf_dwb_block_add_wait_queue_entry () - make add entry to wait queue
+  *
+  * return   : added queue entry
+  * wait_queue (in) : the wait queue
+  * data (in): data
+  *
+  *  Note: Currently we add only thread entry in queue entry. In future we may add other informations.
+  *        Is user responsibility to protect against queue concurrent access.
+  */
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *
+pgbuf_dwb_block_add_wait_queue_entry (PGBUF_DWB_WAIT_QUEUE * wait_queue, void *data)
+{
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *wait_queue_entry = NULL;
+
+  assert (wait_queue != NULL && data != NULL);
+  wait_queue_entry = pgbuf_dwb_make_wait_queue_entry (wait_queue, data);
+  if (wait_queue_entry)
+    {
+      if (wait_queue->head == NULL)
+	{
+	  wait_queue->tail = wait_queue->head = wait_queue_entry;
+	}
+      else
+	{
+	  wait_queue->tail->next = wait_queue_entry;
+	  wait_queue->tail = wait_queue_entry;
+	}
+    }
+
+  return wait_queue_entry;
+}
+
+/*
+  * pgbuf_dwb_block_disconnect_wait_queue_entry () - disconnect entry from wait queue
+  *
+  * return   : removed queue entry
+  * wait_queue (in) : the wait queue
+  * thread_entry (in): thread entry
+  *   Note: If data is NULL, then first entry will be disconnected.
+  */
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *
+pgbuf_dwb_block_disconnect_wait_queue_entry (PGBUF_DWB_WAIT_QUEUE * wait_queue, void *data)
+{
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *wait_queue_entry = NULL, *prev_wait_queue_entry = NULL;
+
+  assert (wait_queue != NULL);
+  if (wait_queue->head == NULL)
+    {
+      return NULL;
+    }
+
+  prev_wait_queue_entry = NULL;
+  wait_queue_entry = wait_queue->head;
+  if (data != NULL)
+    {
+      /* search for data */
+      while (wait_queue_entry != NULL)
+	{
+	  if (wait_queue_entry->data == data)
+	    {
+	      break;
+	    }
+	  prev_wait_queue_entry = wait_queue_entry;
+	  wait_queue_entry = wait_queue_entry->next;
+	}
+    }
+
+  if (wait_queue_entry == NULL)
+    {
+      return NULL;
+    }
+
+  if (prev_wait_queue_entry != NULL)
+    {
+      prev_wait_queue_entry->next = wait_queue_entry->next;
+    }
+  else
+    {
+      assert (wait_queue_entry == wait_queue->head);
+      wait_queue->head = wait_queue_entry->next;
+    }
+
+  if (wait_queue_entry == wait_queue->tail)
+    {
+      wait_queue->tail = prev_wait_queue_entry;
+    }
+
+  wait_queue_entry->next = NULL;
+  wait_queue->count--;
+
+  return wait_queue_entry;
+}
+
+/*
+  * pgbuf_dwb_block_free_wait_queue_entry () - free wait queue entry
+  *
+  * return   : removed queue entry
+  * wait_queue (in) : the wait queue
+  * wait_queue_entry (in): the wait queue entry
+  * func(in): function to apply on entry
+  */
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *
+pgbuf_dwb_block_free_wait_queue_entry (PGBUF_DWB_WAIT_QUEUE * wait_queue,
+				       PGBUF_DWB_WAIT_QUEUE_ENTRY * wait_queue_entry, int (*func) (void *))
+{
+  THREAD_ENTRY *wait_thread_p = NULL;
+  if (wait_queue_entry != NULL)
+    {
+      (void) func (wait_queue_entry);
+
+      /* Reuse the entry. Do not set data field to NULL. It may be used at debugging. */
+      wait_queue_entry->next = wait_queue->free_list;
+      wait_queue->free_list = wait_queue_entry;
+      wait_queue->free_count++;
+    }
+}
+
+/*
+  * pgbuf_dwb_block_remove_wait_queue_entry () - remove wait queue entry
+  *
+  * return   : removed queue entry
+  * dwb_block (in): double write buffer block
+  * data (in): data
+  * has_mutex(in): true, if mutex lock already acquired
+  * func(in): function to apply on each entry
+  *
+  *  Note: Currently we add only thread entry in queue entry. In future we may add other informations.
+  *        Is user responsibility to protect against queue concurrent access.
+  *        If the data is NULL, the first entry will be removed.
+  */
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *
+pgbuf_dwb_block_remove_wait_queue_entry (PGBUF_DWB_BLOCK * dwb_block, void *data, bool has_mutex, int (*func) (void *))
+{
+  PGBUF_DWB_WAIT_QUEUE *wait_queue = dwb_block->wait_queue;
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *wait_queue_entry = NULL;
+
+  if (has_mutex == false)
+    {
+      (void) pthread_mutex_lock (&dwb_block->mutex);
+    }
+
+  wait_queue_entry = pgbuf_dwb_block_disconnect_wait_queue_entry (wait_queue, data);
+  if (wait_queue_entry)
+    {
+      pgbuf_dwb_block_free_wait_queue_entry (wait_queue, wait_queue_entry, func);
+    }
+
+  if (has_mutex == false)
+    {
+      pthread_mutex_unlock (&dwb_block->mutex);
+    }
+}
+
+/*
+ * pgbuf_dwb_block_remove_wait_queue_entry () - destroy wait queue
+ *
+ * return   : removed queue entry
+ * dwb_block (in): double write buffer block
+ *
+ *  Note: Currently we add only thread entry in queue entry. In future we may add other informations.
+ *        Is user responsibility to protect against queue concurrent access.
+ *        If the data is NULL, the first entry will be removed.
+ */
+static PGBUF_DWB_WAIT_QUEUE_ENTRY *
+pgbuf_dwb_block_destroy_wait_queue (PGBUF_DWB_BLOCK * dwb_block, int (*func) (void *))
+{
+  PGBUF_DWB_WAIT_QUEUE *wait_queue = dwb_block->wait_queue;
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *wait_queue_entry = NULL;
+
+  (void) pthread_mutex_lock (&dwb_block->mutex);
+  while (true)
+    {
+      wait_queue_entry = pgbuf_dwb_block_remove_wait_queue_entry (dwb_block, NULL, true, func);
+      if (wait_queue_entry != NULL)
+	{
+	  break;
+	}
+    }
+  pthread_mutex_unlock (&dwb_block->mutex);
+}
+
+/*
+  * pgbuf_dwb_find_valid_write_buffer_values () - find valid double write buffer values
+  *
+  * return   : error code
+  * p_double_write_buffer_size (in/out) : double write buffer size
+  * p_num_blocks (in/out): the number of blocks
+  * 
+  *  Note: The buffer size must be a multiple of 512 K. The number of blocks must be a power of 2.  
+  */
+static int
+pgbuf_dwb_find_valid_write_buffer_values (unsigned int *p_double_write_buffer_size, unsigned int *p_num_blocks)
+{
+  unsigned int min_size = 512 * 1024;	/* 512 k */
+  unsigned int num_blocks;
+
+  assert (p_double_write_buffer_size != NULL && p_num_blocks != NULL);
+  assert (*p_double_write_buffer_size < 0x8FFFFFFF && *p_num_blocks < PGBUF_DWB_MAX_BLOCKS);
+  if (*p_double_write_buffer_size < min_size)
+    {
+      *p_double_write_buffer_size = min_size;
+    }
+  else if (*p_double_write_buffer_size > min_size)
+    {
+      /* find smallest number multiple of 512 k */
+      unsigned int limit1 = min_size, limit2 = limit1 << 1;
+      while (*p_double_write_buffer_size < limit2)
+	{
+	  limit1 = limit2;
+	  limit2 = limit2 << 1;
+	}
+      *p_double_write_buffer_size = limit1;
+    }
+
+  num_blocks = *p_num_blocks;
+  if (num_blocks == 0)
+    {
+      num_blocks = 1;
+    }
+  else if (num_blocks > 1)
+    {
+      while (!IS_POWER_OF_2 (num_blocks))
+	{
+	  num_blocks = num_blocks && (num_blocks - 1);
+	}
+    }
+  *p_num_blocks = num_blocks;
+}
+
+/*
+ * pgbuf_dwb_create () - create latch free double write buffer
+ *
+ * return   : error code
+ * thread_entry (in): thread entry 
+ */
+static int
+pgbuf_dwb_create (THREAD_ENTRY * thread_entry)
+{
+  char *write_buffer = NULL;
+  VPID *vpids = NULL;
+  int error_code = NO_ERROR;
+  unsigned int i;
+  PGBUF_DWB_BLOCK *block = NULL;
+  unsigned double_write_buffer_size, num_blocks, num_pages, num_block_pages;
+
+  memset (pgbuf_Double_Write.blocks, 0, sizeof (pgbuf_Double_Write.blocks));
+
+  double_write_buffer_size = prm_get_integer_value (PRM_ID_PB_DOUBLE_WRITE_BUFFER_SIZE);
+  if (double_write_buffer_size == 0)
+    {
+      return NO_ERROR;
+    }
+  num_blocks = prm_get_integer_value (PRM_ID_PB_DOUBLE_WRITE_BUFFER_BLOCKS);
+  assert (num_blocks < PGBUF_DWB_MAX_BLOCKS && IS_POWER_OF_2 (num_blocks));
+
+  double_write_buffer_size = pgbuf_dwb_find_valid_write_buffer_values (&double_write_buffer_size, &num_blocks);
+
+  write_buffer = (char *) malloc (double_write_buffer_size * sizeof (char));
+  if (write_buffer == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, double_write_buffer_size * sizeof (char));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit_on_error;
+    }
+  memset (write_buffer, 0, double_write_buffer_size * sizeof (char));
+
+  vpids = (VPID *) malloc (pgbuf_Double_Write.num_pages * sizeof (VPID));
+  if (vpids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      pgbuf_Double_Write.num_pages * sizeof (VPID));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit_on_error;
+    }
+  for (i = 0; i < pgbuf_Double_Write.num_pages; i++)
+    {
+      VPID_SET_NULL (&vpids[i]);
+    }
+
+  num_pages = double_write_buffer_size / IO_PAGESIZE;
+  num_block_pages = num_pages / num_blocks;
+  for (i = 0; i < num_blocks; i++)
+    {
+      block = &pgbuf_Double_Write.blocks[i];
+
+      pthread_mutex_init (&block->mutex, NULL);
+      pgbuf_dwb_init_wait_queue (block->wait_queue);
+
+      block->write_buffer = write_buffer + i * num_block_pages * IO_PAGESIZE;
+      block->vpids = vpids + i * num_block_pages * sizeof (VPID);
+      block->count_write_buffer_filled_pages = 0;
+    }
+
+  pgbuf_Double_Write.num_blocks = num_blocks;
+  pgbuf_Double_Write.num_pages = double_write_buffer_size / IO_PAGESIZE;
+  pgbuf_Double_Write.num_block_pages = pgbuf_Double_Write.num_pages / num_blocks;
+
+  assert (IS_POWER_OF_2 (pgbuf_Double_Write.num_pages));
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (write_buffer != NULL)
+    {
+      free_and_init (write_buffer);
+    }
+
+  if (vpids != NULL)
+    {
+      free_and_init (vpids);
+    }
+
+  return error_code;
+}
+
+/*
+ * pgbuf_dwb_destroy () - destroy latch free double write buffer
+ *
+ * return   : error code
+ * thread_entry (in): thread entry 
+ */
+static int
+pgbuf_dwb_destroy (THREAD_ENTRY * thread_entry)
+{
+  unsigned int i;
+  PGBUF_DWB_BLOCK *block;
+
+  /* destroy write buffer for all blocks */
+  free_and_init (pgbuf_Double_Write.blocks[0].write_buffer);
+  /* destroy VPIDS for all blocks */
+  free_and_init (pgbuf_Double_Write.blocks[0].vpids);
+
+  for (i = 0; i < PGBUF_DWB_NUM_TOTAL_BLOCKS; i++)
+    {
+      block = &pgbuf_Double_Write.blocks[i];
+      pgbuf_dwb_block_destroy_wait_queue (block, pgbuf_dwb_signal_waiting_thread);
+      pthread_mutex_destroy (&block->mutex);
+    }
+}
+
+/*
+ * pgbuf_dwb_wait_for_block_completion () - wait for double write buffer block to complete
+ *
+ * return   : error code
+ * thread_p (in): thread entry
+ * dwb_block (in): double write buffer block
+ */
+static int
+pgbuf_dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
+{
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *double_write_queue_entry = NULL;
+  UINT64 current_position_with_blocks_status;
+  PGBUF_DWB_BLOCK *dwb_block = NULL;
+
+  assert (thread_p != NULL && dwb_block != NULL);
+  dwb_block = &pgbuf_Double_Write.blocks[block_no];
+  (void) pthread_mutex_lock (&dwb_block->mutex);
+
+  /* Check the actual block status, to avoids unnecessary waits. */
+  current_position_with_blocks_status =
+    ATOMIC_INC_64 (&pgbuf_Double_Write.double_write_position_with_blocks_status, 0ULL);
+  if (PGBUF_DWB_IS_BLOCK_WRITE_STARTED (current_position_with_blocks_status, block_no))
+    {
+      /* TO DO - need to check the version too */
+      thread_lock_entry (thread_p);
+
+      double_write_queue_entry = pgbuf_dwb_block_add_wait_queue_entry (dwb_block->wait_queue, thread_p);
+      if (double_write_queue_entry)
+	{
+	  int r;
+	  struct timespec to;
+
+	  pthread_mutex_unlock (&dwb_block->mutex);
+	  to.tv_sec = (int) time (NULL) + 10;
+	  to.tv_nsec = 0;
+
+	  r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_BLOCK_QUEUE_SUSPENDED);
+	  if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
+	    {
+	      /* timeout, remove the entry from queue */
+	      (void) pgbuf_dwb_block_remove_wait_queue_entry (dwb_block, thread_p, false, NULL);
+	      return r;
+	    }
+	  else if (thread_p->resume_status != THREAD_CSS_QUEUE_RESUMED)
+	    {
+	      /* interruption, remove the entry from queue */
+	      assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
+		      || thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
+
+	      (void) pgbuf_dwb_block_remove_wait_queue_entry (dwb_block, thread_p, false, NULL);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      assert (thread_p->resume_status == THREAD_CSS_QUEUE_RESUMED);
+	    }
+	}
+      else
+	{
+	  /* allocation error */
+	  thread_unlock_entry (thread_p);
+	  pthread_mutex_unlock (&dwb_block->mutex);
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+    }
+
+  pthread_mutex_unlock (&dwb_block->mutex);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_dwb_signal_waiting_thread () - signal waiting thread
+ *
+ * return   : error code
+ * data (in): queue entry containing waiting thread 
+ */
+static int
+pgbuf_dwb_signal_waiting_thread (void *data)
+{
+  THREAD_ENTRY *wait_thread_p;
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *wait_queue_entry = (PGBUF_DWB_WAIT_QUEUE_ENTRY *) data;
+
+  assert (wait_queue_entry != NULL);
+  wait_thread_p = (THREAD_ENTRY *) wait_queue_entry->data;
+  if (wait_thread_p)
+    {
+      thread_lock_entry (wait_thread_p);
+      assert (wait_thread_p->resume_status == THREAD_DWB_BLOCK_QUEUE_SUSPENDED);
+      thread_wakeup_already_had_mutex (wait_thread_p, THREAD_DWB_BLOCK_QUEUE_RESUMED);
+      thread_unlock_entry (wait_thread_p);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_dwb_wait_for_block_completion () - signal double write buffer block completion
+ *
+ * return   : nothing
+ * thread_p (in): thread entry
+ * dwb_block (in): double write buffer block
+ */
+static void
+pgbuf_dwb_signal_block_completion (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * dwb_block)
+{
+  PGBUF_DWB_WAIT_QUEUE_ENTRY *double_write_queue_entry = NULL;
+  assert (dwb_block != NULL);
+  if ((PGBUF_DWB_WAIT_QUEUE_ENTRY volatile *) (dwb_block->wait_queue->head) != NULL)
+    {
+      /* There are blocked threads. Destroy the wait queue and release the blocked threads. */
+      pgbuf_dwb_block_destroy_wait_queue (dwb_block, pgbuf_dwb_signal_waiting_thread);
+    }
+}
+
+/*
+ * pgbuf_dwb_add_page () - flush the pages in given block
+ *
+ * return   : error code
+ * thread_entry (in): thread entry
+ * bufptr (in) : bcb containing the page to add
+ */
+static int
+pgbuf_dwb_flush_block (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * block)
+{
+  VPID *vpids = NULL;
+  char *write_buffer = NULL;
+  int error_code, vol_fd;
+  unsigned int i;
+  INT16 volid;
+
+  assert (block != NULL);
+  /* TO DO - flush the block in disk double buffer */
+
+  /* Now, flush on the disk real location. */
+  write_buffer = block->write_buffer;
+  vpids = block->vpids;
+  volid = -1;
+  for (i = 0; i < pgbuf_Double_Write.num_block_pages; i++)
+    {
+      if (volid != vpids[i].volid)
+	{
+	  /* Update the current VPID and get the volume descriptor. */
+	  volid = vpids[i].volid;
+	  vol_fd = fileio_get_volume_descriptor (volid);
+	}
+
+      if (fileio_write (thread_p, vol_fd, write_buffer, vpids[i].pageid, IO_PAGESIZE) == NULL)
+	{
+	  /* Try again ? */
+	  error_code = ER_FAILED;
+	}
+
+      write_buffer = write_buffer + IO_PAGESIZE;
+    }
+
+  return error_code;
+}
+
+/*
+ * pgbuf_dwb_add_page () - add page content to latch free double write buffer
+ *
+ * return   : error code
+ * thread_entry (in): thread entry
+ * bufptr (in) : bcb containing the page to add
+ */
+static int
+pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+{
+  UINT64 current_position_with_blocks_status, current_position_with_block_write_started,
+    new_position_with_blocks_status;
+  unsigned int current_block_no, prev_block_no, position_in_current_block;
+  PGBUF_DWB_BLOCK *current_block = NULL;
+  char *write_buffer = NULL;
+  int error_code = NO_ERROR;
+
+  assert (bufptr != NULL);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+start_add_buffer:
+  /* Get the current position in double write buffer. */
+  current_position_with_blocks_status =
+    ATOMIC_INC_64 (&pgbuf_Double_Write.double_write_position_with_blocks_status, 0ULL);
+  current_block_no = PGBUF_DWB_GET_BLOCK_NO_FROM_POSITION (current_position_with_blocks_status);
+  position_in_current_block = PGBUF_DWB_GET_POSITION_IN_BLOCK (current_position_with_blocks_status);
+  assert (position_in_current_block < PGBUF_DWB_BLOCK_NUM_TOTAL_PAGES);
+
+  if (position_in_current_block == 0)
+    {
+      /* This is the first write on current block. Before start writing, check whether the previous iteration finished. */
+      if (PGBUF_DWB_IS_BLOCK_WRITE_STARTED (current_position_with_blocks_status, current_block_no))
+	{
+	  /*
+	   * The previous iteration didn't finished, needs to wait, in order to avoid buffer overwriting.
+	   * Should happens relative rarely, except the case when the buffer consist in only one block.
+	   */
+	  error_code = pgbuf_dwb_wait_for_block_completion (thread_p, current_block_no);
+	  if (error_code != NO_ERROR)
+	    {
+	      if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
+		{
+		  /* timeout, try again */
+		  goto start_add_buffer;
+		}
+	      return error_code;
+	    }
+	}
+
+      /* First write in current block. Start writing in block. */
+      assert (!PGBUF_DWB_IS_BLOCK_WRITE_STARTED (current_position_with_blocks_status, current_block_no));
+      current_position_with_block_write_started =
+	PGBUF_DWB_GET_POSITION_WITH_BLOCK_WRITE_STARTED (current_position_with_blocks_status, current_block_no);
+      if (!ATOMIC_CAS_64 (&pgbuf_Double_Write.double_write_position_with_blocks_status,
+			  current_position_with_blocks_status, current_position_with_block_write_started))
+	{
+	  /* Someone else advanced the position, try again. */
+	  goto start_add_buffer;
+	}
+      else
+	{
+	  /* Update local current position with block status. */
+	  current_position_with_blocks_status = current_position_with_block_write_started;
+	}
+    }
+
+  /* Compute and advance the global position in double write buffer. */
+  new_position_with_blocks_status =
+    PGBUF_DWB_GET_NEXT_POSITION_WITH_BLOCKS_STATUS (current_position_with_blocks_status);
+  if (!ATOMIC_CAS_64 (&pgbuf_Double_Write.double_write_position_with_blocks_status,
+		      current_position_with_blocks_status, new_position_with_blocks_status))
+    {
+      /* Someone else advanced the global position in double write buffer, try again. */
+      goto start_add_buffer;
+    }
+
+  /* Update local positions. */
+  current_position_with_blocks_status = new_position_with_blocks_status;
+  current_block_no = PGBUF_DWB_GET_BLOCK_NO_FROM_POSITION (current_position_with_blocks_status);
+  assert (current_block_no < PGBUF_DWB_MAX_BLOCKS);
+  position_in_current_block = PGBUF_DWB_GET_POSITION_IN_BLOCK (current_position_with_blocks_status);
+
+  current_block = &pgbuf_Double_Write.blocks[current_block_no];
+  memcpy (current_block->write_buffer + position_in_current_block * IO_PAGESIZE,
+	  (char *) &bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+  pgbuf_Double_Write.blocks->count_write_buffer_filled_pages++;
+  assert (current_block->count_write_buffer_filled_pages <= pgbuf_Double_Write.num_block_pages);
+
+check_needs_wait_before_flush:
+  if (current_block->count_write_buffer_filled_pages == pgbuf_Double_Write.num_block_pages)
+    {
+      /*
+       * Full block. Need to flush the current block. First, check whether the previous block was flushed,
+       * when we advanced the global position.
+       */
+      prev_block_no = PGBUF_DWB_GET_PREV_BLOCK_NO (current_block_no);
+      if (PGBUF_DWB_IS_BLOCK_WRITE_STARTED (current_position_with_blocks_status, prev_block_no))
+	{
+	  /*
+	   * The previous block was not flushed yet. Needs to wait for the previous block to be flushed.
+	   * Should happens relative rarely, except the case when the buffer consist in only one block.
+	   */
+	  error_code = pgbuf_dwb_wait_for_block_completion (thread_p, prev_block_no);
+	  if (error_code != NO_ERROR)
+	    {
+	      if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
+		{
+		  /* timeout, try again */
+		  goto check_needs_wait_before_flush;
+		}
+	      return error_code;
+	    }
+	}
+
+      if (pgbuf_dwb_flush_block (thread_p, current_block) != NO_ERROR)
+	{
+	  /* Try again ??? */
+	  goto check_needs_wait_before_flush;
+	}
+      current_block->count_write_buffer_filled_pages = 0;
+      ATOMIC_INC_64 (&current_block->version, 1ULL);
+
+      /* Reset block bit position, since the block was flushed. */
+    reset_bit_position:
+      /* Get the actual position with block status. */
+      current_position_with_blocks_status =
+	ATOMIC_INC_64 (&pgbuf_Double_Write.double_write_position_with_blocks_status, 0ULL);
+      /* Reset the bit if possible. */
+      if (!ATOMIC_CAS_64 (&pgbuf_Double_Write.double_write_position_with_blocks_status,
+			  current_position_with_blocks_status,
+			  PGBUF_DWB_ENDS_BLOCK_WRITING (current_position_with_blocks_status, current_block_no)))
+	{
+	  /* The position was changed by others, try again */
+	  goto reset_bit_position;
+	}
+
+      /* Release locked threads, if any. */
+      pgbuf_dwb_signal_block_completion (thread_p, current_block);
+    }
+
+  return NO_ERROR;
+}
+#endif

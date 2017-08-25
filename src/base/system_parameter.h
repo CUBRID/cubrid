@@ -405,8 +405,11 @@ enum param_id
 
   PRM_ID_CTE_MAX_RECURSIONS,
 
+  PRM_ID_PB_DOUBLE_WRITE_BUFFER_SIZE,
+  PRM_ID_PB_DOUBLE_WRITE_BUFFER_BLOCKS,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_CTE_MAX_RECURSIONS
+  PRM_LAST_ID = PRM_ID_PB_DOUBLE_WRITE_BUFFER_BLOCKS
 };
 typedef enum param_id PARAM_ID;
 
