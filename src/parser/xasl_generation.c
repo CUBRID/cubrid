@@ -6249,11 +6249,12 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_ELT:
 	  result_type = pt_node_to_db_type (function);
 	  break;
-        case F_JSON_OBJECT:
+	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:
 	case F_JSON_REMOVE:
-	  result_type = DB_TYPE_JSON;
+	case F_JSON_MERGE:
+	  result_type = pt_node_to_db_type (function);
 	  break;
 	default:
 	  PT_ERRORf (parser, function, "Internal error in generate(%d)", __LINE__);
@@ -7013,6 +7014,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	    case PT_EXPR:
 	      if (node->info.expr.op == PT_FUNCTION_HOLDER)
 		{
+                  //TODO FIND WHY NEXT WASN'T RESTORED
+		  node->next = save_next;
 		  regu = pt_function_to_regu (parser, node->info.expr.arg1);
 		  return regu;
 		}
@@ -7563,9 +7566,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_JSON_EXTRACT:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_JSON_EXTRACT, domain);
 		  break;
-                case PT_JSON_VALID:
-                  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_VALID, domain);
-                  break;
+		case PT_JSON_VALID:
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_VALID, domain);
+		  break;
 		case PT_CONCAT_WS:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_CONCAT_WS, domain);
 		  break;

@@ -12339,7 +12339,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       if (node->info.function.function_type == F_ELT ||
 	  node->info.function.function_type == F_INSERT_SUBSTRING ||
 	  node->info.function.function_type == F_JSON_OBJECT || node->info.function.function_type == F_JSON_ARRAY ||
-	  node->info.function.function_type == F_JSON_INSERT || node->info.function.function_type == F_JSON_REMOVE)
+	  node->info.function.function_type == F_JSON_INSERT || node->info.function.function_type == F_JSON_REMOVE ||
+	  node->info.function.function_type == F_JSON_MERGE)
 	{
 	  assert (dt == NULL);
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
@@ -13174,6 +13175,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
       break;
     case F_JSON_ARRAY:
+    case F_JSON_MERGE:
       {
 	PT_TYPE_ENUM supported_types[] = { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON };
 	PT_TYPE_ENUM unsupported_type;
@@ -13664,6 +13666,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:
 	case F_JSON_REMOVE:
+	case F_JSON_MERGE:
 	  node->type_enum = PT_TYPE_JSON;
 	  break;
 	case PT_MEDIAN:
@@ -20530,6 +20533,13 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	  return 0;
 	}
       break;
+    case F_JSON_MERGE:
+      error = db_json_merge (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  return 0;
+	}
+      break;
     default:
       /* a supported function doesn't have const folding code */
       assert (false);
@@ -20764,6 +20774,15 @@ pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_
       error = ER_FAILED;
     }
 end:
+  /*TODO we should clear this memory,
+   * but rapidjson only does shallow copies
+   * and by deleting the arguments, we also
+   * corrupt the result. we must find a solution to this
+   *for (i = 0; i < num_args; i++)
+   {
+   pr_clear_value (arg_array[i]);
+   }
+   */
   if (arg_array != NULL)
     {
       free_and_init (arg_array);

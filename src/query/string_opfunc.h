@@ -35,6 +35,10 @@
 #include "regex38a.h"
 #include "language_support.h"
 
+#if defined(__cplusplus)
+#include "rapidjson/document.h"
+#endif
+
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))
 #define QSTR_IS_NATIONAL_CHAR(s) (((s)==DB_TYPE_NCHAR) || \
@@ -200,6 +204,11 @@ extern int db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_ar
 extern int db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+
+#if defined (__cplusplus)
+static int db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, rapidjson::Document * doc);
+#endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count);

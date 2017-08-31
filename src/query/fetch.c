@@ -4065,45 +4065,16 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  switch (funcp->ftype)
 	    {
 	    case F_JSON_ARRAY:
+            case F_JSON_OBJECT:
+            case F_JSON_INSERT:
+            case F_JSON_REMOVE:
+            case F_JSON_MERGE:
 	      {
 		DB_VALUE *value;
 		REGU_VARIABLE_LIST operand;
 		int error_status = NO_ERROR;
 		int no_args = 0, index = 0;
-		DB_VALUE **args;
 		int i;
-
-		operand = funcp->operand;
-
-		while (operand != NULL)
-		  {
-		    no_args++;
-		    operand = operand->next;
-		  }
-
-		args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
-		operand = funcp->operand;
-
-		while (operand != NULL)
-		  {
-		    error_status = fetch_peek_dbval (thread_p, &operand->value, vd, NULL, obj_oid, tpl, &value);
-		    if (error_status != NO_ERROR)
-		      {
-			db_private_free (NULL, args);
-			goto exit_on_error;
-		      }
-		    args[index++] = value;
-
-		    operand = operand->next;
-		  }
-
-		assert (index == no_args);
-
-		/*if (db_json_array (funcp->value, args, no_args) != NO_ERROR)
-		  {
-		    db_private_free (NULL, args);
-		    goto exit_on_error;
-		  }*/
 
 		operand = funcp->operand;
 
@@ -4116,209 +4087,6 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 		      }
 		    operand = operand->next;
 		  }
-
-		db_private_free (NULL, args);
-	      }
-	      break;
-	    case F_JSON_OBJECT:
-	      {
-		DB_VALUE *key, *value;
-		REGU_VARIABLE_LIST operand;
-		int error_status = NO_ERROR;
-		int no_args = 0, index = 0;
-		DB_VALUE **args;
-		int i;
-
-		operand = funcp->operand;
-
-		while (operand != NULL)
-		  {
-		    no_args++;
-		    operand = operand->next;
-		  }
-
-		args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
-		operand = funcp->operand;
-
-		while (operand != NULL)
-		  {
-		    error_status = fetch_peek_dbval (thread_p, &operand->value, vd, NULL, obj_oid, tpl, &key);
-		    if (error_status != NO_ERROR)
-		      {
-			db_private_free (NULL, args);
-			goto exit_on_error;
-		      }
-		    error_status = fetch_peek_dbval (thread_p, &operand->next->value, vd, NULL, obj_oid, tpl, &value);
-		    if (error_status != NO_ERROR)
-		      {
-			db_private_free (NULL, args);
-			goto exit_on_error;
-		      }
-		    args[index++] = key;
-		    args[index++] = value;
-
-		    operand = operand->next->next;
-		  }
-
-		assert (index == no_args);
-
-		/*if (db_json_object (funcp->value, args, no_args) != NO_ERROR)
-		  {
-		    db_private_free (NULL, args);
-		    goto exit_on_error;
-		  }*/
-
-		operand = funcp->operand;
-
-		while (operand != NULL)
-		  {
-		    if (!REGU_VARIABLE_IS_FLAGED (&(operand->value), REGU_VARIABLE_FETCH_ALL_CONST))
-		      {
-			not_const++;
-			break;
-		      }
-		    operand = operand->next;
-		  }
-
-		db_private_free (NULL, args);
-	      }
-	      break;
-	    case F_JSON_INSERT:
-	      {
-		DB_VALUE *path, *val, *json;
-		REGU_VARIABLE_LIST operand;
-		int error_status = NO_ERROR;
-		int no_args = 0, index = 0;
-		DB_VALUE **args;
-		int i;
-
-		operand = funcp->operand;
-
-		while (operand != NULL)
-		  {
-		    no_args++;
-		    operand = operand->next;
-		  }
-
-		args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
-		operand = funcp->operand;
-
-		error_status = fetch_peek_dbval (thread_p, &operand->value, vd, NULL, obj_oid, tpl, &json);
-		if (error_status != NO_ERROR)
-		  {
-		    db_private_free (NULL, args);
-		    goto exit_on_error;
-		  }
-
-		args[index++] = json;
-		operand = operand->next;
-
-		while (operand != NULL)
-		  {
-		    error_status = fetch_peek_dbval (thread_p, &operand->value, vd, NULL, obj_oid, tpl, &path);
-		    if (error_status != NO_ERROR)
-		      {
-			db_private_free (NULL, args);
-			goto exit_on_error;
-		      }
-		    error_status = fetch_peek_dbval (thread_p, &operand->next->value, vd, NULL, obj_oid, tpl, &val);
-		    if (error_status != NO_ERROR)
-		      {
-			db_private_free (NULL, args);
-			goto exit_on_error;
-		      }
-		    args[index++] = path;
-		    args[index++] = val;
-
-		    operand = operand->next->next;
-		  }
-
-		assert (index == no_args);
-
-		/*if (db_json_insert (funcp->value, args, no_args) != NO_ERROR)
-		  {
-		    db_private_free (NULL, args);
-		    goto exit_on_error;
-		  }*/
-
-		operand = funcp->operand;
-
-		while (operand != NULL)
-		  {
-		    if (!REGU_VARIABLE_IS_FLAGED (&(operand->value), REGU_VARIABLE_FETCH_ALL_CONST))
-		      {
-			not_const++;
-			break;
-		      }
-		    operand = operand->next;
-		  }
-
-		db_private_free (NULL, args);
-	      }
-	      break;
-	    case F_JSON_REMOVE:
-	      {
-		DB_VALUE *path, *json;
-		REGU_VARIABLE_LIST operand;
-		int error_status = NO_ERROR;
-		int no_args = 0, index = 0;
-		DB_VALUE **args;
-		int i;
-
-		operand = funcp->operand;
-
-		while (operand != NULL)
-		  {
-		    no_args++;
-		    operand = operand->next;
-		  }
-
-		args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
-		operand = funcp->operand;
-
-		error_status = fetch_peek_dbval (thread_p, &operand->value, vd, NULL, obj_oid, tpl, &json);
-		if (error_status != NO_ERROR)
-		  {
-		    db_private_free (NULL, args);
-		    goto exit_on_error;
-		  }
-
-		args[index++] = json;
-		operand = operand->next;
-
-		while (operand != NULL)
-		  {
-		    error_status = fetch_peek_dbval (thread_p, &operand->value, vd, NULL, obj_oid, tpl, &path);
-		    if (error_status != NO_ERROR)
-		      {
-			db_private_free (NULL, args);
-			goto exit_on_error;
-		      }
-		    args[index++] = path;
-		    operand = operand->next;
-		  }
-
-		assert (index == no_args);
-
-		/*if (db_json_remove (funcp->value, args, no_args) != NO_ERROR)
-		  {
-		    db_private_free (NULL, args);
-		    goto exit_on_error;
-		  }*/
-
-		operand = funcp->operand;
-
-		while (operand != NULL)
-		  {
-		    if (!REGU_VARIABLE_IS_FLAGED (&(operand->value), REGU_VARIABLE_FETCH_ALL_CONST))
-		      {
-			not_const++;
-			break;
-		      }
-		    operand = operand->next;
-		  }
-
-		db_private_free (NULL, args);
 	      }
 	      break;
 	    case F_INSERT_SUBSTRING:
@@ -4490,6 +4258,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:
 	case F_JSON_REMOVE:
+	case F_JSON_MERGE:
 	  break;
 
 	default:

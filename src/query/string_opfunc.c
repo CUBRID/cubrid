@@ -57,9 +57,9 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
-#include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
+#include <vector>
 
 #define BYTE_SIZE               (8)
 #define QSTR_VALUE_PRECISION(value)                                       \
@@ -3107,7 +3107,7 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int len;
   rapidjson::StringBuffer str_buf;
   rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
-  rapidjson::Document *new_doc;
+  rapidjson::Document * new_doc;
   char *str;
 
   if (num_args <= 0)
@@ -3162,7 +3162,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int i;
   rapidjson::StringBuffer str_buf;
   rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
-  rapidjson::Document *new_doc;
+  rapidjson::Document * new_doc;
   rapidjson::Document doc;
   char *str;
 
@@ -3176,17 +3176,17 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   switch (arg[0]->domain.general_info.type)
     {
-      case DB_TYPE_CHAR:
-        if (new_doc->Parse (arg[0]->data.ch.medium.buf).HasParseError ())
-          {
-            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-                    rapidjson::GetParseError_En (new_doc->GetParseError ()), new_doc->GetErrorOffset ());
-            return ER_INVALID_JSON;
-          }
-        break;
-      case DB_TYPE_JSON:
-        new_doc->CopyFrom (*arg[0]->data.json.document, new_doc->GetAllocator ());
-        break;
+    case DB_TYPE_CHAR:
+      if (new_doc->Parse (arg[0]->data.ch.medium.buf).HasParseError ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+		  rapidjson::GetParseError_En (new_doc->GetParseError ()), new_doc->GetErrorOffset ());
+	  return ER_INVALID_JSON;
+	}
+      break;
+    case DB_TYPE_JSON:
+      new_doc->CopyFrom (*arg[0]->data.json.document, new_doc->GetAllocator ());
+      break;
     }
 
   for (i = 1; i < num_args; i += 2)
@@ -3201,15 +3201,15 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (arg[i + 1]->domain.general_info.type)
 	{
 	case DB_TYPE_CHAR:
-          {
-            if (doc.Parse (arg[i+1]->data.ch.medium.buf).HasParseError ())
-              {
-                er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-                        rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
-                return ER_INVALID_JSON;
-              }
-            p.Set (*new_doc, doc);
-          }
+	  {
+	    if (doc.Parse (arg[i + 1]->data.ch.medium.buf).HasParseError ())
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+			rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
+		return ER_INVALID_JSON;
+	      }
+	    p.Set (*new_doc, doc);
+	  }
 	  break;
 	case DB_TYPE_JSON:
 	  p.Set (*new_doc, *arg[i + 1]->data.json.document);
@@ -3245,17 +3245,17 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   switch (arg[0]->domain.general_info.type)
     {
-      case DB_TYPE_CHAR:
-        if (new_doc->Parse (arg[0]->data.ch.medium.buf).HasParseError ())
-          {
-            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-                    rapidjson::GetParseError_En (new_doc->GetParseError ()), new_doc->GetErrorOffset ());
-            return ER_INVALID_JSON;
-          }
-        break;
-      case DB_TYPE_JSON:
-        new_doc->CopyFrom (*arg[0]->data.json.document, new_doc->GetAllocator ());
-        break;
+    case DB_TYPE_CHAR:
+      if (new_doc->Parse (arg[0]->data.ch.medium.buf).HasParseError ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+		  rapidjson::GetParseError_En (new_doc->GetParseError ()), new_doc->GetErrorOffset ());
+	  return ER_INVALID_JSON;
+	}
+      break;
+    case DB_TYPE_JSON:
+      new_doc->CopyFrom (*arg[0]->data.json.document, new_doc->GetAllocator ());
+      break;
     }
 
   for (i = 1; i < num_args; i++)
@@ -3277,6 +3277,172 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   db_make_json (result, str, new_doc, true);
 
   return NO_ERROR;
+}
+
+int
+db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i;
+  int len;
+  rapidjson::StringBuffer str_buf;
+  rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
+  rapidjson::Document * new_doc, *res_doc;
+  char *str;
+  const char *buf;
+  std::vector < rapidjson::Document * >documents_to_delete;
+  documents_to_delete.clear ();
+
+  if (num_args < 2)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  for (i = 0; i < num_args - 1; i++)
+    {
+      new_doc = new rapidjson::Document ();
+
+      db_json_merge_two_jsons_private (arg[i], arg[i + 1], new_doc);
+      if (arg[i + 1]->domain.general_info.type == DB_TYPE_JSON)
+	{
+	  documents_to_delete.push_back (arg[i + 1]->data.json.document);
+	}
+      db_make_json (arg[i + 1], (char *) db_private_alloc (NULL, 1), new_doc, true);
+    }
+
+  res_doc = new rapidjson::Document ();
+  res_doc->CopyFrom (*arg[num_args - 1]->data.json.document, res_doc->GetAllocator ());
+
+  res_doc->Accept (writer);
+
+  for (i = 0; i < documents_to_delete.size (); i++)
+    {
+      delete documents_to_delete[i];
+    }
+
+  buf = str_buf.GetString ();
+  str = (char *) db_private_alloc (NULL, strlen (buf) + 1);
+  strcpy (str, buf);
+
+  db_make_json (result, str, res_doc, true);
+
+  return NO_ERROR;
+}
+
+static int
+db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, rapidjson::Document * doc)
+{
+  DB_VALUE new_j1, new_j2, *p1 = NULL, *p2 = NULL;
+
+  if (j1->domain.general_info.type == DB_TYPE_JSON &&
+      j2->domain.general_info.type == DB_TYPE_JSON &&
+      j1->data.json.document->GetType () == j2->data.json.document->GetType ())
+    {
+      //DO THE MERGE
+      doc->CopyFrom (*j1->data.json.document, doc->GetAllocator ());
+
+      if (j1->data.json.document->IsObject ())
+	{
+	  assert (j1->data.json.document->IsObject ());
+	  for (rapidjson::Value::MemberIterator itr = j2->data.json.document->MemberBegin ();
+	       itr != j2->data.json.document->MemberEnd (); ++itr)
+	    {
+	      const char *name = itr->name.GetString ();
+	      if (doc->HasMember (name))
+		{
+		  if ((*doc)[name].IsArray ())
+		    {
+		      (*doc)[name].GetArray ().PushBack (itr->value, doc->GetAllocator ());
+		    }
+		  else
+		    {
+		      rapidjson::Value value ((*doc)[name], doc->GetAllocator ());
+		      (*doc)[name].SetArray ();
+		      (*doc)[name].PushBack (value, doc->GetAllocator ());
+		      (*doc)[name].PushBack (itr->value, doc->GetAllocator ());
+		    }
+		}
+	      else
+		{
+		  doc->AddMember (itr->name, itr->value, doc->GetAllocator ());
+		}
+	    }
+	}
+      else if (j1->data.json.document->IsArray ())
+	{
+	  assert (j2->data.json.document->IsArray ());
+	  for (rapidjson::Value::ValueIterator itr = j2->data.json.document->Begin ();
+	       itr != j2->data.json.document->End (); ++itr)
+	    {
+	      doc->PushBack (*itr, doc->GetAllocator ());
+	    }
+	}
+      else
+	{
+	  //shoudn't get here
+	  assert (false);
+	}
+
+      if (j1->data.json.json_body == NULL)
+	{
+	  //this means that it is local (new_j1)
+	  pr_clear_value (j1);
+	}
+      if (j2->data.json.json_body == NULL)
+	{
+	  //this means that it is local (new_j2)
+	  pr_clear_value (j2);
+	}
+      return NO_ERROR;
+    }
+
+  if (j1->domain.general_info.type != DB_TYPE_JSON || j1->data.json.document->IsObject ())
+    {
+      rapidjson::Document * new_doc = new rapidjson::Document ();
+      new_doc->SetArray ();
+      switch (j1->domain.general_info.type)
+	{
+	case DB_TYPE_CHAR:
+	  new_doc->PushBack (rapidjson::StringRef (j1->data.ch.medium.buf), new_doc->GetAllocator ());
+	  break;
+	case DB_TYPE_INTEGER:
+	  new_doc->PushBack (rapidjson::Value ().SetInt (j1->data.i), new_doc->GetAllocator ());
+	  break;
+	case DB_TYPE_JSON:
+	  new_doc->PushBack (j1->data.json.document->GetObject (), new_doc->GetAllocator ());
+	  break;
+	}
+      db_make_json (&new_j1, NULL, new_doc, true);
+    }
+  else
+    {
+      p1 = j1;
+    }
+
+  if (j2->domain.general_info.type != DB_TYPE_JSON || j2->data.json.document->IsObject ())
+    {
+      rapidjson::Document * new_doc = new rapidjson::Document ();
+      new_doc->SetArray ();
+      switch (j2->domain.general_info.type)
+	{
+	case DB_TYPE_CHAR:
+	  new_doc->PushBack (rapidjson::StringRef (j2->data.ch.medium.buf), new_doc->GetAllocator ());
+	  break;
+	case DB_TYPE_INTEGER:
+	  new_doc->PushBack (rapidjson::Value ().SetInt (j2->data.i), new_doc->GetAllocator ());
+	  break;
+	case DB_TYPE_JSON:
+	  new_doc->PushBack (j2->data.json.document->GetObject (), new_doc->GetAllocator ());
+	  break;
+	}
+      db_make_json (&new_j2, NULL, new_doc, true);
+    }
+  else
+    {
+      p2 = j2;
+    }
+
+  db_json_merge_two_jsons_private (p1 == NULL ? &new_j1 : p1, p2 == NULL ? &new_j2 : p2, doc);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

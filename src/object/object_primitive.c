@@ -2074,8 +2074,14 @@ pr_clear_value (DB_VALUE * value)
     case DB_TYPE_JSON:
       if (value->need_clear)
 	{
-	  db_private_free (NULL, value->data.json.json_body);
-	  delete value->data.json.document;
+	  if (value->data.json.json_body != NULL)
+	    {
+	      db_private_free (NULL, value->data.json.json_body);
+	    }
+	  if (value->data.json.document != NULL)
+	    {
+	      delete value->data.json.document;
+	    }
 	  value->data.json.json_body = NULL;
 	  value->data.json.document = NULL;
 	}
@@ -15072,7 +15078,7 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
 {
   if (!disk)
     {
-      return sizeof (char *);
+      return sizeof (DB_JSON);
     }
   else
     {

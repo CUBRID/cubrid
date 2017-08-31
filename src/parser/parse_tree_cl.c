@@ -4024,6 +4024,8 @@ pt_show_function (FUNC_TYPE c)
       return "json_insert";
     case F_JSON_REMOVE:
       return "json_remove";
+    case F_JSON_MERGE:
+      return "json_merge";
     default:
       return "unknown function";
     }
@@ -18008,7 +18010,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_CHARSET:
 	case PT_COLLATION:
 	case PT_JSON_TYPE:
-        case PT_JSON_VALID:
+	case PT_JSON_VALID:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */

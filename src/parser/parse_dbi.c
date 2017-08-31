@@ -626,8 +626,14 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->info.value.data_value.d = DB_GET_DOUBLE (val);
       break;
     case DB_TYPE_JSON:
-      result->info.value.data_value.json.json_body = val->data.json.json_body;
-      result->info.value.data_value.json.document = val->data.json.document;
+      //TODO FIX THIS MEM LEAK SOMEHOW
+      length = strlen (val->data.json.json_body);
+      result->info.value.data_value.json.json_body = (char *) db_private_alloc (NULL, (length + 1));
+      strcpy (result->info.value.data_value.json.json_body, val->data.json.json_body);
+      result->info.value.data_value.json.document = new rapidjson::Document ();
+      result->info.value.data_value.json.document->CopyFrom (*val->data.json.document,
+							     result->info.value.data_value.json.
+							     document->GetAllocator ());
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
 	{

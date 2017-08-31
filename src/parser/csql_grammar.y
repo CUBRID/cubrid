@@ -16001,7 +16001,7 @@ reserved_func
 
                     len = parser_count_list (args_list);
 		    node = parser_make_expr_with_func (this_parser, F_JSON_MERGE, args_list);
-		    if (len < 1)
+		    if (len < 2)
 		    {
 			PT_ERRORmf (this_parser, args_list,
 				    MSGCAT_SET_PARSER_SEMANTIC,

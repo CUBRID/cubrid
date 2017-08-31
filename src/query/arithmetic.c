@@ -5149,10 +5149,10 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
 	{
 	  return DB_MAKE_CHAR (type_res, 6, "DOUBLE", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
 	}
-      else if (json->data.json.document->IsString())
-        {
-          return DB_MAKE_CHAR (type_res, 6, "STRING", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-        }
+      else if (json->data.json.document->IsString ())
+	{
+	  return DB_MAKE_CHAR (type_res, 6, "STRING", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	}
       else
 	{
 	  /* we shouldn't get here */
@@ -5171,7 +5171,7 @@ db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res)
   else
     {
       rapidjson::Document doc;
-      int has_error = doc.Parse(json->data.ch.medium.buf).HasParseError() ? 0 : 1;
+      int has_error = doc.Parse (json->data.ch.medium.buf).HasParseError ()? 0 : 1;
       return DB_MAKE_INT (type_res, has_error);
     }
 }
@@ -5192,11 +5192,13 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
   if (p.IsValid () && (resulting_json = rapidjson::Pointer (raw_path).Get (*this_doc)) != NULL)
     {
       char *json_body;
+      const char *buffer_str;
       rapidjson::Document * new_doc = new rapidjson::Document ();
       new_doc->CopyFrom (*resulting_json, new_doc->GetAllocator ());
       new_doc->Accept (writer);
-      json_body = (char *) db_private_alloc (NULL, strlen (buffer.GetString () + 1));
-      strcpy (json_body, buffer.GetString ());
+      buffer_str = buffer.GetString ();
+      json_body = (char *) db_private_alloc (NULL, strlen (buffer_str) + 1);
+      strcpy (json_body, buffer_str);
       db_make_json (json_res, json_body, new_doc, true);
 
       return NO_ERROR;

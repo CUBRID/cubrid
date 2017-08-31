@@ -10059,24 +10059,24 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      break;
 	    }
 	  break;
-        case DB_TYPE_JSON:
-          {
-            rapidjson::StringBuffer buffer;
-            rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
-            const char *json_str;
-            char *new_str;
-            int len;
+	case DB_TYPE_JSON:
+	  {
+	    rapidjson::StringBuffer buffer;
+	    rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
+	    const char *json_str;
+	    char *new_str;
+	    int len;
 
-            src->data.json.document->Accept (writer);
-            json_str = buffer.GetString();
-            len = strlen (json_str);
+	    src->data.json.document->Accept (writer);
+	    json_str = buffer.GetString ();
+	    len = strlen (json_str);
 
-            new_str = (char *) db_private_alloc (NULL, len+1);
-            strcpy (new_str, json_str);
+	    new_str = (char *) db_private_alloc (NULL, len + 1);
+	    strcpy (new_str, json_str);
 
-            err = DB_MAKE_CHAR (target, len, new_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-          }
-          break;
+	    err = DB_MAKE_CHAR (target, len, new_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	  }
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
