@@ -1034,6 +1034,7 @@ domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
   domain->class_mop = NULL;
   domain->self_ref = 0;
   domain->setdomain = NULL;
+  domain->schema_raw = NULL;
   DOM_SET_ENUM (domain, NULL, 0);
   OID_SET_NULL (&domain->class_oid);
 
