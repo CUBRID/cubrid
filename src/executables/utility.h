@@ -951,6 +951,8 @@ typedef struct _ha_config
 #define CREATE_LOG_PATH_S                       'L'
 #define CREATE_LOG_PATH_L                       "log-path"
 #define CREATE_LOB_PATH_S                       'B'
+#define CREATE_DWB_PATH_L                       "dwb-path"
+#define CREATE_DWB_PATH_S                       'W'
 #define CREATE_LOB_PATH_L                       "lob-base-path"
 #define CREATE_SERVER_NAME_S                    10105
 #define CREATE_SERVER_NAME_L                    "server-name"
@@ -996,6 +998,8 @@ typedef struct _ha_config
 #define COPY_FILE_PATH_L                        "file-path"
 #define COPY_LOG_PATH_S                         'L'
 #define COPY_LOG_PATH_L                         "log-path"
+#define COPY_DWB_PATH_S				'W'
+#define COPY_DWB_PATH_L				"dwb-path"
 #define COPY_EXTENTED_VOLUME_PATH_S             'E'
 #define COPY_EXTENTED_VOLUME_PATH_L             "extended-volume-path"
 #define COPY_CONTROL_FILE_S                     'i'

@@ -127,6 +127,7 @@ install_static_methods (void)
  * vol_path(in)     :
  * log_path(in)     :
  * lob_path(in)     :
+ * dwb_path(in)     : double write buffer path
  * host_name(in)    :
  * overwrite(in)    :
  * comments(in)     : additional comments to be added to the label
@@ -141,9 +142,9 @@ install_static_methods (void)
 
 int
 db_init (const char *program, int print_version, const char *dbname, const char *db_path, const char *vol_path,
-	 const char *log_path, const char *lob_path, const char *host_name, const bool overwrite, const char *comments,
-	 const char *addmore_vols_file, int npages, int desired_pagesize, int log_npages, int desired_log_page_size,
-	 const char *lang_charset)
+	 const char *log_path, const char *lob_path, const char *dwb_path, const char *host_name, const bool overwrite,
+	 const char *comments, const char *addmore_vols_file, int npages, int desired_pagesize, int log_npages,
+	 int desired_log_page_size, const char *lang_charset)
 {
 #if defined (CUBRID_DEBUG)
   int value;
@@ -246,6 +247,7 @@ db_init (const char *program, int print_version, const char *dbname, const char 
   db_path_info.vol_path = (char *) vol_path;
   db_path_info.log_path = (char *) log_path;
   db_path_info.lob_path = (char *) lob_path;
+  db_path_info.dwb_path = (char *) dwb_path;
   db_path_info.db_host = (char *) host_name;
   db_path_info.db_comments = (char *) comments;
 

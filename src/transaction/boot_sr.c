@@ -168,6 +168,7 @@ static int boot_Temp_volumes_sys_pages = 0;
 static char boot_Lob_path[PATH_MAX + LOB_PATH_PREFIX_MAX] = "";
 static bool skip_to_check_ct_classes_for_rebuild = false;
 static char boot_Server_session_key[SERVER_SESSION_KEY_SIZE];
+static char boot_Dwb_path[PATH_MAX] = "";
 
 #if defined(SERVER_MODE)
 static bool boot_Set_server_at_exit = false;
@@ -200,7 +201,8 @@ static char *boot_find_new_db_path (char *db_pathbuf, const char *fileof_vols_an
 static int boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
 				    const char *db_comments, DKNPAGES db_npages, const char *file_addmore_vols,
 				    const char *log_path, const char *log_prefix, DKNPAGES log_npages,
-				    int client_lock_wait, TRAN_ISOLATION client_isolation);
+				    const char *dwb_path, const char *dwb_prefix, int client_lock_wait,
+				    TRAN_ISOLATION client_isolation);
 static int boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log_path,
 				    const char *log_prefix, bool dirty_rem, bool force_delete);
 static char *boot_volume_info_log_path (char *log_path);
@@ -479,6 +481,15 @@ const char *
 boot_get_lob_path (void)
 {
   return boot_Lob_path;
+}
+
+/*
+ * boot_get_dwb_path - return the double write buffer path which is read from databases.txt
+ */
+const char *
+boot_get_dwb_path (void)
+{
+  return boot_Dwb_path;
 }
 
 /*
@@ -1468,7 +1479,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 			 int client_lock_wait, TRAN_ISOLATION client_isolation)
 {
   int tran_index = NULL_TRAN_INDEX;
-  const char *log_prefix = NULL;
+  const char *log_prefix = NULL, *dwb_prefix = NULL;
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
   int dbtxt_vdes = NULL_VOLDES;
@@ -1476,6 +1487,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   char vol_real_path[PATH_MAX];
   char log_pathbuf[PATH_MAX];
   char lob_pathbuf[LOB_PATH_PREFIX_MAX + PATH_MAX];
+  char dwb_pathbuf[PATH_MAX];
   char dbtxt_label[PATH_MAX];
   char fixed_pathbuf[PATH_MAX];
   char original_namebuf[PATH_MAX];
@@ -1486,7 +1498,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   void (*old_ctrl_c_handler) (int sig_no) = SIG_ERR;
   struct stat stat_buf;
   bool is_exist_volume;
-  char *db_path, *log_path, *lob_path, *p;
+  char *db_path, *log_path, *lob_path, *dwb_path, *p;
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
@@ -1577,6 +1589,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   memset (db_pathbuf, 0, sizeof (db_pathbuf));
   memset (log_pathbuf, 0, sizeof (log_pathbuf));
   memset (lob_pathbuf, 0, sizeof (lob_pathbuf));
+  memset (dwb_pathbuf, 0, sizeof (dwb_pathbuf));
 
   /* 
    * for db path,
@@ -1659,6 +1672,23 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   lob_path = lob_pathbuf;
 
   /* 
+   * for double write buffer path,
+   * convert to absolute path, remove useless PATH_SEPARATOR
+   */
+  dwb_path = db_path_info->dwb_path;
+  if (realpath (dwb_path, fixed_pathbuf) != NULL)
+    {
+      dwb_path = fixed_pathbuf;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, dwb_path);
+      goto exit_on_error;
+    }
+  boot_remove_useless_path_separator (dwb_path, dwb_pathbuf);
+  log_path = dwb_pathbuf;
+
+  /* 
    * Compose the full name of the database
    */
   snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_path, PATH_SEPARATOR,
@@ -1679,7 +1709,10 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       (void) xboot_shutdown_server (thread_p, ER_ALL_FINAL);
     }
 
+  /* TO DO - check all log_prefix = fileio_get_base_file_name for dwb_prefix */
   log_prefix = fileio_get_base_file_name (client_credential->db_name);
+  /* Currently dwb_prefix is same with log_prefix. */
+  dwb_prefix = log_prefix;
 
   /* 
    * Find logging information to create the log volume. If the page size is
@@ -1824,7 +1857,8 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     {
       tran_index =
 	boot_create_all_volumes (thread_p, client_credential, db_path_info->db_comments, db_npages, file_addmore_vols,
-				 log_path, (const char *) log_prefix, log_npages, client_lock_wait, client_isolation);
+				 log_path, (const char *) log_prefix, log_npages, dwb_path, dwb_prefix,
+				 client_lock_wait, client_isolation);
 
       if (tran_index != NULL_TRAN_INDEX && !boot_Init_server_is_canceled)
 	{
@@ -1856,15 +1890,16 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 	  /* Now create the entry in the database table */
 	  if (db == NULL)
 	    {
-	      db = cfg_add_db (&dir, client_credential->db_name, db_path, log_path, lob_path, db_path_info->db_host);
+	      db = cfg_add_db (&dir, client_credential->db_name, db_path, log_path, lob_path, dwb_path,
+			       db_path_info->db_host);
 	    }
 	  else
 	    {
-	      cfg_update_db (db, db_path, log_path, lob_path, db_path_info->db_host);
+	      cfg_update_db (db, db_path, log_path, lob_path, dwb_path, db_path_info->db_host);
 	    }
 
 	  if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->lobpath == NULL
-	      || db->hosts == NULL)
+	      || db->dwbpath == NULL || db->hosts == NULL)
 	    {
 	      goto exit_on_error;
 	    }
@@ -2017,7 +2052,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 		     CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args)
 {
   char log_path[PATH_MAX];
-  const char *log_prefix;
+  const char *log_prefix, *dwb_prefix = NULL;
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
 #if defined (NDEBUG)
@@ -2177,6 +2212,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       boot_Lob_path[0] = '\0';
     }
 
+  if (db->dwbpath != NULL)
+    {
+      strlcpy (boot_Dwb_path, db->dwbpath, sizeof (boot_Dwb_path));
+    }
+  else
+    {
+      boot_Dwb_path[0] = '\0';
+    }
+
   /* 
    * Initialize error structure, critical section, slotted page, heap, and
    * recovery managers
@@ -2275,6 +2319,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    */
 
   log_prefix = fileio_get_base_file_name (db_name);
+  /* Currently dwb_prefix is same with log_prefix. */
+  dwb_prefix = log_prefix;
+
 
   /* The database pagesize is set by log_get_io_page_size */
 
@@ -2419,7 +2466,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * Now restart the recovery manager and execute any recovery actions
    */
 
-  log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
+  log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, boot_Dwb_path, dwb_prefix, from_backup, r_args);
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
@@ -2874,6 +2921,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       session_states_finalize (thread_p);
 
       (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
+      (void) pgbuf_dwb_destroy (thread_p);
 
 #if defined(SERVER_MODE)
       thread_stop_active_daemons ();
@@ -3717,6 +3765,10 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
  *   newdb_path(in): Directory where the new database will reside
  *   newlog_path(in): Directory where the log volumes of the new database
  *                    will reside
+ *   newlob_path(in): Directory where the lob volumes of the new database
+ *                    will reside
+ *   new_dwb_path(in): Directory where the double write buffer volume of the new database
+ *                    will reside
  *   newdb_server_host(in): Server host where the new database reside
  *   new_volext_path(in): A path is included if all volumes are placed in one
  *                        place/directory. If NULL is given,
@@ -3733,13 +3785,14 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
  *                               or to label the volumes with specific names.
  *                               Each volume entry consists of:
  *                                 volid from_fullvolname to_fullvolname
- *   newdb_overwrite(in): Wheater to overwrite the new database if it already
+ *   newdb_overwrite(in): Whether to overwrite the new database if it already
  *                        exist.
  */
 int
 xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db_name, const char *new_db_path,
-	    const char *new_log_path, const char *new_lob_path, const char *new_db_server_host,
-	    const char *new_volext_path, const char *fileof_vols_and_copypaths, bool new_db_overwrite)
+	    const char *new_log_path, const char *new_lob_path, const char *new_dwb_path,
+	    const char *new_db_server_host, const char *new_volext_path, const char *fileof_vols_and_copypaths,
+	    bool new_db_overwrite)
 {
   DB_INFO *dir = NULL;
   DB_INFO *db = NULL;
@@ -3750,6 +3803,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
   char new_log_pathbuf[PATH_MAX];
   char new_lob_pathbuf2[PATH_MAX];
   char new_lob_pathbuf[PATH_MAX];
+  char new_dwb_pathbuf[PATH_MAX];
   char new_volext_pathbuf[PATH_MAX];
   char fixed_pathbuf[PATH_MAX];
   char new_db_server_host_buf[MAXHOSTNAMELEN + 1];
@@ -3862,6 +3916,18 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	}
     }
 
+  if (new_dwb_path != NULL && realpath ((char *) new_dwb_path, new_dwb_pathbuf) != NULL)
+    {
+      new_dwb_path = new_dwb_pathbuf;
+    }
+
+  if (new_dwb_path == NULL)
+    {
+      /* Assign the data volume directory */
+      strcpy (new_dwb_pathbuf, new_db_path);
+      new_dwb_path = new_dwb_pathbuf;
+    }
+
   if (new_volext_path != NULL && realpath ((char *) new_volext_path, new_volext_pathbuf) != NULL)
     {
       new_volext_path = new_volext_pathbuf;
@@ -3972,8 +4038,8 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	    }
 
 	  error_code =
-	    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
-			new_volext_path, fileof_vols_and_copypaths, false);
+	    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_dwb_path,
+			new_db_server_host, new_volext_path, fileof_vols_and_copypaths, false);
 
 	  return error_code;
 	}
@@ -4043,7 +4109,8 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 
       if (db == NULL)
 	{
-	  db = cfg_add_db (&dir, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host);
+	  db = cfg_add_db (&dir, new_db_name, new_db_path, new_log_path, new_lob_path, new_dwb_path,
+			   new_db_server_host);
 	}
       else
 	{
@@ -4323,9 +4390,11 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
     {
       if (db == NULL)
 	{
-	  const char *old_lob_path = NULL;
-	  char new_lob_pathbuf[PATH_MAX] = { '\0' };
-	  char *new_lob_path = NULL;
+	  const char *old_lob_path = NULL, *old_dwb_path = NULL;
+	  char new_lob_pathbuf[PATH_MAX] = { '\0' }, new_dwb_pathbuf[PATH_MAX] =
+	  {
+	  '\0'};
+	  char *new_lob_path = NULL, *new_dwb_path = NULL;
 
 	  old_lob_path = boot_get_lob_path ();
 	  if (*old_lob_path != '\0')
@@ -4333,14 +4402,22 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 	      new_lob_path = strncpy (new_lob_pathbuf, old_lob_path, PATH_MAX);
 	    }
 
+	  old_dwb_path = boot_get_dwb_path ();
+	  if (*old_dwb_path != '\0')
+	    {
+	      new_dwb_path = strncpy (new_dwb_pathbuf, old_dwb_path, PATH_MAX);
+	    }
+
 	  cfg_delete_db (&dir, old_db_name);
-	  db = cfg_add_db (&dir, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host);
+	  db = cfg_add_db (&dir, new_db_name, new_db_path, new_log_path, new_lob_path, new_dwb_path,
+			   new_db_server_host);
 	}
       else
 	{
-	  cfg_update_db (db, new_db_path, new_log_path, NULL, new_db_server_host);
+	  cfg_update_db (db, new_db_path, new_log_path, NULL, NULL, new_db_server_host);
 	}
-      if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->hosts == NULL)
+      if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->dwbpath == NULL
+	  || db->hosts == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto end;
@@ -4518,6 +4595,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
       dir = NULL;
     }
 
+  /* TO DO - check whether DWB and LOB is removed */
   /* Now delete the database */
   error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path, log_prefix, false, force_delete);
   if (error_code == NO_ERROR)
@@ -4618,6 +4696,8 @@ error_dirty_delete:
  *   log_path(in):
  *   log_prefix(in):
  *   log_npages(in):
+ *   dwb_path(in): double write buffer path
+ *   dwb_prefix(in): double write buffer prefix
  *   client_prog_name(in):
  *   client_user_name(in):
  *   client_host_name(in):
@@ -4628,8 +4708,8 @@ error_dirty_delete:
 static int
 boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
 			 const char *db_comments, DKNPAGES db_npages, const char *file_addmore_vols,
-			 const char *log_path, const char *log_prefix, DKNPAGES log_npages, int client_lock_wait,
-			 TRAN_ISOLATION client_isolation)
+			 const char *log_path, const char *log_prefix, DKNPAGES log_npages, const char *dwb_path,
+			 const char *dwb_prefix, int client_lock_wait, TRAN_ISOLATION client_isolation)
 {
   int tran_index = NULL_TRAN_INDEX;
   VOLID db_volid = NULL_VOLID;
@@ -4657,7 +4737,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     {
       goto error;
     }
-  log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, false, NULL);
+  log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, dwb_path, dwb_prefix, false, NULL);
 
   /* Assign an index to current thread of execution (i.e., a client id) */
 
@@ -4685,6 +4765,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
 
   if (logpb_add_volume (NULL, LOG_DBFIRST_VOLID, boot_Db_full_name, DB_PERMANENT_DATA_PURPOSE) != LOG_DBFIRST_VOLID)
+    {
+      goto error;
+    }
+
+  /* Create double write buffer if not already created. */
+  if (pgbuf_dwb_create (thread_p, dwb_path, dwb_prefix) != NO_ERROR)
     {
       goto error;
     }

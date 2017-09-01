@@ -198,8 +198,8 @@ static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const I
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
 static int log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-				    const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args,
-				    bool init_emergency);
+				    const char *prefix_logname, const char *dwbpath, const char *prefix_dwbname,
+				    bool ismedia_crash, BO_RESTART_ARG * r_args, bool init_emergency);
 #if defined(SERVER_MODE)
 static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 #endif /* SERVER_MODE */
@@ -960,6 +960,8 @@ log_set_no_logging (void)
  *   logpath(in): Directory where the log volumes reside
  *   prefix_logname(in): Name of the log volumes. It must be the same as the
  *                      one given during the creation of the database.
+ *   dwbpath(in): The path of double write buffer
+ *   prefix_dwbname(in):  The prefix of double write buffer name
  *   ismedia_crash(in): Are we recovering from media crash ?.
  *   stopat(in): If we are recovering from a media crash, we can stop
  *                      the recovery process at a given time.
@@ -974,9 +976,10 @@ log_set_no_logging (void)
  */
 void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
-		int ismedia_crash, BO_RESTART_ARG * r_args)
+		const char *dwbpath, const char *prefix_dwbname, int ismedia_crash, BO_RESTART_ARG * r_args)
 {
-  (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash, r_args, false);
+  (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, dwbpath, prefix_dwbname,
+				  ismedia_crash, r_args, false);
 
   log_No_logging = prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
 #if !defined(NDEBUG)
@@ -993,18 +996,22 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
  *
  * return:
  *
- *   db_fullname(in):
- *   logpath(in):
- *   prefix_logname(in):
- *   ismedia_crash(in):
- *   stopat(in):
- *   init_emergency(in):
+ *   db_fullname(in): Full name of the database
+ *   logpath(in): Directory where the log volumes reside
+ *   prefix_logname(in): Name of the log volumes. It must be the same as the
+ *                      one given during the creation of the database.
+ *   dwbpath(in): The path of double write buffer
+ *   prefix_dwbname(in):  The prefix of double write buffer name
+ *   ismedia_crash(in): Are we recovering from media crash ?.
+ *   stopat(in): If we are recovering from a media crash, we can stop
+ *                      the recovery process at a given time. 
  *
  * NOTE:
  */
 static int
 log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			 const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args, bool init_emergency)
+			 const char *prefix_logname, const char *dwbpath, const char *prefix_dwbname,
+			 bool ismedia_crash, BO_RESTART_ARG * r_args, bool init_emergency)
 {
   LOG_RECORD_HEADER *eof;	/* End of log record */
   REL_FIXUP_FUNCTION *disk_compatibility_functions = NULL;
@@ -1153,7 +1160,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  return error_code;
 	}
       error_code =
-	log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash, r_args, init_emergency);
+	log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, dwbpath, prefix_dwbname, ismedia_crash,
+				 r_args, init_emergency);
 
       return error_code;
     }
@@ -1282,6 +1290,12 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
    */
   if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true))
     {
+      error_code = pgbuf_dwb_load_and_recover_pages (thread_p, dwbpath, prefix_dwbname);
+      if (error_code != NULL)
+	{
+	  goto error;
+	}
+
       /* 
        * System was involved in a crash.
        * Execute the recovery process
@@ -1760,7 +1774,8 @@ void
 log_restart_emergency (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 		       const char *prefix_logname)
 {
-  (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, false, NULL, true);
+  (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, /*TODO*/ NULL, NULL, false, NULL,
+				  true);
 }
 
 /*
@@ -9046,7 +9061,8 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
       return ret;
     }
 
-  (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, false, NULL, true);
+  (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, NULL /*TODO*/, NULL, false, NULL,
+				  true);
 
   /* 
    * RESET RECOVERY INFORMATION ON ALL DATA VOLUMES

@@ -455,6 +455,8 @@ enum LOG_HA_FILESTAT
 #define LOG_DBLOG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 20)
 /* Volid of copies */
 #define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
+/* Volid of double write buffer */
+#define LOG_DBDWB_VOLID		 (LOG_DBFIRST_VOLID - 22)
 
 /*
  * Specify up to int bits of permanent status indicators.

@@ -604,11 +604,14 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
 
   need_sync = false;
 
-  flushed_page_count = fileio_increase_flushed_page_count (npage);
-  if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
+  if (false)			/* TO DO - if !DWB */
     {
-      need_sync = true;
-      fileio_Flushed_page_count = 0;
+      flushed_page_count = fileio_increase_flushed_page_count (npage);
+      if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
+	{
+	  need_sync = true;
+	  fileio_Flushed_page_count = 0;
+	}
     }
 
   if (need_sync)
@@ -5678,6 +5681,25 @@ fileio_make_backup_name (char *backup_name_p, const char *no_path_vol_name_p, co
   sprintf (backup_name_p, "%s%c%s%s%dv%03d", backup_path_p, PATH_SEPARATOR, no_path_vol_name_p, FILEIO_SUFFIX_BACKUP,
 	   level, unit_num);
 }
+
+/*
+ * fileio_make_dwb_name () - Build the name of DWB volume
+ *   return: void
+ *   dwb_name_p(out): the name of DWB volume
+ *   dwb_path_p(in): double write buffer path
+ *   dbname(in): database name
+ *
+ * Note: The caller must have enough space to store the name of the volume
+ *       that is constructed(sprintf). It is recommended to have at least
+ *       DB_MAX_PATH_LENGTH length.
+ */
+void
+fileio_make_dwb_name (char *dwb_name_p, const char *dwb_path_p, const char *db_name_p)
+{
+  sprintf (dwb_name_p, "%s%s%s%s", dwb_path_p, FILEIO_PATH_SEPARATOR (dwb_path_p), db_name_p, FILEIO_SUFFIX_DWB);
+
+}
+
 
 /*
  * fileio_cache () - Cache information related to a mounted volume

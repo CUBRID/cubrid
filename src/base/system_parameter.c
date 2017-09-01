@@ -2128,9 +2128,9 @@ static unsigned int prm_pb_double_write_buffer_size_lower = 0;
 
 unsigned int PRM_PB_DOUBLE_WRITE_BUFFER_BLOCKS = 2;
 static unsigned int prm_pb_double_write_buffer_blocks_flag = 0;
-static unsigned int prm_pb_double_write_buffer_blocks_default = 2;	/* 2M */
-static unsigned int prm_pb_double_write_buffer_blocks_upper = 8;	/* 4M */
-static unsigned int prm_pb_double_write_buffer_blocks_lower = 1;
+static unsigned int prm_pb_double_write_buffer_blocks_default = 2;
+static unsigned int prm_pb_double_write_buffer_blocks_upper = 8;
+static unsigned int prm_pb_double_write_buffer_blocks_lower = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
