@@ -5177,6 +5177,91 @@ db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res)
 }
 
 int
+db_json_length_dbval (const DB_VALUE *json, DB_VALUE *res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return DB_MAKE_INT (res, 0);
+    }
+  else
+    {
+      if (!json->data.json.document->IsArray() &&
+          !json->data.json.document->IsObject())
+        {
+          return DB_MAKE_INT (res, 1);
+        }
+
+      if (json->data.json.document->IsArray())
+        {
+          return DB_MAKE_INT (res, json->data.json.document->Size());
+        }
+      if (json->data.json.document->IsObject())
+        {
+          int length = 0;
+          for (rapidjson::Value::ConstMemberIterator itr = json->data.json.document->MemberBegin();
+               itr != json->data.json.document->MemberEnd(); ++itr)
+            {
+              length++;
+            }
+
+          return DB_MAKE_INT (res, length);
+        }
+    }
+}
+
+int
+db_json_depth_dbval (const DB_VALUE *json, DB_VALUE *res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return DB_MAKE_INT (res, 0);
+    }
+  else
+    {
+      return DB_MAKE_INT (res, db_json_depth_dbval_helper (*json->data.json.document));
+    }
+}
+
+static int
+db_json_depth_dbval_helper (rapidjson::Value &doc)
+{
+  if (!doc.IsArray() &&
+      !doc.IsObject())
+    {
+      return 0;
+    }
+
+  if (doc.IsArray())
+    {
+      int max = 0;
+      for (rapidjson::Value::ValueIterator itr = doc.Begin();
+           itr != doc.End(); ++itr)
+        {
+          int depth = db_json_depth_dbval_helper (*itr);
+          if (depth > max)
+            {
+              max = depth;
+            }
+        }
+      return max+1;
+    }
+  else if (doc.IsObject())
+    {
+      int max = 0;
+      for (rapidjson::Value::MemberIterator itr = doc.MemberBegin();
+           itr != doc.MemberEnd(); ++itr)
+        {
+          int depth = db_json_depth_dbval_helper (itr->value);
+          if (depth > max)
+            {
+              max = depth;
+            }
+        }
+      return max+1;
+    }
+}
+
+int
 db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
 {
   rapidjson::Document * this_doc = json->data.json.document;

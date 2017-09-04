@@ -6590,6 +6590,91 @@ qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * do
 }
 
 int
+qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  if (DB_IS_NULL (dbval1_p))
+    {
+      return DB_MAKE_INT (result_p, 0);
+    }
+  else
+    {
+      if (!dbval1_p->data.json.document->IsArray() &&
+          !dbval1_p->data.json.document->IsObject())
+        {
+          return DB_MAKE_INT (result_p, 1);
+        }
+
+      if (dbval1_p->data.json.document->IsArray())
+        {
+          return DB_MAKE_INT (result_p, dbval1_p->data.json.document->Size());
+        }
+      if (dbval1_p->data.json.document->IsObject())
+        {
+          int length = 0;
+          for (rapidjson::Value::ConstMemberIterator itr = dbval1_p->data.json.document->MemberBegin();
+               itr != dbval1_p->data.json.document->MemberEnd(); ++itr)
+            {
+              length++;
+            }
+
+          return DB_MAKE_INT (result_p, length);
+        }
+    }
+}
+
+int
+qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  if (DB_IS_NULL (dbval1_p))
+    {
+      return DB_MAKE_INT (result_p, 0);
+    }
+  else
+    {
+      return DB_MAKE_INT (result_p, qdata_json_depth_dbval_helper (*dbval1_p->data.json.document));
+    }
+}
+
+static int
+qdata_json_depth_dbval_helper (rapidjson::Value &doc)
+{
+  if (!doc.IsArray() &&
+      !doc.IsObject())
+    {
+      return 0;
+    }
+
+  if (doc.IsArray())
+    {
+      int max = 0;
+      for (rapidjson::Value::ValueIterator itr = doc.Begin();
+           itr != doc.End(); ++itr)
+        {
+          int depth = qdata_json_depth_dbval_helper (*itr);
+          if (depth > max)
+            {
+              max = depth;
+            }
+        }
+      return max+1;
+    }
+  else if (doc.IsObject())
+    {
+      int max = 0;
+      for (rapidjson::Value::MemberIterator itr = doc.MemberBegin();
+           itr != doc.MemberEnd(); ++itr)
+        {
+          int depth = qdata_json_depth_dbval_helper (itr->value);
+          if (depth > max)
+            {
+              max = depth;
+            }
+        }
+      return max+1;
+    }
+}
+
+int
 qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
 {
   rapidjson::Document * this_doc = json->data.json.document;

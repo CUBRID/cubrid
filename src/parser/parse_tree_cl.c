@@ -3917,6 +3917,10 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "json_extract";
     case PT_JSON_VALID:
       return "json_valid";
+    case PT_JSON_LENGTH:
+      return "json_length";
+    case PT_JSON_DEPTH:
+      return "json_depth";
     default:
       return "unknown opcode";
     }
@@ -10107,6 +10111,20 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
 
       q = pt_append_nulstring (parser, q, " json_valid(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_LENGTH:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_length(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_DEPTH:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_depth(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
@@ -18011,6 +18029,8 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_COLLATION:
 	case PT_JSON_TYPE:
 	case PT_JSON_VALID:
+	case PT_JSON_LENGTH:
+	case PT_JSON_DEPTH:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
@@ -18465,6 +18485,8 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_JSON_TYPE:
     case PT_JSON_EXTRACT:
     case PT_JSON_VALID:
+    case PT_JSON_LENGTH:
+    case PT_JSON_DEPTH:
       return true;
     case PT_TZ_OFFSET:
     default:

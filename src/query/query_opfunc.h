@@ -200,8 +200,11 @@ extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * 
 extern int qdata_json_contains_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, TP_DOMAIN * domain);
 extern int qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 extern int qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
+extern int qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 extern int qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res,
 				     TP_DOMAIN * domain_p);
+extern int qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
+static int qdata_json_depth_dbval_helper (rapidjson::Value &doc);
 extern int qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, QUERY_ID query_id);
 extern int qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
 						 AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,

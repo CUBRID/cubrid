@@ -1535,6 +1535,8 @@ typedef enum
   PT_JSON_TYPE,
   PT_JSON_EXTRACT,
   PT_JSON_VALID,
+  PT_JSON_LENGTH,
+  PT_JSON_DEPTH,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE

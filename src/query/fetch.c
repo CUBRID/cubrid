@@ -651,6 +651,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
     case T_JSON_TYPE:
     case T_JSON_VALID:
+    case T_JSON_LENGTH:
+    case T_JSON_DEPTH:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
 	  goto error;
@@ -2646,6 +2648,18 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
     case T_JSON_VALID:
       if (qdata_json_valid_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+    case T_JSON_LENGTH:
+      if (qdata_json_length_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+    case T_JSON_DEPTH:
+      if (qdata_json_depth_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
