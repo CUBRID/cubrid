@@ -32,12 +32,19 @@
 #include "parse_tree.h"
 #include "query_list.h"
 
+#if defined (__cplusplus)
+#include <vector>
+#include <string>
+#endif
+
 #define UNBOUND(x) ((x)->val_flag == V_UNBOUND || (x)->type == DB_TYPE_NULL)
 
 #define BOUND(x) (! UNBOUND(x))
 
 #define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
 #define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */
+
+#define DB_JSON_MAX_STRING_SIZE 32
 
 typedef enum
 {
@@ -205,6 +212,17 @@ extern int qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * pat
 				     TP_DOMAIN * domain_p);
 extern int qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_json_depth_dbval_helper (rapidjson::Value &doc);
+extern int qdata_json_search_dbval (DB_VALUE * dbval1_p,
+                                    DB_VALUE * dbval2_p,
+                                    DB_VALUE * dbval3_p,
+                                    DB_VALUE * result_p,
+                                    TP_DOMAIN * domain_p);
+static void qdata_json_search_dbval_helper (rapidjson::Value &whole_doc,
+                                           rapidjson::Value &doc,
+                                           const char *current_path,
+                                           const char *search_str,
+                                           int one_or_all,
+                                           std::vector<std::string> &result);
 extern int qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, QUERY_ID query_id);
 extern int qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
 						 AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,

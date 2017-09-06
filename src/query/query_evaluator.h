@@ -478,6 +478,7 @@ typedef enum
   T_JSON_VALID,
   T_JSON_LENGTH,
   T_JSON_DEPTH,
+  T_JSON_SEARCH,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

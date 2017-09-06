@@ -6706,6 +6706,165 @@ qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE
     }
 }
 
+int
+qdata_json_search_dbval (DB_VALUE * json, DB_VALUE * one_or_all, DB_VALUE * search_str, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  int one_or_all_bool;
+  std::vector<std::string> result;
+  rapidjson::Document *doc;
+  rapidjson::StringBuffer buffer;
+  rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
+  char *json_body;
+  const char *buffer_str;
+
+  if (DB_IS_NULL (json) ||
+      DB_IS_NULL (one_or_all) ||
+      DB_IS_NULL (search_str))
+    {
+      return DB_MAKE_NULL (result_p);
+    }
+
+  if (strcmp (one_or_all->data.ch.medium.buf, "one") == 0)
+    {
+      one_or_all_bool = 0;
+    }
+  else if (strcmp (one_or_all->data.ch.medium.buf, "all") == 0)
+    {
+      one_or_all_bool = 1;
+    }
+  else
+    {
+      return ER_PT_SEMANTIC;
+    }
+
+  qdata_json_search_dbval_helper (*json->data.json.document,
+                                  *json->data.json.document,
+                                  "",
+                                  search_str->data.ch.medium.buf,
+                                  one_or_all_bool,
+                                  result);
+  doc = new rapidjson::Document();
+
+  if (result.size() == 1)
+    {
+      doc->SetString (result[0].c_str(), doc->GetAllocator());
+    }
+  else
+    {
+      doc->SetArray();
+      for (unsigned int i = 0; i < result.size(); i++)
+        {
+          doc->PushBack (rapidjson::StringRef (result[i].c_str()), doc->GetAllocator());
+        }
+    }
+
+  doc->Accept (writer);
+  buffer_str = buffer.GetString ();
+  json_body = (char *) db_private_alloc (NULL, strlen (buffer_str) + 1);
+  strcpy (json_body, buffer_str);
+
+  db_make_json (result_p, json_body, doc, true);
+
+  return NO_ERROR;
+}
+
+static void
+qdata_json_search_dbval_helper (rapidjson::Value &whole_doc,
+                                rapidjson::Value &doc,
+                                const char *current_path,
+                                const char *search_str,
+                                int one_or_all,
+                                std::vector<std::string> &result)
+{
+ if (one_or_all == 0 && result.size() == 1)
+    {
+      return;
+    }
+
+  if (!doc.IsArray() &&
+      !doc.IsObject())
+    {
+      rapidjson::Pointer p (current_path);
+      rapidjson::Value *resulting_json;
+
+      if (p.IsValid () && (resulting_json = p.Get (whole_doc)) != NULL)
+        {
+          char final_string[DB_JSON_MAX_STRING_SIZE];
+
+          if (resulting_json->IsInt())
+            {
+              int val = resulting_json->GetInt();
+              snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%d", val);
+            }
+          else if (resulting_json->IsDouble())
+            {
+              float val = resulting_json->GetDouble();
+              snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%f", val);
+            }
+          else if (resulting_json->IsString())
+            {
+              strncpy (final_string, resulting_json->GetString(), DB_JSON_MAX_STRING_SIZE);
+            }
+
+          if (strstr (final_string, search_str) != NULL)
+            {
+              result.push_back (current_path);
+            }
+        }
+      else
+        {
+          //everything should be valid
+          assert (false);
+        }
+    }
+
+  if (doc.IsArray())
+    {
+      int index = 0;
+      for (rapidjson::Value::ValueIterator itr = doc.Begin();
+           itr != doc.End(); ++itr)
+        {
+          char index_str[3];
+          snprintf (index_str, 2, "%d", index);
+
+          char *next_path = (char *) db_private_alloc (NULL, strlen (current_path) + strlen (index_str) + 2);
+          strcpy (next_path, current_path);
+          strcat (next_path, "/");
+          strcat (next_path, index_str);
+
+          qdata_json_search_dbval_helper (whole_doc,
+                                          *itr,
+                                          next_path,
+                                          search_str,
+                                          one_or_all,
+                                          result);
+
+          index++;
+          db_private_free (NULL, next_path);
+        }
+    }
+  else if (doc.IsObject())
+    {
+      for (rapidjson::Value::MemberIterator itr = doc.MemberBegin();
+           itr != doc.MemberEnd(); ++itr)
+        {
+          char *next_path = (char *) db_private_alloc (NULL, strlen (current_path) + 1 + strlen (itr->name.GetString()) + 1);
+          strcpy (next_path, current_path);
+          strcat (next_path, "/");
+          strcat (next_path, itr->name.GetString());
+
+          qdata_json_search_dbval_helper (whole_doc,
+                                          itr->value,
+                                          next_path,
+                                          search_str,
+                                          one_or_all,
+                                          result);
+
+          db_private_free (NULL, next_path);
+        }
+    }
+}
+
 /*
  * qdata_strcat_dbval () -
  *   return:
