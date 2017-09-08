@@ -31,7 +31,7 @@ typedef
   rapidjson::GenericValue <
   rapidjson::UTF8 <>,
   rapidjson::MemoryPoolAllocator <
-cubrid_json_allocator > >>
+cubrid_json_allocator > > >
   cubrid_schema_document;
 typedef
   rapidjson::GenericSchemaValidator <
@@ -48,7 +48,7 @@ typedef
   rapidjson::GenericValue <
   rapidjson::UTF8 <>,
   rapidjson::MemoryPoolAllocator <
-cubrid_json_allocator > >>
+cubrid_json_allocator > > >
   cubrid_pointer;
 
 typedef struct db_json_validation
