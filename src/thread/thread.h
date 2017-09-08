@@ -44,7 +44,7 @@
 #include "lock_free.h"
 
 /* forward declarations */
-typedef struct db_value DB_VALUE;
+struct db_value;
 /* end of forward declarations */
 
 enum
@@ -526,7 +526,7 @@ extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
 extern INT64 thread_get_log_clock_msec (void);
 
-extern int thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ctx);
+extern int thread_start_scan (THREAD_ENTRY * thread_p, int type, struct db_value ** arg_values, int arg_cnt, void **ctx);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);
