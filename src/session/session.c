@@ -64,6 +64,8 @@ static int rv;
 #define MAX_SESSION_VARIABLES_COUNT 20
 #define MAX_PREPARED_STATEMENTS_COUNT 20
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 typedef struct active_sessions
 {
   LF_HASH_TABLE sessions_table;

@@ -50,6 +50,8 @@
 #include "partition.h"
 #include "lock_free.h"
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */

@@ -27,6 +27,8 @@
 #include "lock_free.h"
 #include "query_executor.h"
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
 {

@@ -40,7 +40,7 @@
 #endif
 
 //forward decl
-typedef struct lf_tran_entry LF_TRAN_ENTRY;
+struct lf_tran_entry;
 //end forward decl
 
 #include "dbtype.h"

@@ -72,6 +72,8 @@
 #include "server_interface.h"
 #include "page_buffer.h"
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 /* For getting and dumping attributes */
 #include "language_support.h"
 

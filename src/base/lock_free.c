@@ -44,6 +44,8 @@
 static int rv;
 #endif /* not SERVER_MODE */
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 /*
  * Global lock free transaction systems systems
  */

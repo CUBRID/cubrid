@@ -81,6 +81,8 @@
 #include "show_scan.h"
 #include "boot_sr.h"
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 #if defined(SERVER_MODE) || defined(SA_MODE)
 #include "replication.h"
 #endif

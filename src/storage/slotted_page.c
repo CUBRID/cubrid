@@ -46,6 +46,8 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)

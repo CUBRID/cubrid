@@ -35,6 +35,8 @@
 #define RAND_SIZE	RAND_BLOCKS * RAND_BLOCK_SIZE
 static int random_numbers[RAND_SIZE];
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 #define PTHREAD_ABORT_AND_EXIT(code) \
   do \
     { \

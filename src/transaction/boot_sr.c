@@ -117,6 +117,8 @@
 #define BOOT_FORMAT_MAX_LENGTH	500
 #define BOOTSR_MAX_LINE	 500
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 typedef struct boot_dbparm BOOT_DB_PARM;
 struct boot_dbparm
 {

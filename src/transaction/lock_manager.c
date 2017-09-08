@@ -60,6 +60,7 @@
 #include "tsc_timer.h"
 #include "lock_free.h"
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
 
 extern LOCK_COMPATIBILITY lock_Comp[11][11];
 

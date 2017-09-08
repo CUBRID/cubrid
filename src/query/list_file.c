@@ -61,6 +61,8 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 /* TODO */
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)

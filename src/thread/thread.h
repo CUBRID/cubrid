@@ -69,7 +69,7 @@ enum
 
 extern int thread_Recursion_depth;
 
-extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
+extern struct lf_tran_entry thread_ts_decoy_entries[THREAD_TS_LAST];
 
 #define thread_get_thread_entry_info()  (NULL)
 #define thread_num_worker_threads()  (1)
@@ -355,7 +355,7 @@ struct thread_entry
   bool clear_trace;
 
   /* for lock free structures */
-  LF_TRAN_ENTRY *tran_entries[THREAD_TS_COUNT];
+  struct lf_tran_entry *tran_entries[THREAD_TS_COUNT];
 
 #if !defined(NDEBUG)
   struct fi_test_item *fi_test_array;
@@ -511,7 +511,7 @@ extern void thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_nam
 extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
 extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
 
-extern LF_TRAN_ENTRY *thread_get_tran_entry (THREAD_ENTRY * thread_p, int entry_idx);
+extern struct lf_tran_entry *thread_get_tran_entry (THREAD_ENTRY * thread_p, int entry_idx);
 
 extern void thread_trace_on (THREAD_ENTRY * thread_p);
 extern void thread_set_trace_format (THREAD_ENTRY * thread_p, int format);
