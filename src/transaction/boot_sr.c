@@ -2462,6 +2462,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
+  /* Load and recover data pages before log recovery */
+  error_code = pgbuf_dwb_load_and_recover_pages (thread_p, boot_Dwb_path, dwb_prefix);
+  if (error_code != NULL)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
   /* 
    * Now restart the recovery manager and execute any recovery actions
    */
@@ -2921,13 +2929,14 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       session_states_finalize (thread_p);
 
       (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
-      (void) pgbuf_dwb_destroy (thread_p);
 
 #if defined(SERVER_MODE)
       thread_stop_active_daemons ();
 #endif
 
       log_final (thread_p);
+      /* Since all pages were flushed, now it's safe to destroy DWB. */
+      (void) pgbuf_dwb_destroy (thread_p);
 
       if (is_er_final == ER_ALL_FINAL)
 	{
@@ -4756,6 +4765,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
   ext_info.extend_npages = db_npages;
 
+  /* Create double write buffer if not already created. DWB creation must be done before first volume. */
+  if (pgbuf_dwb_create (thread_p, dwb_path, dwb_prefix) != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Format the first database volume */
   error_code = disk_format_first_volume (thread_p, boot_Db_full_name, db_comments, db_npages);
   if (error_code != NO_ERROR)
@@ -4765,12 +4780,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
 
   if (logpb_add_volume (NULL, LOG_DBFIRST_VOLID, boot_Db_full_name, DB_PERMANENT_DATA_PURPOSE) != LOG_DBFIRST_VOLID)
-    {
-      goto error;
-    }
-
-  /* Create double write buffer if not already created. */
-  if (pgbuf_dwb_create (thread_p, dwb_path, dwb_prefix) != NO_ERROR)
     {
       goto error;
     }

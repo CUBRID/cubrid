@@ -1263,7 +1263,8 @@ $ LOADDB
 1194 无法检查文件 %1$d|%2$d , 因为在类 %3$d|%4$d|%5$d 上的锁未被授权.
 1195 CTE的递归部分不能包含没有GROUP BY子句的聚合函数.
 1196 已达到CTE执行的最大递归次数%1$d.
-1197 最后一个错误.
+1197 Double Write Buffer is disabled.
+1198 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

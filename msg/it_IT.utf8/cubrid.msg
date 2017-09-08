@@ -1263,7 +1263,8 @@ $ LOADDB
 1194 Impossibile verificare il file %1$d|%2$d perché il blocco sulla classe %3$d|%4$d|%5$d non viene immediatamente concesso.
 1195 La parte ricorsiva di un CTE non dovrebbe contenere funzioni aggregate senza la clausola GROUP BY.
 1196 Le ricorrenze massime %1$d estate raggiunto mentre l'esecuzione di CTE.
-1197 Ultimo errore
+1197 Double Write Buffer is disabled.
+1198 Ultimo errore
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
 2 Nessun messaggio di errore disponibile.

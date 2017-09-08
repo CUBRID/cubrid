@@ -745,6 +745,12 @@ extern "C"
    ((vpid_ptr1)->pageid == (vpid_ptr2)->pageid &&             \
     (vpid_ptr1)->volid  == (vpid_ptr2)->volid))
 
+#define VPID_LT(vpid_ptr1, vpid_ptr2)                         \
+  ((vpid_ptr1) != (vpid_ptr2) &&                              \
+  ((vpid_ptr1)->volid < (vpid_ptr2)->volid ||                 \
+  ((vpid_ptr1)->volid == (vpid_ptr2)->volid &&                \
+  (vpid_ptr1)->pageid < (vpid_ptr2)->pageid)))                \
+
 /* Is vpid NULL ? */
 #define VPID_ISNULL(vpid_ptr) ((vpid_ptr)->pageid == NULL_PAGEID)
 

@@ -70,6 +70,8 @@
 #define PEEK           true	/* Peek volume label pointer */
 #define ALLOC_COPY  false	/* alloc and copy volume label */
 
+#define FILEIO_CHECKSUM_SIZE		 32
+
 /* If the last character of path string is PATH_SEPARATOR, don't append PATH_SEPARATOR */
 #define FILEIO_PATH_SEPARATOR(path) \
   (path[strlen(path) - 1] == PATH_SEPARATOR ? "" : STR_PATH_SEPARATOR)
@@ -168,7 +170,8 @@ struct fileio_page_reserved
   INT16 volid;			/* Volume identifier where the page reside */
   unsigned char ptype;		/* Page type */
   unsigned char pflag_reserve_1;	/* unused - Reserved field */
-  INT64 p_reserve_2;		/* unused - Reserved field */
+  char checksum[FILEIO_CHECKSUM_SIZE];	/* Page checksum */
+  INT32 p_reserve_2;		/* unused - Reserved field */
   INT64 p_reserve_3;		/* unused - Reserved field */
 };
 
@@ -411,11 +414,12 @@ extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname, const
 extern void fileio_dismount (THREAD_ENTRY * thread_p, int vdes);
 extern void fileio_dismount_all (THREAD_ENTRY * thread_p);
 extern void *fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size);
-extern void *fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size);
+extern void *fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size,
+			   bool skip_flush);
 extern void *fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID page_id, int num_pages,
 				size_t page_size);
 extern void *fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID page_id, int num_pages,
-				 size_t page_size);
+				 size_t page_size, bool skip_flush);
 extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes, void **arrayof_io_pgptr, PAGEID start_pageid,
 			    DKNPAGES npages, size_t page_size);
 extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel);
@@ -544,4 +548,8 @@ extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_list_find (FILEIO_RESTORE_
 extern void fileio_page_bitmap_list_add (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
 					 FILEIO_RESTORE_PAGE_BITMAP * page_bitmap);
 extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
+extern void fileio_compute_page_checksum (FILEIO_PAGE * io_page, char *checksum);
+extern int fileio_set_page_checksum (FILEIO_PAGE * io_page);
+extern bool fileio_page_has_valid_checksum (FILEIO_PAGE * io_page);
+
 #endif /* _FILE_IO_H_ */

@@ -1290,12 +1290,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
    */
   if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true))
     {
-      error_code = pgbuf_dwb_load_and_recover_pages (thread_p, dwbpath, prefix_dwbname);
-      if (error_code != NULL)
-	{
-	  goto error;
-	}
-
       /* 
        * System was involved in a crash.
        * Execute the recovery process

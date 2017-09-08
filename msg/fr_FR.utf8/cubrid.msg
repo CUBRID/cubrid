@@ -1263,7 +1263,8 @@ $ LOADDB
 1194 Impossible de vérifier le fichier %1$d|%2$d car le verrou sur la classe %3$d|%4$d|%5$d n'est pas immédiatement accordé.
 1195 La partie récursive d'un CTE ne doit pas contenir de fonctions agrégées sans clause GROUP BY.
 1196 Récursions maximales %1$d atteint l'exécution de CTE.
-1197 Dernière erreur
+1197 Double Write Buffer is disabled.
+1198 Dernière erreur
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
 2 Aucun message d'erreur disponible.

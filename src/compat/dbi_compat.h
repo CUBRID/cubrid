@@ -1547,7 +1547,9 @@ extern "C"
 #define ER_BUILDVALUE_IN_REC_CTE		    -1195
 #define ER_CTE_MAX_RECURSION_REACHED		    -1196
 
-#define ER_LAST_ERROR                               -1197
+#define ER_DWB_DISABLED				    -1197
+
+#define ER_LAST_ERROR                               -1198
 
 #define DB_TRUE 1
 #define DB_FALSE 0

@@ -35,6 +35,7 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <md5.h>
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -1880,7 +1881,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
 	}
 #endif
 
-      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, false) == NULL)
 	{
 	  return NULL;
 	}
@@ -2374,7 +2375,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 
       /* initialize at least two pages, the header page and the last page. in case of is_sweep_clean == true, every
        * page of the volume will be written. */
-      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, 0, page_size) == NULL)
+      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, 0, page_size, false) == NULL)
 	{
 	  fileio_dismount (thread_p, vol_fd);
 	  fileio_unformat (thread_p, vol_label_p);
@@ -2392,9 +2393,9 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 #if defined(HPUX)
       if ((is_sweep_clean == true
 	   && !fileio_initialize_pages (vol_fd, malloc_io_page_p, npages, page_size, kbytes_to_be_written_per_sec))
-	  || (is_sweep_clean == false && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size)))
+	  || (is_sweep_clean == false && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size, false)))
 #else /* HPUX */
-      if (!((fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size) == malloc_io_page_p)
+      if (!((fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size, false) == malloc_io_page_p)
 	    && (is_sweep_clean == false
 		|| fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, 0, npages, page_size,
 					    kbytes_to_be_written_per_sec) == malloc_io_page_p)))
@@ -2542,7 +2543,7 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_
   if (voltype == DB_TEMPORARY_VOLTYPE)
     {
       /* Write the last page */
-      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE) != malloc_io_page_p)
+      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE, false) != malloc_io_page_p)
 	{
 	  npages_toadd = -1;
 	}
@@ -2758,7 +2759,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
       for (page_id = 0; page_id < npages; page_id++)
 	{
 	  if (fileio_read (thread_p, from_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL
-	      || fileio_write (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL)
+	      || fileio_write (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE, false) == NULL)
 	    {
 	      goto error;
 	    }
@@ -2776,7 +2777,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	  else
 	    {
 	      LSA_SET_NULL (&malloc_io_page_p->prv.lsa);
-	      if (fileio_write (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL)
+	      if (fileio_write (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE, false) == NULL)
 		{
 		  goto error;
 		}
@@ -2831,7 +2832,7 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
       if (fileio_read (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE) != NULL)
 	{
 	  LSA_COPY (&malloc_io_page_p->prv.lsa, reset_lsa_p);
-	  if (fileio_write (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL)
+	  if (fileio_write (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE, false) == NULL)
 	    {
 	      success = ER_FAILED;
 	      break;
@@ -3752,13 +3753,14 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
  *   io_page_p(in): In-memory address where the current content of page resides
  *   page_id(in): Page identifier
  *   page_size(in): Page size
+ *   skip_flush(in): True, if skip page flush
  *
  * Note:  Write the content of the page described by page_id to disk. The
  *        content of the page is stored onto io_page_p buffer which is
  *        page_size long.
  */
 void *
-fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size)
+fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size, bool skip_flush)
 {
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
@@ -3885,7 +3887,11 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
     }
 #endif
 
-  fileio_compensate_flush (thread_p, vol_fd, 1);
+  if (skip_flush == false)
+    {
+      fileio_compensate_flush (thread_p, vol_fd, 1);
+    }
+
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOWRITES);
   return io_page_p;
 }
@@ -4040,11 +4046,19 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
 }
 
 /*
- * fileio_write_pages () -
+ * fileio_write_pages () - write the content of several contiguous pages to disk
+ *   return: io_page_p on success, NULL on failure
+ *   thread_p(in): Thread entry
+ *   vol_fd(in): Volume descriptor
+ *   io_page_p(in): In-memory address where the pages resides
+ *   page_id(in): First page identifier
+ *   num_pages(in): Number of pages to flush
+ *   page_size(in): Page size
+ *   skip_flush(in): True, if skip page flush
  */
 void *
 fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID page_id, int num_pages,
-		    size_t page_size)
+		    size_t page_size, bool skip_flush)
 {
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
@@ -4182,7 +4196,11 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
     }
 #endif
 
-  fileio_compensate_flush (thread_p, vol_fd, num_pages);
+  if (skip_flush == false)
+    {
+      fileio_compensate_flush (thread_p, vol_fd, num_pages);
+    }
+
   perfmon_add_stat (thread_p, PSTAT_FILE_NUM_IOWRITES, num_pages);
   return io_pages_p;
 }
@@ -4215,7 +4233,7 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
 
   for (i = 0; i < npages; i++)
     {
-      if (fileio_write (thread_p, vol_fd, io_page_array[i], start_page_id + i, page_size) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_array[i], start_page_id + i, page_size, false) == NULL)
 	{
 	  return NULL;
 	}
@@ -10273,7 +10291,7 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
   if (page_bitmap == NULL)
     {
       /* don't care about ht for this volume */
-      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, false) == NULL)
 	{
 	  return NULL;
 	}
@@ -10287,7 +10305,7 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
 
       if (!is_set)
 	{
-	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE) == NULL)
+	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, false) == NULL)
 	    {
 	      return NULL;
 	    }
@@ -11595,4 +11613,76 @@ fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_
 	}
     }
   fprintf (out_fp, "\n");
+}
+
+/* 
+ * fileio_compute_checksum - compute page checksum
+ *   return: nothing
+ *   io_page(in): page
+ *   checksum(out): computed checksum
+ */
+void
+fileio_compute_page_checksum (FILEIO_PAGE * io_page, char *checksum)
+{
+  assert (checksum != NULL);
+
+  memset (checksum, 0, sizeof (checksum));
+  md5_buffer ((char *) io_page, IO_PAGESIZE, checksum);
+  md5_hash_to_hex (checksum, checksum);
+}
+
+/* 
+ * fileio_compute_checksum - compute page checksum
+ *   return: error code
+ *   io_page(in): page
+ */
+int
+fileio_set_page_checksum (FILEIO_PAGE * io_page)
+{
+  char *checksum;
+  assert (io_page != NULL);
+
+  checksum = (char *) malloc (sizeof (char) * (FILEIO_CHECKSUM_SIZE + 1));
+  if (checksum == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (char) * (FILEIO_CHECKSUM_SIZE + 1));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* Reset checksum to not affect the new computation. */
+  memset (io_page->prv.checksum, 0, sizeof (io_page->prv.checksum));
+  fileio_compute_page_checksum (io_page, checksum);
+  memcpy (io_page->prv.checksum, checksum, FILEIO_CHECKSUM_SIZE);
+  free (checksum);
+
+  return NO_ERROR;
+}
+
+/* 
+ * fileio_page_has_valid_checksum - check page consistency
+ *   return: true, if has valid checksum
+ *   io_page(in): the page 
+ */
+bool
+fileio_page_has_valid_checksum (FILEIO_PAGE * io_page)
+{
+  char saved_checksum[FILEIO_CHECKSUM_SIZE + 1], checksum[FILEIO_CHECKSUM_SIZE + 1];
+  assert (io_page != NULL);
+
+  /* Save the old page checksum. */
+  memcpy (saved_checksum, io_page->prv.checksum, FILEIO_CHECKSUM_SIZE);
+  /* Reset checksum to not affect the new computation. */
+  memset (io_page->prv.checksum, 0, sizeof (io_page->prv.checksum));
+  /* Compute the page checksum. */
+  fileio_compute_page_checksum (io_page, checksum);
+  /* Restore the saved checksum */
+  memcpy (io_page->prv.checksum, saved_checksum, FILEIO_CHECKSUM_SIZE);
+
+  if (memcmp (checksum, io_page->prv.checksum, FILEIO_CHECKSUM_SIZE) == 0)
+    {
+      return true;
+    }
+
+  return false;
 }

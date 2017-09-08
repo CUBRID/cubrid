@@ -1263,7 +1263,8 @@ $ LOADDB
 1194 No se puede comprobar el archivo %1$d|%2$d porque el bloqueo en la clase %3$d|%4$d|%5$d no se concede inmediatamente.
 1195 La parte recursiva de un CTE no debe contener funciones agregadas sin la cláusula GROUP BY.
 1196 Recursiones máximas %1$d alcanzó la ejecución del CTE.
-1197 Ultimo error
+1197 Double Write Buffer is disabled.
+1198 Last Error
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
 2 Ningun mensaje de error disponible.
