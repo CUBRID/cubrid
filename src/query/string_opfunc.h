@@ -207,7 +207,7 @@ extern int db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_ar
 extern int db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 
 #if defined (__cplusplus)
-static int db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document *doc);
+static int db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document * doc);
 #endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)

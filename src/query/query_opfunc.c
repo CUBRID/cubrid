@@ -242,7 +242,7 @@ qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 
 static int
 qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple);
+		  QFILE_TUPLE tuple);
 
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *, int, DB_VALUE **) =
 {
@@ -6598,27 +6598,26 @@ qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * d
     }
   else
     {
-      if (!dbval1_p->data.json.document->IsArray() &&
-          !dbval1_p->data.json.document->IsObject())
-        {
-          return DB_MAKE_INT (result_p, 1);
-        }
+      if (!dbval1_p->data.json.document->IsArray () && !dbval1_p->data.json.document->IsObject ())
+	{
+	  return DB_MAKE_INT (result_p, 1);
+	}
 
-      if (dbval1_p->data.json.document->IsArray())
-        {
-          return DB_MAKE_INT (result_p, dbval1_p->data.json.document->Size());
-        }
-      if (dbval1_p->data.json.document->IsObject())
-        {
-          int length = 0;
-          for (cubrid_value::ConstMemberIterator itr = dbval1_p->data.json.document->MemberBegin();
-               itr != dbval1_p->data.json.document->MemberEnd(); ++itr)
-            {
-              length++;
-            }
+      if (dbval1_p->data.json.document->IsArray ())
+	{
+	  return DB_MAKE_INT (result_p, dbval1_p->data.json.document->Size ());
+	}
+      if (dbval1_p->data.json.document->IsObject ())
+	{
+	  int length = 0;
+	  for (cubrid_value::ConstMemberIterator itr = dbval1_p->data.json.document->MemberBegin ();
+	       itr != dbval1_p->data.json.document->MemberEnd (); ++itr)
+	    {
+	      length++;
+	    }
 
-          return DB_MAKE_INT (result_p, length);
-        }
+	  return DB_MAKE_INT (result_p, length);
+	}
     }
 }
 
@@ -6636,41 +6635,38 @@ qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * do
 }
 
 static int
-qdata_json_depth_dbval_helper (cubrid_value &doc)
+qdata_json_depth_dbval_helper (cubrid_value & doc)
 {
-  if (!doc.IsArray() &&
-      !doc.IsObject())
+  if (!doc.IsArray () && !doc.IsObject ())
     {
       return 0;
     }
 
-  if (doc.IsArray())
+  if (doc.IsArray ())
     {
       int max = 0;
-      for (cubrid_value::ValueIterator itr = doc.Begin();
-           itr != doc.End(); ++itr)
-        {
-          int depth = qdata_json_depth_dbval_helper (*itr);
-          if (depth > max)
-            {
-              max = depth;
-            }
-        }
-      return max+1;
+      for (cubrid_value::ValueIterator itr = doc.Begin (); itr != doc.End (); ++itr)
+	{
+	  int depth = qdata_json_depth_dbval_helper (*itr);
+	  if (depth > max)
+	    {
+	      max = depth;
+	    }
+	}
+      return max + 1;
     }
-  else if (doc.IsObject())
+  else if (doc.IsObject ())
     {
       int max = 0;
-      for (cubrid_value::MemberIterator itr = doc.MemberBegin();
-           itr != doc.MemberEnd(); ++itr)
-        {
-          int depth = qdata_json_depth_dbval_helper (itr->value);
-          if (depth > max)
-            {
-              max = depth;
-            }
-        }
-      return max+1;
+      for (cubrid_value::MemberIterator itr = doc.MemberBegin (); itr != doc.MemberEnd (); ++itr)
+	{
+	  int depth = qdata_json_depth_dbval_helper (itr->value);
+	  if (depth > max)
+	    {
+	      max = depth;
+	    }
+	}
+      return max + 1;
     }
 }
 
@@ -6707,19 +6703,18 @@ qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE
 }
 
 int
-qdata_json_search_dbval (DB_VALUE * json, DB_VALUE * one_or_all, DB_VALUE * search_str, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_json_search_dbval (DB_VALUE * json, DB_VALUE * one_or_all, DB_VALUE * search_str, DB_VALUE * result_p,
+			 TP_DOMAIN * domain_p)
 {
   int one_or_all_bool;
-  std::vector<std::string> result;
+  std::vector < std::string > result;
   cubrid_document *doc;
   rapidjson::StringBuffer buffer;
   rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
   char *json_body;
   const char *buffer_str;
 
-  if (DB_IS_NULL (json) ||
-      DB_IS_NULL (one_or_all) ||
-      DB_IS_NULL (search_str))
+  if (DB_IS_NULL (json) || DB_IS_NULL (one_or_all) || DB_IS_NULL (search_str))
     {
       return DB_MAKE_NULL (result_p);
     }
@@ -6738,24 +6733,21 @@ qdata_json_search_dbval (DB_VALUE * json, DB_VALUE * one_or_all, DB_VALUE * sear
     }
 
   qdata_json_search_dbval_helper (*json->data.json.document,
-                                  *json->data.json.document,
-                                  "",
-                                  search_str->data.ch.medium.buf,
-                                  one_or_all_bool,
-                                  result);
-  doc = new cubrid_document();
+				  *json->data.json.document,
+				  "", search_str->data.ch.medium.buf, one_or_all_bool, result);
+  doc = new cubrid_document ();
 
-  if (result.size() == 1)
+  if (result.size () == 1)
     {
-      doc->SetString (result[0].c_str(), doc->GetAllocator());
+      doc->SetString (result[0].c_str (), doc->GetAllocator ());
     }
   else
     {
-      doc->SetArray();
-      for (unsigned int i = 0; i < result.size(); i++)
-        {
-          doc->PushBack (rapidjson::StringRef (result[i].c_str()), doc->GetAllocator());
-        }
+      doc->SetArray ();
+      for (unsigned int i = 0; i < result.size (); i++)
+	{
+	  doc->PushBack (rapidjson::StringRef (result[i].c_str ()), doc->GetAllocator ());
+	}
     }
 
   doc->Accept (writer);
@@ -6769,99 +6761,85 @@ qdata_json_search_dbval (DB_VALUE * json, DB_VALUE * one_or_all, DB_VALUE * sear
 }
 
 static void
-qdata_json_search_dbval_helper (cubrid_value &whole_doc,
-                                cubrid_value &doc,
-                                const char *current_path,
-                                const char *search_str,
-                                int one_or_all,
-                                std::vector<std::string> &result)
+qdata_json_search_dbval_helper (cubrid_value & whole_doc,
+				cubrid_value & doc,
+				const char *current_path,
+				const char *search_str, int one_or_all, std::vector < std::string > &result)
 {
- if (one_or_all == 0 && result.size() == 1)
+  if (one_or_all == 0 && result.size () == 1)
     {
       return;
     }
 
-  if (!doc.IsArray() &&
-      !doc.IsObject())
+  if (!doc.IsArray () && !doc.IsObject ())
     {
       cubrid_pointer p (current_path);
       cubrid_value *resulting_json;
 
       if (p.IsValid () && (resulting_json = p.Get (whole_doc)) != NULL)
-        {
-          char final_string[DB_JSON_MAX_STRING_SIZE];
+	{
+	  char final_string[DB_JSON_MAX_STRING_SIZE];
 
-          if (resulting_json->IsInt())
-            {
-              int val = resulting_json->GetInt();
-              snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%d", val);
-            }
-          else if (resulting_json->IsDouble())
-            {
-              float val = resulting_json->GetDouble();
-              snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%f", val);
-            }
-          else if (resulting_json->IsString())
-            {
-              strncpy (final_string, resulting_json->GetString(), DB_JSON_MAX_STRING_SIZE);
-            }
+	  if (resulting_json->IsInt ())
+	    {
+	      int val = resulting_json->GetInt ();
+	      snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%d", val);
+	    }
+	  else if (resulting_json->IsDouble ())
+	    {
+	      float val = resulting_json->GetDouble ();
+	      snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%f", val);
+	    }
+	  else if (resulting_json->IsString ())
+	    {
+	      strncpy (final_string, resulting_json->GetString (), DB_JSON_MAX_STRING_SIZE);
+	    }
 
-          if (strstr (final_string, search_str) != NULL)
-            {
-              result.push_back (current_path);
-            }
-        }
+	  if (strstr (final_string, search_str) != NULL)
+	    {
+	      result.push_back (current_path);
+	    }
+	}
       else
-        {
-          //everything should be valid
-          assert (false);
-        }
+	{
+	  //everything should be valid
+	  assert (false);
+	}
     }
 
-  if (doc.IsArray())
+  if (doc.IsArray ())
     {
       int index = 0;
-      for (cubrid_value::ValueIterator itr = doc.Begin();
-           itr != doc.End(); ++itr)
-        {
-          char index_str[3];
-          snprintf (index_str, 2, "%d", index);
+      for (cubrid_value::ValueIterator itr = doc.Begin (); itr != doc.End (); ++itr)
+	{
+	  char index_str[3];
+	  snprintf (index_str, 2, "%d", index);
 
-          char *next_path = (char *) db_private_alloc (NULL, strlen (current_path) + strlen (index_str) + 2);
-          strcpy (next_path, current_path);
-          strcat (next_path, "/");
-          strcat (next_path, index_str);
+	  char *next_path = (char *) db_private_alloc (NULL, strlen (current_path) + strlen (index_str) + 2);
+	  strcpy (next_path, current_path);
+	  strcat (next_path, "/");
+	  strcat (next_path, index_str);
 
-          qdata_json_search_dbval_helper (whole_doc,
-                                          *itr,
-                                          next_path,
-                                          search_str,
-                                          one_or_all,
-                                          result);
+	  qdata_json_search_dbval_helper (whole_doc, *itr, next_path, search_str, one_or_all, result);
 
-          index++;
-          db_private_free (NULL, next_path);
-        }
+	  index++;
+	  db_private_free (NULL, next_path);
+	}
     }
-  else if (doc.IsObject())
+  else if (doc.IsObject ())
     {
-      for (cubrid_value::MemberIterator itr = doc.MemberBegin();
-           itr != doc.MemberEnd(); ++itr)
-        {
-          char *next_path = (char *) db_private_alloc (NULL, strlen (current_path) + 1 + strlen (itr->name.GetString()) + 1);
-          strcpy (next_path, current_path);
-          strcat (next_path, "/");
-          strcat (next_path, itr->name.GetString());
+      for (cubrid_value::MemberIterator itr = doc.MemberBegin (); itr != doc.MemberEnd (); ++itr)
+	{
+	  char *next_path =
+	    (char *) db_private_alloc (NULL, strlen (current_path) + 1 + strlen (itr->name.GetString ()) + 1);
+	  strcpy (next_path, current_path);
+	  strcat (next_path, "/");
+	  strcat (next_path, itr->name.GetString ());
 
-          qdata_json_search_dbval_helper (whole_doc,
-                                          itr->value,
-                                          next_path,
-                                          search_str,
-                                          one_or_all,
-                                          result);
+	  qdata_json_search_dbval_helper (whole_doc, itr->value, next_path, search_str, one_or_all, result);
 
-          db_private_free (NULL, next_path);
-        }
+	  db_private_free (NULL, next_path);
+	}
     }
 }
 
@@ -11055,7 +11033,7 @@ error_exit:
 
 static int
 qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple)
+		  QFILE_TUPLE tuple)
 {
   DB_VALUE *value;
   REGU_VARIABLE_LIST operand;

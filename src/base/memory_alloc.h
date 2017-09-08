@@ -219,15 +219,15 @@ extern void db_ostk_free (HL_HEAPID heap_id, void *ptr);
 
 extern HL_HEAPID db_create_private_heap (void);
 #if defined(SERVER_MODE)
-extern void db_clear_private_heap (struct thread_entry * thread_p, HL_HEAPID heap_id);
-extern HL_HEAPID db_change_private_heap (struct thread_entry * thread_p, HL_HEAPID heap_id);
-extern HL_HEAPID db_replace_private_heap (struct thread_entry * thread_p);
-extern void db_destroy_private_heap (struct thread_entry * thread_p, HL_HEAPID heap_id);
+extern void db_clear_private_heap (struct thread_entry *thread_p, HL_HEAPID heap_id);
+extern HL_HEAPID db_change_private_heap (struct thread_entry *thread_p, HL_HEAPID heap_id);
+extern HL_HEAPID db_replace_private_heap (struct thread_entry *thread_p);
+extern void db_destroy_private_heap (struct thread_entry *thread_p, HL_HEAPID heap_id);
 #else
-extern void db_clear_private_heap (void * thread_p, HL_HEAPID heap_id);
-extern HL_HEAPID db_change_private_heap (void * thread_p, HL_HEAPID heap_id);
-extern HL_HEAPID db_replace_private_heap (void * thread_p);
-extern void db_destroy_private_heap (void * thread_p, HL_HEAPID heap_id);
+extern void db_clear_private_heap (void *thread_p, HL_HEAPID heap_id);
+extern HL_HEAPID db_change_private_heap (void *thread_p, HL_HEAPID heap_id);
+extern HL_HEAPID db_replace_private_heap (void *thread_p);
+extern void db_destroy_private_heap (void *thread_p, HL_HEAPID heap_id);
 #endif
 #if !defined(NDEBUG)
 #define db_private_alloc(thrd, size) \

@@ -3050,7 +3050,7 @@ typedef struct
 {
   char *json_body;
 #if defined (__cplusplus)
-    cubrid_document *document;
+  cubrid_document *document;
 #endif
 } PT_JSON;
 

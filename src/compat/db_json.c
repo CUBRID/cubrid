@@ -3,7 +3,7 @@
 DB_JSON_VALIDATION_OBJECT
 get_validator_from_schema_string (const char *schema_raw)
 {
-  rapidjson::Document *doc = new rapidjson::Document ();
+  rapidjson::Document * doc = new rapidjson::Document ();
   DB_JSON_VALIDATION_OBJECT val_obj;
 
   if (doc->Parse (schema_raw).HasParseError ())
@@ -33,33 +33,37 @@ get_copy_of_validator (const DB_JSON_VALIDATION_OBJECT validation_obj, const cha
   return copy;
 }
 
-void *cubrid_json_allocator::Malloc(size_t size)
+void *
+cubrid_json_allocator::Malloc (size_t size)
 {
-  if (size) //  behavior of malloc(0) is implementation defined.
+  if (size)			//  behavior of malloc(0) is implementation defined.
     {
       return db_private_alloc (NULL, size);
     }
   else
     {
-      return NULL; // standardize to returning NULL.
+      return NULL;		// standardize to returning NULL.
 
     }
 }
 
-void *cubrid_json_allocator::Realloc(void* originalPtr, size_t originalSize, size_t newSize)
+void *
+cubrid_json_allocator::Realloc (void *originalPtr, size_t originalSize, size_t newSize)
 {
   (void) originalSize;
   if (newSize == 0)
     {
-        db_private_free (NULL, originalPtr);
-        return NULL;
+      db_private_free (NULL, originalPtr);
+      return NULL;
     }
   return db_private_realloc (NULL, originalPtr, newSize);
 }
 
-void cubrid_json_allocator::Free(void *ptr)
+void
+cubrid_json_allocator::Free (void *ptr)
 {
   db_private_free (NULL, ptr);
 }
 
-const bool cubrid_json_allocator::kNeedFree = true;
+const bool
+  cubrid_json_allocator::kNeedFree = true;

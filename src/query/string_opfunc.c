@@ -3330,7 +3330,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 static int
-db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document *doc)
+db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document * doc)
 {
   DB_VALUE new_j1, new_j2, *p1 = NULL, *p2 = NULL;
 
