@@ -43,6 +43,10 @@
 
 #include "lock_free.h"
 
+/* forward declarations */
+typedef struct db_value DB_VALUE;
+/* end of forward declarations */
+
 enum
 {
   THREAD_TS_SPAGE_SAVING = 0,

@@ -39,8 +39,17 @@
 #include <stdint.h>
 #endif
 
-#include "thread.h"
+//forward decl
+#if defined(SERVER_MODE)
+typedef struct thread_entry THREAD_ENTRY;
+#else
+typedef void THREAD_ENTRY;
+#endif
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
+//end forward decl
+
 #include "dbtype.h"
+#include "thread.h"
 
 /* Ceiling of positive division */
 #define CEIL_PTVDIV(dividend, divisor) \

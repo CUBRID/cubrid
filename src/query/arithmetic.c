@@ -5198,7 +5198,7 @@ db_json_length_dbval (const DB_VALUE *json, DB_VALUE *res)
       if (json->data.json.document->IsObject())
         {
           int length = 0;
-          for (rapidjson::Value::ConstMemberIterator itr = json->data.json.document->MemberBegin();
+          for (cubrid_value::ConstMemberIterator itr = json->data.json.document->MemberBegin();
                itr != json->data.json.document->MemberEnd(); ++itr)
             {
               length++;
@@ -5223,7 +5223,7 @@ db_json_depth_dbval (const DB_VALUE *json, DB_VALUE *res)
 }
 
 static int
-db_json_depth_dbval_helper (rapidjson::Value &doc)
+db_json_depth_dbval_helper (cubrid_value &doc)
 {
   if (!doc.IsArray() &&
       !doc.IsObject())
@@ -5234,7 +5234,7 @@ db_json_depth_dbval_helper (rapidjson::Value &doc)
   if (doc.IsArray())
     {
       int max = 0;
-      for (rapidjson::Value::ValueIterator itr = doc.Begin();
+      for (cubrid_value::ValueIterator itr = doc.Begin();
            itr != doc.End(); ++itr)
         {
           int depth = db_json_depth_dbval_helper (*itr);
@@ -5248,7 +5248,7 @@ db_json_depth_dbval_helper (rapidjson::Value &doc)
   else if (doc.IsObject())
     {
       int max = 0;
-      for (rapidjson::Value::MemberIterator itr = doc.MemberBegin();
+      for (cubrid_value::MemberIterator itr = doc.MemberBegin();
            itr != doc.MemberEnd(); ++itr)
         {
           int depth = db_json_depth_dbval_helper (itr->value);
@@ -5264,21 +5264,21 @@ db_json_depth_dbval_helper (rapidjson::Value &doc)
 int
 db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE *json_res)
 {
-  rapidjson::Document * this_doc = json->data.json.document;
+  cubrid_document *this_doc = json->data.json.document;
   const char *raw_path = path->data.ch.medium.buf;
   rapidjson::StringBuffer buffer;
   rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
-  rapidjson::Value * resulting_json;
+  cubrid_value *resulting_json;
   int len;
 
   buffer.Clear ();
-  rapidjson::Pointer p (raw_path);
+  cubrid_pointer p (raw_path);
 
   if (p.IsValid () && (resulting_json = p.Get (*this_doc)) != NULL)
     {
       char *json_body;
       const char *buffer_str;
-      rapidjson::Document * new_doc = new rapidjson::Document ();
+      cubrid_document *new_doc = new cubrid_document ();
       new_doc->CopyFrom (*resulting_json, new_doc->GetAllocator ());
       new_doc->Accept (writer);
       buffer_str = buffer.GetString ();
@@ -5300,7 +5300,7 @@ db_json_search_dbval (const DB_VALUE *json, const DB_VALUE *one_or_all, const DB
 {
   int one_or_all_bool;
   std::vector<std::string> result;
-  rapidjson::Document *doc;
+  cubrid_document *doc;
   rapidjson::StringBuffer buffer;
   rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
   char *json_body;
@@ -5332,7 +5332,7 @@ db_json_search_dbval (const DB_VALUE *json, const DB_VALUE *one_or_all, const DB
                                search_str->data.ch.medium.buf,
                                one_or_all_bool,
                                result);
-  doc = new rapidjson::Document();
+  doc = new cubrid_document();
 
   if (result.size() == 1)
     {
@@ -5358,8 +5358,8 @@ db_json_search_dbval (const DB_VALUE *json, const DB_VALUE *one_or_all, const DB
 }
 
 static void
-db_json_search_dbval_helper (rapidjson::Value &whole_doc,
-                             rapidjson::Value &doc,
+db_json_search_dbval_helper (cubrid_value &whole_doc,
+                             cubrid_value &doc,
                              const char *current_path,
                              const char *search_str,
                              int one_or_all,
@@ -5373,8 +5373,8 @@ db_json_search_dbval_helper (rapidjson::Value &whole_doc,
   if (!doc.IsArray() &&
       !doc.IsObject())
     {
-      rapidjson::Pointer p (current_path);
-      rapidjson::Value *resulting_json;
+      cubrid_pointer p (current_path);
+      cubrid_value *resulting_json;
 
       if (p.IsValid () && (resulting_json = p.Get (whole_doc)) != NULL)
         {
@@ -5410,7 +5410,7 @@ db_json_search_dbval_helper (rapidjson::Value &whole_doc,
   if (doc.IsArray())
     {
       int index = 0;
-      for (rapidjson::Value::ValueIterator itr = doc.Begin();
+      for (cubrid_value::ValueIterator itr = doc.Begin();
            itr != doc.End(); ++itr)
         {
           char index_str[3];
@@ -5434,7 +5434,7 @@ db_json_search_dbval_helper (rapidjson::Value &whole_doc,
     }
   else if (doc.IsObject())
     {
-      for (rapidjson::Value::MemberIterator itr = doc.MemberBegin();
+      for (cubrid_value::MemberIterator itr = doc.MemberBegin();
            itr != doc.MemberEnd(); ++itr)
         {
           char *next_path = (char *) db_private_alloc (NULL, strlen (current_path) + 1 + strlen (itr->name.GetString()) + 1);

@@ -31,9 +31,13 @@
 
 #include "config.h"
 #include "dbdef.h"
-
-#ifdef __cplusplus
+#if defined (__cplusplus)
 #include "rapidjson/document.h"
+#include "db_json.h"
+/* forward declaration */
+class cubrid_json_allocator;
+typedef rapidjson::GenericDocument<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<cubrid_json_allocator> > cubrid_document;
+/* end of forward declaration */
 extern "C"
 {
 #endif
@@ -855,7 +859,7 @@ extern "C"
   struct db_json
   {
     char *json_body;
-    rapidjson::Document * document;
+    cubrid_document *document;
   };
 #endif
 

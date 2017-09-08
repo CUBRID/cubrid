@@ -67,7 +67,7 @@ typedef struct seman_compatible_info
   int prec;
   int scale;
 #if defined (__cplusplus)
-    rapidjson::SchemaValidator * schema_validator;
+  rapidjson::SchemaValidator *schema_validator;
 #endif
   PT_COLL_INFER coll_infer;
   const PT_NODE *ref_att;	/* column node having current compat info */

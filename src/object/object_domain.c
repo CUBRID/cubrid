@@ -10470,7 +10470,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	case DB_TYPE_CHAR:
 	  {
-	    target->data.json.document = new rapidjson::Document ();
+	    target->data.json.document = new cubrid_document ();
 	    target->data.json.document->Parse (DB_GET_STRING (src));
 
 	    if (desired_domain->validation_obj.validator != NULL)

@@ -77,12 +77,12 @@ extern int db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, 
 extern int db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res);
 extern int db_json_length_dbval (const DB_VALUE *json, DB_VALUE *res);
 extern int db_json_depth_dbval (const DB_VALUE *json, DB_VALUE *res);
-static int db_json_depth_dbval_helper (rapidjson::Value &doc);
+static int db_json_depth_dbval_helper (cubrid_value &doc);
 extern int db_json_search_dbval (const DB_VALUE *json, const DB_VALUE *one_or_all, const DB_VALUE *search_str, DB_VALUE *res);
-static void db_json_search_dbval_helper (rapidjson::Value &whole_doc,
-                                        rapidjson::Value &doc,
-                                        const char *current_path,
-                                        const char *search_str,
-                                        int one_or_all,
-                                        std::vector<std::string> &result);
+static void db_json_search_dbval_helper (cubrid_value &whole_doc,
+                                         cubrid_value &doc,
+                                         const char *current_path,
+                                         const char *search_str,
+                                         int one_or_all,
+                                         std::vector<std::string> &result);
 #endif /* _ARITHMETIC_H_ */
