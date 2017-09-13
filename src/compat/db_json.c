@@ -1,11 +1,20 @@
+/************************************************************************/
+/* TODO: license comment                                                */
+/*       function comments                                              */
+/************************************************************************/
+
 #include "db_json.h"
+
+#include "error_manager.h"
+#include "memory_alloc.h"
+
+/* *INDENT-OFF* */
 
 DB_JSON_VALIDATION_OBJECT
 get_validator_from_schema_string (const char *schema_raw)
 {
   rapidjson::Document * doc = new rapidjson::Document ();
   DB_JSON_VALIDATION_OBJECT val_obj;
-
   if (doc->Parse (schema_raw).HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
@@ -43,7 +52,6 @@ cubrid_json_allocator::Malloc (size_t size)
   else
     {
       return NULL;		// standardize to returning NULL.
-
     }
 }
 
@@ -65,5 +73,6 @@ cubrid_json_allocator::Free (void *ptr)
   db_private_free (NULL, ptr);
 }
 
-const bool
-  cubrid_json_allocator::kNeedFree = true;
+const bool cubrid_json_allocator::kNeedFree = true;
+
+/* *INDENT-ON* */
