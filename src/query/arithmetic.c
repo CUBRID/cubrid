@@ -30,19 +30,18 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
+#include <assert.h>
 #if defined(SOLARIS)
 #include <ieeefp.h>
 #endif
 
 #include "arithmetic.h"
 #include "error_manager.h"
-#include "memory_alloc.h"
-#include "object_representation.h"
-#include "object_domain.h"
+#include "object_primitive.h"
 #include "numeric_opfunc.h"
-#include "db.h"
-#include "query_opfunc.h"
 #include "crypt_opfunc.h"
+#include "string_opfunc.h"
+#include "db_date.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

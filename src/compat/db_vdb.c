@@ -30,6 +30,8 @@
 #include <stdarg.h>
 #include <sys/timeb.h>
 #include <time.h>
+#include <assert.h>
+
 #include "db.h"
 #include "dbi.h"
 #include "db_query.h"
@@ -44,10 +46,8 @@
 #include "schema_manager.h"
 #include "view_transform.h"
 #include "execute_statement.h"
-#include "xasl_generation.h"	/* TODO: remove */
 #include "locator_cl.h"
 #include "server_interface.h"
-#include "query_manager.h"
 #include "api_compat.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
@@ -90,6 +90,9 @@ static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statem
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
 static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
+
+static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
+static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -3642,6 +3645,7 @@ db_check_single_query (DB_SESSION * session)
   return NO_ERROR;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * db_get_parser() - This function returns session's parser
  * returns: session->parser
@@ -3654,6 +3658,7 @@ db_get_parser (DB_SESSION * session)
 {
   return session->parser;
 }
+#endif /* !defined (SERVER_MODE) */
 
 /*
  * db_get_statement() - This function returns session's statement for id
@@ -3842,4 +3847,108 @@ void
 db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version)
 {
   tm_Tran_read_fetch_instance_version = read_Fetch_Instance_Version;
+}
+
+/*
+ * pt_has_modified_class -
+ *   return:
+ *
+ *   parser(in):
+ *   statement(in/out):
+ */
+static DB_CLASS_MODIFICATION_STATUS
+pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  DB_CLASS_MODIFICATION_STATUS status = DB_CLASS_NOT_MODIFIED;
+
+  parser_walk_tree (parser, statement, pt_has_modified_class_helper, &status, NULL, NULL);
+
+  return status;
+}
+
+/*
+ * pt_has_modified_class_helper -
+ *   return:
+ *
+ *   parser(in):
+ *   node(in/out):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  DB_CLASS_MODIFICATION_STATUS *status = (DB_CLASS_MODIFICATION_STATUS *) arg;
+  PT_NODE *class_;
+  MOP clsmop = NULL;
+  SM_CLASS *sm_class = NULL;
+  int error = NO_ERROR;
+
+  if (*status != DB_CLASS_NOT_MODIFIED)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_SPEC)
+    {
+      for (class_ = node->info.spec.flat_entity_list; class_; class_ = class_->next)
+	{
+	  clsmop = class_->info.name.db_object;
+
+	  if (clsmop == NULL)
+	    {
+	      continue;
+	    }
+
+	  if (clsmop->decached)
+	    {
+	      /* the class might be aborted. */
+	      *status = DB_CLASS_MODIFIED;
+	    }
+	  else
+	    {
+	      error = au_fetch_class_force (clsmop, &sm_class, AU_FETCH_READ);
+	      if (error != NO_ERROR)
+		{
+		  if (error == ER_HEAP_UNKNOWN_OBJECT)
+		    {
+		      /* the class might be dropped. */
+		      *status = DB_CLASS_MODIFIED;
+		    }
+		  else
+		    {
+		      *status = DB_CLASS_ERROR;
+		    }
+		}
+	    }
+	  if (*status != DB_CLASS_NOT_MODIFIED)
+	    {
+	      /* don't revisit leaves */
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
+
+	  if (sm_get_class_type (sm_class) != SM_CLASS_CT)
+	    {
+	      continue;
+	    }
+
+	  if (class_->info.name.db_object_chn == NULL_CHN)
+	    {
+	      class_->info.name.db_object_chn = locator_get_cache_coherency_number (clsmop);
+	    }
+	  else if (class_->info.name.db_object_chn != locator_get_cache_coherency_number (clsmop))
+	    {
+	      *status = DB_CLASS_MODIFIED;
+
+	      /* don't revisit leaves */
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
+	}
+    }
+
+  return node;
 }

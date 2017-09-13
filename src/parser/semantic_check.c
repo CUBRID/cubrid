@@ -41,10 +41,10 @@
 #include "xasl_generation.h"
 #include "view_transform.h"
 #include "show_meta.h"
+#include "partition.h"
 #if defined (__cplusplus)
 #include "rapidjson/schema.h"
 #include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
 #endif
 
 /* this must be the last header file included!!! */

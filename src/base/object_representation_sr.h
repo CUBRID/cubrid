@@ -28,6 +28,10 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "storage_common.h"
 #include "system_catalog.h"
 
@@ -85,16 +89,6 @@ struct or_attribute
   unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
   unsigned is_notnull:1;	/* non-zero if has not null constraint */
 };
-
-typedef enum
-{
-  BTREE_UNIQUE,
-  BTREE_INDEX,
-  BTREE_REVERSE_UNIQUE,
-  BTREE_REVERSE_INDEX,
-  BTREE_PRIMARY_KEY,
-  BTREE_FOREIGN_KEY
-} BTREE_TYPE;
 
 typedef struct or_foreign_key OR_FOREIGN_KEY;
 struct or_foreign_key
@@ -215,7 +209,6 @@ extern void or_free_class (OR_CLASS * class_);
 extern void orc_class_rep_dir (RECDES * record, OID * rep_dir_p);
 extern void orc_class_hfid_from_record (RECDES * record, HFID * hfid);
 #endif
-extern bool orc_class_is_system_class (RECDES * record);
 extern DISK_REPR *orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record);
 extern void orc_free_diskrep (DISK_REPR * rep);
 extern CLS_INFO *orc_class_info_from_record (RECDES * record);

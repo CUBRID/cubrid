@@ -53,6 +53,7 @@
 #if defined(sun)
 #include <sys/sockio.h>
 #endif /* sun */
+#include <assert.h>
 
 #include "cci_common.h"
 #include "cas_cci.h"

@@ -30,6 +30,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
 #endif

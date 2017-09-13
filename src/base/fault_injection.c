@@ -30,7 +30,9 @@
 #include "fault_injection.h"
 
 #include "system_parameter.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "log_impl.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if !defined(NDEBUG)
 

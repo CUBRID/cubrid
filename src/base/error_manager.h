@@ -30,6 +30,7 @@
 #include "config.h"
 
 #include <stdarg.h>
+#include <assert.h>
 #if defined (SERVER_MODE)
 #if defined (WINDOWS)
 #include <winsock2.h>

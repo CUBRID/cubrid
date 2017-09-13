@@ -31,19 +31,14 @@
 #include <string.h>
 #include <assert.h>
 
-#include "error_manager.h"
-#include "oid.h"
-#include "storage_common.h"
-#include "object_representation.h"
 #include "object_representation_sr.h"
-#include "system_catalog.h"
-#include "object_domain.h"
+
+#include "error_manager.h"
+#include "object_representation.h"
 #include "set_object.h"
 #include "btree_load.h"
-#include "page_buffer.h"
-#include "heap_file.h"
-#include "class_object.h"
-#include "partition.h"
+#include "dbtype.h"
+#include "object_primitive.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -139,26 +134,6 @@ orc_class_hfid_from_record (RECDES * record, HFID * hfid)
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
 }
 #endif
-
-/*
- * orc_class_is_system_class () - Get from record the class flag and check
- *				  if SM_CLASSFLAG_SYSTEM is set.
- *
- * return      : True if SM_CLASSFLAG_SYSTEM is set.
- * record (in) : Record descriptor containing class data.
- */
-bool
-orc_class_is_system_class (RECDES * record)
-{
-  char *ptr = NULL;
-  int flags;
-  assert (record != NULL && record->data != NULL);
-
-  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) + ORC_CLASS_FLAGS;
-  flags = OR_GET_INT (ptr);
-
-  return ((flags & SM_CLASSFLAG_SYSTEM) != 0);
-}
 
 /*
  * orc_diskrep_from_record () - Calculate the corresponding DISK_REPR structure

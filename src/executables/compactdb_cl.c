@@ -23,19 +23,17 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <assert.h>
+
 #include "porting.h"
 #include "dbtype.h"
 #include "dbdef.h"
 #include "load_object.h"
 #include "db.h"
 #include "locator_cl.h"
-#include "locator_sr.h"
 #include "schema_manager.h"
-#include "heap_file.h"
-#include "system_catalog.h"
 #include "object_accessor.h"
 #include "set_object.h"
-#include "btree.h"
 #include "message_catalog.h"
 #include "network_interface_cl.h"
 #include "server_interface.h"

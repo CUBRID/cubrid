@@ -31,7 +31,6 @@
 
 #include <stdio.h>
 #include "error_manager.h"
-#include "object_representation.h"
 #include "area_alloc.h"
 #if defined (__cplusplus)
 #include "rapidjson/schema.h"
@@ -116,8 +115,6 @@ typedef struct tp_domain
 #endif
 } TP_DOMAIN;
 
-
-
 /*
  * We probably should make this 0 rather than -1 so that we can more easily
  * represent precisions with unsigned integers.  Zero is not a valid
@@ -149,7 +146,6 @@ typedef struct tp_alloc_context
 
 /* DOMAIN ALLOCATION */
 extern AREA *tp_Domain_area;
-
 
 /*
  * BUILT IN DOMAINS

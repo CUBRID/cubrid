@@ -1136,7 +1136,7 @@ int g_original_buffer_len;
 %token CYCLE
 %token DATA
 %token DATABASE
-%token DATA_TYPE_
+%token DATA_TYPE___
 %token Date
 %token DATETIME
 %token DATETIMETZ
@@ -1867,7 +1867,7 @@ stmt_
 		{ $$ = $1; }
 	| kill_stmt
 		{ $$ = $1; }
-	| DATA_TYPE_ data_type
+	| DATA_TYPE___ data_type
 		{{
 
 			PT_NODE *dt, *set_dt;

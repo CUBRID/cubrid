@@ -30,39 +30,23 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+
+#include "object_primitive.h"
 
 #include "system_parameter.h"
-#include "misc_string.h"
-#include "area_alloc.h"
-#include "db.h"
+#include "set_object.h"
+#include "elo.h"
+#include "object_print.h"
+#include "string_opfunc.h"
+#include "tz_support.h"
+#include "file_io.h"
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #include "virtual_object.h"
-#endif /* !SERVER_MODE */
-#include "object_primitive.h"
-#include "object_representation.h"
-#include "set_object.h"
-#include "elo.h"
-#if !defined (SERVER_MODE)
-#include "locator_cl.h"
-#endif /* !SERVER_MODE */
-#include "object_print.h"
-#include "memory_alloc.h"
-#include "intl_support.h"
-#include "language_support.h"
-#include "string_opfunc.h"
-#include "object_accessor.h"
-#if !defined (SERVER_MODE)
 #include "transform_cl.h"
-#endif /* !SERVER_MODE */
-#include "server_interface.h"
-
-#if defined (SERVER_MODE)
-#include "thread.h"
-#endif
-
-#include "db_elo.h"
-#include "tz_support.h"
+#include "dbi.h"
+#endif /* !defined (SERVER_MODE) */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -6025,8 +6009,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 		  int collation)
 {
 #if defined (SERVER_MODE)
-  OID *o1, *o2;
-  DB_OBJECT *obj;
+  const OID *o1, *o2;
   int oidc;
 
   /* 
@@ -6039,8 +6022,8 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
     }
   else
     {
-      obj = DB_GET_OBJECT (value1);
-      o1 = (obj) ? WS_OID (obj) : (OID *) (&oid_Null_oid);
+      assert (false);
+      o1 = &oid_Null_oid;
     }
 
   if (DB_VALUE_DOMAIN_TYPE (value2) == DB_TYPE_OID)
@@ -6049,8 +6032,8 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
     }
   else
     {
-      obj = DB_GET_OBJECT (value2);
-      o2 = (obj) ? WS_OID (obj) : (OID *) (&oid_Null_oid);
+      assert (false);
+      o2 = &oid_Null_oid;
     }
 
   oidc = oid_compare (o1, o2);

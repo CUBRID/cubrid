@@ -42,6 +42,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>

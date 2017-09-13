@@ -28,17 +28,15 @@
 #include <math.h>
 #include <time.h>
 
-#include "porting.h"
-#include "chartype.h"
-#include "misc_string.h"
-#include "error_manager.h"
-#include "dbtype.h"
 #include "db_date.h"
-#include "dbi.h"
-#include "system_parameter.h"
-#include "intl_support.h"
-#include "query_opfunc.h"
+
+#include <assert.h>
+
+#include "error_manager.h"
+#include "chartype.h"
 #include "tz_support.h"
+#include "numeric_opfunc.h"
+#include "object_representation.h"
 
 /* used in conversion to julian */
 #define IGREG1     	(15 + 31L * (10 + 12L * 1582))
@@ -3487,7 +3485,6 @@ db_date_parse_date (char const *str, int str_len, DB_DATE * date)
 static const char *
 parse_for_timestamp (const char *buf, int buf_len, DB_DATE * date, DB_TIME * time, bool allow_msec)
 {
-  int error = NO_ERROR;
   const char *p;
 
   /* First try to parse a date followed by a time. */
@@ -3555,7 +3552,6 @@ parse_datetime (const char *buf, int buf_len, DB_DATETIME * datetime)
 {
   DB_DATE date = 0;
   unsigned int mtime;
-  int error = NO_ERROR;
   const char *p;
 
   /* First try to parse a date followed by a time. */

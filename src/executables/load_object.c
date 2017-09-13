@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
 #else

@@ -23,6 +23,8 @@
 
 #ident "$Id$"
 
+#include <assert.h>
+
 #include "parser.h"
 #include "parser_message.h"
 #include "parse_tree.h"

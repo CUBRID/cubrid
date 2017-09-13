@@ -30,6 +30,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -54,6 +55,7 @@
 
 #if defined(SOLARIS) || defined(LINUX)
 #include <unistd.h>
+#include <pthread.h>
 #endif /* SOLARIS || LINUX */
 
 #include "environment_variable.h"

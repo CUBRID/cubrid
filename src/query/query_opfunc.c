@@ -29,27 +29,23 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
+#include <assert.h>
+
+#include "query_opfunc.h"
 
 #include "system_parameter.h"
-
 #include "error_manager.h"
-#include "memory_alloc.h"
-#include "object_representation.h"
-#include "external_sort.h"
-#include "extendible_hash.h"
-
 #include "fetch.h"
 #include "list_file.h"
-#include "xasl_support.h"
 #include "object_primitive.h"
-#include "object_domain.h"
 #include "set_object.h"
-#include "page_buffer.h"
-
 #include "query_executor.h"
 #include "databases_file.h"
-#include "partition.h"
 #include "tz_support.h"
+#include "numeric_opfunc.h"
+#include "db_date.h"
+#include "dbtype.h"
+#include "query_dump.h"
 
 #include "rapidjson/document.h"
 #include "rapidjson/pointer.h"
@@ -10497,9 +10493,9 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
       return ER_FAILED;
     }
 
-  if (db_string_make_empty_typed_string (thread_p, agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION,
-					 TP_DOMAIN_CODESET (agg_p->domain),
-					 TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
+  if (db_string_make_empty_typed_string (agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION,
+					 TP_DOMAIN_CODESET (agg_p->domain), TP_DOMAIN_COLLATION (agg_p->domain))
+      != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -10558,7 +10554,7 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VA
 
   if (DB_IS_NULL (agg_p->accumulator.value2) && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
     {
-      if (db_string_make_empty_typed_string (thread_p, agg_p->accumulator.value2, agg_type, DB_DEFAULT_PRECISION,
+      if (db_string_make_empty_typed_string (agg_p->accumulator.value2, agg_type, DB_DEFAULT_PRECISION,
 					     TP_DOMAIN_CODESET (agg_p->domain),
 					     TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
 	{

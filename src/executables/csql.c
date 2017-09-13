@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <assert.h>
 #if defined(WINDOWS)
 #include <direct.h>
 #include <io.h>

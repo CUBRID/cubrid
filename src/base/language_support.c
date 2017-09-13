@@ -27,21 +27,27 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <langinfo.h>
 #endif
 
-#include "chartype.h"
-#include "misc_string.h"
 #include "language_support.h"
-#include "authenticate.h"
+
+#include "chartype.h"
 #include "environment_variable.h"
-#include "db.h"
 #include "memory_hash.h"
 #include "util_func.h"
 #if !defined(WINDOWS)
 #include <dlfcn.h>
-#endif
+#endif /* !defined (WINDOWS) */
+#include "db_date.h"
+#include "string_opfunc.h"
+
+#if !defined (SERVER_MODE)
+#include "authenticate.h"
+#include "db.h"
+#endif /* !defined (SERVER_MODE) */
 
 /* this must be the last header file included! */
 #include "dbval.h"

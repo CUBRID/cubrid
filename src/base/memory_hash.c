@@ -55,6 +55,8 @@
 #include "set_object.h"
 #include "language_support.h"
 #include "intl_support.h"
+#include "log_impl.h"
+#include "object_primitive.h"
 /* this must be the last header file included! */
 #include "dbval.h"
 

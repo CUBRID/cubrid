@@ -40,31 +40,6 @@
 
 extern const VPID vpid_Null_vpid;
 
-/* Set a vpid with values of volid and pageid */
-#define VPID_SET(vpid_ptr, volid_value, pageid_value)	      \
-  do {							      \
-    (vpid_ptr)->volid  = (volid_value);			      \
-    (vpid_ptr)->pageid = (pageid_value);		      \
-  } while(0)
-
-/* Set the vpid to an invalid one */
-#define VPID_SET_NULL(vpid_ptr) VPID_SET(vpid_ptr, NULL_VOLID, NULL_PAGEID)
-
-/* copy a VPID */
-#define  VPID_COPY(dest_ptr, src_ptr)                      \
-  do {							   \
-    *(dest_ptr) = *(src_ptr);				   \
-  } while (0)
-
-/* vpid1 == vpid2 ? */
-#define VPID_EQ(vpid_ptr1, vpid_ptr2)                         \
-  ((vpid_ptr1) == (vpid_ptr2) ||                              \
-   ((vpid_ptr1)->pageid == (vpid_ptr2)->pageid &&             \
-    (vpid_ptr1)->volid  == (vpid_ptr2)->volid))
-
-/* Is vpid NULL ? */
-#define VPID_ISNULL(vpid_ptr) ((vpid_ptr)->pageid == NULL_PAGEID)
-
 /* Get page VPID for OID */
 #define VPID_GET_FROM_OID(vpid_ptr, oid_ptr) \
   VPID_SET (vpid_ptr, (oid_ptr)->volid, (oid_ptr)->pageid);

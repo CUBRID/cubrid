@@ -53,6 +53,7 @@
 #include "system_parameter.h"
 #include "network_interface_cl.h"
 #include "object_template.h"
+#include "db.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -17227,26 +17228,26 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_JSON_LENGTH:
       error = db_json_length_dbval (arg1, result);
       if (error != NO_ERROR)
-        {
-          PT_ERRORc (parser, o1, er_msg ());
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
-        }
+	}
       break;
     case PT_JSON_DEPTH:
       error = db_json_depth_dbval (arg1, result);
       if (error != NO_ERROR)
-        {
-          PT_ERRORc (parser, o1, er_msg ());
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
-        }
+	}
       break;
     case PT_JSON_SEARCH:
       error = db_json_search_dbval (arg1, arg2, arg3, result);
       if (error != NO_ERROR)
-        {
-          PT_ERRORc (parser, o1, er_msg ());
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
-        }
+	}
       break;
     case PT_POWER:
       error = db_power_dbval (result, arg1, arg2);

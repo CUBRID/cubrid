@@ -108,6 +108,7 @@ if(WIN32)
   list(APPEND CUB_SERVER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(cub_server ${CUB_SERVER_SOURCES})
+target_compile_definitions(cub_server PRIVATE SERVER_MODE ${COMMON_DEFS})
 target_include_directories(cub_server PRIVATE ${EP_INCLUDES})
 target_link_libraries(cub_server LINK_PRIVATE cubrid)
 if(WIN32)
@@ -158,13 +159,7 @@ SET_SOURCE_FILES_PROPERTIES(
   )
   
 if(WIN32)
-  list(APPEND CUB_COMMDB_SOURCES ${BASE_DIR}/getopt_long.c)
   list(APPEND CUB_COMMDB_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
-  SET_SOURCE_FILES_PROPERTIES(
-    ${BASE_DIR}/getopt_long.c
-    PROPERTIES LANGUAGE CXX
-  )
-  
 endif(WIN32)
 
 add_executable(cub_commdb ${CUB_COMMDB_SOURCES})
@@ -193,11 +188,6 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE CXX
   )
 if(WIN32)
-  list(APPEND LOADJAVA_SOURCES ${BASE_DIR}/getopt_long.c)
-  SET_SOURCE_FILES_PROPERTIES(
-    ${BASE_DIR}/getopt_long.c
-    PROPERTIES LANGUAGE CXX
-  )
   list(APPEND LOADJAVA_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(loadjava ${LOADJAVA_SOURCES})
@@ -259,10 +249,6 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE CXX
   )  
 if(WIN32)
-  SET_SOURCE_FILES_PROPERTIES(
-    ${BASE_DIR}/getopt_long.c
-    PROPERTIES LANGUAGE CXX
-  )
   list(APPEND CUBRID_ESQL_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 set_source_files_properties(${BISON_esql_grammar_OUTPUTS} PROPERTIES GENERATED true)

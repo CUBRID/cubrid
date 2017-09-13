@@ -33,6 +33,8 @@
 #include <sys/time.h>
 #endif
 
+#include "log_applier.h"
+
 #include "porting.h"
 #include "utility.h"
 #include "environment_variable.h"
@@ -44,7 +46,6 @@
 #include "object_accessor.h"
 #include "locator_cl.h"
 #include "connection_cl.h"
-#include "log_applier.h"
 #include "network_interface_cl.h"
 #include "transform.h"
 #include "file_io.h"
@@ -7000,6 +7001,7 @@ la_shutdown (void)
   return;
 }
 
+#if 0
 /*
  * la_print_log_header () -
  */
@@ -7082,6 +7084,7 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
     }
   printf ("%-30s : %d\n", "Archive number", hdr->arv_num);
 }
+#endif /* 0 */
 
 /*
  * la_log_page_check() - test the transaction log
@@ -7214,8 +7217,11 @@ check_applied_info_end:
       *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
       *copied_append_lsa = la_Info.act_log.log_hdr->append_lsa;
 
+#if 0
+      /* fixme(rem) */
       printf ("\n *** Copied Active Info. *** \n");
       la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
+#endif /*  0 */
     }
 
   if (check_copied_info && (page_num > 1))
@@ -7263,7 +7269,9 @@ check_applied_info_end:
 
 	  if (LA_LOG_IS_IN_ARCHIVE (page_num))
 	    {
+#if 0
 	      la_print_log_arv_header (database_name, la_Info.arv_log.log_hdr, verbose);
+#endif
 	    }
 	  printf ("Log page %lld (phy: %lld pageid: %lld, offset %d)\n", (long long int) page_num,
 		  (long long int) la_log_phypageid (page_num), (long long int) logpage->hdr.logical_pageid,

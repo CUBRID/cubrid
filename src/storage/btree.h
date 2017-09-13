@@ -27,10 +27,13 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "config.h"
 
 #include "storage_common.h"
-#include "error_manager.h"
 #include "oid.h"
 #include "statistics.h"
 #include "disk_manager.h"
@@ -63,13 +66,6 @@
 #define BTREE_GOTO_START_LOCKING	   -6
 #define BTREE_GOTO_LOCKING_DONE		   -7
 #define BTREE_RESTART_SCAN                 -8
-
-
-typedef enum
-{
-  BTREE_CONSTRAINT_UNIQUE = 0x01,
-  BTREE_CONSTRAINT_PRIMARY_KEY = 0x02
-} BTREE_CONSTRAINT_TYPE;
 
 enum
 { BTREE_COERCE_KEY_WITH_MIN_VALUE = 1, BTREE_COERCE_KEY_WITH_MAX_VALUE = 2 };
@@ -142,6 +138,7 @@ struct btree_keyrange
 
 /* Forward definition. */
 struct indx_scan_id;
+typedef struct indx_scan_id INDX_SCAN_ID;
 
 enum bts_key_status
 {

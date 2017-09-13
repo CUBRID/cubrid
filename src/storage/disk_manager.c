@@ -31,31 +31,24 @@
 #include <assert.h>
 #include <errno.h>
 
-#include "porting.h"
 #include "disk_manager.h"
-#include "memory_alloc.h"
+#include "porting.h"
 #include "system_parameter.h"
-#include "xserver_interface.h"
-#include "storage_common.h"
 #include "error_manager.h"
+#include "language_support.h"
+#include "intl_support.h"
+#include "xserver_interface.h"
 #include "file_io.h"
 #include "page_buffer.h"
 #include "log_manager.h"
-#include "log_impl.h"
-#if defined(SERVER_MODE)
-#include "connection_error.h"
-#endif /* SERVER_MODE */
 #include "critical_section.h"
 #include "boot_sr.h"
-#include "environment_variable.h"
-#include "event_log.h"
-#include "tsc_timer.h"
-
-#if !defined (SERVER_MODE)
-#include "transaction_cl.h"
-#endif
-
+#include "db_date.h"
 #include "bit.h"
+
+#if defined (SA_MODE)
+#include "transaction_cl.h"	/* for interrupt */
+#endif /* defined (SA_MODE) */
 
 /************************************************************************/
 /* Define structures, globals, and macro's                              */

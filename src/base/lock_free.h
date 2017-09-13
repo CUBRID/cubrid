@@ -118,6 +118,7 @@ struct lf_entry_descriptor
 
 typedef struct lf_tran_system LF_TRAN_SYSTEM;
 
+typedef struct lf_tran_entry LF_TRAN_ENTRY;
 struct lf_tran_entry
 {
   /* last ID for which a cleanup of retired_list was performed */

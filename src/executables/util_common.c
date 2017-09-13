@@ -24,25 +24,23 @@
 #ident "$Id$"
 
 #include <ctype.h>
-
-#include "config.h"
-#include "porting.h"
-#include "utility.h"
-#include "message_catalog.h"
-#include "error_code.h"
-
-#include "mprec.h"
-#include "system_parameter.h"
-#include "util_func.h"
-#include "ini_parser.h"
-#include "environment_variable.h"
-#include "heartbeat.h"
-#include "log_impl.h"
-#include "class_object.h"
-#include "wintcp.h"
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <fcntl.h>
 #endif /* !defined(WINDOWS) */
+
+#include "config.h"
+
+#include "utility.h"
+#include "util_func.h"
+#include "porting.h"
+#include "message_catalog.h"
+#include "mprec.h"
+#include "system_parameter.h"
+#include "environment_variable.h"
+#include "heartbeat.h"
+#include "log_impl.h"
+#include "wintcp.h"
 
 typedef enum
 {

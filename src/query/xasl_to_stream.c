@@ -29,16 +29,16 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+
+#include "xasl_to_stream.h"
 
 #include "error_manager.h"
-#include "query_executor.h"
 #include "server_interface.h"
 #include "class_object.h"
 #include "object_primitive.h"
 #include "work_space.h"
 #include "memory_alloc.h"
-#include "heap_file.h"
-
 
 /* memory alignment unit - to align stored XASL tree nodes */
 #define	ALIGN_UNIT	sizeof(double)
@@ -159,7 +159,6 @@ static char *xts_process_like_eval_term (char *ptr, const LIKE_EVAL_TERM * like_
 static char *xts_process_rlike_eval_term (char *ptr, const RLIKE_EVAL_TERM * rlike_eval_term);
 static char *xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec);
 static char *xts_process_indx_info (char *ptr, const INDX_INFO * indx_info);
-static char *xts_process_indx_id (char *ptr, const INDX_ID * indx_id);
 static char *xts_process_key_info (char *ptr, const KEY_INFO * key_info);
 static char *xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec);
 static char *xts_process_list_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
@@ -214,7 +213,6 @@ static int xts_sizeof_like_eval_term (const LIKE_EVAL_TERM * ptr);
 static int xts_sizeof_rlike_eval_term (const RLIKE_EVAL_TERM * ptr);
 static int xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * ptr);
 static int xts_sizeof_indx_info (const INDX_INFO * ptr);
-static int xts_sizeof_indx_id (const INDX_ID * ptr);
 static int xts_sizeof_key_info (const KEY_INFO * ptr);
 static int xts_sizeof_cls_spec_type (const CLS_SPEC_TYPE * ptr);
 static int xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * ptr);
@@ -481,31 +479,6 @@ end:
   xts_Free_offset_in_stream = 0;
   or_unpack_int (*xasl_stream, &test);
   return xts_Xasl_errcode;
-}
-
-/*
- * xts_final () -
- *   return:
- *
- * Note: Added for the PC so we have a way to free up all the storage that
- * is currently in use when a database "connection" is closed.
- * Called by qp_final() on the PC but not for the workstations.
- */
-void
-xts_final ()
-{
-  int i;
-
-  for (i = 0; i < MAX_PTR_BLOCKS; i++)
-    {
-      if (xts_Ptr_blocks[i] != NULL)
-	{
-	  free_and_init (xts_Ptr_blocks[i]);
-	}
-      xts_Ptr_blocks[i] = NULL;
-      xts_Ptr_lwm[i] = 0;
-      xts_Ptr_max[i] = 0;
-    }
 }
 
 static int
@@ -3368,13 +3341,6 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_arith_type (build_list_proc->g_outarith_list);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   offset = xts_save_analytic_eval_type (build_list_proc->a_eval_list);
   if (offset == ER_FAILED)
     {
@@ -4391,8 +4357,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 
   ptr = or_pack_int (ptr, access_spec->access);
 
-  if (access_spec->access == SEQUENTIAL || access_spec->access == SEQUENTIAL_RECORD_INFO
-      || access_spec->access == SEQUENTIAL_PAGE_SCAN)
+  if (access_spec->access == ACCESS_METHOD_SEQUENTIAL || access_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
     {
       ptr = or_pack_int (ptr, 0);
     }
@@ -4467,12 +4433,6 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 
   /* ptr->s_id not sent to server */
 
-  ptr = or_pack_int (ptr, access_spec->grouped_scan);
-
-  ptr = or_pack_int (ptr, access_spec->fixed_scan);
-
-  ptr = or_pack_int (ptr, access_spec->qualified_block);
-
   ptr = or_pack_int (ptr, access_spec->single_fetch);
 
   ptr = or_pack_int (ptr, access_spec->pruning_type);
@@ -4492,11 +4452,7 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 static char *
 xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 {
-  ptr = xts_process_indx_id (ptr, &indx_info->indx_id);
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
+  ptr = or_pack_btid (ptr, &indx_info->btid);
 
   ptr = or_pack_int (ptr, indx_info->coverage);
 
@@ -4542,29 +4498,6 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
       ptr = or_pack_int (ptr, 0);	/* dummy indx_info->iss_range.range */
       ptr = or_pack_int (ptr, 0);	/* dummp offset of iss_range.key1 */
 #endif
-    }
-
-  return ptr;
-}
-
-static char *
-xts_process_indx_id (char *ptr, const INDX_ID * indx_id)
-{
-  ptr = or_pack_int (ptr, indx_id->type);
-
-  switch (indx_id->type)
-    {
-    case T_BTID:
-      ptr = or_pack_btid (ptr, (BTID *) (&indx_id->i.btid));
-      break;
-
-    case T_EHID:
-      ptr = or_pack_ehid (ptr, (EHID *) (&indx_id->i.ehid));
-      break;
-
-    default:
-      xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
-      return NULL;
     }
 
   return ptr;
@@ -5895,7 +5828,6 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + OR_INT_SIZE	/* g_hkey_size */
 	   + OR_INT_SIZE	/* g_func_count */
 	   + PTR_SIZE		/* g_agg_list */
-	   + PTR_SIZE		/* g_outarith_list */
 	   + PTR_SIZE		/* a_func_list */
 	   + PTR_SIZE		/* a_regu_list */
 	   + PTR_SIZE		/* a_outptr_list */
@@ -6491,12 +6423,7 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
   int size = 0;
   int tmp_size = 0;
 
-  tmp_size = xts_sizeof_indx_id (&indx_info->indx_id);
-  if (tmp_size == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-  size += tmp_size;
+  size = OR_BTID_ALIGNED_SIZE;	/* btid */
 
   size += (OR_INT_SIZE		/* coverage */
 	   + OR_INT_SIZE);	/* range_type */
@@ -6518,35 +6445,6 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 	   + OR_INT_SIZE	/* func_idx_col_id (int) */
 	   + OR_INT_SIZE	/* iss_range's range */
 	   + PTR_SIZE);		/* iss_range's key1 */
-
-  return size;
-}
-
-/*
- * xts_sizeof_indx_id () -
- *   return:
- *   ptr(in)    :
- */
-static int
-xts_sizeof_indx_id (const INDX_ID * indx_id)
-{
-  int size = 0;
-
-  size += OR_INT_SIZE;		/* type */
-  switch (indx_id->type)
-    {
-    case T_BTID:
-      size += OR_BTID_ALIGNED_SIZE;
-      break;
-
-    case T_EHID:
-      size += OR_EHID_SIZE;
-      break;
-
-    default:
-      xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
-      return ER_FAILED;
-    }
 
   return size;
 }

@@ -27,6 +27,7 @@
 
 #include <float.h>
 #include <signal.h>
+#include <assert.h>
 
 #include "csql.h"
 #include "memory_alloc.h"

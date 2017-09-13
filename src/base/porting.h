@@ -28,10 +28,6 @@
 #ident "$Id$"
 
 #include "config.h"
-// #ifdef __cplusplus
-// extern "C"
-// {
-// #endif
 
 #if defined (AIX)
 #include <sys/socket.h>
@@ -760,9 +756,9 @@ void *pthread_getspecific (pthread_key_t key);
               __sync_synchronize()
 #endif
 #endif
-#endif //defined (WINDOWS)
+#endif /* defined (WINDOWS) */
 
-#endif //__cplusplus
+#endif /* __cplusplus */
 
 #if defined(HAVE_ATOMIC_BUILTINS)
 
@@ -780,8 +776,8 @@ extern UINT64 win32_compare_exchange64 (UINT64 volatile *val_ptr, UINT64 swap_va
 extern UINT64 win32_exchange_add64 (UINT64 volatile *ptr, UINT64 amount);
 extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 
-#endif //!_WIN64
-#endif //defined (WINDOWS)
+#endif /* !_WIN64 */
+#endif /* defined (WINDOWS) */
 
 #if (!defined (WINDOWS) && __cplusplus < 201103L) || (defined (WINDOWS) && _MSC_VER <= 1500)
 #define static_assert(a, b)
@@ -837,7 +833,6 @@ template <typename T, typename V> inline T ATOMIC_TAS_32 (volatile T *ptr, V amo
 template <typename T, typename V> inline T ATOMIC_INC_64 (volatile T *ptr, V amount)
 {
   static_assert (sizeof (T) == sizeof (UINT64), "Not 64bit");
-  //static_assert(sizeof(V) == sizeof(UINT64), "Not 64bit");
 #if defined (_WIN64)
   return InterlockedExchangeAdd64 (reinterpret_cast <volatile INT64 *>(ptr), amount) + amount;
 #elif defined(WINDOWS)
@@ -899,7 +894,7 @@ namespace dispatch
     {
       return ATOMIC_TAS_32 (ptr, amount);
     }
-}				//namespace dispatch
+}				/* namespace dispatch */
 
 template <typename T, typename V> inline T ATOMIC_TAS (volatile T *ptr, V amount)
 {
@@ -930,13 +925,10 @@ template <typename T> inline bool ATOMIC_CAS_ADDR (T * volatile *ptr, T *cmp_val
 }
 /* *INDENT-ON* */
 
-//#define ATOMIC_LOAD_64(ptr) (*(ptr))
-//#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
-
 #define ATOMIC_LOAD_64(ptr) ATOMIC_INC_64(ptr, 0)
 #define ATOMIC_STORE_64(ptr, val) ATOMIC_TAS(ptr, val)
 
-#endif //defined(HAVE_ATOMIC_BUILTINS)
+#endif /* defined(HAVE_ATOMIC_BUILTINS) */
 
 #if defined (WINDOWS)
 extern double strtod_win (const char *str, char **end_ptr);

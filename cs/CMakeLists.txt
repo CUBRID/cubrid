@@ -156,7 +156,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_dump.c
   ${QUERY_DIR}/query_method.c
   ${QUERY_DIR}/numeric_opfunc.c
-  ${QUERY_DIR}/query.c
+  ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/xasl_to_stream.c
   ${QUERY_DIR}/crypt_opfunc.c

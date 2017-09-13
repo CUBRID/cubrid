@@ -42,11 +42,11 @@
 #include "language_support.h"
 #include "object_print.h"
 #include "optimizer.h"
-#include "serial.h"
 #include "system_parameter.h"
 #include "show_meta.h"
 #include "virtual_object.h"
 #include "set_object.h"
+#include "dbi.h"
 
 #define SAFENUM(node, field)    ((node) ? (node)->field : -1)
 #define PT_MEMB_BUF_SIZE        100
@@ -17861,7 +17861,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
 	case PT_SUBSTRING_INDEX:
-        case PT_JSON_SEARCH:
+	case PT_JSON_SEARCH:
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.expr.arg3)) ? true : false;
 	case PT_SUBSTRING:

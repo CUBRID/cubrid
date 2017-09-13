@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <math.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */

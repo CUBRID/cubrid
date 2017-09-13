@@ -34,22 +34,22 @@
 #include <sys/time.h>
 #endif
 
-#include "porting.h"
+#include "fetch.h"
+
+#include "thread.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-#include "db.h"
 #include "storage_common.h"
-#include "memory_alloc.h"
-#include "oid.h"
 #include "object_primitive.h"
-#include "object_representation.h"
 #include "arithmetic.h"
 #include "serial.h"
 #include "session.h"
-#include "fetch.h"
-#include "list_file.h"
 #include "string_opfunc.h"
 #include "server_interface.h"
+#include "query_opfunc.h"
+#include "db_date.h"
+#include "xasl.h"
+#include "query_executor.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -63,7 +63,9 @@ static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_
 							  DB_VALUE ** min, DB_VALUE ** max);
 
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
-static int get_hour_minute_or_second (const DB_VALUE * datetime, const PT_OP_TYPE op_type, DB_VALUE * db_value);
+static int get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE op_type, DB_VALUE * db_value);
+static int get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
+static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
 
 /*
  * fetch_peek_arith () -
@@ -1624,33 +1626,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_YEAR:
-      if (DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_get_date_item (peek_right, PT_YEARF, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_MONTH:
-      if (DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_get_date_item (peek_right, PT_MONTHF, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_DAY:
       if (DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_get_date_item (peek_right, PT_DAYF, arithptr->value) != NO_ERROR)
+      else if (get_year_month_or_day (peek_right, arithptr->opcode, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1660,11 +1642,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_MINUTE:
     case T_SECOND:
       {
-	PT_OP_TYPE v[] = { PT_HOURF, PT_MINUTEF, PT_SECONDF };
-	OPERATOR_TYPE base = T_HOUR;
-
 	/* T_HOUR, T_MINUTE and T_SECOND must be kept consecutive in OPERATOR_TYPE enum */
-	if (get_hour_minute_or_second (peek_right, v[arithptr->opcode - base], arithptr->value) != NO_ERROR)
+	if (get_hour_minute_or_second (peek_right, arithptr->opcode, arithptr->value) != NO_ERROR)
 	  {
 	    goto error;
 	  }
@@ -1683,22 +1662,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_WEEKDAY:
-      if (DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_get_date_weekday (peek_right, PT_WEEKDAY, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_DAYOFWEEK:
       if (DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_get_date_weekday (peek_right, PT_DAYOFWEEK, arithptr->value) != NO_ERROR)
+      else if (get_date_weekday (peek_right, arithptr->opcode, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -4086,10 +4055,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  switch (funcp->ftype)
 	    {
 	    case F_JSON_ARRAY:
-            case F_JSON_OBJECT:
-            case F_JSON_INSERT:
-            case F_JSON_REMOVE:
-            case F_JSON_MERGE:
+	    case F_JSON_OBJECT:
+	    case F_JSON_INSERT:
+	    case F_JSON_REMOVE:
+	    case F_JSON_MERGE:
 	      {
 		DB_VALUE *value;
 		REGU_VARIABLE_LIST operand;
@@ -4723,6 +4692,10 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
   return false;
 }
 
+/* TODO: next functions are duplicate from string op func that get as argument PT_OP_TYPE. Please try to merge
+ *       PT_OP_TYPE and OPERATOR_TYPE.
+ */
+
 /*
  * get_hour_minute_or_second () - extract hour, minute or second
  *				  information from datetime depending on
@@ -4733,15 +4706,18 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
  *   db_value(out): output of the operation
  */
 static int
-get_hour_minute_or_second (const DB_VALUE * datetime, const PT_OP_TYPE op_type, DB_VALUE * db_value)
+get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE op_type, DB_VALUE * db_value)
 {
   int error = NO_ERROR;
+  int hour, minute, second, millisecond;
 
   if (DB_IS_NULL (datetime))
     {
       PRIM_SET_NULL (db_value);
+      return NO_ERROR;
     }
-  else if (DB_VALUE_DOMAIN_TYPE (datetime) == DB_TYPE_DATE)
+
+  if (DB_VALUE_DOMAIN_TYPE (datetime) == DB_TYPE_DATE)
     {
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	{
@@ -4752,11 +4728,175 @@ get_hour_minute_or_second (const DB_VALUE * datetime, const PT_OP_TYPE op_type, 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 	  error = ER_TIME_CONVERSION;
 	}
+      return error;
     }
-  else if (db_get_time_item (datetime, op_type, db_value) != NO_ERROR)
+
+  error = db_get_time_from_dbvalue (datetime, &hour, &minute, &second, &millisecond);
+  if (error != NO_ERROR)
     {
-      error = ER_TIME_CONVERSION;
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
+	{
+	  DB_MAKE_NULL (db_value);
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	  error = ER_TIME_CONVERSION;
+	}
+      return error;
+    }
+  switch (op_type)
+    {
+    case T_HOUR:
+      DB_MAKE_INT (db_value, hour);
+      break;
+    case T_MINUTE:
+      DB_MAKE_INT (db_value, minute);
+      break;
+    case T_SECOND:
+      DB_MAKE_INT (db_value, second);
+      break;
+    default:
+      assert (false);
+      DB_MAKE_NULL (db_value);
+      error = ER_FAILED;
+      break;
     }
 
   return error;
+}
+
+/*
+ * get_year_month_or_day () - get year or month or day from value
+ *
+ * return        : error code
+ * src_date (in) : input value
+ * op (in)       : operation type - year, month or day
+ * result (out)  : value with year, month or day
+ */
+static int
+get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result)
+{
+  int month = 0, day = 0, year = 0;
+  int second = 0, minute = 0, hour = 0;
+  int ms = 0;
+
+  assert (op == T_YEAR || op == T_MONTH || op == T_DAY);
+
+  if (DB_IS_NULL (src_date))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  /* get the date/time information from src_date */
+  if (db_get_datetime_from_dbvalue (src_date, &year, &month, &day, &hour, &minute, &second, &ms, NULL) != NO_ERROR)
+    {
+      /* This function should return NULL if src_date is an invalid parameter. Clear the error generated by the
+       * function call and return null. */
+      er_clear ();
+      DB_MAKE_NULL (result);
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  return NO_ERROR;
+	}
+      /* set ER_DATE_CONVERSION */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      return ER_DATE_CONVERSION;
+    }
+
+  switch (op)
+    {
+    case T_YEAR:
+      DB_MAKE_INT (result, year);
+      break;
+    case T_MONTH:
+      DB_MAKE_INT (result, month);
+      break;
+    case T_DAY:
+      DB_MAKE_INT (result, day);
+      break;
+    default:
+      assert (false);
+      DB_MAKE_NULL (result);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result)
+{
+  int error_status = NO_ERROR;
+  int month = 0, day = 0, year = 0;
+  int second = 0, minute = 0, hour = 0;
+  int ms = 0;
+  int day_of_week = 0;
+
+  if (DB_IS_NULL (src_date))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  /* get the date/time information from src_date */
+  error_status = db_get_datetime_from_dbvalue (src_date, &year, &month, &day, &hour, &minute, &second, &ms, NULL);
+  if (error_status != NO_ERROR)
+    {
+      error_status = ER_DATE_CONVERSION;
+      goto error_exit;
+    }
+
+  if (year == 0 && month == 0 && day == 0 && hour == 0 && minute == 0 && second == 0 && ms == 0)
+    {
+      error_status = ER_ATTEMPT_TO_USE_ZERODATE;
+      goto error_exit;
+    }
+
+  /* 0 = Sunday, 1 = Monday, etc */
+  day_of_week = db_get_day_of_week (year, month, day);
+
+  switch (op)
+    {
+    case T_WEEKDAY:
+      /* 0 = Monday, 1 = Tuesday, ..., 6 = Sunday */
+      if (day_of_week == 0)
+	{
+	  day_of_week = 6;
+	}
+      else
+	{
+	  day_of_week--;
+	}
+      DB_MAKE_INT (result, day_of_week);
+      break;
+
+    case T_DAYOFWEEK:
+      /* 1 = Sunday, 2 = Monday, ..., 7 = Saturday */
+      day_of_week++;
+      DB_MAKE_INT (result, day_of_week);
+      break;
+
+    default:
+      assert (false);
+      DB_MAKE_NULL (result);
+      break;
+    }
+
+  return NO_ERROR;
+
+error_exit:
+  /* This function should return NULL if src_date is an invalid parameter or zero date. Clear the error generated by
+   * the function call and return null. */
+  er_clear ();
+  DB_MAKE_NULL (result);
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+  return error_status;
 }

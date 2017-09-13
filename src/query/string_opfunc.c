@@ -36,24 +36,25 @@
 #include <sys/timeb.h>
 #include <assert.h>
 
+#include "string_opfunc.h"
+
 #include "chartype.h"
 #include "system_parameter.h"
 #include "intl_support.h"
-#include "error_code.h"
-#include "db.h"
-#include "memory_alloc.h"
-#include "language_support.h"
-#include "query_evaluator.h"
-#if defined(SERVER_MODE)
-#include "thread.h"
-#endif
-
+#include "error_manager.h"
+#include "db_date.h"
 #include "misc_string.h"
 #include "md5.h"
-#include "porting.h"
 #include "crypt_opfunc.h"
 #include "base64.h"
 #include "tz_support.h"
+#include "object_primitive.h"
+#include "dbtype.h"
+#include "db_elo.h"
+#if !defined (SERVER_MODE)
+#include "parse_tree.h"
+#include "es_common.h"
+#endif /* !defined (SERVER_MODE) */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -257,9 +258,6 @@ static int db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * da
 					  const int unit, int is_add);
 static int db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * db_days,
 					  bool is_add);
-static int db_get_datetime_from_dbvalue (const DB_VALUE * src_date, int *year, int *month, int *day, int *hour,
-					 int *minute, int *second, int *millisecond, const char **endp);
-static int db_get_time_from_dbvalue (const DB_VALUE * src_date, int *hour, int *minute, int *second, int *millisecond);
 static int db_round_dbvalue_to_int (const DB_VALUE * src, int *result);
 static int db_get_next_like_pattern_character (const char *const pattern, const int length, const INTL_CODESET codeset,
 					       const bool has_escape_char, const char *escape_str, int *const position,
@@ -308,7 +306,6 @@ static int parse_tzd (const char *str, const int max_expect_len);
 
 #define TZD_DEFAULT_EXPECTED_LEN 4
 #define TZD_MAX_EXPECTED_LEN TZ_DS_STRING_SIZE
-
 
 /*
  *  Public Functions for Strings - Bit and Character
@@ -1950,7 +1947,7 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
   else if (count_i <= 0 || src_length <= 0)
     {
       error_status =
-	db_string_make_empty_typed_string (NULL, result, result_type, src_length, DB_GET_STRING_CODESET (src_string),
+	db_string_make_empty_typed_string (result, result_type, src_length, DB_GET_STRING_CODESET (src_string),
 					   DB_GET_STRING_COLLATION (src_string));
       if (error_status != NO_ERROR)
 	{
@@ -1975,7 +1972,7 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 	}
 
       error_status =
-	db_string_make_empty_typed_string (NULL, &dummy, result_type, (int) new_length,
+	db_string_make_empty_typed_string (&dummy, result_type, (int) new_length,
 					   DB_GET_STRING_CODESET (src_string), DB_GET_STRING_COLLATION (src_string));
       if (error_status != NO_ERROR)
 	{
@@ -2121,8 +2118,7 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
 	  src_categ = delim_categ;
 
 	  error_status =
-	    db_string_make_empty_typed_string (NULL, src_string, src_type, TP_FLOATING_PRECISION_VALUE, delim_cs,
-					       delim_coll);
+	    db_string_make_empty_typed_string (src_string, src_type, TP_FLOATING_PRECISION_VALUE, delim_cs, delim_coll);
 
 	  if (error_status != NO_ERROR)
 	    {
@@ -2145,9 +2141,7 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
 	  delim_categ = src_categ;
 
 	  error_status =
-	    db_string_make_empty_typed_string (NULL, delim_string, delim_type, TP_FLOATING_PRECISION_VALUE, src_cs,
-					       src_coll);
-
+	    db_string_make_empty_typed_string (delim_string, delim_type, TP_FLOATING_PRECISION_VALUE, src_cs, src_coll);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -2321,8 +2315,7 @@ empty_string:
     {
       src_type = DB_TYPE_VARNCHAR;
     }
-  error_status =
-    db_string_make_empty_typed_string (NULL, result, src_type, TP_FLOATING_PRECISION_VALUE, src_cs, src_coll);
+  error_status = db_string_make_empty_typed_string (result, src_type, TP_FLOATING_PRECISION_VALUE, src_cs, src_coll);
   pr_clear_value (&empty_string1);
   pr_clear_value (&empty_string2);
 
@@ -2775,9 +2768,8 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
 	  src_categ = substr_categ;
 
 	  error_status =
-	    db_string_make_empty_typed_string (NULL, src_string, src_type, TP_FLOATING_PRECISION_VALUE, substr_cs,
+	    db_string_make_empty_typed_string (src_string, src_type, TP_FLOATING_PRECISION_VALUE, substr_cs,
 					       substr_coll);
-
 	  if (error_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -2799,9 +2791,7 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
 	  substr_categ = src_categ;
 
 	  error_status =
-	    db_string_make_empty_typed_string (NULL, sub_string, substr_type, TP_FLOATING_PRECISION_VALUE, src_cs,
-					       src_coll);
-
+	    db_string_make_empty_typed_string (sub_string, substr_type, TP_FLOATING_PRECISION_VALUE, src_cs, src_coll);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -2875,7 +2865,7 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
       if (DB_IS_NULL (&string1))	/* make dummy for concat */
 	{
 	  error_status =
-	    db_string_make_empty_typed_string (NULL, &string1, src_type, TP_FLOATING_PRECISION_VALUE, src_cs, src_coll);
+	    db_string_make_empty_typed_string (&string1, src_type, TP_FLOATING_PRECISION_VALUE, src_cs, src_coll);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -2911,8 +2901,7 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
       if (DB_IS_NULL (&string2))	/* make dummy for concat */
 	{
 	  error_status =
-	    db_string_make_empty_typed_string (NULL, &string2, src_type, TP_FLOATING_PRECISION_VALUE, src_cs, src_coll);
-
+	    db_string_make_empty_typed_string (&string2, src_type, TP_FLOATING_PRECISION_VALUE, src_cs, src_coll);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -5380,7 +5369,7 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
 	/* srch_string or repl_string is null */
 	{
 	  error_status =
-	    db_string_make_empty_typed_string (NULL, &dummy_string, DB_VALUE_DOMAIN_TYPE (src_string),
+	    db_string_make_empty_typed_string (&dummy_string, DB_VALUE_DOMAIN_TYPE (src_string),
 					       TP_FLOATING_PRECISION_VALUE, DB_GET_STRING_CODESET (src_string),
 					       DB_GET_STRING_COLLATION (src_string));
 	  if (error_status != NO_ERROR)
@@ -6054,7 +6043,6 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
  * db_string_make_empty_typed_string() -
  *
  * Arguments:
- *	 thread_p   : (In) thread context (may be NULL)
  *       db_val	    : (In/Out) value to make
  *       db_type    : (In) Type of string (char,nchar,bit)
  *       precision  : (In)
@@ -6070,10 +6058,9 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
  *      out of memory
  *
  */
-
 int
-db_string_make_empty_typed_string (THREAD_ENTRY * thread_p, DB_VALUE * db_val, const DB_TYPE db_type, int precision,
-				   int codeset, int collation_id)
+db_string_make_empty_typed_string (DB_VALUE * db_val, const DB_TYPE db_type, int precision, int codeset,
+				   int collation_id)
 {
   int status = NO_ERROR;
   char *buf = NULL;
@@ -6100,7 +6087,7 @@ db_string_make_empty_typed_string (THREAD_ENTRY * thread_p, DB_VALUE * db_val, c
   precision = ((precision < DB_DEFAULT_PRECISION) ? DB_DEFAULT_PRECISION : precision);
 
   /* create an empty string DB VALUE */
-  buf = (char *) db_private_alloc (thread_p, 1);
+  buf = (char *) db_private_alloc (NULL, 1);
   if (buf == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -10400,6 +10387,7 @@ error_exit:
   return error_status;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * db_get_date_weekday () - compute day of week from a date type value
  *
@@ -10485,6 +10473,7 @@ error_exit:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
   return error_status;
 }
+#endif /* !defined (SERVER_MODE) */
 
 /*
  * db_get_date_quarter () - compute quarter from a date type value
@@ -11104,6 +11093,7 @@ error_exit:
   return error_status;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * db_get_date_item () - compute an item from a datetime value
  *
@@ -11213,7 +11203,7 @@ db_get_time_item (const DB_VALUE * src_date, const int item_type, DB_VALUE * res
 
   return NO_ERROR;
 }
-
+#endif /* !defined (SERVER_MODE) */
 
 /*
  * db_time_format ()
@@ -20978,6 +20968,30 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   millisec = seconds = minutes = hours = 0;
   days = weeks = months = quarters = years = 0;
 
+#if defined (SERVER_MODE)
+  /* FIXME!! */
+#define PT_MILLISECOND 3087
+#define PT_SECOND (PT_MILLISECOND + 1)
+#define PT_MINUTE (PT_MILLISECOND + 2)
+#define PT_HOUR (PT_MILLISECOND + 3)
+#define PT_DAY (PT_MILLISECOND + 4)
+#define PT_WEEK (PT_MILLISECOND + 5)
+#define PT_MONTH (PT_MILLISECOND + 6)
+#define PT_QUARTER (PT_MILLISECOND + 7)
+#define PT_YEAR (PT_MILLISECOND + 8)
+#define PT_SECOND_MILLISECOND (PT_MILLISECOND + 9)
+#define PT_MINUTE_MILLISECOND (PT_MILLISECOND + 10)
+#define PT_MINUTE_SECOND (PT_MILLISECOND + 11)
+#define PT_HOUR_MILLISECOND (PT_MILLISECOND + 12)
+#define PT_HOUR_SECOND (PT_MILLISECOND + 13)
+#define PT_HOUR_MINUTE (PT_MILLISECOND + 14)
+#define PT_DAY_MILLISECOND (PT_MILLISECOND + 15)
+#define PT_DAY_SECOND (PT_MILLISECOND + 16)
+#define PT_DAY_MINUTE (PT_MILLISECOND + 17)
+#define PT_DAY_HOUR (PT_MILLISECOND + 18)
+#define PT_YEAR_MONTH (PT_MILLISECOND + 19)
+#endif /* SERVER_MODE */
+
   switch (unit)
     {
     case PT_MILLISECOND:
@@ -21213,6 +21227,30 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       goto error;
     }
+
+#if defined (SERVER_MODE)
+  /* FIXME!! */
+#undef PT_MILLISECOND
+#undef PT_SECOND
+#undef PT_MINUTE
+#undef PT_HOUR
+#undef PT_DAY
+#undef PT_WEEK
+#undef PT_MONTH
+#undef PT_QUARTER
+#undef PT_YEAR
+#undef PT_SECOND_MILLISECOND
+#undef PT_MINUTE_MILLISECOND
+#undef PT_MINUTE_SECOND
+#undef PT_HOUR_MILLISECOND
+#undef PT_HOUR_SECOND
+#undef PT_HOUR_MINUTE
+#undef PT_DAY_MILLISECOND
+#undef PT_DAY_SECOND
+#undef PT_DAY_MINUTE
+#undef PT_DAY_HOUR
+#undef PT_YEAR_MONTH
+#endif /* SERVER_MODE */
 
   /* we have the sign of the amounts, turn them in absolute value */
   years = ABS (years);
@@ -26473,6 +26511,7 @@ error:
   return error_code;
 }
 
+#if !defined (CS_MODE)
 /*
  * db_guid() - Generate a type 4 (randomly generated) UUID.
  *   return: error code or NO_ERROR
@@ -26545,6 +26584,7 @@ error:
 
   return error_code;
 }
+#endif /* !defined (CS_MODE) */
 
 /*
  * db_ascii() - return ASCII code of first character in string
@@ -27718,8 +27758,14 @@ db_string_to_base64 (DB_VALUE const *src, DB_VALUE * result)
   /* if input is empty string, output is also empty string */
   if (src_len == 0)
     {
-      db_string_make_empty_typed_string (NULL, result, DB_TYPE_VARCHAR, 0, DB_GET_STRING_CODESET (src),
-					 DB_GET_STRING_COLLATION (src));
+      error_status =
+	db_string_make_empty_typed_string (result, DB_TYPE_VARCHAR, 0, DB_GET_STRING_CODESET (src),
+					   DB_GET_STRING_COLLATION (src));
+      if (error_status != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_status;
+	}
       return NO_ERROR;
     }
 
@@ -27803,8 +27849,14 @@ db_string_from_base64 (DB_VALUE const *src, DB_VALUE * result)
   /* source is empty string */
   if (src_len == 0)
     {
-      db_string_make_empty_typed_string (NULL, result, DB_TYPE_VARCHAR, 0, DB_GET_STRING_CODESET (src),
-					 DB_GET_STRING_COLLATION (src));
+      error_status =
+	db_string_make_empty_typed_string (result, DB_TYPE_VARCHAR, 0, DB_GET_STRING_CODESET (src),
+					   DB_GET_STRING_COLLATION (src));
+      if (error_status != NO_ERROR)
+	{
+	  assert_release (false);
+	  goto error_handling;
+	}
       return NO_ERROR;
     }
 
@@ -27817,8 +27869,14 @@ db_string_from_base64 (DB_VALUE const *src, DB_VALUE * result)
       switch (err)
 	{
 	case BASE64_EMPTY_INPUT:
-	  db_string_make_empty_typed_string (NULL, result, DB_TYPE_VARCHAR, 0, DB_GET_STRING_CODESET (src),
-					     DB_GET_STRING_COLLATION (src));
+	  error_status =
+	    db_string_make_empty_typed_string (result, DB_TYPE_VARCHAR, 0, DB_GET_STRING_CODESET (src),
+					       DB_GET_STRING_COLLATION (src));
+	  if (error_status != NO_ERROR)
+	    {
+	      assert_release (false);
+	      goto error_handling;
+	    }
 	  break;
 
 	case NO_ERROR:

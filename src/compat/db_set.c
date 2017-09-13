@@ -31,25 +31,11 @@
 #include <ctype.h>
 #include <string.h>
 
-#include "system_parameter.h"
-#include "storage_common.h"
-#include "db.h"
-#include "class_object.h"
-#include "server_interface.h"
+#include "dbtype.h"
+
 #include "set_object.h"
-
-#if !defined(SERVER_MODE)
-#include "object_print.h"
-#include "boot_cl.h"
-#include "locator_cl.h"
-#include "schema_manager.h"
-#include "schema_template.h"
-#include "object_accessor.h"
-#include "virtual_object.h"
-#endif
-
-#include "parser.h"
-
+#include "error_manager.h"
+#include "db.h"
 #include "dbval.h"		/* this must be the last header file included!!! */
 
 #define ERROR_SET(error, code) \

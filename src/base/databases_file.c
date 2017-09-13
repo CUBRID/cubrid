@@ -1031,7 +1031,6 @@ cfg_add_db (DB_INFO ** dir, const char *name, const char *path, const char *logp
 	    const char *host)
 {
   DB_INFO *db_info_p;
-  int num_hosts = 0;
 
   if (host != NULL)
     {

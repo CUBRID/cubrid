@@ -28,17 +28,20 @@
 
 #include <string.h>
 
-#include "xasl_support.h"
-#include "network.h"
-#include "network_interface_sr.h"
+#include "method_scan.h"
+
+#include "network_interface_sr.h"	/* TODO: should not be here */
 #ifndef	SERVER_MODE
 #include "object_accessor.h"
-#endif
+#include "dbi.h"
 #include "authenticate.h"
+#endif
+#include "xasl.h"
+
+#if defined (SA_MODE)
 #include "jsp_cl.h"
-#include "scan_manager.h"
-#include "method_scan.h"
-#include "xserver_interface.h"
+#include "xasl_support.h"
+#endif /* defined (SA_MODE) */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

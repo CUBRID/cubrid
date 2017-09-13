@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #if defined(CS_MODE)
 #include "server_interface.h"
@@ -51,6 +52,7 @@
 #include "perf_monitor.h"
 #include "event_log.h"
 #include "util_func.h"
+#include "tz_support.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */

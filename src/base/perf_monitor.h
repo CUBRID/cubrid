@@ -1402,7 +1402,7 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
 } while(0)
 
 #define TO_MSEC(elapsed) \
-  ((int)((elapsed.tv_sec * 1000) + (int) (elapsed.tv_usec / 1000)))
+  ((int)(((elapsed).tv_sec * 1000) + (int) ((elapsed).tv_usec / 1000)))
 
 #if defined (EnableThreadMonitoring)
 #define MONITOR_WAITING_THREAD(elapsed) \
@@ -1413,6 +1413,7 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
 #define MONITOR_WAITING_THREAD(elapsed) (0)
 #endif
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct perf_utime_tracker PERF_UTIME_TRACKER;
 struct perf_utime_tracker
 {
@@ -1485,6 +1486,7 @@ struct perf_utime_tracker
       (track)->start_tick = (track)->end_tick; \
     } \
   while (false)
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if defined(SERVER_MODE) || defined (SA_MODE)
 /*

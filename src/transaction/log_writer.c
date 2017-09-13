@@ -31,33 +31,22 @@
 #include <dirent.h>
 #endif /* !WINDOWNS */
 
-#include "page_buffer.h"
-#include "log_impl.h"
-#include "storage_common.h"
-#include "log_manager.h"
-#include "memory_alloc.h"
-#include "error_manager.h"
-#include "porting.h"
-#include "environment_variable.h"
-#include "message_catalog.h"
-#include "misc_string.h"
-#include "intl_support.h"
-#include "system_parameter.h"
-#include "file_io.h"
 #include "log_writer.h"
-#include "network_interface_cl.h"
-#include "network_interface_sr.h"
+
+#include "error_manager.h"
+#include "message_catalog.h"
+#include "system_parameter.h"
 #include "connection_support.h"
+#include "log_applier.h"
 #if defined(SERVER_MODE)
-#include "memory_alloc.h"
 #include "server_support.h"
-#include "thread.h"
-#endif
-#include "dbi.h"
+#include "network_interface_sr.h"
+#else /* !defined(SERVER_MODE) */
+#include "network_interface_cl.h"
+#endif /* !defined(SERVER_MODE) */
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
-#include "log_applier.h"
 
 #define LOGWR_THREAD_SUSPEND_TIMEOUT 	10
 
@@ -1467,8 +1456,10 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
 
       *master_eof_lsa = hdr.eof_lsa;
 
+#if 0
       printf ("\n ***  Active Info. *** \n");
       la_print_log_header (db_name, &hdr, verbose);
+#endif
       free_and_init (logpg_area);
     }
 

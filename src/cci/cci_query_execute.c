@@ -44,6 +44,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>

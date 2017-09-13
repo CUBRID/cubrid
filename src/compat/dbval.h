@@ -29,6 +29,8 @@
 #error "It looks like dbval.h is included before dbtype.h; don't do that."
 #endif
 
+#include <assert.h>
+
 #include "language_support.h"
 #include "system_parameter.h"
 #include "object_domain.h"
