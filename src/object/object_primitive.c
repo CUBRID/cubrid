@@ -16719,6 +16719,7 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   db_make_enumeration (dest, DB_GET_ENUM_SHORT (src), str, DB_GET_ENUM_STRING_SIZE (src), DB_GET_ENUM_CODESET (src),
 		       DB_GET_ENUM_COLLATION (src));
   dest->need_clear = need_clear;
+
   return NO_ERROR;
 }
 

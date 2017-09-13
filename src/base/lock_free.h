@@ -117,8 +117,8 @@ struct lf_entry_descriptor
 #define LF_BITFIELD_WORD_SIZE    (int) (sizeof (unsigned int) * 8)
 
 typedef struct lf_tran_system LF_TRAN_SYSTEM;
-
 typedef struct lf_tran_entry LF_TRAN_ENTRY;
+
 struct lf_tran_entry
 {
   /* last ID for which a cleanup of retired_list was performed */
@@ -199,7 +199,7 @@ struct lf_bitmap
 struct lf_tran_system
 {
   /* pointer array to thread dtran entries */
-  struct lf_tran_entry *entries;
+  LF_TRAN_ENTRY *entries;
 
   /* capacity */
   int entry_count;
@@ -231,13 +231,13 @@ struct lf_tran_system
 extern int lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads);
 extern void lf_tran_system_destroy (LF_TRAN_SYSTEM * sys);
 
-extern struct lf_tran_entry *lf_tran_request_entry (LF_TRAN_SYSTEM * sys);
-extern int lf_tran_return_entry (struct lf_tran_entry *entry);
-extern void lf_tran_destroy_entry (struct lf_tran_entry *entry);
+extern LF_TRAN_ENTRY *lf_tran_request_entry (LF_TRAN_SYSTEM * sys);
+extern int lf_tran_return_entry (LF_TRAN_ENTRY * entry);
+extern void lf_tran_destroy_entry (LF_TRAN_ENTRY * entry);
 extern void lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys);
 
-extern void lf_tran_start (struct lf_tran_entry *entry, bool incr);
-extern void lf_tran_end (struct lf_tran_entry *entry);
+extern void lf_tran_start (LF_TRAN_ENTRY * entry, bool incr);
+extern void lf_tran_end (LF_TRAN_ENTRY * entry);
 /* TODO: Investigate memory barriers. First of all, I need to check if it breaks the inlining of lf_tran_start and
  *	 lf_tran_end functions. Second of all, full memory barriers might not be necessary.
  */
@@ -298,9 +298,9 @@ extern int lf_freelist_init (LF_FREELIST * freelist, int initial_blocks, int blo
 			     LF_TRAN_SYSTEM * tran_system);
 extern void lf_freelist_destroy (LF_FREELIST * freelist);
 
-extern void *lf_freelist_claim (struct lf_tran_entry *tran_entry, LF_FREELIST * freelist);
-extern int lf_freelist_retire (struct lf_tran_entry *tran_entry, LF_FREELIST * freelist, void *entry);
-extern int lf_freelist_transport (struct lf_tran_entry *tran_entry, LF_FREELIST * freelist);
+extern void *lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
+extern int lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *entry);
+extern int lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
 
 /*
  * Lock free insert-only list based dictionary
@@ -329,10 +329,10 @@ extern int lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_D
 #define LF_LIST_BR_IS_FLAG_SET(br, flag) ((*(br) & (flag)))
 #define LF_LIST_BR_SET_FLAG(br, flag) (*(br) = *(br) | (flag))
 
-extern int lf_list_find (struct lf_tran_entry *tran, void **list_p, void *key, int *behavior_flags,
+extern int lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
 			 LF_ENTRY_DESCRIPTOR * edesc, void **entry);
-extern int lf_list_delete (struct lf_tran_entry *tran, void **list_p, void *key, void *locked_entry,
-			   int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, int *success);
+extern int lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, void *locked_entry, int *behavior_flags,
+			   LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, int *success);
 /* TODO: Add lf_list_insert functions. So far, they are only used for lf_hash_insert. */
 
 /*
@@ -367,16 +367,14 @@ extern int lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned
 			 LF_ENTRY_DESCRIPTOR * edesc);
 extern void lf_hash_destroy (LF_HASH_TABLE * table);
 
-extern int lf_hash_find (struct lf_tran_entry *tran, LF_HASH_TABLE * table, void *key, void **entry);
-extern int lf_hash_find_or_insert (struct lf_tran_entry *tran, LF_HASH_TABLE * table, void *key, void **entry,
-				   int *inserted);
-extern int lf_hash_insert (struct lf_tran_entry *tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
-extern int lf_hash_insert_given (struct lf_tran_entry *tran, LF_HASH_TABLE * table, void *key, void **entry,
-				 int *inserted);
-extern int lf_hash_delete (struct lf_tran_entry *tran, LF_HASH_TABLE * table, void *key, int *success);
-extern int lf_hash_delete_already_locked (struct lf_tran_entry *tran, LF_HASH_TABLE * table, void *key,
-					  void *locked_entry, int *success);
-extern void lf_hash_clear (struct lf_tran_entry *tran, LF_HASH_TABLE * table);
+extern int lf_hash_find (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
+extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
+extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
+extern int lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
+extern int lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
+extern int lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void *locked_entry,
+					  int *success);
+extern void lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);
 
 /*
  * Lock free hash table iterator
@@ -394,10 +392,10 @@ struct lf_hash_table_iterator
   void *curr;
 
   /* transaction entry to use */
-  struct lf_tran_entry *tran_entry;
+  LF_TRAN_ENTRY *tran_entry;
 };
 
-extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator, struct lf_tran_entry *tran_entry,
+extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator, LF_TRAN_ENTRY * tran_entry,
 				     LF_HASH_TABLE * table);
 extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
 

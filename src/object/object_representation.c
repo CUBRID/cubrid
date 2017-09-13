@@ -8682,7 +8682,6 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
  *  this function also adds
  *  the length of the string to the buffer
  */
-
 int
 or_put_string_alined_with_length (OR_BUF * buf, char *str)
 {

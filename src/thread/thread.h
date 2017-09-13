@@ -42,11 +42,6 @@
 #endif /* SERVER_MODE */
 
 #include "lock_free.h"
-
-/* forward declarations */
-struct db_value;
-/* end of forward declarations */
-
 enum
 {
   THREAD_TS_SPAGE_SAVING = 0,
@@ -69,7 +64,7 @@ enum
 
 extern int thread_Recursion_depth;
 
-extern struct lf_tran_entry thread_ts_decoy_entries[THREAD_TS_LAST];
+extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 
 #define thread_get_thread_entry_info()  (NULL)
 #define thread_num_worker_threads()  (1)
@@ -355,7 +350,7 @@ struct thread_entry
   bool clear_trace;
 
   /* for lock free structures */
-  struct lf_tran_entry *tran_entries[THREAD_TS_COUNT];
+  LF_TRAN_ENTRY *tran_entries[THREAD_TS_COUNT];
 
 #if !defined(NDEBUG)
   struct fi_test_item *fi_test_array;

@@ -90,7 +90,6 @@
 #define thread_initialize_key()
 #endif /* HPUX */
 
-typedef struct lf_tran_entry LF_TRAN_ENTRY;
 
 /* Thread Manager structure */
 typedef struct thread_manager THREAD_MANAGER;
