@@ -7365,7 +7365,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 			    desired_domain->validation_obj.validator->GetInvalidSchemaKeyword (), sb2.GetString ());
 		    return DOMAIN_ERROR;
 		  }
-		break;
 	      }
 	    default:
 	      /* pr_is_string_type(desired_type) - NEED MORE CONSIDERATION */
