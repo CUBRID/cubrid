@@ -20839,15 +20839,6 @@ pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_
       error = ER_FAILED;
     }
 end:
-  /*TODO we should clear this memory,
-   * but rapidjson only does shallow copies
-   * and by deleting the arguments, we also
-   * corrupt the result. we must find a solution to this
-   *for (i = 0; i < num_args; i++)
-   {
-   pr_clear_value (arg_array[i]);
-   }
-   */
   if (arg_array != NULL)
     {
       free_and_init (arg_array);

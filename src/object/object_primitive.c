@@ -14996,13 +14996,13 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       db_value_domain_init (dest, DB_TYPE_JSON, DB_DEFAULT_PRECISION, 0);
       dest->domain.general_info.is_null = 0;
       len = strlen (src->data.json.json_body);
-      if (src->domain.general_info.schema_raw)
+      if (src->data.json.schema_raw)
 	{
-	  len2 = strlen (src->domain.general_info.schema_raw);
+	  len2 = strlen (src->data.json.schema_raw);
 	}
       else
 	{
-	  dest->domain.general_info.schema_raw = NULL;
+	  dest->data.json.schema_raw = NULL;
 	}
       if (copy)
 	{
@@ -15014,9 +15014,8 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  dest->need_clear = true;
 	  if (len2 > 0)
 	    {
-	      dest->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len2 + 1));
-	      memcpy (dest->domain.general_info.schema_raw, src->domain.general_info.schema_raw, len2);
-	      dest->domain.general_info.schema_raw[len2] = '\0';
+	      dest->data.json.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len2 + 1));
+	      strcpy (dest->data.json.schema_raw, src->data.json.schema_raw);
 	    }
 	}
       else
@@ -15024,7 +15023,7 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  dest->data.json.json_body = src->data.json.json_body;
 	  dest->data.json.document = src->data.json.document;
 	  dest->need_clear = false;
-	  dest->domain.general_info.schema_raw = src->domain.general_info.schema_raw;
+	  dest->data.json.schema_raw = src->data.json.schema_raw;
 	}
     }
 

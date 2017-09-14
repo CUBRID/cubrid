@@ -5074,11 +5074,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_JSON:
       {
 	const char *str;
-	int dummy = 0;
 	int bytes_size = 0;
-	int decomp_size;
-	char *decomposed = NULL;
-	bool need_decomp = false;
 
 	str = val->data.json.json_body;
 	bytes_size = strlen (str);

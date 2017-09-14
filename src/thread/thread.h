@@ -506,7 +506,7 @@ extern void thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_nam
 extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
 extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
 
-extern struct lf_tran_entry *thread_get_tran_entry (THREAD_ENTRY * thread_p, int entry_idx);
+extern LF_TRAN_ENTRY *thread_get_tran_entry (THREAD_ENTRY * thread_p, int entry_idx);
 
 extern void thread_trace_on (THREAD_ENTRY * thread_p);
 extern void thread_set_trace_format (THREAD_ENTRY * thread_p, int format);
@@ -521,7 +521,7 @@ extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
 extern INT64 thread_get_log_clock_msec (void);
 
-extern int thread_start_scan (THREAD_ENTRY * thread_p, int type, struct db_value **arg_values, int arg_cnt, void **ctx);
+extern int thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ctx);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);

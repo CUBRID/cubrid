@@ -21766,11 +21766,11 @@ pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
 	{
-	  value->domain.general_info.schema_raw = (char *) dt->info.data_type.json_schema->bytes;
+	  value->data.json.schema_raw = (char *) dt->info.data_type.json_schema->bytes;
 	}
       else
 	{
-	  value->domain.general_info.schema_raw = NULL;
+	  value->data.json.schema_raw = NULL;
 	}
       break;
 

@@ -6884,7 +6884,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	    }
 	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
 	    {
-	      value->domain.general_info.schema_raw = domain->schema_raw;
+	      value->data.json.schema_raw = domain->schema_raw;
 	    }
 	}
       else

@@ -41,10 +41,6 @@
 #include "byte_order.h"
 #include "object_primitive.h"
 
-#if defined (__cplusplus)
-using namespace std;		/* for fpclassify */
-#endif
-
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
@@ -2838,7 +2834,7 @@ get_fp_value_type (double d)
       return FP_VALUE_TYPE_NUMBER;
     }
 #else
-  switch (fpclassify (d))
+  switch (std::fpclassify (d))
     {
     case FP_INFINITE:
       return FP_VALUE_TYPE_INFINITE;

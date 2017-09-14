@@ -560,7 +560,6 @@ extern "C"
     {
       unsigned char is_null;
       unsigned char type;
-      char *schema_raw;
     } general_info;
     struct numeric_info
     {
@@ -881,7 +880,7 @@ extern "C"
   typedef struct db_json DB_JSON;
   struct db_json
   {
-    char *json_body;
+    char *json_body, *schema_raw;
     cubrid_document *document;
   };
 #endif
