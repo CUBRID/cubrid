@@ -104,8 +104,8 @@ struct nls_msg_hdr
 #define ENCODING_LEN    40
 #endif
 
-#define NL_SETD         0
-#define NL_CAT_LOCALE   1
+#define CUB_NL_SETD         0
+#define CUB_NL_CAT_LOCALE   1
 
 typedef struct _nl_cat_d
 {
@@ -114,21 +114,21 @@ typedef struct _nl_cat_d
 #if defined(WINDOWS)
   HANDLE map_handle;
 #endif
-} *nl_catd;
+} *cub_nl_catd;
 
-static nl_catd catopen (const char *, int);
-static char *catgets (nl_catd, int, int, const char *);
-static int catclose (nl_catd);
+static cub_nl_catd cub_catopen (const char *, int);
+static char *cub_catgets (cub_nl_catd, int, int, const char *);
+static int cub_catclose (cub_nl_catd);
 
 /*
  * Note: stems from FreeBSD nl_type.h and msgcat.c.
  */
 #define DEFAULT_NLS_PATH "/usr/share/nls/%L/%N.cat:/usr/share/nls/%N/%L:/usr/local/share/nls/%L/%N.cat:/usr/local/share/nls/%N/%L"
 
-static nl_catd load_msgcat (const char *);
+static cub_nl_catd load_msgcat (const char *);
 
-nl_catd
-catopen (const char *name, int type)
+cub_nl_catd
+cub_catopen (const char *name, int type)
 {
   int spcleft, saverr;
   char path[PATH_MAX];
@@ -148,7 +148,7 @@ catopen (const char *name, int type)
       return load_msgcat (name);
     }
 
-  if (type == NL_CAT_LOCALE)
+  if (type == CUB_NL_CAT_LOCALE)
     {
       lang = setlocale (LC_MESSAGES, NULL);
     }
@@ -289,7 +289,7 @@ catopen (const char *name, int type)
 }
 
 char *
-catgets (nl_catd catd, int set_id, int msg_id, const char *s)
+cub_catgets (cub_nl_catd catd, int set_id, int msg_id, const char *s)
 {
   struct nls_cat_hdr *cat_hdr;
   struct nls_set_hdr *set_hdr;
@@ -363,7 +363,7 @@ notfound:
 }
 
 int
-catclose (nl_catd catd)
+cub_catclose (cub_nl_catd catd)
 {
   if (catd == NULL)
     {
@@ -385,11 +385,11 @@ catclose (nl_catd catd)
  * Internal support functions
  */
 
-static nl_catd
+static cub_nl_catd
 load_msgcat (const char *path)
 {
   struct stat st;
-  nl_catd catd;
+  cub_nl_catd catd;
   void *data = NULL;
 #if defined(WINDOWS)
   HANDLE map_handle;
@@ -456,7 +456,7 @@ load_msgcat (const char *path)
       return NULL;
     }
 
-  catd = (nl_catd) malloc (sizeof (*catd));
+  catd = (cub_nl_catd) malloc (sizeof (*catd));
   if (catd == NULL)
     {
 #if defined(WINDOWS)
@@ -600,18 +600,18 @@ msgcat_message (int cat_id, int set_id, int msg_id)
 MSG_CATD
 msgcat_open (const char *name)
 {
-  nl_catd catd;
+  cub_nl_catd catd;
   MSG_CATD msg_catd;
   char path[PATH_MAX];
 
   /* $CUBRID/msg/$CUBRID_MSG_LANG/'name' */
   envvar_localedir_file (path, PATH_MAX, lang_get_msg_Loc_name (), name);
-  catd = catopen (path, 0);
+  catd = cub_catopen (path, 0);
   if (catd == NULL)
     {
       /* try once more as default language */
       envvar_localedir_file (path, PATH_MAX, LANG_NAME_DEFAULT, name);
-      catd = catopen (path, 0);
+      catd = cub_catopen (path, 0);
       if (catd == NULL)
 	{
 	  return NULL;
@@ -622,7 +622,7 @@ msgcat_open (const char *name)
   if (msg_catd == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*msg_catd));
-      catclose (catd);
+      cub_catclose (catd);
       return NULL;
     }
 
@@ -659,10 +659,10 @@ msgcat_get_descriptor (int cat_id)
 char *
 msgcat_gets (MSG_CATD msg_catd, int set_id, int msg_id, const char *s)
 {
-  nl_catd catd;
+  cub_nl_catd catd;
 
-  catd = (nl_catd) msg_catd->catd;
-  return catgets (catd, set_id, msg_id, s);
+  catd = (cub_nl_catd) msg_catd->catd;
+  return cub_catgets (catd, set_id, msg_id, s);
 }
 
 /*
@@ -675,12 +675,12 @@ msgcat_gets (MSG_CATD msg_catd, int set_id, int msg_id, const char *s)
 int
 msgcat_close (MSG_CATD msg_catd)
 {
-  nl_catd catd;
+  cub_nl_catd catd;
 
-  catd = (nl_catd) msg_catd->catd;
+  catd = (cub_nl_catd) msg_catd->catd;
   free ((void *) msg_catd->file);
   free (msg_catd);
-  if (catclose (catd) < 0)
+  if (cub_catclose (catd) < 0)
     {
       return ER_FAILED;
     }
