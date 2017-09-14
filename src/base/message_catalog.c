@@ -24,15 +24,7 @@
 #ident "$Id$"
 
 #include "config.h"
-#include "porting.h"
 #include "message_catalog.h"
-#include "environment_variable.h"
-#include "error_code.h"
-#include "error_manager.h"
-
-#if defined(WINDOWS)
-#include "intl_support.h"
-#endif
 
 /*
  * Note: stems from FreeBSD nl_type.h and msgcat.c.
@@ -56,6 +48,17 @@
 #include <limits.h>
 #include <stdio.h>
 
+#include "porting.h"
+
+#include "environment_variable.h"
+#include "error_code.h"
+#include "error_manager.h"
+#include "language_support.h"
+
+#if defined(WINDOWS)
+#include "intl_support.h"
+#endif
+
 /*
  * MESSAGE CATALOG FILE FORMAT.
  *
@@ -67,14 +70,12 @@
  * A message catalog contains four data types: a catalog header, one
  * or more set headers, one or more message headers, and one or more
  * text strings.
+ *
+ * NOTE: some changes were done to the initial code. we can no longer use the ntypes.h. and if nltypes.h is included
+ *       there will be conflicts... so just rename everything.
  */
 
-#ifndef _NL_TYPES_H
-#define _NL_TYPES_H
-
 #define NLS_MAGIC      0xff88ff89
-
-typedef int nl_item;
 
 struct nls_cat_hdr
 {
@@ -474,8 +475,7 @@ load_msgcat (const char *path)
 #endif
   return catd;
 }
-#endif /* ifndef nl types h */
-#include "language_support.h"
+
 /* system message catalog definition */
 struct msgcat_def
 {
