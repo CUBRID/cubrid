@@ -23,20 +23,20 @@ public:
   static void Free (void *ptr);
 };
 
-typedef rapidjson::GenericDocument<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<cubrid_json_allocator>>
+typedef rapidjson::GenericDocument<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<cubrid_json_allocator> >
   cubrid_document;
 
 typedef rapidjson::GenericSchemaDocument<rapidjson::GenericValue <rapidjson::UTF8 <>,
-                                         rapidjson::MemoryPoolAllocator <cubrid_json_allocator>>>
+                                         rapidjson::MemoryPoolAllocator <cubrid_json_allocator> > >
   cubrid_schema_document;
 
 typedef rapidjson::GenericSchemaValidator<cubrid_schema_document> cubrid_schema_validator;
 
-typedef rapidjson::GenericValue<rapidjson::UTF8 <>, rapidjson::MemoryPoolAllocator<cubrid_json_allocator>>
+typedef rapidjson::GenericValue<rapidjson::UTF8 <>, rapidjson::MemoryPoolAllocator<cubrid_json_allocator> >
   cubrid_value;
 
 typedef rapidjson::GenericPointer<rapidjson::GenericValue<rapidjson::UTF8<>,
-                                  rapidjson::MemoryPoolAllocator<cubrid_json_allocator>>> cubrid_pointer;
+                                  rapidjson::MemoryPoolAllocator<cubrid_json_allocator> > > cubrid_pointer;
 
 typedef struct db_json_validation DB_JSON_VALIDATION_OBJECT;
 struct db_json_validation
