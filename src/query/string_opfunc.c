@@ -51,6 +51,10 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "db_elo.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/error/en.h"
+#include <vector>
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
@@ -58,9 +62,7 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/stringbuffer.h"
-#include <vector>
+
 
 #define BYTE_SIZE               (8)
 #define QSTR_VALUE_PRECISION(value)                                       \
@@ -3034,7 +3036,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int len;
   rapidjson::StringBuffer str_buf;
   rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
-  cubrid_document *new_doc;
+  JSON_DOC *new_doc;
   char *str;
 
   if (num_args <= 0)
@@ -3043,7 +3045,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  new_doc = new cubrid_document ();
+  new_doc = new JSON_DOC ();
   new_doc->SetObject ();
 
   assert (num_args % 2 == 0);
@@ -3058,7 +3060,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  break;
 	case DB_TYPE_INTEGER:
 	  new_doc->AddMember (rapidjson::StringRef (arg[i]->data.ch.medium.buf),
-			      cubrid_value ().SetInt (arg[i + 1]->data.i), new_doc->GetAllocator ());
+			      JSON_VALUE ().SetInt (arg[i + 1]->data.i), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_JSON:
 	  if (arg[i + 1]->data.json.document->IsArray ())
@@ -3096,7 +3098,7 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int len;
   rapidjson::StringBuffer str_buf;
   rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
-  cubrid_document *new_doc;
+  JSON_DOC *new_doc;
   char *str;
 
   if (num_args <= 0)
@@ -3105,7 +3107,7 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  new_doc = new cubrid_document ();
+  new_doc = new JSON_DOC ();
   new_doc->SetArray ();
 
   for (i = 0; i < num_args; i++)
@@ -3116,7 +3118,7 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  new_doc->PushBack (rapidjson::StringRef (arg[i]->data.ch.medium.buf), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_INTEGER:
-	  new_doc->PushBack (cubrid_value ().SetInt (arg[i]->data.i), new_doc->GetAllocator ());
+	  new_doc->PushBack (JSON_VALUE ().SetInt (arg[i]->data.i), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_JSON:
 	  if (arg[i]->data.json.document->IsArray ())
@@ -3151,8 +3153,8 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int i;
   rapidjson::StringBuffer str_buf;
   rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
-  cubrid_document *new_doc;
-  cubrid_document doc;
+  JSON_DOC *new_doc;
+  JSON_DOC doc;
   char *str;
 
   if (num_args < 3)
@@ -3161,7 +3163,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  new_doc = new cubrid_document ();
+  new_doc = new JSON_DOC ();
 
   switch (arg[0]->domain.general_info.type)
     {
@@ -3180,7 +3182,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 1; i < num_args; i += 2)
     {
-      cubrid_pointer p (arg[i]->data.ch.medium.buf);
+      JSON_POINTER p (arg[i]->data.ch.medium.buf);
 
       if (!p.IsValid ())
 	{
@@ -3221,7 +3223,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int i;
   rapidjson::StringBuffer str_buf;
   rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
-  cubrid_document *new_doc;
+  JSON_DOC *new_doc;
   char *str;
 
   if (num_args < 2)
@@ -3230,7 +3232,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  new_doc = new cubrid_document ();
+  new_doc = new JSON_DOC ();
 
   switch (arg[0]->domain.general_info.type)
     {
@@ -3249,7 +3251,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 1; i < num_args; i++)
     {
-      cubrid_pointer p (arg[i]->data.ch.medium.buf);
+      JSON_POINTER p (arg[i]->data.ch.medium.buf);
 
       if (!p.IsValid ())
 	{
@@ -3275,10 +3277,10 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int len;
   rapidjson::StringBuffer str_buf;
   rapidjson::Writer < rapidjson::StringBuffer > writer (str_buf);
-  cubrid_document *new_doc, *res_doc;
+  JSON_DOC *new_doc, *res_doc;
   char *str;
   const char *buf;
-  std::vector < cubrid_document * >documents_to_delete;
+  std::vector < JSON_DOC * >documents_to_delete;
   documents_to_delete.clear ();
 
   if (num_args < 2)
@@ -3289,7 +3291,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 0; i < num_args - 1; i++)
     {
-      new_doc = new cubrid_document ();
+      new_doc = new JSON_DOC ();
 
       db_json_merge_two_jsons_private (arg[i], arg[i + 1], new_doc);
       if (arg[i + 1]->domain.general_info.type == DB_TYPE_JSON)
@@ -3299,7 +3301,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       db_make_json (arg[i + 1], (char *) db_private_alloc (NULL, 1), new_doc, true);
     }
 
-  res_doc = new cubrid_document ();
+  res_doc = new JSON_DOC ();
   res_doc->CopyFrom (*arg[num_args - 1]->data.json.document, res_doc->GetAllocator ());
 
   res_doc->Accept (writer);
@@ -3319,7 +3321,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 static int
-db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document * doc)
+db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, JSON_DOC * doc)
 {
   DB_VALUE new_j1, new_j2, *p1 = NULL, *p2 = NULL;
 
@@ -3333,7 +3335,7 @@ db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document *
       if (j1->data.json.document->IsObject ())
 	{
 	  assert (j1->data.json.document->IsObject ());
-	  for (cubrid_value::MemberIterator itr = j2->data.json.document->MemberBegin ();
+	  for (JSON_VALUE::MemberIterator itr = j2->data.json.document->MemberBegin ();
 	       itr != j2->data.json.document->MemberEnd (); ++itr)
 	    {
 	      const char *name = itr->name.GetString ();
@@ -3345,7 +3347,7 @@ db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document *
 		    }
 		  else
 		    {
-		      cubrid_value value ((*doc)[name], doc->GetAllocator ());
+		      JSON_VALUE value ((*doc)[name], doc->GetAllocator ());
 		      (*doc)[name].SetArray ();
 		      (*doc)[name].PushBack (value, doc->GetAllocator ());
 		      (*doc)[name].PushBack (itr->value, doc->GetAllocator ());
@@ -3360,7 +3362,7 @@ db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document *
       else if (j1->data.json.document->IsArray ())
 	{
 	  assert (j2->data.json.document->IsArray ());
-	  for (cubrid_value::ValueIterator itr = j2->data.json.document->Begin ();
+	  for (JSON_VALUE::ValueIterator itr = j2->data.json.document->Begin ();
 	       itr != j2->data.json.document->End (); ++itr)
 	    {
 	      doc->PushBack (*itr, doc->GetAllocator ());
@@ -3387,7 +3389,7 @@ db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document *
 
   if (j1->domain.general_info.type != DB_TYPE_JSON || j1->data.json.document->IsObject ())
     {
-      cubrid_document *new_doc = new cubrid_document ();
+      JSON_DOC *new_doc = new JSON_DOC ();
       new_doc->SetArray ();
       switch (j1->domain.general_info.type)
 	{
@@ -3395,7 +3397,7 @@ db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document *
 	  new_doc->PushBack (rapidjson::StringRef (j1->data.ch.medium.buf), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_INTEGER:
-	  new_doc->PushBack (cubrid_value ().SetInt (j1->data.i), new_doc->GetAllocator ());
+	  new_doc->PushBack (JSON_VALUE ().SetInt (j1->data.i), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_JSON:
 	  new_doc->PushBack (j1->data.json.document->GetObject (), new_doc->GetAllocator ());
@@ -3410,7 +3412,7 @@ db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document *
 
   if (j2->domain.general_info.type != DB_TYPE_JSON || j2->data.json.document->IsObject ())
     {
-      cubrid_document *new_doc = new cubrid_document ();
+      JSON_DOC *new_doc = new JSON_DOC ();
       new_doc->SetArray ();
       switch (j2->domain.general_info.type)
 	{
@@ -3418,7 +3420,7 @@ db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, cubrid_document *
 	  new_doc->PushBack (rapidjson::StringRef (j2->data.ch.medium.buf), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_INTEGER:
-	  new_doc->PushBack (cubrid_value ().SetInt (j2->data.i), new_doc->GetAllocator ());
+	  new_doc->PushBack (JSON_VALUE ().SetInt (j2->data.i), new_doc->GetAllocator ());
 	  break;
 	case DB_TYPE_JSON:
 	  new_doc->PushBack (j2->data.json.document->GetObject (), new_doc->GetAllocator ());

@@ -453,9 +453,9 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);
 	  break;
 	case DB_TYPE_JSON:
-	  if (temp_domain->schema_raw)
+	  if (temp_domain->json_schema_raw)
 	    {
-	      sprintf (temp_buffer, "(%s)", temp_domain->schema_raw);
+	      sprintf (temp_buffer, "(%s)", temp_domain->json_schema_raw);
 	    }
 	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);
 	  break;

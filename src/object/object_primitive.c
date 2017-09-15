@@ -41,6 +41,7 @@
 #include "string_opfunc.h"
 #include "tz_support.h"
 #include "file_io.h"
+#include "db_json.h"
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #include "virtual_object.h"
@@ -50,9 +51,6 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
-#include "rapidjson/document.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
@@ -14835,7 +14833,7 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     {
       int len = strlen (value->data.json.json_body);
       ((DB_JSON *) memptr)->json_body = (char *) db_private_alloc (NULL, len + 1);
-      ((DB_JSON *) memptr)->document = new cubrid_document ();
+      ((DB_JSON *) memptr)->document = new JSON_DOC ();
       memcpy (((DB_JSON *) memptr)->json_body, value->data.json.json_body, len);
       ((DB_JSON *) memptr)->json_body[len] = '\0';
       ((DB_JSON *) memptr)->document->CopyFrom (*value->data.json.document,
@@ -14869,7 +14867,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
 	  /* return it with a NULL terminator */
 	  char *new_ = (char *) db_private_alloc (NULL, len + 1);
-	  cubrid_document *document = new cubrid_document ();
+	  JSON_DOC *document = new JSON_DOC ();
 	  if (new_ == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -14884,7 +14882,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    }
 
 	}
-      db_get_json_schema (value) = domain->schema_raw;
+      db_get_json_schema (value) = domain->json_schema_raw;
 
     }
   return error;
@@ -15007,7 +15005,7 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       if (copy)
 	{
 	  dest->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (len + 1));
-	  dest->data.json.document = new cubrid_document ();
+	  dest->data.json.document = new JSON_DOC ();
 	  memcpy (dest->data.json.json_body, src->data.json.json_body, (size_t) len);
 	  dest->data.json.document->CopyFrom (*src->data.json.document, dest->data.json.document->GetAllocator ());
 	  dest->data.json.json_body[len] = '\0';
@@ -15105,7 +15103,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   else
     {
       value->data.json.json_body = str;
-      value->data.json.document = new cubrid_document ();
+      value->data.json.document = new JSON_DOC ();
       value->data.json.document->Parse (str);
       value->domain.general_info.is_null = 0;
       value->need_clear = true;

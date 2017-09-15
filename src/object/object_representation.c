@@ -4540,9 +4540,9 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  size += or_packed_enumeration_size (&DOM_GET_ENUMERATION (d));
 	  break;
 	case DB_TYPE_JSON:
-	  if (d->schema_raw)
+	  if (d->json_schema_raw)
 	    {
-	      size += or_packed_string_length (d->schema_raw, NULL);
+	      size += or_packed_string_length (d->json_schema_raw, NULL);
 	    }
 	  break;
 	default:
@@ -4769,7 +4769,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	  break;
 	case DB_TYPE_JSON:
-	  if (d->schema_raw)
+	  if (d->json_schema_raw)
 	    {
 	      carrier |= OR_DOMAIN_SCHEMA_FLAG;
 	      has_schema = 1;
@@ -4860,7 +4860,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
       if (has_schema)
 	{
-	  rc = or_put_string_alined_with_length (buf, d->schema_raw);
+	  rc = or_put_string_alined_with_length (buf, d->json_schema_raw);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -5167,13 +5167,17 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	  if (has_schema)
 	    {
-	      buf->ptr = or_unpack_string_alloc (buf->ptr, &d->schema_raw);
-
+	      buf->ptr = or_unpack_string_alloc (buf->ptr, &d->json_schema_raw);
 	      if (rc != NO_ERROR)
 		{
 		  goto error;
 		}
-	      d->validation_obj = get_validator_from_schema_string (d->schema_raw);
+	      rc = d->json_validator.load (d->json_schema_raw);
+	      if (rc != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto error;
+		}
 
 	      or_align (buf, OR_INT_SIZE);
 	      assert (er_errid () == NO_ERROR);
@@ -5257,8 +5261,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
   precision = scale = 0;
 
   char *schema_raw = NULL;
-  DB_JSON_VALIDATION_OBJECT validator;
-  memset (&validator, 0, sizeof (DB_JSON_VALIDATION_OBJECT));
 
   more = true;
   while (more)
@@ -5517,13 +5519,10 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		if ((carrier & OR_DOMAIN_SCHEMA_FLAG) != 0)
 		  {
 		    buf->ptr = or_unpack_string_alloc (buf->ptr, &schema_raw);
-
 		    if (rc != NO_ERROR)
 		      {
 			goto error;
 		      }
-		    validator = get_validator_from_schema_string (schema_raw);
-
 		    or_align (buf, OR_INT_SIZE);
 		    assert (er_errid () == NO_ERROR);
 		  }
@@ -5548,8 +5547,16 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      switch (type)
 		{
 		case DB_TYPE_JSON:
-		  dom->schema_raw = schema_raw;
-		  dom->validation_obj = validator;
+		  dom->json_schema_raw = schema_raw;
+		  if (dom->json_schema_raw != NULL)
+		    {
+		      rc = dom->json_validator.load (dom->json_schema_raw);
+		      if (rc != NO_ERROR)
+			{
+			  ASSERT_ERROR ();
+			  goto error;
+			}
+		    }
 		  break;
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
@@ -6884,7 +6891,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	    }
 	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
 	    {
-	      value->domain.general_info.schema_raw = domain->schema_raw;
+	      value->domain.general_info.schema_raw = domain->json_schema_raw;
 	    }
 	}
       else

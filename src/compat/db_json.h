@@ -10,11 +10,10 @@
 
 #include "rapidjson/schema.h"
 #include "rapidjson/document.h"
-#include "rapidjson/error/en.h"
 #include "rapidjson/encodings.h"
 #include "rapidjson/allocators.h"
 
-class cubrid_json_allocator
+class JSON_PRIVATE_ALLOCATOR
 {
 public:
   static const bool kNeedFree;
@@ -23,33 +22,43 @@ public:
   static void Free (void *ptr);
 };
 
-typedef rapidjson::GenericDocument<rapidjson::UTF8<>, rapidjson::MemoryPoolAllocator<cubrid_json_allocator> >
-  cubrid_document;
+typedef rapidjson::UTF8<> JSON_ENCODING;
+typedef rapidjson::MemoryPoolAllocator<JSON_PRIVATE_ALLOCATOR> JSON_PRIVATE_MEMPOOL;
 
-typedef rapidjson::GenericSchemaDocument<rapidjson::GenericValue <rapidjson::UTF8 <>,
-                                         rapidjson::MemoryPoolAllocator <cubrid_json_allocator> > >
-  cubrid_schema_document;
+typedef rapidjson::GenericDocument<JSON_ENCODING, JSON_PRIVATE_MEMPOOL> JSON_DOC;
+typedef rapidjson::GenericValue<JSON_ENCODING, JSON_PRIVATE_MEMPOOL> JSON_VALUE;
+typedef rapidjson::GenericPointer<JSON_VALUE> JSON_POINTER;
 
-typedef rapidjson::GenericSchemaValidator<cubrid_schema_document> cubrid_schema_validator;
-
-typedef rapidjson::GenericValue<rapidjson::UTF8 <>, rapidjson::MemoryPoolAllocator<cubrid_json_allocator> >
-  cubrid_value;
-
-typedef rapidjson::GenericPointer<rapidjson::GenericValue<rapidjson::UTF8<>,
-                                  rapidjson::MemoryPoolAllocator<cubrid_json_allocator> > > cubrid_pointer;
-
-typedef struct db_json_validation DB_JSON_VALIDATION_OBJECT;
-struct db_json_validation
+class JSON_VALIDATOR
 {
-  rapidjson::Document *document;
-  rapidjson::SchemaDocument *schema;
-  rapidjson::SchemaValidator *validator;
+public:
+  JSON_VALIDATOR ();
+  ~JSON_VALIDATOR ();
+
+  int load (const char * schema_raw);
+  int copy_from (const JSON_VALIDATOR& my_copy);
+  int validate (const JSON_DOC& doc) const;
+
+private:
+  int generate_schema_validator (void);
+
+  rapidjson::Document* document;
+  rapidjson::SchemaDocument* schema;
+  rapidjson::SchemaValidator* validator;
 };
 
-DB_JSON_VALIDATION_OBJECT get_validator_from_schema_string (const char *schema_raw);
-DB_JSON_VALIDATION_OBJECT get_copy_of_validator (const DB_JSON_VALIDATION_OBJECT validator, const char *raw_schema);
+#else /* !defined (__cplusplus) */
+typedef void JSON_DOC;
+typedef void JSON_VALUE;
+typedef void JSON_POINTER;
 
-#endif /* defined (__cplusplus) */
+typedef struct json_validator JSON_VALIDATOR;
+struct json_validator
+{
+  int dummy;
+};
+#endif /* !defined (__cplusplus) */
+
 /* *INDENT-ON* */
 
 #endif /* db_json.h */

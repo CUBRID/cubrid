@@ -57,10 +57,6 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
-#include "rapidjson/document.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/error/en.h"
-#include "rapidjson/stringbuffer.h"
 
 #define SET_EXPECTED_DOMAIN(node, dom) \
   do \

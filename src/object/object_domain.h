@@ -32,10 +32,7 @@
 #include <stdio.h>
 #include "error_manager.h"
 #include "area_alloc.h"
-#if defined (__cplusplus)
-#include "rapidjson/schema.h"
-#include "db_json.h"
-#endif
+
 #define DOM_GET_ENUMERATION(dom) \
     ((dom)->enumeration)
 #define DOM_GET_ENUM_ELEMENTS(dom) \
@@ -109,10 +106,8 @@ typedef struct tp_domain
   /* run-time flag used during domain comparison */
   unsigned is_visited:1;
 
-#if defined (__cplusplus)
-  DB_JSON_VALIDATION_OBJECT validation_obj;	/* schema validator if type is json */
-  char *schema_raw;
-#endif
+  char *json_schema_raw;
+  JSON_VALIDATOR json_validator;	/* schema validator if type is json */
 } TP_DOMAIN;
 
 /*

@@ -7,43 +7,135 @@
 
 #include "error_manager.h"
 #include "memory_alloc.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/error/en.h"
 
 /* *INDENT-OFF* */
 
-DB_JSON_VALIDATION_OBJECT
-get_validator_from_schema_string (const char *schema_raw)
+JSON_VALIDATOR::JSON_VALIDATOR (void)
 {
-  rapidjson::Document * doc = new rapidjson::Document ();
-  DB_JSON_VALIDATION_OBJECT val_obj;
-  if (doc->Parse (schema_raw).HasParseError ())
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-	      rapidjson::GetParseError_En (doc->GetParseError ()), doc->GetErrorOffset ());
-      return val_obj;
-    }
-
-  val_obj.schema = new rapidjson::SchemaDocument (*doc);
-  val_obj.validator = new rapidjson::SchemaValidator (*val_obj.schema);
-  val_obj.document = doc;
-
-  return val_obj;
+  document = NULL;
+  schema = NULL;
+  validator = NULL;
 }
 
-DB_JSON_VALIDATION_OBJECT
-get_copy_of_validator (const DB_JSON_VALIDATION_OBJECT validation_obj, const char *raw_schema)
+JSON_VALIDATOR::~JSON_VALIDATOR (void)
 {
-  DB_JSON_VALIDATION_OBJECT copy;
+  if (validator != NULL)
+    {
+      delete validator;
+      validator = NULL;
+    }
+  if (schema != NULL)
+    {
+      delete schema;
+      schema = NULL;
+    }
+  if (document != NULL)
+    {
+      delete document;
+      document = NULL;
+    }
+}
 
-  copy.document = new rapidjson::Document ();
-  copy.document->Parse (raw_schema);
-  copy.schema = new rapidjson::SchemaDocument (*validation_obj.document);
-  copy.validator = new rapidjson::SchemaValidator (*copy.schema);
+int
+JSON_VALIDATOR::load (const char *schema_raw)
+{
+  if (schema_raw == NULL)
+    {
+      /* no schema */
+      return NO_ERROR;
+    }
 
-  return copy;
+  /* don't leak resources */
+  this->~JSON_VALIDATOR ();
+
+  /* todo: do we have to allocate document? */
+  document = new rapidjson::Document ();
+  if (document == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (rapidjson::Document));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  document->Parse (schema_raw);
+  if (document->HasParseError ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+              rapidjson::GetParseError_En (document->GetParseError ()), document->GetErrorOffset ());
+      return ER_INVALID_JSON;
+    }
+  return generate_schema_validator ();
+}
+
+int
+JSON_VALIDATOR::copy_from (const JSON_VALIDATOR& copy_schema)
+{
+  /* don't leak resources */
+  this->~JSON_VALIDATOR ();
+
+  if (copy_schema.document == NULL)
+    {
+      /* no schema actually */
+      assert (copy_schema.schema == NULL && copy_schema.validator == NULL);
+      return NO_ERROR;
+    }
+
+  document = new rapidjson::Document ();
+  if (document == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (rapidjson::Document));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  /* todo: is this safe? */
+  document->CopyFrom (*copy_schema.document, document->GetAllocator ());
+  return generate_schema_validator ();
+}
+
+int
+JSON_VALIDATOR::generate_schema_validator (void)
+{
+  schema = new rapidjson::SchemaDocument (*document);
+  if (schema == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (rapidjson::SchemaDocument));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  validator = new rapidjson::SchemaValidator (*schema);
+  if (validator == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (rapidjson::SchemaValidator));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  return NO_ERROR;
+}
+
+int
+JSON_VALIDATOR::validate (const JSON_DOC& doc) const
+{
+  int error_code = NO_ERROR;
+  if (validator == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (!doc.Accept (*validator))
+    {
+      rapidjson::StringBuffer sb1, sb2;
+
+      validator->GetInvalidSchemaPointer ().StringifyUriFragment (sb1);
+      validator->GetInvalidDocumentPointer ().StringifyUriFragment (sb2);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALIDATED_BY_SCHEMA, 3, sb1.GetString (),
+              validator->GetInvalidSchemaKeyword (), sb2.GetString ());
+      error_code = ER_JSON_INVALIDATED_BY_SCHEMA;
+    }
+  validator->Reset ();
+
+  return error_code;
 }
 
 void *
-cubrid_json_allocator::Malloc (size_t size)
+JSON_PRIVATE_ALLOCATOR::Malloc (size_t size)
 {
   if (size)			//  behavior of malloc(0) is implementation defined.
     {
@@ -56,7 +148,7 @@ cubrid_json_allocator::Malloc (size_t size)
 }
 
 void *
-cubrid_json_allocator::Realloc (void *originalPtr, size_t originalSize, size_t newSize)
+JSON_PRIVATE_ALLOCATOR::Realloc (void *originalPtr, size_t originalSize, size_t newSize)
 {
   (void) originalSize;
   if (newSize == 0)
@@ -68,11 +160,11 @@ cubrid_json_allocator::Realloc (void *originalPtr, size_t originalSize, size_t n
 }
 
 void
-cubrid_json_allocator::Free (void *ptr)
+JSON_PRIVATE_ALLOCATOR::Free (void *ptr)
 {
   db_private_free (NULL, ptr);
 }
 
-const bool cubrid_json_allocator::kNeedFree = true;
+const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
 
 /* *INDENT-ON* */

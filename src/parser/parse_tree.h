@@ -42,9 +42,6 @@
 #include "authenticate.h"
 #include "system_parameter.h"
 #include "xasl.h"
-#if defined (__cplusplus)
-#include "rapidjson/schema.h"
-#endif
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -2123,9 +2120,6 @@ struct pt_data_type_info
 				 * set, false otherwise (charset defaulted to that of the system) */
   PT_MISC_TYPE inout;		/* input or output method parameter */
   PARSER_VARCHAR *json_schema;
-#if defined (__cplusplus)
-  DB_JSON_VALIDATION_OBJECT validation_obj;
-#endif
 };
 
 
@@ -3053,9 +3047,7 @@ typedef DB_DATETIMETZ PT_DATETIMETZ;
 typedef struct
 {
   char *json_body;
-#if defined (__cplusplus)
-  cubrid_document *document;
-#endif
+  JSON_DOC *document;
 } PT_JSON;
 
 /* enum currency types */

@@ -42,10 +42,6 @@
 #include "view_transform.h"
 #include "show_meta.h"
 #include "partition.h"
-#if defined (__cplusplus)
-#include "rapidjson/schema.h"
-#include "rapidjson/stringbuffer.h"
-#endif
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -66,9 +62,7 @@ typedef struct seman_compatible_info
   PT_TYPE_ENUM type_enum;
   int prec;
   int scale;
-#if defined (__cplusplus)
-    rapidjson::SchemaValidator * schema_validator;
-#endif
+  bool force_cast;
   PT_COLL_INFER coll_infer;
   const PT_NODE *ref_att;	/* column node having current compat info */
 } SEMAN_COMPATIBLE_INFO;
@@ -2304,6 +2298,11 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
 
   *is_cast_allowed = true;
 
+  if (dest_sci->force_cast)
+    {
+      return false;
+    }
+
   if (dest_sci->type_enum != src->type_enum)
     {
       return false;
@@ -2360,13 +2359,6 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
     {
       /* collections might not have the same domain */
       return false;
-    }
-  else if (dest_sci->type_enum == PT_TYPE_JSON)
-    {
-      /* it is possible to provide a json that is rejected by the schema,
-       * so we need to check whether the schema accepts it or not when we cast
-       */
-      return dest_sci->schema_validator == NULL;
     }
 
   return true;			/* is compatible, no need to cast */
@@ -11111,9 +11103,9 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	{
 	  sci.prec = lhs->data_type->info.data_type.precision;
 	  sci.scale = lhs->data_type->info.data_type.dec_precision;
-	  if (lhs->type_enum == PT_TYPE_JSON && lhs->data_type->info.data_type.validation_obj.validator != NULL)
+	  if (lhs->type_enum == PT_TYPE_JSON && lhs->data_type->info.data_type.json_schema != NULL)
 	    {
-	      sci.schema_validator = lhs->data_type->info.data_type.validation_obj.validator;
+	      sci.force_cast = true;
 	    }
 	}
 

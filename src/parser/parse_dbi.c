@@ -46,7 +46,6 @@
 #include "intl_support.h"
 #include "virtual_object.h"
 #include "object_template.h"
-#include "rapidjson/error/en.h"
 
 #define SET_PARSER_ERROR_AND_FREE_NODE(parser, result, default_msg_id)	      \
   do {									      \
@@ -635,14 +634,22 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       else
 	{
 	  result->data_type->type_enum = result->type_enum;
-	  if (db_get_json_schema (val) && strlen (db_get_json_schema (val)) > 0)
+	  if (db_get_json_schema (val) != NULL)
 	    {
-	      result->data_type->info.data_type.json_schema =
-		pt_append_bytes (parser, NULL, db_get_json_schema (val), strlen (db_get_json_schema (val)));
-	      result->data_type->info.data_type.validation_obj =
-		get_validator_from_schema_string (db_get_json_schema (val));
-
-	      assert (er_errid () == NO_ERROR);
+	      /* check valid schema */
+	      JSON_VALIDATOR validator;
+	      if (validator.load (db_get_json_schema (val)) != NO_ERROR)
+		{
+		  assert (false);
+		  parser_free_node (parser, result);
+		  PT_INTERNAL_ERROR (parser, "invalid json schema");
+		  result = NULL;
+		}
+	      else
+		{
+		  result->data_type->info.data_type.json_schema =
+		    pt_append_bytes (parser, NULL, db_get_json_schema (val), strlen (db_get_json_schema (val)));
+		}
 	    }
 	}
       break;
@@ -1765,8 +1772,8 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
   DB_ENUMERATION enumeration;
   int collation_id = 0;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_NORMAL;
-  DB_JSON_VALIDATION_OBJECT validator;
-  char *raw_schema = NULL;
+  JSON_VALIDATOR validator;
+  char *json_schema_raw = NULL;
   int rc;
 
   if (dt == NULL)
@@ -1808,16 +1815,22 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
 	{
-	  validator = get_validator_from_schema_string ((const char *) dt->info.data_type.json_schema->bytes);
-	  if (er_errid () != NO_ERROR)
+	  json_schema_raw = (char *) malloc (dt->info.data_type.json_schema->length + 1);
+	  if (json_schema_raw == NULL)
 	    {
-	      /* this means an error has been set */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      dt->info.data_type.json_schema->length);
 	      return NULL;
 	    }
-	  raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
-	  memcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes,
+	  memcpy (json_schema_raw, (const char *) dt->info.data_type.json_schema->bytes,
 		  dt->info.data_type.json_schema->length);
-	  raw_schema[dt->info.data_type.json_schema->length] = '\0';
+	  json_schema_raw[dt->info.data_type.json_schema->length] = '\0';
+
+	  if (validator.load (json_schema_raw) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return NULL;
+	    }
 	  break;
 	}
       else
@@ -1948,8 +1961,8 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       retval->enumeration.collation_id = collation_id;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
-      retval->validation_obj = validator;
-      retval->schema_raw = raw_schema;
+      retval->json_validator = validator;
+      retval->json_schema_raw = json_schema_raw;
     }
   else
     {
@@ -2000,7 +2013,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
   TP_DOMAIN_COLL_ACTION collation_flag;
   char *raw_schema = NULL;
 
-  DB_JSON_VALIDATION_OBJECT validator;
+  JSON_VALIDATOR validator;
 
   if (dt == NULL)
     {
@@ -2043,16 +2056,21 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
 	{
-	  validator = get_validator_from_schema_string ((const char *) dt->info.data_type.json_schema->bytes);
-	  if (er_errid () != NO_ERROR)
+	  raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
+	  if (raw_schema == NULL)
 	    {
-	      /* this means an error has been set */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, raw_schema);
 	      return NULL;
 	    }
-	  raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
 	  memcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes,
 		  dt->info.data_type.json_schema->length);
 	  raw_schema[dt->info.data_type.json_schema->length] = '\0';
+
+	  if (validator.load (raw_schema) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return NULL;
+	    }
 	  break;
 	}
       else
@@ -2159,8 +2177,8 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
       retval->collation_id = collation_id;
       retval->collation_flag = collation_flag;
       retval->enumeration.collation_id = collation_id;
-      retval->validation_obj = validator;
-      retval->schema_raw = raw_schema;
+      retval->json_validator = validator;
+      retval->json_schema_raw = raw_schema;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
     }
@@ -2901,12 +2919,23 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt)
 	{
+	  /* first check valid schema */
+	  JSON_VALIDATOR validator;
+	  if (validator.load (val->data.json.json_body) != NO_ERROR)
+	    {
+	      assert (false);
+	      parser_free_node (parser, dt);
+	      /* TODO: set a real error. */
+	      PT_INTERNAL_ERROR (parser, "json validation failed");
+	      return NULL;
+	    }
+	  /* valid schema */
+
 	  dt->type_enum = node->type_enum;
+
+	  /* save raw schema */
 	  dt->info.data_type.json_schema =
 	    pt_append_bytes (parser, NULL, val->data.json.json_body, strlen (val->data.json.json_body));
-	  dt->info.data_type.validation_obj = get_validator_from_schema_string (val->data.json.json_body);
-
-	  assert (er_errid () == NO_ERROR);
 	}
       break;
 
