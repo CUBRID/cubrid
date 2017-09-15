@@ -3506,14 +3506,12 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       if (value->info.data_type.json_schema)
 	{
 	  int len = value->info.data_type.json_schema->length;
-	  db_value->domain.general_info.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len + 1));
-	  memcpy (db_value->domain.general_info.schema_raw, (const char *) value->info.data_type.json_schema->bytes,
-		  len);
-	  db_value->domain.general_info.schema_raw[len] = '\0';
+	  db_value->data.json.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len + 1));
+	  strcpy (db_value->data.json.schema_raw, (const char *) value->info.data_type.json_schema->bytes);
 	}
       else
 	{
-	  db_value->domain.general_info.schema_raw = NULL;
+	  db_value->data.json.schema_raw = NULL;
 	}
       *more_type_info_needed = (value->data_type == NULL);
       break;

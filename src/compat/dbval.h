@@ -394,7 +394,7 @@
 #define DB_GET_ENUM_COLLATION(v) \
       ((v)->domain.char_info.collation_id)
 #define DB_GET_JSON_SCHEMA(v) \
-      ((v)->domain.general_info.schema_raw)
+      ((v)->data.json.schema_raw)
 
 #define db_value_is_null(v) DB_IS_NULL(v)
 #define db_value_type(v) DB_VALUE_TYPE(v)
@@ -634,7 +634,7 @@
     (v)->data.json.document = (d), \
     (v)->domain.general_info.is_null = 0, \
     (v)->need_clear = cl, \
-    (v)->domain.general_info.schema_raw = NULL, \
+    (v)->data.json.schema_raw = NULL, \
     NO_ERROR)
 
 #define db_make_midxkey(v, m) \

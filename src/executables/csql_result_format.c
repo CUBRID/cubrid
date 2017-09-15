@@ -1469,11 +1469,10 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	}
       break;
     case DB_TYPE_JSON:
-      len = strlen (value->data.json.json_body);
-      result = (char *) malloc ((size_t) (len + 1));
+      result = duplicate_string (value->data.json.json_body);
       if (result)
 	{
-	  strcpy (result, value->data.json.json_body);
+	  len = strlen (result);
 	}
       break;
     case DB_TYPE_SET:

@@ -552,7 +552,6 @@ union db_domain_info
   {
     unsigned char is_null;
     unsigned char type;
-    char *schema_raw;
   } general_info;
   struct numeric_info
   {
@@ -873,6 +872,7 @@ typedef struct db_json DB_JSON;
 struct db_json
 {
   char *json_body;
+  char *schema_raw;
   JSON_DOC *document;
 };
 

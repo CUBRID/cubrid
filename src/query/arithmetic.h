@@ -30,11 +30,8 @@
 #include "dbtype.h"
 #include "object_domain.h"
 #include "thread.h"
-
-#if defined (__cplusplus)
 #include <vector>
 #include <string>
-#endif
 
 #define PI ((double) (3.14159265358979323846264338))
 #define DB_JSON_MAX_STRING_SIZE 32

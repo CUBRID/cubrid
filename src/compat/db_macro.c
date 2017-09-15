@@ -157,7 +157,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
   value->domain.numeric_info.scale = scale;
   value->need_clear = false;
   value->domain.general_info.is_null = 1;
-  value->domain.general_info.schema_raw = NULL;
+  value->data.json.schema_raw = NULL;
 
   switch (type)
     {

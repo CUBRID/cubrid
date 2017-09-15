@@ -56,8 +56,6 @@
 #define XCACHE_PTR_TO_KEY(ptr) ((XASL_ID *) ptr)
 #define XCACHE_PTR_TO_ENTRY(ptr) ((XASL_CACHE_ENTRY *) ptr)
 
-typedef struct lf_tran_entry LF_TRAN_ENTRY;
-
 /* xcache statistics. */
 typedef struct xcache_stats XCACHE_STATS;
 struct xcache_stats

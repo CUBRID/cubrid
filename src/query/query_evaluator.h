@@ -58,7 +58,6 @@ typedef enum
         || ((func_p)->function == PT_LAG) \
         || ((func_p)->function == PT_NTH_VALUE)))
 
-
 #define ANALYTIC_ADVANCE_RANK 1	/* advance rank */
 #define ANALYTIC_KEEP_RANK    2	/* keep current rank */
 
