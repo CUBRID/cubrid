@@ -354,95 +354,56 @@ extern "C"
 
 #define DB_VALUE_SCALE(value)           db_value_scale(value)
 
+/* New prefered interface for DB_GET macros. */
+#define DB_GET_INT(v) db_get_int(v)
+#define DB_GET_SHORT(v) db_get_short(v)
+#define DB_GET_BIGINT(v) db_get_bigint(v)
+#define DB_GET_FLOAT(v) db_get_float(v)
+#define DB_GET_STRING(v) db_get_string(v)
+#define DB_GET_STRING_LENGTH(v) db_get_string_length(v)
+#define DB_GET_DOUBLE(v) db_get_double(v)
+#define DB_GET_OBJECT(v) db_get_object(v)
+#define DB_GET_SET(v) db_get_set(v)
+#define DB_GET_MIDXKEY(v) db_get_midxkey(v)
+#define DB_GET_POINTER(v) db_get_pointer(v)
+#define DB_GET_TIME(v) db_get_time(v)
+#define DB_GET_TIMETZ(v) db_get_timetz(v)
+#define DB_GET_TIMESTAMP(v) db_get_timestamp(v)
+#define DB_GET_TIMESTAMPTZ(v) db_get_timestamptz(v)
+#define DB_GET_DATETIME(v) db_get_datetime(v)
+#define DB_GET_DATETIMETZ(v) db_get_datetimetz(v)
+#define DB_GET_DATE(v) db_get_date(v)
+#define DB_GET_MONETARY(v) db_get_monetary(v)
+#define DB_GET_ERROR(v) db_get_error(v)
+#define DB_GET_ELO(v) db_get_elo(v)
+#define DB_GET_NUMERIC(v) db_get_numeric(v)
+#define DB_GET_BIT(v, l) db_get_bit(v, l)
+#define DB_GET_CHAR(v, l) db_get_char(v, l)
+#define DB_GET_NCHAR(v, l) db_get_nchar(v, l)
+#define DB_GET_STRING_SIZE(v) db_get_string_size(v)
+#define DB_GET_ENUM_SHORT(v) db_get_enum_short(v)
+#define DB_GET_ENUM_STRING(v) db_get_enum_string(v)
+#define DB_GET_ENUM_STRING_SIZE(v) db_get_enum_string_size(v)
+#define DB_GET_METHOD_ERROR_MSG() db_get_method_error_msg()
+#define DB_GET_RESULTSET(v) db_get_resultset(v)
+#define DB_GET_STRING_CODESET(v) ((INTL_CODESET) db_get_string_codeset(v))
+#define DB_GET_STRING_COLLATION(v) db_get_string_collation(v)
+#define DB_GET_ENUM_CODESET(v) db_get_enum_codeset(v)
+#define DB_GET_ENUM_COLLATION(v) db_get_enum_collation(v)
+
 #define DB_GET_INTEGER(value)           db_get_int(value)
-
-#define DB_GET_INT                      DB_GET_INTEGER
-
-#define DB_GET_BIGINT(value)            db_get_bigint(value)
-
 #define DB_GET_BIGINTEGER               DB_GET_BIGINT
-
-#define DB_GET_FLOAT(value)             db_get_float(value)
-
-#define DB_GET_DOUBLE(value)            db_get_double(value)
-
-#define DB_GET_STRING(value)            db_get_string(value)
-
-#define DB_GET_OBJECT(value)            db_get_object(value)
-
 #define DB_GET_OBJ DB_GET_OBJECT
-
-#define DB_GET_SET(value)               db_get_set(value)
-
 #define DB_GET_MULTISET(value)          db_get_set(value)
-
-/* obsolete */
-#define DB_GET_MULTI_SET DB_GET_MULTISET
-
 #define DB_GET_LIST(value)              db_get_set(value)
-
 #define DB_GET_SEQUENCE DB_GET_LIST
-
-/* obsolete */
-#define DB_GET_SEQ DB_GET_SEQUENCE
-
-/* new preferred interface */
 #define DB_GET_COLLECTION(value)        db_get_set(value)
-
-#define DB_GET_MIDXKEY(value)           db_get_midxkey(value)
-
-#define DB_GET_ELO(value)               db_get_elo(value)
-
-#define DB_GET_TIME(value)              db_get_time(value)
-
-#define DB_GET_TIMETZ(value)		db_get_timetz(value)
-
-#define DB_GET_DATE(value)              db_get_date(value)
-
-#define DB_GET_TIMESTAMP(value)         db_get_timestamp(value)
 #define DB_GET_UTIME DB_GET_TIMESTAMP
-
-#define DB_GET_TIMESTAMPTZ(value)	db_get_timestamptz(value)
-
-#define DB_GET_DATETIME(value)          db_get_datetime(value)
-
-#define DB_GET_DATETIMETZ(value)	db_get_datetimetz(value)
-
-#define DB_GET_MONETARY(value)          db_get_monetary(value)
-
-#define DB_GET_POINTER(value)           db_get_pointer(value)
-
-#define DB_GET_ERROR(value)             db_get_error(value)
-
-#define DB_GET_SHORT(value)             db_get_short(value)
-
 #define DB_GET_SMALLINT(value)          db_get_short(value)
 
-#define DB_GET_NUMERIC(value)           db_get_numeric(value)
-
-#define DB_GET_BIT(value, length)       db_get_bit(value, length)
-
-#define DB_GET_CHAR(value, length)      db_get_char(value, length)
-
-#define DB_GET_NCHAR(value, length)     db_get_nchar(value, length)
-
-#define DB_GET_STRING_SIZE(value)       db_get_string_size(value)
-
-#define DB_GET_METHOD_ERROR_MSG()       db_get_method_error_msg()
-
-#define DB_GET_RESULTSET(value)         db_get_resultset(value)
-
-#define DB_GET_STRING_LENGTH(value) db_get_string_length(value)
-
-#define DB_GET_STRING_CODESET(value) ((INTL_CODESET) db_get_string_codeset(value))
-
-#define DB_GET_STRING_COLLATION(value) db_get_string_collation(value)
-
-#define DB_GET_ENUM_CODESET(value) db_get_enum_codeset(value)
-
-#define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
-
 #define DB_GET_COMPRESSED_SIZE(value) db_get_compressed_size(value)
+
+#define DB_GET_SEQ DB_GET_SEQUENCE
 
 #define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
 	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
@@ -1279,20 +1240,18 @@ extern DB_C_SHORT db_get_enum_short (const DB_VALUE * value);
 extern DB_C_CHAR db_get_enum_string (const DB_VALUE * value);
 extern int db_get_enum_string_size (const DB_VALUE * value);
 extern DB_C_CHAR db_get_method_error_msg (void);
-
 extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
-
-extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
-extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 extern int db_get_string_codeset (const DB_VALUE * value);
 extern int db_get_string_collation (const DB_VALUE * value);
-extern int valcnv_convert_value_to_string (DB_VALUE * value);
-
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
-
 extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
+
+extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
+extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
+
+extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
 #endif /* _DBTYPE_H_ */

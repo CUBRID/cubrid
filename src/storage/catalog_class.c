@@ -1347,19 +1347,19 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	}
       or_val = &or_val[7];
       if (!TP_IS_SET_TYPE (DB_VALUE_TYPE (&or_val->value))
-	  || DB_GET_ENUM_SHORT (attr_val_p) > or_val->value.data.set->set->size)
+	  || db_get_enum_short (attr_val_p) > or_val->value.data.set->set->size)
 	{
 	  error = ER_FAILED;
 	  goto error;
 	}
-      error = set_get_element (DB_GET_SET (&or_val->value), DB_GET_ENUM_SHORT (attr_val_p) - 1, &val);
+      error = set_get_element (DB_GET_SET (&or_val->value), db_get_enum_short (attr_val_p) - 1, &val);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
       val.need_clear = false;
-      DB_MAKE_ENUMERATION (attr_val_p, DB_GET_ENUM_SHORT (attr_val_p), DB_GET_STRING (&val), DB_GET_STRING_SIZE (&val),
+      DB_MAKE_ENUMERATION (attr_val_p, db_get_enum_short (attr_val_p), DB_GET_STRING (&val), DB_GET_STRING_SIZE (&val),
 			   DB_GET_ENUM_CODESET (attr_val_p), DB_GET_ENUM_COLLATION (attr_val_p));
       attr_val_p->need_clear = true;
     }

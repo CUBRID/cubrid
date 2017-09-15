@@ -4077,7 +4077,7 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB
 	      /* print enumerations as strings */
 	      if (tp_enumeration_to_varchar (value, &varchar_val) == NO_ERROR)
 		{
-		  codeset = DB_GET_ENUM_CODESET (value);
+		  codeset = (INTL_CODESET) DB_GET_ENUM_CODESET (value);
 		  if (codeset != LANG_SYS_CODESET)
 		    {
 		      buffer = pt_append_nulstring (parser, buffer, lang_charset_introducer (codeset));
