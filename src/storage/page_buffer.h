@@ -445,5 +445,6 @@ extern int pgbuf_dwb_create (THREAD_ENTRY * thread_p, const char *dwb_path_p, co
 extern int pgbuf_dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p);
 extern int pgbuf_dwb_destroy (THREAD_ENTRY * thread_p);
 extern char *pgbuf_dwb_get_volume_name ();
+extern int pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p);
 
 #endif /* _PAGE_BUFFER_H_ */

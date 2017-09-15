@@ -465,11 +465,14 @@ extern void thread_wakeup_oob_handler_thread (void);
 extern void thread_wakeup_auto_volume_expansion_thread (void);
 extern void thread_wakeup_vacuum_master_thread (void);
 extern void thread_wakeup_vacuum_worker_threads (int n_workers);
+extern void thread_wakeup_dwb_flush_block_with_checksum_thread (void);
 
 /* is available functions */
 extern bool thread_is_page_flush_thread_available (void);
 extern bool thread_is_page_post_flush_thread_available (void);
 extern bool thread_is_log_flush_thread_available (void);
+extern bool thread_is_auto_volume_expansion_thread_available (void);
+extern bool thread_is_dwb_block_and_flush_thread_available (void);
 
 /* is running tunfions */
 extern bool thread_auto_volume_expansion_thread_is_running (void);
@@ -539,8 +542,6 @@ extern void *thread_worker (void *);
 #endif /* !WINDOWS */
 
 extern int thread_first_vacuum_worker_thread_index (void);
-
-extern bool thread_is_auto_volume_expansion_thread_available (void);
 
 #if !defined (NDEBUG)
 extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);

@@ -130,6 +130,7 @@ static DAEMON_THREAD_MONITOR thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INI
 static DAEMON_THREAD_MONITOR thread_Vacuum_master_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_maintenance_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_post_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Dwb_flush_block_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
 static DAEMON_THREAD_MONITOR *thread_Vacuum_worker_threads = NULL;
 static int thread_First_vacuum_worker_thread_index = -1;
@@ -157,6 +158,7 @@ static THREAD_RET_T THREAD_CALLING_CONVENTION thread_vacuum_master_thread (void 
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_vacuum_worker_thread (void *arg_p);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_buffer_maintenance_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_post_flush_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_dwb_flush_block_thread (void *);
 
 typedef enum
 {
@@ -174,6 +176,7 @@ typedef enum
   THREAD_DAEMON_LOG_FLUSH,
   THREAD_DAEMON_PAGE_MAINTENANCE,
   THREAD_DAEMON_PAGE_POST_FLUSH,
+  THREAD_DAEMON_DWB_FLUSH_BLOCK,
 
   THREAD_DAEMON_NUM_SINGLE_THREADS,
 
@@ -500,26 +503,32 @@ thread_initialize_manager (void)
       /* Initialize page buffer maintenance daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_MAINTENANCE;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Page_maintenance_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 4;
+      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 5;
       thread_Daemons[daemon_index++].daemon_function = thread_page_buffer_maintenance_thread;
 
       /* Initialize page flush daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_FLUSH;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Page_flush_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 3;
+      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 4;
       thread_Daemons[daemon_index++].daemon_function = thread_page_flush_thread;
 
       /* Initialize page post flush daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_POST_FLUSH;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Page_post_flush_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 2;
+      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 3;
       thread_Daemons[daemon_index++].daemon_function = thread_page_post_flush_thread;
 
       /* Initialize flush control daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_FLUSH_CONTROL;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Flush_control_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 1;
+      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 2;
       thread_Daemons[daemon_index++].daemon_function = thread_flush_control_thread;
+
+      /* Initialize log flush daemon */
+      thread_Daemons[daemon_index].type = THREAD_DAEMON_DWB_FLUSH_BLOCK;
+      thread_Daemons[daemon_index].daemon_monitor = &thread_Dwb_flush_block_thread;
+      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 1;
+      thread_Daemons[daemon_index++].daemon_function = thread_dwb_flush_block_thread;
 
       /* Initialize log flush daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_FLUSH;
@@ -2009,6 +2018,7 @@ thread_sleep (double milliseconds)
 
   select (0, NULL, NULL, NULL, &to);
 #endif /* WINDOWS */
+
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4024,6 +4034,71 @@ thread_wakeup_auto_volume_expansion_thread (void)
     }
   pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
 }
+
+
+/*
+ * thread_is_dwb_block_and_flush_thread_available () -
+ *   return:
+ */
+bool
+thread_is_dwb_block_and_flush_thread_available (void)
+{
+  return thread_Dwb_flush_block_thread.is_available;
+}
+
+/*
+ * thread_dwb_flush_block_thread () - flush block function
+ *   return:
+ */
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+thread_dwb_flush_block_thread (void *arg_p)
+{
+#define THREAD_DWB_FLUSH_BLOCK_WAKEUP_TIME_MSEC 20
+#if !defined(HPUX)
+  THREAD_ENTRY *tsd_ptr;
+#endif /* !HPUX */
+  int rv;
+
+  tsd_ptr = (THREAD_ENTRY *) arg_p;
+  /* wait until THREAD_CREATE() finish */
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
+
+  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
+  tsd_ptr->type = TT_DAEMON;
+  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+
+  thread_Dwb_flush_block_thread.is_available = true;
+
+  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+
+  while (!tsd_ptr->shutdown)
+    {
+      (void) thread_daemon_timedwait (&thread_Page_post_flush_thread, THREAD_DWB_FLUSH_BLOCK_WAKEUP_TIME_MSEC);
+
+      pgbuf_dwb_flush_block_with_checksum (tsd_ptr);
+    }
+
+  thread_daemon_stop (&thread_Dwb_flush_block_thread, tsd_ptr);
+
+  return (THREAD_RET_T) 0;
+#undef THREAD_DWB_FLUSH_BLOCK_WAKEUP_TIME_MSEC
+}
+
+/* 
+ * thread_wakeup_dwb_flush_block_with_checksum_thread - wakeup the thread that flush DWB block
+ *   return: nothing
+ */
+void
+thread_wakeup_dwb_flush_block_with_checksum_thread (void)
+{
+  int rv;
+
+  rv = pthread_mutex_lock (&thread_Dwb_flush_block_thread.lock);
+  pthread_cond_signal (&thread_Dwb_flush_block_thread.cond);
+  pthread_mutex_unlock (&thread_Dwb_flush_block_thread.lock);
+}
+
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
