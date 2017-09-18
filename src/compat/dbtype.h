@@ -38,6 +38,14 @@ extern "C"
 {
 #endif
 
+
+  typedef enum
+  {
+    SMALL_STRING,
+    MEDIUM_STRING,
+    LARGE_STRING
+  } STRING_STYLE;
+
 /*
  * DB_MAX_IDENTIFIER_LENGTH -
  * This constant defines the maximum length of an identifier
@@ -1211,6 +1219,8 @@ extern "C"
  * DB_VALUE structure. No type checking is done so you need to make sure
  * that the type is correct.
  */
+
+#ifndef SERVER_MODE
 extern int db_get_int (const DB_VALUE * value);
 extern DB_C_SHORT db_get_short (const DB_VALUE * value);
 extern DB_BIGINT db_get_bigint (const DB_VALUE * value);
@@ -1245,6 +1255,8 @@ extern int db_get_string_codeset (const DB_VALUE * value);
 extern int db_get_string_collation (const DB_VALUE * value);
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
+#endif
+
 extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
