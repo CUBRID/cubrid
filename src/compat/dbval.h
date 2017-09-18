@@ -39,7 +39,6 @@
 #undef DB_IS_NULL
 #if !defined(NDEBUG)
 #else
-#undef DB_VALUE_DOMAIN_TYPE
 #endif
 
 #define DB_IS_NULL(v) \
@@ -50,24 +49,6 @@
 #define DB_VALUE_DOMAIN_TYPE(v)	\
     ((DB_TYPE) ((v)->domain.general_info.type))
 #endif
-
-#define DB_VALUE_TYPE(v) \
-    (DB_IS_NULL(v) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE(v))
-
-#define DB_VALUE_SCALE(v) \
-    ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NUMERIC) ? \
-      (v)->domain.numeric_info.scale : 0)
-
-#define DB_VALUE_PRECISION(v) \
-    ((DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_NUMERIC) \
-       ? ((v)->domain.numeric_info.precision) : \
-          ((DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_BIT \
-	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_VARBIT \
-	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_CHAR \
-	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_VARCHAR \
-	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_NCHAR \
-	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_VARNCHAR) \
-           ? ((v)->domain.char_info.length) : 0))
 
 /* note : this will have to change when we start using the small and large
           string buffers. */
@@ -194,9 +175,6 @@
       ((elem)->str_val.medium.size = (sz))
 
 #define db_value_is_null(v) DB_IS_NULL(v)
-#define db_value_type(v) DB_VALUE_TYPE(v)
-#define db_value_scale(v) DB_VALUE_SCALE(v)
-#define db_value_precision(v) DB_VALUE_PRECISION(v)
 
 #define db_pull_string(v) DB_PULL_STRING(v)
 

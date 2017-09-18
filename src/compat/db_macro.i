@@ -28,6 +28,7 @@
 #define _DB_MACRO_I_
 
 #include "dbtype.h"
+#include "db.h"
 
 #ifdef SERVER_MODE
 #define DB_MACRO_INLINE STATIC_INLINE
@@ -647,6 +648,101 @@ db_get_enum_collation (const DB_VALUE * value)
   CHECK_1ARG_ZERO_WITH_TYPE (value, int);
 
   return value->domain.char_info.collation_id;
+}
+
+/*
+ * db_value_type()
+ * return     : DB_TYPE of value's domain or DB_TYPE_NULL
+ * value(in)  : Pointer to a DB_VALUE
+ */
+DB_MACRO_INLINE DB_TYPE
+db_value_type (const DB_VALUE * value)
+{
+  CHECK_1ARG_UNKNOWN (value);
+
+  if (value->domain.general_info.is_null)
+    {
+      return DB_TYPE_NULL;
+    }
+  else
+    {
+      return DB_VALUE_DOMAIN_TYPE (value);
+    }
+}
+
+/*
+ * db_value_precision() - get the precision of value.
+ * return     : precision of given value.
+ * value(in)  : Pointer to a DB_VALUE.
+ */
+DB_MACRO_INLINE int
+db_value_precision (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+
+  switch (value->domain.general_info.type)
+    {
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_DATE:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_MONETARY:
+      return value->domain.numeric_info.precision;
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      return value->domain.char_info.length;
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+    case DB_TYPE_VARIABLE:
+    case DB_TYPE_SUB:
+    case DB_TYPE_POINTER:
+    case DB_TYPE_ERROR:
+    case DB_TYPE_VOBJ:
+    case DB_TYPE_OID:
+    default:
+      return 0;
+    }
+}
+
+/*
+ * db_value_scale() - get the scale of value.
+ * return     : scale of given value.
+ * value(in)  : Pointer to a DB_VALUE.
+ */
+DB_MACRO_INLINE int
+db_value_scale (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+
+  if (value->domain.general_info.type == DB_TYPE_NUMERIC
+      || value->domain.general_info.type == DB_TYPE_DATETIME
+      || value->domain.general_info.type == DB_TYPE_DATETIMETZ
+      || value->domain.general_info.type == DB_TYPE_DATETIMELTZ)
+    {
+      return value->domain.numeric_info.scale;
+    }
+  else
+    {
+      return 0;
+    }
 }
 
 #endif          /* _DB_MACRO_I_*/

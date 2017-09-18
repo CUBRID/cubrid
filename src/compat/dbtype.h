@@ -356,12 +356,6 @@ extern "C"
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
-#define DB_VALUE_TYPE(value)            db_value_type(value)
-
-#define DB_VALUE_PRECISION(value)       db_value_precision(value)
-
-#define DB_VALUE_SCALE(value)           db_value_scale(value)
-
 /* New prefered interface for DB_GET macros. */
 #define DB_GET_INT(v) db_get_int(v)
 #define DB_GET_SHORT(v) db_get_short(v)
@@ -398,6 +392,9 @@ extern "C"
 #define DB_GET_STRING_COLLATION(v) db_get_string_collation(v)
 #define DB_GET_ENUM_CODESET(v) db_get_enum_codeset(v)
 #define DB_GET_ENUM_COLLATION(v) db_get_enum_collation(v)
+#define DB_VALUE_TYPE(value) db_value_type(value)
+#define DB_VALUE_PRECISION(value) db_value_precision(value)
+#define DB_VALUE_SCALE(value) db_value_scale(value)
 
 #define DB_GET_INTEGER(value)           db_get_int(value)
 #define DB_GET_BIGINTEGER               DB_GET_BIGINT
@@ -1051,9 +1048,6 @@ extern "C"
   extern int db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale);
   extern int db_string_truncate (DB_VALUE * value, const int max_precision);
   extern DB_TYPE db_value_domain_type (const DB_VALUE * value);
-  extern DB_TYPE db_value_type (const DB_VALUE * value);
-  extern int db_value_precision (const DB_VALUE * value);
-  extern int db_value_scale (const DB_VALUE * value);
   extern int db_value_put_null (DB_VALUE * value);
   extern int db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int input_length);
   extern bool db_value_type_is_collection (const DB_VALUE * value);
@@ -1255,6 +1249,9 @@ extern int db_get_string_codeset (const DB_VALUE * value);
 extern int db_get_string_collation (const DB_VALUE * value);
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
+extern DB_TYPE db_value_type (const DB_VALUE * value);
+extern int db_value_precision (const DB_VALUE * value);
+extern int db_value_scale (const DB_VALUE * value);
 #endif
 
 extern int db_get_compressed_size (DB_VALUE * value);
