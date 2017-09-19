@@ -3919,6 +3919,12 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      BTID_COPY (&partitions[pos].btid, &pk_btid);
 	    }
 
+	  /* Save the old page, if any. */
+	  if (pk_bt_scan.C_page != NULL)
+	    {
+	      old_page = pk_bt_scan.C_page;
+	    }
+
 	  /* Update references. */
 	  pk_bt_scan = partitions[pos].bt_scan;
 	  pk_node_key_cnt = partitions[pos].key_cnt;
@@ -3948,6 +3954,12 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	    }
 	  else
 	    {
+	      /* First unfix the old page if applicable. The new page was fixed in btree_locate_key. */
+	      if (old_page != NULL)
+		{
+		  pgbuf_unfix_and_init (thread_p, old_page);
+		}
+
 	      /* Make sure there is at least one visible object. */
 	      ret = btree_has_any_visible (thread_p, &pk_bt_scan.btid_int, pk_bt_scan.C_page, &mvcc_snapshot_dirty,
 					   &pk_has_visible);
@@ -4048,6 +4060,17 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
     }
 
 end:
+
+  if (has_partitions)
+    {
+      for (i = 0; i < part_count - 1; i++)
+	{
+	  if (partitions[i].bt_scan.C_page != NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, partitions[i].bt_scan.C_page);
+	    }
+	}
+    }
 
   if (old_page != NULL)
     {

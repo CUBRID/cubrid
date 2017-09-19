@@ -3439,7 +3439,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_MODE,
    PRM_NAME_HA_MODE,
-   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_FORCE_SERVER),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_HA | PRM_FORCE_SERVER),
    PRM_KEYWORD,
    &prm_ha_mode_flag,
    (void *) &prm_ha_mode_default,
@@ -6236,6 +6236,22 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	  return error;
 	}
 
+#if defined (CS_MODE)
+      if (PRM_IS_FOR_SERVER (prm->static_flag) && !PRM_IS_FOR_CLIENT (prm->static_flag))
+	{
+	  /* prm for only server */
+	  continue;
+	}
+#endif /* CS_MODE */
+
+#if defined (SERVER_MODE)
+      if (PRM_IS_FOR_CLIENT (prm->static_flag) && !PRM_IS_FOR_SERVER (prm->static_flag))
+	{
+	  /* prm for only client */
+	  continue;
+	}
+#endif /* SERVER_MODE */
+
       if (reload && !PRM_IS_RELOADABLE (prm->static_flag))
 	{
 	  continue;
@@ -7088,9 +7104,6 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
   remaining_size = buf_size - 1;
   do
     {
-      /* parse data */
-      SYSPRM_ASSIGN_VALUE *assign = NULL;
-
       /* get parameter name and value */
       err = (SYSPRM_ERR) prm_get_next_param_value (&p, &name, &value);
       if (err != PRM_ERR_NO_ERROR || name == NULL || value == NULL)
@@ -7107,9 +7120,8 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
 
       if (PRM_ID_INTL_COLLATION == sysprm_get_id (prm))
 	{
-	  n =
-	    snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_COLLATION,
-		      lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET)));
+	  n = snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_COLLATION,
+			lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET)));
 	}
       else if (PRM_ID_INTL_DATE_LANG == sysprm_get_id (prm))
 	{
@@ -8157,7 +8169,6 @@ sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max)
 int
 sysprm_get_range (const char *pname, void *min, void *max)
 {
-  int error = NO_ERROR;
   SYSPRM_PARAM *prm;
 
   prm = prm_find (pname, NULL);
