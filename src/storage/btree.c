@@ -2456,43 +2456,44 @@ btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * bti
   *num_visible = 0;
 
   /* Get number of visible objects from leaf record. */
-  error_code =
-    btree_record_get_num_visible_oids (thread_p, btid_int, leaf_record, offset_after_key, BTREE_LEAF_NODE,
-				       max_visible_oids, mvcc_snapshot, num_visible);
+  error_code = btree_record_get_num_visible_oids (thread_p, btid_int, leaf_record, offset_after_key, BTREE_LEAF_NODE,
+						  max_visible_oids, mvcc_snapshot, num_visible);
   if (error_code != NO_ERROR)
     {
       /* Error occurred */
       ASSERT_ERROR ();
       return error_code;
     }
+
   if (max_visible_oids != NULL)
     {
       (*max_visible_oids) -= *num_visible;
       if (*max_visible_oids <= 0)
 	{
 	  /* The maximum count of visible objects has been reached. Stop now. */
-	  return error_code;
+	  return NO_ERROR;
 	}
     }
 
   /* Get number of visible objects from overflow. */
   if (!VPID_ISNULL (&leaf_info->ovfl))
     {
-      error_code =
-	btree_get_num_visible_oids_from_all_ovf (thread_p, btid_int, &leaf_info->ovfl, &num_ovf_visible,
-						 max_visible_oids, mvcc_snapshot);
+      error_code = btree_get_num_visible_oids_from_all_ovf (thread_p, btid_int, &leaf_info->ovfl, &num_ovf_visible,
+							    max_visible_oids, mvcc_snapshot);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+
       /* Safe guard. */
       assert (num_ovf_visible >= 0);
     }
 
   /* Return result */
   *num_visible = *num_visible + num_ovf_visible;
-  return error_code;
+
+  return NO_ERROR;
 }
 
 /*
@@ -21915,60 +21916,64 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
       has_null = DB_IS_NULL (keyval);
     }
 
-  if (!has_null)
+  if (has_null == true)
     {
-      /* get class representation to find partition information */
-      classrepr = heap_classrepr_get (thread_p, pk_cls_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
-      if (classrepr == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      if (classrepr->has_partition_info > 0)
-	{
-	  (void) partition_init_pruning_context (&pcontext);
-	  clear_pcontext = true;
-	  ret = partition_load_pruning_context (thread_p, pk_cls_oid, DB_PARTITIONED_CLASS, &pcontext);
-	  if (ret != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-
-      BTID_COPY (&local_btid, pk_btid);
-      COPY_OID (&part_oid, pk_cls_oid);
-
-      if (classrepr->has_partition_info > 0 && pcontext.partitions != NULL)
-	{
-	  ret = partition_prune_unique_btid (&pcontext, keyval, &part_oid, &class_hfid, &local_btid);
-	  if (ret != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-      ret_search = xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, keyval, &part_oid, &unique_oid, true);
-      if (ret_search == BTREE_KEY_NOTFOUND)
-	{
-	  char *val_print = NULL;
-
-	  val_print = pr_valstring (keyval);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, fk_name,
-		  (val_print ? val_print : "unknown value"));
-	  if (val_print)
-	    {
-	      free_and_init (val_print);
-	    }
-	  ret = ER_FK_INVALID;
-	  goto exit_on_error;
-	}
-      else if (ret_search == BTREE_ERROR_OCCURRED)
-	{
-	  ASSERT_ERROR_AND_SET (ret);
-	  goto exit_on_error;
-	}
-      assert (ret_search == BTREE_KEY_FOUND);
-      /* TODO: For read committed... Do we need to keep the lock? */
+      return NO_ERROR;
     }
+
+  /* get class representation to find partition information */
+  classrepr = heap_classrepr_get (thread_p, pk_cls_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
+  if (classrepr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  if (classrepr->has_partition_info > 0)
+    {
+      (void) partition_init_pruning_context (&pcontext);
+      clear_pcontext = true;
+
+      ret = partition_load_pruning_context (thread_p, pk_cls_oid, DB_PARTITIONED_CLASS, &pcontext);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  BTID_COPY (&local_btid, pk_btid);
+  COPY_OID (&part_oid, pk_cls_oid);
+
+  if (classrepr->has_partition_info > 0 && pcontext.partitions != NULL)
+    {
+      ret = partition_prune_unique_btid (&pcontext, keyval, &part_oid, &class_hfid, &local_btid);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  ret_search = xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, keyval, &part_oid, &unique_oid, true);
+  if (ret_search == BTREE_KEY_NOTFOUND)
+    {
+      char *val_print = NULL;
+
+      val_print = pr_valstring (keyval);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, fk_name, (val_print ? val_print : "unknown value"));
+      if (val_print)
+	{
+	  free_and_init (val_print);
+	}
+      ret = ER_FK_INVALID;
+      goto exit_on_error;
+    }
+  else if (ret_search == BTREE_ERROR_OCCURRED)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      goto exit_on_error;
+    }
+
+  assert (ret_search == BTREE_KEY_FOUND);
+  /* TODO: For read committed... Do we need to keep the lock? */
 
   if (clear_pcontext == true)
     {
@@ -21991,6 +21996,7 @@ exit_on_error:
     {
       heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
+
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 

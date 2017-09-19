@@ -140,11 +140,9 @@ struct btree_scan_partition_info
 
   int key_cnt;			/* Number of keys in current page in the current partition. */
 
-  PAGE_PTR page;		/* Number of keys in current page in the current partition. */
+  PAGE_PTR page;		/* current page in the current partition. */
 
   PRUNING_CONTEXT pcontext;	/* Pruning context for current partition. */
-
-  bool is_locked;		/* Checks if the current partition is locked already. */
 
   BTID btid;			/* BTID of the current partition. */
 };
@@ -428,8 +426,6 @@ btree_pack_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header, TP_DOMAIN
   int rc = NO_ERROR;
   int fixed_size = (int) offsetof (BTREE_ROOT_HEADER, packed_key_domain);
 
-  BTREE_NODE_HEADER *header = &root_header->node;
-
   memcpy (rec->data, root_header, fixed_size);
 
   or_init (&buf, rec->data + fixed_size, (rec->area_size == -1) ? -1 : (rec->area_size - fixed_size));
@@ -657,7 +653,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   bool has_fk;
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
-  unsigned short alignment = BTREE_MAX_ALIGN;
 #if !defined(NDEBUG)
   int track_id;
 #endif
@@ -3745,8 +3740,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   bool clear_pcontext = false, has_partitions = false;
   PRUNING_CONTEXT pcontext;
   BTID pk_btid;
-  OID pk_oid;
-  HFID pk_hfid;
+  OID pk_clsoid;
   BTREE_SCAN_PART partitions[MAX_PARTITIONS];
   bool has_nulls = false;
 
@@ -3759,19 +3753,19 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   scan_init_index_scan (&pk_isid, NULL, NULL);
   BTREE_INIT_SCAN (&pk_bt_scan);
 
+  /* Lock the primary key class. */
+  lock_ret = lock_object (thread_p, sort_args->fk_refcls_oid, oid_Root_class_oid, SIX_LOCK, LK_UNCOND_LOCK);
+  if (lock_ret != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      goto end;
+    }
+
   /* Get class info for the primary key */
   classrepr = heap_classrepr_get (thread_p, sort_args->fk_refcls_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
   if (classrepr == NULL)
     {
       ret = ER_FK_INVALID;
-      goto end;
-    }
-
-  /* Lock the primary key class. */
-  lock_ret = lock_object (thread_p, sort_args->fk_refcls_oid, oid_Root_class_oid, SIX_LOCK, LK_COND_LOCK);
-  if (lock_ret != LK_GRANTED)
-    {
-      ASSERT_ERROR_AND_SET (ret);
       goto end;
     }
 
@@ -3815,16 +3809,18 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	}
 
       /* Get number of partitions. */
-      part_count = pcontext.count;
+      part_count = pcontext.count - 1;	/* exclude partitioned table */
+
+      assert (part_count <= MAX_PARTITIONS);
 
       /* Init context of each partition using the root context. */
-      for (i = 0; i < part_count - 1; i++)
+      for (i = 0; i < part_count; i++)
 	{
 	  memcpy (&partitions[i].pcontext, &pcontext, sizeof (PRUNING_CONTEXT));
 	  memcpy (&partitions[i].bt_scan, &pk_bt_scan, sizeof (BTREE_SCAN));
 
-	  partitions[i].is_locked = false;
 	  partitions[i].bt_scan.btid_int.sys_btid = &partitions[i].btid;
+	  BTID_SET_NULL (&partitions[i].btid);
 	  partitions[i].header = NULL;
 	  partitions[i].key_cnt = -1;
 	}
@@ -3834,9 +3830,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
   while (true)
     {
-      ret =
-	btree_advance_to_next_slot_and_fix_page (thread_p, sort_args->btid, &vpid, &curr_fk_pageptr, &fk_slot_id,
-						 &fk_key, is_fk_scan_desc, &fk_node_key_cnt, &fk_node_header, NULL);
+      ret = btree_advance_to_next_slot_and_fix_page (thread_p, sort_args->btid, &vpid, &curr_fk_pageptr, &fk_slot_id,
+						     &fk_key, is_fk_scan_desc, &fk_node_key_cnt, &fk_node_header, NULL);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3865,11 +3860,38 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	}
       else
 	{
+	  /* TODO: unreachable case */
 	  has_nulls = DB_IS_NULL (&fk_key);
 	}
 
       if (has_nulls)
 	{
+	  /* ANSI SQL says
+	   *
+	   *  The choices for <match type> are MATCH SIMPLE, MATCH PARTIAL, and MATCH FULL; MATCH SIMPLE is the default.
+	   *  There is no semantic difference between these choices if there is only one referencing column (and, hence,
+	   *  only one referenced column). There is also no semantic difference if all referencing columns are not
+	   *  nullable. If there is more than one referencing column, at least one of which is nullable, and
+	   *  if no <referencing period specification> is specified, then the various <match type>s have the following
+	   *  semantics:
+	   *
+	   *  MATCH SIMPLE: if at least one referencing column is null, then the row of the referencing table passes
+	   *   the constraint check. If all referencing columns are not null, then the row passes the constraint check
+	   *   if and only if there is a row of the referenced table that matches all the referencing columns.
+	   *  MATCH PARTIAL: if all referencing columns are null, then the row of the referencing table passes
+	   *   the constraint check. If at least one referencing columns is not null, then the row passes the constraint
+	   *   check if and only if there is a row of the referenced table that matches all the non-null referencing
+	   *   columns.
+	   *  MATCH FULL: if all referencing columns are null, then the row of the referencing table passes
+	   *   the constraint check. If all referencing columns are not null, then the row passes the constraint check
+	   *   if and only if there is a row of the referenced table that matches all the referencing columns. If some
+	   *   referencing column is null and another referencing column is non-null, then the row of the referencing
+	   *   table violates the constraint check.
+	   *
+	   * In short, we don't provide options for <match type> and our behavior is <MATCH SIMPLE> which is
+	   * the default behavior of ANSI SQL and the other (commercial) products.
+	   */
+
 	  /* Skip current key. */
 	  continue;
 	}
@@ -3879,36 +3901,22 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
       if (has_partitions)
 	{
-	  COPY_OID (&pk_oid, sort_args->fk_refcls_oid);
+	  COPY_OID (&pk_clsoid, sort_args->fk_refcls_oid);
 	  BTID_COPY (&pk_btid, sort_args->fk_refcls_pk_btid);
 
 	  /* Get the correct oid, btid and partition of the key we are looking for. */
-	  ret = partition_prune_partition_index (&pcontext, &fk_key, &pk_oid, &pk_btid, &pos);
+	  ret = partition_prune_partition_index (&pcontext, &fk_key, &pk_clsoid, &pk_btid, &pos);
 	  if (ret != NO_ERROR)
 	    {
 	      break;
 	    }
 
-	  if (!partitions[pos].is_locked)
+	  if (BTID_IS_NULL (&partitions[pos].btid))
 	    {
-	      ret = partition_prune_unique_btid (&pcontext, &fk_key, &pk_oid, &pk_hfid, &pk_btid);
-	      if (ret != NO_ERROR)
-		{
-		  break;
-		}
-
-	      /* Lock the current partition. */
-	      lock_ret = lock_object (thread_p, &pk_oid, oid_Root_class_oid, SIX_LOCK, LK_COND_LOCK);
-	      if (lock_ret != LK_GRANTED)
-		{
-		  ASSERT_ERROR_AND_SET (ret);
-		  break;
-		}
-
-	      partitions[pos].is_locked = true;
+	      /* No need to lock individual partitions here, since the partitioned table is already locked */
 
 	      /* Update the partition BTID. */
-	      partitions[pos].btid = pk_btid;
+	      BTID_COPY (&partitions[pos].btid, &pk_btid);
 	    }
 
 	  /* Update references. */
@@ -3973,10 +3981,9 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  /* We try to resume the search in the current leaf. */
 	  while (!found)
 	    {
-	      ret =
-		btree_advance_to_next_slot_and_fix_page (thread_p, &pk_bt_scan.btid_int, &pk_bt_scan.C_vpid,
-							 &pk_bt_scan.C_page, &pk_bt_scan.slot_id, &pk_key, false,
-							 &pk_node_key_cnt, &pk_node_header, &mvcc_snapshot_dirty);
+	      ret = btree_advance_to_next_slot_and_fix_page (thread_p, &pk_bt_scan.btid_int, &pk_bt_scan.C_vpid,
+							     &pk_bt_scan.C_page, &pk_bt_scan.slot_id, &pk_key, false,
+							     &pk_node_key_cnt, &pk_node_header, &mvcc_snapshot_dirty);
 	      if (ret != NO_ERROR)
 		{
 		  goto end;
@@ -4001,7 +4008,6 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		  /* Found value, stop searching in pk. */
 		  break;
 		}
-
 	      else if (compare_ret == DB_LT)
 		{
 		  /* No match yet. Advance in pk. */
@@ -4033,7 +4039,6 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  partitions[pos].header = pk_node_header;
 	}
 
-      /* TODO - check potential leak of fk_key and pk_key */
       if (found == true)
 	{
 	  pr_clear_value (&fk_key);
@@ -4054,7 +4059,7 @@ end:
       pgbuf_unfix_and_init (thread_p, curr_fk_pageptr);
     }
 
-  if (pk_bt_scan.C_page)
+  if (pk_bt_scan.C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, pk_bt_scan.C_page);
     }
@@ -4109,9 +4114,8 @@ btree_get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PA
       return ret;
     }
 
-  ret = btree_read_record (thread_p, btid_int, leaf_ptr, &record, key,
-			   &leaf, BTREE_LEAF_NODE, &clear_first_key, &first_key_offset, PEEK_KEY_VALUE, NULL);
-
+  ret = btree_read_record (thread_p, btid_int, leaf_ptr, &record, key, &leaf, BTREE_LEAF_NODE, &clear_first_key,
+			   &first_key_offset, PEEK_KEY_VALUE, NULL);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4160,13 +4164,13 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
   if (page == NULL)
     {
       page = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      *slot_id = -1;
-    }
+      if (page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (ret);
+	  return ret;
+	}
 
-  if (page == NULL)
-    {
-      ASSERT_ERROR_AND_SET (ret);
-      return ret;
+      *slot_id = -1;
     }
 
   assert (page != NULL);
@@ -4196,6 +4200,7 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
   while (true)
     {
       *slot_id += (is_desc ? -1 : 1);
+      assert (0 <= *slot_id);
 
       if (*slot_id == 0 || *slot_id >= *key_cnt + 1)
 	{
@@ -4309,6 +4314,11 @@ btree_has_any_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr
   /* Get the number of visible items. */
   ret = btree_get_num_visible_from_leaf_and_ovf (thread_p, btid, &record, key_offset, &leaf, NULL, mvcc_snapshot,
 						 &num_visible);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
   if (num_visible > 0)
     {
       *has_visible = true;
