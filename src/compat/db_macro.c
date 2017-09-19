@@ -107,9 +107,6 @@ static VALCNV_BUFFER *valcnv_convert_money_to_string (const double value);
 static VALCNV_BUFFER *valcnv_convert_data_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value);
 static VALCNV_BUFFER *valcnv_convert_db_value_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value);
 
-/* Include the api/inlined db_get and db_make functions definitions. */
-#include "db_macro.i"
-
 /*
  *  db_value_put_null()
  *  return : Error indicator

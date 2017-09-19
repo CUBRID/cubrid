@@ -28,13 +28,29 @@
 #define _DB_MACRO_I_
 
 #include "dbtype.h"
-#include "db.h"
 
 #ifdef SERVER_MODE
 #define DB_MACRO_INLINE STATIC_INLINE
 #else
 #define DB_MACRO_INLINE
 #endif
+
+enum intl_codeset
+{
+  INTL_CODESET_ERROR = -2,
+  INTL_CODESET_NONE = -1,
+  INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
+  INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
+  INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
+  INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
+  INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
+  INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+
+  INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
+
+  INTL_CODESET_LAST = INTL_CODESET_UTF8
+};
+typedef enum intl_codeset INTL_CODESET;
  
 /*
  * db_get_int() -
