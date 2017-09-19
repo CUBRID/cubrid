@@ -5128,34 +5128,11 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
   else
     {
       assert (json->data.json.json_body != NULL);
-      assert (json->data.json.document != NULL);
-      assert (!json->data.json.document->HasParseError ());
 
-      if (json->data.json.document->IsArray ())
-	{
-	  return DB_MAKE_CHAR (type_res, 10, "JSON_ARRAY", 10, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	}
-      else if (json->data.json.document->IsObject ())
-	{
-	  return DB_MAKE_CHAR (type_res, 11, "JSON_OBJECT", 11, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	}
-      else if (json->data.json.document->IsInt ())
-	{
-	  return DB_MAKE_CHAR (type_res, 7, "INTEGER", 7, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	}
-      else if (json->data.json.document->IsDouble ())
-	{
-	  return DB_MAKE_CHAR (type_res, 6, "DOUBLE", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	}
-      else if (json->data.json.document->IsString ())
-	{
-	  return DB_MAKE_CHAR (type_res, 6, "STRING", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	}
-      else
-	{
-	  /* we shouldn't get here */
-	  assert (false);
-	}
+      const char *type = db_json_get_type_as_str (*json->data.json.document);
+      unsigned int length = strlen (type);
+
+      return DB_MAKE_CHAR (type_res, length, type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
     }
 }
 
@@ -5168,9 +5145,8 @@ db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res)
     }
   else
     {
-      rapidjson::Document doc;
-      int has_error = doc.Parse (json->data.ch.medium.buf).HasParseError ()? 0 : 1;
-      return DB_MAKE_INT (type_res, has_error);
+      int valid = db_json_is_valid (json->data.ch.medium.buf);
+      return DB_MAKE_INT (type_res, valid);
     }
 }
 
@@ -5183,26 +5159,9 @@ db_json_length_dbval (const DB_VALUE * json, DB_VALUE * res)
     }
   else
     {
-      if (!json->data.json.document->IsArray () && !json->data.json.document->IsObject ())
-	{
-	  return DB_MAKE_INT (res, 1);
-	}
+      unsigned int length = db_json_get_length (*json->data.json.document);
 
-      if (json->data.json.document->IsArray ())
-	{
-	  return DB_MAKE_INT (res, json->data.json.document->Size ());
-	}
-      if (json->data.json.document->IsObject ())
-	{
-	  int length = 0;
-	  for (JSON_VALUE::ConstMemberIterator itr = json->data.json.document->MemberBegin ();
-	       itr != json->data.json.document->MemberEnd (); ++itr)
-	    {
-	      length++;
-	    }
-
-	  return DB_MAKE_INT (res, length);
-	}
+      return DB_MAKE_INT (res, length);
     }
 }
 
@@ -5215,43 +5174,8 @@ db_json_depth_dbval (const DB_VALUE * json, DB_VALUE * res)
     }
   else
     {
-      return DB_MAKE_INT (res, db_json_depth_dbval_helper (*json->data.json.document));
-    }
-}
-
-static int
-db_json_depth_dbval_helper (JSON_VALUE & doc)
-{
-  if (!doc.IsArray () && !doc.IsObject ())
-    {
-      return 0;
-    }
-
-  if (doc.IsArray ())
-    {
-      int max = 0;
-      for (JSON_VALUE::ValueIterator itr = doc.Begin (); itr != doc.End (); ++itr)
-	{
-	  int depth = db_json_depth_dbval_helper (*itr);
-	  if (depth > max)
-	    {
-	      max = depth;
-	    }
-	}
-      return max + 1;
-    }
-  else if (doc.IsObject ())
-    {
-      int max = 0;
-      for (JSON_VALUE::MemberIterator itr = doc.MemberBegin (); itr != doc.MemberEnd (); ++itr)
-	{
-	  int depth = db_json_depth_dbval_helper (itr->value);
-	  if (depth > max)
-	    {
-	      max = depth;
-	    }
-	}
-      return max + 1;
+      unsigned int depth = db_json_get_depth (*json->data.json.document);
+      return DB_MAKE_INT (res, depth);
     }
 }
 
@@ -5260,25 +5184,14 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
 {
   JSON_DOC *this_doc = json->data.json.document;
   const char *raw_path = path->data.ch.medium.buf;
-  rapidjson::StringBuffer buffer;
-  rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
-  JSON_VALUE *resulting_json;
-  int len;
+  char *json_body;
 
-  buffer.Clear ();
-  JSON_POINTER p (raw_path);
+  JSON_DOC *result_doc = db_json_extract_document_from_path (*this_doc, raw_path);
 
-  if (p.IsValid () && (resulting_json = p.Get (*this_doc)) != NULL)
+  if (result_doc != NULL)
     {
-      char *json_body;
-      const char *buffer_str;
-      JSON_DOC *new_doc = new JSON_DOC ();
-      new_doc->CopyFrom (*resulting_json, new_doc->GetAllocator ());
-      new_doc->Accept (writer);
-      buffer_str = buffer.GetString ();
-      json_body = (char *) db_private_alloc (NULL, strlen (buffer_str) + 1);
-      strcpy (json_body, buffer_str);
-      db_make_json (json_res, json_body, new_doc, true);
+      json_body = db_json_get_raw_json_body_from_document (*result_doc);
+      db_make_json (json_res, json_body, result_doc, true);
 
       return NO_ERROR;
     }
@@ -5293,12 +5206,8 @@ int
 db_json_search_dbval (const DB_VALUE * json, const DB_VALUE * one_or_all, const DB_VALUE * search_str, DB_VALUE * res)
 {
   int one_or_all_bool;
-  std::vector < std::string > result;
   JSON_DOC *doc;
-  rapidjson::StringBuffer buffer;
-  rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
   char *json_body;
-  const char *buffer_str;
 
   if (DB_IS_NULL (json) || DB_IS_NULL (one_or_all) || DB_IS_NULL (search_str))
     {
@@ -5318,112 +5227,10 @@ db_json_search_dbval (const DB_VALUE * json, const DB_VALUE * one_or_all, const 
       return ER_PT_SEMANTIC;
     }
 
-  db_json_search_dbval_helper (*json->data.json.document,
-			       *json->data.json.document, "", search_str->data.ch.medium.buf, one_or_all_bool, result);
-  doc = new JSON_DOC ();
-
-  if (result.size () == 1)
-    {
-      doc->SetString (result[0].c_str (), doc->GetAllocator ());
-    }
-  else
-    {
-      doc->SetArray ();
-      for (unsigned int i = 0; i < result.size (); i++)
-	{
-	  doc->PushBack (rapidjson::StringRef (result[i].c_str ()), doc->GetAllocator ());
-	}
-    }
-
-  doc->Accept (writer);
-  buffer_str = buffer.GetString ();
-  json_body = (char *) db_private_alloc (NULL, strlen (buffer_str) + 1);
-  strcpy (json_body, buffer_str);
+  doc = db_json_get_paths_for_search_func (*json->data.json.document, search_str->data.ch.medium.buf, one_or_all_bool);
+  json_body = db_json_get_raw_json_body_from_document (*doc);
 
   db_make_json (res, json_body, doc, true);
 
   return NO_ERROR;
-}
-
-static void
-db_json_search_dbval_helper (JSON_VALUE & whole_doc,
-			     JSON_VALUE & doc,
-			     const char *current_path,
-			     const char *search_str, int one_or_all, std::vector < std::string > &result)
-{
-  if (one_or_all == 0 && result.size () == 1)
-    {
-      return;
-    }
-
-  if (!doc.IsArray () && !doc.IsObject ())
-    {
-      JSON_POINTER p (current_path);
-      JSON_VALUE *resulting_json;
-
-      if (p.IsValid () && (resulting_json = p.Get (whole_doc)) != NULL)
-	{
-	  char final_string[DB_JSON_MAX_STRING_SIZE];
-
-	  if (resulting_json->IsInt ())
-	    {
-	      int val = resulting_json->GetInt ();
-	      snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%d", val);
-	    }
-	  else if (resulting_json->IsDouble ())
-	    {
-	      float val = resulting_json->GetDouble ();
-	      snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%f", val);
-	    }
-	  else if (resulting_json->IsString ())
-	    {
-	      strncpy (final_string, resulting_json->GetString (), DB_JSON_MAX_STRING_SIZE);
-	    }
-
-	  if (strstr (final_string, search_str) != NULL)
-	    {
-	      result.push_back (current_path);
-	    }
-	}
-      else
-	{
-	  //everything should be valid
-	  assert (false);
-	}
-    }
-
-  if (doc.IsArray ())
-    {
-      int index = 0;
-      for (JSON_VALUE::ValueIterator itr = doc.Begin (); itr != doc.End (); ++itr)
-	{
-	  char index_str[3];
-	  snprintf (index_str, 2, "%d", index);
-
-	  char *next_path = (char *) db_private_alloc (NULL, strlen (current_path) + strlen (index_str) + 2);
-	  strcpy (next_path, current_path);
-	  strcat (next_path, "/");
-	  strcat (next_path, index_str);
-
-	  db_json_search_dbval_helper (whole_doc, *itr, next_path, search_str, one_or_all, result);
-
-	  index++;
-	  db_private_free (NULL, next_path);
-	}
-    }
-  else if (doc.IsObject ())
-    {
-      for (JSON_VALUE::MemberIterator itr = doc.MemberBegin (); itr != doc.MemberEnd (); ++itr)
-	{
-	  char *next_path =
-	    (char *) db_private_alloc (NULL, strlen (current_path) + 1 + strlen (itr->name.GetString ()) + 1);
-	  strcpy (next_path, current_path);
-	  strcat (next_path, "/");
-	  strcat (next_path, itr->name.GetString ());
-
-	  db_json_search_dbval_helper (whole_doc, itr->value, next_path, search_str, one_or_all, result);
-
-	  db_private_free (NULL, next_path);
-	}
-    }
 }

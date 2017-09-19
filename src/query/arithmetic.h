@@ -34,7 +34,6 @@
 #include <string>
 
 #define PI ((double) (3.14159265358979323846264338))
-#define DB_JSON_MAX_STRING_SIZE 32
 
 extern int db_floor_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_ceil_dbval (DB_VALUE * result, DB_VALUE * value);
@@ -74,7 +73,6 @@ extern int db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, 
 extern int db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res);
 extern int db_json_length_dbval (const DB_VALUE * json, DB_VALUE * res);
 extern int db_json_depth_dbval (const DB_VALUE * json, DB_VALUE * res);
-static int db_json_depth_dbval_helper (JSON_VALUE & doc);
 extern int db_json_search_dbval (const DB_VALUE * json, const DB_VALUE * one_or_all, const DB_VALUE * search_str,
 				 DB_VALUE * res);
 static void db_json_search_dbval_helper (JSON_VALUE & whole_doc, JSON_VALUE & doc, const char *current_path,

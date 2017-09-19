@@ -13161,7 +13161,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_JSON_OBJECT:
       {
 	PT_TYPE_ENUM supported_key_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
-	PT_TYPE_ENUM supported_value_types[] = { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_value_types[] =
+	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_FLOAT, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int num_bad = 0, len, i, found_supported = 0;
 	int supported_value_types_len = sizeof (supported_value_types) / sizeof (supported_value_types[0]);
@@ -13214,7 +13215,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_JSON_ARRAY:
     case F_JSON_MERGE:
       {
-	PT_TYPE_ENUM supported_types[] = { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_JSON };
+	PT_TYPE_ENUM supported_types[] =
+	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_FLOAT, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	int len = sizeof (supported_types) / sizeof (supported_types[0]), i, found_supported_type = 0;
 
