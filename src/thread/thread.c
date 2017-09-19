@@ -1209,6 +1209,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);
   entry_p->tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
   entry_p->tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
+  entry_p->tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry (&dwb_slots_Ts);
 
   entry_p->vacuum_worker = NULL;
 
@@ -4005,6 +4006,24 @@ thread_auto_volume_expansion_thread_is_running (void)
 }
 
 /*
+ * thread_dwb_flush_block_with_checksum_thread_is_running () - Check whether flush block thread is running
+ *
+ *   return: true, if flush block is running
+ */
+bool
+thread_dwb_flush_block_with_checksum_thread_is_running (void)
+{
+  int rv;
+  bool ret;
+
+  rv = pthread_mutex_lock (&thread_Dwb_flush_block_thread.lock);
+  ret = thread_Dwb_flush_block_thread.is_running;
+  pthread_mutex_unlock (&thread_Dwb_flush_block_thread.lock);
+
+  return ret;
+}
+
+/*
  * thread_is_auto_volume_expansion_thread_available () -
  *   return:
  *
@@ -4093,9 +4112,11 @@ void
 thread_wakeup_dwb_flush_block_with_checksum_thread (void)
 {
   int rv;
-
   rv = pthread_mutex_lock (&thread_Dwb_flush_block_thread.lock);
-  pthread_cond_signal (&thread_Dwb_flush_block_thread.cond);
+  if (thread_Dwb_flush_block_thread.is_running == false)
+    {
+      pthread_cond_signal (&thread_Dwb_flush_block_thread.cond);
+    }
   pthread_mutex_unlock (&thread_Dwb_flush_block_thread.lock);
 }
 

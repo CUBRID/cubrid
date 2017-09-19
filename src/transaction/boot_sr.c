@@ -138,7 +138,8 @@ LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0, false},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0, false},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &xcache_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &fpcache_Ts, 0, false}
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &fpcache_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &dwb_slots_Ts, 0, false}
 };
 
 extern void boot_client_all_finalize (bool is_er_final);
@@ -5660,6 +5661,9 @@ boot_decoy_entries_finalize (void)
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_FPCACHE);
+  lf_tran_destroy_entry (t_entry);
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_DWB_SLOTS);
   lf_tran_destroy_entry (t_entry);
 }
 #endif

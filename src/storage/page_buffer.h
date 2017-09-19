@@ -446,5 +446,6 @@ extern int pgbuf_dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char
 extern int pgbuf_dwb_destroy (THREAD_ENTRY * thread_p);
 extern char *pgbuf_dwb_get_volume_name ();
 extern int pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p);
+extern int pgbuf_dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool * success);
 
 #endif /* _PAGE_BUFFER_H_ */

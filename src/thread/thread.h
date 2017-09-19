@@ -55,6 +55,7 @@ enum
   THREAD_TS_HFID_TABLE,
   THREAD_TS_XCACHE,
   THREAD_TS_FPCACHE,
+  THREAD_TS_DWB_SLOTS,
   THREAD_TS_LAST
 };
 
@@ -474,8 +475,9 @@ extern bool thread_is_log_flush_thread_available (void);
 extern bool thread_is_auto_volume_expansion_thread_available (void);
 extern bool thread_is_dwb_block_and_flush_thread_available (void);
 
-/* is running tunfions */
+/* is running functions */
 extern bool thread_auto_volume_expansion_thread_is_running (void);
+extern bool thread_dwb_flush_block_with_checksum_thread_is_running (void);
 
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_next_lockwait_entry (int *thrd_index);
