@@ -27,30 +27,13 @@
 #ifndef _DB_MACRO_I_
 #define _DB_MACRO_I_
 
-#include "dbtype.h"
+#include "intl_support.h"
 
 #ifdef SERVER_MODE
 #define DB_MACRO_INLINE STATIC_INLINE
 #else
 #define DB_MACRO_INLINE
 #endif
-
-enum intl_codeset
-{
-  INTL_CODESET_ERROR = -2,
-  INTL_CODESET_NONE = -1,
-  INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
-  INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
-  INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
-  INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
-  INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
-  INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
-
-  INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
-
-  INTL_CODESET_LAST = INTL_CODESET_UTF8
-};
-typedef enum intl_codeset INTL_CODESET;
  
 /*
  * db_get_int() -
@@ -60,7 +43,9 @@ typedef enum intl_codeset INTL_CODESET;
 DB_MACRO_INLINE int
 db_get_int (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_INTEGER);
 
   return value->data.i;
@@ -74,7 +59,9 @@ db_get_int (const DB_VALUE * value)
 DB_MACRO_INLINE short
 db_get_short (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_SHORT);
 
   return value->data.sh;
@@ -88,7 +75,9 @@ db_get_short (const DB_VALUE * value)
 DB_MACRO_INLINE DB_BIGINT
 db_get_bigint (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_BIGINT);
 
   return value->data.bigint;
@@ -103,8 +92,9 @@ DB_MACRO_INLINE char *
 db_get_string (const DB_VALUE * value)
 {
   char *str = NULL;
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
-
+#endif
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
@@ -134,7 +124,9 @@ db_get_string (const DB_VALUE * value)
 DB_MACRO_INLINE float
 db_get_float (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_FLOAT);
 
   return value->data.f;
@@ -148,7 +140,9 @@ db_get_float (const DB_VALUE * value)
 DB_MACRO_INLINE double
 db_get_double (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_DOUBLE);
 
   return value->data.d;
@@ -162,8 +156,9 @@ db_get_double (const DB_VALUE * value)
 DB_MACRO_INLINE DB_OBJECT *
 db_get_object (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
-
+#endif
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
@@ -182,8 +177,9 @@ db_get_object (const DB_VALUE * value)
 DB_MACRO_INLINE DB_SET *
 db_get_set (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
-
+#endif
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
@@ -202,8 +198,9 @@ db_get_set (const DB_VALUE * value)
 DB_MACRO_INLINE DB_MIDXKEY *
 db_get_midxkey (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
-
+#endif
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
@@ -222,8 +219,9 @@ db_get_midxkey (const DB_VALUE * value)
 DB_MACRO_INLINE void *
 db_get_pointer (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
-
+#endif
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
@@ -242,7 +240,9 @@ db_get_pointer (const DB_VALUE * value)
 DB_MACRO_INLINE DB_TIME *
 db_get_time (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_TIME || value->domain.general_info.type == DB_TYPE_TIMELTZ);
 
   return ((DB_TIME *) (&value->data.time));
@@ -256,8 +256,9 @@ db_get_time (const DB_VALUE * value)
 DB_MACRO_INLINE DB_TIMETZ *
 db_get_timetz (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
-
+#endif
   assert (value->domain.general_info.type == DB_TYPE_TIMETZ);
 
   return ((DB_TIMETZ *) (&value->data.timetz));
@@ -272,7 +273,9 @@ db_get_timetz (const DB_VALUE * value)
 DB_MACRO_INLINE DB_TIMESTAMP *
 db_get_timestamp (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_TIMESTAMP
 	  || value->domain.general_info.type == DB_TYPE_TIMESTAMPLTZ);
 
@@ -287,7 +290,9 @@ db_get_timestamp (const DB_VALUE * value)
 DB_MACRO_INLINE DB_TIMESTAMPTZ *
 db_get_timestamptz (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_TIMESTAMPTZ);
 
   return ((DB_TIMESTAMPTZ *) (&value->data.timestamptz));
@@ -301,7 +306,9 @@ db_get_timestamptz (const DB_VALUE * value)
 DB_MACRO_INLINE DB_DATETIME *
 db_get_datetime (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_DATETIME
 	  || value->domain.general_info.type == DB_TYPE_DATETIMELTZ);
 
@@ -316,8 +323,9 @@ db_get_datetime (const DB_VALUE * value)
 DB_MACRO_INLINE DB_DATETIMETZ *
 db_get_datetimetz (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
-
+#endif
   assert (value->domain.general_info.type == DB_TYPE_DATETIMETZ);
 
   return ((DB_DATETIMETZ *) (&value->data.datetimetz));
@@ -331,7 +339,9 @@ db_get_datetimetz (const DB_VALUE * value)
 DB_MACRO_INLINE DB_DATE *
 db_get_date (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_DATE);
 
   return ((DB_DATE *) (&value->data.date));
@@ -345,7 +355,9 @@ db_get_date (const DB_VALUE * value)
 DB_MACRO_INLINE DB_MONETARY *
 db_get_monetary (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_MONETARY);
 
   return ((DB_MONETARY *) (&value->data.money));
@@ -358,7 +370,9 @@ db_get_monetary (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_get_error (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_ERROR);
 
   return value->data.error;
@@ -372,8 +386,9 @@ db_get_error (const DB_VALUE * value)
 DB_MACRO_INLINE DB_ELO *
 db_get_elo (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
-
+#endif  
   if (value->domain.general_info.is_null)
     {
       return NULL;
@@ -395,7 +410,9 @@ db_get_elo (const DB_VALUE * value)
 DB_MACRO_INLINE DB_C_NUMERIC
 db_get_numeric (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
@@ -417,10 +434,10 @@ DB_MACRO_INLINE char *
 db_get_bit (const DB_VALUE * value, int *length)
 {
   char *str = NULL;
-
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
   CHECK_1ARG_NULL (length);
-
+#endif
   if (value->domain.general_info.is_null)
     {
       return NULL;
@@ -461,10 +478,10 @@ DB_MACRO_INLINE char *
 db_get_char (const DB_VALUE * value, int *length)
 {
   char *str = NULL;
-
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
   CHECK_1ARG_NULL (length);
-
+#endif
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
@@ -518,9 +535,9 @@ DB_MACRO_INLINE int
 db_get_string_size (const DB_VALUE * value)
 {
   int size = 0;
-
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
-
+#endif
   switch (value->data.ch.info.style)
     {
     case SMALL_STRING:
@@ -552,7 +569,9 @@ db_get_string_size (const DB_VALUE * value)
 DB_MACRO_INLINE short
 db_get_enum_short (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
 
   return value->data.enumeration.short_val;
@@ -566,7 +585,9 @@ db_get_enum_short (const DB_VALUE * value)
 DB_MACRO_INLINE char *
 db_get_enum_string (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
@@ -582,7 +603,9 @@ db_get_enum_string (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_get_enum_string_size (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
 
   return value->data.enumeration.str_val.medium.size;
@@ -610,7 +633,9 @@ db_get_method_error_msg (void)
 DB_MACRO_INLINE DB_RESULTSET
 db_get_resultset (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_RESULTSET);
 
   return value->data.rset;
@@ -623,7 +648,9 @@ db_get_resultset (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_get_string_codeset (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
+#endif
 
   return (int) value->data.ch.info.codeset;
 }
@@ -636,8 +663,9 @@ db_get_string_codeset (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_get_string_collation (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO_WITH_TYPE (value, int);
-
+#endif
   return value->domain.char_info.collation_id;
 }
 /*
@@ -648,7 +676,9 @@ db_get_string_collation (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_get_enum_codeset (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
+#endif
 
   return value->data.enumeration.str_val.info.codeset;
 }
@@ -661,7 +691,9 @@ db_get_enum_codeset (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_get_enum_collation (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO_WITH_TYPE (value, int);
+#endif
 
   return value->domain.char_info.collation_id;
 }
@@ -674,8 +706,9 @@ db_get_enum_collation (const DB_VALUE * value)
 DB_MACRO_INLINE DB_TYPE
 db_value_type (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_UNKNOWN (value);
-
+#endif
   if (value->domain.general_info.is_null)
     {
       return DB_TYPE_NULL;
@@ -694,8 +727,9 @@ db_value_type (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_value_precision (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
-
+#endif
   switch (value->domain.general_info.type)
     {
     case DB_TYPE_NUMERIC:
@@ -746,7 +780,9 @@ db_value_precision (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_value_scale (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
 
   if (value->domain.general_info.type == DB_TYPE_NUMERIC
       || value->domain.general_info.type == DB_TYPE_DATETIME

@@ -38,6 +38,9 @@ extern "C"
 {
 #endif
 
+#if !defined(SERVER_MODE) || defined(NDEBUG)
+#define NO_SERVER_OR_DEBUG_MODE
+#endif
 
   typedef enum
   {
