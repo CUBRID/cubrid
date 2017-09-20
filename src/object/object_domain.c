@@ -10482,7 +10482,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		return DOMAIN_ERROR;
 	      }
 
-	    if (desired_domain->json_validator->validate (*doc) != NO_ERROR)
+	    if (desired_domain->json_validator && desired_domain->json_validator->validate (*doc) != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
 		delete doc;
