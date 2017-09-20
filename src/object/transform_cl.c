@@ -2080,7 +2080,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 			tf_Metaclass_domain.mc_repid);
 
   put_enumeration (buf, &DOM_GET_ENUMERATION (domain));
-  put_string (buf, domain->json_validator->get_schema_raw ());
+  put_string (buf, domain->json_validator == NULL ? NULL : domain->json_validator->get_schema_raw ());
 
   if (start + offset != buf->ptr)
     {
