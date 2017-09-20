@@ -9,7 +9,6 @@
 #include "memory_alloc.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/error/en.h"
-#include <functional>
 
 /* *INDENT-OFF* */
 
@@ -19,7 +18,10 @@ JSON_VALIDATOR::JSON_VALIDATOR (char *schema_raw) : schema_raw (schema_raw),
                                                     schema (NULL),
                                                     validator (NULL)
 {
-  schema_raw_hash_code = std::hash<std::string>{}(std::string(schema_raw));
+  /*
+   * schema_raw_hash_code = std::hash<std::string>{}(std::string(schema_raw));
+   * TODO is it worth the hash code?
+   */
 }
 
 JSON_VALIDATOR::~JSON_VALIDATOR (void)
@@ -88,11 +90,10 @@ JSON_VALIDATOR::JSON_VALIDATOR (const JSON_VALIDATOR &copy)
   else
     {
       this->schema_raw = strdup (copy.get_schema_raw ());
-      this->schema_raw_hash_code = copy.get_schema_raw_hash_code ();
 
       document = new rapidjson::Document ();
 
-      /* todo: is this safe? */
+      /* TODO: is this safe? */
       document->CopyFrom (*copy.document, document->GetAllocator ());
       generate_schema_validator ();
     }
@@ -147,12 +148,6 @@ char *
 JSON_VALIDATOR::get_schema_raw () const
 {
   return schema_raw;
-}
-
-unsigned int
-JSON_VALIDATOR::get_schema_raw_hash_code () const
-{
-  return schema_raw_hash_code;
 }
 
 int

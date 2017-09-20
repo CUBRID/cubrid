@@ -92,13 +92,11 @@ public:
   JSON_VALIDATOR (char *schema_raw);
   JSON_VALIDATOR (const JSON_VALIDATOR &copy);
   JSON_VALIDATOR &operator= (const JSON_VALIDATOR &copy);
-
   ~JSON_VALIDATOR ();
 
   int load ();
   int validate (const JSON_DOC &doc) const;
   char *get_schema_raw () const;
-  unsigned int get_schema_raw_hash_code () const;
 
   static int validate_json (const char *json_raw_body);
 
@@ -109,7 +107,6 @@ private:
   rapidjson::SchemaDocument *schema;
   rapidjson::SchemaValidator *validator;
   char *schema_raw;
-  unsigned int schema_raw_hash_code;
   bool is_loaded;
 };
 

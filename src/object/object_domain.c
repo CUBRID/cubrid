@@ -1572,15 +1572,8 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_JSON:
       if (dom1->json_validator != NULL && dom2->json_validator != NULL)
 	{
-	  if (dom1->json_validator->get_schema_raw_hash_code () == dom2->json_validator->get_schema_raw_hash_code ())
-	    {
-	      match =
-		strcmp (dom1->json_validator->get_schema_raw (), dom2->json_validator->get_schema_raw ()) == 0 ? 1 : 0;
-	    }
-	  else
-	    {
-	      match = 0;
-	    }
+          match =
+            strcmp (dom1->json_validator->get_schema_raw (), dom2->json_validator->get_schema_raw ()) == 0 ? 1 : 0;
 	}
       else if (dom1->json_validator == NULL && dom2->json_validator == NULL)
 	{
@@ -2254,17 +2247,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	{
 	  if (transient->json_validator != NULL && domain->json_validator != NULL)
 	    {
-	      if (transient->json_validator->get_schema_raw_hash_code () ==
-		  domain->json_validator->get_schema_raw_hash_code ())
-		{
-		  match =
-		    strcmp (domain->json_validator->get_schema_raw (),
-			    transient->json_validator->get_schema_raw ()) == 0 ? 1 : 0;
-		}
-	      else
-		{
-		  match = 0;
-		}
+              match =
+                strcmp (domain->json_validator->get_schema_raw (),
+                        transient->json_validator->get_schema_raw ()) == 0 ? 1 : 0;
 	    }
 	  else if (transient->json_validator == NULL && domain->json_validator == NULL)
 	    {
