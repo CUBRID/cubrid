@@ -571,6 +571,9 @@ void db_json_insert_func (JSON_DOC &doc, char *raw_path, char *str_value, int &e
 {
   JSON_POINTER p (raw_path);
   JSON_DOC inserting_doc;
+  JSON_DOC aux;
+
+  aux.CopyFrom (doc, aux.GetAllocator ());
 
   if (!p.IsValid ())
     {
@@ -585,7 +588,8 @@ void db_json_insert_func (JSON_DOC &doc, char *raw_path, char *str_value, int &e
       error_code = ER_INVALID_JSON;
     }
 
-  p.Set (doc, inserting_doc);
+  p.Set (aux, inserting_doc);
+  doc.CopyFrom (aux, doc.GetAllocator ());
   error_code = NO_ERROR;
 }
 
