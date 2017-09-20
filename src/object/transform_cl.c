@@ -2025,7 +2025,7 @@ domain_size (TP_DOMAIN * domain)
 
   size += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
 
-  size += string_disk_size (domain->json_validator->get_schema_raw ());
+  size += string_disk_size (domain->json_validator == NULL ? NULL : domain->json_validator->get_schema_raw ());
 
   return (size);
 }
@@ -2063,7 +2063,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   offset += enumeration_size (&DOM_GET_ENUMERATION (domain));
 
   or_put_offset (buf, offset);
-  offset += string_disk_size (domain->json_validator->get_schema_raw ());
+  offset += string_disk_size (domain->json_validator == NULL ? NULL : domain->json_validator->get_schema_raw ());
 
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
