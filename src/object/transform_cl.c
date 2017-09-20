@@ -2025,7 +2025,7 @@ domain_size (TP_DOMAIN * domain)
 
   size += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
 
-  size += string_disk_size (domain->json_schema_raw);
+  size += string_disk_size (domain->json_validator->get_schema_raw ());
 
   return (size);
 }
@@ -2063,7 +2063,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   offset += enumeration_size (&DOM_GET_ENUMERATION (domain));
 
   or_put_offset (buf, offset);
-  offset += string_disk_size (domain->json_schema_raw);
+  offset += string_disk_size (domain->json_validator->get_schema_raw ());
 
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -2080,7 +2080,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 			tf_Metaclass_domain.mc_repid);
 
   put_enumeration (buf, &DOM_GET_ENUMERATION (domain));
-  put_string (buf, domain->json_schema_raw);
+  put_string (buf, domain->json_validator->get_schema_raw ());
 
   if (start + offset != buf->ptr)
     {
@@ -2167,17 +2167,18 @@ disk_to_domain2 (OR_BUF * buf)
   if (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length > 0)
     {
       char *str = get_string (buf, vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length);
-      domain->json_schema_raw = (char *) malloc (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length + 1);
-      if (domain->json_schema_raw == NULL)
+      char *schema_raw = (char *) malloc (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length + 1);
+      if (schema_raw == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length + 1);
 	  tp_domain_free (domain);
 	  return NULL;
 	}
-      memcpy (domain->json_schema_raw, str, vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length);
-      domain->json_schema_raw[vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length] = '\0';
-      if (domain->json_validator.load (domain->json_schema_raw) != NO_ERROR)
+      strcpy (schema_raw, str);
+      domain->json_validator = new JSON_VALIDATOR (schema_raw);
+
+      if (domain->json_validator->load () != NO_ERROR)
 	{
 	  assert_release (false);
 	  tp_domain_free (domain);

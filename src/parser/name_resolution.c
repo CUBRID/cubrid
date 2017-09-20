@@ -3940,10 +3940,11 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	  return NULL;
 	}
       result->type_enum = t;
-      if (domain->json_schema_raw != NULL)
+      if (domain->json_validator != NULL)
 	{
 	  result->info.data_type.json_schema =
-	    pt_append_bytes (parser, NULL, domain->json_schema_raw, strlen (domain->json_schema_raw));
+	    pt_append_bytes (parser, NULL, domain->json_validator->get_schema_raw (),
+			     strlen (domain->json_validator->get_schema_raw ()));
 	}
       else
 	{

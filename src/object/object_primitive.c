@@ -14882,7 +14882,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    }
 
 	}
-      db_get_json_schema (value) = domain->json_schema_raw;
+      db_get_json_schema (value) = domain->json_validator->get_schema_raw ();
 
     }
   return error;

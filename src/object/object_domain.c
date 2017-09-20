@@ -173,8 +173,7 @@ extern unsigned int db_on_server;
   0,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
   0,		/* is_visited */		       \
-  NULL,		/* json_raw */			       \
-  JSON_VALIDATOR ()		/* json_validator */   \
+  NULL		/* json_validator */			       \
 
 /* Same as above, but leaves off the prec and scale, and sets the codeset */
 #define DOMAIN_INIT2(codeset, coll)                    \
@@ -191,8 +190,7 @@ extern unsigned int db_on_server;
   1,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
   0,		/* is_visited */		       \
-  NULL,		/* json_raw */			       \
-  JSON_VALIDATOR ()		/* json_validator */   \
+  NULL		/* json_validator */		       \
 				/*
 				 * Same as DOMAIN_INIT but it sets the is_parameterized flag.
 				 * Used for things that don't have a precision but which are parameterized in
@@ -214,8 +212,7 @@ extern unsigned int db_on_server;
   1,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
   0,		/* is_visited */		       \
-  NULL,		/* json_raw */                         \
-  JSON_VALIDATOR ()		/* json_validator */   \
+  NULL		/* json_validator */                   \
 
 /* Same as DOMAIN_INIT but set the prec and scale. */
 #define DOMAIN_INIT4(prec, scale)                      \
@@ -234,8 +231,7 @@ extern unsigned int db_on_server;
   0,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
   0,		/* is_visited */		       \
-  NULL,		/* json_raw */			       \
-  JSON_VALIDATOR ()		/* json_validator */   \
+  NULL		/* json_validator */		       \
 
 TP_DOMAIN tp_Null_domain = { NULL, NULL, &tp_Null, DOMAIN_INIT };
 TP_DOMAIN tp_Short_domain = { NULL, NULL, &tp_Short, DOMAIN_INIT4 (DB_SHORT_PRECISION, 0) };
@@ -964,12 +960,10 @@ tp_domain_free (TP_DOMAIN * dom)
       /* NULL things that might be problems for garbage collection */
       dom->class_mop = NULL;
 
-      if (dom->type->id == DB_TYPE_JSON && dom->json_schema_raw != NULL)
+      if (dom->type->id == DB_TYPE_JSON && dom->json_validator != NULL)
 	{
-	  /* free json stuff */
-	  free_and_init (dom->json_schema_raw);
           /* *INDENT-OFF* */
-	  dom->json_validator.~JSON_VALIDATOR ();
+	  delete dom->json_validator;
           /* *INDENT-ON* */
 	}
 
@@ -1015,8 +1009,7 @@ domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
   domain->class_mop = NULL;
   domain->self_ref = 0;
   domain->setdomain = NULL;
-  domain->json_schema_raw = NULL;
-  domain->json_validator = JSON_VALIDATOR ();
+  domain->json_validator = NULL;
   DOM_SET_ENUM (domain, NULL, 0);
   OID_SET_NULL (&domain->class_oid);
 
@@ -1116,8 +1109,7 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
       new_dm->precision = precision;
       new_dm->scale = scale;
       new_dm->setdomain = setdomain;
-      new_dm->json_schema_raw = NULL;
-      new_dm->json_validator = JSON_VALIDATOR ();
+      new_dm->json_validator = NULL;
 
 #if !defined (NDEBUG)
       if (domain_type == DB_TYPE_MIDXKEY)
@@ -1326,20 +1318,13 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	      new_domain->self_ref = d->self_ref;
 	      new_domain->is_parameterized = d->is_parameterized;
 	      new_domain->is_desc = d->is_desc;
-	      new_domain->json_validator = JSON_VALIDATOR ();
-	      if (d->type->id == DB_TYPE_JSON && d->json_schema_raw != NULL)
+	      new_domain->json_validator = NULL;
+
+	      if (d->type->id == DB_TYPE_JSON)
 		{
-		  new_domain->json_schema_raw = strdup (d->json_schema_raw);
-		  if (new_domain->json_schema_raw == NULL)
+		  if (d->json_validator != NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      strlen (d->json_schema_raw));
-		      goto error;
-		    }
-		  if (new_domain->json_validator.copy_from (d->json_validator) != NO_ERROR)
-		    {
-		      ASSERT_ERROR ();
-		      goto error;
+		      new_domain->json_validator = new JSON_VALIDATOR (*d->json_validator);
 		    }
 		}
 
@@ -1585,11 +1570,19 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
       break;
 
     case DB_TYPE_JSON:
-      if (dom1->json_schema_raw != NULL && dom2->json_schema_raw != NULL)
+      if (dom1->json_validator != NULL && dom2->json_validator != NULL)
 	{
-	  match = !(strcmp (dom1->json_schema_raw, dom2->json_schema_raw));
+	  if (dom1->json_validator->get_schema_raw_hash_code () == dom2->json_validator->get_schema_raw_hash_code ())
+	    {
+	      match =
+		strcmp (dom1->json_validator->get_schema_raw (), dom2->json_validator->get_schema_raw ()) == 0 ? 1 : 0;
+	    }
+	  else
+	    {
+	      match = 0;
+	    }
 	}
-      else if (dom1->json_schema_raw == NULL && dom2->json_schema_raw == NULL)
+      else if (dom1->json_validator == NULL && dom2->json_validator == NULL)
 	{
 	  match = 1;
 	}
@@ -2259,11 +2252,21 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_JSON:
       while (domain)
 	{
-	  if (transient->json_schema_raw != NULL && domain->json_schema_raw != NULL)
+	  if (transient->json_validator != NULL && domain->json_validator != NULL)
 	    {
-	      match = (strcmp (domain->json_schema_raw, transient->json_schema_raw) == 0);
+	      if (transient->json_validator->get_schema_raw_hash_code () ==
+		  domain->json_validator->get_schema_raw_hash_code ())
+		{
+		  match =
+		    strcmp (domain->json_validator->get_schema_raw (),
+			    transient->json_validator->get_schema_raw ()) == 0 ? 1 : 0;
+		}
+	      else
+		{
+		  match = 0;
+		}
 	    }
-	  else if (transient->json_schema_raw == NULL && domain->json_schema_raw == NULL)
+	  else if (transient->json_validator == NULL && domain->json_validator == NULL)
 	    {
 	      match = 1;
 	    }
@@ -3487,16 +3490,16 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	    }
 	  if (db_get_json_schema (val) != NULL)
 	    {
-	      domain->json_schema_raw = strdup (db_get_json_schema (val));
-	      if (domain->json_schema_raw == NULL)
+	      char *schema_raw = strdup (db_get_json_schema (val));
+	      if (schema_raw == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  strlen (db_get_json_schema (val)));
 		  tp_domain_free (domain);
 		  return NULL;
 		}
-	      domain->json_validator = JSON_VALIDATOR ();
-	      if (domain->json_validator.load (domain->json_schema_raw) != NO_ERROR)
+	      domain->json_validator = new JSON_VALIDATOR (schema_raw);
+	      if (domain->json_validator->load () != NO_ERROR)
 		{
 		  assert (false);
 		  tp_domain_free (domain);
@@ -3505,9 +3508,8 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	    }
 	  else
 	    {
-	      domain->json_schema_raw = NULL;
+	      domain->json_validator = NULL;
 	    }
-
 	  if (dbuf == NULL)
 	    {
 	      domain = tp_domain_cache (domain);
@@ -7354,7 +7356,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      return (status);
 	    case DB_TYPE_JSON:
 	      {
-		if (desired_domain->json_validator.validate (*src->data.json.document) != NO_ERROR)
+		if (desired_domain->json_validator != NULL &&
+		    desired_domain->json_validator->validate (*src->data.json.document) != NO_ERROR)
 		  {
 		    ASSERT_ERROR ();
 		    return DOMAIN_ERROR;
@@ -10494,7 +10497,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		return DOMAIN_ERROR;
 	      }
 
-	    if (desired_domain->json_validator.validate (*doc) != NO_ERROR)
+	    if (desired_domain->json_validator->validate (*doc) != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
 		delete doc;

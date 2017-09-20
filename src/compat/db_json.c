@@ -9,14 +9,17 @@
 #include "memory_alloc.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/error/en.h"
+#include <functional>
 
 /* *INDENT-OFF* */
 
-JSON_VALIDATOR::JSON_VALIDATOR (void)
+JSON_VALIDATOR::JSON_VALIDATOR (char *schema_raw) : schema_raw (schema_raw),
+                                                    is_loaded (false),
+                                                    document (NULL),
+                                                    schema (NULL),
+                                                    validator (NULL)
 {
-  document = NULL;
-  schema = NULL;
-  validator = NULL;
+  schema_raw_hash_code = std::hash<std::string>{}(std::string(schema_raw));
 }
 
 JSON_VALIDATOR::~JSON_VALIDATOR (void)
@@ -36,19 +39,21 @@ JSON_VALIDATOR::~JSON_VALIDATOR (void)
       delete document;
       document = NULL;
     }
+
+  if (schema_raw != NULL)
+    {
+      free_and_init (schema_raw);
+    }
 }
 
 int
-JSON_VALIDATOR::load (const char *schema_raw)
+JSON_VALIDATOR::load ()
 {
-  if (schema_raw == NULL)
+  if (this->schema_raw == NULL || is_loaded)
     {
       /* no schema */
       return NO_ERROR;
     }
-
-  /* don't leak resources */
-  this->~JSON_VALIDATOR ();
 
   /* todo: do we have to allocate document? */
   document = new rapidjson::Document ();
@@ -57,57 +62,60 @@ JSON_VALIDATOR::load (const char *schema_raw)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (rapidjson::Document));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  document->Parse (schema_raw);
+  document->Parse (this->schema_raw);
   if (document->HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
               rapidjson::GetParseError_En (document->GetParseError ()), document->GetErrorOffset ());
       return ER_INVALID_JSON;
     }
-  return generate_schema_validator ();
+
+  generate_schema_validator ();
+  is_loaded = true;
+
+  return NO_ERROR;
 }
 
-int
-JSON_VALIDATOR::copy_from (const JSON_VALIDATOR& copy_schema)
+JSON_VALIDATOR::JSON_VALIDATOR (const JSON_VALIDATOR &copy)
 {
-  /* don't leak resources */
-  this->~JSON_VALIDATOR ();
-
-  if (copy_schema.document == NULL)
+  if (copy.document == NULL)
     {
       /* no schema actually */
-      assert (copy_schema.schema == NULL && copy_schema.validator == NULL);
-      return NO_ERROR;
+      assert (copy.schema == NULL && copy.validator == NULL && copy.schema_raw == NULL);
+
+      this->schema_raw = NULL;
+    }
+  else
+    {
+      this->schema_raw = strdup (copy.get_schema_raw ());
+      this->schema_raw_hash_code = copy.get_schema_raw_hash_code ();
+
+      document = new rapidjson::Document ();
+
+      /* todo: is this safe? */
+      document->CopyFrom (*copy.document, document->GetAllocator ());
+      generate_schema_validator ();
     }
 
-  document = new rapidjson::Document ();
-  if (document == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (rapidjson::Document));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  /* todo: is this safe? */
-  document->CopyFrom (*copy_schema.document, document->GetAllocator ());
-  return generate_schema_validator ();
+  is_loaded = true;
 }
 
-int
+JSON_VALIDATOR &JSON_VALIDATOR::operator= (const JSON_VALIDATOR &copy)
+{
+  if (this != &copy)
+    {
+      this->~JSON_VALIDATOR();
+      new (this) JSON_VALIDATOR (copy);
+    }
+
+  return *this;
+}
+
+void
 JSON_VALIDATOR::generate_schema_validator (void)
 {
   schema = new rapidjson::SchemaDocument (*document);
-  if (schema == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (rapidjson::SchemaDocument));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
   validator = new rapidjson::SchemaValidator (*schema);
-  if (validator == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (rapidjson::SchemaValidator));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  return NO_ERROR;
 }
 
 int
@@ -116,6 +124,7 @@ JSON_VALIDATOR::validate (const JSON_DOC &doc) const
   int error_code = NO_ERROR;
   if (validator == NULL)
     {
+      assert (schema_raw == NULL);
       return NO_ERROR;
     }
 
@@ -132,6 +141,34 @@ JSON_VALIDATOR::validate (const JSON_DOC &doc) const
   validator->Reset ();
 
   return error_code;
+}
+
+char *
+JSON_VALIDATOR::get_schema_raw () const
+{
+  return schema_raw;
+}
+
+unsigned int
+JSON_VALIDATOR::get_schema_raw_hash_code () const
+{
+  return schema_raw_hash_code;
+}
+
+int
+JSON_VALIDATOR::validate_json (const char *json_raw_body)
+{
+  rapidjson::Document document;
+
+  document.Parse (json_raw_body);
+  if (document.HasParseError ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+              rapidjson::GetParseError_En (document.GetParseError ()), document.GetErrorOffset ());
+      return ER_INVALID_JSON;
+    }
+
+  return NO_ERROR;
 }
 
 void *

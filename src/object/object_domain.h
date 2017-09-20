@@ -106,8 +106,7 @@ typedef struct tp_domain
   /* run-time flag used during domain comparison */
   unsigned is_visited:1;
 
-  char *json_schema_raw;
-  JSON_VALIDATOR json_validator;	/* schema validator if type is json */
+  JSON_VALIDATOR *json_validator;	/* schema validator if type is json */
 } TP_DOMAIN;
 
 /*

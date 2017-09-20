@@ -157,6 +157,7 @@ if(UNIX)
   else(CMAKE_COMPILER_IS_GNUCC)
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
   endif(CMAKE_COMPILER_IS_GNUCC)
+  set (CMAKE_CXX_STANDARD 11)
 else(UNIX)
   # turn off LinkIncremental option for release build
   
