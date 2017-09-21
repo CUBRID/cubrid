@@ -19,7 +19,7 @@ static void db_json_search_helper (const JSON_VALUE &whole_doc,
                                    const char *current_path,
                                    const char *search_str,
                                    int one_or_all,
-                                   std::vector < std::string > &result);
+                                   std::vector < char * > &result);
 static unsigned int db_json_get_depth_helper (const JSON_VALUE &doc);
 
 JSON_VALIDATOR::JSON_VALIDATOR (char *schema_raw) : schema_raw (schema_raw),
@@ -270,6 +270,8 @@ unsigned int db_json_get_length (const JSON_VALUE &document)
 
       return length;
     }
+
+  return 0;
 }
 
 unsigned int db_json_get_depth (const JSON_VALUE &doc) {
@@ -350,22 +352,29 @@ JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC &doc,
                                              const char *search_str,
                                              unsigned int one_or_all)
 {
-  std::vector<std::string> result;
+  std::vector<char *> result;
 
   db_json_search_helper (doc, doc, "", search_str, one_or_all, result);
   JSON_DOC *new_doc = new JSON_DOC ();
 
   if (result.size () == 1)
     {
-      new_doc->SetString (result[0].c_str (), new_doc->GetAllocator ());
+      new_doc->SetString (result[0], new_doc->GetAllocator ());
     }
   else
     {
       new_doc->SetArray ();
       for (unsigned int i = 0; i < result.size (); i++)
 	{
-	  new_doc->PushBack (rapidjson::StringRef (result[i].c_str ()), new_doc->GetAllocator ());
+          JSON_VALUE str;
+          str.SetString (result[i], strlen (result[i]));
+	  new_doc->PushBack (str, new_doc->GetAllocator ());
 	}
+    }
+
+  for (unsigned int i = 0; i < result.size(); i++)
+    {
+      db_private_free (NULL, result[i]);
     }
 
   return new_doc;
@@ -376,7 +385,7 @@ static void db_json_search_helper (const JSON_VALUE &whole_doc,
                                   const char *current_path,
                                   const char *search_str,
                                   int one_or_all,
-                                  std::vector < std::string > &result)
+                                  std::vector < char * > &result)
 {
   if (one_or_all == 0 && result.size () == 1)
     {
@@ -409,7 +418,7 @@ static void db_json_search_helper (const JSON_VALUE &whole_doc,
 
 	  if (strstr (final_string, search_str) != NULL)
 	    {
-              char *res_path = (char *) malloc (strlen (current_path) + 1);
+              char *res_path = (char *) db_private_alloc (NULL, strlen (current_path) + 1);
               strcpy (res_path, current_path);
 	      result.push_back (res_path);
 	    }
@@ -651,6 +660,8 @@ DB_JSON_TYPE db_json_get_type (JSON_DOC &doc)
     {
       return DB_JSON_ARRAY;
     }
+
+  return DB_JSON_UNKNOWN;
 }
 
 void db_json_merge_two_json_objects (JSON_DOC &obj1, JSON_DOC &obj2)
