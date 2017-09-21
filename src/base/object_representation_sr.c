@@ -2550,8 +2550,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  if (!db_value_is_null (&def_expr_format))
 		    {
 #if !defined (NDEBUG)
-		      DB_TYPE db_value_type = db_value_type (&def_expr_format);
-		      assert (db_value_type == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type));
+		      DB_TYPE db_value_type_local = db_value_type (&def_expr_format);
+		      assert (db_value_type_local == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type_local));
 #endif
 		      def_expr_format_str = DB_GET_STRING (&def_expr_format);
 		      att->default_value.default_expr.default_expr_format = strdup (def_expr_format_str);

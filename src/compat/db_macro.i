@@ -28,6 +28,7 @@
 #define _DB_MACRO_I_
 
 #include "intl_support.h"
+#include "porting.h"
 
 #ifdef SERVER_MODE
 #define DB_MACRO_INLINE STATIC_INLINE
