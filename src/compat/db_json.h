@@ -111,15 +111,12 @@ private:
 };
 
 #else /* !defined (__cplusplus) */
+
 typedef void JSON_DOC;
 typedef void JSON_VALUE;
 typedef void JSON_POINTER;
+typedef void JSON_VALIDATOR;
 
-typedef struct json_validator JSON_VALIDATOR;
-struct json_validator
-{
-  int dummy;
-};
 #endif /* !defined (__cplusplus) */
 
 /* *INDENT-ON* */
