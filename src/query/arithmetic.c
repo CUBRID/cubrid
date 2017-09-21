@@ -5128,7 +5128,7 @@ db_json_contains_dbval (const DB_VALUE *json, const DB_VALUE *value, DB_VALUE *r
       if (!json->data.json.document->IsObject ())
         {
           er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
-          return 0;
+          return ER_NO_JSON_OBJECT_PROVIDED;
         }
 
       has_member = (int) json->data.json.document->HasMember (value_str);
