@@ -46,9 +46,6 @@
 #include "tz_support.h"
 #include "chartype.h"
 #include "db_json.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/error/en.h"
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #include "virtual_object.h"
@@ -10459,28 +10456,24 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  {
 	    unsigned int str_size = DB_GET_STRING_SIZE (src);
-	    char *str = (char *) db_private_alloc (NULL, (size_t) (str_size + 1));
-	    if (str == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (JSON_DOC));
-		return DOMAIN_ERROR;
-	      }
-	    strcpy (str, DB_GET_STRING (src));
+            int error_code;
+	    char *str;
+            JSON_DOC *doc = NULL;
 
-	    JSON_DOC *doc = new JSON_DOC ();
+            doc = db_json_get_json_from_str (DB_GET_STRING (src), error_code);
+            if (error_code != NO_ERROR)
+              {
+                assert (doc == NULL);
+                return DOMAIN_ERROR;
+              }
+
+	    /*JSON_DOC *doc = new JSON_DOC (src);
+            TODO should we check new?
 	    if (doc == NULL)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (JSON_DOC));
 		return DOMAIN_ERROR;
-	      }
-	    doc->Parse (str);
-	    if (doc->HasParseError ())
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-			rapidjson::GetParseError_En (doc->GetParseError ()), doc->GetErrorOffset ());
-		delete doc;
-		return DOMAIN_ERROR;
-	      }
+	      }*/
 
 	    if (desired_domain->json_validator && desired_domain->json_validator->validate (*doc) != NO_ERROR)
 	      {
@@ -10488,6 +10481,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		delete doc;
 		return DOMAIN_ERROR;
 	      }
+
+            str = (char *) db_private_alloc (NULL, (size_t) (str_size + 1));
+            if (str == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
+		return DOMAIN_ERROR;
+	      }
+	    strcpy (str, DB_GET_STRING (src));
 
 	    db_make_json (target, str, doc, true);
 	    break;

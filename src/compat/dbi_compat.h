@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <sys/types.h>
+#include "db_json.h"
 
 #ifndef _DBI_COMPAT_H_
 #define _DBI_COMPAT_H_
@@ -2827,6 +2828,14 @@ extern "C"
     unsigned short count;	/* count of enumeration elements */
   };
 
+  typedef struct db_json DB_JSON;
+  struct db_json
+  {
+    char *json_body;
+    char *schema_raw;
+    JSON_DOC *document;
+  };
+
 /* A union of all of the possible basic type values.  This is used in the
  * definition of the DB_VALUE which is the fundamental structure used
  * in passing data in and out of the db_ function layer.
@@ -2860,6 +2869,7 @@ extern "C"
     DB_CHAR ch;
     DB_RESULTSET rset;
     DB_ENUM_ELEMENT enumeration;
+    DB_JSON json;
   };
 
 /* This is the primary structure used for passing values in and out of

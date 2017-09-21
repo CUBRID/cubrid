@@ -14817,6 +14817,7 @@ static void
 mr_initmem_json (void *mem, TP_DOMAIN * domain)
 {
   ((DB_JSON *) mem)->json_body = NULL;
+  ((DB_JSON *) mem)->schema_raw = NULL;
   ((DB_JSON *) mem)->document = NULL;
 }
 
@@ -14832,12 +14833,23 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
   else
     {
       int len = strlen (value->data.json.json_body);
+      int len2 = value->data.json.schema_raw != NULL ? strlen (value->data.json.schema_raw) : 0;
       ((DB_JSON *) memptr)->json_body = (char *) db_private_alloc (NULL, len + 1);
+      if (len2 > 0)
+        {
+          ((DB_JSON *) memptr)->schema_raw = (char *) db_private_alloc (NULL, len2 + 1);
+        }
+      else
+        {
+          ((DB_JSON *) memptr)->schema_raw = NULL;
+        }
       ((DB_JSON *) memptr)->document = new JSON_DOC ();
-      memcpy (((DB_JSON *) memptr)->json_body, value->data.json.json_body, len);
-      ((DB_JSON *) memptr)->json_body[len] = '\0';
-      ((DB_JSON *) memptr)->document->CopyFrom (*value->data.json.document,
-						((DB_JSON *) memptr)->document->GetAllocator ());
+      strcpy (((DB_JSON *) memptr)->json_body, value->data.json.json_body);
+      if (len2 > 0)
+        {
+          strcpy (((DB_JSON *) memptr)->schema_raw, value->data.json.schema_raw);
+        }
+      db_json_copy_doc (*((DB_JSON *) memptr)->document, *value->data.json.document);
     }
 
   return error;
@@ -14877,10 +14889,9 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    {
 	      memcpy (new_, value->data.json.json_body, len);
 	      new_[len] = '\0';
-	      document->CopyFrom (*json_obj->document, document->GetAllocator ());
+	      db_json_copy_doc (*document, *json_obj->document);
 	      db_make_json (value, new_, document, true);
 	    }
-
 	}
       db_get_json_schema (value) = domain->json_validator->get_schema_raw ();
 
@@ -15020,8 +15031,8 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	{
 	  dest->data.json.json_body = src->data.json.json_body;
 	  dest->data.json.document = src->data.json.document;
+          dest->data.json.schema_raw = src->data.json.schema_raw;
 	  dest->need_clear = false;
-	  dest->data.json.schema_raw = src->data.json.schema_raw;
 	}
     }
 

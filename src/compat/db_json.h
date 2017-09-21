@@ -57,7 +57,7 @@ void db_json_add_element_to_array (JSON_DOC &doc, const JSON_VALUE &value);
 
 JSON_DOC *db_json_get_json_from_str (const char *json_raw, int &error_code);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC &doc);
-void db_json_copy_doc (JSON_DOC &dest, JSON_DOC &src);
+void db_json_copy_doc (JSON_DOC &dest, JSON_VALUE &src);
 
 void db_json_insert_func (JSON_DOC &doc, char *raw_path, char *str_value, int &error_code);
 void db_json_insert_func (JSON_DOC &doc, char *raw_path, JSON_VALUE &value, int &error_code);

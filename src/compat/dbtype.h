@@ -909,9 +909,7 @@ union db_data
   DB_CHAR ch;
   DB_RESULTSET rset;
   DB_ENUM_ELEMENT enumeration;
-#if defined (__cplusplus)
   DB_JSON json;
-#endif
 };
 
 /* This is the primary structure used for passing values in and out of

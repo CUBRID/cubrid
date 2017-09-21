@@ -41,10 +41,6 @@
 #include "thread.h"
 #endif /* !defined (CS_MODE) */
 
-#if defined(__cplusplus)
-#include "rapidjson/document.h"
-#endif
-
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))
 #define QSTR_IS_NATIONAL_CHAR(s) (((s)==DB_TYPE_NCHAR) || \

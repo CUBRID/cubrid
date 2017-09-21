@@ -43,7 +43,6 @@
 #include "string_opfunc.h"
 #include "db_date.h"
 #include "db_json.h"
-#include "rapidjson/writer.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -5115,6 +5114,29 @@ error:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	}
       return error_status;
+    }
+}
+
+int
+db_json_contains_dbval (const DB_VALUE *json, const DB_VALUE *value, DB_VALUE *result)
+{
+  if (!DB_IS_NULL (json))
+    {
+      char *value_str = value->data.ch.medium.buf;
+      int has_member;
+
+      if (!json->data.json.document->IsObject ())
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
+          return 0;
+        }
+
+      has_member = (int) json->data.json.document->HasMember (value_str);
+      DB_MAKE_INT (result, has_member);
+    }
+  else
+    {
+      DB_MAKE_INT (result, 0);
     }
 }
 

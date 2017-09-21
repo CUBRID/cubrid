@@ -51,9 +51,6 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "db_elo.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/error/en.h"
 #include <vector>
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"

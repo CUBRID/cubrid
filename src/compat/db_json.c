@@ -572,7 +572,7 @@ JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC &doc)
   return new_doc;
 }
 
-void db_json_copy_doc (JSON_DOC &dest, JSON_DOC &src)
+void db_json_copy_doc (JSON_DOC &dest, JSON_VALUE &src)
 {
   dest.CopyFrom (src, dest.GetAllocator());
 }

@@ -47,8 +47,7 @@
 #include "dbtype.h"
 #include "query_dump.h"
 #include "db_json.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
+#include "arithmetic.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -6520,11 +6519,12 @@ qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VAL
 int
 qdata_json_contains_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
-  char *value = dbval2_p->data.ch.medium.buf;
-  int has_member;
+  int error_code = db_json_contains_dbval (dbval1_p, dbval2_p, result_p);
 
-  has_member = (int) dbval1_p->data.json.document->HasMember (value);
-  DB_MAKE_INT (result_p, has_member);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
@@ -6532,53 +6532,24 @@ qdata_json_contains_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * 
 int
 qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
-  if (DB_IS_NULL (dbval1_p))
-    {
-      DB_MAKE_CHAR (result_p, 4, "NULL", 4, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-    }
-  else
-    {
-      assert (dbval1_p->data.json.json_body != NULL);
-      assert (dbval1_p->data.json.document != NULL);
-      assert (!dbval1_p->data.json.document->HasParseError ());
+  int error_code = db_json_type_dbval (dbval1_p, result_p);
 
-      if (dbval1_p->data.json.document->IsArray ())
-	{
-	  DB_MAKE_CHAR (result_p, 10, "JSON_ARRAY", 10, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	}
-      else if (dbval1_p->data.json.document->IsObject ())
-	{
-	  DB_MAKE_CHAR (result_p, 11, "JSON_OBJECT", 11, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	}
-      else if (dbval1_p->data.json.document->IsInt ())
-	{
-	  DB_MAKE_CHAR (result_p, 7, "INTEGER", 7, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	}
-      else if (dbval1_p->data.json.document->IsDouble ())
-	{
-	  DB_MAKE_CHAR (result_p, 6, "DOUBLE", 6, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	}
-      else
-	{
-	  /* we shouldn't get here */
-	  assert (false);
-	}
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
     }
+
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 
 int
 qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
-  if (DB_IS_NULL (dbval1_p))
+  int error_code = db_json_valid_dbval (dbval1_p, result_p);
+
+  if (error_code != NO_ERROR)
     {
-      DB_MAKE_INT (result_p, 1);
-    }
-  else
-    {
-      JSON_DOC doc;
-      int has_error = doc.Parse (dbval1_p->data.ch.medium.buf).HasParseError ()? 0 : 1;
-      DB_MAKE_INT (result_p, has_error);
+      return error_code;
     }
 
   return qdata_coerce_result_to_domain (result_p, domain_p);
@@ -6587,255 +6558,26 @@ qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * do
 int
 qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
-  if (DB_IS_NULL (dbval1_p))
-    {
-      return DB_MAKE_INT (result_p, 0);
-    }
-  else
-    {
-      if (!dbval1_p->data.json.document->IsArray () && !dbval1_p->data.json.document->IsObject ())
-	{
-	  return DB_MAKE_INT (result_p, 1);
-	}
-
-      if (dbval1_p->data.json.document->IsArray ())
-	{
-	  return DB_MAKE_INT (result_p, dbval1_p->data.json.document->Size ());
-	}
-      if (dbval1_p->data.json.document->IsObject ())
-	{
-	  int length = 0;
-	  for (JSON_VALUE::ConstMemberIterator itr = dbval1_p->data.json.document->MemberBegin ();
-	       itr != dbval1_p->data.json.document->MemberEnd (); ++itr)
-	    {
-	      length++;
-	    }
-
-	  return DB_MAKE_INT (result_p, length);
-	}
-    }
+  return db_json_length_dbval (dbval1_p, result_p);
 }
 
 int
 qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
-  if (DB_IS_NULL (dbval1_p))
-    {
-      return DB_MAKE_INT (result_p, 0);
-    }
-  else
-    {
-      return DB_MAKE_INT (result_p, qdata_json_depth_dbval_helper (*dbval1_p->data.json.document));
-    }
-}
-
-static int
-qdata_json_depth_dbval_helper (JSON_VALUE & doc)
-{
-  if (!doc.IsArray () && !doc.IsObject ())
-    {
-      return 0;
-    }
-
-  if (doc.IsArray ())
-    {
-      int max = 0;
-      for (JSON_VALUE::ValueIterator itr = doc.Begin (); itr != doc.End (); ++itr)
-	{
-	  int depth = qdata_json_depth_dbval_helper (*itr);
-	  if (depth > max)
-	    {
-	      max = depth;
-	    }
-	}
-      return max + 1;
-    }
-  else if (doc.IsObject ())
-    {
-      int max = 0;
-      for (JSON_VALUE::MemberIterator itr = doc.MemberBegin (); itr != doc.MemberEnd (); ++itr)
-	{
-	  int depth = qdata_json_depth_dbval_helper (itr->value);
-	  if (depth > max)
-	    {
-	      max = depth;
-	    }
-	}
-      return max + 1;
-    }
+  return db_json_depth_dbval (dbval1_p, result_p);
 }
 
 int
 qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
 {
-  JSON_DOC *this_doc = json->data.json.document;
-  const char *raw_path = path->data.ch.medium.buf;
-  rapidjson::StringBuffer buffer;
-  rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
-  JSON_VALUE *resulting_json;
-  int len;
-
-  buffer.Clear ();
-  JSON_POINTER p (raw_path);
-
-  if (p.IsValid () && (resulting_json = JSON_POINTER (raw_path).Get (*this_doc)) != NULL)
-    {
-      char *json_body;
-      JSON_DOC *new_doc = new JSON_DOC ();
-      new_doc->CopyFrom (*resulting_json, new_doc->GetAllocator ());
-      new_doc->Accept (writer);
-      json_body = (char *) db_private_alloc (NULL, strlen (buffer.GetString () + 1));
-      strcpy (json_body, buffer.GetString ());
-      db_make_json (json_res, json_body, new_doc, true);
-
-      return NO_ERROR;
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
-    }
+  return db_json_extract_dbval (json, path, json_res);
 }
 
 int
 qdata_json_search_dbval (DB_VALUE * json, DB_VALUE * one_or_all, DB_VALUE * search_str, DB_VALUE * result_p,
 			 TP_DOMAIN * domain_p)
 {
-  int one_or_all_bool;
-  std::vector < std::string > result;
-  JSON_DOC *doc;
-  rapidjson::StringBuffer buffer;
-  rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
-  char *json_body;
-  const char *buffer_str;
-
-  if (DB_IS_NULL (json) || DB_IS_NULL (one_or_all) || DB_IS_NULL (search_str))
-    {
-      return DB_MAKE_NULL (result_p);
-    }
-
-  if (strcmp (one_or_all->data.ch.medium.buf, "one") == 0)
-    {
-      one_or_all_bool = 0;
-    }
-  else if (strcmp (one_or_all->data.ch.medium.buf, "all") == 0)
-    {
-      one_or_all_bool = 1;
-    }
-  else
-    {
-      return ER_PT_SEMANTIC;
-    }
-
-  qdata_json_search_dbval_helper (*json->data.json.document,
-				  *json->data.json.document,
-				  "", search_str->data.ch.medium.buf, one_or_all_bool, result);
-  doc = new JSON_DOC ();
-
-  if (result.size () == 1)
-    {
-      doc->SetString (result[0].c_str (), doc->GetAllocator ());
-    }
-  else
-    {
-      doc->SetArray ();
-      for (unsigned int i = 0; i < result.size (); i++)
-	{
-	  doc->PushBack (rapidjson::StringRef (result[i].c_str ()), doc->GetAllocator ());
-	}
-    }
-
-  doc->Accept (writer);
-  buffer_str = buffer.GetString ();
-  json_body = (char *) db_private_alloc (NULL, strlen (buffer_str) + 1);
-  strcpy (json_body, buffer_str);
-
-  db_make_json (result_p, json_body, doc, true);
-
-  return NO_ERROR;
-}
-
-static void
-qdata_json_search_dbval_helper (JSON_VALUE & whole_doc,
-				JSON_VALUE & doc,
-				const char *current_path,
-				const char *search_str, int one_or_all, std::vector < std::string > &result)
-{
-  if (one_or_all == 0 && result.size () == 1)
-    {
-      return;
-    }
-
-  if (!doc.IsArray () && !doc.IsObject ())
-    {
-      JSON_POINTER p (current_path);
-      JSON_VALUE *resulting_json;
-
-      if (p.IsValid () && (resulting_json = p.Get (whole_doc)) != NULL)
-	{
-	  char final_string[DB_JSON_MAX_STRING_SIZE];
-
-	  if (resulting_json->IsInt ())
-	    {
-	      int val = resulting_json->GetInt ();
-	      snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%d", val);
-	    }
-	  else if (resulting_json->IsDouble ())
-	    {
-	      float val = resulting_json->GetDouble ();
-	      snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%f", val);
-	    }
-	  else if (resulting_json->IsString ())
-	    {
-	      strncpy (final_string, resulting_json->GetString (), DB_JSON_MAX_STRING_SIZE);
-	    }
-
-	  if (strstr (final_string, search_str) != NULL)
-	    {
-	      result.push_back (current_path);
-	    }
-	}
-      else
-	{
-	  //everything should be valid
-	  assert (false);
-	}
-    }
-
-  if (doc.IsArray ())
-    {
-      int index = 0;
-      for (JSON_VALUE::ValueIterator itr = doc.Begin (); itr != doc.End (); ++itr)
-	{
-	  char index_str[3];
-	  snprintf (index_str, 2, "%d", index);
-
-	  char *next_path = (char *) db_private_alloc (NULL, strlen (current_path) + strlen (index_str) + 2);
-	  strcpy (next_path, current_path);
-	  strcat (next_path, "/");
-	  strcat (next_path, index_str);
-
-	  qdata_json_search_dbval_helper (whole_doc, *itr, next_path, search_str, one_or_all, result);
-
-	  index++;
-	  db_private_free (NULL, next_path);
-	}
-    }
-  else if (doc.IsObject ())
-    {
-      for (JSON_VALUE::MemberIterator itr = doc.MemberBegin (); itr != doc.MemberEnd (); ++itr)
-	{
-	  char *next_path =
-	    (char *) db_private_alloc (NULL, strlen (current_path) + 1 + strlen (itr->name.GetString ()) + 1);
-	  strcpy (next_path, current_path);
-	  strcat (next_path, "/");
-	  strcat (next_path, itr->name.GetString ());
-
-	  qdata_json_search_dbval_helper (whole_doc, itr->value, next_path, search_str, one_or_all, result);
-
-	  db_private_free (NULL, next_path);
-	}
-    }
+  return db_json_search_dbval (json, one_or_all, search_str, result_p);
 }
 
 /*
