@@ -49,6 +49,105 @@ extern "C"
     LARGE_STRING
   } STRING_STYLE;
 
+  /********************************************************/
+  /* From intl_support.h */
+
+  enum intl_codeset
+  {
+    INTL_CODESET_ERROR = -2,
+    INTL_CODESET_NONE = -1,
+    INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
+    INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
+    INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
+    INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
+    INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
+    INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+
+    INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
+
+    INTL_CODESET_LAST = INTL_CODESET_UTF8
+  };
+  typedef enum intl_codeset INTL_CODESET;
+
+  extern int intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
+  extern int intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
+
+  /********************************************************/
+  /* From db.h */
+
+  /* Argument checking macros */
+#define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
+  do {                                                                         \
+    if((obj) == NULL) {                                                        \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_2ARGS_RETURN_EXPR(obj1, obj2, expr)                              \
+  do {                                                                         \
+    if((obj1) == NULL || (obj2) == NULL) {                                     \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, expr)                        \
+  do {                                                                         \
+    if((obj1) == NULL || (obj2) == NULL || (obj3) == NULL) {                   \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_1ARG_NULL(obj)        \
+  CHECK_1ARG_RETURN_EXPR(obj, NULL)
+
+#define CHECK_2ARGS_NULL(obj1, obj2)    \
+  CHECK_2ARGS_RETURN_EXPR(obj1,obj2,NULL)
+
+#define CHECK_3ARGS_NULL(obj1, obj2, obj3) \
+  CHECK_3ARGS_RETURN_EXPR(obj1,obj2,obj3,NULL)
+
+#define CHECK_1ARG_FALSE(obj)  \
+  CHECK_1ARG_RETURN_EXPR(obj,false)
+
+#define CHECK_1ARG_TRUE(obj)   \
+  CHECK_1ARG_RETURN_EXPR(obj, true)
+
+#define CHECK_1ARG_ERROR(obj)  \
+  CHECK_1ARG_RETURN_EXPR(obj,ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_ERROR_WITH_TYPE(obj, TYPE)  \
+  CHECK_1ARG_RETURN_EXPR(obj,(TYPE)ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_MINUSONE(obj) \
+  CHECK_1ARG_RETURN_EXPR(obj,-1)
+
+#define CHECK_2ARGS_ERROR(obj1, obj2)   \
+  CHECK_2ARGS_RETURN_EXPR(obj1, obj2, ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_3ARGS_ERROR(obj1, obj2, obj3) \
+  CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_ZERO(obj)     \
+  CHECK_1ARG_RETURN_EXPR(obj, 0)
+
+#define CHECK_1ARG_ZERO_WITH_TYPE(obj1, RETURN_TYPE)     \
+  CHECK_1ARG_RETURN_EXPR(obj1, (RETURN_TYPE) 0)
+
+#define CHECK_2ARGS_ZERO(obj1, obj2)    \
+  CHECK_2ARGS_RETURN_EXPR(obj1,obj2, 0)
+
+#define CHECK_1ARG_UNKNOWN(obj1)        \
+  CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
+
+  /********************************************************/
+  /* From object_accessor.h */
+  extern char *obj_Method_error_msg;
+
+  /********************************************************/
+
 /*
  * DB_MAX_IDENTIFIER_LENGTH -
  * This constant defines the maximum length of an identifier
