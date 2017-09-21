@@ -352,24 +352,20 @@ JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC &doc,
   std::vector<std::string> result;
 
   db_json_search_helper (doc, doc, "", search_str, one_or_all, result);
-  JSON_DOC aux;
   JSON_DOC *new_doc = new JSON_DOC ();
 
   if (result.size () == 1)
     {
-      aux.SetString (result[0].c_str (), aux.GetAllocator ());
+      new_doc->SetString (result[0].c_str (), new_doc->GetAllocator ());
     }
   else
     {
-      aux.SetArray ();
+      new_doc->SetArray ();
       for (unsigned int i = 0; i < result.size (); i++)
 	{
-	  aux.PushBack (rapidjson::StringRef (result[i].c_str ()), aux.GetAllocator ());
+	  new_doc->PushBack (rapidjson::StringRef (result[i].c_str ()), new_doc->GetAllocator ());
 	}
     }
-
-  new_doc->CopyFrom (aux, new_doc->GetAllocator ());
-
   return new_doc;
 }
 
