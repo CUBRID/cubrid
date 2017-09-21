@@ -7,10 +7,20 @@
 
 #include "error_manager.h"
 #include "memory_alloc.h"
+
+#if defined (__cplusplus)
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/error/en.h"
 
 /* *INDENT-OFF* */
+
+static void db_json_search_helper (const JSON_VALUE &whole_doc,
+                                   const JSON_VALUE &doc,
+                                   const char *current_path,
+                                   const char *search_str,
+                                   int one_or_all,
+                                   std::vector < std::string > &result);
+static unsigned int db_json_get_depth_helper (const JSON_VALUE &doc);
 
 JSON_VALIDATOR::JSON_VALIDATOR (char *schema_raw) : schema_raw (schema_raw),
                                                     is_loaded (false),
@@ -683,5 +693,7 @@ void db_json_merge_two_json_arrays (JSON_DOC &array1, JSON_DOC &array2)
     }
 }
 /*end of C functions*/
+
+#endif //defined (__cplusplus)
 
 /* *INDENT-ON* */

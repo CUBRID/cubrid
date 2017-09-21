@@ -39,16 +39,9 @@ int db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC &document);
 unsigned int db_json_get_length (const JSON_VALUE &document);
 unsigned int db_json_get_depth (const JSON_VALUE &doc);
-static unsigned int db_json_get_depth_helper (const JSON_VALUE &doc);
 JSON_DOC *db_json_extract_document_from_path (JSON_DOC &document, const char *raw_path);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC &doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC &doc, const char *search_str, unsigned int one_or_all);
-static void db_json_search_helper (const JSON_VALUE &whole_doc,
-                                   const JSON_VALUE &doc,
-                                   const char *current_path,
-                                   const char *search_str,
-                                   int one_or_all,
-                                   std::vector < std::string > &result);
 
 void db_json_add_member_to_object (JSON_DOC &doc, char *name, char *value);
 void db_json_add_member_to_object (JSON_DOC &doc, char *name, int value);
@@ -117,7 +110,7 @@ typedef void JSON_VALUE;
 typedef void JSON_POINTER;
 typedef void JSON_VALIDATOR;
 
-#endif /* !defined (__cplusplus) */
+#endif /* defined (__cplusplus) */
 
 /* *INDENT-ON* */
 #endif /* db_json.h */
