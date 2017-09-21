@@ -5132,11 +5132,11 @@ db_json_contains_dbval (const DB_VALUE *json, const DB_VALUE *value, DB_VALUE *r
         }
 
       has_member = (int) json->data.json.document->HasMember (value_str);
-      DB_MAKE_INT (result, has_member);
+      return DB_MAKE_INT (result, has_member);
     }
   else
     {
-      DB_MAKE_INT (result, 0);
+      return DB_MAKE_INT (result, 0);
     }
 }
 

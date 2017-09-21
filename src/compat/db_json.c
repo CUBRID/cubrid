@@ -372,11 +372,11 @@ JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC &doc,
 }
 
 static void db_json_search_helper (const JSON_VALUE &whole_doc,
-                            const JSON_VALUE &doc,
-                            const char *current_path,
-                            const char *search_str,
-                            int one_or_all,
-                            std::vector < std::string > &result)
+                                  const JSON_VALUE &doc,
+                                  const char *current_path,
+                                  const char *search_str,
+                                  int one_or_all,
+                                  std::vector < std::string > &result)
 {
   if (one_or_all == 0 && result.size () == 1)
     {
@@ -409,7 +409,9 @@ static void db_json_search_helper (const JSON_VALUE &whole_doc,
 
 	  if (strstr (final_string, search_str) != NULL)
 	    {
-	      result.push_back (current_path);
+              char *res_path = (char *) malloc (strlen (current_path) + 1);
+              strpcy (res_path, current_path);
+	      result.push_back (res_path);
 	    }
 	}
       else
