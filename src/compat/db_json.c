@@ -410,7 +410,7 @@ static void db_json_search_helper (const JSON_VALUE &whole_doc,
 	  if (strstr (final_string, search_str) != NULL)
 	    {
               char *res_path = (char *) malloc (strlen (current_path) + 1);
-              strpcy (res_path, current_path);
+              strcpy (res_path, current_path);
 	      result.push_back (res_path);
 	    }
 	}
