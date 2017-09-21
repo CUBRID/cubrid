@@ -5118,7 +5118,7 @@ error:
 }
 
 int
-db_json_contains_dbval (const DB_VALUE *json, const DB_VALUE *value, DB_VALUE *result)
+db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, DB_VALUE * result)
 {
   if (!DB_IS_NULL (json))
     {
@@ -5126,10 +5126,10 @@ db_json_contains_dbval (const DB_VALUE *json, const DB_VALUE *value, DB_VALUE *r
       int has_member;
 
       if (!json->data.json.document->IsObject ())
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
-          return ER_NO_JSON_OBJECT_PROVIDED;
-        }
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
+	  return ER_NO_JSON_OBJECT_PROVIDED;
+	}
 
       has_member = (int) json->data.json.document->HasMember (value_str);
       return DB_MAKE_INT (result, has_member);

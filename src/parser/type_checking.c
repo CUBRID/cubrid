@@ -17181,10 +17181,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_JSON_CONTAINS:
       error = db_json_contains_dbval (arg1, arg2, result);
       if (error != NO_ERROR)
-        {
-          PT_ERRORc (parser, o1, er_msg());
-          return 0;
-        }
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
       break;
     case PT_JSON_TYPE:
       error = db_json_type_dbval (arg1, result);

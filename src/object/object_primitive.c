@@ -14836,19 +14836,19 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       int len2 = value->data.json.schema_raw != NULL ? strlen (value->data.json.schema_raw) : 0;
       ((DB_JSON *) memptr)->json_body = (char *) db_private_alloc (NULL, len + 1);
       if (len2 > 0)
-        {
-          ((DB_JSON *) memptr)->schema_raw = (char *) db_private_alloc (NULL, len2 + 1);
-        }
+	{
+	  ((DB_JSON *) memptr)->schema_raw = (char *) db_private_alloc (NULL, len2 + 1);
+	}
       else
-        {
-          ((DB_JSON *) memptr)->schema_raw = NULL;
-        }
+	{
+	  ((DB_JSON *) memptr)->schema_raw = NULL;
+	}
       ((DB_JSON *) memptr)->document = new JSON_DOC ();
       strcpy (((DB_JSON *) memptr)->json_body, value->data.json.json_body);
       if (len2 > 0)
-        {
-          strcpy (((DB_JSON *) memptr)->schema_raw, value->data.json.schema_raw);
-        }
+	{
+	  strcpy (((DB_JSON *) memptr)->schema_raw, value->data.json.schema_raw);
+	}
       db_json_copy_doc (*((DB_JSON *) memptr)->document, *value->data.json.document);
     }
 
@@ -15031,7 +15031,7 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	{
 	  dest->data.json.json_body = src->data.json.json_body;
 	  dest->data.json.document = src->data.json.document;
-          dest->data.json.schema_raw = src->data.json.schema_raw;
+	  dest->data.json.schema_raw = src->data.json.schema_raw;
 	  dest->need_clear = false;
 	}
     }
