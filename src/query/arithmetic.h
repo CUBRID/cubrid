@@ -76,6 +76,4 @@ extern int db_json_length_dbval (const DB_VALUE * json, DB_VALUE * res);
 extern int db_json_depth_dbval (const DB_VALUE * json, DB_VALUE * res);
 extern int db_json_search_dbval (const DB_VALUE * json, const DB_VALUE * one_or_all, const DB_VALUE * search_str,
 				 DB_VALUE * res);
-static void db_json_search_dbval_helper (JSON_VALUE & whole_doc, JSON_VALUE & doc, const char *current_path,
-					 const char *search_str, int one_or_all, std::vector < std::string > &result);
 #endif /* _ARITHMETIC_H_ */

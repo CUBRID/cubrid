@@ -19,7 +19,7 @@ static void db_json_search_helper (const JSON_VALUE &whole_doc,
                                    const char *current_path,
                                    const char *search_str,
                                    int one_or_all,
-                                   std::vector < char * > &result);
+                                   std::vector < std::string > &result);
 static unsigned int db_json_get_depth_helper (const JSON_VALUE &doc);
 
 JSON_VALIDATOR::JSON_VALIDATOR (char *schema_raw) : schema_raw (schema_raw),
@@ -320,9 +320,6 @@ JSON_DOC *db_json_extract_document_from_path (JSON_DOC &document, const char *ra
 
   if (p.IsValid () && (resulting_json = p.Get (document)) != NULL)
     {
-      char *json_body;
-      const char *buffer_str;
-
       JSON_DOC *new_doc = new JSON_DOC ();
       new_doc->CopyFrom (*resulting_json, new_doc->GetAllocator ());
       return new_doc;
@@ -352,7 +349,7 @@ JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC &doc,
                                              const char *search_str,
                                              unsigned int one_or_all)
 {
-  std::vector<char *> result;
+  std::vector<std::string> result;
 
   db_json_search_helper (doc, doc, "", search_str, one_or_all, result);
   JSON_DOC aux;
@@ -360,25 +357,18 @@ JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC &doc,
 
   if (result.size () == 1)
     {
-      aux.SetString (result[0], aux.GetAllocator ());
+      aux.SetString (result[0].c_str (), aux.GetAllocator ());
     }
   else
     {
       aux.SetArray ();
       for (unsigned int i = 0; i < result.size (); i++)
 	{
-          JSON_VALUE str;
-          str.SetString (result[i], strlen (result[i]));
-	  aux.PushBack (str, aux.GetAllocator ());
+	  aux.PushBack (rapidjson::StringRef (result[i].c_str ()), aux.GetAllocator ());
 	}
     }
 
   new_doc->CopyFrom (aux, new_doc->GetAllocator ());
-
-  for (unsigned int i = 0; i < result.size(); i++)
-    {
-      db_private_free (NULL, result[i]);
-    }
 
   return new_doc;
 }
@@ -388,7 +378,7 @@ static void db_json_search_helper (const JSON_VALUE &whole_doc,
                                   const char *current_path,
                                   const char *search_str,
                                   int one_or_all,
-                                  std::vector < char * > &result)
+                                  std::vector < std::string > &result)
 {
   if (one_or_all == 0 && result.size () == 1)
     {
@@ -421,9 +411,7 @@ static void db_json_search_helper (const JSON_VALUE &whole_doc,
 
 	  if (strstr (final_string, search_str) != NULL)
 	    {
-              char *res_path = (char *) db_private_alloc (NULL, strlen (current_path) + 1);
-              strcpy (res_path, current_path);
-	      result.push_back (res_path);
+	      result.push_back (std::string (current_path));
 	    }
 	}
       else
