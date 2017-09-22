@@ -7001,7 +7001,6 @@ la_shutdown (void)
   return;
 }
 
-#if 0
 /*
  * la_print_log_header () -
  */
@@ -7084,7 +7083,6 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
     }
   printf ("%-30s : %d\n", "Archive number", hdr->arv_num);
 }
-#endif /* 0 */
 
 /*
  * la_log_page_check() - test the transaction log
