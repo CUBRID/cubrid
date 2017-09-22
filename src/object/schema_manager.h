@@ -57,11 +57,6 @@
 */
 typedef SM_CLASS ROOT_CLASS;
 
-struct root_class
-{
-  SM_CLASS_HEADER header;
-};
-
 /*
  * Structure used when truncating a class and changing an attribute.
  * During these operations, indexes are dropped and recreated.
