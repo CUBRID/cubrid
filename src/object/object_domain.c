@@ -961,6 +961,7 @@ tp_domain_free (TP_DOMAIN * dom)
 	{
           /* *INDENT-OFF* */
 	  delete dom->json_validator;
+          dom->json_validator = NULL;
           /* *INDENT-ON* */
 	}
 

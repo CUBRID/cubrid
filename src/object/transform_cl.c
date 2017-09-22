@@ -2025,7 +2025,7 @@ domain_size (TP_DOMAIN * domain)
 
   size += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
 
-  size += string_disk_size (domain->json_validator == NULL ? NULL : domain->json_validator->get_schema_raw ());
+  size += domain->json_validator == NULL ? 0 : string_disk_size (domain->json_validator->get_schema_raw ());
 
   return (size);
 }

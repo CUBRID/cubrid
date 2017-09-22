@@ -1771,7 +1771,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
   DB_ENUMERATION enumeration;
   int collation_id = 0;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_NORMAL;
-  JSON_VALIDATOR *validator;
+  JSON_VALIDATOR *validator = NULL;
   int rc;
 
   if (dt == NULL)
@@ -2009,7 +2009,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
   TP_DOMAIN_COLL_ACTION collation_flag;
   char *raw_schema = NULL;
 
-  JSON_VALIDATOR *validator;
+  JSON_VALIDATOR *validator = NULL;
 
   if (dt == NULL)
     {
