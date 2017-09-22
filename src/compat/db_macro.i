@@ -800,4 +800,1148 @@ db_value_scale (const DB_VALUE * value)
     }
 }
 
+/***********************************************************/
+/* db_make family of functions. */
+
+/*
+ * db_make_null() -
+ * return :
+ * value(out) :
+ */
+DB_MACRO_INLINE int
+db_make_null (DB_VALUE * value)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_NULL;
+  value->domain.general_info.is_null = 1;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_int() -
+ * return :
+ * value(out) :
+ * num(in):
+ */
+DB_MACRO_INLINE int
+db_make_int (DB_VALUE * value, const int num)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_INTEGER;
+  value->data.i = num;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_float() -
+ * return :
+ * value(out) :
+ * num(in):
+ */
+DB_MACRO_INLINE int
+db_make_float (DB_VALUE * value, const float num)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_FLOAT;
+  value->data.f = num;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_double() -
+ * return :
+ * value(out) :
+ * num(in):
+ */
+DB_MACRO_INLINE int
+db_make_double (DB_VALUE * value, const double num)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_DOUBLE;
+  value->data.d = num;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_object() -
+ * return :
+ * value(out) :
+ * obj(in):
+ */
+DB_MACRO_INLINE int
+db_make_object (DB_VALUE * value, DB_OBJECT * obj)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_OBJECT;
+  value->data.op = obj;
+  if (obj)
+    {
+      value->domain.general_info.is_null = 0;
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_set() -
+ * return :
+ * value(out) :
+ * set(in):
+ */
+DB_MACRO_INLINE int
+db_make_set (DB_VALUE * value, DB_SET * set)
+{
+  int error = NO_ERROR;
+
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_SET;
+  value->data.set = set;
+  if (set)
+    {
+      if ((set->set && setobj_type (set->set) == DB_TYPE_SET) || set->disk_set)
+	{
+	  value->domain.general_info.is_null = 0;
+	}
+      else
+	{
+	  error = ER_QPROC_INVALID_DATATYPE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	}
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+
+  value->need_clear = false;
+
+  return error;
+}
+
+/*
+ * db_make_multiset() -
+ * return :
+ * value(out) :
+ * set(in):
+ */
+DB_MACRO_INLINE int
+db_make_multiset (DB_VALUE * value, DB_SET * set)
+{
+  int error = NO_ERROR;
+
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_MULTISET;
+  value->data.set = set;
+  if (set)
+    {
+      if ((set->set && setobj_type (set->set) == DB_TYPE_MULTISET) || set->disk_set)
+	{
+	  value->domain.general_info.is_null = 0;
+	}
+      else
+	{
+	  error = ER_QPROC_INVALID_DATATYPE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	}
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+
+  value->need_clear = false;
+
+  return error;
+}
+
+/*
+ * db_make_sequence() -
+ * return :
+ * value(out) :
+ * set(in):
+ */
+DB_MACRO_INLINE int
+db_make_sequence (DB_VALUE * value, DB_SET * set)
+{
+  int error = NO_ERROR;
+
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_SEQUENCE;
+  value->data.set = set;
+  if (set)
+    {
+      if ((set->set && setobj_type (set->set) == DB_TYPE_SEQUENCE) || set->disk_set)
+	{
+	  value->domain.general_info.is_null = 0;
+	}
+      else
+	{
+	  error = ER_QPROC_INVALID_DATATYPE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	}
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+
+  value->need_clear = false;
+
+  return error;
+}
+
+/*
+ * db_make_collection() -
+ * return :
+ * value(out) :
+ * col(in):
+ */
+DB_MACRO_INLINE int
+db_make_collection (DB_VALUE * value, DB_COLLECTION * col)
+{
+  int error = NO_ERROR;
+
+  CHECK_1ARG_ERROR (value);
+
+  /* Rather than being DB_TYPE_COLLECTION, the value type is taken from the base type of the collection. */
+  if (col == NULL)
+    {
+      value->domain.general_info.type = DB_TYPE_SEQUENCE;	/* undefined */
+      value->data.set = NULL;
+      value->domain.general_info.is_null = 1;
+    }
+  else
+    {
+      value->domain.general_info.type = db_col_type (col);
+      value->data.set = col;
+      /* note, we have been testing set->set for non-NULL here in order to set the is_null flag, this isn't
+       * appropriate, the set pointer can be NULL if the set has been swapped out.The existance of a set handle alone
+       * determines the nullness of the value.  Actually, the act of calling db_col_type above will have resulted in a
+       * re-fetch of the referenced set if it had been swapped out. */
+      value->domain.general_info.is_null = 0;
+    }
+  value->need_clear = false;
+
+  return error;
+}
+
+/*
+ * db_make_midxkey() -
+ * return :
+ * value(out) :
+ * midxkey(in):
+ */
+DB_MACRO_INLINE int
+db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
+{
+  int error = NO_ERROR;
+
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_MIDXKEY;
+
+  if (midxkey == NULL)
+    {
+      value->domain.general_info.is_null = 1;
+      value->data.midxkey.ncolumns = -1;
+      value->data.midxkey.domain = NULL;
+      value->data.midxkey.size = 0;
+      value->data.midxkey.buf = NULL;
+      value->data.midxkey.min_max_val.position = -1;
+      value->data.midxkey.min_max_val.type = MIN_COLUMN;
+    }
+  else
+    {
+      value->domain.general_info.is_null = 0;
+      value->data.midxkey = *midxkey;
+    }
+
+  value->need_clear = false;
+
+  return error;
+}
+
+/*
+ * db_make_elo () -
+ * return:
+ * value(out):
+ * type(in):
+ * elo(in):
+ */
+DB_MACRO_INLINE int
+db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = type;
+  if (elo == NULL || elo->size < 0 || elo->type == ELO_NULL)
+    {
+      elo_init_structure (&value->data.elo);
+      value->domain.general_info.is_null = 1;
+    }
+  else
+    {
+      value->data.elo = *elo;
+      value->domain.general_info.is_null = 0;
+    }
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_time() -
+ * return :
+ * value(out) :
+ * hour(in):
+ * min(in):
+ * sec(in):
+ */
+DB_MACRO_INLINE int
+db_make_time (DB_VALUE * value, const int hour, const int min, const int sec)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_TIME;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+  return db_time_encode (&value->data.time, hour, min, sec);
+}
+
+/*
+ * db_make_timetz() -
+ * return :
+ * value(out) :
+ * hour(in):
+ * min(in):
+ * sec(in):
+ */
+DB_MACRO_INLINE int
+db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_TIMETZ;
+  value->need_clear = false;
+  if (timetz_value)
+    {
+      value->data.timetz.time = timetz_value->time;
+      value->data.timetz.tz_id = timetz_value->tz_id;
+      value->domain.general_info.is_null = 0;
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_timeltz() -
+ * return :
+ * value(out) :
+ * hour(in):
+ * min(in):
+ * sec(in):
+ */
+DB_MACRO_INLINE int
+db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_TIMELTZ;
+  value->need_clear = false;
+  if (time_value)
+    {
+      value->data.time = *time_value;
+      value->domain.general_info.is_null = 0;
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_date() -
+ * return :
+ * value(out):
+ * mon(in):
+ * day(in):
+ * year(in):
+ */
+DB_MACRO_INLINE int
+db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_DATE;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+  return db_date_encode (&value->data.date, mon, day, year);
+}
+
+/*
+ * db_make_timestamp() -
+ * return :
+ * value(out):
+ * timeval(in):
+ */
+DB_MACRO_INLINE int
+db_make_timestamp (DB_VALUE * value, const DB_TIMESTAMP timeval)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_TIMESTAMP;
+  value->data.utime = timeval;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_timestampltz() -
+ * return :
+ * value(out):
+ * timeval(in):
+ */
+DB_MACRO_INLINE int
+db_make_timestampltz (DB_VALUE * value, const DB_TIMESTAMP ts_val)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_TIMESTAMPLTZ;
+  value->data.utime = ts_val;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_timestamptz() -
+ * return :
+ * value(out):
+ * timeval(in):
+ */
+DB_MACRO_INLINE int
+db_make_timestamptz (DB_VALUE * value, const DB_TIMESTAMPTZ * ts_tz_val)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_TIMESTAMPTZ;
+  if (ts_tz_val)
+    {
+      value->data.timestamptz = *ts_tz_val;
+      value->domain.general_info.is_null = 0;
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_datetime() -
+ * return :
+ * value(out):
+ * date(in):
+ */
+DB_MACRO_INLINE int
+db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_DATETIME;
+  if (datetime)
+    {
+      value->data.datetime = *datetime;
+      value->domain.general_info.is_null = 0;
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_datetimeltz() -
+ * return :
+ * value(out):
+ * date(in):
+ */
+DB_MACRO_INLINE int
+db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_DATETIMELTZ;
+  if (datetime)
+    {
+      value->data.datetime = *datetime;
+      value->domain.general_info.is_null = 0;
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_datetimetz() -
+ * return :
+ * value(out):
+ * date(in):
+ */
+DB_MACRO_INLINE int
+db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_DATETIMETZ;
+  if (datetimetz)
+    {
+      value->data.datetimetz = *datetimetz;
+      value->domain.general_info.is_null = 0;
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_monetary() -
+ * return :
+ * value(out):
+ * type(in):
+ * amount(in):
+ */
+DB_MACRO_INLINE int
+db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount)
+{
+  int error;
+
+  CHECK_1ARG_ERROR (value);
+
+  /* check for valid currency type don't put default case in the switch!!! */
+  error = ER_INVALID_CURRENCY_TYPE;
+  switch (type)
+    {
+    case DB_CURRENCY_DOLLAR:
+    case DB_CURRENCY_YEN:
+    case DB_CURRENCY_WON:
+    case DB_CURRENCY_TL:
+    case DB_CURRENCY_BRITISH_POUND:
+    case DB_CURRENCY_CAMBODIAN_RIEL:
+    case DB_CURRENCY_CHINESE_RENMINBI:
+    case DB_CURRENCY_INDIAN_RUPEE:
+    case DB_CURRENCY_RUSSIAN_RUBLE:
+    case DB_CURRENCY_AUSTRALIAN_DOLLAR:
+    case DB_CURRENCY_CANADIAN_DOLLAR:
+    case DB_CURRENCY_BRASILIAN_REAL:
+    case DB_CURRENCY_ROMANIAN_LEU:
+    case DB_CURRENCY_EURO:
+    case DB_CURRENCY_SWISS_FRANC:
+    case DB_CURRENCY_DANISH_KRONE:
+    case DB_CURRENCY_NORWEGIAN_KRONE:
+    case DB_CURRENCY_BULGARIAN_LEV:
+    case DB_CURRENCY_VIETNAMESE_DONG:
+    case DB_CURRENCY_CZECH_KORUNA:
+    case DB_CURRENCY_POLISH_ZLOTY:
+    case DB_CURRENCY_SWEDISH_KRONA:
+    case DB_CURRENCY_CROATIAN_KUNA:
+    case DB_CURRENCY_SERBIAN_DINAR:
+      error = NO_ERROR;		/* it's a type we expect */
+      break;
+    default:
+      break;
+    }
+
+  if (error != NO_ERROR)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, type);
+      return error;
+    }
+
+  value->domain.general_info.type = DB_TYPE_MONETARY;
+  value->data.money.type = type;
+  value->data.money.amount = amount;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return error;
+}
+
+/*
+ * db_make_pointer() -
+ * return :
+ * value(out) :
+ * ptr(in):
+ */
+DB_MACRO_INLINE int
+db_make_pointer (DB_VALUE * value, void *ptr)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_POINTER;
+  value->data.p = ptr;
+  if (ptr)
+    {
+      value->domain.general_info.is_null = 0;
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_error() -
+ * return :
+ * value(out):
+ * errcode(in):
+ */
+DB_MACRO_INLINE int
+db_make_error (DB_VALUE * value, const int errcode)
+{
+  CHECK_1ARG_ERROR (value);
+
+  assert (errcode != NO_ERROR);
+
+  value->domain.general_info.type = DB_TYPE_ERROR;
+  value->data.error = errcode;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_method_error() -
+ * return :
+ * value(out):
+ * errcode(in):
+ * errmsg(in);
+ */
+DB_MACRO_INLINE int
+db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_ERROR;
+  value->data.error = errcode;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+#if !defined(SERVER_MODE)
+  if (obj_Method_error_msg)
+    {
+      free (obj_Method_error_msg);	/* free old last error */
+    }
+  obj_Method_error_msg = NULL;
+  if (errmsg)
+    {
+      obj_Method_error_msg = strdup (errmsg);
+    }
+#endif
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_short() -
+ * return :
+ * value(out) :
+ * num(in) :
+ */
+DB_MACRO_INLINE int
+db_make_short (DB_VALUE * value, const short num)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_SHORT;
+  value->data.sh = num;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_bigint() -
+ * return :
+ * value(out) :
+ * num(in) :
+ */
+DB_MACRO_INLINE int
+db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_BIGINT;
+  value->data.bigint = num;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_numeric() -
+ * return :
+ * value(out) :
+ * num(in):
+ * precision(in):
+ * scale(in):
+ */
+DB_MACRO_INLINE int
+db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
+{
+  int error = NO_ERROR;
+
+  CHECK_1ARG_ERROR (value);
+
+  error = db_value_domain_init (value, DB_TYPE_NUMERIC, precision, scale);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (num)
+    {
+      value->domain.general_info.is_null = 0;
+      memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+  return error;
+}
+
+/*
+ * db_make_string() -
+ * return :
+ * value(out) :
+ * str(in):
+ */
+DB_MACRO_INLINE int
+db_make_string (DB_VALUE * value, const char *str)
+{
+  int error;
+  int size;
+
+  CHECK_1ARG_ERROR (value);
+
+  error = db_value_domain_init (value, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
+  if (error == NO_ERROR)
+    {
+      if (str)
+	{
+	  size = strlen (str);
+	}
+      else
+	{
+	  size = 0;
+	}
+      error = db_make_db_char (value, LANG_SYS_CODESET, LANG_SYS_COLLATION, str, size);
+    }
+  return error;
+}
+
+/*
+ * db_make_string_copy() - alloc buffer and copy str into the buffer.
+ *                         need_clear will set as true.
+ * return :
+ * value(out) :
+ * str(in):
+ */
+DB_MACRO_INLINE int
+db_make_string_copy (DB_VALUE * value, const char *str)
+{
+  int error;
+  DB_VALUE tmp_value;
+
+  CHECK_1ARG_ERROR (value);
+
+  error = db_make_string (&tmp_value, str);
+  if (error == NO_ERROR)
+    {
+      error = pr_clone_value (&tmp_value, value);
+    }
+
+  return error;
+}
+
+/*
+ * db_make_db_char() -
+ * return :
+ * value(out) :
+ * codeset(in):
+ * collation_id(in):
+ * str(in):
+ * size(in):
+ */
+DB_MACRO_INLINE int
+db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
+{
+  int error = NO_ERROR;
+  bool is_char_type;
+
+  CHECK_1ARG_ERROR (value);
+
+  is_char_type = (value->domain.general_info.type == DB_TYPE_VARCHAR
+		  || value->domain.general_info.type == DB_TYPE_CHAR
+		  || value->domain.general_info.type == DB_TYPE_NCHAR
+		  || value->domain.general_info.type == DB_TYPE_VARNCHAR
+		  || value->domain.general_info.type == DB_TYPE_BIT
+		  || value->domain.general_info.type == DB_TYPE_VARBIT);
+
+  if (is_char_type)
+    {
+#if 0
+      if (size <= DB_SMALL_CHAR_BUF_SIZE)
+	{
+	  value->data.ch.info.style = SMALL_STRING;
+	  value->data.ch.sm.codeset = codeset;
+	  value->data.ch.sm.size = size;
+	  memcpy (value->data.ch.sm.buf, str, size);
+	}
+      else
+#endif
+      if (size <= DB_MAX_STRING_LENGTH)
+	{
+	  value->data.ch.info.style = MEDIUM_STRING;
+	  value->data.ch.info.codeset = codeset;
+	  value->domain.char_info.collation_id = collation_id;
+	  value->data.ch.info.is_max_string = false;
+	  value->data.ch.info.compressed_need_clear = false;
+	  value->data.ch.medium.compressed_buf = NULL;
+	  value->data.ch.medium.compressed_size = 0;
+	  /* 
+	   * If size is set to the default, and the type is any
+	   * kind of character string, assume the string is NULL
+	   * terminated.
+	   */
+	  if (size == DB_DEFAULT_STRING_LENGTH && QSTR_IS_ANY_CHAR (value->domain.general_info.type))
+	    {
+	      value->data.ch.medium.size = str ? strlen (str) : 0;
+	    }
+	  else if (size < 0)
+	    {
+	      error = ER_QSTR_BAD_LENGTH;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_BAD_LENGTH, 1, size);
+	    }
+	  else
+	    {
+	      /* We need to ensure that we don't exceed the max size for the char value specified in the domain. */
+	      if (value->domain.char_info.length == TP_FLOATING_PRECISION_VALUE || LANG_VARIABLE_CHARSET (codeset))
+		{
+		  value->data.ch.medium.size = size;
+		}
+	      else
+		{
+		  value->data.ch.medium.size = MIN (size, value->domain.char_info.length);
+		}
+	    }
+	  value->data.ch.medium.buf = (char *) str;
+	}
+      else
+	{
+	  /* case LARGE_STRING: Currently Not Implemented */
+	}
+
+      if (str)
+	{
+	  value->domain.general_info.is_null = 0;
+	}
+      else
+	{
+	  value->domain.general_info.is_null = 1;
+	}
+
+      if (size == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+	{
+	  value->domain.general_info.is_null = 1;
+	}
+
+      value->need_clear = false;
+    }
+  else
+    {
+      error = ER_QPROC_INVALID_DATATYPE;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+    }
+  return error;
+}
+
+/*
+ * db_make_bit() -
+ * return :
+ * value(out) :
+ * bit_length(in):
+ * bit_str(in):
+ * bit_str_bit_size(in):
+ */
+DB_MACRO_INLINE int
+db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size)
+{
+  int error;
+
+  CHECK_1ARG_ERROR (value);
+
+  error = db_value_domain_init (value, DB_TYPE_BIT, bit_length, 0);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = db_make_db_char (value, INTL_CODESET_RAW_BITS, 0, bit_str, bit_str_bit_size);
+  return error;
+}
+
+/*
+ * db_make_varbit() -
+ * return :
+ * value(out) :
+ * max_bit_length(in):
+ * bit_str(in):
+ * bit_str_bit_size(in):
+ */
+DB_MACRO_INLINE int
+db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size)
+{
+  int error;
+
+  CHECK_1ARG_ERROR (value);
+
+  error = db_value_domain_init (value, DB_TYPE_VARBIT, max_bit_length, 0);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = db_make_db_char (value, INTL_CODESET_RAW_BITS, 0, bit_str, bit_str_bit_size);
+
+  return error;
+}
+
+/*
+ * db_make_char() -
+ * return :
+ * value(out) :
+ * char_length(in):
+ * str(in):
+ * char_str_byte_size(in):
+ */
+DB_MACRO_INLINE int
+db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
+	      const int char_str_byte_size, const int codeset, const int collation_id)
+{
+  int error;
+
+  CHECK_1ARG_ERROR (value);
+
+  error = db_value_domain_init (value, DB_TYPE_CHAR, char_length, 0);
+  if (error == NO_ERROR)
+    {
+      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, char_str_byte_size);
+    }
+
+  return error;
+}
+
+/*
+ * db_make_varchar() -
+ * return :
+ * value(out) :
+ * max_char_length(in):
+ * str(in):
+ * char_str_byte_size(in):
+ */
+DB_MACRO_INLINE int
+db_make_varchar (DB_VALUE * value, const int max_char_length,
+		 const DB_C_CHAR str, const int char_str_byte_size, const int codeset, const int collation_id)
+{
+  int error;
+
+  CHECK_1ARG_ERROR (value);
+
+  error = db_value_domain_init (value, DB_TYPE_VARCHAR, max_char_length, 0);
+  if (error == NO_ERROR)
+    {
+      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, char_str_byte_size);
+    }
+
+  return error;
+}
+
+/*
+ * db_make_nchar() -
+ * return :
+ * value(out) :
+ * nchar_length(in):
+ * str(in):
+ * nchar_str_byte_size(in):
+ */
+DB_MACRO_INLINE int
+db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
+	       const int nchar_str_byte_size, const int codeset, const int collation_id)
+{
+  int error;
+
+  CHECK_1ARG_ERROR (value);
+
+  error = db_value_domain_init (value, DB_TYPE_NCHAR, nchar_length, 0);
+  if (error == NO_ERROR)
+    {
+      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, nchar_str_byte_size);
+    }
+
+  return error;
+}
+
+/*
+ * db_make_varnchar() -
+ * return :
+ * value(out) :
+ * max_nchar_length(in):
+ * str(in):
+ * nchar_str_byte_size(in):
+ */
+DB_MACRO_INLINE int
+db_make_varnchar (DB_VALUE * value, const int max_nchar_length,
+		  const DB_C_NCHAR str, const int nchar_str_byte_size, const int codeset, const int collation_id)
+{
+  int error;
+
+  CHECK_1ARG_ERROR (value);
+
+  error = db_value_domain_init (value, DB_TYPE_VARNCHAR, max_nchar_length, 0);
+  if (error == NO_ERROR)
+    {
+      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, nchar_str_byte_size);
+    }
+
+  return error;
+}
+
+/*
+ * db_make_enumeration() -
+ * return :
+ * value(out):
+ * index(in):
+ * str(in):
+ * size(in):
+ * codeset(in):
+ * collation_id(in):
+ */
+DB_MACRO_INLINE int
+db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str,
+		     int size, unsigned char codeset, const int collation_id)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_ENUMERATION;
+  value->data.enumeration.short_val = index;
+  value->data.enumeration.str_val.info.codeset = codeset;
+  value->domain.char_info.collation_id = collation_id;
+  value->data.enumeration.str_val.info.style = MEDIUM_STRING;
+  value->data.ch.info.is_max_string = false;
+  value->data.ch.info.compressed_need_clear = false;
+  value->data.ch.medium.compressed_buf = NULL;
+  value->data.ch.medium.compressed_size = 0;
+  value->data.enumeration.str_val.medium.size = size;
+  value->data.enumeration.str_val.medium.buf = str;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_resultset() -
+ * return :
+ * value(out):
+ * handle(in):
+ */
+DB_MACRO_INLINE int
+db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = DB_TYPE_RESULTSET;
+  value->data.rset = handle;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_make_oid() -
+ * return :
+ * value(out):
+ * oid(in):
+ */
+DB_MACRO_INLINE int
+db_make_oid (DB_VALUE * value, const OID * oid)
+{
+  CHECK_2ARGS_ERROR (value, oid);
+
+  value->domain.general_info.type = DB_TYPE_OID;
+  value->data.oid.pageid = oid->pageid;
+  value->data.oid.slotid = oid->slotid;
+  value->data.oid.volid = oid->volid;
+  value->domain.general_info.is_null = OID_ISNULL (oid);
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
 #endif          /* _DB_MACRO_I_*/

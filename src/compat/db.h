@@ -204,8 +204,6 @@ extern void *db_value_eh_key (DB_VALUE * value);
 extern int db_value_put_db_data (DB_VALUE * value, const DB_DATA * data);
 #endif
 extern DB_DATA *db_value_get_db_data (DB_VALUE * value);
-extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
-			    const int size);
 
 extern DB_OBJECT *db_create_internal (DB_OBJECT * obj);
 extern DB_OBJECT *db_create_by_name_internal (const char *name);
