@@ -282,6 +282,7 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 				    int *token_size);
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
+static int db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, JSON_DOC * doc);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')

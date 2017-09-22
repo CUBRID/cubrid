@@ -208,8 +208,6 @@ extern int db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_ar
 extern int db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 
-static int db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, JSON_DOC * doc);
-
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count);
 #endif
