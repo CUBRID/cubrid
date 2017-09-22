@@ -3741,6 +3741,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   PRUNING_CONTEXT pcontext;
   BTID pk_btid;
   OID pk_clsoid;
+  HFID pk_dummy_hfid;
   BTREE_SCAN_PART partitions[MAX_PARTITIONS];
   bool has_nulls = false;
 
@@ -3914,6 +3915,11 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  if (BTID_IS_NULL (&partitions[pos].btid))
 	    {
 	      /* No need to lock individual partitions here, since the partitioned table is already locked */
+	      ret = partition_prune_unique_btid (&pcontext, &fk_key, &pk_clsoid, &pk_dummy_hfid, &pk_btid);
+	      if (ret != NO_ERROR)
+		{
+		  break;
+		}
 
 	      /* Update the partition BTID. */
 	      BTID_COPY (&partitions[pos].btid, &pk_btid);
