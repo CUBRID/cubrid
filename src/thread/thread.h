@@ -467,17 +467,20 @@ extern void thread_wakeup_auto_volume_expansion_thread (void);
 extern void thread_wakeup_vacuum_master_thread (void);
 extern void thread_wakeup_vacuum_worker_threads (int n_workers);
 extern void thread_wakeup_dwb_flush_block_with_checksum_thread (void);
+extern void thread_wakeup_dwb_checksum_computation_thread (void);
 
 /* is available functions */
 extern bool thread_is_page_flush_thread_available (void);
 extern bool thread_is_page_post_flush_thread_available (void);
 extern bool thread_is_log_flush_thread_available (void);
 extern bool thread_is_auto_volume_expansion_thread_available (void);
-extern bool thread_is_dwb_block_and_flush_thread_available (void);
+extern bool thread_is_dwb_flush_block_thread_available (void);
+extern bool thread_is_dwb_checksum_computation_thread_available (void);
 
 /* is running functions */
 extern bool thread_auto_volume_expansion_thread_is_running (void);
 extern bool thread_dwb_flush_block_with_checksum_thread_is_running (void);
+extern bool thread_dwb_checksum_computation_thread_is_running (void);
 
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_next_lockwait_entry (int *thrd_index);
