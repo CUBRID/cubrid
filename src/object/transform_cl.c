@@ -2063,7 +2063,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   offset += enumeration_size (&DOM_GET_ENUMERATION (domain));
 
   or_put_offset (buf, offset);
-  offset += string_disk_size (domain->json_validator == NULL ? NULL : domain->json_validator->get_schema_raw ());
+  offset += domain->json_validator == NULL ? 0 : string_disk_size (domain->json_validator->get_schema_raw ());
 
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
