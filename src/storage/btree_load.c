@@ -4063,7 +4063,7 @@ end:
 
   if (has_partitions)
     {
-      for (i = 0; i < part_count - 1; i++)
+      for (i = 0; i < part_count; i++)
 	{
 	  if (partitions[i].bt_scan.C_page != NULL)
 	    {
