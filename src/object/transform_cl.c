@@ -3051,8 +3051,8 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 
 #if !defined (NDEBUG)
 		  {
-		    DB_TYPE db_value_type = db_value_type (&def_expr_format);
-		    assert (db_value_type == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type));
+		    DB_TYPE db_value_type_local = db_value_type (&def_expr_format);
+		    assert (db_value_type_local == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type_local));
 		  }
 #endif
 		  if (!db_value_is_null (&def_expr_format))

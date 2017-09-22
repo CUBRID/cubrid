@@ -21,6 +21,8 @@
  * db_macro.i - API/inlined functions related to db_make and DB_GET
  *
  */
+
+#pragma once
  
 #ident "$Id$"
 

@@ -34,7 +34,6 @@
 #include "language_support.h"
 #include "system_parameter.h"
 #include "object_domain.h"
-#include "db_macro.i"
 
 #undef DB_IS_NULL
 #if !defined(NDEBUG)
