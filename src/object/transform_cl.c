@@ -4114,8 +4114,8 @@ on_error:
  *    root(in): root class object
  *    header_size(in): the size of header - variable in MVCC
  * Note:
- *    Caller must have a setup a jmpbuf (called setjmp) to handle any
- *    errors
+ *    Caller must have a setup a jmpbuf (called setjmp) to handle any errors.
+ *    Only the header part of the 'root' object is serialized. Please see comment on ROOT_CLASS definition.
  */
 static void
 root_to_disk (OR_BUF * buf, ROOT_CLASS * root)
@@ -4156,6 +4156,9 @@ root_to_disk (OR_BUF * buf, ROOT_CLASS * root)
  * root_size - Calculates the disk size of the root class.
  *    return: disk size of root class
  *    rootobj(in): root class object
+ *
+ *  Note:
+ *    Only the header part of the 'root' object is serialized. Please see comment on ROOT_CLASS definition.
  */
 static int
 root_size (MOBJ rootobj)
@@ -4181,8 +4184,8 @@ root_size (MOBJ rootobj)
  *    return: root class object
  *    buf(in/out): translation buffer
  * Note:
- *    We know there is only one static structure for the root class so we use
- *    it rather than allocating a structure.
+ *    We know there is only one static structure for the root class so we use it rather than allocating a structure.
+ *    Only the header part of the 'root' object is serialized. Please see comment on ROOT_CLASS definition.
  */
 static ROOT_CLASS *
 disk_to_root (OR_BUF * buf)
