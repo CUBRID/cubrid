@@ -49,104 +49,6 @@ extern "C"
     LARGE_STRING
   } STRING_STYLE;
 
-  /********************************************************/
-  /* From intl_support.h */
-
-  enum intl_codeset
-  {
-    INTL_CODESET_ERROR = -2,
-    INTL_CODESET_NONE = -1,
-    INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
-    INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
-    INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
-    INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
-    INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
-    INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
-
-    INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
-
-    INTL_CODESET_LAST = INTL_CODESET_UTF8
-  };
-  typedef enum intl_codeset INTL_CODESET;
-
-  extern int intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
-  extern int intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
-
-  /********************************************************/
-  /* From db.h */
-
-  /* Argument checking macros */
-#define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
-  do {                                                                         \
-    if((obj) == NULL) {                                                        \
-      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-      return (expr);                                                           \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_2ARGS_RETURN_EXPR(obj1, obj2, expr)                              \
-  do {                                                                         \
-    if((obj1) == NULL || (obj2) == NULL) {                                     \
-      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-      return (expr);                                                           \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, expr)                        \
-  do {                                                                         \
-    if((obj1) == NULL || (obj2) == NULL || (obj3) == NULL) {                   \
-      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-      return (expr);                                                           \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_1ARG_NULL(obj)        \
-  CHECK_1ARG_RETURN_EXPR(obj, NULL)
-
-#define CHECK_2ARGS_NULL(obj1, obj2)    \
-  CHECK_2ARGS_RETURN_EXPR(obj1,obj2,NULL)
-
-#define CHECK_3ARGS_NULL(obj1, obj2, obj3) \
-  CHECK_3ARGS_RETURN_EXPR(obj1,obj2,obj3,NULL)
-
-#define CHECK_1ARG_FALSE(obj)  \
-  CHECK_1ARG_RETURN_EXPR(obj,false)
-
-#define CHECK_1ARG_TRUE(obj)   \
-  CHECK_1ARG_RETURN_EXPR(obj, true)
-
-#define CHECK_1ARG_ERROR(obj)  \
-  CHECK_1ARG_RETURN_EXPR(obj,ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_1ARG_ERROR_WITH_TYPE(obj, TYPE)  \
-  CHECK_1ARG_RETURN_EXPR(obj,(TYPE)ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_1ARG_MINUSONE(obj) \
-  CHECK_1ARG_RETURN_EXPR(obj,-1)
-
-#define CHECK_2ARGS_ERROR(obj1, obj2)   \
-  CHECK_2ARGS_RETURN_EXPR(obj1, obj2, ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_3ARGS_ERROR(obj1, obj2, obj3) \
-  CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_1ARG_ZERO(obj)     \
-  CHECK_1ARG_RETURN_EXPR(obj, 0)
-
-#define CHECK_1ARG_ZERO_WITH_TYPE(obj1, RETURN_TYPE)     \
-  CHECK_1ARG_RETURN_EXPR(obj1, (RETURN_TYPE) 0)
-
-#define CHECK_2ARGS_ZERO(obj1, obj2)    \
-  CHECK_2ARGS_RETURN_EXPR(obj1,obj2, 0)
-
-#define CHECK_1ARG_UNKNOWN(obj1)        \
-  CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
-
-  /********************************************************/
-  /* From object_accessor.h */
-  extern char *obj_Method_error_msg;
-
-  /********************************************************/
 
 /*
  * DB_MAX_IDENTIFIER_LENGTH -
@@ -740,11 +642,13 @@ extern "C"
  * recognize the type of set being used, type it appropriately and only
  * call those db_ functions defined for that type.
  */
+
   typedef struct db_collection DB_COLLECTION;
   typedef DB_COLLECTION DB_MULTISET;
   typedef DB_COLLECTION DB_SEQ;
   typedef DB_COLLECTION DB_SET;
 
+  
   enum special_column_type
   {
     MIN_COLUMN = 0,
@@ -1127,6 +1031,154 @@ extern "C"
     V_UNKNOWN = 2,
     V_ERROR = -1
   } DB_LOGICAL;
+
+    /********************************************************/
+  /* From intl_support.h */
+
+  enum intl_codeset
+  {
+    INTL_CODESET_ERROR = -2,
+    INTL_CODESET_NONE = -1,
+    INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
+    INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
+    INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
+    INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
+    INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
+    INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+
+    INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
+
+    INTL_CODESET_LAST = INTL_CODESET_UTF8
+  };
+  typedef enum intl_codeset INTL_CODESET;
+
+  extern int intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
+  extern int intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
+
+  /********************************************************/
+  /* From db.h */
+
+  /* Argument checking macros */
+#define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
+  do {                                                                         \
+    if((obj) == NULL) {                                                        \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_2ARGS_RETURN_EXPR(obj1, obj2, expr)                              \
+  do {                                                                         \
+    if((obj1) == NULL || (obj2) == NULL) {                                     \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, expr)                        \
+  do {                                                                         \
+    if((obj1) == NULL || (obj2) == NULL || (obj3) == NULL) {                   \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_1ARG_NULL(obj)        \
+  CHECK_1ARG_RETURN_EXPR(obj, NULL)
+
+#define CHECK_2ARGS_NULL(obj1, obj2)    \
+  CHECK_2ARGS_RETURN_EXPR(obj1,obj2,NULL)
+
+#define CHECK_3ARGS_NULL(obj1, obj2, obj3) \
+  CHECK_3ARGS_RETURN_EXPR(obj1,obj2,obj3,NULL)
+
+#define CHECK_1ARG_FALSE(obj)  \
+  CHECK_1ARG_RETURN_EXPR(obj,false)
+
+#define CHECK_1ARG_TRUE(obj)   \
+  CHECK_1ARG_RETURN_EXPR(obj, true)
+
+#define CHECK_1ARG_ERROR(obj)  \
+  CHECK_1ARG_RETURN_EXPR(obj,ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_ERROR_WITH_TYPE(obj, TYPE)  \
+  CHECK_1ARG_RETURN_EXPR(obj,(TYPE)ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_MINUSONE(obj) \
+  CHECK_1ARG_RETURN_EXPR(obj,-1)
+
+#define CHECK_2ARGS_ERROR(obj1, obj2)   \
+  CHECK_2ARGS_RETURN_EXPR(obj1, obj2, ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_3ARGS_ERROR(obj1, obj2, obj3) \
+  CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_ZERO(obj)     \
+  CHECK_1ARG_RETURN_EXPR(obj, 0)
+
+#define CHECK_1ARG_ZERO_WITH_TYPE(obj1, RETURN_TYPE)     \
+  CHECK_1ARG_RETURN_EXPR(obj1, (RETURN_TYPE) 0)
+
+#define CHECK_2ARGS_ZERO(obj1, obj2)    \
+  CHECK_2ARGS_RETURN_EXPR(obj1,obj2, 0)
+
+#define CHECK_1ARG_UNKNOWN(obj1)        \
+  CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
+
+  /********************************************************/
+  /* From object_representation.h */
+
+  /*
+  * SETOBJ
+  *    This is the primitive set object header.
+  */
+  typedef struct setobj SETOBJ;
+  /********************************************************/
+  /* From object_accessor.h */
+  extern char *obj_Method_error_msg;
+
+  /********************************************************/
+  /* From set_object.h */
+  
+  /*
+  * struct setobj
+  * The internal structure of a setobj data struct is private to this module.
+  * all access to this structure should be encapsulated via function calls.
+  */
+  typedef struct setobj
+  {
+
+    DB_TYPE coltype;
+    int size;			/* valid indexes from 0 to size -1 aka the number of represented values in the
+                                * collection */
+    int lastinsert;		/* the last value insertion point 0 to size. */
+    int topblock;			/* maximum index of an allocated block. This is the maximum non-NULL db_value pointer
+                                        * index of array. array[topblock] should be non-NULL. array[topblock+1] will be a NULL
+                                        * pointer for future expansion. */
+    int arraytop;			/* maximum indexable pointer in array the valid indexes for array are 0 to arraytop
+                                        * inclusive Generally this may be greater than topblock */
+    int topblockcount;		/* This is the max index of the top block Since it may be shorter than a standard sized
+                                * block for space efficiency. */
+    DB_VALUE **array;
+
+    /* not stored on disk, attached at run time by the schema */
+    struct tp_domain *domain;
+
+    /* external reference list */
+    DB_COLLECTION *references;
+
+    /* clear if we can't guarantee sort order, always on for sequences */
+    unsigned sorted : 1;
+
+    /* set if we can't guarantee that there are no temporary OID's in here */
+    unsigned may_have_temporary_oids : 1;
+  };
+
+  typedef SETOBJ COL;
+
+  extern DB_TYPE setobj_type(COL * set);
+
+  /********************************************************/
 
   extern DB_VALUE *db_value_create (void);
   extern DB_VALUE *db_value_copy (DB_VALUE * value);

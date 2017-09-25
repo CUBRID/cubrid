@@ -38,7 +38,7 @@
 #else
 #define DB_MACRO_INLINE
 #endif
- 
+
 /*
  * db_get_int() -
  * return :

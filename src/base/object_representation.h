@@ -1139,12 +1139,6 @@ struct db_set
 };
 
 /*
- * SETOBJ
- *    This is the primitive set object header.
- */
-typedef struct setobj SETOBJ;
-
-/*
  * OR_TYPE_SIZE
  *    Returns the byte size of the disk representation of a particular
  *    type.  Returns -1 if the type is variable and the size cannot
