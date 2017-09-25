@@ -1699,7 +1699,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	if (bytes_size > 0 && db_get_enum_codeset (value) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
-	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
+	      unicode_string_need_decompose ((char *) str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
 	  }
 
 	if (need_decomp)
@@ -1707,7 +1707,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	    decomposed = (char *) malloc (decomp_size * sizeof (char));
 	    if (decomposed != NULL)
 	      {
-		unicode_decompose_string (str, bytes_size, decomposed, &decomp_size, lang_get_generic_unicode_norm ());
+		unicode_decompose_string ((char *) str, bytes_size, decomposed, &decomp_size,
+					  lang_get_generic_unicode_norm ());
 
 		str = decomposed;
 		bytes_size = decomp_size;

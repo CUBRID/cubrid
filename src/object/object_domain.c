@@ -33,45 +33,26 @@
 #include <float.h>
 #include <math.h>
 #include <errno.h>
+#include <assert.h>
 
-#include "memory_alloc.h"
-#include "area_alloc.h"
-
-#include "mprec.h"
-#include "object_representation.h"
-#include "db.h"
-
-#include "object_primitive.h"
 #include "object_domain.h"
-
-#include "work_space.h"
-#if !defined (SERVER_MODE)
-#include "virtual_object.h"
-#include "object_accessor.h"
-#else /* SERVER_MODE */
-#include "object_accessor.h"
-#endif /* !SERVER_MODE */
+#include "object_primitive.h"
+#include "numeric_opfunc.h"
+#include "dbdef.h"
+#include "db_date.h"
+#include "mprec.h"
 #include "set_object.h"
-
 #include "string_opfunc.h"
-#include "cnv.h"
-#include "cnverr.h"
 #include "tz_support.h"
-
+#include "chartype.h"
 #if !defined (SERVER_MODE)
+#include "work_space.h"
+#include "virtual_object.h"
 #include "schema_manager.h"
 #include "locator_cl.h"
-#endif /* !SERVER_MODE */
-
-#if defined (SERVER_MODE)
-#include "connection_error.h"
-#include "language_support.h"
-#include "xserver_interface.h"
-#endif /* SERVER_MODE */
-
-#include "server_interface.h"
-#include "chartype.h"
-
+#include "object_template.h"
+#include "dbi.h"
+#endif /* !defined (SERVER_MODE) */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -595,7 +576,7 @@ static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int 
 static TP_DOMAIN_STATUS tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 						TP_COERCION_MODE coercion_mode, bool do_domain_select,
 						bool preserve_domain);
-static int oidcmp (OID * oid1, OID * oid2);
+static DB_VALUE_COMPARE_RESULT oidcmp (OID * oid1, OID * oid2);
 static int tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact, bool match_order);
 #if defined(CUBRID_DEBUG)
 static void fprint_domain (FILE * fp, TP_DOMAIN * domain);
@@ -1137,7 +1118,11 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 	   */
 	  if (class_obj)
 	    {
+#if defined (SERVER_MODE)
+	      assert_release (false);
+#else /* !defined (SERVER_MODE) */
 	      new_dm->class_oid = class_obj->oid_info.oid;
+#endif /* !SERVER_MODE */
 	    }
 	}
 
@@ -1199,7 +1184,7 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
 
   dest->count = src->count;
 
-  dest->elements = malloc (src->count * sizeof (DB_ENUM_ELEMENT));
+  dest->elements = (DB_ENUM_ELEMENT *) malloc (src->count * sizeof (DB_ENUM_ELEMENT));
   if (dest->elements == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, src->count * sizeof (DB_ENUM_ELEMENT));
@@ -1215,7 +1200,7 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
 
       if (DB_GET_ENUM_ELEM_STRING (src_elem) != NULL)
 	{
-	  dest_str = malloc (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1);
+	  dest_str = (char *) malloc (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1);
 	  if (dest_str == NULL)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -1549,6 +1534,9 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_OBJECT:
     case DB_TYPE_SUB:
 
+#if defined (SERVER_MODE)
+      match = OID_EQ (&dom1->class_oid, &dom2->class_oid);
+#else /* !defined (SERVER_MODE) */
       /* 
        * if "exact" is zero, we should be checking the subclass hierarchy of
        * dom1 to see id dom2 is in it !
@@ -1579,6 +1567,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	      match = OID_EQ (WS_OID (dom1->class_mop), &dom2->class_oid);
 	    }
 	}
+#endif /* defined (SERVER_MODE) */
 
       if (match == 0 && exact == TP_SET_MATCH && dom1->class_mop == NULL && OID_ISNULL (&dom1->class_oid))
 	{
@@ -1834,6 +1823,9 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_RESULTSET:
     case DB_TYPE_TABLE:
       break;
+    case DB_TYPE_ELO:
+      assert (false);
+      break;
       /* don't have a default so we make sure to add clauses for all types */
     }
 
@@ -1966,6 +1958,10 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_OBJECT:
     case DB_TYPE_SUB:
 
+#if defined (SERVER_MODE)
+      /* not match for these types on server... fall through. */
+#else /* !defined (SERVER_MODE) */
+
       while (domain)
 	{
 	  /* 
@@ -2012,6 +2008,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	  *ins_pos = domain;
 	  domain = domain->next_list;
 	}
+#endif /* !defined (SERVER_MODE) */
       break;
 
     case DB_TYPE_VARIABLE:
@@ -2477,7 +2474,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_RESULTSET:
     case DB_TYPE_TABLE:
       break;
-
+    case DB_TYPE_ELO:
+      assert (false);
+      break;
       /* don't have a default so we make sure to add clauses for all types */
     }
 
@@ -2714,6 +2713,9 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_m
 	}
       else
 	{
+#if defined (SERVER_MODE)
+	  assert_release (false);
+#else /* defined (SERVER_MODE) */
 	  /* 
 	   * We have a mixture of OID & MOPS, it probably isn't necessary to be
 	   * this general but try to avoid assuming the class OIDs have been set
@@ -2733,6 +2735,7 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_m
 		  break;	/* found */
 		}
 	    }
+#endif /* defined (SERVER_MODE) */
 	}
     }
 
@@ -3370,6 +3373,9 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  break;
 	case DB_TYPE_RESULTSET:
 	case DB_TYPE_TABLE:
+	  break;
+	case DB_TYPE_ELO:
+	  assert (false);
 	  break;
 	}
     }
@@ -5378,7 +5384,7 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
   assert (DB_VALUE_TYPE (src) == DB_TYPE_FLOAT);
   assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
 
-  rve = str_float = db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
+  rve = str_float = (char *) db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
   if (str_float == NULL)
     {
       DB_MAKE_NULL (result);
@@ -5449,7 +5455,7 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
   assert (DB_VALUE_TYPE (src) == DB_TYPE_DOUBLE);
   assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
 
-  rve = str_double = db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
+  rve = str_double = (char *) db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
   if (str_double == NULL)
     {
       DB_MAKE_NULL (result);
@@ -9417,7 +9423,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    int src_size = DB_GET_STRING_SIZE (src);
 	    int dst_size = (src_size + 1) / 2;
 
-	    bit_char_string = db_private_alloc (NULL, dst_size + 1);
+	    bit_char_string = (char *) db_private_alloc (NULL, dst_size + 1);
 	    if (bit_char_string)
 	      {
 		if (qstr_hex_to_bin (bit_char_string, dst_size, DB_GET_STRING (src), src_size) != src_size)
@@ -10249,7 +10255,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 		if (alloc_string)
 		  {
-		    enum_str = db_private_alloc (NULL, val_str_size + 1);
+		    enum_str = (char *) db_private_alloc (NULL, val_str_size + 1);
 		    if (enum_str == NULL)
 		      {
 			status = DOMAIN_ERROR;
@@ -10434,17 +10440,18 @@ tp_value_change_coll_and_codeset (DB_VALUE * src, DB_VALUE * dest, int coll_id, 
  *    The underlying oid_compare should be using these so we can avoid
  *    an extra level of indirection.
  */
-static int
+static DB_VALUE_COMPARE_RESULT
 oidcmp (OID * oid1, OID * oid2)
 {
-  int status;
+  DB_VALUE_COMPARE_RESULT status;
+  int c;
 
-  status = oid_compare (oid1, oid2);
-  if (status < 0)
+  c = oid_compare (oid1, oid2);
+  if (c < 0)
     {
       status = DB_LT;
     }
-  else if (status > 0)
+  else if (c > 0)
     {
       status = DB_GT;
     }
@@ -10517,30 +10524,32 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
  *    If the total_order flag is set, it will return one of DB_LT, DB_GT, or
  *    SB_SUBSET, DB_SUPERSET, or DB_EQ, it will not return DB_UNK.
  */
-int
+DB_VALUE_COMPARE_RESULT
 tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order)
 {
   DB_VALUE temp;
-  int status, coercion;
+  int coercion;
   DB_VALUE *v1, *v2;
   DB_TYPE vtype1, vtype2;
   DB_SET *s1, *s2;
+  DB_VALUE_COMPARE_RESULT result = DB_UNK;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
   coercion = 0;
   if (DB_IS_NULL (value1))
     {
       if (DB_IS_NULL (value2))
 	{
-	  status = (total_order ? DB_EQ : DB_UNK);
+	  result = (total_order ? DB_EQ : DB_UNK);
 	}
       else
 	{
-	  status = (total_order ? DB_LT : DB_UNK);
+	  result = (total_order ? DB_LT : DB_UNK);
 	}
     }
   else if (DB_IS_NULL (value2))
     {
-      status = (total_order ? DB_GT : DB_UNK);
+      result = (total_order ? DB_GT : DB_UNK);
     }
   else
     {
@@ -10623,11 +10632,11 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
        */
       if (s1 && s2)
 	{
-	  status = set_compare (s1, s2, do_coercion);
+	  result = set_compare (s1, s2, do_coercion);
 	}
       else
 	{
-	  status = DB_UNK;
+	  result = DB_UNK;
 	}
 
       if (coercion)
@@ -10636,7 +10645,7 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
 	}
     }
 
-  return status;
+  return result;
 }
 
 /*
@@ -10647,7 +10656,7 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
  *    do_coercion(in): coercion flag
  *    total_order(in): total order flag
  */
-int
+DB_VALUE_COMPARE_RESULT
 tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion, int total_order)
 {
   return tp_value_compare_with_error (value1, value2, allow_coercion, total_order, NULL);
@@ -10675,20 +10684,23 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_co
  *    error will be logged and the boolean that is pointed by "can_compare"
  *    will be set to false.
  */
-int
+DB_VALUE_COMPARE_RESULT
 tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
 			     bool * can_compare)
 {
   DB_VALUE temp1, temp2, tmp_char_conv;
-  int status, coercion, char_conv;
+  int coercion, char_conv;
   DB_VALUE *v1, *v2;
   DB_TYPE vtype1, vtype2;
+#if !defined (SERVER_MODE)
   DB_OBJECT *mop;
   DB_IDENTIFIER *oid1, *oid2;
+#endif /* !defined (SERVER_MODE) */
   bool use_collation_of_v1 = false;
   bool use_collation_of_v2 = false;
+  DB_VALUE_COMPARE_RESULT result = DB_UNK;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
-  status = DB_UNK;
   coercion = 0;
   char_conv = 0;
 
@@ -10701,16 +10713,16 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
     {
       if (DB_IS_NULL (value2))
 	{
-	  status = (total_order ? DB_EQ : DB_UNK);
+	  result = (total_order ? DB_EQ : DB_UNK);
 	}
       else
 	{
-	  status = (total_order ? DB_LT : DB_UNK);
+	  result = (total_order ? DB_LT : DB_UNK);
 	}
     }
   else if (DB_IS_NULL (value2))
     {
-      status = (total_order ? DB_GT : DB_UNK);
+      result = (total_order ? DB_GT : DB_UNK);
     }
   else
     {
@@ -10731,6 +10743,13 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
        */
       if (vtype1 != vtype2)
 	{
+#if defined (SERVER_MODE)
+	  if (vtype1 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_OBJECT)
+	    {
+	      assert_release (false);
+	      return DB_UNK;
+	    }
+#else /* !defined (SERVER_MODE) */
 	  if (vtype1 == DB_TYPE_OBJECT)
 	    {
 	      if (vtype2 == DB_TYPE_OID)
@@ -10766,6 +10785,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		    }
 		}
 	    }
+#endif /* !defined (SERVER_MODE) */
 
 	  /* 
 	   * If value types aren't exact, try coercion.
@@ -10934,16 +10954,16 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
       if (!ARE_COMPARABLE (vtype1, vtype2))
 	{
 	  /* 
-	   * Default status for mismatched types.
+	   * Default result for mismatched types.
 	   * Not correct but will be consistent.
 	   */
 	  if (tp_more_general_type (vtype1, vtype2) > 0)
 	    {
-	      status = DB_GT;
+	      result = DB_GT;
 	    }
 	  else
 	    {
-	      status = DB_LT;
+	      result = DB_LT;
 	    }
 
 	  /* set incompatibility flag */
@@ -11008,14 +11028,13 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 
 		      if (error_status != NO_ERROR)
 			{
-			  status = DB_UNK;
 			  pr_clear_value (&tmp_char_conv);
 			  if (coercion)
 			    {
 			      pr_clear_value (&temp1);
 			      pr_clear_value (&temp2);
 			    }
-			  return status;
+			  return DB_UNK;
 			}
 
 		      assert (data_status == DATA_STATUS_OK);
@@ -11037,8 +11056,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 			      pr_clear_value (&temp1);
 			      pr_clear_value (&temp2);
 			    }
-			  status = DB_UNK;
-			  return status;
+			  return DB_UNK;
 			}
 
 		      assert (data_status == DATA_STATUS_OK);
@@ -11053,7 +11071,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 
 	      if (common_coll == -1)
 		{
-		  status = DB_UNK;
+		  result = DB_UNK;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
 		  if (can_compare != NULL)
 		    {
@@ -11062,10 +11080,10 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		}
 	      else
 		{
-		  status = (*(pr_type->cmpval)) (v1, v2, do_coercion, total_order, NULL, common_coll);
+		  result = (*(pr_type->cmpval)) (v1, v2, do_coercion, total_order, NULL, common_coll);
 		}
 
-	      if (status == DB_UNK)
+	      if (result == DB_UNK)
 		{
 		  /* safe guard */
 		  if (pr_type->id == DB_TYPE_MIDXKEY)
@@ -11078,7 +11096,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	  else
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MR_NULL_DOMAIN, 0);
-	      status = DB_UNK;
+	      result = DB_UNK;
 	    }
 	}
 
@@ -11093,7 +11111,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	}
     }
 
-  return status;
+  return result;
 }
 
 /*
@@ -11535,7 +11553,7 @@ tp_valid_indextype (DB_TYPE type)
  *    return: int (true or false)
  *    dom(in): the domain to be inspected
  */
-int
+bool
 tp_domain_references_objects (const TP_DOMAIN * dom)
 {
   switch (TP_DOMAIN_TYPE (dom))

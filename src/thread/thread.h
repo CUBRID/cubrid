@@ -38,6 +38,7 @@
 #include "adjustable_array.h"
 #include "system_parameter.h"
 #include "dbtype.h"
+#include "log_compress.h"
 #endif /* SERVER_MODE */
 
 #include "lock_free.h"
@@ -325,8 +326,8 @@ struct thread_entry
   struct thread_entry *tran_next_wait;
   struct thread_entry *worker_thrd_list;	/* worker thrd on jobq list */
 
-  void *log_zip_undo;
-  void *log_zip_redo;
+  LOG_ZIP *log_zip_undo;
+  LOG_ZIP *log_zip_redo;
   char *log_data_ptr;
   int log_data_length;
 
@@ -416,7 +417,14 @@ extern void thread_waiting_for_function (THREAD_ENTRY * thread_p, CSS_THREAD_FN 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void thread_exit (int exit_code);
 #endif
-extern void thread_sleep (double);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void thread_sleep (double);
+#ifdef __cplusplus
+}
+#endif
 extern void thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *num_free_threads,
 				     int *num_suspended_threads);
 extern int thread_num_worker_threads (void);

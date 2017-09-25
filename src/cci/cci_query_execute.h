@@ -483,7 +483,7 @@ extern void qe_param_info_free (T_CCI_PARAM_INFO * param);
 
 #if defined(WINDOWS)
 extern int qe_set_charset (T_CON_HANDLE * con_handle, char *str);
-extern int encode_string (char *str, int size, char **target, char *charset);
+extern int encode_string (const char *str, int size, char **target, char *charset);
 #endif
 
 #ifdef CCI_XA

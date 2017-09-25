@@ -28,35 +28,21 @@
 #include "config.h"
 
 #include <stdio.h>
+#include <assert.h>
 
 #include "set_object.h"
-#include "area_alloc.h"
-#include "memory_alloc.h"
 #include "error_manager.h"
-#include "dbtype.h"
-#include "dbdef.h"
-#include "object_representation.h"
-#include "object_domain.h"
 #include "object_primitive.h"
 #include "object_print.h"
-#include "parse_tree.h"
-#include "db.h"
-#include "environment_variable.h"
-#include "system_parameter.h"
-#include "oid.h"
-#include "server_interface.h"
+
 
 #if !defined(SERVER_MODE)
-#include "work_space.h"
-#include "authenticate.h"
 #include "locator_cl.h"
-#include "class_object.h"
 #include "object_accessor.h"
 #include "transaction_cl.h"
 #include "virtual_object.h"
+#include "parser.h"
 #else /* !SERVER_MODE */
-#include "thread.h"
-#include "connection_error.h"
 #endif
 
 /* this must be the last header file included!!! */
@@ -105,7 +91,7 @@ typedef struct collect_block
   DB_VALUE val[1];
 } COL_BLOCK;
 
-typedef int (*SORT_CMP_FUNC) (const void *, const void *);
+typedef int (*SETOBJ_SORT_CMP_FUNC) (const void *, const void *);
 typedef int (*SETOBJ_OP) (COL * set1, COL * set2, COL * result);
 
 static long col_init = 0;
@@ -117,6 +103,13 @@ static long collection_quick_offset = 0;	/* inited by col_initialize */
 AREA *Set_Ref_Area = NULL;
 /* Area for allocation of set object structures */
 AREA *Set_Obj_Area = NULL;
+
+#define CHECKNULL_ERR(thing) \
+  if ((thing) == NULL) \
+    { \
+      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return(ER_OBJ_INVALID_ARGUMENTS); \
+    }
 
 static void col_debug (COL * col);
 static void col_initialize (void);
@@ -500,7 +493,7 @@ col_successive_merge (COL * col, long top)
   long nblocks, runsize;
 
   nblocks = BLOCK (top) + 1;
-  runs = db_private_alloc (NULL, nblocks * sizeof (DB_VALUE *));
+  runs = (DB_VALUE **) db_private_alloc (NULL, nblocks * sizeof (DB_VALUE *));
 
   if (runs == NULL)
     {
@@ -599,9 +592,9 @@ col_sort (COL * col)
   /* first sort each contigous block */
   for (i = 0; i < topblock; i++)
     {
-      qsort (col->array[i], COL_BLOCK_SIZE, sizeof (DB_VALUE), (SORT_CMP_FUNC) col_value_compare);
+      qsort (col->array[i], COL_BLOCK_SIZE, sizeof (DB_VALUE), (SETOBJ_SORT_CMP_FUNC) col_value_compare);
     }
-  qsort (col->array[topblock], OFFSET (top) + 1, sizeof (DB_VALUE), (SORT_CMP_FUNC) col_value_compare);
+  qsort (col->array[topblock], OFFSET (top) + 1, sizeof (DB_VALUE), (SETOBJ_SORT_CMP_FUNC) col_value_compare);
 
   /* now each block is a sorted run. We can sort the rest be successively merging runs until we have one run left */
   error = col_successive_merge (col, top);
@@ -1317,11 +1310,16 @@ col_put (COL * col, long colindex, DB_VALUE * val)
       /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
       if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
+#if defined (SERVER_MODE)
+	  assert_release (false);
+	  return ER_FAILED;
+#else /* !defined (SERVER_MODE) */
 	  DB_OBJECT *obj = DB_GET_OBJECT (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
 	      col->may_have_temporary_oids = 1;
 	    }
+#endif /* !defined (SERVER_MODE) */
 	}
 
       /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
@@ -1452,11 +1450,16 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
       /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
       if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
+#if defined (SERVER_MODE)
+	  assert_release (false);
+	  return ER_FAILED;
+#else /* !defined (SERVER_MODE) */
 	  DB_OBJECT *obj = DB_GET_OBJECT (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
 	      col->may_have_temporary_oids = 1;
 	    }
+#endif /* !defined (SERVER_MODE)s */
 	}
 
       /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
@@ -1868,10 +1871,10 @@ col_permanent_oids (COL * col)
  *      We will return DB_UNK if the VOBJ is malformed.
  */
 
-int
+DB_VALUE_COMPARE_RESULT
 setvobj_compare (COL * set1, COL * set2, int do_coercion, int total_order)
 {
-  int cmp = DB_UNK;
+  DB_VALUE_COMPARE_RESULT cmp = DB_UNK;
 
   if ((set1->size == 3) && (set2->size == 3) && (set1->coltype == DB_TYPE_SEQUENCE || set1->coltype == DB_TYPE_VOBJ)
       && (set2->coltype == DB_TYPE_SEQUENCE || set2->coltype == DB_TYPE_VOBJ))
@@ -3224,7 +3227,7 @@ set_ismember (DB_COLLECTION * set, DB_VALUE * value)
   return (ismember);
 }
 
-
+#if !defined (SERVER_MODE)
 /*
  * set_issome() -
  *      return: int
@@ -3234,16 +3237,13 @@ set_ismember (DB_COLLECTION * set, DB_VALUE * value)
  *  do_coercion(in) :
  *
  */
-
 int
 set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercion)
 {
   COL *obj;
   int issome = -1;
   int error = NO_ERROR;
-#if !defined(SERVER_MODE)
   int pin;
-#endif
 
   error = set_get_setobj (set, &obj, 0);
   if (error != NO_ERROR)
@@ -3256,15 +3256,12 @@ set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercio
       return issome;
     }
 
-#if !defined(SERVER_MODE)
   pin = ws_pin (set->owner, 1);
-#endif
   issome = setobj_issome (value, obj, op, do_coercion);
-#if !defined(SERVER_MODE)
   (void) ws_pin (set->owner, pin);
-#endif
   return (issome);
 }
+#endif /* !defined (SERVER_MODE) */
 
 /*
  * set_convert_oids_to_objects() -
@@ -3359,12 +3356,11 @@ set_get_domain (DB_COLLECTION * set)
  *  total_order(in) :
  *
  */
-
-int
+DB_VALUE_COMPARE_RESULT
 set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order)
 {
   COL *obj1, *obj2;
-  int status = DB_UNK;
+  DB_VALUE_COMPARE_RESULT status = DB_UNK;
   int error = NO_ERROR;
 #if !defined(SERVER_MODE)
   int pin1, pin2;
@@ -3412,12 +3408,11 @@ set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, 
  *  do_coercion(in) :
  *
  */
-
-int
+DB_VALUE_COMPARE_RESULT
 set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion)
 {
   COL *obj1, *obj2;
-  int status = DB_UNK;
+  DB_VALUE_COMPARE_RESULT status = DB_UNK;
   int error = NO_ERROR;
 #if !defined(SERVER_MODE)
   int pin1, pin2;
@@ -3466,12 +3461,11 @@ set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion)
  *  total_order(in) :
  *
  */
-
-int
+DB_VALUE_COMPARE_RESULT
 set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order)
 {
   COL *obj1, *obj2;
-  int status = DB_UNK;
+  DB_VALUE_COMPARE_RESULT status = DB_UNK;
   int error = NO_ERROR;
 #if !defined(SERVER_MODE)
   int pin1, pin2;
@@ -3520,11 +3514,11 @@ set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, in
  *
  */
 
-int
+DB_VALUE_COMPARE_RESULT
 vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order)
 {
   COL *obj1, *obj2;
-  int status = DB_UNK;
+  DB_VALUE_COMPARE_RESULT status = DB_UNK;
   int error = NO_ERROR;
 
 #if !defined(SERVER_MODE)
@@ -3805,11 +3799,11 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2, DB_COLLECTION 
   int pin1, pin2;
 #endif
 
-  CHECKNULL (collection1);
-  CHECKNULL (collection2);
-  CHECKNULL (result);
-  CHECKNULL (domain);
-  CHECKNULL (domain->type);
+  CHECKNULL_ERR (collection1);
+  CHECKNULL_ERR (collection2);
+  CHECKNULL_ERR (result);
+  CHECKNULL_ERR (domain);
+  CHECKNULL_ERR (domain->type);
 
   error = set_get_setobj (collection1, &col1, 0);
   if (error != NO_ERROR || col1 == NULL)
@@ -4117,7 +4111,7 @@ make_iterator (void)
 {
   SET_ITERATOR *it;
 
-  it = db_private_alloc (NULL, sizeof (SET_ITERATOR));
+  it = (SET_ITERATOR *) db_private_alloc (NULL, sizeof (SET_ITERATOR));
   if (it != NULL)
     {
       it->next = NULL;
@@ -5109,18 +5103,19 @@ setobj_ismember (COL * col, DB_VALUE * proposed_value, int check_null)
  *  Note :
  *      set1 and set2 to be of a set or multiset type.
  */
-
-int
+DB_VALUE_COMPARE_RESULT
 setobj_compare (COL * set1, COL * set2, int do_coercion)
 {
-  int status, rc;
+  DB_VALUE_COMPARE_RESULT status, rc;
   long set1_could_be_subset, set2_could_be_subset;
   long index1, index2;
   int error = NO_ERROR;
 
-  CHECKNULL (set1);
-  CHECKNULL (set2);
-
+  if (set1 == NULL || set2 == NULL)
+    {
+      assert_release (false);
+      return DB_UNK;
+    }
 
   status = DB_EQ;
   if (set1->size > 0 || set2->size > 0)
@@ -5227,11 +5222,11 @@ setobj_compare (COL * set1, COL * set2, int do_coercion)
  *  total_order(in) :
  *
  */
-
-int
+DB_VALUE_COMPARE_RESULT
 setobj_compare_order (COL * set1, COL * set2, int do_coercion, int total_order)
 {
-  int i, rc;
+  DB_VALUE_COMPARE_RESULT rc;
+  int i;
   int error = NO_ERROR;
 
   if (set1->size < set2->size)
@@ -5553,6 +5548,7 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
   return error;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * setobj_issome()
  *      return: 1 if value compares successfully using op to some element
@@ -5566,7 +5562,6 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
  *      Compares value to the members of set using op.
  *      If any member compares favorably, returns 1
  */
-
 int
 setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion)
 {
@@ -5638,6 +5633,7 @@ setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion)
       return 0;
     }
 }
+#endif /* !defined (SERVER_MODE) */
 
 /*
  * setobj_convert_oids_to_objects() - This will convert all OID and VOBJ
@@ -5711,8 +5707,8 @@ setobj_get_element_ptr (COL * col, int index, DB_VALUE ** result)
 {
   int error;
 
-  CHECKNULL (col);
-  CHECKNULL (result);
+  CHECKNULL_ERR (col);
+  CHECKNULL_ERR (result);
 
   if (index >= 0 && index < col->size)
     {
@@ -5782,8 +5778,8 @@ setobj_add_element (COL * col, DB_VALUE * value)
   int error = NO_ERROR;
 
   DB_MAKE_NULL (&temp);
-  CHECKNULL (col);
-  CHECKNULL (value);
+  CHECKNULL_ERR (col);
+  CHECKNULL_ERR (value);
 
   error = assign_set_value (col, value, &temp, IMPLICIT);
   if (error != NO_ERROR)
@@ -5824,8 +5820,8 @@ setobj_put_element (COL * col, int index, DB_VALUE * value)
   DB_VALUE temp;
 
   DB_MAKE_NULL (&temp);
-  CHECKNULL (col);
-  CHECKNULL (value);
+  CHECKNULL_ERR (col);
+  CHECKNULL_ERR (value);
 
   if (index < 0)
     {
@@ -5872,8 +5868,8 @@ setobj_insert_element (COL * col, int index, DB_VALUE * value)
   int error = NO_ERROR;
   DB_VALUE temp;
 
-  CHECKNULL (col);
-  CHECKNULL (value);
+  CHECKNULL_ERR (col);
+  CHECKNULL_ERR (value);
 
   if (index < 0)
     {
@@ -5915,8 +5911,8 @@ setobj_drop_element (COL * col, DB_VALUE * value, bool match_nulls)
 {
   int error = NO_ERROR;
 
-  CHECKNULL (col);
-  CHECKNULL (value);
+  CHECKNULL_ERR (col);
+  CHECKNULL_ERR (value);
 
   /* Minor enhancement: if the value is NULL and we aren't matching NULLs, col_drop() won't drop anything, so don't
    * call it. */
@@ -5950,7 +5946,7 @@ setobj_drop_seq_element (COL * col, int index)
 {
   int error = NO_ERROR;
 
-  CHECKNULL (col);
+  CHECKNULL_ERR (col);
 
   if (index < 0 || index >= col->size)
     {

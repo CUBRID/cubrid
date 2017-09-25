@@ -26,6 +26,7 @@
 #include "filter_pred_cache.h"
 #include "lock_free.h"
 #include "query_executor.h"
+#include "stream_to_xasl.h"
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
@@ -606,17 +607,17 @@ fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Max size:                   %d\n", fpcache_Soft_capacity);
   fprintf (fp, "Current entry count:        %d\n", ATOMIC_INC_32 (&fpcache_Entry_counter, 0));
   fprintf (fp, "Current clone count:        %d\n", ATOMIC_INC_32 (&fpcache_Clone_counter, 0));
-  fprintf (fp, "Lookups:                    %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_lookup));
-  fprintf (fp, "Entry Hits:                 %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_hit));
-  fprintf (fp, "Entry Miss:                 %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_miss));
-  fprintf (fp, "Entry discards:             %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_discard));
-  fprintf (fp, "Clone Hits:                 %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_clone_hit));
-  fprintf (fp, "Clone Miss:                 %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_clone_miss));
-  fprintf (fp, "Clone discards:             %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_clone_discard));
-  fprintf (fp, "Adds:                       %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_add));
-  fprintf (fp, "Clone adds:                 %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_clone_add));
-  fprintf (fp, "Cleanups:                   %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_cleanup));
-  fprintf (fp, "Cleaned entries:            %ld\n", ATOMIC_LOAD_64 (&fpcache_Stat_cleanup_entry));
+  fprintf (fp, "Lookups:                    %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_lookup));
+  fprintf (fp, "Entry Hits:                 %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_hit));
+  fprintf (fp, "Entry Miss:                 %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_miss));
+  fprintf (fp, "Entry discards:             %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_discard));
+  fprintf (fp, "Clone Hits:                 %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_clone_hit));
+  fprintf (fp, "Clone Miss:                 %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_clone_miss));
+  fprintf (fp, "Clone discards:             %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_clone_discard));
+  fprintf (fp, "Adds:                       %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_add));
+  fprintf (fp, "Clone adds:                 %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_clone_add));
+  fprintf (fp, "Cleanups:                   %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_cleanup));
+  fprintf (fp, "Cleaned entries:            %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_cleanup_entry));
 
   fprintf (fp, "\nEntries:\n");
   lf_hash_create_iterator (&iter, t_entry, &fpcache_Ht);

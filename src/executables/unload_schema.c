@@ -35,6 +35,7 @@
 #endif
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <assert.h>
 
 #include "db.h"
 #include "authenticate.h"
@@ -3042,7 +3043,7 @@ emit_partition_info (MOP clsobj)
 	  break;
 	}
 
-      ptr = strstr (class_->partition->expr, "SELECT ");
+      ptr = (char *) strstr (class_->partition->expr, "SELECT ");
       if (ptr)
 	{
 	  ptr2 = strstr (ptr + 7, " FROM ");

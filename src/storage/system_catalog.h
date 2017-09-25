@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "config.h"
 
 #include "error_manager.h"
@@ -36,9 +40,6 @@
 #include "disk_manager.h"
 #include "object_representation.h"
 #include "storage_common.h"
-
-#define NULL_REPRID       -1	/* Null Representation Identifier */
-#define NULL_ATTRID       -1	/* Null Attribute Identifier */
 
 #define CATALOG_DIR_REPR_KEY -2
 
@@ -52,8 +53,7 @@ struct ctid
   PAGEID hpgid;			/* catalog header page identifier */
 };				/* catalog identifier */
 
-typedef int REPR_ID;		/* representation identifier */
-typedef int ATTR_ID;		/* attribute identifier */
+
 
 /*
  * disk_representation

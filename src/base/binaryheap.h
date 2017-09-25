@@ -25,6 +25,10 @@
 #ifndef _BINARYHEAP_H_
 #define _BINARYHEAP_H_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "config.h"
 #include "thread.h"
 

@@ -36,7 +36,6 @@
 #include <wchar.h>
 
 #include "porting.h"
-#include "db.h"
 #include "adjustable_array.h"
 #include "intl_support.h"
 #include "memory_alloc.h"
@@ -49,8 +48,9 @@
 #include "cnverr.h"
 #if defined(SERVER_MODE)
 #include "thread.h"
-#endif
 #include "critical_section.h"
+#endif
+#include "db_date.h"
 #include "dbval.h"		/* this must be the last header file included!!! */
 
 #define BITS_IN_BYTE		8
@@ -126,6 +126,12 @@
 #define KOREAN_EUC_YEAR_SYMBOL      "\xb3\xe2"	/* nyeon */
 #define KOREAN_EUC_MONTH_SYMBOL     "\xbf\xf9"	/* wol */
 #define KOREAN_EUC_DAY_SYMBOL       "\xc0\xcf"	/* il */
+
+#if !defined (SERVER_MODE)
+/* no critical section */
+#define csect_enter(a, b, c) NO_ERROR
+#define csect_exit(a, b)
+#endif /* !defined (SERVER_MODE) */
 
 
 /* Format Descriptors */
@@ -487,7 +493,7 @@ us_date_string (int month, int day, int year)
   static char date_string[FMT_MAX_DATE_STRING * MB_LEN_MAX + 1];
 
   sprintf (date_string, "%d/%d/%d", month, day, year);
-  assert (strlen (date_string) < sizeof date_string);
+  assert (strlen (date_string) < (int) sizeof (date_string));
 
   return date_string;
 }
@@ -631,7 +637,7 @@ us_time_string (const DB_TIME * the_time)
   db_time_decode ((DB_TIME *) the_time, &hour, &min, &sec);
 
   sprintf (time_string, "%d:%02d:%02d %s", hour % 12 ? hour % 12 : 12, min, sec, local_am_pm_string (the_time));
-  assert (strlen (time_string) < sizeof time_string);
+  assert (strlen (time_string) < (int) sizeof (time_string));
 
   return time_string;
 }
@@ -1082,7 +1088,7 @@ ko_date_string (int month, int day, int year)
   static char date_string[FMT_MAX_DATE_STRING * MB_LEN_MAX + 1];
 
   sprintf (date_string, "%04d/%02d/%02d", year, month, day);
-  assert (strlen (date_string) < sizeof date_string);
+  assert (strlen (date_string) < (int) sizeof (date_string));
 
   return date_string;
 }
@@ -1324,7 +1330,7 @@ ko_time_string (const DB_TIME * the_time)
 
   sprintf (time_string, "%s %d\xbd\xc3%02d\xba\xd0%02d\xc3\xca",	/* ????/????/???? */
 	   local_am_pm_string (the_time), (hour % 12 ? hour % 12 : 12), min, sec);
-  assert (strlen (time_string) < sizeof time_string);
+  assert (strlen (time_string) < (int) sizeof (time_string));
 
   return time_string;
 }
@@ -2362,7 +2368,7 @@ cnv_wcs (const char *mbs)
 
   wchars = (wchar_t *) adj_ar_get_buffer (buffer);
   nchars = mbstowcs (wchars, mbs, adj_ar_length (buffer));
-  assert (nchars < adj_ar_length (buffer));
+  assert ((int) nchars < adj_ar_length (buffer));
 
   return (const wchar_t *) wchars;
 }
@@ -2666,7 +2672,7 @@ cnv_bad_char (const char *string, bool unknown)
   /* Create 1-char string. */
   strncpy (the_char, string, nbytes);
   strcpy (the_char + nbytes, "");
-  assert (strlen (the_char) < sizeof the_char);
+  assert (strlen (the_char) < (int) sizeof (the_char));
 
   co_signal (error, unknown ? CNV_ER_FMT_BAD_CHAR : CNV_ER_FMT_BAD_POSITION, the_char);
   return error;
@@ -4286,7 +4292,7 @@ fmt_timestamp_string (const DB_TIMESTAMP * the_timestamp, const char *descriptor
 
       sprintf (timestamp_string, "%s%s%s", fmt_date_string (&the_date, "x"), LOCAL_SPACE,
 	       fmt_time_string (&the_time, "X"));
-      assert (strlen (timestamp_string) < sizeof timestamp_string);
+      assert (strlen (timestamp_string) < (int) sizeof (timestamp_string));
       string = timestamp_string;
     }
 #if defined (ENABLE_UNUSED_FUNCTION)

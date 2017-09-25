@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "error_code.h"
 #include "system_parameter.h"
@@ -43,6 +44,7 @@
 #include "client_support.h"
 #include "connection_support.h"
 #include "environment_variable.h"
+#include "network_interface_cl.h"
 #include "locator_cl.h"
 
 #define CHKSUM_DEFAULT_LIST_SIZE	10
@@ -1555,8 +1557,8 @@ chksum_set_repl_info_and_demote_table_lock (const char *table_name, const char *
   REPL_INFO_SBR repl_stmt;
 
   repl_stmt.statement_type = CUBRID_STMT_INSERT;
-  repl_stmt.name = table_name;
-  repl_stmt.stmt_text = checksum_query;
+  repl_stmt.name = (char *) table_name;
+  repl_stmt.stmt_text = (char *) checksum_query;
   repl_stmt.db_user = db_get_user_name ();
   repl_stmt.sys_prm_context = NULL;
 

@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "error_manager.h"
 #include "storage_common.h"
 #include "query_list.h"
@@ -98,7 +102,8 @@ struct SUBKEY_INFO
 
   TP_DOMAIN *cmp_dom;		/* for median sorting string in different domain */
 
-  int (*sort_f) (void *tplp1, void *tplp2, TP_DOMAIN * dom, int do_coercion, int total_order, int *start_col);
+    DB_VALUE_COMPARE_RESULT (*sort_f) (void *tplp1, void *tplp2, TP_DOMAIN * dom, int do_coercion, int total_order,
+				       int *start_col);
 
   /* 
    * Non-zero iff the sort on this column is descending.  Factoring

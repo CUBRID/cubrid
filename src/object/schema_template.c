@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "error_manager.h"
 #include "object_representation.h"
@@ -4380,7 +4381,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
 	}
     }
 
-  /* change original default : continue only for normal attibutes */
+  /* change original default : continue only for normal attributes */
   if (name_space == ID_CLASS_ATTRIBUTE || name_space == ID_SHARED_ATTRIBUTE)
     {
       assert (error == NO_ERROR);
@@ -4409,8 +4410,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
 
   /* cast the value to new one : explicit cast */
   new_orig_value = pr_make_ext_value ();
-  status = db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
-  if (status == DOMAIN_COMPATIBLE)
+  error = db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
+  if (error == NO_ERROR)
     {
       smt_set_attribute_orig_default_value (*found_att, new_orig_value, new_default_expr);
     }

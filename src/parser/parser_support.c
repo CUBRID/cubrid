@@ -49,16 +49,14 @@
 #include "xasl_support.h"
 #include "optimizer.h"
 #include "object_primitive.h"
-#include "heap_file.h"
 #include "object_representation.h"
-#include "query_opfunc.h"
 #include "parser_support.h"
 #include "system_parameter.h"
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "object_print.h"
-#include "btree_load.h"
 #include "show_meta.h"
+#include "db.h"
 
 #define DEFAULT_VAR "."
 
@@ -85,8 +83,10 @@ struct pt_host_vars
   (pt_is_dot_node (node) || pt_is_attr (node) || pt_is_query (node) \
    || (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_GROUPBYNUM_NC)))
 
-#define DB_ENUM_ELEMENTS_MAX_AGG_SIZE \
-  (DB_PAGESIZE - offsetof (BTREE_ROOT_HEADER, packed_key_domain) - 1)
+/* reserve half a page for the total enum domain size. we used to consider BTREE_ROOT_HEADER size here, but this is
+ * client and we no longer have that information. but half of page should be enough... the alternative is to get
+ * that info from server. */
+#define DB_ENUM_ELEMENTS_MAX_AGG_SIZE (DB_PAGESIZE / 2)
 
 int qp_Packing_er_code = NO_ERROR;
 
@@ -2649,7 +2649,7 @@ pt_reset_error (PARSER_CONTEXT * parser)
 	  parser_free_tree (parser, parser->error_msgs);
 	  parser->error_msgs = NULL;
 	}
-      parser->oid_included = 0;
+      parser->oid_included = PT_NO_OID_INCLUDED;
     }
   return;
 }
@@ -4637,7 +4637,6 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
   ptr->type = type;
   ptr->option = Q_ALL;
   ptr->iscan_oid_order = prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER);
-  ptr->topn_items = NULL;
   ptr->scan_op_type = S_SELECT;
 
   switch (type)
@@ -4652,7 +4651,6 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
       break;
 
     case BUILDLIST_PROC:
-      ptr->proc.buildlist.upddel_oid_locator_ehids = NULL;
       break;
 
     case BUILDVALUE_PROC:
@@ -4758,7 +4756,7 @@ static void
 regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
 {
   ptr->type = type;
-  ptr->access = SEQUENTIAL;
+  ptr->access = ACCESS_METHOD_SEQUENTIAL;
   ptr->indexptr = NULL;
   ptr->where_key = NULL;
   ptr->where_pred = NULL;
@@ -4800,15 +4798,10 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
       ACCESS_SPEC_XASL_NODE (ptr) = NULL;
       ACCESS_SPEC_METHOD_SIG_LIST (ptr) = NULL;
     }
-
-  memset ((void *) &ptr->s_id, 0, sizeof (SCAN_ID));
-  ptr->grouped_scan = false;
-  ptr->fixed_scan = false;
-  ptr->qualified_block = false;
   ptr->single_fetch = (QPROC_SINGLE_FETCH) false;
   ptr->s_dbval = NULL;
   ptr->next = NULL;
-  ptr->flags = 0;
+  ptr->flags = ACCESS_SPEC_FLAG_NONE;
 }
 
 /*
@@ -5641,7 +5634,7 @@ regu_method_sig_init (METHOD_SIG * ptr)
   ptr->next = NULL;
   ptr->method_name = NULL;
   ptr->class_name = NULL;
-  ptr->method_type = 0;
+  ptr->method_type = METHOD_IS_NONE;
   ptr->num_method_args = 0;
   ptr->method_arg_pos = NULL;
 }
@@ -6000,7 +5993,7 @@ pt_alloc_packing_buf (int size)
     }
   else
     {
-      res = db_ostk_alloc (heap_id, size);
+      res = (char *) db_ostk_alloc (heap_id, size);
     }
 
   if (res == NULL)
@@ -6872,7 +6865,7 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser, const char *identif
       return NULL;
     }
 
-  p_dot = strrchr (identifier_str, '.');
+  p_dot = (char *) strrchr (identifier_str, '.');
 
   if (p_dot != NULL)
     {
@@ -7262,7 +7255,7 @@ pt_make_outer_select_for_show_stmt (PARSER_CONTEXT * parser, PT_NODE * inner_sel
     }
 
   from_item->info.spec.derived_table = inner_select;
-  from_item->info.spec.meta_class = 0;
+  from_item->info.spec.meta_class = PT_MISC_NONE;
   from_item->info.spec.range_var = alias_subquery;
   from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
   from_item->info.spec.join_type = PT_JOIN_NONE;
@@ -7340,7 +7333,7 @@ pt_make_outer_select_for_show_columns (PARSER_CONTEXT * parser, PT_NODE * inner_
   inner_select->info.query.is_subquery = PT_IS_SUBQUERY;
   alias_subquery = pt_name (parser, select_alias);
   from_item->info.spec.derived_table = inner_select;
-  from_item->info.spec.meta_class = 0;
+  from_item->info.spec.meta_class = PT_MISC_NONE;
   from_item->info.spec.range_var = alias_subquery;
   from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
   from_item->info.spec.join_type = PT_JOIN_NONE;
@@ -7890,7 +7883,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     alias_subquery = pt_name (parser, "constraints_pri_key");
 
     from_item->info.spec.derived_table = sub_query;
-    from_item->info.spec.meta_class = 0;
+    from_item->info.spec.meta_class = PT_MISC_NONE;
     from_item->info.spec.range_var = alias_subquery;
     from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
     from_item->info.spec.join_type = PT_JOIN_NONE;
@@ -7956,7 +7949,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     alias_subquery = pt_name (parser, "constraints_uni_key");
 
     from_item->info.spec.derived_table = sub_query;
-    from_item->info.spec.meta_class = 0;
+    from_item->info.spec.meta_class = PT_MISC_NONE;
     from_item->info.spec.range_var = alias_subquery;
     from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
     from_item->info.spec.join_type = PT_JOIN_NONE;
@@ -8022,7 +8015,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     assert (alias_subquery != NULL);
 
     from_item->info.spec.derived_table = sub_query;
-    from_item->info.spec.meta_class = 0;
+    from_item->info.spec.meta_class = PT_MISC_NONE;
     from_item->info.spec.range_var = alias_subquery;
     from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
     from_item->info.spec.join_type = PT_JOIN_NONE;
@@ -8708,7 +8701,7 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type, PT_NODE * ar
   int i;
 
   /* get show column info */
-  meta = showstmt_get_metadata (type);
+  meta = showstmt_get_metadata ((SHOWSTMT_TYPE) type);
   orderby = meta->orderby;
   num_orderby = meta->num_orderby;
 
@@ -8733,7 +8726,7 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type, PT_NODE * ar
     {
       goto error;
     }
-  showstmt_info->info.showstmt.show_type = type;
+  showstmt_info->info.showstmt.show_type = (SHOWSTMT_TYPE) type;
 
   if (meta->args != NULL)
     {
@@ -8761,7 +8754,7 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type, PT_NODE * ar
     }
   from_item->info.spec.derived_table = showstmt_info;
   from_item->info.spec.derived_table_type = PT_IS_SHOWSTMT;
-  from_item->info.spec.meta_class = 0;
+  from_item->info.spec.meta_class = PT_MISC_NONE;
   from_item->info.spec.join_type = PT_JOIN_NONE;
 
   if (like_or_where_expr != NULL)
@@ -9421,7 +9414,7 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
     table_col->info.name.meta_class = PT_NORMAL;
 
     from_item->info.spec.derived_table = table_col;
-    from_item->info.spec.meta_class = 0;
+    from_item->info.spec.meta_class = PT_MISC_NONE;
     from_item->info.spec.range_var = alias_table;
     from_item->info.spec.as_attr_list = alias_col;
     from_item->info.spec.derived_table_type = PT_IS_SET_EXPR;
@@ -10080,7 +10073,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
 			   LANG_SYS_COLLATION, NULL);
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
-  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (const DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
   for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)
     {
@@ -10434,7 +10427,8 @@ pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC
     {
       /* add reference for column in select list */
       as_attr = pt_name (parser, "rowoid_");
-      as_attr->info.name.original = (const char *) pt_append_string (parser, as_attr->info.name.original, spec_name);
+      as_attr->info.name.original =
+	(const char *) pt_append_string (parser, (char *) as_attr->info.name.original, spec_name);
       as_attr->info.name.spec_id = spec->info.spec.id;
       as_attr->info.name.meta_class = PT_OID_ATTR;
       as_attr->type_enum = col->type_enum;
@@ -10481,7 +10475,7 @@ pt_process_spec_for_delete (PARSER_CONTEXT * parser, PT_NODE * spec)
     }
 
   /* mark spec */
-  spec->info.spec.flag |= PT_SPEC_FLAG_DELETE;
+  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_DELETE);
 
   /* fetch derived table of spec */
   derived_table = spec->info.spec.derived_table;
@@ -10507,7 +10501,7 @@ pt_process_spec_for_delete (PARSER_CONTEXT * parser, PT_NODE * spec)
 
   /* add oids */
   ret = pt_rewrite_derived_for_upd_del (parser, spec, PT_SPEC_FLAG_DELETE, true);
-  spec->info.spec.flag |= PT_SPEC_FLAG_CONTAINS_OID;
+  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_CONTAINS_OID);
 
   return ret;
 }
@@ -10537,7 +10531,7 @@ pt_process_spec_for_update (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * n
     }
 
   /* mark spec */
-  spec->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
+  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_UPDATE);
 
   /* fetch derived table of spec */
   dt_arg1 = save_dt = spec->info.spec.derived_table;
@@ -10658,7 +10652,7 @@ pt_process_spec_for_update (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * n
     }
 
   /* spec has OIDs added */
-  spec->info.spec.flag |= PT_SPEC_FLAG_CONTAINS_OID;
+  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_CONTAINS_OID);
 
   /* all ok */
   return name;
@@ -10845,7 +10839,7 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_n
       assert (coll_node->node_type == PT_VALUE);
 
       assert (coll_node->info.value.data_value.str != NULL);
-      lang_coll = lang_get_collation_by_name (coll_node->info.value.data_value.str->bytes);
+      lang_coll = lang_get_collation_by_name ((const char *) coll_node->info.value.data_value.str->bytes);
 
       if (lang_coll != NULL)
 	{
@@ -11738,19 +11732,19 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
     }
 
   /* remove trailing pads for each element */
-  intl_pad_char (dt->info.data_type.units, pad, &pad_size);
+  intl_pad_char ((INTL_CODESET) dt->info.data_type.units, pad, &pad_size);
   node = dt->info.data_type.enumeration;
   while (node != NULL)
     {
       intl_char_count (node->info.value.data_value.str->bytes, node->info.value.data_value.str->length,
-		       dt->info.data_type.units, &char_count);
+		       (INTL_CODESET) dt->info.data_type.units, &char_count);
       qstr_trim_trailing (pad, pad_size, node->info.value.data_value.str->bytes, pt_node_to_db_type (node), char_count,
-			  node->info.value.data_value.str->length, dt->info.data_type.units, &trimmed_length,
-			  &trimmed_size, true);
+			  node->info.value.data_value.str->length, (INTL_CODESET) dt->info.data_type.units,
+			  &trimmed_length, &trimmed_size, true);
       if (trimmed_size < node->info.value.data_value.str->length)
 	{
 	  node->info.value.data_value.str =
-	    pt_append_bytes (parser, NULL, node->info.value.data_value.str->bytes, trimmed_size);
+	    pt_append_bytes (parser, NULL, (const char *) node->info.value.data_value.str->bytes, trimmed_size);
 	  node->info.value.data_value.str->length = trimmed_size;
 	  if (node->info.value.db_value.need_clear)
 	    {
@@ -11784,7 +11778,7 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
       return ER_FAILED;
     }
   count = or_packed_domain_size (domain, 0);
-  if (count > DB_ENUM_ELEMENTS_MAX_AGG_SIZE)
+  if (count > (int) DB_ENUM_ELEMENTS_MAX_AGG_SIZE)
     {
       PT_ERRORm (parser, dt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ENUM_AGG_STRINGS_SIZE_TOO_LARGE);
       err = ER_FAILED;

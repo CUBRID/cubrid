@@ -26,8 +26,6 @@
 #include "storage_common.h"
 #include "dbdef.h"
 #include "object_representation.h"
-#include "query_list.h"
-
 
 #define LOG_USERNAME_MAX        (DB_MAX_USER_LENGTH + 1)
 
@@ -43,7 +41,7 @@ typedef enum
   TRAN_RECOVERY,		/* State of a system transaction which is used for recovery purposes. For example , set 
 				 * lock for damaged pages. */
   TRAN_ACTIVE,			/* Active transaction */
-  TRAN_UNACTIVE_COMMITTED,	/* Transaction is in the commit process or has been comitted */
+  TRAN_UNACTIVE_COMMITTED,	/* Transaction is in the commit process or has been committed */
   TRAN_UNACTIVE_WILL_COMMIT,	/* Transaction will be committed */
   TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE,	/* Transaction has been committed, but it is still executing postpone
 						 * operations */
@@ -84,17 +82,6 @@ typedef enum
 
 /* name used by the internal modules */
 typedef DB_TRAN_ISOLATION TRAN_ISOLATION;
-
-typedef struct tran_query_exec_info TRAN_QUERY_EXEC_INFO;
-struct tran_query_exec_info
-{
-  char *wait_for_tran_index_string;
-  float query_time;
-  float tran_time;
-  char *query_stmt;
-  char *sql_id;
-  XASL_ID xasl_id;
-};
 
 extern const int LOG_MIN_NBUFFERS;
 

@@ -27,6 +27,10 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+
+#include "db_query.h"
+
 #include "error_manager.h"
 #include "storage_common.h"
 #include "object_representation.h"
@@ -34,11 +38,9 @@
 #include "class_object.h"
 #include "db.h"
 #include "xasl_support.h"
-#include "db_query.h"
 #include "server_interface.h"
 #include "system_parameter.h"
 #include "xasl_generation.h"
-#include "query_executor.h"
 #include "network_interface_cl.h"
 
 #include "dbval.h"		/* this must be the last header file included!!! */
@@ -1227,53 +1229,6 @@ db_clear_client_query_result (int notify_server, bool end_holdable)
 	}
     }
 }
-
-#if defined(WINDOWS) || defined (ENABLE_UNUSED_FUNCTION)
-/*
- * db_final_client_query_result() - This function is called to finalize client
- *    side query result structures by deallocating the allocated areas.
- * return: void
- */
-void
-db_final_client_query_result (void)
-{
-  DB_QUERY_RESULT **qres_ptr;
-  DB_QUERY_RESULT *q_res, *t_res;
-  int k;
-
-  /* search query table result list and free all existing entries */
-  for (k = 0, qres_ptr = Qres_table.qres_list; k < Qres_table.entry_cnt; k++, qres_ptr++)
-    {
-      if (*qres_ptr != NULL)
-	{
-	  if ((*qres_ptr)->type == T_SELECT)
-	    {
-	      cursor_free (&(*qres_ptr)->res.s.cursor_id);
-	    }
-	  db_free_query_result (*qres_ptr);
-	}
-    }
-
-  if (Qres_table.qres_list != NULL)
-    {
-      free_and_init (Qres_table.qres_list);
-      Qres_table.entry_cnt = 0;
-    }
-
-  /* free area allocated for query_result structures resource */
-  q_res = Qres_table.alloc_res.free_qres_list;
-  while (q_res != NULL)
-    {
-      t_res = q_res;
-      q_res = q_res->next;
-      free_and_init (t_res);
-    }
-  Qres_table.alloc_res.free_qres_list = (DB_QUERY_RESULT *) NULL;
-
-  /* free the stuff allocated during xasl tree translation */
-  xts_final ();
-}
-#endif
 
 /*
  * db_cp_query_type_helper() - Copies the given type to a newly allocated type

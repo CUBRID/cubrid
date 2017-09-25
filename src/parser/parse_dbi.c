@@ -926,7 +926,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       if (DB_GET_ENUM_SHORT (val) != 0)
 	{
 	  result->info.value.data_value.enumeration.str_val = pt_append_bytes (parser, NULL, bytes, size);
-	  result->info.value.text = result->info.value.data_value.enumeration.str_val->bytes;
+	  result->info.value.text = (const char *) result->info.value.data_value.enumeration.str_val->bytes;
 	}
       result->data_type = NULL;
       break;
@@ -1037,7 +1037,7 @@ pt_set_value_to_db (PARSER_CONTEXT * parser, PT_NODE ** values, DB_VALUE * db_va
 
 	      if (DB_VALUE_TYPE (&e_val) == DB_TYPE_POINTER)
 		{
-		  obt_quit (DB_GET_POINTER (&e_val));
+		  obt_quit ((OBJ_TEMPLATE *) DB_GET_POINTER (&e_val));
 		}
 	      return NULL;
 	    }
@@ -1561,6 +1561,11 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_TABLE:
     case DB_TYPE_RESULTSET:
       break;
+
+    case DB_TYPE_ELO:
+      /* obsolete. */
+      assert (false);
+      break;
     }
 
   return retval;
@@ -1632,7 +1637,7 @@ pt_get_enumeration_from_data_type (PARSER_CONTEXT * parser, PT_NODE * dt, DB_ENU
       return NO_ERROR;
     }
 
-  enum_elements = malloc (enum_elements_cnt * sizeof (DB_ENUM_ELEMENT));
+  enum_elements = (DB_ENUM_ELEMENT *) malloc (enum_elements_cnt * sizeof (DB_ENUM_ELEMENT));
   if (enum_elements == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -1656,7 +1661,7 @@ pt_get_enumeration_from_data_type (PARSER_CONTEXT * parser, PT_NODE * dt, DB_ENU
 	}
       db_enum = &enum_elements[idx];
       str_len = pt_get_varchar_length (node->info.value.data_value.str);
-      str_val = malloc (str_len + 1);
+      str_val = (char *) malloc (str_len + 1);
       if (str_val == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (str_len + 1));
@@ -1845,6 +1850,11 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_VARIABLE:
     case DB_TYPE_TABLE:
     case DB_TYPE_RESULTSET:
+      break;
+
+    case DB_TYPE_ELO:
+      /* obsolete */
+      assert (false);
       break;
     }
 
@@ -2042,6 +2052,11 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_VARIABLE:
     case DB_TYPE_TABLE:
     case DB_TYPE_RESULTSET:
+      break;
+
+    case DB_TYPE_ELO:
+      /* obsolete */
+      assert (false);
       break;
     }
 
@@ -2602,18 +2617,16 @@ pt_db_to_type_enum (const DB_TYPE t)
  *   return: one of the CUBRID_STMT_TYPES defined in dbi.h.
  *   node(in):
  */
-int
+CUBRID_STMT_TYPE
 pt_node_to_cmd_type (PT_NODE * node)
 {
   if (node == NULL)
     {
-      return -1;
+      return CUBRID_STMT_NONE;
     }
 
   switch (node->node_type)
     {
-    default:
-      return node->node_type;
     case PT_GET_XACTION:
       if (node->info.get_xaction.option == PT_ISOLATION_LEVEL)
 	{
@@ -2631,9 +2644,13 @@ pt_node_to_cmd_type (PT_NODE * node)
       return CUBRID_STMT_SELECT;
     case PT_KILL_STMT:
       return CUBRID_STMT_KILL;
+    default:
+      /* todo: is this acceptable?? I'll add safe-guard and let's see what happens... */
+      assert ((int) node->node_type <= (int) PT_LAST_NODE_NUMBER);
+      return (CUBRID_STMT_TYPE) node->node_type;
     }
 
-  return -1;
+  return CUBRID_STMT_NONE;
 }
 
 
@@ -3044,7 +3061,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
   if (PT_HAS_COLLATION (value->type_enum) && value->data_type != NULL)
     {
       collation_id = value->data_type->info.data_type.collation_id;
-      codeset = value->data_type->info.data_type.units;
+      codeset = (INTL_CODESET) value->data_type->info.data_type.units;
     }
 
   switch (value->type_enum)
@@ -3132,7 +3149,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_NUMERIC:
-      if (numeric_coerce_string_to_num (value->info.value.data_value.str->bytes,
+      if (numeric_coerce_string_to_num ((const char *) value->info.value.data_value.str->bytes,
 					value->info.value.data_value.str->length, codeset, db_value) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
@@ -3147,7 +3164,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_DATE:
-      if (db_string_to_date (value->info.value.data_value.str->bytes, &date) != NO_ERROR)
+      if (db_string_to_date ((const char *) value->info.value.data_value.str->bytes, &date) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_DATE,
 		      value->info.value.data_value.str->bytes);
@@ -3158,7 +3175,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_TIME:
-      if (db_string_to_time (value->info.value.data_value.str->bytes, &time) != NO_ERROR)
+      if (db_string_to_time ((const char *) value->info.value.data_value.str->bytes, &time) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_TIME,
 		      value->info.value.data_value.str->bytes);
@@ -3169,7 +3186,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_TIMETZ:
-      if (db_string_to_timetz (value->info.value.data_value.str->bytes, &time_tz, &has_zone) != NO_ERROR)
+      if (db_string_to_timetz ((const char *) value->info.value.data_value.str->bytes, &time_tz, &has_zone) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_TIME,
 		      value->info.value.data_value.str->bytes);
@@ -3180,7 +3197,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_TIMELTZ:
-      if (db_string_to_timeltz (value->info.value.data_value.str->bytes, &time) != NO_ERROR)
+      if (db_string_to_timeltz ((const char *) value->info.value.data_value.str->bytes, &time) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_TIME,
 		      value->info.value.data_value.str->bytes);
@@ -3191,7 +3208,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_TIMESTAMP:
-      if (db_string_to_utime (value->info.value.data_value.str->bytes, &utime) != NO_ERROR)
+      if (db_string_to_utime ((const char *) value->info.value.data_value.str->bytes, &utime) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_UTIME,
 		      value->info.value.data_value.str->bytes);
@@ -3204,7 +3221,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       {
 	bool has_zone = false;
 
-	if (db_string_to_timestamptz (value->info.value.data_value.str->bytes, &ts_tz, &has_zone) != NO_ERROR)
+	if (db_string_to_timestamptz ((const char *) value->info.value.data_value.str->bytes, &ts_tz, &has_zone) !=
+	    NO_ERROR)
 	  {
 	    PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_UTIME,
 			value->info.value.data_value.str->bytes);
@@ -3215,7 +3233,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_TIMESTAMPLTZ:
-      if (db_string_to_timestampltz (value->info.value.data_value.str->bytes, &utime) != NO_ERROR)
+      if (db_string_to_timestampltz ((const char *) value->info.value.data_value.str->bytes, &utime) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_UTIME,
 		      value->info.value.data_value.str->bytes);
@@ -3225,7 +3243,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_DATETIME:
-      if (db_string_to_datetime (value->info.value.data_value.str->bytes, &datetime) != NO_ERROR)
+      if (db_string_to_datetime ((const char *) value->info.value.data_value.str->bytes, &datetime) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_UTIME,
 		      value->info.value.data_value.str->bytes);
@@ -3235,7 +3253,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_DATETIMETZ:
-      if (db_string_to_datetimetz (value->info.value.data_value.str->bytes, &dt_tz, &has_zone) != NO_ERROR)
+      if (db_string_to_datetimetz ((const char *) value->info.value.data_value.str->bytes, &dt_tz, &has_zone) !=
+	  NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_UTIME,
 		      value->info.value.data_value.str->bytes);
@@ -3245,7 +3264,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_DATETIMELTZ:
-      if (db_string_to_datetimeltz (value->info.value.data_value.str->bytes, &datetime) != NO_ERROR)
+      if (db_string_to_datetimeltz ((const char *) value->info.value.data_value.str->bytes, &datetime) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_UTIME,
 		      value->info.value.data_value.str->bytes);
@@ -3286,7 +3305,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	  src_length = value->info.value.data_value.str->length;
 	  dst_length = (src_length + 7) / 8;
 	  bits_converted = 0;
-	  bstring = db_private_alloc (NULL, dst_length + 1);
+	  bstring = (char *) db_private_alloc (NULL, dst_length + 1);
 	  if (!bstring)
 	    {
 	      return (DB_VALUE *) NULL;
@@ -3310,7 +3329,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	  src_length = value->info.value.data_value.str->length;
 	  dst_length = (src_length + 1) / 2;
 	  bits_converted = 0;
-	  bstring = db_private_alloc (NULL, dst_length + 1);
+	  bstring = (char *) db_private_alloc (NULL, dst_length + 1);
 	  if (!bstring)
 	    {
 	      return (DB_VALUE *) NULL;

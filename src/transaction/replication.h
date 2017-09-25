@@ -32,11 +32,12 @@
 
 #include "system_parameter.h"
 #include "oid.h"
-#include "log_impl.h"
 #include "memory_alloc.h"
-#include "page_buffer.h"
 #include "error_manager.h"
+#if defined(SERVER_MODE) || defined(SA_MODE)
+#include "log_impl.h"
 #include "thread.h"
+#endif /* defined(SERVER_MODE) || defined(SA_MODE) */
 
 typedef enum
 {

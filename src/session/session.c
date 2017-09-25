@@ -30,23 +30,22 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #endif /* !WINDDOWS */
-#include "jansson.h"
 
-#include "porting.h"
+#include "session.h"
+
+#include "jansson.h"
 #include "critical_section.h"
-#include "memory_hash.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-#include "db.h"
-#include "query_executor.h"
-#include "session.h"
 #include "environment_variable.h"
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
-#include "log_impl.h"
-#endif
-#include "xserver_interface.h"
+#else /* !defined (SERVER_MODE) = defined (SA_MODE) */
+#include "db.h"
+#endif /* defined (SA_MODE) */
 #include "lock_free.h"
+#include "object_primitive.h"
+#include "dbtype.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -210,7 +209,7 @@ session_state_alloc (void)
 {
   SESSION_STATE *state;
 
-  state = malloc (sizeof (SESSION_STATE));
+  state = (SESSION_STATE *) malloc (sizeof (SESSION_STATE));
   if (state != NULL)
     {
       pthread_mutex_init (&state->mutex, NULL);
@@ -873,7 +872,7 @@ session_remove_expired_sessions (struct timeval *timeout)
       lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
       while (true)
 	{
-	  state = lf_hash_iterate (&it);
+	  state = (SESSION_STATE *) lf_hash_iterate (&it);
 	  if (state == NULL)
 	    {
 	      finished = true;
@@ -2204,7 +2203,7 @@ session_states_dump (THREAD_ENTRY * thread_p)
   fprintf (stdout, "\nSESSION COUNT = %d\n", session_count);
 
   lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
-  for (state = lf_hash_iterate (&it); state != NULL; state = lf_hash_iterate (&it))
+  for (state = (SESSION_STATE *) lf_hash_iterate (&it); state != NULL; state = (SESSION_STATE *) lf_hash_iterate (&it))
     {
       session_dump_session (state);
     }

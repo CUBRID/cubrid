@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #include "chartype.h"
 #include "error_manager.h"
@@ -744,7 +745,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, SM
 
       if (class_->triggers != NULL)
 	{
-	  is_class = locator_is_class (op, 1);
+	  is_class = locator_is_class (op, DB_FETCH_WRITE);
 	  if (is_class < 0)
 	    {
 	      return is_class;

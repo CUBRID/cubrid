@@ -27,15 +27,10 @@
 
 #include <assert.h>
 
-#include "db.h"
 #include "transaction_sr.h"
 #include "locator_sr.h"
 #include "log_manager.h"
-#include "log_impl.h"
-#include "wait_for_graph.h"
-#include "thread.h"
 #if defined(SERVER_MODE)
-#include "server_support.h"
 #endif
 #include "xserver_interface.h"
 #if defined(ENABLE_SYSTEMTAP)
@@ -136,8 +131,9 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 	{
 	  if (logtb_is_interrupted (thread_p, true, &continue_check) == true)
 	    {
+	      /* FIXME: what is this handling??? */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	      return ER_INTERRUPTED;
+	      return (TRAN_STATE) ER_INTERRUPTED;
 	    }
 
 	  thread_sleep (10);	/* 10 msec */

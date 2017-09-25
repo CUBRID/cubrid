@@ -32,7 +32,6 @@
 #include <sys/resource.h>
 #endif /* WINDOWS */
 #include "perf_monitor.h"
-#include "network_interface_cl.h"
 #include "error_manager.h"
 
 #if !defined(SERVER_MODE)
@@ -57,13 +56,12 @@
 #include "databases_file.h"
 #endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include <string.h>
+
 #include "thread.h"
 #include "log_impl.h"
 #include "session.h"
-
-#if !defined(CS_MODE)
-#include <string.h>
-
 #include "error_manager.h"
 #include "log_manager.h"
 #include "system_parameter.h"
@@ -82,8 +80,11 @@
 #define pthread_mutex_unlock(a)
 static int rv;
 #endif /* SERVER_MODE */
-#endif /* !CS_MODE */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
+#if !defined (SERVER_MODE)
+#include "network_interface_cl.h"
+#endif /* !defined (SERVER_MODE) */
 
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
@@ -2751,6 +2752,7 @@ perfmon_stat_module_name (const int module)
   return "ERROR";
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * perfmon_get_module_type () -
  */
@@ -2798,6 +2800,7 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
 
   return module_type;
 }
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /*
  * perf_stat_page_type_name () -
@@ -3613,9 +3616,9 @@ perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE * stream, const UINT64 
 static void
 perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
-  PERF_SNAPSHOT_TYPE snapshot;
-  PERF_SNAPSHOT_RECORD_TYPE rec_type;
-  PERF_SNAPSHOT_VISIBILITY visibility;
+  unsigned int snapshot;
+  unsigned int rec_type;
+  unsigned int visibility;
   int offset;
   UINT64 counter = 0;
   int ret;
@@ -3624,11 +3627,14 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
   assert (s != NULL);
   if (*s != NULL)
     {
-      for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < PERF_SNAPSHOT_CNT; snapshot++)
+      for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
+	   snapshot++)
 	{
-	  for (rec_type = PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED; rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
+	  for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
+	       rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
 	    {
-	      for (visibility = PERF_SNAPSHOT_INVISIBLE; visibility < PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
+	      for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
+		   visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
 		{
 		  offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
 
@@ -3666,18 +3672,21 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
 static void
 perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 * stats_ptr)
 {
-  PERF_SNAPSHOT_TYPE snapshot;
-  PERF_SNAPSHOT_RECORD_TYPE rec_type;
-  PERF_SNAPSHOT_VISIBILITY visibility;
+  unsigned int snapshot;
+  unsigned int rec_type;
+  unsigned int visibility;
   int offset;
   UINT64 counter = 0;
 
   assert (stream != NULL);
-  for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < PERF_SNAPSHOT_CNT; snapshot++)
+  for (snapshot = (unsigned int) PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < (unsigned int) PERF_SNAPSHOT_CNT;
+       snapshot++)
     {
-      for (rec_type = PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED; rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
+      for (rec_type = (unsigned int) PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED;
+	   rec_type < (unsigned int) PERF_SNAPSHOT_RECORD_TYPE_CNT; rec_type++)
 	{
-	  for (visibility = PERF_SNAPSHOT_INVISIBLE; visibility < PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
+	  for (visibility = (unsigned int) PERF_SNAPSHOT_INVISIBLE;
+	       visibility < (unsigned int) PERF_SNAPSHOT_VISIBILITY_CNT; visibility++)
 	    {
 	      offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
 
@@ -3709,7 +3718,7 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
 static void
 perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
-  int lock_mode;
+  unsigned int lock_mode;
   UINT64 counter = 0;
   int ret;
 
@@ -3717,7 +3726,7 @@ perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char 
   assert (s != NULL);
   if (*s != NULL)
     {
-      for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
+      for (lock_mode = (unsigned int) NA_LOCK; lock_mode <= (unsigned int) SCH_M_LOCK; lock_mode++)
 	{
 	  counter = stats_ptr[lock_mode];
 	  if (counter == 0)
@@ -4604,9 +4613,12 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 STATIC_INLINE void
 perfmon_get_peek_stats (UINT64 * stats)
 {
+  /* fixme(rem) - will be fixed in stattool patch */
+#if defined (SERVER_MODE) || defined (SA_MODE)
   stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = xcache_get_entry_count ();
   stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
   stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 }
 
 /*

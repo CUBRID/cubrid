@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
 #else
@@ -544,8 +545,8 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
   int error, status;
   bool has_index = false;
   unsigned int repid_bits;
-  volatile int expected_disk_size;
-  volatile int offset_size;
+  int expected_disk_size;
+  int offset_size;
 
   buf = &orep;
   or_init (buf, record->data, record->area_size);
@@ -1564,7 +1565,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
 
     case DB_TYPE_POINTER:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%lx", (unsigned long) DB_GET_POINTER (value)));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%p", DB_GET_POINTER (value)));
       break;
 
     default:

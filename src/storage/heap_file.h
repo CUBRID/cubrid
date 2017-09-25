@@ -27,20 +27,18 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "config.h"
 
-#include "error_manager.h"
 #include "storage_common.h"
-#include "locator.h"
-#include "file_manager.h"
-#include "disk_manager.h"
-#include "slotted_page.h"
-#include "oid.h"
-#include "object_representation_sr.h"
 #include "thread.h"
-#include "system_catalog.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
+#include "file_manager.h"
+#include "heap_attrinfo.h"
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) \
@@ -139,7 +137,7 @@ struct heap_scancache
   LOCK page_latch;		/* Indicates the latch/lock to be acquired on heap pages. Its value may be NULL_LOCK
 				 * when it is secure to skip lock on heap pages. For example, the class of the heap has 
 				 * been locked with either S_LOCK, SIX_LOCK, or X_LOCK */
-  int cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
+  bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
   PGBUF_WATCHER page_watcher;
   char *area;			/* Pointer to last left fixed memory allocated */
   int area_size;		/* Size of allocated area */
@@ -184,49 +182,9 @@ struct heap_hfid_table_entry
   FILE_TYPE ftype;		/* value - FILE_HEAP or FILE_HEAP_REUSE_SLOTS */
 };
 
-typedef enum
-{
-  HEAP_READ_ATTRVALUE,
-  HEAP_WRITTEN_ATTRVALUE,
-  HEAP_UNINIT_ATTRVALUE,
-  HEAP_WRITTEN_LOB_ATTRVALUE
-} HEAP_ATTRVALUE_STATE;
 
-typedef enum
-{
-  HEAP_INSTANCE_ATTR,
-  HEAP_SHARED_ATTR,
-  HEAP_CLASS_ATTR
-} HEAP_ATTR_TYPE;
 
-typedef struct heap_attrvalue HEAP_ATTRVALUE;
-struct heap_attrvalue
-{
-  ATTR_ID attrid;		/* attribute identifier */
-  HEAP_ATTRVALUE_STATE state;	/* State of the attribute value. Either of has been read, has been updated, or is
-				 * unitialized */
-  int do_increment;
-  HEAP_ATTR_TYPE attr_type;	/* Instance, class, or shared attribute */
-  OR_ATTRIBUTE *last_attrepr;	/* Used for default values */
-  OR_ATTRIBUTE *read_attrepr;	/* Pointer to a desired attribute information */
-  DB_VALUE dbvalue;		/* DB values of the attribute in memory */
-};
 
-typedef struct heap_cache_attrinfo HEAP_CACHE_ATTRINFO;
-struct heap_cache_attrinfo
-{
-  OID class_oid;		/* Class object identifier */
-  int last_cacheindex;		/* An index identifier when the last_classrepr was obtained from the classrepr cache.
-				 * Otherwise, -1 */
-  int read_cacheindex;		/* An index identifier when the read_classrepr was obtained from the classrepr cache.
-				 * Otherwise, -1 */
-  OR_CLASSREP *last_classrepr;	/* Currently cached catalog attribute info. */
-  OR_CLASSREP *read_classrepr;	/* Currently cached catalog attribute info. */
-  OID inst_oid;			/* Instance Object identifier */
-  int inst_chn;			/* Current chn of instance object */
-  int num_values;		/* Number of desired attribute values */
-  HEAP_ATTRVALUE *values;	/* Value for the attributes */
-};
 
 typedef struct function_index_info FUNCTION_INDEX_INFO;
 struct function_index_info
@@ -274,13 +232,13 @@ typedef enum
   HEAP_OPERATION_UPDATE
 } HEAP_OPERATION_TYPE;
 
-typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
 enum update_inplace_style
 {
   UPDATE_INPLACE_NONE = 0,	/* None */
   UPDATE_INPLACE_CURRENT_MVCCID = 1,	/* non-MVCC in-place update style with current MVCC ID. */
   UPDATE_INPLACE_OLD_MVCCID = 2	/* non-MVCC in-place update style with old MVCC ID. Preserves old MVCC ID */
 };
+typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
 
 /* Currently mvcc update is also executed inplace, but coresponds to UPDATE_INPLACE_NONE. TODO: Refactor */
 #define HEAP_IS_UPDATE_INPLACE(update_inplace_style) \
@@ -390,7 +348,7 @@ struct heap_get_context
   PGBUF_WATCHER fwd_page_watcher;	/* forward page */
 
   /* retrieving parameters */
-  int ispeeking;		/* PEEK or COPY */
+  bool ispeeking;		/* PEEK or COPY */
   int old_chn;			/* Cache number coherency */
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations

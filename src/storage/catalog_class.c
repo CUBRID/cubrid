@@ -28,30 +28,17 @@
 #include <string.h>
 #include <assert.h>
 
-#include "storage_common.h"
-#include "error_manager.h"
 #include "system_catalog.h"
+
+#include "error_manager.h"
 #include "heap_file.h"
-#include "btree.h"
-#include "oid.h"
-#include "object_representation.h"
-#include "object_representation_sr.h"
 #include "transform.h"
 #include "set_object.h"
 #include "locator_sr.h"
-#include "memory_hash.h"
-#include "system_parameter.h"
-#include "class_object.h"
-#include "critical_section.h"
 #include "xserver_interface.h"
-#include "memory_alloc.h"
-#include "language_support.h"
-#include "numeric_opfunc.h"
-#include "string_opfunc.h"
-#include "dbtype.h"
+#include "object_primitive.h"
+#include "query_dump.h"
 #include "db_date.h"
-#include "mvcc.h"
-
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
@@ -123,7 +110,7 @@ extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *n
 					  UPDATE_INPLACE_STYLE force_in_place);
 extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p);
 extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
-extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char *lang_buf,
+extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
 					  const int lang_buf_size, char *timezone_checksum);
 extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
 extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
@@ -163,7 +150,7 @@ static int catcls_put_or_value_into_record (THREAD_ENTRY * thread_p, OR_VALUE * 
 
 static int catcls_insert_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * root_oid);
 static int catcls_delete_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p);
-static int catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * old_value, int *uflag,
+static int catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * old_value, bool * uflag,
 				 UPDATE_INPLACE_STYLE force_in_place);
 static int catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid, OID * root_oid,
 				   OID * class_oid, HFID * hfid, HEAP_SCANCACHE * scan);
@@ -1250,7 +1237,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   OR_VALUE *attrs;
   DB_VALUE *attr_val_p;
   DB_VALUE default_expr, val, db_value_default_expr_type, db_value_default_expr_format, db_value_default_expr_op;
-  int default_expr_type, default_expr_op = NULL_DEFAULT_EXPRESSION_OPERATOR;
+  DB_DEFAULT_EXPR_TYPE default_expr_type;
   DB_SEQ *def_expr_seq = NULL;
   DB_SEQ *att_props = NULL;
   OR_VARINFO *vars = NULL;
@@ -1258,6 +1245,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   int error = NO_ERROR;
   const char *default_expr_type_string = NULL;
   char *def_expr_format_string = NULL;
+  bool with_to_char = false;
 
   error = catcls_expand_or_value_by_def (value_p, &ct_Attribute);
   if (error != NO_ERROR)
@@ -1386,7 +1374,6 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
     {
       char *str_val = NULL;
-      const char *default_expr_op_string = NULL;
       int len;
 
       if (DB_VALUE_TYPE (&default_expr) == DB_TYPE_SEQUENCE)
@@ -1401,14 +1388,14 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	    }
 	  assert (DB_VALUE_TYPE (&db_value_default_expr_op) == DB_TYPE_INTEGER
 		  && DB_GET_INT (&db_value_default_expr_op) == (int) T_TO_CHAR);
-	  default_expr_op = T_TO_CHAR;
+	  with_to_char = true;
 
 	  error = set_get_element_nocopy (def_expr_seq, 1, &db_value_default_expr_type);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  default_expr_type = DB_GET_INT (&db_value_default_expr_type);
+	  default_expr_type = (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&db_value_default_expr_type);
 
 	  error = set_get_element_nocopy (def_expr_seq, 2, &db_value_default_expr_format);
 	  if (error != NO_ERROR)
@@ -1432,7 +1419,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	}
       else
 	{
-	  default_expr_type = DB_GET_INT (&default_expr);
+	  default_expr_type = (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&default_expr);
 	}
 
       default_expr_type_string = db_default_expression_string (default_expr_type);
@@ -1445,24 +1432,26 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  goto error;
 	}
+      len = strlen (default_expr_type_string);
 
-      default_expr_op_string = qdump_operator_type_string (default_expr_op);
-
-      len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
-	     + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_expr_type_string)
-	     + (def_expr_format_string ? strlen (def_expr_format_string) : 0));
-
-      str_val = (char *) db_private_alloc (thread_p, len + 1);
-      if (str_val == NULL)
+      if (with_to_char)
 	{
-	  pr_clear_value (&default_expr);
-	  pr_clear_value (&val);
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
+	  const char *default_expr_op_string = qdump_operator_type_string (T_TO_CHAR);
+	  assert (default_expr_op_string != NULL);
 
-      if (default_expr_op == T_TO_CHAR)
-	{
+	  len += (default_expr_op_string ? strlen (default_expr_op_string) : 0)	/* to_char */
+	    + 6			/* parenthesis, a comma, a blank and quotes */
+	    + (def_expr_format_string ? strlen (def_expr_format_string) : 0);	/* nothing or format */
+
+	  str_val = (char *) db_private_alloc (thread_p, len + 1);
+	  if (str_val == NULL)
+	    {
+	      pr_clear_value (&default_expr);
+	      pr_clear_value (&val);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+
 	  strcpy (str_val, default_expr_op_string);
 	  strcat (str_val, "(");
 	  strcat (str_val, default_expr_type_string);
@@ -1476,10 +1465,15 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	}
       else
 	{
-	  if (default_expr_type_string)
+	  str_val = (char *) db_private_alloc (thread_p, len + 1);
+	  if (str_val == NULL)
 	    {
-	      strcpy (str_val, default_expr_type_string);
+	      pr_clear_value (&default_expr);
+	      pr_clear_value (&val);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
 	    }
+	  strcpy (str_val, default_expr_type_string);
 	}
 
       pr_clear_value (attr_val_p);	/* clean old default value */
@@ -3888,7 +3882,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   OR_VALUE *attrs, *old_attrs;
   OR_VALUE *subset_p, *attr_p;
   int old_chn;
-  int uflag = false;
+  bool uflag = false;
   int i, j, k;
   int error = NO_ERROR;
 
@@ -4385,8 +4379,8 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
  *	   reason, no locks are required on the class.
  */
 int
-catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char *lang_buf, const int lang_buf_size,
-			       char *timezone_checksum)
+catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
+			       const int lang_buf_size, char *timezone_checksum)
 {
 #define CHECKSUM_SIZE 32
   OID class_oid;
@@ -4543,7 +4537,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char 
 		}
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue)) == DB_TYPE_INTEGER);
 
-	      *charset_id_p = DB_GET_INTEGER (&heap_value->dbvalue);
+	      *charset_id_p = (INTL_CODESET) DB_GET_INTEGER (&heap_value->dbvalue);
 	    }
 	  else if (heap_value->attrid == lang_att_id)
 	    {
@@ -4627,7 +4621,7 @@ exit:
  *   force_in_place(in): UPDATE_INPLACE style
  */
 static int
-catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * old_value_p, int *uflag,
+catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * old_value_p, bool * uflag,
 		      UPDATE_INPLACE_STYLE force_in_place)
 {
   OR_VALUE *subset_p = NULL, *old_subset_p = NULL;

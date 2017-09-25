@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <assert.h>
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #else

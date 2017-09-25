@@ -185,7 +185,6 @@ typedef enum
   SERVICE_UNKNOWN = 3
 } T_BROKER_SERVICE_STATUS;
 
-typedef enum t_con_status T_CON_STATUS;
 enum t_con_status
 {
   CON_STATUS_OUT_TRAN = 0,
@@ -193,6 +192,7 @@ enum t_con_status
   CON_STATUS_CLOSE = 2,
   CON_STATUS_CLOSE_AND_CONNECT = 3
 };
+typedef enum t_con_status T_CON_STATUS;
 
 #if defined(WINDOWS)
 typedef INT64 int64_t;
@@ -661,12 +661,12 @@ struct t_shm_broker
   T_BROKER_INFO br_info[1];
 };
 
-typedef enum t_shm_mode T_SHM_MODE;
 enum t_shm_mode
 {
   SHM_MODE_ADMIN = 0,
   SHM_MODE_MONITOR = 1
 };
+typedef enum t_shm_mode T_SHM_MODE;
 
 void *uw_shm_open (int shm_key, int which_shm, T_SHM_MODE shm_mode);
 void *uw_shm_create (int shm_key, int size, int which_shm);

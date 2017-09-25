@@ -27,6 +27,7 @@
 
 #include <stdarg.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "error_manager.h"
 #include "parser.h"
@@ -53,6 +54,8 @@
 #include "xasl_support.h"
 #include "network_interface_cl.h"
 #include "view_transform.h"
+#include "xasl_to_stream.h"
+#include "parser_support.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -771,7 +774,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      pt_desired_type = p->type_enum;
 
-	      if (pt_desired_type == DB_TYPE_BLOB || pt_desired_type == DB_TYPE_CLOB)
+	      if (pt_desired_type == PT_TYPE_BLOB || pt_desired_type == PT_TYPE_CLOB)
 		{
 		  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -2683,7 +2686,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 {
   int error = NO_ERROR;
   int i = 0, nnames = 0;
-  DB_CONSTRAINT_TYPE ctype = -1;
+  DB_CONSTRAINT_TYPE ctype = DB_CONSTRAINT_NONE;
   const PT_NODE *c = NULL, *n = NULL;
   char **attnames = NULL;
   int *asc_desc = NULL;
@@ -6227,7 +6230,7 @@ do_reorganize_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTIT
 	  else if (names_count >= allocated - 1)
 	    {
 	      /* need to reallocate */
-	      char **new_buf = realloc (names, 10 * sizeof (char *));
+	      char **new_buf = (char **) realloc (names, 10 * sizeof (char *));
 	      if (new_buf == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 10 * sizeof (char *));
@@ -8986,7 +8989,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
   /* drop indexes */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_drop_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names, false,
@@ -9009,7 +9012,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
   /* add indexes */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
@@ -9590,7 +9593,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 
 	      if (alter->info.alter.hint & PT_HINT_SKIP_UPDATE_NULL)
 		{
-		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, ci->att_names, 0);
+		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, (const char **) ci->att_names, 0);
 		}
 	      else if (!prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
 		{
@@ -9622,7 +9625,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ALTER_CHANGE_ADD_NOT_NULL_SET_HARD_DEFAULT, 0);
 		    }
-		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, ci->att_names, 0);
+		  error = db_add_constraint (class_mop, ci->constraint_type, NULL, (const char **) ci->att_names, 0);
 		}
 	      else
 		{
@@ -10168,7 +10171,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       /* delete current serial */
       int save;
       OID *oidp, serial_obj_id;
-      char *name = found_att->header.name;
+      const char *name = found_att->header.name;
 
       if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF))
 	{
@@ -11895,7 +11898,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
  *
  *   return: Error code
  *   parser(in): Parser context
- *   curr_domain(in): Current domain of the atribute
+ *   curr_domain(in): Current domain of the attribute
  *   req_domain(in): Requested (new) domain of the attribute
  *   attr_chg_properties(out): structure summarizing the changed properties
  *   of attribute
@@ -13172,7 +13175,7 @@ do_drop_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_list)
 
   for (constr = constr_info_list; constr != NULL; constr = constr->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constr->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
 	{
 	  error =
 	    sm_drop_constraint (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names, 0,
@@ -13213,7 +13216,7 @@ do_recreate_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_lis
 
   for (constr = constr_info_list; constr != NULL; constr = constr->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constr->constraint_type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names,
@@ -14856,7 +14859,7 @@ do_save_all_indexes (MOP classmop, SM_CONSTRAINT_INFO ** saved_index_info_listpp
 
   for (c = class_->constraints; c; c = c->next)
     {
-      if (c->type == DB_CONSTRAINT_NOT_NULL)
+      if ((DB_CONSTRAINT_TYPE) c->type == DB_CONSTRAINT_NOT_NULL)
 	{
 	  continue;
 	}
@@ -14896,7 +14899,7 @@ do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_drop_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names, false,
@@ -14934,7 +14937,7 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY (saved->constraint_type))
+      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,

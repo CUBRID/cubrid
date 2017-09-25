@@ -36,13 +36,16 @@
 #include <sys/time.h>
 #endif /* WINDOWS */
 
+#include "event_log.h"
+
 #include "porting.h"
 #include "dbtype.h"
 #include "error_manager.h"
 #include "critical_section.h"
 #include "environment_variable.h"
 #include "query_executor.h"
-#include "event_log.h"
+#include "xasl_cache.h"
+#include "object_primitive.h"
 
 #define EVENT_LOG_FILE_DIR "server"
 

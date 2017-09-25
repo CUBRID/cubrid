@@ -77,7 +77,7 @@ send_fd (int server_fd, int client_fd, int rid, char *driver_info)
   msg.msg_accrights = (caddr_t) & client_fd;
   msg.msg_accrightslen = sizeof (client_fd);
 #else
-  if (cmptr == NULL && (cmptr = malloc (CONTROLLEN)) == NULL)
+  if (cmptr == NULL && (cmptr = (cmsghdr *) malloc (CONTROLLEN)) == NULL)
     exit (99);
   cmptr->cmsg_level = SOL_SOCKET;
   cmptr->cmsg_type = SCM_RIGHTS;

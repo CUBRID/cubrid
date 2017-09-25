@@ -711,7 +711,7 @@ print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info, int
 	      goto end;
 	    }
 
-	  if (is_number_type (col_type_arr[i - 1]))
+	  if (is_number_type ((T_CCI_U_TYPE) col_type_arr[i - 1]))
 	    {
 	      PRINT_RESULT ("  %-*s", col_size_arr[i - 1], data);
 	    }

@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "config.h"
 
 #include "error_manager.h"
@@ -40,7 +44,8 @@
 #include "disk_manager.h"
 #include "replication.h"
 #include "thread.h"
-#include "partition.h"
+#include "partition_sr.h"
+#include "query_evaluator.h"
 
 enum
 {

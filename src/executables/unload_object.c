@@ -31,6 +31,7 @@
 #include <string.h>
 #include <signal.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include <sys/stat.h>
 #if defined(WINDOWS)
@@ -47,11 +48,8 @@
 #include "memory_hash.h"
 #include "memory_alloc.h"
 #include "locator_cl.h"
-#include "locator_sr.h"
 #include "schema_manager.h"
-#include "heap_file.h"
 #include "locator.h"
-#include "slotted_page.h"
 #include "transform_cl.h"
 #include "object_accessor.h"
 #include "set_object.h"

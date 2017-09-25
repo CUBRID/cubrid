@@ -625,7 +625,7 @@ util_log_header (char *buf, size_t buf_len)
 
   tm_p = localtime_r (&sec, &tm);
 
-  len = strftime (buf, buf_len, "%y-%m-%d %H:%M:%S", tm_p);
+  len = (int) strftime (buf, buf_len, "%y-%m-%d %H:%M:%S", tm_p);
   p = buf + len;
   buf_len -= len;
 

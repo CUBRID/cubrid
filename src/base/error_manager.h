@@ -30,6 +30,7 @@
 #include "config.h"
 
 #include <stdarg.h>
+#include <assert.h>
 #if defined (SERVER_MODE)
 #if defined (WINDOWS)
 #include <winsock2.h>
@@ -93,7 +94,7 @@
 #if defined(NDEBUG)
 #define STRINGIZE(s) #s
 #define assert_release(e) \
-  ((void) ((e) ? 0  : (er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, STRINGIZE (e)))))
+  ((e) ? (void) 0  : er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, STRINGIZE (e)))
 #else
 #define assert_release(e) assert(e)
 #endif
@@ -235,52 +236,61 @@ struct er_msg
   int nargs;			/* Length of array */
 };
 
-
-extern const char *er_get_msglog_filename (void);
-extern int er_init (const char *msglog_filename, int exit_ask);
-extern int er_init_access_log (void);
-extern void er_set_print_property (int print_console);
-
-extern void er_final (ER_FINAL_CODE do_global_final);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern PTR_FNERLOG er_fnerlog (int severity, PTR_FNERLOG new_fnlog);
+#ifdef __cplusplus
+extern "C"
+{
 #endif
-extern void er_clear (void);
-extern void er_set (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...);
-extern void er_set_with_file (int severity, const char *file_name, const int line_no, int err_id, FILE * fp,
-			      int num_args, ...);
-extern void er_set_with_oserror (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...);
-typedef void (*er_log_handler_t) (unsigned int);
-extern er_log_handler_t er_register_log_handler (er_log_handler_t f);
 
+  extern const char *er_get_msglog_filename (void);
+  extern int er_init (const char *msglog_filename, int exit_ask);
+  extern int er_init_access_log (void);
+  extern void er_set_print_property (int print_console);
 
-extern int er_errid (void);
-extern int er_errid_if_has_error (void);
-extern int er_severity (void);
+  extern void er_final (ER_FINAL_CODE do_global_final);
 #if defined(ENABLE_UNUSED_FUNCTION)
-extern int er_nlevels (void);
-extern const char *er_file_line (int *line_no);
+  extern PTR_FNERLOG er_fnerlog (int severity, PTR_FNERLOG new_fnlog);
 #endif
-extern const char *er_msg (void);
-extern void er_all (int *err_id, int *severity, int *nlevels, int *line_no, const char **file_name, const char **msg);
-extern void er_print (void);
+  extern void er_clear (void);
+  extern void er_set (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...);
+  extern void er_set_with_file (int severity, const char *file_name, const int line_no, int err_id, FILE * fp,
+				int num_args, ...);
+  extern void er_set_with_oserror (int severity, const char *file_name, const int line_no, int err_id, int num_args,
+				   ...);
+  typedef void (*er_log_handler_t) (unsigned int);
+  extern er_log_handler_t er_register_log_handler (er_log_handler_t f);
 
-extern void _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...);
+
+  extern int er_errid (void);
+  extern int er_errid_if_has_error (void);
+  extern int er_severity (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
+  extern int er_nlevels (void);
+  extern const char *er_file_line (int *line_no);
+#endif
+  extern const char *er_msg (void);
+  extern void er_all (int *err_id, int *severity, int *nlevels, int *line_no, const char **file_name, const char **msg);
+  extern void er_print (void);
+
+  extern void _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...);
 #define er_log_debug(...) if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG)) _er_log_debug(__VA_ARGS__)
 
-extern void *er_get_area_error (void *buffer, int *length);
-extern int er_set_area_error (void *server_area);
-extern int er_stack_push (void);
-extern int er_stack_push_if_exists (void);
-extern int er_stack_pop (void);
-extern void er_stack_clear (void);
-extern void er_restore_last_error (void);
-extern void er_stack_clearall (void);
-extern void *db_default_malloc_handler (void *arg, const char *filename, int line_no, size_t size);
-extern int er_event_restart (void);
-extern void er_clearid (void);
-extern void er_setid (int err_id);
+  extern void *er_get_area_error (void *buffer, int *length);
+  extern int er_set_area_error (void *server_area);
+  extern int er_stack_push (void);
+  extern int er_stack_push_if_exists (void);
+  extern int er_stack_pop (void);
+  extern void er_stack_clear (void);
+  extern void er_restore_last_error (void);
+  extern void er_stack_clearall (void);
+  extern void *db_default_malloc_handler (void *arg, const char *filename, int line_no, size_t size);
+  extern int er_event_restart (void);
+  extern void er_clearid (void);
+  extern void er_setid (int err_id);
 
-extern bool er_has_error (void);
-extern void er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...);
-#endif /* _ERROR_MANAGER_H_ */
+  extern bool er_has_error (void);
+  extern void er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...);
+
+#ifdef __cplusplus
+}
+#endif
+#endif				/* _ERROR_MANAGER_H_ */

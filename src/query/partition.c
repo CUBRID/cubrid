@@ -22,12 +22,14 @@
  */
 
 #include <assert.h>
-#include "partition.h"
+#include "partition_sr.h"
+
 #include "heap_file.h"
-#include "object_representation.h"
-#include "object_representation_sr.h"
-#include "object_domain.h"
 #include "fetch.h"
+#include "dbtype.h"
+#include "stream_to_xasl.h"
+#include "query_executor.h"
+#include "object_primitive.h"
 #include "dbval.h"
 
 typedef enum match_status
@@ -457,7 +459,7 @@ partition_cache_entry_to_pruning_context (PRUNING_CONTEXT * pinfo, PARTITION_CAC
 
   pinfo->attr_id = entry_p->attr_id;
 
-  pinfo->partition_type = pinfo->partitions[0].partition_type;
+  pinfo->partition_type = (DB_PARTITION_TYPE) pinfo->partitions[0].partition_type;
 
   return NO_ERROR;
 }
@@ -876,12 +878,12 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
       goto cleanup;
     }
 
-  if (pinfo->spec->access == INDEX || pinfo->spec->access == INDEX_KEY_INFO)
+  if (pinfo->spec->access == ACCESS_METHOD_INDEX || pinfo->spec->access == ACCESS_METHOD_INDEX_KEY_INFO)
     {
       /* we have to load information about the index used so we can duplicate it for each partition */
       is_index = true;
       master_oid = &ACCESS_SPEC_CLS_OID (pinfo->spec);
-      master_btid = &pinfo->spec->indexptr->indx_id.i.btid;
+      master_btid = &pinfo->spec->indexptr->btid;
       error =
 	heap_get_indexinfo_of_btid (pinfo->thread_p, master_oid, master_btid, NULL, NULL, NULL, NULL, &btree_name,
 				    NULL);
@@ -917,8 +919,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 
       if (is_index)
 	{
-	  error = heap_get_index_with_name (pinfo->thread_p, &spec[i].oid, btree_name, &spec[i].indx_id.i.btid);
-	  spec[i].indx_id.type = T_BTID;
+	  error = heap_get_index_with_name (pinfo->thread_p, &spec[i].oid, btree_name, &spec[i].btid);
 
 	  if (error != NO_ERROR)
 	    {
@@ -1024,7 +1025,7 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 	}
 
       /* check misc_operand for EXTRACT, etc */
-      if (left->value.arithptr->misc_operand != left->value.arithptr->misc_operand)
+      if (left->value.arithptr->misc_operand != right->value.arithptr->misc_operand)
 	{
 	  return false;
 	}
@@ -2320,7 +2321,7 @@ reload_from_cache:
       goto error_return;
     }
 
-  pinfo->partition_type = master->partition_type;
+  pinfo->partition_type = (DB_PARTITION_TYPE) master->partition_type;
   pinfo->root_repr_id = master->rep_id;
 
   pinfo->attr_id = partition_get_attribute_id (pinfo->partition_pred->func_regu);
@@ -2855,7 +2856,8 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE 
   pinfo.spec = spec;
   pinfo.vd = vd;
 
-  if (spec->access == SEQUENTIAL || spec->access == SEQUENTIAL_RECORD_INFO || spec->access == SEQUENTIAL_PAGE_SCAN)
+  if (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+      || spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
     {
       error = partition_prune_heap_scan (&pinfo);
     }
@@ -2879,7 +2881,7 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE 
 	}
       else
 	{
-	  BTID *btid = &spec->indexptr->indx_id.i.btid;
+	  BTID *btid = &spec->indexptr->btid;
 	  error = partition_get_position_in_key (&pinfo, btid);
 	  if (error != NO_ERROR)
 	    {
@@ -3516,58 +3518,17 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * c
 			     BTID * btid)
 {
   int error = NO_ERROR, pos = 0;
-  MATCH_STATUS status = MATCH_NOT_FOUND;
-  PRUNING_BITSET pruned;
-  PRUNING_BITSET_ITERATOR it;
   OID partition_oid;
   HFID partition_hfid;
   BTID partition_btid;
-  int is_global_index = 0;
-  DB_VALUE partition_key;
 
-  if (pcontext == NULL)
-    {
-      assert_release (pcontext != NULL);
-      return ER_FAILED;
-    }
+  error = partition_prune_partition_index (pcontext, key, class_oid, btid, &pos);
 
-  if (pcontext->pruning_type == DB_PARTITION_CLASS)
-    {
-      /* btid is the BTID of the index corresponding to the partition. Find the BTID of the root class and use that one 
-       */
-      error = partition_find_inherited_btid (pcontext->thread_p, class_oid, &pcontext->root_oid, btid, btid);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  error = partition_attrinfo_get_key (pcontext->thread_p, pcontext, key, &pcontext->root_oid, btid, &partition_key);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  pruningset_init (&pruned, PARTITIONS_COUNT (pcontext));
-  status = partition_prune_db_val (pcontext, &partition_key, PO_EQ, &pruned);
-  pr_clear_value (&partition_key);
-
-  if (status == MATCH_NOT_FOUND)
-    {
-      /* This can happen only if there's no partition that can hold the key value (for example, if this is called by ON 
-       * DUPLICATE KEY UPDATE but the value that is being inserted will throw an error anyway) */
-      return NO_ERROR;
-    }
-  else if (pruningset_popcount (&pruned) != 1)
-    {
-      /* a key value should always return at most one partition */
-      assert (false);
-      OID_SET_NULL (class_oid);
-      return NO_ERROR;
-    }
-
-  pruningset_iterator_init (&pruned, &it);
-  pos = pruningset_iterator_next (&it);
   COPY_OID (&partition_oid, &pcontext->partitions[pos + 1].class_oid);
   HFID_COPY (&partition_hfid, &pcontext->partitions[pos + 1].class_hfid);
 
@@ -3815,7 +3776,7 @@ cleanup:
 
 /*
  * partition_attrinfo_get_key () - retrieves the appropiate partitioning key
- *			    from a given index key, by which prunning will be
+ *			    from a given index key, by which pruning will be
  *			    performed.
  * return : error code or NO_ERROR
  * thread_p (in) :
@@ -3906,5 +3867,80 @@ cleanup:
       db_private_free_and_init (thread_p, btree_attr_ids);
     }
 
+  return error;
+}
+
+/*
+ *  partition_prune_partition_index ():     - Gets the index of the partition where the key resides.
+ *
+ *  return :                              - NO_ERROR or error code.
+ *
+ *  pcontext (in)                         - Context of the partitions.
+ *  key(in)                               - The key to be located.
+ *  class_oid(in/out)                     - The correct OID of the object that contains the key.
+ *  btid(in/out)                          - The correct BTID of the tree that contains the key.
+ *  position(out)                         - The number of the partition that holds the key.
+ *
+ *  NOTE:
+ *            - At the entry of the function, btid and class_oid should refer to the btid and oid, respectively,
+ *              of the root table on which the partitions are created. This ensures the correctness of the btid,
+ *              and class_oid on function exit.
+ */
+int
+partition_prune_partition_index (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, BTID * btid,
+				 int *position)
+{
+  int error = NO_ERROR;
+  int pos = 0;
+  DB_VALUE partition_key;
+  PRUNING_BITSET pruned;
+  PRUNING_BITSET_ITERATOR it;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
+
+  if (pcontext == NULL)
+    {
+      assert_release (pcontext != NULL);
+      return ER_FAILED;
+    }
+
+  if (pcontext->pruning_type == DB_PARTITION_CLASS)
+    {
+      /* btid is the BTID of the index corresponding to the partition. Find the BTID of the root class and use that one */
+      error = partition_find_inherited_btid (pcontext->thread_p, class_oid, &pcontext->root_oid, btid, btid);
+
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  error = partition_attrinfo_get_key (pcontext->thread_p, pcontext, key, &pcontext->root_oid, btid, &partition_key);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  pruningset_init (&pruned, PARTITIONS_COUNT (pcontext));
+  status = partition_prune_db_val (pcontext, &partition_key, PO_EQ, &pruned);
+  pr_clear_value (&partition_key);
+
+  if (status == MATCH_NOT_FOUND)
+    {
+      /* This can happen only if there's no partition that can hold the key value (for example, if this is called by ON
+       * DUPLICATE KEY UPDATE but the value that is being inserted will throw an error anyway) */
+      return NO_ERROR;
+    }
+  else if (pruningset_popcount (&pruned) != 1)
+    {
+      /* a key value should always return at most one partition */
+      assert (false);
+      OID_SET_NULL (class_oid);
+      return NO_ERROR;
+    }
+
+  pruningset_iterator_init (&pruned, &it);
+  pos = pruningset_iterator_next (&it);
+
+  *position = pos;
   return error;
 }

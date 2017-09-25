@@ -29,19 +29,11 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+
+#include "stream_to_xasl.h"
 
 #include "error_manager.h"
-#include "query_executor.h"
-#include "server_interface.h"
-#include "class_object.h"
-#include "object_primitive.h"
-#include "work_space.h"
-#include "memory_alloc.h"
-#include "heap_file.h"
-#include "release_string.h"
-#if defined(SERVER_MODE)
-#include "thread.h"
-#endif /* SERVER_MODE */
 
 /* memory alignment unit - to align stored XASL tree nodes */
 #define	ALIGN_UNIT	sizeof(double)
@@ -193,7 +185,6 @@ static char *stx_build_like_eval_term (THREAD_ENTRY * thread_p, char *tmp, LIKE_
 static char *stx_build_rlike_eval_term (THREAD_ENTRY * thread_p, char *tmp, RLIKE_EVAL_TERM * ptr);
 static char *stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *tmp, ACCESS_SPEC_TYPE * ptr, void *arg);
 static char *stx_build_indx_info (THREAD_ENTRY * thread_p, char *tmp, INDX_INFO * ptr);
-static char *stx_build_indx_id (THREAD_ENTRY * thread_p, char *tmp, INDX_ID * ptr);
 static char *stx_build_key_info (THREAD_ENTRY * thread_p, char *tmp, KEY_INFO * ptr);
 static char *stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *tmp, CLS_SPEC_TYPE * ptr);
 static char *stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *tmp, LIST_SPEC_TYPE * ptr);
@@ -2286,17 +2277,19 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &xasl->cat_fetched);
 
   ptr = or_unpack_int (ptr, &tmp);
-  xasl->scan_op_type = tmp;
+  xasl->scan_op_type = (SCAN_OPERATION_TYPE) tmp;
 
   ptr = or_unpack_int (ptr, &xasl->upd_del_class_cnt);
 
   ptr = or_unpack_int (ptr, &xasl->mvcc_reev_extra_cls_cnt);
 
+#if defined (ENABLE_COMPOSITE_LOCK)
   /* 
    * Note that the composite lock block is strictly a server side block
    * and was not packed.  We'll simply clear the memory.
    */
   memset (&xasl->composite_lock, 0, sizeof (LK_COMPOSITE_LOCK));
+#endif /* defined (ENABLE_COMPOSITE_LOCK) */
 
   switch (xasl->type)
     {
@@ -2962,20 +2955,6 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
     {
       stx_build_list_proc->g_agg_list = stx_restore_aggregate_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->g_agg_list == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      stx_build_list_proc->g_outarith_list = NULL;
-    }
-  else
-    {
-      stx_build_list_proc->g_outarith_list = stx_restore_arith_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (stx_build_list_proc->g_outarith_list == NULL)
 	{
 	  goto error;
 	}
@@ -4514,7 +4493,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 	  goto error;
 	}
       /* backup index id */
-      access_spec->indx_id = access_spec->indexptr->indx_id;
+      access_spec->btid = access_spec->indexptr->btid;
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -4602,9 +4581,8 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   memset (&access_spec->s_id, '\0', sizeof (SCAN_ID));
   access_spec->s_id.status = S_CLOSED;
 
-  ptr = or_unpack_int (ptr, &access_spec->grouped_scan);
-  ptr = or_unpack_int (ptr, &access_spec->fixed_scan);
-  ptr = or_unpack_int (ptr, &access_spec->qualified_block);
+  access_spec->grouped_scan = false;
+  access_spec->fixed_scan = false;
 
   ptr = or_unpack_int (ptr, &tmp);
   access_spec->single_fetch = (QPROC_SINGLE_FETCH) tmp;
@@ -4638,7 +4616,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   access_spec->pruned = false;
 
   ptr = or_unpack_int (ptr, &val);
-  access_spec->flags = val;
+  access_spec->flags = (ACCESS_SPEC_FLAG) val;
 
   return ptr;
 
@@ -4653,11 +4631,7 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
   int tmp, offset;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
-  ptr = stx_build_indx_id (thread_p, ptr, &indx_info->indx_id);
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
+  ptr = or_unpack_btid (ptr, &indx_info->btid);
 
   ptr = or_unpack_int (ptr, &indx_info->coverage);
 
@@ -4708,36 +4682,6 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 	}
 
       indx_info->iss_range.key2 = NULL;
-    }
-
-  return ptr;
-}
-
-static char *
-stx_build_indx_id (THREAD_ENTRY * thread_p, char *ptr, INDX_ID * indx_id)
-{
-  int tmp;
-
-  ptr = or_unpack_int (ptr, &tmp);
-  indx_id->type = (INDX_ID_TYPE) tmp;
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
-
-  switch (indx_id->type)
-    {
-    case T_BTID:
-      ptr = or_unpack_btid (ptr, &indx_id->i.btid);
-      break;
-
-    case T_EHID:
-      ptr = or_unpack_ehid (ptr, &indx_id->i.ehid);
-      break;
-
-    default:
-      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
-      return NULL;
     }
 
   return ptr;
@@ -5131,7 +5075,7 @@ stx_build_showstmt_spec_type (THREAD_ENTRY * thread_p, char *ptr, SHOWSTMT_SPEC_
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &val);
-  showstmt_spec_type->show_type = val;
+  showstmt_spec_type->show_type = (SHOWSTMT_TYPE) val;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -6760,7 +6704,7 @@ stx_alloc_struct (THREAD_ENTRY * thread_p, int size)
 
       p_size = MAX (size, xasl_unpack_info->packed_size);
       p_size = MAKE_ALIGN (p_size);	/* alignment */
-      ptr = db_private_alloc (thread_p, p_size);
+      ptr = (char *) db_private_alloc (thread_p, p_size);
       if (ptr == NULL)
 	{
 	  return NULL;		/* error */
@@ -6828,10 +6772,10 @@ stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_
   body_offset = xasl_stream_size * UNPACK_SCALE;
   body_offset = MAKE_ALIGN (body_offset);
 #if defined(SERVER_MODE)
-  xasl_unpack_info = db_private_alloc (thread_p, head_offset + body_offset);
+  xasl_unpack_info = (XASL_UNPACK_INFO *) db_private_alloc (thread_p, head_offset + body_offset);
   stx_set_xasl_unpack_info_ptr (thread_p, xasl_unpack_info);
 #else /* SERVER_MODE */
-  xasl_unpack_info = db_private_alloc (NULL, head_offset + body_offset);
+  xasl_unpack_info = (XASL_UNPACK_INFO *) db_private_alloc (NULL, head_offset + body_offset);
 #endif /* SERVER_MODE */
   if (xasl_unpack_info == NULL)
     {

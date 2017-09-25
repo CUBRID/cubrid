@@ -253,7 +253,7 @@ alloc_file_list (int size)
 
   assert (size > 0);
 
-  file_list = MALLOC (sizeof (char *) * size);
+  file_list = (char **) MALLOC (sizeof (char *) * size);
   if (file_list == NULL)
     {
       fprintf (stderr, "fail memory allocation\n");
@@ -262,7 +262,7 @@ alloc_file_list (int size)
 
   for (i = 0; i < size; i++)
     {
-      file_list[i] = MALLOC (MAX_PATH);
+      file_list[i] = (char *) MALLOC (MAX_PATH);
 
       if (file_list[i] == NULL)
 	{
@@ -494,6 +494,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
     }
 
   cas_log_buf = t_string_make (1);
+
   sql_buf = t_string_make (1);
   linebuf_tstr = t_string_make (1000);
   if (cas_log_buf == NULL || sql_buf == NULL || linebuf_tstr == NULL)

@@ -29,6 +29,8 @@
 #error "It looks like dbval.h is included before dbtype.h; don't do that."
 #endif
 
+#include <assert.h>
+
 #include "language_support.h"
 #include "system_parameter.h"
 #include "object_domain.h"
@@ -163,7 +165,7 @@
       ((!DB_IS_NULL(v) \
 	&& ((v)->need_clear == true \
 	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) \
-		 && (v)->data.ch.info.compressed_need_clear == true))))
+		 && (v)->data.ch.info.compressed_need_clear != 0))))
 
 /* note : this will have to change when we start using the small and large
           string buffers. */

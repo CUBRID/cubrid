@@ -28,6 +28,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <signal.h>
+#include <assert.h>
 
 #include "porting.h"
 #include "csql.h"
@@ -36,6 +37,7 @@
 #include "network_interface_cl.h"
 #include "unicode_support.h"
 #include "transaction_cl.h"
+#include "db.h"
 
 /* for short usage of `csql_append_more_line()' and error check */
 #define	APPEND_MORE_LINE(indent, line)	\
@@ -234,7 +236,7 @@ csql_help_schema (const char *class_name)
     {
       bool is_composed = false;
 
-      class_name_composed = malloc (composed_size + 1);
+      class_name_composed = (char *) malloc (composed_size + 1);
       if (class_name_composed == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -491,7 +493,7 @@ csql_help_trigger (const char *trigger_name)
 	{
 	  bool is_composed = false;
 
-	  trigger_name_composed = malloc (composed_size + 1);
+	  trigger_name_composed = (char *) malloc (composed_size + 1);
 	  if (trigger_name_composed == NULL)
 	    {
 	      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;

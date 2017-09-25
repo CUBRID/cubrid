@@ -30,7 +30,6 @@
 #include "storage_common.h"
 #include "object_representation.h"
 #include "object_domain.h"
-#include "sha1.h"
 
 typedef enum
 {
@@ -43,193 +42,6 @@ typedef enum
 } JOIN_TYPE;
 
 #define IS_OUTER_JOIN_TYPE(t) ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
-
-/*
- *                          SCAN FETCH MODE
- */
-
-typedef enum
-{
-  QPROC_NO_SINGLE_INNER = 0,	/* 0 or n qualified rows */
-  QPROC_SINGLE_INNER,		/* 0 or 1 qualified row - currently, not used */
-  QPROC_SINGLE_OUTER,		/* 1 NULL row or 1 qualified row */
-  QPROC_NO_SINGLE_OUTER		/* 1 NULL row or n qualified rows */
-} QPROC_SINGLE_FETCH;
-
-/*
- * CACHE TIME RELATED DEFINITIONS
- */
-
-typedef struct cache_time CACHE_TIME;
-struct cache_time
-{
-  int sec;
-  int usec;
-};
-
-#define CACHE_TIME_AS_ARGS(ct)	(ct)->sec, (ct)->usec
-
-#define CACHE_TIME_EQ(T1, T2) \
-  (((T1)->sec != 0) && ((T1)->sec == (T2)->sec) && ((T1)->usec == (T2)->usec))
-
-#define CACHE_TIME_RESET(T) \
-  do \
-    { \
-      (T)->sec = 0; \
-      (T)->usec = 0; \
-    } \
-  while (0)
-
-#define CACHE_TIME_MAKE(CT, TV) \
-  do \
-    { \
-      (CT)->sec = (TV)->tv_sec; \
-      (CT)->usec = (TV)->tv_usec; \
-    } \
-  while (0)
-
-#define OR_CACHE_TIME_SIZE (OR_INT_SIZE * 2)
-
-#define OR_PACK_CACHE_TIME(PTR, T) \
-  do \
-    { \
-      if ((CACHE_TIME *) (T) != NULL) \
-        { \
-          PTR = or_pack_int (PTR, (T)->sec); \
-          PTR = or_pack_int (PTR, (T)->usec); \
-        } \
-    else \
-      { \
-        PTR = or_pack_int (PTR, 0); \
-        PTR = or_pack_int (PTR, 0); \
-      } \
-    } \
-  while (0)
-
-#define OR_UNPACK_CACHE_TIME(PTR, T) \
-  do \
-    { \
-      if ((CACHE_TIME *) (T) != NULL) \
-        { \
-          PTR = or_unpack_int (PTR, &((T)->sec)); \
-          PTR = or_unpack_int (PTR, &((T)->usec)); \
-        } \
-    } \
-  while (0)
-
-/* XASL HEADER */
-/*
- * XASL_NODE_HEADER has useful information that needs to be passed to client
- * along with XASL_ID
- *
- * NOTE: Update XASL_NODE_HEADER_SIZE when this structure is changed
- */
-typedef struct xasl_node_header XASL_NODE_HEADER;
-struct xasl_node_header
-{
-  int xasl_flag;		/* query flags (e.g, multi range optimization) */
-};
-
-#define XASL_NODE_HEADER_SIZE OR_INT_SIZE	/* xasl_flag */
-
-#define OR_PACK_XASL_NODE_HEADER(PTR, X) \
-  do \
-    { \
-      if ((PTR) == NULL) \
-        { \
-	  break; \
-        } \
-      ASSERT_ALIGN ((PTR), INT_ALIGNMENT); \
-      (PTR) = or_pack_int ((PTR), (X)->xasl_flag); \
-    } \
-  while (0)
-
-#define OR_UNPACK_XASL_NODE_HEADER(PTR, X) \
-  do \
-    { \
-      if ((PTR) == NULL) \
-        { \
-	  break; \
-        } \
-      ASSERT_ALIGN ((PTR), INT_ALIGNMENT); \
-      (PTR) = or_unpack_int ((PTR), &(X)->xasl_flag); \
-    } \
-  while (0)
-
-#define INIT_XASL_NODE_HEADER(X) \
-  do \
-    { \
-      if ((X) == NULL) \
-        { \
-	  break; \
-        } \
-      memset ((X), 0x00, XASL_NODE_HEADER_SIZE); \
-    } \
-  while (0)
-
-/* XASL FILE IDENTIFICATION */
-
-typedef struct xasl_id XASL_ID;
-struct xasl_id
-{
-  SHA1Hash sha1;		/* SHA-1 hash generated from query string. */
-  volatile INT32 cache_flag;	/* Multiple-purpose field used to handle XASL cache. */
-  CACHE_TIME time_stored;	/* when this XASL plan stored */
-};				/* XASL plan file identifier */
-
-#define XASL_ID_SET_NULL(X) \
-  do \
-    { \
-      (X)->sha1.h[0] = 0; \
-      (X)->sha1.h[1] = 0; \
-      (X)->sha1.h[2] = 0; \
-      (X)->sha1.h[3] = 0; \
-      (X)->sha1.h[4] = 0; \
-      (X)->cache_flag = 0; \
-      (X)->time_stored.sec = 0; \
-      (X)->time_stored.usec = 0; \
-    } \
-  while (0)
-
-#define XASL_ID_IS_NULL(X) (((XASL_ID *) (X) != NULL) && (X)->time_stored.sec == 0)
-
-#define XASL_ID_COPY(X1, X2) \
-  do \
-    { \
-      (X1)->sha1 = (X2)->sha1; \
-      (X1)->time_stored = (X2)->time_stored; \
-      /* Do not copy cache_flag. */ \
-    } \
-  while (0)
-
-/* do not compare with X.time_stored */
-#define XASL_ID_EQ(X1, X2) \
-    ((X1) == (X2) \
-     || (SHA1Compare (&(X1)->sha1, &(X2)->sha1) == 0 \
-         && (X1)->time_stored.sec == (X2)->time_stored.sec \
-         && (X1)->time_stored.usec == (X2)->time_stored.usec))
-
-#define OR_XASL_ID_SIZE (OR_SHA1_SIZE + OR_CACHE_TIME_SIZE)
-
-/* pack XASL_ID */
-#define OR_PACK_XASL_ID(PTR, X) \
-  do \
-    { \
-      assert ((X) != NULL);				      \
-      PTR = or_pack_sha1 (PTR, &(X)->sha1);		      \
-      OR_PACK_CACHE_TIME (PTR, &(X)->time_stored);            \
-    } \
-  while (0)
-
-/* unpack XASL_ID */
-#define OR_UNPACK_XASL_ID(PTR, X) \
-  do \
-    { \
-      assert ((X) != NULL);				      \
-      PTR = or_unpack_sha1 (PTR, &(X)->sha1);		      \
-      OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored));	      \
-    } \
-  while (0)
 
 /* PAGE CONSTANTS */
 
@@ -508,6 +320,18 @@ struct qfile_tuple_value_position
   TP_DOMAIN *original_domain;	/* original domain */
   int pos_no;			/* value position number */
 };
+
+/*
+ *                          SCAN FETCH MODE
+ */
+
+typedef enum
+{
+  QPROC_NO_SINGLE_INNER = 0,	/* 0 or n qualified rows */
+  QPROC_SINGLE_INNER,		/* 0 or 1 qualified row - currently, not used */
+  QPROC_SINGLE_OUTER,		/* 1 NULL row or 1 qualified row */
+  QPROC_NO_SINGLE_OUTER		/* 1 NULL row or n qualified rows */
+} QPROC_SINGLE_FETCH;
 
 /* List File Merge Information */
 typedef struct qfile_list_merge_info QFILE_LIST_MERGE_INFO;

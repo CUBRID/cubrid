@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* SERVER_MODE */
+
 #include <stdio.h>
 
 #include "dbdef.h"
@@ -40,15 +44,16 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "language_support.h"
-#include "log_comm.h"
-#include "query_executor.h"
+#include "log_impl.h"
+#include "parse_tree.h"
+#include "xasl.h"
 
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
 struct one_tran_info
 {
   int tran_index;
-  int state;
+  TRAN_STATE state;
   int process_id;
   char *db_user;
   char *program_name;
@@ -124,7 +129,14 @@ extern int log_drop_lob_locator (const char *locator);
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
 extern TRAN_STATE tran_server_abort (void);
-extern bool tran_is_blocked (int tran_index);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern bool tran_is_blocked (int tran_index);
+#ifdef __cplusplus
+}
+#endif
 extern int tran_server_has_updated (void);
 extern int tran_server_is_active_and_has_updated (void);
 extern int tran_wait_server_active_trans (void);
@@ -142,7 +154,14 @@ extern TRAN_STATE tran_server_end_topop (LOG_RESULT_TOPOP result, LOG_LSA * topo
 extern int tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa);
 extern TRAN_STATE tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa);
 extern const char *tran_get_tranlist_state_name (TRAN_STATE state);
-extern void lock_dump (FILE * outfp);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void lock_dump (FILE * outfp);
+#ifdef __cplusplus
+}
+#endif
 extern int acl_reload (void);
 extern void acl_dump (FILE * outfp);
 

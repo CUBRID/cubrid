@@ -30,15 +30,14 @@
 
 #include "system_parameter.h"
 #include "error_manager.h"
-#include "memory_alloc.h"
-#include "object_representation.h"
 #include "heap_file.h"
-#include "slotted_page.h"
 #include "fetch.h"
 #include "list_file.h"
-
 #include "object_primitive.h"
 #include "set_object.h"
+#include "xasl.h"
+#include "dbtype.h"
+#include "query_executor.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -899,7 +898,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   PR_TYPE *pr_type;
   OR_BUF buf;
   int length;
-  int list_on;
+  bool list_on;
   int tpl_len;
   char *ptr;
 
@@ -1075,7 +1074,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   PR_TYPE *pr_type;
   OR_BUF buf;
   int length;
-  int list_on;
+  bool list_on;
   int tpl_len;
   char *ptr;
 
@@ -1773,10 +1772,6 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 	case B_IS_NOT:
 	  {
 	    DB_LOGICAL result_lhs, result_rhs;
-	    DB_LOGICAL _v_true, _v_false;
-
-	    _v_true = (pr->pe.pred.bool_op == B_IS) ? V_TRUE : V_FALSE;
-	    _v_false = V_TRUE - _v_true;
 
 	    result_lhs = eval_pred (thread_p, pr->pe.pred.lhs, vd, obj_oid);
 	    result_rhs = eval_pred (thread_p, pr->pe.pred.rhs, vd, obj_oid);
@@ -1787,11 +1782,11 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 	      }
 	    else if (result_lhs == result_rhs)
 	      {
-		result = _v_true;
+		result = (pr->pe.pred.bool_op == B_IS) ? V_TRUE : V_FALSE;
 	      }
 	    else
 	      {
-		result = _v_false;
+		result = (pr->pe.pred.bool_op == B_IS) ? V_FALSE : V_TRUE;
 	      }
 	  }
 	  break;

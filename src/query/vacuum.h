@@ -24,6 +24,12 @@
 #ifndef _VACUUM_H_
 #define _VACUUM_H_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+#include <assert.h>
+
 #include "dbtype.h"
 #include "thread.h"
 #include "storage_common.h"
@@ -83,7 +89,6 @@ typedef INT64 VACUUM_LOG_BLOCKID;
 #define VACUUM_PREFETCH_LOG_MODE_WORKERS 1
 
 /* VACUUM_WORKER_STATE - State of vacuum workers */
-typedef enum vacuum_worker_state VACUUM_WORKER_STATE;
 enum vacuum_worker_state
 {
   VACUUM_WORKER_STATE_INACTIVE,	/* Vacuum worker is inactive */
@@ -92,6 +97,7 @@ enum vacuum_worker_state
   VACUUM_WORKER_STATE_TOPOP,	/* Vacuum worker started a system operation. */
   VACUUM_WORKER_STATE_RECOVERY	/* Vacuum worker needs to be recovered. */
 };
+typedef enum vacuum_worker_state VACUUM_WORKER_STATE;
 
 struct log_tdes;
 struct log_zip;
@@ -104,13 +110,13 @@ struct vacuum_heap_object
   OID oid;			/* Object OID. */
 };
 
-typedef enum vacuum_cache_postpone_status VACUUM_CACHE_POSTPONE_STATUS;
 enum vacuum_cache_postpone_status
 {
   VACUUM_CACHE_POSTPONE_NO,
   VACUUM_CACHE_POSTPONE_YES,
   VACUUM_CACHE_POSTPONE_OVERFLOW
 };
+typedef enum vacuum_cache_postpone_status VACUUM_CACHE_POSTPONE_STATUS;
 
 typedef struct vacuum_cache_postpone_entry VACUUM_CACHE_POSTPONE_ENTRY;
 struct vacuum_cache_postpone_entry

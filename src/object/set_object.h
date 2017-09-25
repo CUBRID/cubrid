@@ -32,20 +32,17 @@
 #include "error_manager.h"
 #include "object_representation.h"
 #include "object_domain.h"	/* for TP_DOMAIN */
-#include "parser.h"		/* for PT_OP_TYPE */
 #include "locator.h"		/* for LC_OIDSET */
 #include "area_alloc.h"
+
+#if !defined (SERVER_MODE)
+#include "parser.h"		/* for PT_OP_TYPE */
+#endif /* CS_MODE */
 
 #define SET_DUPLICATE_VALUE (1)
 #define IMPLICIT (1)
 
 /* Quick set argument check */
-
-#define CHECKNULL(thing) \
-  if ((thing) == NULL) { \
-    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-    return(ER_OBJ_INVALID_ARGUMENTS); \
-    }
 
 /* this needs to go into the pr_ level */
 
@@ -190,21 +187,31 @@ extern bool set_is_all_null (DB_COLLECTION * set);
 #endif
 extern bool set_has_null (DB_COLLECTION * set);
 extern bool set_ismember (DB_COLLECTION * set, DB_VALUE * value);
+#if !defined (SERVER_MODE)
 extern int set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercion);
+#endif /* !defined (SERVER_MODE) */
 extern int set_convert_oids_to_objects (DB_COLLECTION * set);
 extern DB_TYPE set_get_type (DB_COLLECTION * set);
-extern int set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order);
-extern int set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion);
-extern int set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order);
-extern int vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order);
+extern DB_VALUE_COMPARE_RESULT set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion,
+						  int total_order);
+extern DB_VALUE_COMPARE_RESULT set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion);
+extern DB_VALUE_COMPARE_RESULT set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion,
+						int total_order);
+extern DB_VALUE_COMPARE_RESULT vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion,
+					     int total_order);
 extern TP_DOMAIN_STATUS set_check_domain (DB_COLLECTION * set, TP_DOMAIN * domain);
 extern TP_DOMAIN *set_get_domain (DB_COLLECTION * set);
 
 /* Debugging functions */
-
-extern void set_fprint (FILE * fp, DB_COLLECTION * set);
-extern void set_print (DB_COLLECTION * set);
-
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void set_fprint (FILE * fp, DB_COLLECTION * set);
+  extern void set_print (DB_COLLECTION * set);
+#ifdef __cplusplus
+}
+#endif
 /* shut down */
 
 extern void set_final (void);
@@ -215,7 +222,7 @@ extern int set_optimize (DB_COLLECTION * ref);
 
 /* These are lower level functions intended only for the transformer */
 
-extern int setvobj_compare (COL * set1, COL * set2, int do_coercion, int total_order);
+extern DB_VALUE_COMPARE_RESULT setvobj_compare (COL * set1, COL * set2, int do_coercion, int total_order);
 
 /* intended for use only by the object manager (obj) */
 
@@ -273,12 +280,14 @@ extern int setobj_size (COL * col);
 extern int setobj_cardinality (COL * col);
 extern bool setobj_isempty (COL * col);
 extern bool setobj_ismember (COL * col, DB_VALUE * proposed_value, int check_null);
-extern int setobj_compare (COL * set1, COL * set2, int do_coercion);
-extern int setobj_compare_order (COL * set1, COL * set2, int do_coercion, int total_order);
+extern DB_VALUE_COMPARE_RESULT setobj_compare (COL * set1, COL * set2, int do_coercion);
+extern DB_VALUE_COMPARE_RESULT setobj_compare_order (COL * set1, COL * set2, int do_coercion, int total_order);
 extern int setobj_difference (COL * set1, COL * set2, COL * result);
 extern int setobj_union (COL * set1, COL * set2, COL * result);
 extern int setobj_intersection (COL * set1, COL * set2, COL * result);
+#if !defined (SERVER_MODE)
 extern int setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion);
+#endif /* defined (CS_MODE) */
 extern int setobj_convert_oids_to_objects (COL * col);
 extern int setobj_get_element_ptr (COL * col, int index, DB_VALUE ** result);
 extern int setobj_get_element (COL * set, int index, DB_VALUE * value);

@@ -3320,7 +3320,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_2PC_COMMIT_DECISION:
-    case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+    case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_START_CHKPT:
@@ -3481,7 +3481,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
     case LOG_DUMMY_GENERIC:
 
     case LOG_2PC_COMMIT_DECISION:
-    case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+    case LOG_2PC_ABORT_DECISION:
     case LOG_COMMIT_WITH_POSTPONE:
     case LOG_SYSOP_START_POSTPONE:
     case LOG_COMMIT:
@@ -4232,7 +4232,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 #if defined(SERVER_MODE)
   /* It changes the status of waiting log writer threads and wakes them up */
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF && !writer_info->skip_flush)
+  if (!HA_DISABLED () && !writer_info->skip_flush)
     {
       assert (hold_flush_mutex == false);
       LOG_CS_DEMOTE (thread_p);
@@ -4565,7 +4565,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   hold_flush_mutex = false;
 
 #if defined(SERVER_MODE)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF && !writer_info->skip_flush)
+  if (!HA_DISABLED () && !writer_info->skip_flush)
     {
       /* it sends signal to LWT to notify that flush is completed */
       rv = pthread_mutex_lock (&writer_info->flush_wait_mutex);
@@ -6733,7 +6733,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   (void) logpb_add_archive_page_info (thread_p, log_Gl.hdr.nxarv_num - 1, arvhdr->fpageid, last_pageid);
 
 #if defined(SERVER_MODE)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       LOG_PAGEID min_fpageid = logwr_get_min_copied_fpageid ();
       if (min_fpageid != NULL_PAGEID)
@@ -10280,7 +10280,7 @@ error:
 int
 logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *to_db_fullname,
 				const char *to_logpath, const char *to_prefix_logname, const char *toext_path,
-				const char *fileof_vols_and_renamepaths, int extern_rename, bool force_delete)
+				const char *fileof_vols_and_renamepaths, bool extern_rename, bool force_delete)
 {
   char from_volname[PATH_MAX];	/* Name of new volume */
   char to_volname[PATH_MAX];	/* Name of "to" volume */
@@ -11531,17 +11531,14 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tfirst log page id : %lld\n", (long long int) log_Gl.hdr.fpageid);
 
-  fprintf (outfp, "\tcurrent log append lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.append_lsa.pageid,
-	   log_Gl.hdr.append_lsa.offset);
+  fprintf (outfp, "\tcurrent log append lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 
-  fprintf (outfp, "\tlast log append lsa : (%lld, %d)\n", (long long int) log_Gl.append.prev_lsa.pageid,
-	   log_Gl.append.prev_lsa.offset);
+  fprintf (outfp, "\tlast log append lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.append.prev_lsa));
 
-  fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld, %d)\n",
-	   (long long int) log_Gl.append.nxio_lsa.pageid, log_Gl.append.nxio_lsa.offset);
+  fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld|%d)\n",
+	   LSA_AS_ARGS (&log_Gl.append.nxio_lsa));
 
-  fprintf (outfp, "\tcheckpoint lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.chkpt_lsa.pageid,
-	   log_Gl.hdr.chkpt_lsa.offset);
+  fprintf (outfp, "\tcheckpoint lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa));
 
   fprintf (outfp, "\tnext archive page id : %lld\n", (long long int) log_Gl.hdr.nxarv_pageid);
 
@@ -11553,17 +11550,13 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tlast archive number deleted : %d\n", log_Gl.hdr.last_deleted_arv_num);
 
-  fprintf (outfp, "\tbackup level 0 lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.bkup_level0_lsa.pageid,
-	   log_Gl.hdr.bkup_level0_lsa.offset);
+  fprintf (outfp, "\tbackup level 0 lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.bkup_level0_lsa));
 
-  fprintf (outfp, "\tbackup level 1 lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.bkup_level1_lsa.pageid,
-	   log_Gl.hdr.bkup_level1_lsa.offset);
+  fprintf (outfp, "\tbackup level 1 lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.bkup_level1_lsa));
 
-  fprintf (outfp, "\tbackup level 2 lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.bkup_level2_lsa.pageid,
-	   log_Gl.hdr.bkup_level2_lsa.offset);
+  fprintf (outfp, "\tbackup level 2 lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.bkup_level2_lsa));
 
-  fprintf (outfp, "\tMVCC op lsa : (%lld, %d)\n", (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid,
-	   log_Gl.hdr.mvcc_op_log_lsa.offset);
+  fprintf (outfp, "\tMVCC op lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
   fprintf (outfp, "\tLast block oldest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.last_block_oldest_mvccid);
 

@@ -28,6 +28,10 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "config.h"
 
 #include <time.h>
@@ -40,33 +44,6 @@
 #include "disk_manager.h"
 #include "file_io.h"
 #include "thread.h"
-
-/*
- * NOTE: NULL_VOLID generally means a bad volume identifier
- *       Negative volume identifiers are used to identify auxilary files and
- *       volumes (e.g., logs, backups)
- */
-
-#define LOG_MAX_DBVOLID          (VOLID_MAX - 1)
-
-/* Volid of database.txt */
-#define LOG_DBTXT_VOLID          (SHRT_MIN + 1)
-#define LOG_DBFIRST_VOLID        0
-
-/* Volid of volume information */
-#define LOG_DBVOLINFO_VOLID      (LOG_DBFIRST_VOLID - 5)
-/* Volid of info log */
-#define LOG_DBLOG_INFO_VOLID     (LOG_DBFIRST_VOLID - 4)
-/* Volid of backup info log */
-#define LOG_DBLOG_BKUPINFO_VOLID (LOG_DBFIRST_VOLID - 3)
-/* Volid of active log */
-#define LOG_DBLOG_ACTIVE_VOLID   (LOG_DBFIRST_VOLID - 2)
-/* Volid of background archive logs */
-#define LOG_DBLOG_BG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 21)
-/* Volid of archive logs */
-#define LOG_DBLOG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 20)
-/* Volid of copies */
-#define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
 
 #define LOG_TOPOP_STACK_INIT_SIZE 1024
 

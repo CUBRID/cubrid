@@ -23,6 +23,8 @@
 
 #ident "$Id$"
 
+#include "dbi.h"
+#include "db.h"
 #include "config.h"
 
 #if !defined(WINDOWS)
@@ -35,6 +37,8 @@
 #include <limits.h>
 #include <time.h>
 #include <errno.h>
+#include <assert.h>
+
 #include "misc_string.h"
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -43,9 +47,6 @@
 #include "cubrid_esql.h"
 
 #include "memory_alloc.h"
-#include "dbi.h"
-#include "db.h"
-#include "db_query.h"
 #include "parser.h"
 #include "esql_gadget.h"
 #include "environment_variable.h"

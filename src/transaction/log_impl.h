@@ -34,348 +34,39 @@
 #include <assert.h>
 
 #include "storage_common.h"
-#include "mvcc.h"
 #include "log_comm.h"
-#include "recovery.h"
 #include "porting.h"
 #include "boot.h"
-#include "critical_section.h"
 #include "release_string.h"
 #include "file_io.h"
-#include "thread.h"
-#include "es.h"
 #include "rb_tree.h"
-#include "query_list.h"
-#include "lock_manager.h"
 #include "connection_globals.h"
+#include "recovery.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "es.h"
+#include "mvcc.h"
+#include "critical_section.h"
+#include "thread.h"
+#include "lock_manager.h"
 #include "vacuum.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
 
-#define NUM_NORMAL_TRANS (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS))
-#define NUM_SYSTEM_TRANS 1
-#define NUM_NON_SYSTEM_TRANS (css_get_max_conn ())
-#define MAX_NTRANS \
-  (NUM_NON_SYSTEM_TRANS + NUM_SYSTEM_TRANS)
-
-/* TRANS_STATUS_HISTORY_MAX_SIZE must be a power of 2*/
-#define TRANS_STATUS_HISTORY_MAX_SIZE 2048
-
-#if defined(SERVER_MODE)
-#define LOG_CS_ENTER(thread_p) \
-        csect_enter((thread_p), CSECT_LOG, INF_WAIT)
-#define LOG_CS_ENTER_READ_MODE(thread_p) \
-        csect_enter_as_reader((thread_p), CSECT_LOG, INF_WAIT)
-#define LOG_CS_DEMOTE(thread_p) \
-        csect_demote((thread_p), CSECT_LOG, INF_WAIT)
-#define LOG_CS_PROMOTE(thread_p) \
-        csect_promote((thread_p), CSECT_LOG, INF_WAIT)
-#define LOG_CS_EXIT(thread_p) \
-        csect_exit((thread_p), CSECT_LOG)
-
-#define TR_TABLE_CS_ENTER(thread_p) \
-        csect_enter((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
-#define TR_TABLE_CS_ENTER_READ_MODE(thread_p) \
-        csect_enter_as_reader((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
-#define TR_TABLE_CS_EXIT(thread_p) \
-        csect_exit((thread_p), CSECT_TRAN_TABLE)
-
-#define LOG_ARCHIVE_CS_ENTER(thread_p) \
-        csect_enter (thread_p, CSECT_LOG_ARCHIVE, INF_WAIT)
-#define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p) \
-        csect_enter_as_reader (thread_p, CSECT_LOG_ARCHIVE, INF_WAIT)
-#define LOG_ARCHIVE_CS_EXIT(thread_p) \
-        csect_exit (thread_p, CSECT_LOG_ARCHIVE)
-
-#else /* SERVER_MODE */
-#define LOG_CS_ENTER(thread_p)
-#define LOG_CS_ENTER_READ_MODE(thread_p)
-#define LOG_CS_DEMOTE(thread_p)
-#define LOG_CS_PROMOTE(thread_p)
-#define LOG_CS_EXIT(thread_p)
-
-#define TR_TABLE_CS_ENTER(thread_p)
-#define TR_TABLE_CS_ENTER_READ_MODE(thread_p)
-#define TR_TABLE_CS_EXIT(thread_p)
-
-#define LOG_ARCHIVE_CS_ENTER(thread_p)
-#define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p)
-#define LOG_ARCHIVE_CS_EXIT(thread_p)
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/* TODO: Vacuum workers never hold CSECT_LOG lock. Investigate any possible
- *	 unwanted consequences.
- * NOTE: It is considered that a vacuum worker holds a "shared" lock.
- */
-#define LOG_CS_OWN(thread_p) \
-  (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p) \
-   || csect_check_own (thread_p, CSECT_LOG) >= 1)
-#define LOG_CS_OWN_WRITE_MODE(thread_p) \
-  (csect_check_own (thread_p, CSECT_LOG) == 1)
-
-#define LOG_ARCHIVE_CS_OWN(thread_p) \
-  (csect_check (thread_p, CSECT_LOG_ARCHIVE) >= 1)
-#define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p) \
-  (csect_check_own (thread_p, CSECT_LOG_ARCHIVE) == 1)
-#define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p) \
-  (csect_check_own (thread_p, CSECT_LOG_ARCHIVE) == 2)
-
-#else /* SERVER_MODE */
-#define LOG_CS_OWN(thread_p) (true)
-#define LOG_CS_OWN_WRITE_MODE(thread_p) (true)
-
-#define LOG_ARCHIVE_CS_OWN(thread_p) (true)
-#define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p) (true)
-#define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p) (true)
-#endif /* !SERVER_MODE */
-
-#define LOG_ESTIMATE_NACTIVE_TRANS      100	/* Estimate num of trans */
-#define LOG_ESTIMATE_NOBJ_LOCKS         977	/* Estimate num of locks */
-
-/* Log data area */
-#define LOGAREA_SIZE (LOG_PAGESIZE - SSIZEOF(LOG_HDRPAGE))
-
-/* check if group commit is active */
-#define LOG_IS_GROUP_COMMIT_ACTIVE() \
-  (prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS) > 0)
-
-#define LOG_RESET_APPEND_LSA(lsa) \
-  do \
-    { \
-      LSA_COPY (&log_Gl.hdr.append_lsa, (lsa)); \
-      LSA_COPY (&log_Gl.prior_info.prior_lsa, (lsa)); \
-    } \
-  while (0)
-
-#define LOG_RESET_PREV_LSA(lsa) \
-  do \
-    { \
-      LSA_COPY (&log_Gl.append.prev_lsa, (lsa)); \
-      LSA_COPY (&log_Gl.prior_info.prev_lsa, (lsa)); \
-    } \
-  while (0)
-
-#define LOG_APPEND_PTR() ((char *)log_Gl.append.log_pgptr->area \
-                          + log_Gl.hdr.append_lsa.offset)
-
-#define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
-  ((LOG_RECORD_HEADER *) ((log_page_p)->area + (lsa)->offset))
-
-#define LOG_READ_ALIGN(thread_p, lsa, log_pgptr) \
-  do \
-    { \
-      (lsa)->offset = DB_ALIGN ((lsa)->offset, DOUBLE_ALIGNMENT); \
-      while ((lsa)->offset >= (int) LOGAREA_SIZE) \
-        { \
-          assert (log_pgptr != NULL); \
-          (lsa)->pageid++; \
-          if (logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, (log_pgptr)) != NO_ERROR) \
-	    { \
-              logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
-                                 "LOG_READ_ALIGN"); \
-	    } \
-          (lsa)->offset -= LOGAREA_SIZE; \
-          (lsa)->offset = DB_ALIGN ((lsa)->offset, DOUBLE_ALIGNMENT); \
-        } \
-    } \
-  while (0)
-
-#define LOG_READ_ADD_ALIGN(thread_p, add, lsa, log_pgptr) \
-  do \
-    { \
-      (lsa)->offset += (add); \
-      LOG_READ_ALIGN ((thread_p), (lsa), (log_pgptr)); \
-    } \
-  while (0)
-
-#define LOG_READ_ADVANCE_WHEN_DOESNT_FIT(thread_p, length, lsa, log_pgptr) \
-  do \
-    { \
-      if ((lsa)->offset + (int) (length) >= (int) LOGAREA_SIZE) \
-        { \
-          assert (log_pgptr != NULL); \
-          (lsa)->pageid++; \
-          if ((logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, log_pgptr))!= NO_ERROR) \
-            { \
-              logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
-                                 "LOG_READ_ADVANCE_WHEN_DOESNT_FIT"); \
-            } \
-          (lsa)->offset = 0; \
-        } \
-    } \
-  while (0)
-
-#define LOG_2PC_NULL_GTRID        (-1)
-#define LOG_2PC_OBTAIN_LOCKS      true
-#define LOG_2PC_DONT_OBTAIN_LOCKS false
-
-#define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system transaction index. */
-#define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
-
-#if defined(SERVER_MODE)
-#if !defined(LOG_FIND_THREAD_TRAN_INDEX)
-#define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
-  ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
-#endif
-#define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
-  ((thrd) ? (thrd)->tran_index = (index) : \
-            thread_set_current_tran_index ((thrd), (index)))
-#else /* SERVER_MODE */
-#if !defined(LOG_FIND_THREAD_TRAN_INDEX)
-#define LOG_FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
-#endif
-#define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
-  log_Tran_index = (index)
-#endif /* SERVER_MODE */
-
-#define LOG_FIND_TDES(tran_index) \
-  (((tran_index) >= 0 && (tran_index) < log_Gl.trantable.num_total_indices) \
-   ? log_Gl.trantable.all_tdes[(tran_index)] : NULL)
-
-#define LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID(tran_index) \
-  (((tran_index) >= 0 && (tran_index) < log_Gl.trantable.num_total_indices) \
-  ? (log_Gl.mvcc_table.transaction_lowest_active_mvccids + tran_index) : NULL)
-
-#define LOG_FIND_CURRENT_TDES(thrd) \
-  LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX ((thrd)))
-
-#define LOG_ISTRAN_ACTIVE(tdes) \
-  ((tdes)->state == TRAN_ACTIVE && LOG_ISRESTARTED ())
-
-#define LOG_ISTRAN_COMMITTED(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_COMMITTED \
-   || (tdes)->state == TRAN_UNACTIVE_WILL_COMMIT \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE \
-   || (tdes)->state == TRAN_UNACTIVE_2PC_COMMIT_DECISION \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
-
-#define LOG_ISTRAN_ABORTED(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_ABORTED \
-   || (tdes)->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED \
-   || (tdes)->state == TRAN_UNACTIVE_2PC_ABORT_DECISION \
-   || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
-
-#define LOG_ISTRAN_LOOSE_ENDS(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
-   || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS \
-   || (tdes)->state == TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES \
-   || (tdes)->state == TRAN_UNACTIVE_2PC_PREPARE)
-
-#define LOG_ISTRAN_2PC_IN_SECOND_PHASE(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_2PC_ABORT_DECISION \
-   || (tdes)->state == TRAN_UNACTIVE_2PC_COMMIT_DECISION \
-   || (tdes)->state == TRAN_UNACTIVE_WILL_COMMIT \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE \
-   || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
-
-#define LOG_ISTRAN_2PC(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES \
-   || (tdes)->state == TRAN_UNACTIVE_2PC_PREPARE \
-   || LOG_ISTRAN_2PC_IN_SECOND_PHASE (tdes))
-
-#define LOG_ISTRAN_2PC_PREPARE(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_2PC_PREPARE)
-
-#define LOG_ISTRAN_2PC_INFORMING_PARTICIPANTS(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
-   || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
-
-/* Reserved vacuum workers transaction identifiers.
- * Vacuum workers each need one TRANID to have their system operations
- * isolated and identifiable. Even though usually vacuum workers never undo
- * their work, system operations still need to be undone (if server crashes
- * in the middle of the operation).
- * For this reason, the first VACUUM_MAX_WORKER_COUNT negative TRANID values
- * under NULL_TRANID are reserved for vacuum workers.
- */
-#define LOG_VACUUM_MASTER_TRANID (NULL_TRANID - 1)
-#define LOG_LAST_VACUUM_WORKER_TRANID (LOG_VACUUM_MASTER_TRANID - 1)
-#define LOG_FIRST_VACUUM_WORKER_TRANID (LOG_VACUUM_MASTER_TRANID - VACUUM_MAX_WORKER_COUNT)
-#define LOG_IS_VACUUM_WORKER_TRANID(trid) \
-  (trid <= LOG_LAST_VACUUM_WORKER_TRANID \
-   && trid >= LOG_FIRST_VACUUM_WORKER_TRANID)
-#define LOG_IS_VACUUM_MASTER_TRANID(trid) ((trid) == LOG_VACUUM_MASTER_TRANID)
-#define LOG_IS_VACUUM_THREAD_TRANID(trid) \
-  (LOG_IS_VACUUM_WORKER_TRANID (trid) || LOG_IS_VACUUM_MASTER_TRANID (trid))
-
-#define LOG_SET_DATA_ADDR(data_addr, page, vol_file_id, off) \
-  do \
-    { \
-      (data_addr)->pgptr = (page); \
-      (data_addr)->vfid = (vol_file_id); \
-      (data_addr)->offset = (off); \
-    } \
-  while (0)
-
-#define MAXLOGNAME          (30 - 12)
+/************************************************************************/
+/* Section shared with client... TODO: remove any code accessing log    */
+/* module on client. Most are used by log_writer.c and log_applier.c    */
+/************************************************************************/
 
 #define LOGPB_HEADER_PAGE_ID             (-9)	/* The first log page in the infinite log sequence. It is always kept
 						 * on the active portion of the log. Log records are not stored on this
 						 * page. This page is backed up in all archive logs */
+
 #define LOGPB_IO_NPAGES                  4
 
 #define LOGPB_BUFFER_NPAGES_LOWER        128
-
-#define LOG_READ_NEXT_TRANID (log_Gl.hdr.next_trid)
-#define LOG_READ_NEXT_MVCCID (log_Gl.hdr.mvcc_next_id)
-#define LOG_HAS_LOGGING_BEEN_IGNORED() \
-  (log_Gl.hdr.has_logging_been_skipped == true)
-
-#define LOG_ISRESTARTED() (log_Gl.rcv_phase == LOG_RESTARTED)
-
-/* special action for log applier */
-#if defined (SERVER_MODE)
-#define LOG_CHECK_LOG_APPLIER(thread_p) \
-  (thread_p != NULL \
-   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_APPLIER)
-#else
-#define LOG_CHECK_LOG_APPLIER(thread_p) (0)
-#endif /* !SERVER_MODE */
-
-/* special action for log prefetcher */
-#if defined (SERVER_MODE)
-#define LOG_CHECK_LOG_PREFETCHER(thread_p) \
-  (thread_p != NULL \
-   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_PREFETCHER)
-#else
-#define LOG_CHECK_LOG_PREFETCHER(thread_p) (0)
-#endif /* !SERVER_MODE */
-
-#if !defined(_DB_DISABLE_MODIFICATIONS_)
-#define _DB_DISABLE_MODIFICATIONS_
-extern int db_Disable_modifications;
-#endif /* _DB_DISABLE_MODIFICATIONS_ */
-
-#ifndef CHECK_MODIFICATION_NO_RETURN
-#if defined (SA_MODE)
-#define CHECK_MODIFICATION_NO_RETURN(thread_p, error) \
-  (error) = NO_ERROR
-#else /* SA_MODE */
-#define CHECK_MODIFICATION_NO_RETURN(thread_p, error) \
-  do \
-    { \
-      int mod_disabled; \
-      mod_disabled = logtb_is_tran_modification_disabled (thread_p); \
-      if (mod_disabled) \
-        { \
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, \
-                  0); \
-          er_log_debug (ARG_FILE_LINE, "tdes->disable_modification = %d\n", \
-                        mod_disabled); \
-          error = ER_DB_NO_MODIFICATIONS; \
-        } \
-      else \
-        { \
-          error = NO_ERROR; \
-        } \
-    } \
-  while (0)
-#endif /* !SA_MODE */
-#endif /* CHECK_MODIFICATION_NO_RETURN */
 
 /*
  * Message id in the set MSGCAT_SET_LOG
@@ -412,64 +103,6 @@ extern int db_Disable_modifications;
 #define MSGCAT_LOG_LOGINFO_COMMENT_UNUSED_ARCHIVE_NAME	29
 #define MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED	30
 
-#define MAX_NUM_EXEC_QUERY_HISTORY                      100
-
-typedef enum log_flush LOG_FLUSH;
-enum log_flush
-{ LOG_DONT_NEED_FLUSH, LOG_NEED_FLUSH };
-
-typedef enum log_setdirty LOG_SETDIRTY;
-enum log_setdirty
-{ LOG_DONT_SET_DIRTY, LOG_SET_DIRTY };
-
-typedef enum log_getnewtrid LOG_GETNEWTRID;
-enum log_getnewtrid
-{ LOG_DONT_NEED_NEWTRID, LOG_NEED_NEWTRID };
-
-typedef enum log_wrote_eot_log LOG_WRITE_EOT_LOG;
-enum log_wrote_eot_log
-{ LOG_NEED_TO_WRITE_EOT_LOG, LOG_ALREADY_WROTE_EOT_LOG };
-
-/*
- * Specify up to int bits of permanent status indicators.
- * Restore in progress is the only one so far, the rest are reserved
- * for future use.  Note these must be specified and used as mask values
- * to test and set individual bits.
- */
-enum LOG_PSTATUS
-{
-  LOG_PSTAT_CLEAR = 0x00,
-  LOG_PSTAT_BACKUP_INPROGRESS = 0x01,	/* only one backup at a time */
-  LOG_PSTAT_RESTORE_INPROGRESS = 0x02,	/* unset upon successful restore */
-  LOG_PSTAT_HDRFLUSH_INPPROCESS = 0x04	/* need to flush log header */
-};
-
-enum LOG_HA_FILESTAT
-{
-  LOG_HA_FILESTAT_CLEAR = 0,
-  LOG_HA_FILESTAT_ARCHIVED = 1,
-  LOG_HA_FILESTAT_SYNCHRONIZED = 2
-};
-
-enum LOG_PRIOR_LSA_LOCK
-{
-  LOG_PRIOR_LSA_WITHOUT_LOCK = 0,
-  LOG_PRIOR_LSA_WITH_LOCK = 1
-};
-
-typedef struct log_clientids LOG_CLIENTIDS;
-struct log_clientids		/* see BOOT_CLIENT_CREDENTIAL */
-{
-  int client_type;
-  char client_info[DB_MAX_IDENTIFIER_LENGTH + 1];
-  char db_user[LOG_USERNAME_MAX];
-  char program_name[PATH_MAX + 1];
-  char login_name[L_cuserid + 1];
-  char host_name[MAXHOSTNAMELEN + 1];
-  int process_id;
-  bool is_user_active;
-};
-
 /*
  * LOG PAGE
  */
@@ -500,407 +133,6 @@ struct log_page
 };
 
 /*
- * Flush information shared by LFT and normal transaction.
- * Transaction in commit phase has to flush all toflush array's pages.
- */
-typedef struct log_flush_info LOG_FLUSH_INFO;
-struct log_flush_info
-{
-  /* Size of array to log append pages to flush */
-  int max_toflush;
-
-  /* Number of log append pages that can be flush Not all of the append pages may be full. */
-  int num_toflush;
-
-  /* A sorted order of log append free pages to flush */
-  LOG_PAGE **toflush;
-
-#if defined(SERVER_MODE)
-  /* for protecting LOG_FLUSH_INFO */
-  pthread_mutex_t flush_mutex;
-#endif				/* SERVER_MODE */
-};
-
-typedef struct log_group_commit_info LOG_GROUP_COMMIT_INFO;
-struct log_group_commit_info
-{
-  /* group commit waiters count */
-  pthread_mutex_t gc_mutex;
-  pthread_cond_t gc_cond;
-};
-
-#define LOG_GROUP_COMMIT_INFO_INITIALIZER \
-  { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
-
-typedef enum logwr_mode LOGWR_MODE;
-enum logwr_mode
-{
-  LOGWR_MODE_ASYNC = 1,
-  LOGWR_MODE_SEMISYNC,
-  LOGWR_MODE_SYNC
-};
-#define LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK	(0x80000000)
-
-typedef enum logwr_status LOGWR_STATUS;
-enum logwr_status
-{
-  LOGWR_STATUS_WAIT,
-  LOGWR_STATUS_FETCH,
-  LOGWR_STATUS_DONE,
-  LOGWR_STATUS_DELAY,
-  LOGWR_STATUS_ERROR
-};
-
-typedef struct logwr_entry LOGWR_ENTRY;
-struct logwr_entry
-{
-  THREAD_ENTRY *thread_p;
-  LOG_PAGEID fpageid;
-  LOGWR_MODE mode;
-  LOGWR_STATUS status;
-  LOG_LSA eof_lsa;
-  LOG_LSA last_sent_eof_lsa;
-  LOG_LSA tmp_last_sent_eof_lsa;
-  INT64 start_copy_time;
-  bool copy_from_first_phy_page;
-  LOGWR_ENTRY *next;
-};
-
-typedef struct logwr_info LOGWR_INFO;
-struct logwr_info
-{
-  LOGWR_ENTRY *writer_list;
-  pthread_mutex_t wr_list_mutex;
-  pthread_cond_t flush_start_cond;
-  pthread_mutex_t flush_start_mutex;
-  pthread_cond_t flush_wait_cond;
-  pthread_mutex_t flush_wait_mutex;
-  pthread_cond_t flush_end_cond;
-  pthread_mutex_t flush_end_mutex;
-  bool skip_flush;
-  bool flush_completed;
-  bool is_init;
-
-  /* to measure the time spent by the last LWT delaying LFT */
-  bool trace_last_writer;
-  LOG_CLIENTIDS last_writer_client_info;
-  INT64 last_writer_elapsed_time;
-};
-
-#define LOGWR_INFO_INITIALIZER                                 \
-  {NULL,                                                       \
-    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
-    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
-    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
-    PTHREAD_MUTEX_INITIALIZER,                                 \
-    false, false, false, false,                                \
-    /* last_writer_client_info */                              \
-    { -1, {'0'}, {'0'}, {'0'}, {'0'}, {'0'}, 0, false },       \
-    0                                                          \
-   }
-
-typedef struct log_append_info LOG_APPEND_INFO;
-struct log_append_info
-{
-  int vdes;			/* Volume descriptor of active log */
-  LOG_LSA nxio_lsa;		/* Lowest log sequence number which has not been written to disk (for WAL). */
-  LOG_LSA prev_lsa;		/* Address of last append log record */
-  LOG_PAGE *log_pgptr;		/* The log page which is fixed */
-
-#if !defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t nxio_lsa_mutex;
-#endif
-};
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-#define LOG_APPEND_INFO_INITIALIZER                           \
-  {                                                           \
-    /* vdes */                                                \
-    NULL_VOLDES,                                              \
-    /* nxio_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* prev_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* log_pgptr */                                           \
-    NULL}
-#else
-#define LOG_APPEND_INFO_INITIALIZER                           \
-  {                                                           \
-    /* vdes */                                                \
-    NULL_VOLDES,                                              \
-    /* nxio_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* prev_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* log_pgptr */                                           \
-    NULL,                                                     \
-    /* nxio_lsa_mutex */                                      \
-    PTHREAD_MUTEX_INITIALIZER}
-#endif
-
-typedef enum log_2pc_execute LOG_2PC_EXECUTE;
-enum log_2pc_execute
-{
-  LOG_2PC_EXECUTE_FULL,		/* For the root coordinator */
-  LOG_2PC_EXECUTE_PREPARE,	/* For a participant that is also a non root coordinator execute the first phase of 2PC */
-  LOG_2PC_EXECUTE_COMMIT_DECISION,	/* For a participant that is also a non root coordinator execute the second
-					 * phase of 2PC. The root coordinator has decided a commit decision */
-  LOG_2PC_EXECUTE_ABORT_DECISION	/* For a participant that is also a non root coordinator execute the second
-					 * phase of 2PC. The root coordinator has decided an abort decision with or
-					 * without going to the first phase (i.e., prepare) of the 2PC */
-};
-
-typedef struct log_2pc_gtrinfo LOG_2PC_GTRINFO;
-struct log_2pc_gtrinfo
-{				/* Global transaction user information */
-  int info_length;
-  void *info_data;
-};
-
-typedef struct log_2pc_coordinator LOG_2PC_COORDINATOR;
-struct log_2pc_coordinator
-{				/* Coordinator maintains this info */
-  int num_particps;		/* Number of participating sites */
-  int particp_id_length;	/* Length of a participant identifier */
-  void *block_particps_ids;	/* A block of participants identifiers */
-  int *ack_received;		/* Acknowledgment received vector */
-};
-
-typedef struct log_topops_addresses LOG_TOPOPS_ADDRESSES;
-struct log_topops_addresses
-{
-  LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. This is needed for undo of the top
-				 * system action */
-  LOG_LSA posp_lsa;		/* The first address of a postpone log record for top system operation. We add this
-				 * since it is reset during recovery to the last reference postpone address. */
-};
-
-typedef enum log_topops_type LOG_TOPOPS_TYPE;
-enum log_topops_type
-{
-  LOG_TOPOPS_NORMAL,
-  LOG_TOPOPS_COMPENSATE_TRAN_ABORT,
-  LOG_TOPOPS_COMPENSATE_SYSOP_ABORT,
-  LOG_TOPOPS_POSTPONE
-};
-
-typedef struct log_topops_stack LOG_TOPOPS_STACK;
-struct log_topops_stack
-{
-  int max;			/* Size of stack */
-  int last;			/* Last entry in stack */
-  LOG_TOPOPS_ADDRESSES *stack;	/* Stack for push and pop of top system actions */
-};
-
-typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
-struct modified_class_entry
-{
-  MODIFIED_CLASS_ENTRY *m_next;
-  const char *m_classname;	/* Name of the modified class */
-  OID m_class_oid;
-  LOG_LSA m_last_modified_lsa;
-};
-
-/* there can be following transitions in transient lobs
-
-   -------------------------------------------------------------------------
-   | 	       locator  | created               | deleted		   |
-   |--------------------|-----------------------|--------------------------|
-   | in     | transient | LOB_TRANSIENT_CREATED i LOB_UNKNOWN		   |
-   | tran   |-----------|-----------------------|--------------------------|
-   |        | permanent | LOB_PERMANENT_CREATED | LOB_PERMANENT_DELETED    |
-   |--------------------|-----------------------|--------------------------|
-   | out of | transient | LOB_UNKNOWN		| LOB_UNKNOWN		   |
-   | tran   |-----------|-----------------------|--------------------------|
-   |        | permanent | LOB_UNKNOWN 		| LOB_TRANSIENT_DELETED    |
-   -------------------------------------------------------------------------
-
-   s1: create a transient locator and delete it
-       LOB_TRANSIENT_CREATED -> LOB_UNKNOWN
-
-   s2: create a transient locator and bind it to a row in table
-       LOB_TRANSIENT_CREATED -> LOB_PERMANENT_CREATED
-
-   s3: bind a transient locator to a row and delete the locator
-       LOB_PERMANENT_CREATED -> LOB_PERMANENT_DELETED
-
-   s4: delete a locator to be create out of transaction
-       LOB_UNKNOWN -> LOB_TRANSIENT_DELETED
-
- */
-typedef enum lob_locator_state LOB_LOCATOR_STATE;
-enum lob_locator_state
-{
-  LOB_UNKNOWN,
-  LOB_TRANSIENT_CREATED,
-  LOB_TRANSIENT_DELETED,
-  LOB_PERMANENT_CREATED,
-  LOB_PERMANENT_DELETED,
-  LOB_NOT_FOUND
-};
-
-/* lob entry */
-typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
-
-/*  lob rb tree head
-  The macro RB_HEAD is defined in rb_tree.h. It will be expanede like this;
-
-  struct lob_rb_root {
-    struct lob_locator_entry* rbh_root;
-  };
- */
-RB_HEAD (lob_rb_root, lob_locator_entry);
-
-typedef enum tran_abort_reason TRAN_ABORT_REASON;
-enum tran_abort_reason
-{
-  TRAN_NORMAL = 0,
-  TRAN_ABORT_DUE_DEADLOCK = 1,
-  TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION = 2
-};
-
-typedef struct log_unique_stats LOG_UNIQUE_STATS;
-struct log_unique_stats
-{
-  int num_nulls;		/* number of nulls */
-  int num_keys;			/* number of keys */
-  int num_oids;			/* number of oids */
-};
-
-typedef struct log_tran_btid_unique_stats LOG_TRAN_BTID_UNIQUE_STATS;
-struct log_tran_btid_unique_stats
-{
-  BTID btid;			/* id of B-tree */
-  bool deleted;			/* true if the B-tree was deleted */
-
-  LOG_UNIQUE_STATS tran_stats;	/* statistics accumulated during entire transaction */
-  LOG_UNIQUE_STATS global_stats;	/* statistics loaded from index */
-};
-
-typedef enum count_optim_state COUNT_OPTIM_STATE;
-enum count_optim_state
-{
-  COS_NOT_LOADED = 0,		/* the global statistics was not loaded yet */
-  COS_TO_LOAD = 1,		/* the global statistics must be loaded when snapshot is taken */
-  COS_LOADED = 2		/* the global statistics were loaded */
-};
-
-#define TRAN_UNIQUE_STATS_CHUNK_SIZE  128	/* size of the memory chunk for unique statistics */
-
-/* LOG_TRAN_BTID_UNIQUE_STATS_CHUNK
- * Represents a chunk of memory for transaction unique statistics
- */
-typedef struct log_tran_btid_unique_stats_chunk LOG_TRAN_BTID_UNIQUE_STATS_CHUNK;
-struct log_tran_btid_unique_stats_chunk
-{
-  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *next_chunk;	/* address of next chunk of memory */
-  LOG_TRAN_BTID_UNIQUE_STATS buffer[1];	/* more than one */
-};
-
-/* LOG_TRAN_CLASS_COS
- * Structure used to store the state of the count optimization for classes.
- */
-typedef struct log_tran_class_cos LOG_TRAN_CLASS_COS;
-struct log_tran_class_cos
-{
-  OID class_oid;		/* class object identifier. */
-  COUNT_OPTIM_STATE count_state;	/* count optimization state for class_oid */
-};
-
-#define COS_CLASSES_CHUNK_SIZE	64	/* size of the memory chunk for count optimization classes */
-
-/* LOG_TRAN_CLASS_COS_CHUNK
- * Represents a chunk of memory for count optimization states
- */
-typedef struct log_tran_class_cos_chunk LOG_TRAN_CLASS_COS_CHUNK;
-struct log_tran_class_cos_chunk
-{
-  LOG_TRAN_CLASS_COS_CHUNK *next_chunk;	/* address of next chunk of memory */
-  LOG_TRAN_CLASS_COS buffer[1];	/* more than one */
-};
-
-/* LOG_TRAN_UPDATE_STATS
- * Structure used for transaction local unique statistics and count optimization
- * management
- */
-typedef struct log_tran_update_stats LOG_TRAN_UPDATE_STATS;
-struct log_tran_update_stats
-{
-  int cos_count;		/* the number of hashed elements */
-  LOG_TRAN_CLASS_COS_CHUNK *cos_first_chunk;	/* address of first chunk in the chunks list */
-  LOG_TRAN_CLASS_COS_CHUNK *cos_current_chunk;	/* address of current chunk from which new elements are assigned */
-  MHT_TABLE *classes_cos_hash;	/* hash of count optimization states for classes that were or will be subject to count
-				 * optimization. */
-
-  int stats_count;		/* the number of hashed elements */
-  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *stats_first_chunk;	/* address of first chunk in the chunks list */
-  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *stats_current_chunk;	/* address of current chunk from which new elements are
-								 * assigned */
-  MHT_TABLE *unique_stats_hash;	/* hash of unique statistics for indexes used during transaction. */
-};
-
-/*
- * MVCC_TRANS_STATUS keep MVCCIDs status in bit area. Thus bit 0 means active
- * MVCCID bit 1 means committed transaction. This structure keep also lowest
- * active MVCCIDs used by VACUUM for MVCCID threshold computation. Also, MVCCIDs
- * of long time transactions MVCCIDs are kept in this structure.
- */
-typedef struct mvcc_trans_status MVCC_TRANS_STATUS;
-struct mvcc_trans_status
-{
-  /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
-  UINT64 *bit_area;
-  /* first MVCCID whose status is stored in bit area */
-  MVCCID bit_area_start_mvccid;
-  /* the area length expressed in bits */
-  unsigned int bit_area_length;
-
-  /* long time transaction mvccid array */
-  MVCCID *long_tran_mvccids;
-  /* long time transactions mvccid array length */
-  unsigned int long_tran_mvccids_length;
-
-  volatile unsigned int version;
-
-  /* lowest active MVCCID */
-  MVCCID lowest_active_mvccid;
-};
-
-#define MVCC_STATUS_INITIALIZER \
-  { NULL, MVCCID_FIRST, 0, NULL, 0, 0, MVCCID_FIRST }
-
-typedef struct mvcctable MVCCTABLE;
-struct mvcctable
-{
-  /* current transaction status */
-  MVCC_TRANS_STATUS current_trans_status;
-
-  /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
-  volatile MVCCID *transaction_lowest_active_mvccids;
-
-  /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
-  MVCC_TRANS_STATUS *trans_status_history;
-  /* the position in transaction status history array */
-  volatile int trans_status_history_position;
-
-  /* protect against getting new MVCCIDs concurrently */
-#if defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t new_mvccid_lock;
-#endif
-
-  /* protect against current transaction status modifications */
-  pthread_mutex_t active_trans_mutex;
-};
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-#define MVCCTABLE_INITIALIZER \
-  { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER }
-#else
-#define MVCCTABLE_INITIALIZER \
-  { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER }
-#endif
-
-/*
  * This structure encapsulates various information and metrics related
  * to each backup level.
  * Estimates and heuristics are not currently used but are placeholder
@@ -915,6 +147,14 @@ struct log_hdr_bkup_level_info
   int ndirty_pages_post_bkup;	/* number of pages written since the lsa for this backup level. */
   int io_numpages;		/* total number of pages in last backup */
 };
+
+#define MAXLOGNAME          (30 - 12)
+
+#define NUM_NORMAL_TRANS (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS))
+#define NUM_SYSTEM_TRANS 1
+#define NUM_NON_SYSTEM_TRANS (css_get_max_conn ())
+#define MAX_NTRANS \
+  (NUM_NON_SYSTEM_TRANS + NUM_SYSTEM_TRANS)
 
 /*
  * LOG HEADER INFORMATION
@@ -931,7 +171,7 @@ struct log_header
   PGLENGTH db_iopagesize;	/* Size of pages in the database. For safety reasons this value is recorded in the log
 				 * to make sure that the database is always run with the same page size */
   PGLENGTH db_logpagesize;	/* Size of log pages in the database. */
-  int is_shutdown;		/* Was the log shutdown ? */
+  bool is_shutdown;		/* Was the log shutdown ? */
   TRANID next_trid;		/* Next Transaction identifier */
   MVCCID mvcc_next_id;		/* Next MVCC ID */
   int avg_ntrans;		/* Number of average transactions */
@@ -975,7 +215,6 @@ struct log_header
   INT64 db_restore_time;
   bool mark_will_del;
 };
-
 #define LOG_HEADER_INITIALIZER                   \
   {                                              \
      /* magic */                                 \
@@ -1094,22 +333,25 @@ struct log_header
      false					 \
   }
 
-typedef struct log_arv_header LOG_ARV_HEADER;
-struct log_arv_header
-{				/* Log archive header information */
-  char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix utility */
-  INT32 dummy;			/* for 8byte align */
-  INT64 db_creation;		/* Database creation time. For safety reasons, this value is set on all volumes and the
-				 * log. The value is generated by the log manager */
-  TRANID next_trid;		/* Next Transaction identifier */
-  DKNPAGES npages;		/* Number of pages in the archive log */
-  LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in archive log */
-  int arv_num;			/* The archive number */
-  INT32 dummy2;			/* Dummy field for 8byte align */
+enum logwr_mode
+{
+  LOGWR_MODE_ASYNC = 1,
+  LOGWR_MODE_SEMISYNC,
+  LOGWR_MODE_SYNC
 };
+typedef enum logwr_mode LOGWR_MODE;
+#define LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK	(0x80000000)
 
-#define LOG_ARV_HEADER_INITIALIZER \
-  { /* magic */ {'0'}, 0, 0, 0, 0, 0, 0, 0 }
+typedef struct background_archiving_info BACKGROUND_ARCHIVING_INFO;
+struct background_archiving_info
+{
+  LOG_PAGEID start_page_id;
+  LOG_PAGEID current_page_id;
+  LOG_PAGEID last_sync_pageid;
+  int vdes;
+};
+#define BACKGROUND_ARCHIVING_INFO_INITIALIZER \
+  { NULL_PAGEID, NULL_PAGEID, NULL_PAGEID, NULL_VOLDES }
 
 typedef struct log_bgarv_header LOG_BGARV_HEADER;
 struct log_bgarv_header
@@ -1123,11 +365,122 @@ struct log_bgarv_header
   LOG_PAGEID current_page_id;
   LOG_PAGEID last_sync_pageid;
 };
-
 #define LOG_BGARV_HEADER_INITIALIZER \
   { /* magic */ {'0'}, 0, 0, NULL_PAGEID, NULL_PAGEID, NULL_PAGEID }
 
-typedef enum log_rectype LOG_RECTYPE;
+typedef struct log_arv_header LOG_ARV_HEADER;
+struct log_arv_header
+{				/* Log archive header information */
+  char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix utility */
+  INT32 dummy;			/* for 8byte align */
+  INT64 db_creation;		/* Database creation time. For safety reasons, this value is set on all volumes and the
+				 * log. The value is generated by the log manager */
+  TRANID next_trid;		/* Next Transaction identifier */
+  DKNPAGES npages;		/* Number of pages in the archive log */
+  LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in archive log */
+  int arv_num;			/* The archive number */
+  INT32 dummy2;			/* Dummy field for 8byte align */
+};
+#define LOG_ARV_HEADER_INITIALIZER \
+  { /* magic */ {'0'}, 0, 0, 0, 0, 0, 0, 0 }
+
+/* there can be following transitions in transient lobs
+
+   -------------------------------------------------------------------------
+   | 	       locator  | created               | deleted		   |
+   |--------------------|-----------------------|--------------------------|
+   | in     | transient | LOB_TRANSIENT_CREATED i LOB_UNKNOWN		   |
+   | tran   |-----------|-----------------------|--------------------------|
+   |        | permanent | LOB_PERMANENT_CREATED | LOB_PERMANENT_DELETED    |
+   |--------------------|-----------------------|--------------------------|
+   | out of | transient | LOB_UNKNOWN		| LOB_UNKNOWN		   |
+   | tran   |-----------|-----------------------|--------------------------|
+   |        | permanent | LOB_UNKNOWN 		| LOB_TRANSIENT_DELETED    |
+   -------------------------------------------------------------------------
+
+   s1: create a transient locator and delete it
+       LOB_TRANSIENT_CREATED -> LOB_UNKNOWN
+
+   s2: create a transient locator and bind it to a row in table
+       LOB_TRANSIENT_CREATED -> LOB_PERMANENT_CREATED
+
+   s3: bind a transient locator to a row and delete the locator
+       LOB_PERMANENT_CREATED -> LOB_PERMANENT_DELETED
+
+   s4: delete a locator to be create out of transaction
+       LOB_UNKNOWN -> LOB_TRANSIENT_DELETED
+
+ */
+enum lob_locator_state
+{
+  LOB_UNKNOWN,
+  LOB_TRANSIENT_CREATED,
+  LOB_TRANSIENT_DELETED,
+  LOB_PERMANENT_CREATED,
+  LOB_PERMANENT_DELETED,
+  LOB_NOT_FOUND
+};
+typedef enum lob_locator_state LOB_LOCATOR_STATE;
+
+enum LOG_HA_FILESTAT
+{
+  LOG_HA_FILESTAT_CLEAR = 0,
+  LOG_HA_FILESTAT_ARCHIVED = 1,
+  LOG_HA_FILESTAT_SYNCHRONIZED = 2
+};
+
+/*
+ * NOTE: NULL_VOLID generally means a bad volume identifier
+ *       Negative volume identifiers are used to identify auxilary files and
+ *       volumes (e.g., logs, backups)
+ */
+
+#define LOG_MAX_DBVOLID          (VOLID_MAX - 1)
+
+/* Volid of database.txt */
+#define LOG_DBTXT_VOLID          (SHRT_MIN + 1)
+#define LOG_DBFIRST_VOLID        0
+
+/* Volid of volume information */
+#define LOG_DBVOLINFO_VOLID      (LOG_DBFIRST_VOLID - 5)
+/* Volid of info log */
+#define LOG_DBLOG_INFO_VOLID     (LOG_DBFIRST_VOLID - 4)
+/* Volid of backup info log */
+#define LOG_DBLOG_BKUPINFO_VOLID (LOG_DBFIRST_VOLID - 3)
+/* Volid of active log */
+#define LOG_DBLOG_ACTIVE_VOLID   (LOG_DBFIRST_VOLID - 2)
+/* Volid of background archive logs */
+#define LOG_DBLOG_BG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 21)
+/* Volid of archive logs */
+#define LOG_DBLOG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 20)
+/* Volid of copies */
+#define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
+
+/*
+ * Specify up to int bits of permanent status indicators.
+ * Restore in progress is the only one so far, the rest are reserved
+ * for future use.  Note these must be specified and used as mask values
+ * to test and set individual bits.
+ */
+enum LOG_PSTATUS
+{
+  LOG_PSTAT_CLEAR = 0x00,
+  LOG_PSTAT_BACKUP_INPROGRESS = 0x01,	/* only one backup at a time */
+  LOG_PSTAT_RESTORE_INPROGRESS = 0x02,	/* unset upon successful restore */
+  LOG_PSTAT_HDRFLUSH_INPPROCESS = 0x04	/* need to flush log header */
+};
+
+typedef struct tran_query_exec_info TRAN_QUERY_EXEC_INFO;
+struct tran_query_exec_info
+{
+  char *wait_for_tran_index_string;
+  float query_time;
+  float tran_time;
+  char *query_stmt;
+  char *sql_id;
+  XASL_ID xasl_id;
+};
+
 enum log_rectype
 {
   /* In order of likely of appearance in the log */
@@ -1231,81 +584,7 @@ enum log_rectype
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
-
-typedef enum log_repl_flush LOG_REPL_FLUSH;
-enum log_repl_flush
-{
-  LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
-  LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
-  LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit and rollback */
-};
-
-/* Definitions used to identify UNDO/REDO/UNDOREDO log record data types */
-
-/* Is record type UNDO */
-#define LOG_IS_UNDO_RECORD_TYPE(type) \
-  (((type) == LOG_UNDO_DATA) || ((type) == LOG_MVCC_UNDO_DATA))
-
-/* Is record type REDO */
-#define LOG_IS_REDO_RECORD_TYPE(type) \
-  (((type) == LOG_REDO_DATA) || ((type) == LOG_MVCC_REDO_DATA))
-
-/* Is record type UNDOREDO */
-#define LOG_IS_UNDOREDO_RECORD_TYPE(type) \
-  (((type) == LOG_UNDOREDO_DATA) || ((type) == LOG_MVCC_UNDOREDO_DATA) \
-   || ((type) == LOG_DIFF_UNDOREDO_DATA) || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
-
-#define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
-  ((type) == LOG_DIFF_UNDOREDO_DATA || (type) == LOG_MVCC_DIFF_UNDOREDO_DATA)
-
-/* Definitions used to identify MVCC log records. Used by log manager and
- * vacuum.
- */
-
-/* Is record type used a MVCC operation */
-#define LOG_IS_MVCC_OP_RECORD_TYPE(type) \
-  (((type) == LOG_MVCC_UNDO_DATA) \
-   || ((type) == LOG_MVCC_REDO_DATA) \
-   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
-   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
-
-/* Is log record for a heap MVCC operation */
-#define LOG_IS_MVCC_HEAP_OPERATION(rcvindex) \
-  (((rcvindex) == RVHF_MVCC_DELETE_REC_HOME) \
-   || ((rcvindex) == RVHF_MVCC_INSERT) \
-   || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
-   || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_NO_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
-
-/* Is log record for a b-tree MVCC operation */
-#define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
-  ((rcvindex) == RVBT_MVCC_DELETE_OBJECT \
-   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT \
-   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT_UNQ \
-   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM)
-
-/* Is log record for a MVCC operation */
-#define LOG_IS_MVCC_OPERATION(rcvindex) \
-  (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
-   || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
-   || ((rcvindex) == RVES_NOTIFY_VACUUM))
-
-#define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
-  (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
-   && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
-
-typedef struct log_repl LOG_REPL_RECORD;
-struct log_repl
-{
-  LOG_RECTYPE repl_type;	/* LOG_REPLICATION_DATA or LOG_REPLICATION_SCHEMA */
-  LOG_RCVINDEX rcvindex;
-  OID inst_oid;
-  LOG_LSA lsa;
-  char *repl_data;		/* the content of the replication log record */
-  int length;
-  LOG_REPL_FLUSH must_flush;
-};
+typedef enum log_rectype LOG_RECTYPE;
 
 /* Description of a log record */
 typedef struct log_rec_header LOG_RECORD_HEADER;
@@ -1389,6 +668,815 @@ struct log_rec_mvcc_redo
   MVCCID mvccid;		/* MVCC Identifier for transaction */
 };
 
+/* replication log structure */
+typedef struct log_rec_replication LOG_REC_REPLICATION;
+struct log_rec_replication
+{
+  LOG_LSA lsa;
+  int length;
+  int rcvindex;
+};
+
+/* Log the time of termination of transaction */
+typedef struct log_rec_donetime LOG_REC_DONETIME;
+struct log_rec_donetime
+{
+  INT64 at_time;		/* Database creation time. For safety reasons */
+};
+
+#define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
+  ((LOG_RECORD_HEADER *) ((log_page_p)->area + (lsa)->offset))
+
+/* Definitions used to identify UNDO/REDO/UNDOREDO log record data types */
+
+/* Is record type UNDO */
+#define LOG_IS_UNDO_RECORD_TYPE(type) \
+  (((type) == LOG_UNDO_DATA) || ((type) == LOG_MVCC_UNDO_DATA))
+
+/* Is record type REDO */
+#define LOG_IS_REDO_RECORD_TYPE(type) \
+  (((type) == LOG_REDO_DATA) || ((type) == LOG_MVCC_REDO_DATA))
+
+/* Is record type UNDOREDO */
+#define LOG_IS_UNDOREDO_RECORD_TYPE(type) \
+  (((type) == LOG_UNDOREDO_DATA) || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_DIFF_UNDOREDO_DATA) || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+#define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
+  ((type) == LOG_DIFF_UNDOREDO_DATA || (type) == LOG_MVCC_DIFF_UNDOREDO_DATA)
+
+/* Is record type used a MVCC operation */
+#define LOG_IS_MVCC_OP_RECORD_TYPE(type) \
+  (((type) == LOG_MVCC_UNDO_DATA) \
+   || ((type) == LOG_MVCC_REDO_DATA) \
+   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+/* Log the change of the server's HA state */
+typedef struct log_rec_ha_server_state LOG_REC_HA_SERVER_STATE;
+struct log_rec_ha_server_state
+{
+  int state;			/* ha_Server_state */
+  int dummy;			/* dummy for alignment */
+
+  INT64 at_time;		/* time recorded by active server */
+};
+
+#define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system transaction index. */
+#define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
+
+#if !defined (NDEBUG) && !defined (WINDOWS)
+extern int logtb_collect_local_clients (int **local_client_pids);
+#endif /* !defined (NDEBUG) && !defined (WINDOWS) */
+
+/************************************************************************/
+/* End of part shared with client.                                      */
+/************************************************************************/
+
+#if !defined (CS_MODE)
+
+/* TRANS_STATUS_HISTORY_MAX_SIZE must be a power of 2*/
+#define TRANS_STATUS_HISTORY_MAX_SIZE 2048
+
+#if defined(SERVER_MODE)
+#define LOG_CS_ENTER(thread_p) \
+        csect_enter((thread_p), CSECT_LOG, INF_WAIT)
+#define LOG_CS_ENTER_READ_MODE(thread_p) \
+        csect_enter_as_reader((thread_p), CSECT_LOG, INF_WAIT)
+#define LOG_CS_DEMOTE(thread_p) \
+        csect_demote((thread_p), CSECT_LOG, INF_WAIT)
+#define LOG_CS_PROMOTE(thread_p) \
+        csect_promote((thread_p), CSECT_LOG, INF_WAIT)
+#define LOG_CS_EXIT(thread_p) \
+        csect_exit((thread_p), CSECT_LOG)
+
+#define TR_TABLE_CS_ENTER(thread_p) \
+        csect_enter((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
+#define TR_TABLE_CS_ENTER_READ_MODE(thread_p) \
+        csect_enter_as_reader((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
+#define TR_TABLE_CS_EXIT(thread_p) \
+        csect_exit((thread_p), CSECT_TRAN_TABLE)
+
+#define LOG_ARCHIVE_CS_ENTER(thread_p) \
+        csect_enter (thread_p, CSECT_LOG_ARCHIVE, INF_WAIT)
+#define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p) \
+        csect_enter_as_reader (thread_p, CSECT_LOG_ARCHIVE, INF_WAIT)
+#define LOG_ARCHIVE_CS_EXIT(thread_p) \
+        csect_exit (thread_p, CSECT_LOG_ARCHIVE)
+
+#else /* SERVER_MODE */
+#define LOG_CS_ENTER(thread_p)
+#define LOG_CS_ENTER_READ_MODE(thread_p)
+#define LOG_CS_DEMOTE(thread_p)
+#define LOG_CS_PROMOTE(thread_p)
+#define LOG_CS_EXIT(thread_p)
+
+#define TR_TABLE_CS_ENTER(thread_p)
+#define TR_TABLE_CS_ENTER_READ_MODE(thread_p)
+#define TR_TABLE_CS_EXIT(thread_p)
+
+#define LOG_ARCHIVE_CS_ENTER(thread_p)
+#define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p)
+#define LOG_ARCHIVE_CS_EXIT(thread_p)
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/* TODO: Vacuum workers never hold CSECT_LOG lock. Investigate any possible
+ *	 unwanted consequences.
+ * NOTE: It is considered that a vacuum worker holds a "shared" lock.
+ */
+#define LOG_CS_OWN(thread_p) \
+  (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p) \
+   || csect_check_own (thread_p, CSECT_LOG) >= 1)
+#define LOG_CS_OWN_WRITE_MODE(thread_p) \
+  (csect_check_own (thread_p, CSECT_LOG) == 1)
+
+#define LOG_ARCHIVE_CS_OWN(thread_p) \
+  (csect_check (thread_p, CSECT_LOG_ARCHIVE) >= 1)
+#define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p) \
+  (csect_check_own (thread_p, CSECT_LOG_ARCHIVE) == 1)
+#define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p) \
+  (csect_check_own (thread_p, CSECT_LOG_ARCHIVE) == 2)
+
+#else /* SERVER_MODE */
+#define LOG_CS_OWN(thread_p) (true)
+#define LOG_CS_OWN_WRITE_MODE(thread_p) (true)
+
+#define LOG_ARCHIVE_CS_OWN(thread_p) (true)
+#define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p) (true)
+#define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p) (true)
+#endif /* !SERVER_MODE */
+
+#define LOG_ESTIMATE_NACTIVE_TRANS      100	/* Estimate num of trans */
+#define LOG_ESTIMATE_NOBJ_LOCKS         977	/* Estimate num of locks */
+
+/* Log data area */
+#define LOGAREA_SIZE (LOG_PAGESIZE - SSIZEOF(LOG_HDRPAGE))
+
+/* check if group commit is active */
+#define LOG_IS_GROUP_COMMIT_ACTIVE() \
+  (prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS) > 0)
+
+#define LOG_RESET_APPEND_LSA(lsa) \
+  do \
+    { \
+      LSA_COPY (&log_Gl.hdr.append_lsa, (lsa)); \
+      LSA_COPY (&log_Gl.prior_info.prior_lsa, (lsa)); \
+    } \
+  while (0)
+
+#define LOG_RESET_PREV_LSA(lsa) \
+  do \
+    { \
+      LSA_COPY (&log_Gl.append.prev_lsa, (lsa)); \
+      LSA_COPY (&log_Gl.prior_info.prev_lsa, (lsa)); \
+    } \
+  while (0)
+
+#define LOG_APPEND_PTR() ((char *)log_Gl.append.log_pgptr->area \
+                          + log_Gl.hdr.append_lsa.offset)
+
+#define LOG_READ_ALIGN(thread_p, lsa, log_pgptr) \
+  do \
+    { \
+      (lsa)->offset = DB_ALIGN ((lsa)->offset, DOUBLE_ALIGNMENT); \
+      while ((lsa)->offset >= (int) LOGAREA_SIZE) \
+        { \
+          assert (log_pgptr != NULL); \
+          (lsa)->pageid++; \
+          if (logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, (log_pgptr)) != NO_ERROR) \
+	    { \
+              logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
+                                 "LOG_READ_ALIGN"); \
+	    } \
+          (lsa)->offset -= LOGAREA_SIZE; \
+          (lsa)->offset = DB_ALIGN ((lsa)->offset, DOUBLE_ALIGNMENT); \
+        } \
+    } \
+  while (0)
+
+#define LOG_READ_ADD_ALIGN(thread_p, add, lsa, log_pgptr) \
+  do \
+    { \
+      (lsa)->offset += (add); \
+      LOG_READ_ALIGN ((thread_p), (lsa), (log_pgptr)); \
+    } \
+  while (0)
+
+#define LOG_READ_ADVANCE_WHEN_DOESNT_FIT(thread_p, length, lsa, log_pgptr) \
+  do \
+    { \
+      if ((lsa)->offset + (int) (length) >= (int) LOGAREA_SIZE) \
+        { \
+          assert (log_pgptr != NULL); \
+          (lsa)->pageid++; \
+          if ((logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, log_pgptr))!= NO_ERROR) \
+            { \
+              logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
+                                 "LOG_READ_ADVANCE_WHEN_DOESNT_FIT"); \
+            } \
+          (lsa)->offset = 0; \
+        } \
+    } \
+  while (0)
+
+#define LOG_2PC_NULL_GTRID        (-1)
+#define LOG_2PC_OBTAIN_LOCKS      true
+#define LOG_2PC_DONT_OBTAIN_LOCKS false
+
+#if defined(SERVER_MODE)
+#if !defined(LOG_FIND_THREAD_TRAN_INDEX)
+#define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
+  ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
+#endif
+#define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
+  ((thrd) ? (void) ((thrd)->tran_index = (index)) : thread_set_current_tran_index ((thrd), (index)))
+#else /* SERVER_MODE */
+#if !defined(LOG_FIND_THREAD_TRAN_INDEX)
+#define LOG_FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
+#endif
+#define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
+  log_Tran_index = (index)
+#endif /* SERVER_MODE */
+
+#define LOG_FIND_TDES(tran_index) \
+  (((tran_index) >= 0 && (tran_index) < log_Gl.trantable.num_total_indices) \
+   ? log_Gl.trantable.all_tdes[(tran_index)] : NULL)
+
+#define LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID(tran_index) \
+  (((tran_index) >= 0 && (tran_index) < log_Gl.trantable.num_total_indices) \
+  ? (log_Gl.mvcc_table.transaction_lowest_active_mvccids + tran_index) : NULL)
+
+#define LOG_FIND_CURRENT_TDES(thrd) \
+  LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX ((thrd)))
+
+#define LOG_ISTRAN_ACTIVE(tdes) \
+  ((tdes)->state == TRAN_ACTIVE && LOG_ISRESTARTED ())
+
+#define LOG_ISTRAN_COMMITTED(tdes) \
+  ((tdes)->state == TRAN_UNACTIVE_COMMITTED \
+   || (tdes)->state == TRAN_UNACTIVE_WILL_COMMIT \
+   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE \
+   || (tdes)->state == TRAN_UNACTIVE_2PC_COMMIT_DECISION \
+   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+
+#define LOG_ISTRAN_ABORTED(tdes) \
+  ((tdes)->state == TRAN_UNACTIVE_ABORTED \
+   || (tdes)->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED \
+   || (tdes)->state == TRAN_UNACTIVE_2PC_ABORT_DECISION \
+   || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+
+#define LOG_ISTRAN_LOOSE_ENDS(tdes) \
+  ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
+   || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS \
+   || (tdes)->state == TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES \
+   || (tdes)->state == TRAN_UNACTIVE_2PC_PREPARE)
+
+#define LOG_ISTRAN_2PC_IN_SECOND_PHASE(tdes) \
+  ((tdes)->state == TRAN_UNACTIVE_2PC_ABORT_DECISION \
+   || (tdes)->state == TRAN_UNACTIVE_2PC_COMMIT_DECISION \
+   || (tdes)->state == TRAN_UNACTIVE_WILL_COMMIT \
+   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE \
+   || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS \
+   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+
+#define LOG_ISTRAN_2PC(tdes) \
+  ((tdes)->state == TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES \
+   || (tdes)->state == TRAN_UNACTIVE_2PC_PREPARE \
+   || LOG_ISTRAN_2PC_IN_SECOND_PHASE (tdes))
+
+#define LOG_ISTRAN_2PC_PREPARE(tdes) \
+  ((tdes)->state == TRAN_UNACTIVE_2PC_PREPARE)
+
+#define LOG_ISTRAN_2PC_INFORMING_PARTICIPANTS(tdes) \
+  ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
+   || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+
+/* Reserved vacuum workers transaction identifiers.
+ * Vacuum workers each need one TRANID to have their system operations
+ * isolated and identifiable. Even though usually vacuum workers never undo
+ * their work, system operations still need to be undone (if server crashes
+ * in the middle of the operation).
+ * For this reason, the first VACUUM_MAX_WORKER_COUNT negative TRANID values
+ * under NULL_TRANID are reserved for vacuum workers.
+ */
+#define LOG_VACUUM_MASTER_TRANID (NULL_TRANID - 1)
+#define LOG_LAST_VACUUM_WORKER_TRANID (LOG_VACUUM_MASTER_TRANID - 1)
+#define LOG_FIRST_VACUUM_WORKER_TRANID (LOG_VACUUM_MASTER_TRANID - VACUUM_MAX_WORKER_COUNT)
+#define LOG_IS_VACUUM_WORKER_TRANID(trid) \
+  (trid <= LOG_LAST_VACUUM_WORKER_TRANID \
+   && trid >= LOG_FIRST_VACUUM_WORKER_TRANID)
+#define LOG_IS_VACUUM_MASTER_TRANID(trid) ((trid) == LOG_VACUUM_MASTER_TRANID)
+#define LOG_IS_VACUUM_THREAD_TRANID(trid) \
+  (LOG_IS_VACUUM_WORKER_TRANID (trid) || LOG_IS_VACUUM_MASTER_TRANID (trid))
+
+#define LOG_SET_DATA_ADDR(data_addr, page, vol_file_id, off) \
+  do \
+    { \
+      (data_addr)->pgptr = (page); \
+      (data_addr)->vfid = (vol_file_id); \
+      (data_addr)->offset = (off); \
+    } \
+  while (0)
+
+#define LOG_READ_NEXT_TRANID (log_Gl.hdr.next_trid)
+#define LOG_READ_NEXT_MVCCID (log_Gl.hdr.mvcc_next_id)
+#define LOG_HAS_LOGGING_BEEN_IGNORED() \
+  (log_Gl.hdr.has_logging_been_skipped == true)
+
+#define LOG_ISRESTARTED() (log_Gl.rcv_phase == LOG_RESTARTED)
+
+/* special action for log applier */
+#if defined (SERVER_MODE)
+#define LOG_CHECK_LOG_APPLIER(thread_p) \
+  (thread_p != NULL \
+   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_APPLIER)
+#else
+#define LOG_CHECK_LOG_APPLIER(thread_p) (0)
+#endif /* !SERVER_MODE */
+
+/* special action for log prefetcher */
+#if defined (SERVER_MODE)
+#define LOG_CHECK_LOG_PREFETCHER(thread_p) \
+  (thread_p != NULL \
+   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_PREFETCHER)
+#else
+#define LOG_CHECK_LOG_PREFETCHER(thread_p) (0)
+#endif /* !SERVER_MODE */
+
+#if !defined(_DB_DISABLE_MODIFICATIONS_)
+#define _DB_DISABLE_MODIFICATIONS_
+extern int db_Disable_modifications;
+#endif /* _DB_DISABLE_MODIFICATIONS_ */
+
+#ifndef CHECK_MODIFICATION_NO_RETURN
+#if defined (SA_MODE)
+#define CHECK_MODIFICATION_NO_RETURN(thread_p, error) \
+  (error) = NO_ERROR
+#else /* SA_MODE */
+#define CHECK_MODIFICATION_NO_RETURN(thread_p, error) \
+  do \
+    { \
+      int mod_disabled; \
+      mod_disabled = logtb_is_tran_modification_disabled (thread_p); \
+      if (mod_disabled) \
+        { \
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, \
+                  0); \
+          er_log_debug (ARG_FILE_LINE, "tdes->disable_modification = %d\n", \
+                        mod_disabled); \
+          error = ER_DB_NO_MODIFICATIONS; \
+        } \
+      else \
+        { \
+          error = NO_ERROR; \
+        } \
+    } \
+  while (0)
+#endif /* !SA_MODE */
+#endif /* CHECK_MODIFICATION_NO_RETURN */
+
+#define MAX_NUM_EXEC_QUERY_HISTORY                      100
+
+enum log_flush
+{ LOG_DONT_NEED_FLUSH, LOG_NEED_FLUSH };
+typedef enum log_flush LOG_FLUSH;
+
+enum log_setdirty
+{ LOG_DONT_SET_DIRTY, LOG_SET_DIRTY };
+typedef enum log_setdirty LOG_SETDIRTY;
+
+enum log_getnewtrid
+{ LOG_DONT_NEED_NEWTRID, LOG_NEED_NEWTRID };
+typedef enum log_getnewtrid LOG_GETNEWTRID;
+
+enum log_wrote_eot_log
+{ LOG_NEED_TO_WRITE_EOT_LOG, LOG_ALREADY_WROTE_EOT_LOG };
+typedef enum log_wrote_eot_log LOG_WRITE_EOT_LOG;
+
+enum LOG_PRIOR_LSA_LOCK
+{
+  LOG_PRIOR_LSA_WITHOUT_LOCK = 0,
+  LOG_PRIOR_LSA_WITH_LOCK = 1
+};
+
+typedef struct log_clientids LOG_CLIENTIDS;
+struct log_clientids		/* see BOOT_CLIENT_CREDENTIAL */
+{
+  int client_type;
+  char client_info[DB_MAX_IDENTIFIER_LENGTH + 1];
+  char db_user[LOG_USERNAME_MAX];
+  char program_name[PATH_MAX + 1];
+  char login_name[L_cuserid + 1];
+  char host_name[MAXHOSTNAMELEN + 1];
+  int process_id;
+  bool is_user_active;
+};
+
+/*
+ * Flush information shared by LFT and normal transaction.
+ * Transaction in commit phase has to flush all toflush array's pages.
+ */
+typedef struct log_flush_info LOG_FLUSH_INFO;
+struct log_flush_info
+{
+  /* Size of array to log append pages to flush */
+  int max_toflush;
+
+  /* Number of log append pages that can be flush Not all of the append pages may be full. */
+  int num_toflush;
+
+  /* A sorted order of log append free pages to flush */
+  LOG_PAGE **toflush;
+
+#if defined(SERVER_MODE)
+  /* for protecting LOG_FLUSH_INFO */
+  pthread_mutex_t flush_mutex;
+#endif				/* SERVER_MODE */
+};
+
+typedef struct log_group_commit_info LOG_GROUP_COMMIT_INFO;
+struct log_group_commit_info
+{
+  /* group commit waiters count */
+  pthread_mutex_t gc_mutex;
+  pthread_cond_t gc_cond;
+};
+
+#define LOG_GROUP_COMMIT_INFO_INITIALIZER \
+  { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
+
+enum logwr_status
+{
+  LOGWR_STATUS_WAIT,
+  LOGWR_STATUS_FETCH,
+  LOGWR_STATUS_DONE,
+  LOGWR_STATUS_DELAY,
+  LOGWR_STATUS_ERROR
+};
+typedef enum logwr_status LOGWR_STATUS;
+
+typedef struct logwr_entry LOGWR_ENTRY;
+struct logwr_entry
+{
+  THREAD_ENTRY *thread_p;
+  LOG_PAGEID fpageid;
+  LOGWR_MODE mode;
+  LOGWR_STATUS status;
+  LOG_LSA eof_lsa;
+  LOG_LSA last_sent_eof_lsa;
+  LOG_LSA tmp_last_sent_eof_lsa;
+  INT64 start_copy_time;
+  bool copy_from_first_phy_page;
+  LOGWR_ENTRY *next;
+};
+
+typedef struct logwr_info LOGWR_INFO;
+struct logwr_info
+{
+  LOGWR_ENTRY *writer_list;
+  pthread_mutex_t wr_list_mutex;
+  pthread_cond_t flush_start_cond;
+  pthread_mutex_t flush_start_mutex;
+  pthread_cond_t flush_wait_cond;
+  pthread_mutex_t flush_wait_mutex;
+  pthread_cond_t flush_end_cond;
+  pthread_mutex_t flush_end_mutex;
+  bool skip_flush;
+  bool flush_completed;
+  bool is_init;
+
+  /* to measure the time spent by the last LWT delaying LFT */
+  bool trace_last_writer;
+  LOG_CLIENTIDS last_writer_client_info;
+  INT64 last_writer_elapsed_time;
+};
+
+#define LOGWR_INFO_INITIALIZER                                 \
+  {NULL,                                                       \
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
+    PTHREAD_MUTEX_INITIALIZER,                                 \
+    false, false, false, false,                                \
+    /* last_writer_client_info */                              \
+    { -1, {'0'}, {'0'}, {'0'}, {'0'}, {'0'}, 0, false },       \
+    0                                                          \
+   }
+
+typedef struct log_append_info LOG_APPEND_INFO;
+struct log_append_info
+{
+  int vdes;			/* Volume descriptor of active log */
+  LOG_LSA nxio_lsa;		/* Lowest log sequence number which has not been written to disk (for WAL). */
+  LOG_LSA prev_lsa;		/* Address of last append log record */
+  LOG_PAGE *log_pgptr;		/* The log page which is fixed */
+
+#if !defined(HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_t nxio_lsa_mutex;
+#endif
+};
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+#define LOG_APPEND_INFO_INITIALIZER                           \
+  {                                                           \
+    /* vdes */                                                \
+    NULL_VOLDES,                                              \
+    /* nxio_lsa */                                            \
+    {NULL_PAGEID, NULL_OFFSET},                               \
+    /* prev_lsa */                                            \
+    {NULL_PAGEID, NULL_OFFSET},                               \
+    /* log_pgptr */                                           \
+    NULL}
+#else
+#define LOG_APPEND_INFO_INITIALIZER                           \
+  {                                                           \
+    /* vdes */                                                \
+    NULL_VOLDES,                                              \
+    /* nxio_lsa */                                            \
+    {NULL_PAGEID, NULL_OFFSET},                               \
+    /* prev_lsa */                                            \
+    {NULL_PAGEID, NULL_OFFSET},                               \
+    /* log_pgptr */                                           \
+    NULL,                                                     \
+    /* nxio_lsa_mutex */                                      \
+    PTHREAD_MUTEX_INITIALIZER}
+#endif
+
+enum log_2pc_execute
+{
+  LOG_2PC_EXECUTE_FULL,		/* For the root coordinator */
+  LOG_2PC_EXECUTE_PREPARE,	/* For a participant that is also a non root coordinator execute the first phase of 2PC */
+  LOG_2PC_EXECUTE_COMMIT_DECISION,	/* For a participant that is also a non root coordinator execute the second
+					 * phase of 2PC. The root coordinator has decided a commit decision */
+  LOG_2PC_EXECUTE_ABORT_DECISION	/* For a participant that is also a non root coordinator execute the second
+					 * phase of 2PC. The root coordinator has decided an abort decision with or
+					 * without going to the first phase (i.e., prepare) of the 2PC */
+};
+typedef enum log_2pc_execute LOG_2PC_EXECUTE;
+
+typedef struct log_2pc_gtrinfo LOG_2PC_GTRINFO;
+struct log_2pc_gtrinfo
+{				/* Global transaction user information */
+  int info_length;
+  void *info_data;
+};
+
+typedef struct log_2pc_coordinator LOG_2PC_COORDINATOR;
+struct log_2pc_coordinator
+{				/* Coordinator maintains this info */
+  int num_particps;		/* Number of participating sites */
+  int particp_id_length;	/* Length of a participant identifier */
+  void *block_particps_ids;	/* A block of participants identifiers */
+  int *ack_received;		/* Acknowledgment received vector */
+};
+
+typedef struct log_topops_addresses LOG_TOPOPS_ADDRESSES;
+struct log_topops_addresses
+{
+  LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. This is needed for undo of the top
+				 * system action */
+  LOG_LSA posp_lsa;		/* The first address of a postpone log record for top system operation. We add this
+				 * since it is reset during recovery to the last reference postpone address. */
+};
+
+enum log_topops_type
+{
+  LOG_TOPOPS_NORMAL,
+  LOG_TOPOPS_COMPENSATE_TRAN_ABORT,
+  LOG_TOPOPS_COMPENSATE_SYSOP_ABORT,
+  LOG_TOPOPS_POSTPONE
+};
+typedef enum log_topops_type LOG_TOPOPS_TYPE;
+
+typedef struct log_topops_stack LOG_TOPOPS_STACK;
+struct log_topops_stack
+{
+  int max;			/* Size of stack */
+  int last;			/* Last entry in stack */
+  LOG_TOPOPS_ADDRESSES *stack;	/* Stack for push and pop of top system actions */
+};
+
+typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
+struct modified_class_entry
+{
+  MODIFIED_CLASS_ENTRY *m_next;
+  const char *m_classname;	/* Name of the modified class */
+  OID m_class_oid;
+  LOG_LSA m_last_modified_lsa;
+};
+
+/* lob entry */
+typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
+
+/*  lob rb tree head
+  The macro RB_HEAD is defined in rb_tree.h. It will be expanede like this;
+
+  struct lob_rb_root {
+    struct lob_locator_entry* rbh_root;
+  };
+ */
+RB_HEAD (lob_rb_root, lob_locator_entry);
+
+enum tran_abort_reason
+{
+  TRAN_NORMAL = 0,
+  TRAN_ABORT_DUE_DEADLOCK = 1,
+  TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION = 2
+};
+typedef enum tran_abort_reason TRAN_ABORT_REASON;
+
+typedef struct log_unique_stats LOG_UNIQUE_STATS;
+struct log_unique_stats
+{
+  int num_nulls;		/* number of nulls */
+  int num_keys;			/* number of keys */
+  int num_oids;			/* number of oids */
+};
+
+typedef struct log_tran_btid_unique_stats LOG_TRAN_BTID_UNIQUE_STATS;
+struct log_tran_btid_unique_stats
+{
+  BTID btid;			/* id of B-tree */
+  bool deleted;			/* true if the B-tree was deleted */
+
+  LOG_UNIQUE_STATS tran_stats;	/* statistics accumulated during entire transaction */
+  LOG_UNIQUE_STATS global_stats;	/* statistics loaded from index */
+};
+
+enum count_optim_state
+{
+  COS_NOT_LOADED = 0,		/* the global statistics was not loaded yet */
+  COS_TO_LOAD = 1,		/* the global statistics must be loaded when snapshot is taken */
+  COS_LOADED = 2		/* the global statistics were loaded */
+};
+typedef enum count_optim_state COUNT_OPTIM_STATE;
+
+#define TRAN_UNIQUE_STATS_CHUNK_SIZE  128	/* size of the memory chunk for unique statistics */
+
+/* LOG_TRAN_BTID_UNIQUE_STATS_CHUNK
+ * Represents a chunk of memory for transaction unique statistics
+ */
+typedef struct log_tran_btid_unique_stats_chunk LOG_TRAN_BTID_UNIQUE_STATS_CHUNK;
+struct log_tran_btid_unique_stats_chunk
+{
+  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *next_chunk;	/* address of next chunk of memory */
+  LOG_TRAN_BTID_UNIQUE_STATS buffer[1];	/* more than one */
+};
+
+/* LOG_TRAN_CLASS_COS
+ * Structure used to store the state of the count optimization for classes.
+ */
+typedef struct log_tran_class_cos LOG_TRAN_CLASS_COS;
+struct log_tran_class_cos
+{
+  OID class_oid;		/* class object identifier. */
+  COUNT_OPTIM_STATE count_state;	/* count optimization state for class_oid */
+};
+
+#define COS_CLASSES_CHUNK_SIZE	64	/* size of the memory chunk for count optimization classes */
+
+/* LOG_TRAN_CLASS_COS_CHUNK
+ * Represents a chunk of memory for count optimization states
+ */
+typedef struct log_tran_class_cos_chunk LOG_TRAN_CLASS_COS_CHUNK;
+struct log_tran_class_cos_chunk
+{
+  LOG_TRAN_CLASS_COS_CHUNK *next_chunk;	/* address of next chunk of memory */
+  LOG_TRAN_CLASS_COS buffer[1];	/* more than one */
+};
+
+/* LOG_TRAN_UPDATE_STATS
+ * Structure used for transaction local unique statistics and count optimization
+ * management
+ */
+typedef struct log_tran_update_stats LOG_TRAN_UPDATE_STATS;
+struct log_tran_update_stats
+{
+  int cos_count;		/* the number of hashed elements */
+  LOG_TRAN_CLASS_COS_CHUNK *cos_first_chunk;	/* address of first chunk in the chunks list */
+  LOG_TRAN_CLASS_COS_CHUNK *cos_current_chunk;	/* address of current chunk from which new elements are assigned */
+  MHT_TABLE *classes_cos_hash;	/* hash of count optimization states for classes that were or will be subject to count
+				 * optimization. */
+
+  int stats_count;		/* the number of hashed elements */
+  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *stats_first_chunk;	/* address of first chunk in the chunks list */
+  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *stats_current_chunk;	/* address of current chunk from which new elements are
+								 * assigned */
+  MHT_TABLE *unique_stats_hash;	/* hash of unique statistics for indexes used during transaction. */
+};
+
+/*
+ * MVCC_TRANS_STATUS keep MVCCIDs status in bit area. Thus bit 0 means active
+ * MVCCID bit 1 means committed transaction. This structure keep also lowest
+ * active MVCCIDs used by VACUUM for MVCCID threshold computation. Also, MVCCIDs
+ * of long time transactions MVCCIDs are kept in this structure.
+ */
+typedef struct mvcc_trans_status MVCC_TRANS_STATUS;
+struct mvcc_trans_status
+{
+  /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
+  UINT64 *bit_area;
+  /* first MVCCID whose status is stored in bit area */
+  MVCCID bit_area_start_mvccid;
+  /* the area length expressed in bits */
+  unsigned int bit_area_length;
+
+  /* long time transaction mvccid array */
+  MVCCID *long_tran_mvccids;
+  /* long time transactions mvccid array length */
+  unsigned int long_tran_mvccids_length;
+
+  volatile unsigned int version;
+
+  /* lowest active MVCCID */
+  MVCCID lowest_active_mvccid;
+};
+
+#define MVCC_STATUS_INITIALIZER \
+  { NULL, MVCCID_FIRST, 0, NULL, 0, 0, MVCCID_FIRST }
+
+typedef struct mvcctable MVCCTABLE;
+struct mvcctable
+{
+  /* current transaction status */
+  MVCC_TRANS_STATUS current_trans_status;
+
+  /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
+  volatile MVCCID *transaction_lowest_active_mvccids;
+
+  /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
+  MVCC_TRANS_STATUS *trans_status_history;
+  /* the position in transaction status history array */
+  volatile int trans_status_history_position;
+
+  /* protect against getting new MVCCIDs concurrently */
+#if defined(HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_t new_mvccid_lock;
+#endif
+
+  /* protect against current transaction status modifications */
+  pthread_mutex_t active_trans_mutex;
+};
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+#define MVCCTABLE_INITIALIZER \
+  { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER }
+#else
+#define MVCCTABLE_INITIALIZER \
+  { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER }
+#endif
+
+enum log_repl_flush
+{
+  LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
+  LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
+  LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit and rollback */
+};
+typedef enum log_repl_flush LOG_REPL_FLUSH;
+
+/* Definitions used to identify MVCC log records. Used by log manager and
+ * vacuum.
+ */
+
+/* Is log record for a heap MVCC operation */
+#define LOG_IS_MVCC_HEAP_OPERATION(rcvindex) \
+  (((rcvindex) == RVHF_MVCC_DELETE_REC_HOME) \
+   || ((rcvindex) == RVHF_MVCC_INSERT) \
+   || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
+   || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
+   || ((rcvindex) == RVHF_MVCC_NO_MODIFY_HOME) \
+   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
+
+/* Is log record for a b-tree MVCC operation */
+#define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
+  ((rcvindex) == RVBT_MVCC_DELETE_OBJECT \
+   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT \
+   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT_UNQ \
+   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM)
+
+/* Is log record for a MVCC operation */
+#define LOG_IS_MVCC_OPERATION(rcvindex) \
+  (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
+   || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
+   || ((rcvindex) == RVES_NOTIFY_VACUUM))
+
+#define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
+  (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
+   && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
+
+typedef struct log_repl LOG_REPL_RECORD;
+struct log_repl
+{
+  LOG_RECTYPE repl_type;	/* LOG_REPLICATION_DATA or LOG_REPLICATION_SCHEMA */
+  LOG_RCVINDEX rcvindex;
+  OID inst_oid;
+  LOG_LSA lsa;
+  char *repl_data;		/* the content of the replication log record */
+  int length;
+  LOG_REPL_FLUSH must_flush;
+};
+
 /* Information of database external redo log records */
 typedef struct log_rec_dbout_redo LOG_REC_DBOUT_REDO;
 struct log_rec_dbout_redo
@@ -1414,7 +1502,6 @@ struct log_rec_start_postpone
 };
 
 /* types of end system operation */
-typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
 enum log_sysop_end_type
 {
   LOG_SYSOP_END_COMMIT,		/* permanent changes */
@@ -1424,6 +1511,7 @@ enum log_sysop_end_type
   LOG_SYSOP_END_LOGICAL_COMPENSATE,	/* logical compensate */
   LOG_SYSOP_END_LOGICAL_RUN_POSTPONE	/* logical run postpone */
 };
+typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
 #define LOG_SYSOP_END_TYPE_CHECK(type) \
   assert ((type) == LOG_SYSOP_END_COMMIT \
           || (type) == LOG_SYSOP_END_ABORT \
@@ -1477,15 +1565,6 @@ struct log_rec_chkpt
   LOG_LSA redo_lsa;		/* Oldest LSA of dirty data page in page buffers */
   int ntrans;			/* Number of active transactions */
   int ntops;			/* Total number of system operations */
-};
-
-/* replication log structure */
-typedef struct log_rec_replication LOG_REC_REPLICATION;
-struct log_rec_replication
-{
-  LOG_LSA lsa;
-  int length;
-  int rcvindex;
 };
 
 /* Transaction descriptor */
@@ -1554,23 +1633,6 @@ struct log_rec_2pc_particp_ack
   int particp_index;		/* Index of the acknowledging participant */
 };
 
-/* Log the time of termination of transaction */
-typedef struct log_rec_donetime LOG_REC_DONETIME;
-struct log_rec_donetime
-{
-  INT64 at_time;		/* Database creation time. For safety reasons */
-};
-
-/* Log the change of the server's HA state */
-typedef struct log_rec_ha_server_state LOG_REC_HA_SERVER_STATE;
-struct log_rec_ha_server_state
-{
-  int state;			/* ha_Server_state */
-  int dummy;			/* dummy for alignment */
-
-  INT64 at_time;		/* time recorded by active server */
-};
-
 typedef struct log_rcv_tdes LOG_RCV_TDES;
 struct log_rcv_tdes
 {
@@ -1595,7 +1657,7 @@ struct log_tdes
   int tran_index;		/* Index onto transaction table */
   TRANID trid;			/* Transaction identifier */
 
-  int isloose_end;
+  bool isloose_end;
   TRAN_STATE state;		/* Transaction state (e.g., Active, aborted) */
   TRAN_ISOLATION isolation;	/* Isolation level */
   int wait_msecs;		/* Wait until this number of milliseconds for locks; also see xlogtb_reset_wait_msecs */
@@ -1710,7 +1772,6 @@ struct log_crumb
 };
 
 /* state of recovery process */
-typedef enum log_recvphase LOG_RECVPHASE;
 enum log_recvphase
 {
   LOG_RESTARTED,		/* Normal processing.. recovery has been executed. */
@@ -1719,6 +1780,7 @@ enum log_recvphase
   LOG_RECOVERY_UNDO_PHASE,	/* Undoing phase */
   LOG_RECOVERY_FINISH_2PC_PHASE	/* Finishing up transactions that were in 2PC protocol at the time of the crash */
 };
+typedef enum log_recvphase LOG_RECVPHASE;
 
 typedef struct log_archives LOG_ARCHIVES;
 struct log_archives
@@ -1732,18 +1794,6 @@ struct log_archives
 
 #define LOG_ARCHIVES_INITIALIZER \
   { NULL_VOLDES, LOG_ARV_HEADER_INITIALIZER, 0, 0, NULL /* unav_archives */ }
-
-typedef struct background_archiving_info BACKGROUND_ARCHIVING_INFO;
-struct background_archiving_info
-{
-  LOG_PAGEID start_page_id;
-  LOG_PAGEID current_page_id;
-  LOG_PAGEID last_sync_pageid;
-  int vdes;
-};
-
-#define BACKGROUND_ARCHIVING_INFO_INITIALIZER \
-  { NULL_PAGEID, NULL_PAGEID, NULL_PAGEID, NULL_VOLDES }
 
 typedef struct log_data_addr LOG_DATA_ADDR;
 struct log_data_addr
@@ -1863,7 +1913,7 @@ struct log_global
   LOG_LSA rcv_phase_lsa;	/* LSA of phase (e.g. Restart) */
 
 #if defined(SERVER_MODE)
-  int backup_in_progress;
+  bool backup_in_progress;
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */
@@ -1955,9 +2005,9 @@ typedef struct log_logging_stat
 } LOG_LOGGING_STAT;
 
 
-typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
 enum log_cs_access_mode
 { LOG_CS_FORCE_USE, LOG_CS_SAFE_READER };
+typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
 
 
 #if !defined(SERVER_MODE)
@@ -2110,7 +2160,7 @@ extern int logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 extern int logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *to_db_fullname,
 					   const char *to_logpath, const char *to_prefix_logname,
 					   const char *toext_path, const char *fileof_vols_and_renamepaths,
-					   int extern_rename, bool force_delete);
+					   bool extern_rename, bool force_delete);
 extern int logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, bool force_delete);
 extern int logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -2245,7 +2295,7 @@ STATIC_INLINE int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attr
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
-extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set);
+extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool set);
 extern bool logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index, int set);
 extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking);
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);
@@ -2332,10 +2382,6 @@ extern void logtb_reset_bit_area_start_mvccid (void);
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);
 
-#if !defined (NDEBUG)
-extern int logtb_collect_local_clients (int **local_client_pids);
-#endif /* !NDEBUG */
-
 extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
@@ -2370,4 +2416,6 @@ logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
       return 0;
     }
 }
+
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

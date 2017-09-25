@@ -53,6 +53,7 @@
 #if defined(sun)
 #include <sys/sockio.h>
 #endif /* sun */
+#include <assert.h>
 
 #include "cci_common.h"
 #include "cas_cci.h"
@@ -79,13 +80,13 @@ static const float CCI_MHT_REHASH_TRESHOLD = 0.7f;
 static const float CCI_MHT_REHASH_FACTOR = 1.3f;
 
 /* options for cci_mht_put() */
-typedef enum cci_mht_put_opt CCI_MHT_PUT_OPT;
 enum cci_mht_put_opt
 {
   CCI_MHT_OPT_DEFAULT,
   CCI_MHT_OPT_KEEP_KEY,
   CCI_MHT_OPT_INSERT_ONLY
 };
+typedef enum cci_mht_put_opt CCI_MHT_PUT_OPT;
 
 /*
  * A table of prime numbers.

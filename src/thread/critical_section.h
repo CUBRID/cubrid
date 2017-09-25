@@ -34,6 +34,10 @@
 #include "thread.h"
 #include "dbtype.h"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error critical_section.h belongs to server or stand-alone modules.
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 enum
 {
   INF_WAIT = -1,		/* INFINITE WAIT */

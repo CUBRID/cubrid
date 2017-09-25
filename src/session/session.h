@@ -23,10 +23,15 @@
 #ifndef _SESSION_H_
 #define _SESSION_H_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "dbtype.h"
 #include "thread.h"
 #include "query_list.h"
 #include "query_manager.h"
+#include "tz_support.h"
 
 extern int session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);

@@ -25,19 +25,23 @@
 #ifndef _PARSE_TREE_H_
 #define _PARSE_TREE_H_
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* SERVER_MODE */
+
 #ident "$Id$"
 
 #include <setjmp.h>
-#include "jansson.h"
+#include <assert.h>
 
 #include "config.h"
-
-#include "query_evaluator.h"
+#include "jansson.h"
 #include "cursor.h"
 #include "string_opfunc.h"
 #include "message_catalog.h"
 #include "authenticate.h"
 #include "system_parameter.h"
+#include "xasl.h"
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -506,7 +510,7 @@
 #define PT_IS_NUMBERING_AFTER_EXECUTION(op) \
         ( ((op) == PT_INST_NUM || \
            (op) == PT_ROWNUM || \
-           (op) == PT_GROUPBY_NUM || \
+           /*(int)(op) == (int)PT_GROUPBY_NUM || - TODO: this does not belong here. */ \
            (op) == PT_ORDERBY_NUM) ? true : false )
 
 #define PT_IS_SERIAL(op) \
@@ -834,9 +838,9 @@ enum pt_custom_print
 };
 
 /* all statement node types should be assigned their API statement enumeration */
-typedef enum pt_node_type PT_NODE_TYPE;
 enum pt_node_type
 {
+  PT_NODE_NONE = CUBRID_STMT_NONE,
   PT_ALTER = CUBRID_STMT_ALTER_CLASS,
   PT_ALTER_INDEX = CUBRID_STMT_ALTER_INDEX,
   PT_ALTER_USER = CUBRID_STMT_ALTER_USER,
@@ -949,10 +953,10 @@ enum pt_node_type
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
+typedef enum pt_node_type PT_NODE_TYPE;
 
 
 /* Enumerated Data Types for expressions with a VALUE */
-typedef enum pt_type_enum PT_TYPE_ENUM;
 enum pt_type_enum
 {
   PT_TYPE_NONE = 1000,		/* type not known yet */
@@ -1011,6 +1015,7 @@ enum pt_type_enum
   PT_TYPE_TIMETZ,
   PT_TYPE_TIMELTZ,
 };
+typedef enum pt_type_enum PT_TYPE_ENUM;
 
 /* Enumerated priviledges for Grant, Revoke */
 typedef enum
@@ -1033,6 +1038,7 @@ typedef enum
 /* Enumerated Misc Types */
 typedef enum
 {
+  PT_MISC_NONE = 0,
   PT_MISC_DUMMY = 3000,
   PT_ALL,
   PT_ONLY,
@@ -1354,6 +1360,7 @@ typedef enum
 
 typedef enum
 {
+  PT_TABLE_OPTION_NONE = 0,
   PT_TABLE_OPTION_REUSE_OID = 9000,
   PT_TABLE_OPTION_AUTO_INCREMENT,
   PT_TABLE_OPTION_CHARSET,
@@ -3169,12 +3176,12 @@ struct pt_constraint_info
 };
 
 /* POINTER node types */
-typedef enum pt_pointer_type PT_POINTER_TYPE;
 enum pt_pointer_type
 {
   PT_POINTER_NORMAL = 0,	/* normal pointer, gets resolved to node */
   PT_POINTER_REF = 1		/* reference pointer - node gets walked by pt_walk_tree */
 };
+typedef enum pt_pointer_type PT_POINTER_TYPE;
 
 /* Info for the POINTER node */
 struct pt_pointer_info
@@ -3540,27 +3547,6 @@ typedef struct pt_plan_trace_info
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
-/*
- * COMPILE_CONTEXT cover from user input query string to gnerated xasl
- */
-typedef struct compile_context COMPILE_CONTEXT;
-struct compile_context
-{
-  struct xasl_node *xasl;
-
-  char *sql_user_text;		/* original query statement that user input */
-  int sql_user_text_len;	/* length of sql_user_text */
-
-  char *sql_hash_text;		/* rewrited query string which is used as hash key */
-
-  char *sql_plan_text;		/* plans for this query */
-  int sql_plan_alloc_size;	/* query_plan alloc size */
-  bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
-  bool recompile_xasl_pinned;	/* whether recompile again after xasl cache entry has been pinned */
-  bool recompile_xasl;
-  SHA1Hash sha1;
-};
-
 struct parser_context
 {
   PT_INT_FUNCTION next_char;	/* the next character function */
@@ -3668,7 +3654,6 @@ struct pt_assignments_helper
 };
 
 /* Collation coercibility levels associated with parse tree nodes */
-typedef enum pt_coll_coerc_lev PT_COLL_COERC_LEV;
 enum pt_coll_coerc_lev
 {
   PT_COLLATION_L0_COERC = 0,	/* expressions with COLLATE modifier */
@@ -3695,6 +3680,7 @@ enum pt_coll_coerc_lev
   PT_COLLATION_NOT_COERC = PT_COLLATION_L0_COERC,
   PT_COLLATION_FULLY_COERC = PT_COLLATION_L5_COERC
 };
+typedef enum pt_coll_coerc_lev PT_COLL_COERC_LEV;
 
 typedef struct pt_coll_infer PT_COLL_INFER;
 struct pt_coll_infer
@@ -3708,7 +3694,16 @@ struct pt_coll_infer
 				 * to another charset (of another argument) if this flag is set */
 };
 
-void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+#ifdef __cplusplus
+}
+#endif
+
 
 #if !defined (SERVER_MODE)
 #ifdef __cplusplus

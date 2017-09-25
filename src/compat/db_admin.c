@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "porting.h"
 #include "system_parameter.h"
@@ -66,6 +67,8 @@
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
+#else
+#include "wintcp.h"
 #endif /* !WINDOWS */
 
 /* Some like to assume that the db_ layer is able to recognize that a
@@ -560,9 +563,7 @@ db_disable_trigger (void)
 void
 db_clear_host_status (void)
 {
-  int i = 0;
-
-  for (i = 0; i < DIM (db_Host_status_list.hostlist); i++)
+  for (size_t i = 0; i < DIM (db_Host_status_list.hostlist); i++)
     {
       db_Host_status_list.hostlist[i].hostname[0] = '\0';
       db_Host_status_list.hostlist[i].status = DB_HS_NORMAL;
@@ -2666,7 +2667,7 @@ db_chn (DB_OBJECT * obj, DB_FETCH_MODE purpose)
 int
 db_set_system_parameters (const char *data)
 {
-  int rc;
+  SYSPRM_ERR rc;
   int error = NO_ERROR;
   SYSPRM_ASSIGN_VALUE *assignments = NULL;
 
@@ -2726,7 +2727,7 @@ db_set_system_parameters_for_ha_repl (const char *data)
 int
 db_reset_system_parameters_from_assignments (const char *data)
 {
-  int rc;
+  SYSPRM_ERR rc;
   int error = NO_ERROR;
   char buf[LINE_MAX];
 
@@ -2754,7 +2755,7 @@ db_reset_system_parameters_from_assignments (const char *data)
 int
 db_get_system_parameters (char *data, int len)
 {
-  int rc;
+  SYSPRM_ERR rc;
   int error = NO_ERROR;
   SYSPRM_ASSIGN_VALUE *prm_values = NULL;
 
@@ -2808,14 +2809,14 @@ db_get_host_connected (void)
 int
 db_get_ha_server_state (char *buffer, int maxlen)
 {
-  int ha_state;
+  HA_SERVER_STATE ha_state;
 
   CHECK_CONNECT_ERROR ();
 
 #if defined(CS_MODE)
   ha_state = boot_get_ha_server_state ();
 #else
-  ha_state = -1;
+  ha_state = HA_SERVER_STATE_NA;
 #endif
   if (buffer)
     {

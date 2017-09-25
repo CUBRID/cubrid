@@ -28,17 +28,20 @@
 
 #include <string.h>
 
-#include "xasl_support.h"
-#include "network.h"
-#include "network_interface_sr.h"
+#include "method_scan.h"
+
+#include "network_interface_sr.h"	/* TODO: should not be here */
 #ifndef	SERVER_MODE
 #include "object_accessor.h"
-#endif
+#include "dbi.h"
 #include "authenticate.h"
+#endif
+#include "xasl.h"
+
+#if defined (SA_MODE)
 #include "jsp_cl.h"
-#include "scan_manager.h"
-#include "method_scan.h"
-#include "xserver_interface.h"
+#include "xasl_support.h"
+#endif /* defined (SA_MODE) */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -572,7 +575,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     {
       method_clear_scan_buffer (scan_buffer_p);
       ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
-      return crs_result;
+      return (SCAN_CODE) crs_result;
     }
 }
 #endif /* !SERVER_MODE */

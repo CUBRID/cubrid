@@ -18,7 +18,7 @@
  */
 
 /*
- * query.c - Query processor main interface
+ * query_cl.c - Query processor main interface
  */
 
 #ident "$Id$"
@@ -30,13 +30,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#include "error_manager.h"
-#include "work_space.h"
-#include "object_representation.h"
-#include "db.h"
-#include "schema_manager.h"
-#include "xasl_support.h"
-#include "server_interface.h"
+#include "query_cl.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
@@ -83,7 +77,7 @@ prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
     }
 
   /* if the query is not found in the cache */
-  if (stream->xasl_stream == NULL && stream->xasl_id && XASL_ID_IS_NULL (stream->xasl_id))
+  if (stream->buffer == NULL && stream->xasl_id && XASL_ID_IS_NULL (stream->xasl_id))
     {
       free_and_init (stream->xasl_id);
     }

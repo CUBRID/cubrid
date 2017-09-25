@@ -34,6 +34,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #include "db.h"
 #include "dbtype.h"

@@ -30,7 +30,9 @@
 #include "fault_injection.h"
 
 #include "system_parameter.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "log_impl.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if !defined(NDEBUG)
 
@@ -411,7 +413,7 @@ fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_f
 
   if (init == false)
     {
-      srand (time (NULL));
+      srand ((unsigned int) time (NULL));
       init = true;
     }
   r = rand ();
@@ -460,7 +462,7 @@ fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_f
 
   if (init == false)
     {
-      srand (time (NULL));
+      srand ((unsigned int) time (NULL));
       init = true;
     }
   r = rand ();

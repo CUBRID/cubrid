@@ -34,17 +34,16 @@
 #include <string.h>
 
 #include "mprec.h"
-#include "query_opfunc.h"
 #include "numeric_opfunc.h"
-#include "db.h"
 #include "db_date.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "byte_order.h"
+#include "object_primitive.h"
 
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread.h"
-#endif
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -423,7 +422,7 @@ numeric_init_pow_of_2 (void)
 static DEC_STRING *
 numeric_get_pow_of_2 (int exp)
 {
-  assert (exp < DB_NUMERIC_BUF_SIZE * 16 - 3);	/* exp < 253 */
+  assert (exp < (int) (DB_NUMERIC_BUF_SIZE * 16 - 3));	/* exp < 253 */
 
 #if !defined(SERVER_MODE)
   /* If this is the first time to call this routine, initialize */

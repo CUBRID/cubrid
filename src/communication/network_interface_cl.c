@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include "porting.h"
 #include "network.h"
@@ -36,29 +37,30 @@
 #if defined(CS_MODE)
 #include "server_interface.h"
 #include "boot_cl.h"
-#else
+#else /* !defined (CS_MODE) == defined (SA_MODE) */
 #include "xserver_interface.h"
-#endif
 #include "boot_sr.h"
 #include "locator_sr.h"
+#include "query_executor.h"
+#include "transaction_sr.h"
+#include "jsp_sr.h"
+#include "vacuum.h"
+#include "serial.h"
+#endif /* defined (SA_MODE) */
 #include "oid.h"
 #include "error_manager.h"
 #include "object_representation.h"
 #include "log_comm.h"
 #include "log_writer.h"
 #include "arithmetic.h"
-#include "serial.h"
-#include "query_executor.h"
 #include "transaction_cl.h"
 #include "language_support.h"
 #include "statistics.h"
 #include "system_parameter.h"
-#include "transaction_sr.h"
-#include "jsp_sr.h"
 #include "replication.h"
 #include "es.h"
-#include "vacuum.h"
-
+#include "db.h"
+#include "db_query.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -2438,7 +2440,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_pack_ptr (ptr, net_Deferred_end_queries[i]);
     }
   net_Deferred_end_queries_count = 0;
-  assert (CAST_BUFLEN (ptr - request) <= OR_ALIGNED_BUF_SIZE (a_request));
+  assert (CAST_BUFLEN (ptr - request) <= (int) OR_ALIGNED_BUF_SIZE (a_request));
 
   req_error =
     net_client_request (NET_SERVER_TM_SERVER_COMMIT, request, CAST_BUFLEN (ptr - request), reply,
@@ -2448,7 +2450,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_unpack_int (reply, &tran_state_int);
       tran_state = (TRAN_STATE) tran_state_int;
       ptr = or_unpack_int (ptr, &reset_on_commit);
-      if (reset_on_commit == true && log_does_allow_replication () == true)
+      if (reset_on_commit != 0 && log_does_allow_replication ())
 	{
 	  /* 
 	   * fail-back action
@@ -2504,7 +2506,7 @@ tran_server_abort (void)
       ptr = or_unpack_int (reply, &tran_state_int);
       tran_state = (TRAN_STATE) tran_state_int;
       ptr = or_unpack_int (ptr, &reset_on_commit);
-      if (reset_on_commit == true && log_does_allow_replication () == true)
+      if (reset_on_commit != 0 && log_does_allow_replication ())
 	{
 	  /* 
 	   * fail-back action
@@ -3554,21 +3556,31 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
       or_unpack_int (reply, &area_size);
       if (area_size > 0)
 	{
+	  int ha_state_to_int;
+
 	  ptr = or_unpack_int (area, &tran_index);
+
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  *tran_state = (TRAN_STATE) temp_int;
+
 	  ptr = or_unpack_string (ptr, &server_credential->db_full_name);
 	  ptr = or_unpack_string (ptr, &server_credential->host_name);
 	  ptr = or_unpack_string (ptr, &server_credential->lob_path);
 	  ptr = or_unpack_int (ptr, &server_credential->process_id);
 	  ptr = or_unpack_oid (ptr, &server_credential->root_class_oid);
 	  ptr = or_unpack_hfid (ptr, &server_credential->root_class_hfid);
+
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  server_credential->page_size = (PGLENGTH) temp_int;
+
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  server_credential->log_page_size = (PGLENGTH) temp_int;
+
 	  ptr = or_unpack_float (ptr, &server_credential->disk_compatibility);
-	  ptr = or_unpack_int (ptr, &server_credential->ha_server_state);
+
+	  ptr = or_unpack_int (ptr, &ha_state_to_int);
+	  server_credential->ha_server_state = (HA_SERVER_STATE) ha_state_to_int;
+
 	  ptr = or_unpack_int (ptr, &server_credential->db_charset);
 	  ptr = or_unpack_string (ptr, &server_credential->db_lang);
 	}
@@ -3831,7 +3843,7 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * inde
   ptr = or_pack_btid (ptr, index_btid);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  req_error = net_client_request_with_callback (NET_SERVER_BO_CHECK_DBCONSISTENCY, request, request_size, reply,
+  req_error = net_client_request_with_callback (NET_SERVER_BO_CHECK_DBCONSISTENCY, request, (int) request_size, reply,
 						OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0, &rd1, &d1, &rd2, &d2,
 						NULL, NULL);
   free_and_init (request);
@@ -6181,7 +6193,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
   ptr = pack_string_with_null_padding (ptr, context->sql_user_text, context->sql_user_text_len);
 
   /* pack size of XASL stream */
-  ptr = or_pack_int (ptr, stream->xasl_stream_size);
+  ptr = or_pack_int (ptr, stream->buffer_size);
   /* Pack get_xasl_header. */
   ptr = or_pack_int (ptr, get_xasl_header);
   /* Pack context. */
@@ -6193,7 +6205,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
   /* send SERVER_QM_QUERY_PREPARE request with request data and XASL stream; receive XASL file id (XASL_ID) as a reply */
   req_error =
     net_client_request2 (NET_SERVER_QM_QUERY_PREPARE, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			 (char *) stream->xasl_stream, stream->xasl_stream_size, &reply_buffer, &reply_buffer_size);
+			 (char *) stream->buffer, stream->buffer_size, &reply_buffer, &reply_buffer_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &reply_buffer_size);
@@ -6252,32 +6264,32 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
    */
   server_stream.xasl_id = stream->xasl_id;
   server_stream.xasl_header = stream->xasl_header;
-  server_stream.xasl_stream_size = stream->xasl_stream_size;
-  if (stream->xasl_stream_size > 0)
+  server_stream.buffer_size = stream->buffer_size;
+  if (stream->buffer_size > 0)
     {
-      server_stream.xasl_stream = (char *) malloc (stream->xasl_stream_size);
-      if (server_stream.xasl_stream == NULL)
+      server_stream.buffer = (char *) malloc (stream->buffer_size);
+      if (server_stream.buffer == NULL)
 	{
 	  EXIT_SERVER ();
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->xasl_stream_size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->buffer_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      memcpy (server_stream.xasl_stream, stream->xasl_stream, stream->xasl_stream_size);
+      memcpy (server_stream.buffer, stream->buffer, stream->buffer_size);
     }
   else
     {
       /* No stream. This is just a lookup for existing entry. */
-      server_stream.xasl_stream = NULL;
+      server_stream.buffer = NULL;
     }
 
   INIT_XASL_NODE_HEADER (server_stream.xasl_header);
 
   /* call the server routine of query prepare */
   error_code = xqmgr_prepare_query (NULL, context, &server_stream);
-  if (server_stream.xasl_stream != NULL)
+  if (server_stream.buffer != NULL)
     {
-      free_and_init (server_stream.xasl_stream);
+      free_and_init (server_stream.buffer);
     }
   if (error_code != NO_ERROR)
     {
@@ -6470,7 +6482,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
 	    default:
 	      /* Clone value */
-	      if (db_value_clone (&dbvals[i], &server_db_values[i]) != NO_ERROR)
+	      if (db_value_clone ((DB_VALUE *) (&dbvals[i]), &server_db_values[i]) != NO_ERROR)
 		{
 		  goto cleanup;
 		}
@@ -6660,7 +6672,7 @@ qmgr_end_query (QUERY_ID query_id)
     {
       ptr = or_pack_ptr (ptr, net_Deferred_end_queries[i]);
     }
-  assert (CAST_BUFLEN (ptr - request) <= OR_ALIGNED_BUF_SIZE (a_request));
+  assert (CAST_BUFLEN (ptr - request) <= (int) OR_ALIGNED_BUF_SIZE (a_request));
 
   req_error =
     net_client_request (NET_SERVER_QM_QUERY_END, request, CAST_BUFLEN (ptr - request), reply,
@@ -7548,25 +7560,31 @@ logtb_get_trans_info (bool include_query_exec_info)
   info->include_query_exec_info = include_query_exec_info;
   for (i = 0; i < num_trans; i++)
     {
-      if ((ptr = or_unpack_int (ptr, &info->tran[i].tran_index)) == NULL
-	  || (ptr = or_unpack_int (ptr, &info->tran[i].state)) == NULL
-	  || (ptr = or_unpack_int (ptr, &info->tran[i].process_id)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].db_user)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].program_name)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].login_name)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].host_name)) == NULL)
+      int unpack_int_value;
+      ptr = or_unpack_int (ptr, &info->tran[i].tran_index);
+      ptr = or_unpack_int (ptr, &unpack_int_value);
+      info->tran[i].state = (TRAN_STATE) unpack_int_value;
+      ptr = or_unpack_int (ptr, &info->tran[i].process_id);
+      ptr = or_unpack_string (ptr, &info->tran[i].db_user);
+      ptr = or_unpack_string (ptr, &info->tran[i].program_name);
+      ptr = or_unpack_string (ptr, &info->tran[i].login_name);
+      ptr = or_unpack_string (ptr, &info->tran[i].host_name);
+      if (ptr == NULL)
 	{
+	  assert (false);
 	  goto error;
 	}
 
       if (include_query_exec_info)
 	{
-	  if ((ptr = or_unpack_float (ptr, &info->tran[i].query_exec_info.query_time)) == NULL
-	      || (ptr = or_unpack_float (ptr, &info->tran[i].query_exec_info.tran_time)) == NULL
-	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.wait_for_tran_index_string)) == NULL
-	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.query_stmt)) == NULL
-	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.sql_id)) == NULL)
+	  ptr = or_unpack_float (ptr, &info->tran[i].query_exec_info.query_time);
+	  ptr = or_unpack_float (ptr, &info->tran[i].query_exec_info.tran_time);
+	  ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.wait_for_tran_index_string);
+	  ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.query_stmt);
+	  ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.sql_id);
+	  if (ptr == NULL)
 	    {
+	      assert (false);
 	      goto error;
 	    }
 	  OR_UNPACK_XASL_ID (ptr, &info->tran[i].query_exec_info.xasl_id);
@@ -7958,11 +7976,11 @@ error_exit:
  * return	    : SYSPRM_ERR code.
  * assignments (in) : list of assignments.
  */
-int
+SYSPRM_ERR
 sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
 {
 #if defined(CS_MODE)
-  int rc = PRM_ERR_COMM_ERR;
+  SYSPRM_ERR rc = PRM_ERR_COMM_ERR;
   int request_size = 0, req_error = NO_ERROR;
   char *request = NULL, *reply = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -7983,7 +8001,9 @@ sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
 			NULL, 0, NULL, 0);
   if (req_error == NO_ERROR)
     {
-      or_unpack_int (reply, &rc);
+      int unpack_value;
+      or_unpack_int (reply, &unpack_value);
+      rc = (SYSPRM_ERR) unpack_value;
     }
   else
     {
@@ -8008,11 +8028,11 @@ sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
  * return		   : SYSPRM_ERR code.
  * prm_values_ptr (in/out) : list of parameter values.
  */
-int
+SYSPRM_ERR
 sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 {
 #if defined(CS_MODE)
-  int rc = PRM_ERR_COMM_ERR;
+  SYSPRM_ERR rc = PRM_ERR_COMM_ERR;
   int req_error = NO_ERROR, request_size = 0, receive_size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = NULL, *request_data = NULL, *receive_data = NULL;
@@ -8041,8 +8061,10 @@ sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
     }
   else
     {
+      int unpack_value;
       ptr = or_unpack_int (reply, &receive_size);
-      ptr = or_unpack_int (ptr, &rc);
+      ptr = or_unpack_int (ptr, &unpack_value);
+      rc = (SYSPRM_ERR) unpack_value;
       if (rc != PRM_ERR_NO_ERROR || receive_data == NULL)
 	{
 	  goto cleanup;
@@ -8626,7 +8648,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   if (first_pageid_torecv == NULL_PAGEID && logwr_Gl.start_pageid >= NULL_PAGEID)
     {
       ptr = or_pack_int64 (request, logwr_Gl.start_pageid);
-      mode |= LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK;
+      mode = (LOGWR_MODE) (mode | LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK);
     }
   else
     {

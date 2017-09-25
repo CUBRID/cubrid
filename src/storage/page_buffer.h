@@ -40,31 +40,6 @@
 
 extern const VPID vpid_Null_vpid;
 
-/* Set a vpid with values of volid and pageid */
-#define VPID_SET(vpid_ptr, volid_value, pageid_value)	      \
-  do {							      \
-    (vpid_ptr)->volid  = (volid_value);			      \
-    (vpid_ptr)->pageid = (pageid_value);		      \
-  } while(0)
-
-/* Set the vpid to an invalid one */
-#define VPID_SET_NULL(vpid_ptr) VPID_SET(vpid_ptr, NULL_VOLID, NULL_PAGEID)
-
-/* copy a VPID */
-#define  VPID_COPY(dest_ptr, src_ptr)                      \
-  do {							   \
-    *(dest_ptr) = *(src_ptr);				   \
-  } while (0)
-
-/* vpid1 == vpid2 ? */
-#define VPID_EQ(vpid_ptr1, vpid_ptr2)                         \
-  ((vpid_ptr1) == (vpid_ptr2) ||                              \
-   ((vpid_ptr1)->pageid == (vpid_ptr2)->pageid &&             \
-    (vpid_ptr1)->volid  == (vpid_ptr2)->volid))
-
-/* Is vpid NULL ? */
-#define VPID_ISNULL(vpid_ptr) ((vpid_ptr)->pageid == NULL_PAGEID)
-
 /* Get page VPID for OID */
 #define VPID_GET_FROM_OID(vpid_ptr, oid_ptr) \
   VPID_SET (vpid_ptr, (oid_ptr)->volid, (oid_ptr)->pageid);
@@ -265,7 +240,7 @@ extern int pgbuf_initialize (void);
 extern void pgbuf_finalize (void);
 extern PAGE_PTR pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
 				      PGBUF_LATCH_MODE request_mode, int retry);
-extern void pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page);
+extern void pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page);
 #if !defined(NDEBUG)
 
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
@@ -363,7 +338,7 @@ extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int
 extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				   bool do_fetch);
 
-extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page);
+extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page);
 #define pgbuf_set_dirty_and_free(thread_p, pgptr) pgbuf_set_dirty (thread_p, pgptr, FREE); pgptr = NULL
 
 extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);

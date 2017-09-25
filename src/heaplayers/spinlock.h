@@ -137,7 +137,7 @@ public:
 
 
 #if !defined(__SUNPRO_CC)
-  inline static volatile unsigned long MyInterlockedExchange (unsigned long *,unsigned long); 
+  inline static /*volatile*/ unsigned long MyInterlockedExchange (unsigned long *,unsigned long); 
 #endif
 
 private:
@@ -194,7 +194,7 @@ private:
 //   return retval;
 
 #if !defined(__SUNPRO_CC) && !defined(__APPLE__)
-inline volatile unsigned long 
+inline /*volatile*/ unsigned long 
 HL::SpinLockType::MyInterlockedExchange (unsigned long * oldval,
 				   unsigned long newval)
 {

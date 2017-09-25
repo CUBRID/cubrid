@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
@@ -8329,7 +8330,7 @@ qo_search_planner (QO_PLANNER * planner)
 	   * Otherwise we clear it */
 	  else if (has_hint && node->info.sort_spec.asc_or_desc == PT_ASC)
 	    {
-	      *hint &= ~PT_HINT_USE_IDX_DESC;
+	      *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
 	    }
 	}
 
@@ -8342,7 +8343,7 @@ qo_search_planner (QO_PLANNER * planner)
 	   * Otherwise we clear it */
 	  else if (has_hint && node->info.sort_spec.asc_or_desc == PT_ASC)
 	    {
-	      *hint &= ~PT_HINT_USE_IDX_DESC;
+	      *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
 	    }
 	}
     }
@@ -8375,7 +8376,8 @@ qo_search_planner (QO_PLANNER * planner)
 	    {
 	      if (plan->info->env != NULL)
 		{
-		  plan->info->env->pt_tree->info.query.q.select.hint &= ~PT_HINT_USE_IDX_DESC;
+		  plan->info->env->pt_tree->info.query.q.select.hint =
+		    (PT_HINT_ENUM) (plan->info->env->pt_tree->info.query.q.select.hint & ~PT_HINT_USE_IDX_DESC);
 		}
 	    }
 	}
@@ -9925,7 +9927,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   key_notnull = qo_validate_index_term_notnull (env, index_entryp);
   if (key_notnull)
     {
-      goto final;
+      goto final_;
     }
 
   pos = QO_ENV_PT_TREE (env)->info.query.order_by->info.sort_spec.pos_descr.pos_no;
@@ -9957,7 +9959,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   key_notnull = qo_validate_index_attr_notnull (env, index_entryp, node);
   if (key_notnull)
     {
-      goto final;
+      goto final_;
     }
 
   /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
@@ -9967,7 +9969,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
    * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
    * have an OR following we have a winner again! (because we cannot have a null value). 
    */
-final:
+final_:
   if (key_notnull)
     {
       return 1;
@@ -10338,7 +10340,7 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
   for (trav = plan->iscan_sort_list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc;
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   /* test again the order by skip */
@@ -10348,7 +10350,7 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
   for (trav = plan->iscan_sort_list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc;
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   return orderby_skip;
@@ -10478,7 +10480,7 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
   for (trav = list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc;
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   /* test again the group by skip */
@@ -10488,7 +10490,7 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
   for (trav = list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc;
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   return groupby_skip;

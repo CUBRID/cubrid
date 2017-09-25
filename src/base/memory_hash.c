@@ -55,6 +55,8 @@
 #include "set_object.h"
 #include "language_support.h"
 #include "intl_support.h"
+#include "log_impl.h"
+#include "object_primitive.h"
 /* this must be the last header file included! */
 #include "dbval.h"
 
@@ -69,7 +71,6 @@ static const float MHT_REHASH_TRESHOLD = 0.7f;
 static const float MHT_REHASH_FACTOR = 1.3f;
 
 /* options for mht_put() */
-typedef enum mht_put_opt MHT_PUT_OPT;
 enum mht_put_opt
 {
   MHT_OPT_DEFAULT = 0,
@@ -77,6 +78,7 @@ enum mht_put_opt
   MHT_OPT_INSERT_ONLY = 2,
   MHT_OPT_INSERT_IF_NOT_EXISTS = 4
 };
+typedef enum mht_put_opt MHT_PUT_OPT;
 
 /*
  * A table of prime numbers.

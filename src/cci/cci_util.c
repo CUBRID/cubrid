@@ -44,6 +44,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
 #ifdef WINDOWS
 #include <winsock2.h>
 #include <windows.h>
@@ -1046,7 +1047,7 @@ cci_url_match (const char *src, char *token[])
     {
       const char *t = src + match[match_idx[i]].rm_so;
       size_t n = match[match_idx[i]].rm_eo - match[match_idx[i]].rm_so;
-      token[i] = MALLOC (n + 1);
+      token[i] = (char *) MALLOC (n + 1);
       if (token[i] == NULL)
 	{
 	  error = CCI_ER_NO_MORE_MEMORY;	/* out of memory */

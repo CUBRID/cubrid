@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <math.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
@@ -1914,7 +1915,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
 {
   QO_ENV *env;
   PARSER_CONTEXT *parser;
-  int merge_applies, lhs_indexable, rhs_indexable;
+  bool merge_applies;
+  bool lhs_indexable, rhs_indexable;
   PT_NODE *pt_expr, *lhs_expr, *rhs_expr;
   QO_NODE *head_node = NULL, *tail_node = NULL;
   QO_SEGMENT *head_seg, *tail_seg;
@@ -1929,8 +1931,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
   parser = QO_ENV_PARSER (env);
   pt_expr = QO_TERM_PT_EXPR (term);
-  merge_applies = 1;		/* until proven otherwise */
-  lhs_indexable = rhs_indexable = 0;	/* until proven as indexable */
+  merge_applies = true;		/* until proven otherwise */
+  lhs_indexable = rhs_indexable = false;	/* until proven as indexable */
   lhs_expr = rhs_expr = NULL;
 
   bitset_init (&lhs_segs, env);
@@ -1964,7 +1966,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	case PT_GT:
 	case PT_GE:
 	  /* temporary guess; RHS could be a indexable segment */
-	  rhs_indexable = 1;
+	  rhs_indexable = true;
 	  /* no break; fall through */
 
 	  /* operators classified as rhs-indexable */
@@ -2003,7 +2005,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	case PT_IS_IN:
 	case PT_EQ_SOME:
 	  /* temporary guess; LHS could be a indexable segment */
-	  lhs_indexable = 1;
+	  lhs_indexable = true;
 	  /* no break; fall through */
 
 	  /* operators classified as not-indexable */
@@ -2110,22 +2112,22 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		    case PT_RANGE:
 		      if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 			{
-			  lhs_indexable = 0;
+			  lhs_indexable = false;
 			}
 		      break;
 		    default:
-		      lhs_indexable = 0;
+		      lhs_indexable = false;
 		      break;
 		    }
 		}
 	      else
 		{
-		  lhs_indexable = 1;
+		  lhs_indexable = true;
 		}
 	    }
 	  else
 	    {
-	      lhs_indexable = 0;
+	      lhs_indexable = false;
 	    }
 	}
       if (lhs_indexable
@@ -2139,7 +2141,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  n = bitset_first_member (&lhs_segs);
 	  if ((n == -1) || (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n)) == false))
 	    {
-	      lhs_indexable = 0;
+	      lhs_indexable = false;
 	    }
 	}
       if (lhs_indexable && rhs_expr->next == NULL)
@@ -2158,18 +2160,18 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		case PT_UNION:
 		case PT_DIFFERENCE:
 		case PT_INTERSECTION:
-		  lhs_indexable = 0;
+		  lhs_indexable = false;
 		  break;
 		case PT_NAME:
 		  if (rhs_expr->info.name.meta_class != PT_PARAMETER && pt_is_set_type (rhs_expr))
 		    {
-		      lhs_indexable = 0;
+		      lhs_indexable = false;
 		    }
 		  break;
 		case PT_DOT_:
 		  if (pt_is_set_type (rhs_expr))
 		    {
-		      lhs_indexable = 0;
+		      lhs_indexable = false;
 		    }
 		  break;
 		case PT_VALUE:
@@ -2181,19 +2183,19 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 		      if (db_col_size (db_collectionp) == 0)
 			{
-			  lhs_indexable = 0;
+			  lhs_indexable = false;
 			}
 		    }
-		  lhs_indexable &= pt_is_pseudo_const (rhs_expr);
+		  lhs_indexable = lhs_indexable && pt_is_pseudo_const (rhs_expr);
 		  break;
 		default:
-		  lhs_indexable &= pt_is_pseudo_const (rhs_expr);
+		  lhs_indexable = lhs_indexable && pt_is_pseudo_const (rhs_expr);
 		}
 	    }
 	  else
 	    {
 	      /* is LHS attribute and is RHS constant value ? */
-	      lhs_indexable &= pt_is_pseudo_const (rhs_expr);
+	      lhs_indexable = lhs_indexable && pt_is_pseudo_const (rhs_expr);
 	    }
 	}
 
@@ -2209,8 +2211,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  if (has_nis_coll)
 	    {
 	      QO_TERM_SET_FLAG (term, QO_TERM_NON_IDX_SARG_COLL);
-	      lhs_indexable = 0;
-	      rhs_indexable = 0;
+	      lhs_indexable = false;
+	      rhs_indexable = false;
 	    }
 	}
 
@@ -2244,22 +2246,22 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		    case PT_RANGE:
 		      if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 			{
-			  rhs_indexable = 0;
+			  rhs_indexable = false;
 			}
 		      break;
 		    default:
-		      rhs_indexable = 0;
+		      rhs_indexable = false;
 		      break;
 		    }
 		}
 	      else
 		{
-		  rhs_indexable = 1;
+		  rhs_indexable = true;
 		}
 	    }
 	  else
 	    {
-	      rhs_indexable = 0;
+	      rhs_indexable = false;
 	    }
 	}
       if (rhs_indexable
@@ -2273,7 +2275,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  n = bitset_first_member (&rhs_segs);
 	  if ((n == -1) || (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n)) == false))
 	    {
-	      rhs_indexable = 0;
+	      rhs_indexable = false;
 	    }
 	}
       if (rhs_indexable)
@@ -2313,7 +2315,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
   else
     {				/* if (!bitset_intersects(&lhs_nodes, &rhs_nodes)) */
 
-      merge_applies = 0;
+      merge_applies = false;
       QO_TERM_CAN_USE_INDEX (term) = 0;
 
     }				/* if (!bitset_intersects(&lhs_nodes, &rhs_nodes)) */
@@ -2402,14 +2404,14 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	{
 	  QO_TERM_CLASS (term) = QO_TC_OTHER;
 
-	  merge_applies = 0;
+	  merge_applies = false;
 	}
 
       /* And there had better be something on both sides of the comparison too. You don't want to be misled by
        * something like "x.a + y.b = 100" because that's definitely not mergeable right now. Perhaps if we rewrote it
        * like "x.a = 100 - y.b" but that seems to be stretching things a little bit. 
        */
-      merge_applies &= (!bitset_is_empty (&lhs_segs) && !bitset_is_empty (&rhs_segs));
+      merge_applies = merge_applies && (!bitset_is_empty (&lhs_segs) && !bitset_is_empty (&rhs_segs));
 
       if (merge_applies || QO_TERM_CLASS (term) == QO_TC_PATH)
 	{
@@ -2453,7 +2455,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
       /* always true transitive equi-join term is not suitable as m-join edge. */
       if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
 	{
-	  merge_applies = 0;
+	  merge_applies = false;
 	}
 
       if (merge_applies)

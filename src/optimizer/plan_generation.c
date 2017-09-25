@@ -37,6 +37,7 @@
 #include "query_planner.h"
 #include "query_bitset.h"
 #include "system_parameter.h"
+#include "parser_support.h"
 
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 

@@ -29,28 +29,23 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
+#include <assert.h>
+
+#include "query_opfunc.h"
 
 #include "system_parameter.h"
-
 #include "error_manager.h"
-#include "memory_alloc.h"
-#include "object_representation.h"
-#include "external_sort.h"
-#include "extendible_hash.h"
-
 #include "fetch.h"
 #include "list_file.h"
-#include "xasl_support.h"
 #include "object_primitive.h"
-#include "object_domain.h"
 #include "set_object.h"
-#include "page_buffer.h"
-
 #include "query_executor.h"
 #include "databases_file.h"
-#include "partition.h"
 #include "tz_support.h"
-
+#include "numeric_opfunc.h"
+#include "db_date.h"
+#include "dbtype.h"
+#include "query_dump.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -10145,9 +10140,9 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
       return ER_FAILED;
     }
 
-  if (db_string_make_empty_typed_string (thread_p, agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION,
-					 TP_DOMAIN_CODESET (agg_p->domain),
-					 TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
+  if (db_string_make_empty_typed_string (agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION,
+					 TP_DOMAIN_CODESET (agg_p->domain), TP_DOMAIN_COLLATION (agg_p->domain))
+      != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -10206,7 +10201,7 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VA
 
   if (DB_IS_NULL (agg_p->accumulator.value2) && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
     {
-      if (db_string_make_empty_typed_string (thread_p, agg_p->accumulator.value2, agg_type, DB_DEFAULT_PRECISION,
+      if (db_string_make_empty_typed_string (agg_p->accumulator.value2, agg_type, DB_DEFAULT_PRECISION,
 					     TP_DOMAIN_CODESET (agg_p->domain),
 					     TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
 	{
@@ -10861,7 +10856,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	{
 	  TP_DOMAIN *result_domain;
 	  DB_TYPE type =
-	    ((func_p->function == PT_AVG) ? func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain));
+	    (func_p->function ==
+	     PT_AVG) ? (DB_TYPE) func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain);
 
 	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : func_p->domain);
 	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, result_domain) != NO_ERROR)
@@ -11617,7 +11613,7 @@ qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * t
   assert_release (tuple != NULL);
   assert_release (values != NULL);
 
-  vals = db_private_alloc (thread_p, tuple->f_cnt * sizeof (DB_VALUE));
+  vals = (DB_VALUE *) db_private_alloc (thread_p, tuple->f_cnt * sizeof (DB_VALUE));
   if (vals == NULL)
     {
       error = ER_FAILED;

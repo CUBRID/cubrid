@@ -83,7 +83,7 @@ es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *
   unum = es_get_unique_num ();
 
   /* make a file name & a dir name */
-  snprintf (filename, NAME_MAX, "%s.%020llu_%04d", metaname, unum, r % 10000);
+  snprintf (filename, NAME_MAX, "%s.%020llu_%04d", metaname, (unsigned long long) unum, r % 10000);
 
   hashval = es_name_hash_func (ES_POSIX_HASH1, filename);
   snprintf (dirname1, NAME_MAX, "ces_%03d", hashval);
@@ -337,7 +337,7 @@ xes_posix_write_file (const char *path, const void *buf, size_t count, off_t off
 	  return ER_ES_GENERAL;
 	}
 
-      nbytes = write (fd, buf, count);
+      nbytes = write (fd, buf, (unsigned) count);
       if (nbytes <= 0)
 	{
 	  switch (errno)
@@ -407,7 +407,7 @@ xes_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
 	  return ER_ES_GENERAL;
 	}
 
-      nbytes = read (fd, buf, count);
+      nbytes = read (fd, buf, (unsigned) count);
       if (nbytes < 0)
 	{
 	  switch (errno)
@@ -551,7 +551,7 @@ retry:
 	  break;
 	}
 
-      ret = write (wr_fd, buf, ret);
+      ret = write (wr_fd, buf, (unsigned) ret);
       if (ret <= 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
@@ -579,7 +579,7 @@ xes_posix_rename_file (const char *src_path, const char *metaname, char *new_pat
 {
   int ret;
 
-  es_rename_path (src_path, new_path, metaname);
+  es_rename_path ((char *) src_path, new_path, (char *) metaname);
 
   er_log_debug (ARG_FILE_LINE, "xes_posix_rename_file(%s, %s): %s\n", src_path, metaname, new_path);
 
@@ -649,7 +649,7 @@ es_local_read_file (const char *path, void *buf, size_t count, off_t offset)
 	  return ER_ES_GENERAL;
 	}
 
-      nbytes = read (fd, buf, count);
+      nbytes = read (fd, buf, (unsigned) count);
       if (nbytes < 0)
 	{
 	  switch (errno)
@@ -677,7 +677,7 @@ es_local_read_file (const char *path, void *buf, size_t count, off_t offset)
     }
   close (fd);
 
-  return total;
+  return (int) total;
 }
 
 /*

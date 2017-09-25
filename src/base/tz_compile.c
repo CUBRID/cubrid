@@ -38,9 +38,12 @@
 #include "tz_support.h"
 #include "xml_parser.h"
 #include "md5.h"
-#include "db.h"
 #include "db_query.h"
-#include "dbi.h"
+#include "dbtype.h"
+
+#if defined (SA_MODE)
+#include "db.h"
+#endif /* SA_MODE */
 
 #define TZ_FILENAME_MAX_LEN	    17
 #define TZ_MAX_LINE_LEN		    512
@@ -356,7 +359,7 @@ extern const TZ_COUNTRY tz_countries[];
 
 #define PRINT_STRING_VAR_TO_C_FILE(fp, valname, val)			  \
   do {                                                                    \
-      fprintf (fp, "\n"SHLIB_EXPORT_PREFIX"const char "valname"[] = ");   \
+      fprintf (fp, "\n" SHLIB_EXPORT_PREFIX "const char " valname "[] = ");   \
       PRINT_STRING_TO_C_FILE (fp, val, strlen (val));			  \
       fprintf (fp, ";\n");                                                \
   } while (0);
@@ -464,7 +467,9 @@ static int tzc_update (TZ_DATA * tzd, const char *database_name);
 #endif
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
+#if defined (SA_MODE)
 static int execute_query (const char *str, DB_QUERY_RESULT ** result);
+#endif /* defined (SA_MODE) */
 
 #if defined(WINDOWS)
 static int comp_func_tz_windows_zones (const void *arg1, const void *arg2);
@@ -566,7 +571,7 @@ trim_comments_whitespaces (char *str)
 static int
 tzc_check_new_package_validity (const char *input_folder)
 {
-  bool err_status = NO_ERROR;
+  int err_status = NO_ERROR;
   FILE *fp;
   int i;
   char temp_path[PATH_MAX];
@@ -5022,7 +5027,7 @@ xml_start_mapZone (void *data, const char **attr)
   int i;
 
   assert (data != NULL);
-  tz = XML_USER_DATA (pd);
+  tz = (TZ_DATA *) XML_USER_DATA (pd);
 
   if (xml_get_att_value (attr, "other", &windows_zone) == 0 && xml_get_att_value (attr, "territory", &territory) == 0
       && xml_get_att_value (attr, "type", &iana_zone) == 0)
@@ -6471,6 +6476,7 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
   return error;
 }
 
+#if defined (SA_MODE)
 /*
  * execute_query() - Execute the query given by str
  *
@@ -6513,7 +6519,6 @@ exit:
   return error;
 }
 
-#if defined (SA_MODE)
 /*
  * tzc_update() - Do a data migration in case that tzc_extend fails 
  *

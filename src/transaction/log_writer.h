@@ -38,7 +38,6 @@ struct logwr_context
 };
 
 #if defined(CS_MODE)
-typedef enum logwr_action LOGWR_ACTION;
 enum logwr_action
 {
   LOGWR_ACTION_NONE = 0x00,
@@ -47,6 +46,7 @@ enum logwr_action
   LOGWR_ACTION_HDR_WRITE = 0x04,
   LOGWR_ACTION_ARCHIVING = 0x08
 };
+typedef enum logwr_action LOGWR_ACTION;
 
 typedef struct logwr_global LOGWR_GLOBAL;
 struct logwr_global

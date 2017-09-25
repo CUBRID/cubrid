@@ -816,6 +816,9 @@ STATIC_INLINE int perfmon_get_activation_flag (void) __attribute__ ((ALWAYS_INLI
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
+#ifdef __cplusplus
+/* TODO: it looks ugly now, but it should be fixed with stat tool patch */
+
 /*
  *  Add/set stats section.
  */
@@ -1086,7 +1089,7 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 
   /* Update global statistics. */
   statvalp = pstat_Global.global_stats + offset;
-  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1);
+  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1ULL);
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
   do
     {
@@ -1258,6 +1261,8 @@ perfmon_is_perf_tracking_force (bool always_collect)
   return pstat_Global.initialized && (always_collect || pstat_Global.n_watchers > 0);
 }
 
+#endif /* __cplusplus */
+
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
 typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;
@@ -1286,7 +1291,6 @@ extern int perfmon_get_global_stats (void);
 #if defined (DIAG_DEVEL)
 #if defined(SERVER_MODE)
 
-typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
 enum t_diag_obj_type
 {
   DIAG_OBJ_TYPE_QUERY_OPEN_PAGE = 0,
@@ -1302,14 +1306,15 @@ enum t_diag_obj_type
   DIAG_OBJ_TYPE_LOCK_DEADLOCK = 10,
   DIAG_OBJ_TYPE_LOCK_REQUEST = 11
 };
+typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
 
-typedef enum t_diag_value_settype T_DIAG_VALUE_SETTYPE;
 enum t_diag_value_settype
 {
   DIAG_VAL_SETTYPE_INC,
   DIAG_VAL_SETTYPE_DEC,
   DIAG_VAL_SETTYPE_SET
 };
+typedef enum t_diag_value_settype T_DIAG_VALUE_SETTYPE;
 
 typedef int (*T_DO_FUNC) (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
 
@@ -1397,7 +1402,7 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
 } while(0)
 
 #define TO_MSEC(elapsed) \
-  ((int)((elapsed.tv_sec * 1000) + (int) (elapsed.tv_usec / 1000)))
+  ((int)(((elapsed).tv_sec * 1000) + (int) ((elapsed).tv_usec / 1000)))
 
 #if defined (EnableThreadMonitoring)
 #define MONITOR_WAITING_THREAD(elapsed) \
@@ -1408,6 +1413,7 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
 #define MONITOR_WAITING_THREAD(elapsed) (0)
 #endif
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct perf_utime_tracker PERF_UTIME_TRACKER;
 struct perf_utime_tracker
 {
@@ -1480,6 +1486,7 @@ struct perf_utime_tracker
       (track)->start_tick = (track)->end_tick; \
     } \
   while (false)
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if defined(SERVER_MODE) || defined (SA_MODE)
 /*
