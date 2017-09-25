@@ -202,7 +202,7 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
-extern volatile INT64 vacuum_Global_oldest_active_blockers_counter;
+extern INT32 vacuum_Global_oldest_active_blockers_counter;
 
 #define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
@@ -5992,9 +5992,9 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
       /* Unblock global oldest active update. */
       if (tdes->block_global_oldest_active_until_commit)
 	{
-	  assert (ATOMIC_INC_64 (&vacuum_Global_oldest_active_blockers_counter, 0LL) >= 1);
-	  ATOMIC_INC_64 (&vacuum_Global_oldest_active_blockers_counter, -1);
+	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
+	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
 #if defined (HAVE_ATOMIC_BUILTINS)
@@ -6289,9 +6289,9 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
       /* Unblock global oldest active update. */
       if (tdes->block_global_oldest_active_until_commit)
 	{
-	  assert (ATOMIC_INC_64 (&vacuum_Global_oldest_active_blockers_counter, 0LL) >= 1);
 	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
+	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
 #if defined(HAVE_ATOMIC_BUILTINS)

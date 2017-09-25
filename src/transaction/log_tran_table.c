@@ -118,8 +118,6 @@
 #define pthread_mutex_unlock(a)
 #endif /* not SERVER_MODE */
 
-extern volatile INT64 vacuum_Global_oldest_active_blockers_counter;
-
 static const int LOG_MAX_NUM_CONTIGUOUS_TDES = INT_MAX / sizeof (LOG_TDES);
 static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% */
 static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top system operations */
@@ -4473,8 +4471,6 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
   TSCTIMEVAL tv_diff;
   UINT64 oldest_time, retry_cnt = 0;
   bool is_perf_tracking = false;
-
-  assert (vacuum_Global_oldest_active_blockers_counter == COMPUTE_OLDEST_MVCCID_STARTED);
 
   is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)

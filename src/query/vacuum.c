@@ -305,14 +305,13 @@ VACUUM_WORKER vacuum_Master;
 /* Oldest MVCCID considered active by a running transaction.
  * Considered as threshold by vacuum workers.
  */
-volatile MVCCID vacuum_Global_oldest_active_mvccid;
+MVCCID vacuum_Global_oldest_active_mvccid;
 /* When transactions run some complex operations on heap files (upgrade domain, reorganize partitions), concurrent
  * access with vacuum workers can create problems. They avoid it by blocking vacuum_Global_oldest_active_mvccid updates
  * and by running vacuum manually.
- * This is a counter that tracks blocking transactions. This global variable is used to not allow parallel computation
- * of oldest active MVCCID.
+ * This is a counter that tracks blocking transactions.
  */
-volatile INT64 vacuum_Global_oldest_active_blockers_counter;
+INT32 vacuum_Global_oldest_active_blockers_counter;
 /* vacuum_Save_log_hdr_oldest_mvccid is used to estimate oldest unvacuumed MVCCID in the corner-case of empty vacuum
  * data. When vacuum data is not empty, oldest MVCCID of first block not yet vacuumed is used.
  * However, when vacuum data is not empty, the oldest MVCCID can be either the oldest MVCCID of first block in
@@ -875,7 +874,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       logtb_initialize_vacuum_thread_tdes (vacuum_Workers[i].tdes, VACUUM_WORKER_INDEX_TO_TRANID (i));
     }
 
-  ATOMIC_TAS_64 (&vacuum_Global_oldest_active_blockers_counter, 0);
+  vacuum_Global_oldest_active_blockers_counter = 0;
 
   return NO_ERROR;
 
@@ -2554,13 +2553,15 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
-  /* Do not allow concurrent computation of oldest mvccid. */
-  if (ATOMIC_CAS_64 (&vacuum_Global_oldest_active_blockers_counter, 0, COMPUTE_OLDEST_MVCCID_STARTED))
+  if (vacuum_Global_oldest_active_blockers_counter == 0)
     {
       local_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+
+      /* check again, maybe concurrent thread has modified the counter value */
+      if (vacuum_Global_oldest_active_blockers_counter == 0)
+	{
       ATOMIC_STORE_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
-      /* Allow to others to update the oldest active MVCCID. */
-      ATOMIC_TAS_64 (&vacuum_Global_oldest_active_blockers_counter, 0);
+    }
     }
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
@@ -4010,7 +4011,6 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   int i = 0;
   bool is_page_dirty;
   FILE_DESCRIPTORS fdes;
-  MVCCID local_oldest_active_mvccid;
 
   assert_release (!VFID_ISNULL (&vacuum_Data.vacuum_data_file));
 
@@ -4091,16 +4091,7 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   vacuum_Data.is_loaded = true;
 
   /* get global oldest active MVCCID. */
-  if (ATOMIC_CAS_64 (&vacuum_Global_oldest_active_blockers_counter, 0, COMPUTE_OLDEST_MVCCID_STARTED))
-    {
-      local_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
-      ATOMIC_STORE_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
-      ATOMIC_TAS_64 (&vacuum_Global_oldest_active_blockers_counter, 0);
-    }
-  else
-    {
-      assert (false);
-    }
+  vacuum_Global_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
 
   error_code = vacuum_recover_lost_block_data (thread_p);
   if (error_code != NO_ERROR)
