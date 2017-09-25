@@ -1258,10 +1258,6 @@ extern "C"
   extern DB_DOMAIN *db_type_to_db_domain (DB_TYPE type);
   extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 
-#ifdef __cplusplus
-}
-#endif				/* __cplusplus */
-
 /*
  * DB_GET_ accessor macros.
  * These macros can be used to extract a particular value from a
@@ -1359,6 +1355,12 @@ extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 extern int db_make_oid(DB_VALUE * value, const OID * oid);
 
 #endif
+
+#ifdef __cplusplus
+}
+#endif				/* __cplusplus */
+
+extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
 extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,

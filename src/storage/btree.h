@@ -677,6 +677,9 @@ extern void btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p, char *dat
 					      OR_BUF * key_buf);
 extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
 				     DB_VALUE * key);
+extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OID * oid, DB_VALUE * keyval,
+				    int n_attrs, OID * pk_cls_oid, BTID * pk_btid, const char *fk_name);
+
 extern void btree_get_root_vpid_from_btid (THREAD_ENTRY * thread_p, BTID * btid, VPID * root_vpid);
 extern int btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * btid_out);
 
@@ -702,6 +705,12 @@ extern unsigned int btree_hash_btid (void *btid, int hash_size);
 
 extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
 extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+
+extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
+			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);
+extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
+						    int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
+						    MVCC_SNAPSHOT * mvcc_snapshot, int *num_visible);
 
 extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
 			       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
