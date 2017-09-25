@@ -5144,7 +5144,7 @@ caslob_to_dblob (T_LOB_HANDLE * cas_lob, DB_VALUE * db_lob)
   elo.size = cas_lob->lob_size;
   elo.type = ELO_FBO;
   elo.locator = db_private_strdup (NULL, cas_lob->locator);
-  db_make_elo (db_lob, cas_lob->db_type, &elo);
+  db_make_elo (db_lob, (DB_TYPE) (cas_lob->db_type), &elo);
   db_lob->need_clear = true;
 }
 
