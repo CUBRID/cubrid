@@ -23,7 +23,7 @@ enum DB_JSON_TYPE {
   DB_JSON_NUMBER,
   DB_JSON_OBJECT,
   DB_JSON_ARRAY,
-  DB_JSON_UNKNOWN
+  DB_JSON_UNKNOWN,
 };
 
 class JSON_PRIVATE_ALLOCATOR;
@@ -67,6 +67,7 @@ void db_json_remove_func (JSON_DOC &doc, char *raw_path, int &error_code);
 
 void db_json_merge_two_json_objects (JSON_DOC &obj1, JSON_DOC &obj2);
 void db_json_merge_two_json_arrays (JSON_DOC &array1, JSON_DOC &array2);
+void db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, JSON_DOC &j2);
 
 DB_JSON_TYPE db_json_get_type (JSON_DOC &doc);
 /* end of C functions */
