@@ -24,6 +24,10 @@
 
 #ident "$Id$"
 
+#if defined (WIN32) && !defined (_WIN64) && !defined (_USE_32BIT_TIME_T)
+#define _USE_32BIT_TIME_T
+#endif
+
 #include "cm_stat.h"
 #include "cm_errmsg.h"
 #include "cm_portable.h"
