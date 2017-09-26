@@ -25,13 +25,13 @@
 #pragma once
  
 #ident "$Id$"
-
 #ifndef _DB_MACRO_I_
 #define _DB_MACRO_I_
 
 #include "intl_support.h"
 #include "porting.h"
 #include "error_manager.h"
+#include "object_primitive.h"
 
 #ifdef SERVER_MODE
 #define DB_MACRO_INLINE STATIC_INLINE
@@ -911,152 +911,6 @@ db_make_object (DB_VALUE * value, DB_OBJECT * obj)
 }
 
 /*
- * db_make_set() -
- * return :
- * value(out) :
- * set(in):
- */
-DB_MACRO_INLINE int
-db_make_set (DB_VALUE * value, DB_SET * set)
-{
-  int error = NO_ERROR;
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  value->domain.general_info.type = DB_TYPE_SET;
-  value->data.set = set;
-  if (set)
-    {
-      if ((set->set && setobj_type (set->set) == DB_TYPE_SET) || set->disk_set)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  error = ER_QPROC_INVALID_DATATYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	}
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  value->need_clear = false;
-
-  return error;
-}
-
-/*
- * db_make_multiset() -
- * return :
- * value(out) :
- * set(in):
- */
-DB_MACRO_INLINE int
-db_make_multiset (DB_VALUE * value, DB_SET * set)
-{
-  int error = NO_ERROR;
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  value->domain.general_info.type = DB_TYPE_MULTISET;
-  value->data.set = set;
-  if (set)
-    {
-      if ((set->set && setobj_type (set->set) == DB_TYPE_MULTISET) || set->disk_set)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  error = ER_QPROC_INVALID_DATATYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	}
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  value->need_clear = false;
-
-  return error;
-}
-
-/*
- * db_make_sequence() -
- * return :
- * value(out) :
- * set(in):
- */
-DB_MACRO_INLINE int
-db_make_sequence (DB_VALUE * value, DB_SET * set)
-{
-  int error = NO_ERROR;
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  value->domain.general_info.type = DB_TYPE_SEQUENCE;
-  value->data.set = set;
-  if (set)
-    {
-      if ((set->set && setobj_type (set->set) == DB_TYPE_SEQUENCE) || set->disk_set)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  error = ER_QPROC_INVALID_DATATYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	}
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  value->need_clear = false;
-
-  return error;
-}
-
-/*
- * db_make_collection() -
- * return :
- * value(out) :
- * col(in):
- */
-DB_MACRO_INLINE int
-db_make_collection (DB_VALUE * value, DB_COLLECTION * col)
-{
-  int error = NO_ERROR;
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  /* Rather than being DB_TYPE_COLLECTION, the value type is taken from the base type of the collection. */
-  if (col == NULL)
-    {
-      value->domain.general_info.type = DB_TYPE_SEQUENCE;	/* undefined */
-      value->data.set = NULL;
-      value->domain.general_info.is_null = 1;
-    }
-  else
-    {
-      value->domain.general_info.type = db_col_type (col);
-      value->data.set = col;
-      /* note, we have been testing set->set for non-NULL here in order to set the is_null flag, this isn't
-       * appropriate, the set pointer can be NULL if the set has been swapped out.The existance of a set handle alone
-       * determines the nullness of the value.  Actually, the act of calling db_col_type above will have resulted in a
-       * re-fetch of the referenced set if it had been swapped out. */
-      value->domain.general_info.is_null = 0;
-    }
-  value->need_clear = false;
-
-  return error;
-}
-
-/*
  * db_make_midxkey() -
  * return :
  * value(out) :
@@ -1090,55 +944,6 @@ db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
   value->need_clear = false;
 
   return error;
-}
-
-/*
- * db_make_elo () -
- * return:
- * value(out):
- * type(in):
- * elo(in):
- */
-DB_MACRO_INLINE int
-db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  value->domain.general_info.type = type;
-  if (elo == NULL || elo->size < 0 || elo->type == ELO_NULL)
-    {
-      elo_init_structure (&value->data.elo);
-      value->domain.general_info.is_null = 1;
-    }
-  else
-    {
-      value->data.elo = *elo;
-      value->domain.general_info.is_null = 0;
-    }
-  value->need_clear = false;
-
-  return NO_ERROR;
-}
-
-/*
- * db_make_time() -
- * return :
- * value(out) :
- * hour(in):
- * min(in):
- * sec(in):
- */
-DB_MACRO_INLINE int
-db_make_time (DB_VALUE * value, const int hour, const int min, const int sec)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  value->domain.general_info.type = DB_TYPE_TIME;
-  value->domain.general_info.is_null = 0;
-  value->need_clear = false;
-  return db_time_encode (&value->data.time, hour, min, sec);
 }
 
 /*
@@ -1198,26 +1003,6 @@ db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value)
     }
 
   return NO_ERROR;
-}
-
-/*
- * db_make_date() -
- * return :
- * value(out):
- * mon(in):
- * day(in):
- * year(in):
- */
-DB_MACRO_INLINE int
-db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  value->domain.general_info.type = DB_TYPE_DATE;
-  value->domain.general_info.is_null = 0;
-  value->need_clear = false;
-  return db_date_encode (&value->data.date, mon, day, year);
 }
 
 /*
@@ -1378,10 +1163,11 @@ db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz)
 DB_MACRO_INLINE int
 db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount)
 {
-#if defined(NO_SERVER_OR_DEBUG_MODE)
+  
   int error;
-#endif
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ERROR (value);
+#endif
 
   /* check for valid currency type don't put default case in the switch!!! */
   error = ER_INVALID_CURRENCY_TYPE;
@@ -1588,162 +1374,6 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
 }
 
 /*
- * db_make_string() -
- * return :
- * value(out) :
- * str(in):
- */
-DB_MACRO_INLINE int
-db_make_string (DB_VALUE * value, const char *str)
-{
-  int error;
-  int size;
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  error = db_value_domain_init (value, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
-  if (error == NO_ERROR)
-    {
-      if (str)
-	{
-	  size = strlen (str);
-	}
-      else
-	{
-	  size = 0;
-	}
-      error = db_make_db_char (value, LANG_SYS_CODESET, LANG_SYS_COLLATION, str, size);
-    }
-  return error;
-}
-
-/*
- * db_make_string_copy() - alloc buffer and copy str into the buffer.
- *                         need_clear will set as true.
- * return :
- * value(out) :
- * str(in):
- */
-DB_MACRO_INLINE int
-db_make_string_copy (DB_VALUE * value, const char *str)
-{
-  int error;
-  DB_VALUE tmp_value;
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  error = db_make_string (&tmp_value, str);
-  if (error == NO_ERROR)
-    {
-      error = pr_clone_value (&tmp_value, value);
-    }
-
-  return error;
-}
-
-/*
- * db_make_db_char() -
- * return :
- * value(out) :
- * codeset(in):
- * collation_id(in):
- * str(in):
- * size(in):
- */
-DB_MACRO_INLINE int
-db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
-{
-  int error = NO_ERROR;
-  bool is_char_type;
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  is_char_type = (value->domain.general_info.type == DB_TYPE_VARCHAR
-		  || value->domain.general_info.type == DB_TYPE_CHAR
-		  || value->domain.general_info.type == DB_TYPE_NCHAR
-		  || value->domain.general_info.type == DB_TYPE_VARNCHAR
-		  || value->domain.general_info.type == DB_TYPE_BIT
-		  || value->domain.general_info.type == DB_TYPE_VARBIT);
-
-  if (is_char_type)
-    {
-#if 0
-      if (size <= DB_SMALL_CHAR_BUF_SIZE)
-	{
-	  value->data.ch.info.style = SMALL_STRING;
-	  value->data.ch.sm.codeset = codeset;
-	  value->data.ch.sm.size = size;
-	  memcpy (value->data.ch.sm.buf, str, size);
-	}
-      else
-#endif
-      if (size <= DB_MAX_STRING_LENGTH)
-	{
-	  value->data.ch.info.style = MEDIUM_STRING;
-	  value->data.ch.info.codeset = codeset;
-	  value->domain.char_info.collation_id = collation_id;
-	  value->data.ch.info.is_max_string = false;
-	  value->data.ch.info.compressed_need_clear = false;
-	  value->data.ch.medium.compressed_buf = NULL;
-	  value->data.ch.medium.compressed_size = 0;
-	  /* 
-	   * If size is set to the default, and the type is any
-	   * kind of character string, assume the string is NULL
-	   * terminated.
-	   */
-	  if (size == DB_DEFAULT_STRING_LENGTH && QSTR_IS_ANY_CHAR (value->domain.general_info.type))
-	    {
-	      value->data.ch.medium.size = str ? strlen (str) : 0;
-	    }
-	  else if (size < 0)
-	    {
-	      error = ER_QSTR_BAD_LENGTH;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_BAD_LENGTH, 1, size);
-	    }
-	  else
-	    {
-	      /* We need to ensure that we don't exceed the max size for the char value specified in the domain. */
-	      if (value->domain.char_info.length == TP_FLOATING_PRECISION_VALUE || LANG_VARIABLE_CHARSET (codeset))
-		{
-		  value->data.ch.medium.size = size;
-		}
-	      else
-		{
-		  value->data.ch.medium.size = MIN (size, value->domain.char_info.length);
-		}
-	    }
-	  value->data.ch.medium.buf = (char *) str;
-	}
-      else
-	{
-	  /* case LARGE_STRING: Currently Not Implemented */
-	}
-
-      if (str)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  value->domain.general_info.is_null = 1;
-	}
-
-      if (size == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
-	{
-	  value->domain.general_info.is_null = 1;
-	}
-
-      value->need_clear = false;
-    }
-  else
-    {
-      error = ER_QPROC_INVALID_DATATYPE;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-    }
-  return error;
-}
-
-/*
  * db_make_bit() -
  * return :
  * value(out) :
@@ -1943,28 +1573,6 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
   value->domain.general_info.type = DB_TYPE_RESULTSET;
   value->data.rset = handle;
   value->domain.general_info.is_null = 0;
-  value->need_clear = false;
-
-  return NO_ERROR;
-}
-
-/*
- * db_make_oid() -
- * return :
- * value(out):
- * oid(in):
- */
-DB_MACRO_INLINE int
-db_make_oid (DB_VALUE * value, const OID * oid)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_2ARGS_ERROR (value, oid);
-#endif
-  value->domain.general_info.type = DB_TYPE_OID;
-  value->data.oid.pageid = oid->pageid;
-  value->data.oid.slotid = oid->slotid;
-  value->data.oid.volid = oid->volid;
-  value->domain.general_info.is_null = OID_ISNULL (oid);
   value->need_clear = false;
 
   return NO_ERROR;
