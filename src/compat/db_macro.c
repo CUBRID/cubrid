@@ -1374,7 +1374,7 @@ db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int i
  * value(out) :
  * set(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_set (DB_VALUE * value, DB_SET * set)
 {
   int error = NO_ERROR;
