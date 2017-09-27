@@ -1138,10 +1138,10 @@ struct db_set
   bool need_clear;
 };
 
- /*
-  * SETOBJ
-  *    This is the primitive set object header.
-  */
+/*
+ * SETOBJ
+ *    This is the primitive set object header.
+ */
 typedef struct setobj SETOBJ;
 
 /*

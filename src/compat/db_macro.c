@@ -203,9 +203,9 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	}
 
       if (precision == 0)
-        {
-          value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
-        }
+	{
+	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+	}
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
       break;
 
@@ -225,10 +225,10 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  value->domain.char_info.length = DB_MAX_VARBIT_PRECISION;
 	}
 
-        if (precision == 0)
-          {
-            value->domain.char_info.length = DB_MAX_VARBIT_PRECISION;
-          }
+      if (precision == 0)
+	{
+	  value->domain.char_info.length = DB_MAX_VARBIT_PRECISION;
+	}
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
       break;
 
@@ -249,9 +249,9 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	}
 
       if (precision == 0)
-        {
-          value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
-        }
+	{
+	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+	}
       value->data.ch.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
@@ -273,9 +273,9 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	}
 
       if (precision == 0)
-        {
-          value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
-        }
+	{
+	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+	}
       value->data.ch.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
@@ -297,9 +297,9 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	}
 
       if (precision == 0)
-        {
-          value->domain.char_info.length = DB_MAX_VARCHAR_PRECISION;
-        }
+	{
+	  value->domain.char_info.length = DB_MAX_VARCHAR_PRECISION;
+	}
       value->data.ch.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
@@ -321,9 +321,9 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	}
 
       if (precision == 0)
-        {
-          value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
-        }
+	{
+	  value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
+	}
       value->data.ch.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
@@ -1706,16 +1706,16 @@ db_make_string_copy (DB_VALUE * value, const char *str)
 * oid(in):
 */
 int
-db_make_oid(DB_VALUE * value, const OID * oid)
+db_make_oid (DB_VALUE * value, const OID * oid)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_2ARGS_ERROR(value, oid);
+  CHECK_2ARGS_ERROR (value, oid);
 #endif
   value->domain.general_info.type = DB_TYPE_OID;
   value->data.oid.pageid = oid->pageid;
   value->data.oid.slotid = oid->slotid;
   value->data.oid.volid = oid->volid;
-  value->domain.general_info.is_null = OID_ISNULL(oid);
+  value->domain.general_info.is_null = OID_ISNULL (oid);
   value->need_clear = false;
 
   return NO_ERROR;
