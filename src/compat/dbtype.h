@@ -1376,8 +1376,6 @@ extern int db_make_resultset(DB_VALUE * value, const DB_RESULTSET handle);
 }
 #endif				/* __cplusplus */
 
-extern int valcnv_convert_value_to_string (DB_VALUE * value);
-
 extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
