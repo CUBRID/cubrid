@@ -260,55 +260,55 @@ extern "C"
 
 #define DB_MAKE_ELO(value, type, elo) db_make_elo(value, type, elo)
 
-#define DB_MAKE_TIME (value, hour, minute, second) \
-    db_make_time (value, hour, minute, second)
+#define DB_MAKE_TIME(value, hour, minute, second) \
+    db_make_time(value, hour, minute, second)
 
-#define DB_MAKE_TIMETZ (value, timetz_value) \
-    db_make_timetz (value, timetz_value)
+#define DB_MAKE_TIMETZ(value, timetz_value) \
+    db_make_timetz(value, timetz_value)
 
-#define DB_MAKE_TIMELTZ (value, time_value) \
-    db_make_timeltz (value, time_value)
+#define DB_MAKE_TIMELTZ(value, time_value) \
+    db_make_timeltz(value, time_value)
 
-#define DB_MAKE_ENCODED_TIME (value, time_value) \
-    db_value_put_encoded_time (value, time_value)
+#define DB_MAKE_ENCODED_TIME(value, time_value) \
+    db_value_put_encoded_time(value, time_value)
 
-#define DB_MAKE_DATE (value, month, day, year) \
-    db_make_date (value, month, day, year)
+#define DB_MAKE_DATE(value, month, day, year) \
+    db_make_date(value, month, day, year)
 
-#define DB_MAKE_ENCODED_DATE (value, date_value) \
-    db_value_put_encoded_date (value, date_value)
+#define DB_MAKE_ENCODED_DATE(value, date_value) \
+    db_value_put_encoded_date(value, date_value)
 
-#define DB_MAKE_TIMESTAMP (value, timeval) \
-    db_make_timestamp (value, timeval)
+#define DB_MAKE_TIMESTAMP(value, timeval) \
+    db_make_timestamp(value, timeval)
 
 #define DB_MAKE_UTIME DB_MAKE_TIMESTAMP
 
-#define DB_MAKE_TIMESTAMPTZ (value, ts_tz) \
-    db_make_timestamptz (value, ts_tz)
+#define DB_MAKE_TIMESTAMPTZ(value, ts_tz) \
+    db_make_timestamptz(value, ts_tz)
 
-#define DB_MAKE_TIMESTAMPLTZ (value, timeval) \
-    db_make_timestampltz (value, timeval)
+#define DB_MAKE_TIMESTAMPLTZ(value, timeval) \
+    db_make_timestampltz(value, timeval)
 
-#define DB_MAKE_MONETARY_AMOUNT (value, amount) \
-    db_make_monetary (value, DB_CURRENCY_DEFAULT, amount)
+#define DB_MAKE_MONETARY_AMOUNT(value, amount) \
+    db_make_monetary(value, DB_CURRENCY_DEFAULT, amount)
 
-#define DB_MAKE_DATETIME (value, datetime_value) \
-    db_make_datetime (value, datetime_value)
+#define DB_MAKE_DATETIME(value, datetime_value) \
+    db_make_datetime(value, datetime_value)
 
-#define DB_MAKE_DATETIMETZ (value, datetimetz_value) \
-    db_make_datetimetz (value, datetimetz_value)
+#define DB_MAKE_DATETIMETZ(value, datetimetz_value) \
+    db_make_datetimetz(value, datetimetz_value)
 
-#define DB_MAKE_DATETIMELTZ (value, datetime_value) \
-    db_make_datetimeltz (value, datetime_value)
+#define DB_MAKE_DATETIMELTZ(value, datetime_value) \
+    db_make_datetimeltz(value, datetime_value)
 
 #define DB_MAKE_MONETARY DB_MAKE_MONETARY_AMOUNT
 
-#define DB_MAKE_MONETARY_TYPE_AMOUNT (value, type, amount) \
-    db_make_monetary (value, type, amount)
+#define DB_MAKE_MONETARY_TYPE_AMOUNT(value, type, amount) \
+    db_make_monetary(value, type, amount)
 
-#define DB_MAKE_POINTER (value, ptr) db_make_pointer (value, ptr)
+#define DB_MAKE_POINTER(value, ptr) db_make_pointer(value, ptr)
 
-#define DB_MAKE_ERROR (value, errcode) db_make_error (value, errcode)
+#define DB_MAKE_ERROR(value, errcode) db_make_error(value, errcode)
 
 #define DB_MAKE_METHOD_ERROR(value, errcode, errmsg) \
            db_make_method_error(value, errcode, errmsg)
