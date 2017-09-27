@@ -852,6 +852,7 @@ db_json_object_contains_key (JSON_DOC *obj, const char *key, int &error_code)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
       error_code = ER_NO_JSON_OBJECT_PROVIDED;
+      return 0;
     }
 
   return (int) obj->HasMember (key);
