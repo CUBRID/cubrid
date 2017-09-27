@@ -5685,7 +5685,7 @@ db_string_make_empty_typed_string (DB_VALUE * db_val, const DB_TYPE db_type, int
   *buf = '\0';
 
   /* We are sure it's a string type value. */
-  db_make_db_char(db_val, (INTL_CODESET) codeset, collation_id, buf, 0);
+  db_make_db_char (db_val, (INTL_CODESET) codeset, collation_id, buf, 0);
   db_val->need_clear = true;
 
   return status;
