@@ -1369,6 +1369,43 @@ db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int i
 }
 
 /*
+ * db_make_set() -
+ * return :
+ * value(out) :
+ * set(in):
+ */
+DB_MACRO_INLINE int
+db_make_set (DB_VALUE * value, DB_SET * set)
+{
+  int error = NO_ERROR;
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ERROR (value);
+#endif
+  value->domain.general_info.type = DB_TYPE_SET;
+  value->data.set = set;
+  if (set)
+    {
+      if ((set->set && setobj_type (set->set) == DB_TYPE_SET) || set->disk_set)
+	{
+	  value->domain.general_info.is_null = 0;
+	}
+      else
+	{
+	  error = ER_QPROC_INVALID_DATATYPE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	}
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+
+  value->need_clear = false;
+
+  return error;
+}
+
+/*
  * db_make_multiset() -
  * return :
  * value(out) :
@@ -1663,6 +1700,28 @@ db_make_string_copy (DB_VALUE * value, const char *str)
 }
 
 /*
+* db_make_oid() -
+* return :
+* value(out):
+* oid(in):
+*/
+int
+db_make_oid(DB_VALUE * value, const OID * oid)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_2ARGS_ERROR(value, oid);
+#endif
+  value->domain.general_info.type = DB_TYPE_OID;
+  value->data.oid.pageid = oid->pageid;
+  value->data.oid.slotid = oid->slotid;
+  value->data.oid.volid = oid->volid;
+  value->domain.general_info.is_null = OID_ISNULL(oid);
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
  * db_make_time() -
  * return :
  * value(out) :
@@ -1700,28 +1759,6 @@ db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
   value->domain.general_info.is_null = 0;
   value->need_clear = false;
   return db_date_encode (&value->data.date, mon, day, year);
-}
-
-/*
- * db_make_oid() -
- * return :
- * value(out):
- * oid(in):
- */
-int
-db_make_oid (DB_VALUE * value, const OID * oid)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_2ARGS_ERROR (value, oid);
-#endif
-  value->domain.general_info.type = DB_TYPE_OID;
-  value->data.oid.pageid = oid->pageid;
-  value->data.oid.slotid = oid->slotid;
-  value->data.oid.volid = oid->volid;
-  value->domain.general_info.is_null = OID_ISNULL (oid);
-  value->need_clear = false;
-
-  return NO_ERROR;
 }
 
 /*

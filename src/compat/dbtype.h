@@ -1261,13 +1261,16 @@ extern "C"
   extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 
 
+  /*  These functions can hardly be inlined since they require plenty of headers
+   *  that will result in cyclic redundancies. One option would be to move those parts from
+   *  those headers towards this header, in order for the functions to be inlined.
+   */
   extern int db_make_set(DB_VALUE * value, DB_C_SET * set);
   extern int db_make_multiset(DB_VALUE * value, DB_C_SET * set);
   extern int db_make_sequence(DB_VALUE * value, DB_C_SET * set);
   extern int db_make_collection(DB_VALUE * value, DB_C_SET * set);
 
   extern int db_make_elo(DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
-
   
   extern int db_make_string(DB_VALUE * value, const char *str);
   extern int db_make_string_copy(DB_VALUE * value, const char *str);
@@ -1277,7 +1280,6 @@ extern "C"
   extern int db_make_oid(DB_VALUE * value, const OID * oid);
   extern int db_make_time(DB_VALUE * value, const int hour, const int minute, const int second);
   extern int db_make_date(DB_VALUE * value, const int month, const int day, const int year);
-
 
 /*
  * DB_GET_ accessor macros.
