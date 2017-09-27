@@ -48,6 +48,7 @@
 #include "locator.h"
 #include "server_interface.h"
 #include "execute_statement.h"
+#include "db_json.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -2025,7 +2026,9 @@ domain_size (TP_DOMAIN * domain)
 
   size += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
 
-  size += domain->json_validator == NULL ? 0 : string_disk_size (domain->json_validator->get_schema_raw ());
+  size +=
+    domain->json_validator ==
+    NULL ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator));
 
   return (size);
 }
@@ -2063,7 +2066,9 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   offset += enumeration_size (&DOM_GET_ENUMERATION (domain));
 
   or_put_offset (buf, offset);
-  offset += domain->json_validator == NULL ? 0 : string_disk_size (domain->json_validator->get_schema_raw ());
+  offset +=
+    domain->json_validator ==
+    NULL ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator));
 
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -2080,7 +2085,8 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 			tf_Metaclass_domain.mc_repid);
 
   put_enumeration (buf, &DOM_GET_ENUMERATION (domain));
-  put_string (buf, domain->json_validator == NULL ? NULL : domain->json_validator->get_schema_raw ());
+  put_string (buf,
+	      domain->json_validator == NULL ? NULL : db_json_get_schema_raw_from_validator (domain->json_validator));
 
   if (start + offset != buf->ptr)
     {
@@ -2168,6 +2174,7 @@ disk_to_domain2 (OR_BUF * buf)
     {
       char *str = get_string (buf, vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length);
       char *schema_raw = (char *) malloc (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length + 1);
+      int error_code;
       if (schema_raw == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -2176,9 +2183,9 @@ disk_to_domain2 (OR_BUF * buf)
 	  return NULL;
 	}
       strcpy (schema_raw, str);
-      domain->json_validator = new JSON_VALIDATOR (schema_raw);
+      domain->json_validator = db_json_load_validator (schema_raw, error_code);
 
-      if (domain->json_validator->load () != NO_ERROR)
+      if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
 	  tp_domain_free (domain);

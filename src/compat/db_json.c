@@ -21,24 +21,87 @@
  * db_json.c - functions related to json
  */
 
-#include "db_json.h"
-
-#include "error_manager.h"
-#include "memory_alloc.h"
-
 #if defined (__cplusplus)
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/error/en.h"
+#include "rapidjson/schema.h"
+#include "rapidjson/document.h"
+#include "rapidjson/encodings.h"
+#include "rapidjson/allocators.h"
+#include "rapidjson/writer.h"
+#include "db_json.h"
+#include <vector>
+#include "error_manager.h"
+#include "memory_alloc.h"
+
+class JSON_PRIVATE_ALLOCATOR
+{
+public:
+  static const bool kNeedFree;
+  void *Malloc (size_t size);
+  void *Realloc (void *originalPtr, size_t originalSize, size_t newSize);
+  static void Free (void *ptr);
+};
+
+typedef
+  rapidjson::UTF8 <>
+  JSON_ENCODING;
+typedef
+  rapidjson::MemoryPoolAllocator <
+  JSON_PRIVATE_ALLOCATOR >
+  JSON_PRIVATE_MEMPOOL;
+typedef
+  rapidjson::GenericValue <
+  JSON_ENCODING,
+  JSON_PRIVATE_MEMPOOL >
+  JSON_VALUE;
+typedef
+  rapidjson::GenericPointer <
+  JSON_VALUE >
+  JSON_POINTER;
+
+class JSON_DOC:
+public rapidjson::GenericDocument < JSON_ENCODING, JSON_PRIVATE_MEMPOOL >
+{
+};
+
+#endif
+
+#if defined (__cplusplus)
+
+#define DB_JSON_MAX_STRING_SIZE 32
 
 /* *INDENT-OFF* */
 
-static void db_json_search_helper (const JSON_VALUE &whole_doc,
-                                   const JSON_VALUE &doc,
+class JSON_VALIDATOR
+{
+public:
+  JSON_VALIDATOR (char *schema_raw);
+  JSON_VALIDATOR (const JSON_VALIDATOR &copy);
+  JSON_VALIDATOR &operator= (const JSON_VALIDATOR &copy);
+  ~JSON_VALIDATOR ();
+
+  int load ();
+  int validate (const JSON_DOC *doc) const;
+  char *get_schema_raw () const;
+
+private:
+  void generate_schema_validator (void);
+
+  rapidjson::Document *document;
+  rapidjson::SchemaDocument *schema;
+  rapidjson::SchemaValidator *validator;
+  char *schema_raw;
+  bool is_loaded;
+};
+
+static void db_json_search_helper (const JSON_VALUE *whole_doc,
+                                   const JSON_VALUE *doc,
                                    const char *current_path,
                                    const char *search_str,
                                    int one_or_all,
                                    std::vector < std::string > &result);
-static unsigned int db_json_get_depth_helper (const JSON_VALUE &doc);
+static unsigned int db_json_get_depth_helper (const JSON_VALUE *doc);
 
 JSON_VALIDATOR::JSON_VALIDATOR (char *schema_raw) : schema_raw (schema_raw),
                                                     is_loaded (false),
@@ -156,7 +219,7 @@ JSON_VALIDATOR::generate_schema_validator (void)
  */
 
 int
-JSON_VALIDATOR::validate (const JSON_DOC &doc) const
+JSON_VALIDATOR::validate (const JSON_DOC *doc) const
 {
   int error_code = NO_ERROR;
   if (validator == NULL)
@@ -165,7 +228,7 @@ JSON_VALIDATOR::validate (const JSON_DOC &doc) const
       return NO_ERROR;
     }
 
-  if (!doc.Accept (*validator))
+  if (!doc->Accept (*validator))
     {
       rapidjson::StringBuffer sb1, sb2;
 
@@ -184,22 +247,6 @@ char *
 JSON_VALIDATOR::get_schema_raw () const
 {
   return schema_raw;
-}
-
-int
-JSON_VALIDATOR::validate_json (const char *json_raw_body)
-{
-  rapidjson::Document document;
-
-  document.Parse (json_raw_body);
-  if (document.HasParseError ())
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-              rapidjson::GetParseError_En (document.GetParseError ()), document.GetErrorOffset ());
-      return ER_INVALID_JSON;
-    }
-
-  return NO_ERROR;
 }
 
 void *
@@ -245,28 +292,28 @@ db_json_is_valid (const char *json_str)
 }
 
 const char *
-db_json_get_type_as_str (const JSON_DOC &document)
+db_json_get_type_as_str (const JSON_DOC *document)
 {
   assert (document != NULL);
-  assert (!document.HasParseError ());
+  assert (!document->HasParseError ());
 
-  if (document.IsArray ())
+  if (document->IsArray ())
     {
       return "JSON_ARRAY";
     }
-  else if (document.IsObject ())
+  else if (document->IsObject ())
     {
       return "JSON_OBJECT";
     }
-  else if (document.IsInt ())
+  else if (document->IsInt ())
     {
       return "INTEGER";
     }
-  else if (document.IsDouble ())
+  else if (document->IsDouble ())
     {
       return "DOUBLE";
     }
-  else if (document.IsString ())
+  else if (document->IsString ())
     {
       return "STRING";
     }
@@ -278,21 +325,21 @@ db_json_get_type_as_str (const JSON_DOC &document)
 }
 
 unsigned int
-db_json_get_length (const JSON_VALUE &document)
+db_json_get_length (const JSON_DOC *document)
 {
-  if (!document.IsArray () && !document.IsObject ())
+  if (!document->IsArray () && !document->IsObject ())
     {
       return 1;
     }
-  if (document.IsArray ())
+  if (document->IsArray ())
     {
-      return document.Size ();
+      return document->Size ();
     }
-  if (document.IsObject ())
+  if (document->IsObject ())
     {
       int length = 0;
-      for (JSON_VALUE::ConstMemberIterator itr = document.MemberBegin ();
-            itr != document.MemberEnd (); ++itr)
+      for (JSON_VALUE::ConstMemberIterator itr = document->MemberBegin ();
+            itr != document->MemberEnd (); ++itr)
         {
           length++;
         }
@@ -304,24 +351,24 @@ db_json_get_length (const JSON_VALUE &document)
 }
 
 unsigned int
-db_json_get_depth (const JSON_VALUE &doc) {
+db_json_get_depth (const JSON_DOC *doc) {
   return db_json_get_depth_helper (doc);
 }
 
 static unsigned int
-db_json_get_depth_helper (const JSON_VALUE &doc)
+db_json_get_depth_helper (const JSON_VALUE *doc)
 {
-  if (!doc.IsArray () && !doc.IsObject ())
+  if (!doc->IsArray () && !doc->IsObject ())
     {
       return 0;
     }
 
-  if (doc.IsArray ())
+  if (doc->IsArray ())
     {
       unsigned int max = 0;
-      for (JSON_VALUE::ConstValueIterator itr = doc.Begin (); itr != doc.End (); ++itr)
+      for (JSON_VALUE::ConstValueIterator itr = doc->Begin (); itr != doc->End (); ++itr)
 	{
-	  unsigned int depth = db_json_get_depth_helper (*itr);
+	  unsigned int depth = db_json_get_depth_helper ((JSON_VALUE *)itr);
 	  if (depth > max)
 	    {
 	      max = depth;
@@ -329,12 +376,12 @@ db_json_get_depth_helper (const JSON_VALUE &doc)
 	}
       return max + 1;
     }
-  else if (doc.IsObject ())
+  else if (doc->IsObject ())
     {
       unsigned int max = 0;
-      for (JSON_VALUE::ConstMemberIterator itr = doc.MemberBegin (); itr != doc.MemberEnd (); ++itr)
+      for (JSON_VALUE::ConstMemberIterator itr = doc->MemberBegin (); itr != doc->MemberEnd (); ++itr)
 	{
-	  unsigned int depth = db_json_get_depth_helper (itr->value);
+	  unsigned int depth = db_json_get_depth_helper ((JSON_VALUE *)&itr->value);
 	  if (depth > max)
 	    {
 	      max = depth;
@@ -345,12 +392,12 @@ db_json_get_depth_helper (const JSON_VALUE &doc)
 }
 
 JSON_DOC *
-db_json_extract_document_from_path (JSON_DOC &document, const char *raw_path)
+db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path)
 {
   JSON_POINTER p (raw_path);
   JSON_VALUE *resulting_json;
 
-  if (p.IsValid () && (resulting_json = p.Get (document)) != NULL)
+  if (p.IsValid () && (resulting_json = p.Get (*document)) != NULL)
     {
       JSON_DOC *new_doc = new JSON_DOC ();
       new_doc->CopyFrom (*resulting_json, new_doc->GetAllocator ());
@@ -361,7 +408,7 @@ db_json_extract_document_from_path (JSON_DOC &document, const char *raw_path)
 }
 
 char *
-db_json_get_raw_json_body_from_document (const JSON_DOC &doc)
+db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
 {
   rapidjson::StringBuffer buffer;
   rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
@@ -370,7 +417,7 @@ db_json_get_raw_json_body_from_document (const JSON_DOC &doc)
 
   buffer.Clear();
 
-  doc.Accept (writer);
+  doc->Accept (writer);
   buffer_str = buffer.GetString ();
   json_body = (char *) db_private_alloc (NULL, strlen (buffer_str) + 1);
   strcpy (json_body, buffer_str);
@@ -379,7 +426,7 @@ db_json_get_raw_json_body_from_document (const JSON_DOC &doc)
 }
 
 JSON_DOC *
-db_json_get_paths_for_search_func (const JSON_DOC &doc,
+db_json_get_paths_for_search_func (const JSON_DOC *doc,
                                              const char *search_str,
                                              unsigned int one_or_all)
 {
@@ -422,8 +469,8 @@ db_json_get_paths_for_search_func (const JSON_DOC &doc,
  */
 
 static void
-db_json_search_helper (const JSON_VALUE &whole_doc,
-                       const JSON_VALUE &doc,
+db_json_search_helper (const JSON_VALUE *whole_doc,
+                       const JSON_VALUE *doc,
                        const char *current_path,
                        const char *search_str,
                        int one_or_all,
@@ -434,12 +481,12 @@ db_json_search_helper (const JSON_VALUE &whole_doc,
       return;
     }
 
-  if (!doc.IsArray () && !doc.IsObject ())
+  if (!doc->IsArray () && !doc->IsObject ())
     {
       JSON_POINTER p (current_path);
       JSON_VALUE *resulting_json;
 
-      if (p.IsValid () && (resulting_json = p.Get (const_cast<JSON_VALUE&>(whole_doc))) != NULL)
+      if (p.IsValid () && (resulting_json = p.Get (*const_cast<JSON_VALUE *>(whole_doc))) != NULL)
 	{
 	  char final_string[DB_JSON_MAX_STRING_SIZE];
 
@@ -470,10 +517,10 @@ db_json_search_helper (const JSON_VALUE &whole_doc,
 	}
     }
 
-  if (doc.IsArray ())
+  if (doc->IsArray ())
     {
       int index = 0;
-      for (JSON_VALUE::ConstValueIterator itr = doc.Begin (); itr != doc.End (); ++itr)
+      for (JSON_VALUE::ConstValueIterator itr = doc->Begin (); itr != doc->End (); ++itr)
 	{
 	  char index_str[3];
 	  snprintf (index_str, 2, "%d", index);
@@ -483,15 +530,15 @@ db_json_search_helper (const JSON_VALUE &whole_doc,
 	  strcat (next_path, "/");
 	  strcat (next_path, index_str);
 
-	  db_json_search_helper (whole_doc, *itr, next_path, search_str, one_or_all, result);
+	  db_json_search_helper (whole_doc, itr, next_path, search_str, one_or_all, result);
 
 	  index++;
 	  db_private_free (NULL, next_path);
 	}
     }
-  else if (doc.IsObject ())
+  else if (doc->IsObject ())
     {
-      for (JSON_VALUE::ConstMemberIterator itr = doc.MemberBegin (); itr != doc.MemberEnd (); ++itr)
+      for (JSON_VALUE::ConstMemberIterator itr = doc->MemberBegin (); itr != doc->MemberEnd (); ++itr)
 	{
 	  char *next_path =
 	    (char *) db_private_alloc (NULL, strlen (current_path) + 1 + strlen (itr->name.GetString ()) + 1);
@@ -499,7 +546,7 @@ db_json_search_helper (const JSON_VALUE &whole_doc,
 	  strcat (next_path, "/");
 	  strcat (next_path, itr->name.GetString ());
 
-	  db_json_search_helper (whole_doc, itr->value, next_path, search_str, one_or_all, result);
+	  db_json_search_helper (whole_doc, &itr->value, next_path, search_str, one_or_all, result);
 
 	  db_private_free (NULL, next_path);
 	}
@@ -507,105 +554,105 @@ db_json_search_helper (const JSON_VALUE &whole_doc,
 }
 
 void
-db_json_add_member_to_object (JSON_DOC &doc, char *name, char *value)
+db_json_add_member_to_object (JSON_DOC *doc, char *name, char *value)
 {
-  assert (doc.IsObject());
+  assert (doc->IsObject());
 
-  doc.AddMember (rapidjson::StringRef (name), rapidjson::StringRef (value), doc.GetAllocator ());
+  doc->AddMember (rapidjson::StringRef (name), rapidjson::StringRef (value), doc->GetAllocator ());
 }
 
 void
-db_json_add_member_to_object (JSON_DOC &doc, char *name, int value)
+db_json_add_member_to_object (JSON_DOC *doc, char *name, int value)
 {
-  assert (doc.IsObject());
+  assert (doc->IsObject());
 
-  doc.AddMember (rapidjson::StringRef (name), JSON_VALUE ().SetInt (value), doc.GetAllocator ());
+  doc->AddMember (rapidjson::StringRef (name), JSON_VALUE ().SetInt (value), doc->GetAllocator ());
 }
 
 void
-db_json_add_member_to_object (JSON_DOC &doc, char *name, JSON_DOC &value)
+db_json_add_member_to_object (JSON_DOC *doc, char *name, JSON_DOC *value)
 {
-  assert (doc.IsObject());
+  assert (doc->IsObject());
 
-  if (value.IsArray())
+  if (value->IsArray())
     {
-      doc.AddMember (rapidjson::StringRef (name), value.GetArray(), doc.GetAllocator ());
+      doc->AddMember (rapidjson::StringRef (name), value->GetArray(), doc->GetAllocator ());
     }
-  else if (value.IsObject())
+  else if (value->IsObject())
     {
-      doc.AddMember (rapidjson::StringRef (name), value.GetObject(), doc.GetAllocator ());
+      doc->AddMember (rapidjson::StringRef (name), value->GetObject(), doc->GetAllocator ());
     }
 }
 
 void
-db_json_add_member_to_object (JSON_DOC &doc, char *name, float value)
+db_json_add_member_to_object (JSON_DOC *doc, char *name, float value)
 {
-  assert (doc.IsObject());
+  assert (doc->IsObject());
 
-  doc.AddMember (rapidjson::StringRef (name), JSON_VALUE ().SetFloat (value), doc.GetAllocator ());
+  doc->AddMember (rapidjson::StringRef (name), JSON_VALUE ().SetFloat (value), doc->GetAllocator ());
 }
 
 void
-db_json_add_member_to_object (JSON_DOC &doc, char *name, double value)
+db_json_add_member_to_object (JSON_DOC *doc, char *name, double value)
 {
-  assert (doc.IsObject());
+  assert (doc->IsObject());
 
-  doc.AddMember (rapidjson::StringRef (name), JSON_VALUE ().SetDouble (value), doc.GetAllocator ());
+  doc->AddMember (rapidjson::StringRef (name), JSON_VALUE ().SetDouble (value), doc->GetAllocator ());
 }
 
 void
-db_json_add_element_to_array (JSON_DOC &doc, char *value)
+db_json_add_element_to_array (JSON_DOC *doc, char *value)
 {
-  if (!doc.IsArray())
+  if (!doc->IsArray())
     {
-      doc.SetArray();
-    }
-
-  doc.PushBack (rapidjson::StringRef (value), doc.GetAllocator ());
-}
-
-void
-db_json_add_element_to_array (JSON_DOC &doc, int value)
-{
-  if (!doc.IsArray())
-    {
-      doc.SetArray();
+      doc->SetArray();
     }
 
-  doc.PushBack (JSON_VALUE ().SetInt (value), doc.GetAllocator ());
+  doc->PushBack (rapidjson::StringRef (value), doc->GetAllocator ());
 }
 
 void
-db_json_add_element_to_array (JSON_DOC &doc, float value)
+db_json_add_element_to_array (JSON_DOC *doc, int value)
 {
-  if (!doc.IsArray())
+  if (!doc->IsArray())
     {
-      doc.SetArray();
+      doc->SetArray();
     }
 
-  doc.PushBack (JSON_VALUE ().SetFloat (value), doc.GetAllocator ());
+  doc->PushBack (JSON_VALUE ().SetInt (value), doc->GetAllocator ());
 }
 
 void
-db_json_add_element_to_array (JSON_DOC &doc, double value)
+db_json_add_element_to_array (JSON_DOC *doc, float value)
 {
-  if (!doc.IsArray())
+  if (!doc->IsArray())
     {
-      doc.SetArray();
+      doc->SetArray();
     }
 
-  doc.PushBack (JSON_VALUE ().SetDouble (value), doc.GetAllocator ());
+  doc->PushBack (JSON_VALUE ().SetFloat (value), doc->GetAllocator ());
 }
 
 void
-db_json_add_element_to_array (JSON_DOC &doc, const JSON_VALUE &value)
+db_json_add_element_to_array (JSON_DOC *doc, double value)
 {
-  if (!doc.IsArray())
+  if (!doc->IsArray())
     {
-      doc.SetArray();
+      doc->SetArray();
     }
 
-  doc.PushBack (const_cast<JSON_VALUE&>(value), doc.GetAllocator ());
+  doc->PushBack (JSON_VALUE ().SetDouble (value), doc->GetAllocator ());
+}
+
+void
+db_json_add_element_to_array (JSON_DOC *doc, JSON_DOC *value)
+{
+  if (!doc->IsArray())
+    {
+      doc->SetArray();
+    }
+
+  doc->PushBack (*value, doc->GetAllocator ());
 }
 
 JSON_DOC *
@@ -627,28 +674,28 @@ db_json_get_json_from_str (const char *json_raw, int &error_code)
 }
 
 JSON_DOC *
-db_json_get_copy_of_doc (const JSON_DOC &doc)
+db_json_get_copy_of_doc (const JSON_DOC *doc)
 {
   JSON_DOC *new_doc = new JSON_DOC;
-  new_doc->CopyFrom (doc, new_doc->GetAllocator ());
+  new_doc->CopyFrom (*doc, new_doc->GetAllocator ());
 
   return new_doc;
 }
 
 void
-db_json_copy_doc (JSON_DOC &dest, JSON_VALUE &src)
+db_json_copy_doc (JSON_DOC *dest, JSON_DOC *src)
 {
-  dest.CopyFrom (src, dest.GetAllocator());
+  dest->CopyFrom (*src, dest->GetAllocator());
 }
 
 void
-db_json_insert_func (JSON_DOC &doc, char *raw_path, char *str_value, int &error_code)
+db_json_insert_func (JSON_DOC *doc, char *raw_path, char *str_value, int &error_code)
 {
   JSON_POINTER p (raw_path);
   JSON_DOC inserting_doc;
   JSON_DOC aux;
 
-  aux.CopyFrom (doc, aux.GetAllocator ());
+  aux.CopyFrom (*doc, aux.GetAllocator ());
 
   if (!p.IsValid ())
     {
@@ -664,13 +711,13 @@ db_json_insert_func (JSON_DOC &doc, char *raw_path, char *str_value, int &error_
       return;
     }
 
-  p.Set (aux, inserting_doc);
-  doc.CopyFrom (aux, doc.GetAllocator ());
+  p.Set (aux, inserting_doc, aux.GetAllocator ());
+  doc->CopyFrom (aux, doc->GetAllocator ());
   error_code = NO_ERROR;
 }
 
 void
-db_json_insert_func (JSON_DOC &doc, char *raw_path, JSON_VALUE &value, int &error_code)
+db_json_insert_func (JSON_DOC *doc, char *raw_path, JSON_DOC *value, int &error_code)
 {
   JSON_POINTER p (raw_path);
 
@@ -680,12 +727,12 @@ db_json_insert_func (JSON_DOC &doc, char *raw_path, JSON_VALUE &value, int &erro
       return;
     }
 
-  p.Set (doc, value);
+  p.Set (*doc, *value);
   error_code = NO_ERROR;
 }
 
 void
-db_json_remove_func (JSON_DOC &doc, char *raw_path, int &error_code)
+db_json_remove_func (JSON_DOC *doc, char *raw_path, int &error_code)
 {
   JSON_POINTER p (raw_path);
 
@@ -695,26 +742,26 @@ db_json_remove_func (JSON_DOC &doc, char *raw_path, int &error_code)
       return;
     }
 
-  p.Erase (doc);
+  p.Erase (*doc);
   error_code = NO_ERROR;
 }
 
 DB_JSON_TYPE
-db_json_get_type (JSON_DOC &doc)
+db_json_get_type (JSON_DOC *doc)
 {
-  if (doc.IsString())
+  if (doc->IsString())
     {
       return DB_JSON_STRING;
     }
-  else if (doc.IsInt() || doc.IsDouble())
+  else if (doc->IsInt() || doc->IsDouble())
     {
       return DB_JSON_NUMBER;
     }
-  else if (doc.IsObject())
+  else if (doc->IsObject())
     {
       return DB_JSON_OBJECT;
     }
-  else if (doc.IsArray())
+  else if (doc->IsArray())
     {
       return DB_JSON_ARRAY;
     }
@@ -723,69 +770,69 @@ db_json_get_type (JSON_DOC &doc)
 }
 
 void
-db_json_merge_two_json_objects (JSON_DOC &obj1, JSON_DOC &obj2)
+db_json_merge_two_json_objects (JSON_DOC *obj1, JSON_DOC *obj2)
 {
   assert (db_json_get_type (obj1) == DB_JSON_OBJECT);
   assert (db_json_get_type (obj2) == DB_JSON_OBJECT);
 
-  for (JSON_VALUE::MemberIterator itr = obj2.MemberBegin ();
-        itr != obj2.MemberEnd (); ++itr)
+  for (JSON_VALUE::MemberIterator itr = obj2->MemberBegin ();
+        itr != obj2->MemberEnd (); ++itr)
     {
       const char *name = itr->name.GetString ();
-      if (obj1.HasMember (name))
+      if (obj1->HasMember (name))
         {
-          if (obj1 [name].IsArray ())
+          if ((*obj1) [name].IsArray ())
             {
-              obj1 [name].GetArray ().PushBack (itr->value, obj1.GetAllocator ());
+              (*obj1) [name].GetArray ().PushBack (itr->value, obj1->GetAllocator ());
             }
           else
             {
-              JSON_VALUE value (obj1 [name], obj1.GetAllocator ());
-              obj1 [name].SetArray ();
-              obj1 [name].PushBack (value, obj1.GetAllocator ());
-              obj1 [name].PushBack (itr->value, obj1.GetAllocator ());
+              JSON_VALUE value ((*obj1) [name], obj1->GetAllocator ());
+              (*obj1) [name].SetArray ();
+              (*obj1) [name].PushBack (value, obj1->GetAllocator ());
+              (*obj1) [name].PushBack (itr->value, obj1->GetAllocator ());
             }
         }
       else
         {
-          obj1.AddMember (itr->name, itr->value, obj1.GetAllocator ());
+          obj1->AddMember (itr->name, itr->value, obj1->GetAllocator ());
         }
     }
 }
 
 void
-db_json_merge_two_json_arrays (JSON_DOC &array1, JSON_DOC &array2)
+db_json_merge_two_json_arrays (JSON_DOC *array1, JSON_DOC *array2)
 {
   assert (db_json_get_type (array1) == DB_JSON_ARRAY);
   assert (db_json_get_type (array2) == DB_JSON_ARRAY);
 
-  for (JSON_VALUE::ValueIterator itr = array2.Begin ();
-        itr != array2.End (); ++itr)
+  for (JSON_VALUE::ValueIterator itr = array2->Begin ();
+        itr != array2->End (); ++itr)
     {
-      array1.PushBack (*itr, array1.GetAllocator ());
+      array1->PushBack (*itr, array1->GetAllocator ());
     }
 }
 
 void
-db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, JSON_DOC &j2)
+db_json_merge_two_json_by_array_wrapping (JSON_DOC *j1, JSON_DOC *j2)
 {
   JSON_DOC *j1_aux = NULL, *j2_aux = NULL, doc;
 
   if (db_json_get_type(j1) != DB_JSON_ARRAY)
     {
       j1_aux = new JSON_DOC;
-      db_json_add_element_to_array (*j1_aux, j1);
+      db_json_add_element_to_array (j1_aux, j1);
     }
   if (db_json_get_type(j2) != DB_JSON_ARRAY)
     {
       j2_aux = new JSON_DOC;
-      db_json_add_element_to_array (*j2_aux, j2);
+      db_json_add_element_to_array (j2_aux, j2);
     }
 
-  db_json_copy_doc (doc, j1_aux == NULL ? j1 : *j1_aux);
-  db_json_merge_two_json_arrays (doc, j2_aux == NULL ? j2 : *j2_aux);
+  db_json_copy_doc (&doc, j1_aux == NULL ? j1 : j1_aux);
+  db_json_merge_two_json_arrays (&doc, j2_aux == NULL ? j2 : j2_aux);
 
-  db_json_copy_doc (j1, doc);
+  db_json_copy_doc (j1, &doc);
   if (j1_aux != NULL)
     {
       delete j1_aux;
@@ -795,8 +842,106 @@ db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, JSON_DOC &j2)
       delete j2_aux;
     }
 }
+
+int
+db_json_object_contains_key (JSON_DOC *obj, const char *key, int &error_code)
+{
+  error_code = NO_ERROR;
+
+  if (!obj->IsObject ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
+      error_code = ER_NO_JSON_OBJECT_PROVIDED;
+    }
+
+  return (int) obj->HasMember (key);
+}
+
+char *
+db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val)
+{
+  return val->get_schema_raw();
+}
+
+int
+db_json_validate_json (char *json_body)
+{
+  rapidjson::Document document;
+
+  document.Parse (json_body);
+  if (document.HasParseError ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+              rapidjson::GetParseError_En (document.GetParseError ()), document.GetErrorOffset ());
+      return ER_INVALID_JSON;
+    }
+
+  return NO_ERROR;
+}
+
+JSON_DOC *db_json_allocate_doc_and_set_type (DB_JSON_TYPE desired_type)
+{
+  JSON_DOC *doc = new JSON_DOC;
+
+  switch (desired_type)
+  {
+    case DB_JSON_ARRAY:
+      doc->SetArray ();
+      break;
+    case DB_JSON_OBJECT:
+      doc->SetObject ();
+      break;
+    default:
+      break;
+  }
+
+  return doc;
+}
+
+JSON_DOC *db_json_allocate_doc ()
+{
+  return new JSON_DOC;
+}
+
+void db_json_delete_doc (JSON_DOC *doc)
+{
+  delete doc;
+}
+
+JSON_VALIDATOR *
+db_json_load_validator (char *json_schema_raw, int &error_code)
+{
+  JSON_VALIDATOR *validator = new JSON_VALIDATOR (json_schema_raw);
+  error_code = validator->load ();
+
+  if (error_code != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  return validator;
+}
+
+JSON_VALIDATOR *
+db_json_copy_validator (JSON_VALIDATOR *validator)
+{
+  return new JSON_VALIDATOR (*validator);
+}
+
+int
+db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc)
+{
+  return validator->validate (doc);
+}
+
+void
+db_json_delete_validator (JSON_VALIDATOR *validator)
+{
+  delete validator;
+}
+
 /*end of C functions*/
 
-#endif //defined (__cplusplus)
+#endif /* defined (__cplusplus) */
 
 /* *INDENT-ON* */

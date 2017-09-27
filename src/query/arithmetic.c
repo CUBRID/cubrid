@@ -5123,15 +5123,14 @@ db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, DB_VALUE 
   if (!DB_IS_NULL (json))
     {
       char *value_str = value->data.ch.medium.buf;
-      int has_member;
+      int has_member, error_code;
 
-      if (!json->data.json.document->IsObject ())
+      has_member = db_json_object_contains_key (json->data.json.document, value->data.ch.medium.buf, error_code);
+
+      if (error_code != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
-	  return ER_NO_JSON_OBJECT_PROVIDED;
+	  return error_code;
 	}
-
-      has_member = (int) json->data.json.document->HasMember (value_str);
       return DB_MAKE_INT (result, has_member);
     }
   else
@@ -5151,7 +5150,7 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
     {
       assert (json->data.json.json_body != NULL);
 
-      const char *type = db_json_get_type_as_str (*json->data.json.document);
+      const char *type = db_json_get_type_as_str (json->data.json.document);
       unsigned int length = strlen (type);
 
       return DB_MAKE_CHAR (type_res, length, type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
@@ -5181,14 +5180,14 @@ db_json_length_dbval (const DB_VALUE * json, DB_VALUE * res)
     }
   else
     {
-      unsigned int length = db_json_get_length (*json->data.json.document);
+      unsigned int length = db_json_get_length (json->data.json.document);
 
       return DB_MAKE_INT (res, length);
     }
 }
 
 int
-db_json_depth_dbval (const DB_VALUE * json, DB_VALUE * res)
+db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
 {
   if (DB_IS_NULL (json))
     {
@@ -5196,7 +5195,7 @@ db_json_depth_dbval (const DB_VALUE * json, DB_VALUE * res)
     }
   else
     {
-      unsigned int depth = db_json_get_depth (*json->data.json.document);
+      unsigned int depth = db_json_get_depth (json->data.json.document);
       return DB_MAKE_INT (res, depth);
     }
 }
@@ -5208,11 +5207,11 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
   const char *raw_path = path->data.ch.medium.buf;
   char *json_body;
 
-  JSON_DOC *result_doc = db_json_extract_document_from_path (*this_doc, raw_path);
+  JSON_DOC *result_doc = db_json_extract_document_from_path (this_doc, raw_path);
 
   if (result_doc != NULL)
     {
-      json_body = db_json_get_raw_json_body_from_document (*result_doc);
+      json_body = db_json_get_raw_json_body_from_document (result_doc);
       db_make_json (json_res, json_body, result_doc, true);
 
       return NO_ERROR;
@@ -5249,8 +5248,8 @@ db_json_search_dbval (const DB_VALUE * json, const DB_VALUE * one_or_all, const 
       return ER_PT_SEMANTIC;
     }
 
-  doc = db_json_get_paths_for_search_func (*json->data.json.document, search_str->data.ch.medium.buf, one_or_all_bool);
-  json_body = db_json_get_raw_json_body_from_document (*doc);
+  doc = db_json_get_paths_for_search_func (json->data.json.document, search_str->data.ch.medium.buf, one_or_all_bool);
+  json_body = db_json_get_raw_json_body_from_document (doc);
 
   db_make_json (res, json_body, doc, true);
 

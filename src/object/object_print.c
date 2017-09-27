@@ -32,6 +32,7 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "db_json.h"
 #include "object_print.h"
 
 #include "error_manager.h"
@@ -455,7 +456,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	case DB_TYPE_JSON:
 	  if (temp_domain->json_validator != NULL)
 	    {
-	      sprintf (temp_buffer, "(%s)", temp_domain->json_validator->get_schema_raw ());
+	      sprintf (temp_buffer, "(%s)", db_json_get_schema_raw_from_validator (temp_domain->json_validator));
 	    }
 	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);
 	  break;

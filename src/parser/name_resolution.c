@@ -47,6 +47,7 @@
 #include "show_meta.h"
 #include "network_interface_cl.h"
 #include "locator_cl.h"
+#include "db_json.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -3943,8 +3944,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       if (domain->json_validator != NULL)
 	{
 	  result->info.data_type.json_schema =
-	    pt_append_bytes (parser, NULL, domain->json_validator->get_schema_raw (),
-			     strlen (domain->json_validator->get_schema_raw ()));
+	    pt_append_bytes (parser, NULL, db_json_get_schema_raw_from_validator (domain->json_validator),
+			     strlen (db_json_get_schema_raw_from_validator (domain->json_validator)));
 	}
       else
 	{

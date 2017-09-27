@@ -46,6 +46,7 @@
 #include "tz_support.h"
 #include "chartype.h"
 #include "db_json.h"
+
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #include "virtual_object.h"
@@ -960,7 +961,7 @@ tp_domain_free (TP_DOMAIN * dom)
       if (dom->type->id == DB_TYPE_JSON && dom->json_validator != NULL)
 	{
           /* *INDENT-OFF* */
-	  delete dom->json_validator;
+	  db_json_delete_validator (dom->json_validator);
           dom->json_validator = NULL;
           /* *INDENT-ON* */
 	}
@@ -1322,7 +1323,7 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 		{
 		  if (d->json_validator != NULL)
 		    {
-		      new_domain->json_validator = new JSON_VALIDATOR (*d->json_validator);
+		      new_domain->json_validator = db_json_copy_validator (d->json_validator);
 		    }
 		}
 
@@ -1571,7 +1572,8 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
       if (dom1->json_validator != NULL && dom2->json_validator != NULL)
 	{
 	  match =
-	    strcmp (dom1->json_validator->get_schema_raw (), dom2->json_validator->get_schema_raw ()) == 0 ? 1 : 0;
+	    strcmp (db_json_get_schema_raw_from_validator (dom1->json_validator),
+		    db_json_get_schema_raw_from_validator (dom2->json_validator)) == 0 ? 1 : 0;
 	}
       else if (dom1->json_validator == NULL && dom2->json_validator == NULL)
 	{
@@ -2246,8 +2248,8 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	  if (transient->json_validator != NULL && domain->json_validator != NULL)
 	    {
 	      match =
-		strcmp (domain->json_validator->get_schema_raw (),
-			transient->json_validator->get_schema_raw ()) == 0 ? 1 : 0;
+		strcmp (db_json_get_schema_raw_from_validator (domain->json_validator),
+			db_json_get_schema_raw_from_validator (transient->json_validator)) == 0 ? 1 : 0;
 	    }
 	  else if (transient->json_validator == NULL && domain->json_validator == NULL)
 	    {
@@ -3474,6 +3476,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  if (db_get_json_schema (val) != NULL)
 	    {
 	      char *schema_raw = strdup (db_get_json_schema (val));
+	      int error_code;
 	      if (schema_raw == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -3481,8 +3484,8 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 		  tp_domain_free (domain);
 		  return NULL;
 		}
-	      domain->json_validator = new JSON_VALIDATOR (schema_raw);
-	      if (domain->json_validator->load () != NO_ERROR)
+	      domain->json_validator = db_json_load_validator (schema_raw, error_code);
+	      if (error_code != NO_ERROR)
 		{
 		  assert (false);
 		  tp_domain_free (domain);
@@ -7340,7 +7343,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    case DB_TYPE_JSON:
 	      {
 		if (desired_domain->json_validator != NULL &&
-		    desired_domain->json_validator->validate (*src->data.json.document) != NO_ERROR)
+		    db_json_validate_doc (desired_domain->json_validator, src->data.json.document) != NO_ERROR)
 		  {
 		    ASSERT_ERROR ();
 		    return DOMAIN_ERROR;
@@ -10028,20 +10031,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_TYPE_JSON:
 	  {
-	    rapidjson::StringBuffer buffer;
-	    rapidjson::Writer < rapidjson::StringBuffer > writer (buffer);
 	    const char *json_str;
-	    char *new_str;
 	    int len;
 
-	    src->data.json.document->Accept (writer);
-	    json_str = buffer.GetString ();
+	    json_str = db_json_get_raw_json_body_from_document (src->data.json.document);
 	    len = strlen (json_str);
 
-	    new_str = (char *) db_private_alloc (NULL, len + 1);
-	    strcpy (new_str, json_str);
-
-	    err = DB_MAKE_CHAR (target, len, new_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	    err = DB_MAKE_CHAR (target, len, json_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
 
 	    if (err != NO_ERROR)
 	      {
@@ -10476,10 +10472,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	       return DOMAIN_ERROR;
 	       } */
 
-	    if (desired_domain->json_validator && desired_domain->json_validator->validate (*doc) != NO_ERROR)
+	    if (desired_domain->json_validator
+		&& db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
-		delete doc;
+		db_json_delete_doc (doc);
 		return DOMAIN_ERROR;
 	      }
 

@@ -42,6 +42,7 @@
 #include "tz_support.h"
 #include "file_io.h"
 #include "db_json.h"
+
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #include "virtual_object.h"
@@ -2062,7 +2063,7 @@ pr_clear_value (DB_VALUE * value)
 	    }
 	  if (value->data.json.document != NULL)
 	    {
-	      delete value->data.json.document;
+	      db_json_delete_doc (value->data.json.document);
 	    }
 	  value->data.json.json_body = NULL;
 	  value->data.json.document = NULL;
@@ -14843,13 +14844,13 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	{
 	  ((DB_JSON *) memptr)->schema_raw = NULL;
 	}
-      ((DB_JSON *) memptr)->document = new JSON_DOC ();
+      ((DB_JSON *) memptr)->document = db_json_allocate_doc ();
       strcpy (((DB_JSON *) memptr)->json_body, value->data.json.json_body);
       if (len2 > 0)
 	{
 	  strcpy (((DB_JSON *) memptr)->schema_raw, value->data.json.schema_raw);
 	}
-      db_json_copy_doc (*((DB_JSON *) memptr)->document, *value->data.json.document);
+      db_json_copy_doc (((DB_JSON *) memptr)->document, value->data.json.document);
     }
 
   return error;
@@ -14879,7 +14880,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
 	  /* return it with a NULL terminator */
 	  char *new_ = (char *) db_private_alloc (NULL, len + 1);
-	  JSON_DOC *document = new JSON_DOC ();
+	  JSON_DOC *document = db_json_allocate_doc ();
 	  if (new_ == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -14889,11 +14890,11 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    {
 	      memcpy (new_, value->data.json.json_body, len);
 	      new_[len] = '\0';
-	      db_json_copy_doc (*document, *json_obj->document);
+	      db_json_copy_doc (document, json_obj->document);
 	      db_make_json (value, new_, document, true);
 	    }
 	}
-      db_get_json_schema (value) = domain->json_validator->get_schema_raw ();
+      db_get_json_schema (value) = db_json_get_schema_raw_from_validator (domain->json_validator);
 
     }
   return error;
@@ -14973,7 +14974,7 @@ mr_freemem_json (void *memptr)
       if (cur != NULL)
 	{
 	  db_private_free_and_init (NULL, cur->json_body);
-	  delete cur->document;
+	  db_json_delete_doc (cur->document);
 	}
     }
 }
@@ -15016,9 +15017,9 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       if (copy)
 	{
 	  dest->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (len + 1));
-	  dest->data.json.document = new JSON_DOC ();
+	  dest->data.json.document = db_json_allocate_doc ();
 	  memcpy (dest->data.json.json_body, src->data.json.json_body, (size_t) len);
-	  dest->data.json.document->CopyFrom (*src->data.json.document, dest->data.json.document->GetAllocator ());
+	  db_json_copy_doc (dest->data.json.document, src->data.json.document);
 	  dest->data.json.json_body[len] = '\0';
 	  dest->need_clear = true;
 	  if (len2 > 0)
@@ -15099,6 +15100,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 {
   int len, rc;
   char *str;
+  int error_code;
 
   buf->ptr = or_unpack_string (buf->ptr, &str);
 
@@ -15113,8 +15115,8 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   else
     {
       value->data.json.json_body = str;
-      value->data.json.document = new JSON_DOC ();
-      value->data.json.document->Parse (str);
+      value->data.json.document = db_json_get_json_from_str (str, error_code);
+      assert (error_code == NO_ERROR);
       value->domain.general_info.is_null = 0;
       value->need_clear = true;
     }

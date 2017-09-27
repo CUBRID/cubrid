@@ -41,6 +41,7 @@
 #include "regu_var.h"
 #include "object_primitive.h"
 #include "query_list.h"
+#include "db_json.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -4542,7 +4543,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_JSON:
 	  if (d->json_validator != NULL)
 	    {
-	      size += or_packed_string_length (d->json_validator->get_schema_raw (), NULL);
+	      size += or_packed_string_length (db_json_get_schema_raw_from_validator (d->json_validator), NULL);
 	    }
 	  break;
 	default:
@@ -4860,7 +4861,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
       if (has_schema)
 	{
-	  rc = or_put_string_alined_with_length (buf, d->json_validator->get_schema_raw ());
+	  rc = or_put_string_alined_with_length (buf, db_json_get_schema_raw_from_validator (d->json_validator));
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -5173,9 +5174,8 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		{
 		  goto error;
 		}
-	      d->json_validator = new JSON_VALIDATOR (schema_raw);
+	      d->json_validator = db_json_load_validator (schema_raw, rc);
 
-	      rc = d->json_validator->load ();
 	      if (rc != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -5552,8 +5552,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_JSON:
 		  if (schema_raw != NULL)
 		    {
-		      dom->json_validator = new JSON_VALIDATOR (schema_raw);
-		      rc = dom->json_validator->load ();
+		      dom->json_validator = db_json_load_validator (schema_raw, rc);
 		      if (rc != NO_ERROR)
 			{
 			  ASSERT_ERROR ();
@@ -6899,7 +6898,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
 	    {
 	      value->data.json.schema_raw =
-		domain->json_validator == NULL ? NULL : domain->json_validator->get_schema_raw ();
+		domain->json_validator == NULL ? NULL : db_json_get_schema_raw_from_validator (domain->json_validator);
 	    }
 	}
       else

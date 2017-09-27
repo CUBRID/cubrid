@@ -46,6 +46,7 @@
 #include "intl_support.h"
 #include "virtual_object.h"
 #include "object_template.h"
+#include "db_json.h"
 
 #define SET_PARSER_ERROR_AND_FREE_NODE(parser, result, default_msg_id)	      \
   do {									      \
@@ -637,7 +638,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	  if (db_get_json_schema (val) != NULL)
 	    {
 	      /* check valid schema */
-	      if (JSON_VALIDATOR::validate_json (db_get_json_schema (val)) != NO_ERROR)
+	      if (db_json_validate_json (db_get_json_schema (val)) != NO_ERROR)
 		{
 		  assert (false);
 		  parser_free_node (parser, result);
@@ -1814,6 +1815,8 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       if (dt->info.data_type.json_schema)
 	{
 	  char *json_schema_raw = (char *) malloc (dt->info.data_type.json_schema->length + 1);
+	  int error_code;
+
 	  if (json_schema_raw == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -1821,9 +1824,10 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
 	      return NULL;
 	    }
 	  strcpy (json_schema_raw, (const char *) dt->info.data_type.json_schema->bytes);
-	  validator = new JSON_VALIDATOR (json_schema_raw);
 
-	  if (validator->load () != NO_ERROR)
+	  validator = db_json_load_validator (json_schema_raw, error_code);
+
+	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return NULL;
@@ -2052,6 +2056,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
 	{
+	  int error_code;
 	  raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
 	  if (raw_schema == NULL)
 	    {
@@ -2059,9 +2064,9 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 	      return NULL;
 	    }
 	  strcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes);
-	  validator = new JSON_VALIDATOR (raw_schema);
+	  validator = db_json_load_validator (raw_schema, error_code);
 
-	  if (validator->load () != NO_ERROR)
+	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return NULL;
@@ -2913,7 +2918,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt)
 	{
-	  if (JSON_VALIDATOR::validate_json (val->data.json.json_body) != NO_ERROR)
+	  if (db_json_validate_json (val->data.json.json_body) != NO_ERROR)
 	    {
 	      assert (false);
 	      parser_free_node (parser, dt);
