@@ -177,7 +177,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  value->domain.numeric_info.scale = scale;
 	}
-      if (IS_INVALID_PRECISION (precision, DB_MAX_NUMERIC_PRECISION))
+      if (IS_INVALID_PRECISION (precision, DB_MAX_NUMERIC_PRECISION) || precision == 0)
 	{
 	  error = ER_INVALID_PRECISION;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NUMERIC_PRECISION);
@@ -201,6 +201,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_BIT_PRECISION);
 	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
 	}
+
+      if (precision == 0)
+        {
+          value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+        }
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
       break;
 
@@ -219,6 +224,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_VARBIT_PRECISION);
 	  value->domain.char_info.length = DB_MAX_VARBIT_PRECISION;
 	}
+
+        if (precision == 0)
+          {
+            value->domain.char_info.length = DB_MAX_VARBIT_PRECISION;
+          }
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
       break;
 
@@ -237,6 +247,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_CHAR_PRECISION);
 	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
 	}
+
+      if (precision == 0)
+        {
+          value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+        }
       value->data.ch.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
@@ -256,6 +271,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NCHAR_PRECISION);
 	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
 	}
+
+      if (precision == 0)
+        {
+          value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+        }
       value->data.ch.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
@@ -275,6 +295,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_VARCHAR_PRECISION);
 	  value->domain.char_info.length = DB_MAX_VARCHAR_PRECISION;
 	}
+
+      if (precision == 0)
+        {
+          value->domain.char_info.length = DB_MAX_VARCHAR_PRECISION;
+        }
       value->data.ch.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
@@ -294,6 +319,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_VARNCHAR_PRECISION);
 	  value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
 	}
+
+      if (precision == 0)
+        {
+          value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
+        }
       value->data.ch.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
