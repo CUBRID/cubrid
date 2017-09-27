@@ -1576,4 +1576,41 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
   return NO_ERROR;
 }
 
+/*
+ * db_make_set() -
+ * return :
+ * value(out) :
+ * set(in):
+ */
+DB_MACRO_INLINE int
+db_make_set (DB_VALUE * value, DB_SET * set)
+{
+  int error = NO_ERROR;
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ERROR (value);
+#endif
+  value->domain.general_info.type = DB_TYPE_SET;
+  value->data.set = set;
+  if (set)
+    {
+      if ((set->set && setobj_type (set->set) == DB_TYPE_SET) || set->disk_set)
+	{
+	  value->domain.general_info.is_null = 0;
+	}
+      else
+	{
+	  error = ER_QPROC_INVALID_DATATYPE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	}
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+
+  value->need_clear = false;
+
+  return error;
+}
+
 #endif          /* _DB_MACRO_I_*/

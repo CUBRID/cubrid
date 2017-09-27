@@ -90,7 +90,7 @@ extern "C"
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
 
-/* The upper limit for a numeber that can be represented by a numeric type */
+/* The upper limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_OVERFLOW_LIMIT 1e38
 
 /* The lower limit for a number that can be represented by a numeric type */
@@ -360,7 +360,7 @@ extern "C"
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
-/* New preffered interface for DB_GET macros. */
+/* New preferred interface for DB_GET macros. */
 #define DB_GET_INT(v) db_get_int(v)
 #define DB_GET_SHORT(v) db_get_short(v)
 #define DB_GET_BIGINT(v) db_get_bigint(v)
@@ -1125,15 +1125,8 @@ extern "C"
   CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
 
   /********************************************************/
-  /* From object_representation.h */
-
-
-  /********************************************************/
   /* From object_accessor.h */
   extern char *obj_Method_error_msg;
-
-  /********************************************************/
-  /* From set_object.h */
   
   /********************************************************/
 

@@ -123,8 +123,13 @@ db_value_put_null (DB_VALUE * value)
   return NO_ERROR;
 }
 
+/* For strings that have a size of 0, this check will fail, and therefore
+ * the new interface for db_make_* functions will set the value to null, which is wrong.
+ * We need to investigate if this set to 0 will work or not.
+ */
 #define IS_INVALID_PRECISION(p,m) \
-  (((p) != DB_DEFAULT_PRECISION) && (((p) <= 0) || ((p) > (m))))
+  (((p) != DB_DEFAULT_PRECISION) && (((p) < 0) || ((p) > (m))))
+
 /*
  *  db_value_domain_init() - initialize value container with given type
  *                           and precision/scale.
@@ -1331,43 +1336,6 @@ db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int i
     }
 
   return error_code;
-}
-
-/*
- * db_make_set() -
- * return :
- * value(out) :
- * set(in):
- */
-int
-db_make_set (DB_VALUE * value, DB_SET * set)
-{
-  int error = NO_ERROR;
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-  value->domain.general_info.type = DB_TYPE_SET;
-  value->data.set = set;
-  if (set)
-    {
-      if ((set->set && setobj_type (set->set) == DB_TYPE_SET) || set->disk_set)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  error = ER_QPROC_INVALID_DATATYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	}
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  value->need_clear = false;
-
-  return error;
 }
 
 /*
