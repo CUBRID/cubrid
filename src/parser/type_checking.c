@@ -18857,7 +18857,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      db_make_null (result);
 	      return 1;
 	    }
-	  if (dom_status == DOMAIN_INCOMPATIBLE)
+	  if (dom_status == DOMAIN_INCOMPATIBLE || dom_status == DOMAIN_OVERFLOW)
 	    {
 	      PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			   pt_short_print (parser, o1), pt_show_type_enum (rTyp));
