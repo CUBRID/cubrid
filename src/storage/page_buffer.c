@@ -1527,7 +1527,7 @@ pgbuf_find_block_with_all_checksums_requested (THREAD_ENTRY * thread_p, unsigned
 __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int
 pgbuf_dwb_compute_block_checksums (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * block,
-				   bool * block_slots_checksum_computed, bool * block_all_slots_checksum_computed)
+				   bool * block_slots_checksum_computed, bool * block_needs_flush)
 __attribute__ ((ALWAYS_INLINE));
 
 /* Slots hash functions. */
@@ -1548,10 +1548,10 @@ static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
   offsetof (PGBUF_DWB_SLOTS_HASH_ENTRY, next),
   offsetof (PGBUF_DWB_SLOTS_HASH_ENTRY, del_id),
   offsetof (PGBUF_DWB_SLOTS_HASH_ENTRY, vpid),
-  0,
+  offsetof (PGBUF_DWB_SLOTS_HASH_ENTRY, mutex),
 
   /* using mutex? */
-  LF_EM_NOT_USING_MUTEX,
+  LF_EM_USING_MUTEX,
 
   pgbuf_dwb_slots_hash_entry_alloc,
   pgbuf_dwb_slots_hash_entry_free,
@@ -16557,7 +16557,6 @@ pgbuf_dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * curre
   unsigned int block_no;
   int error_code = NO_ERROR;
   bool force_flush = false;
-  int count_block_waits = 0, max_block_waits = 20;
   int retry_flush_iter = 0, retry_flush_max = 5;
 
   assert (current_position_with_flags != NULL);
@@ -16570,35 +16569,15 @@ start_structure_modification:
       return ER_FAILED;
     }
 
-  if (count_block_waits < max_block_waits)
-    {
-      /* First, we are waiting for current started blocks to finish. */
-      blocks_status = PGBUF_DWB_GET_BLOCK_STATUS (local_current_position_with_flags);
-      if (blocks_status != 0)
-	{
-	  for (block_no = 0; block_no < PGBUF_DWB_NUM_TOTAL_BLOCKS; block_no++)
-	    {
-	      if (PGBUF_DWB_IS_BLOCK_WRITE_STARTED (local_current_position_with_flags, block_no))
-		{
-		  count_block_waits++;
-		  error_code = pgbuf_dwb_wait_for_block_completion (thread_p, block_no);
-		  if (error_code != NO_ERROR)
-		    {
-		      if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
-			{
-			  /* timeout, try again */
-			  goto start_structure_modification;
-			}
-		      return error_code;
-		    }
-
-		  goto start_structure_modification;
-		}
-	    }
-	}
-    }
-
   new_position_with_flags = PGBUF_DWB_STARTS_MODIFYING_STRUCTURE (local_current_position_with_flags);
+
+  /* Start structure modifications, the threads that want to flush afterwards, have to wait. */
+  if (!ATOMIC_CAS_64 (&pgbuf_Double_Write.position_with_flags,
+		      local_current_position_with_flags, new_position_with_flags))
+    {
+      /* Someone else advanced the position, try again. */
+      goto start_structure_modification;
+    }
 
 #if defined(SERVER_MODE)
 check_dwb_flush_thread_is_running:
@@ -16610,45 +16589,39 @@ check_dwb_flush_thread_is_running:
     }
 #endif
 
-  /* Start structure modifications, the threads that want to flush afterwards, have to wait. */
-  if (!ATOMIC_CAS_64 (&pgbuf_Double_Write.position_with_flags,
-		      local_current_position_with_flags, new_position_with_flags))
-    {
-      /* Someone else advanced the position, try again. */
-      goto start_structure_modification;
-    }
-  local_current_position_with_flags = new_position_with_flags;
+  local_current_position_with_flags = ATOMIC_INC_64 (&pgbuf_Double_Write.position_with_flags, 0ULL);
 
   /* Now, I'm the unique thread that modify DWB. */
-  if (count_block_waits >= max_block_waits)
-    {
-      /* Need to flush incomplete blocks. */
-      blocks_status = PGBUF_DWB_GET_BLOCK_STATUS (new_position_with_flags);
-      for (block_no = 0; block_no < PGBUF_DWB_NUM_TOTAL_BLOCKS; block_no++)
-	{
-	  if (PGBUF_DWB_IS_BLOCK_WRITE_STARTED (local_current_position_with_flags, block_no))
-	    {
-	    flush_block:
-	      /* Flush all pages from current block */
-	      error_code = pgbuf_dwb_flush_block (thread_p, &pgbuf_Double_Write.blocks[block_no],
-						  &local_current_position_with_flags);
-	      if (error_code != NO_ERROR)
-		{
-		  /* Something wrong happens, sleep 10 msec and try again. */
-		  if (retry_flush_iter < retry_flush_max)
-		    {
-#if defined(SERVER_MODE)
-		      thread_sleep (10);
-#endif
-		      retry_flush_iter++;
-		      goto flush_block;
-		    }
 
-		  return error_code;
+  blocks_status = PGBUF_DWB_GET_BLOCK_STATUS (local_current_position_with_flags);
+  /* Need to flush incomplete blocks. */
+  for (block_no = 0; block_no < PGBUF_DWB_NUM_TOTAL_BLOCKS; block_no++)
+    {
+      if (PGBUF_DWB_IS_BLOCK_WRITE_STARTED (local_current_position_with_flags, block_no))
+	{
+	flush_block:
+	  /* Flush all pages from current block */
+	  error_code = pgbuf_dwb_flush_block (thread_p, &pgbuf_Double_Write.blocks[block_no],
+					      &local_current_position_with_flags);
+	  if (error_code != NO_ERROR)
+	    {
+	      /* Something wrong happens, sleep 10 msec and try again. */
+	      if (retry_flush_iter < retry_flush_max)
+		{
+#if defined(SERVER_MODE)
+		  thread_sleep (10);
+#endif
+		  retry_flush_iter++;
+		  goto flush_block;
 		}
+
+	      return error_code;
 	    }
 	}
     }
+
+  local_current_position_with_flags = ATOMIC_INC_64 (&pgbuf_Double_Write.position_with_flags, 0ULL);
+  assert (PGBUF_DWB_GET_BLOCK_STATUS (local_current_position_with_flags) == 0);
 
   *current_position_with_flags = local_current_position_with_flags;
 
@@ -17317,6 +17290,7 @@ pgbuf_dwb_slots_hash_entry_alloc (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (GLOBAL_UNIQUE_STATS));
       return NULL;
     }
+  pthread_mutex_init (&slots_hash_entry->mutex, NULL);
 
   return (void *) slots_hash_entry;
 }
@@ -17329,8 +17303,10 @@ pgbuf_dwb_slots_hash_entry_alloc (void)
 static int
 pgbuf_dwb_slots_hash_entry_free (void *entry)
 {
+  PGBUF_DWB_SLOTS_HASH_ENTRY *slots_hash_entry = (PGBUF_DWB_SLOTS_HASH_ENTRY *) entry;
   if (entry != NULL)
     {
+      pthread_mutex_destroy (&slots_hash_entry->mutex);
       free (entry);
       return NO_ERROR;
     }
@@ -17437,21 +17413,49 @@ pgbuf_dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, PGBUF_DWB_SLO
   int error_code = NO_ERROR;
   PGBUF_DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
+  int inserted, success;
 
   assert (vpid != NULL && slot != NULL);
+
+start_slot_hash_insert:
   error_code =
-    lf_hash_find_or_insert (t_entry, &pgbuf_Double_Write.slots_hash->ht, vpid, (void **) &slots_hash_entry, NULL);
+    lf_hash_find_or_insert (t_entry, &pgbuf_Double_Write.slots_hash->ht, vpid, (void **) &slots_hash_entry, &inserted);
   if (error_code != NO_ERROR || slots_hash_entry == NULL)
     {
+      assert_release (false);
       return error_code;
     }
-  else if ((slots_hash_entry->slot == NULL) || (LSA_GT (&slot->lsa, &slots_hash_entry->slot->lsa)))
+  if (!inserted)
     {
-      /* If the old entry exists, overwrite it. */
-      VPID_COPY (&slots_hash_entry->vpid, vpid);
-      slots_hash_entry->slot = slot;
+      if ((slots_hash_entry->slot == NULL) || (LSA_GE (&slot->lsa, &slots_hash_entry->slot->lsa)))
+	{
+	  /* Found an older slot, worse than mine - remove it. */
+	  if (lf_hash_delete_already_locked (t_entry, &pgbuf_Double_Write.slots_hash->ht, vpid,
+					     slots_hash_entry, &success) != NO_ERROR || !success)
+	    {
+	      /* Should not happen. */
+	      pthread_mutex_unlock (&slots_hash_entry->mutex);
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+
+	  goto start_slot_hash_insert;
+	}
+      else
+	{
+	  /* TO DO - er_log_debug */
+
+	  /* The older slot is better than mine - leave it in hash. */
+	  pthread_mutex_unlock (&slots_hash_entry->mutex);
+	  return NO_ERROR;
+	}
     }
-  lf_tran_end_with_mb (t_entry);
+
+  /* If the old entry exists, overwrite it. */
+  VPID_COPY (&slots_hash_entry->vpid, vpid);
+  slots_hash_entry->slot = slot;
+
+  pthread_mutex_unlock (&slots_hash_entry->mutex);
 
   return NO_ERROR;
 }
@@ -18040,6 +18044,7 @@ pgbuf_dwb_write_block (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * block, PGBUF_D
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
   int success;
+  PGBUF_DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
 
   assert (block != NULL && p_dwb_ordered_slots != NULL);
 
@@ -18072,12 +18077,36 @@ pgbuf_dwb_write_block (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * block, PGBUF_D
 	    }
 
 	  /* Since the page was written, remove it from hash. */
-	  error_code = lf_hash_delete (t_entry, &pgbuf_Double_Write.slots_hash->ht, vpid, &success);
-	  if (error_code != NO_ERROR || !success)
+	  if (lf_hash_find (t_entry, &pgbuf_Double_Write.slots_hash->ht, (void *) vpid, (void **) &slots_hash_entry)
+	      != NO_ERROR)
 	    {
-	      /* Should not happen. */
+	      /* Should not happen */
 	      assert (false);
 	      return ER_FAILED;
+	    }
+
+	  if (slots_hash_entry == NULL)
+	    {
+	      /* Already removed from hash by others, continue with the next slot. */
+	      continue;
+	    }
+
+	  /* Check the slot. */
+	  if (slots_hash_entry->slot == &(block->slots[p_dwb_ordered_slots[i].position_in_block]))
+	    {
+	      if (lf_hash_delete_already_locked (t_entry, &pgbuf_Double_Write.slots_hash->ht, vpid,
+						 slots_hash_entry, &success) != NO_ERROR || !success)
+		{
+		  /* Should not happen. */
+		  pthread_mutex_unlock (&slots_hash_entry->mutex);
+		  assert_release (false);
+		  return ER_FAILED;
+		}
+
+	    }
+	  else
+	    {
+	      pthread_mutex_unlock (&slots_hash_entry->mutex);
 	    }
 	}
     }
@@ -18161,11 +18190,11 @@ pgbuf_dwb_flush_block (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * block, UINT64 
        block_element_position++)
     {
       element_position = block_start_position + block_element_position;
-      ATOMIC_TAS (&pgbuf_Double_Write.checksum_info->slot_data_checksum_requests[element_position], 0LL);
-      ATOMIC_TAS (&pgbuf_Double_Write.checksum_info->slot_data_checksum_computed[element_position], 0LL);
+      ATOMIC_TAS_64 (&pgbuf_Double_Write.checksum_info->slot_data_checksum_requests[element_position], 0LL);
+      ATOMIC_TAS_64 (&pgbuf_Double_Write.checksum_info->slot_data_checksum_computed[element_position], 0LL);
       pgbuf_Double_Write.checksum_info->first_diff_bit_positions[element_position] = 0;
     }
-  ATOMIC_TAS (&block->count_wb_pages, 0);
+  ATOMIC_TAS_32 (&block->count_wb_pages, 0);
   ATOMIC_INC_64 (&block->version, 1ULL);
 
   /* Reset block bit position, since the block was flushed. */
@@ -18411,8 +18440,9 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
   if (dwb_slot == NULL)
     {
       error_code = pgbuf_dwb_set_data_on_next_slot (thread_p, io_page_p, true, &dwb_slot);
-      if (error_code != NO_ERROR)
+      if (error_code != NO_ERROR || dwb_slot == NULL)
 	{
+	  assert (false);
 	  return error_code;
 	}
     }
@@ -18425,6 +18455,7 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 
   block = &pgbuf_Double_Write.blocks[dwb_slot->block_no];
   count_wb_pages = ATOMIC_INC_32 (&block->count_wb_pages, 1);
+#if (0)
   if (count_wb_pages < PGBUF_DWB_BLOCK_NUM_PAGES)
     {
 #if defined (SERVER_MODE)
@@ -18457,74 +18488,80 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 	}
     }
   else if (count_wb_pages == PGBUF_DWB_BLOCK_NUM_PAGES)
-    {
-      prev_block_no = PGBUF_DWB_GET_PREV_BLOCK_NO (block->block_no);
-    start_flush_block:
-      /*
-       * Full block. Need to flush the current block. First, check whether the previous block was flushed,
-       * when we advanced the global position.
-       */
-      position_with_flags = ATOMIC_INC_64 (&pgbuf_Double_Write.position_with_flags, 0ULL);
-      if (PGBUF_DWB_IS_BLOCK_WRITE_STARTED (position_with_flags, prev_block_no))
-	{
-	  prev_block = &pgbuf_Double_Write.blocks[prev_block_no];
-	  if ((prev_block->version < block->version)
-	      || (prev_block->version == block->version && prev_block->block_no < block->block_no))
-	    {
-	      /*
-	       * The previous block was not flushed yet. Needs to wait for it to be flushed.
-	       * We may improve this - if the blocks are independent (different VPIDs) then do not wait.
-	       * Should happens relative rarely, except the case when the buffer consist in only one block.
-	       */
-	      error_code = pgbuf_dwb_wait_for_block_completion (thread_p, prev_block_no);
-	      if (error_code != NO_ERROR)
-		{
-		  if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
-		    {
-		      /* timeout, try again */
-		      goto start_flush_block;
-		    }
-		  return error_code;
-		}
-	    }
-	}
+#endif
+    if (count_wb_pages == PGBUF_DWB_BLOCK_NUM_PAGES)
+      {
+	prev_block_no = PGBUF_DWB_GET_PREV_BLOCK_NO (block->block_no);
+      start_flush_block:
+	/*
+	 * Full block. Need to flush the current block. First, check whether the previous block was flushed,
+	 * when we advanced the global position.
+	 */
+	position_with_flags = ATOMIC_INC_64 (&pgbuf_Double_Write.position_with_flags, 0ULL);
+	if (PGBUF_DWB_IS_BLOCK_WRITE_STARTED (position_with_flags, prev_block_no))
+	  {
+	    prev_block = &pgbuf_Double_Write.blocks[prev_block_no];
+	    if ((prev_block->version < block->version)
+		|| (prev_block->version == block->version && prev_block->block_no < block->block_no))
+	      {
+		/*
+		 * The previous block was not flushed yet. Needs to wait for it to be flushed.
+		 * We may improve this - if the blocks are independent (different VPIDs) then do not wait.
+		 * Should happens relative rarely, except the case when the buffer consist in only one block.
+		 */
+		error_code = pgbuf_dwb_wait_for_block_completion (thread_p, prev_block_no);
+		if (error_code != NO_ERROR)
+		  {
+		    if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
+		      {
+			/* timeout, try again */
+			goto start_flush_block;
+		      }
+		    return error_code;
+		  }
+	      }
+	  }
 
-      /* Now it's safe to flush the block. */
+#if 0
+	/* Now it's safe to flush the block. */
 #if defined (SERVER_MODE)
-      /* Set the checksum bit */
-      pgbuf_dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
-      if (thread_is_dwb_flush_block_thread_available ())
-	{
-	  /* Wakeup the thread to compute the checkpoint. */
-	  thread_wakeup_dwb_flush_block_with_checksum_thread ();
-	}
-      else
+	/* Set the checksum bit */
+	pgbuf_dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
+	if (thread_is_dwb_flush_block_thread_available ())
+	  {
+	    /* Wakeup the thread to compute the checkpoint. */
+	    thread_wakeup_dwb_flush_block_with_checksum_thread ();
+	  }
+	else
 #endif
-	{
-	flush_block:
-	  /* Flush all pages from current block */
-	  error_code = pgbuf_dwb_flush_block (thread_p, block, NULL);
-	  if (error_code != NO_ERROR)
-	    {
-	      /* Something wrong happens, sleep 10 msec and try again. */
-	      if (retry_flush_iter < retry_flush_max)
-		{
+#endif
+	  {
+	  flush_block:
+	    /* Flush all pages from current block */
+	    error_code = pgbuf_dwb_flush_block (thread_p, block, NULL);
+	    if (error_code != NO_ERROR)
+	      {
+		/* Something wrong happens, sleep 10 msec and try again. */
+		if (retry_flush_iter < retry_flush_max)
+		  {
 #if defined(SERVER_MODE)
-		  thread_sleep (10);
+		    thread_sleep (10);
 #endif
-		  retry_flush_iter++;
-		  goto flush_block;
-		}
+		    retry_flush_iter++;
+		    goto flush_block;
+		  }
 
-	      return error_code;
-	    }
-	}
-    }
-  else
-    {
-      /* Impossible */
-      assert (false);
-    }
+		return error_code;
+	      }
+	  }
+      }
+#if 0
+    else
+      {
+	/* Impossible */
+	assert (false);
+      }
+#endif
 
   return NO_ERROR;
 }
@@ -18599,7 +18636,7 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
   PGBUF_DWB_BLOCK *flush_block = NULL;
   int error_code = NO_ERROR, retry_flush_iter = 0, retry_flush_max = 5;
   UINT64 position_with_flags;
-  bool block_slots_checksum_computed, block_all_slots_checksum_computed;
+  bool block_slots_checksum_computed, block_needs_flush;
 
   position_with_flags = ATOMIC_INC_64 (&pgbuf_Double_Write.position_with_flags, 0ULL);
   if (!PGBUF_DWB_IS_CREATED (position_with_flags) || PGBUF_DWB_IS_MODIFYING_STRUCTURE (position_with_flags))
@@ -18630,21 +18667,22 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
 
 	  return error_code;
 	}
+
+      return NO_ERROR;
     }
 
   /* Couldn't find the block for flush. However, we can computes some checksums to reach flushing point faster. */
   for (block_no = 0; block_no < pgbuf_Double_Write.num_blocks; block_no++)
     {
       error_code = pgbuf_dwb_compute_block_checksums (thread_p, &pgbuf_Double_Write.blocks[block_no],
-						      &block_slots_checksum_computed,
-						      &block_all_slots_checksum_computed);
+						      &block_slots_checksum_computed, &block_needs_flush);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
 	  return error_code;
 	}
 
-      if (block_all_slots_checksum_computed)
+      if (block_needs_flush)
 	{
 	  flush_block = &pgbuf_Double_Write.blocks[block_no];
 	  goto start_flush_block;
@@ -18709,11 +18747,11 @@ pgbuf_find_block_with_all_checksums_requested (THREAD_ENTRY * thread_p, unsigned
  * thread_p (in): thread entry
  * block(int): DWB block
  * block_slots_checksum_computed (out); true, if checksums of some slots in block are computed
- * block_all_slots_checksum_computed (out); true, if all checksums of all slots in block are computed
+ * block_needs_flush (out); true, if block needs flush - all slots checksum computed
  */
 STATIC_INLINE int
 pgbuf_dwb_compute_block_checksums (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * block,
-				   bool * block_slots_checksum_computed, bool * block_all_slots_checksum_computed)
+				   bool * block_slots_checksum_computed, bool * block_needs_flush)
 {
   volatile UINT64 *slot_data_checksum_computed = NULL, *slot_data_checksum_requests = NULL;
   UINT64 slot_data_checksum_computed_elem = NULL, slot_data_checksum_requests_elem = NULL, bit_mask,
@@ -18777,7 +18815,7 @@ pgbuf_dwb_compute_block_checksums (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * bl
 	      if (checksum_computed)
 		{
 		  computed_checksum_bits |= bit_mask;
-		  *block_slots_checksum_computed = true;
+		  slots_checksum_computed = true;
 		}
 
 	      bit_mask = bit_mask << 1;
@@ -18822,9 +18860,9 @@ pgbuf_dwb_compute_block_checksums (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * bl
       *block_slots_checksum_computed = slots_checksum_computed;
     }
 
-  if (block_all_slots_checksum_computed)
+  if (block_needs_flush)
     {
-      *block_all_slots_checksum_computed = all_slots_checksum_computed;
+      *block_needs_flush = all_slots_checksum_computed;
     }
 
   return NO_ERROR;
@@ -18842,7 +18880,7 @@ pgbuf_dwb_compute_checksums (THREAD_ENTRY * thread_p)
 {
   UINT64 position_with_flags;
   unsigned int num_block, start_block, end_block;
-  bool found = false, block_slots_checksums_computed, block_all_slots_checksums_computed, checksum_computed;
+  bool found = false, block_slots_checksums_computed, block_needs_flush, checksum_computed;
   int error_code = NO_ERROR;
 
 start:
@@ -18869,14 +18907,14 @@ start:
     {
       error_code =
 	pgbuf_dwb_compute_block_checksums (thread_p, &pgbuf_Double_Write.blocks[num_block],
-					   &block_slots_checksums_computed, &block_all_slots_checksums_computed);
+					   &block_slots_checksums_computed, &block_needs_flush);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
 	  return error_code;
 	}
 #if defined(SERVER_MODE)
-      if (block_all_slots_checksums_computed)
+      if (block_needs_flush)
 	{
 	  if (thread_is_dwb_flush_block_thread_available ())
 	    {
@@ -18924,7 +18962,6 @@ pgbuf_dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, 
       return NO_ERROR;
     }
 
-search_dwb:
   if (lf_hash_find (t_entry, &pgbuf_Double_Write.slots_hash->ht, (void *) vpid, (void **) &slots_hash_entry) !=
       NO_ERROR)
     {
@@ -18935,15 +18972,11 @@ search_dwb:
   else if (slots_hash_entry != NULL)
     {
       /* read from DWB - TO DO volatile access + debug code */
-      assert (slots_hash_entry->slot->io_page != NULL);
+      assert (slots_hash_entry->slot->io_page != NULL && slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
+	      && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
+
       memcpy ((char *) io_page, (char *) slots_hash_entry->slot->io_page, IO_PAGESIZE);
-      if (!VPID_EQ (&slots_hash_entry->slot->vpid, vpid))
-	{
-	  lf_tran_end_with_mb (t_entry);
-	  /* TO DO - scramble page ??? */
-	  goto search_dwb;
-	}
-      lf_tran_end_with_mb (t_entry);
+      pthread_mutex_unlock (&slots_hash_entry->mutex);
       *success = true;
     }
 

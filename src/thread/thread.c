@@ -4095,8 +4095,9 @@ thread_dwb_flush_block_thread (void *arg_p)
   while (!tsd_ptr->shutdown)
     {
       (void) thread_daemon_timedwait (&thread_Dwb_flush_block_thread, THREAD_DWB_FLUSH_BLOCK_WAKEUP_TIME_MSEC);
-
+#if 0
       pgbuf_dwb_flush_block_with_checksum (tsd_ptr);
+#endif
     }
 
   thread_daemon_stop (&thread_Dwb_flush_block_thread, tsd_ptr);
@@ -4173,7 +4174,7 @@ thread_dwb_checksum_computation_thread (void *arg_p)
       (void) thread_daemon_timedwait (&thread_Dwb_checkum_computation_thread,
 				      THREAD_DWB_CHECKSUM_COMPUTATION_WAKEUP_TIME_MSEC);
 
-      pgbuf_dwb_compute_checksums (tsd_ptr);
+      //pgbuf_dwb_compute_checksums (tsd_ptr);
     }
 
   thread_daemon_stop (&thread_Dwb_checkum_computation_thread, tsd_ptr);
