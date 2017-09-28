@@ -4173,7 +4173,7 @@ thread_dwb_checksum_computation_thread (void *arg_p)
       (void) thread_daemon_timedwait (&thread_Dwb_checkum_computation_thread,
 				      THREAD_DWB_CHECKSUM_COMPUTATION_WAKEUP_TIME_MSEC);
 
-      //pgbuf_dwb_compute_checksums (tsd_ptr);
+      pgbuf_dwb_compute_checksums (tsd_ptr);
     }
 
   thread_daemon_stop (&thread_Dwb_checkum_computation_thread, tsd_ptr);
