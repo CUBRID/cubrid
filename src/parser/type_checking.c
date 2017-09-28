@@ -18857,15 +18857,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      db_make_null (result);
 	      return 1;
 	    }
-	  if (dom_status == DOMAIN_INCOMPATIBLE || dom_status == DOMAIN_OVERFLOW)
-	    {
-	      PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			   pt_short_print (parser, o1), pt_show_type_enum (rTyp));
-	    }
-	  else if (dom_status == DOMAIN_ERROR)
-	    {
-	      PT_ERRORc (parser, o1, er_msg ());
-	    }
+          if (er_errid () != NO_ERROR)
+            {
+              PT_ERRORc (parser, o1, er_msg ());
+            }
+          PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+                        pt_short_print (parser, o1), pt_show_type_enum (rTyp));
 	  return 0;
 	}
       else
