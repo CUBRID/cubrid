@@ -49,12 +49,13 @@
  * problems on the the root object so it was removed.  The list
  * of base classes is now generated manually by examining all classes.
  */
-typedef struct root_class ROOT_CLASS;
 
-struct root_class
-{
-  SM_CLASS_HEADER header;
-};
+/*
+ * Use full SM_CLASS definition for ROOT_CLASS, instead of just SM_CLASS_HEADER.
+ * This avoids to handle particular case of sm_Root_class object in many usage of 'au_fetch_class_..' functions.
+ * However serialization functions will use only the header part of the object.
+*/
+typedef SM_CLASS ROOT_CLASS;
 
 /*
  * Structure used when truncating a class and changing an attribute.

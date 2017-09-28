@@ -252,9 +252,6 @@ struct btree_node
   VPID pageid;			/* Identifier of the page */
 };
 
-extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OID * oid, DB_VALUE * keyval,
-				    int n_attrs, OID * pk_cls_oid, BTID * pk_btid, const char *fk_name);
-
 /* Recovery routines */
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern void btree_rv_mvcc_save_increments (BTID * btid, int key_delta, int oid_delta, int null_delta, RECDES * recdes);

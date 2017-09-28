@@ -121,4 +121,7 @@ extern int partition_is_global_index (THREAD_ENTRY * thread_p, PRUNING_CONTEXT *
 
 extern int partition_find_root_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, OID * super_oid);
 
+extern int partition_prune_partition_index (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid,
+					    BTID * btid, int *position);
+
 #endif /* _PARTITION_SR_H_ */
