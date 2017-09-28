@@ -18522,18 +18522,18 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 	      }
 	  }
 
-#if 0
 	/* Now it's safe to flush the block. */
 #if defined (SERVER_MODE)
 	/* Set the checksum bit */
+#if 0
 	pgbuf_dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
+#endif
 	if (thread_is_dwb_flush_block_thread_available ())
 	  {
 	    /* Wakeup the thread to compute the checkpoint. */
 	    thread_wakeup_dwb_flush_block_with_checksum_thread ();
 	  }
 	else
-#endif
 #endif
 	  {
 	  flush_block:
@@ -18644,11 +18644,21 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
+#if 0
   flush_block = NULL;
   pgbuf_find_block_with_all_checksums_computed (thread_p, &block_no);
   if (block_no < PGBUF_DWB_NUM_TOTAL_BLOCKS)
     {
+#else
+  for (block_no = 0; block_no < PGBUF_DWB_NUM_TOTAL_BLOCKS; block_no++)
+    {
+#endif
       flush_block = &pgbuf_Double_Write.blocks[block_no];
+
+      if (flush_block->count_wb_pages != PGBUF_DWB_BLOCK_NUM_PAGES)
+	{
+	  continue;
+	}
     start_flush_block:
       /* Flush all pages from current block */
       assert (flush_block != NULL && flush_block->count_wb_pages == PGBUF_DWB_BLOCK_NUM_PAGES);
@@ -18669,8 +18679,16 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
 	}
 
       return NO_ERROR;
-    }
 
+#if 0
+#else
+    }
+#endif
+
+
+
+
+#if 0
   /* Couldn't find the block for flush. However, we can computes some checksums to reach flushing point faster. */
   for (block_no = 0; block_no < pgbuf_Double_Write.num_blocks; block_no++)
     {
@@ -18688,7 +18706,7 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
 	  goto start_flush_block;
 	}
     }
-
+#endif
 
   return NO_ERROR;
 }
