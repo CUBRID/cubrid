@@ -986,4 +986,48 @@ extern "C"
 }
 #endif
 
+/* casts for C++ and C to be used in *.c files; cpp files should use C++ specific syntax. */
+/* todo: we should split porting.h into several files to avoid recompiling whole project every time we change
+ *       something. when we do that, we can avoid including dangerous macro's like these in header files.
+ *       so, try not to include this in header files. */
+#ifdef STATIC_CAST
+#error "STATIC_CAST definition conflict"
+#else				/* !STATIC_CAST */
+#ifdef __cplusplus
+#define STATIC_CAST(dest_type, expr) static_cast<dest_type>(expr)
+#else				/* !__cplusplus */
+#define STATIC_CAST(dest_type, expr) ((dest_type) (expr))
+#endif				/* !__cplusplus */
+#endif				/* !STATIC_CAST */
+
+#ifdef CONST_CAST
+#error "CONST_CAST definition conflict"
+#else				/* !CONST_CAST */
+#ifdef __cplusplus
+#define CONST_CAST(dest_type, expr) const_cast<dest_type>(expr)
+#else				/* !__cplusplus */
+#define CONST_CAST(dest_type, expr) ((dest_type) (expr))
+#endif				/* !__cplusplus */
+#endif				/* !CONST_CAST */
+
+#ifdef DYNAMIC_CAST
+#error "DYNAMIC_CAST definition conflict"
+#else				/* !DYNAMIC_CAST */
+#ifdef __cplusplus
+#define DYNAMIC_CAST(dest_type, expr) dynamic_cast<dest_type>(expr)
+#else				/* !__cplusplus */
+#define DYNAMIC_CAST(dest_type, expr) ((dest_type) (expr))
+#endif				/* !__cplusplus */
+#endif				/* !DYNAMIC_CAST */
+
+#ifdef REINTERPRET_CAST
+#error "REINTERPRET_CAST definition conflict"
+#else				/* !STATIC_CAST */
+#ifdef __cplusplus
+#define REINTERPRET_CAST(dest_type, expr) reinterpret_cast<dest_type>(expr)
+#else				/* !__cplusplus */
+#define REINTERPRET_CAST(dest_type, expr) ((dest_type) (expr))
+#endif				/* !__cplusplus */
+#endif				/* !REINTERPRET_CAST */
+
 #endif				/* _PORTING_H_ */

@@ -14821,9 +14821,10 @@ PR_TYPE *tp_Type_json = &tp_Json;
 static void
 mr_initmem_json (void *mem, TP_DOMAIN * domain)
 {
-  ((DB_JSON *) mem)->json_body = NULL;
-  ((DB_JSON *) mem)->schema_raw = NULL;
-  ((DB_JSON *) mem)->document = NULL;
+  DB_JSON *jsonp = STATIC_CAST (DB_JSON *, mem);
+  jsonp->json_body = NULL;
+  jsonp->schema_raw = NULL;
+  jsonp->document = NULL;
 }
 
 static int
