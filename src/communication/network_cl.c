@@ -2028,7 +2028,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		     * or whatever is necessary and provide indication of local errors (pr_status), as well as provide
 		     * a string in user_response.  We send back to the server an int (status) followed by a string. */
 		    /* check for overflow, could be dangerous */
-		    pr_len = strlen (user_response_buffer);
+		    pr_len = (int) strlen (user_response_buffer);
 		    if (pr_len > FILEIO_MAX_USER_RESPONSE_SIZE)
 		      {
 			error = ER_NET_DATA_TRUNCATED;

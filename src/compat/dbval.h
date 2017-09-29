@@ -550,7 +550,7 @@
      (v)->data.ch.info.is_max_string = false, \
      (v)->data.ch.info.compressed_need_clear = false, \
      (v)->data.ch.medium.codeset = (c), \
-     (v)->data.ch.medium.size = (s), \
+     (v)->data.ch.medium.size = (int) (s), \
      (v)->data.ch.medium.buf = (char *) (p), \
      (v)->data.ch.medium.compressed_buf = NULL, \
      (v)->data.ch.medium.compressed_size = 0, \

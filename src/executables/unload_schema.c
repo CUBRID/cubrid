@@ -815,7 +815,8 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
 {
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *classes = NULL;
-  int has_indexes, total;
+  int has_indexes;
+  size_t total;
   DB_OBJLIST *vclass_list_has_using_index = NULL;
   int err_count = 0;
 
@@ -826,7 +827,7 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
 
   total = strlen (output_dirname) + strlen (output_prefix) + strlen (SCHEMA_SUFFIX) + 8;
 
-  if ((size_t) total > sizeof (output_filename))
+  if (total > sizeof (output_filename))
     {
       return 1;
     }
@@ -905,7 +906,7 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
    */
   total = strlen (output_dirname) + strlen (output_prefix) + strlen (TRIGGER_SUFFIX) + 8;
 
-  if ((size_t) total > sizeof (output_filename))
+  if (total > sizeof (output_filename))
     {
       if (vclass_list_has_using_index != NULL)
 	{
@@ -999,7 +1000,7 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes, DB_OBJLIST * vclass_list_ha
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *cl;
   FILE *fp;
-  int total;
+  size_t total;
 
   if (output_dirname == NULL)
     {
@@ -1008,7 +1009,7 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes, DB_OBJLIST * vclass_list_ha
 
   total = strlen (output_dirname) + strlen (output_prefix) + strlen (INDEX_SUFFIX) + 8;
 
-  if ((size_t) total > sizeof (output_filename))
+  if (total > sizeof (output_filename))
     {
       return 1;
     }

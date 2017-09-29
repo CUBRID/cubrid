@@ -53,6 +53,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
 #endif
@@ -14914,7 +14918,6 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 static int
 mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 {
-  char **mem, *cur;
   int len;
 
   len = 0;
@@ -14927,7 +14930,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
       DB_JSON *json_obj = (DB_JSON *) memptr;
       if (json_obj != NULL && json_obj->json_body != NULL)
 	{
-	  len = strlen (json_obj->json_body);
+	  len = (int) strlen (json_obj->json_body);
 	}
     }
 
@@ -14992,16 +14995,19 @@ static int
 mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
-  int src_precision, src_length;
-  char *src_str, *new_;
 
   if (src == NULL || DB_IS_NULL (src))
     {
       error = db_value_domain_init (dest, DB_TYPE_JSON, DB_DEFAULT_PRECISION, 0);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
     }
   else
     {
-      int len, len2 = 0;
+      size_t len, len2 = 0;
 
       db_value_domain_init (dest, DB_TYPE_JSON, DB_DEFAULT_PRECISION, 0);
       dest->domain.general_info.is_null = 0;
@@ -15016,15 +15022,15 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       if (copy)
 	{
-	  dest->data.json.json_body = (char *) db_private_alloc (NULL, (size_t) (len + 1));
+	  dest->data.json.json_body = (char *) db_private_alloc (NULL, len + 1);
 	  dest->data.json.document = db_json_allocate_doc ();
-	  memcpy (dest->data.json.json_body, src->data.json.json_body, (size_t) len);
+	  memcpy (dest->data.json.json_body, src->data.json.json_body, len);
 	  db_json_copy_doc (dest->data.json.document, src->data.json.document);
 	  dest->data.json.json_body[len] = '\0';
 	  dest->need_clear = true;
 	  if (len2 > 0)
 	    {
-	      dest->data.json.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len2 + 1));
+	      dest->data.json.schema_raw = (char *) db_private_alloc (NULL, len2 + 1);
 	      strcpy (dest->data.json.schema_raw, src->data.json.schema_raw);
 	    }
 	}
@@ -15081,7 +15087,7 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
 static int
 mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 {
-  int len, rc;
+  int rc;
   assert (value->data.json.json_body != NULL);
 
   rc = or_put_string_alined_with_length (buf, value->data.json.json_body);
@@ -15098,7 +15104,6 @@ static int
 mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
-  int len, rc;
   char *str;
   int error_code;
 
@@ -15122,7 +15127,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
     }
 
   value->domain.general_info.type = DB_TYPE_JSON;
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -15150,22 +15155,20 @@ mr_readval_json_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 static DB_VALUE_COMPARE_RESULT
 mr_index_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  DB_VALUE_COMPARE_RESULT c;
+  /* todo: first we need to decide on json ordering */
   return mr_index_cmpdisk_string (mem1, mem2, domain, do_coercion, total_order, start_colp);
 }
 
 static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  DB_VALUE_COMPARE_RESULT c;
-  return c;
-
+  /* todo? */
+  return DB_VALUE_COMPARE_RESULT::DB_UNK;
 }
 
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  DB_VALUE_COMPARE_RESULT c;
   DB_VALUE str, str2;
   convert_json_to_string (value1, &str);
   convert_json_to_string (value2, &str2);

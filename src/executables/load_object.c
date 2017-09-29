@@ -1515,7 +1515,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       len = db_get_string_size (value);
       if (len < 0)
 	{
-	  len = strlen (ptr);
+	  len = (int) strlen (ptr);
 	}
 
       CHECK_PRINT_ERROR (print_quoted_str (tout, ptr, len, MAX_DISPLAY_COLUMN));

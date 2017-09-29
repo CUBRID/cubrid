@@ -58,6 +58,10 @@
 #include "show_meta.h"
 #include "db.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define DEFAULT_VAR "."
 
 struct pt_host_vars

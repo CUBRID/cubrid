@@ -48,6 +48,10 @@
 #include "set_object.h"
 #include "dbi.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define SAFENUM(node, field)    ((node) ? (node)->field : -1)
 #define PT_MEMB_BUF_SIZE        100
 #define PT_MEMB_PRINTABLE_BUF_SIZE    512

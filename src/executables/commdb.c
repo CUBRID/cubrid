@@ -447,7 +447,7 @@ process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes, int pi
 
   net_minutes = htonl (minutes);
   rid =
-    send_request_two_args (conn, KILL_SLAVE_SERVER, slave_name, strlen (slave_name) + 1, (char *) &net_minutes,
+    send_request_two_args (conn, KILL_SLAVE_SERVER, slave_name, (int) strlen (slave_name) + 1, (char *) &net_minutes,
 			   sizeof (int));
   return_string (conn, rid, &reply_buffer, &size);
   if (size)
@@ -478,7 +478,7 @@ process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
   int size = 0;
   unsigned short rid;
 
-  rid = send_request_one_arg (conn, GET_SERVER_HA_MODE, server_name, strlen (server_name) + 1);
+  rid = send_request_one_arg (conn, GET_SERVER_HA_MODE, server_name, (int) strlen (server_name) + 1);
   return_string (conn, rid, &reply_buffer, &size);
 
   if (size)

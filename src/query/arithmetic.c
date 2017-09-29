@@ -47,6 +47,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 static int db_mod_short (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static int db_mod_int (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static int db_mod_bigint (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);

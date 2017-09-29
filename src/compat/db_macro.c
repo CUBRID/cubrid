@@ -48,6 +48,10 @@
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define DB_NUMBER_ZERO	    0
 
 #define VALCNV_TOO_BIG_TO_MATTER   1024

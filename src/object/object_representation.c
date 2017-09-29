@@ -46,6 +46,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* simple macro to calculate minimum bytes to contain given bits */
 #define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
 
@@ -8715,14 +8719,14 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
 int
 or_put_string_alined_with_length (OR_BUF * buf, char *str)
 {
-  int len, bits, pad;
+  int len;
   int rc = NO_ERROR;
 
   if (str == NULL)
     {
       return rc;
     }
-  len = strlen (str) + 1;
+  len = (int) strlen (str) + 1;
 
   rc = or_put_int (buf, len);
   if (rc != NO_ERROR)

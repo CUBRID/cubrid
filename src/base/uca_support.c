@@ -33,6 +33,10 @@
 #include "uca_support.h"
 #include "unicode_support.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define DUCET_FILE "ducet.txt"
 
 #define MAX_WEIGHT_LEVELS 4

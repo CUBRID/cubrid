@@ -62,6 +62,9 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define BYTE_SIZE               (8)
 #define QSTR_VALUE_PRECISION(value)                                       \
@@ -3033,7 +3036,6 @@ int
 db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i;
-  int len;
   JSON_DOC *new_doc;
   char *str;
 

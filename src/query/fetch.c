@@ -2055,8 +2055,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	t_source = tz_get_system_timezone ();
 	t_dest = tz_get_session_local_timezone ();
-	len_source = strlen (t_source);
-	len_dest = strlen (t_dest);
+	len_source = (int) strlen (t_source);
+	len_dest = (int) strlen (t_dest);
 	db_time = vd->sys_datetime.time / 1000;
 
 	err_status = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
@@ -4060,11 +4060,9 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    case F_JSON_REMOVE:
 	    case F_JSON_MERGE:
 	      {
-		DB_VALUE *value;
 		REGU_VARIABLE_LIST operand;
 		int error_status = NO_ERROR;
 		int no_args = 0, index = 0;
-		int i;
 
 		operand = funcp->operand;
 

@@ -52,6 +52,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* the multipler of long NUMERIC, internal used */
 #define DB_LONG_NUMERIC_MULTIPLIER 2
 

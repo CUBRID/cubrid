@@ -51,6 +51,10 @@
 
 #include "dbval.h"		/* this must be the last header file included */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* Macro to generate the UNIQUE property string from the components */
 #define SM_SPRINTF_UNIQUE_PROPERTY_VALUE(buffer, volid, fileid, pageid) \
   sprintf(buffer, "%d|%d|%d", (int)volid, (int)fileid, (int)pageid)

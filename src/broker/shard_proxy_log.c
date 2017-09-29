@@ -220,7 +220,7 @@ proxy_log_write_internal (int level, char *svc_code, bool do_flush, const char *
 	}
     }
 
-  write_len = MIN ((p - buf), PROXY_LOG_BUFFER_SIZE);
+  write_len = MIN ((int) (p - buf), PROXY_LOG_BUFFER_SIZE);
   fwrite (buf, write_len, 1, log_fp);
   fputc ('\n', log_fp);
 

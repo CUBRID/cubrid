@@ -10945,8 +10945,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
 	    t_source = tz_get_system_timezone ();
 	    t_dest = tz_get_session_local_timezone ();
-	    len_source = strlen (t_source);
-	    len_dest = strlen (t_dest);
+	    len_source = (int) strlen (t_source);
+	    len_dest = (int) strlen (t_dest);
 	    db_time = xasl_state->vd.sys_datetime.time / 1000;
 	    error = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
 	    DB_MAKE_ENCODED_TIME (&insert_val, &cur_time);
@@ -11022,11 +11022,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    tdes = LOG_FIND_TDES (tran_index);
 	    if (tdes)
 	      {
-		int len = strlen (tdes->client.db_user) + strlen (tdes->client.host_name) + 2;
+		size_t len = strlen (tdes->client.db_user) + strlen (tdes->client.host_name) + 2;
 		temp = (char *) db_private_alloc (thread_p, len);
 		if (temp == NULL)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
 		    GOTO_EXIT_ON_ERROR;
 		  }
 		else
@@ -16462,7 +16462,7 @@ static int
 bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_index, int *len_son_index, int cnt)
 {
   char counter[32];
-  int size, n = father_index ? strlen (father_index) : 0;
+  size_t size, n = father_index ? strlen (father_index) : 0;
 
   snprintf (counter, 32, "%d", cnt);
   size = strlen (counter) + n + 2;
@@ -22549,7 +22549,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   int all_class_attr_lengths[3];
   bool full_columns = false;
   char *string = NULL;
-  int alloced_string = 0, len;
+  int alloced_string = 0;
   HL_HEAPID save_heapid = 0;
 
   if (xasl == NULL || xasl_state == NULL)
@@ -22745,6 +22745,8 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	      if (attrepr->default_value.default_expr.default_expr_op == T_TO_CHAR)
 		{
+		  size_t len;
+
 		  default_expr_op_string = qdump_operator_type_string (T_TO_CHAR);
 		  default_expr_format = attrepr->default_value.default_expr.default_expr_format;
 

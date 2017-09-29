@@ -513,7 +513,8 @@ util_log_write_errstr (const char *format, ...)
 int
 util_log_write_command (int argc, char *argv[])
 {
-  int i, remained_buf_length, str_len;
+  int i;
+  size_t remained_buf_length, str_len;
   char command_buf[UTIL_LOG_MAX_MSG_SIZE];
   char *p;
 

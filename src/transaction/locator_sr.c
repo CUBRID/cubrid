@@ -1713,7 +1713,8 @@ locator_print_class_name (FILE * outfp, const void *key, void *ent, void *args)
   int *class_no_p = (int *) args;
   LOCATOR_CLASSNAME_ACTION *action;
   const char *str_action;
-  int key_size, i;
+  int i;
+  size_t key_size;
 
   assert (class_no_p != NULL);
 

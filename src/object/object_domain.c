@@ -59,6 +59,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
@@ -1305,7 +1309,7 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	    }
 	  else
 	    {
-	      int schema_len = 0, error;
+	      int schema_len = 0;
 
 	      /* copy over the domain parameters */
 	      new_domain->class_mop = d->class_mop;

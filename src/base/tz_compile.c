@@ -45,6 +45,10 @@
 #include "db.h"
 #endif /* SA_MODE */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define TZ_FILENAME_MAX_LEN	    17
 #define TZ_MAX_LINE_LEN		    512
 #define TZ_OFFRULE_PREFIX_TAB_COUNT 3

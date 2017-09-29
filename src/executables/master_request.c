@@ -61,6 +61,9 @@
 #include "master_heartbeat.h"
 #endif
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define IS_MASTER_SOCKET_FD(FD)         \
       ((FD) == css_Master_socket_fd[0] || (FD) == css_Master_socket_fd[1])

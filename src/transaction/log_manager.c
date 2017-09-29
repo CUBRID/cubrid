@@ -3326,7 +3326,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       return NULL;
     }
 
-  length = strlen (savept_name) + 1;
+  length = (int) strlen (savept_name) + 1;
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_SAVEPOINT, RV_NOT_DEFINED, NULL, length, (char *) savept_name, 0,
@@ -5039,7 +5039,7 @@ xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_
   LOB_LOCATOR_ENTRY *entry;
   LOB_SAVEPOINT_ENTRY *savept;
   char *key;
-  int key_len;
+  size_t key_len;
 
   assert (log_is_valid_locator (locator));
 

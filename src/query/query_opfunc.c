@@ -9335,7 +9335,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
   XASL_NODE *xasl, *xptr;
   int length, i;
   char *result_path = NULL, *path_tmp = NULL;
-  int len_result_path, len_tmp = 0, len;
+  int len_result_path;
+  size_t len_tmp = 0, len;
   char *sep = NULL;
   DB_VALUE *arg_dbval_p = NULL;
   DB_VALUE **save_values = NULL;
@@ -9397,7 +9398,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
     }
 
   /* character */
-  i = strlen (DB_GET_STRING_SAFE (value_char));
+  i = (int) strlen (DB_GET_STRING_SAFE (value_char));
   sep = (char *) db_private_alloc (thread_p, sizeof (char) * (i + 1));
   if (sep == NULL)
     {

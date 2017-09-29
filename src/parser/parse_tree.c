@@ -43,6 +43,10 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /*
  * this should be big enough for "largish" select statements to print.
  * It is sized at 8192 less enough to let it fit in 2 blocks with some

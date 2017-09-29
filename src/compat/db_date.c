@@ -38,6 +38,10 @@
 #include "numeric_opfunc.h"
 #include "object_representation.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* used in conversion to julian */
 #define IGREG1     	(15 + 31L * (10 + 12L * 1582))
 /* used in conversion from julian */

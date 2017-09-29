@@ -69,7 +69,7 @@ enum
 
 #define COMPOSE_FULL_NAME(buf, buf_size, path, name) \
   do { \
-    int len = strlen(path); \
+    size_t len = strlen(path); \
     if (len > 0 && path[len - 1] != PATH_SEPARATOR) { \
       snprintf(buf, buf_size - 1, "%s%c%s", path, PATH_SEPARATOR, name); \
     } else { \

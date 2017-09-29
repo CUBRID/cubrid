@@ -116,6 +116,10 @@ extern int yybuffer_pos;
 #include "memory_alloc.h"
 #include "db_elo.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* Bit mask to be used to check constraints of a column.
  * COLUMN_CONSTRAINT_SHARED_DEFAULT_AI is special-purpose mask
  * to identify duplication of SHARED, DEFAULT and AUTO_INCREMENT.

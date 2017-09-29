@@ -53,6 +53,10 @@
 #include "db_date.h"
 #include "dbval.h"		/* this must be the last header file included!!! */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define BITS_IN_BYTE		8
 #define HEX_IN_BYTE		2
 #define BITS_IN_HEX		4

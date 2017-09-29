@@ -96,7 +96,7 @@ get_cubrid_home ()
 void
 set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 {
-  int value_len;
+  size_t value_len;
   bool repath = true;
 
   if (value == NULL)
