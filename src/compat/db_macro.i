@@ -395,7 +395,7 @@ db_get_elo (const DB_VALUE * value)
 #if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
 #endif  
-  if (value->domain.general_info.is_null)
+  if (value->domain.general_info.is_null || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_ERROR)
     {
       return NULL;
     }
