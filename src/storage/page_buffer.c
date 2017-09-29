@@ -10869,7 +10869,7 @@ pgbuf_add_fixed_at (PGBUF_HOLDER * holder, const char *caller_file, int caller_l
   if (reset)
     {
       sprintf (holder->fixed_at, "%s:%d ", p, caller_line);
-      holder->fixed_at_size = strlen (holder->fixed_at);
+      holder->fixed_at_size = (int) strlen (holder->fixed_at);
     }
   else
     {
@@ -10877,7 +10877,7 @@ pgbuf_add_fixed_at (PGBUF_HOLDER * holder, const char *caller_file, int caller_l
       if (strstr (holder->fixed_at, buf) == NULL)
 	{
 	  strcat (holder->fixed_at, buf);
-	  holder->fixed_at_size += strlen (buf);
+	  holder->fixed_at_size += (int) strlen (buf);
 	  assert (holder->fixed_at_size < (64 * 1024));
 	}
     }

@@ -1526,7 +1526,7 @@ make_sql_stmt (char *src)
   else
     {
       trim (tmp);
-      query_len = strlen (tmp);
+      query_len = (int) strlen (tmp);
       if (query_len > 0)
 	{
 	  if (tmp[query_len - 1] != ';')

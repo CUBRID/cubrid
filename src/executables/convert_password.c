@@ -205,7 +205,8 @@ shuffle (int *a, int size, int rstream)
 static void
 crypt_seed_old (const char *key)
 {
-  int i, keylen;
+  int i;
+  size_t keylen;
 
   keylen = strlen (key);
   for (i = 0; i < 4; ++i)
@@ -271,7 +272,7 @@ crypt_decode_caps_old (const char *crypt, unsigned char *decrypt, int maxlen)
       total = 0;
       if (crypt != NULL)
 	{
-	  len = strlen (crypt);
+	  len = (int) strlen (crypt);
 	  if (!len)
 	    decrypt[0] = '\0';
 	  else

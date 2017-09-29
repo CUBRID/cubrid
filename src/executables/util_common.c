@@ -929,7 +929,7 @@ util_byte_to_size_string (char *buf, size_t len, UINT64 size_num)
 
   _dtoa (v, 3, 1, &decpt, &sign, &rve, num_str, 0);
   num_str[99] = '\0';
-  num_len = strlen (num_str);
+  num_len = (int) strlen (num_str);
 
   if (len < (size_t) (decpt + 4))
     {

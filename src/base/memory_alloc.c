@@ -664,7 +664,7 @@ db_private_strdup (void *thrd, const char *s)
       return NULL;
     }
 
-  len = strlen (s);
+  len = (int) strlen (s);
   cp = (char *) db_private_alloc (thrd, len + 1);
 
   if (cp != NULL)

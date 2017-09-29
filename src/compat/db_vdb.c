@@ -3565,7 +3565,7 @@ db_validate (DB_OBJECT * vc)
       strcpy (buffer, "select count(*) from ");
       strcat (buffer, db_get_class_name (vc));
       attributes = db_get_attributes (vc);
-      len = strlen (buffer);
+      len = (int) strlen (buffer);
       bufp = buffer;
 
       while (attributes)
@@ -3574,7 +3574,7 @@ db_validate (DB_OBJECT * vc)
 	  if (pred)
 	    {
 	      /* make sure we have enough room in the buffer */
-	      len += (strlen (separator) + strlen (pred));
+	      len += (int) (strlen (separator) + strlen (pred));
 	      if (len >= limit)
 		{
 		  /* increase buffer by BUF_SIZE */

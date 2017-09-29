@@ -3945,7 +3945,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	{
 	  result->info.data_type.json_schema =
 	    pt_append_bytes (parser, NULL, db_json_get_schema_raw_from_validator (domain->json_validator),
-			     strlen (db_json_get_schema_raw_from_validator (domain->json_validator)));
+			     (int) strlen (db_json_get_schema_raw_from_validator (domain->json_validator)));
 	}
       else
 	{

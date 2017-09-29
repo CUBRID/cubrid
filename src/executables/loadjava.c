@@ -264,7 +264,7 @@ main (int argc, char *argv[])
       goto error;
     }
 
-  for (i = strlen (Src_class); i >= 0; i--)
+  for (i = (int) strlen (Src_class); i >= 0; i--)
     {
       if (Src_class[i] == SEPERATOR)
 	break;

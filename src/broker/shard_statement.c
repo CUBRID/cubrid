@@ -36,6 +36,10 @@
 #include "shard_statement.h"
 #include "shard_shm.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 extern T_SHM_SHARD_KEY *shm_key_p;
 extern T_PROXY_INFO *proxy_info_p;
 

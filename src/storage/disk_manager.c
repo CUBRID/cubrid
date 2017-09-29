@@ -5123,7 +5123,7 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
     }
   else
     {
-      next_vol_fullname_size = strlen (next_vol_fullname) + 1;
+      next_vol_fullname_size = (int) strlen (next_vol_fullname) + 1;
       if (next_vol_fullname_size > PATH_MAX)
 	{
 	  next_vol_fullname_size = PATH_MAX;
@@ -5132,7 +5132,7 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
 
   length_diff = vhdr->offset_to_vol_remarks;
 
-  length_to_move = strlen (vhdr->var_fields + length_diff) + 1;
+  length_to_move = (int) strlen (vhdr->var_fields + length_diff) + 1;
 
   /* Difference in length between new name and old name */
   length_diff = (next_vol_fullname_size - (vhdr->offset_to_vol_remarks - vhdr->offset_to_next_vol_fullname));

@@ -1233,7 +1233,7 @@ key_isdigit (const char *value)
 static int
 make_sp_value (SP_VALUE * value_p, char *shard_key)
 {
-  int length = strlen (shard_key);
+  int length = (int) strlen (shard_key);
   char *end;
 
   if (key_isdigit (shard_key))
@@ -2186,7 +2186,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   else if (strcasecmp (conf_name, "PREFERRED_HOSTS") == 0)
     {
       char *host_name = (char *) conf_value;
-      int host_name_len = 0;
+      size_t host_name_len = 0;
 
       host_name_len = strlen (host_name);
 
@@ -2262,7 +2262,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   else if (strcasecmp (conf_name, "ERROR_LOG_DIR") == 0)
     {
       char *err_log_dir = (char *) conf_value;
-      int err_log_dir_len = 0;
+      size_t err_log_dir_len = 0;
 
       err_log_dir_len = strlen (err_log_dir);
 
@@ -2310,7 +2310,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   else if (strcasecmp (conf_name, "LOG_DIR") == 0)
     {
       char *log_dir = (char *) conf_value;
-      int log_dir_len = 0;
+      size_t log_dir_len = 0;
 
       log_dir_len = strlen (log_dir);
 
@@ -2358,7 +2358,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   else if (strcasecmp (conf_name, "SLOW_LOG_DIR") == 0)
     {
       char *slow_log_dir = (char *) conf_value;
-      int slow_log_dir_len = 0;
+      size_t slow_log_dir_len = 0;
 
       slow_log_dir_len = strlen (slow_log_dir);
 

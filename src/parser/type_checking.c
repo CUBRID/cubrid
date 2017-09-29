@@ -13298,9 +13298,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	PT_TYPE_ENUM supported_val_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int num_bad = 0, len, i, found_supported = 0;
-	int supported_json_types_len = sizeof (supported_json_type) / sizeof (supported_json_type[0]);
-	int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
-	int supported_val_types_len = sizeof (supported_val_types) / sizeof (supported_val_types[0]);
+	unsigned int supported_json_types_len = sizeof (supported_json_type) / sizeof (supported_json_type[0]);
+	unsigned int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
+	unsigned int supported_val_types_len = sizeof (supported_val_types) / sizeof (supported_val_types[0]);
 
 	PT_NODE *arg = arg_list;
 	const PT_TYPE_ENUM *current_types = supported_val_types;
@@ -13365,9 +13365,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
-	unsigned int num_bad = 0, len, i, found_supported = 0;
-	int supported_json_types_len = sizeof (supported_json_type) / sizeof (supported_json_type[0]);
-	int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
+	unsigned int num_bad = 0, i, found_supported = 0;
+	unsigned int supported_json_types_len = sizeof (supported_json_type) / sizeof (supported_json_type[0]);
+	unsigned int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
 	PT_NODE *arg = arg_list;
 
 	for (i = 0; i < supported_json_types_len; i++)
@@ -18488,8 +18488,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	db_value_domain_init (result, DB_TYPE_TIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	t_source = tz_get_system_timezone ();
 	t_dest = tz_get_session_local_timezone ();
-	len_source = strlen (t_source);
-	len_dest = strlen (t_dest);
+	len_source = (int) strlen (t_source);
+	len_dest = (int) strlen (t_dest);
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	tmp_time = tmp_datetime->time / 1000;
 
@@ -18857,12 +18857,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      db_make_null (result);
 	      return 1;
 	    }
-          if (er_errid () != NO_ERROR)
-            {
-              PT_ERRORc (parser, o1, er_msg ());
-            }
-          PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-                        pt_short_print (parser, o1), pt_show_type_enum (rTyp));
+	  if (er_errid () != NO_ERROR)
+	    {
+	      PT_ERRORc (parser, o1, er_msg ());
+	    }
+	  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       pt_short_print (parser, o1), pt_show_type_enum (rTyp));
 	  return 0;
 	}
       else

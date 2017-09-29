@@ -70,6 +70,10 @@
 
 #include "dbi.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define QUERY_BUFFER_MAX                4096
 
 #define FK_INFO_SORT_BY_PKTABLE_NAME	1

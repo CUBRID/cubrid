@@ -734,7 +734,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
     }
 
   /* need to lowercase the class name so that the lock manager can find it. */
-  len = strlen (spec->info.spec.entity_name->info.name.original);
+  len = (int) strlen (spec->info.spec.entity_name->info.name.original);
   /* parser->lcks_classes[n] will be freed at parser_free_parser() */
   lcks->classes[lcks->num_classes] = (char *) calloc (1, len + 1);
   if (lcks->classes[lcks->num_classes] == NULL)

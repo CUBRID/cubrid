@@ -34,6 +34,10 @@
 #include "system_parameter.h"
 #include "message_catalog.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define CSQL_MAXNAME	256
 
 static int parser_yyinput_single_line (char *buff, int max_size);

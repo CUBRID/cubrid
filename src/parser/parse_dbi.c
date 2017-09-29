@@ -48,6 +48,10 @@
 #include "object_template.h"
 #include "db_json.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define SET_PARSER_ERROR_AND_FREE_NODE(parser, result, default_msg_id)	      \
   do {									      \
       if (!pt_has_error(parser))					      \
@@ -576,7 +580,6 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   DB_OBJECT *mop;
   DB_TYPE db_type;
   char buf[100];
-  int length;
 
   assert (parser != NULL && val != NULL);
 
@@ -1773,7 +1776,6 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
   int collation_id = 0;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_NORMAL;
   JSON_VALIDATOR *validator = NULL;
-  int rc;
 
   if (dt == NULL)
     {

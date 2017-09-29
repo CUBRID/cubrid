@@ -1197,7 +1197,7 @@ int
 db_object_describe (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_QUERY_TYPE ** col_spec)
 {
   DB_QUERY_TYPE *t;
-  int i, bytes, attrid, shared, err = NO_ERROR;
+  int i, attrid, shared, err = NO_ERROR;
   MOP class_mop;
   const char **name;
   SM_DOMAIN *tmp_dom;
@@ -1222,7 +1222,7 @@ db_object_describe (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_Q
     {
       t->db_type = sm_att_type_id (class_mop, *name);
       t->size = pt_find_size_from_dbtype (t->db_type);
-      t->name = (char *) malloc (bytes = 1 + strlen (*name));
+      t->name = (char *) malloc (1 + strlen (*name));
       if (t->name)
 	strcpy ((char *) t->name, *name);
       else
@@ -1264,7 +1264,7 @@ db_object_fetch (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_QUER
   MOP class_mop;
   DB_QUERY_RESULT *r;
   DB_QUERY_TYPE *t;
-  int k, bytes;
+  int k;
   const char **name;
   int err = NO_ERROR;
   DB_VALUE **v;
@@ -1306,7 +1306,7 @@ db_object_fetch (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_QUER
     {
       t->db_type = sm_att_type_id (class_mop, *name);
       t->size = pt_find_size_from_dbtype (t->db_type);
-      t->name = (char *) malloc (bytes = 1 + strlen (*name));
+      t->name = (char *) malloc (1 + strlen (*name));
       if (t->name)
 	strcpy ((char *) t->name, *name);
       else

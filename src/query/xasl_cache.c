@@ -1213,7 +1213,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
   char *sql_user_text = NULL;
   char *sql_plan_text = NULL;
   struct timeval time_stored;
-  int sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
+  size_t sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
   char *strbuf = NULL;
 
   assert (xcache_entry != NULL && *xcache_entry == NULL);

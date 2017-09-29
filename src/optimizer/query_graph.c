@@ -7284,7 +7284,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		      temp_name = consp->attributes[0]->header.name;
 		      if (temp_name)
 			{
-			  int len = strlen (temp_name) + 1;
+			  size_t len = strlen (temp_name) + 1;
 			  index_entryp->statistics_attribute_name = (char *) malloc (sizeof (char) * len);
 			  if (index_entryp->statistics_attribute_name == NULL)
 			    {

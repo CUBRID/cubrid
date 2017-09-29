@@ -48,6 +48,10 @@
 
 #include "dbval.h"		/* this must be the last header file included!!! */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define TR_EXECUTION_ENABLED (tr_Execution_enabled == true)
 #define UNIQUE_SAVEPOINT_RENAME_TRIGGER "rENAMEtRIGGER"
 #define UNIQUE_SAVEPOINT_DROP_TRIGGER "dROPtRIGGER"

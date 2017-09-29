@@ -1719,7 +1719,7 @@ uci_put_value (DB_INDICATOR * indicator, DB_TYPE type, int precision, int scale,
    */
   if (ctype == DB_TYPE_C_CHAR || ctype == DB_TYPE_C_NCHAR || ctype == DB_TYPE_C_VARCHAR || ctype == DB_TYPE_C_VARNCHAR)
     {
-      int tmp_len = strlen ((char *) buf);
+      int tmp_len = (int) strlen ((char *) buf);
       if (precision == 0)
 	{
 	  precision = (tmp_len ? tmp_len : DB_DEFAULT_PRECISION);
@@ -2671,7 +2671,7 @@ set_sqlca_err (void)
   msg = er_msg ();
   strncpy (SQLERRMC, (msg == NULL) ? "" : msg, sizeof (SQLERRMC) - 1);
   SQLERRMC[sizeof (SQLERRMC) - 1] = '\0';
-  SQLERRML = strlen (SQLERRMC);
+  SQLERRML = (int) strlen (SQLERRMC);
 }
 
 /*

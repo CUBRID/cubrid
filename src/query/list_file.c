@@ -1649,7 +1649,7 @@ qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 {
   QFILE_TUPLE_DESCRIPTOR *tuple_descr_p;
   PAGE_PTR cur_page_p;
-  int tuple_length, offset;
+  int tuple_length;
   char *page_p;
 
   if (list_id_p == NULL)
@@ -1701,7 +1701,7 @@ int
 qfile_fast_intint_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int v1, int v2)
 {
   PAGE_PTR cur_page_p;
-  int tuple_length, tuple_value_length, tuple_value_size, offset;
+  int tuple_length, tuple_value_length, tuple_value_size;
   char *page_p, *tuple_p;
 
   if (list_id_p == NULL)
@@ -1762,7 +1762,7 @@ qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 {
   PAGE_PTR cur_page_p;
   int tuple_length, tuple_int_value_size, tuple_int_value_length;
-  int tuple_value_size, tuple_value_length, offset;
+  int tuple_value_size, tuple_value_length;
   char *page_p, *tuple_p;
 
   if (list_id_p == NULL)
@@ -1849,7 +1849,7 @@ qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
 {
   PAGE_PTR cur_page_p;
   int tuple_length;
-  int tuple_value_size, tuple_value_length, offset;
+  int tuple_value_size, tuple_value_length;
   char *page_p, *tuple_p;
 
   if (list_id_p == NULL)

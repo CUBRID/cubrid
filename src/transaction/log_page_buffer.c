@@ -7466,11 +7466,11 @@ logpb_verify_length (const char *db_fullname, const char *log_path, const char *
 
   if (log_path != NULL)
     {
-      length = strlen (log_path) + strlen (log_prefix) + 2;
+      length = (int) (strlen (log_path) + strlen (log_prefix) + 2);
     }
   else
     {
-      length = strlen (log_prefix) + 1;
+      length = (int) strlen (log_prefix) + 1;
     }
 
   if (length + volmax_suffix > pathname_max)
@@ -8991,7 +8991,7 @@ static int
 logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_t backup_time)
 {
   char ctime_buf1[CTIME_MAX], ctime_buf2[CTIME_MAX];
-  int time_str_len;
+  size_t time_str_len;
 
   if (stop_at < backup_time)
     {

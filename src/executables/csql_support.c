@@ -40,6 +40,10 @@
 #include "memory_alloc.h"
 #include "system_parameter.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* fixed stop position of a tab */
 #define TAB_STOP        8
 
