@@ -1585,11 +1585,38 @@ db_make_string (DB_VALUE * value, const char *str)
 int
 db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
 {
-  int error = NO_ERROR;
-  bool is_char_type;
+  /* 
+   *  Remove the comments when decided on implementation.
+   *  int error = NO_ERROR;
+   *  bool is_char_type;
+   */
 #if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ERROR (value);
 #endif
+
+  value->data.ch.info.style = MEDIUM_STRING;
+  value->data.ch.info.is_max_string = false;
+  value->data.ch.info.compressed_need_clear = false;
+  value->data.ch.medium.codeset = codeset;
+  value->data.ch.medium.size = size;
+  value->data.ch.medium.buf = (char *) str;
+  value->data.ch.medium.compressed_buf = NULL;
+  value->data.ch.medium.compressed_size = 0;
+  value->domain.general_info.is_null = ((void *) str != NULL) ? 0 : 1;
+  value->domain.general_info.is_null = (size == 0
+					&& prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)) ? 1 :
+    DB_IS_NULL (value);
+  value->domain.char_info.collation_id = collation_id;
+  value->need_clear = false;
+
+  return NO_ERROR;
+
+  /*  todo: Decide on what implementation do we keep. The old one from dbval.h, 
+   *  that is currently active, which does not do any preliminary checks, or the
+   *  one from db_macro.c which does extra checks that caused some regressions to
+   *  fail.
+   */
+#if 0
   is_char_type = (value->domain.general_info.type == DB_TYPE_VARCHAR
 		  || value->domain.general_info.type == DB_TYPE_CHAR
 		  || value->domain.general_info.type == DB_TYPE_NCHAR
@@ -1599,7 +1626,8 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 
   if (is_char_type)
     {
-#if 0
+/* #if 0 */
+/* Remove comments up when decided on implementation. */
       if (size <= DB_SMALL_CHAR_BUF_SIZE)
 	{
 	  value->data.ch.info.style = SMALL_STRING;
@@ -1608,7 +1636,8 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	  memcpy (value->data.ch.sm.buf, str, size);
 	}
       else
-#endif
+/* #endif*/
+/* Remove comments up when decided on implementation. */
       if (size <= DB_MAX_STRING_LENGTH)
 	{
 	  value->data.ch.info.style = MEDIUM_STRING;
@@ -1673,6 +1702,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
     }
   return error;
+#endif
 }
 
 /*
