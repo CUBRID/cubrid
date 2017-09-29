@@ -15163,7 +15163,7 @@ static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
   /* todo? */
-  return DB_VALUE_COMPARE_RESULT::DB_UNK;
+  return DB_UNK;
 }
 
 static DB_VALUE_COMPARE_RESULT
