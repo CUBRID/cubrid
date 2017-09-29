@@ -5172,22 +5172,11 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	  if (has_schema)
 	    {
-	      char *schema_raw;
-	      buf->ptr = or_unpack_string_alloc (buf->ptr, &schema_raw);
+	      rc = or_get_json_validator (buf, d->json_validator);
 	      if (rc != NO_ERROR)
 		{
 		  goto error;
 		}
-	      d->json_validator = db_json_load_validator (schema_raw, rc);
-
-	      if (rc != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  goto error;
-		}
-
-	      or_align (buf, OR_INT_SIZE);
-	      assert (er_errid () == NO_ERROR);
 	    }
 
 	  /* 
@@ -5557,6 +5546,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  if (schema_raw != NULL)
 		    {
 		      dom->json_validator = db_json_load_validator (schema_raw, rc);
+		      free (schema_raw);
 		      if (rc != NO_ERROR)
 			{
 			  ASSERT_ERROR ();
@@ -7794,6 +7784,32 @@ error_return:
   enumeration->count = 0;
   enumeration->elements = NULL;
   return error;
+}
+
+int
+or_get_json_validator (OR_BUF * buf, JSON_VALIDATOR * &validator)
+{
+  char *schema_raw;
+  int rc;
+  DB_VALUE schema_value;
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+  rc = (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, false, NULL, 0);
+
+  validator = db_json_load_validator (schema_value.data.ch.medium.buf, rc);
+
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return rc;
+    }
+
+  or_align (buf, OR_INT_SIZE);
+  assert (er_errid () == NO_ERROR);
+
+  pr_clear_value (&schema_value);
+
+  return NO_ERROR;
 }
 
 /*

@@ -2051,6 +2051,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 {
   char *start;
   int offset;
+  DB_VALUE schema_value;
 
   /* safe-guard : domain collation flags should only be used for execution */
   if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
@@ -2089,9 +2090,12 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 			tf_Metaclass_domain.mc_repid);
 
   put_enumeration (buf, &DOM_GET_ENUMERATION (domain));
-  put_string (buf,
-	      domain->json_validator == NULL ? NULL : db_json_get_schema_raw_from_validator (domain->json_validator));
 
+  if (domain->json_validator)
+    {
+      db_make_string (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
+      (*(tp_String.data_writeval)) (buf, &schema_value);
+    }
   if (start + offset != buf->ptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
@@ -2188,6 +2192,7 @@ disk_to_domain2 (OR_BUF * buf)
 	}
       strcpy (schema_raw, str);
       domain->json_validator = db_json_load_validator (schema_raw, error_code);
+      free (schema_raw);
 
       if (error_code != NO_ERROR)
 	{

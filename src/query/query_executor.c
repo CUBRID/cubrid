@@ -22134,6 +22134,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
   int enum_elements_count = 0;
   TP_DOMAIN *setdomain = NULL;
   const char *set_of_string = NULL;
+  JSON_VALIDATOR *validator = NULL;
 
   assert (domain != NULL && result != NULL);
 
@@ -22183,7 +22184,9 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       enum_elements = domain->enumeration.elements;
       enum_elements_count = domain->enumeration.count;
       break;
-
+    case DB_TYPE_JSON:
+      validator = domain->json_validator;
+      break;
     default:
       break;
     }
@@ -22462,6 +22465,34 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       pr_clone_value (pprec_scale_result, result);
       pr_clear_value (pprec_scale_result);
 
+      return NO_ERROR;
+    }
+  if (validator != NULL)
+    {
+      DB_DATA_STATUS data_stat;
+      DB_VALUE bracket1, bracket2, db_name, schema;
+
+      if (db_json_get_schema_raw_from_validator (validator) != NULL)
+	{
+	  db_make_string (&db_name, name);
+	  pr_clone_value (&db_name, result);
+	  db_make_string (&schema, db_json_get_schema_raw_from_validator (validator));
+	  db_make_string (&bracket1, "(");
+	  db_make_string (&bracket2, ")");
+
+	  if (db_string_concatenate (result, &bracket1, result, &data_stat) != NO_ERROR ||
+	      (data_stat != DATA_STATUS_OK) ||
+	      db_string_concatenate (result, &schema, result, &data_stat) != NO_ERROR ||
+	      (data_stat != DATA_STATUS_OK) ||
+	      db_string_concatenate (result, &bracket2, result, &data_stat) != NO_ERROR ||
+	      (data_stat != DATA_STATUS_OK))
+	    {
+	      pr_clear_value (&bracket1);
+	      pr_clear_value (&schema);
+	      pr_clear_value (&bracket2);
+	      goto exit_on_error;
+	    }
+	}
       return NO_ERROR;
     }
 

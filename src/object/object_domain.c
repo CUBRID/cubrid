@@ -3489,6 +3489,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 		  return NULL;
 		}
 	      domain->json_validator = db_json_load_validator (schema_raw, error_code);
+	      free (schema_raw);
 	      if (error_code != NO_ERROR)
 		{
 		  assert (false);

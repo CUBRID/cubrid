@@ -109,12 +109,14 @@ static void db_json_search_helper (const JSON_VALUE *whole_doc,
                                    std::vector < std::string > &result);
 static unsigned int db_json_get_depth_helper (const JSON_VALUE *doc);
 
-JSON_VALIDATOR::JSON_VALIDATOR (char *schema_raw) : schema_raw (schema_raw),
-                                                    is_loaded (false),
+JSON_VALIDATOR::JSON_VALIDATOR (char *schema_raw) : is_loaded (false),
                                                     document (NULL),
                                                     schema (NULL),
                                                     validator (NULL)
 {
+  this->schema_raw = (char *) malloc (strlen (schema_raw) + 1);
+  strcpy (this->schema_raw, schema_raw);
+
   /*
    * schema_raw_hash_code = std::hash<std::string>{}(std::string(schema_raw));
    * TODO is it worth the hash code?
