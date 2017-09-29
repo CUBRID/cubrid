@@ -1512,9 +1512,6 @@ extern int or_packed_enumeration_size (const DB_ENUMERATION * e);
 extern int or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * e);
 extern int or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * e);
 extern int or_header_size (char *ptr);
-#if defined (__cplusplus)
-extern int or_get_json_validator (OR_BUF *buf, JSON_VALIDATOR * &validator);
-#endif
 extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
 extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
@@ -1534,5 +1531,11 @@ extern char *or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** 
 extern int classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, int *pageid);
 extern void classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr);
 extern int classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
+
+#if defined (__cplusplus)
+/* *INDENT OFF* */
+extern int or_get_json_validator (OR_BUF *buf, JSON_VALIDATOR * &validator);
+/* *INDENT ON* */
+#endif
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

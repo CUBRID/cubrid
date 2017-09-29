@@ -148,7 +148,7 @@ SHA1Result (SHA1Context * context)
 void
 SHA1Input (SHA1Context * context, const unsigned char *message_array, size_t length)
 {
-  if (length <= 0)
+  if (length == 0)
     {
       return;
     }
@@ -159,7 +159,7 @@ SHA1Input (SHA1Context * context, const unsigned char *message_array, size_t len
       return;
     }
 
-  while (length-- >= 0 && !context->Corrupted)
+  while (length-- > 0 && !context->Corrupted)
     {
       context->Message_Block[context->Message_Block_Index++] = (*message_array & 0xFF);
 
