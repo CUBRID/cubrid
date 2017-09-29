@@ -10468,14 +10468,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		return DOMAIN_ERROR;
 	      }
 
-	    /*JSON_DOC *doc = new JSON_DOC (src);
-	       TODO should we check new?
-	       if (doc == NULL)
-	       {
-	       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (JSON_DOC));
-	       return DOMAIN_ERROR;
-	       } */
-
 	    if (desired_domain->json_validator
 		&& db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
 	      {

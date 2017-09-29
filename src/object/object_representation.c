@@ -2759,7 +2759,7 @@ or_get_data (OR_BUF * buf, char *data, int length)
  * or_put_string - write string to or buf
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
- *    str(in): string to wirte
+ *    str(in): string to write
  *
  * Note:
  *    Does byte padding on strings to bring them up to 4 byte boundary.
