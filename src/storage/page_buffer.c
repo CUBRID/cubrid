@@ -677,6 +677,7 @@ struct pgbuf_double_write_buffer
   unsigned int num_pages;	/* the total number of pages in double write buffer, power of 2 */
   unsigned int num_block_pages;	/* the number of pages in a block, power of 2 */
   unsigned int log2_num_block_pages;	/* log2 from block number of pages */
+  unsigned int blocks_flush_counter;	/* blocks flush counter */
 
   PGBUF_DWB_CHECKSUM_INFO *checksum_info;	/* checksum info */
 
@@ -1097,7 +1098,7 @@ static PGBUF_BATCH_FLUSH_HELPER pgbuf_Flush_helper;
 
 /* Double write buffer */
 char dwb_volume_name[PATH_MAX];
-static PGBUF_DWB pgbuf_Double_Write = { NULL, 0, 0, 0, 0, NULL, PTHREAD_MUTEX_INITIALIZER,
+static PGBUF_DWB pgbuf_Double_Write = { NULL, 0, 0, 0, 0, 0, NULL, PTHREAD_MUTEX_INITIALIZER,
   PGBUF_DWB_WAIT_QUEUE_INITIALIZER, 0, NULL, NULL_VOLDES
 };
 
@@ -1514,6 +1515,8 @@ STATIC_INLINE void pgbuf_dwb_add_checksum_computation_request (THREAD_ENTRY * th
 							       unsigned int position_in_block)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_dwb_finalize_checksum_info (PGBUF_DWB_CHECKSUM_INFO * checksum_info)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_dwb_needs_speedup_checksum_computation (THREAD_ENTRY * thread_p)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, PGBUF_DWB_SLOT * slot,
 						   bool mark_checksum_computed, bool * checksum_computed)
@@ -16922,6 +16925,66 @@ pgbuf_dwb_finalize_checksum_info (PGBUF_DWB_CHECKSUM_INFO * checksum_info)
 }
 
 /*
+ * pgbuf_dwb_needs_speedup_checksum_computation () - Check whether checksum computation is too slow.
+ *
+ * return   : error code
+ * thread_p (in) : thread entry
+ *
+ *  Note: This function checks whether checksum thread remains behind. Currently, we consider that it remains
+ *    behind if at least three pages are waiting for checksum computation. This computation is relative, since 
+ *    while computing, the checksum thread may advance.
+ */
+STATIC_INLINE bool
+pgbuf_dwb_needs_speedup_checksum_computation (THREAD_ENTRY * thread_p)
+{
+#define DWB_CHECKSUM_REQUESTS_THRESHOLD 3
+  volatile UINT64 *slot_data_checksum_requests = NULL;
+  volatile int *first_diff_bit_positions = NULL;
+  int error_code = NO_ERROR, position_in_element, position;
+  UINT64 slot_data_checksum_requests_elem = NULL, bit_mask;
+  unsigned int element_position, num_elements, counter;
+
+  slot_data_checksum_requests = pgbuf_Double_Write.checksum_info->slot_data_checksum_requests;
+  first_diff_bit_positions = pgbuf_Double_Write.checksum_info->first_diff_bit_positions;
+
+  num_elements = PGBUF_DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK * PGBUF_DWB_NUM_TOTAL_BLOCKS;
+
+  counter = 0;
+  for (element_position = 0; element_position < num_elements; element_position++)
+    {
+      slot_data_checksum_requests_elem = ATOMIC_INC_64 (&slot_data_checksum_requests[element_position], 0ULL);
+      position_in_element = ATOMIC_INC_32 (&first_diff_bit_positions[element_position], 0);
+      if (position_in_element >= PGBUF_DWB_CHECKSUM_ELEMENT_NO_BITS)
+	{
+	  continue;
+	}
+
+      bit_mask = 1ULL << position_in_element;
+      for (position = position_in_element; position < PGBUF_DWB_CHECKSUM_ELEMENT_NO_BITS; position++)
+	{
+	  if ((slot_data_checksum_requests_elem & bit_mask) == 0)
+	    {
+	      /* Stop searching bits */
+	      break;
+	    }
+
+	  counter++;
+	  bit_mask = bit_mask << 1;
+	}
+
+      /* Check counter after each element. */
+      if (counter >= DWB_CHECKSUM_REQUESTS_THRESHOLD)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+
+#undef DWB_CHECKSUM_REQUESTS_THRESHOLD
+}
+
+/*
  * pgbuf_dwb_slot_compute_checksum () - compute checksum for slot data
  *
  * return   : error code
@@ -16930,7 +16993,6 @@ pgbuf_dwb_finalize_checksum_info (PGBUF_DWB_CHECKSUM_INFO * checksum_info)
  * mark_checksum_computed(in): true, if mark computed checksum
  * checksum_computed(out): true, if checksum computed now
  */
-
 STATIC_INLINE int
 pgbuf_dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, PGBUF_DWB_SLOT * slot, bool mark_checksum_computed,
 				 bool * checksum_computed)
@@ -17251,6 +17313,7 @@ pgbuf_dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_path_p, cons
   pgbuf_Double_Write.num_pages = num_pages;
   pgbuf_Double_Write.num_block_pages = num_block_pages;
   pgbuf_Double_Write.log2_num_block_pages = (unsigned int) (log ((float) num_block_pages) / log ((float) 2));
+  pgbuf_Double_Write.blocks_flush_counter = 0;
   pgbuf_Double_Write.checksum_info = checksum_info;
   pthread_mutex_init (&pgbuf_Double_Write.mutex, NULL);
   pgbuf_dwb_init_wait_queue (&pgbuf_Double_Write.wait_queue);
@@ -18155,6 +18218,10 @@ pgbuf_dwb_flush_block (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * block, UINT64 
 
   assert (block != NULL && block->count_wb_pages > 0 && pgbuf_dwb_is_created (thread_p));
 
+  /* Currently we allow only one block to be flushed. */
+  ATOMIC_INC_32 (&pgbuf_Double_Write.blocks_flush_counter, 1);
+  assert (pgbuf_Double_Write.blocks_flush_counter <= 1);
+
   /* Order slots by VPID, to flush faster. */
   error_code = pgbuf_dwb_block_create_ordered_slots (block, &p_dwb_ordered_slots);
   if (error_code != NO_ERROR)
@@ -18184,7 +18251,8 @@ pgbuf_dwb_flush_block (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * block, UINT64 
 			  IO_PAGESIZE, true) == NULL)
     {
       /* Something wrong happens. */
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      goto end;
     }
   if (fileio_synchronize (thread_p, pgbuf_Double_Write.vdes, dwb_volume_name) != pgbuf_Double_Write.vdes)
     {
@@ -18235,6 +18303,7 @@ reset_bit_position:
     }
 
 end:
+  ATOMIC_INC_32 (&pgbuf_Double_Write.blocks_flush_counter, -1);
   if (p_dwb_ordered_slots != NULL)
     {
       free_and_init (p_dwb_ordered_slots);
@@ -18447,7 +18516,7 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
   PGBUF_DWB_BLOCK *block = NULL, *prev_block = NULL;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
   PGBUF_DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
-  bool checksum_computed;
+  bool checksum_computed, checksum_computation_started;
 
   assert ((io_page_p != NULL || dwb_slot->io_page != NULL) && vpid != NULL);
   if (thread_p == NULL)
@@ -18476,26 +18545,28 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 
   if (count_wb_pages < PGBUF_DWB_BLOCK_NUM_PAGES)
     {
+      /* Add checksum computation request, first. */
       pgbuf_dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
+      checksum_computation_started = false;
 #if defined (SERVER_MODE)
-      /* Set the bit */
       if (thread_is_dwb_checksum_computation_thread_available ())
 	{
+	  /* Wake up checksum thread to compute checksum. */
 	  thread_wakeup_dwb_checksum_computation_thread ();
+	  checksum_computation_started = true;
 	}
-      /*if (thread_is_dwb_checksum_computation_thread_available () || thread_is_dwb_flush_block_thread_available ())
-         {
-         if (!thread_dwb_checksum_computation_thread_is_running ())
-         {
-         thread_wakeup_dwb_checksum_computation_thread ();
-         }
-         else if (!thread_dwb_flush_block_with_checksum_thread_is_running ())
-         {
-         /* Wake up flush with checksum thread to parallelize checksums computation. *
-         thread_wakeup_dwb_flush_block_with_checksum_thread ();
-         }
-         } */
-      else
+
+      if (thread_is_dwb_flush_block_thread_available ())
+	{
+	  if (pgbuf_dwb_needs_speedup_checksum_computation (thread_p))
+	    {
+	      /* Wake up flush with checksum thread to parallelize checksums computation. */
+	      thread_wakeup_dwb_flush_block_with_checksum_thread ();
+	      checksum_computation_started = true;
+	    }
+	}
+
+      if (checksum_computation_started == false)
 #endif
 	{
 	  error_code = pgbuf_dwb_slot_compute_checksum (thread_p, dwb_slot, true, &checksum_computed);
@@ -18539,22 +18610,7 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 	}
 
       pgbuf_dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
-      /* Now it's safe to flush the block. */
-#if defined (SERVER_MODE)
-      /* Set the checksum bit */
-      if (thread_is_dwb_checksum_computation_thread_available ())
-	{
-	  thread_wakeup_dwb_checksum_computation_thread ();
-	}
-      else
-#endif
-	{
-	  error_code = pgbuf_dwb_slot_compute_checksum (thread_p, dwb_slot, true, &checksum_computed);
-	  if (error_code != NO_ERROR)
-	    {
-	      return error_code;
-	    }
-	}
+      /* Now it's safe to flush the block. The flush thread can compute the checksum for latest slot. */
 
 #if defined (SERVER_MODE)
       if (thread_is_dwb_flush_block_thread_available ())
@@ -18565,6 +18621,12 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
       else
 #endif
 	{
+	  error_code = pgbuf_dwb_slot_compute_checksum (thread_p, dwb_slot, true, &checksum_computed);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+
 	flush_block:
 	  /* Flush all pages from current block */
 	  error_code = pgbuf_dwb_flush_block (thread_p, block, NULL);
@@ -18700,10 +18762,6 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-
-
-
-#if 0
   /* Couldn't find the block for flush. However, we can computes some checksums to reach flushing point faster. */
   for (block_no = 0; block_no < pgbuf_Double_Write.num_blocks; block_no++)
     {
@@ -18721,7 +18779,6 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
 	  goto start_flush_block;
 	}
     }
-#endif
 
   return NO_ERROR;
 }
@@ -18847,6 +18904,7 @@ pgbuf_dwb_compute_block_checksums (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * bl
 		  return error_code;
 		}
 
+	      /* Add the bit, if checksum was computed by me. */
 	      if (checksum_computed)
 		{
 		  computed_checksum_bits |= bit_mask;
@@ -18867,7 +18925,7 @@ pgbuf_dwb_compute_block_checksums (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * bl
 	  do
 	    {
 	      position_in_element = ATOMIC_INC_32 (&first_diff_bit_positions[element_position], 0);
-	      if (position_in_element > position)
+	      if (position_in_element >= position)
 		{
 		  /* Other transaction advanced before me, nothing to do. */
 		  break;
