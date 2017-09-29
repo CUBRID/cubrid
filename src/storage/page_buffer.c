@@ -17260,8 +17260,8 @@ pgbuf_dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_path_p, cons
   PGBUF_DWB_CHECKSUM_INFO *checksum_info = NULL;
   PGBUF_DWB_SLOTS_HASH *slots_hash = NULL;
 
-  double_write_buffer_size = prm_get_integer_value (PRM_ID_PB_DOUBLE_WRITE_BUFFER_SIZE);
-  num_blocks = prm_get_integer_value (PRM_ID_PB_DOUBLE_WRITE_BUFFER_BLOCKS);
+  double_write_buffer_size = prm_get_integer_value (PRM_ID_DWB_SIZE);
+  num_blocks = prm_get_integer_value (PRM_ID_DWB_BLOCKS);
   if (double_write_buffer_size == 0 || num_blocks == 0)
     {
       /* Do not use double write buffer. */
@@ -17624,7 +17624,7 @@ pgbuf_dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_
 
       num_pages = fileio_get_number_of_volume_pages (read_fd, IO_PAGESIZE);
       buffer_size = num_pages * IO_PAGESIZE;
-      // if (sysprm_get_range (prm_get_name (PRM_ID_PB_DOUBLE_WRITE_BUFFER_SIZE), &min_buffer_size,
+      // if (sysprm_get_range (prm_get_name (PRM_ID_DWB_SIZE), &min_buffer_size,
       //              &max_buffer_size) != NO_ERROR)
       //   if (buffer_size < min_buffer_size || buffer_size > max_buffer_size)
       //     {
@@ -18517,6 +18517,7 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
   PGBUF_DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
   bool checksum_computed, checksum_computation_started;
+  int checksum_threads;
 
   assert ((io_page_p != NULL || dwb_slot->io_page != NULL) && vpid != NULL);
   if (thread_p == NULL)
@@ -18543,8 +18544,14 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
   block = &pgbuf_Double_Write.blocks[dwb_slot->block_no];
   count_wb_pages = ATOMIC_INC_32 (&block->count_wb_pages, 1);
 
+  checksum_threads = prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS);
   if (count_wb_pages < PGBUF_DWB_BLOCK_NUM_PAGES)
     {
+      if (checksum_threads == 0)
+	{
+	  return NO_ERROR;
+	}
+
       /* Add checksum computation request, first. */
       pgbuf_dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
       checksum_computation_started = false;
@@ -18554,6 +18561,11 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 	  /* Wake up checksum thread to compute checksum. */
 	  thread_wakeup_dwb_checksum_computation_thread ();
 	  checksum_computation_started = true;
+
+	  if (checksum_threads == 1)
+	    {
+	      return NO_ERROR;
+	    }
 	}
 
       if (thread_is_dwb_flush_block_thread_available ())
@@ -18609,10 +18621,28 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 	    }
 	}
 
-      pgbuf_dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
-      /* Now it's safe to flush the block. The flush thread can compute the checksum for latest slot. */
-
+      if (checksum_threads > 0)
+	{
+	  pgbuf_dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
 #if defined (SERVER_MODE)
+	  if (checksum_threads == 1)
+	    {
+	      if (thread_is_dwb_checksum_computation_thread_available ())
+		{
+		  /* Wake up checksum thread to compute checksum. */
+		  thread_wakeup_dwb_checksum_computation_thread ();
+		}
+	    }
+#endif
+	}
+
+      /* Now it's safe to flush the block. The flush thread can compute the checksum for latest slot. */
+#if defined (SERVER_MODE)
+      if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == false)
+	{
+	  goto flush_block;
+	}
+
       if (thread_is_dwb_flush_block_thread_available ())
 	{
 	  /* Wakeup the thread to flush the block. */
@@ -18728,6 +18758,7 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR, retry_flush_iter = 0, retry_flush_max = 5;
   UINT64 position_with_flags;
   bool block_slots_checksum_computed, block_needs_flush;
+  int checksum_threads;
 
   position_with_flags = ATOMIC_INC_64 (&pgbuf_Double_Write.position_with_flags, 0ULL);
   if (!PGBUF_DWB_IS_CREATED (position_with_flags) || PGBUF_DWB_IS_MODIFYING_STRUCTURE (position_with_flags))
@@ -18736,7 +18767,26 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
     }
 
   flush_block = NULL;
-  pgbuf_find_block_with_all_checksums_computed (thread_p, &block_no);
+
+  checksum_threads = prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS);
+  if (checksum_threads == 0)
+    {
+      unsigned int i;
+      block_no = PGBUF_DWB_NUM_TOTAL_BLOCKS;
+      for (i = 0; i < PGBUF_DWB_NUM_TOTAL_BLOCKS; i++)
+	{
+	  if (pgbuf_Double_Write.blocks[i].count_wb_pages == PGBUF_DWB_BLOCK_NUM_PAGES)
+	    {
+	      block_no = i;
+	      break;
+	    }
+	}
+    }
+  else
+    {
+      pgbuf_find_block_with_all_checksums_computed (thread_p, &block_no);
+    }
+
   if (block_no < PGBUF_DWB_NUM_TOTAL_BLOCKS)
     {
       flush_block = &pgbuf_Double_Write.blocks[block_no];
@@ -18759,6 +18809,11 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
 	  return error_code;
 	}
 
+      return NO_ERROR;
+    }
+
+  if (checksum_threads <= 1)
+    {
       return NO_ERROR;
     }
 

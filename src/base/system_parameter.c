@@ -628,8 +628,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PB_MONITOR_LOCKS "pgbuf_monitor_locks"
 
 #define PRM_NAME_CTE_MAX_RECURSIONS "cte_max_recursions"
-#define PRM_NAME_PB_DOUBLE_WRITE_BUFFER_SIZE "double_write_buffer_size"
-#define PRM_NAME_PB_DOUBLE_WRITE_BUFFER_BLOCKS "double_write_buffer_blocks"
+#define PRM_NAME_DWB_SIZE "double_write_buffer_size"
+#define PRM_NAME_DWB_BLOCKS "double_write_buffer_blocks"
+#define PRM_NAME_ENABLE_DWB_FLUSH_THREAD "double_write_buffer_enable_flush_thread"
+#define PRM_NAME_DWB_CHECKSUM_THREADS "double_write_buffer_checksum_threads"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2120,17 +2122,28 @@ static int prm_cte_max_recursions_upper = 1000000;
 static int prm_cte_max_recursions_lower = 2;
 static unsigned int prm_cte_max_recursions_flag = 0;
 
-unsigned int PRM_PB_DOUBLE_WRITE_BUFFER_SIZE = 2 * 1024 * 1024;	/* 2M */
-static unsigned int prm_pb_double_write_buffer_size_flag = 0;
-static unsigned int prm_pb_double_write_buffer_size_default = (2 * 1024 * 1024);	/* 2M */
-static unsigned int prm_pb_double_write_buffer_size_upper = (4 * 1024 * 1024);	/* 4M */
-static unsigned int prm_pb_double_write_buffer_size_lower = 0;
+unsigned int PRM_DWB_SIZE = 2 * 1024 * 1024;	/* 2M */
+static unsigned int prm_dwb_size_flag = 0;
+static unsigned int prm_dwb_size_default = (2 * 1024 * 1024);	/* 2M */
+static unsigned int prm_dwb_size_upper = (4 * 1024 * 1024);	/* 4M */
+static unsigned int prm_dwb_size_lower = 0;
 
-unsigned int PRM_PB_DOUBLE_WRITE_BUFFER_BLOCKS = 2;
-static unsigned int prm_pb_double_write_buffer_blocks_flag = 0;
-static unsigned int prm_pb_double_write_buffer_blocks_default = 2;
-static unsigned int prm_pb_double_write_buffer_blocks_upper = 8;
-static unsigned int prm_pb_double_write_buffer_blocks_lower = 0;
+unsigned int PRM_DWB_BLOCKS = 2;
+static unsigned int prm_dwb_blocks_flag = 0;
+static unsigned int prm_dwb_blocks_default = 2;
+static unsigned int prm_dwb_blocks_upper = 8;
+static unsigned int prm_dwb_blocks_lower = 0;
+
+bool PRM_ENABLE_DWB_FLUSH_THREAD = true;
+static bool prm_enable_dwb_flush_thread_default = true;
+static unsigned int prm_enable_dwb_flush_thread_flag = 0;
+
+
+unsigned int PRM_DWB_CHECKSUM_THREADS = 2;
+static unsigned int prm_dwb_checksum_threads_flag = 0;
+static unsigned int prm_dwb_checksum_threads_default = 2;
+static unsigned int prm_dwb_checksum_threads_upper = 2;
+static unsigned int prm_dwb_checksum_threads_lower = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5387,27 +5400,50 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PB_DOUBLE_WRITE_BUFFER_SIZE,
-   PRM_NAME_PB_DOUBLE_WRITE_BUFFER_SIZE,
+  {PRM_ID_DWB_SIZE,
+   PRM_NAME_DWB_SIZE,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
-   &prm_pb_double_write_buffer_size_flag,
-   (void *) &prm_pb_double_write_buffer_size_default,
-   (void *) &PRM_PB_DOUBLE_WRITE_BUFFER_SIZE,
-   (void *) &prm_pb_double_write_buffer_size_upper,
-   (void *) &prm_pb_double_write_buffer_size_lower,
+   &prm_dwb_size_flag,
+   (void *) &prm_dwb_size_default,
+   (void *) &PRM_DWB_SIZE,
+   (void *) &prm_dwb_size_upper,
+   (void *) &prm_dwb_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PB_DOUBLE_WRITE_BUFFER_BLOCKS,
-   PRM_NAME_PB_DOUBLE_WRITE_BUFFER_BLOCKS,
+  {PRM_ID_DWB_BLOCKS,
+   PRM_NAME_DWB_BLOCKS,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
-   &prm_pb_double_write_buffer_blocks_flag,
-   (void *) &prm_pb_double_write_buffer_blocks_default,
-   (void *) &PRM_PB_DOUBLE_WRITE_BUFFER_BLOCKS,
-   (void *) &prm_pb_double_write_buffer_blocks_upper,
-   (void *) &prm_pb_double_write_buffer_blocks_lower,
+   &prm_dwb_blocks_flag,
+   (void *) &prm_dwb_blocks_default,
+   (void *) &PRM_DWB_BLOCKS,
+   (void *) &prm_dwb_blocks_upper,
+   (void *) &prm_dwb_blocks_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_DWB_FLUSH_THREAD,
+   PRM_NAME_ENABLE_DWB_FLUSH_THREAD,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_enable_dwb_flush_thread_flag,
+   (void *) &prm_enable_dwb_flush_thread_default,
+   (void *) &PRM_ENABLE_DWB_FLUSH_THREAD,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DWB_CHECKSUM_THREADS,
+   PRM_NAME_DWB_CHECKSUM_THREADS,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   &prm_dwb_checksum_threads_flag,
+   (void *) &prm_dwb_checksum_threads_default,
+   (void *) &PRM_DWB_CHECKSUM_THREADS,
+   (void *) &prm_dwb_checksum_threads_upper,
+   (void *) &prm_dwb_checksum_threads_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
