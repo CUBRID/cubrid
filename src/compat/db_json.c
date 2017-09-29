@@ -21,7 +21,8 @@
  * db_json.c - functions related to json
  */
 
-#if defined (__cplusplus)
+#include "db_json.h"
+
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/error/en.h"
 #include "rapidjson/schema.h"
@@ -29,10 +30,15 @@
 #include "rapidjson/encodings.h"
 #include "rapidjson/allocators.h"
 #include "rapidjson/writer.h"
-#include "db_json.h"
+
 #include <vector>
 #include "error_manager.h"
 #include "memory_alloc.h"
+
+#if defined GetObject
+/* stupid windows and their definitions; GetObject is defined as GetObjectW or GetObjectA */
+#undef GetObject
+#endif /* defined GetObject */
 
 class JSON_PRIVATE_ALLOCATOR
 {
@@ -60,14 +66,14 @@ typedef
   JSON_VALUE >
   JSON_POINTER;
 
-class JSON_DOC:
-public rapidjson::GenericDocument < JSON_ENCODING, JSON_PRIVATE_MEMPOOL >
+class
+  JSON_DOC:
+  public
+  rapidjson::GenericDocument <
+  JSON_ENCODING,
+  JSON_PRIVATE_MEMPOOL >
 {
 };
-
-#endif
-
-#if defined (__cplusplus)
 
 #define DB_JSON_MAX_STRING_SIZE 32
 
@@ -321,6 +327,7 @@ db_json_get_type_as_str (const JSON_DOC *document)
     {
       /* we shouldn't get here */
       assert (false);
+      return "UNKNOWN";
     }
 }
 
@@ -358,11 +365,6 @@ db_json_get_depth (const JSON_DOC *doc) {
 static unsigned int
 db_json_get_depth_helper (const JSON_VALUE *doc)
 {
-  if (!doc->IsArray () && !doc->IsObject ())
-    {
-      return 0;
-    }
-
   if (doc->IsArray ())
     {
       unsigned int max = 0;
@@ -388,6 +390,11 @@ db_json_get_depth_helper (const JSON_VALUE *doc)
 	    }
 	}
       return max + 1;
+    }
+  else
+    {
+      /* no depth */
+      return 0;
     }
 }
 
@@ -492,13 +499,11 @@ db_json_search_helper (const JSON_VALUE *whole_doc,
 
 	  if (resulting_json->IsInt ())
 	    {
-	      int val = resulting_json->GetInt ();
-	      snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%d", val);
+	      snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%d", resulting_json->GetInt ());
 	    }
 	  else if (resulting_json->IsDouble ())
 	    {
-	      float val = resulting_json->GetDouble ();
-	      snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%f", val);
+	      snprintf (final_string, DB_JSON_MAX_STRING_SIZE, "%lf", resulting_json->GetDouble ());
 	    }
 	  else if (resulting_json->IsString ())
 	    {
@@ -942,7 +947,5 @@ db_json_delete_validator (JSON_VALIDATOR *validator)
 }
 
 /*end of C functions*/
-
-#endif /* defined (__cplusplus) */
 
 /* *INDENT-ON* */
