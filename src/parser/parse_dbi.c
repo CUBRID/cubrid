@@ -1826,6 +1826,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
 	  strcpy (json_schema_raw, (const char *) dt->info.data_type.json_schema->bytes);
 
 	  validator = db_json_load_validator (json_schema_raw, error_code);
+	  free (json_schema_raw);
 
 	  if (error_code != NO_ERROR)
 	    {
@@ -2065,6 +2066,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 	    }
 	  strcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes);
 	  validator = db_json_load_validator (raw_schema, error_code);
+	  free (raw_schema);
 
 	  if (error_code != NO_ERROR)
 	    {

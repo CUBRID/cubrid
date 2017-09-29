@@ -1234,6 +1234,20 @@ or_get_domain_internal (char *ptr)
 	      return NULL;
 	    }
 	}
+
+      if (OR_VAR_TABLE_ELEMENT_LENGTH (dstart, ORC_DOMAIN_SCHEMA_JSON_OFFSET) != 0)
+	{
+	  OR_BUF buf;
+
+	  offset = OR_VAR_TABLE_ELEMENT_OFFSET (dstart, ORC_DOMAIN_SCHEMA_JSON_OFFSET);
+	  or_init (&buf, dstart + offset, 0);
+
+	  error = or_get_json_validator (&buf, domain->json_validator);
+	  if (error != NO_ERROR)
+	    {
+	      return NULL;
+	    }
+	}
     }
 
   return domain;
