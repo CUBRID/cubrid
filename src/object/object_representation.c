@@ -4865,7 +4865,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
       if (has_schema)
 	{
-	  rc = or_put_string_alined_with_length (buf, db_json_get_schema_raw_from_validator (d->json_validator));
+	  rc = or_put_string_aligned_with_length (buf, db_json_get_schema_raw_from_validator (d->json_validator));
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -7787,17 +7787,20 @@ error_return:
 }
 
 int
-or_get_json_validator (OR_BUF * buf, JSON_VALIDATOR * &validator)
+or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
 {
-  char *schema_raw;
   int rc;
   DB_VALUE schema_value;
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
   rc = (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, false, NULL, 0);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return rc;
+    }
 
   validator = db_json_load_validator (schema_value.data.ch.medium.buf, rc);
-
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -8717,7 +8720,7 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
  *  the length of the string to the buffer
  */
 int
-or_put_string_alined_with_length (OR_BUF * buf, char *str)
+or_put_string_aligned_with_length (OR_BUF * buf, char *str)
 {
   int len;
   int rc = NO_ERROR;

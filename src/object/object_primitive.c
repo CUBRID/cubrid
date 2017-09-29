@@ -15091,7 +15091,7 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
   int rc;
   assert (value->data.json.json_body != NULL);
 
-  rc = or_put_string_alined_with_length (buf, value->data.json.json_body);
+  rc = or_put_string_aligned_with_length (buf, value->data.json.json_body);
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();

@@ -1022,12 +1022,20 @@ extern "C"
 
 #ifdef REINTERPRET_CAST
 #error "REINTERPRET_CAST definition conflict"
-#else				/* !STATIC_CAST */
+#else				/* !REINTERPRET_CAST */
 #ifdef __cplusplus
 #define REINTERPRET_CAST(dest_type, expr) reinterpret_cast<dest_type>(expr)
 #else				/* !__cplusplus */
 #define REINTERPRET_CAST(dest_type, expr) ((dest_type) (expr))
 #endif				/* !__cplusplus */
 #endif				/* !REINTERPRET_CAST */
+
+
+/* Use REFP to declare a reference to pointer in *.c files without indent complaining. Do not use it in .cpp files. */
+#ifdef REFPTR
+#error "REFP definition conflict"
+#else				/* !REFPTR */
+#define REFPTR(T, name) T *& name
+#endif				/* !REFPTR */
 
 #endif				/* _PORTING_H_ */
