@@ -41,7 +41,7 @@
 #include "string_opfunc.h"
 #include "tz_support.h"
 #include "file_io.h"
-#include "db_json.h"
+#include "db_json.hpp"
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"

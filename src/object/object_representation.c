@@ -41,7 +41,7 @@
 #include "regu_var.h"
 #include "object_primitive.h"
 #include "query_list.h"
-#include "db_json.h"
+#include "db_json.hpp"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

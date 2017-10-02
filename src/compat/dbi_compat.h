@@ -24,7 +24,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <sys/types.h>
-#include "db_json.h"
+#include "db_json.hpp"
 
 #ifndef _DBI_COMPAT_H_
 #define _DBI_COMPAT_H_

@@ -48,7 +48,7 @@
 #include "locator.h"
 #include "server_interface.h"
 #include "execute_statement.h"
-#include "db_json.h"
+#include "db_json.hpp"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

@@ -31,7 +31,7 @@
 
 #include "config.h"
 #include "dbdef.h"
-#include "db_json.h"
+#include "db_json.hpp"
 
 /*
  * DB_MAX_IDENTIFIER_LENGTH -

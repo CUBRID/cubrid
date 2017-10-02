@@ -32,7 +32,7 @@
 #include <ctype.h>
 #include <assert.h>
 
-#include "db_json.h"
+#include "db_json.hpp"
 #include "object_print.h"
 
 #include "error_manager.h"

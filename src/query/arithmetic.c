@@ -42,7 +42,7 @@
 #include "crypt_opfunc.h"
 #include "string_opfunc.h"
 #include "db_date.h"
-#include "db_json.h"
+#include "db_json.hpp"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

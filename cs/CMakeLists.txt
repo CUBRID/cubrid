@@ -53,7 +53,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_temp.c
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
-  ${COMPAT_DIR}/db_json.c
+  ${COMPAT_DIR}/db_json.cpp
   )
 
 set(BASE_SOURCES

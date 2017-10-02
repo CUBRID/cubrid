@@ -46,7 +46,7 @@
 #include "db_date.h"
 #include "dbtype.h"
 #include "query_dump.h"
-#include "db_json.h"
+#include "db_json.hpp"
 #include "arithmetic.h"
 
 /* this must be the last header file included!!! */

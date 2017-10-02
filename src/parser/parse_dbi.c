@@ -46,7 +46,7 @@
 #include "intl_support.h"
 #include "virtual_object.h"
 #include "object_template.h"
-#include "db_json.h"
+#include "db_json.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

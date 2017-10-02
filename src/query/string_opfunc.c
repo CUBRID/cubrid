@@ -57,7 +57,7 @@
 #include "es_common.h"
 #endif /* !defined (SERVER_MODE) */
 
-#include "db_json.h"
+#include "db_json.hpp"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
