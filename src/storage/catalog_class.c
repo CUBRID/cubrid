@@ -1878,6 +1878,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 	  goto error;
 	}
       db_make_string (&attrs[9].value, schema_str);
+      attrs[9].value.need_clear = true;
     }
   else
     {
@@ -3008,8 +3009,8 @@ catcls_get_property_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 					      property_vars[i].is_unique,
 					      property_vars[i].is_reverse,
 					      property_vars[i].is_primary_key,
-					      property_vars[i].
-					      is_foreign_key);
+					      property_vars
+					      [i].is_foreign_key);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
