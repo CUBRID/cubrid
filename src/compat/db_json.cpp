@@ -18,10 +18,10 @@
  */
 
 /*
- * db_json.c - functions related to json
+ * db_json.cpp - functions related to json
  */
 
-#include "db_json.h"
+#include "db_json.hpp"
 
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/error/en.h"
@@ -76,8 +76,6 @@ class
 };
 
 #define DB_JSON_MAX_STRING_SIZE 32
-
-/* *INDENT-OFF* */
 
 class JSON_VALIDATOR
 {
@@ -949,5 +947,3 @@ db_json_delete_validator (JSON_VALIDATOR *validator)
 }
 
 /*end of C functions*/
-
-/* *INDENT-ON* */

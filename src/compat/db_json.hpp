@@ -18,7 +18,7 @@
  */
 
 /*
- * db_json.h - functions related to json
+ * db_json.hpp - functions related to json
  */
 
 #ifndef _DB_JSON_H
@@ -95,4 +95,4 @@ DB_JSON_TYPE db_json_get_type (JSON_DOC *doc);
 #endif /* defined (__cplusplus) */
 
 /* *INDENT-ON* */
-#endif /* db_json.h */
+#endif /* db_json.hpp */
