@@ -5648,7 +5648,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		    {
 		      dom->json_validator =
 			db_json_load_validator (schema_raw, rc);
-		      free (schema_raw);
+		      db_private_free (NULL, schema_raw);
 		      if (rc != NO_ERROR)
 			{
 			  ASSERT_ERROR ();
@@ -7021,8 +7021,9 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 	    {
 	      value->data.json.schema_raw =
 		domain->json_validator ==
-		NULL ? NULL : db_json_get_schema_raw_from_validator (domain->
-								     json_validator);
+		NULL ? NULL :
+		db_json_get_schema_raw_from_validator
+		(domain->json_validator);
 	    }
 	}
       else
