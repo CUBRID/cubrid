@@ -85,9 +85,10 @@ JSON_DOC *db_json_allocate_doc_and_set_type (DB_JSON_TYPE desired_type);
 JSON_VALIDATOR *db_json_load_validator (char *json_schema_raw, int &error_code);
 JSON_VALIDATOR *db_json_copy_validator (JSON_VALIDATOR *validator);
 JSON_DOC *db_json_allocate_doc ();
-void db_json_delete_doc (JSON_DOC *doc);
-void db_json_delete_validator (JSON_VALIDATOR *validator);
+void db_json_delete_doc (JSON_DOC * &doc);
+void db_json_delete_validator (JSON_VALIDATOR * &validator);
 int db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc);
+bool db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2);
 
 DB_JSON_TYPE db_json_get_type (JSON_DOC *doc);
 /* end of C functions */

@@ -92,9 +92,12 @@ int mvcc_header_size_lookup[8] = {
   OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE,
   OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCCID_SIZE,
   OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
-  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
-  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
-  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE +
+    OR_MVCC_PREV_VERSION_LSA_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE +
+    OR_MVCC_PREV_VERSION_LSA_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCCID_SIZE +
+    OR_MVCC_PREV_VERSION_LSA_SIZE
 };
 
 static TP_DOMAIN *unpack_domain (OR_BUF * buf, int *is_null);
@@ -103,22 +106,40 @@ static char *or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *unpack_str_array (char *buffer, char ***string_array, int count);
 #endif
-static int or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align);
+static int or_put_varchar_internal (OR_BUF * buf, char *string, int charlen,
+				    int align);
 static int or_varbit_length_internal (int bitlen, int align);
 static int or_varchar_length_internal (int charlen, int align);
-static int or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align);
-static char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size);
+static int or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen,
+				   int align);
+static char *or_unpack_var_table_internal (char *ptr, int nvars,
+					   OR_VARINFO * vars,
+					   int offset_size);
 static char or_mvcc_get_flag (RECDES * record);
 static void or_mvcc_set_flag (RECDES * record, char flags);
-static INLINE MVCCID or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE MVCCID or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_get_chn (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+static INLINE MVCCID or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags,
+					int *error)
   __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
+static INLINE int or_mvcc_set_insid (OR_BUF * buf,
+				     MVCC_REC_HEADER * mvcc_rec_header)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE MVCCID or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags,
+					int *error)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_get_chn (OR_BUF * buf, int *error)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_delid (OR_BUF * buf,
+				     MVCC_REC_HEADER * mvcc_rec_header)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_chn (OR_BUF * buf,
+				   MVCC_REC_HEADER * mvcc_rec_header)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf,
+						MVCC_REC_HEADER *
+						mvcc_rec_header)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags,
+						LOG_LSA * prev_version_lsa)
   __attribute__ ((ALWAYS_INLINE));
 
 /*
@@ -157,7 +178,8 @@ classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 	  continue;
 	}
 
-      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || DB_GET_STRING (&value) == NULL)
+      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING
+	  || DB_GET_STRING (&value) == NULL)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	}
@@ -203,7 +225,8 @@ error:
  *
  */
 int
-classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, int *pageid)
+classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid,
+				 int *pageid)
 {
   char *ptr;
   int result = 0;
@@ -567,7 +590,8 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
  * error(out): NO_ERROR or error code
  */
 int
-or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit, int variable_offset_size)
+or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid,
+			     int bound_bit, int variable_offset_size)
 {
   int repid_and_flags;
 
@@ -581,7 +605,8 @@ or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_b
     }
   OR_SET_VAR_OFFSET_SIZE (repid_and_flags, variable_offset_size);
 
-  repid_and_flags |= (mvcc_flag & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS;
+  repid_and_flags |=
+    (mvcc_flag & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS;
 
   return or_put_int (buf, repid_and_flags);
 }
@@ -595,7 +620,8 @@ or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_b
 static char
 or_mvcc_get_flag (RECDES * record)
 {
-  assert (record != NULL && record->data != NULL && record->length >= OR_HEADER_SIZE (record->data));
+  assert (record != NULL && record->data != NULL
+	  && record->length >= OR_HEADER_SIZE (record->data));
 
   return (char) (OR_GET_MVCC_FLAG (record->data));
 }
@@ -614,7 +640,8 @@ or_mvcc_set_flag (RECDES * record, char flags)
   int mvcc_flag = 1;
   int repid_and_flag = 0;
 
-  assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE);
+  assert (record != NULL && record->data != NULL
+	  && record->length >= OR_MVCC_REP_SIZE);
 
   repid_and_flag = OR_GET_INT (record->data + OR_REP_OFFSET);
 
@@ -798,7 +825,8 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
   int rc = NO_ERROR;
   int repid_and_flag_bits;
 
-  assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE && mvcc_header != NULL);
+  assert (record != NULL && record->data != NULL
+	  && record->length >= OR_MVCC_REP_SIZE && mvcc_header != NULL);
 
   or_init (&buf, record->data, record->length);
 
@@ -808,7 +836,9 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
       goto exit_on_error;
     }
   mvcc_header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
-  mvcc_header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  mvcc_header->mvcc_flag =
+    (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) &
+	    OR_MVCC_FLAG_MASK);
 
   mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
   if (rc != NO_ERROR)
@@ -816,19 +846,23 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
       goto exit_on_error;
     }
 
-  mvcc_header->mvcc_ins_id = or_mvcc_get_insid (&buf, mvcc_header->mvcc_flag, &rc);
+  mvcc_header->mvcc_ins_id =
+    or_mvcc_get_insid (&buf, mvcc_header->mvcc_flag, &rc);
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
+  mvcc_header->mvcc_del_id =
+    or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  rc = or_mvcc_get_prev_version_lsa (&buf, mvcc_header->mvcc_flag, &(mvcc_header->prev_version_lsa));
+  rc =
+    or_mvcc_get_prev_version_lsa (&buf, mvcc_header->mvcc_flag,
+				  &(mvcc_header->prev_version_lsa));
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -860,18 +894,22 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
   int old_mvcc_size = 0, new_mvcc_size = 0;
   bool is_bigone = false;
 
-  assert (record != NULL && record->data != NULL && record->length != 0 && record->length >= OR_MVCC_MIN_HEADER_SIZE);
+  assert (record != NULL && record->data != NULL && record->length != 0
+	  && record->length >= OR_MVCC_MIN_HEADER_SIZE);
 
   repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
 
-  mvcc_old_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  mvcc_old_flag =
+    (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) &
+	    OR_MVCC_FLAG_MASK);
 
   old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag];
   new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag];
   if (old_mvcc_size != new_mvcc_size)
     {
       /* resize MVCC info inside recdes */
-      if (record->area_size < (record->length + new_mvcc_size - old_mvcc_size))
+      if (record->area_size <
+	  (record->length + new_mvcc_size - old_mvcc_size))
 	{
 	  /* TO DO - er_set */
 	  assert (false);
@@ -885,8 +923,10 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
   buf = &orep;
 
   error =
-    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid,
-				 repid_and_flag_bits & OR_BOUND_BIT_FLAG, OR_GET_OFFSET_SIZE (record->data));
+    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag,
+				 mvcc_rec_header->repid,
+				 repid_and_flag_bits & OR_BOUND_BIT_FLAG,
+				 OR_GET_OFFSET_SIZE (record->data));
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -919,7 +959,8 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
   return NO_ERROR;
 
 exit_on_error:
-  return (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
+  return (error == NO_ERROR
+	  && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
 }
 
 /*
@@ -937,7 +978,8 @@ exit_on_error:
  *    will contain the header size.
  */
 int
-or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit, int variable_offset_size)
+or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header,
+		    int bound_bit, int variable_offset_size)
 {
   OR_BUF orep, *buf;
   int error = NO_ERROR;
@@ -952,7 +994,8 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
   buf = &orep;
 
   error =
-    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid, bound_bit,
+    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag,
+				 mvcc_rec_header->repid, bound_bit,
 				 variable_offset_size);
   if (error != NO_ERROR)
     {
@@ -988,7 +1031,8 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
   return NO_ERROR;
 
 exit_on_error:
-  return (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
+  return (error == NO_ERROR
+	  && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
 }
 
 #if !defined (SERVER_MODE)
@@ -1368,7 +1412,8 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
       if (wrkmem == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (size_t) LZO1X_1_MEM_COMPRESS);
 	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto cleanup;
 	}
@@ -1376,7 +1421,8 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       /* Alloc memory for the compressed string */
       /* Worst case LZO compression size from their FAQ */
-      compressed_string = (char *) malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
+      compressed_string =
+	(char *) malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
       if (compressed_string == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -1386,13 +1432,18 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	}
 
       /* Compress the string */
-      rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) charlen, (lzo_bytep) compressed_string,
-			     &compressed_length, wrkmem);
+      rc =
+	lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) charlen,
+			  (lzo_bytep) compressed_string, &compressed_length,
+			  wrkmem);
       if (rc != LZO_E_OK)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
-		  fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD), FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
-		  fileio_get_zip_level_string (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL,
+		  4, FILEIO_ZIP_LZO1X_METHOD,
+		  fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD),
+		  FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
+		  fileio_get_zip_level_string
+		  (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
 	  rc = ER_IO_LZO_COMPRESS_FAIL;
 	  goto cleanup;
 	}
@@ -1554,7 +1605,9 @@ or_get_varchar_length (OR_BUF * buf, int *rc)
 {
   int charlen, compressed_length = 0, decompressed_length = 0;
 
-  *rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
+  *rc =
+    or_get_varchar_compression_lengths (buf, &compressed_length,
+					&decompressed_length);
 
   if (compressed_length > 0)
     {
@@ -3014,7 +3067,8 @@ or_unpack_var_table (char *ptr, int nvars, OR_VARINFO * vars)
  *    structures that will be filled in.
  */
 static char *
-or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size)
+or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars,
+			      int offset_size)
 {
   int i, offset, offset2;
   int rc = NO_ERROR;
@@ -3050,7 +3104,8 @@ or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offse
 OR_VARINFO *
 or_get_var_table (OR_BUF * buf, int nvars, char *(*allocator) (int))
 {
-  return or_get_var_table_internal (buf, nvars, allocator, BIG_VAR_OFFSET_SIZE);
+  return or_get_var_table_internal (buf, nvars, allocator,
+				    BIG_VAR_OFFSET_SIZE);
 }
 
 /*
@@ -3062,7 +3117,8 @@ or_get_var_table (OR_BUF * buf, int nvars, char *(*allocator) (int))
  *    allocator(in): allocator for return value allocation
  */
 OR_VARINFO *
-or_get_var_table_internal (OR_BUF * buf, int nvars, char *(*allocator) (int), int offset_size)
+or_get_var_table_internal (OR_BUF * buf, int nvars, char *(*allocator) (int),
+			   int offset_size)
 {
   OR_VARINFO *vars;
   int length;
@@ -3089,7 +3145,8 @@ or_get_var_table_internal (OR_BUF * buf, int nvars, char *(*allocator) (int), in
 	}
       else
 	{
-	  (void) or_unpack_var_table_internal (buf->ptr, nvars, vars, offset_size);
+	  (void) or_unpack_var_table_internal (buf->ptr, nvars, vars,
+					       offset_size);
 	}
       buf->ptr += length;
     }
@@ -4098,7 +4155,8 @@ or_unpack_string_alloc (char *ptr, char **string)
       /* need to handle allocation errors */
       if (new_ == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (length * sizeof (char)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (length * sizeof (char)));
 	  ptr += length;
 	}
       else
@@ -4521,9 +4579,12 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	   * to use -1 consistently for this after which this little
 	   * chunk of code can be removed.
 	   */
-	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
-	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
-	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION))
+	  if ((id == DB_TYPE_VARCHAR
+	       && d->precision == DB_MAX_VARCHAR_PRECISION)
+	      || (id == DB_TYPE_VARNCHAR
+		  && d->precision == DB_MAX_VARNCHAR_PRECISION)
+	      || (id == DB_TYPE_VARBIT
+		  && d->precision == DB_MAX_VARBIT_PRECISION))
 	    {
 	      precision = 0;
 	    }
@@ -4547,7 +4608,9 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_JSON:
 	  if (d->json_validator != NULL)
 	    {
-	      size += or_packed_string_length (db_json_get_schema_raw_from_validator (d->json_validator), NULL);
+	      size +=
+		or_packed_string_length (db_json_get_schema_raw_from_validator
+					 (d->json_validator), NULL);
 	    }
 	  break;
 	default:
@@ -4588,11 +4651,13 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
  *    and the value is logically NULL.
  */
 int
-or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_null)
+or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids,
+	       int is_null)
 {
   unsigned int carrier, extended_precision, extended_scale;
   int precision, scale;
-  int has_oid, has_subdomain, has_enum, has_schema;
+  int has_oid, has_subdomain, has_enum;
+  bool has_schema;
   bool has_collation;
   TP_DOMAIN *d;
   DB_TYPE id;
@@ -4652,7 +4717,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
       has_subdomain = 0;
       has_enum = 0;
       has_collation = false;
-      has_schema = 0;
+      has_schema = false;
 
       switch (id)
 	{
@@ -4710,10 +4775,12 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	   * types with the maximum precision as the -1 case.  See commentary
 	   * in or_packed_domain_size above.
 	   */
-	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
-	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION) || (id == DB_TYPE_VARBIT
-											   && d->precision ==
-											   DB_MAX_VARBIT_PRECISION))
+	  if ((id == DB_TYPE_VARCHAR
+	       && d->precision == DB_MAX_VARCHAR_PRECISION)
+	      || (id == DB_TYPE_VARNCHAR
+		  && d->precision == DB_MAX_VARNCHAR_PRECISION)
+	      || (id == DB_TYPE_VARBIT
+		  && d->precision == DB_MAX_VARBIT_PRECISION))
 	    {
 	      precision = 0;
 	    }
@@ -4751,7 +4818,8 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
 	  if (id == DB_TYPE_MIDXKEY)
 	    {
-	      assert (d->precision > 0 && d->precision == tp_domain_size (d->setdomain));
+	      assert (d->precision > 0
+		      && d->precision == tp_domain_size (d->setdomain));
 	      precision = d->precision;
 	    }
 
@@ -4777,7 +4845,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	  if (d->json_validator != NULL)
 	    {
 	      carrier |= OR_DOMAIN_SCHEMA_FLAG;
-	      has_schema = 1;
+	      has_schema = true;
 	    }
 	  break;
 	default:
@@ -4793,7 +4861,9 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	  else
 	    {
-	      carrier |= (unsigned int) OR_DOMAIN_PRECISION_MAX << OR_DOMAIN_PRECISION_SHIFT;
+	      carrier |=
+		(unsigned int) OR_DOMAIN_PRECISION_MAX <<
+		OR_DOMAIN_PRECISION_SHIFT;
 	      extended_precision = precision;
 	    }
 	}
@@ -4865,7 +4935,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
       if (has_schema)
 	{
-	  rc = or_put_string_aligned_with_length (buf, db_json_get_schema_raw_from_validator (d->json_validator));
+	  rc = or_put_json_validator (buf, d->json_validator);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -4900,8 +4970,9 @@ static TP_DOMAIN *
 unpack_domain_2 (OR_BUF * buf, int *is_null)
 {
   TP_DOMAIN *domain, *last, *d;
-  unsigned int carrier, precision, scale, codeset, has_classoid, has_setdomain, has_enum, collation_id,
-    collation_storage, has_schema;
+  unsigned int carrier, precision, scale, codeset, has_classoid,
+    has_setdomain, has_enum, collation_id, collation_storage;
+  bool has_schema;
   bool more, auto_precision, is_desc, has_collation;
   DB_TYPE type;
   int index;
@@ -4931,7 +5002,8 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
       /* Hack, check for references to built-in domains. */
       if (type == DB_TYPE_NULL && (carrier & OR_DOMAIN_BUILTIN_FLAG))
 	{
-	  index = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
+	  index =
+	    (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
 	  /* 
 	   * Recall that the builtin domain indexes are 1 based rather
 	   * than zero based, must adjust prior to indexing the table.
@@ -4955,7 +5027,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	  has_classoid = 0;
 	  has_setdomain = 0;
 	  has_enum = 0;
-	  has_schema = 0;
+	  has_schema = false;
 	  auto_precision = false;
 	  has_collation = false;
 
@@ -4990,8 +5062,11 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      break;
 
 	    case DB_TYPE_NUMERIC:
-	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
-	      scale = (carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
+	      precision =
+		(carrier & OR_DOMAIN_PRECISION_MASK) >>
+		OR_DOMAIN_PRECISION_SHIFT;
+	      scale =
+		(carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
 	      break;
 
 	    case DB_TYPE_NCHAR:
@@ -5001,8 +5076,11 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      has_collation = true;
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
-	      codeset = (carrier & OR_DOMAIN_CODSET_MASK) >> OR_DOMAIN_CODSET_SHIFT;
-	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
+	      codeset =
+		(carrier & OR_DOMAIN_CODSET_MASK) >> OR_DOMAIN_CODSET_SHIFT;
+	      precision =
+		(carrier & OR_DOMAIN_PRECISION_MASK) >>
+		OR_DOMAIN_PRECISION_SHIFT;
 
 	      if (precision == 0)
 		{
@@ -5036,16 +5114,20 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      has_setdomain = carrier & OR_DOMAIN_SET_DOMAIN_FLAG;
 	      if (type == DB_TYPE_MIDXKEY)
 		{
-		  precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
+		  precision =
+		    (carrier & OR_DOMAIN_PRECISION_MASK) >>
+		    OR_DOMAIN_PRECISION_SHIFT;
 		}
 	      break;
 
 	    case DB_TYPE_ENUMERATION:
 	      has_enum = carrier & OR_DOMAIN_ENUMERATION_FLAG;
-	      has_collation = ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) == OR_DOMAIN_ENUM_COLL_FLAG);
+	      has_collation =
+		((carrier & OR_DOMAIN_ENUM_COLL_FLAG) ==
+		 OR_DOMAIN_ENUM_COLL_FLAG);
 	      break;
 	    case DB_TYPE_JSON:
-	      has_schema = carrier & OR_DOMAIN_SCHEMA_FLAG;
+	      has_schema = (carrier & OR_DOMAIN_SCHEMA_FLAG) != 0;
 	      break;
 	    default:
 	      break;
@@ -5060,11 +5142,13 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		}
 	      collation_id = collation_storage & OR_DOMAIN_COLLATION_MASK;
 
-	      if ((collation_storage & OR_DOMAIN_COLL_ENFORCE_FLAG) == OR_DOMAIN_COLL_ENFORCE_FLAG)
+	      if ((collation_storage & OR_DOMAIN_COLL_ENFORCE_FLAG) ==
+		  OR_DOMAIN_COLL_ENFORCE_FLAG)
 		{
 		  collation_flag = TP_DOMAIN_COLL_ENFORCE;
 		}
-	      else if ((collation_storage & OR_DOMAIN_COLL_LEAVE_FLAG) == OR_DOMAIN_COLL_LEAVE_FLAG)
+	      else if ((collation_storage & OR_DOMAIN_COLL_LEAVE_FLAG) ==
+		       OR_DOMAIN_COLL_LEAVE_FLAG)
 		{
 		  collation_flag = TP_DOMAIN_COLL_LEAVE;
 		}
@@ -5196,7 +5280,8 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 #if !defined (NDEBUG)
 	  if (type == DB_TYPE_MIDXKEY)
 	    {
-	      assert (d->precision > 0 && d->precision == tp_domain_size (d->setdomain));
+	      assert (d->precision > 0
+		      && d->precision == tp_domain_size (d->setdomain));
 	    }
 #endif /* NDEBUG */
 
@@ -5278,7 +5363,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
       /* Hack, check for references to built-in domains. */
       if (type == DB_TYPE_NULL && (carrier & OR_DOMAIN_BUILTIN_FLAG))
 	{
-	  index = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
+	  index =
+	    (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
 	  /* Recall that the builtin domain indexes are 1 based rather than zero based, must adjust prior to indexing
 	   * the table. */
 	  domain = tp_domain_resolve_default ((DB_TYPE) (index - 1));
@@ -5327,8 +5413,11 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
 	    case DB_TYPE_NUMERIC:
 	      /* get precision and scale */
-	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
-	      scale = (carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
+	      precision =
+		(carrier & OR_DOMAIN_PRECISION_MASK) >>
+		OR_DOMAIN_PRECISION_SHIFT;
+	      scale =
+		(carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
 	      /* do we have an extra precision word ? */
 	      if (precision == OR_DOMAIN_PRECISION_MAX)
 		{
@@ -5361,11 +5450,13 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      collation_id = collation_storage & OR_DOMAIN_COLLATION_MASK;
 
-	      if ((collation_storage & OR_DOMAIN_COLL_ENFORCE_FLAG) == OR_DOMAIN_COLL_ENFORCE_FLAG)
+	      if ((collation_storage & OR_DOMAIN_COLL_ENFORCE_FLAG) ==
+		  OR_DOMAIN_COLL_ENFORCE_FLAG)
 		{
 		  collation_flag = TP_DOMAIN_COLL_ENFORCE;
 		}
-	      else if ((collation_storage & OR_DOMAIN_COLL_LEAVE_FLAG) == OR_DOMAIN_COLL_LEAVE_FLAG)
+	      else if ((collation_storage & OR_DOMAIN_COLL_LEAVE_FLAG) ==
+		       OR_DOMAIN_COLL_LEAVE_FLAG)
 		{
 		  collation_flag = TP_DOMAIN_COLL_LEAVE;
 		}
@@ -5376,8 +5467,11 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
-	      codeset = ((carrier & OR_DOMAIN_CODSET_MASK) >> OR_DOMAIN_CODSET_SHIFT);
-	      precision = ((carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT);
+	      codeset =
+		((carrier & OR_DOMAIN_CODSET_MASK) >> OR_DOMAIN_CODSET_SHIFT);
+	      precision =
+		((carrier & OR_DOMAIN_PRECISION_MASK) >>
+		 OR_DOMAIN_PRECISION_SHIFT);
 	      /* do we have an extra precision word ? */
 	      if (precision == OR_DOMAIN_PRECISION_MAX)
 		{
@@ -5411,7 +5505,9 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		      precision = TP_FLOATING_PRECISION_VALUE;
 		    }
 		}
-	      dom = tp_domain_find_charbit (type, codeset, collation_id, collation_flag, precision, is_desc);
+	      dom =
+		tp_domain_find_charbit (type, codeset, collation_id,
+					collation_flag, precision, is_desc);
 	      break;
 
 	    case DB_TYPE_OBJECT:
@@ -5433,7 +5529,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  OID_SET_NULL (&class_oid);
 		  class_mop = NULL;
 		}
-	      dom = tp_domain_find_object (type, &class_oid, class_mop, is_desc);
+	      dom =
+		tp_domain_find_object (type, &class_oid, class_mop, is_desc);
 	      break;
 
 	    case DB_TYPE_SET:
@@ -5457,7 +5554,9 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
 	      if (type == DB_TYPE_MIDXKEY)
 		{
-		  precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
+		  precision =
+		    (carrier & OR_DOMAIN_PRECISION_MASK) >>
+		    OR_DOMAIN_PRECISION_SHIFT;
 		}
 
 	      dom = tp_domain_find_set (type, setdomain, is_desc);
@@ -5473,7 +5572,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
 	    case DB_TYPE_ENUMERATION:
 	      {
-		if ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) == OR_DOMAIN_ENUM_COLL_FLAG)
+		if ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) ==
+		    OR_DOMAIN_ENUM_COLL_FLAG)
 		  {
 		    LANG_COLLATION *lc;
 		    collation_id = or_get_int (buf, &rc);
@@ -5514,7 +5614,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      {
 		if ((carrier & OR_DOMAIN_SCHEMA_FLAG) != 0)
 		  {
-		    buf->ptr = or_unpack_string_alloc (buf->ptr, &schema_raw);
+		    rc = or_get_json_schema (buf, schema_raw);
 		    if (rc != NO_ERROR)
 		      {
 			goto error;
@@ -5532,7 +5632,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	  if (dom == NULL)
 	    {
 	      /* not found. need to construct one */
-	      dom = tp_domain_construct (type, NULL, precision, scale, setdomain);
+	      dom =
+		tp_domain_construct (type, NULL, precision, scale, setdomain);
 	      if (dom == NULL)
 		{
 		  goto error;
@@ -5545,7 +5646,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_JSON:
 		  if (schema_raw != NULL)
 		    {
-		      dom->json_validator = db_json_load_validator (schema_raw, rc);
+		      dom->json_validator =
+			db_json_load_validator (schema_raw, rc);
 		      free (schema_raw);
 		      if (rc != NO_ERROR)
 			{
@@ -5563,7 +5665,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;
-		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
+		  dom->collation_flag =
+		    (TP_DOMAIN_COLL_ACTION) collation_flag;
 		case DB_TYPE_BIT:
 		case DB_TYPE_VARBIT:
 		  dom->codeset = codeset;
@@ -5578,7 +5681,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  dom->collation_id = collation_id;
 		  dom->enumeration.collation_id = collation_id;
 		  dom->codeset = codeset;
-		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
+		  dom->collation_flag =
+		    (TP_DOMAIN_COLL_ACTION) collation_flag;
 		default:
 		  break;
 		}
@@ -5586,7 +5690,9 @@ unpack_domain (OR_BUF * buf, int *is_null)
 #if !defined (NDEBUG)
 	      if (type == DB_TYPE_MIDXKEY)
 		{
-		  assert (dom->precision > 0 && dom->precision == tp_domain_size (dom->setdomain));
+		  assert (dom->precision > 0
+			  && dom->precision ==
+			  tp_domain_size (dom->setdomain));
 		}
 #endif /* NDEBUG */
 
@@ -5600,7 +5706,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 #if !defined (NDEBUG)
 	  if (type == DB_TYPE_MIDXKEY)
 	    {
-	      assert (dom->precision > 0 && dom->precision == tp_domain_size (dom->setdomain));
+	      assert (dom->precision > 0
+		      && dom->precision == tp_domain_size (dom->setdomain));
 	    }
 #endif /* NDEBUG */
 
@@ -5679,7 +5786,8 @@ or_get_domain (OR_BUF * buf, TP_DOMAIN * caller_dom, int *is_null)
  *    for more information.
  */
 char *
-or_pack_domain (char *ptr, TP_DOMAIN * domain, int include_classoids, int is_null)
+or_pack_domain (char *ptr, TP_DOMAIN * domain, int include_classoids,
+		int is_null)
 {
   OR_BUF buf;
   int rc = 0;
@@ -5770,8 +5878,9 @@ or_put_sub_domain (OR_BUF * buf)
  *    or_put_set and or_packed_set_size.
  */
 void
-or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, int *bound_bits, int *offset_table,
-		    int *element_tags, int *element_size)
+or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain,
+		    int *bound_bits, int *offset_table, int *element_tags,
+		    int *element_size)
 {
   TP_DOMAIN *element_domain;
   int homogeneous;
@@ -5859,8 +5968,9 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
  *
  */
 int
-or_put_set_header (OR_BUF * buf, DB_TYPE set_type, int size, int domain, int bound_bits, int offset_table,
-		   int element_tags, int common_sub_header)
+or_put_set_header (OR_BUF * buf, DB_TYPE set_type, int size, int domain,
+		   int bound_bits, int offset_table, int element_tags,
+		   int common_sub_header)
 {
   unsigned int header;
   int rc = NO_ERROR;
@@ -5911,8 +6021,9 @@ or_put_set_header (OR_BUF * buf, DB_TYPE set_type, int size, int domain, int bou
  *    common_sub(out): set non-zero if there will be substructure tags
  */
 int
-or_get_set_header (OR_BUF * buf, DB_TYPE * set_type, int *size, int *domain, int *bound_bits, int *offset_table,
-		   int *element_tags, int *common_sub)
+or_get_set_header (OR_BUF * buf, DB_TYPE * set_type, int *size, int *domain,
+		   int *bound_bits, int *offset_table, int *element_tags,
+		   int *common_sub)
 {
   unsigned int header;
   int rc = NO_ERROR;
@@ -5950,7 +6061,8 @@ or_skip_set_header (OR_BUF * buf)
   int count, length, rc = NO_ERROR;
   int domain, bound_bits, offset_table, element_tags, sub_header;
 
-  or_get_set_header (buf, &set_type, &count, &domain, &bound_bits, &offset_table, &element_tags, &sub_header);
+  or_get_set_header (buf, &set_type, &count, &domain, &bound_bits,
+		     &offset_table, &element_tags, &sub_header);
 
   if (offset_table)
     {
@@ -6018,7 +6130,8 @@ or_packed_set_length (SETOBJ * set, int include_domain)
   set_domain = setobj_domain (set);
 
   /* Determine storage characteristics based on the domain */
-  or_packed_set_info (set_type, set_domain, include_domain, &bound_bits, &offset_table, &element_tags, &element_size);
+  or_packed_set_info (set_type, set_domain, include_domain, &bound_bits,
+		      &offset_table, &element_tags, &element_size);
 
   len = OR_SET_HEADER_SIZE;
 
@@ -6116,10 +6229,12 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 
   /* determine storage characteristics based on the domain */
   set_start = buf->ptr;
-  or_packed_set_info (set_type, set_domain, include_domain, &bound_bits, &offset_table, &element_tags, &element_size);
+  or_packed_set_info (set_type, set_domain, include_domain, &bound_bits,
+		      &offset_table, &element_tags, &element_size);
 
-  or_put_set_header (buf, set_domain ? TP_DOMAIN_TYPE (set_domain) : set_type, set_size, include_domain, bound_bits,
-		     offset_table, element_tags, 0);
+  or_put_set_header (buf, set_domain ? TP_DOMAIN_TYPE (set_domain) : set_type,
+		     set_size, include_domain, bound_bits, offset_table,
+		     element_tags, 0);
 
 
   /* reserve space for the offset table or bound bit vector if necessary */
@@ -6281,7 +6396,8 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
   set_start = buf->ptr;
 
   /* read the set header and decompose the various flags */
-  or_get_set_header (buf, &set_type, &size, &has_domain, &bound_bits, &offset_table, &element_tags, NULL);
+  or_get_set_header (buf, &set_type, &size, &has_domain, &bound_bits,
+		     &offset_table, &element_tags, NULL);
 
   set = setobj_create (set_type, size);
   if (set == NULL)
@@ -6331,7 +6447,8 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
   fixed_element_size = -1;
   set_domain = setobj_domain (set);
 
-  if (set_domain != NULL && set_domain->setdomain != NULL && set_domain->setdomain->next == NULL)
+  if (set_domain != NULL && set_domain->setdomain != NULL
+      && set_domain->setdomain->next == NULL)
     {
       /* we only have one possible element domain */
       fixed_element_size = tp_domain_disk_size (set_domain->setdomain);
@@ -6392,7 +6509,8 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 	       * Since I guess the NULL "domain" can logically be a part of all
 	       * sets, initialize the domain for NULL.
 	       */
-	      db_value_domain_init (&value, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	      db_value_domain_init (&value, DB_TYPE_NULL,
+				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	      db_make_null (&value);
 	      /* 
 	       * if this is a fixed width element array, skip over the null
@@ -6415,7 +6533,8 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 		}
 	      else
 		{
-		  or_get_value (buf, &value, element_domain, element_size, true);
+		  or_get_value (buf, &value, element_domain, element_size,
+				true);
 		}
 	    }
 
@@ -6472,7 +6591,8 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
   set_start = buf->ptr;
 
   /* read the set header and decompose the various flags */
-  or_get_set_header (buf, &disk_set_type, &size, &has_domain, &bound_bits, &offset_table, &element_tags, NULL);
+  or_get_set_header (buf, &disk_set_type, &size, &has_domain, &bound_bits,
+		     &offset_table, &element_tags, NULL);
 
   if (set_type)
     {
@@ -6509,7 +6629,8 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
    */
   element_domain = NULL;
   fixed_element_size = -1;
-  if (set_domain != NULL && set_domain->setdomain != NULL && set_domain->setdomain->next == NULL)
+  if (set_domain != NULL && set_domain->setdomain != NULL
+      && set_domain->setdomain->next == NULL)
     {
       /* we only have one possible element domain */
       fixed_element_size = tp_domain_disk_size (set_domain->setdomain);
@@ -6593,7 +6714,8 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
 		}
 	      else
 		{
-		  or_get_value (buf, NULL, element_domain, element_size, true);
+		  or_get_value (buf, NULL, element_domain, element_size,
+				true);
 		}
 	    }
 	}
@@ -6629,7 +6751,8 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
  *    include_domain_classoids(in): non-zero to include the domain class OIDs
  */
 int
-or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
+or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain,
+		      int include_domain_classoids)
 {
   PR_TYPE *type;
   TP_DOMAIN *domain;
@@ -6716,7 +6839,8 @@ or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, i
  *    include_domain_classoids(in): non-zero to include the domain class OIDs
  */
 int
-or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
+or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null,
+	      int include_domain, int include_domain_classoids)
 {
   PR_TYPE *type;
   TP_DOMAIN *domain;
@@ -6824,7 +6948,8 @@ or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_dom
  *
  */
 int
-or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, bool copy)
+or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
+	      int expected, bool copy)
 {
   char *start;
   int is_null, total, pad;
@@ -6883,28 +7008,35 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	  db_value_put_null (value);
 	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
 	    {
-	      db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	      db_string_put_cs_and_collation (value,
+					      TP_DOMAIN_CODESET (domain),
+					      TP_DOMAIN_COLLATION (domain));
 	    }
 	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_ENUMERATION)
 	    {
-	      db_enum_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	      db_enum_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain),
+					    TP_DOMAIN_COLLATION (domain));
 	    }
 	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
 	    {
 	      value->data.json.schema_raw =
-		domain->json_validator == NULL ? NULL : db_json_get_schema_raw_from_validator (domain->json_validator);
+		domain->json_validator ==
+		NULL ? NULL : db_json_get_schema_raw_from_validator (domain->
+								     json_validator);
 	    }
 	}
       else
 	{
 	  if (value)
 	    {
-	      (*(domain->type->data_readval)) (buf, value, domain, expected, copy, NULL, 0);
+	      (*(domain->type->data_readval)) (buf, value, domain, expected,
+					       copy, NULL, 0);
 	    }
 	  else
 	    {
 	      /* the NULL value, will cause readval to skip the value */
-	      (*(domain->type->data_readval)) (buf, NULL, domain, expected, false, NULL, 0);
+	      (*(domain->type->data_readval)) (buf, NULL, domain, expected,
+					       false, NULL, 0);
 	    }
 
 	  if (rc != NO_ERROR)
@@ -6963,7 +7095,8 @@ or_pack_value (char *buf, DB_VALUE * value)
 }
 
 char *
-or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment)
+or_pack_mem_value (char *ptr, DB_VALUE * value,
+		   int *packed_len_except_alignment)
 {
   OR_BUF orbuf, *buf;
   PR_TYPE *type;
@@ -7033,7 +7166,8 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
       if (packed_len_except_alignment)
 	{
 	  /* it excludes both leading and trailing alignments */
-	  *packed_len_except_alignment = (int) (buf->ptr - ptr_to_packed_value);
+	  *packed_len_except_alignment =
+	    (int) (buf->ptr - ptr_to_packed_value);
 	}
 
       length = (int) (buf->ptr - start);
@@ -7109,7 +7243,9 @@ or_unpack_mem_value (char *ptr, DB_VALUE * value)
     }
   else
     {
-      rc = (*(domain->type->data_readval)) (buf, value, domain, -1, true, NULL, 0);
+      rc =
+	(*(domain->type->data_readval)) (buf, value, domain, -1, true, NULL,
+					 0);
       if (rc != NO_ERROR)
 	{
 	  return NULL;
@@ -7211,7 +7347,8 @@ or_unpack_recdes (char *buf, RECDES ** recdes)
   tmp_recdes = (RECDES *) malloc (sizeof (RECDES) + length);
   if (tmp_recdes == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (RECDES) + length);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (RECDES) + length);
       return NULL;
     }
 
@@ -7301,7 +7438,8 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
   listid = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
   if (listid == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_LIST_ID));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (QFILE_LIST_ID));
       goto error;
     }
 
@@ -7315,11 +7453,13 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
 
   if (count > 0)
     {
-      listid->type_list.domp = (TP_DOMAIN **) malloc (sizeof (TP_DOMAIN *) * count);
+      listid->type_list.domp =
+	(TP_DOMAIN **) malloc (sizeof (TP_DOMAIN *) * count);
 
       if (listid->type_list.domp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (sizeof (TP_DOMAIN *) * count));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (sizeof (TP_DOMAIN *) * count));
 	  goto error;
 	}
 
@@ -7440,7 +7580,10 @@ or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n)
   ptr = or_unpack_int (ptr, (int *) &method_sig->method_type);
   ptr = or_unpack_int (ptr, &method_sig->num_method_args);
 
-  method_sig->method_arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * (method_sig->num_method_args + 1));
+  method_sig->method_arg_pos =
+    (int *) db_private_alloc (NULL,
+			      sizeof (int) * (method_sig->num_method_args +
+					      1));
   if (method_sig->method_arg_pos == (int *) 0)
     {
       db_private_free_and_init (NULL, method_sig);
@@ -7502,14 +7645,17 @@ or_unpack_method_sig_list (char *ptr, void **method_sig_list_ptr)
 {
   METHOD_SIG_LIST *method_sig_list;
 
-  method_sig_list = (METHOD_SIG_LIST *) db_private_alloc (NULL, sizeof (METHOD_SIG_LIST));
+  method_sig_list =
+    (METHOD_SIG_LIST *) db_private_alloc (NULL, sizeof (METHOD_SIG_LIST));
   if (method_sig_list == (METHOD_SIG_LIST *) 0)
     {
       return NULL;
     }
 
   ptr = or_unpack_int (ptr, &method_sig_list->num_methods);
-  ptr = or_unpack_method_sig (ptr, (void **) &method_sig_list->method_sig, method_sig_list->num_methods);
+  ptr =
+    or_unpack_method_sig (ptr, (void **) &method_sig_list->method_sig,
+			  method_sig_list->num_methods);
 
 #if !defined(NDEBUG)
   {
@@ -7545,8 +7691,8 @@ or_method_sig_list_length (void *method_sig_list_ptr)
   int length = OR_INT_SIZE;	/* num_methods */
   int n;
 
-  for (n = 0, method_sig = method_sig_list->method_sig; n < method_sig_list->num_methods;
-       ++n, method_sig = method_sig->next)
+  for (n = 0, method_sig = method_sig_list->method_sig;
+       n < method_sig_list->num_methods; ++n, method_sig = method_sig->next)
     {
       length += or_packed_string_length (method_sig->method_name, NULL);
       length += or_packed_string_length (method_sig->class_name, NULL);
@@ -7622,9 +7768,12 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
     {
       db_enum = &enumeration->elements[idx];
 
-      db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, DB_GET_ENUM_ELEM_STRING (db_enum),
-		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
-		       LANG_GET_BINARY_COLLATION (DB_GET_ENUM_ELEM_CODESET (db_enum)));
+      db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE,
+		       DB_GET_ENUM_ELEM_STRING (db_enum),
+		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum),
+		       DB_GET_ENUM_ELEM_CODESET (db_enum),
+		       LANG_GET_BINARY_COLLATION (DB_GET_ENUM_ELEM_CODESET
+						  (db_enum)));
       size += (*(tp_String.data_lengthval)) (&value, 1);
       pr_clear_value (&value);
     }
@@ -7649,7 +7798,9 @@ or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
       return rc;
     }
   /* an enumeration is packed as a collection of strings */
-  rc = or_put_set_header (buf, DB_TYPE_SEQUENCE, enumeration->count, 0, 0, 0, 0, 0);
+  rc =
+    or_put_set_header (buf, DB_TYPE_SEQUENCE, enumeration->count, 0, 0, 0, 0,
+		       0);
   if (rc != NO_ERROR)
     {
       return rc;
@@ -7658,8 +7809,10 @@ or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
   for (idx = 0; idx < enumeration->count; idx++)
     {
       db_enum = &enumeration->elements[idx];
-      db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, DB_GET_ENUM_ELEM_STRING (db_enum),
-		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
+      db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE,
+		       DB_GET_ENUM_ELEM_STRING (db_enum),
+		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum),
+		       DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       enumeration->collation_id);
       rc = (*(tp_String.data_writeval)) (buf, &value);
       pr_clear_value (&value);
@@ -7711,7 +7864,8 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   enum_vals = (DB_ENUM_ELEMENT *) malloc (sizeof (DB_ENUM_ELEMENT) * count);
   if (enum_vals == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_ENUM_ELEMENT) * count);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (DB_ENUM_ELEMENT) * count);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -7727,7 +7881,8 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
        */
       db_make_null (&value);
 
-      error = (*(tp_String.data_readval)) (buf, &value, NULL, -1, false, NULL, 0);
+      error =
+	(*(tp_String.data_readval)) (buf, &value, NULL, -1, false, NULL, 0);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -7738,8 +7893,8 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
       enum_str = (char *) malloc (str_size + 1);
       if (enum_str == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (size_t) (db_get_string_size (&value) + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (size_t) (db_get_string_size (&value) + 1));
 
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_return;
@@ -7784,35 +7939,6 @@ error_return:
   enumeration->count = 0;
   enumeration->elements = NULL;
   return error;
-}
-
-int
-or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
-{
-  int rc;
-  DB_VALUE schema_value;
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  rc = (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, false, NULL, 0);
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return rc;
-    }
-
-  validator = db_json_load_validator (schema_value.data.ch.medium.buf, rc);
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return rc;
-    }
-
-  or_align (buf, OR_INT_SIZE);
-  assert (er_errid () == NO_ERROR);
-
-  pr_clear_value (&schema_value);
-
-  return NO_ERROR;
 }
 
 /*
@@ -7943,7 +8069,8 @@ unpack_str_array (char *buffer, char ***string_array, int count)
     }
   else
     {
-      *string_array = (char **) db_private_alloc (NULL, (sizeof (char *) * count));
+      *string_array =
+	(char **) db_private_alloc (NULL, (sizeof (char *) * count));
       if (*string_array == NULL)
 	{
 	  ptr = NULL;
@@ -8021,7 +8148,8 @@ or_unpack_db_value_array (char *buffer, DB_VALUE ** val, int *count)
   ptr = or_unpack_int (buffer, count);
   if (*count)
     {
-      *val = (DB_VALUE *) db_private_alloc (NULL, sizeof (DB_VALUE) * (*count));
+      *val =
+	(DB_VALUE *) db_private_alloc (NULL, sizeof (DB_VALUE) * (*count));
       if (*val == NULL)
 	{
 	  ptr = NULL;
@@ -8238,7 +8366,8 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
       return (or_overflow (buf));
     }
 
-  memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
+  memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa,
+	  OR_MVCC_PREV_VERSION_LSA_SIZE);
   buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
   return NO_ERROR;
@@ -8254,7 +8383,8 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
  * mvcc_rec_header(in)  : MVCC record header
  */
 STATIC_INLINE int
-or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
+or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags,
+			      LOG_LSA * prev_version_lsa)
 {
   int error_code = NO_ERROR;
   assert (buf != NULL);
@@ -8304,8 +8434,11 @@ or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
     }
 
   lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0));
+		+
+		(((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE :
+		 0) +
+		(((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE :
+		 0));
 
   memcpy (record->data + lsa_offset, lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
 
@@ -8494,9 +8627,11 @@ htond (double from)
  */
 
 int
-or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
+or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size,
+				    int *decompressed_size)
 {
-  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR, net_charlen = 0;
+  int compressed_length = 0, decompressed_length = 0, rc =
+    NO_ERROR, net_charlen = 0;
   int size_prefix = 0;
 
   /* Check if the string is compressed */
@@ -8549,7 +8684,8 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
  * files (in) : space information for files (may be NULL)
  */
 int
-or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols,
+			const SPACEDB_FILES * files)
 {
   int size_total = 0;
 
@@ -8590,7 +8726,8 @@ or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, co
  * files (in) : space information for files (may be NULL)
  */
 char *
-or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+or_pack_spacedb (char *ptr, const SPACEDB_ALL * all,
+		 const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
 {
   int i;
 
@@ -8641,7 +8778,8 @@ or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols
  * SPACEDB_FILES * files (in) :
  */
 char *
-or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files)
+or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols,
+		   SPACEDB_FILES * files)
 {
   int i;
   int unpacked_value;
@@ -8668,11 +8806,13 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
     {
       int iter_vol = 0;
 
-      *vols = (SPACEDB_ONEVOL *) malloc (all[SPACEDB_TOTAL_ALL].nvols * sizeof (SPACEDB_ONEVOL));
+      *vols =
+	(SPACEDB_ONEVOL *) malloc (all[SPACEDB_TOTAL_ALL].nvols *
+				   sizeof (SPACEDB_ONEVOL));
       if (*vols == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  all[SPACEDB_TOTAL_ALL].nvols * sizeof (SPACEDB_ONEVOL));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, all[SPACEDB_TOTAL_ALL].nvols * sizeof (SPACEDB_ONEVOL));
 	  return NULL;
 	}
 
@@ -8759,4 +8899,97 @@ classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr)
   default_expr->default_expr_type = DB_DEFAULT_NONE;
   default_expr->default_expr_format = NULL;
   default_expr->default_expr_op = NULL_DEFAULT_EXPRESSION_OPERATOR;
+}
+
+int
+or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
+{
+  int rc;
+  DB_VALUE schema_value;
+  char *str;
+
+  rc = or_get_json_schema (buf, str);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (strlen (str) == 0)
+    {
+      validator = NULL;
+    }
+  else
+    {
+      validator = db_json_load_validator (str, rc);
+      if (rc != NO_ERROR)
+	{
+	  assert (validator == NULL);
+	  return rc;
+	}
+    }
+
+  db_private_free (NULL, str);
+  return NO_ERROR;
+}
+
+int
+or_put_json_validator (OR_BUF * buf, JSON_VALIDATOR * validator)
+{
+  return or_put_json_schema (buf,
+			     db_json_get_schema_raw_from_validator
+			     (validator));
+}
+
+int
+or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
+{
+  DB_VALUE schema_value;
+  int rc;
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+  rc =
+    (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, false, NULL,
+				 0);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (DB_GET_STRING_SIZE (&schema_value) == 0)
+    {
+      schema = NULL;
+    }
+  else
+    {
+      schema = db_private_strdup (NULL, schema_value.data.ch.medium.buf);
+    }
+
+  pr_clear_value (&schema_value);
+  return NO_ERROR;
+}
+
+int
+or_put_json_schema (OR_BUF * buf, char *schema)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+  int rc;
+  DB_VALUE schema_raw;
+
+  if (schema == NULL)
+    {
+      db_make_string (&schema_raw, "");
+    }
+  else
+    {
+      db_make_string (&schema_raw, schema);
+    }
+
+  rc = (*(tp_String.data_writeval)) (buf, &schema_raw);
+
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  pr_clear_value (&schema_raw);
+  return NO_ERROR;
 }

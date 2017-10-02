@@ -893,9 +893,10 @@ JSON_DOC *db_json_allocate_doc ()
   return new JSON_DOC;
 }
 
-void db_json_delete_doc (JSON_DOC *doc)
+void db_json_delete_doc (JSON_DOC*&doc)
 {
   delete doc;
+  doc = NULL;
 }
 
 JSON_VALIDATOR *
@@ -925,9 +926,16 @@ db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc)
 }
 
 void
-db_json_delete_validator (JSON_VALIDATOR *validator)
+db_json_delete_validator (JSON_VALIDATOR*&validator)
 {
   delete validator;
+  validator = NULL;
+}
+
+bool
+db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2)
+{
+  return (strcmp (val1->get_schema_raw(), val2->get_schema_raw()) == 0);
 }
 
 /*end of C functions*/
