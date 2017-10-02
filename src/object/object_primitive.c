@@ -2777,8 +2777,8 @@ pr_clear_value (DB_VALUE * value)
 	      if (value->data.ch.info.compressed_need_clear != 0)
 		{
 		  db_private_free_and_init (NULL,
-					    value->data.ch.
-					    medium.compressed_buf);
+					    value->data.ch.medium.
+					    compressed_buf);
 		}
 	    }
 
@@ -12055,8 +12055,8 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    {
 	      new_compressed_buf =
 		(char *) db_private_alloc (NULL,
-					   src->data.ch.
-					   medium.compressed_size + 1);
+					   src->data.ch.medium.
+					   compressed_size + 1);
 	      if (new_compressed_buf == NULL)
 		{
 		  db_value_domain_init (dest, DB_TYPE_VARCHAR, src_precision,
@@ -18559,8 +18559,9 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain,
     {
       json_obj = STATIC_CAST (DB_JSON *, memptr);
 
-      (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, true, NULL, 0);
-      (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, true, NULL, 0);
+      (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, false, NULL, 0);
+      (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, false, NULL,
+				   0);
 
       if (DB_GET_STRING_SIZE (&json_body) == 0)
 	{
@@ -18743,14 +18744,15 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
   DB_VALUE json_body, schema_raw;
 
   DB_MAKE_NULL (value);
-  rc = (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, true, NULL, 0);
+  rc =
+    (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, false, NULL, 0);
   if (rc != NO_ERROR)
     {
       return rc;
     }
 
   rc =
-    (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, true, NULL, 0);
+    (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, false, NULL, 0);
   if (rc != NO_ERROR)
     {
       return rc;
