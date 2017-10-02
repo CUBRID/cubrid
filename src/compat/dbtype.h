@@ -31,6 +31,7 @@
 
 #include "config.h"
 
+#include "system_parameter.h"
 #include "dbdef.h"
 
 #ifdef __cplusplus
@@ -1274,8 +1275,6 @@ extern "C"
 
   extern int db_make_string (DB_VALUE * value, const char *str);
   extern int db_make_string_copy (DB_VALUE * value, const char *str);
-  extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
-			      const int size);
 
   extern int db_make_oid (DB_VALUE * value, const OID * oid);
   extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
@@ -1329,6 +1328,10 @@ extern "C"
   extern int db_value_precision (const DB_VALUE * value);
   extern int db_value_scale (const DB_VALUE * value);
 
+
+  extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
+			      const int size);
+
   extern int db_make_null (DB_VALUE * value);
   extern int db_make_int (DB_VALUE * value, const int num);
   extern int db_make_float (DB_VALUE * value, const DB_C_FLOAT num);
@@ -1364,6 +1367,7 @@ extern "C"
   extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
 				  unsigned char codeset, const int collation_id);
   extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
+
 
 #endif
 
