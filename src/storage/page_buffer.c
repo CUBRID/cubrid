@@ -17024,7 +17024,10 @@ pgbuf_dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, PGBUF_DWB_SLOT * slot,
       element_position = PGBUF_DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK * slot->block_no
 	+ slot->position_in_block / PGBUF_DWB_CHECKSUM_ELEMENT_NO_BITS;
       bit_position = slot->position_in_block & (PGBUF_DWB_CHECKSUM_ELEMENT_NO_BITS - 1);
-      assert ((slot_data_checksum_computed[element_position] & (1ULL << bit_position)) == 0);
+      /* Check that no other transaction computed the current slot checksum. */
+      assert ((ATOMIC_INC_64 (&slot_data_checksum_computed[element_position], 0ULL) & (1ULL << bit_position)) == 0);
+      assert ((ATOMIC_INC_64 (&pgbuf_Double_Write.checksum_info->slot_data_checksum_requests[element_position], 0ULL)
+	       & (1ULL << bit_position)) == (1ULL << bit_position));
       ATOMIC_INC_64 (&pgbuf_Double_Write.checksum_info->slot_data_checksum_computed[element_position],
 		     1ULL << bit_position);
     }
@@ -18275,8 +18278,8 @@ pgbuf_dwb_flush_block (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * block, UINT64 
        block_element_position++)
     {
       element_position = block_start_position + block_element_position;
-      ATOMIC_TAS_64 (&pgbuf_Double_Write.checksum_info->slot_data_checksum_requests[element_position], 0LL);
-      ATOMIC_TAS_64 (&pgbuf_Double_Write.checksum_info->slot_data_checksum_computed[element_position], 0LL);
+      ATOMIC_TAS_64 (&pgbuf_Double_Write.checksum_info->slot_data_checksum_requests[element_position], 0ULL);
+      ATOMIC_TAS_64 (&pgbuf_Double_Write.checksum_info->slot_data_checksum_computed[element_position], 0ULL);
       pgbuf_Double_Write.checksum_info->first_diff_bit_positions[element_position] = 0;
     }
   ATOMIC_TAS_32 (&block->count_wb_pages, 0);
@@ -18970,9 +18973,17 @@ pgbuf_dwb_compute_block_checksums (THREAD_ENTRY * thread_p, PGBUF_DWB_BLOCK * bl
 	    }
 
 	  /* Update computed bits */
-	  if (computed_checksum_bits != 0)
+	  if (computed_checksum_bits == 0)
 	    {
-	      assert ((slot_data_checksum_computed[element_position] & computed_checksum_bits) == 0);
+	      break;
+	    }
+	  else
+	    {
+	      /* Check that no other transaction computed the current slot checksum. */
+	      assert ((ATOMIC_INC_64 (&slot_data_checksum_computed[element_position], 0ULL)
+		       & computed_checksum_bits) == 0);
+	      assert ((ATOMIC_INC_64 (&slot_data_checksum_requests[element_position], 0ULL)
+		       & computed_checksum_bits) == computed_checksum_bits);
 	      ATOMIC_INC_64 (&slot_data_checksum_computed[element_position], computed_checksum_bits);
 	    }
 
