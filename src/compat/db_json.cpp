@@ -889,8 +889,8 @@ JSON_DOC *db_json_allocate_doc_and_set_type (DB_JSON_TYPE desired_type)
 {
   JSON_DOC *doc = new JSON_DOC;
 
-  switch (desired_type)
-  {
+      switch (desired_type)
+        {
     case DB_JSON_ARRAY:
       doc->SetArray ();
       break;
