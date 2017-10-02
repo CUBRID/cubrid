@@ -3917,6 +3917,7 @@ end:
  *   prev_chkpt_redo_lsa(in): Redo_LSA of previous checkpoint
  *   smallest_lsa(out): Smallest LSA of a dirty buffer in buffer pool
  *   flushed_page_cnt(out): The number of flushed pages
+ *   all_sync (out): true, if everything synchronized
  *
  * Note: The function flushes and dirty unfixed page whose LSA is smaller that the last_chkpt_lsa, 
  *       it returns the smallest_lsa from the remaining dirty buffers which were not flushed.
@@ -3924,7 +3925,7 @@ end:
  */
 int
 pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa, const LOG_LSA * prev_chkpt_redo_lsa,
-			LOG_LSA * smallest_lsa, int *flushed_page_cnt)
+			LOG_LSA * smallest_lsa, int *flushed_page_cnt, bool * all_sync)
 {
   PGBUF_BCB *bufptr;
   int bufid;
@@ -3939,6 +3940,9 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : flush_upto_LSA:%d, prev_chkpt_redo_LSA:%d\n",
 		flush_upto_lsa->pageid, (prev_chkpt_redo_lsa ? prev_chkpt_redo_lsa->pageid : -1));
+
+  assert (all_sync != NULL);
+  *all_sync = true;
 
   if (flushed_page_cnt != NULL)
     {
@@ -4039,6 +4043,11 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
       error = pgbuf_flush_chkpt_seq_list (thread_p, seq_flusher, prev_chkpt_redo_lsa, smallest_lsa);
       flushed_page_cnt_local += seq_flusher->flushed_pages;
+    }
+
+  if (error == NO_ERROR)
+    {
+      error = pgbuf_dwb_flush_force (thread_p, all_sync);
     }
 
 #if defined (SERVER_MODE)
@@ -16557,7 +16566,7 @@ pgbuf_dwb_adjust_write_buffer_values (unsigned int *p_double_write_buffer_size, 
 STATIC_INLINE int
 pgbuf_dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_position_with_flags)
 {
-  UINT64 local_current_position_with_flags, blocks_status, new_position_with_flags;
+  UINT64 local_current_position_with_flags, new_position_with_flags;
   unsigned int block_no;
   int error_code = NO_ERROR;
   bool force_flush = false;
@@ -16595,10 +16604,7 @@ check_dwb_flush_thread_is_running:
 
   local_current_position_with_flags = ATOMIC_INC_64 (&pgbuf_Double_Write.position_with_flags, 0ULL);
 
-  /* Now, I'm the unique thread that modify DWB. */
-
-  blocks_status = PGBUF_DWB_GET_BLOCK_STATUS (local_current_position_with_flags);
-  /* Need to flush incomplete blocks. */
+  /* Now, I'm the unique thread that modify DWB. Need to flush incomplete blocks. */
   for (block_no = 0; block_no < PGBUF_DWB_NUM_TOTAL_BLOCKS; block_no++)
     {
       if (PGBUF_DWB_IS_BLOCK_WRITE_STARTED (local_current_position_with_flags, block_no))
@@ -18110,7 +18116,7 @@ pgbuf_dwb_block_create_ordered_slots (PGBUF_DWB_BLOCK * block, PGBUF_DWB_SLOT **
 
 
 /*
- * pgbuf_dwb_flush_block () - write pages from specified block in specified order
+ * pgbuf_dwb_write_block () - write pages from specified block in specified order
  *
  * return   : error code
  * thread_p (in): thread entry.
@@ -18444,7 +18450,11 @@ pgbuf_dwb_set_slot_data (PGBUF_DWB_SLOT * dwb_slot, FILEIO_PAGE * io_page_p)
 {
   assert (dwb_slot != NULL && io_page_p != NULL);
 
-  memcpy (dwb_slot->io_page, (char *) io_page_p, IO_PAGESIZE);
+  if (io_page_p->prv.pageid != NULL_PAGEID)
+    {
+      memcpy (dwb_slot->io_page, (char *) io_page_p, IO_PAGESIZE);
+    }
+
   VPID_SET (&dwb_slot->vpid, io_page_p->prv.volid, io_page_p->prv.pageid);
   LSA_COPY (&dwb_slot->lsa, &io_page_p->prv.lsa);
 }
@@ -18837,6 +18847,108 @@ pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
 	  goto start_flush_block;
 	}
     }
+
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_dwb_flush_force () - force flushing the current content of DWB
+ *
+ * return   : error code
+ * thread_p (in): thread entry.
+ * all_sync (out): true, if everything synchronized
+ */
+int
+pgbuf_dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
+{
+  UINT64 position_with_flags, blocks_status, block_version;
+  unsigned int current_block_no = PGBUF_DWB_NUM_TOTAL_BLOCKS;
+  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  FILEIO_PAGE *iopage;
+  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
+  int error_code = NO_ERROR;
+
+  assert (all_sync != NULL);
+
+  *all_sync = false;
+start:
+  position_with_flags = ATOMIC_INC_64 (&pgbuf_Double_Write.position_with_flags, 0ULL);
+
+  if (!PGBUF_DWB_IS_CREATED (position_with_flags))
+    {
+      /* Nothing to do. Everything flushed. */
+      return NO_ERROR;
+    }
+
+  if (PGBUF_DWB_IS_MODIFYING_STRUCTURE (position_with_flags))
+    {
+      /* DWB structure change started, needs to wait for flush. */
+      error_code = pgbuf_dwb_wait_for_strucure_modification (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
+	    {
+	      /* timeout, try again */
+	      goto start;
+	    }
+	  return error_code;
+	}
+    }
+
+  blocks_status = PGBUF_DWB_GET_BLOCK_STATUS (position_with_flags);
+  if (blocks_status == 0)
+    {
+      /* Nothing to do. Everything flushed. */
+      return NO_ERROR;
+    }
+
+  current_block_no = PGBUF_DWB_GET_BLOCK_NO_FROM_POSITION (position_with_flags);
+  block_version = pgbuf_Double_Write.blocks[current_block_no].version;
+  assert (current_block_no < PGBUF_DWB_NUM_TOTAL_BLOCKS);
+
+  if (position_with_flags != ATOMIC_INC_64 (&pgbuf_Double_Write.position_with_flags, 0ULL))
+    {
+      /* The position_with_flags modified meanwhile by concurrent threads. */
+      goto start;
+    }
+
+  /*
+   * Add NULL pages to force block flushing. In this way, preserve also block flush order. This means that all
+   * blocks are flushed - the entire DWB.
+   */
+  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+  while ((pgbuf_Double_Write.blocks[current_block_no].count_wb_pages != PGBUF_DWB_BLOCK_NUM_PAGES)
+	 && (block_version == pgbuf_Double_Write.blocks[current_block_no].version))
+    {
+      /* The block is not full yet. Add more null pages. */
+      error_code = pgbuf_dwb_add_page (thread_p, iopage, &null_vpid, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  if (error_code == ER_DWB_DISABLED)
+	    {
+	      er_clear ();
+	      /* DWB disabled meanwhile, everything flushed. */
+	      return NO_ERROR;
+	    }
+	}
+    }
+
+  if (block_version == pgbuf_Double_Write.blocks[current_block_no].version)
+    {
+      /* Not flushed yet. Wait for current block flush. */
+      error_code = pgbuf_dwb_wait_for_block_completion (thread_p, current_block_no);
+      if (error_code != NO_ERROR)
+	{
+	  if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
+	    {
+	      /* timeout, try again */
+	      goto start;
+	    }
+	  return error_code;
+	}
+    }
+
+  *all_sync = true;
 
   return NO_ERROR;
 }

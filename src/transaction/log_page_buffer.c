@@ -6983,6 +6983,7 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   LOG_LSA newflush_upto_lsa;	/* Next to be flush */
   int first_deleted_arv_num;
   int last_deleted_arv_num;
+  bool all_sync = false;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -7000,10 +7001,10 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   flush_upto_lsa.pageid = LOGPB_NEXT_ARCHIVE_PAGE_ID;
   flush_upto_lsa.offset = NULL_OFFSET;
 
-  pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, NULL, &newflush_upto_lsa, NULL);
+  pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, NULL, &newflush_upto_lsa, NULL, &all_sync);
 
   if ((!LSA_ISNULL (&newflush_upto_lsa) && LSA_LT (&newflush_upto_lsa, &flush_upto_lsa))
-      || fileio_synchronize_all (thread_p, false) != NO_ERROR)
+      || (!all_sync && (fileio_synchronize_all (thread_p, false) != NO_ERROR)))
     {
       /* Cannot remove the archives at this moment */
       return;
@@ -7646,6 +7647,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_PRIOR_NODE *node;
   void *ptr;
   int flushed_page_cnt = 0;
+  bool all_sync = false;
 
   LOG_CS_ENTER (thread_p);
 
@@ -7721,18 +7723,21 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     }
 
   er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
-  if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
-      NO_ERROR)
+  if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt,
+			      &all_sync) != NO_ERROR)
     {
       LOG_CS_ENTER (thread_p);
       goto error_cannot_chkpt;
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call fileio_synchronize_all()\n");
-  if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
+  if (!all_sync)
     {
-      LOG_CS_ENTER (thread_p);
-      goto error_cannot_chkpt;
+      er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call fileio_synchronize_all()\n");
+      if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
+	{
+	  LOG_CS_ENTER (thread_p);
+	  goto error_cannot_chkpt;
+	}
     }
 
   LOG_CS_ENTER (thread_p);
@@ -11064,6 +11069,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
 {
   const char *msglog;
   char msg[LINE_MAX];
+  bool all_sync = false;
 
   /* call er_set() to print call stack to the log */
   vsnprintf (msg, LINE_MAX, fmt, ap);
@@ -11104,12 +11110,15 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
 	   * Flush as much as you can without forcing the current unfinish log
 	   * record.
 	   */
-	  (void) pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, NULL, &tmp_lsa2, NULL);
+	  (void) pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, NULL, &tmp_lsa2, NULL, &all_sync);
 	  in_fatal = false;
 	}
     }
 
-  fileio_synchronize_all (thread_p, false);
+  if (!all_sync)
+    {
+      fileio_synchronize_all (thread_p, false);
+    }
 
   fflush (stderr);
   fflush (stdout);

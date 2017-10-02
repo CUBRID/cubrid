@@ -319,7 +319,8 @@ extern void pgbuf_flush_if_requested (THREAD_ENTRY * thread_p, PAGE_PTR page);
 extern int pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio,
 					  PERF_UTIME_TRACKER * time_tracker, bool * stop);
 extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
-				   const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt);
+				   const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt,
+				   bool * all_sync);
 extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY * thread_p, VOLID volid);
@@ -446,6 +447,7 @@ extern int pgbuf_dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char
 extern int pgbuf_dwb_destroy (THREAD_ENTRY * thread_p);
 extern char *pgbuf_dwb_get_volume_name ();
 extern int pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p);
+extern int pgbuf_dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync);
 extern int pgbuf_dwb_compute_checksums (THREAD_ENTRY * thread_p);
 extern int pgbuf_dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool * success);
 
