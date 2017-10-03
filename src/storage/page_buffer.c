@@ -1526,6 +1526,7 @@ STATIC_INLINE int pgbuf_dwb_create_internal (THREAD_ENTRY * thread_p, const char
 STATIC_INLINE void
 pgbuf_find_block_with_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int *block_no)
 __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int block_no);
 STATIC_INLINE void
 pgbuf_find_block_with_all_checksums_requested (THREAD_ENTRY * thread_p, unsigned int *block_no)
 __attribute__ ((ALWAYS_INLINE));
@@ -18529,7 +18530,7 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
   PGBUF_DWB_BLOCK *block = NULL, *prev_block = NULL;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
   PGBUF_DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
-  bool checksum_computed, checksum_computation_started;
+  bool checksum_computed, checksum_computation_started = false;
   int checksum_threads;
 
   assert ((io_page_p != NULL || dwb_slot->io_page != NULL) && vpid != NULL);
@@ -18548,10 +18549,13 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 	}
     }
 
-  error_code = pgbuf_dwb_slots_hash_insert (thread_p, vpid, dwb_slot);
-  if (error_code != NO_ERROR)
+  if (!VPID_ISNULL (vpid))
     {
-      return error_code;
+      error_code = pgbuf_dwb_slots_hash_insert (thread_p, vpid, dwb_slot);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
     }
 
   block = &pgbuf_Double_Write.blocks[dwb_slot->block_no];
@@ -18634,6 +18638,7 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 	    }
 	}
 
+      checksum_computation_started = false;
       if (checksum_threads > 0)
 	{
 	  pgbuf_dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
@@ -18644,6 +18649,7 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 		{
 		  /* Wake up checksum thread to compute checksum. */
 		  thread_wakeup_dwb_checksum_computation_thread ();
+		  checksum_computation_started = true;
 		}
 	    }
 #endif
@@ -18651,11 +18657,6 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
 
       /* Now it's safe to flush the block. The flush thread can compute the checksum for latest slot. */
 #if defined (SERVER_MODE)
-      if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == false)
-	{
-	  goto flush_block;
-	}
-
       if (thread_is_dwb_flush_block_thread_available ())
 	{
 	  /* Wakeup the thread to flush the block. */
@@ -18664,10 +18665,26 @@ pgbuf_dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpi
       else
 #endif
 	{
-	  error_code = pgbuf_dwb_slot_compute_checksum (thread_p, dwb_slot, true, &checksum_computed);
-	  if (error_code != NO_ERROR)
+	  if ((checksum_threads > 1) || ((checksum_threads == 1 && checksum_computation_started == false)))
 	    {
-	      return error_code;
+	      error_code = pgbuf_dwb_slot_compute_checksum (thread_p, dwb_slot, true, &checksum_computed);
+	      if (error_code != NO_ERROR)
+		{
+		  return error_code;
+		}
+	    }
+
+	  if (checksum_threads > 0)
+	    {
+	    retry:
+	      if (!pgbuf_block_has_all_checksums_computed (thread_p, block->block_no))
+		{
+		  /* Wait for checksum thread to finish */
+#if defined (SERVER_MODE)
+		  thread_sleep (10);
+		  goto retry;
+#endif
+		}
 	    }
 
 	flush_block:
@@ -18754,6 +18771,41 @@ pgbuf_find_block_with_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned 
 	  break;
 	}
     }
+}
+
+/*
+ * pgbuf_block_has_all_checksums_computed(): check whether the block has all checksum computed
+ *
+ *   returns: true, if all block checksums computed
+ * thread_p (in): thread entry
+ * block_no(out): the block number
+ */
+STATIC_INLINE bool
+pgbuf_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int block_no)
+{
+  unsigned int block_start_position, block_element_position, element_position;
+  UINT64 slot_data_checksum_computed_elem = NULL;
+  bool found;
+
+  /* First, search for blocks that must be flushed, to avoid delays caused by checksum computation in other block. */
+
+  found = true;
+  block_start_position = PGBUF_DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK * block_no;
+  for (block_element_position = 0; block_element_position < PGBUF_DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK;
+       block_element_position++)
+    {
+      element_position = block_start_position + block_element_position;
+      slot_data_checksum_computed_elem =
+	ATOMIC_INC_64 (&pgbuf_Double_Write.checksum_info->slot_data_checksum_computed[element_position], 0LL);
+      if (slot_data_checksum_computed_elem
+	  != pgbuf_Double_Write.checksum_info->all_block_slots_data_checksum_computed[block_element_position])
+	{
+	  found = false;
+	  break;
+	}
+    }
+
+  return found;
 }
 
 /*

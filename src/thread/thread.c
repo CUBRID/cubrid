@@ -4063,6 +4063,11 @@ thread_dwb_flush_block_with_checksum_thread_is_running (void)
 bool
 thread_is_dwb_flush_block_thread_available (void)
 {
+  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == false)
+    {
+      return false;
+    }
+
   return thread_Dwb_flush_block_thread.is_available;
 }
 
