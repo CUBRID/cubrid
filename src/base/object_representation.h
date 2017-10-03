@@ -1242,16 +1242,12 @@ extern int or_chn (RECDES * record);
 extern int or_replace_chn (RECDES * record, int chn);
 extern int or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error);
 extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag,
-					int repid, int bound_bit,
-					int variable_offset_size);
+					int repid, int bound_bit, int variable_offset_size);
 extern char *or_class_name (RECDES * record);
-extern int or_mvcc_get_header (RECDES * record,
-			       MVCC_REC_HEADER * mvcc_rec_header);
-extern int or_mvcc_set_header (RECDES * record,
-			       MVCC_REC_HEADER * mvcc_rec_header);
+extern int or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
+extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
 extern int or_mvcc_add_header (RECDES * record,
-			       MVCC_REC_HEADER * mvcc_rec_header,
-			       int bound_bit, int variable_offset_size);
+			       MVCC_REC_HEADER * mvcc_rec_header, int bound_bit, int variable_offset_size);
 
 /* Pointer based decoding functions */
 extern int or_set_element_offset (char *setptr, int element);
@@ -1276,12 +1272,10 @@ extern char *or_pack_monetary (char *ptr, DB_MONETARY * money);
 extern char *or_pack_utime (char *ptr, DB_UTIME utime);
 #endif
 extern char *or_pack_short (char *ptr, short number);
-extern char *or_pack_string_with_null_padding (char *ptr, const char *stream,
-					       size_t len);
+extern char *or_pack_string_with_null_padding (char *ptr, const char *stream, size_t len);
 extern char *or_pack_stream (char *ptr, const char *stream, size_t len);
 extern char *or_pack_string (char *ptr, const char *string);
-extern char *or_pack_string_with_length (char *ptr, const char *string,
-					 int length);
+extern char *or_pack_string_with_length (char *ptr, const char *string, int length);
 extern char *or_pack_errcode (char *ptr, int error);
 extern char *or_pack_oid (char *ptr, const OID * oid);
 extern char *or_pack_oid_array (char *ptr, int n, const OID * oids);
@@ -1291,19 +1285,16 @@ extern char *or_pack_ehid (char *buf, EHID * btid);
 extern char *or_pack_recdes (char *buf, RECDES * recdes);
 extern char *or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa);
 extern char *or_unpack_log_lsa (char *ptr, LOG_LSA * lsa);
-extern char *or_unpack_set (char *ptr, SETOBJ ** set,
-			    struct tp_domain *domain);
+extern char *or_unpack_set (char *ptr, SETOBJ ** set, struct tp_domain *domain);
 extern char *or_unpack_setref (char *ptr, DB_SET ** ref);
 extern char *or_pack_listid (char *ptr, void *listid);
 extern char *or_pack_lock (char *ptr, LOCK lock);
-extern char *or_pack_set_header (char *buf, DB_TYPE stype, DB_TYPE etype,
-				 int bound_bits, int size);
+extern char *or_pack_set_header (char *buf, DB_TYPE stype, DB_TYPE etype, int bound_bits, int size);
 extern char *or_pack_method_sig_list (char *ptr, void *method_sig_list);
 extern char *or_pack_set_node (char *ptr, void *set_node);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_pack_elo (char *ptr, void *elo);
-extern char *or_pack_string_array (char *buffer, int count,
-				   const char **string_array);
+extern char *or_pack_string_array (char *buffer, int count, const char **string_array);
 extern char *or_pack_db_value_array (char *buffer, int count, DB_VALUE * val);
 extern char *or_pack_int_array (char *buffer, int count, int *int_array);
 #endif
@@ -1345,17 +1336,12 @@ extern char *or_unpack_recdes (char *buf, RECDES ** recdes);
 extern char *or_unpack_listid (char *ptr, void *listid_ptr);
 extern char *or_unpack_unbound_listid (char *ptr, void **listid_ptr);
 extern char *or_unpack_lock (char *ptr, LOCK * lock);
-extern char *or_unpack_set_header (char *buf, DB_TYPE * stype,
-				   DB_TYPE * etype, int *bound_bits,
-				   int *size);
-extern char *or_unpack_method_sig_list (char *ptr,
-					void **method_sig_list_ptr);
+extern char *or_unpack_set_header (char *buf, DB_TYPE * stype, DB_TYPE * etype, int *bound_bits, int *size);
+extern char *or_unpack_method_sig_list (char *ptr, void **method_sig_list_ptr);
 extern char *or_unpack_set_node (char *ptr, void *set_node_ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
-extern char *or_unpack_string_array (char *buffer, char ***string_array,
-				     int *cnt);
-extern char *or_unpack_db_value_array (char *buffer, DB_VALUE ** val,
-				       int *count);
+extern char *or_unpack_string_array (char *buffer, char ***string_array, int *cnt);
+extern char *or_unpack_db_value_array (char *buffer, DB_VALUE ** val, int *count);
 extern char *or_unpack_elo (char *ptr, void **elo_ptr);
 #endif
 extern char *or_pack_ptr (char *ptr, UINTPTR ptrval);
@@ -1386,8 +1372,7 @@ extern int or_method_sig_list_length (void *method_sig_list_ptr);
 extern int or_set_node_length (void *set_node_ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_elo_length (void *elo_ptr);
-extern int or_packed_string_array_length (int count,
-					  const char **string_array);
+extern int or_packed_string_array_length (int count, const char **string_array);
 extern int or_packed_db_value_array_length (int count, DB_VALUE * val);
 #endif
 
@@ -1479,35 +1464,25 @@ extern char *or_get_varbit (OR_BUF * buf, int *length_ptr);
 extern int or_get_varbit_length (OR_BUF * buf, int *intval);
 
 extern char *or_unpack_var_table (char *ptr, int nvars, OR_VARINFO * vars);
-extern OR_VARINFO *or_get_var_table (OR_BUF * buf, int nvars,
-				     char *(*allocator) (int));
+extern OR_VARINFO *or_get_var_table (OR_BUF * buf, int nvars, char *(*allocator) (int));
 
-extern OR_VARINFO *or_get_var_table_internal (OR_BUF * buf, int nvars,
-					      char *(*allocator) (int),
-					      int offset_size);
+extern OR_VARINFO *or_get_var_table_internal (OR_BUF * buf, int nvars, char *(*allocator) (int), int offset_size);
 
 /* DOMAIN functions */
-extern int or_packed_domain_size (struct tp_domain *domain,
-				  int include_classoids);
-extern char *or_pack_domain (char *ptr, struct tp_domain *domain,
-			     int include_classoids, int is_null);
-extern char *or_unpack_domain (char *ptr, struct tp_domain **domain_ptr,
-			       int *is_null);
-extern int or_put_domain (OR_BUF * buf, struct tp_domain *domain,
-			  int include_classoids, int is_null);
-extern struct tp_domain *or_get_domain (OR_BUF * buf, struct tp_domain *dom,
-					int *is_null);
+extern int or_packed_domain_size (struct tp_domain *domain, int include_classoids);
+extern char *or_pack_domain (char *ptr, struct tp_domain *domain, int include_classoids, int is_null);
+extern char *or_unpack_domain (char *ptr, struct tp_domain **domain_ptr, int *is_null);
+extern int or_put_domain (OR_BUF * buf, struct tp_domain *domain, int include_classoids, int is_null);
+extern struct tp_domain *or_get_domain (OR_BUF * buf, struct tp_domain *dom, int *is_null);
 extern int or_put_sub_domain (OR_BUF * buf);
 
 /* SET functions */
 extern void or_packed_set_info (DB_TYPE set_type, struct tp_domain *domain,
 				int include_domain, int *bound_bits,
-				int *offset_table, int *element_tags,
-				int *element_size);
+				int *offset_table, int *element_tags, int *element_size);
 
 extern int or_put_set_header (OR_BUF * buf, DB_TYPE set_type, int size,
-			      int domain, int bound_bits, int offset_table,
-			      int element_tags, int common_sub_header);
+			      int domain, int bound_bits, int offset_table, int element_tags, int common_sub_header);
 
 extern int or_get_set_header (OR_BUF * buf, DB_TYPE * set_type, int *size,
 			      int *domain, int *bound_bits, int *offset_table,
@@ -1520,23 +1495,18 @@ extern int or_packed_set_length (SETOBJ * set, int include_domain);
 extern void or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain);
 
 extern SETOBJ *or_get_set (OR_BUF * buf, struct tp_domain *domain);
-extern int or_disk_set_size (OR_BUF * buf, struct tp_domain *domain,
-			     DB_TYPE * set_type);
+extern int or_disk_set_size (OR_BUF * buf, struct tp_domain *domain, DB_TYPE * set_type);
 
 /* DB_VALUE functions */
-extern int or_packed_value_size (DB_VALUE * value, int collapse_null,
-				 int include_domain,
-				 int include_domain_classoids);
+extern int or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids);
 
 extern int or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null,
 			 int include_domain, int include_domain_classoids);
 
-extern int or_get_value (OR_BUF * buf, DB_VALUE * value,
-			 struct tp_domain *domain, int expected, bool copy);
+extern int or_get_value (OR_BUF * buf, DB_VALUE * value, struct tp_domain *domain, int expected, bool copy);
 
 extern char *or_pack_value (char *buf, DB_VALUE * value);
-extern char *or_pack_mem_value (char *ptr, DB_VALUE * value,
-				int *packed_len_except_alignment);
+extern char *or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment);
 extern char *or_unpack_value (char *buf, DB_VALUE * value);
 extern char *or_unpack_mem_value (char *buf, DB_VALUE * value);
 
@@ -1552,29 +1522,19 @@ extern char *or_pack_sha1 (char *ptr, const SHA1Hash * sha1);
 extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
 
 /* Get the compressed and the decompressed lengths of a string stored in buffer */
-extern int or_get_varchar_compression_lengths (OR_BUF * buf,
-					       int *compressed_size,
-					       int *decompressed_size);
+extern int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size);
 
-extern int or_packed_spacedb_size (const SPACEDB_ALL * all,
-				   const SPACEDB_ONEVOL * vols,
-				   const SPACEDB_FILES * files);
+extern int or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files);
 extern char *or_pack_spacedb (char *ptr, const SPACEDB_ALL * all,
-			      const SPACEDB_ONEVOL * vols,
-			      const SPACEDB_FILES * files);
-extern char *or_unpack_spacedb (char *ptr, SPACEDB_ALL * all,
-				SPACEDB_ONEVOL ** vols,
-				SPACEDB_FILES * files);
+			      const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files);
+extern char *or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files);
 
 /* class object */
-extern int classobj_decompose_property_oid (const char *buffer, int *volid,
-					    int *fileid, int *pageid);
+extern int classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, int *pageid);
 extern void classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr);
-extern int classobj_get_prop (DB_SEQ * properties, const char *name,
-			      DB_VALUE * pvalue);
+extern int classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
 #if defined (__cplusplus)
-extern int or_get_json_validator (OR_BUF * buf,
-				  REFPTR (JSON_VALIDATOR, validator));
+extern int or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator));
 extern int or_put_json_validator (OR_BUF * buf, JSON_VALIDATOR * validator);
 extern int or_get_json_schema (OR_BUF * buf, REFPTR (char, schema));
 extern int or_put_json_schema (OR_BUF * buf, char *schema);

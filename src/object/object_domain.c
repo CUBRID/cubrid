@@ -236,22 +236,17 @@ extern unsigned int db_on_server;
   NULL		/* json_validator */		       \
 
 TP_DOMAIN tp_Null_domain = { NULL, NULL, &tp_Null, DOMAIN_INIT };
-TP_DOMAIN tp_Short_domain =
-  { NULL, NULL, &tp_Short, DOMAIN_INIT4 (DB_SHORT_PRECISION, 0) };
-TP_DOMAIN tp_Integer_domain =
-  { NULL, NULL, &tp_Integer, DOMAIN_INIT4 (DB_INTEGER_PRECISION, 0) };
-TP_DOMAIN tp_Bigint_domain =
-  { NULL, NULL, &tp_Bigint, DOMAIN_INIT4 (DB_BIGINT_PRECISION, 0) };
-TP_DOMAIN tp_Float_domain =
-  { NULL, NULL, &tp_Float, DOMAIN_INIT4 (DB_FLOAT_DECIMAL_PRECISION, 0) };
-TP_DOMAIN tp_Double_domain =
-  { NULL, NULL, &tp_Double, DOMAIN_INIT4 (DB_DOUBLE_DECIMAL_PRECISION, 0) };
-TP_DOMAIN tp_Monetary_domain =
-  { NULL, NULL, &tp_Monetary, DOMAIN_INIT4 (DB_MONETARY_DECIMAL_PRECISION,
-					    0) };
+TP_DOMAIN tp_Short_domain = { NULL, NULL, &tp_Short, DOMAIN_INIT4 (DB_SHORT_PRECISION, 0) };
+TP_DOMAIN tp_Integer_domain = { NULL, NULL, &tp_Integer, DOMAIN_INIT4 (DB_INTEGER_PRECISION, 0) };
+TP_DOMAIN tp_Bigint_domain = { NULL, NULL, &tp_Bigint, DOMAIN_INIT4 (DB_BIGINT_PRECISION, 0) };
+TP_DOMAIN tp_Float_domain = { NULL, NULL, &tp_Float, DOMAIN_INIT4 (DB_FLOAT_DECIMAL_PRECISION, 0) };
+TP_DOMAIN tp_Double_domain = { NULL, NULL, &tp_Double, DOMAIN_INIT4 (DB_DOUBLE_DECIMAL_PRECISION, 0) };
 
-TP_DOMAIN tp_String_domain =
-  { NULL, NULL, &tp_String, DB_MAX_VARCHAR_PRECISION, 0,
+TP_DOMAIN tp_Monetary_domain = { NULL, NULL, &tp_Monetary, DOMAIN_INIT4 (DB_MONETARY_DECIMAL_PRECISION,
+									 0)
+};
+
+TP_DOMAIN tp_String_domain = { NULL, NULL, &tp_String, DB_MAX_VARCHAR_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
@@ -277,20 +272,13 @@ TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
 TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };	/* todo: remove me */
 TP_DOMAIN tp_Blob_domain = { NULL, NULL, &tp_Blob, DOMAIN_INIT };
 TP_DOMAIN tp_Clob_domain = { NULL, NULL, &tp_Clob, DOMAIN_INIT };
-TP_DOMAIN tp_Time_domain =
-  { NULL, NULL, &tp_Time, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
-TP_DOMAIN tp_Timetz_domain =
-  { NULL, NULL, &tp_Timetz, DOMAIN_INIT4 (DB_TIMETZ_PRECISION, 0) };
-TP_DOMAIN tp_Timeltz_domain =
-  { NULL, NULL, &tp_Timeltz, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
-TP_DOMAIN tp_Utime_domain =
-  { NULL, NULL, &tp_Utime, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
-TP_DOMAIN tp_Timestamptz_domain =
-  { NULL, NULL, &tp_Timestamptz, DOMAIN_INIT4 (DB_TIMESTAMPTZ_PRECISION, 0) };
-TP_DOMAIN tp_Timestampltz_domain =
-  { NULL, NULL, &tp_Timestampltz, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
-TP_DOMAIN tp_Date_domain =
-  { NULL, NULL, &tp_Date, DOMAIN_INIT4 (DB_DATE_PRECISION, 0) };
+TP_DOMAIN tp_Time_domain = { NULL, NULL, &tp_Time, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
+TP_DOMAIN tp_Timetz_domain = { NULL, NULL, &tp_Timetz, DOMAIN_INIT4 (DB_TIMETZ_PRECISION, 0) };
+TP_DOMAIN tp_Timeltz_domain = { NULL, NULL, &tp_Timeltz, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
+TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
+TP_DOMAIN tp_Timestamptz_domain = { NULL, NULL, &tp_Timestamptz, DOMAIN_INIT4 (DB_TIMESTAMPTZ_PRECISION, 0) };
+TP_DOMAIN tp_Timestampltz_domain = { NULL, NULL, &tp_Timestampltz, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
+TP_DOMAIN tp_Date_domain = { NULL, NULL, &tp_Date, DOMAIN_INIT4 (DB_DATE_PRECISION, 0) };
 
 TP_DOMAIN tp_Datetime_domain = { NULL, NULL, &tp_Datetime,
   DOMAIN_INIT4 (DB_DATETIME_PRECISION, DB_DATETIME_DECIMAL_SCALE)
@@ -306,8 +294,7 @@ TP_DOMAIN tp_Datetimeltz_domain = { NULL, NULL, &tp_Datetimeltz,
 
 TP_DOMAIN tp_Variable_domain = { NULL, NULL, &tp_Variable, DOMAIN_INIT3 };
 
-TP_DOMAIN tp_Substructure_domain =
-  { NULL, NULL, &tp_Substructure, DOMAIN_INIT3 };
+TP_DOMAIN tp_Substructure_domain = { NULL, NULL, &tp_Substructure, DOMAIN_INIT3 };
 TP_DOMAIN tp_Pointer_domain = { NULL, NULL, &tp_Pointer, DOMAIN_INIT };
 TP_DOMAIN tp_Error_domain = { NULL, NULL, &tp_Error, DOMAIN_INIT };
 TP_DOMAIN tp_Vobj_domain = { NULL, NULL, &tp_Vobj, DOMAIN_INIT3 };
@@ -317,39 +304,32 @@ TP_DOMAIN tp_Enumeration_domain = { NULL, NULL, &tp_Enumeration, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-TP_DOMAIN tp_Numeric_domain =
-  { NULL, NULL, &tp_Numeric, DB_DEFAULT_NUMERIC_PRECISION,
-DB_DEFAULT_NUMERIC_SCALE,
+TP_DOMAIN tp_Numeric_domain = { NULL, NULL, &tp_Numeric, DB_DEFAULT_NUMERIC_PRECISION,
+  DB_DEFAULT_NUMERIC_SCALE,
   DOMAIN_INIT2 (0, 0)
 };
 
-TP_DOMAIN tp_Bit_domain =
-  { NULL, NULL, &tp_Bit, TP_FLOATING_PRECISION_VALUE, 0,
+TP_DOMAIN tp_Bit_domain = { NULL, NULL, &tp_Bit, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_RAW_BITS, 0)
 };
 
-TP_DOMAIN tp_VarBit_domain =
-  { NULL, NULL, &tp_VarBit, DB_MAX_VARBIT_PRECISION, 0,
+TP_DOMAIN tp_VarBit_domain = { NULL, NULL, &tp_VarBit, DB_MAX_VARBIT_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_RAW_BITS, 0)
 };
 
-TP_DOMAIN tp_Char_domain =
-  { NULL, NULL, &tp_Char, TP_FLOATING_PRECISION_VALUE, 0,
+TP_DOMAIN tp_Char_domain = { NULL, NULL, &tp_Char, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-TP_DOMAIN tp_NChar_domain =
-  { NULL, NULL, &tp_NChar, TP_FLOATING_PRECISION_VALUE, 0,
+TP_DOMAIN tp_NChar_domain = { NULL, NULL, &tp_NChar, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-TP_DOMAIN tp_VarNChar_domain =
-  { NULL, NULL, &tp_VarNChar, DB_MAX_VARNCHAR_PRECISION, 0,
+TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar, DB_MAX_VARNCHAR_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-TP_DOMAIN tp_Json_domain =
-  { NULL, NULL, &tp_Json, TP_FLOATING_PRECISION_VALUE, 0,
+TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
@@ -588,80 +568,58 @@ static pthread_mutex_t tp_domain_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 static void domain_init (TP_DOMAIN * domain, DB_TYPE typeid_);
 static int tp_domain_size_internal (const TP_DOMAIN * domain);
 static void tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain);
-static TP_DOMAIN *tp_is_domain_cached (TP_DOMAIN * dlist,
-				       TP_DOMAIN * transient, TP_MATCH exact,
-				       TP_DOMAIN ** ins_pos);
+static TP_DOMAIN *tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, TP_DOMAIN ** ins_pos);
 #if !defined (SERVER_MODE)
 static void tp_swizzle_oid (TP_DOMAIN * domain);
 #endif /* SERVER_MODE */
 static int tp_domain_check_class (TP_DOMAIN * domain, int *change);
-static const TP_DOMAIN *tp_domain_find_compatible (const TP_DOMAIN * src,
-						   const TP_DOMAIN * dest);
+static const TP_DOMAIN *tp_domain_find_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest);
 #if defined(ENABLE_UNUSED_FUNCTION)
-static int tp_null_terminate (const DB_VALUE * src, char **strp, int str_len,
-			      bool * do_alloc);
+static int tp_null_terminate (const DB_VALUE * src, char **strp, int str_len, bool * do_alloc);
 #endif
 static int tp_atotime (const DB_VALUE * src, DB_TIME * temp);
-static int tp_atotimetz (const DB_VALUE * src, DB_TIMETZ * temp,
-			 bool to_timeltz);
+static int tp_atotimetz (const DB_VALUE * src, DB_TIMETZ * temp, bool to_timeltz);
 static int tp_atodate (const DB_VALUE * src, DB_DATE * temp);
 static int tp_atoutime (const DB_VALUE * src, DB_UTIME * temp);
 static int tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp);
 static int tp_atoudatetime (const DB_VALUE * src, DB_DATETIME * temp);
 static int tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp);
 static int tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp);
-static int tp_atof (const DB_VALUE * src, double *num_value,
-		    DB_DATA_STATUS * data_stat);
-static int tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value,
-		     DB_DATA_STATUS * data_stat);
+static int tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat);
+static int tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *tp_itoa (int value, char *string, int radix);
 #endif
 static char *tp_ltoa (DB_BIGINT value, char *string, int radix);
-static void format_floating_point (char *new_string, char *rve, int ndigits,
-				   int decpt, int sign);
+static void format_floating_point (char *new_string, char *rve, int ndigits, int decpt, int sign);
 static void tp_ftoa (DB_VALUE const *src, DB_VALUE * result);
 static void tp_dtoa (DB_VALUE const *src, DB_VALUE * result);
-static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string,
-		       int max_size);
+static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
 static TP_DOMAIN_STATUS tp_value_cast_internal (const DB_VALUE * src,
 						DB_VALUE * dest,
 						const TP_DOMAIN *
 						desired_domain,
 						TP_COERCION_MODE
-						coercion_mode,
-						bool do_domain_select,
-						bool preserve_domain);
+						coercion_mode, bool do_domain_select, bool preserve_domain);
 static DB_VALUE_COMPARE_RESULT oidcmp (OID * oid1, OID * oid2);
-static int tp_domain_match_internal (const TP_DOMAIN * dom1,
-				     const TP_DOMAIN * dom2, TP_MATCH exact,
-				     bool match_order);
+static int tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact, bool match_order);
 #if defined(CUBRID_DEBUG)
 static void fprint_domain (FILE * fp, TP_DOMAIN * domain);
 #endif
-static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type,
-						  TP_DOMAIN * setdomain)
-  __attribute__ ((ALWAYS_INLINE));
-static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type,
-					     TP_DOMAIN * setdomain)
-  __attribute__ ((ALWAYS_INLINE));
+static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
+static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
 
-static int tp_enumeration_match (const DB_ENUMERATION * db_enum1,
-				 const DB_ENUMERATION * db_enum2);
+static int tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db_enum2);
 static int tp_digit_number_str_to_bi (char *start, char *end,
 				      INTL_CODESET codeset, bool is_negative,
-				      DB_BIGINT * num_value,
-				      DB_DATA_STATUS * data_stat);
+				      DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
 static int tp_hex_str_to_bi (char *start, char *end, INTL_CODESET codeset,
-			     bool is_negative, DB_BIGINT * num_value,
-			     DB_DATA_STATUS * data_stat);
+			     bool is_negative, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
 static int tp_scientific_str_to_bi (char *start, char *end,
 				    INTL_CODESET codeset, bool is_negative,
-				    DB_BIGINT * num_value,
-				    DB_DATA_STATUS * data_stat);
+				    DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
 static DB_BIGINT tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative,
-					 bool truncated, bool round,
-					 DB_DATA_STATUS * data_stat);
+					 bool truncated, bool round, DB_DATA_STATUS * data_stat);
 
 static UINT64 tp_ubi_times_ten (UINT64 ubi, bool * truncated);
 
@@ -790,8 +748,7 @@ tp_final (void)
        * can potentially be other built-ins in the list mixed in with
        * allocated domains.
        */
-      for (d = dlist->next_list, prev = dlist, next = NULL; d != NULL;
-	   d = next)
+      for (d = dlist->next_list, prev = dlist, next = NULL; d != NULL; d = next)
 	{
 	  next = d->next_list;
 	  if (d->built_in_index)
@@ -821,8 +778,7 @@ tp_final (void)
     {
       dlist = tp_Midxkey_domains[i];
 
-      for (d = dlist->next_list, prev = dlist, next = NULL; d != NULL;
-	   d = next)
+      for (d = dlist->next_list, prev = dlist, next = NULL; d != NULL; d = next)
 	{
 	  next = d->next_list;
 	  if (d->built_in_index)
@@ -881,8 +837,7 @@ tp_domain_clear_enumeration (DB_ENUMERATION * enumeration)
  * db_enum2 (in);
  */
 static int
-tp_enumeration_match (const DB_ENUMERATION * db_enum1,
-		      const DB_ENUMERATION * db_enum2)
+tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db_enum2)
 {
   int i;
   DB_ENUM_ELEMENT *enum1 = NULL, *enum2 = NULL;
@@ -911,8 +866,7 @@ tp_enumeration_match (const DB_ENUMERATION * db_enum1,
       enum1 = &db_enum1->elements[i];
       enum2 = &db_enum2->elements[i];
 
-      if (DB_GET_ENUM_ELEM_STRING_SIZE (enum1) !=
-	  DB_GET_ENUM_ELEM_STRING_SIZE (enum2))
+      if (DB_GET_ENUM_ELEM_STRING_SIZE (enum1) != DB_GET_ENUM_ELEM_STRING_SIZE (enum2))
 	{
 	  return 0;
 	}
@@ -925,8 +879,7 @@ tp_enumeration_match (const DB_ENUMERATION * db_enum1,
        * Thus, collation-based comparison is not correct here.
        */
       if (memcmp
-	  (DB_GET_ENUM_ELEM_STRING (enum1), DB_GET_ENUM_ELEM_STRING (enum2),
-	   DB_GET_ENUM_ELEM_STRING_SIZE (enum1)) != 0)
+	  (DB_GET_ENUM_ELEM_STRING (enum1), DB_GET_ENUM_ELEM_STRING (enum2), DB_GET_ENUM_ELEM_STRING_SIZE (enum1)) != 0)
 	{
 	  return 0;
 	}
@@ -1142,8 +1095,7 @@ tp_domain_new (DB_TYPE type)
  *    The setdomain must also be a transient domain list.
  */
 TP_DOMAIN *
-tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj,
-		     int precision, int scale, TP_DOMAIN * setdomain)
+tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, int scale, TP_DOMAIN * setdomain)
 {
   TP_DOMAIN *new_dm;
   int fixed_precision;
@@ -1266,12 +1218,10 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
 
   dest->count = src->count;
 
-  dest->elements =
-    (DB_ENUM_ELEMENT *) malloc (src->count * sizeof (DB_ENUM_ELEMENT));
+  dest->elements = (DB_ENUM_ELEMENT *) malloc (src->count * sizeof (DB_ENUM_ELEMENT));
   if (dest->elements == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      src->count * sizeof (DB_ENUM_ELEMENT));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, src->count * sizeof (DB_ENUM_ELEMENT));
       return ER_FAILED;
     }
 
@@ -1284,30 +1234,24 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
 
       if (DB_GET_ENUM_ELEM_STRING (src_elem) != NULL)
 	{
-	  dest_str =
-	    (char *) malloc (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1);
+	  dest_str = (char *) malloc (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1);
 	  if (dest_str == NULL)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (size_t) (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1));
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1));
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error_return;
 	    }
-	  memcpy (dest_str, DB_GET_ENUM_ELEM_STRING (src_elem),
-		  DB_GET_ENUM_ELEM_STRING_SIZE (src_elem));
+	  memcpy (dest_str, DB_GET_ENUM_ELEM_STRING (src_elem), DB_GET_ENUM_ELEM_STRING_SIZE (src_elem));
 	  dest_str[DB_GET_ENUM_ELEM_STRING_SIZE (src_elem)] = 0;
 	  DB_SET_ENUM_ELEM_STRING (dest_elem, dest_str);
-	  DB_SET_ENUM_ELEM_STRING_SIZE (dest_elem,
-					DB_GET_ENUM_ELEM_STRING_SIZE
-					(src_elem));
+	  DB_SET_ENUM_ELEM_STRING_SIZE (dest_elem, DB_GET_ENUM_ELEM_STRING_SIZE (src_elem));
 	}
       else
 	{
 	  DB_SET_ENUM_ELEM_STRING (dest_elem, NULL);
 	}
-      DB_SET_ENUM_ELEM_CODESET (dest_elem,
-				DB_GET_ENUM_ELEM_CODESET (src_elem));
+      DB_SET_ENUM_ELEM_CODESET (dest_elem, DB_GET_ENUM_ELEM_CODESET (src_elem));
     }
 
   return NO_ERROR;
@@ -1390,18 +1334,14 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 		{
 		  if (d->json_validator != NULL)
 		    {
-		      new_domain->json_validator =
-			db_json_copy_validator (d->json_validator);
+		      new_domain->json_validator = db_json_copy_validator (d->json_validator);
 		    }
 		}
 
 	      if (d->type->id == DB_TYPE_ENUMERATION)
 		{
 		  int error;
-		  error =
-		    tp_domain_copy_enumeration (&DOM_GET_ENUMERATION
-						(new_domain),
-						&DOM_GET_ENUMERATION (d));
+		  error = tp_domain_copy_enumeration (&DOM_GET_ENUMERATION (new_domain), &DOM_GET_ENUMERATION (d));
 		  if (error != NO_ERROR)
 		    {
 		      goto error;
@@ -1513,11 +1453,9 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL
-	  || domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
+      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL || domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
-	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain),
-					  TP_DOMAIN_COLLATION (domain));
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	}
       if (domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
@@ -1550,8 +1488,7 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
  *    exact(in): how tolerant we are of mismatches
  */
 int
-tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
-		 TP_MATCH exact)
+tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact)
 {
   return tp_domain_match_internal (dom1, dom2, exact, true);
 }
@@ -1564,8 +1501,7 @@ tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
  *    exact(in): how tolerant we are of mismatches
  */
 int
-tp_domain_match_ignore_order (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
-			      TP_MATCH exact)
+tp_domain_match_ignore_order (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact)
 {
   return tp_domain_match_internal (dom1, dom2, exact, false);
 }
@@ -1579,8 +1515,7 @@ tp_domain_match_ignore_order (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
  *    match_order(in): check for asc/desc
  */
 static int
-tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
-			  TP_MATCH exact, bool match_order)
+tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact, bool match_order)
 {
   int match = 0;
 
@@ -1596,8 +1531,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
     }
 
   if ((TP_DOMAIN_TYPE (dom1) != TP_DOMAIN_TYPE (dom2))
-      && (exact != TP_STR_MATCH
-	  || !TP_NEAR_MATCH (TP_DOMAIN_TYPE (dom1), TP_DOMAIN_TYPE (dom2))))
+      && (exact != TP_STR_MATCH || !TP_NEAR_MATCH (TP_DOMAIN_TYPE (dom1), TP_DOMAIN_TYPE (dom2))))
     {
       return 0;
     }
@@ -1610,8 +1544,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 
   /* check for asc/desc */
   if (TP_DOMAIN_TYPE (dom1) == TP_DOMAIN_TYPE (dom2)
-      && tp_valid_indextype (TP_DOMAIN_TYPE (dom1)) && match_order == true
-      && dom1->is_desc != dom2->is_desc)
+      && tp_valid_indextype (TP_DOMAIN_TYPE (dom1)) && match_order == true && dom1->is_desc != dom2->is_desc)
     {
       return 0;
     }
@@ -1650,9 +1583,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
     case DB_TYPE_JSON:
       if (dom1->json_validator != NULL && dom2->json_validator != NULL)
 	{
-	  match =
-	    (int) db_json_are_validators_equal (dom1->json_validator,
-						dom2->json_validator);
+	  match = (int) db_json_are_validators_equal (dom1->json_validator, dom2->json_validator);
 	}
       else if (dom1->json_validator == NULL && dom2->json_validator == NULL)
 	{
@@ -1704,8 +1635,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 	}
 #endif /* defined (SERVER_MODE) */
 
-      if (match == 0 && exact == TP_SET_MATCH && dom1->class_mop == NULL
-	  && OID_ISNULL (&dom1->class_oid))
+      if (match == 0 && exact == TP_SET_MATCH && dom1->class_mop == NULL && OID_ISNULL (&dom1->class_oid))
 	{
 	  match = 1;
 	}
@@ -1732,8 +1662,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 	      /* handle the simple single domain case quickly */
 	      if (dsize == 1)
 		{
-		  match =
-		    tp_domain_match (dom1->setdomain, dom2->setdomain, exact);
+		  match = tp_domain_match (dom1->setdomain, dom2->setdomain, exact);
 		}
 	      else
 		{
@@ -1769,8 +1698,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 	      /* handle the simple single domain case quickly */
 	      if (dsize == 1)
 		{
-		  match =
-		    tp_domain_match (dom1->setdomain, dom2->setdomain, exact);
+		  match = tp_domain_match (dom1->setdomain, dom2->setdomain, exact);
 		}
 	      else
 		{
@@ -1783,13 +1711,11 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 		    }
 
 		  match = 1;
-		  for (d1 = dom1->setdomain; d1 != NULL && match;
-		       d1 = d1->next)
+		  for (d1 = dom1->setdomain; d1 != NULL && match; d1 = d1->next)
 		    {
 		      for (d2 = dom2->setdomain; d2 != NULL; d2 = d2->next)
 			{
-			  if (!d2->is_visited
-			      && tp_domain_match (d1, d2, exact))
+			  if (!d2->is_visited && tp_domain_match (d1, d2, exact))
 			    {
 			      break;
 			    }
@@ -1891,8 +1817,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
        * fixed width char.  Not as much of a problem since these won't be
        * used for literal strings.
        */
-      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH
-	  || exact == TP_SET_MATCH)
+      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
 	{
 	  match = (dom1->precision == dom2->precision);
 	}
@@ -1903,17 +1828,14 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 	   * CHAR domain for the representation of a literal string. Accept zero here too since it seems to creep into
 	   * domains sometimes. */
 	  match = (dom2->precision == 0
-		   || dom2->precision == TP_FLOATING_PRECISION_VALUE
-		   || dom1->precision >= dom2->precision);
+		   || dom2->precision == TP_FLOATING_PRECISION_VALUE || dom1->precision >= dom2->precision);
 	}
       break;
 
     case DB_TYPE_NCHAR:
-      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH
-	  || exact == TP_SET_MATCH)
+      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
 	{
-	  match = ((dom1->precision == dom2->precision)
-		   && (dom1->collation_id == dom2->collation_id));
+	  match = ((dom1->precision == dom2->precision) && (dom1->collation_id == dom2->collation_id));
 	}
       else
 	{
@@ -1923,18 +1845,15 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 	   */
 	  match = ((dom1->collation_id == dom2->collation_id)
 		   && (dom2->precision == 0
-		       || dom2->precision == TP_FLOATING_PRECISION_VALUE
-		       || dom1->precision >= dom2->precision));
+		       || dom2->precision == TP_FLOATING_PRECISION_VALUE || dom1->precision >= dom2->precision));
 	}
 
       break;
 
     case DB_TYPE_VARNCHAR:
-      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH
-	  || exact == TP_SET_MATCH)
+      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
 	{
-	  match = ((dom1->precision == dom2->precision)
-		   && (dom1->collation_id == dom2->collation_id));
+	  match = ((dom1->precision == dom2->precision) && (dom1->collation_id == dom2->collation_id));
 	}
       else
 	{
@@ -1949,8 +1868,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
        * mr_setmem_numeric function is not currently able to perform the
        * deferred coercion.
        */
-      match = ((dom1->precision == dom2->precision)
-	       && (dom1->scale == dom2->scale));
+      match = ((dom1->precision == dom2->precision) && (dom1->scale == dom2->scale));
       break;
 
     case DB_TYPE_POINTER:
@@ -1965,9 +1883,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
       break;
 
     case DB_TYPE_ENUMERATION:
-      match =
-	tp_enumeration_match (&DOM_GET_ENUMERATION (dom1),
-			      &DOM_GET_ENUMERATION (dom2));
+      match = tp_enumeration_match (&DOM_GET_ENUMERATION (dom1), &DOM_GET_ENUMERATION (dom2));
       break;
 
     case DB_TYPE_RESULTSET:
@@ -2039,8 +1955,7 @@ tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain)
  *                                             others: precision's asc order
  */
 static TP_DOMAIN *
-tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
-		     TP_DOMAIN ** ins_pos)
+tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, TP_DOMAIN ** ins_pos)
 {
   TP_DOMAIN *domain = dlist;
   int match = 0;
@@ -2052,9 +1967,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
     }
 
   if ((TP_DOMAIN_TYPE (domain) != TP_DOMAIN_TYPE (transient))
-      && (exact != TP_STR_MATCH
-	  || !TP_NEAR_MATCH (TP_DOMAIN_TYPE (domain),
-			     TP_DOMAIN_TYPE (transient))))
+      && (exact != TP_STR_MATCH || !TP_NEAR_MATCH (TP_DOMAIN_TYPE (domain), TP_DOMAIN_TYPE (transient))))
     {
       return NULL;
     }
@@ -2140,14 +2053,11 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	       */
 	      if (domain->class_mop != NULL)
 		{
-		  match =
-		    OID_EQ (WS_OID (domain->class_mop),
-			    &transient->class_oid);
+		  match = OID_EQ (WS_OID (domain->class_mop), &transient->class_oid);
 		}
 	    }
 
-	  if (match == 0 && exact == TP_SET_MATCH && domain->class_mop == NULL
-	      && OID_ISNULL (&domain->class_oid))
+	  if (match == 0 && exact == TP_SET_MATCH && domain->class_mop == NULL && OID_ISNULL (&domain->class_oid))
 	    {
 	      /* check for asc/desc */
 	      if (domain->is_desc == transient->is_desc)
@@ -2203,9 +2113,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 		    /* handle the simple single domain case quickly */
 		    if (dsize1 == 1)
 		      {
-			match =
-			  tp_domain_match (domain->setdomain,
-					   transient->setdomain, exact);
+			match = tp_domain_match (domain->setdomain, transient->setdomain, exact);
 		      }
 		    else
 		      {
@@ -2213,8 +2121,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 
 			match = 1;
 			for (d1 = domain->setdomain, d2 =
-			     transient->setdomain; d1 != NULL && d2 != NULL;
-			     d1 = d1->next, d2 = d2->next)
+			     transient->setdomain; d1 != NULL && d2 != NULL; d1 = d1->next, d2 = d2->next)
 			  {
 			    if (!tp_domain_match (d1, d2, exact))
 			      {
@@ -2244,30 +2151,24 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 		    /* handle the simple single domain case quickly */
 		    if (dsize == 1)
 		      {
-			match =
-			  tp_domain_match (domain->setdomain,
-					   transient->setdomain, exact);
+			match = tp_domain_match (domain->setdomain, transient->setdomain, exact);
 		      }
 		    else
 		      {
 			TP_DOMAIN *d1, *d2;
 
 			/* clear the visited flag of second subdomain list */
-			for (d2 = transient->setdomain; d2 != NULL;
-			     d2 = d2->next)
+			for (d2 = transient->setdomain; d2 != NULL; d2 = d2->next)
 			  {
 			    d2->is_visited = 0;
 			  }
 
 			match = 1;
-			for (d1 = domain->setdomain; d1 != NULL && match;
-			     d1 = d1->next)
+			for (d1 = domain->setdomain; d1 != NULL && match; d1 = d1->next)
 			  {
-			    for (d2 = transient->setdomain; d2 != NULL;
-				 d2 = d2->next)
+			    for (d2 = transient->setdomain; d2 != NULL; d2 = d2->next)
 			      {
-				if (!d2->is_visited
-				    && tp_domain_match (d1, d2, exact))
+				if (!d2->is_visited && tp_domain_match (d1, d2, exact))
 				  {
 				    break;
 				  }
@@ -2329,8 +2230,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 
 		    for (i = 0; i < dsize1; i++)
 		      {
-			match =
-			  tp_domain_match (element_dom1, element_dom2, exact);
+			match = tp_domain_match (element_dom1, element_dom2, exact);
 			if (match == 0)
 			  {
 			    break;
@@ -2355,16 +2255,11 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
     case DB_TYPE_JSON:
       while (domain)
 	{
-	  if (transient->json_validator != NULL
-	      && domain->json_validator != NULL)
+	  if (transient->json_validator != NULL && domain->json_validator != NULL)
 	    {
-	      match =
-		(int) db_json_are_validators_equal (domain->json_validator,
-						    transient->
-						    json_validator);
+	      match = (int) db_json_are_validators_equal (domain->json_validator, transient->json_validator);
 	    }
-	  else if (transient->json_validator == NULL
-		   && domain->json_validator == NULL)
+	  else if (transient->json_validator == NULL && domain->json_validator == NULL)
 	    {
 	      match = 1;
 	    }
@@ -2396,8 +2291,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	      match = ((domain->precision == transient->precision)
 		       && (domain->collation_id == transient->collation_id)
 		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag ==
-			   transient->collation_flag));
+		       && (domain->collation_flag == transient->collation_flag));
 	    }
 	  else if (exact == TP_STR_MATCH)
 	    {
@@ -2408,8 +2302,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	      match = ((domain->precision >= transient->precision)
 		       && (domain->collation_id == transient->collation_id)
 		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag ==
-			   transient->collation_flag));
+		       && (domain->collation_flag == transient->collation_flag));
 	    }
 	  else
 	    {
@@ -2423,8 +2316,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	       */
 	      match = ((domain->collation_id == transient->collation_id)
 		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag ==
-			   transient->collation_flag));
+		       && (domain->collation_flag == transient->collation_flag));
 	    }
 
 	  if (match)
@@ -2449,8 +2341,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 		  break;
 		}
 
-	      match = ((domain->precision == transient->precision)
-		       && (domain->is_desc == transient->is_desc));
+	      match = ((domain->precision == transient->precision) && (domain->is_desc == transient->is_desc));
 	    }
 	  else if (exact == TP_STR_MATCH)
 	    {
@@ -2458,8 +2349,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	       * Allow the match if the precisions would allow us to reuse the
 	       * string without modification.
 	       */
-	      match = ((domain->precision >= transient->precision)
-		       && (domain->is_desc == transient->is_desc));
+	      match = ((domain->precision >= transient->precision) && (domain->is_desc == transient->is_desc));
 	    }
 	  else
 	    {
@@ -2492,16 +2382,14 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	   * for fixed width char.  Not as much of a problem since these won't
 	   * be used for literal strings.
 	   */
-	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH
-	      || exact == TP_SET_MATCH)
+	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
 	    {
 	      if (domain->precision > transient->precision)
 		{
 		  break;
 		}
 
-	      match = ((domain->precision == transient->precision)
-		       && (domain->is_desc == transient->is_desc));
+	      match = ((domain->precision == transient->precision) && (domain->is_desc == transient->is_desc));
 	    }
 	  else
 	    {
@@ -2517,8 +2405,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	      match =
 		((transient->precision == 0
 		  || transient->precision == TP_FLOATING_PRECISION_VALUE
-		  || domain->precision >= transient->precision)
-		 && (domain->is_desc == transient->is_desc));
+		  || domain->precision >= transient->precision) && (domain->is_desc == transient->is_desc));
 	    }
 
 	  if (match)
@@ -2535,8 +2422,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
     case DB_TYPE_NCHAR:
       while (domain)
 	{
-	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH
-	      || exact == TP_SET_MATCH)
+	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
 	    {
 	      if (domain->precision > transient->precision)
 		{
@@ -2546,8 +2432,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	      match = ((domain->precision == transient->precision)
 		       && (domain->collation_id == transient->collation_id)
 		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag ==
-			   transient->collation_flag));
+		       && (domain->collation_flag == transient->collation_flag));
 	    }
 	  else
 	    {
@@ -2561,8 +2446,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 			       TP_FLOATING_PRECISION_VALUE)
 			   || domain->precision >= transient->precision)
 		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag ==
-			   transient->collation_flag));
+		       && (domain->collation_flag == transient->collation_flag));
 	    }
 
 	  if (match)
@@ -2580,8 +2464,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
     case DB_TYPE_VARNCHAR:
       while (domain)
 	{
-	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH
-	      || exact == TP_SET_MATCH)
+	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
 	    {
 	      /* check for descending order */
 	      if (domain->precision < transient->precision)
@@ -2592,16 +2475,14 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	      match = ((domain->precision == transient->precision)
 		       && (domain->collation_id == transient->collation_id)
 		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag ==
-			   transient->collation_flag));
+		       && (domain->collation_flag == transient->collation_flag));
 	    }
 	  else
 	    {
 	      /* see notes above under the DB_TYPE_VARCHAR clause */
 	      match = ((domain->collation_id == transient->collation_id)
 		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag ==
-			   transient->collation_flag));
+		       && (domain->collation_flag == transient->collation_flag));
 	    }
 
 	  if (match)
@@ -2621,8 +2502,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
        * actually NUMERIC(15,0). We try to match it first.
        */
       if (transient->precision == domain->precision
-	  && transient->scale == domain->scale
-	  && transient->is_desc == domain->is_desc)
+	  && transient->scale == domain->scale && transient->is_desc == domain->is_desc)
 	{
 	  match = 1;
 	  break;
@@ -2636,8 +2516,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	   * by descending order of precision and scale.
 	   */
 	  if ((domain->precision < transient->precision)
-	      || ((domain->precision == transient->precision)
-		  && (domain->scale < transient->scale)))
+	      || ((domain->precision == transient->precision) && (domain->scale < transient->scale)))
 	    {
 	      break;
 	    }
@@ -2648,8 +2527,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	   * to perform the deferred coercion.
 	   */
 	  match = ((domain->precision == transient->precision)
-		   && (domain->scale == transient->scale)
-		   && (domain->is_desc == transient->is_desc));
+		   && (domain->scale == transient->scale) && (domain->is_desc == transient->is_desc));
 	  if (match)
 	    {
 	      break;
@@ -2685,9 +2563,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
     case DB_TYPE_ENUMERATION:
       while (domain != NULL)
 	{
-	  if (tp_enumeration_match
-	      (&DOM_GET_ENUMERATION (domain),
-	       &DOM_GET_ENUMERATION (transient)) != 0)
+	  if (tp_enumeration_match (&DOM_GET_ENUMERATION (domain), &DOM_GET_ENUMERATION (transient)) != 0)
 	    {
 	      match = 1;
 	      break;
@@ -2763,8 +2639,7 @@ tp_domain_find_noparam (DB_TYPE type, bool is_desc)
    * DB_TYPE_CLOB DB_TYPE_TIMESTAMP DB_TYPE_DATE DB_TYPE_DATETIME DB_TYPE_MONETARY DB_TYPE_SHORT DB_TYPE_BIGINT
    * DB_TYPE_TIMESTAMPTZ DB_TYPE_TIMESTAMPLTZ DB_TYPE_DATETIMETZ DB_TYPE_DATETIMELTZ DB_TYPE_TIMETZ DB_TYPE_TIMELTZ */
 
-  for (dom = tp_domain_get_list (type, NULL); dom != NULL;
-       dom = dom->next_list)
+  for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
     {
       if (dom->is_desc == is_desc)
 	{
@@ -2797,8 +2672,7 @@ tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
    * actually NUMERIC(15,0). We try to match it first.
    */
   dom = tp_domain_get_list (type, NULL);
-  if (precision == dom->precision && scale == dom->scale
-      && is_desc == dom->is_desc)
+  if (precision == dom->precision && scale == dom->scale && is_desc == dom->is_desc)
     {
       return dom;
     }
@@ -2806,15 +2680,13 @@ tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
   /* search the list for a domain that matches */
   for (dom = dom->next_list; dom != NULL; dom = dom->next_list)
     {
-      if ((precision > dom->precision)
-	  || ((precision == dom->precision) && (scale > dom->scale)))
+      if ((precision > dom->precision) || ((precision == dom->precision) && (scale > dom->scale)))
 	{
 	  return NULL;		/* not exist */
 	}
 
       /* we MUST perform exact matches here */
-      if (dom->precision == precision && dom->scale == scale
-	  && dom->is_desc == is_desc)
+      if (dom->precision == precision && dom->scale == scale && dom->is_desc == is_desc)
 	{
 	  break;		/* found */
 	}
@@ -2834,8 +2706,7 @@ tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
  */
 TP_DOMAIN *
 tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id,
-			unsigned char collation_flag, int precision,
-			bool is_desc)
+			unsigned char collation_flag, int precision, bool is_desc)
 {
   TP_DOMAIN *dom;
 
@@ -2846,15 +2717,12 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id,
    * DB_TYPE_BIT     DB_TYPE_VARBIT
    */
   assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR
-	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARNCHAR
-	  || type == DB_TYPE_BIT || type == DB_TYPE_VARBIT);
+	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_BIT || type == DB_TYPE_VARBIT);
 
-  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR
-      || type == DB_TYPE_VARBIT)
+  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_VARBIT)
     {
       /* search the list for a domain that matches */
-      for (dom = tp_domain_get_list (type, NULL); dom != NULL;
-	   dom = dom->next_list)
+      for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
 	{
 	  /* Variable character/bit is sorted in descending order of precision. */
 	  if (precision > dom->precision)
@@ -2869,8 +2737,7 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id,
 		{
 		  break;	/* found */
 		}
-	      else if (dom->collation_id == collation_id
-		       && dom->collation_flag == collation_flag)
+	      else if (dom->collation_id == collation_id && dom->collation_flag == collation_flag)
 		{
 		  /* codeset should be the same if collations are equal */
 		  assert (dom->codeset == codeset);
@@ -2882,8 +2749,7 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id,
   else
     {
       /* search the list for a domain that matches */
-      for (dom = tp_domain_get_list (type, NULL); dom != NULL;
-	   dom = dom->next_list)
+      for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
 	{
 	  /* Fixed character/bit is sorted in ascending order of precision. */
 	  if (precision < dom->precision)
@@ -2898,8 +2764,7 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id,
 		{
 		  break;	/* found */
 		}
-	      else if (dom->collation_id == collation_id
-		       && dom->collation_flag == collation_flag)
+	      else if (dom->collation_id == collation_id && dom->collation_flag == collation_flag)
 		{
 		  /* codeset should be the same if collations are equal */
 		  assert (dom->codeset == codeset);
@@ -2921,16 +2786,14 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id,
  *    is_desc(in): desc order for index key_type
  */
 TP_DOMAIN *
-tp_domain_find_object (DB_TYPE type, OID * class_oid,
-		       struct db_object * class_mop, bool is_desc)
+tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_mop, bool is_desc)
 {
   TP_DOMAIN *dom;
 
   /* tp_domain_find_with_classinfo */
 
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (type, NULL); dom != NULL;
-       dom = dom->next_list)
+  for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
     {
       /* we MUST perform exact matches here */
 
@@ -2961,16 +2824,14 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid,
 	   */
 	  if (dom->class_mop == NULL)
 	    {
-	      if (OID_EQ (&dom->class_oid, WS_OID (class_mop))
-		  && dom->is_desc == is_desc)
+	      if (OID_EQ (&dom->class_oid, WS_OID (class_mop)) && dom->is_desc == is_desc)
 		{
 		  break;	/* found */
 		}
 	    }
 	  else
 	    {
-	      if (OID_EQ (WS_OID (dom->class_mop), class_oid)
-		  && dom->is_desc == is_desc)
+	      if (OID_EQ (WS_OID (dom->class_mop), class_oid) && dom->is_desc == is_desc)
 		{
 		  break;	/* found */
 		}
@@ -2999,8 +2860,7 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
   src_dsize = tp_domain_size (setdomain);
 
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (type, setdomain); dom != NULL;
-       dom = dom->next_list)
+  for (dom = tp_domain_get_list (type, setdomain); dom != NULL; dom = dom->next_list)
     {
       /* we MUST perform exact matches here */
       if (dom->setdomain == setdomain)
@@ -3017,8 +2877,7 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 	      /* handle the simple single domain case quickly */
 	      if (dsize == 1)
 		{
-		  if (tp_domain_match
-		      (dom->setdomain, setdomain, TP_EXACT_MATCH))
+		  if (tp_domain_match (dom->setdomain, setdomain, TP_EXACT_MATCH))
 		    {
 		      break;
 		    }
@@ -3038,8 +2897,7 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 
 			  for (i = 0; i < dsize; i++)
 			    {
-			      match =
-				tp_domain_match (d1, d2, TP_EXACT_MATCH);
+			      match = tp_domain_match (d1, d2, TP_EXACT_MATCH);
 			      if (match == 0)
 				{
 				  break;
@@ -3062,13 +2920,11 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 			}
 
 		      match = 1;
-		      for (d1 = dom->setdomain; d1 != NULL && match;
-			   d1 = d1->next)
+		      for (d1 = dom->setdomain; d1 != NULL && match; d1 = d1->next)
 			{
 			  for (d2 = setdomain; d2 != NULL; d2 = d2->next)
 			    {
-			      if (!d2->is_visited
-				  && tp_domain_match (d1, d2, TP_EXACT_MATCH))
+			      if (!d2->is_visited && tp_domain_match (d1, d2, TP_EXACT_MATCH))
 				{
 				  break;
 				}
@@ -3109,11 +2965,9 @@ tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc)
   DB_ENUM_ELEMENT *db_enum1 = NULL, *db_enum2 = NULL;
 
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (DB_TYPE_ENUMERATION, NULL); dom != NULL;
-       dom = dom->next_list)
+  for (dom = tp_domain_get_list (DB_TYPE_ENUMERATION, NULL); dom != NULL; dom = dom->next_list)
     {
-      if (dom->is_desc == is_desc
-	  && tp_enumeration_match (&DOM_GET_ENUMERATION (dom), enumeration))
+      if (dom->is_desc == is_desc && tp_enumeration_match (&DOM_GET_ENUMERATION (dom), enumeration))
 	{
 	  return dom;
 	}
@@ -3166,15 +3020,13 @@ tp_domain_cache (TP_DOMAIN * transient)
    * first search stage: NO LOCK
    */
   /* locate the root of the cache list for domains of this type */
-  dlist =
-    tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
+  dlist = tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
 
   /* search the list for a domain that matches */
   if (*dlist != NULL)
     {
       ins_pos = NULL;
-      domain =
-	tp_is_domain_cached (*dlist, transient, TP_EXACT_MATCH, &ins_pos);
+      domain = tp_is_domain_cached (*dlist, transient, TP_EXACT_MATCH, &ins_pos);
       if (domain != NULL)
 	{
 	  /* 
@@ -3193,15 +3045,13 @@ tp_domain_cache (TP_DOMAIN * transient)
   rv = pthread_mutex_lock (&tp_domain_cache_lock);	/* LOCK */
 
   /* locate the root of the cache list for domains of this type */
-  dlist =
-    tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
+  dlist = tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
 
   /* search the list for a domain that matches */
   if (*dlist != NULL)
     {
       ins_pos = NULL;
-      domain =
-	tp_is_domain_cached (*dlist, transient, TP_EXACT_MATCH, &ins_pos);
+      domain = tp_is_domain_cached (*dlist, transient, TP_EXACT_MATCH, &ins_pos);
       if (domain != NULL)
 	{
 	  /* 
@@ -3324,8 +3174,7 @@ tp_domain_resolve_default (DB_TYPE type)
  *  mode flag. Use this in context of type inference for argument coercion 
  */
 TP_DOMAIN *
-tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id,
-				  TP_DOMAIN_COLL_ACTION coll_flag)
+tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTION coll_flag)
 {
   TP_DOMAIN *default_dom;
   TP_DOMAIN *resolved_dom;
@@ -3389,9 +3238,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	{
 	  domain = set_get_domain (set);
 	  /* handle case of incomplete set domain: build full domain */
-	  if (domain->setdomain == NULL
-	      || tp_domain_check (domain, val,
-				  TP_EXACT_MATCH) != DOMAIN_COMPATIBLE)
+	  if (domain->setdomain == NULL || tp_domain_check (domain, val, TP_EXACT_MATCH) != DOMAIN_COMPATIBLE)
 	    {
 	      if (domain->is_cached)
 		{
@@ -3402,9 +3249,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 		{
 		  int err_status;
 
-		  err_status =
-		    setobj_build_domain_from_col (set->set,
-						  &(domain->setdomain));
+		  err_status = setobj_build_domain_from_col (set->set, &(domain->setdomain));
 		  if (err_status != NO_ERROR && !domain->is_cached)
 		    {
 		      tp_domain_free (domain);
@@ -3531,8 +3376,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR)
 	    {
 	      if (domain->precision == 0
-		  || domain->precision == TP_FLOATING_PRECISION_VALUE
-		  || domain->precision > DB_MAX_VARCHAR_PRECISION)
+		  || domain->precision == TP_FLOATING_PRECISION_VALUE || domain->precision > DB_MAX_VARCHAR_PRECISION)
 		{
 		  domain->precision = DB_MAX_VARCHAR_PRECISION;
 		}
@@ -3540,8 +3384,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)
 	    {
 	      if (domain->precision == 0
-		  || domain->precision == TP_FLOATING_PRECISION_VALUE
-		  || domain->precision > DB_MAX_VARBIT_PRECISION)
+		  || domain->precision == TP_FLOATING_PRECISION_VALUE || domain->precision > DB_MAX_VARBIT_PRECISION)
 		{
 		  domain->precision = DB_MAX_VARBIT_PRECISION;
 		}
@@ -3549,8 +3392,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else if (value_type == DB_TYPE_VARNCHAR)
 	    {
 	      if (domain->precision == 0
-		  || domain->precision == TP_FLOATING_PRECISION_VALUE
-		  || domain->precision >= DB_MAX_VARNCHAR_PRECISION)
+		  || domain->precision == TP_FLOATING_PRECISION_VALUE || domain->precision >= DB_MAX_VARNCHAR_PRECISION)
 		{
 		  domain->precision = DB_MAX_VARNCHAR_PRECISION;
 		}
@@ -3653,8 +3495,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	    {
 	      int error_code;
 
-	      domain->json_validator =
-		db_json_load_validator (db_get_json_schema (val), error_code);
+	      domain->json_validator = db_json_load_validator (db_get_json_schema (val), error_code);
 	      if (error_code != NO_ERROR)
 		{
 		  assert (false);
@@ -3817,8 +3658,7 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	      break;
 
 	    case DB_TYPE_NUMERIC:
-	      if ((d->precision == domain->precision)
-		  && (d->scale == domain->scale))
+	      if ((d->precision == domain->precision) && (d->scale == domain->scale))
 		{
 		  found = d;
 		}
@@ -3922,8 +3762,7 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
   DB_TYPE type_id;
 
   type_id = TP_DOMAIN_TYPE (domain);
-  for (d = *dlist, prev = NULL, found = NULL; d != NULL && found == NULL;
-       d = d->next)
+  for (d = *dlist, prev = NULL, found = NULL; d != NULL && found == NULL; d = d->next)
     {
       if (TP_DOMAIN_TYPE (d) == type_id)
 	{
@@ -3965,8 +3804,7 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	      break;
 
 	    case DB_TYPE_NUMERIC:
-	      if (d->precision == domain->precision
-		  && d->scale == domain->scale)
+	      if (d->precision == domain->precision && d->scale == domain->scale)
 		{
 		  found = d;
 		}
@@ -4050,12 +3888,10 @@ tp_domain_check_class (TP_DOMAIN * domain, int *change)
 #if !defined (SERVER_MODE)
   if (!db_on_server)
     {
-      if (domain != NULL && domain->type == tp_Type_object
-	  && domain->class_mop != NULL)
+      if (domain != NULL && domain->type == tp_Type_object && domain->class_mop != NULL)
 	{
 	  /* check for deletion of the domain class, assume just one for now */
-	  status =
-	    locator_does_exist_object (domain->class_mop, DB_FETCH_READ);
+	  status = locator_does_exist_object (domain->class_mop, DB_FETCH_READ);
 
 	  if (status == LC_DOESNOT_EXIST)
 	    {
@@ -4143,8 +3979,7 @@ tp_domain_filter_list (TP_DOMAIN * dlist, int *list_changes)
 	    {
 	      has_object = 1;
 	    }
-	  else if (pr_is_set_type (TP_DOMAIN_TYPE (d))
-		   && d->setdomain != NULL)
+	  else if (pr_is_set_type (TP_DOMAIN_TYPE (d)) && d->setdomain != NULL)
 	    {
 	      /* recurse on set domain list */
 	      error = tp_domain_filter_list (d->setdomain, &set_changes);
@@ -4240,13 +4075,11 @@ tp_domain_find_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
    * If we have a hierarchical domain, perform a lenient "superset" comparison
    * rather than an exact match.
    */
-  if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (src))
-      || TP_DOMAIN_TYPE (src) == DB_TYPE_VARIABLE)
+  if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (src)) || TP_DOMAIN_TYPE (src) == DB_TYPE_VARIABLE)
     {
       for (d = dest; d != NULL && found == NULL; d = d->next)
 	{
-	  if (TP_DOMAIN_TYPE (src) == TP_DOMAIN_TYPE (d)
-	      && tp_domain_compatible (src->setdomain, dest->setdomain))
+	  if (TP_DOMAIN_TYPE (src) == TP_DOMAIN_TYPE (d) && tp_domain_compatible (src->setdomain, dest->setdomain))
 	    {
 	      found = d;
 	    }
@@ -4257,8 +4090,7 @@ tp_domain_find_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
 
       for (d = dest; d != NULL && found == NULL; d = d->next)
 	{
-	  if (tp_domain_match
-	      ((TP_DOMAIN *) src, (TP_DOMAIN *) d, TP_EXACT_MATCH))
+	  if (tp_domain_match ((TP_DOMAIN *) src, (TP_DOMAIN *) d, TP_EXACT_MATCH))
 	    {
 	      /* exact match flag is on */
 	      found = d;
@@ -4331,8 +4163,7 @@ tp_domain_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
  *    for more information.
  */
 TP_DOMAIN *
-tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
-		  int allow_coercion, TP_MATCH exact_match)
+tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int allow_coercion, TP_MATCH exact_match)
 {
   TP_DOMAIN *best, *d;
   TP_DOMAIN **others;
@@ -4345,8 +4176,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
    * NULL values are allowed in any domain, a NULL domain means that any value
    * is allowed, return the first thing on the list.
    */
-  if (value == NULL || domain_list == NULL
-      || (vtype = DB_VALUE_TYPE (value)) == DB_TYPE_NULL)
+  if (value == NULL || domain_list == NULL || (vtype = DB_VALUE_TYPE (value)) == DB_TYPE_NULL)
     {
       return (TP_DOMAIN *) domain_list;
     }
@@ -4360,8 +4190,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
 	   * On the server, just make sure that we have any object domain in
 	   * the list.
 	   */
-	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
-	       d = d->next)
+	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 	    {
 	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT)
 		{
@@ -4420,8 +4249,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
 	   * we really shouldn't get here but if we do, handle it like the
 	   * OID case above, just return the first object domain that we find.
 	   */
-	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
-	       d = d->next)
+	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 	    {
 	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT)
 		{
@@ -4440,11 +4268,9 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
 	   */
 	  DB_OBJECT *obj = db_get_object (value);
 
-	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
-	       d = d->next)
+	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 	    {
-	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT
-		  && sm_check_object_domain (d, obj))
+	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT && sm_check_object_domain (d, obj))
 		{
 		  best = d;
 		}
@@ -4469,11 +4295,9 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
       val_tmpl = (DB_OTMPL *) DB_GET_POINTER (value);
       if (val_tmpl)
 	{
-	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
-	       d = d->next)
+	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 	    {
-	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT
-		  && sm_check_class_domain (d, val_tmpl->classobj))
+	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT && sm_check_class_domain (d, val_tmpl->classobj))
 		{
 		  best = d;
 		}
@@ -4491,8 +4315,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
       DB_SET *set;
 
       set = db_get_set (value);
-      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
-	   d = d->next)
+      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 	{
 	  if (TP_DOMAIN_TYPE (d) == vtype)
 	    {
@@ -4508,8 +4331,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
       int val_idx, dom_size, val_size;
       char *dom_str = NULL, *val_str = NULL;
 
-      if ((DB_GET_ENUM_SHORT (value) == 0
-	   && DB_GET_ENUM_STRING (value) != NULL))
+      if ((DB_GET_ENUM_SHORT (value) == 0 && DB_GET_ENUM_STRING (value) != NULL))
 	{
 	  /* An enumeration should be NULL or should at least have an index */
 	  assert (false);
@@ -4522,8 +4344,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
       val_str = DB_GET_ENUM_STRING (value);
       val_size = DB_GET_ENUM_STRING_SIZE (value);
 
-      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
-	   d = d->next)
+      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 	{
 	  if (TP_DOMAIN_TYPE (d) != DB_TYPE_ENUMERATION)
 	    {
@@ -4561,8 +4382,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
 	    }
 
 	  dom_str = DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (d, val_idx));
-	  dom_size =
-	    DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (d, val_idx));
+	  dom_size = DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (d, val_idx));
 
 	  /* We have already checked that val_str is not null */
 	  if (dom_str == NULL)
@@ -4579,8 +4399,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
 		{
 		  best = d;
 		}
-	      else if (DOM_GET_ENUM_ELEMS_COUNT (best) <
-		       DOM_GET_ENUM_ELEMS_COUNT (d))
+	      else if (DOM_GET_ENUM_ELEMS_COUNT (best) < DOM_GET_ENUM_ELEMS_COUNT (d))
 		{
 		  /* The best match is the domain that has the largest element count. We're not interested in the value
 		   * of the exact_match argument since we cannot find an exact enumeration match based on a DB_VALUE */
@@ -4604,8 +4423,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
 
       val_domain = tp_domain_resolve_value ((DB_VALUE *) value, &temp_domain);
 
-      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
-	   d = d->next)
+      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 	{
 	  /* hack, try allowing "tolerance" matches of the domain ! */
 	  if (tp_domain_match (d, val_domain, exact_match))
@@ -4622,8 +4440,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
 	{
 	  for (i = 0; others[i] != NULL && best == NULL; i++)
 	    {
-	      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
-		   d = d->next)
+	      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL; d = d->next)
 		{
 		  if (d->type == others[i]->type)
 		    {
@@ -4650,8 +4467,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value,
  *    this cannot be used for checking set domains.
  */
 TP_DOMAIN *
-tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type,
-		       DB_OBJECT * class_mop, int allow_coercion)
+tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type, DB_OBJECT * class_mop, int allow_coercion)
 {
   const TP_DOMAIN *best, *d;
   TP_DOMAIN **others;
@@ -4678,8 +4494,7 @@ tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type,
 	{
 	  for (d = domain_list; d != NULL && best == NULL; d = d->next)
 	    {
-	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT
-		  && sm_check_class_domain ((TP_DOMAIN *) d, class_mop))
+	      if (TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT && sm_check_class_domain ((TP_DOMAIN *) d, class_mop))
 		{
 		  best = d;
 		}
@@ -4700,8 +4515,7 @@ tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type,
 	{
 	  for (d = domain_list; d != NULL && best == NULL; d = d->next)
 	    {
-	      if (TP_DOMAIN_TYPE (d) == type
-		  || TP_DOMAIN_TYPE (d) == DB_TYPE_VARIABLE)
+	      if (TP_DOMAIN_TYPE (d) == type || TP_DOMAIN_TYPE (d) == DB_TYPE_VARIABLE)
 		{
 		  best = d;
 		}
@@ -4721,8 +4535,7 @@ tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type,
 	       */
 	      for (i = 0; others[i] != NULL && best == NULL; i++)
 		{
-		  for (d = domain_list; d != NULL && best == NULL;
-		       d = d->next)
+		  for (d = domain_list; d != NULL && best == NULL; d = d->next)
 		    {
 		      if (d->type == others[i]->type)
 			{
@@ -4757,8 +4570,7 @@ tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type,
  *    assigned.  See commentary in tp_domain_match for more information.
  */
 TP_DOMAIN_STATUS
-tp_domain_check (const TP_DOMAIN * domain, const DB_VALUE * value,
-		 TP_MATCH exact_match)
+tp_domain_check (const TP_DOMAIN * domain, const DB_VALUE * value, TP_MATCH exact_match)
 {
   TP_DOMAIN_STATUS status;
   TP_DOMAIN *d;
@@ -4828,20 +4640,17 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
       return 0;
     }
 
-  if (TP_IS_CHAR_TYPE (original_type)
-      && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (desired_domain)))
+  if (TP_IS_CHAR_TYPE (original_type) && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (desired_domain)))
     {
       if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE
 	  && DB_GET_STRING_COLLATION (val) !=
-	  TP_DOMAIN_COLLATION (desired_domain)
-	  && !LANG_IS_COERCIBLE_COLL (DB_GET_STRING_COLLATION (val)))
+	  TP_DOMAIN_COLLATION (desired_domain) && !LANG_IS_COERCIBLE_COLL (DB_GET_STRING_COLLATION (val)))
 	{
 	  return 0;
 	}
 
       if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE
-	  && !INTL_CAN_STEAL_CS (DB_GET_STRING_CODESET (val),
-				 TP_DOMAIN_CODESET (desired_domain)))
+	  && !INTL_CAN_STEAL_CS (DB_GET_STRING_CODESET (val), TP_DOMAIN_CODESET (desired_domain)))
 	{
 	  return 0;
 	}
@@ -4862,29 +4671,23 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
     case DB_TYPE_CHAR:
       return (desired_precision == original_length
 	      && (original_type == DB_TYPE_CHAR
-		  || original_type == DB_TYPE_VARCHAR)
-	      && DB_GET_COMPRESSED_STRING (val) == NULL);
+		  || original_type == DB_TYPE_VARCHAR) && DB_GET_COMPRESSED_STRING (val) == NULL);
     case DB_TYPE_VARCHAR:
       return (desired_precision >= original_length
-	      && (original_type == DB_TYPE_CHAR
-		  || original_type == DB_TYPE_VARCHAR));
+	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_NCHAR:
       return (desired_precision == original_length
 	      && (original_type == DB_TYPE_NCHAR
-		  || original_type == DB_TYPE_VARNCHAR)
-	      && DB_GET_COMPRESSED_STRING (val) == NULL);
+		  || original_type == DB_TYPE_VARNCHAR) && DB_GET_COMPRESSED_STRING (val) == NULL);
     case DB_TYPE_VARNCHAR:
       return (desired_precision >= original_length
-	      && (original_type == DB_TYPE_NCHAR
-		  || original_type == DB_TYPE_VARNCHAR));
+	      && (original_type == DB_TYPE_NCHAR || original_type == DB_TYPE_VARNCHAR));
     case DB_TYPE_BIT:
       return (desired_precision == original_length
-	      && (original_type == DB_TYPE_BIT
-		  || original_type == DB_TYPE_VARBIT));
+	      && (original_type == DB_TYPE_BIT || original_type == DB_TYPE_VARBIT));
     case DB_TYPE_VARBIT:
       return (desired_precision >= original_length
-	      && (original_type == DB_TYPE_BIT
-		  || original_type == DB_TYPE_VARBIT));
+	      && (original_type == DB_TYPE_BIT || original_type == DB_TYPE_VARBIT));
     default:
       return 0;
     }
@@ -4902,8 +4705,7 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
  *    Don't call this unless src is a string db_value.
  */
 static int
-tp_null_terminate (const DB_VALUE * src, char **strp, int str_len,
-		   bool * do_alloc)
+tp_null_terminate (const DB_VALUE * src, char **strp, int str_len, bool * do_alloc)
 {
   char *str;
   int str_size;
@@ -4931,8 +4733,7 @@ tp_null_terminate (const DB_VALUE * src, char **strp, int str_len,
       *strp = (char *) malloc (str_size + 1);
       if (*strp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (str_size + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (str_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -4991,8 +4792,7 @@ tp_atotimetz (const DB_VALUE * src, DB_TIMETZ * temp, bool to_timeltz)
   int status = NO_ERROR;
   bool dummy_has_zone;
 
-  if (db_string_to_timetz_ex
-      (strp, str_len, to_timeltz, temp, &dummy_has_zone) != NO_ERROR)
+  if (db_string_to_timetz_ex (strp, str_len, to_timeltz, temp, &dummy_has_zone) != NO_ERROR)
     {
       status = ER_FAILED;
     }
@@ -5065,8 +4865,7 @@ tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp)
   int status = NO_ERROR;
   bool dummy_has_zone;
 
-  if (db_string_to_timestamptz_ex (strp, str_len, temp, &dummy_has_zone, true)
-      != NO_ERROR)
+  if (db_string_to_timestamptz_ex (strp, str_len, temp, &dummy_has_zone, true) != NO_ERROR)
     {
       status = ER_FAILED;
     }
@@ -5115,8 +4914,7 @@ tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp)
   int status = NO_ERROR;
   bool dummy_has_zone;
 
-  if (db_string_to_datetimetz_ex (strp, str_len, temp, &dummy_has_zone) !=
-      NO_ERROR)
+  if (db_string_to_datetimetz_ex (strp, str_len, temp, &dummy_has_zone) != NO_ERROR)
     {
       status = ER_FAILED;
     }
@@ -5148,8 +4946,7 @@ tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
 
   str_len = DB_GET_STRING_SIZE (src);
 
-  if (numeric_coerce_string_to_num
-      (strp, str_len, DB_GET_STRING_CODESET (src), temp) != NO_ERROR)
+  if (numeric_coerce_string_to_num (strp, str_len, DB_GET_STRING_CODESET (src), temp) != NO_ERROR)
     {
       status = ER_FAILED;
     }
@@ -5208,8 +5005,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 	  strp = (char *) malloc (size + 1);
 	  if (strp == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (size + 1));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (size + 1));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	  do_alloc = true;
@@ -5269,8 +5065,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
  *
  */
 static int
-tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value,
-	  DB_DATA_STATUS * data_stat)
+tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
   char *strp = DB_GET_STRING (src);
   char *stre = NULL;
@@ -5306,8 +5101,7 @@ tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value,
     }
 
   /* 0x or 0X */
-  if (strp != stre && *strp == '0' && (strp + 1) != stre
-      && (*(strp + 1) == 'x' || *(strp + 1) == 'X'))
+  if (strp != stre && *strp == '0' && (strp + 1) != stre && (*(strp + 1) == 'x' || *(strp + 1) == 'X'))
     {
       is_hex = true;
       strp += 2;
@@ -5395,21 +5189,15 @@ tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value,
   /* convert to bigint */
   if (is_hex)
     {
-      status =
-	tp_hex_str_to_bi (strp, stre, codeset, is_negative, num_value,
-			  data_stat);
+      status = tp_hex_str_to_bi (strp, stre, codeset, is_negative, num_value, data_stat);
     }
   else if (is_scientific)
     {
-      status =
-	tp_scientific_str_to_bi (strp, stre, codeset, is_negative, num_value,
-				 data_stat);
+      status = tp_scientific_str_to_bi (strp, stre, codeset, is_negative, num_value, data_stat);
     }
   else
     {
-      status =
-	tp_digit_number_str_to_bi (strp, stre, codeset, is_negative,
-				   num_value, data_stat);
+      status = tp_digit_number_str_to_bi (strp, stre, codeset, is_negative, num_value, data_stat);
     }
 
   return status;
@@ -5538,8 +5326,7 @@ tp_ltoa (DB_BIGINT value, char *string, int radix)
       string = (char *) malloc ((tp - tmp) + sign + 1);
       if (string == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) ((tp - tmp) + sign + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) ((tp - tmp) + sign + 1));
 	  return NULL;
 	}
     }
@@ -5576,8 +5363,7 @@ tp_ltoa (DB_BIGINT value, char *string, int radix)
  *  sign(in):		sign of the floating-point number
  */
 static void
-format_floating_point (char *new_string, char *rve, int ndigits, int decpt,
-		       int sign)
+format_floating_point (char *new_string, char *rve, int ndigits, int decpt, int sign)
 {
   assert (new_string && rve);
 
@@ -5735,8 +5521,7 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
   assert (DB_VALUE_TYPE (src) == DB_TYPE_FLOAT);
   assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
 
-  rve = str_float =
-    (char *) db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
+  rve = str_float = (char *) db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
   if (str_float == NULL)
     {
       DB_MAKE_NULL (result);
@@ -5749,44 +5534,38 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
   /* rounding should also be performed here */
   str_float[ndigits] = '\0';	/* _dtoa() disregards ndigits */
 
-  format_floating_point (str_float, str_float + strlen (str_float), ndigits,
-			 decpt, sign);
+  format_floating_point (str_float, str_float + strlen (str_float), ndigits, decpt, sign);
 
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
       DB_MAKE_CHAR (result, DB_VALUE_PRECISION (result), str_float,
-		    strlen (str_float), DB_GET_STRING_CODESET (result),
-		    DB_GET_STRING_COLLATION (result));
+		    strlen (str_float), DB_GET_STRING_CODESET (result), DB_GET_STRING_COLLATION (result));
       result->need_clear = true;
       break;
 
     case DB_TYPE_NCHAR:
       DB_MAKE_NCHAR (result, DB_VALUE_PRECISION (result), str_float,
-		     strlen (str_float), DB_GET_STRING_CODESET (result),
-		     DB_GET_STRING_COLLATION (result));
+		     strlen (str_float), DB_GET_STRING_CODESET (result), DB_GET_STRING_COLLATION (result));
       result->need_clear = true;
       break;
 
     case DB_TYPE_VARCHAR:
       DB_MAKE_VARCHAR (result, DB_VALUE_PRECISION (result), str_float,
-		       strlen (str_float), DB_GET_STRING_CODESET (result),
-		       DB_GET_STRING_COLLATION (result));
+		       strlen (str_float), DB_GET_STRING_CODESET (result), DB_GET_STRING_COLLATION (result));
       result->need_clear = true;
       break;
 
     case DB_TYPE_VARNCHAR:
       DB_MAKE_VARNCHAR (result, DB_VALUE_PRECISION (result), str_float,
-			strlen (str_float), DB_GET_STRING_CODESET (result),
-			DB_GET_STRING_COLLATION (result));
+			strlen (str_float), DB_GET_STRING_CODESET (result), DB_GET_STRING_COLLATION (result));
       result->need_clear = true;
       break;
 
     default:
       db_private_free_and_init (NULL, str_float);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-	      pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
-	      pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
+	      pr_type_name (DB_VALUE_DOMAIN_TYPE (src)), pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
       DB_MAKE_NULL (result);
       break;
     }
@@ -5813,8 +5592,7 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
   assert (DB_VALUE_TYPE (src) == DB_TYPE_DOUBLE);
   assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
 
-  rve = str_double =
-    (char *) db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
+  rve = str_double = (char *) db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
   if (str_double == NULL)
     {
       DB_MAKE_NULL (result);
@@ -5825,44 +5603,38 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
   /* rounding should also be performed here */
   str_double[ndigits] = '\0';	/* _dtoa() disregards ndigits */
 
-  format_floating_point (str_double, str_double + strlen (str_double),
-			 ndigits, decpt, sign);
+  format_floating_point (str_double, str_double + strlen (str_double), ndigits, decpt, sign);
 
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
       DB_MAKE_CHAR (result, DB_VALUE_PRECISION (result), str_double,
-		    strlen (str_double), DB_GET_STRING_CODESET (result),
-		    DB_GET_STRING_COLLATION (result));
+		    strlen (str_double), DB_GET_STRING_CODESET (result), DB_GET_STRING_COLLATION (result));
       result->need_clear = true;
       break;
 
     case DB_TYPE_NCHAR:
       DB_MAKE_NCHAR (result, DB_VALUE_PRECISION (result), str_double,
-		     strlen (str_double), DB_GET_STRING_CODESET (result),
-		     DB_GET_STRING_COLLATION (result));
+		     strlen (str_double), DB_GET_STRING_CODESET (result), DB_GET_STRING_COLLATION (result));
       result->need_clear = true;
       break;
 
     case DB_TYPE_VARCHAR:
       DB_MAKE_VARCHAR (result, DB_VALUE_PRECISION (result), str_double,
-		       strlen (str_double), DB_GET_STRING_CODESET (result),
-		       DB_GET_STRING_COLLATION (result));
+		       strlen (str_double), DB_GET_STRING_CODESET (result), DB_GET_STRING_COLLATION (result));
       result->need_clear = true;
       break;
 
     case DB_TYPE_VARNCHAR:
       DB_MAKE_VARNCHAR (result, DB_VALUE_PRECISION (result), str_double,
-			strlen (str_double), DB_GET_STRING_CODESET (result),
-			DB_GET_STRING_COLLATION (result));
+			strlen (str_double), DB_GET_STRING_CODESET (result), DB_GET_STRING_COLLATION (result));
       result->need_clear = true;
       break;
 
     default:
       db_private_free_and_init (NULL, str_double);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-	      pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
-	      pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
+	      pr_type_name (DB_VALUE_DOMAIN_TYPE (src)), pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
       DB_MAKE_NULL (result);
       break;
     }
@@ -5890,16 +5662,12 @@ tp_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * result)
 
   if (DB_GET_ENUM_STRING (src) == NULL)
     {
-      db_make_varchar (result, DB_DEFAULT_PRECISION, "", 0,
-		       DB_GET_ENUM_CODESET (src),
-		       DB_GET_ENUM_COLLATION (src));
+      db_make_varchar (result, DB_DEFAULT_PRECISION, "", 0, DB_GET_ENUM_CODESET (src), DB_GET_ENUM_COLLATION (src));
     }
   else
     {
       db_make_varchar (result, DB_DEFAULT_PRECISION, DB_GET_ENUM_STRING (src),
-		       DB_GET_ENUM_STRING_SIZE (src),
-		       DB_GET_ENUM_CODESET (src),
-		       DB_GET_ENUM_COLLATION (src));
+		       DB_GET_ENUM_STRING_SIZE (src), DB_GET_ENUM_CODESET (src), DB_GET_ENUM_COLLATION (src));
     }
 
   return error;
@@ -5949,11 +5717,9 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 	{
 	  for (byte_index = 0; byte_index < BYTE_COUNT (length); byte_index++)
 	    {
-	      for (bit_index = 7; bit_index >= 0 && string_index < length;
-		   bit_index--)
+	      for (bit_index = 7; bit_index >= 0 && string_index < length; bit_index--)
 		{
-		  *string =
-		    digits[((bstring[byte_index] >> bit_index) & 0x1)];
+		  *string = digits[((bstring[byte_index] >> bit_index) & 0x1)];
 		  string++;
 		  string_index++;
 		}
@@ -6052,8 +5818,7 @@ static void
 make_desired_string_db_value (DB_TYPE desired_type,
 			      const TP_DOMAIN * desired_domain,
 			      const char *new_string, DB_VALUE * target,
-			      TP_DOMAIN_STATUS * status,
-			      DB_DATA_STATUS * data_stat)
+			      TP_DOMAIN_STATUS * status, DB_DATA_STATUS * data_stat)
 {
   DB_VALUE temp;
 
@@ -6065,25 +5830,19 @@ make_desired_string_db_value (DB_TYPE desired_type,
     {
     case DB_TYPE_CHAR:
       db_make_char (&temp, desired_domain->precision, new_string,
-		    strlen (new_string), TP_DOMAIN_CODESET (desired_domain),
-		    TP_DOMAIN_COLLATION (desired_domain));
+		    strlen (new_string), TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_NCHAR:
       db_make_nchar (&temp, desired_domain->precision, new_string,
-		     strlen (new_string), TP_DOMAIN_CODESET (desired_domain),
-		     TP_DOMAIN_COLLATION (desired_domain));
+		     strlen (new_string), TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARCHAR:
       db_make_varchar (&temp, desired_domain->precision, new_string,
-		       strlen (new_string),
-		       TP_DOMAIN_CODESET (desired_domain),
-		       TP_DOMAIN_COLLATION (desired_domain));
+		       strlen (new_string), TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARNCHAR:
       db_make_varnchar (&temp, desired_domain->precision, new_string,
-			strlen (new_string),
-			TP_DOMAIN_CODESET (desired_domain),
-			TP_DOMAIN_COLLATION (desired_domain));
+			strlen (new_string), TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     default:			/* Can't get here.  This just quiets the compiler */
       break;
@@ -6109,8 +5868,7 @@ make_desired_string_db_value (DB_TYPE desired_type,
  *    desired_domain(in): destination domain
  */
 TP_DOMAIN_STATUS
-tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest,
-		 const TP_DOMAIN * desired_domain)
+tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   return tp_value_cast (src, dest, desired_domain, true);
 }
@@ -6124,8 +5882,7 @@ tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest,
  * desired_domain (in) : destination domain
  */
 int
-tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
-			const TP_DOMAIN * desired_domain)
+tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   DB_TYPE desired_type, original_type;
   int err = NO_ERROR;
@@ -6146,8 +5903,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 
   desired_type = TP_DOMAIN_TYPE (desired_domain);
 
-  if (!TP_IS_NUMERIC_TYPE (desired_type)
-      && !TP_IS_DATETIME_TYPE (desired_type))
+  if (!TP_IS_NUMERIC_TYPE (desired_type) && !TP_IS_DATETIME_TYPE (desired_type))
     {
       db_make_null (dest);
       return ER_FAILED;
@@ -6180,8 +5936,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
    * nm_ coercion functions which take domain information inside the
    * destination db value.
    */
-  db_value_domain_init (target, desired_type, desired_domain->precision,
-			desired_domain->scale);
+  db_value_domain_init (target, desired_type, desired_domain->precision, desired_domain->scale);
 
   switch (desired_type)
     {
@@ -6256,9 +6011,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    break;
 	  }
 	case DB_TYPE_NUMERIC:
-	  err =
-	    numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src,
-						     target);
+	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
@@ -6272,8 +6025,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    if (data_stat != DATA_STATUS_OK
-		|| OR_CHECK_SHORT_OVERFLOW (num_value))
+	    if (data_stat != DATA_STATUS_OK || OR_CHECK_SHORT_OVERFLOW (num_value))
 	      {
 		err = ER_FAILED;
 		break;
@@ -6359,9 +6111,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    break;
 	  }
 	case DB_TYPE_NUMERIC:
-	  err =
-	    numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src,
-						     target);
+	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
@@ -6375,8 +6125,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    if (data_stat != DATA_STATUS_OK
-		|| OR_CHECK_INT_OVERFLOW (num_value))
+	    if (data_stat != DATA_STATUS_OK || OR_CHECK_INT_OVERFLOW (num_value))
 	      {
 		err = ER_FAILED;
 		break;
@@ -6457,9 +6206,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    break;
 	  }
 	case DB_TYPE_NUMERIC:
-	  err =
-	    numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src,
-						     target);
+	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
@@ -6473,8 +6220,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    if (data_stat != DATA_STATUS_OK
-		|| OR_CHECK_BIGINT_OVERFLOW (num_value))
+	    if (data_stat != DATA_STATUS_OK || OR_CHECK_BIGINT_OVERFLOW (num_value))
 	      {
 		err = ER_FAILED;
 		break;
@@ -6506,9 +6252,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	  db_make_float (target, (float) DB_GET_BIGINT (src));
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err =
-	    numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src,
-						     target);
+	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
@@ -6524,8 +6268,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 
-	    if (data_stat != DATA_STATUS_OK
-		|| OR_CHECK_FLOAT_OVERFLOW (num_value))
+	    if (data_stat != DATA_STATUS_OK || OR_CHECK_FLOAT_OVERFLOW (num_value))
 	      {
 		err = ER_FAILED;
 		break;
@@ -6558,9 +6301,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	  db_make_double (target, DB_GET_MONETARY (src)->amount);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err =
-	    numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src,
-						     target);
+	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
@@ -6608,9 +6349,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_NUMERIC:
 	  {
 	    DB_DATA_STATUS data_stat = DATA_STATUS_OK;
-	    err =
-	      numeric_db_value_coerce_to_num ((DB_VALUE *) src, target,
-					      &data_stat);
+	    err = numeric_db_value_coerce_to_num ((DB_VALUE *) src, target, &data_stat);
 	    if (data_stat != DATA_STATUS_OK)
 	      {
 		err = ER_FAILED;
@@ -6628,28 +6367,22 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT,
-			    (double) DB_GET_SHORT (src));
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) DB_GET_SHORT (src));
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT,
-			    (double) DB_GET_INT (src));
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) DB_GET_INT (src));
 	  break;
 	case DB_TYPE_BIGINT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT,
-			    (double) DB_GET_BIGINT (src));
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) DB_GET_BIGINT (src));
 	  break;
 	case DB_TYPE_FLOAT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT,
-			    (double) DB_GET_FLOAT (src));
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) DB_GET_FLOAT (src));
 	  break;
 	case DB_TYPE_DOUBLE:
 	  db_make_monetary (target, DB_CURRENCY_DEFAULT, DB_GET_DOUBLE (src));
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err =
-	    numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src,
-						     target);
+	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
@@ -6663,8 +6396,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    if (data_stat == DATA_STATUS_TRUNCATED
-		|| data_stat == DATA_STATUS_NOT_CONSUMED)
+	    if (data_stat == DATA_STATUS_TRUNCATED || data_stat == DATA_STATUS_NOT_CONSUMED)
 	      {
 		err = ER_FAILED;
 		break;
@@ -6736,12 +6468,10 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    DB_TIMETZ time_tz = { 0, 0 };
 	    DB_TIME *time = DB_GET_TIME (src);
-	    bool time_is_utc =
-	      (original_type == DB_TYPE_TIMELTZ) ? true : false;
+	    bool time_is_utc = (original_type == DB_TYPE_TIMELTZ) ? true : false;
 
 	    time_tz.time = *time;
-	    if (tz_create_session_tzid_for_time
-		(time, time_is_utc, &time_tz.tz_id) != NO_ERROR)
+	    if (tz_create_session_tzid_for_time (time, time_is_utc, &time_tz.tz_id) != NO_ERROR)
 	      {
 		err = ER_FAILED;
 		break;
@@ -6858,8 +6588,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    if (original_type == DB_TYPE_DATETIMELTZ)
 	      {
 		utc_dt_p = DB_GET_DATETIME (src);
-		if (tz_create_session_tzid_for_datetime
-		    (utc_dt_p, true, &tz_id) != NO_ERROR)
+		if (tz_create_session_tzid_for_datetime (utc_dt_p, true, &tz_id) != NO_ERROR)
 		  {
 		    err = ER_FAILED;
 		    break;
@@ -6872,8 +6601,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		tz_id = dt_tz_p->tz_id;
 	      }
 
-	    if (tz_utc_datetimetz_to_local (utc_dt_p, &tz_id, &local_dt) !=
-		NO_ERROR)
+	    if (tz_utc_datetimetz_to_local (utc_dt_p, &tz_id, &local_dt) != NO_ERROR)
 	      {
 		err = ER_FAILED;
 		break;
@@ -6914,9 +6642,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_TIMESTAMPTZ *ts_tz = NULL;
 
 	    ts_tz = DB_GET_TIMESTAMPTZ (src);
-	    err =
-	      db_timestamp_decode_w_tz_id (&ts_tz->timestamp, &ts_tz->tz_id,
-					   &date, &time);
+	    err = db_timestamp_decode_w_tz_id (&ts_tz->timestamp, &ts_tz->tz_id, &date, &time);
 	    if (err != NO_ERROR || time != 0)
 	      {
 		/* only "downcast" if time is 0 */
@@ -6994,8 +6720,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_TIME time;
 	    DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (src);
 
-	    if (db_timestamp_decode_w_tz_id
-		(&ts_tz->timestamp, &ts_tz->tz_id, &date, &time) != NO_ERROR)
+	    if (db_timestamp_decode_w_tz_id (&ts_tz->timestamp, &ts_tz->tz_id, &date, &time) != NO_ERROR)
 	      {
 		err = ER_FAILED;
 		break;
@@ -7044,8 +6769,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_DATETIME *dt = DB_GET_DATETIME (src);
 
 	    dt_tz.datetime = *dt;
-	    err =
-	      tz_create_session_tzid_for_datetime (dt, false, &dt_tz.tz_id);
+	    err = tz_create_session_tzid_for_datetime (dt, false, &dt_tz.tz_id);
 	    if (err == NO_ERROR)
 	      {
 		db_make_datetimetz (target, &dt_tz);
@@ -7080,9 +6804,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    db_timestamp_decode_utc (utime, &date, &time);
 	    dt_tz.datetime.date = date;
 	    dt_tz.datetime.time = time * 1000;
-	    err =
-	      tz_create_session_tzid_for_datetime (&dt_tz.datetime, true,
-						   &(dt_tz.tz_id));
+	    err = tz_create_session_tzid_for_datetime (&dt_tz.datetime, true, &(dt_tz.tz_id));
 	    if (err == NO_ERROR)
 	      {
 		db_make_datetimetz (target, &dt_tz);
@@ -7429,8 +7151,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_DATE date = dt.date;
 	    DB_TIME time = dt.time / 1000;
 
-	    if (db_timestamp_encode_ses
-		(&date, &time, &ts_tz.timestamp, &ts_tz.tz_id) != NO_ERROR)
+	    if (db_timestamp_encode_ses (&date, &time, &ts_tz.timestamp, &ts_tz.tz_id) != NO_ERROR)
 	      {
 		err = ER_FAILED;
 		break;
@@ -7446,8 +7167,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_DATE date = dt.date;
 	    DB_TIME time = dt.time / 1000;
 
-	    if (db_timestamp_encode_utc (&date, &time, &ts_tz.timestamp) !=
-		NO_ERROR)
+	    if (db_timestamp_encode_utc (&date, &time, &ts_tz.timestamp) != NO_ERROR)
 	      {
 		err = ER_FAILED;
 		break;
@@ -7464,8 +7184,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_DATE date = dt_tz->datetime.date;
 	    DB_TIME time = dt_tz->datetime.time / 1000;
 
-	    if (db_timestamp_encode_utc (&date, &time, &ts_tz.timestamp) !=
-		NO_ERROR)
+	    if (db_timestamp_encode_utc (&date, &time, &ts_tz.timestamp) != NO_ERROR)
 	      {
 		err = ER_FAILED;
 		break;
@@ -7482,8 +7201,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_DATE date = *DB_GET_DATE (src);
 
 	    db_time_encode (&tm, 0, 0, 0);
-	    if (db_timestamp_encode_ses
-		(&date, &tm, &ts_tz.timestamp, &ts_tz.tz_id) != NO_ERROR)
+	    if (db_timestamp_encode_ses (&date, &tm, &ts_tz.timestamp, &ts_tz.tz_id) != NO_ERROR)
 	      {
 		err = ER_FAILED;
 		break;
@@ -7499,9 +7217,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 
 	    ts_tz.timestamp = *DB_GET_TIMESTAMP (src);
 
-	    err =
-	      tz_create_session_tzid_for_timestamp (&(ts_tz.timestamp),
-						    &(ts_tz.tz_id));
+	    err = tz_create_session_tzid_for_timestamp (&(ts_tz.timestamp), &(ts_tz.tz_id));
 
 	    if (err != NO_ERROR)
 	      {
@@ -7545,8 +7261,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 static TP_DOMAIN_STATUS
 tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 			const TP_DOMAIN * desired_domain,
-			const TP_COERCION_MODE coercion_mode,
-			bool do_domain_select, bool preserve_domain)
+			const TP_COERCION_MODE coercion_mode, bool do_domain_select, bool preserve_domain)
 {
   DB_TYPE desired_type, original_type;
   int err;
@@ -7595,8 +7310,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
     {
       if (preserve_domain)
 	{
-	  db_value_domain_init (dest, desired_type, desired_domain->precision,
-				desired_domain->scale);
+	  db_value_domain_init (dest, desired_type, desired_domain->precision, desired_domain->scale);
 	  db_value_put_null (dest);
 	}
       else
@@ -7644,9 +7358,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    case DB_TYPE_JSON:
 	      {
 		if (desired_domain->json_validator != NULL &&
-		    db_json_validate_doc (desired_domain->json_validator,
-					  src->data.json.document) !=
-		    NO_ERROR)
+		    db_json_validate_doc (desired_domain->json_validator, src->data.json.document) != NO_ERROR)
 		  {
 		    ASSERT_ERROR ();
 		    return DOMAIN_ERROR;
@@ -7674,9 +7386,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	{
 	  if (preserve_domain)
 	    {
-	      db_value_domain_init (dest, desired_type,
-				    desired_domain->precision,
-				    desired_domain->scale);
+	      db_value_domain_init (dest, desired_type, desired_domain->precision, desired_domain->scale);
 	      db_value_put_null (dest);
 	    }
 	  else
@@ -7705,8 +7415,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
    * nm_ coercion functions thich take domain information inside the
    * destination db value.
    */
-  db_value_domain_init (target, desired_type, desired_domain->precision,
-			desired_domain->scale);
+  db_value_domain_init (target, desired_type, desired_domain->precision, desired_domain->scale);
 
   if (TP_IS_CHAR_TYPE (desired_type))
     {
@@ -7715,19 +7424,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  if (TP_IS_CHAR_TYPE (original_type))
 	    {
 	      db_string_put_cs_and_collation (target,
-					      TP_DOMAIN_CODESET
-					      (desired_domain),
-					      TP_DOMAIN_COLLATION
-					      (desired_domain));
+					      TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
 
 	      /* create a domain from source value */
-	      p_tmp_desired_domain =
-		tp_domain_resolve_value ((DB_VALUE *) src,
-					 &tmp_desired_domain);
-	      p_tmp_desired_domain->codeset =
-		TP_DOMAIN_CODESET (desired_domain);
-	      p_tmp_desired_domain->collation_id =
-		TP_DOMAIN_COLLATION (desired_domain);
+	      p_tmp_desired_domain = tp_domain_resolve_value ((DB_VALUE *) src, &tmp_desired_domain);
+	      p_tmp_desired_domain->codeset = TP_DOMAIN_CODESET (desired_domain);
+	      p_tmp_desired_domain->collation_id = TP_DOMAIN_COLLATION (desired_domain);
 
 	      desired_domain = p_tmp_desired_domain;
 	    }
@@ -7757,14 +7459,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (elem_dom)))
 		    {
 		      /* for string domains overwrite collation */
-		      new_elem_dom->collation_id =
-			TP_DOMAIN_COLLATION (desired_domain);
-		      new_elem_dom->codeset =
-			TP_DOMAIN_CODESET (desired_domain);
+		      new_elem_dom->collation_id = TP_DOMAIN_COLLATION (desired_domain);
+		      new_elem_dom->codeset = TP_DOMAIN_CODESET (desired_domain);
 		    }
 
-		  tp_domain_add (&(p_tmp_desired_domain->setdomain),
-				 new_elem_dom);
+		  tp_domain_add (&(p_tmp_desired_domain->setdomain), new_elem_dom);
 		  elem_dom = elem_dom->next;
 		}
 
@@ -7785,18 +7484,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
       else if (desired_domain->collation_flag == TP_DOMAIN_COLL_NORMAL)
 	{
 	  db_string_put_cs_and_collation (target,
-					  TP_DOMAIN_CODESET (desired_domain),
-					  TP_DOMAIN_COLLATION
-					  (desired_domain));
+					  TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
 	}
       else
 	{
 	  assert (desired_domain->collation_flag == TP_DOMAIN_COLL_LEAVE);
 	  if (TP_IS_CHAR_TYPE (original_type))
 	    {
-	      db_string_put_cs_and_collation (target,
-					      DB_GET_STRING_CODESET (src),
-					      DB_GET_STRING_COLLATION (src));
+	      db_string_put_cs_and_collation (target, DB_GET_STRING_CODESET (src), DB_GET_STRING_COLLATION (src));
 	    }
 	}
     }
@@ -7858,10 +7553,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    }
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status =
-	    (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *)
-								 src, target,
-								 &data_stat);
+	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
 	  if (status != NO_ERROR)
 	    {
 	      status = DOMAIN_OVERFLOW;
@@ -7874,8 +7566,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    double num_value = 0.0;
 
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR
-		|| data_stat == DATA_STATUS_NOT_CONSUMED)
+	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
@@ -7885,8 +7576,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 
-	    if (data_stat == DATA_STATUS_TRUNCATED
-		|| OR_CHECK_SHORT_OVERFLOW (num_value))
+	    if (data_stat == DATA_STATUS_TRUNCATED || OR_CHECK_SHORT_OVERFLOW (num_value))
 	      {
 		status = DOMAIN_OVERFLOW;
 	      }
@@ -7976,10 +7666,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    }
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status =
-	    (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *)
-								 src, target,
-								 &data_stat);
+	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
 	  if (status != NO_ERROR)
 	    {
 	      status = DOMAIN_OVERFLOW;
@@ -7992,8 +7679,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    double num_value = 0.0;
 
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR
-		|| data_stat == DATA_STATUS_NOT_CONSUMED)
+	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
@@ -8003,8 +7689,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 
-	    if (data_stat == DATA_STATUS_TRUNCATED
-		|| OR_CHECK_INT_OVERFLOW (num_value))
+	    if (data_stat == DATA_STATUS_TRUNCATED || OR_CHECK_INT_OVERFLOW (num_value))
 	      {
 		status = DOMAIN_OVERFLOW;
 	      }
@@ -8120,10 +7805,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  }
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status =
-	    (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *)
-								 src, target,
-								 &data_stat);
+	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
 	  if (status != NO_ERROR)
 	    {
 	      status = DOMAIN_OVERFLOW;
@@ -8197,10 +7879,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    }
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status =
-	    (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *)
-								 src, target,
-								 &data_stat);
+	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
 	  if (status != NO_ERROR)
 	    {
 	      status = DOMAIN_OVERFLOW;
@@ -8213,8 +7892,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    double num_value = 0.0;
 
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR
-		|| data_stat == DATA_STATUS_NOT_CONSUMED)
+	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
@@ -8224,8 +7902,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 
-	    if (data_stat == DATA_STATUS_TRUNCATED
-		|| OR_CHECK_FLOAT_OVERFLOW (num_value))
+	    if (data_stat == DATA_STATUS_TRUNCATED || OR_CHECK_FLOAT_OVERFLOW (num_value))
 	      {
 		status = DOMAIN_OVERFLOW;
 	      }
@@ -8264,10 +7941,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  db_make_double (target, (double) v_money->amount);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status =
-	    (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *)
-								 src, target,
-								 &data_stat);
+	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
 	  if (status != NO_ERROR)
 	    {
 	      status = DOMAIN_OVERFLOW;
@@ -8280,8 +7954,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    double num_value = 0.0;
 
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR
-		|| data_stat == DATA_STATUS_NOT_CONSUMED)
+	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
@@ -8342,12 +8015,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  }
 	default:
 	  {
-	    int error_code =
-	      numeric_db_value_coerce_to_num ((DB_VALUE *) src, target,
-					      &data_stat);
+	    int error_code = numeric_db_value_coerce_to_num ((DB_VALUE *) src, target,
+							     &data_stat);
 
-	    if (error_code == ER_IT_DATA_OVERFLOW
-		|| data_stat == DATA_STATUS_TRUNCATED)
+	    if (error_code == ER_IT_DATA_OVERFLOW || data_stat == DATA_STATUS_TRUNCATED)
 	      {
 		status = DOMAIN_OVERFLOW;
 	      }
@@ -8368,29 +8039,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT,
-			    (double) DB_GET_SHORT (src));
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) DB_GET_SHORT (src));
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT,
-			    (double) DB_GET_INT (src));
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) DB_GET_INT (src));
 	  break;
 	case DB_TYPE_BIGINT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT,
-			    (double) DB_GET_BIGINT (src));
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) DB_GET_BIGINT (src));
 	  break;
 	case DB_TYPE_FLOAT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT,
-			    (double) DB_GET_FLOAT (src));
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) DB_GET_FLOAT (src));
 	  break;
 	case DB_TYPE_DOUBLE:
 	  db_make_monetary (target, DB_CURRENCY_DEFAULT, DB_GET_DOUBLE (src));
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status =
-	    (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *)
-								 src, target,
-								 &data_stat);
+	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
 	  if (status != NO_ERROR)
 	    {
 	      status = DOMAIN_OVERFLOW;
@@ -8403,8 +8067,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    double num_value = 0.0;
 
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR
-		|| data_stat == DATA_STATUS_NOT_CONSUMED)
+	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
@@ -8425,8 +8088,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    break;
 	  }
 	case DB_TYPE_ENUMERATION:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT,
-			    DB_GET_ENUM_SHORT (src));
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT, DB_GET_ENUM_SHORT (src));
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
@@ -8460,8 +8122,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 
@@ -8480,8 +8141,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		v_time = v_datetime.time / 1000;
 	      }
 
-	    if (db_timestamp_encode_ses (&v_date, &v_time, &v_utime, NULL) ==
-		NO_ERROR)
+	    if (db_timestamp_encode_ses (&v_date, &v_time, &v_utime, NULL) == NO_ERROR)
 	      {
 		db_make_timestamp (target, v_utime);
 	      }
@@ -8497,8 +8157,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  v_date = v_datetime.date;
 	  v_time = v_datetime.time / 1000;
 
-	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_utime) ==
-	      NO_ERROR)
+	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_utime) == NO_ERROR)
 	    {
 	      db_make_timestamp (target, v_utime);
 	    }
@@ -8513,8 +8172,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  v_date = v_datetimetz.datetime.date;
 	  v_time = v_datetimetz.datetime.time / 1000;
 
-	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_utime) ==
-	      NO_ERROR)
+	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_utime) == NO_ERROR)
 	    {
 	      db_make_timestamp (target, v_utime);
 	    }
@@ -8536,8 +8194,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 
 	default:
-	  status =
-	    tp_value_coerce ((DB_VALUE *) src, target, &tp_Integer_domain);
+	  status = tp_value_coerce ((DB_VALUE *) src, target, &tp_Integer_domain);
 	  if (status == DOMAIN_COMPATIBLE)
 	    {
 	      int tmpint;
@@ -8580,8 +8237,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 
@@ -8601,9 +8257,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      v_time = 0;
 	    }
 
-	  if (db_timestamp_encode_ses
-	      (&v_date, &v_time, &v_timestamptz.timestamp,
-	       &v_timestamptz.tz_id) != NO_ERROR)
+	  if (db_timestamp_encode_ses (&v_date, &v_time, &v_timestamptz.timestamp, &v_timestamptz.tz_id) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	    }
@@ -8619,14 +8273,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  v_time = v_datetime.time / 1000;
 
 	  /* encode DT as UTC and the TZ of session */
-	  if (db_timestamp_encode_utc
-	      (&v_date, &v_time, &v_timestamptz.timestamp) != NO_ERROR)
+	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_timestamptz.timestamp) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
 	    }
-	  if (tz_create_session_tzid_for_datetime
-	      (&v_datetime, true, &(v_timestamptz.tz_id)) != NO_ERROR)
+	  if (tz_create_session_tzid_for_datetime (&v_datetime, true, &(v_timestamptz.tz_id)) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	    }
@@ -8642,8 +8294,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  v_time = v_datetimetz.datetime.time / 1000;
 
 	  /* encode TS to DT (UTC) and copy TZ from DT_TZ */
-	  if (db_timestamp_encode_utc
-	      (&v_date, &v_time, &v_timestamptz.timestamp) == NO_ERROR)
+	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_timestamptz.timestamp) == NO_ERROR)
 	    {
 	      v_timestamptz.tz_id = v_datetimetz.tz_id;
 	      db_make_timestamptz (target, &v_timestamptz);
@@ -8659,8 +8310,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  /* copy TS value and create TZ_ID for system TZ */
 	  v_timestamptz.timestamp = *DB_GET_TIMESTAMP (src);
 
-	  if (tz_create_session_tzid_for_timestamp
-	      (&v_timestamptz.timestamp, &(v_timestamptz.tz_id)) != NO_ERROR)
+	  if (tz_create_session_tzid_for_timestamp (&v_timestamptz.timestamp, &(v_timestamptz.tz_id)) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -8670,8 +8320,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 
 	default:
-	  status =
-	    tp_value_coerce ((DB_VALUE *) src, target, &tp_Integer_domain);
+	  status = tp_value_coerce ((DB_VALUE *) src, target, &tp_Integer_domain);
 	  if (status == DOMAIN_COMPATIBLE)
 	    {
 	      int tmpint;
@@ -8684,9 +8333,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		}
 	      v_timestamptz.timestamp = (DB_UTIME) tmpint;
 
-	      if (tz_create_session_tzid_for_timestamp
-		  (&v_timestamptz.timestamp,
-		   &v_timestamptz.tz_id) != NO_ERROR)
+	      if (tz_create_session_tzid_for_timestamp (&v_timestamptz.timestamp, &v_timestamptz.tz_id) != NO_ERROR)
 		{
 		  status = DOMAIN_INCOMPATIBLE;
 		  break;
@@ -8726,8 +8373,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 
@@ -8747,8 +8393,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		v_time = 0;
 	      }
 
-	    if (db_timestamp_encode_ses (&v_date, &v_time, &v_utime, NULL) !=
-		NO_ERROR)
+	    if (db_timestamp_encode_ses (&v_date, &v_time, &v_utime, NULL) != NO_ERROR)
 	      {
 		status = DOMAIN_OVERFLOW;
 		break;
@@ -8775,8 +8420,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    }
 
 	  /* both values are in UTC */
-	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_utime) ==
-	      NO_ERROR)
+	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_utime) == NO_ERROR)
 	    {
 	      db_make_timestampltz (target, v_utime);
 	    }
@@ -8798,8 +8442,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 
 	default:
-	  status =
-	    tp_value_coerce ((DB_VALUE *) src, target, &tp_Integer_domain);
+	  status = tp_value_coerce ((DB_VALUE *) src, target, &tp_Integer_domain);
 	  if (status == DOMAIN_COMPATIBLE)
 	    {
 	      int tmpint;
@@ -8842,16 +8485,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 
 	case DB_TYPE_UTIME:
 	case DB_TYPE_TIMESTAMPLTZ:
 	  v_utime = *DB_GET_TIMESTAMP (src);
-	  if (db_timestamp_decode_ses (&v_utime, &v_date, &v_time) !=
-	      NO_ERROR)
+	  if (db_timestamp_decode_ses (&v_utime, &v_date, &v_time) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -8864,8 +8505,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_TIMESTAMPTZ:
 	  v_timestamptz = *DB_GET_TIMESTAMPTZ (src);
 	  if (db_timestamp_decode_w_tz_id
-	      (&v_timestamptz.timestamp, &v_timestamptz.tz_id, &v_date,
-	       &v_time) != NO_ERROR)
+	      (&v_timestamptz.timestamp, &v_timestamptz.tz_id, &v_date, &v_time) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -8900,9 +8540,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_DATETIMETZ:
 	  /* DATETIMETZ store in UTC, DATETIME in session TZ */
 	  v_datetimetz = *DB_GET_DATETIMETZ (src);
-	  if (tz_utc_datetimetz_to_local
-	      (&v_datetimetz.datetime, &v_datetimetz.tz_id,
-	       &v_datetime) == NO_ERROR)
+	  if (tz_utc_datetimetz_to_local (&v_datetimetz.datetime, &v_datetimetz.tz_id, &v_datetime) == NO_ERROR)
 	    {
 	      db_make_datetime (target, &v_datetime);
 	    }
@@ -8944,8 +8582,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 
@@ -8961,8 +8598,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	case DB_TYPE_TIMESTAMPTZ:
 	  v_timestamptz = *DB_GET_TIMESTAMPTZ (src);
-	  (void) db_timestamp_decode_utc (&v_timestamptz.timestamp, &v_date,
-					  &v_time);
+	  (void) db_timestamp_decode_utc (&v_timestamptz.timestamp, &v_date, &v_time);
 	  v_datetime.time = v_time * 1000;
 	  v_datetime.date = v_date;
 	  db_make_datetimeltz (target, &v_datetime);
@@ -8980,8 +8616,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      v_datetime = *DB_GET_DATETIME (src);
 	    }
 
-	  if (tz_create_datetimetz_from_ses (&v_datetime, &v_datetimetz) !=
-	      NO_ERROR)
+	  if (tz_create_datetimetz_from_ses (&v_datetime, &v_datetimetz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9035,8 +8670,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 
@@ -9048,9 +8682,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    v_datetimetz.datetime.time = v_time * 1000;
 	    v_datetimetz.datetime.date = v_date;
 
-	    if (tz_create_session_tzid_for_datetime
-		(&v_datetimetz.datetime, true,
-		 &v_datetimetz.tz_id) != NO_ERROR)
+	    if (tz_create_session_tzid_for_datetime (&v_datetimetz.datetime, true, &v_datetimetz.tz_id) != NO_ERROR)
 	      {
 		status = DOMAIN_ERROR;
 		break;
@@ -9062,8 +8694,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	case DB_TYPE_TIMESTAMPTZ:
 	  v_timestamptz = *DB_GET_TIMESTAMPTZ (src);
-	  (void) db_timestamp_decode_utc (&v_timestamptz.timestamp, &v_date,
-					  &v_time);
+	  (void) db_timestamp_decode_utc (&v_timestamptz.timestamp, &v_date, &v_time);
 	  v_datetimetz.datetime.time = v_time * 1000;
 	  v_datetimetz.datetime.date = v_date;
 	  v_datetimetz.tz_id = v_timestamptz.tz_id;
@@ -9074,8 +8705,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  v_datetime.date = *DB_GET_DATE (src);
 	  v_datetime.time = 0;
 
-	  if (tz_create_datetimetz_from_ses (&v_datetime, &v_datetimetz) !=
-	      NO_ERROR)
+	  if (tz_create_datetimetz_from_ses (&v_datetime, &v_datetimetz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9084,8 +8714,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 
 	case DB_TYPE_DATETIME:
-	  if (tz_create_datetimetz_from_ses
-	      (DB_GET_DATETIME (src), &v_datetimetz) != NO_ERROR)
+	  if (tz_create_datetimetz_from_ses (DB_GET_DATETIME (src), &v_datetimetz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9095,8 +8724,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	case DB_TYPE_DATETIMELTZ:
 	  v_datetimetz.datetime = *DB_GET_DATETIME (src);
-	  if (tz_create_session_tzid_for_datetime
-	      (&v_datetimetz.datetime, true, &v_datetimetz.tz_id) != NO_ERROR)
+	  if (tz_create_session_tzid_for_datetime (&v_datetimetz.datetime, true, &v_datetimetz.tz_id) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9147,8 +8775,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 
@@ -9161,9 +8788,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	case DB_TYPE_TIMESTAMPTZ:
 	  v_timestamptz = *DB_GET_TIMESTAMPTZ (src);
-	  if (db_timestamp_decode_w_tz_id
-	      (&v_timestamptz.timestamp, &v_timestamptz.tz_id, &v_date,
-	       NULL) != NO_ERROR)
+	  if (db_timestamp_decode_w_tz_id (&v_timestamptz.timestamp, &v_timestamptz.tz_id, &v_date, NULL) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9174,8 +8799,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	case DB_TYPE_DATETIME:
 	  db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (src), &month,
-			      &day, &year, &hour, &minute, &second,
-			      &millisecond);
+			      &day, &year, &hour, &minute, &second, &millisecond);
 	  db_make_date (target, month, day, year);
 	  break;
 	case DB_TYPE_DATETIMELTZ:
@@ -9189,8 +8813,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    if (original_type == DB_TYPE_DATETIMELTZ)
 	      {
 		utc_dt_p = DB_GET_DATETIME (src);
-		if (tz_create_session_tzid_for_datetime
-		    (utc_dt_p, true, &tz_id) != NO_ERROR)
+		if (tz_create_session_tzid_for_datetime (utc_dt_p, true, &tz_id) != NO_ERROR)
 		  {
 		    status = DOMAIN_ERROR;
 		    break;
@@ -9203,15 +8826,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		tz_id = dt_tz_p->tz_id;
 	      }
 
-	    if (tz_utc_datetimetz_to_local (utc_dt_p, &tz_id, &v_datetime) !=
-		NO_ERROR)
+	    if (tz_utc_datetimetz_to_local (utc_dt_p, &tz_id, &v_datetime) != NO_ERROR)
 	      {
 		status = DOMAIN_ERROR;
 		break;
 	      }
 
-	    db_datetime_decode (&v_datetime, &month, &day, &year, &hour,
-				&minute, &second, &millisecond);
+	    db_datetime_decode (&v_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 
 	    db_make_date (target, month, day, year);
 	    break;
@@ -9243,8 +8864,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    DB_TIMETZ *time_tz_p = DB_GET_TIMETZ (src);
 
-	    if (tz_utc_timetz_to_local
-		(&time_tz_p->time, &time_tz_p->tz_id, &v_time) != NO_ERROR)
+	    if (tz_utc_timetz_to_local (&time_tz_p->time, &time_tz_p->tz_id, &v_time) != NO_ERROR)
 	      {
 		status = DOMAIN_ERROR;
 		break;
@@ -9256,8 +8876,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	case DB_TYPE_UTIME:
 	case DB_TYPE_TIMESTAMPLTZ:
-	  if (db_timestamp_decode_ses (DB_GET_UTIME (src), NULL, &v_time) !=
-	      NO_ERROR)
+	  if (db_timestamp_decode_ses (DB_GET_UTIME (src), NULL, &v_time) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9268,9 +8887,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_TIMESTAMPTZ:
 	  /* convert TS from UTC to value TZ */
 	  v_timestamptz = *DB_GET_TIMESTAMPTZ (src);
-	  if (db_timestamp_decode_w_tz_id
-	      (&v_timestamptz.timestamp, &v_timestamptz.tz_id, NULL,
-	       &v_time) != NO_ERROR)
+	  if (db_timestamp_decode_w_tz_id (&v_timestamptz.timestamp, &v_timestamptz.tz_id, NULL, &v_time) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9279,8 +8896,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 	case DB_TYPE_DATETIME:
 	  db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (src), &month,
-			      &day, &year, &hour, &minute, &second,
-			      &millisecond);
+			      &day, &year, &hour, &minute, &second, &millisecond);
 	  db_make_time (target, hour, minute, second);
 	  break;
 	case DB_TYPE_DATETIMELTZ:
@@ -9295,8 +8911,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 
-	    db_datetime_decode (&dt_local, &month, &day, &year, &hour,
-				&minute, &second, &millisecond);
+	    db_datetime_decode (&dt_local, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	    db_make_time (target, hour, minute, second);
 	    break;
 	  }
@@ -9305,15 +8920,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_DATETIME dt_local;
 
 	    v_datetimetz = *DB_GET_DATETIMETZ (src);
-	    if (tz_utc_datetimetz_to_local
-		(&v_datetimetz.datetime, &v_datetimetz.tz_id,
-		 &dt_local) != NO_ERROR)
+	    if (tz_utc_datetimetz_to_local (&v_datetimetz.datetime, &v_datetimetz.tz_id, &dt_local) != NO_ERROR)
 	      {
 		status = DOMAIN_ERROR;
 		break;
 	      }
-	    db_datetime_decode (&dt_local, &month, &day, &year, &hour,
-				&minute, &second, &millisecond);
+	    db_datetime_decode (&dt_local, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	    db_make_time (target, hour, minute, second);
 	    break;
 	  }
@@ -9402,8 +9014,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 	default:
@@ -9424,8 +9035,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      break;
 	    }
 
-	  if (tz_create_timetz_from_ses (DB_GET_TIME (src), &v_timetz) !=
-	      NO_ERROR)
+	  if (tz_create_timetz_from_ses (DB_GET_TIME (src), &v_timetz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9453,29 +9063,25 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  break;
 	case DB_TYPE_DATETIME:
 	  /* convert to UTC */
-	  if (tz_create_datetimetz_from_ses
-	      (DB_GET_DATETIME (src), &v_datetimetz) != NO_ERROR)
+	  if (tz_create_datetimetz_from_ses (DB_GET_DATETIME (src), &v_datetimetz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
 	    }
-	  db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year,
-			      &hour, &minute, &second, &millisecond);
+	  db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	  db_time_encode (&v_time, hour, minute, second);
 	  db_make_timeltz (target, &v_time);
 	  break;
 	case DB_TYPE_DATETIMELTZ:
 	  db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (src), &month,
-			      &day, &year, &hour, &minute, &second,
-			      &millisecond);
+			      &day, &year, &hour, &minute, &second, &millisecond);
 	  db_time_encode (&v_time, hour, minute, second);
 	  db_make_timeltz (target, &v_time);
 	  break;
 	case DB_TYPE_DATETIMETZ:
 	  /* copy time part (UTC) */
 	  v_datetimetz = *DB_GET_DATETIMETZ (src);
-	  db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year,
-			      &hour, &minute, &second, &millisecond);
+	  db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	  db_time_encode (&v_time, hour, minute, second);
 	  db_make_timeltz (target, &v_time);
 	  break;
@@ -9488,8 +9094,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  status =
 	    tp_value_cast_internal (src, &temp,
 				    tp_domain_resolve_default (DB_TYPE_TIME),
-				    coercion_mode, do_domain_select,
-				    preserve_domain);
+				    coercion_mode, do_domain_select, preserve_domain);
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
 	      break;
@@ -9502,8 +9107,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      status = DOMAIN_ERROR;
 	      break;
 	    }
-	  if (tz_create_timetz_from_ses (DB_GET_TIME (&temp), &v_timetz) !=
-	      NO_ERROR)
+	  if (tz_create_timetz_from_ses (DB_GET_TIME (&temp), &v_timetz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9534,8 +9138,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 	default:
@@ -9548,8 +9151,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
       switch (original_type)
 	{
 	case DB_TYPE_TIME:
-	  if (tz_create_timetz_from_ses (DB_GET_TIME (src), &v_timetz) !=
-	      NO_ERROR)
+	  if (tz_create_timetz_from_ses (DB_GET_TIME (src), &v_timetz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9560,8 +9162,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_TIMELTZ:
 	  /* copy time value and store TZ of session */
 	  v_timetz.time = *(DB_GET_TIME (src));
-	  if (tz_create_session_tzid_for_time
-	      (&(v_timetz.time), true, &(v_timetz.tz_id)) != NO_ERROR)
+	  if (tz_create_session_tzid_for_time (&(v_timetz.time), true, &(v_timetz.tz_id)) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9575,8 +9176,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_TIMESTAMPLTZ:
 	  {
 	    db_timestamp_decode_utc (DB_GET_UTIME (src), NULL, &v_time);
-	    if (tz_create_session_tzid_for_time
-		(&v_time, true, &v_timetz.tz_id) != NO_ERROR)
+	    if (tz_create_session_tzid_for_time (&v_time, true, &v_timetz.tz_id) != NO_ERROR)
 	      {
 		status = DOMAIN_ERROR;
 		break;
@@ -9603,15 +9203,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  }
 	case DB_TYPE_DATETIME:
 	  {
-	    if (tz_create_datetimetz_from_ses
-		(DB_GET_DATETIME (src), &v_datetimetz) != NO_ERROR)
+	    if (tz_create_datetimetz_from_ses (DB_GET_DATETIME (src), &v_datetimetz) != NO_ERROR)
 	      {
 		status = DOMAIN_ERROR;
 		break;
 	      }
 
-	    db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year,
-				&hour, &minute, &second, &millisecond);
+	    db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	    db_time_encode (&v_time, hour, minute, second);
 	    v_timetz.time = v_time;
 	    v_timetz.tz_id = v_datetimetz.tz_id;
@@ -9624,11 +9222,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_DATETIMELTZ:
 	  {
 	    db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (src), &month,
-				&day, &year, &hour, &minute, &second,
-				&millisecond);
+				&day, &year, &hour, &minute, &second, &millisecond);
 	    db_time_encode (&v_time, hour, minute, second);
-	    if (tz_create_session_tzid_for_time
-		(&v_time, true, &v_timetz.tz_id) != NO_ERROR)
+	    if (tz_create_session_tzid_for_time (&v_time, true, &v_timetz.tz_id) != NO_ERROR)
 	      {
 		status = DOMAIN_ERROR;
 		break;
@@ -9643,8 +9239,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_DATETIMETZ:
 	  {
 	    v_datetimetz = *DB_GET_DATETIMETZ (src);
-	    db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year,
-				&hour, &minute, &second, &millisecond);
+	    db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 	    db_time_encode (&v_time, hour, minute, second);
 	    v_timetz.time = v_time;
 	    v_timetz.tz_id = v_datetimetz.tz_id;
@@ -9663,8 +9258,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  status =
 	    tp_value_cast_internal (src, &temp,
 				    tp_domain_resolve_default (DB_TYPE_TIME),
-				    coercion_mode, do_domain_select,
-				    preserve_domain);
+				    coercion_mode, do_domain_select, preserve_domain);
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
 	      break;
@@ -9672,8 +9266,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	  assert (DB_VALUE_TYPE (&temp) == DB_TYPE_TIME);
 
-	  if (tz_create_timetz_from_ses (DB_GET_TIME (&temp), &v_timetz) !=
-	      NO_ERROR)
+	  if (tz_create_timetz_from_ses (DB_GET_TIME (&temp), &v_timetz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
 	      break;
@@ -9702,8 +9295,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 	default:
@@ -9722,16 +9314,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	switch (original_type)
 	  {
 	  case DB_TYPE_OBJECT:
-	    if (!sm_coerce_object_domain
-		((TP_DOMAIN *) desired_domain, DB_GET_OBJECT (src), &v_obj))
+	    if (!sm_coerce_object_domain ((TP_DOMAIN *) desired_domain, DB_GET_OBJECT (src), &v_obj))
 	      {
 		status = DOMAIN_INCOMPATIBLE;
 	      }
 	    break;
 	  case DB_TYPE_POINTER:
-	    if (!sm_check_class_domain
-		((TP_DOMAIN *) desired_domain,
-		 ((DB_OTMPL *) DB_GET_POINTER (src))->classobj))
+	    if (!sm_check_class_domain ((TP_DOMAIN *) desired_domain, ((DB_OTMPL *) DB_GET_POINTER (src))->classobj))
 	      {
 		status = DOMAIN_INCOMPATIBLE;
 	      }
@@ -9769,8 +9358,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		  {
 		    /* everything is fine */
 		  }
-		else if (db_is_subclass (obj_class, desired_domain->class_mop)
-			 > 0)
+		else if (db_is_subclass (obj_class, desired_domain->class_mop) > 0)
 		  {
 		    /* everything is also ok */
 		  }
@@ -9819,8 +9407,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      TP_DOMAIN *set_domain;
 
 	      set_domain = setobj_domain (setref->set);
-	      if (src == dest
-		  && tp_domain_compatible (set_domain, desired_domain))
+	      if (src == dest && tp_domain_compatible (set_domain, desired_domain))
 		{
 		  /* 
 		   * We know that this is a "coerce-in-place" operation, and
@@ -9830,8 +9417,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		   * clearing the set; that's important since we haven't made
 		   * a copy.
 		   */
-		  setobj_put_domain (setref->set,
-				     (TP_DOMAIN *) desired_domain);
+		  setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
 		  src = NULL;
 		}
 	      else
@@ -9848,8 +9434,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		      setref = set_copy (setref);
 		      if (setref)
 			{
-			  setobj_put_domain (setref->set,
-					     (TP_DOMAIN *) desired_domain);
+			  setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
 			}
 		    }
 		  else
@@ -9862,8 +9447,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		       * "set of int" as a "set of float", for example.
 		       */
 		      setref =
-			set_coerce (setref, (TP_DOMAIN *) desired_domain,
-				    (coercion_mode == TP_IMPLICIT_COERCION));
+			set_coerce (setref, (TP_DOMAIN *) desired_domain, (coercion_mode == TP_IMPLICIT_COERCION));
 		    }
 
 		  if (setref == NULL)
@@ -9962,8 +9546,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	   */
 
 	  if ((db_seq_put (seq, 0, &view_oid) != NO_ERROR)
-	      || (db_seq_put (seq, 1, &class_oid) != NO_ERROR)
-	      || (db_seq_put (seq, 2, &keys) != NO_ERROR))
+	      || (db_seq_put (seq, 1, &class_oid) != NO_ERROR) || (db_seq_put (seq, 2, &keys) != NO_ERROR))
 	    {
 	      status = DOMAIN_INCOMPATIBLE;
 	    }
@@ -9997,25 +9580,20 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    bit_char_string = (char *) db_private_alloc (NULL, dst_size + 1);
 	    if (bit_char_string)
 	      {
-		if (qstr_hex_to_bin
-		    (bit_char_string, dst_size, DB_GET_STRING (src),
-		     src_size) != src_size)
+		if (qstr_hex_to_bin (bit_char_string, dst_size, DB_GET_STRING (src), src_size) != src_size)
 		  {
 		    status = DOMAIN_ERROR;
 		    db_private_free_and_init (NULL, bit_char_string);
 		  }
 		else
 		  {
-		    db_make_bit (&temp, TP_FLOATING_PRECISION_VALUE,
-				 bit_char_string, src_size * 4);
+		    db_make_bit (&temp, TP_FLOATING_PRECISION_VALUE, bit_char_string, src_size * 4);
 		    temp.need_clear = true;
-		    if (db_bit_string_coerce (&temp, target, &data_stat) !=
-			NO_ERROR)
+		    if (db_bit_string_coerce (&temp, target, &data_stat) != NO_ERROR)
 		      {
 			status = DOMAIN_INCOMPATIBLE;
 		      }
-		    else if (data_stat == DATA_STATUS_TRUNCATED
-			     && coercion_mode == TP_IMPLICIT_COERCION)
+		    else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode == TP_IMPLICIT_COERCION)
 		      {
 			status = DOMAIN_OVERFLOW;
 		      }
@@ -10044,8 +9622,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	  }
 	  break;
 
@@ -10058,10 +9635,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    err = db_blob_to_bit (src, NULL, &tmpval);
 	    if (err == NO_ERROR)
 	      {
-		err =
-		  tp_value_cast_internal (&tmpval, target, desired_domain,
-					  coercion_mode, do_domain_select,
-					  false);
+		err = tp_value_cast_internal (&tmpval, target, desired_domain, coercion_mode, do_domain_select, false);
 	      }
 	    (void) pr_clear_value (&tmpval);
 	  }
@@ -10082,8 +9656,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    {
 	      status = DOMAIN_INCOMPATIBLE;
 	    }
-	  else if (data_stat == DATA_STATUS_TRUNCATED
-		   && coercion_mode == TP_IMPLICIT_COERCION)
+	  else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode == TP_IMPLICIT_COERCION)
 	    {
 	      status = DOMAIN_OVERFLOW;
 	      pr_clear_value (target);
@@ -10116,13 +9689,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	       */
 	      src = NULL;
 	    }
-	  else if (db_char_string_coerce (src, target, &data_stat) !=
-		   NO_ERROR)
+	  else if (db_char_string_coerce (src, target, &data_stat) != NO_ERROR)
 	    {
 	      status = DOMAIN_INCOMPATIBLE;
 	    }
-	  else if (data_stat == DATA_STATUS_TRUNCATED
-		   && coercion_mode == TP_IMPLICIT_COERCION)
+	  else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode == TP_IMPLICIT_COERCION)
 	    {
 	      status = DOMAIN_OVERFLOW;
 	      pr_clear_value (target);
@@ -10130,10 +9701,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  else if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
 	    {
 	      db_string_put_cs_and_collation (target,
-					      TP_DOMAIN_CODESET
-					      (desired_domain),
-					      TP_DOMAIN_COLLATION
-					      (desired_domain));
+					      TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
 	      status = DOMAIN_COMPATIBLE;
 	    }
 	  break;
@@ -10142,22 +9710,18 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    DB_VALUE varchar_val;
 
-	    if (desired_type == DB_TYPE_NCHAR
-		|| desired_type == DB_TYPE_VARNCHAR)
+	    if (desired_type == DB_TYPE_NCHAR || desired_type == DB_TYPE_VARNCHAR)
 	      {
 		status = DOMAIN_INCOMPATIBLE;
 	      }
-	    else if (tp_enumeration_to_varchar (src, &varchar_val) !=
-		     NO_ERROR)
+	    else if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
 	      {
 		status = DOMAIN_ERROR;
 	      }
 	    else
 	      {
 		status =
-		  tp_value_cast_internal (&varchar_val, target,
-					  desired_domain, coercion_mode,
-					  do_domain_select, false);
+		  tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	      }
 	  }
 	  break;
@@ -10192,8 +9756,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    if (tp_ltoa (num, new_string, 10))
 	      {
 		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
-		    && db_value_precision (target) <
-		    (int) strlen (new_string))
+		    && db_value_precision (target) < (int) strlen (new_string))
 		  {
 		    status = DOMAIN_OVERFLOW;
 		    db_private_free_and_init (NULL, new_string);
@@ -10201,9 +9764,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		else
 		  {
 		    make_desired_string_db_value (desired_type,
-						  desired_domain, new_string,
-						  target, &status,
-						  &data_stat);
+						  desired_domain, new_string, target, &status, &data_stat);
 		  }
 	      }
 	    else
@@ -10239,9 +9800,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		  }
 	      }
 	    else if (DB_VALUE_PRECISION (target) !=
-		     TP_FLOATING_PRECISION_VALUE
-		     && (DB_GET_STRING_LENGTH (target) >
-			 DB_VALUE_PRECISION (target)))
+		     TP_FLOATING_PRECISION_VALUE && (DB_GET_STRING_LENGTH (target) > DB_VALUE_PRECISION (target)))
 	      {
 		status = DOMAIN_OVERFLOW;
 		pr_clear_value (target);
@@ -10274,9 +9833,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    else
 	      {
-		make_desired_string_db_value (desired_type, desired_domain,
-					      new_string, target, &status,
-					      &data_stat);
+		make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status, &data_stat);
 	      }
 	  }
 	  break;
@@ -10295,8 +9852,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 
 	    snprintf (new_string, max_size - 1, "%s%.*f",
-		      lang_currency_symbol (DB_GET_MONETARY (src)->type), 2,
-		      DB_GET_MONETARY (src)->amount);
+		      lang_currency_symbol (DB_GET_MONETARY (src)->type), 2, DB_GET_MONETARY (src)->amount);
 	    new_string[max_size - 1] = '\0';
 
 	    p = new_string + strlen (new_string);
@@ -10317,9 +9873,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    else
 	      {
-		make_desired_string_db_value (desired_type, desired_domain,
-					      new_string, target, &status,
-					      &data_stat);
+		make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status, &data_stat);
 	      }
 	  }
 	  break;
@@ -10349,74 +9903,57 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    switch (original_type)
 	      {
 	      case DB_TYPE_DATE:
-		db_date_to_string (new_string, max_size,
-				   (DB_DATE *) DB_GET_DATE (src));
+		db_date_to_string (new_string, max_size, (DB_DATE *) DB_GET_DATE (src));
 		break;
 	      case DB_TYPE_TIME:
-		db_time_to_string (new_string, max_size,
-				   (DB_TIME *) DB_GET_TIME (src));
+		db_time_to_string (new_string, max_size, (DB_TIME *) DB_GET_TIME (src));
 		break;
 	      case DB_TYPE_TIMETZ:
 		v_timetz = *DB_GET_TIMETZ (src);
-		db_timetz_to_string (new_string, max_size, &v_timetz.time,
-				     &v_timetz.tz_id);
+		db_timetz_to_string (new_string, max_size, &v_timetz.time, &v_timetz.tz_id);
 		break;
 	      case DB_TYPE_TIMELTZ:
 		v_time = *DB_GET_TIME (src);
-		err =
-		  tz_create_session_tzid_for_time (&v_time, true, &ses_tz_id);
+		err = tz_create_session_tzid_for_time (&v_time, true, &ses_tz_id);
 		if (err != NO_ERROR)
 		  {
 		    break;
 		  }
 
-		db_timetz_to_string (new_string, max_size, &v_time,
-				     &ses_tz_id);
+		db_timetz_to_string (new_string, max_size, &v_time, &ses_tz_id);
 		break;
 	      case DB_TYPE_TIMESTAMP:
-		db_timestamp_to_string (new_string, max_size,
-					(DB_TIMESTAMP *)
-					DB_GET_TIMESTAMP (src));
+		db_timestamp_to_string (new_string, max_size, (DB_TIMESTAMP *) DB_GET_TIMESTAMP (src));
 		break;
 	      case DB_TYPE_TIMESTAMPLTZ:
 		v_utime = *DB_GET_TIMESTAMP (src);
-		err =
-		  tz_create_session_tzid_for_timestamp (&v_utime, &ses_tz_id);
+		err = tz_create_session_tzid_for_timestamp (&v_utime, &ses_tz_id);
 		if (err != NO_ERROR)
 		  {
 		    break;
 		  }
-		db_timestamptz_to_string (new_string, max_size, &v_utime,
-					  &ses_tz_id);
+		db_timestamptz_to_string (new_string, max_size, &v_utime, &ses_tz_id);
 		break;
 	      case DB_TYPE_TIMESTAMPTZ:
 		v_timestamptz = *DB_GET_TIMESTAMPTZ (src);
-		db_timestamptz_to_string (new_string, max_size,
-					  &v_timestamptz.timestamp,
-					  &v_timestamptz.tz_id);
+		db_timestamptz_to_string (new_string, max_size, &v_timestamptz.timestamp, &v_timestamptz.tz_id);
 		break;
 	      case DB_TYPE_DATETIMELTZ:
 		v_datetime = *DB_GET_DATETIME (src);
-		err =
-		  tz_create_session_tzid_for_datetime (&v_datetime, true,
-						       &ses_tz_id);
+		err = tz_create_session_tzid_for_datetime (&v_datetime, true, &ses_tz_id);
 		if (err != NO_ERROR)
 		  {
 		    break;
 		  }
-		db_datetimetz_to_string (new_string, max_size, &v_datetime,
-					 &ses_tz_id);
+		db_datetimetz_to_string (new_string, max_size, &v_datetime, &ses_tz_id);
 		break;
 	      case DB_TYPE_DATETIMETZ:
 		v_datetimetz = *DB_GET_DATETIMETZ (src);
-		db_datetimetz_to_string (new_string, max_size,
-					 &v_datetimetz.datetime,
-					 &v_datetimetz.tz_id);
+		db_datetimetz_to_string (new_string, max_size, &v_datetimetz.datetime, &v_datetimetz.tz_id);
 		break;
 	      case DB_TYPE_DATETIME:
 	      default:
-		db_datetime_to_string (new_string, max_size,
-				       (DB_DATETIME *) DB_GET_DATETIME (src));
+		db_datetime_to_string (new_string, max_size, (DB_DATETIME *) DB_GET_DATETIME (src));
 		break;
 	      }
 
@@ -10434,9 +9971,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    else
 	      {
-		make_desired_string_db_value (desired_type, desired_domain,
-					      new_string, target, &status,
-					      &data_stat);
+		make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status, &data_stat);
 	      }
 	  }
 	  break;
@@ -10461,8 +9996,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    if (convert_error == NO_ERROR)
 	      {
 		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
-		    && (db_value_precision (target) <
-			(int) strlen (new_string)))
+		    && (db_value_precision (target) < (int) strlen (new_string)))
 		  {
 		    status = DOMAIN_OVERFLOW;
 		    db_private_free_and_init (NULL, new_string);
@@ -10470,9 +10004,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		else
 		  {
 		    make_desired_string_db_value (desired_type,
-						  desired_domain, new_string,
-						  target, &status,
-						  &data_stat);
+						  desired_domain, new_string, target, &status, &data_stat);
 		  }
 	      }
 	    else if (convert_error == -1)
@@ -10507,9 +10039,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		if (err == NO_ERROR)
 		  {
 		    err =
-		      tp_value_cast_internal (&tmpval, dest, desired_domain,
-					      coercion_mode, do_domain_select,
-					      false);
+		      tp_value_cast_internal (&tmpval, dest, desired_domain, coercion_mode, do_domain_select, false);
 		  }
 
 		pr_clear_value (&tmpval);
@@ -10522,14 +10052,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    const char *json_str;
 	    int len;
 
-	    json_str =
-	      db_json_get_raw_json_body_from_document (src->data.json.
-						       document);
+	    json_str = db_json_get_raw_json_body_from_document (src->data.json.document);
 	    len = strlen (json_str);
 
-	    err =
-	      DB_MAKE_CHAR (target, len, json_str, len,
-			    LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	    err = DB_MAKE_CHAR (target, len, json_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
 
 	    if (err != NO_ERROR)
 	      {
@@ -10542,9 +10068,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		pr_clear_value (target);
 	      }
 	    else if (DB_VALUE_PRECISION (target) !=
-		     TP_FLOATING_PRECISION_VALUE
-		     && (DB_GET_STRING_LENGTH (target) >
-			 DB_VALUE_PRECISION (target)))
+		     TP_FLOATING_PRECISION_VALUE && (DB_GET_STRING_LENGTH (target) > DB_VALUE_PRECISION (target)))
 	      {
 		status = DOMAIN_OVERFLOW;
 		pr_clear_value (target);
@@ -10583,8 +10107,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	  }
 	  break;
 	default:
@@ -10612,8 +10135,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain,
-				      coercion_mode, do_domain_select, false);
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
 	default:
@@ -10690,9 +10212,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      int err = NO_ERROR;
 
 	      DB_MAKE_DOUBLE (&val, 0);
-	      err =
-		numeric_db_value_coerce_from_num ((DB_VALUE *) src, &val,
-						  &stat);
+	      err = numeric_db_value_coerce_from_num ((DB_VALUE *) src, &val, &stat);
 	      if (err != NO_ERROR)
 		{
 		  status = DOMAIN_ERROR;
@@ -10739,8 +10259,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      status =
 		tp_value_cast_internal (src, &conv_val,
 					tp_domain_resolve_default
-					(DB_TYPE_STRING), coercion_mode,
-					do_domain_select, false);
+					(DB_TYPE_STRING), coercion_mode, do_domain_select, false);
 	      if (status == DOMAIN_COMPATIBLE)
 		{
 		  val_str = DB_GET_STRING (&conv_val);
@@ -10750,32 +10269,25 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    break;
 	  case DB_TYPE_CHAR:
 	  case DB_TYPE_VARCHAR:
-	    if (DB_GET_STRING_CODESET (src) !=
-		TP_DOMAIN_CODESET (desired_domain))
+	    if (DB_GET_STRING_CODESET (src) != TP_DOMAIN_CODESET (desired_domain))
 	      {
 		DB_DATA_STATUS data_status = DATA_STATUS_OK;
 
-		if (TP_DOMAIN_CODESET (desired_domain) ==
-		    INTL_CODESET_RAW_BYTES)
+		if (TP_DOMAIN_CODESET (desired_domain) == INTL_CODESET_RAW_BYTES)
 		  {
 		    /* avoid data truncation when converting to binary charset */
-		    db_value_domain_init (&conv_val, DB_VALUE_TYPE (src),
-					  DB_GET_STRING_SIZE (src), 0);
+		    db_value_domain_init (&conv_val, DB_VALUE_TYPE (src), DB_GET_STRING_SIZE (src), 0);
 		  }
 		else
 		  {
-		    db_value_domain_init (&conv_val, DB_VALUE_TYPE (src),
-					  DB_VALUE_PRECISION (src), 0);
+		    db_value_domain_init (&conv_val, DB_VALUE_TYPE (src), DB_VALUE_PRECISION (src), 0);
 		  }
 
 		db_string_put_cs_and_collation (&conv_val,
 						TP_DOMAIN_CODESET
-						(desired_domain),
-						TP_DOMAIN_COLLATION
-						(desired_domain));
+						(desired_domain), TP_DOMAIN_COLLATION (desired_domain));
 
-		if (db_char_string_coerce (src, &conv_val, &data_status) !=
-		    NO_ERROR || data_status != DATA_STATUS_OK)
+		if (db_char_string_coerce (src, &conv_val, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
 		  {
 		    status = DOMAIN_ERROR;
 		    pr_clear_value (&conv_val);
@@ -10809,8 +10321,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 	    else
 	      {
-		if (DB_GET_ENUM_CODESET (src) !=
-		    TP_DOMAIN_CODESET (desired_domain))
+		if (DB_GET_ENUM_CODESET (src) != TP_DOMAIN_CODESET (desired_domain))
 		  {
 		    /* first convert charset of the original value to charset of destination domain */
 		    DB_VALUE tmp;
@@ -10819,17 +10330,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		    /* charset conversion can handle only CHAR/VARCHAR DB_VALUEs, create a STRING value with max
 		     * precision (so that no truncation occurs) from the ENUM source string */
 		    DB_MAKE_VARCHAR (&tmp, DB_MAX_STRING_LENGTH, val_str,
-				     val_str_size, DB_GET_ENUM_CODESET (src),
-				     DB_GET_ENUM_COLLATION (src));
+				     val_str_size, DB_GET_ENUM_CODESET (src), DB_GET_ENUM_COLLATION (src));
 
 		    /* initialize destination value of conversion */
-		    db_value_domain_init (&conv_val, DB_TYPE_STRING,
-					  DB_MAX_STRING_LENGTH, 0);
+		    db_value_domain_init (&conv_val, DB_TYPE_STRING, DB_MAX_STRING_LENGTH, 0);
 		    db_string_put_cs_and_collation (&conv_val,
 						    TP_DOMAIN_CODESET
-						    (desired_domain),
-						    TP_DOMAIN_COLLATION
-						    (desired_domain));
+						    (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
 
 		    if (db_char_string_coerce (&tmp, &conv_val, &data_status)
 			!= NO_ERROR || data_status != DATA_STATUS_OK)
@@ -10876,8 +10383,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		    if (QSTR_COMPARE
 			(desired_domain->collation_id,
 			 (const unsigned char *) val_str, val_str_size,
-			 (const unsigned char *)
-			 DB_GET_ENUM_ELEM_STRING (db_enum), size) == 0)
+			 (const unsigned char *) DB_GET_ENUM_ELEM_STRING (db_enum), size) == 0)
 		      {
 			break;
 		      }
@@ -10891,10 +10397,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 			/* The source value is string with length 0 and can be matched with enum "special error value"
 			 * if it's not a valid ENUM value */
 			DB_MAKE_ENUMERATION (target, 0, NULL, 0,
-					     TP_DOMAIN_CODESET
-					     (desired_domain),
-					     TP_DOMAIN_COLLATION
-					     (desired_domain));
+					     TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
 			break;
 		      }
 		    else
@@ -10914,20 +10417,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		  {
 		    /* ENUM Special error value */
 		    DB_MAKE_ENUMERATION (target, 0, NULL, 0,
-					 TP_DOMAIN_CODESET (desired_domain),
-					 TP_DOMAIN_COLLATION
-					 (desired_domain));
+					 TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
 		    break;
 		  }
 		else
 		  {
-		    val_str_size =
-		      DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM
-						    (desired_domain,
-						     val_idx));
-		    val_str =
-		      DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM
-					       (desired_domain, val_idx));
+		    val_str_size = DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (desired_domain, val_idx));
+		    val_str = DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (desired_domain, val_idx));
 		  }
 	      }
 
@@ -10946,8 +10442,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 		if (alloc_string)
 		  {
-		    enum_str =
-		      (char *) db_private_alloc (NULL, val_str_size + 1);
+		    enum_str = (char *) db_private_alloc (NULL, val_str_size + 1);
 		    if (enum_str == NULL)
 		      {
 			status = DOMAIN_ERROR;
@@ -10965,8 +10460,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		    enum_str = val_str;
 		  }
 		DB_MAKE_ENUMERATION (target, val_idx, enum_str, val_str_size,
-				     TP_DOMAIN_CODESET (desired_domain),
-				     TP_DOMAIN_COLLATION (desired_domain));
+				     TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
 		target->need_clear = true;
 	      }
 	  }
@@ -10994,8 +10488,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      }
 
 	    if (desired_domain->json_validator
-		&& db_json_validate_doc (desired_domain->json_validator,
-					 doc) != NO_ERROR)
+		&& db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
 		db_json_delete_doc (doc);
@@ -11005,8 +10498,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    str = db_private_strdup (NULL, DB_GET_STRING (src));
 	    if (str == NULL)
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
 		return DOMAIN_ERROR;
 	      }
 
@@ -11039,9 +10531,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  /* make sure this doesn't have any partial results */
 	  if (preserve_domain)
 	    {
-	      db_value_domain_init (dest, desired_type,
-				    desired_domain->precision,
-				    desired_domain->scale);
+	      db_value_domain_init (dest, desired_type, desired_domain->precision, desired_domain->scale);
 	      db_value_put_null (dest);
 	    }
 	  else
@@ -11071,14 +10561,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
  *    This function does select domain from desired_domain
  */
 TP_DOMAIN_STATUS
-tp_value_cast (const DB_VALUE * src, DB_VALUE * dest,
-	       const TP_DOMAIN * desired_domain, bool implicit_coercion)
+tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain, bool implicit_coercion)
 {
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
-  return tp_value_cast_internal (src, dest, desired_domain, mode, true,
-				 false);
+  return tp_value_cast_internal (src, dest, desired_domain, mode, true, false);
 }
 
 /*
@@ -11094,8 +10582,7 @@ tp_value_cast (const DB_VALUE * src, DB_VALUE * dest,
  */
 TP_DOMAIN_STATUS
 tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest,
-			       const TP_DOMAIN * desired_domain,
-			       bool implicit_coercion, bool preserve_domain)
+			       const TP_DOMAIN * desired_domain, bool implicit_coercion, bool preserve_domain)
 {
   TP_COERCION_MODE mode;
 
@@ -11115,14 +10602,12 @@ tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest,
  */
 TP_DOMAIN_STATUS
 tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest,
-				const TP_DOMAIN * desired_domain,
-				bool implicit_coercion)
+				const TP_DOMAIN * desired_domain, bool implicit_coercion)
 {
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
-  return tp_value_cast_internal (src, dest, desired_domain, mode, false,
-				 false);
+  return tp_value_cast_internal (src, dest, desired_domain, mode, false, false);
 }
 
 /*
@@ -11135,16 +10620,14 @@ tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest,
  *   codeset(in): destination codeset
  */
 TP_DOMAIN_STATUS
-tp_value_change_coll_and_codeset (DB_VALUE * src, DB_VALUE * dest,
-				  int coll_id, int codeset)
+tp_value_change_coll_and_codeset (DB_VALUE * src, DB_VALUE * dest, int coll_id, int codeset)
 {
   TP_DOMAIN *temp_domain;
 
   assert (src != NULL && dest != NULL);
   assert (TP_IS_STRING_TYPE (DB_VALUE_TYPE (src)));
 
-  if (DB_GET_STRING_COLLATION (src) == coll_id
-      && DB_GET_STRING_CODESET (src) == codeset)
+  if (DB_GET_STRING_COLLATION (src) == coll_id && DB_GET_STRING_CODESET (src) == codeset)
     {
       /* early exit scenario */
       return DOMAIN_COMPATIBLE;
@@ -11271,8 +10754,7 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
  *    SB_SUBSET, DB_SUPERSET, or DB_EQ, it will not return DB_UNK.
  */
 DB_VALUE_COMPARE_RESULT
-tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2,
-		int do_coercion, int total_order)
+tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order)
 {
   DB_VALUE temp;
   int coercion;
@@ -11305,14 +10787,12 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 
       vtype1 = DB_VALUE_DOMAIN_TYPE (v1);
       vtype2 = DB_VALUE_DOMAIN_TYPE (v2);
-      if (vtype1 != DB_TYPE_SET && vtype1 != DB_TYPE_MULTISET
-	  && vtype1 != DB_TYPE_SEQUENCE)
+      if (vtype1 != DB_TYPE_SET && vtype1 != DB_TYPE_MULTISET && vtype1 != DB_TYPE_SEQUENCE)
 	{
 	  return DB_NE;
 	}
 
-      if (vtype2 != DB_TYPE_SET && vtype2 != DB_TYPE_MULTISET
-	  && vtype2 != DB_TYPE_SEQUENCE)
+      if (vtype2 != DB_TYPE_SET && vtype2 != DB_TYPE_MULTISET && vtype2 != DB_TYPE_SEQUENCE)
 	{
 	  return DB_NE;
 	}
@@ -11331,9 +10811,7 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 	      if (tp_more_general_type (vtype1, vtype2) > 0)
 		{
 		  /* vtype1 is more general, coerce value 2 */
-		  status =
-		    tp_value_coerce (v2, &temp,
-				     tp_domain_resolve_default (vtype1));
+		  status = tp_value_coerce (v2, &temp, tp_domain_resolve_default (vtype1));
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
 		      /* 
@@ -11353,9 +10831,7 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 	      else
 		{
 		  /* coerce value1 to value2's type */
-		  status =
-		    tp_value_coerce (v1, &temp,
-				     tp_domain_resolve_default (vtype2));
+		  status = tp_value_coerce (v1, &temp, tp_domain_resolve_default (vtype2));
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
 		      /* 
@@ -11410,11 +10886,9 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2,
  *    total_order(in): total order flag
  */
 DB_VALUE_COMPARE_RESULT
-tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
-		  int allow_coercion, int total_order)
+tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion, int total_order)
 {
-  return tp_value_compare_with_error (value1, value2, allow_coercion,
-				      total_order, NULL);
+  return tp_value_compare_with_error (value1, value2, allow_coercion, total_order, NULL);
 }
 
 /*
@@ -11441,8 +10915,7 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
  */
 DB_VALUE_COMPARE_RESULT
 tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
-			     int do_coercion, int total_order,
-			     bool * can_compare)
+			     int do_coercion, int total_order, bool * can_compare)
 {
   DB_VALUE temp1, temp2, tmp_char_conv;
   int coercion, char_conv;
@@ -11557,10 +11030,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 	      if (TP_IS_CHAR_TYPE (vtype1) && TP_IS_NUMERIC_TYPE (vtype2))
 		{
 		  /* coerce v1 to double */
-		  status =
-		    tp_value_coerce (v1, &temp1,
-				     tp_domain_resolve_default
-				     (DB_TYPE_DOUBLE));
+		  status = tp_value_coerce (v1, &temp1, tp_domain_resolve_default (DB_TYPE_DOUBLE));
 		  if (status == DOMAIN_COMPATIBLE)
 		    {
 		      v1 = &temp1;
@@ -11568,10 +11038,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 
 		      if (vtype2 != DB_TYPE_DOUBLE)
 			{
-			  status =
-			    tp_value_coerce (v2, &temp2,
-					     tp_domain_resolve_default
-					     (DB_TYPE_DOUBLE));
+			  status = tp_value_coerce (v2, &temp2, tp_domain_resolve_default (DB_TYPE_DOUBLE));
 
 			  if (status == DOMAIN_COMPATIBLE)
 			    {
@@ -11581,14 +11048,10 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 			}
 		    }
 		}
-	      else if (TP_IS_NUMERIC_TYPE (vtype1)
-		       && TP_IS_CHAR_TYPE (vtype2))
+	      else if (TP_IS_NUMERIC_TYPE (vtype1) && TP_IS_CHAR_TYPE (vtype2))
 		{
 		  /* coerce v2 to double */
-		  status =
-		    tp_value_coerce (v2, &temp2,
-				     tp_domain_resolve_default
-				     (DB_TYPE_DOUBLE));
+		  status = tp_value_coerce (v2, &temp2, tp_domain_resolve_default (DB_TYPE_DOUBLE));
 		  if (status == DOMAIN_COMPATIBLE)
 		    {
 		      v2 = &temp2;
@@ -11596,10 +11059,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 
 		      if (vtype1 != DB_TYPE_DOUBLE)
 			{
-			  status =
-			    tp_value_coerce (v1, &temp1,
-					     tp_domain_resolve_default
-					     (DB_TYPE_DOUBLE));
+			  status = tp_value_coerce (v1, &temp1, tp_domain_resolve_default (DB_TYPE_DOUBLE));
 
 			  if (status == DOMAIN_COMPATIBLE)
 			    {
@@ -11609,8 +11069,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 			}
 		    }
 		}
-	      else if (TP_IS_CHAR_TYPE (vtype1)
-		       && TP_IS_DATE_OR_TIME_TYPE (vtype2))
+	      else if (TP_IS_CHAR_TYPE (vtype1) && TP_IS_DATE_OR_TIME_TYPE (vtype2))
 		{
 		  /* vtype2 is the date or time type, coerce value 1 */
 		  TP_DOMAIN *d2 = tp_domain_resolve_default (vtype2);
@@ -11621,8 +11080,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		      vtype1 = DB_VALUE_TYPE (v1);
 		    }
 		}
-	      else if (TP_IS_DATE_OR_TIME_TYPE (vtype1)
-		       && TP_IS_CHAR_TYPE (vtype2))
+	      else if (TP_IS_DATE_OR_TIME_TYPE (vtype1) && TP_IS_CHAR_TYPE (vtype2))
 		{
 		  /* vtype1 is the date or time type, coerce value 2 */
 		  TP_DOMAIN *d1 = tp_domain_resolve_default (vtype1);
@@ -11638,8 +11096,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		  /* vtype1 is more general, coerce value 2 */
 		  TP_DOMAIN *d1 = tp_domain_resolve_default (vtype1);
 
-		  if (TP_TYPE_HAS_COLLATION (vtype2)
-		      && TP_IS_CHAR_TYPE (vtype1))
+		  if (TP_TYPE_HAS_COLLATION (vtype2) && TP_IS_CHAR_TYPE (vtype1))
 		    {
 		      /* create a new domain with type of v1 */
 		      d1 = tp_domain_copy (d1, false);
@@ -11682,8 +11139,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		  /* coerce value1 to value2's type */
 		  TP_DOMAIN *d2 = tp_domain_resolve_default (vtype2);
 
-		  if (TP_TYPE_HAS_COLLATION (vtype1)
-		      && TP_IS_CHAR_TYPE (vtype2))
+		  if (TP_TYPE_HAS_COLLATION (vtype1) && TP_IS_CHAR_TYPE (vtype2))
 		    {
 		      /* create a new domain with type of v2 */
 		      d2 = tp_domain_copy (d2, false);
@@ -11760,20 +11216,17 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 	      /* Either both arguments are enums, or both are not. If one is enum and one is not, it means that
 	       * tp_value_cast_internal failed somewhere */
 	      assert ((vtype1 == DB_TYPE_ENUMERATION && vtype1 == vtype2)
-		      || (vtype1 != DB_TYPE_ENUMERATION
-			  && vtype2 != DB_TYPE_ENUMERATION));
+		      || (vtype1 != DB_TYPE_ENUMERATION && vtype2 != DB_TYPE_ENUMERATION));
 
 	      if (!TP_IS_CHAR_TYPE (vtype1))
 		{
 		  common_coll = 0;
 		}
-	      else if (DB_GET_STRING_COLLATION (v1) ==
-		       DB_GET_STRING_COLLATION (v2))
+	      else if (DB_GET_STRING_COLLATION (v1) == DB_GET_STRING_COLLATION (v2))
 		{
 		  common_coll = DB_GET_STRING_COLLATION (v1);
 		}
-	      else if (TP_IS_CHAR_TYPE (vtype1)
-		       && (use_collation_of_v1 || use_collation_of_v2))
+	      else if (TP_IS_CHAR_TYPE (vtype1) && (use_collation_of_v1 || use_collation_of_v2))
 		{
 		  INTL_CODESET codeset;
 		  DB_DATA_STATUS data_status;
@@ -11797,14 +11250,10 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 
 		  if (DB_GET_STRING_CODESET (v1) != codeset)
 		    {
-		      db_value_domain_init (&tmp_char_conv, vtype1,
-					    DB_VALUE_PRECISION (v1), 0);
+		      db_value_domain_init (&tmp_char_conv, vtype1, DB_VALUE_PRECISION (v1), 0);
 
-		      db_string_put_cs_and_collation (&tmp_char_conv, codeset,
-						      common_coll);
-		      error_status =
-			db_char_string_coerce (v1, &tmp_char_conv,
-					       &data_status);
+		      db_string_put_cs_and_collation (&tmp_char_conv, codeset, common_coll);
+		      error_status = db_char_string_coerce (v1, &tmp_char_conv, &data_status);
 
 		      if (error_status != NO_ERROR)
 			{
@@ -11823,14 +11272,10 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		    }
 		  else if (DB_GET_STRING_CODESET (v2) != codeset)
 		    {
-		      db_value_domain_init (&tmp_char_conv, vtype2,
-					    DB_VALUE_PRECISION (v2), 0);
+		      db_value_domain_init (&tmp_char_conv, vtype2, DB_VALUE_PRECISION (v2), 0);
 
-		      db_string_put_cs_and_collation (&tmp_char_conv, codeset,
-						      common_coll);
-		      error_status =
-			db_char_string_coerce (v2, &tmp_char_conv,
-					       &data_status);
+		      db_string_put_cs_and_collation (&tmp_char_conv, codeset, common_coll);
+		      error_status = db_char_string_coerce (v2, &tmp_char_conv, &data_status);
 
 		      if (error_status != NO_ERROR)
 			{
@@ -11848,20 +11293,15 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		      v2 = &tmp_char_conv;
 		    }
 		}
-	      else if (TP_IS_CHAR_TYPE (vtype1)
-		       && DB_GET_STRING_CODESET (v1) ==
-		       DB_GET_STRING_CODESET (v2))
+	      else if (TP_IS_CHAR_TYPE (vtype1) && DB_GET_STRING_CODESET (v1) == DB_GET_STRING_CODESET (v2))
 		{
-		  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (v1),
-				       DB_GET_STRING_COLLATION (v2),
-				       common_coll);
+		  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (v1), DB_GET_STRING_COLLATION (v2), common_coll);
 		}
 
 	      if (common_coll == -1)
 		{
 		  result = DB_UNK;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
 		  if (can_compare != NULL)
 		    {
 		      *can_compare = false;
@@ -11869,9 +11309,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		}
 	      else
 		{
-		  result =
-		    (*(pr_type->cmpval)) (v1, v2, do_coercion, total_order,
-					  NULL, common_coll);
+		  result = (*(pr_type->cmpval)) (v1, v2, do_coercion, total_order, NULL, common_coll);
 		}
 
 	      if (result == DB_UNK)
@@ -11879,8 +11317,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		  /* safe guard */
 		  if (pr_type->id == DB_TYPE_MIDXKEY)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_MR_NULL_DOMAIN, 0);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MR_NULL_DOMAIN, 0);
 		      assert (false);
 		    }
 		}
@@ -11925,8 +11362,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
  *
  */
 int
-tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2,
-		int do_coercion)
+tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion)
 {
   return tp_value_compare (value1, value2, do_coercion, 0) == DB_EQ;
 }
@@ -11961,8 +11397,7 @@ tp_domain_disk_size (TP_DOMAIN * domain)
   if (domain->type->data_lengthmem != NULL
       && (domain->type->id == DB_TYPE_CHAR
 	  || domain->type->id == DB_TYPE_NCHAR
-	  || domain->type->id == DB_TYPE_BIT)
-      && domain->precision == TP_FLOATING_PRECISION_VALUE)
+	  || domain->type->id == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
     {
       return -1;
     }
@@ -12002,8 +11437,7 @@ tp_domain_memory_size (TP_DOMAIN * domain)
   if (domain->type->data_lengthmem != NULL
       && (domain->type->id == DB_TYPE_CHAR
 	  || domain->type->id == DB_TYPE_NCHAR
-	  || domain->type->id == DB_TYPE_BIT)
-      && domain->precision == TP_FLOATING_PRECISION_VALUE)
+	  || domain->type->id == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
     {
       return -1;
     }
@@ -12046,8 +11480,7 @@ tp_init_value_domain (TP_DOMAIN * domain, DB_VALUE * value)
   if (domain == NULL)
     {
       /* shouldn't happen ? */
-      db_value_domain_init (value, DB_TYPE_NULL, DB_DEFAULT_PRECISION,
-			    DB_DEFAULT_SCALE);
+      db_value_domain_init (value, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
   else
     {
@@ -12204,8 +11637,7 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 	  else
 #endif /* !SERVER_MODE */
 	    {
-	      fprintf (fp, "object(%d,%d,%d)", d->class_oid.volid,
-		       d->class_oid.pageid, d->class_oid.slotid);
+	      fprintf (fp, "object(%d,%d,%d)", d->class_oid.volid, d->class_oid.pageid, d->class_oid.slotid);
 	    }
 	  if (TP_DOMAIN_TYPE (d) == DB_TYPE_SUB)
 	    {
@@ -12242,8 +11674,7 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  fprintf (fp, "%s(%d) collate %s", d->type->name, d->precision,
-		   lang_get_collation_name (d->collation_id));
+	  fprintf (fp, "%s(%d) collate %s", d->type->name, d->precision, lang_get_collation_name (d->collation_id));
 	  break;
 
 	case DB_TYPE_NCHAR:
@@ -12413,8 +11844,7 @@ tp_domain_references_objects (const TP_DOMAIN * dom)
  *	   not require late binding.
  */
 TP_DOMAIN_STATUS
-tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest,
-		    const TP_DOMAIN * desired_domain)
+tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   TP_DOMAIN_STATUS status;
 
@@ -12445,8 +11875,7 @@ tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest,
  *	   string arguments.
  */
 int
-tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest,
-				  DB_TYPE * val_type)
+tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest, DB_TYPE * val_type)
 {
   TP_DOMAIN *cast_dom = NULL;
   TP_DOMAIN_STATUS dom_status;
@@ -12470,8 +11899,7 @@ tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest,
   dom_status = tp_value_auto_cast (src, dest, cast_dom);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
-      er_status =
-	tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, cast_dom);
+      er_status = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, cast_dom);
 
       pr_clear_value (dest);
       return er_status;
@@ -12523,8 +11951,7 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
 	   || (TP_IS_CHAR_TYPE (arg1_type) && TP_IS_CHAR_TYPE (arg2_type))
 	   || (TP_IS_DATE_TYPE (arg1_type) && TP_IS_DATE_TYPE (arg2_type))
 	   || (TP_IS_SET_TYPE (arg1_type) && TP_IS_SET_TYPE (arg2_type))
-	   || (TP_IS_NUMERIC_TYPE (arg1_type)
-	       && TP_IS_NUMERIC_TYPE (arg2_type)))
+	   || (TP_IS_NUMERIC_TYPE (arg1_type) && TP_IS_NUMERIC_TYPE (arg2_type)))
     {
       if (tp_more_general_type (arg1_type, arg2_type) > 0)
 	{
@@ -12554,8 +11981,7 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
       arg2_prec = arg2->precision;
       arg2_scale = arg2->scale;
 
-      if (arg1_prec == TP_FLOATING_PRECISION_VALUE
-	  || arg2_prec == TP_FLOATING_PRECISION_VALUE)
+      if (arg1_prec == TP_FLOATING_PRECISION_VALUE || arg2_prec == TP_FLOATING_PRECISION_VALUE)
 	{
 	  target_domain->precision = TP_FLOATING_PRECISION_VALUE;
 	  target_domain->scale = 0;
@@ -12567,10 +11993,8 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
 	  integral_digits1 = arg1_prec - arg1_scale;
 	  integral_digits2 = arg2_prec - arg2_scale;
 	  target_domain->scale = MAX (arg1_scale, arg2_scale);
-	  target_domain->precision =
-	    (target_domain->scale + MAX (integral_digits1, integral_digits2));
-	  target_domain->precision =
-	    MIN (target_domain->precision, DB_MAX_NUMERIC_PRECISION);
+	  target_domain->precision = (target_domain->scale + MAX (integral_digits1, integral_digits2));
+	  target_domain->precision = MIN (target_domain->precision, DB_MAX_NUMERIC_PRECISION);
 	}
       else
 	{
@@ -12591,8 +12015,7 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
  */
 int
 tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name,
-			 const int line_no, const DB_VALUE * src,
-			 const TP_DOMAIN * domain)
+			 const int line_no, const DB_VALUE * src, const TP_DOMAIN * domain)
 {
   int error = NO_ERROR;
 
@@ -12624,14 +12047,12 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name,
     case DOMAIN_INCOMPATIBLE:
       error = ER_TP_CANT_COERCE;
       er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 2,
-	      pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
-	      pr_type_name (TP_DOMAIN_TYPE (domain)));
+	      pr_type_name (DB_VALUE_DOMAIN_TYPE (src)), pr_type_name (TP_DOMAIN_TYPE (domain)));
       break;
 
     case DOMAIN_OVERFLOW:
       error = ER_IT_DATA_OVERFLOW;
-      er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 1,
-	      pr_type_name (TP_DOMAIN_TYPE (domain)));
+      er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
       break;
 
     case DOMAIN_ERROR:
@@ -12659,8 +12080,7 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name,
  */
 int
 tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset,
-			   bool is_negative, DB_BIGINT * num_value,
-			   DB_DATA_STATUS * data_stat)
+			   bool is_negative, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
   char str[64] = { 0 };
   char *p = NULL;
@@ -12670,8 +12090,7 @@ tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset,
   bool round = false;
   bool truncated = false;
 
-  assert (start != NULL && end != NULL && num_value != NULL
-	  && data_stat != NULL);
+  assert (start != NULL && end != NULL && num_value != NULL && data_stat != NULL);
 
   strp = start;
   stre = end;
@@ -12811,8 +12230,7 @@ tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset,
  */
 int
 tp_hex_str_to_bi (char *start, char *end, INTL_CODESET codeset,
-		  bool is_negative, DB_BIGINT * num_value,
-		  DB_DATA_STATUS * data_stat)
+		  bool is_negative, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
 #define HIGHEST_4BITS_OF_UBI 0xF000000000000000
 
@@ -12825,8 +12243,7 @@ tp_hex_str_to_bi (char *start, char *end, INTL_CODESET codeset,
   bool round = false;
   bool truncated = false;
 
-  assert (start != NULL && end != NULL && num_value != NULL
-	  && data_stat != NULL);
+  assert (start != NULL && end != NULL && num_value != NULL && data_stat != NULL);
 
   *data_stat = DATA_STATUS_OK;
 
@@ -12915,8 +12332,7 @@ tp_hex_str_to_bi (char *start, char *end, INTL_CODESET codeset,
       ++p;
     }
 
-  *num_value =
-    tp_ubi_to_bi_with_args (ubi, is_negative, truncated, round, data_stat);
+  *num_value = tp_ubi_to_bi_with_args (ubi, is_negative, truncated, round, data_stat);
 
 end:
 
@@ -12941,8 +12357,7 @@ end:
  */
 int
 tp_scientific_str_to_bi (char *start, char *end, INTL_CODESET codeset,
-			 bool is_negative, DB_BIGINT * num_value,
-			 DB_DATA_STATUS * data_stat)
+			 bool is_negative, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
   int error = NO_ERROR;
   double d = 0.0;
@@ -12957,8 +12372,7 @@ tp_scientific_str_to_bi (char *start, char *end, INTL_CODESET codeset,
   bool is_exp_negative = false;
   int exp = 0;			/* at most 308 */
 
-  assert (start != NULL && end != NULL && num_value != NULL
-	  && data_stat != NULL);
+  assert (start != NULL && end != NULL && num_value != NULL && data_stat != NULL);
 
   *data_stat = DATA_STATUS_OK;
 
@@ -13152,16 +12566,14 @@ tp_scientific_str_to_bi (char *start, char *end, INTL_CODESET codeset,
 		}
 	    }
 	}
-      else if (exp == 0 && base_float_start != NULL
-	       && *base_float_start >= '5')
+      else if (exp == 0 && base_float_start != NULL && *base_float_start >= '5')
 	{
 	  round = true;
 	}
     }
 
 
-  *num_value =
-    tp_ubi_to_bi_with_args (ubi, is_negative, truncated, round, data_stat);
+  *num_value = tp_ubi_to_bi_with_args (ubi, is_negative, truncated, round, data_stat);
 
 end:
 
@@ -13181,8 +12593,7 @@ end:
  *    NOTE: This is an internal function for convert string to bigint
  */
 DB_BIGINT
-tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool truncated,
-			bool round, DB_DATA_STATUS * data_stat)
+tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool truncated, bool round, DB_DATA_STATUS * data_stat)
 {
 #define HIGHEST_BIT_OF_UINT64 0x8000000000000000
 
