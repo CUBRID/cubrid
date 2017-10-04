@@ -72,6 +72,7 @@
 #include "show_scan.h"
 #include "network.h"
 #include "db_date.h"
+#include "double_write_buffer.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -4103,7 +4104,7 @@ thread_dwb_flush_block_thread (void *arg_p)
 
       if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
 	{
-	  pgbuf_dwb_flush_block_with_checksum (tsd_ptr);
+	  dwb_flush_block_with_checksum (tsd_ptr);
 	}
     }
 
@@ -4183,7 +4184,7 @@ thread_dwb_checksum_computation_thread (void *arg_p)
 
       if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
 	{
-	  pgbuf_dwb_compute_checksums (tsd_ptr);
+	  dwb_compute_checksums (tsd_ptr);
 	}
     }
 

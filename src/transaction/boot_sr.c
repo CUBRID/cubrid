@@ -68,6 +68,7 @@
 #include "tz_support.h"
 #include "filter_pred_cache.h"
 #include "slotted_page.h"
+#include "double_write_buffer.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -2464,7 +2465,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
   /* Load and recover data pages before log recovery */
-  error_code = pgbuf_dwb_load_and_recover_pages (thread_p, boot_Dwb_path, dwb_prefix);
+  error_code = dwb_load_and_recover_pages (thread_p, boot_Dwb_path, dwb_prefix);
   if (error_code != NULL)
     {
       ASSERT_ERROR ();
@@ -2937,7 +2938,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
 
       log_final (thread_p);
       /* Since all pages were flushed, now it's safe to destroy DWB. */
-      (void) pgbuf_dwb_destroy (thread_p);
+      (void) dwb_destroy (thread_p);
 
       if (is_er_final == ER_ALL_FINAL)
 	{
@@ -4767,7 +4768,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   ext_info.extend_npages = db_npages;
 
   /* Create double write buffer if not already created. DWB creation must be done before first volume. */
-  if (pgbuf_dwb_create (thread_p, dwb_path, dwb_prefix) != NO_ERROR)
+  if (dwb_create (thread_p, dwb_path, dwb_prefix) != NO_ERROR)
     {
       goto error;
     }

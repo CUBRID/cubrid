@@ -440,15 +440,4 @@ extern bool pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p);
 extern void pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page);
 extern bool pgbuf_is_io_stressful (void);
 
-/* double write buffer functions */
-extern bool pgbuf_dwb_is_created (THREAD_ENTRY * thread_p);
-extern int pgbuf_dwb_create (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p);
-extern int pgbuf_dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p);
-extern int pgbuf_dwb_destroy (THREAD_ENTRY * thread_p);
-extern char *pgbuf_dwb_get_volume_name ();
-extern int pgbuf_dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p);
-extern int pgbuf_dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync);
-extern int pgbuf_dwb_compute_checksums (THREAD_ENTRY * thread_p);
-extern int pgbuf_dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool * success);
-
 #endif /* _PAGE_BUFFER_H_ */
