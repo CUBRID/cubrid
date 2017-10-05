@@ -25,7 +25,7 @@
 #ifndef EXTENSIBLE_ARRAY_HPP_
 #define EXTENSIBLE_ARRAY_HPP_
 
-#include <allocators>
+#include <memory>
 #include <vector>
 #include <array>
 
@@ -140,11 +140,11 @@
  *
  *    Should we handle out of memory?
  */
-template <typename T, size_t Size, typename Allocator = std::allocator<T>>
+template <typename T, size_t Size, typename Allocator = std::allocator<T> >
 class extensible_array
 {
 public:
-  extensible_array (Allocator & allocator = nullptr, size_t max_size = 0);
+  extensible_array (Allocator & allocator = NULL, size_t max_size = 0);
 
   ~extensible_array ();
 
@@ -207,7 +207,7 @@ private:
  *    str: append string to buffer
  *    length: if 0, strlen (str) + 1 is used
  */
-template <size_t Size, typename Allocator = std::allocator<char>>
+template <size_t Size, typename Allocator = std::allocator<char> >
 inline int xarr_char_append_string (extensible_array<char, Size, Allocator>& buffer, const char *str,
                                     size_t length = 0);
 
@@ -225,7 +225,7 @@ inline int xarr_char_append_string (extensible_array<char, Size, Allocator>& buf
  *    buffer: extensible char buffer
  *    to_append: object to append
  */
-template <class T, size_t Size, typename Allocator = std::allocator<char>>
+template <class T, size_t Size, typename Allocator = std::allocator<char> >
 inline int xarr_char_append_object (extensible_array<char, Size, Allocator>& buffer, const T & to_append);
 
 #endif /* !EXTENSIBLE_ARRAY_HPP_ */

@@ -80,7 +80,7 @@ public:
     m_thread_p->count_private_allocators++;
   }
   template <typename U>
-  inline explicit db_private_allocator (const db_private_allocator<U> &)
+  inline explicit db_private_allocator (const db_private_allocator<U> &other)
   {
     m_thread_p = other.thread_p;
     /* also register the allocator in thread entry */
@@ -140,7 +140,8 @@ public:
   /* maximum number of allocations */
   size_type max_size () const
   {
-    return SIZE_MAX / sizeof(T);
+    static const size_type DB_PRIVATE_ALLOCATOR_MAX_SIZE = 0x7FFFFFFF;
+    return DB_PRIVATE_ALLOCATOR_MAX_SIZE / sizeof(T);
   }
 
 private:

@@ -56,7 +56,7 @@ typedef class extensible_array<int, XARR_SIZE_ONE_K, db_private_allocator<int> >
 template<typename T, size_t Size, typename Allocator>
 inline extensible_array<T, Size, Allocator>::extensible_array (Allocator & allocator, size_t max_size)
 {
-  m_dynamic_data = nullptr;
+  m_dynamic_data = NULL;
   m_allocator = allocator;
   m_size = 0;
   m_max_size = max_size;
@@ -86,7 +86,7 @@ inline int extensible_array<T, Size, Allocator>::copy_unsafe (const T * source, 
 template<typename T, size_t Size, typename Allocator>
 inline const T * extensible_array<T, Size, Allocator>::get_data (void) const
 {
-  return m_dynamic_data != nullptr ? m_dynamic_data->data () : m_static_data.data ();
+  return m_dynamic_data != NULL ? m_dynamic_data->data () : m_static_data.data ();
 }
 
 template<typename T, size_t Size, typename Allocator>
@@ -110,7 +110,7 @@ inline int extensible_array<T, Size, Allocator>::check_resize (size_t size)
 template<typename T, size_t Size, typename Allocator>
 inline size_t extensible_array<T, Size, Allocator>::get_capacity (void)
 {
-  return m_dynamic_data != nullptr ? m_dynamic_data->capacity () : Size;
+  return m_dynamic_data != NULL ? m_dynamic_data->capacity () : Size;
 }
 
 /* extension should theoretically be rare, so don't inline them */
@@ -126,7 +126,7 @@ inline int extensible_array<T, Size, Allocator>::extend (size_t size)
     }
 
   /* no dynamic allocation */
-  if (m_allocator == nullptr)
+  if (m_allocator == NULL)
     {
     return -1;
     }
@@ -138,10 +138,10 @@ inline int extensible_array<T, Size, Allocator>::extend (size_t size)
     new_capacity *= 2;
     }
 
-  if (m_dynamic_data == nullptr)
+  if (m_dynamic_data == NULL)
     {
     m_dynamic_data = new std::vector<T, Allocator> (new_capacity, *m_allocator);
-    if (m_dynamic_data == nullptr)
+    if (m_dynamic_data == NULL)
       {
       /* todo: handle private allocator errors */
       return -1;
@@ -185,7 +185,7 @@ inline int extensible_array<T, Size, Allocator>::append (const It & first, const
     {
       return err;
     }
-  if (m_dynamic_data != nullptr)
+  if (m_dynamic_data != NULL)
     {
       std::copy (first, last, m_dynamic_data->begin () + m_size);
     }
@@ -227,11 +227,11 @@ inline int extensible_array<T, Size, Allocator>::copy (const It & it)
 template <size_t Size, typename Allocator>
 inline int xarr_char_append_string (extensible_array<char, Size, Allocator> & buffer, const char *str, size_t length)
 {
-  assert (str != nullptr);
+  assert (str != NULL);
 
   if (length == 0)
     {
-      length = std::strlen (str) + 1;
+      length = strlen (str) + 1;
     }
 
   return buffer.append_unsafe (str, length);
