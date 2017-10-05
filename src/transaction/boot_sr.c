@@ -4770,6 +4770,11 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   /* Create double write buffer if not already created. DWB creation must be done before first volume. */
   if (dwb_create (thread_p, dwb_path, dwb_prefix) != NO_ERROR)
     {
+      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "DWB error: Can't create DWB \n");
+	}
+
       goto error;
     }
 
