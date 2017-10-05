@@ -48,7 +48,7 @@ template <typename T>
 inline void
 println (const T & t)
 {
-  std::cout << T << std::endl;
+  std::cout << t << std::endl;
 }
 
 template <typename T>

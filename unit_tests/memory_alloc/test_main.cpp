@@ -25,23 +25,23 @@ template <typename ... Args>
 int
 test_module (int & global_error, int (*f) (Args ...), Args &... args)
 {
-  std::cout << "start testing module ";
+  std::cout << std::endl;
+  std::cout << "  start testing module ";
 
   int err = f (args...);
-  std::cout << std::endl;
   if (err == 0)
     {
-      std::cout << "test completed successfully" << std::endl;
+      std::cout << "  test completed successfully" << std::endl;
     }
   else
     {
-      std::cout << "test failed" << std::endl;
+      std::cout << "  test failed" << std::endl;
       global_error = global_error == 0 ? err : global_error;
     }
   return err;
 }
  
-int main (int argc, char *argv[])
+int main ()
 {
   int global_error = 0;
 

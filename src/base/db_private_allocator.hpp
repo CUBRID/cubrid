@@ -119,7 +119,7 @@ public:
         return reinterpret_cast<pointer> (db_private_alloc (m_thread_p, count * sizeof (T)));
       }
   }
-  inline void deallocate (pointer p, size_type ingored = 0)
+  inline void deallocate (pointer p, size_type UNUSED(ingored) = 0)
   {
 #if defined (SERVER_MODE)
     if (m_heapid != m_thread_p->private_heap_id)

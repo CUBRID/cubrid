@@ -978,4 +978,24 @@ extern "C"
 }
 #endif
 
+#ifdef __PRETTY_FUNCTION__
+#define PORTABLE_FUNC_NAME __PRETTY_FUNCTION__
+#elif defined (__GNUC__)
+#define PORTABLE_FUNC_NAME __func__
+#else
+#define PORTABLE_FUNC_NAME "(unknown)"
+#endif 
+
+#ifdef __GNUC__
+#  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+#else
+#  define UNUSED(x) x
+#endif
+
+#ifdef __GNUC__
+#  define UNUSED_FUNCTION(x) __attribute__((__unused__)) UNUSED_ ## x
+#else
+#  define UNUSED_FUNCTION(x) x
+#endif
+
 #endif				/* _PORTING_H_ */

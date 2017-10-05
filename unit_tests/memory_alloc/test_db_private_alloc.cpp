@@ -56,8 +56,10 @@ test_allocator ()
 {
   custom_thread_entry cte;
 
-  std::cout << __FUNCTION__ << std::endl;
-  std::string prefix("\t" __FUNCTION__ ": ");
+  std::cout << PORTABLE_FUNC_NAME << std::endl;
+  std::string prefix(4,' ');
+  prefix += PORTABLE_FUNC_NAME;
+  prefix += ": ";
 
   db_private_allocator<T> private_alloc (cte.get_thread_entry ());
 
@@ -77,13 +79,13 @@ test_allocator ()
 
   std::cout << prefix << "alloc 64x64" << std::endl;
   std::array<T *, SIZE_64> ptr_array;
-  for (int i = 0; i < ptr_array.size (); i++)
+  for (size_t i = 0; i < ptr_array.size (); i++)
     {
       ptr_array[i] = private_alloc.allocate (SIZE_64);
       *ptr_array[i] = T ();
       *(ptr_array[i] + SIZE_64 - 1) = T ();
     }
-  for (int i = 0; i < ptr_array.size (); i++)
+  for (size_t i = 0; i < ptr_array.size (); i++)
     {
       private_alloc.deallocate (ptr_array[i]);
     }
@@ -96,17 +98,17 @@ template <typename ... Args>
 void
 run_test (int & global_err, int (*f) (Args...), Args &... args)
 {
-  std::cout << "\tstarting test - ";
+  std::cout << std::endl;
+  std::cout << "    starting test - ";
   
   int err = f (args...);
-  std::cout << std::endl;
   if (err == 0)
     {
-      std::cout << "\ttest successful";
+      std::cout << "    test successful" << std::endl;
     }
   else
     {
-      std::cout << "\ttest failed";
+      std::cout << "    test failed" << std::endl;
       global_err = global_err != 0 ? global_err : err;
     }
 }
@@ -114,7 +116,7 @@ run_test (int & global_err, int (*f) (Args...), Args &... args)
 int
 test_db_private_alloc ()
 {
-  std::cout << __FUNCTION__ << std::endl;
+  std::cout << PORTABLE_FUNC_NAME << std::endl;
 
   int global_err = 0;
 
