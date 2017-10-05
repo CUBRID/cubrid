@@ -48,6 +48,7 @@ option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
+option (WITH_UNIT_TESTS "Unit tests" OFF)
 
 # options for external libraries (BUNDLED or path)
 
@@ -972,6 +973,10 @@ add_subdirectory(contrib)
 add_subdirectory(tools)
 add_subdirectory(locales)
 add_subdirectory(timezones)
+
+if(WITH_UNIT_TESTS)
+add_subdirectory(unit_tests)
+endif(WITH_UNIT_TESTS)
 
 if(WITH_JDBC)
   find_program(ANT ant PATHS $ENV{ANT_HOME} ENV PATH)

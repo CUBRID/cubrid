@@ -282,8 +282,27 @@ if (WITH_UNIT_TESTS)
   # in order to avoid adding all the functions used by unit tests in def file, it is more convenient to build a static
   # lib too. more compile time, but less head-ache
   # todo - is there any nicer way of doing this??
-  add_library (cubrid-win-lib
+  add_library (cubrid-win-lib STATIC
+    ${CUBRID_LIB_SOURCES}
     )
+
+  target_compile_definitions(cubrid-win-lib PRIVATE 
+    SERVER_MODE
+    ${COMMON_DEFS}
+    )
+
+  target_link_libraries(cubrid-win-lib PRIVATE
+    ws2_32
+    ${JVM_LIBS}
+    ${EP_LIBS}
+    )
+
+  target_include_directories(cubrid-win-lib PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/heaplayers/util
+    ${JAVA_INC}
+    ${EP_INCLUDES}
+    )
+
   endif (WIN32)
 endif (WITH_UNIT_TESTS)
 
