@@ -39,12 +39,15 @@ set(BASE_SOURCES
   ${BASE_DIR}/chartype.c
   ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
+  ${BASE_DIR}/db_private_allocator.hpp
   ${BASE_DIR}/dtoa.c
   ${BASE_DIR}/dynamic_array.c	
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/event_log.c
+  ${BASE_DIR}/extensible_array.hpp
+  ${BASE_DIR}/extensible_array.cpp
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
@@ -223,7 +226,7 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE C
   )
 
-add_library(cubrid SHARED
+set (CUBRID_LIB_SOURCES
   ${COMPAT_SOURCES}
   ${THREAD_SOURCES}
   ${BASE_SOURCES}
@@ -240,6 +243,10 @@ add_library(cubrid SHARED
   ${EXECUTABLE_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  )
+
+add_library(cubrid SHARED
+  ${CUBRID_LIB_SOURCES}
   )
 set_target_properties(cubrid PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 if(WIN32)
@@ -270,6 +277,16 @@ if(UNIX)
   add_dependencies(cubrid ${EP_TARGETS})
 endif(UNIX)
 
+if (WITH_UNIT_TESTS)
+  if (WIN32)
+  # in order to avoid adding all the functions used by unit tests in def file, it is more convenient to build a static
+  # lib too. more compile time, but less head-ache
+  # todo - is there any nicer way of doing this??
+  add_library (cubrid-win-lib
+    )
+  endif (WIN32)
+endif (WITH_UNIT_TESTS)
+
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubrid PRIVATE ${CMAKE_BINARY_DIR})
   add_dependencies(cubrid gen_probes)
@@ -285,7 +302,6 @@ install(FILES
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   RENAME dbi.h
   )
-
 
 # install pdb files for debugging on windows
 if(WIN32)

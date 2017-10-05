@@ -355,6 +355,8 @@ struct thread_entry
 
 #if !defined(NDEBUG)
   struct fi_test_item *fi_test_array;
+
+  int count_private_allocators;
 #endif
 };
 

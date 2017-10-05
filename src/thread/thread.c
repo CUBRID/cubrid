@@ -1205,6 +1205,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 
 #if !defined(NDEBUG)
   entry_p->fi_test_array = NULL;
+  entry_p->count_private_allocators = 0;
 
   fi_thread_init (entry_p);
 #endif
