@@ -255,6 +255,13 @@ extern "C"
 #define DB_MAKE_SEQ DB_MAKE_SEQUENCE
 
 /* new preferred interface */
+#define DB_MAKE_OID(value, oid)						\
+  do {									\
+    if ((db_value_domain_init(value, DB_TYPE_OID, 0, 0)) == NO_ERROR)	\
+	(void)db_make_oid(value, oid);				        \
+  } while (0)
+
+#define DB_GET_OID(value)		(db_get_oid(value))
 #define DB_MAKE_COLLECTION(value, col) db_make_collection(value, col)
 
 #define DB_MAKE_MIDXKEY(value, midxkey) db_make_midxkey(value, midxkey)
@@ -644,7 +651,7 @@ extern "C"
  * call those db_ functions defined for that type.
  */
 
-  typedef struct db_collection DB_COLLECTION;
+  typedef struct db_set DB_COLLECTION;
   typedef DB_COLLECTION DB_MULTISET;
   typedef DB_COLLECTION DB_SEQ;
   typedef DB_COLLECTION DB_SET;
@@ -1130,6 +1137,148 @@ extern "C"
   extern char *obj_Method_error_msg;
 
   /********************************************************/
+  /* From storage_common.h */
+  /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
+
+#define NULL_VOLID  (-1)	/* Value of an invalid volume identifier */
+#define NULL_SECTID (-1)	/* Value of an invalid sector identifier */
+#define NULL_PAGEID (-1)	/* Value of an invalid page identifier */
+#define NULL_SLOTID (-1)	/* Value of an invalid slot identifier */
+#define NULL_OFFSET (-1)	/* Value of an invalid offset */
+#define NULL_FILEID (-1)	/* Value of an invalid file identifier */
+
+#define VOLID_MAX       SHRT_MAX
+#define PAGEID_MAX      INT_MAX
+#define SECTID_MAX      INT_MAX
+#define PGLENGTH_MAX    SHRT_MAX
+#define VOL_MAX_NPAGES(page_size) \
+  ((sizeof(off_t) == 4) ? (INT_MAX / (page_size)) : INT_MAX)
+
+#define LOGPAGEID_MAX   0x7fffffffffffLL	/* 6 bytes length */
+
+  /********************************************************/
+  /* From oid.h */
+#define OID_ISNULL(oidp)        ((oidp)->pageid == NULL_PAGEID)
+
+  /********************************************************/
+  /* From object_domain.h */
+  /*
+   * We probably should make this 0 rather than -1 so that we can more easily
+   * represent precisions with unsigned integers.  Zero is not a valid
+   * precision.
+   */
+#define TP_FLOATING_PRECISION_VALUE -1
+  /********************************************************/
+  /* From object_primitive.h */
+
+  extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
+
+  /********************************************************/
+  /* From language_support.h */
+
+  enum
+  {
+    LANG_COLL_ISO_BINARY = 0,
+    LANG_COLL_UTF8_BINARY = 1,
+    LANG_COLL_ISO_EN_CS = 2,
+    LANG_COLL_ISO_EN_CI = 3,
+    LANG_COLL_UTF8_EN_CS = 4,
+    LANG_COLL_UTF8_EN_CI = 5,
+    LANG_COLL_UTF8_TR_CS = 6,
+    LANG_COLL_UTF8_KO_CS = 7,
+    LANG_COLL_EUCKR_BINARY = 8,
+    LANG_COLL_BINARY = 9
+  };
+
+#define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
+  ? LANG_COLL_UTF8_BINARY :					 \
+  (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
+  (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
+    LANG_COLL_BINARY)))
+
+
+  /* collation and charset do be used by system : */
+#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
+
+  extern INTL_CODESET lang_charset (void);
+#define LANG_SYS_CODESET  lang_charset()
+
+  /********************************************************/
+  /* From object_representation.h */
+
+  /*
+   * SETOBJ
+   *    This is the primitive set object header.
+   */
+  typedef struct setobj SETOBJ;
+
+  typedef struct db_set SETREF;
+  struct db_set
+  {
+    /*
+     * a garbage collector ticket is not required for the "owner" field as
+     * the entire set references area is registered for scanning in area_grow.
+     */
+    struct db_object *owner;
+    struct db_set *ref_link;
+    struct setobj *set;
+    char *disk_set;
+    DB_DOMAIN *disk_domain;
+    int attribute;
+    int ref_count;
+    int disk_size;
+    bool need_clear;
+  };
+  /********************************************************/
+  /* From set_object.h */
+  struct setobj
+  {
+
+    DB_TYPE coltype;
+    int size;			/* valid indexes from 0 to size -1 aka the number of represented values in the
+				 * collection */
+    int lastinsert;		/* the last value insertion point 0 to size. */
+    int topblock;		/* maximum index of an allocated block. This is the maximum non-NULL db_value pointer
+				 * index of array. array[topblock] should be non-NULL. array[topblock+1] will be a NULL
+				 * pointer for future expansion. */
+    int arraytop;		/* maximum indexable pointer in array the valid indexes for array are 0 to arraytop
+				 * inclusive Generally this may be greater than topblock */
+    int topblockcount;		/* This is the max index of the top block Since it may be shorter than a standard sized
+				 * block for space efficiency. */
+    DB_VALUE **array;
+
+    /* not stored on disk, attached at run time by the schema */
+    struct tp_domain *domain;
+
+    /* external reference list */
+    DB_COLLECTION *references;
+
+    /* clear if we can't guarantee sort order, always on for sequences */
+    unsigned sorted:1;
+
+    /* set if we can't guarantee that there are no temporary OID's in here */
+    unsigned may_have_temporary_oids:1;
+  };
+
+  /*
+   * struct setobj
+   * The internal structure of a setobj data struct is private to this module.
+   * all access to this structure should be encapsulated via function calls.
+   */
+  typedef SETOBJ COL;
+
+  extern DB_TYPE setobj_type (COL * set);
+  /********************************************************/
+  /* From elo.h */
+
+  extern void elo_init_structure (DB_ELO * elo);
+  /********************************************************/
+  /* From db_date.h */
+
+  extern int db_date_encode (DB_DATE * date, int month, int day, int year);
+  extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
+  /********************************************************/
+
 
   extern DB_VALUE *db_value_create (void);
   extern DB_VALUE *db_value_copy (DB_VALUE * value);
@@ -1170,15 +1319,6 @@ extern "C"
   extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
   extern int db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount);
   extern int db_value_alter_type (DB_VALUE * value, DB_TYPE type);
-
-#define DB_MAKE_OID(value, oid)						\
-  do {									\
-    if ((db_value_domain_init(value, DB_TYPE_OID, 0, 0)) == NO_ERROR)	\
-	(void)db_make_oid(value, oid);				        \
-  } while (0)
-
-#define DB_GET_OID(value)		(db_get_oid(value))
-  extern OID *db_get_oid (const DB_VALUE * value);
 
 /*
  * DB_MAKE_ value constructors.
@@ -1266,19 +1406,8 @@ extern "C"
    *  that will result in cyclic redundancies. One option would be to move those parts from
    *  those headers towards this header, in order for the functions to be inlined.
    */
-  extern int db_make_set (DB_VALUE * value, DB_C_SET * set);
-  extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
-  extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
-  extern int db_make_collection (DB_VALUE * value, DB_C_SET * set);
 
-  extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
 
-  extern int db_make_string (DB_VALUE * value, const char *str);
-  extern int db_make_string_copy (DB_VALUE * value, const char *str);
-
-  extern int db_make_oid (DB_VALUE * value, const OID * oid);
-  extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
-  extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
 
 /*
  * DB_GET_ accessor macros.
@@ -1324,10 +1453,10 @@ extern "C"
   extern int db_get_string_collation (const DB_VALUE * value);
   extern int db_get_enum_codeset (const DB_VALUE * value);
   extern int db_get_enum_collation (const DB_VALUE * value);
+  extern OID *db_get_oid (const DB_VALUE * value);
   extern DB_TYPE db_value_type (const DB_VALUE * value);
   extern int db_value_precision (const DB_VALUE * value);
   extern int db_value_scale (const DB_VALUE * value);
-
 
   extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
 			      const int size);
@@ -1369,6 +1498,21 @@ extern "C"
   extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
 
+  extern int db_make_string (DB_VALUE * value, const char *str);
+  extern int db_make_string_copy (DB_VALUE * value, const char *str);
+
+  extern int db_make_oid (DB_VALUE * value, const OID * oid);
+
+  extern int db_make_set (DB_VALUE * value, DB_C_SET * set);
+  extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
+  extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
+  extern int db_make_collection (DB_VALUE * value, DB_C_SET * set);
+
+
+  extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
+
+  extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
+  extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
 #endif
 
 #ifdef __cplusplus
