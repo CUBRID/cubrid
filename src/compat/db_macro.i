@@ -572,7 +572,7 @@ db_get_string_size (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE short
+DB_MACRO_INLINE unsigned short
 db_get_enum_short (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)

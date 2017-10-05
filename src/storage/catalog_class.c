@@ -797,7 +797,7 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p, DB_VALUE * oid_val_p)
 	}
     }
 
-  db_push_oid (oid_val_p, oid_p);
+  db_make_oid (oid_val_p, oid_p);
 
   if (name_p)
     {
@@ -1061,7 +1061,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
       error = er_errid ();
       goto error;
     }
-  db_push_oid (&attrs[0].value, &class_oid);
+  db_make_oid (&attrs[0].value, &class_oid);
 
   /* loader_commands */
   or_advance (buf_p, vars[ORC_LOADER_COMMANDS_INDEX].length);
@@ -1347,19 +1347,19 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	}
       or_val = &or_val[7];
       if (!TP_IS_SET_TYPE (DB_VALUE_TYPE (&or_val->value))
-	  || db_get_enum_short (attr_val_p) > or_val->value.data.set->set->size)
+	  || DB_GET_ENUM_SHORT (attr_val_p) > or_val->value.data.set->set->size)
 	{
 	  error = ER_FAILED;
 	  goto error;
 	}
-      error = set_get_element (DB_GET_SET (&or_val->value), db_get_enum_short (attr_val_p) - 1, &val);
+      error = set_get_element (DB_GET_SET (&or_val->value), DB_GET_ENUM_SHORT (attr_val_p) - 1, &val);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
       val.need_clear = false;
-      DB_MAKE_ENUMERATION (attr_val_p, db_get_enum_short (attr_val_p), DB_GET_STRING (&val), DB_GET_STRING_SIZE (&val),
+      DB_MAKE_ENUMERATION (attr_val_p, DB_GET_ENUM_SHORT (attr_val_p), DB_GET_STRING (&val), DB_GET_STRING_SIZE (&val),
 			   DB_GET_ENUM_CODESET (attr_val_p), DB_GET_ENUM_COLLATION (attr_val_p));
       attr_val_p->need_clear = true;
     }
@@ -3512,7 +3512,7 @@ catcls_insert_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * root_oi
 	  goto error;
 	}
 
-      db_push_oid (&oid_val, &oid);
+      db_make_oid (&oid_val, &oid);
       error = set_put_element (oid_set_p, i, &oid_val);
       if (error != NO_ERROR)
 	{
@@ -3681,7 +3681,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 	       * ... } */
 
 	      attr_p = subset_p[j].sub.value;
-	      db_push_oid (&attr_p[0].value, oid_p);
+	      db_make_oid (&attr_p[0].value, oid_p);
 
 	      if (OID_EQ (class_oid_p, &ct_Class.cc_classoid))
 		{
@@ -3708,7 +3708,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       else if (DB_VALUE_DOMAIN_TYPE (&attrs[i].value) == DB_TYPE_VARIABLE)
 	{
 	  /* set a self referenced oid */
-	  db_push_oid (&attrs[i].value, root_oid_p);
+	  db_make_oid (&attrs[i].value, root_oid_p);
 	}
     }
 
@@ -3922,7 +3922,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 	      /* assume that the attribute values of xxx are ordered by { class_of, xxx_name, xxx_type, from_xxx_name,
 	       * ... } */
 	      attr_p = subset_p[j].sub.value;
-	      db_push_oid (&attr_p[0].value, oid_p);
+	      db_make_oid (&attr_p[0].value, oid_p);
 
 	      if (OID_EQ (class_oid_p, &ct_Class.cc_classoid))
 		{
@@ -4729,7 +4729,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 	}
 
       /* oid_p remains the same, but it has to be reinserted in set; set_get_element don't let the value unchanged */
-      db_push_oid (&oid_val, oid_p);
+      db_make_oid (&oid_val, oid_p);
       error = set_put_element (oid_set_p, i, &oid_val);
       if (error != NO_ERROR)
 	{
@@ -4776,7 +4776,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 	      goto error;
 	    }
 
-	  db_push_oid (&oid_val, oid_p);
+	  db_make_oid (&oid_val, oid_p);
 	  error = set_put_element (oid_set_p, i, &oid_val);
 	  if (error != NO_ERROR)
 	    {

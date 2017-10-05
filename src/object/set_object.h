@@ -19,8 +19,8 @@
 
 
 /*
-* set_object.h - Set management
-*/
+ * set_object.h - Set management
+ */
 
 #ifndef _SET_OBJECT_H_
 #define _SET_OBJECT_H_
@@ -64,24 +64,24 @@
 #define COL_BLOCK_SIZE (64)
 
 /* Is there some compelling reason to keep the value array larger than necessary?
-* this will suck proportionally with the size of the collection
-* Leaving it as is for now, not sure if the code relies on this being 1 larger
-* than the necessary size.
-*/
+ * this will suck proportionally with the size of the collection
+ * Leaving it as is for now, not sure if the code relies on this being 1 larger
+ * than the necessary size.
+ */
 #define EXPAND(blockindex) ((int) (((blockindex)*1.1) + 1))
 
 #define BLOCK(collection_index) ((int) ((collection_index)/COL_BLOCK_SIZE))
 #define OFFSET(collection_index) ((int) ((collection_index)%COL_BLOCK_SIZE))
 #define INDEX(collection,index) (&(collection->array[BLOCK(index)][OFFSET(index)]))
 #define BLOCKING_LESS1 (COL_BLOCK_SIZE -1)
-#define VALUETOP(col) ((col->topblock*COL_BLOCK_SIZE)+col->topblockcount)
+#define VALUETOP(col) ((col->topblock * COL_BLOCK_SIZE) + col->topblockcount)
 #define COLBLOCKSIZE(n) (sizeof(COL_BLOCK) + (n * sizeof(DB_VALUE)))
 #define BLOCK_START(block)      ((COL_BLOCK *) \
             ((char *)block - offsetof(struct collect_block, val)))
 
 /* hack, need to check for a NULL OID pointer (a virtual object) before using
-* OID_ISTEMP.
-*/
+ * OID_ISTEMP.
+ */
 #define OBJECT_HAS_TEMP_OID(obj) \
   ((WS_OID(obj) == NULL) ? 0 : OID_ISTEMP(WS_OID(obj)))
 
@@ -98,10 +98,10 @@ typedef struct set_iterator
 } SET_ITERATOR;
 
 /*
-* struct setobj
-* The internal structure of a setobj data struct is private to this module.
-* all access to this structure should be encapsulated via function calls.
-*/
+ * struct setobj
+ * The internal structure of a setobj data struct is private to this module.
+ * all access to this structure should be encapsulated via function calls.
+ */
 typedef SETOBJ COL;
 
 struct setobj
@@ -117,7 +117,7 @@ struct setobj
   int arraytop;			/* maximum indexable pointer in array the valid indexes for array are 0 to arraytop
 				 * inclusive Generally this may be greater than topblock */
   int topblockcount;		/* This is the max index of the top block Since it may be shorter than a standard sized
-				 * block for space efficicency. */
+				 * block for space efficiency. */
   DB_VALUE **array;
 
   /* not stored on disk, attached at run time by the schema */
@@ -126,10 +126,10 @@ struct setobj
   /* external reference list */
   DB_COLLECTION *references;
 
-  /* clear if we can't guarentee sort order, always on for sequences */
+  /* clear if we can't guarantee sort order, always on for sequences */
   unsigned sorted:1;
 
-  /* set if we can't guarentee that there are no temporary OID's in here */
+  /* set if we can't guarantee that there are no temporary OID's in here */
   unsigned may_have_temporary_oids:1;
 };
 
