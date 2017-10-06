@@ -22,6 +22,7 @@
 
 #include <iostream>
 #include <chrono>
+#include <cassert>
 
 #include "memory_alloc.h"
 
@@ -74,7 +75,7 @@ public:
 
   ~custom_thread_entry ()
   {
-    custom_assert (m_thread_entry.count_private_allocators == 0);
+    assert (m_thread_entry.count_private_allocators == 0);
     check_resource_leaks ();
 
     db_clear_private_heap (&m_thread_entry, m_thread_entry.private_heap_id);

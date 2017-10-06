@@ -64,29 +64,37 @@ public:
         m_thread_p = thread_get_thread_entry_info ();
       }
     m_heapid = m_thread_p->private_heap_id;
+#ifdef DEBUG
     /* also register the allocator in thread entry */
     m_thread_p->count_private_allocators++;
+#endif /* DEBUG */
 #endif /* SERVER_MODE */
   }
   inline ~db_private_allocator ()
   {
+#ifdef DEBUG
     /* deregister allocator from thread entry */
     m_thread_p->count_private_allocators--;
+#endif /* DEBUG */
   }
   inline explicit db_private_allocator (const db_private_allocator & other)
   {
     m_thread_p = other.m_thread_p;
     m_heapid = other.m_heapid;
+#ifdef DEBUG
     /* also register the allocator in thread entry */
     m_thread_p->count_private_allocators++;
+#endif /* DEBUG */
   }
   template <typename U>
   inline explicit db_private_allocator (const db_private_allocator<U> & other)
   {
     m_thread_p = other.get_thread_entry ();
     m_heapid = other.get_heapid ();
+#ifdef DEBUG
     /* also register the allocator in thread entry */
     this->m_thread_p->count_private_allocators++;
+#endif /* DEBUG */
   }
 
   /* address */
