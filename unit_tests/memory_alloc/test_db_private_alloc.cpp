@@ -53,10 +53,36 @@ private:
 };
 
 template <typename T>
+class mallocator
+{
+public:
+  T* allocate (size_t size)
+  {
+    return (T *) malloc (size * sizeof (T));
+  }
+  void deallocate (T * pointer, size_t UNUSED (size))
+  {
+    free (pointer);
+  }
+  size_t max_size (void) const
+  {
+    return 0x7FFFFFFF;
+  }
+private:
+};
+
+template <typename T>
 void
 init_allocator (custom_thread_entry & cte, std::allocator<T> *& alloc)
-{
+  {
   alloc = new std::allocator<T> ();
+  }
+
+template <typename T>
+void
+init_allocator (custom_thread_entry & cte, mallocator<T> *& alloc)
+{
+  alloc = new mallocator<T> ();
 }
 
 template <typename T>
@@ -72,7 +98,7 @@ test_allocator ()
 {
   custom_thread_entry cte;
 
-  std::cout << PORTABLE_FUNC_NAME << std::endl;
+  std::cout << PORTABLE_FUNC_NAME << "<" << typeid(T).name() << ">" << std::endl;
   std::string prefix(4,' ');
   prefix += PORTABLE_FUNC_NAME;
   prefix += ": ";
@@ -122,7 +148,7 @@ int
 test_performance_alloc ()
 {
   custom_thread_entry cte;
-  std::cout << PORTABLE_FUNC_NAME << std::endl;
+  std::cout << PORTABLE_FUNC_NAME << "<" << typeid(T).name() << "," << typeid(Alloc).name() << ">" << std::endl;
   std::string prefix (4, ' ');
   prefix += PORTABLE_FUNC_NAME;
   prefix += ": ";
@@ -136,7 +162,7 @@ test_performance_alloc ()
   for (int i = 0; i < SIZE_1_M; i++)
     {
       ptr = alloc->allocate (1);
-      ptr = T();
+      *ptr = T();
       alloc->deallocate (ptr, 1);
     }
   std::cout << timer.time_and_reset ().count () << std::endl;
@@ -146,6 +172,7 @@ test_performance_alloc ()
   for (size_t i = 0; i < SIZE_1_M; i++)
     {
       pointers[i] = alloc->allocate (1);
+      *pointers[i] = T ();
     }
   for (size_t i = 0; i < SIZE_1_M; i++)
     {
@@ -191,6 +218,11 @@ test_db_private_alloc ()
 
   run_test (global_err, test_performance_alloc<char, db_private_allocator<char> >);
   run_test (global_err, test_performance_alloc<char, std::allocator<char> >);
+  run_test (global_err, test_performance_alloc<char, mallocator<char> >);
+
+  run_test (global_err, test_performance_alloc<void *, db_private_allocator<void *> >);
+  run_test (global_err, test_performance_alloc<void *, std::allocator<void *> >);
+  run_test (global_err, test_performance_alloc<void *, mallocator<void *> >);
 
   std::cout << std::endl;
 
