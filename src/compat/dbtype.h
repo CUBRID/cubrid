@@ -255,11 +255,13 @@ extern "C"
 #define DB_MAKE_SEQ DB_MAKE_SEQUENCE
 
 /* new preferred interface */
-#define DB_MAKE_OID(value, oid)						\
-  do {									\
-    if ((db_value_domain_init(value, DB_TYPE_OID, 0, 0)) == NO_ERROR)	\
-	(void)db_make_oid(value, oid);				        \
-  } while (0)
+  /*  todo: This following macro had in its previous version another call to 
+   *  db_value_domain_init(). Now it has been removed but it needs to be
+   *  checked if its still correct!!!.
+   */
+#define DB_MAKE_OID(value, oid)	\
+      (((oid) == NULL) ? ((value)->domain.general_info.is_null = 1, NO_ERROR) : \
+          db_make_oid((value), (oid)))
 
 #define DB_GET_OID(value)		(db_get_oid(value))
 #define DB_MAKE_COLLECTION(value, col) db_make_collection(value, col)

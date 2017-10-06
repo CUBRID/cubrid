@@ -2016,5 +2016,4 @@ db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
   return db_date_encode (&value->data.date, mon, day, year);
 }
 
-
 #endif          /* _DB_MACRO_I_*/
