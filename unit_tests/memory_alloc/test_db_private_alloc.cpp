@@ -23,9 +23,21 @@
 #include <vector>
 #include <string>
 #include <chrono>
+#include <mutex>
+#include <thread>
+#include <sstream>
 
 #include "db_private_allocator.hpp"
 #include "test_memory_alloc_helper.hpp"
+
+std::mutex output_mutex;
+
+void
+sync_output (const std::string & str)
+{
+  std::lock_guard<std::mutex> lock(output_mutex);
+  std::cout << str;
+}
 
 class dummy
 {
@@ -98,10 +110,7 @@ test_allocator ()
 {
   custom_thread_entry cte;
 
-  std::cout << PORTABLE_FUNC_NAME << "<" << typeid(T).name() << ">" << std::endl;
-  std::string prefix(4,' ');
-  prefix += PORTABLE_FUNC_NAME;
-  prefix += ": ";
+  static std::string prefix = std::string (4,' ') + PORTABLE_FUNC_NAME + "<" + typeid(T).name () + ">: ";
 
   db_private_allocator<T> private_alloc (cte.get_thread_entry ());
 
@@ -145,43 +154,44 @@ test_allocator ()
 
 template <typename T, typename Alloc >
 int
-test_performance_alloc ()
+test_performance_alloc (size_t size)
 {
   custom_thread_entry cte;
-  std::cout << PORTABLE_FUNC_NAME << "<" << typeid(T).name() << "," << typeid(Alloc).name() << ">" << std::endl;
-  std::string prefix (4, ' ');
-  prefix += PORTABLE_FUNC_NAME;
-  prefix += ": ";
+
+  static const char * funcname = PORTABLE_FUNC_NAME;
+  static std::stringstream prefix (std::string ("    ") + funcname + "<" + typeid(T).name() + ","
+                                   + typeid(Alloc).name() + ">: ");
+  std::stringstream log (std::string (prefix.str()));
 
   Alloc *alloc = NULL;
   init_allocator<T> (cte, alloc);
 
   millitimer timer;
   T *ptr = NULL;
-  std::cout << prefix << "alloc + dealloc + alloc + dealloc ... = ";
-  for (int i = 0; i < SIZE_1_M; i++)
+  log << prefix.str () << "alloc + dealloc + alloc + dealloc ... = ";
+  for (int i = 0; i < size; i++)
     {
       ptr = alloc->allocate (1);
-      *ptr = T();
       alloc->deallocate (ptr, 1);
     }
-  std::cout << timer.time_and_reset ().count () << std::endl;
+  log << timer.time_and_reset ().count () << std::endl;
 
-  std::cout << prefix << "alloc + alloc + ... + dealloc + dealloc ... = ";
-  T** pointers = new T * [SIZE_1_M];
-  for (size_t i = 0; i < SIZE_1_M; i++)
+  log << prefix.str () << "alloc + alloc + ... + dealloc + dealloc ... = ";
+  T** pointers = new T * [size];
+  for (size_t i = 0; i < size; i++)
     {
       pointers[i] = alloc->allocate (1);
-      *pointers[i] = T ();
     }
-  for (size_t i = 0; i < SIZE_1_M; i++)
+  for (size_t i = 0; i < size; i++)
     {
       alloc->deallocate (pointers[i], 1);
     }
-  std::cout << timer.time_and_reset ().count () << std::endl;
+  log << timer.time_and_reset ().count () << std::endl;
 
   delete pointers;
   delete alloc;
+
+  sync_output (log.str ());
 
   return 0;
 }
@@ -191,9 +201,9 @@ void
 run_test (int & global_err, int (*f) (Args...), Args &... args)
 {
   std::cout << std::endl;
-  std::cout << "    starting test - ";
+  std::cout << "    starting test - " << std::endl;;
   
-  int err = f (args...);
+  int err = f (std::forward<Args> (args)...);
   if (err == 0)
     {
       std::cout << "    test successful" << std::endl;
@@ -202,6 +212,23 @@ run_test (int & global_err, int (*f) (Args...), Args &... args)
     {
       std::cout << "    test failed" << std::endl;
       global_err = global_err != 0 ? global_err : err;
+    }
+}
+
+template <typename ... Args>
+void
+run_parallel (int (*f) (Args...), Args &... args)
+{
+  unsigned int worker_count = std::thread::hardware_concurrency ();
+  std::thread *workers = new std::thread [worker_count];
+
+  for (unsigned int i = 0; i < worker_count; i++)
+    {
+      workers[i] = std::thread (f, std::forward<Args> (args)...);
+    }
+  for (unsigned int i = 0; i < worker_count; i++)
+    {
+      workers[i].join ();
     }
 }
 
@@ -216,13 +243,33 @@ test_db_private_alloc ()
   run_test (global_err, test_allocator<int>);
   run_test (global_err, test_allocator<dummy>);
 
-  run_test (global_err, test_performance_alloc<char, db_private_allocator<char> >);
-  run_test (global_err, test_performance_alloc<char, std::allocator<char> >);
-  run_test (global_err, test_performance_alloc<char, mallocator<char> >);
+  size_t one_mil = SIZE_1_M;
+  run_test<size_t> (global_err, test_performance_alloc<char, db_private_allocator<char> >, one_mil);
+  run_test<size_t> (global_err, test_performance_alloc<char, std::allocator<char> >, one_mil);
+  run_test<size_t> (global_err, test_performance_alloc<char, mallocator<char> >, one_mil);
 
-  run_test (global_err, test_performance_alloc<void *, db_private_allocator<void *> >);
-  run_test (global_err, test_performance_alloc<void *, std::allocator<void *> >);
-  run_test (global_err, test_performance_alloc<void *, mallocator<void *> >);
+  run_test<size_t> (global_err, test_performance_alloc<size_t, db_private_allocator<size_t> >, one_mil);
+  run_test<size_t> (global_err, test_performance_alloc<size_t, std::allocator<size_t> >, one_mil);
+  run_test<size_t> (global_err, test_performance_alloc<size_t, mallocator<size_t> >, one_mil);
+
+  typedef std::array<size_t, SIZE_64> size_512;
+  run_test<size_t> (global_err, test_performance_alloc<size_512, db_private_allocator<size_512> >, one_mil);
+  run_test<size_t> (global_err, test_performance_alloc<size_512, std::allocator<size_512> >, one_mil);
+  run_test<size_t> (global_err, test_performance_alloc<size_512, mallocator<size_512> >, one_mil);
+
+  size_t hundred_k = SIZE_ONE_K * 100;
+  typedef std::array<size_t, SIZE_ONE_K> size_8k;
+  run_test<size_t> (global_err, test_performance_alloc<size_8k, db_private_allocator<size_8k> >, hundred_k);
+  run_test<size_t> (global_err, test_performance_alloc<size_8k, std::allocator<size_8k> >, hundred_k);
+  run_test<size_t> (global_err, test_performance_alloc<size_8k, mallocator<size_8k> >, hundred_k);
+
+  run_parallel<size_t> (test_performance_alloc<size_512, db_private_allocator<size_512> >, one_mil);
+  run_parallel<size_t> (test_performance_alloc<size_512, std::allocator<size_512> >, one_mil);
+  run_parallel<size_t> (test_performance_alloc<size_512, mallocator<size_512> >, one_mil);
+
+  run_parallel<size_t> (test_performance_alloc<size_8k, db_private_allocator<size_8k> >, hundred_k);
+  run_parallel<size_t> (test_performance_alloc<size_8k, std::allocator<size_8k> >, hundred_k);
+  run_parallel<size_t> (test_performance_alloc<size_8k, mallocator<size_8k> >, hundred_k);
 
   std::cout << std::endl;
 
