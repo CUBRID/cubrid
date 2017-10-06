@@ -26,6 +26,7 @@
 #include <mutex>
 #include <thread>
 #include <sstream>
+#include <typeinfo>
 
 #include "db_private_allocator.hpp"
 #include "test_memory_alloc_helper.hpp"
