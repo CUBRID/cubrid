@@ -144,7 +144,8 @@ test_allocator ()
   cte.check_resource_leaks ();
 
   /* test containers */
-  std::vector<T, db_private_allocator<T>> vec (SIZE_64, private_alloc);
+  std::vector<T, db_private_allocator<T>> vec (private_alloc);
+  vec.resize (SIZE_64);
   vec.resize (SIZE_ONE_K);
   vec.resize (SIZE_16_K);
   vec.clear ();
