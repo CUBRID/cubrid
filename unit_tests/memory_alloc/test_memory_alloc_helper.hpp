@@ -21,6 +21,7 @@
 #define _TEST_MEMORY_ALLOC_HELPER_HPP_
 
 #include <iostream>
+#include <chrono>
 
 #include "memory_alloc.h"
 
@@ -99,6 +100,41 @@ private:
 
   THREAD_ENTRY m_thread_entry;
   int m_rc_track_id;
+};
+
+class millitimer
+{
+public:
+  inline millitimer ()
+  {
+    reset ();
+  }
+  
+  inline std::chrono::milliseconds time ()
+  {
+    return (std::chrono::duration_cast<std::chrono::milliseconds> (get_now () - m_saved_time));
+  }
+
+  inline void reset ()
+  {
+    m_saved_time = get_now ();
+  }
+
+  inline std::chrono::milliseconds time_and_reset ()
+  {
+    std::chrono::milliseconds diff = time ();
+    reset ();
+    return diff;
+  }
+
+private:
+
+  static inline std::chrono::system_clock::time_point get_now (void)
+  {
+    return std::chrono::system_clock::now ();
+  }
+
+  std::chrono::system_clock::time_point m_saved_time;
 };
 
 #endif // !_TEST_MEMORY_ALLOC_HELPER_HPP_

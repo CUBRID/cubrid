@@ -75,16 +75,18 @@ public:
   }
   inline explicit db_private_allocator (const db_private_allocator & other)
   {
-    m_thread_p = other.thread_p;
+    m_thread_p = other.m_thread_p;
+    m_heapid = other.m_heapid;
     /* also register the allocator in thread entry */
     m_thread_p->count_private_allocators++;
   }
   template <typename U>
-  inline explicit db_private_allocator (const db_private_allocator<U> &other)
+  inline explicit db_private_allocator (const db_private_allocator<U> & other)
   {
-    m_thread_p = other.thread_p;
+    m_thread_p = other.get_thread_entry ();
+    m_heapid = other.get_heapid ();
     /* also register the allocator in thread entry */
-    m_thread_p->count_private_allocators++;
+    this->m_thread_p->count_private_allocators++;
   }
 
   /* address */
@@ -144,10 +146,29 @@ public:
     return DB_PRIVATE_ALLOCATOR_MAX_SIZE / sizeof(T);
   }
 
+  /* construction/destruction */
+  inline void
+  construct (pointer p, const_reference t)
+  {
+    new (p) value_type (t);
+  }
+
+  inline void destroy (pointer p)
+  {
+    p->~value_type ();
+  }
+
+  /* db_private_alloc accessors */
+  THREAD_ENTRY *get_thread_entry () const
+  {
+    return m_thread_p;
+  }
+  HL_HEAPID get_heapid () const
+  {
+    return m_heapid;
+  }
+
 private:
-  /* todo: construction/destruction */
-  inline void construct (pointer p, const_reference t);
-  inline void destroy (pointer p);
 
   THREAD_ENTRY *m_thread_p;
   HL_HEAPID m_heapid;

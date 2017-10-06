@@ -978,13 +978,13 @@ extern "C"
 }
 #endif
 
-#ifdef __PRETTY_FUNCTION__
-#define PORTABLE_FUNC_NAME __PRETTY_FUNCTION__
+#ifdef _MSC_VER
+#define PORTABLE_FUNC_NAME __FUNCTION__
 #elif defined (__GNUC__)
 #define PORTABLE_FUNC_NAME __func__
 #else
 #define PORTABLE_FUNC_NAME "(unknown)"
-#endif 
+#endif
 
 #ifdef __GNUC__
 #  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
