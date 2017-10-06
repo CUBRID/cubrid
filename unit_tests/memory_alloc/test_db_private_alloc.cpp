@@ -224,6 +224,9 @@ void
 run_parallel (int (*f) (Args...), Args &... args)
 {
   unsigned int worker_count = std::thread::hardware_concurrency ();
+
+  std::cout << std::endl;
+  std::cout << "    starting test with " << worker_count << " concurrent threads - " << std::endl;;
   std::thread *workers = new std::thread [worker_count];
 
   for (unsigned int i = 0; i < worker_count; i++)
