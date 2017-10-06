@@ -6,8 +6,8 @@
 #include "file_io.h"
 
 /* The double write slot type */
-typedef struct dwb_slot DWB_SLOT;
-struct dwb_slot
+typedef struct double_write_slot DWB_SLOT;
+struct double_write_slot
 {
   FILEIO_PAGE *io_page;		/* The contained page or NULL. */
   VPID vpid;			/* The page identifier. */
@@ -28,6 +28,6 @@ extern int dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync);
 extern int dwb_compute_checksums (THREAD_ENTRY * thread_p);
 extern int dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool * success);
 extern int dwb_set_data_on_next_slot (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, bool can_wait,
-				      DWB_SLOT ** dwb_slot);
-extern int dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB_SLOT * p_dwb_slot);
+				      DWB_SLOT ** p_dwb_slot);
+extern int dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB_SLOT ** p_dwb_slot);
 #endif	/* _DWB_H_ */	      /* _DWB_H_ */

@@ -9848,18 +9848,16 @@ start_copy_page:
       error = dwb_set_data_on_next_slot (thread_p, &bufptr->iopage_buffer->iopage, false, &dwb_slot);
       if (error != NO_ERROR)
 	{
-	  if (error == ER_DWB_DISABLED)
-	    {
-	      er_clear ();
-	      /* DWB disabled meanwhile, try again without DWB. */
-	      uses_dwb = false;
-	      goto start_copy_page;
-	    }
+	  return error;
 	}
       if (dwb_slot != NULL)
 	{
 	  iopage = NULL;
 	  goto copy_unflushed_lsa;
+	}
+      else
+	{
+	  uses_dwb = false;
 	}
     }
 
@@ -9901,19 +9899,18 @@ copy_unflushed_lsa:
   /* Activating/deactivating DWB while the server is alive, needs additional work. For now, we don't care about
    * this case, we can use it to test performance differences.
    */
-flush_page:
-  /* now, flush buffer page - TODO set te bit for single write case */
   if (uses_dwb)
     {
-      error = dwb_add_page (thread_p, iopage, &bufptr->vpid, dwb_slot);
-      if (error != NO_ERROR)
+      error = dwb_add_page (thread_p, iopage, &bufptr->vpid, &dwb_slot);
+      if (error == NO_ERROR)
 	{
-	  if (error == ER_DWB_DISABLED)
+	  if (dwb_slot == NULL)
 	    {
-	      er_clear ();
 	      /* DWB disabled meanwhile, try again without DWB. */
 	      uses_dwb = false;
-	      goto flush_page;
+	      PGBUF_BCB_LOCK (bufptr);
+	      *is_bcb_locked = true;
+	      goto start_copy_page;
 	    }
 	}
     }
