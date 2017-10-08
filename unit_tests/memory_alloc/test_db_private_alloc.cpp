@@ -32,6 +32,11 @@
 #include "db_private_allocator.hpp"
 #include "test_memory_alloc_helper.hpp"
 
+/************************************************************************/
+/* Helpers                                                              */
+/************************************************************************/
+
+/* Sync output */
 std::mutex output_mutex;
 
 void
@@ -41,6 +46,7 @@ sync_output (const std::string & str)
   std::cout << str;
 }
 
+/* Collect runtime statistics */
 typedef enum stat_offset
 {
   STATOFF_ALLOC_AND_DEALLOC,
@@ -59,11 +65,23 @@ const char *statoff_get_name (stat_offset enum_val)
 {
   return statoff_names[enum_val];
 }
-const size_t STATOFF_PRINT_LENGTH = 20;
 
-typedef std::array<unsigned long long, stat_offset::STATOFF_COUNT> stat_array;
+typedef unsigned long long stat_type;
+typedef std::array<stat_type, stat_offset::STATOFF_COUNT> stat_array;
+
+void
+register_performance_time (us_timer & timer, stat_type & to)
+{
+  stat_type time_count = timer.time_and_reset ().count ();
+  
+  ATOMIC_INC_64 (&to, time_count);
+  std::cout << time_count;
+}
+
+const size_t STATOFF_PRINT_LENGTH = 20;
 const size_t USEC_PRINT_LENGTH = 10;
 
+/* Mallocator */
 template <typename T>
 class mallocator
 {
@@ -83,20 +101,19 @@ public:
 private:
 };
 
+/* Generic functions to allocate an allocator with thread entry argument. */
 template <typename T>
 void
 init_allocator (custom_thread_entry & cte, std::allocator<T> *& alloc)
 {
   alloc = new std::allocator<T> ();
 }
-
 template <typename T>
 void
 init_allocator (custom_thread_entry & cte, mallocator<T> *& alloc)
 {
   alloc = new mallocator<T> ();
 }
-
 template <typename T>
 void
 init_allocator (custom_thread_entry & cte, db_private_allocator<T> *& alloc)
@@ -104,49 +121,10 @@ init_allocator (custom_thread_entry & cte, db_private_allocator<T> *& alloc)
   alloc = new db_private_allocator<T> (cte.get_thread_entry ());
 }
 
-template <typename ... Args>
-void
-run_test (int & global_err, int (*f) (Args...), Args &... args)
-{
-  std::cout << std::endl;
-  std::cout << "    starting test - " << std::endl;;
-  
-  int err = f (std::forward<Args> (args)...);
-  if (err == 0)
-    {
-      std::cout << "    test successful" << std::endl;
-    }
-  else
-    {
-      std::cout << "    test failed" << std::endl;
-      global_err = global_err != 0 ? global_err : err;
-    }
-}
-
-template <typename ... Args>
-void
-run_parallel (int (*f) (Args...), Args &... args)
-{
-  unsigned int worker_count = std::thread::hardware_concurrency ();
-  worker_count = worker_count != 0 ? worker_count : 24;
-
-  std::cout << std::endl;
-  std::cout << "    starting test with " << worker_count << " concurrent threads - " << std::endl;;
-  std::thread *workers = new std::thread [worker_count];
-
-  for (unsigned int i = 0; i < worker_count; i++)
-    {
-      workers[i] = std::thread (f, std::forward<Args> (args)...);
-    }
-  for (unsigned int i = 0; i < worker_count; i++)
-    {
-      workers[i].join ();
-    }
-}
-
+/* Base function to test private allocator functionality */
 template <typename T>
 static int
-test_allocator ()
+test_private_allocator ()
 {
   custom_thread_entry cte;
 
@@ -193,15 +171,18 @@ test_allocator ()
   return 0;
 }
 
-void
-register_performance_time (us_timer & timer, unsigned long long & to)
-{
-  unsigned long long time_count = timer.time_and_reset ().count ();
-  
-  ATOMIC_INC_64 (&to, time_count);
-  std::cout << time_count;
-}
-
+/* Basic function to test allocator performance
+ *
+ *  return:
+ *
+ *      always 0
+ *
+ *
+ *  arguments:
+ *   
+ *      size - test size; translates into the number of pointers allocated for each sub-test
+ *      time_collect - array to collect statistics
+ */
 template <typename T, typename Alloc >
 int
 test_performance_alloc (size_t size, stat_array & time_collect)
@@ -251,6 +232,51 @@ test_performance_alloc (size_t size, stat_array & time_collect)
   return 0;
 }
 
+/* run test and wrap with formatted text */
+template <typename ... Args>
+void
+run_test (int & global_err, int (*f) (Args...), Args &... args)
+{
+  std::cout << std::endl;
+  std::cout << "    starting test - " << std::endl;;
+  
+  int err = f (std::forward<Args> (args)...);
+  if (err == 0)
+    {
+      std::cout << "    test successful" << std::endl;
+    }
+  else
+    {
+      std::cout << "    test failed" << std::endl;
+      global_err = global_err != 0 ? global_err : err;
+    }
+}
+
+/* run test on multiple thread and wrap with formatted text */
+template <typename ... Args>
+void
+run_parallel (int (*f) (Args...), Args &... args)
+{
+  unsigned int worker_count = std::thread::hardware_concurrency ();
+  worker_count = worker_count != 0 ? worker_count : 24;
+
+  std::cout << std::endl;
+  std::cout << "    starting test with " << worker_count << " concurrent threads - " << std::endl;;
+  std::thread *workers = new std::thread [worker_count];
+
+  for (unsigned int i = 0; i < worker_count; i++)
+    {
+      workers[i] = std::thread (f, std::forward<Args> (args)...);
+    }
+  for (unsigned int i = 0; i < worker_count; i++)
+    {
+      workers[i].join ();
+    }
+}
+
+/* print comparative results obtained from testing private, standard and malloc allocators.
+ * print warnings when private allocator results are worse than standard/mallocator.
+ */
 void
 print_and_compare_results (stat_array & private_results, stat_array & std_results, stat_array & malloc_results)
 {
@@ -311,6 +337,7 @@ print_and_compare_results (stat_array & private_results, stat_array & std_result
     }
 }
 
+/* run single-thread tests with private, standard and malloc allocators and wrap with text */
 template <typename T, size_t Size>
 void
 test_and_compare (int & global_error)
@@ -333,6 +360,7 @@ test_and_compare (int & global_error)
   std::cout << std::endl;
 }
 
+/* run multi-thread tests with private, standard and malloc allocators and wrap with text */
 template <typename T, size_t Size>
 void
 test_and_compare_parallel (int & global_error)
@@ -354,6 +382,7 @@ test_and_compare_parallel (int & global_error)
   std::cout << std::endl;
 }
 
+/* main for test_db_private_alloc function */
 int
 test_db_private_alloc ()
 {
@@ -367,9 +396,9 @@ test_db_private_alloc ()
   const size_t TEN_K = SIZE_ONE_K * 10;
   const size_t HUNDRED_K = SIZE_ONE_K * 100;
 
-  run_test (global_err, test_allocator<char>);
-  run_test (global_err, test_allocator<int>);
-  run_test (global_err, test_allocator<dummy_size_512>);
+  run_test (global_err, test_private_allocator<char>);
+  run_test (global_err, test_private_allocator<int>);
+  run_test (global_err, test_private_allocator<dummy_size_512>);
   
   test_and_compare<char, HUNDRED_K> (global_err);
   test_and_compare<size_t, HUNDRED_K> (global_err);
