@@ -70,17 +70,27 @@ typedef unsigned long long stat_type;
 typedef std::array<stat_type, stat_offset::STATOFF_COUNT> stat_array;
 #define STAT_ARRAY_INITIALIZER {{ 0, 0, 0, }}
 
+const size_t STATOFF_PRINT_LENGTH = 20;
+const size_t USEC_PRINT_LENGTH = 10;
+
+void
+print_usec_as_msec (stat_type value, std::ostream & out)
+{
+  out << std::right << std::setw (USEC_PRINT_LENGTH - 4) << value / 1000;
+  out << '.';
+  out << std::setfill ('0') << std::setw (3) << value % 1000;
+  out << std::setfill (' ');
+}
+
 void
 register_performance_time (us_timer & timer, stat_type & to, std::ostream & os)
 {
   stat_type time_count = timer.time_and_reset ().count ();
   
   ATOMIC_INC_64 (&to, time_count);
-  os << time_count << " usec";
+  print_usec_as_msec (time_count, os);
+  os << " msec";
 }
-
-const size_t STATOFF_PRINT_LENGTH = 20;
-const size_t USEC_PRINT_LENGTH = 10;
 
 /* Mallocator */
 template <typename T>
@@ -286,9 +296,10 @@ print_and_compare_results (stat_array private_results, stat_array std_results, s
   /* print all results */
   std::cout << "    ";
   std::cout << std::left << std::setw (STATOFF_PRINT_LENGTH) << "Results";
-  std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << "private";
-  std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << "standard";
-  std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << "malloc";
+  std:: cout << ": ";
+  std::cout << std::right << std::setw (USEC_PRINT_LENGTH) << "private";
+  std::cout << std::right << std::setw (USEC_PRINT_LENGTH) << "standard";
+  std::cout << std::right << std::setw (USEC_PRINT_LENGTH) << "malloc";
   std::cout << std::endl;
   for (int iter = 0; iter < stat_offset::STATOFF_COUNT; iter++)
     {
@@ -296,9 +307,9 @@ print_and_compare_results (stat_array private_results, stat_array std_results, s
       std::cout << "    ";
       std::cout << std::left << std::setw (STATOFF_PRINT_LENGTH) << statoff_get_name (enum_val);
       std::cout << ": ";
-      std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << private_results[iter];
-      std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << std_results[iter];
-      std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << malloc_results[iter];
+      print_usec_as_msec (private_results[iter], std::cout);
+      print_usec_as_msec (std_results[iter], std::cout);
+      print_usec_as_msec (malloc_results[iter], std::cout);
       std::cout << std::endl;
     }
   /* print slow private warnings: */
@@ -376,9 +387,9 @@ test_and_compare_parallel (int & global_error)
   std::cout << "    start multi-thread comparison test between allocators using type = " << typeid(T).name ();
   std::cout << " and size = " << size << std::endl;
 
-  run_parallel (test_performance_alloc<T, db_private_allocator<T> >, size, time_collect_private);
-  run_parallel (test_performance_alloc<T, std::allocator<T> >, size, time_collect_std);
-  run_parallel (test_performance_alloc<T, mallocator<T> >, size, time_collect_malloc);
+  run_parallel (test_performance_alloc<T, db_private_allocator<T> >, size, std::ref (time_collect_private));
+  run_parallel (test_performance_alloc<T, std::allocator<T> >, size, std::ref (time_collect_std));
+  run_parallel (test_performance_alloc<T, mallocator<T> >, size, std::ref (time_collect_malloc));
 
   std::cout << std::endl;
   print_and_compare_results (time_collect_private, time_collect_std, time_collect_malloc);
