@@ -103,17 +103,18 @@ private:
   int m_rc_track_id;
 };
 
-class millitimer
+template <typename Units>
+class timer
 {
 public:
-  inline millitimer ()
+  inline timer ()
   {
     reset ();
   }
   
-  inline std::chrono::milliseconds time ()
+  inline Units time ()
   {
-    return (std::chrono::duration_cast<std::chrono::milliseconds> (get_now () - m_saved_time));
+    return (std::chrono::duration_cast<Units> (get_now () - m_saved_time));
   }
 
   inline void reset ()
@@ -121,9 +122,9 @@ public:
     m_saved_time = get_now ();
   }
 
-  inline std::chrono::milliseconds time_and_reset ()
+  inline Units time_and_reset ()
   {
-    std::chrono::milliseconds diff = time ();
+    Units diff = time ();
     reset ();
     return diff;
   }
@@ -137,5 +138,10 @@ private:
 
   std::chrono::system_clock::time_point m_saved_time;
 };
+
+typedef class timer<std::chrono::milliseconds> ms_timer;
+typedef class timer<std::chrono::microseconds> us_timer;
+
+#define STRINGIFY(name) # name
 
 #endif // !_TEST_MEMORY_ALLOC_HELPER_HPP_
