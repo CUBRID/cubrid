@@ -68,7 +68,7 @@ const char *statoff_get_name (stat_offset enum_val)
 
 typedef unsigned long long stat_type;
 typedef std::array<stat_type, stat_offset::STATOFF_COUNT> stat_array;
-#define STAT_ARRAY_INITIALIZER { 0, 0, 0, }
+#define STAT_ARRAY_INITIALIZER {{ 0, 0, 0, }}
 
 void
 register_performance_time (us_timer & timer, stat_type & to, std::ostream & os)
