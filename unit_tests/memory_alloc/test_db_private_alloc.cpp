@@ -68,14 +68,15 @@ const char *statoff_get_name (stat_offset enum_val)
 
 typedef unsigned long long stat_type;
 typedef std::array<stat_type, stat_offset::STATOFF_COUNT> stat_array;
+#define STAT_ARRAY_INITIALIZER { 0, 0, 0, }
 
 void
-register_performance_time (us_timer & timer, stat_type & to)
+register_performance_time (us_timer & timer, stat_type & to, std::ostream & os)
 {
   stat_type time_count = timer.time_and_reset ().count ();
   
   ATOMIC_INC_64 (&to, time_count);
-  std::cout << time_count;
+  os << time_count << " usec";
 }
 
 const size_t STATOFF_PRINT_LENGTH = 20;
@@ -190,7 +191,7 @@ test_performance_alloc (size_t size, stat_array & time_collect)
   custom_thread_entry cte;
 
   static const char * funcname = PORTABLE_FUNC_NAME;
-  static std::stringstream prefix (std::string ("    ") + funcname + "<" + typeid(T).name() + ","
+  static std::stringstream prefix (std::string ("    test_perf") + "<" + typeid(T).name() + ","
                                    + typeid(Alloc).name() + ">: ");
   std::stringstream log (std::string (prefix.str()));
 
@@ -199,29 +200,29 @@ test_performance_alloc (size_t size, stat_array & time_collect)
 
   us_timer timer;
   T *ptr = NULL;
-  log << prefix.str () << "alloc + dealloc + alloc + dealloc ... = ";
+  log << prefix.str () << "a+d+a+d ... = ";
   for (size_t i = 0; i < size; i++)
     {
       ptr = alloc->allocate (1);
       alloc->deallocate (ptr, 1);
     }
-  register_performance_time (timer, time_collect[stat_offset::STATOFF_ALLOC_AND_DEALLOC]);
+  register_performance_time (timer, time_collect[stat_offset::STATOFF_ALLOC_AND_DEALLOC], log);
   log << std::endl;
 
-  log << prefix.str () << "alloc + alloc + ... = ";
+  log << prefix.str () << "a+a+a+a ... = ";
   T** pointers = new T * [size];
   for (size_t i = 0; i < size; i++)
     {
       pointers[i] = alloc->allocate (1);
     }
-  register_performance_time (timer, time_collect[stat_offset::STATOFF_SUCCESSIVE_ALLOCS]);
+  register_performance_time (timer, time_collect[stat_offset::STATOFF_SUCCESSIVE_ALLOCS], log);
   log << std::endl;
-  log << prefix.str () << "dealloc + dealloc ... = ";
+  log << prefix.str () << "d+d+d+d ... = ";
   for (size_t i = 0; i < size; i++)
     {
       alloc->deallocate (pointers[i], 1);
     }
-  register_performance_time (timer, time_collect[stat_offset::STATOFF_SUCCESSIVE_DEALLOCS]);
+  register_performance_time (timer, time_collect[stat_offset::STATOFF_SUCCESSIVE_DEALLOCS], log);
   log << std::endl;
 
   delete pointers;
@@ -235,7 +236,7 @@ test_performance_alloc (size_t size, stat_array & time_collect)
 /* run test and wrap with formatted text */
 template <typename Func, typename ... Args>
 void
-run_test (int & global_err, Func * f, Args &... args)
+run_test (int & global_err, Func * f, Args &&... args)
 {
   std::cout << std::endl;
   std::cout << "    starting test - " << std::endl;;
@@ -255,7 +256,7 @@ run_test (int & global_err, Func * f, Args &... args)
 /* run test on multiple thread and wrap with formatted text */
 template <typename Func, typename ... Args>
 void
-run_parallel (Func * f, Args &... args)
+run_parallel (Func * f, Args &&... args)
 {
   unsigned int worker_count = std::thread::hardware_concurrency ();
   worker_count = worker_count != 0 ? worker_count : 24;
@@ -278,26 +279,27 @@ run_parallel (Func * f, Args &... args)
  * print warnings when private allocator results are worse than standard/mallocator.
  */
 void
-print_and_compare_results (stat_array & private_results, stat_array & std_results, stat_array & malloc_results)
+print_and_compare_results (stat_array private_results, stat_array std_results, stat_array malloc_results)
 {
   stat_offset enum_val;
 
   /* print all results */
   std::cout << "    ";
-  std::cout << std::setw (STATOFF_PRINT_LENGTH) << " ";
-  std::cout << std::setw (USEC_PRINT_LENGTH) << "private";
-  std::cout << std::setw (USEC_PRINT_LENGTH) << "standard";
-  std::cout << std::setw (USEC_PRINT_LENGTH) << "malloc";
+  std::cout << std::left << std::setw (STATOFF_PRINT_LENGTH) << "Results";
+  std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << "private";
+  std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << "standard";
+  std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << "malloc";
   std::cout << std::endl;
   for (int iter = 0; iter < stat_offset::STATOFF_COUNT; iter++)
     {
       enum_val = static_cast <stat_offset> (iter);
       std::cout << "    ";
-      std::cout << std::setw (STATOFF_PRINT_LENGTH) << statoff_get_name (enum_val);
+      std::cout << std::left << std::setw (STATOFF_PRINT_LENGTH) << statoff_get_name (enum_val);
       std::cout << ": ";
-      std::cout << std::setw (USEC_PRINT_LENGTH) << private_results[iter];
-      std::cout << std::setw (USEC_PRINT_LENGTH) << std_results[iter];
-      std::cout << std::setw (USEC_PRINT_LENGTH) << malloc_results[iter];
+      std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << private_results[iter];
+      std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << std_results[iter];
+      std::cout << std::left << std::setw (USEC_PRINT_LENGTH) << malloc_results[iter];
+      std::cout << std::endl;
     }
   /* print slow private warnings: */
   bool no_warnings = true;
@@ -314,14 +316,14 @@ print_and_compare_results (stat_array & private_results, stat_array & std_result
       if (no_warnings)
         {
           /* print warnings: */
-          std::cout << "    Warnings:" << std::endl;
+          std::cout << std::endl << "    Warnings:" << std::endl;
           no_warnings = false;
         }
       enum_val = static_cast <stat_offset> (iter);
       if (worse_than_std)
         {
           std::cout << "    ";
-          std::cout << std::setw (STATOFF_PRINT_LENGTH) << statoff_get_name (enum_val);
+          std::cout << std::left << std::setw (STATOFF_PRINT_LENGTH) << statoff_get_name (enum_val);
           std::cout << ": ";
           std::cout << "Private worse than standard";
           std::cout << std::endl;
@@ -329,7 +331,7 @@ print_and_compare_results (stat_array & private_results, stat_array & std_result
       if (worse_than_malloc)
         {
           std::cout << "    ";
-          std::cout << std::setw (STATOFF_PRINT_LENGTH) << statoff_get_name (enum_val);
+          std::cout << std::left << std::setw (STATOFF_PRINT_LENGTH) << statoff_get_name (enum_val);
           std::cout << ": ";
           std::cout << "Private worse than malloc";
           std::cout << std::endl;
@@ -343,19 +345,17 @@ void
 test_and_compare (int & global_error)
 {
   size_t size = Size;
-  stat_array time_collect_private;
-  stat_array time_collect_std;
-  stat_array time_collect_malloc;
+  stat_array time_collect_private = STAT_ARRAY_INITIALIZER;
+  stat_array time_collect_std = STAT_ARRAY_INITIALIZER;
+  stat_array time_collect_malloc = STAT_ARRAY_INITIALIZER;
 
+  std::cout << std::endl;
   std::cout << "    start single-thread comparison test between allocators using type = " << typeid(T).name ();
   std::cout << " and size = " << size << std::endl;
 
-  run_test (global_error, test_performance_alloc<T, db_private_allocator<T> >, size,
-            std::reference_wrapper<stat_array> (time_collect_private));
-  run_test (global_error, test_performance_alloc<T, std::allocator<T> >, size,
-            std::reference_wrapper<stat_array> (time_collect_std));
-  run_test (global_error, test_performance_alloc<T, mallocator<T> >, size,
-            std::reference_wrapper<stat_array> (time_collect_malloc));
+  run_test (global_error, test_performance_alloc<T, db_private_allocator<T> >, size, time_collect_private);
+  run_test (global_error, test_performance_alloc<T, std::allocator<T> >, size, time_collect_std);
+  run_test (global_error, test_performance_alloc<T, mallocator<T> >, size, time_collect_malloc);
 
   std::cout << std::endl;
   print_and_compare_results (time_collect_private, time_collect_std, time_collect_malloc);
@@ -368,19 +368,17 @@ void
 test_and_compare_parallel (int & global_error)
 {
   size_t size = Size;
-  stat_array time_collect_private;
-  stat_array time_collect_std;
-  stat_array time_collect_malloc;
+  stat_array time_collect_private = STAT_ARRAY_INITIALIZER;
+  stat_array time_collect_std = STAT_ARRAY_INITIALIZER;
+  stat_array time_collect_malloc = STAT_ARRAY_INITIALIZER;
 
+  std::cout << std::endl;
   std::cout << "    start multi-thread comparison test between allocators using type = " << typeid(T).name ();
   std::cout << " and size = " << size << std::endl;
 
-  run_parallel (test_performance_alloc<T, db_private_allocator<T> >, size,
-                std::reference_wrapper<stat_array> (time_collect_private));
-  run_parallel (test_performance_alloc<T, std::allocator<T> >, size,
-                std::reference_wrapper<stat_array> (time_collect_std));
-  run_parallel (test_performance_alloc<T, mallocator<T> >, size,
-                std::reference_wrapper<stat_array> (time_collect_malloc));
+  run_parallel (test_performance_alloc<T, db_private_allocator<T> >, size, time_collect_private);
+  run_parallel (test_performance_alloc<T, std::allocator<T> >, size, time_collect_std);
+  run_parallel (test_performance_alloc<T, mallocator<T> >, size, time_collect_malloc);
 
   std::cout << std::endl;
   print_and_compare_results (time_collect_private, time_collect_std, time_collect_malloc);
