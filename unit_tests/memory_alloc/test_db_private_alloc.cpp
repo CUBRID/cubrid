@@ -233,9 +233,9 @@ test_performance_alloc (size_t size, stat_array & time_collect)
 }
 
 /* run test and wrap with formatted text */
-template <typename ... Args>
+template <typename Func, typename ... Args>
 void
-run_test (int & global_err, int (*f) (Args...), Args &... args)
+run_test (int & global_err, Func * f, Args &... args)
 {
   std::cout << std::endl;
   std::cout << "    starting test - " << std::endl;;
@@ -253,9 +253,9 @@ run_test (int & global_err, int (*f) (Args...), Args &... args)
 }
 
 /* run test on multiple thread and wrap with formatted text */
-template <typename ... Args>
+template <typename Func, typename ... Args>
 void
-run_parallel (int (*f) (Args...), Args &... args)
+run_parallel (Func * f, Args &... args)
 {
   unsigned int worker_count = std::thread::hardware_concurrency ();
   worker_count = worker_count != 0 ? worker_count : 24;
@@ -350,10 +350,12 @@ test_and_compare (int & global_error)
   std::cout << "    start single-thread comparison test between allocators using type = " << typeid(T).name ();
   std::cout << " and size = " << size << std::endl;
 
-  run_test<size_t, stat_array &> (global_error,
-                                  test_performance_alloc<T, db_private_allocator<T> >, size, time_collect_private);
-  run_test<size_t, stat_array &> (global_error, test_performance_alloc<T, std::allocator<T> >, size, time_collect_std);
-  run_test<size_t, stat_array &> (global_error, test_performance_alloc<T, mallocator<T> >, size, time_collect_malloc);
+  run_test (global_error, test_performance_alloc<T, db_private_allocator<T> >, size,
+            std::reference_wrapper<stat_array> (time_collect_private));
+  run_test (global_error, test_performance_alloc<T, std::allocator<T> >, size,
+            std::reference_wrapper<stat_array> (time_collect_std));
+  run_test (global_error, test_performance_alloc<T, mallocator<T> >, size,
+            std::reference_wrapper<stat_array> (time_collect_malloc));
 
   std::cout << std::endl;
   print_and_compare_results (time_collect_private, time_collect_std, time_collect_malloc);
@@ -373,9 +375,12 @@ test_and_compare_parallel (int & global_error)
   std::cout << "    start multi-thread comparison test between allocators using type = " << typeid(T).name ();
   std::cout << " and size = " << size << std::endl;
 
-  run_parallel<size_t, stat_array &> (test_performance_alloc<T, db_private_allocator<T> >, size, time_collect_private);
-  run_parallel<size_t, stat_array &> (test_performance_alloc<T, std::allocator<T> >, size, time_collect_std);
-  run_parallel<size_t, stat_array &> (test_performance_alloc<T, mallocator<T> >, size, time_collect_malloc);
+  run_parallel (test_performance_alloc<T, db_private_allocator<T> >, size,
+                std::reference_wrapper<stat_array> (time_collect_private));
+  run_parallel (test_performance_alloc<T, std::allocator<T> >, size,
+                std::reference_wrapper<stat_array> (time_collect_std));
+  run_parallel (test_performance_alloc<T, mallocator<T> >, size,
+                std::reference_wrapper<stat_array> (time_collect_malloc));
 
   std::cout << std::endl;
   print_and_compare_results (time_collect_private, time_collect_std, time_collect_malloc);
