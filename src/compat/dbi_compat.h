@@ -25,6 +25,8 @@
 #include <time.h>
 #include <sys/types.h>
 
+#include "dbtype_common.h"
+
 #ifndef _DBI_COMPAT_H_
 #define _DBI_COMPAT_H_
 
