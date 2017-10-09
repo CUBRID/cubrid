@@ -23,6 +23,7 @@
 #include <iostream>
 #include <chrono>
 #include <cassert>
+#include <cstring>
 
 #include "db_private_allocator.hpp"
 
