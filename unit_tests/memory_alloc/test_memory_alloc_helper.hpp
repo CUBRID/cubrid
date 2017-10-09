@@ -24,11 +24,14 @@
 #include <chrono>
 #include <cassert>
 
-#include "memory_alloc.h"
+#include "db_private_allocator.hpp"
 
 /************************************************************************/
 /* helpers                                                              */
 /************************************************************************/
+#ifdef strlen
+#undef strlen
+#endif /* strlen */
 
 const size_t SIZE_64 = 64;
 const size_t SIZE_ONE_K = 1024;
@@ -43,21 +46,6 @@ custom_assert (bool cond)
     {
       abort ();
     }
-}
-
-/* printing */
-template <typename T>
-inline void
-println (const T & t)
-{
-  std::cout << t << std::endl;
-}
-
-template <typename T>
-inline void
-print (const T & t)
-{
-  std::cout << t;
 }
 
 class custom_thread_entry
@@ -142,6 +130,283 @@ private:
 typedef class timer<std::chrono::milliseconds> ms_timer;
 typedef class timer<std::chrono::microseconds> us_timer;
 
-#define STRINGIFY(name) # name
+/* Mallocator */
+template <typename T>
+class mallocator
+{
+public:
+  T* allocate (size_t size)
+  {
+    return (T *) malloc (size * sizeof (T));
+  }
+  void deallocate (T * pointer, size_t UNUSED (size))
+  {
+    free (pointer);
+  }
+  size_t max_size (void) const
+  {
+    return 0x7FFFFFFF;
+  }
+private:
+};
+template <class T, class U>
+bool
+operator==(const mallocator<T>&, const mallocator<U>&)
+{
+  return true;
+}
+template <class T, class U>
+bool
+operator!=(const mallocator<T>&, const mallocator<U>&)
+{
+  return false;
+}
+
+/* allocators */
+typedef enum test_allocator_type
+{
+  ALLOC_TYPE_PRIVATE,
+  ALLOC_TYPE_STANDARD,
+  ALLOC_TYPE_MALLOC,
+  ALLOC_TYPE_COUNT
+} test_allocator_type;
+
+/* Generic functions to allocate an allocator with thread entry argument. */
+template <typename T>
+void
+init_allocator (custom_thread_entry & cte, std::allocator<T> *& alloc, test_allocator_type & type_out)
+{
+  alloc = new std::allocator<T> ();
+  type_out = test_allocator_type::ALLOC_TYPE_STANDARD;
+}
+template <typename T>
+void
+init_allocator (custom_thread_entry & cte, mallocator<T> *& alloc, test_allocator_type & type_out)
+{
+  alloc = new mallocator<T> ();
+  type_out = test_allocator_type::ALLOC_TYPE_MALLOC;
+}
+template <typename T>
+void
+init_allocator (custom_thread_entry & cte, db_private_allocator<T> *& alloc, test_allocator_type & type_out)
+{
+  alloc = new db_private_allocator<T> (cte.get_thread_entry ());
+  type_out = test_allocator_type::ALLOC_TYPE_PRIVATE;
+}
+
+/* generic interface to collect results for all allocators and print them */
+
+/* Collect runtime statistics */
+template <size_t Size>
+class test_result
+{
+public:
+  typedef std::array<char *, Size> name_container_type;
+  typedef unsigned long long value_type;
+  typedef std::array<value_type, Size> value_container_type;
+  
+  test_result (const name_container_type & result_names)
+  {
+    m_names = result_names;
+
+    /* init all values */
+    for (unsigned alloc_type = 0; alloc_type < ALLOC_TYPE_COUNT; alloc_type++)
+      {
+        for (size_t val_index = 0; val_index < Size; val_index++)
+          {
+            m_values[alloc_type].at(val_index) = 0;
+          }
+      }
+
+    /* make sure leftmost_column_length is big enough */
+    m_leftmost_column_length = NAME_PRINT_LENGTH;
+    for (size_t name_index = 0; name_index < Size; name_index++)
+      {
+        if (strlen (result_names[name_index]) >= m_leftmost_column_length)
+          {
+            m_leftmost_column_length = strlen (result_names[name_index]) + 1;
+          }
+      }
+  }
+
+  inline void
+  register_time (us_timer & timer, test_allocator_type alloc_type, size_t index)
+  {
+    value_type time = timer.time_and_reset ().count ();
+
+    /* can be called concurrently, so use atomic inc */
+    (void) ATOMIC_INC_64 (&m_values[alloc_type][index], time);
+  }
+
+  void
+  print_results (std::ostream & output)
+  {
+    print_result_header (output);
+    for (size_t row = 0; row < Size; row++)
+      {
+        print_result_row (row, output);
+      }
+    output << std::endl;
+  }
+
+  void
+  print_warnings (std::ostream & output)
+  {
+    bool no_warnings = true;
+    for (size_t row = 0; row < Size; row++)
+      {
+        check_row_and_print_warning (row, no_warnings, output);
+      }
+    if (!no_warnings)
+      {
+        output << std::endl;
+      }
+  }
+
+  void
+  print_results_and_warnings (std::ostream & output)
+  {
+    print_results (output);
+    print_warnings (output);
+  }
+
+private:
+  test_result (); // prevent implicit constructor
+  test_result (const test_result& other); // prevent copy
+
+  const size_t NAME_PRINT_LENGTH = 20;
+  const size_t VALUE_PRINT_LENGTH = 8;
+  const size_t VALUE_PRECISION_LENGTH = 3;
+  const char *DECIMAL_SEPARATOR = ".";
+  const char *TIME_UNIT = " usec";
+  const size_t VALUE_TOTAL_LENGTH =
+    VALUE_PRINT_LENGTH + VALUE_PRECISION_LENGTH + std::strlen  (DECIMAL_SEPARATOR) + std::strlen (TIME_UNIT);
+
+  void
+  print_value (value_type value, std::ostream & output)
+  {
+    output << std::right << std::setw (VALUE_PRINT_LENGTH) << value / 1000;
+    output << DECIMAL_SEPARATOR;
+    output << std::setfill ('0') << std::setw (3) << value % 1000;
+    output << std::setfill (' ') << TIME_UNIT;
+  }
+
+  inline void
+  print_leftmost_column (const char *str, std::ostream & output)
+  {
+    output << "    ";   // prefix
+    output << std::left << std::setw (m_leftmost_column_length) << str;
+    output << ": ";
+  }
+
+  inline void
+  print_alloc_name_column (const char *str, std::ostream & output)
+  {
+    output << std::right << std::setw (VALUE_TOTAL_LENGTH) << str;
+  }
+
+  inline void
+  print_result_header (std::ostream & output)
+  {
+    print_leftmost_column ("Results", output);
+    print_alloc_name_column ("Private", output);
+    print_alloc_name_column ("Standard", output);
+    print_alloc_name_column ("Malloc", output);
+    output << std::endl;
+  }
+
+  inline void
+  print_result_row (size_t row, std::ostream & output)
+  {
+    print_leftmost_column (m_names[row], output);
+    print_value (m_values[ALLOC_TYPE_PRIVATE][row], output);
+    print_value (m_values[ALLOC_TYPE_STANDARD][row], output);
+    print_value (m_values[ALLOC_TYPE_MALLOC][row], output);
+    output << std::endl;
+  }
+
+  inline void
+  print_warning_header (bool & no_warnings, std::ostream & output)
+  {
+    if (no_warnings)
+      {
+        output << "    Warnings:" << std::endl;
+        no_warnings = false;
+      }
+  }
+
+  inline void
+  check_row_and_print_warning (size_t row, bool & no_warnings, std::ostream & output)
+  {
+    bool slower_than_standard = m_values[ALLOC_TYPE_PRIVATE] > m_values[ALLOC_TYPE_STANDARD];
+    bool slower_than_malloc = m_values[ALLOC_TYPE_PRIVATE] > m_values[ALLOC_TYPE_MALLOC];
+    if (!slower_than_malloc && !slower_than_standard)
+      {
+        return;
+      }
+    print_leftmost_column (m_names[row], output);
+    if (slower_than_standard && slower_than_malloc)
+      {
+        output << "Private is slower than both Standard and Malloc";
+      }
+    else if (slower_than_standard)
+      {
+        output << "Private is slower than Standard";
+      }
+    else
+      {
+        output << "Private is slower than Malloc";
+      }
+    output << std::endl;
+  }
+
+  name_container_type m_names;
+  value_container_type m_values[ALLOC_TYPE_COUNT];
+  size_t m_leftmost_column_length;
+};
+
+/* run test and wrap with formatted text */
+template <typename Func, typename ... Args>
+void
+run_test (int & global_err, Func && f, Args &&... args)
+{
+  std::cout << std::endl;
+  std::cout << "    starting test - " << std::endl;;
+  
+  int err = f (std::forward<Args> (args)...);
+  if (err == 0)
+    {
+      std::cout << "    test successful" << std::endl;
+    }
+  else
+    {
+      std::cout << "    test failed" << std::endl;
+      global_err = global_err != 0 ? global_err : err;
+    }
+}
+
+/* run test on multiple thread and wrap with formatted text */
+template <typename Func, typename ... Args>
+void
+run_parallel (Func && f, Args &&... args)
+{
+  unsigned int worker_count = std::thread::hardware_concurrency ();
+  worker_count = worker_count != 0 ? worker_count : 24;
+
+  std::cout << std::endl;
+  std::cout << "    starting test with " << worker_count << " concurrent threads - " << std::endl;;
+  std::thread *workers = new std::thread [worker_count];
+
+  for (unsigned int i = 0; i < worker_count; i++)
+    {
+      workers[i] = std::thread (std::forward<Func> (f), std::forward<Args> (args)...);
+    }
+  for (unsigned int i = 0; i < worker_count; i++)
+    {
+      workers[i].join ();
+    }
+  std::cout << "    finished test with " << worker_count << " concurrent threads - " << std::endl;;
+  std::cout << std::endl;
+}
 
 #endif // !_TEST_MEMORY_ALLOC_HELPER_HPP_

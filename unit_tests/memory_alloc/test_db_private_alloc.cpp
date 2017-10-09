@@ -28,6 +28,7 @@
 #include <sstream>
 #include <typeinfo>
 #include <iomanip>
+#include <utility>
 
 #include "db_private_allocator.hpp"
 #include "test_memory_alloc_helper.hpp"
@@ -35,6 +36,9 @@
 /************************************************************************/
 /* Helpers                                                              */
 /************************************************************************/
+#ifdef strlen
+#undef strlen
+#endif /* strlen */
 
 /* Sync output */
 std::mutex output_mutex;
@@ -46,90 +50,46 @@ sync_output (const std::string & str)
   std::cout << str;
 }
 
-/* Collect runtime statistics */
-typedef enum stat_offset
-{
-  STATOFF_ALLOC_AND_DEALLOC,
-  STATOFF_SUCCESSIVE_ALLOCS,
-  STATOFF_SUCCESSIVE_DEALLOCS,
-  STATOFF_COUNT
-} stat_offset;
-const  char * statoff_names [] =
-  {
-    "Alloc & Dealloc",
-    "Successive Allocs",
-    "Successive deallocs"
-  };
+#define FUNC_ALLOCS_AS_ARGS(fn_arg, type_arg) \
+  fn_arg<db_private_allocator<type_arg> >, \
+  fn_arg<std::allocator<type_arg> >, \
+  fn_arg<mallocator<type_arg> >
 
-const char *statoff_get_name (stat_offset enum_val)
+#define FUNC_TYPE_AND_ALLOCS_AS_ARGS(fn_arg, type_arg) \
+  fn_arg<type_arg, db_private_allocator<type_arg> >, \
+  fn_arg<type_arg, std::allocator<type_arg> >, \
+  fn_arg<type_arg, mallocator<type_arg> >
+
+/* run single-thread tests with private, standard and malloc allocators and wrap with text */
+template <size_t StepC, typename FuncPrv, typename FuncStd, typename FuncMlc, typename ... Args>
+void
+test_and_compare_single (int & global_error, const std::array <char *, StepC> step_names, FuncPrv && fn_private,
+                         FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
 {
-  return statoff_names[enum_val];
+  test_result<StepC> result (step_names);
+
+  run_test (global_error, fn_private, std::ref (result), std::forward<Args> (args)...);
+  run_test (global_error, fn_std, std::ref (result), std::forward<Args> (args)...);
+  run_test (global_error, fn_malloc, std::ref (result), std::forward<Args> (args)...);
+  std::cout << std::endl;
+
+  result.print_results_and_warnings (std::cout);
 }
 
-typedef unsigned long long stat_type;
-typedef std::array<stat_type, stat_offset::STATOFF_COUNT> stat_array;
-#define STAT_ARRAY_INITIALIZER {{ 0, 0, 0, }}
-
-const size_t STATOFF_PRINT_LENGTH = 20;
-const size_t USEC_PRINT_LENGTH = 10;
-
+/* run multi-thread tests with private, standard and malloc allocators and wrap with text */
+template <size_t StepC, typename FuncPrv, typename FuncStd, typename FuncMlc, typename ... Args>
 void
-print_usec_as_msec (stat_type value, std::ostream & out)
+test_and_compare_parallel (int & global_error, const std::array <char *, StepC> step_names, FuncPrv && fn_private,
+                           FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
 {
-  out << std::right << std::setw (USEC_PRINT_LENGTH - 4) << value / 1000;
-  out << '.';
-  out << std::setfill ('0') << std::setw (3) << value % 1000;
-  out << std::setfill (' ');
-}
+  test_result<StepC> result (step_names);
 
-void
-register_performance_time (us_timer & timer, stat_type & to, std::ostream & os)
-{
-  stat_type time_count = timer.time_and_reset ().count ();
-  
-  ATOMIC_INC_64 (&to, time_count);
-  print_usec_as_msec (time_count, os);
-  os << " msec";
-}
+  run_parallel (fn_private, std::ref (result), std::forward<Args> (args)...);
+  run_parallel (fn_std, std::ref (result), std::forward<Args> (args)...);
+  run_parallel (fn_malloc, std::ref (result), std::forward<Args> (args)...);
+  std::cout << std::endl;
 
-/* Mallocator */
-template <typename T>
-class mallocator
-{
-public:
-  T* allocate (size_t size)
-  {
-    return (T *) malloc (size * sizeof (T));
-  }
-  void deallocate (T * pointer, size_t UNUSED (size))
-  {
-    free (pointer);
-  }
-  size_t max_size (void) const
-  {
-    return 0x7FFFFFFF;
-  }
-private:
-};
-
-/* Generic functions to allocate an allocator with thread entry argument. */
-template <typename T>
-void
-init_allocator (custom_thread_entry & cte, std::allocator<T> *& alloc)
-{
-  alloc = new std::allocator<T> ();
-}
-template <typename T>
-void
-init_allocator (custom_thread_entry & cte, mallocator<T> *& alloc)
-{
-  alloc = new mallocator<T> ();
-}
-template <typename T>
-void
-init_allocator (custom_thread_entry & cte, db_private_allocator<T> *& alloc)
-{
-  alloc = new db_private_allocator<T> (cte.get_thread_entry ());
+  result.print_results_and_warnings (std::cout);
 }
 
 /* Base function to test private allocator functionality */
@@ -182,6 +142,10 @@ test_private_allocator ()
   return 0;
 }
 
+const unsigned TEST_BASIC_PERF_STEP_COUNT = 3;
+const std::array <char *, TEST_BASIC_PERF_STEP_COUNT> TEST_BASIC_PERF_STEP_NAMES =
+  {{ "Alternate Alloc/Dealloc", "Successive Allocs", "Successive Deallocs" }};
+
 /* Basic function to test allocator performance
  *
  *  return:
@@ -191,209 +155,220 @@ test_private_allocator ()
  *
  *  arguments:
  *   
- *      size - test size; translates into the number of pointers allocated for each sub-test
- *      time_collect - array to collect statistics
+ *      alloc_count - test alloc_count; translates into the number of pointers allocated for each sub-test
+ *      results - test result collector
  */
 template <typename T, typename Alloc >
 int
-test_performance_alloc (size_t size, stat_array & time_collect)
+test_basic_performance (test_result<TEST_BASIC_PERF_STEP_COUNT> & results, size_t alloc_count)
 {
-  custom_thread_entry cte;
+  custom_thread_entry cte;    /* thread entry wrapper */
 
-  static const char * funcname = PORTABLE_FUNC_NAME;
-  static std::stringstream prefix (std::string ("    test_perf") + "<" + typeid(T).name() + ","
-                                   + typeid(Alloc).name() + ">: ");
-  std::stringstream log (std::string (prefix.str()));
+  /* function header */
+  static std::string function_header =
+    std::string ("    basic_perf") + typeid(T).name() + "," + typeid(Alloc).name() + ">\n";
 
+  sync_output (function_header);
+
+  /* instantiate allocator */
   Alloc *alloc = NULL;
-  init_allocator<T> (cte, alloc);
+  test_allocator_type alloc_type; 
+  init_allocator<T> (cte, alloc, alloc_type);
 
+  /* init step and timer */
+  unsigned step = 0;
   us_timer timer;
+
+  /* step 0: test allocate / deallocate / allocate / deallocate and so on */
   T *ptr = NULL;
-  log << prefix.str () << "a+d+a+d ... = ";
-  for (size_t i = 0; i < size; i++)
+  for (size_t i = 0; i < alloc_count; i++)
     {
       ptr = alloc->allocate (1);
       alloc->deallocate (ptr, 1);
     }
-  register_performance_time (timer, time_collect[stat_offset::STATOFF_ALLOC_AND_DEALLOC], log);
-  log << std::endl;
+  results.register_time (timer, alloc_type, step++);
 
-  log << prefix.str () << "a+a+a+a ... = ";
-  T** pointers = new T * [size];
-  for (size_t i = 0; i < size; i++)
+  /* step 1: test allocate / allocate and so on*/
+  T** pointers = new T * [alloc_count];
+  for (size_t i = 0; i < alloc_count; i++)
     {
       pointers[i] = alloc->allocate (1);
     }
-  register_performance_time (timer, time_collect[stat_offset::STATOFF_SUCCESSIVE_ALLOCS], log);
-  log << std::endl;
-  log << prefix.str () << "d+d+d+d ... = ";
-  for (size_t i = 0; i < size; i++)
+  results.register_time (timer, alloc_type, step++);
+
+  /* step 2: test deallocate / deallocate and so on*/
+  for (size_t i = 0; i < alloc_count; i++)
     {
       alloc->deallocate (pointers[i], 1);
     }
-  register_performance_time (timer, time_collect[stat_offset::STATOFF_SUCCESSIVE_DEALLOCS], log);
-  log << std::endl;
+  results.register_time (timer, alloc_type, step++);
+
+  custom_assert (step == TEST_BASIC_PERF_STEP_COUNT);
 
   delete pointers;
   delete alloc;
 
-  sync_output (log.str ());
-
   return 0;
 }
 
-/* run test and wrap with formatted text */
-template <typename Func, typename ... Args>
+/* test_and_compare implementation for test basic */
+template <typename T>
 void
-run_test (int & global_err, Func * f, Args &&... args)
+test_and_compare_single_basic (int & global_error, size_t alloc_count)
 {
-  std::cout << std::endl;
-  std::cout << "    starting test - " << std::endl;;
-  
-  int err = f (std::forward<Args> (args)...);
-  if (err == 0)
-    {
-      std::cout << "    test successful" << std::endl;
-    }
-  else
-    {
-      std::cout << "    test failed" << std::endl;
-      global_err = global_err != 0 ? global_err : err;
-    }
+  test_and_compare_single (global_error, TEST_BASIC_PERF_STEP_NAMES, FUNC_TYPE_AND_ALLOCS_AS_ARGS (test_basic_performance, T),
+                           alloc_count);
 }
 
-/* run test on multiple thread and wrap with formatted text */
-template <typename Func, typename ... Args>
+template <typename T>
 void
-run_parallel (Func * f, Args &&... args)
+test_and_compare_parallel_basic (int & global_error, size_t alloc_count)
 {
-  unsigned int worker_count = std::thread::hardware_concurrency ();
-  worker_count = worker_count != 0 ? worker_count : 24;
-
-  std::cout << std::endl;
-  std::cout << "    starting test with " << worker_count << " concurrent threads - " << std::endl;;
-  std::thread *workers = new std::thread [worker_count];
-
-  for (unsigned int i = 0; i < worker_count; i++)
-    {
-      workers[i] = std::thread (f, std::forward<Args> (args)...);
-    }
-  for (unsigned int i = 0; i < worker_count; i++)
-    {
-      workers[i].join ();
-    }
+  test_and_compare_parallel (global_error, TEST_BASIC_PERF_STEP_NAMES, FUNC_TYPE_AND_ALLOCS_AS_ARGS (test_basic_performance, T),
+                             alloc_count);
 }
 
-/* print comparative results obtained from testing private, standard and malloc allocators.
- * print warnings when private allocator results are worse than standard/mallocator.
- */
-void
-print_and_compare_results (stat_array private_results, stat_array std_results, stat_array malloc_results)
+class random_values
 {
-  stat_offset enum_val;
+public:
+  random_values (size_t size)
+  {
+    m_values.reserve (size);
+    
+    std::srand (static_cast<unsigned int> (std::time (0)));
+    for (size_t i = 0; i < size; i++)
+      {
+        m_values.push_back (std::rand ());
+      }
+  }
 
-  /* print all results */
-  std::cout << "    ";
-  std::cout << std::left << std::setw (STATOFF_PRINT_LENGTH) << "Results";
-  std:: cout << ": ";
-  std::cout << std::right << std::setw (USEC_PRINT_LENGTH) << "private";
-  std::cout << std::right << std::setw (USEC_PRINT_LENGTH) << "standard";
-  std::cout << std::right << std::setw (USEC_PRINT_LENGTH) << "malloc";
-  std::cout << std::endl;
-  for (int iter = 0; iter < stat_offset::STATOFF_COUNT; iter++)
+  inline unsigned get_at (size_t index) const
+  {
+    return m_values[index];
+  }
+
+  inline unsigned get_at (size_t index, unsigned modulo) const
+  {
+    return (m_values[index] % modulo);
+  }
+
+  inline size_t get_size (void) const
+  {
+    return m_values.size ();
+  }
+
+private:
+  random_values ();  /* no implicit constructor */
+
+  std::vector<unsigned> m_values;
+};
+
+const unsigned TEST_RANDOM_PERF_STEP_COUNT = 1;
+const std::array <char *, TEST_RANDOM_PERF_STEP_COUNT> TEST_RANDOM_PERF_STEP_NAMES =
+  { { "Random Alloc/Dealloc" } };
+
+template <typename Alloc>
+int
+test_performance_random (test_result<TEST_RANDOM_PERF_STEP_COUNT> & result, size_t ptr_pool_size, unsigned alloc_count,
+                         const random_values & actions)
+{
+/* local definition to allocate a pointer and save it in pool at ptr_index_ */
+#define PTR_ALLOC(ptr_index_) \
+  do { \
+    /* get random index in pointer size array. */ \
+    size_t ptr_size_index = actions.get_at (random_value_cursor++, PTR_MEMSIZE_COUNT); \
+    /* get pointer size */ \
+    size_t ptr_size = ptr_sizes[ptr_size_index]; \
+    /* allocate pointer */ \
+    char *ptr = alloc->allocate (ptr_size); \
+    /* save pointer and its size */; \
+    pointers_pool[ptr_index_] = std::make_pair (ptr, ptr_size); \
+  } while (false)
+
+  typedef std::pair<char *, size_t> ptr_with_size;
+
+  const unsigned PTR_MEMSIZE_COUNT = 14;
+  static const std::array<size_t, PTR_MEMSIZE_COUNT> ptr_sizes =
+    {{ 1,  64, 64, 64, 64, 64, 256, 1024, 1024, 1024, 4096, 8192, 16384, 65536 }};
+
+  custom_thread_entry cte;    /* thread entry wrapper */
+
+  /* function header */
+  static std::string function_header = std::string ("    random_perf") + "<" + typeid(Alloc).name () + ">\n";
+  sync_output (function_header);
+
+  /* instantiate allocator */
+  Alloc *alloc = NULL;
+  test_allocator_type alloc_type;
+  init_allocator<char> (cte, alloc, alloc_type);
+
+  /* */
+  ptr_with_size *pointers_pool = new ptr_with_size [ptr_pool_size];
+  size_t ptr_index;
+
+  /* init step and timer */
+  unsigned step = 0;
+  unsigned random_value_cursor = 0;
+  us_timer timer;
+
+  /* first step: fill pool */
+  for (ptr_index = 0; ptr_index < ptr_pool_size; ptr_index++)
     {
-      enum_val = static_cast <stat_offset> (iter);
-      std::cout << "    ";
-      std::cout << std::left << std::setw (STATOFF_PRINT_LENGTH) << statoff_get_name (enum_val);
-      std::cout << ": ";
-      print_usec_as_msec (private_results[iter], std::cout);
-      print_usec_as_msec (std_results[iter], std::cout);
-      print_usec_as_msec (malloc_results[iter], std::cout);
-      std::cout << std::endl;
+      PTR_ALLOC (ptr_index);
     }
-  /* print slow private warnings: */
-  bool no_warnings = true;
-  bool worse_than_std;
-  bool worse_than_malloc;
-  for (int iter = 0; iter < stat_offset::STATOFF_COUNT; iter++)
+
+  /* second step: deallocate and allocate a new pointer */
+  for (size_t count = 0; count < alloc_count; count++)
     {
-      worse_than_std = private_results[iter] >= std_results[iter];
-      worse_than_malloc = private_results[iter] >= malloc_results[iter];
-      if (!worse_than_std && !worse_than_malloc)
-        {
-          continue;
-        }
-      if (no_warnings)
-        {
-          /* print warnings: */
-          std::cout << std::endl << "    Warnings:" << std::endl;
-          no_warnings = false;
-        }
-      enum_val = static_cast <stat_offset> (iter);
-      if (worse_than_std)
-        {
-          std::cout << "    ";
-          std::cout << std::left << std::setw (STATOFF_PRINT_LENGTH) << statoff_get_name (enum_val);
-          std::cout << ": ";
-          std::cout << "Private worse than standard";
-          std::cout << std::endl;
-        }
-      if (worse_than_malloc)
-        {
-          std::cout << "    ";
-          std::cout << std::left << std::setw (STATOFF_PRINT_LENGTH) << statoff_get_name (enum_val);
-          std::cout << ": ";
-          std::cout << "Private worse than malloc";
-          std::cout << std::endl;
-        }
+      ptr_index = actions.get_at (random_value_cursor++, static_cast<unsigned> (ptr_pool_size));
+      /* deallocate current pointer */
+      alloc->deallocate (pointers_pool[ptr_index].first, pointers_pool[ptr_index].second);
+      /* replace with new pointer */
+      PTR_ALLOC (ptr_index);
     }
+
+  /* free pool */
+  for (ptr_index = 0; ptr_index < ptr_pool_size; ptr_index++)
+    {
+      alloc->deallocate (pointers_pool[ptr_index].first, pointers_pool[ptr_index].second);
+    }
+
+  result.register_time (timer, alloc_type, step++);
+
+  custom_assert (random_value_cursor == actions.get_size ());
+  custom_assert (step == TEST_RANDOM_PERF_STEP_COUNT);
+
+  delete pointers_pool;
+  delete alloc;
+
+  return 0;
+
+#undef PTR_ALLOC
 }
 
-/* run single-thread tests with private, standard and malloc allocators and wrap with text */
-template <typename T, size_t Size>
+/* test_and_compare implementation for test random */
 void
-test_and_compare (int & global_error)
+test_and_compare_single_random (int & global_error, size_t ptr_pool_size, unsigned alloc_count)
 {
-  size_t size = Size;
-  stat_array time_collect_private = STAT_ARRAY_INITIALIZER;
-  stat_array time_collect_std = STAT_ARRAY_INITIALIZER;
-  stat_array time_collect_malloc = STAT_ARRAY_INITIALIZER;
+  /* create random values */
+  size_t random_value_count = ptr_pool_size + 2 * alloc_count;
+  random_values actions (random_value_count);
 
-  std::cout << std::endl;
-  std::cout << "    start single-thread comparison test between allocators using type = " << typeid(T).name ();
-  std::cout << " and size = " << size << std::endl;
-
-  run_test (global_error, test_performance_alloc<T, db_private_allocator<T> >, size, time_collect_private);
-  run_test (global_error, test_performance_alloc<T, std::allocator<T> >, size, time_collect_std);
-  run_test (global_error, test_performance_alloc<T, mallocator<T> >, size, time_collect_malloc);
-
-  std::cout << std::endl;
-  print_and_compare_results (time_collect_private, time_collect_std, time_collect_malloc);
-  std::cout << std::endl;
+  test_and_compare_single (global_error, TEST_RANDOM_PERF_STEP_NAMES,
+                           FUNC_ALLOCS_AS_ARGS (test_performance_random, char), ptr_pool_size, alloc_count,
+                           std::cref (actions));
 }
 
-/* run multi-thread tests with private, standard and malloc allocators and wrap with text */
-template <typename T, size_t Size>
 void
-test_and_compare_parallel (int & global_error)
+test_and_compare_parallel_random (int & global_error, size_t ptr_pool_size, unsigned alloc_count)
 {
-  size_t size = Size;
-  stat_array time_collect_private = STAT_ARRAY_INITIALIZER;
-  stat_array time_collect_std = STAT_ARRAY_INITIALIZER;
-  stat_array time_collect_malloc = STAT_ARRAY_INITIALIZER;
+  /* create random values */
+  size_t random_value_count = ptr_pool_size + 2 * alloc_count;
+  random_values actions (random_value_count);
 
-  std::cout << std::endl;
-  std::cout << "    start multi-thread comparison test between allocators using type = " << typeid(T).name ();
-  std::cout << " and size = " << size << std::endl;
-
-  run_parallel (test_performance_alloc<T, db_private_allocator<T> >, size, std::ref (time_collect_private));
-  run_parallel (test_performance_alloc<T, std::allocator<T> >, size, std::ref (time_collect_std));
-  run_parallel (test_performance_alloc<T, mallocator<T> >, size, std::ref (time_collect_malloc));
-
-  std::cout << std::endl;
-  print_and_compare_results (time_collect_private, time_collect_std, time_collect_malloc);
-  std::cout << std::endl;
+  test_and_compare_parallel (global_error, TEST_RANDOM_PERF_STEP_NAMES,
+                             FUNC_ALLOCS_AS_ARGS (test_performance_random, char), ptr_pool_size, alloc_count,
+                             std::cref (actions));
 }
 
 /* main for test_db_private_alloc function */
@@ -410,17 +385,30 @@ test_db_private_alloc ()
   const size_t TEN_K = SIZE_ONE_K * 10;
   const size_t HUNDRED_K = SIZE_ONE_K * 100;
 
+#if 0
   run_test (global_err, test_private_allocator<char>);
   run_test (global_err, test_private_allocator<int>);
   run_test (global_err, test_private_allocator<dummy_size_512>);
-  
-  test_and_compare<char, HUNDRED_K> (global_err);
-  test_and_compare<size_t, HUNDRED_K> (global_err);
-  test_and_compare<dummy_size_512, HUNDRED_K> (global_err);
-  test_and_compare<dummy_size_8k, TEN_K> (global_err);
 
-  test_and_compare_parallel<dummy_size_512, HUNDRED_K> (global_err);
-  test_and_compare_parallel<dummy_size_8k, TEN_K> (global_err);
+  /* basic performance tests */
+  test_and_compare_single_basic<char> (global_err, HUNDRED_K);
+  test_and_compare_single_basic<size_t> (global_err, HUNDRED_K);
+  test_and_compare_single_basic<dummy_size_512> (global_err, HUNDRED_K);
+  test_and_compare_single_basic<dummy_size_8k> (global_err, TEN_K);
+  test_and_compare_parallel_basic<dummy_size_512> (global_err, HUNDRED_K);
+  test_and_compare_parallel_basic<dummy_size_8k> (global_err, TEN_K);
+#endif
+
+  /* random performance tests */
+  size_t small_pool_size = 128;
+  size_t medium_pool_size = 1024;
+  size_t large_pool_size = TEN_K;
+  test_and_compare_single_random (global_err, small_pool_size, HUNDRED_K);
+  test_and_compare_single_random (global_err, medium_pool_size, HUNDRED_K);
+  test_and_compare_single_random (global_err, large_pool_size, HUNDRED_K);
+  test_and_compare_parallel_random (global_err, small_pool_size, HUNDRED_K);
+  test_and_compare_parallel_random (global_err, medium_pool_size, HUNDRED_K);
+  test_and_compare_parallel_random (global_err, large_pool_size, HUNDRED_K);
 
   std::cout << std::endl;
 

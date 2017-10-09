@@ -21,14 +21,14 @@
 
 #include "test_db_private_alloc.hpp"
 
-template <typename ... Args>
+template <typename Func, typename ... Args>
 int
-test_module (int & global_error, int (*f) (Args ...), Args &... args)
+test_module (int & global_error, Func && f, Args &&... args)
 {
   std::cout << std::endl;
   std::cout << "  start testing module ";
 
-  int err = f (args...);
+  int err = f (std::forward <Args> (args)...);
   if (err == 0)
     {
       std::cout << "  test completed successfully" << std::endl;
