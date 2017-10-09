@@ -128,7 +128,7 @@
 
 /* Check whether the DWB structure is not created or is modifying. */
 #define DWB_NOT_CREATED_OR_MODIFYING(position_with_flags) \
-  (((position_with_flags) & DWB_CREATE_OR_MODIFY_MASK) == DWB_MODIFY_STRUCTURE)
+  (((position_with_flags) & DWB_CREATE_OR_MODIFY_MASK) != DWB_CREATE)
 
 /* Get next DWB position with flags. */
 #define DWB_GET_NEXT_POSITION_WITH_FLAGS(position_with_flags) \
@@ -349,7 +349,8 @@ STATIC_INLINE int dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UI
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_ends_structure_modification (THREAD_ENTRY * thread_p, UINT64 current_position_with_flags)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_destroy_internal (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_flags)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_intialize_slot (DWB_SLOT * slot, FILEIO_PAGE * io_page,
 				       unsigned int position_in_block, unsigned int block_no)
   __attribute__ ((ALWAYS_INLINE));
@@ -379,8 +380,8 @@ STATIC_INLINE void dwb_finalize_checksum_info (DWB_CHECKSUM_INFO * checksum_info
 STATIC_INLINE bool dwb_needs_speedup_checksum_computation (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_checksum_computed,
 					     bool * checksum_computed) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name,
+				       UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_find_block_with_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int *block_no)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int block_no);
@@ -1422,11 +1423,13 @@ dwb_finalize_block (DWB_BLOCK * block)
  *
  * return   : Error code.
  * thread_p (in): The thread entry.
- * dwb_path_p (in) : The double write buffer volume path.
- * db_name_p (in) : The database name.
+ * dwb_volume_name (in) : The double write buffer volume name.
+ * current_position_with_flags (in/out): Current position with flags.
+ *
+ *  Note: Is user responsibility to ensure that no other transaction can access DWB structure, during creation.
  */
 STATIC_INLINE int
-dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p)
+dwb_create_internal (THREAD_ENTRY * thread_p, char *dwb_volume_name, UINT64 * current_position_with_flags)
 {
   int error_code = NO_ERROR;
   unsigned double_write_buffer_size, num_blocks = 0;
@@ -1436,7 +1439,9 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char
   DWB_BLOCK *blocks = NULL;
   DWB_CHECKSUM_INFO *checksum_info = NULL;
   DWB_SLOTS_HASH *slots_hash = NULL;
+  UINT64 new_position_with_flags;
 
+  assert (dwb_volume_name != NULL && current_position_with_flags != NULL);
   double_write_buffer_size = prm_get_integer_value (PRM_ID_DWB_SIZE);
   num_blocks = prm_get_integer_value (PRM_ID_DWB_BLOCKS);
   if (double_write_buffer_size == 0 || num_blocks == 0)
@@ -1454,9 +1459,7 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char
   assert (num_blocks <= DWB_MAX_BLOCKS);
 
   /* Create and open DWB volume first */
-  fileio_make_dwb_name (dwb_Volume_Name, dwb_path_p, db_name_p);
-
-  vdes = fileio_format (thread_p, boot_db_full_name (), dwb_Volume_Name, LOG_DBDWB_VOLID, num_block_pages, true,
+  vdes = fileio_format (thread_p, boot_db_full_name (), dwb_volume_name, LOG_DBDWB_VOLID, num_block_pages, true,
 			false, false, IO_PAGESIZE, 0, false);
   if (vdes == NULL_VOLDES)
     {
@@ -1496,7 +1499,16 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char
   dwb_init_wait_queue (&double_Write_Buffer.wait_queue);
   double_Write_Buffer.slots_hash = slots_hash;
   double_Write_Buffer.vdes = vdes;
-  /* Do not set position_with_flags here. */
+
+  /* Set creation flag. */
+  new_position_with_flags = DWB_RESET_POSITION (*current_position_with_flags);
+  new_position_with_flags = DWB_STARTS_CREATION (new_position_with_flags);
+  if (!ATOMIC_CAS_64 (&double_Write_Buffer.position_with_flags, *current_position_with_flags, new_position_with_flags))
+    {
+      /* Impossible. */
+      assert (false);
+    }
+  *current_position_with_flags = new_position_with_flags;
 
   return NO_ERROR;
 
@@ -1696,7 +1708,11 @@ start_slot_hash_insert:
 	}
       else
 	{
-	  /* TO DO - er_log_debug */
+	  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "DWB hash insert key (%d, %d), the old slot is better than the new one: \n",
+			     vpid->volid, vpid->pageid);
+	    }
 
 	  /* The older slot is better than mine - leave it in hash. */
 	  pthread_mutex_unlock (&slots_hash_entry->mutex);
@@ -1718,12 +1734,16 @@ start_slot_hash_insert:
  *
  * return   : Error code.
  * thread_p (in): The thread entry.
+ *
+ *  Note: Is user responsibility to ensure that no other transaction can access DWB structure, during destroy.
  */
 STATIC_INLINE void
-dwb_destroy_internal (THREAD_ENTRY * thread_p)
+dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_flags)
 {
+  UINT64 new_position_with_flags;
   unsigned int block_no;
 
+  assert (current_position_with_flags != NULL);
   dwb_destroy_wait_queue (&double_Write_Buffer.wait_queue, &double_Write_Buffer.mutex, dwb_signal_waiting_thread);
   pthread_mutex_destroy (&double_Write_Buffer.mutex);
 
@@ -1753,6 +1773,16 @@ dwb_destroy_internal (THREAD_ENTRY * thread_p)
       fileio_dismount (thread_p, double_Write_Buffer.vdes);
       fileio_unformat (thread_p, dwb_Volume_Name);
     }
+
+  /* Set creation flag. */
+  new_position_with_flags = DWB_RESET_POSITION (*current_position_with_flags);
+  new_position_with_flags = DWB_ENDS_CREATION (new_position_with_flags);
+  if (!ATOMIC_CAS_64 (&double_Write_Buffer.position_with_flags, *current_position_with_flags, new_position_with_flags))
+    {
+      /* Impossible. */
+      assert (false);
+    }
+  *current_position_with_flags = new_position_with_flags;
 }
 
 /*
@@ -2295,18 +2325,7 @@ start:
   if (DWB_NOT_CREATED_OR_MODIFYING (current_position_with_flags))
     {
       /* Rarely happens. */
-      if (DWB_IS_ANY_BLOCK_WRITE_STARTED (current_position_with_flags))
-	{
-	  /* Someone deleted the DWB, before flushing the data. */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DWB_DISABLED, 0);
-	  return ER_DWB_DISABLED;
-	}
-      else if (!DWB_IS_CREATED (current_position_with_flags))
-	{
-	  /* Someone deleted the DWB */
-	  return NO_ERROR;
-	}
-      else if (DWB_IS_MODIFYING_STRUCTURE (current_position_with_flags))
+      if (DWB_IS_MODIFYING_STRUCTURE (current_position_with_flags))
 	{
 	  if (can_wait == false)
 	    {
@@ -2326,6 +2345,17 @@ start:
 
 	  /* Probably someone else advanced the position, try again. */
 	  goto start;
+	}
+      else if (!DWB_IS_CREATED (current_position_with_flags))
+	{
+	  if (DWB_IS_ANY_BLOCK_WRITE_STARTED (current_position_with_flags))
+	    {
+	      /* Someone deleted the DWB, before flushing the data. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DWB_DISABLED, 0);
+	      return ER_DWB_DISABLED;
+	    }
+	  /* Someone deleted the DWB */
+	  return NO_ERROR;
 	}
       else
 	{
@@ -3014,7 +3044,7 @@ dwb_is_created (THREAD_ENTRY * thread_p)
 int
 dwb_create (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p)
 {
-  UINT64 current_position_with_flags, new_position_with_flags;
+  UINT64 current_position_with_flags;
   int error_code = NO_ERROR;
 
   error_code = dwb_starts_structure_modification (thread_p, &current_position_with_flags);
@@ -3030,21 +3060,53 @@ dwb_create (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name
       goto end;
     }
 
-  error_code = dwb_create_internal (thread_p, dwb_path_p, db_name_p);
+  fileio_make_dwb_name (dwb_Volume_Name, dwb_path_p, db_name_p);
+  error_code = dwb_create_internal (thread_p, dwb_Volume_Name, &current_position_with_flags);
   if (error_code != NO_ERROR)
     {
       goto end;
     }
 
-  /* Set creation flag. */
-  new_position_with_flags = DWB_RESET_POSITION (current_position_with_flags);
-  new_position_with_flags = DWB_STARTS_CREATION (current_position_with_flags);
-  if (!ATOMIC_CAS_64 (&double_Write_Buffer.position_with_flags, current_position_with_flags, new_position_with_flags))
+end:
+  /* Ends the modification, allowing to others to modify global position with flags. */
+  dwb_ends_structure_modification (thread_p, current_position_with_flags);
+  return error_code;
+}
+
+/*
+ * dwb_recreate () - Recreate double write buffer with new user parameter values.
+ *
+ * return   : Error code.
+ * thread_p (in): The thread entry. 
+ */
+int
+dwb_recreate (THREAD_ENTRY * thread_p)
+{
+  int error_code = NO_ERROR;
+  UINT64 current_position_with_flags;
+
+  if (thread_p == NULL)
     {
-      /* Impossible. */
-      assert (false);
+      thread_p = thread_get_thread_entry_info ();
     }
-  current_position_with_flags = new_position_with_flags;
+
+  error_code = dwb_starts_structure_modification (thread_p, &current_position_with_flags);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* DWB structure modification started, no other transaction can modify the global position with flags */
+  if (DWB_IS_CREATED (current_position_with_flags))
+    {
+      dwb_destroy_internal (thread_p, &current_position_with_flags);
+    }
+
+  error_code = dwb_create_internal (thread_p, dwb_Volume_Name, &current_position_with_flags);
+  if (error_code != NO_ERROR)
+    {
+      goto end;
+    }
 
 end:
   /* Ends the modification, allowing to others to modify global position with flags. */
@@ -3175,7 +3237,7 @@ int
 dwb_destroy (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
-  UINT64 current_position_with_flags, new_position_with_flags;
+  UINT64 current_position_with_flags;
 
   error_code = dwb_starts_structure_modification (thread_p, &current_position_with_flags);
   if (error_code != NO_ERROR)
@@ -3190,17 +3252,7 @@ dwb_destroy (THREAD_ENTRY * thread_p)
       goto end;
     }
 
-  dwb_destroy_internal (thread_p);
-
-  /* Set creation flag. */
-  new_position_with_flags = DWB_ENDS_CREATION (current_position_with_flags);
-  new_position_with_flags = DWB_RESET_POSITION (new_position_with_flags);
-  if (!ATOMIC_CAS_64 (&double_Write_Buffer.position_with_flags, current_position_with_flags, new_position_with_flags))
-    {
-      /* Impossible. */
-      assert (false);
-    }
-  current_position_with_flags = new_position_with_flags;
+  dwb_destroy_internal (thread_p, &current_position_with_flags);
 
 end:
   /* Ends the modification, allowing to others to modify global position with flags. */
@@ -3550,7 +3602,6 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
     }
   else if (slots_hash_entry != NULL)
     {
-      /* read from DWB - TO DO volatile access + debug code */
       assert (slots_hash_entry->slot->io_page != NULL && slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
 	      && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
 

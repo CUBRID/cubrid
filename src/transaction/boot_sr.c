@@ -2324,7 +2324,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Currently dwb_prefix is same with log_prefix. */
   dwb_prefix = log_prefix;
 
-
   /* The database pagesize is set by log_get_io_page_size */
 
   if (log_get_io_page_size (thread_p, boot_Db_full_name, log_path, log_prefix) == -1)

@@ -68,6 +68,7 @@
 #include "log_impl.h"
 #include "log_manager.h"
 #include "xserver_interface.h"
+#include "double_write_buffer.h"
 #endif /* SERVER_MODE */
 #if defined (LINUX)
 #include "stack_dump.h"
@@ -5406,7 +5407,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DWB_SIZE,
    PRM_NAME_DWB_SIZE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    &prm_dwb_size_flag,
    (void *) &prm_dwb_size_default,
@@ -5418,7 +5419,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DWB_BLOCKS,
    PRM_NAME_DWB_BLOCKS,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    &prm_dwb_blocks_flag,
    (void *) &prm_dwb_blocks_default,
@@ -9218,6 +9219,19 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
 	}
       tz_set_tz_region_system (&tz_region_system);
     }
+
+#if defined(SERVER_MODE)
+  if (sysprm_get_id (prm) == PRM_ID_DWB_SIZE || sysprm_get_id (prm) == PRM_ID_DWB_BLOCKS)
+    {
+      int err_status = 0;
+      err_status = dwb_recreate (NULL);
+      if (err_status != NO_ERROR)
+	{
+	  return PRM_ERR_BAD_PARAM;
+	}
+    }
+#endif
+
   /* Set the cached parsed session timezone region on the client */
 #if !defined(SERVER_MODE)
   if (sysprm_get_id (prm) == PRM_ID_TIMEZONE)
