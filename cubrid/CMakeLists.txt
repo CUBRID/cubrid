@@ -284,6 +284,8 @@ install(FILES
   ${COMPAT_DIR}/dbi_compat.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   RENAME dbi.h
+  ${COMPAT_DIR}/dbtype_common.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
 
 
