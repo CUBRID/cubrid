@@ -2049,6 +2049,7 @@ dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slo
   qsort ((void *) p_local_dwb_ordered_slots, block->count_wb_pages, sizeof (DWB_SLOT), dwb_compare_slots);
 
   *p_dwb_ordered_slots = p_local_dwb_ordered_slots;
+  *p_ordered_slots_length = block->count_wb_pages + 1;
 
   return NO_ERROR;
 }
