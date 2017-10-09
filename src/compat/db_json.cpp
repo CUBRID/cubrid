@@ -530,7 +530,7 @@ db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value)
 }
 
 int
-db_json_get_json_from_str (const char *json_raw, JSON_DOC*&doc)
+db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
 {
   int error_code = NO_ERROR;
   doc = new JSON_DOC;
@@ -567,13 +567,16 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
 {
   JSON_POINTER p (raw_path);
 
-  if (!p.IsValid () || p.Get (*doc) == NULL)
+  JSON_VALUE val;
+  val.CopyFrom (*value, doc->GetAllocator());
+
+  if (!p.IsValid ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
     }
 
-  p.Set (*doc, *value, doc->GetAllocator ());
+  p.Set (*doc, val, doc->GetAllocator ());
   return NO_ERROR;
 }
 
