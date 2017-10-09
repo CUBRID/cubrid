@@ -196,12 +196,22 @@ init_allocator (custom_thread_entry & cte, db_private_allocator<T> *& alloc, tes
 
 /* generic interface to collect results for all allocators and print them */
 
+const char *DECIMAL_SEPARATOR = ".";
+const char *TIME_UNIT = " usec";
+
+const size_t TEST_RESULT_NAME_PRINT_LENGTH = 20;
+const size_t TEST_RESULT_VALUE_PRINT_LENGTH = 8;
+const size_t TEST_RESTUL_VALUE_PRECISION_LENGTH = 3;
+const size_t TEST_RESULT_VALUE_TOTAL_LENGTH =
+  TEST_RESULT_VALUE_PRINT_LENGTH + TEST_RESTUL_VALUE_PRECISION_LENGTH + std::strlen (DECIMAL_SEPARATOR)
+  + std::strlen (TIME_UNIT);
+
 /* Collect runtime statistics */
 template <size_t Size>
 class test_result
 {
 public:
-  typedef std::array<char *, Size> name_container_type;
+  typedef std::array<const char *, Size> name_container_type;
   typedef unsigned long long value_type;
   typedef std::array<value_type, Size> value_container_type;
   
@@ -219,7 +229,7 @@ public:
       }
 
     /* make sure leftmost_column_length is big enough */
-    m_leftmost_column_length = NAME_PRINT_LENGTH;
+    m_leftmost_column_length = TEST_RESULT_NAME_PRINT_LENGTH;
     for (size_t name_index = 0; name_index < Size; name_index++)
       {
         if (strlen (result_names[name_index]) >= m_leftmost_column_length)
@@ -274,18 +284,10 @@ private:
   test_result (); // prevent implicit constructor
   test_result (const test_result& other); // prevent copy
 
-  const size_t NAME_PRINT_LENGTH = 20;
-  const size_t VALUE_PRINT_LENGTH = 8;
-  const size_t VALUE_PRECISION_LENGTH = 3;
-  const char *DECIMAL_SEPARATOR = ".";
-  const char *TIME_UNIT = " usec";
-  const size_t VALUE_TOTAL_LENGTH =
-    VALUE_PRINT_LENGTH + VALUE_PRECISION_LENGTH + std::strlen  (DECIMAL_SEPARATOR) + std::strlen (TIME_UNIT);
-
   void
   print_value (value_type value, std::ostream & output)
   {
-    output << std::right << std::setw (VALUE_PRINT_LENGTH) << value / 1000;
+    output << std::right << std::setw (TEST_RESULT_VALUE_PRINT_LENGTH) << value / 1000;
     output << DECIMAL_SEPARATOR;
     output << std::setfill ('0') << std::setw (3) << value % 1000;
     output << std::setfill (' ') << TIME_UNIT;
@@ -302,7 +304,7 @@ private:
   inline void
   print_alloc_name_column (const char *str, std::ostream & output)
   {
-    output << std::right << std::setw (VALUE_TOTAL_LENGTH) << str;
+    output << std::right << std::setw (TEST_RESULT_VALUE_TOTAL_LENGTH) << str;
   }
 
   inline void

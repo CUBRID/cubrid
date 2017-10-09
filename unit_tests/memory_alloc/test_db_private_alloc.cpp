@@ -63,7 +63,7 @@ sync_output (const std::string & str)
 /* run single-thread tests with private, standard and malloc allocators and wrap with text */
 template <size_t StepC, typename FuncPrv, typename FuncStd, typename FuncMlc, typename ... Args>
 void
-test_and_compare_single (int & global_error, const std::array <char *, StepC> step_names, FuncPrv && fn_private,
+test_and_compare_single (int & global_error, const std::array <const char *, StepC> step_names, FuncPrv && fn_private,
                          FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
 {
   test_result<StepC> result (step_names);
@@ -79,7 +79,7 @@ test_and_compare_single (int & global_error, const std::array <char *, StepC> st
 /* run multi-thread tests with private, standard and malloc allocators and wrap with text */
 template <size_t StepC, typename FuncPrv, typename FuncStd, typename FuncMlc, typename ... Args>
 void
-test_and_compare_parallel (int & global_error, const std::array <char *, StepC> step_names, FuncPrv && fn_private,
+test_and_compare_parallel (int & global_error, const std::array <const char *, StepC> step_names, FuncPrv && fn_private,
                            FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
 {
   test_result<StepC> result (step_names);
@@ -143,7 +143,7 @@ test_private_allocator ()
 }
 
 const unsigned TEST_BASIC_PERF_STEP_COUNT = 3;
-const std::array <char *, TEST_BASIC_PERF_STEP_COUNT> TEST_BASIC_PERF_STEP_NAMES =
+const std::array <const char *, TEST_BASIC_PERF_STEP_COUNT> TEST_BASIC_PERF_STEP_NAMES =
   {{ "Alternate Alloc/Dealloc", "Successive Allocs", "Successive Deallocs" }};
 
 /* Basic function to test allocator performance
@@ -264,7 +264,7 @@ private:
 };
 
 const unsigned TEST_RANDOM_PERF_STEP_COUNT = 1;
-const std::array <char *, TEST_RANDOM_PERF_STEP_COUNT> TEST_RANDOM_PERF_STEP_NAMES =
+const std::array <const char *, TEST_RANDOM_PERF_STEP_COUNT> TEST_RANDOM_PERF_STEP_NAMES =
   { { "Random Alloc/Dealloc" } };
 
 template <typename Alloc>
