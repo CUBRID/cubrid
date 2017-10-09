@@ -28,8 +28,6 @@
 #ifndef _DB_MACRO_I_
 #define _DB_MACRO_I_
 
-#include "error_manager.h"
-
 #ifdef SERVER_MODE
   #if defined (__cplusplus) || defined (__GNUC__)
   #define DB_MACRO_INLINE static inline
