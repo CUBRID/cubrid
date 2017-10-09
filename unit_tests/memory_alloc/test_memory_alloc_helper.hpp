@@ -25,6 +25,7 @@
 #include <vector>
 #include <cstring>
 #include <iomanip>
+#include <thread>
 
 #include "db_private_allocator.hpp"
 
