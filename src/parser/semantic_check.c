@@ -2298,7 +2298,7 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
 
   *is_cast_allowed = true;
 
-  if (dest_sci->force_cast)
+  if (dest_sci->force_cast && dest_sci->type_enum == PT_TYPE_JSON)
     {
       return false;
     }
