@@ -347,6 +347,7 @@ private:
       {
         return;
       }
+    print_warning_header (no_warnings, output);
     print_leftmost_column (m_names[row], output);
     if (slower_than_standard && slower_than_malloc)
       {

@@ -385,7 +385,6 @@ test_db_private_alloc ()
   const size_t TEN_K = SIZE_ONE_K * 10;
   const size_t HUNDRED_K = SIZE_ONE_K * 100;
 
-#if 0
   run_test (global_err, test_private_allocator<char>);
   run_test (global_err, test_private_allocator<int>);
   run_test (global_err, test_private_allocator<dummy_size_512>);
@@ -397,7 +396,6 @@ test_db_private_alloc ()
   test_and_compare_single_basic<dummy_size_8k> (global_err, TEN_K);
   test_and_compare_parallel_basic<dummy_size_512> (global_err, HUNDRED_K);
   test_and_compare_parallel_basic<dummy_size_8k> (global_err, TEN_K);
-#endif
 
   /* random performance tests */
   size_t small_pool_size = 128;
