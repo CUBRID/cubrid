@@ -144,9 +144,6 @@ test_private_allocator ()
   return 0;
 }
 
-const test_step_names TEST_BASIC_PERF_STEP_NAMES =
-  {{ "Alternate Alloc/Dealloc", "Successive Allocs", "Successive Deallocs" }};
-
 /* Basic function to test allocator performance
  *
  *  return:
@@ -204,7 +201,7 @@ test_basic_performance (test_compare_allocators & results, size_t alloc_count)
     }
   results.register_time (timer, alloc_type, step++);
 
-  custom_assert (step == TEST_BASIC_PERF_STEP_NAMES.size ());
+  custom_assert (step == results.get_step_count ());
 
   delete pointers;
   delete alloc;
@@ -212,21 +209,37 @@ test_basic_performance (test_compare_allocators & results, size_t alloc_count)
   return 0;
 }
 
+const char *ALTERNATE_ALLOC = "Alternate Alloc/Dealloc";
+const char *SUCCESSIVE_ALLOC = "Successive Allocs";
+const char *SUCCESSIVE_DEALLOC = "Successive Deallocs";
+
+void
+test_basic_populate_names (test_step_names & step_names)
+{
+  step_names.push_back (ALTERNATE_ALLOC);
+  step_names.push_back (SUCCESSIVE_ALLOC);
+  step_names.push_back (SUCCESSIVE_DEALLOC);
+}
+
 /* test_and_compare implementation for test basic */
 template <typename T>
 void
 test_and_compare_single_basic (int & global_error, size_t alloc_count)
 {
-  test_and_compare_single (global_error, TEST_BASIC_PERF_STEP_NAMES,
-                           FUNC_TYPE_AND_ALLOCS_AS_ARGS (test_basic_performance, T), alloc_count);
+  test_step_names step_names;
+  test_basic_populate_names (step_names);
+  test_and_compare_single (global_error, step_names, FUNC_TYPE_AND_ALLOCS_AS_ARGS (test_basic_performance, T),
+                           alloc_count);
 }
 
 template <typename T>
 void
 test_and_compare_parallel_basic (int & global_error, size_t alloc_count)
 {
-  test_and_compare_parallel (global_error, TEST_BASIC_PERF_STEP_NAMES,
-                             FUNC_TYPE_AND_ALLOCS_AS_ARGS (test_basic_performance, T), alloc_count);
+  test_step_names step_names;
+  test_basic_populate_names (step_names);
+  test_and_compare_parallel (global_error, step_names, FUNC_TYPE_AND_ALLOCS_AS_ARGS (test_basic_performance, T),
+                             alloc_count);
 }
 
 class random_values
@@ -263,9 +276,6 @@ private:
 
   std::vector<unsigned> m_values;
 };
-
-const std::vector <const char *> TEST_RANDOM_PERF_STEP_NAMES =
-  { { "Random Alloc/Dealloc" } };
 
 template <typename Alloc>
 int
@@ -336,7 +346,7 @@ test_performance_random (test_compare_allocators & result, size_t ptr_pool_size,
   result.register_time (timer, alloc_type, step++);
 
   custom_assert (random_value_cursor == actions.get_size ());
-  custom_assert (step == TEST_RANDOM_PERF_STEP_NAMES.size ());
+  custom_assert (step == result.get_step_count ());
 
   delete pointers_pool;
   delete alloc;
@@ -346,6 +356,14 @@ test_performance_random (test_compare_allocators & result, size_t ptr_pool_size,
 #undef PTR_ALLOC
 }
 
+const char *RANDOM_ALLOCS = "Random Alloc/Dealloc";
+
+void
+test_random_populate_step_names (test_step_names & step_names)
+{
+  step_names.push_back (RANDOM_ALLOCS);
+}
+
 /* test_and_compare implementation for test random */
 void
 test_and_compare_single_random (int & global_error, size_t ptr_pool_size, unsigned alloc_count)
@@ -353,10 +371,11 @@ test_and_compare_single_random (int & global_error, size_t ptr_pool_size, unsign
   /* create random values */
   size_t random_value_count = ptr_pool_size + 2 * alloc_count;
   random_values actions (random_value_count);
+  test_step_names step_names;
 
-  test_and_compare_single (global_error, TEST_RANDOM_PERF_STEP_NAMES,
-                           FUNC_ALLOCS_AS_ARGS (test_performance_random, char), ptr_pool_size, alloc_count,
-                           std::cref (actions));
+  test_random_populate_step_names (step_names);
+  test_and_compare_single (global_error, step_names, FUNC_ALLOCS_AS_ARGS (test_performance_random, char),
+                           ptr_pool_size, alloc_count, std::cref (actions));
 }
 
 void
@@ -365,10 +384,11 @@ test_and_compare_parallel_random (int & global_error, size_t ptr_pool_size, unsi
   /* create random values */
   size_t random_value_count = ptr_pool_size + 2 * alloc_count;
   random_values actions (random_value_count);
+  test_step_names step_names;
 
-  test_and_compare_parallel (global_error, TEST_RANDOM_PERF_STEP_NAMES,
-                             FUNC_ALLOCS_AS_ARGS (test_performance_random, char), ptr_pool_size, alloc_count,
-                             std::cref (actions));
+  test_random_populate_step_names (step_names);
+  test_and_compare_parallel (global_error, step_names, FUNC_ALLOCS_AS_ARGS (test_performance_random, char),
+                             ptr_pool_size, alloc_count, std::cref (actions));
 }
 
 /* main for test_db_private_alloc function */
