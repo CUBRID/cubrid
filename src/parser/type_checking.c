@@ -10882,6 +10882,16 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
     {
       common_type = PT_TYPE_DOUBLE;
     }
+  else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON) ||
+	   (arg1_type == PT_TYPE_JSON && PT_IS_NUMERIC_TYPE (arg2_type)))
+    {
+      common_type = PT_TYPE_CHAR;
+    }
+  else if ((PT_IS_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON) ||
+	   (arg1_type == PT_TYPE_JSON && PT_IS_STRING_TYPE (arg2_type)))
+    {
+      common_type = PT_TYPE_CHAR;
+    }
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_MAYBE)
 	   || (PT_IS_NUMERIC_TYPE (arg2_type) && arg1_type == PT_TYPE_MAYBE))
     {
@@ -13162,7 +13172,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       {
 	PT_TYPE_ENUM supported_key_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_value_types[] =
-	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_FLOAT, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_MAYBE };
+	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_FLOAT, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON,
+PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int num_bad = 0, len, i, found_supported = 0;
 	int supported_value_types_len = sizeof (supported_value_types) / sizeof (supported_value_types[0]);
@@ -17266,13 +17277,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       break;
     case PT_JSON_SEARCH:
-      error = db_json_search_dbval (arg1, arg2, arg3, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
+      error = ER_DB_UNIMPLEMENTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
+      PT_ERRORc (parser, o1, er_msg ());
+      return 0;
     case PT_POWER:
       error = db_power_dbval (result, arg1, arg2);
       if (error != NO_ERROR)
@@ -20595,6 +20603,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       error = db_json_object (result, args, num_args);
       if (error != NO_ERROR)
 	{
+	  PT_ERRORc (parser, NULL, er_msg ());
 	  return 0;
 	}
       break;
@@ -20602,6 +20611,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       error = db_json_array (result, args, num_args);
       if (error != NO_ERROR)
 	{
+	  PT_ERRORc (parser, NULL, er_msg ());
 	  return 0;
 	}
       break;
@@ -20609,6 +20619,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       error = db_json_insert (result, args, num_args);
       if (error != NO_ERROR)
 	{
+	  PT_ERRORc (parser, NULL, er_msg ());
 	  return 0;
 	}
       break;
@@ -20616,6 +20627,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       error = db_json_remove (result, args, num_args);
       if (error != NO_ERROR)
 	{
+	  PT_ERRORc (parser, NULL, er_msg ());
 	  return 0;
 	}
       break;
@@ -20623,6 +20635,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       error = db_json_merge (result, args, num_args);
       if (error != NO_ERROR)
 	{
+	  PT_ERRORc (parser, NULL, er_msg ());
 	  return 0;
 	}
       break;

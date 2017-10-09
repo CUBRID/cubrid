@@ -6573,13 +6573,6 @@ qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE
   return db_json_extract_dbval (json, path, json_res);
 }
 
-int
-qdata_json_search_dbval (DB_VALUE * json, DB_VALUE * one_or_all, DB_VALUE * search_str, DB_VALUE * result_p,
-			 TP_DOMAIN * domain_p)
-{
-  return db_json_search_dbval (json, one_or_all, search_str, result_p);
-}
-
 /*
  * qdata_strcat_dbval () -
  *   return:

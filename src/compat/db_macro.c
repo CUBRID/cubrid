@@ -6892,3 +6892,9 @@ db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
       return NULL;
     }
 }
+
+JSON_DOC *
+db_get_json_document (const DB_VALUE * value)
+{
+  return value->data.json.document;
+}

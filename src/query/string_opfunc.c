@@ -285,7 +285,6 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 				    int *token_size);
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
-static int db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, JSON_DOC * doc);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -3045,7 +3044,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  new_doc = db_json_allocate_doc_and_set_type (DB_JSON_OBJECT);
+  new_doc = db_json_allocate_doc ();
 
   assert (num_args % 2 == 0);
 
@@ -3068,8 +3067,8 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_NUMERIC:
 	  {
 	    DB_VALUE double_value;
-	    db_value_coerce (arg[i], &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
-	    db_json_add_element_to_array (new_doc, double_value.data.d);
+	    db_value_coerce (arg[i + 1], &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
+	    db_json_add_member_to_object (new_doc, arg[i]->data.ch.medium.buf, double_value.data.d);
 	    pr_clear_value (&double_value);
 	  }
 	  break;
@@ -3097,7 +3096,7 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  new_doc = db_json_allocate_doc_and_set_type (DB_JSON_ARRAY);
+  new_doc = db_json_allocate_doc ();
 
   for (int i = 0; i < num_args; i++)
     {
@@ -3139,7 +3138,7 @@ int
 db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
-  JSON_DOC *new_doc;
+  JSON_DOC *new_doc = NULL;
   char *str;
 
   if (num_args < 3)
@@ -3151,7 +3150,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   switch (arg[0]->domain.general_info.type)
     {
     case DB_TYPE_CHAR:
-      new_doc = db_json_get_json_from_str (arg[0]->data.ch.medium.buf, error_code);
+      error_code = db_json_get_json_from_str (arg[0]->data.ch.medium.buf, new_doc);
 
       if (error_code != NO_ERROR)
 	{
@@ -3169,21 +3168,18 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (arg[i + 1]->domain.general_info.type)
 	{
 	case DB_TYPE_CHAR:
-	  db_json_insert_func (new_doc, arg[i]->data.ch.medium.buf, arg[i + 1]->data.ch.medium.buf, error_code);
+	  error_code = db_json_convert_string_and_call (arg[i + 1]->data.ch.medium.buf,
+							db_json_insert_func, new_doc, arg[i]->data.ch.medium.buf);
 	  break;
 	case DB_TYPE_JSON:
-	  db_json_insert_func (new_doc, arg[i]->data.ch.medium.buf, arg[i + 1]->data.json.document, error_code);
+	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, arg[i]->data.ch.medium.buf);
 	  break;
 	}
 
       if (error_code != NO_ERROR)
 	{
-	  if (error_code == ER_INVALID_JSON)
-	    {
-	      db_json_delete_doc (new_doc);
-	      return error_code;
-	    }
-	  /* TODO should we simply ignore invalid paths or throw error? */
+	  db_json_delete_doc (new_doc);
+	  return error_code;
 	}
     }
 
@@ -3197,7 +3193,7 @@ int
 db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code;
-  JSON_DOC *new_doc;
+  JSON_DOC *new_doc = NULL;
   char *str;
 
   if (num_args < 2)
@@ -3209,7 +3205,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   switch (arg[0]->domain.general_info.type)
     {
     case DB_TYPE_CHAR:
-      new_doc = db_json_get_json_from_str (arg[0]->data.ch.medium.buf, error_code);
+      error_code = db_json_get_json_from_str (arg[0]->data.ch.medium.buf, new_doc);
 
       if (error_code != NO_ERROR)
 	{
@@ -3246,13 +3242,11 @@ int
 db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i;
-  JSON_DOC *new_doc, *res_doc;
   char *str;
-  std::vector < JSON_DOC * >documents_to_delete;
   int error_code;
+  JSON_DOC *accumulator;
 
-  documents_to_delete.clear ();
-  new_doc = db_json_allocate_doc ();
+  accumulator = db_json_allocate_doc ();
 
   if (num_args < 2)
     {
@@ -3260,135 +3254,27 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  for (i = 0; i < num_args - 1; i++)
+  for (i = 0; i < num_args; i++)
     {
-      error_code = db_json_merge_two_jsons_private (arg[i], arg[i + 1], new_doc);
+      switch (db_value_type (arg[i]))
+	{
+	case DB_TYPE_JSON:
+	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator);
+	  break;
+	case DB_TYPE_CHAR:
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_json_merge_func, accumulator);
+	  break;
+	}
+
       if (error_code != NO_ERROR)
 	{
-	  goto manage_error;
-	}
-      if (arg[i + 1]->domain.general_info.type == DB_TYPE_JSON)
-	{
-	  documents_to_delete.push_back (arg[i + 1]->data.json.document);
-	}
-      db_make_json (arg[i + 1], NULL, new_doc, false);
-    }
-
-  res_doc = db_json_get_copy_of_doc (arg[num_args - 1]->data.json.document);
-  str = db_json_get_raw_json_body_from_document (res_doc);
-
-  for (i = 0; i < documents_to_delete.size (); i++)
-    {
-      db_json_delete_doc (documents_to_delete[i]);
-    }
-  db_json_delete_doc (new_doc);
-
-  db_make_json (result, str, res_doc, true);
-
-  return NO_ERROR;
-manage_error:
-  for (i = 0; i < documents_to_delete.size (); i++)
-    {
-      db_json_delete_doc (documents_to_delete[i]);
-    }
-  db_json_delete_doc (new_doc);
-  return error_code;
-}
-
-/*
- * db_json_merge_two_json_private ()
- * j1 (in)
- * j2 (in)
- * doc (out): the result
- * Json objects are merged like this:
- * {"a":"b", "x":"y"} M {"a":"c"} -> {"a":["b","c"], "x":"y"}
- * Json arrays as such:
- * ["a", "b"] M ["x", "y"] -> ["a", "b", "x", "y"]
- * Json scalars are transformed into arrays and merged normally
- */
-
-static int
-db_json_merge_two_jsons_private (DB_VALUE * j1, DB_VALUE * j2, JSON_DOC * doc)
-{
-  int error_code;
-  JSON_DOC *j1_doc = NULL, *j2_doc = NULL, *doc_aux;
-
-  doc_aux = db_json_allocate_doc ();
-
-  if (j1->domain.general_info.type == DB_TYPE_CHAR)
-    {
-      j1_doc = db_json_get_json_from_str (j1->data.ch.medium.buf, error_code);
-      if (error_code != NO_ERROR)
-	{
+	  db_json_delete_doc (accumulator);
 	  return error_code;
 	}
     }
-  else if (j1->domain.general_info.type == DB_TYPE_JSON)
-    {
-      j1_doc = j1->data.json.document;
-    }
 
-  if (j2->domain.general_info.type == DB_TYPE_CHAR)
-    {
-      j2_doc = db_json_get_json_from_str (j2->data.ch.medium.buf, error_code);
-      if (error_code != NO_ERROR)
-	{
-	  if (j1_doc != NULL)
-	    {
-	      db_json_delete_doc (j1_doc);
-	    }
-	  return error_code;
-	}
-    }
-  else if (j2->domain.general_info.type == DB_TYPE_JSON)
-    {
-      j2_doc = j2->data.json.document;
-    }
-
-  if (j1_doc != NULL && j2_doc != NULL && db_json_get_type (j1_doc) == db_json_get_type (j2_doc))
-    {
-      db_json_copy_doc (doc_aux, j1_doc);
-
-      if (db_json_get_type (j1_doc) == DB_JSON_OBJECT)
-	{
-	  assert (db_json_get_type (j2_doc) == DB_JSON_OBJECT);
-
-	  db_json_merge_two_json_objects (doc_aux, j2_doc);
-	}
-      else if (db_json_get_type (j1_doc) == DB_JSON_ARRAY)
-	{
-	  assert (db_json_get_type (j2_doc) == DB_JSON_ARRAY);
-
-	  db_json_merge_two_json_arrays (doc_aux, j2_doc);
-	}
-      else
-	{
-	  db_json_merge_two_json_by_array_wrapping (doc_aux, j2_doc);
-	}
-    }
-  else if (j1_doc != NULL && j2_doc != NULL)
-    {
-      db_json_copy_doc (doc_aux, j1_doc);
-      db_json_merge_two_json_by_array_wrapping (doc_aux, j2_doc);
-    }
-  else
-    {
-      return ER_INVALID_JSON;
-    }
-
-  db_json_copy_doc (doc, doc_aux);
-  db_json_delete_doc (doc_aux);
-
-  if (j1->domain.general_info.type == DB_TYPE_CHAR)
-    {
-      db_json_delete_doc (j1_doc);
-    }
-
-  if (j2->domain.general_info.type == DB_TYPE_CHAR)
-    {
-      db_json_delete_doc (j2_doc);
-    }
-
+  str = db_json_get_raw_json_body_from_document (accumulator);
+  db_make_json (result, str, accumulator, true);
   return NO_ERROR;
 }
 

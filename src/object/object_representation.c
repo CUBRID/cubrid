@@ -8808,7 +8808,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
 }
 
 int
-or_put_json_schema (OR_BUF * buf, char *schema)
+or_put_json_schema (OR_BUF * buf, const char *schema)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
   int rc;

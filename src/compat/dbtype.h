@@ -444,6 +444,8 @@
 
 #define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
 
+#define DB_GET_JSON_DOCUMENT(value) db_get_json_document (value)
+
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
 #define DB_INT16_MAX   0x7FFF
 #define DB_UINT16_MAX  0xFFFFU
@@ -872,7 +874,7 @@ typedef struct db_json DB_JSON;
 struct db_json
 {
   char *json_body;
-  char *schema_raw;
+  const char *schema_raw;
   JSON_DOC *document;
 };
 
@@ -1295,6 +1297,7 @@ extern "C"
   extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
   extern int db_get_enum_codeset (const DB_VALUE * value);
   extern int db_get_enum_collation (const DB_VALUE * value);
+  extern JSON_DOC *db_get_json_document (const DB_VALUE * value);
 
 #ifdef __cplusplus
 }

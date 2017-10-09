@@ -17466,7 +17466,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       else
 	{
 	  json_obj->json_body = db_private_strdup (NULL, json_body.data.ch.medium.buf);
-	  json_obj->document = db_json_get_json_from_str (json_body.data.ch.medium.buf, rc);
+	  rc = db_json_get_json_from_str (json_body.data.ch.medium.buf, json_obj->document);
 	  if (rc != NO_ERROR)
 	    {
 	      assert (false);
@@ -17499,10 +17499,6 @@ mr_freemem_json (void *memptr)
 	{
 	  db_private_free_and_init (NULL, cur->json_body);
 	  db_json_delete_doc (cur->document);
-	  if (cur->schema_raw != NULL)
-	    {
-	      db_private_free_and_init (NULL, cur->schema_raw);
-	    }
 	}
     }
 }
@@ -17649,13 +17645,15 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
     }
   else
     {
-      db_make_json (value,
-		    db_private_strdup (NULL, json_body.data.ch.medium.buf),
-		    db_json_get_json_from_str (json_body.data.ch.medium.buf, rc), true);
+      JSON_DOC *doc = NULL;
+      rc = db_json_get_json_from_str (json_body.data.ch.medium.buf, doc);
+
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
+
+      db_make_json (value, db_private_strdup (NULL, json_body.data.ch.medium.buf), doc, true);
     }
 
   if (DB_GET_STRING_SIZE (&schema_raw) > 0)

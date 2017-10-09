@@ -1537,6 +1537,6 @@ extern int classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * 
 extern int or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator));
 extern int or_put_json_validator (OR_BUF * buf, JSON_VALIDATOR * validator);
 extern int or_get_json_schema (OR_BUF * buf, REFPTR (char, schema));
-extern int or_put_json_schema (OR_BUF * buf, char *schema);
+extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 #endif
 #endif /* _OBJECT_REPRESENTATION_H_ */

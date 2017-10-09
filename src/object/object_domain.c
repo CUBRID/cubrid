@@ -7702,6 +7702,16 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_ENUMERATION:
 	  db_make_int (target, DB_GET_ENUM_SHORT (src));
 	  break;
+	case DB_TYPE_JSON:
+	  if (db_json_get_type (DB_GET_JSON_DOCUMENT (src)) == DB_JSON_INT)
+	    {
+	      db_make_int (target, db_json_get_int_from_document (DB_GET_JSON_DOCUMENT (src)));
+	    }
+	  else
+	    {
+	      status = DOMAIN_INCOMPATIBLE;
+	    }
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -7977,6 +7987,16 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  }
 	case DB_TYPE_ENUMERATION:
 	  db_make_double (target, (double) DB_GET_ENUM_SHORT (src));
+	  break;
+	case DB_TYPE_JSON:
+	  if (db_json_get_type (DB_GET_JSON_DOCUMENT (src)) == DB_JSON_DOUBLE)
+	    {
+	      db_make_double (target, db_json_get_double_from_document (DB_GET_JSON_DOCUMENT (src)));
+	    }
+	  else
+	    {
+	      status = DOMAIN_INCOMPATIBLE;
+	    }
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
@@ -10052,9 +10072,15 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    const char *json_str;
 	    int len;
 
-	    json_str = db_json_get_raw_json_body_from_document (src->data.json.document);
+	    if (db_json_get_type (DB_GET_JSON_DOCUMENT (src)) == DB_JSON_STRING)
+	      {
+		json_str = db_private_strdup (NULL, db_json_get_string_from_document (DB_GET_JSON_DOCUMENT (src)));
+	      }
+	    else
+	      {
+		json_str = db_json_get_raw_json_body_from_document (DB_GET_JSON_DOCUMENT (src));
+	      }
 	    len = strlen (json_str);
-
 	    err = DB_MAKE_CHAR (target, len, json_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
 
 	    if (err != NO_ERROR)
@@ -10480,7 +10506,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    char *str;
 	    JSON_DOC *doc = NULL;
 
-	    doc = db_json_get_json_from_str (DB_GET_STRING (src), error_code);
+	    error_code = db_json_get_json_from_str (DB_GET_STRING (src), doc);
 	    if (error_code != NO_ERROR)
 	      {
 		assert (doc == NULL);

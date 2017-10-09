@@ -5170,8 +5170,8 @@ db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res)
     }
   else
     {
-      int valid = db_json_is_valid (json->data.ch.medium.buf);
-      return DB_MAKE_INT (type_res, valid);
+      bool valid = db_json_is_valid (json->data.ch.medium.buf);
+      return DB_MAKE_INT (type_res, (int) valid);
     }
 }
 
@@ -5217,45 +5217,11 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
     {
       json_body = db_json_get_raw_json_body_from_document (result_doc);
       db_make_json (json_res, json_body, result_doc, true);
-
-      return NO_ERROR;
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
+      DB_MAKE_NULL (json_res);
     }
-}
-
-int
-db_json_search_dbval (const DB_VALUE * json, const DB_VALUE * one_or_all, const DB_VALUE * search_str, DB_VALUE * res)
-{
-  int one_or_all_bool;
-  JSON_DOC *doc;
-  char *json_body;
-
-  if (DB_IS_NULL (json) || DB_IS_NULL (one_or_all) || DB_IS_NULL (search_str))
-    {
-      return DB_MAKE_NULL (res);
-    }
-
-  if (strcmp (one_or_all->data.ch.medium.buf, "one") == 0)
-    {
-      one_or_all_bool = 0;
-    }
-  else if (strcmp (one_or_all->data.ch.medium.buf, "all") == 0)
-    {
-      one_or_all_bool = 1;
-    }
-  else
-    {
-      return ER_PT_SEMANTIC;
-    }
-
-  doc = db_json_get_paths_for_search_func (json->data.json.document, search_str->data.ch.medium.buf, one_or_all_bool);
-  json_body = db_json_get_raw_json_body_from_document (doc);
-
-  db_make_json (res, json_body, doc, true);
 
   return NO_ERROR;
 }

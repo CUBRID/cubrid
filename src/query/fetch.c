@@ -296,7 +296,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_CONV:
-    case T_JSON_SEARCH:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
 	  goto error;
@@ -661,6 +660,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  goto error;
 	}
       break;
+    case T_JSON_SEARCH:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
+      goto error;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       goto error;
@@ -2630,12 +2632,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
     case T_JSON_DEPTH:
       if (qdata_json_depth_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-    case T_JSON_SEARCH:
-      if (qdata_json_search_dbval (peek_left, peek_right, peek_third, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}

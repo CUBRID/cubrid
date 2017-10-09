@@ -3507,8 +3507,10 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       if (value->info.data_type.json_schema)
 	{
 	  int len = value->info.data_type.json_schema->length;
-	  db_value->data.json.schema_raw = (char *) db_private_alloc (NULL, (size_t) (len + 1));
-	  strcpy (db_value->data.json.schema_raw, (const char *) value->info.data_type.json_schema->bytes);
+	  char *schm = (char *) db_private_alloc (NULL, (size_t) (len + 1));
+
+	  strcpy (schm, (const char *) value->info.data_type.json_schema->bytes);
+	  db_value->data.json.schema_raw = schm;
 	}
       else
 	{
