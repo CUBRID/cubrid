@@ -26,21 +26,12 @@
 #define EXTENSIBLE_ARRAY_HPP_
 
 #include <memory>
-#include <vector>
-#include <array>
-
-/* for debug */
-#include <iostream>
 
 /* extensible_array -
  *
  *    A Contiguous Container with static initial size that can be dynamically extended if need be. The purpose was to
- *    provide an useful tool to store data varying in size and handling memory needs automatically (which was often
- *    handled manually).
- *
- *    It is designed to be used with both C++ Contiguous Containers (array, basic_string, vector) and C style dynamic
- *    arrays. C style dynamic arrays are deemed unsafe (since bounds are not automatically checked), however is needed
- *    for all the legacy code.
+ *    provide a tool to store data varying in size and handling memory needs automatically (which was often handled
+ *    manually), with the best performance when static size is not exceeded.
  *
  *
  * When to use:
@@ -104,9 +95,9 @@
  *        extensible_array<char, BUF_SIZE, db_private_allocator<char> > buffer(char_private_allocator);
  *
  *    2. append the required buffer.
- *        buffer.append_unsafe (REINTERPRET_CAST (char *, &header), sizeof (header));
- *        buffer.append_unsafe (page_ptr, size_of_data);  // size_of_data can vary from 0 to 16k, but will usually be
- *                                                        // small enough
+ *        buffer.append (REINTERPRET_CAST (char *, &header), sizeof (header));
+ *        buffer.append (page_ptr, size_of_data);  // size_of_data can vary from 0 to 16k, but will usually be
+ *                                                 // small enough
  *
  *    3. resources are freed automatically once variable scope ends.
  *
@@ -144,48 +135,32 @@ template <typename T, size_t Size, typename Allocator = std::allocator<T> >
 class extensible_array
 {
 public:
-  extensible_array (Allocator & allocator = NULL, size_t max_size = 0);
+  extensible_array (Allocator & allocator, size_t max_size = 0);
 
   ~extensible_array ();
 
-  /* append and copy with start and end iterators. use it when the intention is to avoid 
-   */
-  template <typename It>
-  inline int append (const It & first, const It & last);
-  template <typename It>
-  inline int copy (const It & first, const It & last);
-
-  template <typename It>
-  inline int append (const It& it);
-  template <typename It>
-  inline int copy (const It& it);
-
-  /* C-style append & copy. they are declared unsafe and is recommended to avoid them (not always possible because of
-   * legacy code. */
-  inline int append_unsafe (const T* source, size_t length);
-  inline int copy_unsafe (const T* source, size_t length);
+  inline int append (const T* source, size_t length);
+  inline int copy (const T* source, size_t length);
 
   inline const T* get_data (void) const;
-
   inline size_t get_size (void) const;
+  inline size_t get_memsize (void) const;
 
 private:
 
   inline int check_resize (size_t size);
-
   inline size_t get_capacity (void);
-
   /* extension should theoretically be rare, so don't inline them */
   int extend (size_t size);
-
   inline void reset (void);
-
   inline void clear (void);
+  inline T* end (void);
 
   Allocator & m_allocator;
-  std::vector<T, Allocator> *m_dynamic_data;
-  std::array<T, Size> m_static_data;
+  T *m_dynamic_data;
+  T m_static_data[Size];
   size_t m_size;
+  size_t m_capacity;
   size_t m_max_size;
 };
 

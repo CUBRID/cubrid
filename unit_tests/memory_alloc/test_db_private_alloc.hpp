@@ -20,6 +20,11 @@
 #ifndef _TEST_DB_PRIVATE_ALLOC_HPP_
 #define _TEST_DB_PRIVATE_ALLOC_HPP_
 
-int test_db_private_alloc ();
+namespace test_memalloc
+{
+
+int test_db_private_alloc (void);
+
+}  // namespace test_memalloc
 
 #endif // !_TEST_DB_PRIVATE_ALLOC_HPP_

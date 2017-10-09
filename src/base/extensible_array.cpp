@@ -25,11 +25,193 @@
 #include "extensible_array.hpp"
 
 #include <cassert>
+#include <cstring>
 
 #include "db_private_allocator.hpp"
+//#include "error_manager.h"
 
 const size_t XARR_SIZE_64 = 64;
 const size_t XARR_SIZE_ONE_K = 1024;
+
+/************************************************************************/
+/* extensible_array                                                     */
+/************************************************************************/
+
+template<typename T, size_t Size, typename Allocator>
+inline extensible_array<T, Size, Allocator>::extensible_array (Allocator & allocator, size_t max_size)
+  : m_allocator (allocator)
+{
+  m_dynamic_data = NULL;
+  m_size = 0;
+  m_capacity = Size;
+  m_max_size = max_size;
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline extensible_array<T, Size, Allocator>::~extensible_array ()
+{
+  clear ();
+}
+
+/* C-style append & copy. they are declared unsafe and is recommended to avoid them (not always possible because of
+* legacy code. */
+template<typename T, size_t Size, typename Allocator>
+inline int
+extensible_array<T, Size, Allocator>::append (const T * source, size_t length)
+{
+  int err = check_resize (m_size + length);
+  if (err != 0)
+    {
+      return err;
+    }
+  std::memcpy ((m_dynamic_data != NULL ? m_dynamic_data : m_static_data) + m_size, source, length * sizeof (T));
+  m_size += length;
+
+  return 0;
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline int
+extensible_array<T, Size, Allocator>::copy (const T * source, size_t length)
+{
+  reset ();
+  return append (source, length);
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline const T *
+extensible_array<T, Size, Allocator>::get_data (void) const
+{
+  return m_dynamic_data != NULL ? m_dynamic_data : m_static_data;
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline size_t
+extensible_array<T, Size, Allocator>::get_size (void) const
+{
+  return m_size;
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline size_t
+extensible_array<T, Size, Allocator>::get_memsize (void) const
+{
+  return m_size * sizeof (T);
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline int
+extensible_array<T, Size, Allocator>::check_resize (size_t size)
+{
+  if (size <= get_capacity ())
+    {
+      /* no resize */
+      return 0;
+    }
+
+  return extend (size);
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline size_t
+extensible_array<T, Size, Allocator>::get_capacity (void)
+{
+  return m_capacity;
+}
+
+/* extension should theoretically be rare, so don't inline them */
+template<typename T, size_t Size, typename Allocator>
+inline int
+extensible_array<T, Size, Allocator>::extend (size_t size)
+{
+  if (m_max_size > 0 && m_max_size < size)
+    {
+      /* this increased too much */
+      return -1;
+    }
+
+  size_t new_capacity = get_capacity ();
+  while (new_capacity < size)
+    {
+      /* double capacity */
+      new_capacity *= 2;
+    }
+
+  if (m_dynamic_data == NULL)
+    {
+      m_dynamic_data = m_allocator.allocate (new_capacity * sizeof (T));
+      if (m_dynamic_data == NULL)
+        {
+          /* todo: handle private allocator errors */
+          return -1;
+        }
+      if (m_size > 0)
+        {
+          std::memcpy (m_dynamic_data, m_static_data, m_size * sizeof (T));
+        }
+    }
+  else
+    {
+      /* realloc */
+      T* new_dynamic_data = m_allocator.allocate (new_capacity * sizeof (T));
+      if (new_dynamic_data == NULL)
+        {
+          /* todo: handle private allocator errors */
+          return -1;
+        }
+      std::memcpy (new_dynamic_data, m_dynamic_data, m_size * sizeof (T));
+      clear ();
+      m_dynamic_data = new_dynamic_data;
+    }
+
+  m_capacity = new_capacity;
+  return 0;
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline void extensible_array<T, Size, Allocator>::reset (void)
+{
+  m_size = 0;
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline void extensible_array<T, Size, Allocator>::clear (void)
+{
+  if (m_dynamic_data != NULL)
+    {
+      m_allocator.deallocate (m_dynamic_data, m_capacity);
+    }
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline T *
+extensible_array<T, Size, Allocator>::end (void)
+{
+  return (m_dynamic_data != NULL ? m_dynamic_data : m_static_data) + m_size;
+}
+
+/************************************************************************/
+/* Character-only functions                                             */
+/************************************************************************/
+
+template <size_t Size, typename Allocator>
+inline int xarr_char_append_string (extensible_array<char, Size, Allocator> & buffer, const char *str, size_t length)
+{
+  assert (str != NULL);
+
+  if (length == 0)
+    {
+      length = strlen (str) + 1;
+    }
+
+  return buffer.append (str, length);
+}
+
+template <class T, size_t Size, typename Allocator>
+inline int xarr_char_append_object (extensible_array<char, Size, Allocator> & buffer, const T & to_append)
+{
+  return buffer.append (reinterpret_cast<const char *> (&to_append), sizeof (to_append));
+}
 
 /************************************************************************/
 /* Predefined specializations                                           */
@@ -48,197 +230,3 @@ typedef class extensible_array<int, XARR_SIZE_64> xarr_int_64;
 typedef class extensible_array<int, XARR_SIZE_ONE_K> xarr_int_1k;
 typedef class extensible_array<int, XARR_SIZE_64, db_private_allocator<int> > xarr_int_64_private;
 typedef class extensible_array<int, XARR_SIZE_ONE_K, db_private_allocator<int> > xarr_int_1k_private;
-
-/************************************************************************/
-/* extensible_array                                                     */
-/************************************************************************/
-
-template<typename T, size_t Size, typename Allocator>
-inline extensible_array<T, Size, Allocator>::extensible_array (Allocator & allocator, size_t max_size)
-{
-  m_dynamic_data = NULL;
-  m_allocator = allocator;
-  m_size = 0;
-  m_max_size = max_size;
-}
-
-template<typename T, size_t Size, typename Allocator>
-inline extensible_array<T, Size, Allocator>::~extensible_array ()
-{
-  clear ();
-}
-
-/* C-style append & copy. they are declared unsafe and is recommended to avoid them (not always possible because of
-* legacy code. */
-template<typename T, size_t Size, typename Allocator>
-inline int extensible_array<T, Size, Allocator>::append_unsafe (const T * source, size_t length)
-{
-  return append (source, source + length);
-}
-
-template<typename T, size_t Size, typename Allocator>
-inline int extensible_array<T, Size, Allocator>::copy_unsafe (const T * source, size_t length)
-{
-  reset ();
-  return append_unsafe (source, length);
-}
-
-template<typename T, size_t Size, typename Allocator>
-inline const T * extensible_array<T, Size, Allocator>::get_data (void) const
-{
-  return m_dynamic_data != NULL ? m_dynamic_data->data () : m_static_data.data ();
-}
-
-template<typename T, size_t Size, typename Allocator>
-inline size_t extensible_array<T, Size, Allocator>::get_size (void) const
-{
-  return m_size;
-}
-
-template<typename T, size_t Size, typename Allocator>
-inline int extensible_array<T, Size, Allocator>::check_resize (size_t size)
-{
-  if (size <= get_capacity ())
-    {
-      /* no resize */
-      return 0;
-    }
-
-  return extend (size);
-}
-
-template<typename T, size_t Size, typename Allocator>
-inline size_t extensible_array<T, Size, Allocator>::get_capacity (void)
-{
-  return m_dynamic_data != NULL ? m_dynamic_data->capacity () : Size;
-}
-
-/* extension should theoretically be rare, so don't inline them */
-template<typename T, size_t Size, typename Allocator>
-inline int extensible_array<T, Size, Allocator>::extend (size_t size)
-{
-  std::cout << "extend " << size << std::endl;
-
-  if (m_max_size > 0 && m_max_size < size)
-    {
-    /* this increased too much */
-    return -1;
-    }
-
-  /* no dynamic allocation */
-  if (m_allocator == NULL)
-    {
-    return -1;
-    }
-
-  size_t new_capacity = get_capacity ();
-  while (new_capacity < size)
-    {
-    /* double capacity */
-    new_capacity *= 2;
-    }
-
-  if (m_dynamic_data == NULL)
-    {
-    m_dynamic_data = new std::vector<T, Allocator> (new_capacity, *m_allocator);
-    if (m_dynamic_data == NULL)
-      {
-      /* todo: handle private allocator errors */
-      return -1;
-      }
-    if (m_size > 0)
-      {
-      std::copy (&m_static_data[0], &m_static_data[m_size], m_dynamic_data->begin ());
-      }
-    }
-  else
-    {
-    m_dynamic_data->resize (new_capacity);
-    /* todo: handle private allocator errors */
-    }
-  return 0;
-}
-
-template<typename T, size_t Size, typename Allocator>
-inline void extensible_array<T, Size, Allocator>::reset (void)
-{
-  m_size = 0;
-}
-
-template<typename T, size_t Size, typename Allocator>
-inline void extensible_array<T, Size, Allocator>::clear (void)
-{
-  delete m_dynamic_data;
-}
-
-/* append and copy with start and end iterators. use it when the intention is to avoid
-*/
-template<typename T, size_t Size, typename Allocator>
-template<typename It>
-inline int extensible_array<T, Size, Allocator>::append (const It & first, const It & last)
-{
-  assert (first < last);
-
-  size_t diff = last - first;
-  int err = check_resize (m_size + diff);
-  if (err != 0)
-    {
-      return err;
-    }
-  if (m_dynamic_data != NULL)
-    {
-      std::copy (first, last, m_dynamic_data->begin () + m_size);
-    }
-  else
-    {
-      std::copy (first, last, m_static_data.begin () + m_size);
-    }
-  m_size += diff;
-  return 0;
-}
-
-template<typename T, size_t Size, typename Allocator>
-template<typename It>
-inline int extensible_array<T, Size, Allocator>::copy (const It & first, const It & last)
-{
-  reset ();
-  return append (first, last);
-}
-
-template<typename T, size_t Size, typename Allocator>
-template<typename It>
-inline int extensible_array<T, Size, Allocator>::append (const It & it)
-{
-  return append (it.cbegin (), it.cend ());
-}
-
-template<typename T, size_t Size, typename Allocator>
-template<typename It>
-inline int extensible_array<T, Size, Allocator>::copy (const It & it)
-{
-  reset ();
-  return append (it);
-}
-
-/************************************************************************/
-/* Character-only functions                                             */
-/************************************************************************/
-
-template <size_t Size, typename Allocator>
-inline int xarr_char_append_string (extensible_array<char, Size, Allocator> & buffer, const char *str, size_t length)
-{
-  assert (str != NULL);
-
-  if (length == 0)
-    {
-      length = strlen (str) + 1;
-    }
-
-  return buffer.append_unsafe (str, length);
-}
-
-template <class T, size_t Size, typename Allocator>
-inline int xarr_char_append_object (extensible_array<char, Size, Allocator> & buffer, const T & to_append)
-{
-  return buffer.append_unsafe (reinterpret_cast<const char *> (&to_append), sizeof (to_append));
-}

@@ -21,11 +21,14 @@
 
 set (TEST_MEMORY_ALLOC_SOURCES
   test_db_private_alloc.cpp
+  test_extensible_array.cpp
   test_main.cpp
+  test_memory_alloc_helper.cpp
   )
 if(WIN32)
 set (TEST_MEMORY_ALLOC_HEADERS
   test_db_private_alloc.hpp
+  test_extensible_array.hpp
   test_memory_alloc_helper.hpp
   )
 endif(WIN32)

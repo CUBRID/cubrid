@@ -22,10 +22,14 @@
 
 #include <iostream>
 #include <chrono>
-#include <cassert>
+#include <vector>
 #include <cstring>
+#include <iomanip>
 
 #include "db_private_allocator.hpp"
+
+namespace test_memalloc
+{
 
 /************************************************************************/
 /* helpers                                                              */
@@ -52,41 +56,13 @@ custom_assert (bool cond)
 class custom_thread_entry
 {
 public:
-  custom_thread_entry ()
-    {
-      memset (&m_thread_entry, 0, sizeof (m_thread_entry));
-
-      m_thread_entry.private_heap_id = db_create_private_heap ();
-      thread_rc_track_initialize (&m_thread_entry);
-
-      start_resource_tracking ();
-    }
-
-  ~custom_thread_entry ()
-  {
-    assert (m_thread_entry.count_private_allocators == 0);
-    check_resource_leaks ();
-
-    db_clear_private_heap (&m_thread_entry, m_thread_entry.private_heap_id);
-    thread_rc_track_finalize (&m_thread_entry);
-  }
-
-  THREAD_ENTRY * get_thread_entry ()
-  {
-    return &m_thread_entry;
-  }
-
-  void check_resource_leaks (void)
-  {
-    thread_rc_track_exit (&m_thread_entry, m_rc_track_id);
-  }
+  custom_thread_entry ();
+  ~custom_thread_entry ();
+  THREAD_ENTRY * get_thread_entry ();
+  void check_resource_leaks (void);
 
 private:
-
-  void start_resource_tracking (void)
-  {
-    m_rc_track_id = thread_rc_track_enter (&m_thread_entry);
-  }
+  void start_resource_tracking (void);
 
   THREAD_ENTRY m_thread_entry;
   int m_rc_track_id;
@@ -96,6 +72,9 @@ template <typename Units>
 class timer
 {
 public:
+  /************************************************************************/
+  /* timer                                                                */
+  /************************************************************************/
   inline timer ()
   {
     reset ();
@@ -169,8 +148,10 @@ typedef enum test_allocator_type
   ALLOC_TYPE_PRIVATE,
   ALLOC_TYPE_STANDARD,
   ALLOC_TYPE_MALLOC,
-  ALLOC_TYPE_COUNT
+  COUNT
 } test_allocator_type;
+
+const char *enum_stringify_value (test_allocator_type alloc_type);
 
 /* Generic functions to allocate an allocator with thread entry argument. */
 template <typename T>
@@ -197,8 +178,8 @@ init_allocator (custom_thread_entry & cte, db_private_allocator<T> *& alloc, tes
 
 /* generic interface to collect results for all allocators and print them */
 
-const char *DECIMAL_SEPARATOR = ".";
-const char *TIME_UNIT = " usec";
+extern const char *DECIMAL_SEPARATOR;
+extern const char *TIME_UNIT;
 
 const size_t TEST_RESULT_NAME_PRINT_LENGTH = 20;
 const size_t TEST_RESULT_VALUE_PRINT_LENGTH = 8;
@@ -207,53 +188,68 @@ const size_t TEST_RESULT_VALUE_TOTAL_LENGTH =
   TEST_RESULT_VALUE_PRINT_LENGTH + TEST_RESTUL_VALUE_PRECISION_LENGTH + std::strlen (DECIMAL_SEPARATOR)
   + std::strlen (TIME_UNIT);
 
-/* Collect runtime statistics */
-template <size_t Size>
-class test_result
+/*  Collect runtime timer statistics with various scenarios and compare results.
+ *  Must provide an enumerator with values from 0 to COUNT for each scenario.
+ *
+ *  An automatic warning system is implemented. First scenario (with enumerator value 0) is considered to be the tested
+ *  target, which should have smaller times than other scenarios.
+ *
+ *  How to use:
+ *
+ *      To be provided.
+ */
+template <typename E>
+class test_comparative_results
 {
 public:
-  typedef std::array<const char *, Size> name_container_type;
+  typedef std::vector<const char *> name_container_type;
   typedef unsigned long long value_type;
-  typedef std::array<value_type, Size> value_container_type;
+  typedef std::vector<value_type> value_container_type;
   
-  test_result (const name_container_type & result_names)
+  test_comparative_results (const name_container_type & step_names)
   {
-    m_names = result_names;
+    m_step_names = step_names; /* copy names */
 
     /* init all values */
-    for (unsigned alloc_type = 0; alloc_type < ALLOC_TYPE_COUNT; alloc_type++)
+    m_enum_count = static_cast<size_t> (E::COUNT);
+    m_values.resize (m_enum_count);
+    for (size_t enum_val = 0; enum_val < m_enum_count; enum_val++)
       {
-        for (size_t val_index = 0; val_index < Size; val_index++)
+        m_values[enum_val].reserve (m_step_names.size ());
+        for (size_t val_index = 0; val_index < m_step_names.size (); val_index++)
           {
-            m_values[alloc_type].at(val_index) = 0;
+            m_values[enum_val].push_back (0);
           }
       }
 
     /* make sure leftmost_column_length is big enough */
     m_leftmost_column_length = TEST_RESULT_NAME_PRINT_LENGTH;
-    for (size_t name_index = 0; name_index < Size; name_index++)
+    size_t name_length;
+    for (auto name_iter = m_step_names.cbegin (); name_iter != m_step_names.cend (); name_iter++)
       {
-        if (strlen (result_names[name_index]) >= m_leftmost_column_length)
+        name_length = strlen (*name_iter) + 1;
+        if (name_length > m_leftmost_column_length)
           {
-            m_leftmost_column_length = strlen (result_names[name_index]) + 1;
+            m_leftmost_column_length = name_length;
           }
       }
   }
 
   inline void
-  register_time (us_timer & timer, test_allocator_type alloc_type, size_t index)
+  register_time (us_timer & timer, E enum_val, size_t step_index)
   {
     value_type time = timer.time_and_reset ().count ();
+    size_t enum_index = static_cast <size_t> (enum_val);
 
     /* can be called concurrently, so use atomic inc */
-    (void) ATOMIC_INC_64 (&m_values[alloc_type][index], time);
+    (void) ATOMIC_INC_64 (&m_values[enum_index][step_index], time);
   }
 
   void
   print_results (std::ostream & output)
   {
     print_result_header (output);
-    for (size_t row = 0; row < Size; row++)
+    for (size_t row = 0; row < m_step_names.size (); row++)
       {
         print_result_row (row, output);
       }
@@ -264,7 +260,7 @@ public:
   print_warnings (std::ostream & output)
   {
     bool no_warnings = true;
-    for (size_t row = 0; row < Size; row++)
+    for (size_t row = 0; row < m_step_names.size (); row++)
       {
         check_row_and_print_warning (row, no_warnings, output);
       }
@@ -281,9 +277,15 @@ public:
     print_warnings (output);
   }
 
+  size_t
+  get_step_count (void)
+  {
+    return m_step_names.size ();
+  }
+
 private:
-  test_result (); // prevent implicit constructor
-  test_result (const test_result& other); // prevent copy
+  test_comparative_results (); // prevent implicit constructor
+  test_comparative_results (const test_comparative_results& other); // prevent copy
 
   void
   print_value (value_type value, std::ostream & output)
@@ -312,19 +314,23 @@ private:
   print_result_header (std::ostream & output)
   {
     print_leftmost_column ("Results", output);
-    print_alloc_name_column ("Private", output);
-    print_alloc_name_column ("Standard", output);
-    print_alloc_name_column ("Malloc", output);
+
+    for (unsigned iter = 0; iter < m_enum_count; iter++)
+      {
+        print_alloc_name_column (enum_stringify_value (static_cast <E> (iter)), output);
+      }
     output << std::endl;
   }
 
   inline void
   print_result_row (size_t row, std::ostream & output)
   {
-    print_leftmost_column (m_names[row], output);
-    print_value (m_values[ALLOC_TYPE_PRIVATE][row], output);
-    print_value (m_values[ALLOC_TYPE_STANDARD][row], output);
-    print_value (m_values[ALLOC_TYPE_MALLOC][row], output);
+    print_leftmost_column (m_step_names[row], output);
+
+    for (unsigned iter = 0; iter < m_enum_count; iter++)
+      {
+        print_value (m_values[iter][row], output);
+      }
     output << std::endl;
   }
 
@@ -348,7 +354,7 @@ private:
         return;
       }
     print_warning_header (no_warnings, output);
-    print_leftmost_column (m_names[row], output);
+    print_leftmost_column (m_step_names[row], output);
     if (slower_than_standard && slower_than_malloc)
       {
         output << "Private is slower than both Standard and Malloc";
@@ -364,9 +370,10 @@ private:
     output << std::endl;
   }
 
-  name_container_type m_names;
-  value_container_type m_values[ALLOC_TYPE_COUNT];
+  name_container_type m_step_names;
+  std::vector<value_container_type> m_values;
   size_t m_leftmost_column_length;
+  size_t m_enum_count;
 };
 
 /* run test and wrap with formatted text */
@@ -413,4 +420,5 @@ run_parallel (Func && f, Args &&... args)
   std::cout << std::endl;
 }
 
+} // namespace test_memalloc
 #endif // !_TEST_MEMORY_ALLOC_HELPER_HPP_
