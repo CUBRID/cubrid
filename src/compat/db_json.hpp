@@ -114,6 +114,7 @@ db_json_convert_string_and_call (const char *json_raw, Fn &&func, Args &&... arg
 
   return func (doc, std::forward<Args> (args)...);
 }
+
 #endif /* defined (__cplusplus) */
 
 #endif /* db_json.hpp */

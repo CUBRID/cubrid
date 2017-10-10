@@ -46,6 +46,10 @@ class JSON_PRIVATE_ALLOCATOR
     void *Malloc (size_t size);
     void *Realloc (void *originalPtr, size_t originalSize, size_t newSize);
     static void Free (void *ptr);
+
+    JSON_PRIVATE_ALLOCATOR();
+  private:
+    THREAD_ENTRY *thread_p;
 };
 
 typedef rapidjson::UTF8 <> JSON_ENCODING;
@@ -244,7 +248,7 @@ JSON_PRIVATE_ALLOCATOR::Malloc (size_t size)
 {
   if (size)			//  behavior of malloc(0) is implementation defined.
     {
-      return db_private_alloc (NULL, size);
+      return db_private_alloc (thread_p, size);
     }
   else
     {
@@ -258,10 +262,10 @@ JSON_PRIVATE_ALLOCATOR::Realloc (void *originalPtr, size_t originalSize, size_t 
   (void) originalSize;
   if (newSize == 0)
     {
-      db_private_free (NULL, originalPtr);
+      db_private_free (thread_p, originalPtr);
       return NULL;
     }
-  return db_private_realloc (NULL, originalPtr, newSize);
+  return db_private_realloc (thread_p, originalPtr, newSize);
 }
 
 void
@@ -386,7 +390,7 @@ db_json_value_get_depth (const JSON_VALUE *doc)
 }
 
 int
-db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path, JSON_DOC*&result)
+db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path, JSON_DOC *&result)
 {
   JSON_POINTER p (raw_path);
   JSON_VALUE *resulting_json;
@@ -769,7 +773,7 @@ void db_json_delete_doc (JSON_DOC *&doc)
 }
 
 int
-db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR*&validator)
+db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR *&validator)
 {
   assert (validator == NULL);
 
@@ -896,4 +900,9 @@ db_json_get_string_from_document (const JSON_DOC *doc)
 bool JSON_DOC::IsLeaf()
 {
   return !IsArray() && !IsObject();
+}
+
+JSON_PRIVATE_ALLOCATOR::JSON_PRIVATE_ALLOCATOR()
+{
+  thread_p = thread_get_thread_entry_info ();
 }
