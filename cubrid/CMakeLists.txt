@@ -289,7 +289,10 @@ install(FILES
   ${COMPAT_DIR}/dbtype_common.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
   )
-
+install(FILES
+  ${BASE_DIR}/error_code.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  )  
 
 # install pdb files for debugging on windows
 if(WIN32)

@@ -28,6 +28,8 @@
 #ifndef _DBTYPE_COMMON_H_
 #define _DBTYPE_COMMON_H_
 
+#include "error_code.h"
+
 #ifdef __cplusplus
 extern "C"
 {
