@@ -790,7 +790,18 @@ db_json_delete_validator (JSON_VALIDATOR *&validator)
 bool
 db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2)
 {
-  return (strcmp (val1->get_schema_raw(), val2->get_schema_raw()) == 0);
+  if (val1 != NULL && val2 != NULL)
+    {
+      return (strcmp (val1->get_schema_raw(), val2->get_schema_raw()) == 0);
+    }
+  else if (val1 == NULL && val2 == NULL)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
 }
 
 /*

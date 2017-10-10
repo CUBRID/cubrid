@@ -1581,20 +1581,8 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
       break;
 
     case DB_TYPE_JSON:
-      if (dom1->json_validator != NULL && dom2->json_validator != NULL)
-	{
-	  match = (int) db_json_are_validators_equal (dom1->json_validator, dom2->json_validator);
-	}
-      else if (dom1->json_validator == NULL && dom2->json_validator == NULL)
-	{
-	  match = 1;
-	}
-      else
-	{
-	  match = 0;
-	}
+      match = (int) db_json_are_validators_equal (dom1->json_validator, dom2->json_validator);
       break;
-
 
     case DB_TYPE_VOBJ:
     case DB_TYPE_OBJECT:
@@ -2255,18 +2243,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_JSON:
       while (domain)
 	{
-	  if (transient->json_validator != NULL && domain->json_validator != NULL)
-	    {
-	      match = (int) db_json_are_validators_equal (domain->json_validator, transient->json_validator);
-	    }
-	  else if (transient->json_validator == NULL && domain->json_validator == NULL)
-	    {
-	      match = 1;
-	    }
-	  else
-	    {
-	      match = 0;
-	    }
+	  match = (int) db_json_are_validators_equal (transient->json_validator, domain->json_validator);
 
 	  if (match)
 	    {
