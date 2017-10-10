@@ -143,7 +143,7 @@ if(UNIX)
     endif(ENABLE_32BIT AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.3.4)
     
     set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer --std=c++0x")
     set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
@@ -157,7 +157,6 @@ if(UNIX)
   else(CMAKE_COMPILER_IS_GNUCC)
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
   endif(CMAKE_COMPILER_IS_GNUCC)
-  set (CMAKE_CXX_STANDARD 11)
 else(UNIX)
   # turn off LinkIncremental option for release build
   
