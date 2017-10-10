@@ -5129,7 +5129,7 @@ db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, DB_VALUE 
       char *value_str = value->data.ch.medium.buf;
       int has_member, error_code;
 
-      has_member = db_json_object_contains_key (json->data.json.document, value->data.ch.medium.buf, error_code);
+      error_code = db_json_object_contains_key (json->data.json.document, value->data.ch.medium.buf, has_member);
 
       if (error_code != NO_ERROR)
 	{
@@ -5210,8 +5210,15 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
   JSON_DOC *this_doc = json->data.json.document;
   const char *raw_path = path->data.ch.medium.buf;
   char *json_body;
+  JSON_DOC *result_doc = NULL;
+  int error_code;
 
-  JSON_DOC *result_doc = db_json_extract_document_from_path (this_doc, raw_path);
+  error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   if (result_doc != NULL)
     {

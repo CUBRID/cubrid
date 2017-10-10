@@ -385,20 +385,32 @@ db_json_value_get_depth (const JSON_VALUE *doc)
     }
 }
 
-JSON_DOC *
-db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path)
+int
+db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path, JSON_DOC*&result)
 {
   JSON_POINTER p (raw_path);
   JSON_VALUE *resulting_json;
 
-  if (p.IsValid () && (resulting_json = p.Get (*document)) != NULL)
+  if (!p.IsValid ())
     {
-      JSON_DOC *new_doc = new JSON_DOC ();
-      new_doc->CopyFrom (*resulting_json, new_doc->GetAllocator ());
-      return new_doc;
+      result = NULL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
     }
 
-  return NULL;
+  resulting_json = p.Get (*document);
+
+  if (resulting_json != NULL)
+    {
+      result = new JSON_DOC ();
+      result->CopyFrom (*resulting_json, result->GetAllocator ());
+    }
+  else
+    {
+      result = NULL;
+    }
+
+  return NO_ERROR;
 }
 
 char *
@@ -580,20 +592,24 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
   return NO_ERROR;
 }
 
-void
-db_json_remove_func (JSON_DOC *doc, char *raw_path, int &error_code)
+int
+db_json_remove_func (JSON_DOC *doc, char *raw_path)
 {
   JSON_POINTER p (raw_path);
 
-  if (!p.IsValid () || p.Get (*doc) == NULL)
+  if (!p.IsValid ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      error_code = ER_JSON_INVALID_PATH;
-      return;
+      return ER_JSON_INVALID_PATH;
+    }
+
+  if (p.Get (*doc) == NULL)
+    {
+      return NO_ERROR;
     }
 
   p.Erase (*doc);
-  error_code = NO_ERROR;
+  return NO_ERROR;
 }
 
 DB_JSON_TYPE
@@ -706,18 +722,17 @@ db_json_merge_two_json_by_array_wrapping (JSON_DOC *j1, const JSON_DOC *j2)
 }
 
 int
-db_json_object_contains_key (JSON_DOC *obj, const char *key, int &error_code)
+db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result)
 {
-  error_code = NO_ERROR;
 
   if (!obj->IsObject ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
-      error_code = ER_NO_JSON_OBJECT_PROVIDED;
-      return 0;
+      return ER_NO_JSON_OBJECT_PROVIDED;
     }
 
-  return (int) obj->HasMember (key);
+  result = (int) obj->HasMember (key);
+  return NO_ERROR;
 }
 
 const char *
@@ -753,19 +768,22 @@ void db_json_delete_doc (JSON_DOC *&doc)
   doc = NULL;
 }
 
-JSON_VALIDATOR *
-db_json_load_validator (const char *json_schema_raw, int &error_code)
+int
+db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR*&validator)
 {
-  JSON_VALIDATOR *validator = new JSON_VALIDATOR (json_schema_raw);
-  error_code = validator->load ();
+  assert (validator == NULL);
+
+  validator = new JSON_VALIDATOR (json_schema_raw);
+  int error_code = validator->load ();
 
   if (error_code != NO_ERROR)
     {
       delete validator;
-      return NULL;
+      validator = NULL;
+      return error_code;
     }
 
-  return validator;
+  return NO_ERROR;
 }
 
 JSON_VALIDATOR *

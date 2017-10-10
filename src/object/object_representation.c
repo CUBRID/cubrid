@@ -5553,7 +5553,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_JSON:
 		  if (schema_raw != NULL)
 		    {
-		      dom->json_validator = db_json_load_validator (schema_raw, rc);
+		      rc = db_json_load_validator (schema_raw, dom->json_validator);
 		      db_private_free (NULL, schema_raw);
 		      if (rc != NO_ERROR)
 			{
@@ -8763,7 +8763,7 @@ or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
     }
   else
     {
-      validator = db_json_load_validator (str, rc);
+      rc = db_json_load_validator (str, validator);
       if (rc != NO_ERROR)
 	{
 	  assert (validator == NULL);

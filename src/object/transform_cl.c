@@ -2191,7 +2191,7 @@ disk_to_domain2 (OR_BUF * buf)
 	  tp_domain_free (domain);
 	  return NULL;
 	}
-      domain->json_validator = db_json_load_validator (schema_raw, error_code);
+      error_code = db_json_load_validator (schema_raw, domain->json_validator);
 
       if (error_code != NO_ERROR)
 	{

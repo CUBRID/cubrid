@@ -52,7 +52,7 @@ bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-JSON_DOC *db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path);
+int db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path, JSON_DOC*&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
 
@@ -66,27 +66,27 @@ void db_json_add_element_to_array (JSON_DOC *doc, int value);
 void db_json_add_element_to_array (JSON_DOC *doc, double value);
 void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 
-int db_json_get_json_from_str (const char *json_raw, JSON_DOC*&doc);
+int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 void db_json_copy_doc (JSON_DOC *dest, const JSON_DOC *src);
 
 int db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
-void db_json_remove_func (JSON_DOC *doc, char *raw_path, int &error_code);
+int db_json_remove_func (JSON_DOC *doc, char *raw_path);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest);
 
 void db_json_merge_two_json_objects (JSON_DOC *obj1, const JSON_DOC *obj2);
 void db_json_merge_two_json_arrays (JSON_DOC *array1, const JSON_DOC *array2);
 void db_json_merge_two_json_by_array_wrapping (JSON_DOC *j1, const JSON_DOC *j2);
 
-int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &error_code);
+int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result);
 const char *db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val);
 int db_json_validate_json (const char *json_body);
 
-JSON_VALIDATOR *db_json_load_validator (const char *json_schema_raw, int &error_code);
+int db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR*&validator);
 JSON_VALIDATOR *db_json_copy_validator (JSON_VALIDATOR *validator);
 JSON_DOC *db_json_allocate_doc ();
-void db_json_delete_doc (JSON_DOC*&doc);
-void db_json_delete_validator (JSON_VALIDATOR*&validator);
+void db_json_delete_doc (JSON_DOC *&doc);
+void db_json_delete_validator (JSON_VALIDATOR *&validator);
 int db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc);
 bool db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2);
 

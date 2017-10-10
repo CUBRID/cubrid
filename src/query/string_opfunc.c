@@ -3220,7 +3220,11 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 1; i < num_args; i++)
     {
-      db_json_remove_func (new_doc, arg[i]->data.ch.medium.buf, error_code);
+      error_code = db_json_remove_func (new_doc, arg[i]->data.ch.medium.buf);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
     }
 
   str = db_json_get_raw_json_body_from_document (new_doc);
