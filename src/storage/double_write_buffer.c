@@ -2130,9 +2130,21 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
       /* Check whether the volume was removed meanwhile. */
       if (vol_fd != NULL_VOLDES)
 	{
+#if 1				/* TODO - do not delete me */
+	  assert (p_dwb_ordered_slots[i].io_page->prv.pflag_reserve_1 == '\0');
+	  assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_2 == 0);
+	  assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
+#endif
+
 	  /* Write the data. */
 	  if (fileio_write (thread_p, vol_fd, p_dwb_ordered_slots[i].io_page, vpid->pageid, IO_PAGESIZE, true) == NULL)
 	    {
+	      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+		{
+		  _er_log_debug (ARG_FILE_LINE, "DWB write page VPID=(%d, %d) LSA=(%lld,%d) with %d error: \n",
+				 vpid->volid, vpid->pageid, p_dwb_ordered_slots[i].io_page->prv.lsa.pageid,
+				 (int) p_dwb_ordered_slots[i].io_page->prv.lsa.offset, er_errid ());
+		}
 	      /* Something wrong happened. */
 	      return ER_FAILED;
 	    }
@@ -2226,6 +2238,12 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   /* Remove duplicates */
   for (i = 0; i < block->count_wb_pages - 1; i++)
     {
+#if 1				/* TODO - do not delete me */
+      assert (p_dwb_ordered_slots[i].io_page->prv.pflag_reserve_1 == '\0');
+      assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_2 == 0);
+      assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
+#endif
+
       if (VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i + 1].vpid))
 	{
 	  /* Next slot contains the same page, but that page is newer than the current one. Invalidate the VPID to
@@ -2450,6 +2468,12 @@ STATIC_INLINE void
 dwb_set_slot_data (DWB_SLOT * dwb_slot, FILEIO_PAGE * io_page_p)
 {
   assert (dwb_slot != NULL && io_page_p != NULL);
+
+#if 1				/* TODO - do not delete me */
+  assert (io_page_p->prv.pflag_reserve_1 == '\0');
+  assert (io_page_p->prv.p_reserve_2 == 0);
+  assert (io_page_p->prv.p_reserve_3 == 0);
+#endif
 
   if (io_page_p->prv.pageid != NULL_PAGEID)
     {
@@ -3444,6 +3468,8 @@ start:
    * blocks are flushed - the entire DWB.
    */
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+  memset (iopage, 0, IO_MAX_PAGE_SIZE);
+  fileio_initialize_res (thread_p, &(iopage->prv));
   while ((double_Write_Buffer.blocks[current_block_no].count_wb_pages != DWB_BLOCK_NUM_PAGES)
 	 && (block_version == double_Write_Buffer.blocks[current_block_no].version))
     {
