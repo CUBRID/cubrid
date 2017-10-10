@@ -633,7 +633,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DWB_BLOCKS "double_write_buffer_blocks"
 #define PRM_NAME_ENABLE_DWB_FLUSH_THREAD "double_write_buffer_enable_flush_thread"
 #define PRM_NAME_DWB_CHECKSUM_THREADS "double_write_buffer_checksum_threads"
-#define PRM_NAME_ENABLE_LOG "double_write_buffer_enable_log"
+#define PRM_NAME_DWB_ENABLE_LOG "double_write_buffer_enable_log"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -5452,8 +5452,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_ENABLE_LOG,
-   PRM_NAME_ENABLE_LOG,
+  {PRM_ID_DWB_ENABLE_LOG,
+   PRM_NAME_DWB_ENABLE_LOG,
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,
    &prm_enable_dwb_log_flag,

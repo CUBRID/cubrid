@@ -819,7 +819,7 @@ check_dwb_flush_thread_is_running:
 		  goto flush_block;
 		}
 
-	      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
 		  _er_log_debug (ARG_FILE_LINE, "DWB error: Can't flush block = %d having version %lld\n", block_no,
 				 double_Write_Buffer.blocks[block_no].version);
@@ -828,7 +828,7 @@ check_dwb_flush_thread_is_running:
 	      return error_code;
 	    }
 
-	  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "DWB error: Can't flush block = %d having version %lld\n",
 			     block_no, double_Write_Buffer.blocks[block_no].version);
@@ -1698,7 +1698,7 @@ start_slot_hash_insert:
   if (error_code != NO_ERROR || slots_hash_entry == NULL)
     {
       ASSERT_ERROR ();
-      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "DWB hash find/insert key (%d, %d) with %d error: \n", vpid->volid,
 			 vpid->pageid, error_code);
@@ -1718,7 +1718,7 @@ start_slot_hash_insert:
 	      ASSERT_ERROR ();
 	      pthread_mutex_unlock (&slots_hash_entry->mutex);
 
-	      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
 		  _er_log_debug (ARG_FILE_LINE, "DWB hash delete key (%d, %d) with %d error: \n", vpid->volid,
 				 vpid->pageid, error_code);
@@ -1730,7 +1730,7 @@ start_slot_hash_insert:
 	}
       else
 	{
-	  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "DWB hash insert key (%d, %d), the old slot is better than the new one: \n",
 			     vpid->volid, vpid->pageid);
@@ -2184,7 +2184,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  /* Write the data. */
 	  if (fileio_write (thread_p, vol_fd, p_dwb_ordered_slots[i].io_page, vpid->pageid, IO_PAGESIZE, true) == NULL)
 	    {
-	      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
 		  _er_log_debug (ARG_FILE_LINE, "DWB write page VPID=(%d, %d) LSA=(%lld,%d) with %d error: \n",
 				 vpid->volid, vpid->pageid, p_dwb_ordered_slots[i].io_page->prv.lsa.pageid,
@@ -2201,7 +2201,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	    {
 	      /* Should not happen. */
 	      ASSERT_ERROR ();
-	      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
 		  _er_log_debug (ARG_FILE_LINE, "DWB hash find key (%d, %d) with %d error: \n", vpid->volid,
 				 vpid->pageid, error_code);
@@ -2225,7 +2225,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 		  assert_release (false);
 		  /* Should not happen. */
 		  pthread_mutex_unlock (&slots_hash_entry->mutex);
-		  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+		  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		    {
 		      _er_log_debug (ARG_FILE_LINE, "DWB hash delete key (%d, %d) with %d error: \n", vpid->volid,
 				     vpid->pageid, error_code);
@@ -2460,7 +2460,7 @@ start:
 	      return NO_ERROR;
 	    }
 
-	  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%d) \n",
 			     current_block_no, double_Write_Buffer.blocks[current_block_no].version);
@@ -2480,7 +2480,7 @@ start:
 		  goto start;
 		}
 
-	      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
 		  _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %d \n",
 				 error_code, current_block_no, double_Write_Buffer.blocks[current_block_no].version);
@@ -2750,7 +2750,7 @@ dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * 
 						      &checksum_computed);
 	      if (error_code != NO_ERROR)
 		{
-		  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+		  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		    {
 		      _er_log_debug (ARG_FILE_LINE, "DWB error: Can't compute checksum for slot %d in block %d\n",
 				     block->slots[slot_position].position_in_block, block->block_no);
@@ -2778,7 +2778,7 @@ dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * 
 	      /* Check that no other transaction computed the current slot checksum. */
 	      assert (DWB_IS_ADDED_TO_REQUESTED_CHECKSUMS_ELEMENT (element_position, computed_checksum_bits));
 	      DWB_ADD_TO_COMPUTED_CHECKSUMS_ELEMENT (element_position, computed_checksum_bits);
-	      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
 		  _er_log_debug (ARG_FILE_LINE, "Successfully computed checksums for slots %d in block %d\n",
 				 computed_checksum_bits, block->block_no);
@@ -2958,7 +2958,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	      return error_code;
 	    }
 
-	  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "Successfully computed checksums for slots %d in block %d\n",
 			     dwb_slot->position_in_block, dwb_slot->block_no);
@@ -2980,7 +2980,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	  if ((prev_block->version < block->version)
 	      || (prev_block->version == block->version && prev_block->block_no < block->block_no))
 	    {
-	      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
 		  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%d) \n",
 				 prev_block_no, prev_block->version);
@@ -2999,7 +2999,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 		      goto start_flush_block;
 		    }
 
-		  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+		  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		    {
 		      _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %d \n",
 				     error_code, prev_block_no, prev_block->version);
@@ -3041,7 +3041,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	      error_code = dwb_slot_compute_checksum (thread_p, dwb_slot, true, &checksum_computed);
 	      if (error_code != NO_ERROR)
 		{
-		  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+		  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		    {
 		      _er_log_debug (ARG_FILE_LINE, "DWB error: Can't compute checksum for slot %d in block %d\n",
 				     dwb_slot->position_in_block, dwb_slot->block_no);
@@ -3049,7 +3049,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 		  return error_code;
 		}
 
-	      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
 		  _er_log_debug (ARG_FILE_LINE, "Successfully computed checksums for slots %d in block %d\n",
 				 dwb_slot->position_in_block, dwb_slot->block_no);
@@ -3084,7 +3084,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 		  goto flush_block;
 		}
 
-	      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
 		  _er_log_debug (ARG_FILE_LINE, "DWB error: Can't flush block = %d having version %lld\n",
 				 block->block_no, block->version);
@@ -3093,7 +3093,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	      return error_code;
 	    }
 
-	  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "Successfully flushed DWB block = %d having version %lld\n",
 			     block->block_no, block->version);
@@ -3291,7 +3291,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
   error_code = dwb_create (thread_p, dwb_path_p, db_name_p);
   if (error_code != NO_ERROR)
     {
-      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "DWB error: Can't create DWB \n");
 	}
@@ -3424,7 +3424,7 @@ dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
 	      goto start_flush_block;
 	    }
 
-	  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "DWB error: Can't flush block = %d having version %lld\n",
 			     flush_block->block_no, flush_block->version);
@@ -3433,7 +3433,7 @@ dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
 	  return error_code;
 	}
 
-      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "DWB error: Can't flush block = %d having version %lld\n",
 			 flush_block->block_no, flush_block->version);
@@ -3556,7 +3556,7 @@ start:
 
   if (block_version == double_Write_Buffer.blocks[current_block_no].version)
     {
-      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%d) \n",
 			 current_block_no, double_Write_Buffer.blocks[current_block_no].version);
@@ -3572,7 +3572,7 @@ start:
 	      goto start;
 	    }
 
-	  if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %d \n",
 			     error_code, current_block_no, double_Write_Buffer.blocks[current_block_no].version);
@@ -3686,7 +3686,7 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
     {
       /* Should not happen */
       ASSERT_ERROR ();
-      if (prm_get_bool_value (PRM_ID_ENABLE_LOG))
+      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "DWB hash find key (%d, %d) with %d error: \n", vpid->volid, vpid->pageid,
 			 error_code);

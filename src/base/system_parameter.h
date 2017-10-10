@@ -409,10 +409,10 @@ enum param_id
   PRM_ID_DWB_BLOCKS,
   PRM_ID_ENABLE_DWB_FLUSH_THREAD,
   PRM_ID_DWB_CHECKSUM_THREADS,
-  PRM_ID_ENABLE_LOG,
+  PRM_ID_DWB_ENABLE_LOG,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_ENABLE_LOG
+  PRM_LAST_ID = PRM_ID_DWB_ENABLE_LOG
 };
 typedef enum param_id PARAM_ID;
 
