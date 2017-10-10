@@ -36,6 +36,8 @@ typedef void JSON_VALIDATOR;
 
 #if defined (__cplusplus)
 
+#include <functional>
+
 enum DB_JSON_TYPE
 {
   DB_JSON_NULL = 0,
@@ -52,7 +54,7 @@ bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path, JSON_DOC*&result);
+int db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path, JSON_DOC *&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
 
@@ -82,7 +84,7 @@ int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result);
 const char *db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val);
 int db_json_validate_json (const char *json_body);
 
-int db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR*&validator);
+int db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR *&validator);
 JSON_VALIDATOR *db_json_copy_validator (JSON_VALIDATOR *validator);
 JSON_DOC *db_json_allocate_doc ();
 void db_json_delete_doc (JSON_DOC *&doc);
@@ -97,9 +99,9 @@ double db_json_get_double_from_document (const JSON_DOC *doc);
 const char *db_json_get_string_from_document (const JSON_DOC *doc);
 /* end of C functions */
 
-template <typename... Args>
+template <typename Fn, typename... Args>
 inline int
-db_json_convert_string_and_call (const char *json_raw, int (*func) (const JSON_DOC *, Args...), Args &... args)
+db_json_convert_string_and_call (const char *json_raw, Fn &&func, Args &&... args)
 {
   JSON_DOC *doc;
   int error_code;
@@ -110,7 +112,7 @@ db_json_convert_string_and_call (const char *json_raw, int (*func) (const JSON_D
       return error_code;
     }
 
-  return func ((const JSON_DOC *) doc, args...);
+  return func (doc, std::forward<Args> (args)...);
 }
 #endif /* defined (__cplusplus) */
 
