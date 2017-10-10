@@ -30,6 +30,7 @@
 #include "thread.h"
 #include "log_impl.h"
 #include "boot_sr.h"
+#include "perf_monitor.h"
 
 
 #define DWB_SLOTS_HASH_SIZE		    1000
@@ -1180,6 +1181,10 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
 			   bool * checksum_computed)
 {
   int error_code = NO_ERROR;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 oldest_time, retry_cnt = 0;
+  bool is_perf_tracking = false;
 
   assert (slot != NULL);
   *checksum_computed = false;
@@ -1189,6 +1194,12 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
       return NO_ERROR;
     }
 
+  is_perf_tracking = perfmon_is_perf_tracking ();
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
+
   error_code = fileio_set_page_checksum (slot->io_page);
   if (error_code != NO_ERROR)
     {
@@ -1196,6 +1207,17 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
       /* Restore it. */
       ATOMIC_TAS_32 (&slot->checksum_status, PGBUF_SLOT_CHECKSUM_NOT_COMPUTED);
       return error_code;
+    }
+
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (oldest_time > 0)
+	{
+	  perfmon_add_stat (thread_p, PSTAT_DWB_PAGE_CHECKSUM_TIME_COUNTERS, oldest_time);
+	}
     }
 
   if (mark_checksum_computed)
@@ -1800,8 +1822,19 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
 
   DWB_WAIT_QUEUE_ENTRY *double_write_queue_entry = NULL;
   DWB_BLOCK *dwb_block = NULL;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 oldest_time, retry_cnt = 0;
+  bool is_perf_tracking = false;
 
   assert (thread_p != NULL && block_no >= 0 && block_no < DWB_NUM_TOTAL_BLOCKS);
+
+  is_perf_tracking = perfmon_is_perf_tracking ();
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
+
   dwb_block = &double_Write_Buffer.blocks[block_no];
   (void) pthread_mutex_lock (&dwb_block->mutex);
 
@@ -1818,6 +1851,18 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
       to.tv_nsec = 0;
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
+
+      if (is_perf_tracking)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+	  if (oldest_time > 0)
+	    {
+	      perfmon_add_stat (thread_p, PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS, oldest_time);
+	    }
+	}
+
       if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
 	{
 	  /* timeout, remove the entry from queue */
@@ -2220,8 +2265,18 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   unsigned int i, ordered_slots_length;
   FILEIO_PAGE *io_page = NULL;
   unsigned int block_checksum_element_position, block_checksum_start_position, element_position;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 oldest_time, retry_cnt = 0;
+  bool is_perf_tracking = false;
 
   assert (block != NULL && block->count_wb_pages > 0 && dwb_is_created (thread_p));
+
+  is_perf_tracking = perfmon_is_perf_tracking ();
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
 
   /* Currently we allow only one block to be flushed. */
   ATOMIC_INC_32 (&double_Write_Buffer.blocks_flush_counter, 1);
@@ -2316,6 +2371,17 @@ end:
     {
       free_and_init (p_dwb_ordered_slots);
     }
+
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (oldest_time > 0)
+	{
+	  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_TIME_COUNTERS, oldest_time);
+	}
+    }
   return error_code;
 }
 
@@ -2399,6 +2465,7 @@ start:
 	      _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%d) \n",
 			     current_block_no, double_Write_Buffer.blocks[current_block_no].version);
 	    }
+
 
 	  /*
 	   * The previous iteration didn't finished, needs to wait, in order to avoid buffer overwriting.

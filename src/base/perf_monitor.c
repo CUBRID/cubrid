@@ -522,7 +522,10 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_load_Num_mvcc_snapshot_ext),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time",
 			       &f_dump_in_file_Time_obj_lock_acquire_time, &f_dump_in_buffer_Time_obj_lock_acquire_time,
-			       &f_load_Time_obj_lock_acquire_time)
+			       &f_load_Time_obj_lock_acquire_time),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_DWB_FLUSH_BLOCK_TIME_COUNTERS, "Time_DWB_flush_block_time"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_DWB_PAGE_CHECKSUM_TIME_COUNTERS, "Time_DWB_checksum_time"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS, "Time_DWB_wait_flush_block_time")
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
