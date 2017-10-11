@@ -17,10 +17,10 @@
  *
  */
 
-#include <iostream>
-
 #include "test_db_private_alloc.hpp"
 #include "test_extensible_array.hpp"
+
+#include <iostream>
 
 template <typename Func, typename ... Args>
 int
@@ -46,7 +46,7 @@ int main ()
 {
   int global_error = 0;
 
-  //test_module (global_error, test_memalloc::test_db_private_alloc);
+  test_module (global_error, test_memalloc::test_db_private_alloc);
   test_module (global_error, test_memalloc::test_extensible_array);
   /* add more tests here */
 

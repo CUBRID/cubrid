@@ -17,10 +17,18 @@
  *
  */
 
+/* own header */
 #include "test_extensible_array.hpp"
 
+/* header in same module */
 #include "test_memory_alloc_helper.hpp"
+
+/* headers from cubrid */
 #include "extensible_array.cpp"
+
+/* system headers */
+#include <array>
+#include <typeinfo>
 
 namespace test_memalloc
 {
@@ -33,7 +41,8 @@ enum class test_string_buffer_types
   COUNT
 };
 
-const char *
+/* template function to be used by test_comparative_results */
+static const char *
 enum_stringify_value (test_string_buffer_types value)
 {
   switch (value)
@@ -82,32 +91,35 @@ private:
 };
 
 template <size_t Size>
-inline void
+static inline void
 append (const char * str, size_t len, cstyle_char_array<Size> & buf)
 {
   buf.append (str, len);
 }
 
 template <size_t Size>
-inline void
+static inline void
 append (const char * str, size_t len, extensible_array<char, Size> & buf)
 {
   buf.append (str, len);
 }
 
-inline void
+static inline void
 append (const char * str, size_t len, std::string & buf)
 {
   buf.append (str, len);
 }
 
-const test_compare_string_buffers_step_names test_append_strings_step_names = {{ "Successive appends" }};
+static const test_compare_string_buffers_step_names test_append_strings_step_names = {{ "Successive appends" }};
 
 template <typename Buf>
-int
+static int
 test_append_strings (test_compare_string_buffers & result, Buf & buf, test_string_buffer_types buf_type,
                      size_t append_size, unsigned append_count)
 {
+  static std::string log_string = std::string (4,' ') + PORTABLE_FUNC_NAME + "<" + typeid(Buf).name () + ">\n";
+  sync_cout (log_string);
+
   char *str = new char [append_size];
   memset (str, ' ', append_size);
 
@@ -129,10 +141,10 @@ test_append_strings (test_compare_string_buffers & result, Buf & buf, test_strin
 }
 
 template <size_t AppendSize, unsigned AppendCount>
-void
-test_compare_append_strings (int & global_error)
+static void
+test_compare_append_strings_performance (int & global_error)
 {
-#define XARR_TYPE extensible_array<char, AppendSize * AppendCount, std::allocator<char> >
+  typedef extensible_array<char, AppendSize * AppendCount, std::allocator<char> > xarr_type;
 
   test_compare_string_buffers compare_result (test_append_strings_step_names);
   size_t append_size = AppendSize;
@@ -140,8 +152,8 @@ test_compare_append_strings (int & global_error)
 
   /* first test extensible array */
   std::allocator<char> std_alloc;
-  XARR_TYPE xarr (std_alloc);
-  run_test (global_error, test_append_strings<XARR_TYPE >,
+  xarr_type xarr (std_alloc);
+  run_test (global_error, test_append_strings<xarr_type >,
             std::ref (compare_result), std::ref (xarr), test_string_buffer_types::STRBUF_EXTENSIBLE_ARRAY, append_size,
             append_count);
 
@@ -157,15 +169,59 @@ test_compare_append_strings (int & global_error)
 
   std::cout << std::endl;
   compare_result.print_results_and_warnings (std::cout);
-
-#undef XARR_TYPE
 }
 
-int test_extensible_array (void)
+static void
+test_extensible_array_correctness_append (int & global_error, test_compare_string_buffers & test_compare,
+                                          extensible_array<char, SIZE_64> & xarr_buf,
+                                          std::string & string_buf, size_t append_size)
+{
+  run_test (global_error, test_append_strings<extensible_array<char, SIZE_64> >, test_compare, xarr_buf,
+            test_string_buffer_types::STRBUF_EXTENSIBLE_ARRAY, append_size, 1);
+  run_test (global_error, test_append_strings<std::string>, test_compare, string_buf,
+            test_string_buffer_types::STRBUF_CSTYLE_STRING, append_size, 1);
+
+  if (string_buf.size () != xarr_buf.get_size ())
+    {
+      /* incorrect size */
+      std::cout << "  ERROR: extensible buffer size = " <<  xarr_buf.get_size ();
+      std::cout << " is expected to be " << string_buf.size () << std::endl;
+      global_error = global_error == 0 ? -1 : 0;
+    }
+  else if (std::strncmp (string_buf.c_str (), xarr_buf.get_data (), string_buf.size ()) != 0)
+    {
+      /* incorrect data */
+      std::cout << "  ERROR: incorrect data" << std::endl;
+      global_error = global_error == 0 ? -1 : 0;
+    }
+}
+
+static void
+test_extensible_array_correctness (int & global_error)
+{
+  const size_t APPEND_COUNT = 6;
+
+  std::string verifier;
+  std::allocator<char> allocator;
+  extensible_array<char, SIZE_64> xarr (allocator);
+
+  test_compare_string_buffers compare_result (test_append_strings_step_names);
+
+  std::array<size_t, APPEND_COUNT> append_sizes = {{ 1, 32, 64, 1024, 12, 8096 }};
+
+  for (auto it = append_sizes.cbegin (); it != append_sizes.cend (); it++)
+    {
+      test_extensible_array_correctness_append (global_error, compare_result, xarr, verifier, *it);
+    }
+}
+
+int
+test_extensible_array (void)
 {
   int global_error = 0;
 
-  test_compare_append_strings<SIZE_64, SIZE_ONE_K> (global_error);
+  test_extensible_array_correctness (global_error);
+  test_compare_append_strings_performance<SIZE_64, SIZE_ONE_K> (global_error);
 
   return global_error;
 }

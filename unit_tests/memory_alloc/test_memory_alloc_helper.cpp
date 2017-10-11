@@ -19,8 +19,19 @@
 
 #include "test_memory_alloc_helper.hpp"
 
+#include <mutex>
+
 namespace test_memalloc
 {
+
+/* output */
+std::mutex stc_cout_mutex;    // global
+void
+sync_cout (const std::string & str)
+{
+  std::lock_guard<std::mutex> lock (stc_cout_mutex);
+  std::cout << str.c_str ();
+}
 
 /************************************************************************/
 /* custom_thread_entry                                                  */

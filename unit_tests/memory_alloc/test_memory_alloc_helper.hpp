@@ -20,6 +20,13 @@
 #ifndef _TEST_MEMORY_ALLOC_HELPER_HPP_
 #define _TEST_MEMORY_ALLOC_HELPER_HPP_
 
+#include "db_private_allocator.hpp"
+
+/* this hack */
+#ifdef strlen
+#undef strlen
+#endif /* strlen */
+
 #include <iostream>
 #include <chrono>
 #include <vector>
@@ -27,17 +34,12 @@
 #include <iomanip>
 #include <thread>
 
-#include "db_private_allocator.hpp"
-
 namespace test_memalloc
 {
 
 /************************************************************************/
 /* helpers                                                              */
 /************************************************************************/
-#ifdef strlen
-#undef strlen
-#endif /* strlen */
 
 const size_t SIZE_64 = 64;
 const size_t SIZE_ONE_K = 1024;
@@ -54,6 +56,10 @@ custom_assert (bool cond)
     }
 }
 
+/* Sync output */
+void sync_cout (const std::string & str);
+
+/* thread entry wrapper */
 class custom_thread_entry
 {
 public:

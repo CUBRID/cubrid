@@ -19,6 +19,8 @@
 
 #include "test_db_private_alloc.hpp"
 
+#include "test_memory_alloc_helper.hpp"
+
 #include <array>
 #include <vector>
 #include <string>
@@ -30,24 +32,12 @@
 #include <iomanip>
 #include <utility>
 
-#include "test_memory_alloc_helper.hpp"
-
 namespace test_memalloc
 {
 
 /************************************************************************/
 /* Unit helpers                                                         */
 /************************************************************************/
-
-/* Sync output */
-std::mutex output_mutex;
-
-void
-sync_output (const std::string & str)
-{
-  std::lock_guard<std::mutex> lock(output_mutex);
-  std::cout << str;
-}
 
 #define FUNC_ALLOCS_AS_ARGS(fn_arg, type_arg) \
   fn_arg<db_private_allocator<type_arg> >, \
@@ -64,7 +54,7 @@ typedef test_compare_allocators::name_container_type test_step_names;
 
 /* run single-thread tests with private, standard and malloc allocators and wrap with text */
 template <typename FuncPrv, typename FuncStd, typename FuncMlc, typename ... Args>
-void
+static void
 test_and_compare_single (int & global_error, const test_step_names & step_names, FuncPrv && fn_private,
                          FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
 {
@@ -80,7 +70,7 @@ test_and_compare_single (int & global_error, const test_step_names & step_names,
 
 /* run multi-thread tests with private, standard and malloc allocators and wrap with text */
 template <typename FuncPrv, typename FuncStd, typename FuncMlc, typename ... Args>
-void
+static void
 test_and_compare_parallel (int & global_error, const test_step_names & step_names, FuncPrv && fn_private,
                            FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
 {
@@ -157,7 +147,7 @@ test_private_allocator ()
  *      results - test result collector
  */
 template <typename T, typename Alloc >
-int
+static int
 test_basic_performance (test_compare_allocators & results, size_t alloc_count)
 {
   custom_thread_entry cte;    /* thread entry wrapper */
@@ -166,7 +156,7 @@ test_basic_performance (test_compare_allocators & results, size_t alloc_count)
   static std::string function_header =
     std::string ("    basic_perf") + typeid(T).name() + "," + typeid(Alloc).name() + ">\n";
 
-  sync_output (function_header);
+  sync_cout (function_header);
 
   /* instantiate allocator */
   Alloc *alloc = NULL;
@@ -213,7 +203,7 @@ const char *ALTERNATE_ALLOC = "Alternate Alloc/Dealloc";
 const char *SUCCESSIVE_ALLOC = "Successive Allocs";
 const char *SUCCESSIVE_DEALLOC = "Successive Deallocs";
 
-void
+static void
 test_basic_populate_names (test_step_names & step_names)
 {
   step_names.push_back (ALTERNATE_ALLOC);
@@ -223,7 +213,7 @@ test_basic_populate_names (test_step_names & step_names)
 
 /* test_and_compare implementation for test basic */
 template <typename T>
-void
+static void
 test_and_compare_single_basic (int & global_error, size_t alloc_count)
 {
   test_step_names step_names;
@@ -233,7 +223,7 @@ test_and_compare_single_basic (int & global_error, size_t alloc_count)
 }
 
 template <typename T>
-void
+static void
 test_and_compare_parallel_basic (int & global_error, size_t alloc_count)
 {
   test_step_names step_names;
@@ -242,6 +232,7 @@ test_and_compare_parallel_basic (int & global_error, size_t alloc_count)
                              alloc_count);
 }
 
+/* generate a number of random values */
 class random_values
 {
 public:
@@ -278,7 +269,7 @@ private:
 };
 
 template <typename Alloc>
-int
+static int
 test_performance_random (test_compare_allocators & result, size_t ptr_pool_size, unsigned alloc_count,
                          const random_values & actions)
 {
@@ -305,7 +296,7 @@ test_performance_random (test_compare_allocators & result, size_t ptr_pool_size,
 
   /* function header */
   static std::string function_header = std::string ("    random_perf") + "<" + typeid(Alloc).name () + ">\n";
-  sync_output (function_header);
+  sync_cout (function_header);
 
   /* instantiate allocator */
   Alloc *alloc = NULL;
@@ -356,16 +347,16 @@ test_performance_random (test_compare_allocators & result, size_t ptr_pool_size,
 #undef PTR_ALLOC
 }
 
-const char *RANDOM_ALLOCS = "Random Alloc/Dealloc";
+static const char *RANDOM_ALLOCS = "Random Alloc/Dealloc";
 
-void
+static void
 test_random_populate_step_names (test_step_names & step_names)
 {
   step_names.push_back (RANDOM_ALLOCS);
 }
 
 /* test_and_compare implementation for test random */
-void
+static void
 test_and_compare_single_random (int & global_error, size_t ptr_pool_size, unsigned alloc_count)
 {
   /* create random values */
@@ -378,7 +369,7 @@ test_and_compare_single_random (int & global_error, size_t ptr_pool_size, unsign
                            ptr_pool_size, alloc_count, std::cref (actions));
 }
 
-void
+static void
 test_and_compare_parallel_random (int & global_error, size_t ptr_pool_size, unsigned alloc_count)
 {
   /* create random values */
