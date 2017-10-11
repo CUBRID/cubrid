@@ -2781,7 +2781,12 @@ emit_domain_def (DB_DOMAIN * domains)
 	      emit_domain_def (db_domain_set (domain));
 	      fprintf (output_file, ")");
 	      break;
-
+	    case DB_TYPE_JSON:
+	      if (db_domain_raw_json_schema (domain) != NULL)
+		{
+		  fprintf (output_file, "('%s')", db_domain_raw_json_schema (domain));
+		}
+	      break;
 	    default:
 	      break;
 	    }

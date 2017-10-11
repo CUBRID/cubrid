@@ -17315,7 +17315,11 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
   else
     {
       STATIC_CAST (DB_JSON *, memptr)->json_body = db_private_strdup (NULL, value->data.json.json_body);
-      STATIC_CAST (DB_JSON *, memptr)->schema_raw = db_private_strdup (NULL, value->data.json.schema_raw);
+      if (domain->json_validator != NULL)
+	{
+	  STATIC_CAST (DB_JSON *, memptr)->schema_raw =
+	    db_private_strdup (NULL, db_json_get_schema_raw_from_validator (domain->json_validator));
+	}
       STATIC_CAST (DB_JSON *, memptr)->document = db_json_get_copy_of_doc (value->data.json.document);
     }
 
@@ -17342,11 +17346,10 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	}
       else
 	{
-	  int len = strlen (json_obj->json_body);
 	  char *new_ = NULL;
 	  JSON_DOC *document = NULL;
 
-	  new_ = db_private_strdup (NULL, value->data.json.json_body);
+	  new_ = db_private_strdup (NULL, json_obj->json_body);
 	  if (new_ == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);

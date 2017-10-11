@@ -458,6 +458,8 @@ static DB_VALUE ldr_datetimetz_tmpl;
 static DB_VALUE ldr_blob_tmpl;
 static DB_VALUE ldr_clob_tmpl;
 static DB_VALUE ldr_bit_tmpl;
+static DB_VALUE ldr_json_tmpl;
+
 
 /* default for 64 bit signed big integers, i.e., 9223372036854775807 (0x7FFFFFFFFFFFFFFF) */
 #define MAX_DIGITS_FOR_BIGINT   19
@@ -601,6 +603,8 @@ static int ldr_init_loader (LDR_CONTEXT * context);
 static void ldr_abort (void);
 static void ldr_process_object_ref (LDR_OBJECT_REF * ref, int type);
 static int ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name);
+static int ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_json_db_json (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 
 /* default action */
 void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type) = ldr_act_attr;
@@ -5037,6 +5041,9 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
     case DB_TYPE_MONETARY:
       attdesc->setter[LDR_MONETARY] = &ldr_monetary_db_monetary;
       break;
+    case DB_TYPE_JSON:
+      attdesc->setter[LDR_STR] = &ldr_json_db_json;
+      break;
 
     default:
       break;
@@ -5835,6 +5842,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   db_make_elo (&ldr_blob_tmpl, DB_TYPE_BLOB, null_elo);
   db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
+  db_make_json (&ldr_json_tmpl, NULL, NULL, false);
 
   /* 
    * Set up the conversion functions for collection elements.  These
@@ -5871,6 +5879,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   elem_converter[LDR_MONETARY] = &ldr_monetary_elem;
   elem_converter[LDR_ELO_EXT] = &ldr_elo_ext_elem;
   elem_converter[LDR_ELO_INT] = &ldr_elo_int_elem;
+  elem_converter[LDR_JSON] = &ldr_json_elem;
 
   /* Set up the lockhint array. Used by ldr_find_class() when locating a class. */
   ldr_Hint_locks[0] = locator_fetch_mode_to_lock (DB_FETCH_CLREAD_INSTWRITE, LC_CLASS, LC_FETCH_CURRENT_VERSION);
@@ -6468,4 +6477,36 @@ error_exit:
     }
 
   return ER_FAILED;
+}
+
+static int
+ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
+{
+  JSON_DOC *document = NULL;
+  char *json_body = NULL;
+  int error_code = NO_ERROR;
+
+  error_code = db_json_get_json_from_str (str, document);
+  if (error_code != NO_ERROR)
+    {
+      assert (document == NULL);
+      return error_code;
+    }
+
+  json_body = (char *) db_private_strdup (NULL, str);
+
+  db_make_json (val, json_body, document, false);
+  return NO_ERROR;
+}
+
+static int
+ldr_json_db_json (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
+{
+  int err = NO_ERROR;
+  char *mem;
+  DB_VALUE val;
+
+  CHECK_ERR (err, ldr_json_elem (context, str, len, &val));
+
+  return ldr_generic (context, &val);
 }

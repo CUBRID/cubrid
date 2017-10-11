@@ -5990,6 +5990,12 @@ db_domain_collation_id (const DB_DOMAIN * domain)
   return (collation_id);
 }
 
+const char *
+db_domain_raw_json_schema (const DB_DOMAIN * domain)
+{
+  return domain->json_validator == NULL ? NULL : db_json_get_schema_raw_from_validator (domain->json_validator);
+}
+
 /*
  * db_string_put_cs_and_collation() - Set the charset and collation.
  * return	   : error code

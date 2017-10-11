@@ -3655,6 +3655,7 @@ extern "C"
   extern int db_domain_precision (const DB_DOMAIN * domain);
   extern int db_domain_scale (const DB_DOMAIN * domain);
   extern int db_domain_codeset (const DB_DOMAIN * domain);
+  extern const char *db_domain_raw_json_schema (const DB_DOMAIN * domain);
 
   extern DB_METHOD *db_method_next (DB_METHOD * method);
   extern const char *db_method_name (DB_METHOD * method);
