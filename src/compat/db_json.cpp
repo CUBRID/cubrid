@@ -19,6 +19,39 @@
 
 /*
  * db_json.cpp - functions related to json
+ * The json feature is made as a black box to not make the whole project
+ * depend on the rapidjson library. We might change this library in the future,
+ * and this is easier when it's made this way.
+ *
+ * Rapidjson allocator usage:
+ * We made the library use our own allocator, db_private_alloc. To achieve this,
+ * we created new types, like JSON_DOC and JSON_VALUE. JSON_DOC uses inheritance
+ * and not typedef as its creator in order for it to support forward declaration.
+ * Also, we made JSON_PRIVATE_ALLOCATOR class which gets passed as template arguments to these
+ * new types. This class implements malloc, realloc and free.
+ *
+ * JSON_VALUE does not use its own allocator, but rather it uses a JSON_DOC allocator.
+ * With this we can control the JSON_VALUE's scope to match the scope of the said JSON_DOC.
+ * For example, consider this piece of code:
+ *
+ * JSON_DOC *func(const char *str)
+ * {
+ *   JSON_VALUE value;
+ *   JSON_DOC *doc;
+ *   doc = db_json_allocate_doc ();
+ *
+ *   value.SetString (str, strlen (str), doc->GetAllocator ());
+ *   doc.PushBack (value, doc->GetAllocator ());
+ *
+ *   return doc;
+ * }
+ *
+ * Because PushBack doesn't perform a copy, one might think that this function
+ * contains a major bug, because when value gets out of scope, the JSON_VALUE's
+ * destructor gets called and the str's internal copy in value gets destroyed,
+ * leading to memory corruptions.
+ * This isn't the case, str's internal copy gets destroyed only when doc is deleted
+ * because we used doc's allocator when calling SetString.
  */
 
 #include "db_json.hpp"
@@ -321,6 +354,14 @@ db_json_get_type_as_str (const JSON_DOC *document)
     }
 }
 
+/*
+ * db_json_get_length ()
+ * document (in)
+ * json_array length: number of elements
+ * json_object length: number of key-value pairs
+ * else: 1
+ */
+
 unsigned int
 db_json_get_length (const JSON_DOC *document)
 {
@@ -346,6 +387,11 @@ db_json_get_length (const JSON_DOC *document)
 
   return 0;
 }
+
+/*
+ * json_depth()
+ * one array or one object increases the depth by 1
+ */
 
 unsigned int
 db_json_get_depth (const JSON_DOC *doc)
@@ -388,6 +434,13 @@ db_json_value_get_depth (const JSON_VALUE *doc)
       return 0;
     }
 }
+
+/*
+ * json_extract
+ * extracts from within the json a value based on the given path
+ * ex:
+ * json_extract('{"a":["b", 123]}', '/a/1') yields 123
+ */
 
 int
 db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path, JSON_DOC *&result)
