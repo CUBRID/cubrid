@@ -24,10 +24,12 @@
 
 #include "extensible_array.hpp"
 
+#include "db_private_allocator.hpp"
+
 #include <cassert>
 #include <cstring>
 
-#include "db_private_allocator.hpp"
+
 //#include "error_manager.h"
 
 const size_t XARR_SIZE_64 = 64;

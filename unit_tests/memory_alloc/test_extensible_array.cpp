@@ -35,33 +35,12 @@ namespace test_memalloc
 
 enum class test_string_buffer_types
 {
-  STRBUF_EXTENSIBLE_ARRAY,
-  STRBUF_STD_STRING,
-  STRBUF_CSTYLE_STRING,
+  EXTENSIBLE_ARRAY,
+  STD_STRING,
+  CSTYLE_STRING,
   COUNT
 };
-
-/* template function to be used by test_comparative_results */
-static const char *
-enum_stringify_value (test_string_buffer_types value)
-{
-  switch (value)
-    {
-    case test_string_buffer_types::STRBUF_EXTENSIBLE_ARRAY:
-      return "EXTENSIBLE_ARRAY";
-    case test_string_buffer_types::STRBUF_STD_STRING:
-      return "STD::STRING";
-    case test_string_buffer_types::STRBUF_CSTYLE_STRING:
-      return "CSTYLE_STRING";
-    case test_string_buffer_types::COUNT:
-    default:
-      custom_assert (false);
-      return NULL;
-    }
-}
-
-typedef test_comparative_results<test_string_buffer_types> test_compare_string_buffers;
-typedef test_compare_string_buffers::name_container_type test_compare_string_buffers_step_names;
+string_collection string_buffer_names ("Extensible Array", "std::string", "C-Style String");
 
 template <size_t Size>
 class cstyle_char_array
@@ -90,31 +69,24 @@ private:
   char *ptr;
 };
 
-template <size_t Size>
-static inline void
-append (const char * str, size_t len, cstyle_char_array<Size> & buf)
-{
-  buf.append (str, len);
-}
+string_collection append_step_names ("Successive appends");
 
-template <size_t Size>
-static inline void
-append (const char * str, size_t len, extensible_array<char, Size> & buf)
-{
-  buf.append (str, len);
-}
-
-static inline void
-append (const char * str, size_t len, std::string & buf)
-{
-  buf.append (str, len);
-}
-
-static const test_compare_string_buffers_step_names test_append_strings_step_names = {{ "Successive appends" }};
-
+/* test_append_strings - append append_count strings of size append_size into given buffer.
+ *
+ *
+ *  Template:
+ *
+ *      Buffer having member function append (const char *str, size_t len);
+ *
+ *
+ *  How it works:
+ *
+ *      Loops and executes repeated appends (strings are filled with blank spaces) and times the duration of all append
+ *      operations.
+ */
 template <typename Buf>
 static int
-test_append_strings (test_compare_string_buffers & result, Buf & buf, test_string_buffer_types buf_type,
+test_append_strings (test_compare_performance & result, Buf & buf, test_string_buffer_types buf_type,
                      size_t append_size, unsigned append_count)
 {
   static std::string log_string = std::string (4,' ') + PORTABLE_FUNC_NAME + "<" + typeid(Buf).name () + ">\n";
@@ -129,9 +101,9 @@ test_append_strings (test_compare_string_buffers & result, Buf & buf, test_strin
 
   for (unsigned count = 0; count < append_count; count++)
     {
-      append (str, append_size, buf);
+      buf.append (str, append_size);
     }
-  result.register_time (timer, buf_type, step++);
+  result.register_time (timer, static_cast <size_t> (buf_type), step++);
 
   custom_assert (step == result.get_step_count ());
 
@@ -140,13 +112,34 @@ test_append_strings (test_compare_string_buffers & result, Buf & buf, test_strin
   return 0;
 }
 
+/* test_compare_append_strings_performance -
+ *
+ *  Run the same number of same size string appends with three types of buffers: cubrid extensible array, std::string
+ *  and C-Style static allocated array. The purpose is to have a performance as close as possible to C-Style array.
+ *
+ *  Templates:
+ *
+ *      AppendSize - size of one string
+ *      AppendCount - number of append operations
+ *
+ *
+ *  How it works:
+ *
+ *      Instantiates the timer collector which is passed to specialized test_append_strings functions. Results are
+ *      printed after.
+ *
+ *
+ *  How to call:
+ *
+ *      Just specialize the size and count of append operations.
+ */
 template <size_t AppendSize, unsigned AppendCount>
 static void
 test_compare_append_strings_performance (int & global_error)
 {
   typedef extensible_array<char, AppendSize * AppendCount, std::allocator<char> > xarr_type;
 
-  test_compare_string_buffers compare_result (test_append_strings_step_names);
+  test_compare_performance compare_result (string_buffer_names, append_step_names);
   size_t append_size = AppendSize;
   unsigned append_count = AppendCount;
 
@@ -154,32 +147,36 @@ test_compare_append_strings_performance (int & global_error)
   std::allocator<char> std_alloc;
   xarr_type xarr (std_alloc);
   run_test (global_error, test_append_strings<xarr_type >,
-            std::ref (compare_result), std::ref (xarr), test_string_buffer_types::STRBUF_EXTENSIBLE_ARRAY, append_size,
+            std::ref (compare_result), std::ref (xarr), test_string_buffer_types::EXTENSIBLE_ARRAY, append_size,
             append_count);
 
   /* test standard string */
   std::string str;
   run_test (global_error, test_append_strings<std::string>, std::ref (compare_result), std::ref (str),
-            test_string_buffer_types::STRBUF_STD_STRING, append_size, append_count);
+            test_string_buffer_types::STD_STRING, append_size, append_count);
 
   /* test c-style char array */
   cstyle_char_array<AppendSize * AppendCount> charr;
   run_test (global_error, test_append_strings<cstyle_char_array<AppendSize * AppendCount>>, std::ref (compare_result),
-            std::ref (charr), test_string_buffer_types::STRBUF_CSTYLE_STRING, append_size, append_count);
+            std::ref (charr), test_string_buffer_types::CSTYLE_STRING, append_size, append_count);
 
   std::cout << std::endl;
   compare_result.print_results_and_warnings (std::cout);
 }
 
+/* test_extensible_array_correctness_append -
+ *
+ *  Run one append operation into both std::string and extensible array, then compare length and content.
+ */
 static void
-test_extensible_array_correctness_append (int & global_error, test_compare_string_buffers & test_compare,
+test_extensible_array_correctness_append (int & global_error, test_compare_performance & test_compare,
                                           extensible_array<char, SIZE_64> & xarr_buf,
                                           std::string & string_buf, size_t append_size)
 {
   run_test (global_error, test_append_strings<extensible_array<char, SIZE_64> >, test_compare, xarr_buf,
-            test_string_buffer_types::STRBUF_EXTENSIBLE_ARRAY, append_size, 1);
+            test_string_buffer_types::EXTENSIBLE_ARRAY, append_size, 1);
   run_test (global_error, test_append_strings<std::string>, test_compare, string_buf,
-            test_string_buffer_types::STRBUF_CSTYLE_STRING, append_size, 1);
+            test_string_buffer_types::CSTYLE_STRING, append_size, 1);
 
   if (string_buf.size () != xarr_buf.get_size ())
     {
@@ -196,6 +193,11 @@ test_extensible_array_correctness_append (int & global_error, test_compare_strin
     }
 }
 
+/* test_extensible_array_correctness -
+ *
+ *  Run several append operations over extensible array and string buffer. Their content should match (verified by
+ *  test_extensible_array_correctness_append). The array is extended beyond its static size.
+ */
 static void
 test_extensible_array_correctness (int & global_error)
 {
@@ -205,7 +207,7 @@ test_extensible_array_correctness (int & global_error)
   std::allocator<char> allocator;
   extensible_array<char, SIZE_64> xarr (allocator);
 
-  test_compare_string_buffers compare_result (test_append_strings_step_names);
+  test_compare_performance compare_result (string_buffer_names, append_step_names);
 
   std::array<size_t, APPEND_COUNT> append_sizes = {{ 1, 32, 64, 1024, 12, 8096 }};
 

@@ -39,49 +39,66 @@ namespace test_memalloc
 /* Unit helpers                                                         */
 /************************************************************************/
 
+/* Expand fn_arg<Alloc<T> > with the three possible allocator */
 #define FUNC_ALLOCS_AS_ARGS(fn_arg, type_arg) \
   fn_arg<db_private_allocator<type_arg> >, \
   fn_arg<std::allocator<type_arg> >, \
   fn_arg<mallocator<type_arg> >
 
+/* Expand fn_arg<T, Alloc<T> > with the three possible allocator */
 #define FUNC_TYPE_AND_ALLOCS_AS_ARGS(fn_arg, type_arg) \
   fn_arg<type_arg, db_private_allocator<type_arg> >, \
   fn_arg<type_arg, std::allocator<type_arg> >, \
   fn_arg<type_arg, mallocator<type_arg> >
 
-typedef test_comparative_results<test_allocator_type> test_compare_allocators;
-typedef test_compare_allocators::name_container_type test_step_names;
-
-/* run single-thread tests with private, standard and malloc allocators and wrap with text */
+/*  run single-thread tests with private, standard and malloc allocators and wrap with text
+ *
+ *
+ *  How it works:
+ *
+ *      Get step names and specialized functions for each tested allocator along with their variadic arguments.
+ *
+ *  How to call:
+ *
+ *      test_and_compare_single (err, step_names, fn_specialized_for_private, fn_specialized_for_standard,
+ *                               fn_specialized_for_malloc, same_args...)
+ *      fn should be a template function with first argument test_compare_performance & and then same_args...
+ *      for fn arguments you may use FUNC_ALLOCS_AS_ARGS or FUNC_TYPE_AND_ALLOCS_AS_ARGS.
+ */
 template <typename FuncPrv, typename FuncStd, typename FuncMlc, typename ... Args>
 static void
-test_and_compare_single (int & global_error, const test_step_names & step_names, FuncPrv && fn_private,
+test_and_compare_single (int & global_error, const string_collection & step_names, FuncPrv && fn_private,
                          FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
 {
-  test_compare_allocators result (step_names);
+  test_compare_performance compare_performance (get_allocator_names (), step_names);
 
-  run_test (global_error, fn_private, std::ref (result), std::forward<Args> (args)...);
-  run_test (global_error, fn_std, std::ref (result), std::forward<Args> (args)...);
-  run_test (global_error, fn_malloc, std::ref (result), std::forward<Args> (args)...);
+  run_test (global_error, fn_private, std::ref (compare_performance), std::forward<Args> (args)...);
+  run_test (global_error, fn_std, std::ref (compare_performance), std::forward<Args> (args)...);
+  run_test (global_error, fn_malloc, std::ref (compare_performance), std::forward<Args> (args)...);
   std::cout << std::endl;
 
-  result.print_results_and_warnings (std::cout);
+  compare_performance.print_results_and_warnings (std::cout);
 }
 
-/* run multi-thread tests with private, standard and malloc allocators and wrap with text */
+/* run multi-thread tests with private, standard and malloc allocators and wrap with text.
+ *
+ * Same as test_and_compare_single, mostly.
+ *
+ * One mention is that if you wanna pass a reference to be used by all threads, you must pass it with std::ref.
+ */
 template <typename FuncPrv, typename FuncStd, typename FuncMlc, typename ... Args>
 static void
-test_and_compare_parallel (int & global_error, const test_step_names & step_names, FuncPrv && fn_private,
+test_and_compare_parallel (int & global_error, const string_collection & step_names, FuncPrv && fn_private,
                            FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
 {
-  test_compare_allocators result (step_names);
+  test_compare_performance compare_performance (get_allocator_names (), step_names);
 
-  run_parallel (fn_private, std::ref (result), std::forward<Args> (args)...);
-  run_parallel (fn_std, std::ref (result), std::forward<Args> (args)...);
-  run_parallel (fn_malloc, std::ref (result), std::forward<Args> (args)...);
+  run_parallel (fn_private, std::ref (compare_performance), std::forward<Args> (args)...);
+  run_parallel (fn_std, std::ref (compare_performance), std::forward<Args> (args)...);
+  run_parallel (fn_malloc, std::ref (compare_performance), std::forward<Args> (args)...);
   std::cout << std::endl;
 
-  result.print_results_and_warnings (std::cout);
+  compare_performance.print_results_and_warnings (std::cout);
 }
 
 /* Base function to test private allocator functionality */
@@ -148,7 +165,7 @@ test_private_allocator ()
  */
 template <typename T, typename Alloc >
 static int
-test_basic_performance (test_compare_allocators & results, size_t alloc_count)
+test_basic_performance (test_compare_performance & results, size_t alloc_count)
 {
   custom_thread_entry cte;    /* thread entry wrapper */
 
@@ -162,6 +179,7 @@ test_basic_performance (test_compare_allocators & results, size_t alloc_count)
   Alloc *alloc = NULL;
   test_allocator_type alloc_type; 
   init_allocator<T> (cte, alloc, alloc_type);
+  size_t alloc_index = static_cast <size_t> (alloc_type);
 
   /* init step and timer */
   unsigned step = 0;
@@ -174,7 +192,7 @@ test_basic_performance (test_compare_allocators & results, size_t alloc_count)
       ptr = alloc->allocate (1);
       alloc->deallocate (ptr, 1);
     }
-  results.register_time (timer, alloc_type, step++);
+  results.register_time (timer, alloc_index, step++);
 
   /* step 1: test allocate / allocate and so on*/
   T** pointers = new T * [alloc_count];
@@ -182,14 +200,14 @@ test_basic_performance (test_compare_allocators & results, size_t alloc_count)
     {
       pointers[i] = alloc->allocate (1);
     }
-  results.register_time (timer, alloc_type, step++);
+  results.register_time (timer, alloc_index, step++);
 
   /* step 2: test deallocate / deallocate and so on*/
   for (size_t i = 0; i < alloc_count; i++)
     {
       alloc->deallocate (pointers[i], 1);
     }
-  results.register_time (timer, alloc_type, step++);
+  results.register_time (timer, alloc_index, step++);
 
   custom_assert (step == results.get_step_count ());
 
@@ -199,36 +217,31 @@ test_basic_performance (test_compare_allocators & results, size_t alloc_count)
   return 0;
 }
 
-const char *ALTERNATE_ALLOC = "Alternate Alloc/Dealloc";
-const char *SUCCESSIVE_ALLOC = "Successive Allocs";
-const char *SUCCESSIVE_DEALLOC = "Successive Deallocs";
+string_collection basic_step_names ("Alternate Alloc/Dealloc", "Successive Allocs", "Successive Deallocs");
 
-static void
-test_basic_populate_names (test_step_names & step_names)
-{
-  step_names.push_back (ALTERNATE_ALLOC);
-  step_names.push_back (SUCCESSIVE_ALLOC);
-  step_names.push_back (SUCCESSIVE_DEALLOC);
-}
-
-/* test_and_compare implementation for test basic */
+/* test_and_compare implementation for test basic
+ *
+ *  Runs basic tests on all allocators using the given type. See more details in test_and_compare_single and
+ *  test_basic_performance.
+ */
 template <typename T>
 static void
 test_and_compare_single_basic (int & global_error, size_t alloc_count)
 {
-  test_step_names step_names;
-  test_basic_populate_names (step_names);
-  test_and_compare_single (global_error, step_names, FUNC_TYPE_AND_ALLOCS_AS_ARGS (test_basic_performance, T),
+  test_and_compare_single (global_error, basic_step_names, FUNC_TYPE_AND_ALLOCS_AS_ARGS (test_basic_performance, T),
                            alloc_count);
 }
 
+/* test_and_compare_parallel implementation for test basic
+ *
+ *  Runs concurrent basic tests on all allocators using the given type. See more details in test_and_compare_parallel
+ *  and test_basic_performance.
+ */
 template <typename T>
 static void
 test_and_compare_parallel_basic (int & global_error, size_t alloc_count)
 {
-  test_step_names step_names;
-  test_basic_populate_names (step_names);
-  test_and_compare_parallel (global_error, step_names, FUNC_TYPE_AND_ALLOCS_AS_ARGS (test_basic_performance, T),
+  test_and_compare_parallel (global_error, basic_step_names, FUNC_TYPE_AND_ALLOCS_AS_ARGS (test_basic_performance, T),
                              alloc_count);
 }
 
@@ -268,9 +281,18 @@ private:
   std::vector<unsigned> m_values;
 };
 
+/* function tests performance with allocating a series of random-sized pointers.
+ *
+ *  First a pool of random-sized pointers is created. Then a loop that deallocates one random pointer and replaces it
+ *  with another random-sized pointer. At the end deallocates everything.
+ *
+ *  Template:
+ *
+ *      Alloc - tested allocator. its specialization should be char.
+ */
 template <typename Alloc>
 static int
-test_performance_random (test_compare_allocators & result, size_t ptr_pool_size, unsigned alloc_count,
+test_performance_random (test_compare_performance & result, size_t ptr_pool_size, unsigned alloc_count,
                          const random_values & actions)
 {
 /* local definition to allocate a pointer and save it in pool at ptr_index_ */
@@ -302,6 +324,7 @@ test_performance_random (test_compare_allocators & result, size_t ptr_pool_size,
   Alloc *alloc = NULL;
   test_allocator_type alloc_type;
   init_allocator<char> (cte, alloc, alloc_type);
+  size_t alloc_index = static_cast <size_t> (alloc_type);
 
   /* */
   ptr_with_size *pointers_pool = new ptr_with_size [ptr_pool_size];
@@ -334,7 +357,7 @@ test_performance_random (test_compare_allocators & result, size_t ptr_pool_size,
       alloc->deallocate (pointers_pool[ptr_index].first, pointers_pool[ptr_index].second);
     }
 
-  result.register_time (timer, alloc_type, step++);
+  result.register_time (timer, alloc_index, step++);
 
   custom_assert (random_value_cursor == actions.get_size ());
   custom_assert (step == result.get_step_count ());
@@ -347,38 +370,35 @@ test_performance_random (test_compare_allocators & result, size_t ptr_pool_size,
 #undef PTR_ALLOC
 }
 
-static const char *RANDOM_ALLOCS = "Random Alloc/Dealloc";
+string_collection random_step_names ("Random Alloc/Dealloc");
 
-static void
-test_random_populate_step_names (test_step_names & step_names)
-{
-  step_names.push_back (RANDOM_ALLOCS);
-}
-
-/* test_and_compare implementation for test random */
+/* test_and_compare implementation for test random
+ *
+ *  Run single-threaded random allocation tests. See test_and_compare_single and test_performance_random.
+ */
 static void
 test_and_compare_single_random (int & global_error, size_t ptr_pool_size, unsigned alloc_count)
 {
   /* create random values */
   size_t random_value_count = ptr_pool_size + 2 * alloc_count;
   random_values actions (random_value_count);
-  test_step_names step_names;
-
-  test_random_populate_step_names (step_names);
-  test_and_compare_single (global_error, step_names, FUNC_ALLOCS_AS_ARGS (test_performance_random, char),
+  
+  test_and_compare_single (global_error, random_step_names, FUNC_ALLOCS_AS_ARGS (test_performance_random, char),
                            ptr_pool_size, alloc_count, std::cref (actions));
 }
 
+/* test_and_compare implementation for test random
+ *
+ *  Run multi-threaded random allocation tests. See test_and_compare_single and test_performance_random.
+ */
 static void
 test_and_compare_parallel_random (int & global_error, size_t ptr_pool_size, unsigned alloc_count)
 {
   /* create random values */
   size_t random_value_count = ptr_pool_size + 2 * alloc_count;
   random_values actions (random_value_count);
-  test_step_names step_names;
-
-  test_random_populate_step_names (step_names);
-  test_and_compare_parallel (global_error, step_names, FUNC_ALLOCS_AS_ARGS (test_performance_random, char),
+  
+  test_and_compare_parallel (global_error, random_step_names, FUNC_ALLOCS_AS_ARGS (test_performance_random, char),
                              ptr_pool_size, alloc_count, std::cref (actions));
 }
 

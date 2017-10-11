@@ -75,13 +75,16 @@ private:
   int m_rc_track_id;
 };
 
+/* timer - time durations between checkpoints.
+ *
+ *  Templates:
+ *
+ *      Units - desired duration unit.
+ */
 template <typename Units>
 class timer
 {
 public:
-  /************************************************************************/
-  /* timer                                                                */
-  /************************************************************************/
   inline timer ()
   {
     reset ();
@@ -114,10 +117,45 @@ private:
   std::chrono::system_clock::time_point m_saved_time;
 };
 
+/* Specialization for microseconds and milliseconds */
 typedef class timer<std::chrono::milliseconds> ms_timer;
 typedef class timer<std::chrono::microseconds> us_timer;
 
-/* Mallocator */
+/* name collections */
+class string_collection
+{
+public:
+  template <typename ... Args>
+  string_collection (Args &... args)
+  {
+    register_names (args...);
+  }
+
+  size_t get_count () const;
+  size_t get_max_length () const;
+  const char * get_name (size_t name_index) const;
+
+private:
+  string_collection ();
+
+  template <typename FirstArg, typename ... OtherArgs>
+  void register_names (FirstArg & first, OtherArgs &... other)
+  {
+    m_names.push_back (first);
+    register_names (other...);
+  }
+
+  template <typename OneArg>
+  void register_names (OneArg & arg)
+  {
+    m_names.push_back (arg);
+  }
+  
+  std::vector<std::string> m_names;
+};
+
+/* Mallocator - allocator concept to be used with malloc/free
+ */
 template <typename T>
 class mallocator
 {
@@ -152,13 +190,12 @@ operator!=(const mallocator<T>&, const mallocator<U>&)
 /* allocators */
 typedef enum test_allocator_type
 {
-  ALLOC_TYPE_PRIVATE,
-  ALLOC_TYPE_STANDARD,
-  ALLOC_TYPE_MALLOC,
+  PRIVATE,
+  STANDARD,
+  MALLOC,
   COUNT
 } test_allocator_type;
-
-const char *enum_stringify_value (test_allocator_type alloc_type);
+const string_collection & get_allocator_names (void);
 
 /* Generic functions to allocate an allocator with thread entry argument. */
 template <typename T>
@@ -166,221 +203,95 @@ void
 init_allocator (custom_thread_entry & cte, std::allocator<T> *& alloc, test_allocator_type & type_out)
 {
   alloc = new std::allocator<T> ();
-  type_out = test_allocator_type::ALLOC_TYPE_STANDARD;
+  type_out = test_allocator_type::STANDARD;
 }
 template <typename T>
 void
 init_allocator (custom_thread_entry & cte, mallocator<T> *& alloc, test_allocator_type & type_out)
 {
   alloc = new mallocator<T> ();
-  type_out = test_allocator_type::ALLOC_TYPE_MALLOC;
+  type_out = test_allocator_type::MALLOC;
 }
 template <typename T>
 void
 init_allocator (custom_thread_entry & cte, db_private_allocator<T> *& alloc, test_allocator_type & type_out)
 {
   alloc = new db_private_allocator<T> (cte.get_thread_entry ());
-  type_out = test_allocator_type::ALLOC_TYPE_PRIVATE;
+  type_out = test_allocator_type::PRIVATE;
 }
 
-/* generic interface to collect results for all allocators and print them */
-
-extern const char *DECIMAL_SEPARATOR;
-extern const char *TIME_UNIT;
-
-const size_t TEST_RESULT_NAME_PRINT_LENGTH = 20;
-const size_t TEST_RESULT_VALUE_PRINT_LENGTH = 8;
-const size_t TEST_RESTUL_VALUE_PRECISION_LENGTH = 3;
-const size_t TEST_RESULT_VALUE_TOTAL_LENGTH =
-  TEST_RESULT_VALUE_PRINT_LENGTH + TEST_RESTUL_VALUE_PRECISION_LENGTH + std::strlen (DECIMAL_SEPARATOR)
-  + std::strlen (TIME_UNIT);
-
 /*  Collect runtime timer statistics with various scenarios and compare results.
- *  Must provide an enumerator with values from 0 to COUNT for each scenario.
  *
- *  An automatic warning system is implemented. First scenario (with enumerator value 0) is considered to be the tested
- *  target, which should have smaller times than other scenarios.
+ *
+ *  How it works:
+ *
+ *      Stores timer values for each step of each scenario (it is assumed that each scenarios goes through same steps).
+ *      This data structure is designed to be used by multiple threads concurrently (timers are incremented using
+ *      atomic operations).
+ *
  *
  *  How to use:
  *
- *      To be provided.
+ *      Instantiate using scenario names and step names (results will be printed using these names).
+ *      Pass same instance to functions running all scenarios. Scenarios can run in parallel.
+ *      The running function should time each step using register_time function.
+ *      After running all scenarios, results can be printed.
+ *      If first scenario is expected to be best, it can be checked against the other scenarios and warnings will be
+ *      printed for each slower step.
+ *      print_results_and_warnings can be used to print both.
  */
-template <typename E>
-class test_comparative_results
+class test_compare_performance
 {
 public:
-  typedef std::vector<const char *> name_container_type;
-  typedef unsigned long long value_type;
-  typedef std::vector<value_type> value_container_type;
   
-  test_comparative_results (const name_container_type & step_names)
+  /* instantiate with an vector containing step names. */
+  test_compare_performance (const string_collection & scenarios, const string_collection & steps);
+
+  /* register the time for step_index step of scenario_index scenario. multiple timers can stack on the same value
+   * concurrently. */
+  inline void register_time (us_timer & timer, size_t scenario_index, size_t step_index)
   {
-    m_step_names = step_names; /* copy names */
+    custom_assert (scenario_index < m_scenario_names.get_count ());
+    custom_assert (step_index < m_step_names.get_count ());
 
-    /* init all values */
-    m_enum_count = static_cast<size_t> (E::COUNT);
-    m_values.resize (m_enum_count);
-    for (size_t enum_val = 0; enum_val < m_enum_count; enum_val++)
-      {
-        m_values[enum_val].reserve (m_step_names.size ());
-        for (size_t val_index = 0; val_index < m_step_names.size (); val_index++)
-          {
-            m_values[enum_val].push_back (0);
-          }
-      }
-
-    /* make sure leftmost_column_length is big enough */
-    m_leftmost_column_length = TEST_RESULT_NAME_PRINT_LENGTH;
-    size_t name_length;
-    for (auto name_iter = m_step_names.cbegin (); name_iter != m_step_names.cend (); name_iter++)
-      {
-        name_length = strlen (*name_iter) + 1;
-        if (name_length > m_leftmost_column_length)
-          {
-            m_leftmost_column_length = name_length;
-          }
-      }
-  }
-
-  inline void
-  register_time (us_timer & timer, E enum_val, size_t step_index)
-  {
     value_type time = timer.time_and_reset ().count ();
-    size_t enum_index = static_cast <size_t> (enum_val);
 
     /* can be called concurrently, so use atomic inc */
-    (void) ATOMIC_INC_64 (&m_values[enum_index][step_index], time);
+    (void) ATOMIC_INC_64 (&m_values[scenario_index][step_index], time);
   }
 
-  void
-  print_results (std::ostream & output)
-  {
-    print_result_header (output);
-    for (size_t row = 0; row < m_step_names.size (); row++)
-      {
-        print_result_row (row, output);
-      }
-    output << std::endl;
-  }
+  /* print formatted results */
+  void print_results (std::ostream & output);
 
-  void
-  print_warnings (std::ostream & output)
-  {
-    bool no_warnings = true;
-    for (size_t row = 0; row < m_step_names.size (); row++)
-      {
-        check_row_and_print_warning (row, no_warnings, output);
-      }
-    if (!no_warnings)
-      {
-        output << std::endl;
-      }
-  }
+  /* check where first scenario was worse than others and print warnings */
+  void print_warnings (std::ostream & output);
 
-  void
-  print_results_and_warnings (std::ostream & output)
-  {
-    print_results (output);
-    print_warnings (output);
-  }
+  /* print both results and warnings */
+  void print_results_and_warnings (std::ostream & output);
 
-  size_t
-  get_step_count (void)
-  {
-    return m_step_names.size ();
-  }
+  /* get step count */
+  size_t get_step_count (void);
 
 private:
-  test_comparative_results (); // prevent implicit constructor
-  test_comparative_results (const test_comparative_results& other); // prevent copy
+  typedef unsigned long long value_type;
+  typedef std::vector<value_type> value_container_type;
 
-  void
-  print_value (value_type value, std::ostream & output)
-  {
-    output << std::right << std::setw (TEST_RESULT_VALUE_PRINT_LENGTH) << value / 1000;
-    output << DECIMAL_SEPARATOR;
-    output << std::setfill ('0') << std::setw (3) << value % 1000;
-    output << std::setfill (' ') << TIME_UNIT;
-  }
+  test_compare_performance (); // prevent implicit constructor
+  test_compare_performance (const test_compare_performance& other); // prevent copy
 
-  inline void
-  print_leftmost_column (const char *str, std::ostream & output)
-  {
-    output << "    ";   // prefix
-    output << std::left << std::setw (m_leftmost_column_length) << str;
-    output << ": ";
-  }
+  inline void print_value (value_type value, std::ostream & output);
+  inline void print_leftmost_column (const char *str, std::ostream & output);
+  inline void print_alloc_name_column (const char *str, std::ostream & output);
+  inline void print_result_header (std::ostream & output);
+  inline void print_result_row (size_t row, std::ostream & output);
+  inline void print_warning_header (bool & no_warnings, std::ostream & output);
+  inline void check_row_and_print_warning (size_t row, bool & no_warnings, std::ostream & output);
 
-  inline void
-  print_alloc_name_column (const char *str, std::ostream & output)
-  {
-    output << std::right << std::setw (TEST_RESULT_VALUE_TOTAL_LENGTH) << str;
-  }
+  const string_collection & m_scenario_names;
+  const string_collection & m_step_names;
 
-  inline void
-  print_result_header (std::ostream & output)
-  {
-    print_leftmost_column ("Results", output);
-
-    for (unsigned iter = 0; iter < m_enum_count; iter++)
-      {
-        print_alloc_name_column (enum_stringify_value (static_cast <E> (iter)), output);
-      }
-    output << std::endl;
-  }
-
-  inline void
-  print_result_row (size_t row, std::ostream & output)
-  {
-    print_leftmost_column (m_step_names[row], output);
-
-    for (unsigned iter = 0; iter < m_enum_count; iter++)
-      {
-        print_value (m_values[iter][row], output);
-      }
-    output << std::endl;
-  }
-
-  inline void
-  print_warning_header (bool & no_warnings, std::ostream & output)
-  {
-    if (no_warnings)
-      {
-        output << "    Warnings:" << std::endl;
-        no_warnings = false;
-      }
-  }
-
-  inline void
-  check_row_and_print_warning (size_t row, bool & no_warnings, std::ostream & output)
-  {
-    bool slower_than_standard = m_values[ALLOC_TYPE_PRIVATE] > m_values[ALLOC_TYPE_STANDARD];
-    bool slower_than_malloc = m_values[ALLOC_TYPE_PRIVATE] > m_values[ALLOC_TYPE_MALLOC];
-    if (!slower_than_malloc && !slower_than_standard)
-      {
-        return;
-      }
-    print_warning_header (no_warnings, output);
-    print_leftmost_column (m_step_names[row], output);
-    if (slower_than_standard && slower_than_malloc)
-      {
-        output << "Private is slower than both Standard and Malloc";
-      }
-    else if (slower_than_standard)
-      {
-        output << "Private is slower than Standard";
-      }
-    else
-      {
-        output << "Private is slower than Malloc";
-      }
-    output << std::endl;
-  }
-
-  name_container_type m_step_names;
   std::vector<value_container_type> m_values;
   size_t m_leftmost_column_length;
-  size_t m_enum_count;
 };
 
 /* run test and wrap with formatted text */
