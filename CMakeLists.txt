@@ -594,6 +594,7 @@ endif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 # common definitions
 set(COMMON_DEFS SYSV MAXPATHLEN=1024 -D_REENTRANT)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
 
 # For systemtap options
 if(ENABLE_SYSTEMTAP)
