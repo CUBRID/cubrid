@@ -6855,6 +6855,15 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
       return 0;			/* none is deleted */
     }
 
+  if (!vacuum_is_safe_to_remove_archives ())
+    {
+      /* we don't know yet what is the first log page required by vacuum so it is not safe to remove log archives.
+         unfortunately, to update the oldest vacuum data log pageid can be done only after loading vacuum data from
+         disk, which in turn can only happen after recovery. this will block any log archive removal until vacuum
+         is loaded. */
+      return 0;
+    }
+
   /* Get first log pageid needed for vacuum before locking LOG_CS. */
   vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
 
@@ -6947,6 +6956,12 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   if (last_arv_num_to_delete >= 0 && last_arv_num_to_delete >= first_arv_num_to_delete)
     {
+      /* this is too problematic not to log in server error log too! */
+      _er_log_debug (ARG_FILE_LINE, "Purge archives starting with %d and up until %d; "
+		     "vacuum_first_pageid = %d, last_arv_num_for_syscrashes = %d",
+		     first_arv_num_to_delete, last_arv_num_to_delete, vacuum_first_pageid,
+		     log_Gl.hdr.last_arv_num_for_syscrashes);
+
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED);
       if (catmsg == NULL)
 	{
