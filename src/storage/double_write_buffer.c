@@ -194,6 +194,10 @@
 #define DWB_RESET_POSITION_IN_CHECKSUMS_ELEMENT(element_pos) \
   (ATOMIC_TAS_32 (&double_Write_Buffer.checksum_info->positions[element_pos], 0))
 
+/* Get block version. */
+#define DWB_GET_BLOCK_VERSION(block) \
+  (ATOMIC_INC_64 (&block->version, 0ULL))
+
 /* Queue entry. */
 typedef struct pgbuf_double_write_wait_queue_entry DWB_WAIT_QUEUE_ENTRY;
 struct pgbuf_double_write_wait_queue_entry
@@ -830,7 +834,7 @@ check_dwb_flush_thread_is_running:
 
 	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
-	      _er_log_debug (ARG_FILE_LINE, "DWB error: Can't flush block = %d having version %lld\n",
+	      _er_log_debug (ARG_FILE_LINE, "DWB flushed %d block having version %lld\n",
 			     block_no, double_Write_Buffer.blocks[block_no].version);
 	    }
 	  blocks_count--;
@@ -2705,12 +2709,14 @@ dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * 
   unsigned int block_checksum_start_position, block_checksum_element_position, element_position, slot_position,
     slot_base;
   bool checksum_computed, slots_checksum_computed, all_slots_checksum_computed;
+  UINT64 block_version;
 
   assert (block != NULL);
 
   slots_checksum_computed = false;
   all_slots_checksum_computed = true;
   block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (block->block_no);
+  block_version = DWB_GET_BLOCK_VERSION (block);
   for (block_checksum_element_position = 0; block_checksum_element_position < DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK;
        block_checksum_element_position++)
     {
@@ -2777,6 +2783,21 @@ dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * 
 	    {
 	      /* Check that no other transaction computed the current slot checksum. */
 	      assert (DWB_IS_ADDED_TO_REQUESTED_CHECKSUMS_ELEMENT (element_position, computed_checksum_bits));
+
+	      /* Update start bit position, if possible */
+	      do
+		{
+		  position_in_checksum_element = DWB_GET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
+		  if (position_in_checksum_element >= position)
+		    {
+		      /* Other transaction advanced before me, nothing to do. */
+		      break;
+		    }
+		}
+	      while (!ATOMIC_CAS_32 (&double_Write_Buffer.checksum_info->positions[element_position],
+				     position_in_checksum_element, position));
+
+	      assert (DWB_GET_BLOCK_VERSION (block) == block_version);
 	      DWB_ADD_TO_COMPUTED_CHECKSUMS_ELEMENT (element_position, computed_checksum_bits);
 	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
@@ -2784,19 +2805,6 @@ dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * 
 				 computed_checksum_bits, block->block_no);
 		}
 	    }
-
-	  /* Update start bit position, if possible */
-	  do
-	    {
-	      position_in_checksum_element = DWB_GET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
-	      if (position_in_checksum_element >= position)
-		{
-		  /* Other transaction advanced before me, nothing to do. */
-		  break;
-		}
-	    }
-	  while (!ATOMIC_CAS_32 (&double_Write_Buffer.checksum_info->positions[element_position],
-				 position_in_checksum_element, position));
 	}
 
       if (DWB_GET_COMPUTED_CHECKSUMS_ELEMENT (element_position)
@@ -2985,6 +2993,20 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 		  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%d) \n",
 				 prev_block_no, prev_block->version);
 		}
+
+#if defined (SERVER_MODE)
+	      if (thread_is_dwb_checksum_computation_thread_available ())
+		{
+		  /* Wake up checksum thread to compute checksum. */
+		  thread_wakeup_dwb_checksum_computation_thread ();
+		}
+
+	      if (thread_is_dwb_flush_block_thread_available ())
+		{
+		  /* Wake up flush thread. */
+		  thread_wakeup_dwb_flush_block_with_checksum_thread ();
+		}
+#endif
 	      /*
 	       * The previous block was not flushed yet. Needs to wait for it to be flushed.
 	       * We may improve this - if the blocks are independent (different VPIDs) then do not wait.
@@ -3435,7 +3457,7 @@ dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
 
       if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "DWB error: Can't flush block = %d having version %lld\n",
+	  _er_log_debug (ARG_FILE_LINE, "Successfully flushed DWB block = %d having version %lld\n",
 			 flush_block->block_no, flush_block->version);
 	}
 
@@ -3561,6 +3583,20 @@ start:
 	  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%d) \n",
 			 current_block_no, double_Write_Buffer.blocks[current_block_no].version);
 	}
+
+#if defined (SERVER_MODE)
+      if (thread_is_dwb_checksum_computation_thread_available ())
+	{
+	  /* Wake up checksum thread to compute checksum. */
+	  thread_wakeup_dwb_checksum_computation_thread ();
+	}
+
+      if (thread_is_dwb_flush_block_thread_available ())
+	{
+	  /* Wake up flush thread. */
+	  thread_wakeup_dwb_flush_block_with_checksum_thread ();
+	}
+#endif
 
       /* Not flushed yet. Wait for current block flush. */
       error_code = dwb_wait_for_block_completion (thread_p, current_block_no);
