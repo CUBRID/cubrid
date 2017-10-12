@@ -30,6 +30,14 @@
 
 #include "error_code.h"
 
+#if defined(WINDOWS) && !defined(__GNUC__)
+#define int32_t __int32
+#define int64_t __int64
+#define u_int32_t unsigned __int32
+#define u_int64_t unsigned __int64
+#endif /* WINDOWS && !__GNUC__ */
+
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -45,7 +53,6 @@ extern "C"
     MEDIUM_STRING,
     LARGE_STRING
   } STRING_STYLE;
-
 
 /*
  * DB_MAX_IDENTIFIER_LENGTH -
@@ -550,7 +557,7 @@ extern "C"
   };
 
 /* types used for the representation of bigint values. */
-  typedef INT64 DB_BIGINT;
+  typedef int64_t DB_BIGINT;
 
 /* Structure used for the representation of time values. */
   typedef unsigned int DB_TIME;
@@ -692,8 +699,8 @@ extern "C"
   typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
   struct vpid
   {
-    INT32 pageid;		/* Page identifier */
-    INT16 volid;		/* Volume identifier where the page resides */
+    int32_t pageid;		/* Page identifier */
+    short volid;		/* Volume identifier where the page resides */
   };
 #define VPID_INITIALIZER \
   { NULL_PAGEID, NULL_VOLID }
@@ -728,8 +735,8 @@ extern "C"
   typedef struct vsid VSID;	/* REAL SECTOR IDENTIFIER */
   struct vsid
   {
-    INT32 sectid;		/* Sector identifier */
-    INT16 volid;		/* Volume identifier where the sector resides */
+    int32_t sectid;		/* Sector identifier */
+    short volid;		/* Volume identifier where the sector resides */
   };
 #define VSID_INITIALIZER { NULL_SECTID, NULL_VOLID }
 #define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->sectid
@@ -737,8 +744,8 @@ extern "C"
   typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
   struct vfid
   {
-    INT32 fileid;		/* File identifier */
-    INT16 volid;		/* Volume identifier where the file resides */
+    int32_t fileid;		/* File identifier */
+    short volid;		/* Volume identifier where the file resides */
   };
 #define VFID_INITIALIZER \
   { NULL_FILEID, NULL_VOLID }
@@ -756,7 +763,7 @@ extern "C"
 
   struct db_elo
   {
-    INT64 size;
+    int64_t size;
     char *locator;
     char *meta_data;
     DB_ELO_TYPE type;
