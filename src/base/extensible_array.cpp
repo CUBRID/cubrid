@@ -29,9 +29,6 @@
 #include <cassert>
 #include <cstring>
 
-
-//#include "error_manager.h"
-
 const size_t XARR_SIZE_64 = 64;
 const size_t XARR_SIZE_ONE_K = 1024;
 
@@ -46,7 +43,6 @@ inline extensible_array<T, Size, Allocator>::extensible_array (Allocator & alloc
   m_dynamic_data = NULL;
   m_size = 0;
   m_capacity = Size;
-  m_max_size = max_size;
 }
 
 template<typename T, size_t Size, typename Allocator>
@@ -58,26 +54,20 @@ inline extensible_array<T, Size, Allocator>::~extensible_array ()
 /* C-style append & copy. they are declared unsafe and is recommended to avoid them (not always possible because of
 * legacy code. */
 template<typename T, size_t Size, typename Allocator>
-inline int
+inline void
 extensible_array<T, Size, Allocator>::append (const T * source, size_t length)
 {
-  int err = check_resize (m_size + length);
-  if (err != 0)
-    {
-      return err;
-    }
+  check_resize (m_size + length);
   std::memcpy ((m_dynamic_data != NULL ? m_dynamic_data : m_static_data) + m_size, source, length * sizeof (T));
   m_size += length;
-
-  return 0;
 }
 
 template<typename T, size_t Size, typename Allocator>
-inline int
+inline void
 extensible_array<T, Size, Allocator>::copy (const T * source, size_t length)
 {
   reset ();
-  return append (source, length);
+  append (source, length);
 }
 
 template<typename T, size_t Size, typename Allocator>
@@ -102,16 +92,16 @@ extensible_array<T, Size, Allocator>::get_memsize (void) const
 }
 
 template<typename T, size_t Size, typename Allocator>
-inline int
+inline void
 extensible_array<T, Size, Allocator>::check_resize (size_t size)
 {
   if (size <= get_capacity ())
     {
       /* no resize */
-      return 0;
+      return;
     }
 
-  return extend (size);
+  extend (size);
 }
 
 template<typename T, size_t Size, typename Allocator>
@@ -123,15 +113,9 @@ extensible_array<T, Size, Allocator>::get_capacity (void)
 
 /* extension should theoretically be rare, so don't inline them */
 template<typename T, size_t Size, typename Allocator>
-inline int
+inline void
 extensible_array<T, Size, Allocator>::extend (size_t size)
 {
-  if (m_max_size > 0 && m_max_size < size)
-    {
-      /* this increased too much */
-      return -1;
-    }
-
   size_t new_capacity = get_capacity ();
   while (new_capacity < size)
     {
@@ -142,11 +126,6 @@ extensible_array<T, Size, Allocator>::extend (size_t size)
   if (m_dynamic_data == NULL)
     {
       m_dynamic_data = m_allocator.allocate (new_capacity * sizeof (T));
-      if (m_dynamic_data == NULL)
-        {
-          /* todo: handle private allocator errors */
-          return -1;
-        }
       if (m_size > 0)
         {
           std::memcpy (m_dynamic_data, m_static_data, m_size * sizeof (T));
@@ -156,18 +135,13 @@ extensible_array<T, Size, Allocator>::extend (size_t size)
     {
       /* realloc */
       T* new_dynamic_data = m_allocator.allocate (new_capacity * sizeof (T));
-      if (new_dynamic_data == NULL)
-        {
-          /* todo: handle private allocator errors */
-          return -1;
-        }
       std::memcpy (new_dynamic_data, m_dynamic_data, m_size * sizeof (T));
       clear ();
       m_dynamic_data = new_dynamic_data;
     }
 
+  /* update capacity */
   m_capacity = new_capacity;
-  return 0;
 }
 
 template<typename T, size_t Size, typename Allocator>

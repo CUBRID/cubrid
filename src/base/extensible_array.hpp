@@ -38,7 +38,7 @@
  *
  *    When data varying in size must be stored or collected preferably with no dynamic memory allocation.
  *
- *    One example (assuming code may be executed very often):
+ *    One example of code we often write for popular operations:
  *
  *        const int BUF_SIZE = 128;
  *        char buffer[BUF_SIZE];      // static buffer
@@ -58,10 +58,7 @@
  *                new_capacity = 2 * new_capacity
  *              }
  *
- *            char *new_buffer_p = new char[new_capacity];    // if malloc is used, realloc can be used here.
- *            memcpy (new_buffer_p, buffer_p, offset);
- *            delete buffer_p;
- *            buffer_p = new_buffer_p;
+ *            buffer_p = db_private_realloc (thread_p, buffer_p, new_capacity);
  *          }
  *        memcpy (buffer_p, page_ptr, size_of_data);
  *        ...
@@ -70,7 +67,7 @@
  *        // delete if dynamically allocated
  *        if (buffer_p != buffer)
  *          {
- *            delete buffer_p;
+ *            db_private_free (thread_p, buffer_p);
  *          }
  *
  *
@@ -83,11 +80,7 @@
  *
  * How to use:
  *
- *    1. Include extensible_array.cpp (yes, not a typo) into your .c/.cpp file. The implementation and predefined
- *       specializations are there and you won't be able to use the extensible_array. The main reason is to prevent
- *       using this in another header file (it is not actually prevented, but it does make it awkward).
- *       Try not to create too many specialization of this template class. Although this is designed to be mainly
- *       inline, I would still not abuse it.
+ *    1. Include extensible_array.cpp, where the template class implementation is found.
  *
  *    2. declare static variable with a default size:
  *        const int BUF_SIZE = 64;
@@ -139,8 +132,8 @@ public:
 
   ~extensible_array ();
 
-  inline int append (const T* source, size_t length);
-  inline int copy (const T* source, size_t length);
+  inline void append (const T* source, size_t length);
+  inline void copy (const T* source, size_t length);
 
   inline const T* get_data (void) const;
   inline size_t get_size (void) const;
@@ -148,10 +141,10 @@ public:
 
 private:
 
-  inline int check_resize (size_t size);
+  inline void check_resize (size_t size);
   inline size_t get_capacity (void);
   /* extension should theoretically be rare, so don't inline them */
-  int extend (size_t size);
+  void extend (size_t size);
   inline void reset (void);
   inline void clear (void);
   inline T* end (void);
@@ -161,7 +154,6 @@ private:
   T m_static_data[Size];
   size_t m_size;
   size_t m_capacity;
-  size_t m_max_size;
 };
 
 /************************************************************************/

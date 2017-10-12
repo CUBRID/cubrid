@@ -29,15 +29,29 @@
 
 /* db_private_allocator -
  *
- * note:
+ *  Implementation of C++ allocator concept using CUBRID private allocator.
  *
- *    1. Cannot be used with typenames T that overload operator &.
+ *
+ *
+ *  Templates:
+ *
+ *      T: base allocation type.
+ *
+ *
+ *  How to use:
+ *
+ *      Specialize template classes/functions that require dynamic memory allocation.
+ *
+ *
+ *  note:
+ *
+ *    1. Cannot be used with typenames T that overload operator &
  */
 template <typename T>
 class db_private_allocator
 {
 public:
-  /* typedefs */
+  /* standard allocator type definitions */
   typedef T value_type;
   typedef value_type* pointer;
   typedef const value_type* const_pointer;
