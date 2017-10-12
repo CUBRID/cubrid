@@ -37,7 +37,7 @@ const size_t XARR_SIZE_ONE_K = 1024;
 /************************************************************************/
 
 template<typename T, size_t Size, typename Allocator>
-inline extensible_array<T, Size, Allocator>::extensible_array (Allocator & allocator, size_t max_size)
+inline extensible_array<T, Size, Allocator>::extensible_array (Allocator & allocator)
   : m_allocator (allocator)
 {
   m_dynamic_data = NULL;

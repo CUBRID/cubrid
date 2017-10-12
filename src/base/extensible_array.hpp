@@ -128,7 +128,7 @@ template <typename T, size_t Size, typename Allocator = std::allocator<T> >
 class extensible_array
 {
 public:
-  extensible_array (Allocator & allocator, size_t max_size = 0);
+  extensible_array (Allocator & allocator);
 
   ~extensible_array ();
 
