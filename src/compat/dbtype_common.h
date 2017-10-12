@@ -32,14 +32,7 @@
 
 #ifdef _DBI_COMPAT_H_		/* Keep the old definitions for api. */
 
-#define bool char
 
-#if defined(WINDOWS) && !defined(__GNUC__)
-#define int32_t __int32
-#define int64_t __int64
-#define u_int32_t unsigned __int32
-#define u_int64_t unsigned __int64
-#endif /* WINDOWS && !__GNUC__ */
 
 #endif /* DBI_COMPAT_H */
 
