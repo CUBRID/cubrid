@@ -773,9 +773,9 @@ extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 #endif /* !_WIN64 */
 #endif /* defined (WINDOWS) */
 
-#if (!defined (WINDOWS) && __cplusplus < 201103L) || (defined (WINDOWS) && _MSC_VER <= 1500)
+#ifndef __cplusplus
 #define static_assert(a, b)
-#endif
+#endif /* not __cplusplus */
 
 /* *INDENT-OFF* */
 template <typename T, typename V> inline T ATOMIC_INC_32 (volatile T *ptr, V amount)

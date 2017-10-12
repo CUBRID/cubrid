@@ -81,31 +81,13 @@ custom_thread_entry::start_resource_tracking (void)
 const char *DECIMAL_SEPARATOR = ".";
 const char *TIME_UNIT = " usec";
 
-const char *
-enum_stringify_value (test_allocator_type alloc_type)
-{
-  switch (alloc_type)
-    {
-    case test_allocator_type::PRIVATE:
-      return "Private";
-    case test_allocator_type::STANDARD:
-      return "Standard";
-    case test_allocator_type::MALLOC:
-      return "Malloc";
-    case test_allocator_type::COUNT:
-    default:
-      custom_assert (false);
-      return NULL;
-    }
-}
-
-inline size_t
+size_t
 string_collection::get_count () const
 {
   return m_names.size ();
 }
 
-inline size_t
+size_t
 string_collection::get_max_length () const
 {
   size_t max = 0;
@@ -119,7 +101,7 @@ string_collection::get_max_length () const
   return max;
 }
 
-inline const char *
+const char *
 string_collection::get_name (size_t name_index) const
 {
   return m_names[name_index].c_str ();
