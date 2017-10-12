@@ -39,14 +39,12 @@ set(BASE_SOURCES
   ${BASE_DIR}/chartype.c
   ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
-#  ${BASE_DIR}/db_private_allocator.hpp
   ${BASE_DIR}/dtoa.c
   ${BASE_DIR}/dynamic_array.c	
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/event_log.c
-#  ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/extensible_array.cpp
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fixed_alloc.c
@@ -75,6 +73,10 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
+  )
+set (BASE_HEADERS
+  ${BASE_DIR}/db_private_allocator.hpp
+  ${BASE_DIR}/extensible_array.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -244,9 +246,15 @@ set (CUBRID_LIB_SOURCES
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   )
+if (WIN32)
+set (CUBRID_LIB_HEADERS
+  ${BASE_HEADERS}
+  )
+endif(WIN32)
 
 add_library(cubrid SHARED
   ${CUBRID_LIB_SOURCES}
+  ${CUBRID_LIB_HEADERS}
   )
 set_target_properties(cubrid PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 if(WIN32)
@@ -284,6 +292,7 @@ if (WITH_UNIT_TESTS)
   # todo - is there any nicer way of doing this??
   add_library (cubrid-win-lib STATIC
     ${CUBRID_LIB_SOURCES}
+    ${CUBRID_LIB_HEADERS}
     )
 
   target_compile_definitions(cubrid-win-lib PRIVATE 
