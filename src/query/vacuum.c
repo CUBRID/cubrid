@@ -3058,7 +3058,10 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
   /* Initialize stored heap objects. */
   worker->n_heap_objects = 0;
 
-  was_interrupted = VACUUM_BLOCK_IS_INTERRUPTED (data->blockid);
+  /* set was_interrupted flag to tell vacuum_heap_page that some safe-guard have to behave differently. interruptions
+   * are usually marked in blockid, however sa_mode_partial_block can also be interrupted and will no flag is set in
+   * blockid. */
+  was_interrupted = VACUUM_BLOCK_IS_INTERRUPTED (data->blockid) || sa_mode_partial_block;
 
   /* Follow the linked records starting with start_lsa */
   for (LSA_COPY (&log_lsa, &data->start_lsa); !LSA_ISNULL (&log_lsa) && log_lsa.pageid >= first_block_pageid;
