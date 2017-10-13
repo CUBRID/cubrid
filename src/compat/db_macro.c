@@ -47,6 +47,7 @@
 #include "db_elo.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "db_json.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

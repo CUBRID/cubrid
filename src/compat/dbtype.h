@@ -31,7 +31,14 @@
 
 #include "config.h"
 #include "dbdef.h"
-#include "db_json.hpp"
+
+#if defined (__cplusplus)
+class JSON_DOC;
+class JSON_VALIDATOR;
+#else
+typedef void JSON_DOC;
+typedef void JSON_VALIDATOR;
+#endif
 
 /*
  * DB_MAX_IDENTIFIER_LENGTH -

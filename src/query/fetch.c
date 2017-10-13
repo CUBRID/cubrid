@@ -2613,7 +2613,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       break;
     case T_JSON_EXTRACT:
-      if (qdata_json_extract_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_json_extract_dbval (thread_p, peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}

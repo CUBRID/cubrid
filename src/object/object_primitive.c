@@ -17320,7 +17320,7 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	  STATIC_CAST (DB_JSON *, memptr)->schema_raw =
 	    db_private_strdup (NULL, db_json_get_schema_raw_from_validator (domain->json_validator));
 	}
-      STATIC_CAST (DB_JSON *, memptr)->document = db_json_get_copy_of_doc (value->data.json.document);
+      STATIC_CAST (DB_JSON *, memptr)->document = db_json_get_copy_of_doc (NULL, value->data.json.document);
     }
 
   return error;
@@ -17357,7 +17357,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    }
 	  else
 	    {
-	      document = db_json_get_copy_of_doc (json_obj->document);
+	      document = db_json_get_copy_of_doc (NULL, json_obj->document);
 	      db_make_json (value, new_, document, true);
 	    }
 	}
@@ -17469,7 +17469,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       else
 	{
 	  json_obj->json_body = db_private_strdup (NULL, json_body.data.ch.medium.buf);
-	  rc = db_json_get_json_from_str (json_body.data.ch.medium.buf, json_obj->document);
+	  rc = db_json_get_json_from_str (NULL, json_body.data.ch.medium.buf, json_obj->document);
 	  if (rc != NO_ERROR)
 	    {
 	      assert (false);
@@ -17537,7 +17537,7 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       if (copy)
 	{
 	  dest->data.json.json_body = db_private_strdup (NULL, src->data.json.json_body);
-	  dest->data.json.document = db_json_get_copy_of_doc (src->data.json.document);
+	  dest->data.json.document = db_json_get_copy_of_doc (NULL, src->data.json.document);
 	  dest->data.json.schema_raw = db_private_strdup (NULL, src->data.json.schema_raw);
 	  dest->need_clear = true;
 	}
@@ -17649,7 +17649,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
   else
     {
       JSON_DOC *doc = NULL;
-      rc = db_json_get_json_from_str (json_body.data.ch.medium.buf, doc);
+      rc = db_json_get_json_from_str (NULL, json_body.data.ch.medium.buf, doc);
 
       if (rc != NO_ERROR)
 	{

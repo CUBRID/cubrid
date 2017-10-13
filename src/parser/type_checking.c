@@ -17246,7 +17246,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       break;
     case PT_JSON_EXTRACT:
-      error = db_json_extract_dbval (arg1, arg2, result);
+      error = db_json_extract_dbval (NULL, arg1, arg2, result);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -20601,7 +20601,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	}
       break;
     case F_JSON_OBJECT:
-      error = db_json_object (result, args, num_args);
+      error = db_json_object (NULL, result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, NULL, er_msg ());
@@ -20609,7 +20609,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	}
       break;
     case F_JSON_ARRAY:
-      error = db_json_array (result, args, num_args);
+      error = db_json_array (NULL, result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, NULL, er_msg ());
@@ -20617,7 +20617,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	}
       break;
     case F_JSON_INSERT:
-      error = db_json_insert (result, args, num_args);
+      error = db_json_insert (NULL, result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, NULL, er_msg ());
@@ -20625,7 +20625,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	}
       break;
     case F_JSON_REMOVE:
-      error = db_json_remove (result, args, num_args);
+      error = db_json_remove (NULL, result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, NULL, er_msg ());
@@ -20633,7 +20633,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	}
       break;
     case F_JSON_MERGE:
-      error = db_json_merge (result, args, num_args);
+      error = db_json_merge (NULL, result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, NULL, er_msg ());

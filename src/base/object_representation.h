@@ -1139,6 +1139,10 @@ struct db_set
   bool need_clear;
 };
 
+#if defined (__cplusplus)
+class JSON_VALIDATOR;
+#endif
+
 /*
  * SETOBJ
  *    This is the primitive set object header.

@@ -1,3 +1,4 @@
+#include <server_support.h>
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
@@ -49,6 +50,8 @@
 #include "critical_section.h"
 #include "job_queue.h"
 #include "tz_support.h"
+#include "db_date.h"
+#include "network.h"
 
 #if defined(SERVER_MODE)
 #include "thread.h"
@@ -463,3 +466,326 @@ showstmt_array_end_scan (THREAD_ENTRY * thread_p, void **ptr)
     }
   return NO_ERROR;
 }
+
+/*
+ * thread_start_scan () -  start scan function for show threads
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   type (in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(in/out):
+ */
+#if defined(SERVER_MODE)
+extern int
+thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
+  const int num_cols = 26;
+  THREAD_ENTRY *thrd, *next_thrd;
+  int i, idx, error = NO_ERROR;
+  DB_VALUE *vals = NULL;
+  int ival;
+  INT64 i64val;
+  CSS_CONN_ENTRY *conn_entry = NULL;
+  char buf[1024];
+  int buf_len;
+  void *area;
+  HL_HEAPID private_heap_id;
+  void *query_entry;
+  LK_ENTRY *lockwait;
+  time_t stime;
+  int msecs;
+  DB_DATETIME time_val;
+
+  *ptr = NULL;
+
+  ctx = showstmt_alloc_array_context (thread_p, thread_get_total_num_of_threads (), num_cols);
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      return error;
+    }
+
+  for (i = 0; i < thread_get_total_num_of_threads (); i++)
+    {
+      thrd = thread_get_entry_from_index (i);
+
+      vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+      if (vals == NULL)
+	{
+	  error = er_errid ();
+	  goto exit_on_error;
+	}
+
+      idx = 0;
+      /* Index */
+      db_make_int (&vals[idx], thrd->index);
+      idx++;
+
+      /* Jobq_index */
+      if (0 < thrd->index && thrd->index <= thread_get_total_num_of_workers ())
+	{
+	  db_make_int (&vals[idx], thrd->index % CSS_NUM_JOB_QUEUE);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Thread_id */
+      db_make_bigint (&vals[idx], (DB_BIGINT) thrd->tid);
+      idx++;
+
+      /* Tran_index */
+      ival = thrd->tran_index;
+      if (ival >= 0)
+	{
+	  db_make_int (&vals[idx], ival);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Type */
+      db_make_string (&vals[idx], thread_type_to_string (thrd->type));
+      idx++;
+
+      /* Status */
+      db_make_string (&vals[idx], thread_status_to_string (thrd->status));
+      idx++;
+
+      /* Resume_status */
+      db_make_string (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
+      idx++;
+
+      /* Net_request */
+      ival = thrd->net_request_index;
+      if (ival != -1)
+	{
+	  db_make_string (&vals[idx], net_server_request_name (ival));
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Conn_client_id */
+      ival = thrd->client_id;
+      if (ival != -1)
+	{
+	  db_make_int (&vals[idx], ival);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Conn_request_id */
+      ival = thrd->rid;
+      if (ival != 0)
+	{
+	  db_make_int (&vals[idx], ival);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Conn_index */
+      conn_entry = thrd->conn_entry;
+      if (conn_entry != NULL)
+	{
+	  db_make_int (&vals[idx], conn_entry->idx);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Last_error_code */
+      ival = er_errid ();
+      db_make_int (&vals[idx], ival);
+      idx++;
+
+      /* Last_error_msg */
+      if (ival != NO_ERROR)
+	{
+	  buf_len = 1024;
+	  area = er_get_area_error (buf, &buf_len);
+	  ((char *) (area))[255] = '\0';	/* truncate msg */
+	  error = db_make_string_copy (&vals[idx], (const char *) area);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Private_heap_id */
+      private_heap_id = thrd->private_heap_id;
+      if (private_heap_id != 0)
+	{
+	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) private_heap_id);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Query_entry */
+      query_entry = thrd->query_entry;
+      if (query_entry != NULL)
+	{
+	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) query_entry);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Interrupted */
+      db_make_int (&vals[idx], thrd->interrupted);
+      idx++;
+
+      /* Shutdown */
+      db_make_int (&vals[idx], thrd->shutdown);
+      idx++;
+
+      /* Check_interrupt */
+      db_make_int (&vals[idx], thrd->check_interrupt);
+      idx++;
+
+      /* Wait_for_latch_promote */
+      db_make_int (&vals[idx], thrd->wait_for_latch_promote);
+      idx++;
+
+      lockwait = (LK_ENTRY *) thrd->lockwait;
+      if (lockwait != NULL)
+	{
+	  /* lockwait_blocked_mode */
+	  strncpy (buf, LOCK_TO_LOCKMODE_STRING (lockwait->blocked_mode), sizeof (buf));
+	  buf[sizeof (buf) - 1] = '\0';
+	  trim (buf);
+	  error = db_make_string_copy (&vals[idx], buf);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  idx++;
+
+	  /* Lockwait_start_time */
+	  i64val = thrd->lockwait_stime;
+	  stime = (time_t) (i64val / 1000LL);
+	  msecs = i64val % 1000;
+	  db_localdatetime_msec (&stime, msecs, &time_val);
+	  error = db_make_datetime (&vals[idx], &time_val);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  idx++;
+
+	  /* Lockwait_msecs */
+	  db_make_int (&vals[idx], thrd->lockwait_msecs);
+	  idx++;
+
+	  /* Lockwait_state */
+	  db_make_string (&vals[idx], lock_wait_state_to_string (thrd->lockwait_state));
+	  idx++;
+	}
+      else
+	{
+	  /* lockwait_blocked_mode */
+	  db_make_null (&vals[idx]);
+	  idx++;
+
+	  /* Lockwait_start_time */
+	  db_make_null (&vals[idx]);
+	  idx++;
+
+	  /* Lockwait_msecs */
+	  db_make_null (&vals[idx]);
+	  idx++;
+
+	  /* Lockwait_state */
+	  db_make_null (&vals[idx]);
+	  idx++;
+	}
+
+      /* Next_wait_thread_index */
+      next_thrd = thrd->next_wait_thrd;
+      if (next_thrd != NULL)
+	{
+	  db_make_int (&vals[idx], next_thrd->index);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Next_tran_wait_thread_index */
+      next_thrd = thrd->tran_next_wait;
+      if (next_thrd != NULL)
+	{
+	  db_make_int (&vals[idx], next_thrd->index);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Next_worker_thread_index */
+      next_thrd = thrd->worker_thrd_list;
+      if (next_thrd != NULL)
+	{
+	  db_make_int (&vals[idx], next_thrd->index);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      assert (idx == num_cols);
+    }
+
+  *ptr = ctx;
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (ctx != NULL)
+    {
+      showstmt_free_array_context (thread_p, ctx);
+    }
+
+  return error;
+}
+#endif /* defined(SERVER_MODE) */

@@ -33,6 +33,10 @@
 #include "error_manager.h"
 #include "area_alloc.h"
 
+#if defined (__cplusplus)
+class JSON_VALIDATOR;
+#endif
+
 #define DOM_GET_ENUMERATION(dom) \
     ((dom)->enumeration)
 #define DOM_GET_ENUM_ELEMENTS(dom) \

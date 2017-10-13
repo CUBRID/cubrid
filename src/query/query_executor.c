@@ -69,6 +69,8 @@
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
 
+#include "db_json.hpp"
+
 /* this must be the last header file included!!! */
 #include "dbval.h"
 

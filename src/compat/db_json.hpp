@@ -37,6 +37,7 @@ typedef void JSON_VALIDATOR;
 #if defined (__cplusplus)
 
 #include <functional>
+#include "thread.h"
 
 enum DB_JSON_TYPE
 {
@@ -54,7 +55,8 @@ bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path, JSON_DOC *&result);
+int db_json_extract_document_from_path (THREAD_ENTRY *thread_p, JSON_DOC *document, const char *raw_path,
+                                        JSON_DOC *&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
 
@@ -68,17 +70,17 @@ void db_json_add_element_to_array (JSON_DOC *doc, int value);
 void db_json_add_element_to_array (JSON_DOC *doc, double value);
 void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 
-int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc);
-JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
-void db_json_copy_doc (JSON_DOC *dest, const JSON_DOC *src);
+int db_json_get_json_from_str (THREAD_ENTRY *thread_p, const char *json_raw, JSON_DOC *&doc);
+JSON_DOC *db_json_get_copy_of_doc (THREAD_ENTRY *thread_p, const JSON_DOC *doc);
+void db_json_copy_doc (THREAD_ENTRY *thread_p, JSON_DOC *dest, const JSON_DOC *src);
 
-int db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
+int db_json_insert_func (THREAD_ENTRY *thread_p, const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
 int db_json_remove_func (JSON_DOC *doc, char *raw_path);
-int db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest);
+int db_json_merge_func (THREAD_ENTRY *thread_p, const JSON_DOC *source, JSON_DOC *dest);
 
 void db_json_merge_two_json_objects (JSON_DOC *obj1, const JSON_DOC *obj2);
 void db_json_merge_two_json_arrays (JSON_DOC *array1, const JSON_DOC *array2);
-void db_json_merge_two_json_by_array_wrapping (JSON_DOC *j1, const JSON_DOC *j2);
+void db_json_merge_two_json_by_array_wrapping (THREAD_ENTRY *thread_p, JSON_DOC *j1, const JSON_DOC *j2);
 
 int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result);
 const char *db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val);
@@ -86,7 +88,7 @@ int db_json_validate_json (const char *json_body);
 
 int db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR *&validator);
 JSON_VALIDATOR *db_json_copy_validator (JSON_VALIDATOR *validator);
-JSON_DOC *db_json_allocate_doc ();
+JSON_DOC *db_json_allocate_doc (void *thread_p);
 void db_json_delete_doc (JSON_DOC *&doc);
 void db_json_delete_validator (JSON_VALIDATOR *&validator);
 int db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc);
@@ -101,18 +103,18 @@ const char *db_json_get_string_from_document (const JSON_DOC *doc);
 
 template <typename Fn, typename... Args>
 inline int
-db_json_convert_string_and_call (const char *json_raw, Fn &&func, Args &&... args)
+db_json_convert_string_and_call (THREAD_ENTRY *thread_p, const char *json_raw, Fn &&func, Args &&... args)
 {
   JSON_DOC *doc;
   int error_code;
 
-  error_code = db_json_get_json_from_str (json_raw, doc);
+  error_code = db_json_get_json_from_str (thread_p, json_raw, doc);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  return func (doc, std::forward<Args> (args)...);
+  return func (thread_p, doc, std::forward<Args> (args)...);
 }
 
 #endif /* defined (__cplusplus) */
