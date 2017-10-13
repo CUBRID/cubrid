@@ -327,8 +327,9 @@ STATIC_INLINE void dwb_block_free_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue,
 						    int (*func) (void *)) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_remove_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex,
 						void *data, int (*func) (void *)) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex,
-					   int (*func) (void *)) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_signal_waiting_threads (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex);
 
 /* DWB functions */
 STATIC_INLINE void dwb_adjust_write_buffer_values (unsigned int *p_double_write_buffer_size,
@@ -636,15 +637,14 @@ dwb_remove_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mute
 }
 
 /*
- * dwb_destroy_wait_queue () - Destroy the wait queue.
+ * dwb_signal_waiting_threads () - Signal waiting threads.
  *
  * return   : Nothing.
  * wait_queue (in/out): The wait queue.
  * mutex(in): The mutex to protect the queue.
- * func(in): The function to apply on each entry.
  */
 STATIC_INLINE void
-dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex, int (*func) (void *))
+dwb_signal_waiting_threads (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
 {
   assert (wait_queue != NULL);
   if (mutex != NULL)
@@ -654,7 +654,44 @@ dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex, in
 
   while (wait_queue->head != NULL)
     {
-      dwb_remove_wait_queue_entry (wait_queue, NULL, NULL, func);
+      dwb_remove_wait_queue_entry (wait_queue, NULL, NULL, dwb_signal_waiting_thread);
+    }
+
+  if (mutex != NULL)
+    {
+      pthread_mutex_unlock (mutex);
+    }
+}
+
+/*
+ * dwb_destroy_wait_queue () - Destroy the wait queue.
+ *
+ * return   : Nothing.
+ * wait_queue (in/out): The wait queue.
+ * mutex(in): The mutex to protect the queue. 
+ */
+STATIC_INLINE void
+dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
+{
+  DWB_WAIT_QUEUE_ENTRY *wait_queue_entry;
+  assert (wait_queue != NULL);
+
+  if (mutex != NULL)
+    {
+      (void) pthread_mutex_lock (mutex);
+    }
+
+  dwb_signal_waiting_threads (wait_queue, NULL);
+
+  if (wait_queue->free_count > 0)
+    {
+      while (wait_queue->free_list != NULL)
+	{
+	  wait_queue_entry = wait_queue->free_list;
+	  wait_queue->free_list = wait_queue_entry->next;
+	  free_and_init (wait_queue_entry);
+	  wait_queue->free_count--;
+	}
     }
 
   if (mutex != NULL)
@@ -923,7 +960,7 @@ dwb_initialize_checksum_info (DWB_CHECKSUM_INFO * checksum_info, UINT64 * reques
 }
 
 /*
- * dwb_finalize_block () - Create the blocks.
+ * dwb_create_checksum_info () - Create checksum info.
  *
  * return   : Error code.
  * thread_p (in) : The thread entry.
@@ -1440,7 +1477,7 @@ dwb_finalize_block (DWB_BLOCK * block)
     {
       free_and_init (block->write_buffer);
     }
-  dwb_destroy_wait_queue (&block->wait_queue, &block->mutex, dwb_signal_waiting_thread);
+  dwb_destroy_wait_queue (&block->wait_queue, &block->mutex);
   pthread_mutex_destroy (&block->mutex);
 }
 
@@ -1770,7 +1807,7 @@ dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_fl
   unsigned int block_no;
 
   assert (current_position_with_flags != NULL);
-  dwb_destroy_wait_queue (&double_Write_Buffer.wait_queue, &double_Write_Buffer.mutex, dwb_signal_waiting_thread);
+  dwb_destroy_wait_queue (&double_Write_Buffer.wait_queue, &double_Write_Buffer.mutex);
   pthread_mutex_destroy (&double_Write_Buffer.mutex);
 
   if (double_Write_Buffer.blocks != NULL)
@@ -1944,7 +1981,7 @@ dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLOCK * dwb_block)
   if ((DWB_WAIT_QUEUE_ENTRY volatile *) (dwb_block->wait_queue.head) != NULL)
     {
       /* There are blocked threads. Destroy the wait queue and release the blocked threads. */
-      dwb_destroy_wait_queue (&dwb_block->wait_queue, &dwb_block->mutex, dwb_signal_waiting_thread);
+      dwb_signal_waiting_threads (&dwb_block->wait_queue, &dwb_block->mutex);
     }
 }
 
@@ -1961,7 +1998,7 @@ dwb_signal_structure_modificated (THREAD_ENTRY * thread_p)
   if ((DWB_WAIT_QUEUE_ENTRY volatile *) (double_Write_Buffer.wait_queue.head) != NULL)
     {
       /* There are blocked threads. Destroy the wait queue and release the blocked threads. */
-      dwb_destroy_wait_queue (&double_Write_Buffer.wait_queue, &double_Write_Buffer.mutex, dwb_signal_waiting_thread);
+      dwb_signal_waiting_threads (&double_Write_Buffer.wait_queue, &double_Write_Buffer.mutex);
     }
 }
 
