@@ -452,7 +452,6 @@ typedef void JSON_VALIDATOR;
 #define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
 
 #define DB_GET_JSON_DOCUMENT(value) db_get_json_document (value)
-#define DB_GET_JSON_RAW_BODY(value) db_get_json_raw_body (value)
 
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
 #define DB_INT16_MAX   0x7FFF
