@@ -252,6 +252,7 @@ struct vacuum_data
   bool shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or executing
 				 * new jobs.
 				 */
+  bool is_archive_removal_safe;	/* Set to true after keep_from_log_pageid is updated. */
 
   /* Job cursor for vacuum master to avoid going again through jobs already generated */
   VPID vpid_job_cursor;
@@ -276,6 +277,7 @@ static VACUUM_DATA vacuum_Data = {
   0,				/* log_block_npages */
   false,			/* is_loaded */
   false,			/* shutdown_requested */
+  false,			/* is_archive_removal_safe */
   VPID_INITIALIZER,		/* vpid_job_cursor */
   0,				/* blockid_job_cursor */
   LSA_INITIALIZER		/* recovery_lsa */
@@ -704,6 +706,9 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   /* Process vacuum data and run vacuum . */
   vacuum_process_vacuum_data (thread_p);
+
+  /* remove archives that have been prevented from being removed up until now. */
+  logpb_remove_archive_logs_exceed_limit (thread_p, 0);
 
   VACUUM_RESTORE_THREAD (thread_p, dummy_save_type);
 
@@ -5469,6 +5474,18 @@ vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * vacuum_is_safe_to_remove_archives () - Is safe to remove archives? Not until keep_from_log_pageid has been updated
+ *                                        at least once.
+ *
+ * return    : is safe?
+ */
+bool
+vacuum_is_safe_to_remove_archives (void)
+{
+  return vacuum_Data.is_archive_removal_safe;
+}
+
+/*
  * vacuum_rv_redo_start_job () - Redo start vacuum job.
  *
  * return	 : Error code.
@@ -5569,6 +5586,13 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "Update keep_from_log_pageid to %lld ", (long long int) vacuum_Data.keep_from_log_pageid);
+
+  if (!vacuum_Data.is_archive_removal_safe)
+    {
+      /* remove archives that have been blocked up to this point. */
+      vacuum_Data.is_archive_removal_safe = true;
+      logpb_remove_archive_logs_exceed_limit (thread_p, 0);
+    }
 }
 
 /*
