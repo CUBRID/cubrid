@@ -53,6 +53,11 @@
 #include "db_date.h"
 #include "network.h"
 
+#if !defined(WINDOWS) && !defined (__STDC_FORMAT_MACROS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #if defined(SERVER_MODE)
 #include "thread.h"
 #endif /* SERVER_MODE */
