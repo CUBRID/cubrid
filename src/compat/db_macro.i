@@ -924,6 +924,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	    }
 	  else
 	    {
+#if 0 /* try to reveal other regressions */
 	      /* We need to ensure that we don't exceed the max size for the char value specified in the domain. */
 	      if (value->domain.char_info.length == TP_FLOATING_PRECISION_VALUE || LANG_VARIABLE_CHARSET (codeset))
 		{
@@ -933,6 +934,9 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 		{
 		  value->data.ch.medium.size = MIN (size, value->domain.char_info.length);
 		}
+#else
+	      value->data.ch.medium.size = size;
+#endif
 	    }
 	  value->data.ch.medium.buf = (char *) str;
 	}
