@@ -23,17 +23,17 @@
  */
 
 #pragma once
- 
+
 #ident "$Id$"
 #ifndef _DB_MACRO_I_
 #define _DB_MACRO_I_
 
 #ifdef SERVER_MODE
-  #if defined (__cplusplus) || defined (__GNUC__)
-  #define DB_MACRO_INLINE static inline
-  #elif _MSC_VER >= 1000
-  #define DB_MACRO_INLINE __forceinline static
-  #endif
+#if defined (__cplusplus) || defined (__GNUC__)
+#define DB_MACRO_INLINE static inline
+#elif _MSC_VER >= 1000
+#define DB_MACRO_INLINE __forceinline static
+#endif
 #else
 #define DB_MACRO_INLINE
 #endif
@@ -119,6 +119,7 @@ db_get_string (const DB_VALUE * value)
 
   return str;
 }
+
 /*
  * db_get_float() -
  * return :
@@ -365,6 +366,7 @@ db_get_monetary (const DB_VALUE * value)
 
   return ((DB_MONETARY *) (&value->data.money));
 }
+
 /*
  * db_get_error() -
  * return :
@@ -391,7 +393,7 @@ db_get_elo (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
-#endif  
+#endif
   if (value->domain.general_info.is_null || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_ERROR)
     {
       return NULL;
@@ -405,6 +407,7 @@ db_get_elo (const DB_VALUE * value)
       return (DB_ELO *) (&value->data.elo);
     }
 }
+
 /*
  * db_get_numeric() -
  * return :
@@ -471,6 +474,7 @@ db_get_bit (const DB_VALUE * value, int *length)
 
   return str;
 }
+
 /*
  * db_get_char() -
  * return :
@@ -529,6 +533,7 @@ db_get_nchar (const DB_VALUE * value, int *length)
 {
   return db_get_char (value, length);
 }
+
 /*
  * db_get_string_size() -
  * return :
@@ -643,6 +648,7 @@ db_get_resultset (const DB_VALUE * value)
 
   return value->data.rset;
 }
+
 /*
  * db_get_string_codeset() -
  * return :
@@ -671,6 +677,7 @@ db_get_string_collation (const DB_VALUE * value)
 #endif
   return value->domain.char_info.collation_id;
 }
+
 /*
  * db_get_enum_codeset() -
  * return :
@@ -829,15 +836,25 @@ db_value_scale (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
 {
+#define LANG_VARIABLE_CHARSET(x) ((x) != INTL_CODESET_ASCII     && \
+                                  (x) != INTL_CODESET_RAW_BITS  && \
+                                  (x) != INTL_CODESET_RAW_BYTES && \
+                                  (x) != INTL_CODESET_ISO88591)
+
+#if 1				/* try to find regressions of function version. */
   /* 
    *  Remove the comments when decided on implementation.
-   *  int error = NO_ERROR;
-   *  bool is_char_type;
    */
+  int error = NO_ERROR;
+  bool is_char_type;
+  bool is_bit_type;
+#endif
+
 #if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ERROR (value);
 #endif
 
+#if 0				/* try to find regressions of function version. */
   value->data.ch.info.style = MEDIUM_STRING;
   value->data.ch.info.is_max_string = false;
   value->data.ch.info.compressed_need_clear = false;
@@ -854,23 +871,23 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
   value->need_clear = false;
 
   return NO_ERROR;
+#endif
 
   /*  todo: Decide on what implementation do we keep. The old one from dbval.h, 
    *  that is currently active, which does not do any preliminary checks, or the
    *  one from db_macro.c which does extra checks that caused some regressions to
    *  fail.
    */
-#if 0
+#if 1				/* try to find regressions of function version. */
   is_char_type = (value->domain.general_info.type == DB_TYPE_VARCHAR
 		  || value->domain.general_info.type == DB_TYPE_CHAR
 		  || value->domain.general_info.type == DB_TYPE_NCHAR
-		  || value->domain.general_info.type == DB_TYPE_VARNCHAR
-		  || value->domain.general_info.type == DB_TYPE_BIT
-		  || value->domain.general_info.type == DB_TYPE_VARBIT);
+		  || value->domain.general_info.type == DB_TYPE_VARNCHAR);
+  is_bit_type = (value->domain.general_info.type == DB_TYPE_BIT || value->domain.general_info.type == DB_TYPE_VARBIT);
 
-  if (is_char_type)
+  if (is_char_type || is_bit_type)
     {
-/* #if 0 */
+#if 0
 /* Remove comments up when decided on implementation. */
       if (size <= DB_SMALL_CHAR_BUF_SIZE)
 	{
@@ -880,7 +897,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	  memcpy (value->data.ch.sm.buf, str, size);
 	}
       else
-/* #endif*/
+#endif
 /* Remove comments up when decided on implementation. */
       if (size <= DB_MAX_STRING_LENGTH)
 	{
@@ -896,7 +913,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	   * kind of character string, assume the string is NULL
 	   * terminated.
 	   */
-	  if (size == DB_DEFAULT_STRING_LENGTH && QSTR_IS_ANY_CHAR (value->domain.general_info.type))
+	  if (size == DB_DEFAULT_STRING_LENGTH && (is_char_type || is_bit_type))
 	    {
 	      value->data.ch.medium.size = str ? strlen (str) : 0;
 	    }
@@ -947,6 +964,8 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
     }
   return error;
 #endif
+
+#undef LANG_VARIABLE_CHARSET
 }
 
 /*
@@ -1308,7 +1327,7 @@ db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz)
 DB_MACRO_INLINE int
 db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount)
 {
-  
+
   int error;
 #if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ERROR (value);
@@ -2014,4 +2033,4 @@ db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
   return db_date_encode (&value->data.date, mon, day, year);
 }
 
-#endif          /* _DB_MACRO_I_*/
+#endif /* _DB_MACRO_I_ */
