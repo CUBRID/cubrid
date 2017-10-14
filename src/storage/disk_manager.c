@@ -45,6 +45,7 @@
 #include "boot_sr.h"
 #include "db_date.h"
 #include "bit.h"
+#include "fault_injection.h"
 
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
@@ -1849,6 +1850,8 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
 			     &nsect_extend);
     }
 
+  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
+
   /* volume new size in pages */
   volume_new_npages = DISK_SECTS_NPAGES (volheader->nsect_total);
 
@@ -1865,8 +1868,13 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
       log_data.npages = volume_new_npages;
       log_append_dboutside_redo (thread_p, RVDK_EXPAND_VOLUME, sizeof (DISK_RECV_DATA_VOLUME_EXPAND), &log_data);
     }
+
+  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
+
   /* now it is safe to free volume header */
   pgbuf_set_dirty_and_free (thread_p, page_volheader);
+
+  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
   /* expand volume */
   error_code = fileio_expand_to (thread_p, volid, volume_new_npages, voltype);
@@ -1875,6 +1883,8 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
       ASSERT_ERROR ();
       goto exit;
     }
+
+  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
   *nsect_extended_out = nsect_extend;
 

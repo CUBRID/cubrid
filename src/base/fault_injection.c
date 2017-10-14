@@ -52,7 +52,7 @@ static FI_TEST_ITEM *fi_code_item (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
  *******************************************************************************/
 FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_HANG, fi_handler_hang, FI_INIT_STATE},
-  {FI_TEST_DISK_MANAGER_UNDO_FORMAT, fi_handler_exit, FI_INIT_STATE},
+  {FI_TEST_DISK_MANAGER_VOLUME_EXPAND, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER, fi_handler_exit,
    FI_INIT_STATE},
   {FI_TEST_BTREE_MANAGER_RANDOM_EXIT, fi_handler_random_exit, FI_INIT_STATE},
@@ -421,6 +421,7 @@ fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_f
 #if !defined(CS_MODE)
   if ((r % 10) == 0)
     {
+      /* todo: what is the purpose of this? */
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
       LOG_CS_EXIT (thread_p);
