@@ -1477,7 +1477,8 @@ string_disk_size (const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
+		    LANG_SYS_COLLATION);
   length = (*(tp_VarNChar.data_lengthval)) (&value, 1);
 
   /* Clear the compressed_string of DB_VALUE */
@@ -1562,7 +1563,8 @@ put_string (OR_BUF * buf, const char *string)
     {
       str_length = 0;
     }
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
+		    LANG_SYS_COLLATION);
   (*(tp_VarNChar.data_writeval)) (buf, &value);
 }
 
@@ -3051,8 +3053,8 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 
 #if !defined (NDEBUG)
 		  {
-		    DB_TYPE db_value_type = db_value_type (&def_expr_format);
-		    assert (db_value_type == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type));
+		    DB_TYPE db_value_type_local = db_value_type (&def_expr_format);
+		    assert (db_value_type_local == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type_local));
 		  }
 #endif
 		  if (!db_value_is_null (&def_expr_format))

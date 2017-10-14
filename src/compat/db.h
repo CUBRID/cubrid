@@ -165,73 +165,6 @@ extern char db_Program_name[];
 #endif /* !SA_MODE */
 #endif /* CHECK_MODIFICATION_NO_RETURN */
 
-/* Argument checking macros */
-#define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
-  do {                                                                         \
-    if((obj) == NULL) {                                                        \
-      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-      return (expr);                                                           \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_2ARGS_RETURN_EXPR(obj1, obj2, expr)                              \
-  do {                                                                         \
-    if((obj1) == NULL || (obj2) == NULL) {                                     \
-      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-      return (expr);                                                           \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, expr)                        \
-  do {                                                                         \
-    if((obj1) == NULL || (obj2) == NULL || (obj3) == NULL) {                   \
-      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-      return (expr);                                                           \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_1ARG_NULL(obj)        \
-  CHECK_1ARG_RETURN_EXPR(obj, NULL)
-
-#define CHECK_2ARGS_NULL(obj1, obj2)    \
-  CHECK_2ARGS_RETURN_EXPR(obj1,obj2,NULL)
-
-#define CHECK_3ARGS_NULL(obj1, obj2, obj3) \
-  CHECK_3ARGS_RETURN_EXPR(obj1,obj2,obj3,NULL)
-
-#define CHECK_1ARG_FALSE(obj)  \
-  CHECK_1ARG_RETURN_EXPR(obj,false)
-
-#define CHECK_1ARG_TRUE(obj)   \
-  CHECK_1ARG_RETURN_EXPR(obj, true)
-
-#define CHECK_1ARG_ERROR(obj)  \
-  CHECK_1ARG_RETURN_EXPR(obj,ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_1ARG_ERROR_WITH_TYPE(obj, TYPE)  \
-  CHECK_1ARG_RETURN_EXPR(obj,(TYPE)ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_1ARG_MINUSONE(obj) \
-  CHECK_1ARG_RETURN_EXPR(obj,-1)
-
-#define CHECK_2ARGS_ERROR(obj1, obj2)   \
-  CHECK_2ARGS_RETURN_EXPR(obj1, obj2, ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_3ARGS_ERROR(obj1, obj2, obj3) \
-  CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_1ARG_ZERO(obj)     \
-  CHECK_1ARG_RETURN_EXPR(obj, 0)
-
-#define CHECK_1ARG_ZERO_WITH_TYPE(obj1, RETURN_TYPE)     \
-  CHECK_1ARG_RETURN_EXPR(obj1, (RETURN_TYPE) 0)
-
-#define CHECK_2ARGS_ZERO(obj1, obj2)    \
-  CHECK_2ARGS_RETURN_EXPR(obj1,obj2, 0)
-
-#define CHECK_1ARG_UNKNOWN(obj1)        \
-  CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
-
 extern int db_init (const char *program, int print_version, const char *dbname, const char *db_path,
 		    const char *vol_path, const char *log_path, const char *lob_path, const char *host_name,
 		    const bool overwrite, const char *comments, const char *addmore_vols_file, int npages,
@@ -271,8 +204,6 @@ extern void *db_value_eh_key (DB_VALUE * value);
 extern int db_value_put_db_data (DB_VALUE * value, const DB_DATA * data);
 #endif
 extern DB_DATA *db_value_get_db_data (DB_VALUE * value);
-extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
-			    const int size);
 
 extern DB_OBJECT *db_create_internal (DB_OBJECT * obj);
 extern DB_OBJECT *db_create_by_name_internal (const char *name);
