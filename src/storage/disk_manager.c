@@ -1814,7 +1814,6 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   DISK_RECV_DATA_VOLUME_EXPAND log_data;
   int volume_new_npages;
   bool do_logging;
-  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
   int error_code = NO_ERROR;
 
   assert (nsect_extend > 0);
@@ -1835,7 +1834,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
     {
       assert_release (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      goto exit;
+      return ER_FAILED;
     }
 
   assert (volheader->type == voltype);
@@ -1881,7 +1880,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      goto exit;
+      return error_code;
     }
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
@@ -1890,14 +1889,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
 
   /* success */
   /* caller will update cache */
-
-exit:
-  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
-  if (page_volheader != NULL)
-    {
-      pgbuf_unfix (thread_p, page_volheader);
-    }
-  return error_code;
+  return NO_ERROR;
 }
 
 /*
