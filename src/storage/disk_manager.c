@@ -108,10 +108,10 @@ struct disk_recv_change_creation
   char vol_fullname[1];		/* Actually more than one */
 };
 
-typedef struct disk_recv_init_pages_info DISK_RECV_INIT_PAGES_INFO;
-struct disk_recv_init_pages_info
-{				/* Recovery for volume page init */
-  INT32 start_pageid;
+/* recovery data for volume expand */
+typedef struct disk_recv_data_volume_expand DISK_RECV_DATA_VOLUME_EXPAND;
+struct disk_recv_data_volume_expand
+{
   DKNPAGES npages;
   INT16 volid;
 };
@@ -1498,71 +1498,37 @@ disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore, void *data)
 }
 
 /*
- *  disk_rv_redo_dboutside_init_pages ()
+ *  disk_rv_redo_volume_expand ()
  *
  *   return: NO_ERROR
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_redo_dboutside_init_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_redo_volume_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  DISK_RECV_INIT_PAGES_INFO *info;
-  VOLID volid;
-  int vol_fd;
-  FILEIO_PAGE *malloc_io_page_p;
+  DISK_RECV_DATA_VOLUME_EXPAND *info;
 
-  info = (DISK_RECV_INIT_PAGES_INFO *) rcv->data;
+  assert (rcv->length == sizeof (*info));
+  info = (DISK_RECV_DATA_VOLUME_EXPAND *) rcv->data;
 
-  volid = info->volid;
-  vol_fd = fileio_get_volume_descriptor (volid);
-
-  if (vol_fd == NULL_VOLDES)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-	      fileio_get_volume_label (volid, PEEK));
-      return ER_FAILED;
-    }
-
-  malloc_io_page_p = (FILEIO_PAGE *) malloc (IO_PAGESIZE);
-  if (malloc_io_page_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) IO_PAGESIZE);
-      return ER_FAILED;
-    }
-
-  memset (malloc_io_page_p, 0, IO_PAGESIZE);
-  (void) fileio_initialize_res (thread_p, &(malloc_io_page_p->prv));
-
-  if (fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, info->start_pageid, info->npages, IO_PAGESIZE, -1) ==
-      NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-	      fileio_get_volume_label (volid, PEEK));
-      free_and_init (malloc_io_page_p);
-
-      return ER_FAILED;
-    }
-
-  free_and_init (malloc_io_page_p);
-
-  return NO_ERROR;
+  return fileio_expand_to (thread_p, info->volid, info->npages, DB_PERMANENT_VOLTYPE);
 }
 
 /*
- * disk_rv_dump_init_pages () -
+ * disk_rv_dump_volume_expand () -
  *
  *   return: void
  *   length_ignore(in): Length of Recovery Data
  *   data(in):
  */
 void
-disk_rv_dump_init_pages (FILE * fp, int length_ignore, void *data)
+disk_rv_dump_volume_expand (FILE * fp, int length_ignore, void *data)
 {
-  DISK_RECV_INIT_PAGES_INFO *info;
+  DISK_RECV_DATA_VOLUME_EXPAND *info;
 
-  info = (DISK_RECV_INIT_PAGES_INFO *) data;
+  info = (DISK_RECV_DATA_VOLUME_EXPAND *) data;
 
-  fprintf (fp, "Volid = %d, start pageid = %d, npages = %d\n", info->volid, info->start_pageid, info->npages);
+  fprintf (fp, "Volid = %d, volume new size in pages = %d\n", info->volid, info->npages);
 }
 
 /*
@@ -1663,7 +1629,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       return NO_ERROR;
     }
 
-  disk_log ("disk_extend", "extend disk by %d sectors.", nsect_extend);
+  disk_log ("disk_extend", "extend %s disk by %d sectors.", disk_type_to_string (extend_info->voltype), nsect_extend);
 
 #if defined (SERVER_MODE)
   if (voltype == DB_TEMPORARY_VOLTYPE)
@@ -1844,8 +1810,8 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
 {
   PAGE_PTR page_volheader = NULL;
   DISK_VOLUME_HEADER *volheader = NULL;
-  DISK_RECV_INIT_PAGES_INFO log_data;
-  int npages;
+  DISK_RECV_DATA_VOLUME_EXPAND log_data;
+  int volume_new_npages;
   bool do_logging;
   bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
   int error_code = NO_ERROR;
@@ -1853,19 +1819,14 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   assert (nsect_extend > 0);
 
   /* how it works:
-   * we extend the volume disk space by desired size, rounded up. if volume is successfully expanded, we update its
-   * header. */
+   *
+   * to make sure extension is correctly recovered, we need to log disk extension while holding the volume header page.
+   * the redo log for disk extension is not tied to the page and will be reexecuted every time; the extension is
+   * skipped thought if volume size is equal or bigger to the extension size.
+   */
 
   /* round up */
   nsect_extend = DISK_SECTS_ROUND_UP (nsect_extend);
-
-  /* extend disk space */
-  npages = nsect_extend * DISK_SECTOR_NPAGES;
-  if (fileio_expand (thread_p, volid, npages, voltype) != npages)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      goto exit;
-    }
 
   /* fix volume header */
   error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_WRITE, &page_volheader, &volheader);
@@ -1879,14 +1840,6 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   assert (volheader->type == voltype);
   do_logging = (volheader->type == DB_PERMANENT_VOLTYPE);
 
-  if (do_logging)
-    {
-      log_data.volid = volid;
-      log_data.start_pageid = volheader->nsect_total * DISK_SECTOR_NPAGES;
-      log_data.npages = npages;
-      log_append_dboutside_redo (thread_p, RVDK_INIT_PAGES, sizeof (DISK_RECV_INIT_PAGES_INFO), &log_data);
-    }
-
   /* update sector total number */
   volheader->nsect_total += nsect_extend;
   disk_verify_volume_header (thread_p, page_volheader);
@@ -1895,7 +1848,33 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
       log_append_redo_data2 (thread_p, RVDK_VOLHEAD_EXPAND, NULL, page_volheader, NULL_OFFSET, sizeof (nsect_extend),
 			     &nsect_extend);
     }
-  pgbuf_set_dirty (thread_p, page_volheader, DONT_FREE);
+
+  /* volume new size in pages */
+  volume_new_npages = DISK_SECTS_NPAGES (volheader->nsect_total);
+
+  if (do_logging)
+    {
+      /* volume expand must be logged before freeing volume header page. otherwise, this can happen:
+       *
+       * 1. page is freed.
+       * 2. log is flushed including RVDK_VOLHEAD_EXPAND record.
+       * 3. system crashes before logging RVDK_EXPAND_VOLUME.
+       * 4. after recovery, volume header page says volume is expanded, but it is not.
+       */
+      log_data.volid = volid;
+      log_data.npages = volume_new_npages;
+      log_append_dboutside_redo (thread_p, RVDK_EXPAND_VOLUME, sizeof (DISK_RECV_DATA_VOLUME_EXPAND), &log_data);
+    }
+  /* now it is safe to free volume header */
+  pgbuf_set_dirty_and_free (thread_p, page_volheader);
+
+  /* expand volume */
+  error_code = fileio_expand_to (thread_p, volid, volume_new_npages, voltype);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
 
   *nsect_extended_out = nsect_extend;
 
