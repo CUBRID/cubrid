@@ -52,7 +52,9 @@ static FI_TEST_ITEM *fi_code_item (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
  *******************************************************************************/
 FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_HANG, fi_handler_hang, FI_INIT_STATE},
-  {FI_TEST_DISK_MANAGER_VOLUME_EXPAND, fi_handler_exit, FI_INIT_STATE},
+  {FI_TEST_FILE_IO_FORMAT, fi_handler_random_exit, FI_INIT_STATE},
+  {FI_TEST_DISK_MANAGER_VOLUME_ADD, fi_handler_random_exit, FI_INIT_STATE},
+  {FI_TEST_DISK_MANAGER_VOLUME_EXPAND, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER, fi_handler_exit,
    FI_INIT_STATE},
   {FI_TEST_BTREE_MANAGER_RANDOM_EXIT, fi_handler_random_exit, FI_INIT_STATE},

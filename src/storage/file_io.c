@@ -81,6 +81,7 @@
 #include "connection_error.h"
 #include "release_string.h"
 #include "log_impl.h"
+#include "fault_injection.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -2365,6 +2366,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   (void) fileio_initialize_res (thread_p, &(malloc_io_page_p->prv));
 
   vol_fd = fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id, is_do_lock, is_do_sync);
+  FI_TEST (thread_p, FI_TEST_FILE_IO_FORMAT, 0);
   if (vol_fd != NULL_VOLDES)
     {
       /* initialize the pages of the volume. */

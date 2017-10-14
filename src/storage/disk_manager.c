@@ -469,6 +469,14 @@ int
 disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL_EXT_INFO * ext_info,
 	     DKNSECTS * nsect_free_out)
 {
+#ifdef DEBUG
+  /* inject faults to test recovery */
+#define fault_inject_random_crash() \
+  if (vol_purpose == DB_PERMANENT_DATA_PURPOSE) FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_ADD, 0)
+#else /* RELEASE */
+#define fault_inject_random_crash()
+#endif /* RELEASE */
+
   int vdes;			/* Volume descriptor */
   DISK_VOLUME_HEADER *vhdr;	/* Pointer to volume header */
   VPID vpid;			/* Volume and page identifiers */
@@ -514,11 +522,13 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     {
       log_append_undo_data (thread_p, RVDK_FORMAT, &addr, (int) strlen (vol_fullname) + 1, vol_fullname);
     }
+  fault_inject_random_crash ();
 
   /* this log must be flushed. */
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT (thread_p);
+  fault_inject_random_crash ();
 
   /* create and initialize the volume. recovery information is initialized in every page. */
   vdes = fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages, vol_purpose == DB_PERMANENT_DATA_PURPOSE,
@@ -529,6 +539,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       return error_code;
     }
   /* from now on, if error occurs, we need to go to exit */
+  fault_inject_random_crash ();
 
   /* initialize the volume header and the sector and page allocation tables */
   vpid.volid = volid;
@@ -617,6 +628,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     {
       log_append_dboutside_redo (thread_p, RVDK_NEWVOL, sizeof (*vhdr) + disk_vhdr_length_of_varfields (vhdr), vhdr);
 
+      fault_inject_random_crash ();
+
       /* Even though the volume header page is not completed at this moment, to write REDO log for the header page is
        * crucial for redo recovery since disk_map_init and disk_set_link will write their redo logs. These functions
        * will access the header page during restart recovery. Another REDO log for RVDK_FORMAT will be written to
@@ -629,6 +642,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
        */
       addr.offset = -1;		/* First call is marked with offset -1. */
       log_append_redo_data (thread_p, RVDK_FORMAT, &addr, sizeof (*vhdr) + disk_vhdr_length_of_varfields (vhdr), vhdr);
+
+      fault_inject_random_crash ();
     }
 
   /* Now initialize the sector and page allocator tables and link the volume to previous allocated volume */
@@ -641,6 +656,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       ASSERT_ERROR ();
       goto exit;
     }
+  fault_inject_random_crash ();
+
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE && volid != LOG_DBFIRST_VOLID)
     {
       error_code = disk_set_link (thread_p, prev_volid, volid, vol_fullname, true, DISK_FLUSH);
@@ -649,12 +666,15 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
+      fault_inject_random_crash ();
     }
 
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
     {
       addr.offset = 0;		/* Header is located at position zero */
       log_append_redo_data (thread_p, RVDK_FORMAT, &addr, sizeof (*vhdr) + disk_vhdr_length_of_varfields (vhdr), vhdr);
+
+      fault_inject_random_crash ();
     }
 
   /* if this is a volume with temporary purposes, we do not log any disk driver related changes any longer.
@@ -700,10 +720,14 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   *nsect_free_out = vhdr->nsect_total - SECTOR_FROM_PAGEID (vhdr->sys_lastpage) - 1;
   pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 
+  fault_inject_random_crash ();
+
   /* Flush all pages that were formatted. This is not needed, but it is done for security reasons to identify the volume
    * in case of a system crash. Note that the identification may not be possible during media crashes */
   (void) pgbuf_flush_all (thread_p, volid);
   (void) fileio_synchronize (thread_p, vdes, vol_fullname);
+
+  fault_inject_random_crash ();
 
   /* todo: temporary is not logged because code should avoid it. this complicated system that uses page buffer should
    * not be necessary. with the exception of file manager and disk manager, who already manage to skip logging on
@@ -733,6 +757,8 @@ exit:
     }
 
   return error_code;
+
+#undef fault_inject_random_crash
 }
 
 /*
