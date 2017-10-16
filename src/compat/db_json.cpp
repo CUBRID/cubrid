@@ -79,10 +79,6 @@ class JSON_PRIVATE_ALLOCATOR
     void *Malloc (size_t size);
     void *Realloc (void *originalPtr, size_t originalSize, size_t newSize);
     static void Free (void *ptr);
-
-    JSON_PRIVATE_ALLOCATOR *set_thread_p (THREAD_ENTRY *thread_p);
-  private:
-    THREAD_ENTRY *m_thread_p;
 };
 
 typedef rapidjson::UTF8 <> JSON_ENCODING;
@@ -95,7 +91,6 @@ typedef rapidjson::GenericStringBuffer<JSON_ENCODING, JSON_PRIVATE_ALLOCATOR> JS
 class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL >
 {
   public:
-    JSON_DOC (THREAD_ENTRY *thread_p);
     bool IsLeaf ();
   private:
 
@@ -289,7 +284,7 @@ JSON_PRIVATE_ALLOCATOR::Malloc (size_t size)
 {
   if (size)			//  behavior of malloc(0) is implementation defined.
     {
-      return db_private_alloc (m_thread_p, size);
+      return db_private_alloc (NULL, size);
     }
   else
     {
@@ -303,28 +298,16 @@ JSON_PRIVATE_ALLOCATOR::Realloc (void *originalPtr, size_t originalSize, size_t 
   (void) originalSize;
   if (newSize == 0)
     {
-      db_private_free (m_thread_p, originalPtr);
+      db_private_free (NULL, originalPtr);
       return NULL;
     }
-  return db_private_realloc (m_thread_p, originalPtr, newSize);
+  return db_private_realloc (NULL, originalPtr, newSize);
 }
 
 void
 JSON_PRIVATE_ALLOCATOR::Free (void *ptr)
 {
   db_private_free (NULL, ptr);
-}
-
-JSON_PRIVATE_ALLOCATOR *
-JSON_PRIVATE_ALLOCATOR::set_thread_p (THREAD_ENTRY *thread_p)
-{
-  m_thread_p = thread_p;
-  return this;
-}
-
-JSON_DOC::JSON_DOC (THREAD_ENTRY *thread_p) : rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL >
-  (new JSON_PRIVATE_MEMPOOL (JSON_DOC::MAX_CHUNK_SIZE, (new JSON_PRIVATE_ALLOCATOR ())->set_thread_p (thread_p)))
-{
 }
 
 /*C functions*/
@@ -461,7 +444,7 @@ db_json_value_get_depth (const JSON_VALUE *doc)
  */
 
 int
-db_json_extract_document_from_path (THREAD_ENTRY *thread_p, JSON_DOC *document, const char *raw_path, JSON_DOC *&result)
+db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path, JSON_DOC *&result)
 {
   JSON_POINTER p (raw_path);
   JSON_VALUE *resulting_json;
@@ -477,7 +460,7 @@ db_json_extract_document_from_path (THREAD_ENTRY *thread_p, JSON_DOC *document, 
 
   if (resulting_json != NULL)
     {
-      result = db_json_allocate_doc (thread_p);
+      result = db_json_allocate_doc ();
       result->CopyFrom (*resulting_json, result->GetAllocator ());
     }
   else
@@ -617,10 +600,10 @@ db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value)
 }
 
 int
-db_json_get_json_from_str (THREAD_ENTRY *thread_p, const char *json_raw, JSON_DOC *&doc)
+db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
 {
   int error_code = NO_ERROR;
-  doc = db_json_allocate_doc (thread_p);
+  doc = db_json_allocate_doc ();
 
   if (doc->Parse (json_raw).HasParseError())
     {
@@ -635,9 +618,9 @@ db_json_get_json_from_str (THREAD_ENTRY *thread_p, const char *json_raw, JSON_DO
 }
 
 JSON_DOC *
-db_json_get_copy_of_doc (THREAD_ENTRY *thread_p, const JSON_DOC *doc)
+db_json_get_copy_of_doc (const JSON_DOC *doc)
 {
-  JSON_DOC *new_doc = db_json_allocate_doc (thread_p);
+  JSON_DOC *new_doc = db_json_allocate_doc ();
   new_doc->CopyFrom (*doc, new_doc->GetAllocator ());
 
   return new_doc;
@@ -650,7 +633,7 @@ db_json_copy_doc (JSON_DOC *dest, const JSON_DOC *src)
 }
 
 int
-db_json_insert_func (THREAD_ENTRY *thread_p, const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
+db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
 {
   JSON_POINTER p (raw_path);
 
@@ -770,9 +753,9 @@ db_json_merge_two_json_arrays (JSON_DOC *array1, const JSON_DOC *array2)
 }
 
 void
-db_json_merge_two_json_by_array_wrapping (THREAD_ENTRY *thread_p, JSON_DOC *j1, const JSON_DOC *j2)
+db_json_merge_two_json_by_array_wrapping (JSON_DOC *j1, const JSON_DOC *j2)
 {
-  JSON_DOC *j2_copy = db_json_allocate_doc (thread_p);
+  JSON_DOC *j2_copy = db_json_allocate_doc ();
 
   j2_copy->CopyFrom (*j2, j2_copy->GetAllocator());
 
@@ -832,9 +815,9 @@ db_json_validate_json (const char *json_body)
   return NO_ERROR;
 }
 
-JSON_DOC *db_json_allocate_doc (void *thread_p)
+JSON_DOC *db_json_allocate_doc ()
 {
-  return new JSON_DOC (static_cast<THREAD_ENTRY *> (thread_p));
+  return new JSON_DOC ();
 }
 
 void db_json_delete_doc (JSON_DOC *&doc)
@@ -910,7 +893,7 @@ db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2)
  */
 
 int
-db_json_merge_func (THREAD_ENTRY *thread_p, const JSON_DOC *source, JSON_DOC *dest)
+db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest)
 {
   if (db_json_get_type (dest) == DB_JSON_NULL)
     {
@@ -931,12 +914,12 @@ db_json_merge_func (THREAD_ENTRY *thread_p, const JSON_DOC *source, JSON_DOC *de
         }
       else
         {
-          db_json_merge_two_json_by_array_wrapping (thread_p, dest, source);
+          db_json_merge_two_json_by_array_wrapping (dest, source);
         }
     }
   else
     {
-      db_json_merge_two_json_by_array_wrapping (thread_p, dest, source);
+      db_json_merge_two_json_by_array_wrapping (dest, source);
     }
 
   return NO_ERROR;

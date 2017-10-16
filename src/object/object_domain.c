@@ -10483,7 +10483,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    char *str;
 	    JSON_DOC *doc = NULL;
 
-	    error_code = db_json_get_json_from_str (NULL, DB_GET_STRING (src), doc);
+	    error_code = db_json_get_json_from_str (DB_GET_STRING (src), doc);
 	    if (error_code != NO_ERROR)
 	      {
 		assert (doc == NULL);

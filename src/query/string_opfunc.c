@@ -3032,7 +3032,7 @@ db_string_elt (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_object (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i;
   JSON_DOC *new_doc;
@@ -3044,7 +3044,7 @@ db_json_object (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], in
       return NO_ERROR;
     }
 
-  new_doc = db_json_allocate_doc (thread_p);
+  new_doc = db_json_allocate_doc ();
 
   assert (num_args % 2 == 0);
 
@@ -3085,7 +3085,7 @@ db_json_object (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], in
 }
 
 int
-db_json_array (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   JSON_DOC *new_doc;
   char *str;
@@ -3096,7 +3096,7 @@ db_json_array (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], int
       return NO_ERROR;
     }
 
-  new_doc = db_json_allocate_doc (thread_p);
+  new_doc = db_json_allocate_doc ();
 
   for (int i = 0; i < num_args; i++)
     {
@@ -3135,7 +3135,7 @@ db_json_array (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], int
 }
 
 int
-db_json_insert (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
@@ -3150,7 +3150,7 @@ db_json_insert (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], in
   switch (arg[0]->domain.general_info.type)
     {
     case DB_TYPE_CHAR:
-      error_code = db_json_get_json_from_str (thread_p, arg[0]->data.ch.medium.buf, new_doc);
+      error_code = db_json_get_json_from_str (arg[0]->data.ch.medium.buf, new_doc);
 
       if (error_code != NO_ERROR)
 	{
@@ -3159,7 +3159,7 @@ db_json_insert (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], in
 	}
       break;
     case DB_TYPE_JSON:
-      new_doc = db_json_get_copy_of_doc (thread_p, arg[0]->data.json.document);
+      new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
       break;
     }
 
@@ -3168,13 +3168,11 @@ db_json_insert (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], in
       switch (arg[i + 1]->domain.general_info.type)
 	{
 	case DB_TYPE_CHAR:
-	  error_code = db_json_convert_string_and_call (thread_p,
-							arg[i + 1]->data.ch.medium.buf,
+	  error_code = db_json_convert_string_and_call (arg[i + 1]->data.ch.medium.buf,
 							db_json_insert_func, new_doc, arg[i]->data.ch.medium.buf);
 	  break;
 	case DB_TYPE_JSON:
-	  error_code =
-	    db_json_insert_func (thread_p, arg[i + 1]->data.json.document, new_doc, arg[i]->data.ch.medium.buf);
+	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, arg[i]->data.ch.medium.buf);
 	  break;
 	}
 
@@ -3192,7 +3190,7 @@ db_json_insert (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], in
 }
 
 int
-db_json_remove (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code;
   JSON_DOC *new_doc = NULL;
@@ -3207,7 +3205,7 @@ db_json_remove (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], in
   switch (arg[0]->domain.general_info.type)
     {
     case DB_TYPE_CHAR:
-      error_code = db_json_get_json_from_str (thread_p, arg[0]->data.ch.medium.buf, new_doc);
+      error_code = db_json_get_json_from_str (arg[0]->data.ch.medium.buf, new_doc);
 
       if (error_code != NO_ERROR)
 	{
@@ -3216,7 +3214,7 @@ db_json_remove (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], in
 	}
       break;
     case DB_TYPE_JSON:
-      new_doc = db_json_get_copy_of_doc (thread_p, arg[0]->data.json.document);
+      new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
       break;
     }
 
@@ -3245,14 +3243,14 @@ db_json_remove (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], in
  */
 
 int
-db_json_merge (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i;
   char *str;
   int error_code;
   JSON_DOC *accumulator;
 
-  accumulator = db_json_allocate_doc (thread_p);
+  accumulator = db_json_allocate_doc ();
 
   if (num_args < 2)
     {
@@ -3265,11 +3263,10 @@ db_json_merge (THREAD_ENTRY * thread_p, DB_VALUE * result, DB_VALUE * arg[], int
       switch (db_value_type (arg[i]))
 	{
 	case DB_TYPE_JSON:
-	  error_code = db_json_merge_func (thread_p, arg[i]->data.json.document, accumulator);
+	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator);
 	  break;
 	case DB_TYPE_CHAR:
-	  error_code =
-	    db_json_convert_string_and_call (thread_p, db_get_string (arg[i]), db_json_merge_func, accumulator);
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_json_merge_func, accumulator);
 	  break;
 	}
 

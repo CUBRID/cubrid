@@ -6568,10 +6568,9 @@ qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * do
 }
 
 int
-qdata_json_extract_dbval (THREAD_ENTRY * thread_p, const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res,
-			  TP_DOMAIN * domain_p)
+qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
 {
-  return db_json_extract_dbval (thread_p, json, path, json_res);
+  return db_json_extract_dbval (json, path, json_res);
 }
 
 /*
@@ -10588,7 +10587,7 @@ qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 
   assert (index == no_args);
 
-  if (db_json_object (thread_p, function_p->value, args, no_args) != NO_ERROR)
+  if (db_json_object (function_p->value, args, no_args) != NO_ERROR)
     {
       goto error_exit;
     }
@@ -10642,7 +10641,7 @@ qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR
 
   assert (index == no_args);
 
-  if (db_json_array (thread_p, function_p->value, args, no_args) != NO_ERROR)
+  if (db_json_array (function_p->value, args, no_args) != NO_ERROR)
     {
       goto error_exit;
     }
@@ -10696,7 +10695,7 @@ qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 
   assert (index == no_args);
 
-  if (db_json_insert (thread_p, function_p->value, args, no_args) != NO_ERROR)
+  if (db_json_insert (function_p->value, args, no_args) != NO_ERROR)
     {
       goto error_exit;
     }
@@ -10750,7 +10749,7 @@ qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 
   assert (index == no_args);
 
-  if (db_json_remove (thread_p, function_p->value, args, no_args) != NO_ERROR)
+  if (db_json_remove (function_p->value, args, no_args) != NO_ERROR)
     {
       goto error_exit;
     }
@@ -10804,7 +10803,7 @@ qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR
 
   assert (index == no_args);
 
-  if (db_json_merge (thread_p, function_p->value, args, no_args) != NO_ERROR)
+  if (db_json_merge (function_p->value, args, no_args) != NO_ERROR)
     {
       goto error_exit;
     }

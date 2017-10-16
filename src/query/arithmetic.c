@@ -5205,7 +5205,7 @@ db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
 }
 
 int
-db_json_extract_dbval (THREAD_ENTRY * thread_p, const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
+db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
 {
   JSON_DOC *this_doc = json->data.json.document;
   const char *raw_path = path->data.ch.medium.buf;
@@ -5213,7 +5213,7 @@ db_json_extract_dbval (THREAD_ENTRY * thread_p, const DB_VALUE * json, const DB_
   JSON_DOC *result_doc = NULL;
   int error_code;
 
-  error_code = db_json_extract_document_from_path (thread_p, this_doc, raw_path, result_doc);
+  error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
 
   if (error_code != NO_ERROR)
     {
