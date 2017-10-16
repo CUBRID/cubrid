@@ -199,8 +199,8 @@
   (ATOMIC_INC_64 (&block->version, 0ULL))
 
 /* Queue entry. */
-typedef struct pgbuf_double_write_wait_queue_entry DWB_WAIT_QUEUE_ENTRY;
-struct pgbuf_double_write_wait_queue_entry
+typedef struct double_write_wait_queue_entry DWB_WAIT_QUEUE_ENTRY;
+struct double_write_wait_queue_entry
 {
   void *data;			/* The data field. */
   DWB_WAIT_QUEUE_ENTRY *next;	/* The next queue entry field. */
@@ -209,9 +209,9 @@ struct pgbuf_double_write_wait_queue_entry
 /* Slot checksum status. */
 typedef enum
 {
-  PGBUF_SLOT_CHECKSUM_NOT_COMPUTED,	/* The checksum for data contained in slot was not computed. */
-  PGBUF_SLOT_CHECKSUM_COMPUTED	/* The checksum for data contained in slot was computed. */
-} PGBUF_SLOT_CHECKSUM_STATUS;
+  DWB_SLOT_CHECKSUM_NOT_COMPUTED,	/* The checksum for data contained in slot was not computed. */
+  DWB_SLOT_CHECKSUM_COMPUTED	/* The checksum for data contained in slot was computed. */
+} DWB_SLOT_CHECKSUM_STATUS;
 
 /* DWB queue.  */
 typedef struct double_write_wait_queue DWB_WAIT_QUEUE;
@@ -276,8 +276,8 @@ struct dwb_slots_hash
 };
 
 /* The double write buffer structure. */
-typedef struct pgbuf_double_write_buffer DOUBLE_WRITE_BUFFER;
-struct pgbuf_double_write_buffer
+typedef struct double_write_buffer DOUBLE_WRITE_BUFFER;
+struct double_write_buffer
 {
   DWB_BLOCK *blocks;		/* The blocks in DWB. */
   unsigned int num_blocks;	/* The total number of blocks in DWB - power of 2. */
@@ -289,7 +289,7 @@ struct pgbuf_double_write_buffer
   DWB_CHECKSUM_INFO *checksum_info;	/* The checksum info. */
 
   pthread_mutex_t mutex;	/* The mutex to protect the wait queue. */
-  DWB_WAIT_QUEUE wait_queue;	/* The wait queue, used when the PGBUF_DWB structure changed. */
+  DWB_WAIT_QUEUE wait_queue;	/* The wait queue, used when the DWB structure changed. */
 
   UINT64 volatile position_with_flags;	/* The current position in double write buffer and flags. Flags keep the
 					 * state of each block (started, ended), create DWB status, modify DWB status.                                   
@@ -388,10 +388,10 @@ STATIC_INLINE int dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT *
 					     bool * checksum_computed) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name,
 				       UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_find_block_with_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int *block_no)
+STATIC_INLINE void dwb_find_block_with_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int *block_no)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int block_no);
-STATIC_INLINE void pgbuf_find_block_with_all_checksums_requested (THREAD_ENTRY * thread_p, unsigned int *block_no)
+STATIC_INLINE bool dwb_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int block_no);
+STATIC_INLINE void dwb_find_block_with_all_checksums_requested (THREAD_ENTRY * thread_p, unsigned int *block_no)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
 					       bool * block_slots_checksum_computed, bool * block_needs_flush)
@@ -930,7 +930,7 @@ dwb_intialize_slot (DWB_SLOT * slot, FILEIO_PAGE * io_page, unsigned int positio
     }
   slot->position_in_block = position_in_block;
   slot->block_no = block_no;
-  slot->checksum_status = PGBUF_SLOT_CHECKSUM_NOT_COMPUTED;
+  slot->checksum_status = DWB_SLOT_CHECKSUM_NOT_COMPUTED;
 }
 
 /*
@@ -1229,7 +1229,7 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
 
   assert (slot != NULL);
   *checksum_computed = false;
-  if (!ATOMIC_CAS_32 (&slot->checksum_status, PGBUF_SLOT_CHECKSUM_NOT_COMPUTED, PGBUF_SLOT_CHECKSUM_COMPUTED))
+  if (!ATOMIC_CAS_32 (&slot->checksum_status, DWB_SLOT_CHECKSUM_NOT_COMPUTED, DWB_SLOT_CHECKSUM_COMPUTED))
     {
       /* Already computed */
       return NO_ERROR;
@@ -1246,7 +1246,7 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
     {
       assert (false);
       /* Restore it. */
-      ATOMIC_TAS_32 (&slot->checksum_status, PGBUF_SLOT_CHECKSUM_NOT_COMPUTED);
+      ATOMIC_TAS_32 (&slot->checksum_status, DWB_SLOT_CHECKSUM_NOT_COMPUTED);
       return error_code;
     }
 
@@ -2560,7 +2560,7 @@ start:
   block = double_Write_Buffer.blocks + current_block_no;
   *p_dwb_slot = block->slots + position_in_current_block;
   assert ((*p_dwb_slot)->position_in_block == position_in_current_block);
-  ATOMIC_TAS_32 (&(*p_dwb_slot)->checksum_status, PGBUF_SLOT_CHECKSUM_NOT_COMPUTED);
+  ATOMIC_TAS_32 (&(*p_dwb_slot)->checksum_status, DWB_SLOT_CHECKSUM_NOT_COMPUTED);
 
   return NO_ERROR;
 }
@@ -2608,14 +2608,14 @@ dwb_init_slot (DWB_SLOT * slot)
 }
 
 /*
- * pgbuf_find_block_with_all_checksums_computed(): Find a block with all cheksums computed.
+ * dwb_find_block_with_all_checksums_computed(): Find a block with all cheksums computed.
  *
  *   returns: Nothing
  * thread_p (in): The thread entry.
  * block_no(out): The block number if is found, otherwise DWB_NUM_TOTAL_BLOCKS.
  */
 STATIC_INLINE void
-pgbuf_find_block_with_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int *block_no)
+dwb_find_block_with_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int *block_no)
 {
   unsigned int block_checksum_start_position, block_checksum_element_position, element_position, start_block, end_block,
     num_block;
@@ -2653,14 +2653,14 @@ pgbuf_find_block_with_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned 
 }
 
 /*
- * pgbuf_block_has_all_checksums_computed(): Checks whether the block has all checksum computed.
+ * dwb_block_has_all_checksums_computed(): Checks whether the block has all checksum computed.
  *
  *   returns: True, if all block checksums computed.
  * thread_p (in): The thread entry.
  * block_no(out): The block number.
  */
 STATIC_INLINE bool
-pgbuf_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int block_no)
+dwb_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int block_no)
 {
   unsigned int block_checksum_start_position, block_checksum_element_position, element_position;
   bool found;
@@ -2684,14 +2684,14 @@ pgbuf_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int bl
 }
 
 /*
- * pgbuf_find_block_with_all_checksums_requested(): Find a block with all cheksums requested.
+ * dwb_find_block_with_all_checksums_requested(): Find a block with all cheksums requested.
  *
  *   returns: Nothing.
  * thread_p (in): The thread entry.
  * block_no(out): The block number if is found, otherwise DWB_NUM_TOTAL_BLOCKS.
  */
 STATIC_INLINE void
-pgbuf_find_block_with_all_checksums_requested (THREAD_ENTRY * thread_p, unsigned int *block_no)
+dwb_find_block_with_all_checksums_requested (THREAD_ENTRY * thread_p, unsigned int *block_no)
 {
   unsigned int block_checksum_start_position, block_checksum_element_position, element_position, start_block, end_block,
     num_block;
@@ -3118,7 +3118,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	  if (checksum_threads > 0)
 	    {
 	    retry:
-	      if (!pgbuf_block_has_all_checksums_computed (thread_p, block->block_no))
+	      if (!dwb_block_has_all_checksums_computed (thread_p, block->block_no))
 		{
 		  /* Wait for checksum thread to finish */
 #if defined (SERVER_MODE)
@@ -3461,7 +3461,7 @@ dwb_flush_block_with_checksum (THREAD_ENTRY * thread_p)
     }
   else
     {
-      pgbuf_find_block_with_all_checksums_computed (thread_p, &block_no);
+      dwb_find_block_with_all_checksums_computed (thread_p, &block_no);
     }
 
   if (block_no < DWB_NUM_TOTAL_BLOCKS)
@@ -3681,7 +3681,7 @@ start:
       return true;
     }
 
-  pgbuf_find_block_with_all_checksums_requested (thread_p, &start_block);
+  dwb_find_block_with_all_checksums_requested (thread_p, &start_block);
   if (start_block < DWB_NUM_TOTAL_BLOCKS)
     {
       end_block = start_block + 1;
