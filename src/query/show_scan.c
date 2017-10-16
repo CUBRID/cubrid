@@ -1,4 +1,3 @@
-#include <server_support.h>
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
@@ -24,17 +23,18 @@
 
 #ident "$Id$"
 
-
+/*TODO this header (cinttypes) apparently has to be the first one included
+ *in order to compile (there's some problem with the PRIx64 macro)
+ */
+#include <cinttypes>
 #include "config.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 
-#include "porting.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
-
 
 #include "query_manager.h"
 #include "object_primitive.h"
@@ -53,11 +53,6 @@
 #include "db_date.h"
 #include "network.h"
 
-#if !defined(WINDOWS)
-#define __STDC_FORMAT_MACROS
-#include <inttypes.h>
-#endif
-
 #if defined(SERVER_MODE)
 #include "thread.h"
 #endif /* SERVER_MODE */
@@ -65,6 +60,9 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+
+#include "porting.h"
+#include "server_support.h"
 
 typedef SCAN_CODE (*NEXT_SCAN_FUNC) (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 				     void *ctx);
