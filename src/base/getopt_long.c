@@ -52,7 +52,7 @@ __weak_alias (getopt, _getopt)
      int optind = 1;		/* index into parent argv vector */
      int optopt = '?';		/* character checked for validity */
      int optreset;		/* reset getopt */
-     char *optarg;		/* argument associated with option */
+     char *optarg = NULL;	/* argument associated with option */
 #endif
 
 #ifdef __weak_alias
