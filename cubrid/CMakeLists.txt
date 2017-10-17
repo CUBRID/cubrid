@@ -198,7 +198,10 @@ else(UNIX)
 endif(UNIX)
 
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
+
+if(UNIX)
 set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${COMPAT_SOURCES}
