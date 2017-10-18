@@ -124,7 +124,9 @@ const int JSON_DOC::MAX_CHUNK_SIZE = 64 * 1024; /* TODO does 64K serve our needs
 
 static unsigned int db_json_value_get_depth (const JSON_VALUE *doc);
 
-JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_is_loaded (false)
+JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
+  m_validator (NULL),
+  m_is_loaded (false)
 {
   m_schema_raw = strdup (schema_raw);
   /*
