@@ -2220,6 +2220,8 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  assert (p_dwb_ordered_slots[i].io_page->prv.pflag_reserve_1 == '\0');
 	  assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_2 == 0);
 	  assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
+	  assert (p_dwb_ordered_slots[i].vpid.pageid == p_dwb_ordered_slots[i].io_page->prv.pageid
+		  && p_dwb_ordered_slots[i].vpid.volid == p_dwb_ordered_slots[i].io_page->prv.volid);
 #endif
 
 	  /* Write the data. */
@@ -2559,6 +2561,8 @@ start:
 
   block = double_Write_Buffer.blocks + current_block_no;
   *p_dwb_slot = block->slots + position_in_current_block;
+  /* Invalidate slot content. */
+  VPID_SET_NULL (&(*p_dwb_slot)->vpid);
   assert ((*p_dwb_slot)->position_in_block == position_in_current_block);
   ATOMIC_TAS_32 (&(*p_dwb_slot)->checksum_status, DWB_SLOT_CHECKSUM_NOT_COMPUTED);
 
@@ -2588,8 +2592,8 @@ dwb_set_slot_data (DWB_SLOT * dwb_slot, FILEIO_PAGE * io_page_p)
       memcpy (dwb_slot->io_page, (char *) io_page_p, IO_PAGESIZE);
     }
 
-  VPID_SET (&dwb_slot->vpid, io_page_p->prv.volid, io_page_p->prv.pageid);
   LSA_COPY (&dwb_slot->lsa, &io_page_p->prv.lsa);
+  VPID_SET (&dwb_slot->vpid, io_page_p->prv.volid, io_page_p->prv.pageid);
 }
 
 /*
@@ -2946,6 +2950,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 
   dwb_slot = *p_dwb_slot;
 
+  assert (VPID_EQ (vpid, &dwb_slot->vpid));
   if (!VPID_ISNULL (vpid))
     {
       error_code = dwb_slots_hash_insert (thread_p, vpid, dwb_slot);
@@ -3768,12 +3773,19 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
     }
   else if (slots_hash_entry != NULL)
     {
-      assert (slots_hash_entry->slot->io_page != NULL && slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
-	      && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
+      assert (slots_hash_entry->slot->io_page != NULL);
 
       memcpy ((char *) io_page, (char *) slots_hash_entry->slot->io_page, IO_PAGESIZE);
       pthread_mutex_unlock (&slots_hash_entry->mutex);
-      *success = true;
+
+      /* Check whether the slot data changed meanwhile. */
+      if (VPID_EQ (&slots_hash_entry->slot->vpid, vpid))
+	{
+	  assert (slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
+		  && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
+
+	  *success = true;
+	}
     }
 
   return NO_ERROR;
