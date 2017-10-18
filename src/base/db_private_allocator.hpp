@@ -19,7 +19,7 @@
 
 
 /*
- * memory_alloc.h - Memory allocation module
+ * db_private_allocator.hpp - Typed C++ allocator - reference http://en.cppreference.com/w/cpp/concept/Allocator
  */
 
 #ifndef _DB_PRIVATE_ALLOCATOR_HPP_
@@ -164,7 +164,7 @@ public:
   /* maximum number of allocations */
   size_type max_size () const
   {
-    static const size_type DB_PRIVATE_ALLOCATOR_MAX_SIZE = 0x7FFFFFFF;
+    const size_type DB_PRIVATE_ALLOCATOR_MAX_SIZE = 0x7FFFFFFF;
     return DB_PRIVATE_ALLOCATOR_MAX_SIZE / sizeof(T);
   }
 

@@ -25,6 +25,8 @@
 #ifndef EXTENSIBLE_ARRAY_HPP_
 #define EXTENSIBLE_ARRAY_HPP_
 
+#include "contiguous_memory_buffer.hpp"
+
 #include <memory>
 
 /* extensible_array -
@@ -135,25 +137,15 @@ public:
   inline void append (const T* source, size_t length);
   inline void copy (const T* source, size_t length);
 
-  inline const T* get_data (void) const;
+  inline const T* get_array (void) const;
   inline size_t get_size (void) const;
   inline size_t get_memsize (void) const;
 
 private:
-
-  inline void check_resize (size_t size);
-  inline size_t get_capacity (void);
-  /* extension should theoretically be rare, so don't inline them */
-  void extend (size_t size);
   inline void reset (void);
-  inline void clear (void);
-  inline T* end (void);
 
-  Allocator & m_allocator;
-  T *m_dynamic_data;
-  T m_static_data[Size];
+  contiguous_memory_buffer<T, Size, Allocator> m_membuf;
   size_t m_size;
-  size_t m_capacity;
 };
 
 /************************************************************************/

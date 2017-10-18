@@ -185,7 +185,7 @@ test_extensible_array_correctness_append (int & global_error, test_compare_perfo
       std::cout << " is expected to be " << string_buf.size () << std::endl;
       global_error = global_error == 0 ? -1 : 0;
     }
-  else if (std::strncmp (string_buf.c_str (), xarr_buf.get_data (), string_buf.size ()) != 0)
+  else if (std::strncmp (string_buf.c_str (), xarr_buf.get_array (), string_buf.size ()) != 0)
     {
       /* incorrect data */
       std::cout << "  ERROR: incorrect data" << std::endl;
