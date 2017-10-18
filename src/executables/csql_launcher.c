@@ -25,6 +25,7 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include "config.h"
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #else
