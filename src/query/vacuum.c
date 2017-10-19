@@ -5538,10 +5538,16 @@ vacuum_update_oldest_unvacuumed_mvccid (THREAD_ENTRY * thread_p)
     }
   else
     {
+#if defined (SERVER_MODE)
       /* If page is empty and has next page, it should have been removed. */
       assert (VPID_ISNULL (&vacuum_Data.first_page->next_page));
       /* Use vacuum_Save_log_hdr_oldest_mvccid (see its description). */
       oldest_mvccid = vacuum_Save_log_hdr_oldest_mvccid;
+#else /* not SERVER_MODE = SA_MODE */
+      /* if vacuum data is empty in SA_MODE, then everything has been vacuumed! set oldest not vacuumed to
+       * log_Gl.hdr.mvcc_next_id */
+      oldest_mvccid = log_Gl.hdr.mvcc_next_id;
+#endif /* SA_MODE */
     }
 
   if (oldest_mvccid != vacuum_Data.oldest_unvacuumed_mvccid)
