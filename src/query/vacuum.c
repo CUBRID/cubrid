@@ -5580,9 +5580,17 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
    */
   VACUUM_LOG_BLOCKID keep_from_blockid =
     (vacuum_Data.first_page->index_unvacuumed == vacuum_Data.first_page->index_free ?
-     vacuum_Data.last_blockid + 1 : vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].blockid);
-  keep_from_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (keep_from_blockid);
-  vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
+     NULL_PAGEID : vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].blockid);
+
+  if (keep_from_blockid == NULL_PAGEID)
+    {
+      vacuum_Data.keep_from_log_pageid = NULL_PAGEID;
+    }
+  else
+    {
+      keep_from_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (keep_from_blockid);
+      vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
+    }
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "Update keep_from_log_pageid to %lld ", (long long int) vacuum_Data.keep_from_log_pageid);
