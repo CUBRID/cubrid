@@ -25,6 +25,9 @@
 #ifndef _CONTIGUOUS_MEMORY_BUFFER_HPP_
 #define _CONTIGUOUS_MEMORY_BUFFER_HPP_
 
+#include <stddef.h>
+#include <cstring>
+
 /* contiguous_memory_buffer -
  *
  *  this class can be used to maintain a contiguous memory area, either on stack or on heap. if the required size can
@@ -64,7 +67,7 @@ public:
 
   inline ~contiguous_memory_buffer ()
   {
-    if (m_dynamic_membuf != nullptr)
+    if (m_dynamic_membuf != NULL)
       {
         m_alloc.deallocate (m_dynamic_membuf, m_capacity);
       }

@@ -247,11 +247,9 @@ set (CUBRID_LIB_SOURCES
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   )
-if (WIN32)
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   )
-endif(WIN32)
 
 add_library(cubrid SHARED
   ${CUBRID_LIB_SOURCES}
