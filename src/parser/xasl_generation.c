@@ -14367,28 +14367,32 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
     {
       if (meta->level >= meta->children[0]->level && meta->level >= meta->children[1]->level)
 	{
-	  ANALYTIC_KEY_METADOMAIN *first, *second;
+	  if (eval == NULL)
+	    {
+	      eval = regu_analytic_eval_alloc ();
+	      if (eval == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "regu alloc");
+		  return NULL;
+		}
 
-	  if (meta->children[0]->level >= meta->children[1]->level)
-	    {
-	      first = meta->children[0];
-	      second = meta->children[1];
-	    }
-	  else
-	    {
-	      first = meta->children[1];
-	      second = meta->children[0];
+	      eval->sort_list = pt_sort_list_from_metadomain (parser, meta, sort_list_index, info->select_list);
+	      if (meta->key_size > 0 && eval->sort_list == NULL)
+		{
+		  /* error was already set */
+		  return NULL;
+		}
 	    }
 
 	  /* this is the case of a perfect match where both children can be evaluated together */
-	  eval = pt_build_analytic_eval_list (parser, first, eval, sort_list_index, info);
+	  eval = pt_build_analytic_eval_list (parser, meta->children[0], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
 	      return NULL;
 	    }
 
-	  eval = pt_build_analytic_eval_list (parser, second, eval, sort_list_index, info);
+	  eval = pt_build_analytic_eval_list (parser, meta->children[1], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
