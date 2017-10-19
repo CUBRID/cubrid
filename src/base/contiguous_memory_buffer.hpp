@@ -48,7 +48,7 @@
  *      contiguous_memory_buffer<char, SIZE_64, db_private_allocator<char> > string_membuf;
  *
  *      // make a string copy. in most cases, it will fit into string_membuf stack buffer
- *      char *str_ptr = string_membuf.resize (std::strlen (string_to_copy));
+ *      char *str_ptr = string_membuf.resize (std::strlen (string_to_copy) + 1);
  *      std::strcpy (str_ptr, string_to_copy);
  *
  */
