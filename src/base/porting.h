@@ -978,7 +978,7 @@ extern "C"
 }
 #endif
 
-#ifdef _MSC_VER || defined (__GNUC__)
+#if defined (_MSC_VER) || defined (__GNUC__)
 #define PORTABLE_FUNC_NAME __func__
 #else
 #define PORTABLE_FUNC_NAME "(unknown)"
