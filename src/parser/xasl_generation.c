@@ -14514,6 +14514,32 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 }
 
 /*
+ * pt_check_analytic_eval_list () - check the generated eval list
+ *   eval_list(in): 
+ *
+ * NOTE: This function checks the generated list whether it includes an invalid node.
+ * This is just a quick fix and should be removed when we fix pt_optimize_analytic_list.
+ */
+static bool
+pt_check_analytic_eval_list (ANALYTIC_EVAL_TYPE * eval_list)
+{
+  ANALYTIC_EVAL_TYPE *p;
+
+  assert (eval_list != NULL);
+
+  for (p = eval_list; p != NULL; p = p->next)
+    {
+      if (p->head == NULL)
+	{
+	  /* This is badly generated node. We give up optimization for this invalid case. */
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
  * pt_optimize_analytic_list () - optimize analytic exectution
  *   info(in/out): analytic info
  *
@@ -14540,7 +14566,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
   assert (info != NULL);
 
   /* find unique sort columns and index them; build analytic meta structures */
-  for (func_p = info->head_list, sort_list = info->sort_lists; func_p != NULL, sort_list != NULL;
+  for (func_p = info->head_list, sort_list = info->sort_lists; func_p != NULL && sort_list != NULL;
        func_p = func_p->next, sort_list = sort_list->next, af_count++)
     {
       if (!pt_analytic_to_metadomain (func_p, sort_list->info.pointer.node, &af_meta[af_count], sc_index, &sc_count))
@@ -14729,6 +14755,15 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	{
 	  /* error has already been set */
 	  return NULL;
+	}
+
+      /*
+       * TODO: This is a quick fix. Remove this when we surely fix pt_build_analytic_eval_list ().
+       */
+      if (!pt_check_analytic_eval_list (newa))
+	{
+	  /* give up optimization for the case */
+	  goto fallback;
 	}
 
       /* attach to current list */
