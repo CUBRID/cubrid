@@ -25,13 +25,11 @@ set (TEST_MEMORY_ALLOC_SOURCES
   test_main.cpp
   test_memory_alloc_helper.cpp
   )
-if(WIN32)
 set (TEST_MEMORY_ALLOC_HEADERS
   test_db_private_alloc.hpp
   test_extensible_array.hpp
   test_memory_alloc_helper.hpp
   )
-endif(WIN32)
 
 SET_SOURCE_FILES_PROPERTIES(
     ${TEST_MEMORY_ALLOC_SOURCES}
