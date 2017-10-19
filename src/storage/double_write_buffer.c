@@ -1723,11 +1723,10 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot)
   int error_code = NO_ERROR;
   DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
-  int inserted, success;
+  int inserted;
 
   assert (vpid != NULL && slot != NULL);
 
-start_slot_hash_insert:
   error_code =
     lf_hash_find_or_insert (t_entry, &double_Write_Buffer.slots_hash->ht, vpid, (void **) &slots_hash_entry, &inserted);
   if (error_code != NO_ERROR || slots_hash_entry == NULL)
@@ -1740,47 +1739,33 @@ start_slot_hash_insert:
 	}
       return error_code;
     }
+  assert (VPID_EQ (&slots_hash_entry->vpid, &slot->vpid));
   if (!inserted)
     {
-      if ((slots_hash_entry->slot == NULL) || (LSA_GE (&slot->lsa, &slots_hash_entry->slot->lsa)))
-	{
-	  /* Found an older slot, worse than mine - remove it. */
-	  error_code = lf_hash_delete_already_locked (t_entry, &double_Write_Buffer.slots_hash->ht, vpid,
-						      slots_hash_entry, &success);
-	  if (error_code != NO_ERROR || !success)
-	    {
-	      /* Should not happen. */
-	      ASSERT_ERROR ();
-	      pthread_mutex_unlock (&slots_hash_entry->mutex);
-
-	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
-		{
-		  _er_log_debug (ARG_FILE_LINE, "DWB hash delete key (%d, %d) with %d error: \n", vpid->volid,
-				 vpid->pageid, error_code);
-		}
-	      return ER_FAILED;
-	    }
-
-	  goto start_slot_hash_insert;
-	}
-      else
+      assert (slots_hash_entry->slot != NULL);
+      if (LSA_LT (&slot->lsa, &slots_hash_entry->slot->lsa))
 	{
 	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
-	      _er_log_debug (ARG_FILE_LINE, "DWB hash insert key (%d, %d), the old slot is better than the new one: \n",
-			     vpid->volid, vpid->pageid);
+	      _er_log_debug (ARG_FILE_LINE, "DWB hash find key (%d, %d), the LSA=(%lld,d), better than (%lld,%d): \n",
+			     slots_hash_entry->slot->lsa.pageid, slots_hash_entry->slot->lsa.offset,
+			     vpid->volid, vpid->pageid, slot->lsa.pageid, slot->lsa.offset);
 	    }
 
 	  /* The older slot is better than mine - leave it in hash. */
 	  pthread_mutex_unlock (&slots_hash_entry->mutex);
 	  return NO_ERROR;
 	}
+
+      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Replace hash key (%d, %d), the new LSA=(%lld,d), the old LSA = (%lld,%d)",
+			 vpid->volid, vpid->pageid, slot->lsa.pageid, slot->lsa.offset,
+			 slots_hash_entry->slot->lsa.pageid, slots_hash_entry->slot->lsa.offset);
+	}
     }
 
-  /* If the old entry exists, overwrite it. */
-  assert (VPID_EQ (&slots_hash_entry->vpid, vpid));
   slots_hash_entry->slot = slot;
-
   pthread_mutex_unlock (&slots_hash_entry->mutex);
 
   return NO_ERROR;
@@ -2249,6 +2234,8 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	      /* Already removed from hash by others, continue with the next slot. */
 	      continue;
 	    }
+
+	  assert (VPID_EQ (&(slots_hash_entry->slot->vpid), vpid));
 
 	  /* Check the slot. */
 	  if (slots_hash_entry->slot == &(block->slots[p_dwb_ordered_slots[i].position_in_block]))
@@ -3760,7 +3747,6 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
       assert (slots_hash_entry->slot->io_page != NULL);
 
       memcpy ((char *) io_page, (char *) slots_hash_entry->slot->io_page, IO_PAGESIZE);
-      pthread_mutex_unlock (&slots_hash_entry->mutex);
 
       /* Check whether the slot data changed meanwhile. */
       if (VPID_EQ (&slots_hash_entry->slot->vpid, vpid))
@@ -3770,6 +3756,8 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
 
 	  *success = true;
 	}
+
+      pthread_mutex_unlock (&slots_hash_entry->mutex);
     }
 
   return NO_ERROR;
