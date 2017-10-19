@@ -310,7 +310,6 @@ static DOUBLE_WRITE_BUFFER double_Write_Buffer = { NULL, 0, 0, 0, 0, 0, NULL, PT
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
 #define pthread_mutex_unlock(a)
-static int rv;
 #endif /* !SERVER_MODE */
 
 /* DWB wait queue functions */
@@ -390,9 +389,8 @@ STATIC_INLINE int dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_
 				       UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_find_block_with_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int *block_no)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool dwb_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int block_no);
-STATIC_INLINE void dwb_find_block_with_all_checksums_requested (THREAD_ENTRY * thread_p, unsigned int *block_no)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool dwb_block_has_all_checksums_computed (unsigned int block_no);
+STATIC_INLINE void dwb_find_block_with_all_checksums_requested (unsigned int *block_no) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
 					       bool * block_slots_checksum_computed, bool * block_needs_flush)
   __attribute__ ((ALWAYS_INLINE));
@@ -588,7 +586,6 @@ STATIC_INLINE void
 dwb_block_free_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, DWB_WAIT_QUEUE_ENTRY * wait_queue_entry,
 				 int (*func) (void *))
 {
-  THREAD_ENTRY *wait_thread_p = NULL;
   if (wait_queue_entry != NULL)
     {
       if (func)
@@ -785,7 +782,6 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
   UINT64 local_current_position_with_flags, new_position_with_flags, min_version;
   unsigned int block_no;
   int error_code = NO_ERROR;
-  bool force_flush = false;
   int retry_flush_iter = 0, retry_flush_max = 5;
   unsigned start_block_no, blocks_count;
 
@@ -1166,9 +1162,8 @@ STATIC_INLINE bool
 dwb_needs_speedup_checksum_computation (THREAD_ENTRY * thread_p)
 {
 #define DWB_CHECKSUM_REQUESTS_THRESHOLD 3
-  volatile int *positions = NULL;
-  int error_code = NO_ERROR, position_in_checksum_element, position;
-  UINT64 requested_checksums_elem = NULL, bit_mask;
+  int position_in_checksum_element, position;
+  UINT64 requested_checksums_elem, bit_mask;
   unsigned int element_position, num_elements, counter;
 
   num_elements = DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK * DWB_NUM_TOTAL_BLOCKS;
@@ -1224,7 +1219,7 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
   int error_code = NO_ERROR;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  UINT64 oldest_time, retry_cnt = 0;
+  UINT64 oldest_time;
   bool is_perf_tracking = false;
 
   assert (slot != NULL);
@@ -1370,7 +1365,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
 {
   DWB_BLOCK *blocks = NULL;
   char *blocks_write_buffer[DWB_MAX_BLOCKS];
-  DWB_SLOT *slots[DWB_MAX_BLOCKS], *slot = NULL;
+  DWB_SLOT *slots[DWB_MAX_BLOCKS];
   unsigned int block_buffer_size, i, j;
   int error_code;
 
@@ -1496,7 +1491,6 @@ dwb_create_internal (THREAD_ENTRY * thread_p, char *dwb_volume_name, UINT64 * cu
 {
   int error_code = NO_ERROR;
   unsigned double_write_buffer_size, num_blocks = 0;
-  VPID *vpids = NULL;
   unsigned i, num_pages, num_block_pages;
   int vdes = -1;
   DWB_BLOCK *blocks = NULL;
@@ -1534,7 +1528,7 @@ dwb_create_internal (THREAD_ENTRY * thread_p, char *dwb_volume_name, UINT64 * cu
 
   /* Create DWB blocks */
   error_code = dwb_create_blocks (thread_p, num_blocks, num_block_pages, &blocks);
-  if (error_code != NULL)
+  if (error_code != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -1635,7 +1629,7 @@ static int
 dwb_slots_hash_entry_free (void *entry)
 {
   DWB_SLOTS_HASH_ENTRY *slots_hash_entry = (DWB_SLOTS_HASH_ENTRY *) entry;
-  if (entry != NULL)
+  if (slots_hash_entry != NULL)
     {
       pthread_mutex_destroy (&slots_hash_entry->mutex);
       free (entry);
@@ -1865,10 +1859,10 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   DWB_BLOCK *dwb_block = NULL;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  UINT64 oldest_time, retry_cnt = 0;
+  UINT64 oldest_time;
   bool is_perf_tracking = false;
 
-  assert (thread_p != NULL && block_no >= 0 && block_no < DWB_NUM_TOTAL_BLOCKS);
+  assert (thread_p != NULL && block_no < DWB_NUM_TOTAL_BLOCKS);
 
   is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
@@ -1976,7 +1970,6 @@ dwb_signal_waiting_thread (void *data)
 STATIC_INLINE void
 dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLOCK * dwb_block)
 {
-  DWB_WAIT_QUEUE_ENTRY *double_write_queue_entry = NULL;
   assert (dwb_block != NULL);
   if ((DWB_WAIT_QUEUE_ENTRY volatile *) (dwb_block->wait_queue.head) != NULL)
     {
@@ -1994,7 +1987,6 @@ dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLOCK * dwb_block)
 STATIC_INLINE void
 dwb_signal_structure_modificated (THREAD_ENTRY * thread_p)
 {
-  DWB_WAIT_QUEUE_ENTRY *double_write_queue_entry = NULL;
   if ((DWB_WAIT_QUEUE_ENTRY volatile *) (double_Write_Buffer.wait_queue.head) != NULL)
     {
       /* There are blocked threads. Destroy the wait queue and release the blocked threads. */
@@ -2301,19 +2293,17 @@ STATIC_INLINE int
 dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_position_with_flags)
 {
   UINT64 local_current_position_with_flags, new_position_with_flags;
-  VPID *vpid = NULL;
   int error_code = NO_ERROR;
-  char *write_buffer = NULL;
   DWB_SLOT *p_dwb_ordered_slots = NULL;
   unsigned int i, ordered_slots_length;
   FILEIO_PAGE *io_page = NULL;
   unsigned int block_checksum_element_position, block_checksum_start_position, element_position;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  UINT64 oldest_time, retry_cnt = 0;
+  UINT64 oldest_time;
   bool is_perf_tracking = false;
 
-  assert (block != NULL && block->count_wb_pages > 0 && dwb_is_created (thread_p));
+  assert (block != NULL && block->count_wb_pages > 0 && dwb_is_created ());
 
   is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
@@ -2659,12 +2649,11 @@ dwb_find_block_with_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned in
 /*
  * dwb_block_has_all_checksums_computed(): Checks whether the block has all checksum computed.
  *
- *   returns: True, if all block checksums computed.
- * thread_p (in): The thread entry.
+ *   returns: True, if all block checksums computed. 
  * block_no(out): The block number.
  */
 STATIC_INLINE bool
-dwb_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int block_no)
+dwb_block_has_all_checksums_computed (unsigned int block_no)
 {
   unsigned int block_checksum_start_position, block_checksum_element_position, element_position;
   bool found;
@@ -2690,12 +2679,11 @@ dwb_block_has_all_checksums_computed (THREAD_ENTRY * thread_p, unsigned int bloc
 /*
  * dwb_find_block_with_all_checksums_requested(): Find a block with all cheksums requested.
  *
- *   returns: Nothing.
- * thread_p (in): The thread entry.
+ *   returns: Nothing. 
  * block_no(out): The block number if is found, otherwise DWB_NUM_TOTAL_BLOCKS.
  */
 STATIC_INLINE void
-dwb_find_block_with_all_checksums_requested (THREAD_ENTRY * thread_p, unsigned int *block_no)
+dwb_find_block_with_all_checksums_requested (unsigned int *block_no)
 {
   unsigned int block_checksum_start_position, block_checksum_element_position, element_position, start_block, end_block,
     num_block;
@@ -2745,7 +2733,7 @@ STATIC_INLINE int
 dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * block_slots_checksum_computed,
 			     bool * block_needs_flush)
 {
-  UINT64 computed_slots_checksum_elem = NULL, requested_checksums_elem = NULL, bit_mask, computed_checksum_bits;
+  UINT64 computed_slots_checksum_elem, requested_checksums_elem, bit_mask, computed_checksum_bits;
   int error_code = NO_ERROR, position_in_checksum_element, position;
   unsigned int block_checksum_start_position, block_checksum_element_position, element_position, slot_position,
     slot_base;
@@ -2918,12 +2906,9 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 {
   unsigned int prev_block_no, count_wb_pages;
   UINT64 position_with_flags;
-  char *write_buffer = NULL;
   int error_code = NO_ERROR;
   int retry_flush_iter = 0, retry_flush_max = 5;
   DWB_BLOCK *block = NULL, *prev_block = NULL;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
-  DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
   bool checksum_computed, checksum_computation_started = false;
   int checksum_threads;
   DWB_SLOT *dwb_slot = NULL;
@@ -3120,18 +3105,19 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 		}
 	    }
 
+#if defined (SERVER_MODE)
 	  if (checksum_threads > 0)
 	    {
 	    retry:
-	      if (!dwb_block_has_all_checksums_computed (thread_p, block->block_no))
+	      if (!dwb_block_has_all_checksums_computed (block->block_no))
 		{
 		  /* Wait for checksum thread to finish */
-#if defined (SERVER_MODE)
+
 		  thread_sleep (10);
 		  goto retry;
-#endif
 		}
 	    }
+#endif
 
 	flush_block:
 	  /* Flush all pages from current block */
@@ -3178,11 +3164,10 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 /*
  * dwb_is_created () - Checks whether double write buffer was created.
  *
- * return   : True, if created.
- * thread_p (in): The thread entry
+ * return   : True, if created. 
  */
 bool
-dwb_is_created (THREAD_ENTRY * thread_p)
+dwb_is_created ()
 {
   UINT64 position_with_flags = ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL);
   return DWB_IS_CREATED (position_with_flags);
@@ -3283,10 +3268,9 @@ end:
 int
 dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p)
 {
-  int error_code = NO_ERROR, read_fd = NULL_VOLDES, write_fd = NULL_VOLDES;
+  int error_code = NO_ERROR, read_fd = NULL_VOLDES;
   unsigned int num_pages, buffer_size, ordered_slots_length;
   char *buffer = NULL;
-  VPID *vpid = NULL;
   DWB_BLOCK *rcv_block = NULL;
   DWB_SLOT *p_dwb_ordered_slots = NULL;
 
@@ -3676,7 +3660,7 @@ dwb_compute_checksums (THREAD_ENTRY * thread_p)
 {
   UINT64 position_with_flags;
   unsigned int num_block, start_block, end_block;
-  bool found = false, block_slots_checksums_computed, block_needs_flush, checksum_computed;
+  bool block_slots_checksums_computed, block_needs_flush, checksum_computed;
   int error_code = NO_ERROR;
 
 start:
@@ -3686,7 +3670,7 @@ start:
       return true;
     }
 
-  dwb_find_block_with_all_checksums_requested (thread_p, &start_block);
+  dwb_find_block_with_all_checksums_requested (&start_block);
   if (start_block < DWB_NUM_TOTAL_BLOCKS)
     {
       end_block = start_block + 1;
@@ -3754,7 +3738,7 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
   assert (vpid != NULL && io_page != NULL && success != NULL);
 
   *success = false;
-  if (!dwb_is_created (thread_p))
+  if (!dwb_is_created ())
     {
       return NO_ERROR;
     }

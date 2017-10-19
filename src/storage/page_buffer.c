@@ -9841,7 +9841,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
 
   was_dirty = pgbuf_bcb_mark_is_flushing (thread_p, bufptr);
 
-  uses_dwb = dwb_is_created (thread_p) && !pgbuf_is_temporary_volume(bufptr->vpid.volid);
+  uses_dwb = dwb_is_created () && !pgbuf_is_temporary_volume (bufptr->vpid.volid);
 start_copy_page:
   if (uses_dwb)
     {
