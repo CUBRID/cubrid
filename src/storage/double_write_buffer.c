@@ -1740,6 +1740,8 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot)
       return error_code;
     }
   assert (VPID_EQ (&slots_hash_entry->vpid, &slot->vpid));
+  assert (slots_hash_entry->vpid.pageid == slot->io_page->prv.pageid
+	  && slots_hash_entry->vpid.volid == slot->io_page->prv.volid);
   if (!inserted)
     {
       assert (slots_hash_entry->slot != NULL);
@@ -1747,7 +1749,7 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot)
 	{
 	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
-	      _er_log_debug (ARG_FILE_LINE, "DWB hash find key (%d, %d), the LSA=(%lld,d), better than (%lld,%d): \n",
+	      _er_log_debug (ARG_FILE_LINE, "DWB hash find key (%d, %d), the LSA=(%lld,%d), better than (%lld,%d): \n",
 			     vpid->volid, vpid->pageid, slots_hash_entry->slot->lsa.pageid,
 			     slots_hash_entry->slot->lsa.offset, slot->lsa.pageid, slot->lsa.offset);
 	    }
@@ -1759,7 +1761,7 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot)
 
       if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "Replace hash key (%d, %d), the new LSA=(%lld,d), the old LSA = (%lld,%d)",
+	  _er_log_debug (ARG_FILE_LINE, "Replace hash key (%d, %d), the new LSA=(%lld,%d), the old LSA = (%lld,%d)",
 			 vpid->volid, vpid->pageid, slot->lsa.pageid, slot->lsa.offset,
 			 slots_hash_entry->slot->lsa.pageid, slots_hash_entry->slot->lsa.offset);
 	}
@@ -2240,6 +2242,10 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  /* Check the slot. */
 	  if (slots_hash_entry->slot == &(block->slots[p_dwb_ordered_slots[i].position_in_block]))
 	    {
+	      assert (VPID_EQ (&(slots_hash_entry->slot->vpid), vpid));
+	      assert (slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
+		      && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
+
 	      error_code = lf_hash_delete_already_locked (t_entry, &double_Write_Buffer.slots_hash->ht, vpid,
 							  slots_hash_entry, &success);
 	      if (error_code != NO_ERROR || !success)
@@ -3747,14 +3753,13 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
     {
       assert (slots_hash_entry->slot->io_page != NULL);
 
-      memcpy ((char *) io_page, (char *) slots_hash_entry->slot->io_page, IO_PAGESIZE);
-
       /* Check whether the slot data changed meanwhile. */
       if (VPID_EQ (&slots_hash_entry->slot->vpid, vpid))
 	{
+	  memcpy ((char *) io_page, (char *) slots_hash_entry->slot->io_page, IO_PAGESIZE);
+	  /* Be sure that no other transaction has modified slot data meanwhile. */
 	  assert (slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
 		  && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
-
 	  *success = true;
 	}
 
