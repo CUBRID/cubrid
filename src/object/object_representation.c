@@ -1266,7 +1266,7 @@ or_varchar_length_internal (int charlen, int align)
 {
   int len;
 
-  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (charlen < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       len = OR_BYTE_SIZE + charlen;
     }
@@ -1336,13 +1336,13 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   buf->error_abort = 0;
 
   /* store the size prefix */
-  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (charlen < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_put_byte (buf, charlen);
     }
   else
     {
-      rc = or_put_byte (buf, PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+      rc = or_put_byte (buf, OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
       compressable = true;
     }
 
@@ -8378,62 +8378,6 @@ htond (double from)
 #endif /* ! OR_HAVE_HTOND */
 
 #endif /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
-
-/* or_get_varchar_comp_lengths()  :   Function to get the compressed length
- *				      and the uncompressed length of a compressed string.
- *
- * return			  :   NO_ERROR or error_code.
- * buf(in)			  :   The buffer where the string is stored.
- * compressed_size(out)		  :   The compressed size of the string. Set to 0 if the string was not compressed.
- * decompressed_size(out)	  :   The uncompressed size of the string.
- */
-
-int
-or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
-{
-  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR, net_charlen = 0;
-  int size_prefix = 0;
-
-  /* Check if the string is compressed */
-  size_prefix = or_get_byte (buf, &rc);
-  if (rc != NO_ERROR)
-    {
-      assert (size_prefix == 0);
-      return rc;
-    }
-
-  if (size_prefix == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
-    {
-      /* String was compressed */
-      /* Get the compressed size */
-      rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      compressed_length = OR_GET_INT ((char *) &net_charlen);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
-      *compressed_size = compressed_length;
-
-      net_charlen = 0;
-
-      /* Get the decompressed size */
-      rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      decompressed_length = OR_GET_INT ((char *) &net_charlen);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
-      *decompressed_size = decompressed_length;
-    }
-  else
-    {
-      /* String was not compressed so we set compressed_size to 0 to know that no compression happened. */
-      *compressed_size = 0;
-      *decompressed_size = size_prefix;
-    }
-
-  return rc;
-}
 
 /*
  * or_packed_spacedb_size () - compute the size required to pack all space info
