@@ -24,6 +24,7 @@
 #include "test_output.hpp"
 
 #include <iostream>
+#include <mutex>
 
 namespace test_common {
 

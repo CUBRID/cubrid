@@ -24,7 +24,7 @@
 #include "test_memory_alloc_helper.hpp"
 #include "test_perf_compare.hpp"
 #include "test_debug.hpp"
-#include "test_ouput.hpp"
+#include "test_output.hpp"
 
 /* headers from cubrid */
 #include "extensible_array.cpp"

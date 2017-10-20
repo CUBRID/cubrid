@@ -23,7 +23,7 @@
 #ifndef _TEST_OUTPUT_HPP_
 #define _TEST_OUTPUT_HPP_
 
-#include <cstring>
+#include <string>
 
 namespace test_common {
 
