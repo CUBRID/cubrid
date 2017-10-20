@@ -5580,7 +5580,9 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
    * does not remove log required for vacuum.
    * If vacuum data is empty, then all blocks until (and including) vacuum_Data.last_blockid have been
    * vacuumed, and first page belonging to next block must be preserved (this is most likely in the active area of the
-   * log, for now).
+   * log, for now). However, it might happen that the page referred might belong in a log archive that might have 
+   * been removed due to a previous action. So to be sure, we set the pageid, from which the vacuum must keep
+   * the remaining pages, to NULL_PAGEID.
    * If vacuum data is not empty, then we need to preserve the log starting with the first page of first unvacuumed
    * block.
    */
