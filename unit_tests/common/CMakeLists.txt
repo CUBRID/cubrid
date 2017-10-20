@@ -19,14 +19,16 @@
 #
 
 set (TEST_COMMON_SOURCES
+  test_output.cpp
   test_perf_compare.cpp
   test_string_collection.cpp
   )
 set (TEST_COMMON_HEADERS
+  test_debug.hpp
+  test_output.hpp
   test_perf_compare.hpp
   test_string_collection.hpp
   test_timers.hpp
-  test_debug.hpp
   )
 SET_SOURCE_FILES_PROPERTIES(
     ${TEST_COMMON_SOURCES}

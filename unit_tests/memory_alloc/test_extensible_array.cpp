@@ -24,6 +24,7 @@
 #include "test_memory_alloc_helper.hpp"
 #include "test_perf_compare.hpp"
 #include "test_debug.hpp"
+#include "test_ouput.hpp"
 
 /* headers from cubrid */
 #include "extensible_array.cpp"
@@ -93,7 +94,7 @@ test_append_strings (test_common::perf_compare & result, Buf & buf, test_string_
                      size_t append_size, unsigned append_count)
 {
   static std::string log_string = std::string (4,' ') + PORTABLE_FUNC_NAME + "<" + typeid(Buf).name () + ">\n";
-  sync_cout (log_string);
+  test_common::sync_cout (log_string);
 
   char *str = new char [append_size];
   memset (str, ' ', append_size);

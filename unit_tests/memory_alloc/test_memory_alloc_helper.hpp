@@ -49,9 +49,6 @@ const size_t SIZE_16_K = 16 * 1024;
 const size_t SIZE_1_M = 1024 * 1024;
 const size_t SIZE_100_M = SIZE_1_M * 100;
 
-/* Sync output */
-void sync_cout (const std::string & str);
-
 /* thread entry wrapper */
 class custom_thread_entry
 {

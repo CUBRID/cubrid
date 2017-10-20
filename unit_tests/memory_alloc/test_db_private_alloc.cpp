@@ -22,6 +22,7 @@
 #include "test_memory_alloc_helper.hpp"
 #include "test_perf_compare.hpp"
 #include "test_debug.hpp"
+#include "test_output.hpp"
 
 #include <iostream>
 #include <thread>
@@ -172,7 +173,7 @@ test_basic_performance (test_common::perf_compare & results, size_t alloc_count)
   static std::string function_header =
     std::string ("    basic_perf") + typeid(T).name() + "," + typeid(Alloc).name() + ">\n";
 
-  sync_cout (function_header);
+  test_common::sync_cout (function_header);
 
   /* instantiate allocator */
   Alloc *alloc = NULL;
@@ -318,7 +319,7 @@ test_performance_random (test_common::perf_compare & result, size_t ptr_pool_siz
 
   /* function header */
   static std::string function_header = std::string ("    random_perf") + "<" + typeid(Alloc).name () + ">\n";
-  sync_cout (function_header);
+  test_common::sync_cout (function_header);
 
   /* instantiate allocator */
   Alloc *alloc = NULL;
