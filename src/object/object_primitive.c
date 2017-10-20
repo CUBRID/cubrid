@@ -17676,8 +17676,15 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  /* todo? */
-  return DB_UNK;
+  DB_VALUE str, str2;
+
+  DB_JSON *j1 = STATIC_CAST (DB_JSON *, mem1);
+  DB_JSON *j2 = STATIC_CAST (DB_JSON *, mem2);
+
+  db_make_string (&str, j1->json_body);
+  db_make_string (&str2, j2->json_body);
+
+  return mr_cmpval_string (&str, &str2, do_coercion, total_order, start_colp, domain->collation_id);
 }
 
 static DB_VALUE_COMPARE_RESULT
