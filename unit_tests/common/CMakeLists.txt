@@ -1,4 +1,3 @@
-#
 # Copyright (C) 2016 Search Solution Corporation. All rights reserved.
 #
 #   This program is free software; you can redistribute it and/or modify
@@ -16,13 +15,32 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-add_subdirectory(common)
-set (TEST_INCLUDES
-  ${CMAKE_CURRENT_SOURCE_DIR}/common  # todo: find a better solution
+# Unit test common lib.
+#
+
+set (TEST_COMMON_SOURCES
+  test_perf_compare.cpp
+  test_string_collection.cpp
   )
+set (TEST_COMMON_HEADERS
+  test_perf_compare.hpp
+  test_string_collection.hpp
+  test_timers.hpp
+  test_debug.hpp
+  )
+SET_SOURCE_FILES_PROPERTIES(
+    ${TEST_COMMON_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
+  
+list (APPEND ${TEST_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR})
 
-option (WITH_UNIT_TEST_MEMORY_ALLOC "Unit testing for memory allocation" OFF)
+add_library(test_common STATIC
+  ${TEST_COMMON_SOURCES}
+  ${TEST_COMMON_HEADERS}
+  )
+set_target_properties(test_common PROPERTIES LINKER_LANGUAGE CXX)
 
-if (WITH_UNIT_TEST_MEMORY_ALLOC)
-  add_subdirectory(memory_alloc)
-endif(WITH_UNIT_TEST_MEMORY_ALLOC)
+target_compile_definitions(test_common PRIVATE
+  ${COMMON_DEFS}
+  )

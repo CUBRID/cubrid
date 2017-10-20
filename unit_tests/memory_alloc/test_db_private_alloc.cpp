@@ -20,16 +20,15 @@
 #include "test_db_private_alloc.hpp"
 
 #include "test_memory_alloc_helper.hpp"
+#include "test_perf_compare.hpp"
+#include "test_debug.hpp"
 
-#include <array>
-#include <vector>
-#include <string>
-#include <chrono>
-#include <mutex>
+#include <iostream>
 #include <thread>
 #include <sstream>
 #include <typeinfo>
-#include <iomanip>
+#include <ctime>
+#include <array>
 #include <utility>
 
 namespace test_memalloc
@@ -62,15 +61,15 @@ namespace test_memalloc
  *
  *      test_and_compare_single (err, step_names, fn_specialized_for_private, fn_specialized_for_standard,
  *                               fn_specialized_for_malloc, same_args...)
- *      fn should be a template function with first argument test_compare_performance & and then same_args...
+ *      fn should be a template function with first argument perf_compare & and then same_args...
  *      for fn arguments you may use FUNC_ALLOCS_AS_ARGS or FUNC_TYPE_AND_ALLOCS_AS_ARGS.
  */
 template <typename FuncPrv, typename FuncStd, typename FuncMlc, typename ... Args>
 static void
-test_and_compare_single (int & global_error, const string_collection & step_names, FuncPrv && fn_private,
+test_and_compare_single (int & global_error, const test_common::string_collection & step_names, FuncPrv && fn_private,
                          FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
 {
-  test_compare_performance compare_performance (get_allocator_names (), step_names);
+  test_common::perf_compare compare_performance (get_allocator_names (), step_names);
 
   run_test (global_error, fn_private, std::ref (compare_performance), std::forward<Args> (args)...);
   run_test (global_error, fn_std, std::ref (compare_performance), std::forward<Args> (args)...);
@@ -88,10 +87,10 @@ test_and_compare_single (int & global_error, const string_collection & step_name
  */
 template <typename FuncPrv, typename FuncStd, typename FuncMlc, typename ... Args>
 static void
-test_and_compare_parallel (int & global_error, const string_collection & step_names, FuncPrv && fn_private,
-                           FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
+test_and_compare_parallel (int & global_error, const test_common::string_collection & step_names,
+                           FuncPrv && fn_private, FuncStd && fn_std, FuncMlc && fn_malloc, Args &&... args)
 {
-  test_compare_performance compare_performance (get_allocator_names (), step_names);
+  test_common::perf_compare compare_performance (get_allocator_names (), step_names);
 
   run_parallel (fn_private, std::ref (compare_performance), std::forward<Args> (args)...);
   run_parallel (fn_std, std::ref (compare_performance), std::forward<Args> (args)...);
@@ -165,7 +164,7 @@ test_private_allocator ()
  */
 template <typename T, typename Alloc >
 static int
-test_basic_performance (test_compare_performance & results, size_t alloc_count)
+test_basic_performance (test_common::perf_compare & results, size_t alloc_count)
 {
   custom_thread_entry cte;    /* thread entry wrapper */
 
@@ -183,7 +182,7 @@ test_basic_performance (test_compare_performance & results, size_t alloc_count)
 
   /* init step and timer */
   unsigned step = 0;
-  us_timer timer;
+  test_common::us_timer timer;
 
   /* step 0: test allocate / deallocate / allocate / deallocate and so on */
   T *ptr = NULL;
@@ -209,7 +208,7 @@ test_basic_performance (test_compare_performance & results, size_t alloc_count)
     }
   results.register_time (timer, alloc_index, step++);
 
-  custom_assert (step == results.get_step_count ());
+  test_common::custom_assert (step == results.get_step_count ());
 
   delete pointers;
   delete alloc;
@@ -217,7 +216,8 @@ test_basic_performance (test_compare_performance & results, size_t alloc_count)
   return 0;
 }
 
-string_collection basic_step_names ("Alternate Alloc/Dealloc", "Successive Allocs", "Successive Deallocs");
+test_common::string_collection basic_step_names ("Alternate Alloc/Dealloc", "Successive Allocs",
+                                                 "Successive Deallocs");
 
 /* test_and_compare implementation for test basic
  *
@@ -292,7 +292,7 @@ private:
  */
 template <typename Alloc>
 static int
-test_performance_random (test_compare_performance & result, size_t ptr_pool_size, unsigned alloc_count,
+test_performance_random (test_common::perf_compare & result, size_t ptr_pool_size, unsigned alloc_count,
                          const random_values & actions)
 {
 /* local definition to allocate a pointer and save it in pool at ptr_index_ */
@@ -333,7 +333,7 @@ test_performance_random (test_compare_performance & result, size_t ptr_pool_size
   /* init step and timer */
   unsigned step = 0;
   unsigned random_value_cursor = 0;
-  us_timer timer;
+  test_common::us_timer timer;
 
   /* first step: fill pool */
   for (ptr_index = 0; ptr_index < ptr_pool_size; ptr_index++)
@@ -359,8 +359,8 @@ test_performance_random (test_compare_performance & result, size_t ptr_pool_size
 
   result.register_time (timer, alloc_index, step++);
 
-  custom_assert (random_value_cursor == actions.get_size ());
-  custom_assert (step == result.get_step_count ());
+  test_common::custom_assert (random_value_cursor == actions.get_size ());
+  test_common::custom_assert (step == result.get_step_count ());
 
   delete pointers_pool;
   delete alloc;
@@ -370,7 +370,7 @@ test_performance_random (test_compare_performance & result, size_t ptr_pool_size
 #undef PTR_ALLOC
 }
 
-string_collection random_step_names ("Random Alloc/Dealloc");
+test_common::string_collection random_step_names ("Random Alloc/Dealloc");
 
 /* test_and_compare implementation for test random
  *

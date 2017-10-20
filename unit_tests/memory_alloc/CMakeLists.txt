@@ -46,8 +46,14 @@ target_compile_definitions(test_memory_alloc PRIVATE
   ${COMMON_DEFS}
   )
 
+message (STATUS "test includes:  ${TEST_INCLUDES}")
 target_include_directories(test_memory_alloc PRIVATE
-  ${EP_INCLUDES}
+  ${TEST_INCLUDES}
+#  ${EP_INCLUDES}
+  )
+
+target_link_libraries(test_memory_alloc PRIVATE
+  test_common
   )
 
 if(UNIX)

@@ -22,13 +22,16 @@
 
 /* header in same module */
 #include "test_memory_alloc_helper.hpp"
+#include "test_perf_compare.hpp"
+#include "test_debug.hpp"
 
 /* headers from cubrid */
 #include "extensible_array.cpp"
 
 /* system headers */
-#include <array>
+#include <iostream>
 #include <typeinfo>
+#include <array>
 
 namespace test_memalloc
 {
@@ -40,7 +43,7 @@ enum class test_string_buffer_types
   CSTYLE_STRING,
   COUNT
 };
-string_collection string_buffer_names ("Extensible Array", "std::string", "C-Style String");
+test_common::string_collection string_buffer_names ("Extensible Array", "std::string", "C-Style String");
 
 template <size_t Size>
 class cstyle_char_array
@@ -69,7 +72,7 @@ private:
   char *ptr;
 };
 
-string_collection append_step_names ("Successive appends");
+test_common::string_collection append_step_names ("Successive appends");
 
 /* test_append_strings - append append_count strings of size append_size into given buffer.
  *
@@ -86,7 +89,7 @@ string_collection append_step_names ("Successive appends");
  */
 template <typename Buf>
 static int
-test_append_strings (test_compare_performance & result, Buf & buf, test_string_buffer_types buf_type,
+test_append_strings (test_common::perf_compare & result, Buf & buf, test_string_buffer_types buf_type,
                      size_t append_size, unsigned append_count)
 {
   static std::string log_string = std::string (4,' ') + PORTABLE_FUNC_NAME + "<" + typeid(Buf).name () + ">\n";
@@ -97,7 +100,7 @@ test_append_strings (test_compare_performance & result, Buf & buf, test_string_b
 
   /* start timing */
   unsigned step = 0;
-  us_timer timer;
+  test_common::us_timer timer;
 
   for (unsigned count = 0; count < append_count; count++)
     {
@@ -105,7 +108,7 @@ test_append_strings (test_compare_performance & result, Buf & buf, test_string_b
     }
   result.register_time (timer, static_cast <size_t> (buf_type), step++);
 
-  custom_assert (step == result.get_step_count ());
+  test_common::custom_assert (step == result.get_step_count ());
 
   delete str;
 
@@ -139,7 +142,7 @@ test_compare_append_strings_performance (int & global_error)
 {
   typedef extensible_array<char, AppendSize * AppendCount, std::allocator<char> > xarr_type;
 
-  test_compare_performance compare_result (string_buffer_names, append_step_names);
+  test_common::perf_compare compare_result (string_buffer_names, append_step_names);
   size_t append_size = AppendSize;
   unsigned append_count = AppendCount;
 
@@ -169,7 +172,7 @@ test_compare_append_strings_performance (int & global_error)
  *  Run one append operation into both std::string and extensible array, then compare length and content.
  */
 static void
-test_extensible_array_correctness_append (int & global_error, test_compare_performance & test_compare,
+test_extensible_array_correctness_append (int & global_error, test_common::perf_compare & test_compare,
                                           extensible_array<char, SIZE_64> & xarr_buf,
                                           std::string & string_buf, size_t append_size)
 {
@@ -207,7 +210,7 @@ test_extensible_array_correctness (int & global_error)
   std::allocator<char> allocator;
   extensible_array<char, SIZE_64> xarr (allocator);
 
-  test_compare_performance compare_result (string_buffer_names, append_step_names);
+  test_common::perf_compare compare_result (string_buffer_names, append_step_names);
 
   std::array<size_t, APPEND_COUNT> append_sizes = {{ 1, 32, 64, 1024, 12, 8096 }};
 
