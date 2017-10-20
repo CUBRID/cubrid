@@ -6056,6 +6056,9 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
+
+  assert (offset != 0);		/* head should exist */
+
   analytic_eval->head = stx_restore_analytic_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
   if (analytic_eval->head == NULL)
     {
