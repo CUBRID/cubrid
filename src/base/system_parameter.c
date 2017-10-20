@@ -9220,6 +9220,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
       tz_set_tz_region_system (&tz_region_system);
     }
 
+#if 0
 #if defined(SERVER_MODE)
   if (sysprm_get_id (prm) == PRM_ID_DWB_SIZE || sysprm_get_id (prm) == PRM_ID_DWB_BLOCKS)
     {
@@ -9230,6 +9231,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
 	  return PRM_ERR_BAD_PARAM;
 	}
     }
+#endif
 #endif
 
   /* Set the cached parsed session timezone region on the client */
