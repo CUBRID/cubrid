@@ -2326,6 +2326,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	   */
 	  assert (LSA_LE (&p_dwb_ordered_slots[i].lsa, &p_dwb_ordered_slots[i + 1].lsa));
 	  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
+	  VPID_SET_NULL (&(block->slots[p_dwb_ordered_slots[i].position_in_block].vpid));
 	  io_page = p_dwb_ordered_slots[i].io_page;
 	  io_page->prv.pageid = -1;
 	  io_page->prv.volid = -1;
