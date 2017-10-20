@@ -27,7 +27,7 @@
 #include "test_output.hpp"
 
 /* headers from cubrid */
-#include "extensible_array.cpp"
+#include "extensible_array.hpp"
 
 /* system headers */
 #include <iostream>

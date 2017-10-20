@@ -67,49 +67,11 @@ public:
     typedef db_private_allocator<U> other;
   };
 
-  inline explicit db_private_allocator (THREAD_ENTRY * thread_p) :
-    m_thread_p(thread_p)
-  {
-#if defined (SERVER_MODE)
-    if (m_thread_p == NULL)
-      {
-        /* try to provide the thread entry context to avoid this lookup */
-        assert (false);
-        m_thread_p = thread_get_thread_entry_info ();
-      }
-    m_heapid = m_thread_p->private_heap_id;
-#ifdef DEBUG
-    /* also register the allocator in thread entry */
-    m_thread_p->count_private_allocators++;
-#endif /* DEBUG */
-#endif /* SERVER_MODE */
-  }
-  inline ~db_private_allocator ()
-  {
-#ifdef DEBUG
-    /* deregister allocator from thread entry */
-    m_thread_p->count_private_allocators--;
-#endif /* DEBUG */
-  }
-  inline explicit db_private_allocator (const db_private_allocator & other)
-  {
-    m_thread_p = other.m_thread_p;
-    m_heapid = other.m_heapid;
-#ifdef DEBUG
-    /* also register the allocator in thread entry */
-    m_thread_p->count_private_allocators++;
-#endif /* DEBUG */
-  }
+  inline explicit db_private_allocator (THREAD_ENTRY * thread_p);
+  inline ~db_private_allocator ();
+  inline explicit db_private_allocator (const db_private_allocator & other);
   template <typename U>
-  inline explicit db_private_allocator (const db_private_allocator<U> & other)
-  {
-    m_thread_p = other.get_thread_entry ();
-    m_heapid = other.get_heapid ();
-#ifdef DEBUG
-    /* also register the allocator in thread entry */
-    this->m_thread_p->count_private_allocators++;
-#endif /* DEBUG */
-  }
+  inline explicit db_private_allocator (const db_private_allocator<U> & other);
 
   /* address */
   inline pointer address (reference r)
@@ -122,73 +84,19 @@ public:
   }
 
   /* memory allocation */
-  inline pointer allocate (size_type count)
-  {
-#if defined (SERVER_MODE)
-    /* todo: this check takes a few operations. what is better? to allow this overhead or to just add assert and assume
-     *       we catch all issues? */
-    if (m_heapid != m_thread_p->private_heap_id)
-      {
-        /* this is not something we should do! */
-        assert (false);
-
-        HL_HEAPID save_heapid = css_set_private_heap (m_thread_p, m_heapid);
-        pointer p = reinterpret_cast<pointer> (db_private_alloc (m_thread_p, count * sizeof (T)));
-        (void) css_set_private_heap (m_thread_p, save_heapid);
-        return p;
-      }
-    else
-#endif /* !SERVER_MODE */
-      {
-        return reinterpret_cast<pointer> (db_private_alloc (m_thread_p, count * sizeof (T)));
-      }
-  }
-  inline void deallocate (pointer p, size_type UNUSED(ingored) = 0)
-  {
-#if defined (SERVER_MODE)
-    if (m_heapid != m_thread_p->private_heap_id)
-      {
-        assert (false);
-        /* what am I gonna do on release mode? this is memory leak! */
-        HL_HEAPID save_heapid = css_set_private_heap (m_thread_p, m_heapid);
-        db_private_free (m_thread_p, p);
-        (void) css_set_private_heap (m_thread_p, save_heapid);
-      }
-    else
-#endif /* !SERVER_MODE */
-      {
-        db_private_free (m_thread_p, p);
-      }
-  }
+  inline pointer allocate (size_type count);
+  inline void deallocate (pointer p, size_type UNUSED (ingored) = 0);
 
   /* maximum number of allocations */
-  size_type max_size () const
-  {
-    const size_type DB_PRIVATE_ALLOCATOR_MAX_SIZE = 0x7FFFFFFF;
-    return DB_PRIVATE_ALLOCATOR_MAX_SIZE / sizeof(T);
-  }
+  size_type max_size () const;
 
   /* construction/destruction */
-  inline void
-  construct (pointer p, const_reference t)
-  {
-    new (p) value_type (t);
-  }
-
-  inline void destroy (pointer p)
-  {
-    p->~value_type ();
-  }
+  inline void construct (pointer p, const_reference t);
+  inline void destroy (pointer p);
 
   /* db_private_alloc accessors */
-  THREAD_ENTRY *get_thread_entry () const
-  {
-    return m_thread_p;
-  }
-  HL_HEAPID get_heapid () const
-  {
-    return m_heapid;
-  }
+  THREAD_ENTRY *get_thread_entry () const;
+  HL_HEAPID get_heapid () const;
 
 private:
 
@@ -210,3 +118,145 @@ bool operator!= (const db_private_allocator<T> &, const db_private_allocator<U> 
 }
 
 #endif /* _DB_PRIVATE_ALLOCATOR_HPP_ */
+
+/************************************************************************/
+/* Implementation                                                       */
+/************************************************************************/
+
+template<typename T>
+inline
+db_private_allocator<T>::db_private_allocator (THREAD_ENTRY * thread_p) :
+  m_thread_p (thread_p)
+{
+#if defined (SERVER_MODE)
+  if (m_thread_p == NULL)
+    {
+      /* try to provide the thread entry context to avoid this lookup */
+      assert (false);
+      m_thread_p = thread_get_thread_entry_info ();
+    }
+  m_heapid = m_thread_p->private_heap_id;
+#ifdef DEBUG
+  /* also register the allocator in thread entry */
+  m_thread_p->count_private_allocators++;
+#endif /* DEBUG */
+#endif /* SERVER_MODE */
+}
+
+template<typename T>
+inline
+db_private_allocator<T>::db_private_allocator (const db_private_allocator & other)
+{
+  m_thread_p = other.m_thread_p;
+  m_heapid = other.m_heapid;
+#ifdef DEBUG
+  /* also register the allocator in thread entry */
+  m_thread_p->count_private_allocators++;
+#endif /* DEBUG */
+}
+
+template<typename T>
+template<typename U>
+inline
+db_private_allocator<T>::db_private_allocator (const db_private_allocator<U>& other)
+{
+  m_thread_p = other.get_thread_entry ();
+  m_heapid = other.get_heapid ();
+#ifdef DEBUG
+  /* also register the allocator in thread entry */
+  this->m_thread_p->count_private_allocators++;
+#endif /* DEBUG */
+}
+
+template<typename T>
+inline
+db_private_allocator<T>::~db_private_allocator ()
+{
+#ifdef DEBUG
+  /* deregister allocator from thread entry */
+  m_thread_p->count_private_allocators--;
+#endif /* DEBUG */
+}
+
+template<typename T>
+inline typename db_private_allocator<T>::pointer
+db_private_allocator<T>::allocate (size_type count)
+{
+#if defined (SERVER_MODE)
+  /* todo: this check takes a few operations. what is better? to allow this overhead or to just add assert and assume
+   *       we catch all issues? */
+  if (m_heapid != m_thread_p->private_heap_id)
+    {
+      /* this is not something we should do! */
+      assert (false);
+
+      HL_HEAPID save_heapid = css_set_private_heap (m_thread_p, m_heapid);
+      pointer p = reinterpret_cast<pointer> (db_private_alloc (m_thread_p, count * sizeof (T)));
+      (void) css_set_private_heap (m_thread_p, save_heapid);
+      return p;
+    }
+  else
+#endif /* !SERVER_MODE */
+    {
+      return reinterpret_cast<pointer> (db_private_alloc (m_thread_p, count * sizeof (T)));
+    }
+}
+
+template<typename T>
+inline void
+db_private_allocator<T>::deallocate (pointer p, size_type UNUSED)
+{
+#if defined (SERVER_MODE)
+  if (m_heapid != m_thread_p->private_heap_id)
+    {
+      assert (false);
+      /* what am I gonna do on release mode? this is memory leak! */
+      HL_HEAPID save_heapid = css_set_private_heap (m_thread_p, m_heapid);
+      db_private_free (m_thread_p, p);
+      (void) css_set_private_heap (m_thread_p, save_heapid);
+    }
+  else
+#endif /* !SERVER_MODE */
+    {
+      db_private_free (m_thread_p, p);
+    }
+}
+
+
+template<typename T>
+inline typename db_private_allocator<T>::size_type
+db_private_allocator<T>::max_size () const
+{
+  const size_type DB_PRIVATE_ALLOCATOR_MAX_SIZE = 0x7FFFFFFF;
+  return DB_PRIVATE_ALLOCATOR_MAX_SIZE / sizeof (T);
+}
+
+/* construction/destruction */
+template<typename T>
+inline void
+db_private_allocator<T>::construct (pointer p, const_reference t)
+{
+  new (p) value_type (t);
+}
+
+template<typename T>
+inline void
+db_private_allocator<T>::destroy (pointer p)
+{
+  p->~value_type ();
+}
+
+/* db_private_alloc accessors */
+template<typename T>
+inline THREAD_ENTRY *
+db_private_allocator<T>::get_thread_entry () const
+{
+  return m_thread_p;
+}
+
+template<typename T>
+inline HL_HEAPID
+db_private_allocator<T>::get_heapid () const
+{
+  return m_heapid;
+}

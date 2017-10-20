@@ -82,7 +82,7 @@
  *
  * How to use:
  *
- *    1. Include extensible_array.cpp, where the template class implementation is found.
+ *    1. Include extensible_array.hpp.
  *
  *    2. declare static variable with a default size:
  *        const int BUF_SIZE = 64;
@@ -130,22 +130,21 @@ template <typename T, size_t Size, typename Allocator = std::allocator<T> >
 class extensible_array
 {
 public:
-  extensible_array (Allocator & allocator);
-
+  extensible_array (Allocator & allocator);               // Constructing with allocator is required
   ~extensible_array ();
 
-  inline void append (const T* source, size_t length);
-  inline void copy (const T* source, size_t length);
+  inline void append (const T* source, size_t length);    // append at the end of existing data
+  inline void copy (const T* source, size_t length);      // overwrite entire array
 
-  inline const T* get_array (void) const;
-  inline size_t get_size (void) const;
-  inline size_t get_memsize (void) const;
+  inline const T* get_array (void) const;                 // get array pointer
+  inline size_t get_size (void) const;                    // get current size
+  inline size_t get_memsize (void) const;                 // get current memory size
 
 private:
-  inline void reset (void);
+  inline void reset (void);                               // reset array
 
-  contiguous_memory_buffer<T, Size, Allocator> m_membuf;
-  size_t m_size;
+  contiguous_memory_buffer<T, Size, Allocator> m_membuf;  // memory handler
+  size_t m_size;                                          // current size
 };
 
 /************************************************************************/
@@ -188,3 +187,102 @@ template <class T, size_t Size, typename Allocator = std::allocator<char> >
 inline int xarr_char_append_object (extensible_array<char, Size, Allocator>& buffer, const T & to_append);
 
 #endif /* !EXTENSIBLE_ARRAY_HPP_ */
+
+/************************************************************************/
+/* Implementation                                                       */
+/************************************************************************/
+
+#include <cassert>
+#include <cstring>
+
+template<typename T, size_t Size, typename Allocator>
+inline extensible_array<T, Size, Allocator>::extensible_array (Allocator & allocator) :
+  m_membuf (allocator),
+  m_size (0)
+{
+  // empty
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline extensible_array<T, Size, Allocator>::~extensible_array ()
+{
+  // empty
+}
+
+/* C-style append & copy. they are declared unsafe and is recommended to avoid them (not always possible because of
+* legacy code. */
+template<typename T, size_t Size, typename Allocator>
+inline void
+extensible_array<T, Size, Allocator>::append (const T * source, size_t length)
+{
+  // make sure memory is enough
+  T* buffer_p = m_membuf.resize (m_size + length);
+
+  // copy data at the end of the array
+  std::memcpy (buffer_p + m_size, source, length * sizeof (T));
+  m_size += length;
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline void
+extensible_array<T, Size, Allocator>::copy (const T * source, size_t length)
+{
+  // copy = reset + append
+  reset ();
+  append (source, length);
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline const T *
+extensible_array<T, Size, Allocator>::get_array (void) const
+{
+  // get array from memory handler
+  return m_membuf.get_membuf_data ();
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline size_t
+extensible_array<T, Size, Allocator>::get_size (void) const
+{
+  return m_size;
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline size_t
+extensible_array<T, Size, Allocator>::get_memsize (void) const
+{
+  return m_size * sizeof (T);
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline void extensible_array<T, Size, Allocator>::reset (void)
+{
+  // set size to zero
+  m_size = 0;
+}
+
+/************************************************************************/
+/* Character-only functions                                             */
+/************************************************************************/
+
+template <size_t Size, typename Allocator>
+inline int xarr_char_append_string (extensible_array<char, Size, Allocator> & buffer, const char *str, size_t length)
+{
+  assert (str != NULL);
+
+  if (length == 0)
+    {
+      // get length with null terminator
+      length = strlen (str) + 1;
+    }
+
+  // append string
+  return buffer.append (str, length);
+}
+
+template <class T, size_t Size, typename Allocator>
+inline int xarr_char_append_object (extensible_array<char, Size, Allocator> & buffer, const T & to_append)
+{
+  // append object data
+  return buffer.append (reinterpret_cast<const char *> (&to_append), sizeof (to_append));
+}

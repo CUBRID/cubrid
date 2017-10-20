@@ -45,7 +45,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/event_log.c
-  ${BASE_DIR}/extensible_array.cpp
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c

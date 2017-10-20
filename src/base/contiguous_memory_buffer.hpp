@@ -57,79 +57,113 @@ class contiguous_memory_buffer
 {
 public:
 
-  contiguous_memory_buffer (Allocator& alloc) :
-    m_alloc (alloc),
-    m_capacity (Size),
-    m_dynamic_membuf (NULL),
-    m_current_membuf (m_static_membuf)
-  {
-  }
+  contiguous_memory_buffer (Allocator& alloc);
+  inline ~contiguous_memory_buffer ();
 
-  inline ~contiguous_memory_buffer ()
-  {
-    if (m_dynamic_membuf != NULL)
-      {
-        m_alloc.deallocate (m_dynamic_membuf, m_capacity);
-      }
-  }
-
-  inline T* resize (size_t size)
-  {
-    if (size > m_capacity)
-      {
-        extend (size);
-      }
-    return m_current_membuf;
-  }
-
-  inline T* get_membuf_data (void) const
-  {
-    return m_current_membuf;
-  }
+  inline T* resize (size_t size);           // resize if size is bigger than current buffer and return updated buffer
+                                            // pointer
+  inline T* get_membuf_data (void) const;   // get current buffer pointer
 
 private:
   // no implicit constructor
   contiguous_memory_buffer ();
 
-  inline size_t get_memsize (size_t count)
-  {
-    return count * sizeof (T);
-  }
+  inline size_t get_memsize (size_t count); // memory size for count T's
+  void extend (size_t size);                // extend buffer to hold count T's
+                                            // this is the only part not-inlined of contiguous_memory_buffer. it is
+                                            // supposed to be an exceptional case
 
-  void extend (size_t size)
-  {
-    size_t new_capacity = m_capacity;
-    while (new_capacity < size)
-      {
-        /* double capacity */
-        new_capacity *= 2;
-      }
-
-    if (m_dynamic_membuf == NULL)
-      {
-        assert (m_current_membuf == m_static_membuf);
-        m_dynamic_membuf = m_alloc.allocate (get_memsize (new_capacity));
-      }
-    else
-      {
-        /* realloc */
-        assert (m_current_membuf == m_dynamic_membuf);
-        m_dynamic_membuf = m_alloc.allocate (new_capacity * sizeof (T));
-      }
-    std::memcpy (m_dynamic_membuf, m_current_membuf, get_memsize (m_capacity));
-    if (m_current_membuf != m_static_membuf)
-      {
-        m_alloc.deallocate (m_current_membuf, m_capacity);
-      }
-    m_current_membuf = m_dynamic_membuf;
-    m_capacity = new_capacity;
-  }
-
-  Allocator &m_alloc;
-  size_t m_capacity;
-  T m_static_membuf[Size];
-  T *m_dynamic_membuf;
-  T *m_current_membuf;
+  Allocator &m_alloc;                       // heap allocator
+  size_t m_capacity;                        // current buffer capacity
+  T m_stack_membuf[Size];                   // stack buffer
+  T *m_heap_membuf;                         // heap buffer
+  T *m_current_membuf;                      // current buffer pointer
 };
 
 #endif /* _CONTIGUOUS_MEMORY_BUFFER_HPP_ */
+
+/************************************************************************/
+/* Implementation                                                       */
+/************************************************************************/
+
+template<typename T, size_t Size, typename Allocator>
+inline
+contiguous_memory_buffer<T, Size, Allocator>::contiguous_memory_buffer (Allocator & alloc) :
+  m_alloc (alloc),
+  m_capacity (Size),
+  m_heap_membuf (NULL),
+  m_current_membuf (m_stack_membuf)
+{
+  // empty
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline
+contiguous_memory_buffer<T, Size, Allocator>::~contiguous_memory_buffer ()
+{
+  // free dynamic buffer
+  m_alloc.deallocate (m_heap_membuf, m_capacity);
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline T *
+contiguous_memory_buffer<T, Size, Allocator>::resize (size_t size)
+{
+  if (size > m_capacity)
+    {
+      extend (size);
+
+      // m_current_membuf is automatically updated by extend
+    }
+  return m_current_membuf;
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline T *
+contiguous_memory_buffer<T, Size, Allocator>::get_membuf_data (void) const
+{
+  return m_current_membuf;
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline size_t
+contiguous_memory_buffer<T, Size, Allocator>::get_memsize (size_t count)
+{
+  return count * sizeof (T);
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline void
+contiguous_memory_buffer<T, Size, Allocator>::extend (size_t size)
+{
+  size_t new_capacity = m_capacity;
+  while (new_capacity < size)
+    {
+      // double capacity until required size can be covered
+      new_capacity *= 2;
+    }
+
+  if (m_heap_membuf == NULL)
+    {
+      // allocate heap buffer for first time
+      assert (m_current_membuf == m_stack_membuf);
+      m_heap_membuf = m_alloc.allocate (get_memsize (new_capacity));
+    }
+  else
+    {
+      // reallocate heap buffer
+      assert (m_current_membuf == m_heap_membuf);
+      m_heap_membuf = m_alloc.allocate (new_capacity * sizeof (T));
+    }
+  // copy the data from old buffer - m_current_membuf - to new buffer - m_heap_membuf
+  std::memcpy (m_heap_membuf, m_current_membuf, get_memsize (m_capacity));
+  if (m_current_membuf != m_stack_membuf)
+    {
+      // deallocate heap buffer
+      m_alloc.deallocate (m_current_membuf, m_capacity);
+    }
+  // update current buffer pointer
+  m_current_membuf = m_heap_membuf;
+  // update capacity
+  m_capacity = new_capacity;
+}
