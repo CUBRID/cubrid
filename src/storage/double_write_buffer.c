@@ -1748,8 +1748,8 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot)
 	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "DWB hash find key (%d, %d), the LSA=(%lld,d), better than (%lld,%d): \n",
-			     slots_hash_entry->slot->lsa.pageid, slots_hash_entry->slot->lsa.offset,
-			     vpid->volid, vpid->pageid, slot->lsa.pageid, slot->lsa.offset);
+			     vpid->volid, vpid->pageid, slots_hash_entry->slot->lsa.pageid,
+			     slots_hash_entry->slot->lsa.offset, slot->lsa.pageid, slot->lsa.offset);
 	    }
 
 	  /* The older slot is better than mine - leave it in hash. */
