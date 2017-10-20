@@ -2073,6 +2073,9 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   int o_sync;
 #endif /* WINDOWS */
 
+  // todo: remove me
+  er_print_callstack (ARG_FILE_LINE, "Create file %s \n", db_full_name_p);
+
 #if !defined(CS_MODE)
   /* Make sure that the volume is not already mounted. if it is, dismount the volume. */
   vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
