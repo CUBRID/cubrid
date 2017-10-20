@@ -431,6 +431,7 @@ fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_f
 #endif
   if ((r % mod_factor) == 0)
     {
+      er_print_callstack (ARG_FILE_LINE, "FAULT INJECTION: RANDOM EXIT\n");
       er_set (ER_NOTIFICATION_SEVERITY, caller_file, caller_line, ER_FAILED_ASSERTION, 1,
 	      "fault injection: random exit");
 
