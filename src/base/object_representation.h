@@ -1518,6 +1518,7 @@ extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 extern char *or_pack_sha1 (char *ptr, const SHA1Hash * sha1);
 extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
 
+STATIC_INLINE int or_get_string_size_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 /* Get the compressed and the decompressed lengths of a string stored in buffer */
 STATIC_INLINE int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
   __attribute__ ((ALWAYS_INLINE));
@@ -1535,22 +1536,32 @@ extern int classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * 
 /* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
 #define OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
 
-#define OR_GET_STRING_SIZE_BYTE(buf, size_prefix, error) \
-  do \
-    { \
-      if (((buf)->ptr + OR_BYTE_SIZE) > (buf)->endptr) \
-        { \
-          (size_prefix) = 0; \
-          (error) = or_underflow ((buf)); \
-        } \
-      else \
-        { \
-          (size_prefix) = OR_GET_BYTE ((buf)->ptr); \
-          (buf)->ptr += OR_BYTE_SIZE; \
-          (error) = NO_ERROR; \
-        } \
-    } \
-  while (0)
+/*
+ * or_get_string_size_byte - read string size byte value from or buffer
+ *    return: byte value read
+ *    buf(in/out): or buffer
+ *    error(out): NO_ERROR or error code
+ *
+ * NOTE that it is really same as or_get_byte function. It is duplicated to inline the function for performance.
+ */
+STATIC_INLINE int
+or_get_string_size_byte (OR_BUF * buf, int *error)
+{
+  int size_prefix;
+
+  if ((buf->ptr + OR_BYTE_SIZE) > buf->endptr)
+    {
+      *error = or_underflow (buf);
+      size_prefix = 0;
+    }
+  else
+    {
+      size_prefix = OR_GET_BYTE (buf->ptr);
+      buf->ptr += OR_BYTE_SIZE;
+      *error = NO_ERROR;
+    }
+  return size_prefix;
+}
 
 /* or_get_varchar_compression_lengths() - Function to get the compressed length and the uncompressed length of 
  *					  a compressed string.
@@ -1567,7 +1578,7 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
   int size_prefix = 0;
 
   /* Check if the string is compressed */
-  OR_GET_STRING_SIZE_BYTE (buf, size_prefix, rc);
+  size_prefix = or_get_string_size_byte (buf, &rc);
   if (rc != NO_ERROR)
     {
       assert (size_prefix == 0);
