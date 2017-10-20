@@ -58,8 +58,8 @@ class contiguous_memory_buffer
 public:
 
   contiguous_memory_buffer (Allocator& alloc) :
-    m_capacity (Size),
     m_alloc (alloc),
+    m_capacity (Size),
     m_dynamic_membuf (NULL),
     m_current_membuf (m_static_membuf)
   {
@@ -126,9 +126,9 @@ private:
   }
 
   Allocator &m_alloc;
+  size_t m_capacity;
   T m_static_membuf[Size];
   T *m_dynamic_membuf;
-  size_t m_capacity;
   T *m_current_membuf;
 };
 

@@ -18,6 +18,7 @@
 
 add_subdirectory(common)
 set (TEST_INCLUDES
+  ${EP_INCLUDES}
   ${CMAKE_CURRENT_SOURCE_DIR}/common  # todo: find a better solution
   )
 

@@ -33,6 +33,7 @@
 #undef strlen
 #endif /* strlen */
 
+#include <iostream>
 #include <thread>
 
 namespace test_memalloc

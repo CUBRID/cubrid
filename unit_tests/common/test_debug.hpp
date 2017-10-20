@@ -38,4 +38,4 @@ custom_assert (bool cond)
 
 } // namespace test_common
 
-#endif _TEST_DEBUG_HPP_
+#endif // _TEST_DEBUG_HPP_

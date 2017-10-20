@@ -28,6 +28,8 @@
 #undef strlen
 #endif /* strlen */
 
+#include <cstring>
+#include <ostream>
 #include <iomanip>
 
 namespace test_common {
