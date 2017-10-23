@@ -2237,7 +2237,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	      continue;
 	    }
 
-	  assert (VPID_EQ (&(slots_hash_entry->slot->vpid), vpid));
+	  assert (VPID_ISNULL (&(slots_hash_entry->slot->vpid)) || VPID_EQ (&(slots_hash_entry->slot->vpid), vpid));
 
 	  /* Check the slot. */
 	  if (slots_hash_entry->slot == &(block->slots[p_dwb_ordered_slots[i].position_in_block]))
