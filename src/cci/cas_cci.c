@@ -185,6 +185,8 @@ static void get_last_error (T_CON_HANDLE * con_handle, T_CCI_ERROR * dest_err_bu
 static int convert_cas_mode_to_driver_mode (int cas_mode);
 static int convert_driver_mode_to_cas_mode (int driver_mode);
 
+static int reset_connect (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, T_CCI_ERROR * err_buf);
+
 /************************************************************************
  * INTERFACE VARIABLES							*
  ************************************************************************/
