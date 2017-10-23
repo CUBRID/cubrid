@@ -37,7 +37,7 @@
 #define DWB_SLOTS_FREE_LIST_SIZE	    100
 
 #define DWB_MIN_SIZE			    (512 * 1024)
-#define DWB_MAX_SIZE			    (4 * 1024 * 1024)
+#define DWB_MAX_SIZE			    (8 * 1024 * 1024)
 #define DWB_MIN_BLOCKS			    1
 #define DWB_MAX_BLOCKS			    8
 #define DWB_CHECKSUM_ELEMENT_NO_BITS	    64
