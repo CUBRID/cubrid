@@ -1310,7 +1310,7 @@ dwb_create_slots_hash (THREAD_ENTRY * thread_p, DWB_SLOTS_HASH ** p_slots_hash)
 }
 
 /*
- * logtb_finalize_global_unique_stats_table () - Finalize slots hash.
+ * dwb_finalize_slots_hash () - Finalize slots hash.
  *
  *   return: Nothing.
  *   slots_hash(in) : Slots hash.
@@ -1612,7 +1612,7 @@ dwb_slots_hash_entry_alloc (void)
   slots_hash_entry = (DWB_SLOTS_HASH_ENTRY *) malloc (sizeof (DWB_SLOTS_HASH_ENTRY));
   if (slots_hash_entry == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (GLOBAL_UNIQUE_STATS));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DWB_SLOTS_HASH_ENTRY));
       return NULL;
     }
   pthread_mutex_init (&slots_hash_entry->mutex, NULL);
