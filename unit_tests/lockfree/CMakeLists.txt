@@ -16,19 +16,40 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-add_subdirectory(common)
-set (TEST_INCLUDES
-  ${EP_INCLUDES}
-  ${CMAKE_CURRENT_SOURCE_DIR}/common  # todo: find a better solution
+set (TEST_LOCKFREE_SOURCES
+  test_main.cpp
+  test_cqueue_functional.cpp
+)
+set (TEST_LOCKFREE_HEADERS
+  test_cqueue_functional.hpp
+)
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_LOCKFREE_SOURCES}
+  PROPERTIES LANGUAGE CXX
+)
+
+add_executable(test_lockfree
+  ${TEST_LOCKFREE_SOURCES}
+  ${TEST_LOCKFREE_HEADERS}
   )
 
-option (WITH_UNIT_TEST_MEMORY_ALLOC "Unit testing for memory allocation" OFF)
-option (WITH_UNIT_TEST_LOCKFREE "Unit testing for lockfree" OFF)
+target_compile_definitions(test_memory_alloc PRIVATE
+  SERVER_MODE
+  ${COMMON_DEFS}
+)
 
-if(WITH_UNIT_TEST_MEMORY_ALLOC)
-  add_subdirectory(memory_alloc)
-endif(WITH_UNIT_TEST_MEMORY_ALLOC)
+target_include_directories(test_lockfree PRIVATE
+  ${EP_INCLUDES}
+  )
 
-if(WITH_UNIT_TEST_LOCKFREE)
-  add_subdirectory(lockfree)
-endif(WITH_UNIT_TEST_LOCKFREE)
+if(UNIX)
+  target_link_libraries(test_lockfree PRIVATE
+    cubrid
+    )
+elseif(WIN32)
+  target_link_libraries(test_lockfree PRIVATE
+    cubrid-win-lib
+    )
+else()
+  message( SEND_ERROR "Memory alloc unit test is only for unix/windows")
+endif ()

@@ -888,6 +888,16 @@ namespace dispatch
     {
       return ATOMIC_TAS_32 (ptr, amount);
     }
+
+  template <typename T, typename V> inline T atomic_inc (volatile T *ptr, V amount, Bool2Type <true> /*_is_64_bit*/ )
+    {
+      return ATOMIC_INC_64 (ptr, amount);
+    }
+
+  template <typename T, typename V> inline T atomic_inc (volatile T * ptr, V amount, Bool2Type <false> /*_is_64_bit*/ )
+    {
+      return ATOMIC_INC_32 (ptr, amount);
+    }
 }				/* namespace dispatch */
 
 template <typename T, typename V> inline T ATOMIC_TAS (volatile T *ptr, V amount)
@@ -917,6 +927,22 @@ template <typename T> inline bool ATOMIC_CAS_ADDR (T * volatile *ptr, T *cmp_val
   return __sync_bool_compare_and_swap (ptr, cmp_val, swap_val);
 #endif
 }
+
+template <typename T, typename V> inline T ATOMIC_INC (volatile T *ptr, V amount)
+{
+  return dispatch::atomic_inc (ptr, amount, dispatch::Bool2Type <sizeof (T) == sizeof (UINT64)> ());
+}
+
+template <typename T> inline T ATOMIC_LOAD (volatile T *ptr)
+{
+  return ATOMIC_INC (ptr, 0);
+}
+
+template <typename T, typename V> inline void ATOMIC_STORE (volatile T *ptr, V amount)
+{
+  (void) ATOMIC_TAS (ptr, amount);
+}
+
 /* *INDENT-ON* */
 
 #define ATOMIC_LOAD_64(ptr) ATOMIC_INC_64(ptr, 0)
