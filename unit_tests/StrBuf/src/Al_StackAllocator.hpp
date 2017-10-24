@@ -43,7 +43,7 @@ namespace Al{
             //round to next aligned?! natural allignment
             //...
             if(_0+size > _1){//not enough free memory available
-                return {0, nullptr};
+                return {0, 0};
             }
             return {size, (_0+=size, _0-size)};
         }
@@ -73,7 +73,7 @@ namespace Al{
                 _0 += size;
                 return blk;
             }
-            return {0, nullptr};
+            return {0, 0};
         }
     };
 }

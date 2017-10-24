@@ -8,7 +8,7 @@ namespace Al{//Allocator
         size_t  dim;    //size of the memory block pointed by ptr
         char*   ptr;    //pointer to a memory block
 
-        Blk(size_t dim=0, void* ptr=nullptr)
+        Blk(size_t dim=0, void* ptr=0)
             : dim(dim)
             , ptr((char*)ptr)
         {}

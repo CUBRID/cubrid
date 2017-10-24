@@ -14,7 +14,7 @@ class StrBuf{//String Buffer to collect formatted text (printf-like syntax)
     size_t  _dim;   //dimension|capacity of the buffer
     size_t  _len;   //current length of the buffer content
 public:
-    StrBuf(size_t capacity=0, char* buffer=nullptr);
+    StrBuf(size_t capacity=0, char* buffer=0);
 
     operator const char*(){return _buf;}
     size_t len(){return _len;}

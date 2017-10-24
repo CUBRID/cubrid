@@ -7,7 +7,7 @@ StrBuf::StrBuf(size_t capacity, char* buffer)
     , _dim(capacity)
     , _len(0)
 {
-    if(buffer != nullptr)
+    if(buffer)
         _buf[0] = '\0';
 }
 

@@ -26,7 +26,7 @@ namespace Al{
         Blk allocate(size_t size){
             Blk blk = _a.allocate(_pfxLen + size + _sfxLen);
             if(!blk)
-                return {0, nullptr};
+                return {0, 0};
             new(blk.ptr) Prefix;                //placement new to initialize Prefix memory 
             new(blk.ptr+_pfxLen+size) Suffix;   //placement new to initialize Suffix memory 
             return {size, blk.ptr+_pfxLen};
