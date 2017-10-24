@@ -420,7 +420,7 @@ fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_f
     }
   r = rand ();
 
-#if !defined(CS_MODE)
+#if 0
   if ((r % 10) == 0)
     {
       /* todo: what is the purpose of this? */
