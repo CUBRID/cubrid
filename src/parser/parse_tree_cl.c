@@ -10087,12 +10087,18 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_JSON_CONTAINS:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
-      r3 = pt_print_bytes (parser, p->info.expr.arg3);
 
       q = pt_append_nulstring (parser, q, " json_contains(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ", ");
       q = pt_append_varchar (parser, q, r2);
+      if (p->info.expr.arg3 != NULL)
+	{
+	  r3 = pt_print_bytes (parser, p->info.expr.arg3);
+
+	  q = pt_append_nulstring (parser, q, ", ");
+	  q = pt_append_varchar (parser, q, r3);
+	}
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_JSON_EXTRACT:
@@ -18058,10 +18064,13 @@ pt_is_const_expr_node (PT_NODE * node)
 
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.expr.arg3));
-	case PT_JSON_CONTAINS:
 	case PT_JSON_EXTRACT:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
+	case PT_JSON_CONTAINS:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.arg2)
+		  && (node->info.expr.arg3 ? pt_is_const_expr_node (node->info.expr.arg3) : true)) ? true : false;
 	default:
 	  return false;
 	}

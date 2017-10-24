@@ -5122,20 +5122,39 @@ error:
 }
 
 int
-db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, DB_VALUE * result)
+db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_VALUE * path, DB_VALUE * result)
 {
-  if (!DB_IS_NULL (json))
-    {
-      char *value_str = value->data.ch.medium.buf;
-      int has_member, error_code;
+  int error_code = NO_ERROR;
+  JSON_DOC *result_doc = NULL;
+  JSON_DOC *this_doc = DB_GET_JSON_DOCUMENT (json);
 
-      error_code = db_json_object_contains_key (json->data.json.document, value->data.ch.medium.buf, has_member);
+  if (path != NULL && !DB_IS_NULL (path))
+    {
+      const char *raw_path = db_get_string (path);
+      error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
 
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
-      return DB_MAKE_INT (result, has_member);
+    }
+  else
+    {
+      result_doc = DB_GET_JSON_DOCUMENT (json);
+    }
+
+  if (result_doc != NULL)
+    {
+      assert (value->domain.general_info.type == DB_TYPE_JSON);
+      int error_code;
+      bool has_member;
+      error_code = db_json_value_is_contained_in_doc (result_doc, DB_GET_JSON_DOCUMENT (value), has_member);
+
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      return DB_MAKE_INT (result, has_member ? 1 : 0);
     }
   else
     {

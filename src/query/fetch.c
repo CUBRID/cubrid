@@ -203,7 +203,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TIMEDIFF:
     case T_CURRENT_VALUE:
     case T_CHR:
-    case T_JSON_CONTAINS:
     case T_JSON_EXTRACT:
       /* fetch lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -663,6 +662,25 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_JSON_SEARCH:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
       goto error;
+
+    case T_JSON_CONTAINS:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->thirdptr)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       goto error;
@@ -2601,7 +2619,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_JSON_CONTAINS:
-      if (qdata_json_contains_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_json_contains_dbval
+	  (peek_left, peek_right, (arithptr->thirdptr == NULL ? NULL : peek_third), arithptr->value,
+	   regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}

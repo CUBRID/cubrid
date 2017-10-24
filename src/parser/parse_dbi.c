@@ -1511,9 +1511,6 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
   domain_type = pt_type_enum_to_db (t);
   switch (domain_type)
     {
-    case DB_TYPE_JSON:
-      retval = tp_domain_construct (domain_type, NULL, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-      break;
     case DB_TYPE_INTEGER:
       retval = tp_domain_construct (domain_type, NULL, DB_INTEGER_PRECISION, 0, NULL);
       break;
@@ -1603,6 +1600,10 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_ELO:
       /* obsolete. */
       assert (false);
+      break;
+
+    case DB_TYPE_JSON:
+      retval = &tp_Json_domain;
       break;
     }
 
@@ -1816,20 +1817,9 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
 	{
-	  char *json_schema_raw = (char *) malloc (dt->info.data_type.json_schema->length + 1);
 	  int error_code;
 
-	  if (json_schema_raw == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      dt->info.data_type.json_schema->length);
-	      return NULL;
-	    }
-	  strcpy (json_schema_raw, (const char *) dt->info.data_type.json_schema->bytes);
-
-	  error_code = db_json_load_validator (json_schema_raw, validator);
-	  free (json_schema_raw);
-
+	  error_code = db_json_load_validator ((const char *) dt->info.data_type.json_schema->bytes, validator);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -3499,18 +3489,14 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
     case PT_TYPE_JSON:
       db_value->domain.general_info.type = DB_TYPE_JSON;
       db_value->domain.general_info.is_null = 0;
-      db_value->data.json.json_body =
-	(char *) db_private_alloc (NULL, (size_t) (value->info.value.data_value.str->length + 1));
-      strcpy (db_value->data.json.json_body, (const char *) value->info.value.data_value.str->bytes);
+      db_value->data.json.json_body = db_private_strdup (NULL, (const char *) value->info.value.data_value.str->bytes);
+
       value->info.value.db_value_is_in_workspace = false;
       db_value->need_clear = true;
       if (value->info.data_type.json_schema)
 	{
-	  int len = value->info.data_type.json_schema->length;
-	  char *schm = (char *) db_private_alloc (NULL, (size_t) (len + 1));
-
-	  strcpy (schm, (const char *) value->info.data_type.json_schema->bytes);
-	  db_value->data.json.schema_raw = schm;
+	  db_value->data.json.schema_raw =
+	    db_private_strdup (NULL, (const char *) value->info.data_type.json_schema->bytes);
 	}
       else
 	{

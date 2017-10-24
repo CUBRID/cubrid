@@ -4942,14 +4942,32 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_JSON_CONTAINS:
       num = 0;
 
-      /* one overload */
+      /* two overloads */
 
-      /* arg1 */
+      /* json_contains (target, candidate, path) */
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_JSON;
 
       sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_CHAR;
+      sig.arg2_type.val.type = PT_TYPE_JSON;
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      /* json_contains (target, candidate) */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_JSON;
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_NONE;
 
       /* return type */
       sig.return_type.is_generic = false;
@@ -13172,7 +13190,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       {
 	PT_TYPE_ENUM supported_key_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_value_types[] =
-	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_FLOAT, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON,
+	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON,
 	  PT_TYPE_MAYBE
 	};
 	PT_TYPE_ENUM unsupported_type;
@@ -13226,8 +13244,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case F_JSON_ARRAY:
       {
-	PT_TYPE_ENUM supported_types[] =
-	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_FLOAT, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_NUMERIC,
+	PT_TYPE_ENUM supported_types[] = { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_NUMERIC,
 	  PT_TYPE_MAYBE
 	};
 	PT_TYPE_ENUM unsupported_type;
@@ -17230,7 +17247,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       break;
     case PT_JSON_CONTAINS:
-      error = db_json_contains_dbval (arg1, arg2, result);
+      error = db_json_contains_dbval (arg1, arg2, (o3 == NULL ? NULL : arg3), result);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

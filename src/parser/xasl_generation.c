@@ -7033,7 +7033,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		  if (node->info.expr.op == PT_DATE_FORMAT || node->info.expr.op == PT_STR_TO_DATE
 		      || node->info.expr.op == PT_TIME_FORMAT || node->info.expr.op == PT_FORMAT
-		      || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_JSON_SEARCH)
+		      || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_JSON_SEARCH
+		      || node->info.expr.op == PT_JSON_CONTAINS)
 		    {
 		      r3 = pt_to_regu_variable (parser, node->info.expr.arg3, unbox);
 		    }
@@ -7452,7 +7453,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_JSON_CONTAINS:
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_JSON_CONTAINS, domain);
+		  regu = pt_make_regu_arith (r1, r2, r3, T_JSON_CONTAINS, domain);
 		  break;
 		case PT_JSON_TYPE:
 		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_TYPE, domain);
@@ -21760,7 +21761,7 @@ pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
     case DB_TYPE_JSON:
       if (dt->info.data_type.json_schema)
 	{
-	  value->data.json.schema_raw = (char *) dt->info.data_type.json_schema->bytes;
+	  value->data.json.schema_raw = db_private_strdup (NULL, (const char *) dt->info.data_type.json_schema->bytes);
 	}
       else
 	{
