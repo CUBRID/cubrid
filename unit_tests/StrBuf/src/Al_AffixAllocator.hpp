@@ -1,4 +1,4 @@
-#if 0 //Affix Allocator: allocate(sizeof(Prefix) + size + sizeof(Suffix))
+#if 0//Affix Allocator: allocate(sizeof(Prefix) + size + sizeof(Suffix))
 - usefull for debug, statistics, information, ...
     - use Prefix & Suffix as fences to detect wrong writes: "BBBBBBBB"..."EEEEEEEE"
     - use Prefix & Suffix for human readable text to ease memory reading: "type=MyClass"..."end of type=MyClass"
@@ -8,48 +8,55 @@ USAGE:
 #pragma once
 #include "Al_Blk.hpp"
 #ifdef __linux__
-#include <stddef.h> //size_t on Linux
+#include <stddef.h>//size_t on Linux
 #endif
 #include <new>
 
-namespace Al{
-    template<typename Allocator, typename Prefix, typename Suffix> class AffixAllocator{
-    private:
-        static const size_t _pfxLen = sizeof(Prefix);
-        static const size_t _sfxLen = sizeof(Suffix);
-        Allocator& _a;
-    public:
-        AffixAllocator(Allocator& allocator)
-            : _a(allocator)
-        {}
+namespace Al
+{
+  template<typename Allocator, typename Prefix, typename Suffix> class AffixAllocator
+  {
+  private:
+    static const size_t _pfxLen = sizeof(Prefix);
+    static const size_t _sfxLen = sizeof(Suffix);
+    Allocator&          _a;
 
-        Blk allocate(size_t size){
-            Blk blk = _a.allocate(_pfxLen + size + _sfxLen);
-            if(!blk)
-                return {0, 0};
-            new(blk.ptr) Prefix;                //placement new to initialize Prefix memory 
-            new(blk.ptr+_pfxLen+size) Suffix;   //placement new to initialize Suffix memory 
-            return {size, blk.ptr+_pfxLen};
-        }
+  public:
+    AffixAllocator(Allocator& allocator)
+      : _a(allocator)
+    {
+    }
 
-        void deallocate(Blk blk){
-            //check if Prefix & Suffix are unchanged!
-            //...
-            _a.deallocate({_pfxLen+blk.dim+_sfxLen, blk.ptr-_pfxLen});
-        }
+    Blk allocate(size_t size)
+    {
+      Blk blk = _a.allocate(_pfxLen + size + _sfxLen);
+      if(!blk)
+        return {0, 0};
+      new(blk.ptr) Prefix;                 //placement new to initialize Prefix memory
+      new(blk.ptr + _pfxLen + size) Suffix;//placement new to initialize Suffix memory
+      return {size, blk.ptr + _pfxLen};
+    }
 
-        unsigned check(Blk blk){
-            Prefix pfx;
-            Suffix sfx;
-            int err = 0;
-            err |= (memcmp(&pfx, blk.ptr-_pfxLen, _pfxLen)) ? 1 : 0;
-            err |= (memcmp(&sfx, blk.ptr+blk.dim, _sfxLen)) ? 2 : 0;
-            return err;
-        }
-    };
-}
+    void deallocate(Blk blk)
+    {
+      //check if Prefix & Suffix are unchanged!
+      //...
+      _a.deallocate({_pfxLen + blk.dim + _sfxLen, blk.ptr - _pfxLen});
+    }
 
-#if 0 //using inheritance
+    unsigned check(Blk blk)
+    {
+      Prefix pfx;
+      Suffix sfx;
+      int    err = 0;
+      err |= (memcmp(&pfx, blk.ptr - _pfxLen, _pfxLen)) ? 1 : 0;
+      err |= (memcmp(&sfx, blk.ptr + blk.dim, _sfxLen)) ? 2 : 0;
+      return err;
+    }
+  };
+}// namespace Al
+
+#if 0//using inheritance
 template<typename Allocator, typename Prefix, typename Suffix=void> class AffixAllocator
     : Allocator
 {
