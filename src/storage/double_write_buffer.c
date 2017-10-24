@@ -255,7 +255,6 @@ struct double_write_block
 
   unsigned int block_no;	/* The block number. */
   volatile UINT64 version;	/* The block version. */
-  volatile bool allow_flush;	/* Allow block flushing? */
 };
 
 /* Slots hash entry. */
@@ -290,6 +289,7 @@ struct double_write_buffer
   unsigned int num_block_pages;	/* The number of pages in a block - power of 2. */
   unsigned int log2_num_block_pages;	/* Logarithm from block number of pages. */
   unsigned int blocks_flush_counter;	/* The blocks flush counter. */
+  unsigned int next_block_to_flush;	/* Next block to flush */
 
   DWB_CHECKSUM_INFO *checksum_info;	/* The checksum info. */
 
@@ -306,7 +306,7 @@ struct double_write_buffer
 /* DWB volume name. */
 char dwb_Volume_Name[PATH_MAX];
 /* DWB. */
-static DOUBLE_WRITE_BUFFER double_Write_Buffer = { NULL, 0, 0, 0, 0, 0, NULL, PTHREAD_MUTEX_INITIALIZER,
+static DOUBLE_WRITE_BUFFER double_Write_Buffer = { NULL, 0, 0, 0, 0, 0, 0, NULL, PTHREAD_MUTEX_INITIALIZER,
   DWB_WAIT_QUEUE_INITIALIZER, 0, NULL, NULL_VOLDES
 };
 
@@ -392,7 +392,7 @@ STATIC_INLINE int dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT *
 					     bool * checksum_computed) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name,
 				       UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_find_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
+STATIC_INLINE void dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool dwb_block_has_all_checksums_computed (unsigned int block_no);
 STATIC_INLINE void dwb_find_block_with_all_checksums_requested (unsigned int *block_no) __attribute__ ((ALWAYS_INLINE));
@@ -1353,7 +1353,6 @@ dwb_initialize_block (DWB_BLOCK * block, unsigned int block_no, unsigned int cou
   block->count_wb_pages = count_wb_pages;
   block->block_no = block_no;
   block->version = 0;
-  block->allow_flush = false;
 }
 
 /*
@@ -1557,6 +1556,7 @@ dwb_create_internal (THREAD_ENTRY * thread_p, char *dwb_volume_name, UINT64 * cu
   double_Write_Buffer.num_block_pages = num_block_pages;
   double_Write_Buffer.log2_num_block_pages = (unsigned int) (log ((float) num_block_pages) / log ((float) 2));
   double_Write_Buffer.blocks_flush_counter = 0;
+  double_Write_Buffer.next_block_to_flush = 0;
   double_Write_Buffer.checksum_info = checksum_info;
   pthread_mutex_init (&double_Write_Buffer.mutex, NULL);
   dwb_init_wait_queue (&double_Write_Buffer.wait_queue);
@@ -2301,9 +2301,6 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   TSCTIMEVAL tv_diff;
   UINT64 oldest_time;
   bool is_perf_tracking = false;
-  int next_block_no;
-  DWB_BLOCK *next_block;
-  UINT64 saved_block_version;
 
   assert (block != NULL && block->count_wb_pages > 0 && dwb_is_created ());
 
@@ -2381,9 +2378,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
       DWB_RESET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
     }
   ATOMIC_TAS_32 (&block->count_wb_pages, 0);
-  saved_block_version = block->count_wb_pages;
   ATOMIC_INC_64 (&block->version, 1ULL);
-  block->allow_flush = false;
 
   /* Reset block bit, since the block was flushed. */
 reset_bit_position:
@@ -2396,16 +2391,8 @@ reset_bit_position:
       goto reset_bit_position;
     }
 
-  /* Since the current block was flushed, allow next block flushing, if is the case. */
-  next_block_no = DWB_GET_NEXT_BLOCK_NO (block->block_no);
-  next_block = &double_Write_Buffer.blocks[next_block_no];
-  if (next_block->count_wb_pages == DWB_BLOCK_NUM_PAGES && next_block->allow_flush == false)
-    {
-      /* Full block, created after the current block. */
-      assert_release ((next_block->version > saved_block_version)
-		      || (next_block->version == saved_block_version && next_block->block_no > block->block_no));
-      next_block->allow_flush = true;
-    }
+  /* Advance flushing to next block. */
+  double_Write_Buffer.next_block_to_flush = DWB_GET_NEXT_BLOCK_NO (double_Write_Buffer.next_block_to_flush);
 
   /* Release locked threads, if any. */
   dwb_signal_block_completion (thread_p, block);
@@ -2618,42 +2605,32 @@ dwb_init_slot (DWB_SLOT * slot)
 }
 
 /*
- * dwb_find_block_for_flush(): Find a block for flush.
+ * dwb_get_next_block_for_flush(): Get next block for flush.
  *
  *   returns: Nothing
  * thread_p (in): The thread entry.
- * block_no(out): The block number if is found, otherwise DWB_NUM_TOTAL_BLOCKS.
+ * block_no(out): The next block for flush if found, otherwise DWB_NUM_TOTAL_BLOCKS.
  */
 STATIC_INLINE void
-dwb_find_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
+dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
 {
-  unsigned int block_checksum_start_position, block_checksum_element_position, element_position, start_block, end_block,
-    num_block;
-  int checksum_threads;
+  unsigned int block_checksum_start_position, block_checksum_element_position, element_position;
   bool found;
 
   assert (block_no != NULL);
 
-  checksum_threads = prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS);
-  *block_no = DWB_NUM_TOTAL_BLOCKS;
-  start_block = 0;
-  end_block = double_Write_Buffer.num_blocks;
-  /* First, search for blocks that can be flushed. Then check whether the whole slots checksum were computed. */
-  for (num_block = 0; num_block < DWB_NUM_TOTAL_BLOCKS; num_block++)
+  *block_no = DWB_BLOCK_NUM_PAGES;
+  /* First, check whether the next block can be flushed. Then check whether its whole slots checksum were computed. */
+  if (double_Write_Buffer.blocks[double_Write_Buffer.next_block_to_flush].count_wb_pages != DWB_BLOCK_NUM_PAGES)
     {
-      if (double_Write_Buffer.blocks[num_block].allow_flush == false)
-	{
-	  continue;
-	}
+      /* Next block is not full yet. */
+      return;
+    }
 
-      if (checksum_threads == 0)
-	{
-	  *block_no = num_block;
-	  break;
-	}
-
-      found = true;
-      block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (num_block);
+  found = true;
+  if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
+    {
+      block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (double_Write_Buffer.next_block_to_flush);
       for (block_checksum_element_position = 0; block_checksum_element_position < DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK;
 	   block_checksum_element_position++)
 	{
@@ -2661,17 +2638,16 @@ dwb_find_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
 	  if (DWB_GET_COMPUTED_CHECKSUMS_ELEMENT (element_position)
 	      != DWB_GET_COMPLETED_CHECKSUMS_ELEMENT (block_checksum_element_position))
 	    {
+	      /* Needs to compute all checksums before flush. */
 	      found = false;
 	      break;
 	    }
 	}
+    }
 
-      if (found)
-	{
-	  /* Needs to flush the block, after computing checksums. */
-	  *block_no = num_block;
-	  break;
-	}
+  if (found)
+    {
+      *block_no = double_Write_Buffer.next_block_to_flush;
     }
 }
 
@@ -2976,7 +2952,6 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
     }
 
   block = &double_Write_Buffer.blocks[dwb_slot->block_no];
-  assert (block->allow_flush == false);
   count_wb_pages = ATOMIC_INC_32 (&block->count_wb_pages, 1);
 
   checksum_threads = prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS);
@@ -3052,7 +3027,10 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 				 prev_block_no, prev_block->version);
 		}
 
-	      /* The previous block was not flushed yet. Needs to wait for it to be flushed. */
+	      /*
+	       * The previous block was not flushed yet. Needs to wait for it to be flushed. However, do not wait here
+	       * to not introduce delays. Wake ups the checksum thread and flush block thread to flush previous block.
+	       */
 	      allow_block_flush = false;
 #if defined (SERVER_MODE)
 	      if (thread_is_dwb_checksum_computation_thread_available ())
@@ -3087,13 +3065,10 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 #endif
 	}
 
-      if (block->allow_flush == false)
-	{
-	  /* Set allow_flush flag if not already set by flush thread. */
-	  block->allow_flush = allow_block_flush;
-	}
-      
-      /* Now it's safe to flush the block. The flush thread can compute the checksum for latest slot. */
+      /*
+       * Wake ups flush block thread to flush the current block. The current block will be flushed after flushing the
+       * previous block and after all slots checksum were computed by checksum threads.
+       */
 #if defined (SERVER_MODE)
       if (thread_is_dwb_flush_block_thread_available ())
 	{
@@ -3450,7 +3425,7 @@ start:
       return NO_ERROR;
     }
 
-  dwb_find_block_for_flush (thread_p, &block_no);
+  dwb_get_next_block_for_flush (thread_p, &block_no);
   if (block_no < DWB_NUM_TOTAL_BLOCKS)
     {
       flush_block = &double_Write_Buffer.blocks[block_no];
@@ -3507,8 +3482,7 @@ start:
 
       if (block_needs_flush)
 	{
-	  flush_block = &double_Write_Buffer.blocks[block_no];
-	  goto start_flush_block;
+	  goto start;
 	}
     }
 
