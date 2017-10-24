@@ -75,7 +75,7 @@ flag<T>::flag (const T & init_flags)
 }
 
 template<typename T>
-inline typename flag<T>&
+inline flag<T>&
 flag<T>::operator= (const flag& other)
 {
   this->m_flags = other.m_flags;
@@ -83,7 +83,7 @@ flag<T>::operator= (const flag& other)
 }
 
 template<typename T>
-inline typename flag<T>&
+inline flag<T>&
 flag<T>::operator= (const T& flags)
 {
   this->m_flags = flags;
@@ -91,7 +91,7 @@ flag<T>::operator= (const T& flags)
 }
 
 template<typename T>
-inline typename flag<T>&
+inline flag<T>&
 flag<T>::set (const T & flags)
 {
   m_flags = m_flags | flags;
@@ -99,7 +99,7 @@ flag<T>::set (const T & flags)
 }
 
 template<typename T>
-inline typename flag<T>&
+inline flag<T>&
 flag<T>::clear (const T & flags)
 {
   m_flags = m_flags & (~flags);

@@ -31,6 +31,7 @@
 #include <atomic>
 /* TODO: use std::atomic. However, we must give up on systems with gcc 4.5 or older and VS 2010 */
 #endif // USE_STD_ATOMIC
+#include <cassert>
 
 namespace lockfree {
 
@@ -107,7 +108,7 @@ private:
 namespace lockfree {
 
 template<class T>
-typename const circular_queue<T>::cursor_type circular_queue<T>::BLOCK_FLAG =
+typename circular_queue<T>::cursor_type const circular_queue<T>::BLOCK_FLAG =
   ((cursor_type) 1) << ((sizeof (cursor_type) * CHAR_BIT) - 1);         // 0x8000...
   
 

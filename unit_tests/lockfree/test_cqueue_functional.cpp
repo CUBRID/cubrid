@@ -29,17 +29,29 @@
 #undef strlen
 #endif
 
+/* TODO: replace with atomic */
+
 #include <cstdint>
+#ifdef USE_ATOMIC
 #include <atomic>
+#endif
 #include <iostream>
 #include <sstream>
 #include <thread>
 #include <chrono>
 
+/* TODO: replace with atomic */
+
 namespace test_lockfree {
 
 typedef uint64_t op_count_type;
+#ifdef USE_ATOMIC
 typedef std::atomic<op_count_type> atomic_op_count_type;
+typedef std::atomic<size_t> atomic_size_t;
+#else
+typedef volatile op_count_type atomic_op_count_type;
+typedef volatile size_t atomic_size_t;
+#endif
 typedef lockfree::circular_queue<int> test_cqueue;
 
 void
@@ -59,7 +71,7 @@ print_action (const std::string & my_name, const char * action_name, op_count_ty
 
 void
 consume_global_count (test_cqueue & cqueue, const std::string & my_name, const op_count_type global_op_count,
-                      atomic_op_count_type & consumed_op_count, std::atomic<size_t> & finished_count)
+                      atomic_op_count_type & consumed_op_count, atomic_size_t & finished_count)
 {
   int cosumed_data;
   op_count_type local_count;
@@ -68,7 +80,11 @@ consume_global_count (test_cqueue & cqueue, const std::string & my_name, const o
     {
       if (cqueue.consume (cosumed_data))
         {
+#ifdef USE_ATOMIC
           local_count = ++consumed_op_count;
+#else
+          local_count = ATOMIC_INC (&consumed_op_count, 1);
+#endif
           if (local_count % 100000 == 0)
             {
               print_action (my_name, "consume", local_count);
@@ -80,12 +96,16 @@ consume_global_count (test_cqueue & cqueue, const std::string & my_name, const o
         }
     }
 
+#ifdef USE_ATOMIC
   ++finished_count;
+#else
+  ATOMIC_INC (&finished_count, 1);
+#endif
 }
 
 void
 produce_global_count (test_cqueue & cqueue, const std::string & my_name, const op_count_type global_op_count,
-                      atomic_op_count_type & produced_op_count, std::atomic<size_t> & finished_count)
+                      atomic_op_count_type & produced_op_count, atomic_size_t & finished_count)
 {
   int prodval = 1;
   op_count_type local_count;
@@ -94,7 +114,11 @@ produce_global_count (test_cqueue & cqueue, const std::string & my_name, const o
     {
       if (cqueue.produce (prodval++))
         {
+#ifdef USE_ATOMIC
           local_count = ++produced_op_count;
+#else
+          local_count = ATOMIC_INC (&produced_op_count, 1);
+#endif
           if (local_count % 100000 == 0)
             {
               print_action (my_name, "produced", local_count);
@@ -117,11 +141,11 @@ test_cqueue_no_hang (size_t producer_count, size_t consumer_count, size_t op_cou
   std::thread *producers = new std::thread[producer_count];
   std::thread *consumers = new std::thread[consumer_count];
   test_cqueue cqueue (cqueue_size);
-  std::atomic<size_t> finished_producers_count = 0;
-  std::atomic<size_t> finished_consumers_count = 0;
+  atomic_size_t finished_producers_count = 0;
+  atomic_size_t finished_consumers_count = 0;
 
   /* start threads */
-  for (unsigned i = 0; i < producer_count; i++)
+  for (long long unsigned int i = 0; i < producer_count; i++)
     {
       std::string my_name ("producer");
       my_name.append (std::to_string (i));
@@ -129,7 +153,7 @@ test_cqueue_no_hang (size_t producer_count, size_t consumer_count, size_t op_cou
         std::thread (produce_global_count, std::ref (cqueue), my_name, op_count, std::ref (produced_op_count),
                      std::ref (finished_producers_count));
     }
-  for (unsigned i = 0; i < consumer_count; i++)
+  for (long long unsigned int i = 0; i < consumer_count; i++)
     {
       std::string my_name ("consumer");
       my_name.append (std::to_string (i));
@@ -143,7 +167,11 @@ test_cqueue_no_hang (size_t producer_count, size_t consumer_count, size_t op_cou
   size_t prev_consumed_op_count = 0;
   while (finished_producers_count < producer_count && finished_consumers_count < consumer_count)
     {
+#if USE_SLEEP_FOR
       std::this_thread::sleep_for (std::chrono::seconds (1));
+#else
+      sleep (1);
+#endif
 
       if (finished_producers_count < producer_count && prev_produced_op_count == produced_op_count)
         {
