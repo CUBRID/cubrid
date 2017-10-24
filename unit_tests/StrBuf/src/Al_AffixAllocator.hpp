@@ -15,8 +15,8 @@ USAGE:
 namespace Al{
     template<typename Allocator, typename Prefix, typename Suffix> class AffixAllocator{
     private:
-        static constexpr size_t _pfxLen = sizeof(Prefix);
-        static constexpr size_t _sfxLen = sizeof(Suffix);
+        static const size_t _pfxLen = sizeof(Prefix);
+        static const size_t _sfxLen = sizeof(Suffix);
         Allocator& _a;
     public:
         AffixAllocator(Allocator& allocator)
