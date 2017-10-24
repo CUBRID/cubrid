@@ -2478,6 +2478,8 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
   size_t current_size;
   PAGEID last_pageid;
   size_t new_size;
+  size_t desired_extend_size;
+  size_t max_extend_size;
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
   pthread_mutex_t *io_mutex;
@@ -2527,7 +2529,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
   assert ((current_size % IO_PAGESIZE) == 0);
 
   /* compute new size */
-  new_size = size_npages * IO_PAGESIZE;
+  new_size = ((size_t) size_npages) * IO_PAGESIZE;
 
   if (new_size <= current_size)
     {
@@ -2542,12 +2544,12 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 
   /* overflow safety check */
   /* is this necessary? we dropped support for 32-bits systems. for now, I'll leave this check */
-  max_size = VOL_MAX_NPAGES (IO_PAGESIZE) * IO_PAGESIZE;
+  max_size = ((size_t) VOL_MAX_NPAGES (IO_PAGESIZE)) * IO_PAGESIZE;
   new_size = MIN (new_size, max_size);
 
   /* consider disk free space */
-  size_t desired_extend_size = new_size - current_size;
-  size_t max_extend_size = max_npages * IO_PAGESIZE;
+  desired_extend_size = new_size - current_size;
+  max_extend_size = ((size_t) max_npages) * IO_PAGESIZE;
 
   if (max_extend_size < desired_extend_size)
     {
