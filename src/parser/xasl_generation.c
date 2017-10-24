@@ -14403,28 +14403,32 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
     {
       if (meta->level >= meta->children[0]->level && meta->level >= meta->children[1]->level)
 	{
-	  ANALYTIC_KEY_METADOMAIN *first, *second;
+	  if (eval == NULL)
+	    {
+	      eval = regu_analytic_eval_alloc ();
+	      if (eval == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "regu alloc");
+		  return NULL;
+		}
 
-	  if (meta->children[0]->level >= meta->children[1]->level)
-	    {
-	      first = meta->children[0];
-	      second = meta->children[1];
-	    }
-	  else
-	    {
-	      first = meta->children[1];
-	      second = meta->children[0];
+	      eval->sort_list = pt_sort_list_from_metadomain (parser, meta, sort_list_index, info->select_list);
+	      if (meta->key_size > 0 && eval->sort_list == NULL)
+		{
+		  /* error was already set */
+		  return NULL;
+		}
 	    }
 
 	  /* this is the case of a perfect match where both children can be evaluated together */
-	  eval = pt_build_analytic_eval_list (parser, first, eval, sort_list_index, info);
+	  eval = pt_build_analytic_eval_list (parser, meta->children[0], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
 	      return NULL;
 	    }
 
-	  eval = pt_build_analytic_eval_list (parser, second, eval, sort_list_index, info);
+	  eval = pt_build_analytic_eval_list (parser, meta->children[1], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
@@ -14546,14 +14550,151 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 }
 
 /*
+ * pt_initialize_analytic_info () - initialize analytic_info
+ *   parser(in): 
+ *   analytic_info(out): 
+ *   select_node(in): 
+ *   select_node_ex(in): 
+ *   buidlist(in): 
+ */
+static int
+pt_initialize_analytic_info (PARSER_CONTEXT * parser, ANALYTIC_INFO * analytic_info, PT_NODE * select_node,
+			     PT_NODE * select_list_ex, BUILDLIST_PROC_NODE * buildlist)
+{
+  PT_NODE *node;
+  int idx;
+  QPROC_DB_VALUE_LIST vallist_p;
+
+  assert (analytic_info != NULL);
+
+  analytic_info->head_list = NULL;
+  analytic_info->sort_lists = NULL;
+  analytic_info->select_node = select_node;
+  analytic_info->select_list = select_list_ex;
+  analytic_info->val_list = buildlist->a_val_list;
+
+  for (node = select_list_ex, vallist_p = buildlist->a_val_list->valp, idx = 0; node;
+       node = node->next, vallist_p = vallist_p->next, idx++)
+    {
+      assert (vallist_p != NULL);
+
+      if (PT_IS_ANALYTIC_NODE (node))
+	{
+	  /* process analytic node */
+	  if (pt_to_analytic_node (parser, node, analytic_info) == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* register vallist dbval for further use */
+	  analytic_info->head_list->out_value = vallist_p->val;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_is_analytic_eval_list_valid () - check the generated eval list
+ *   eval_list(in): 
+ *
+ * NOTE: This function checks the generated list whether it includes an invalid node.
+ * This is just a quick fix and should be removed when we fix pt_optimize_analytic_list.
+ */
+static bool
+pt_is_analytic_eval_list_valid (ANALYTIC_EVAL_TYPE * eval_list)
+{
+  ANALYTIC_EVAL_TYPE *p;
+
+  assert (eval_list != NULL);
+
+  for (p = eval_list; p != NULL; p = p->next)
+    {
+      if (p->head == NULL)
+	{
+	  /* This is badly generated. We give up optimization for this invalid case. */
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * pt_generate_simple_analytic_eval_type () - generate simple when optimization fails 
+ *   info(in/out): analytic info
+ *
+ * NOTE: This function generates one evaluation structure for an analytic function.
+ */
+static ANALYTIC_EVAL_TYPE *
+pt_generate_simple_analytic_eval_type (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
+{
+  ANALYTIC_EVAL_TYPE *ret = NULL;
+  ANALYTIC_TYPE *func_p, *save_next;
+  PT_NODE *sort_list;
+
+  /* build one eval group for each analytic function */
+  func_p = info->head_list;
+  sort_list = info->sort_lists;
+  while (func_p)
+    {
+      ANALYTIC_EVAL_TYPE *newa = regu_analytic_eval_alloc ();
+
+      /* new eval structure */
+      if (newa == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "regu alloc");
+	  return NULL;
+	}
+      else if (ret == NULL)
+	{
+	  ret = newa;
+	}
+      else
+	{
+	  newa->next = ret;
+	  ret = newa;
+	}
+
+      /* set up sort list */
+      if (sort_list->info.pointer.node != NULL)
+	{
+	  ret->sort_list =
+	    pt_to_sort_list (parser, sort_list->info.pointer.node, info->select_list, SORT_LIST_ANALYTIC_WINDOW);
+	  if (ret->sort_list == NULL)
+	    {
+	      /* error has already been set */
+	      return NULL;
+	    }
+	}
+      else
+	{
+	  ret->sort_list = NULL;
+	}
+
+      /* one function */
+      ret->head = func_p;
+
+      /* unlink and advance */
+      save_next = func_p->next;
+      func_p->next = NULL;
+      func_p = save_next;
+      sort_list = sort_list->next;
+    }
+
+  return ret;
+}
+
+/*
  * pt_optimize_analytic_list () - optimize analytic exectution
  *   info(in/out): analytic info
+ *   no_optimization(out): 
  *
  * NOTE: This function groups together the evaluation of analytic functions
  * that share the same window.
  */
 static ANALYTIC_EVAL_TYPE *
-pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
+pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool * no_optimization)
 {
   ANALYTIC_EVAL_TYPE *ret = NULL;
   ANALYTIC_TYPE *func_p, *save_next;
@@ -14571,14 +14712,17 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 
   assert (info != NULL);
 
+  *no_optimization = false;
+
   /* find unique sort columns and index them; build analytic meta structures */
-  for (func_p = info->head_list, sort_list = info->sort_lists; func_p != NULL, sort_list != NULL;
+  for (func_p = info->head_list, sort_list = info->sort_lists; func_p != NULL && sort_list != NULL;
        func_p = func_p->next, sort_list = sort_list->next, af_count++)
     {
       if (!pt_analytic_to_metadomain (func_p, sort_list->info.pointer.node, &af_meta[af_count], sc_index, &sc_count))
 	{
 	  /* sort spec index overflow, we'll do it the old fashioned way */
-	  goto fallback;
+	  *no_optimization = true;
+	  return NULL;
 	}
 
       /* first level is maximum key size */
@@ -14604,7 +14748,8 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 
 		      if (af_count >= ANALYTIC_OPT_MAX_FUNCTIONS)
 			{
-			  goto fallback;
+			  *no_optimization = true;
+			  return NULL;
 			}
 
 		      /* demote and register children */
@@ -14635,7 +14780,6 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	}
     }
   while (found);
-
 
   /* build initial compatibility graph */
   pt_metadomain_build_comp_graph (af_meta, af_count, level);
@@ -14783,60 +14927,19 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	}
     }
 
-  return ret;
-
-fallback:
-  /* build one eval group for each analytic function */
-  func_p = info->head_list;
-  sort_list = info->sort_lists;
-  while (func_p)
+  /*
+   * FIXME: This is a quick fix. Remove this when we fix pt_build_analytic_eval_list ().
+   */
+  if (!pt_is_analytic_eval_list_valid (ret))
     {
-      ANALYTIC_EVAL_TYPE *newa = regu_analytic_eval_alloc ();
-
-      /* new eval structure */
-      if (newa == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "regu alloc");
-	  return NULL;
-	}
-      else if (ret == NULL)
-	{
-	  ret = newa;
-	}
-      else
-	{
-	  newa->next = ret;
-	  ret = newa;
-	}
-
-      /* set up sort list */
-      if (sort_list->info.pointer.node != NULL)
-	{
-	  ret->sort_list =
-	    pt_to_sort_list (parser, sort_list->info.pointer.node, info->select_list, SORT_LIST_ANALYTIC_WINDOW);
-	  if (ret->sort_list == NULL)
-	    {
-	      /* error has already been set */
-	      return NULL;
-	    }
-	}
-      else
-	{
-	  ret->sort_list = NULL;
-	}
-
-      /* one function */
-      ret->head = func_p;
-
-      /* unlink and advance */
-      save_next = func_p->next;
-      func_p->next = NULL;
-      func_p = save_next;
-      sort_list = sort_list->next;
+      /* give up optimization for the case */
+      *no_optimization = true;
+      return NULL;
     }
 
   return ret;
 }
+
 
 /*
  * pt_to_buildlist_proc () - Translate a PT_SELECT node to
@@ -14863,7 +14966,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   BUILDLIST_PROC_NODE *buildlist;
   int i;
   REGU_VARIABLE_LIST regu_var_p;
-  QPROC_DB_VALUE_LIST vallist_p;
 
   assert (parser != NULL);
 
@@ -15155,9 +15257,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  /* the select list will be altered a lot in the following code block, make sure you understand what's
 	   * happening before making adjustments */
 
-	  ANALYTIC_INFO analytic_info;
+	  ANALYTIC_INFO analytic_info, analytic_info_clone;
 	  PT_NODE *select_list_ex = NULL, *select_list_final = NULL, *node;
 	  int idx, final_idx, final_count, *sort_adjust = NULL;
+	  bool no_optimization_done = false;
 
 	  /* prepare sort adjustment array */
 	  final_idx = 0;
@@ -15273,28 +15376,21 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* generate analytic nodes */
-	  analytic_info.head_list = NULL;
-	  analytic_info.sort_lists = NULL;
-	  analytic_info.select_node = select_node;
-	  analytic_info.select_list = select_list_ex;
-	  analytic_info.val_list = buildlist->a_val_list;
-
-	  for (node = select_list_ex, vallist_p = buildlist->a_val_list->valp, idx = 0; node;
-	       node = node->next, vallist_p = vallist_p->next, idx++)
+	  if (pt_initialize_analytic_info (parser, &analytic_info, select_node, select_list_ex, buildlist) != NO_ERROR)
 	    {
-	      assert (vallist_p);
+	      goto analytic_exit_on_error;
+	    }
 
-	      if (PT_IS_ANALYTIC_NODE (node))
-		{
-		  /* process analytic node */
-		  if (pt_to_analytic_node (parser, node, &analytic_info) == NULL)
-		    {
-		      goto analytic_exit_on_error;
-		    }
-
-		  /* register vallist dbval for further use */
-		  analytic_info.head_list->out_value = vallist_p->val;
-		}
+	  /* FIXME 
+	   *
+	   * The cloned list will be used when optimization of analytic functions fails.
+	   * Cloning is not necessary for oridinary cases, however I just want to make the lists are same.
+	   * It will be removed when we fix pt_build_analytic_eval_list ().
+	   */
+	  if (pt_initialize_analytic_info (parser, &analytic_info_clone, select_node, select_list_ex, buildlist) !=
+	      NO_ERROR)
+	    {
+	      goto analytic_exit_on_error;
 	    }
 
 	  /* generate regu list (identity fetching from temp tuple) */
@@ -15340,7 +15436,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* optimize analytic function list */
-	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info);
+	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info, &no_optimization_done);
+
+	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
+	  if (no_optimization_done == true)
+	    {
+	      /* generate one per analytic function */
+	      xasl->proc.buildlist.a_eval_list = pt_generate_simple_analytic_eval_type (parser, &analytic_info_clone);
+	    }
+
 	  if (xasl->proc.buildlist.a_eval_list == NULL && analytic_info.head_list != NULL)
 	    {
 	      /* input functions were provided but optimizer messed up */

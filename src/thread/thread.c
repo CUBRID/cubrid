@@ -237,8 +237,6 @@ static void thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor);
 static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
 static int thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, THREAD_RC_METER * prev_meter);
 static int thread_rc_track_check (THREAD_ENTRY * thread_p, int id);
-static void thread_rc_track_initialize (THREAD_ENTRY * thread_p);
-static void thread_rc_track_finalize (THREAD_ENTRY * thread_p);
 static THREAD_RC_TRACK *thread_rc_track_alloc (THREAD_ENTRY * thread_p);
 static void thread_rc_track_free (THREAD_ENTRY * thread_p, int id);
 static INT32 thread_rc_track_amount_helper (THREAD_ENTRY * thread_p, int rc_idx);
@@ -1202,6 +1200,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 
 #if !defined(NDEBUG)
   entry_p->fi_test_array = NULL;
+  entry_p->count_private_allocators = 0;
 
   fi_thread_init (entry_p);
 #endif
@@ -4518,7 +4517,7 @@ thread_rc_track_clear_all (THREAD_ENTRY * thread_p)
  *   return:
  *   thread_p(in):
  */
-static void
+void
 thread_rc_track_initialize (THREAD_ENTRY * thread_p)
 {
   if (thread_p == NULL)
@@ -4541,7 +4540,7 @@ thread_rc_track_initialize (THREAD_ENTRY * thread_p)
  *   return:
  *   thread_p(in):
  */
-static void
+void
 thread_rc_track_finalize (THREAD_ENTRY * thread_p)
 {
   THREAD_RC_TRACK *track;
