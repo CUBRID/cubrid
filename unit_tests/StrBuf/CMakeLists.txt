@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+#cmake_minimum_required(VERSION 3.5)
 project(StrBuf_test)
 
 if (WIN32)
@@ -7,7 +7,7 @@ endif (WIN32)
 
 if (UNIX)
     SET(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -fPIC -m64 -fvisibility=hidden")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -m64 -fvisibility=hidden -std=c++17")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -m64 -fvisibility=hidden -std=c++0x")
 endif (UNIX)
 
 INCLUDE_DIRECTORIES(
