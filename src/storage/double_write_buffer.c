@@ -408,7 +408,7 @@ static int dwb_slots_hash_key_copy (void *src, void *dest);
 static int dwb_slots_hash_compare_key (void *key1, void *key2);
 static unsigned int dwb_slots_hash_key (void *key, int hash_table_size);
 
-STATIC_INLINE int dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot)
+STATIC_INLINE int dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, int *inserted)
   __attribute__ ((ALWAYS_INLINE));
 
 /* Slots entry descriptor */
@@ -1497,7 +1497,7 @@ dwb_create_internal (THREAD_ENTRY * thread_p, char *dwb_volume_name, UINT64 * cu
   int error_code = NO_ERROR;
   unsigned double_write_buffer_size, num_blocks = 0;
   unsigned i, num_pages, num_block_pages;
-  int vdes = -1;
+  int vdes = NULL_VOLDES;
   DWB_BLOCK *blocks = NULL;
   DWB_CHECKSUM_INFO *checksum_info = NULL;
   DWB_SLOTS_HASH *slots_hash = NULL;
@@ -1576,7 +1576,7 @@ dwb_create_internal (THREAD_ENTRY * thread_p, char *dwb_volume_name, UINT64 * cu
   return NO_ERROR;
 
 exit_on_error:
-  if (vdes != -1)
+  if (vdes != NULL_VOLDES)
     {
       fileio_dismount (thread_p, vdes);
       fileio_unformat (NULL, dwb_Volume_Name);
@@ -1722,19 +1722,18 @@ dwb_slots_hash_key (void *key, int hash_table_size)
  * thread_p (in): The thread entry.
  * vpid(in): The page identifier.
  * slot(in): The DWB slot.
+ * inserted (out): 1, if slot inserted in hash.
  */
 STATIC_INLINE int
-dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot)
+dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, int *inserted)
 {
   int error_code = NO_ERROR;
   DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
-  int inserted;
 
-  assert (vpid != NULL && slot != NULL);
-
+  assert (vpid != NULL && slot != NULL && inserted != NULL);
   error_code =
-    lf_hash_find_or_insert (t_entry, &double_Write_Buffer.slots_hash->ht, vpid, (void **) &slots_hash_entry, &inserted);
+    lf_hash_find_or_insert (t_entry, &double_Write_Buffer.slots_hash->ht, vpid, (void **) &slots_hash_entry, inserted);
   if (error_code != NO_ERROR || slots_hash_entry == NULL)
     {
       ASSERT_ERROR ();
@@ -1748,10 +1747,10 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot)
   assert (VPID_EQ (&slots_hash_entry->vpid, &slot->vpid));
   assert (slots_hash_entry->vpid.pageid == slot->io_page->prv.pageid
 	  && slots_hash_entry->vpid.volid == slot->io_page->prv.volid);
-  if (!inserted)
+  if (!(*inserted))
     {
       assert (slots_hash_entry->slot != NULL);
-      if (LSA_LT (&slot->lsa, &slots_hash_entry->slot->lsa))
+      if (LSA_LE (&slot->lsa, &slots_hash_entry->slot->lsa))
 	{
 	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
@@ -1760,7 +1759,7 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot)
 			     slots_hash_entry->slot->lsa.offset, slot->lsa.pageid, slot->lsa.offset);
 	    }
 
-	  /* The older slot is better than mine - leave it in hash. */
+	  /* The older slot is same or better than mine - leave it in hash. */
 	  pthread_mutex_unlock (&slots_hash_entry->mutex);
 	  return NO_ERROR;
 	}
@@ -1775,6 +1774,7 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot)
 
   slots_hash_entry->slot = slot;
   pthread_mutex_unlock (&slots_hash_entry->mutex);
+  *inserted = 1;
 
   return NO_ERROR;
 }
@@ -1818,7 +1818,7 @@ dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_fl
       free_and_init (double_Write_Buffer.slots_hash);
     }
 
-  if (double_Write_Buffer.vdes != -1)
+  if (double_Write_Buffer.vdes != NULL_VOLDES)
     {
       fileio_dismount (thread_p, double_Write_Buffer.vdes);
       fileio_unformat (thread_p, dwb_Volume_Name);
@@ -2340,8 +2340,8 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
 	  VPID_SET_NULL (&(block->slots[p_dwb_ordered_slots[i].position_in_block].vpid));
 	  io_page = p_dwb_ordered_slots[i].io_page;
-	  io_page->prv.pageid = -1;
-	  io_page->prv.volid = -1;
+	  io_page->prv.pageid = NULL_PAGEID;
+	  io_page->prv.volid = NULL_VOLID;
 	}
     }
 
@@ -2911,13 +2911,10 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 {
   unsigned int prev_block_no, count_wb_pages;
   UINT64 position_with_flags;
-  int error_code = NO_ERROR;
-  int retry_flush_iter = 0, retry_flush_max = 5;
+  int error_code = NO_ERROR, inserted, retry_flush_iter = 0, retry_flush_max = 5, checksum_threads;
   DWB_BLOCK *block = NULL, *prev_block = NULL;
   bool checksum_computed, checksum_computation_started = false;
-  int checksum_threads;
   DWB_SLOT *dwb_slot = NULL;
-  bool allow_block_flush;
 
   assert ((p_dwb_slot != NULL) && ((io_page_p != NULL) || ((*p_dwb_slot)->io_page != NULL)) && vpid != NULL);
   if (thread_p == NULL)
@@ -2944,10 +2941,18 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
   assert (VPID_EQ (vpid, &dwb_slot->vpid));
   if (!VPID_ISNULL (vpid))
     {
-      error_code = dwb_slots_hash_insert (thread_p, vpid, dwb_slot);
+      error_code = dwb_slots_hash_insert (thread_p, vpid, dwb_slot, &inserted);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
+	}
+
+      if (!inserted)
+	{
+	  /* Invalidate the slot to avoid flushing the same data twice. */
+	  VPID_SET_NULL (&dwb_slot->vpid);
+	  dwb_slot->io_page->prv.pageid = NULL_PAGEID;
+	  dwb_slot->io_page->prv.volid = NULL_VOLID;
 	}
     }
 
@@ -3013,7 +3018,6 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
        * Full block. Need to flush the current block. First, check whether the previous block was flushed,
        * when we advanced the global position.
        */
-      allow_block_flush = true;
       position_with_flags = ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL);
       if (DWB_IS_BLOCK_WRITE_STARTED (position_with_flags, prev_block_no))
 	{
@@ -3031,7 +3035,6 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	       * The previous block was not flushed yet. Needs to wait for it to be flushed. However, do not wait here
 	       * to not introduce delays. Wake ups the checksum thread and flush block thread to flush previous block.
 	       */
-	      allow_block_flush = false;
 #if defined (SERVER_MODE)
 	      if (thread_is_dwb_checksum_computation_thread_available ())
 		{
