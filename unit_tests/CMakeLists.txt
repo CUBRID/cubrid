@@ -15,6 +15,8 @@
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
+cmake_minimum_required(VERSION 3.5)
+project(Tst)
 
 add_subdirectory(common)
 set (TEST_INCLUDES
@@ -27,3 +29,5 @@ option (WITH_UNIT_TEST_MEMORY_ALLOC "Unit testing for memory allocation" OFF)
 if (WITH_UNIT_TEST_MEMORY_ALLOC)
   add_subdirectory(memory_alloc)
 endif(WITH_UNIT_TEST_MEMORY_ALLOC)
+
+add_subdirectory(StrBuf)
