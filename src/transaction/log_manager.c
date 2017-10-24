@@ -194,6 +194,11 @@ extern INT32 vacuum_Global_oldest_active_blockers_counter;
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
 #define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
 
+/* temporary, to be removed --> */
+#define log_if_rvdk_format(rvidx, ...) \
+  if ((rvidx) == RVDK_FORMAT) _er_log_debug (ARG_FILE_LINE, "RVDK_FORMAT logging - " __VA_ARGS__);
+/* temporary, to be removed <-- */
+
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
@@ -976,6 +981,12 @@ void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
 		int ismedia_crash, BO_RESTART_ARG * r_args)
 {
+  er_log_debug (ARG_FILE_LINE, "LOG INITIALIZE\n" "\tdb_fullname = %s \n" "\tlogpath = %s \n"
+		"\tprefix_logname = %s \n" "\tismedia_crash = %d \n",
+		db_fullname != NULL ? db_fullname : "(UNKNOWN)",
+		logpath != NULL ? logpath : "(UNKNOWN)",
+		prefix_logname != NULL ? prefix_logname : "(UNKNOWN)", ismedia_crash);
+
   (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash, r_args, false);
 
   log_No_logging = prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
@@ -2173,6 +2184,9 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
        * We do not log anything when the transaction is unactive and it is not
        * in the process of aborting.
        */
+      /* temporary, to be removed --> */
+      log_if_rvdk_format (rcvindex, "ERROR transaction not active");
+      /* temporary, to be removed --> */
       return;
     }
 
@@ -2183,6 +2197,9 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
     {
       /* undo logging is ignored at this point */
       ;				/* NO-OP */
+      /* temporary, to be removed --> */
+      log_if_rvdk_format (rcvindex, "ERROR can skip undo");
+      /* temporary, to be removed --> */
       return;
     }
 
@@ -2193,10 +2210,14 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL);
   if (node == NULL)
     {
+      assert (false);
       return;
     }
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  /* temporary, to be removed --> */
+  log_if_rvdk_format (rcvindex, "start_lsa = %lld|%d", LSA_AS_ARGS (&start_lsa));
+  /* temporary, to be removed --> */
 
   if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
     {
