@@ -36,12 +36,15 @@ add_executable(test_lockfree
 target_compile_definitions(test_memory_alloc PRIVATE
   SERVER_MODE
   ${COMMON_DEFS}
-)
-
-target_include_directories(test_lockfree PRIVATE
-  ${EP_INCLUDES}
   )
 
+target_include_directories(test_lockfree PRIVATE
+  ${TEST_INCLUDES}
+  )
+
+target_link_libraries(test_lockfree PRIVATE
+  test_common
+  )
 if(UNIX)
   target_link_libraries(test_lockfree PRIVATE
     cubrid

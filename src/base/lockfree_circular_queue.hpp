@@ -25,6 +25,8 @@
 #define _LOCKFREE_CIRCULAR_QUEUE_HPP_
 
 #include <type_traits>
+#include <climits>
+#include <cstdint>
 #if USE_STD_ATOMIC
 #include <atomic>
 /* TODO: use std::atomic. However, we must give up on systems with gcc 4.5 or older and VS 2010 */
@@ -50,11 +52,11 @@ public:
 private:
 #if USE_STD_ATOMIC
   // std::atomic
-  typedef unsigned long long cursor_type;
+  typedef std::uint64_t cursor_type;
   typedef std::atomic<cursor_type> atomic_cursor_type;
   typedef std::atomic<T> atomic_data_type;
 #else // not USE_STD_ATOMIC
-  typedef unsigned long long cursor_type;
+  typedef std::uint64_t cursor_type;
   typedef volatile cursor_type atomic_cursor_type;
   typedef volatile T atomic_data_type;
 #endif // not USE_STD_ATOMIC
@@ -74,13 +76,14 @@ private:
   inline cursor_type load_cursor (atomic_cursor_type & cursor);
   inline bool test_and_increment_cursor (atomic_cursor_type& cursor, cursor_type& crt_value);
 
-  inline T load_data (size_t index);
+  inline T load_data (cursor_type consume_cursor);
   inline void store_data (size_t index, const T& data);
   inline size_t get_cursor_index (cursor_type cursor);
 
   inline bool is_blocked (cursor_type cursor);
   inline bool block (cursor_type cursor);
   inline void unblock (cursor_type cursor);
+  inline void init_blocked_cursors (void);
 
   atomic_data_type *m_data;   // data storage. access is atomic
   atomic_flag_type *m_blocked_cursors;  // is_blocked flag; when producing new data, there is a time window between
@@ -103,7 +106,10 @@ private:
 
 namespace lockfree {
 
-circular_queue::BLOCK_FLAG = (1 << (sizeof (BLOCK_FLAG) - 1)); // most significant bit
+template<class T>
+typename const circular_queue<T>::cursor_type circular_queue<T>::BLOCK_FLAG =
+  ((cursor_type) 1) << ((sizeof (cursor_type) * CHAR_BIT) - 1);         // 0x8000...
+  
 
 template<class T>
 inline
@@ -116,7 +122,7 @@ circular_queue<T>::circular_queue (size_t size) :
   assert ((m_capacity & m_index_mask) == 0);
 
   m_data = new atomic_data_type[m_capacity];
-  m_blocked_cursors = new atomic_flag_type[m_capacity];
+  init_blocked_cursors ();
 }
 
 template<class T>
@@ -158,8 +164,8 @@ circular_queue<T>::produce (const T & element)
 
   while (true)
     {
-      pc = m_produce_cursor.load ();
-      cc = m_consume_cursor.load ();
+      pc = load_cursor (m_produce_cursor);
+      cc = load_cursor (m_consume_cursor);
 
       if (test_full_cursors (pc, cc))
         {
@@ -177,9 +183,13 @@ circular_queue<T>::produce (const T & element)
       if (did_block)
         {
           /* I blocked it, it is mine. I can write my data. */
-          store_data (idx, element);
+          store_data (pc, element);
           unblock (pc);
           return true;
+        }
+      else
+        {
+          assert (false);
         }
     }
 }
@@ -219,7 +229,7 @@ inline bool circular_queue<T>::consume (T & element)
         }
 
       // copy element first. however, the consume is not actually happening until cursor is successfully incremented.
-      element = load_data (idx);
+      element = load_data (cc);
     }
   while (!test_and_increment_cursor (m_consume_cursor, cc));
 
@@ -245,7 +255,7 @@ template<class T>
 inline size_t circular_queue<T>::next_pow2 (size_t size)
 {
   size_t next_pow = 1;
-  for (; size != 0; size /= 2)
+  for (--size; size != 0; size /= 2)
     {
       next_pow *= 2;
     }
@@ -265,12 +275,13 @@ inline bool circular_queue<T>::test_full_cursors (cursor_type produce_cursor, cu
 }
 
 template<class T>
-inline cursor_type circular_queue<T>::load_cursor (atomic_cursor_type & cursor)
+inline typename circular_queue<T>::cursor_type
+circular_queue<T>::load_cursor (atomic_cursor_type & cursor)
 {
 #ifdef USE_STD_ATOMIC
   return cursor.load ();
 #else
-  ATOMIC_LOAD (&cursor);
+  return ATOMIC_LOAD (&cursor);
 #endif /* */
 }
 
@@ -296,12 +307,13 @@ inline void circular_queue<T>::store_data (cursor_type cursor, const T & data)
 }
 
 template<class T>
-inline T circular_queue<T>::load_data (int index)
+inline T
+circular_queue<T>::load_data (cursor_type consume_cursor)
 {
 #ifdef USE_STD_ATOMIC
-  return m_data[index].load ();
+  return m_data[get_cursor_index (consume_cursor)].load ();
 #else /* not USE_STD_ATOMIC */
-  return ATOMIC_LOAD (&m_data[index]);
+  return ATOMIC_LOAD (&m_data[get_cursor_index (consume_cursor)]);
 #endif /* not USE_STD_ATOMIC */
 }
 
@@ -337,7 +349,8 @@ circular_queue<T>::block (cursor_type cursor)
 }
 
 template<class T>
-inline void circular_queue<T>::unblock (cursor_type cursor)
+inline void
+circular_queue<T>::unblock (cursor_type cursor)
 {
   atomic_flag_type& ref_blocked_cursor = m_blocked_cursors[get_cursor_index (cursor)];
 #ifdef USE_STD_ATOMIC
@@ -347,13 +360,25 @@ inline void circular_queue<T>::unblock (cursor_type cursor)
 #endif /* not USE_STD_ATOMIC */
 
   assert (blocked_cursor_value.is_set (BLOCK_FLAG));
-  cursor_type nextgen_cursor = blocked_cursor_value.clear (BLOCK_FLAG) + m_capacity;
+  cursor_type nextgen_cursor = blocked_cursor_value.clear (BLOCK_FLAG).get_flags () + m_capacity;
 
 #ifdef USE_STD_ATOMIC
   ref_blocked_cursor.store (nextgen_cursor);
 #else /* not USE_STD_ATOMIC */
   ATOMIC_STORE (&ref_blocked_cursor, nextgen_cursor);
 #endif /* not USE_STD_ATOMIC */
+}
+
+template<class T>
+inline void
+circular_queue<T>::init_blocked_cursors (void)
+{
+  m_blocked_cursors = new atomic_flag_type [m_capacity];
+  for (cursor_type cursor = 0; cursor < m_capacity; cursor++)
+    {
+      // set expected cursor values in first generation (matches index)
+      m_blocked_cursors[cursor] = cursor;
+    }
 }
 
 }  // namespace lockfree
