@@ -21,7 +21,6 @@ namespace Al
   public:
     friend class StackAllocator_Test;//test class can access internals of this class
 
-    //--------------------------------------------------------------------------------
     StackAllocator(void* buf, size_t size)
       : _ptr((char*)buf)
       , _0(_ptr)
@@ -29,13 +28,11 @@ namespace Al
     {
     }
 
-    //--------------------------------------------------------------------------------
     ~StackAllocator()
     {//can be called explicitly to reinitialize: a.~StackAllocator();
       _0 = _ptr;
     }
 
-    //--------------------------------------------------------------------------------
     void operator()(void* buf, size_t size)
     {
       _ptr = (char*)buf;
@@ -43,7 +40,6 @@ namespace Al
       _1   = _ptr + size;
     }
 
-    //--------------------------------------------------------------------------------
     Blk allocate(size_t size)
     {
       //round to next aligned?! natural allignment
@@ -55,7 +51,6 @@ namespace Al
       return {size, (_0 += size, _0 - size)};
     }
 
-    //--------------------------------------------------------------------------------
     void deallocate(Blk blk)
     {
       //assert(owns(blk));
@@ -65,16 +60,13 @@ namespace Al
         }
     }
 
-    //--------------------------------------------------------------------------------
     bool owns(Blk blk)
     {// test if blk in [_0, _1)
       return (_ptr <= blk.ptr && blk.ptr + blk.dim <= _1);
     }
 
-    //--------------------------------------------------------------------------------
     size_t available() { return (_1 - _0); }
 
-    //--------------------------------------------------------------------------------
     Blk realloc(Blk blk, size_t size)
     {//fit additional size bytes; extend block if possible
       if(blk.ptr + blk.dim == _0 && blk.ptr + blk.dim + size <= _1)

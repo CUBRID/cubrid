@@ -11,11 +11,9 @@
 #include <string.h>
 #define N 8192
 
-//--------------------------------------------------------------------------------
 #define ERR(format, ...) printf("ERR " format "\n", __VA_ARGS__)
 #define WRN(format, ...) printf("WRN " format "\n", __VA_ARGS__)
 
-//--------------------------------------------------------------------------------
 struct Prefix
 {
   char buf[66];
@@ -27,7 +25,6 @@ struct Suffix
   Suffix() { memset(buf, 0xEE, sizeof(buf)); }
 };
 
-//--------------------------------------------------------------------------------
 class Test
 {
 private:
@@ -127,7 +124,6 @@ Test tst;
 #define SB_FORMAT(format, ...) tst(__FILE__, __LINE__, format, ##__VA_ARGS__)
 #define SB_CHAR(ch) tst(__FILE__, __LINE__, ch);
 
-//================================================================================
 int main(int argc, char** argv)
 {
   enum Flags
