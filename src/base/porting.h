@@ -773,9 +773,9 @@ extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 #endif /* !_WIN64 */
 #endif /* defined (WINDOWS) */
 
-#if (!defined (WINDOWS) && __cplusplus < 201103L) || (defined (WINDOWS) && _MSC_VER <= 1500)
+#ifndef __cplusplus
 #define static_assert(a, b)
-#endif
+#endif /* not __cplusplus */
 
 /* *INDENT-OFF* */
 template <typename T, typename V> inline T ATOMIC_INC_32 (volatile T *ptr, V amount)
@@ -976,6 +976,24 @@ extern "C"
   extern int parse_int (int *ret_p, const char *str_p, int base);
 #ifdef __cplusplus
 }
+#endif
+
+#if defined (_MSC_VER) || defined (__GNUC__)
+#define PORTABLE_FUNC_NAME __func__
+#else
+#define PORTABLE_FUNC_NAME "(unknown)"
+#endif
+
+#ifdef __GNUC__
+#  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+#else
+#  define UNUSED(x) x
+#endif
+
+#ifdef __GNUC__
+#  define UNUSED_FUNCTION(x) __attribute__((__unused__)) UNUSED_ ## x
+#else
+#  define UNUSED_FUNCTION(x) x
 #endif
 
 #endif				/* _PORTING_H_ */

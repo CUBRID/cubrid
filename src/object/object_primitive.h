@@ -363,9 +363,6 @@ extern int pr_data_compress_string (char *string, int str_length, char *compress
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
 
-/* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
-#define PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
-
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4
 

@@ -31,6 +31,9 @@
 
 #include "config.h"
 
+#include <assert.h>
+
+#include "porting.h"
 #include "dbdef.h"
 
 #ifdef __cplusplus
@@ -186,7 +189,7 @@ extern "C"
 #define DB_MAX_PARTITION_EXPR_LENGTH 2048
 
 /* Defines the state of a value as not being compressable due to its bad compression size or 
- * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+ * its uncompressed size being lower than OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
  */
 #define DB_UNCOMPRESSABLE -1
 
@@ -1292,8 +1295,56 @@ extern "C"
 
 extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
-extern int db_get_compressed_size (DB_VALUE * value);
-extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
-				      int compressed_size, bool compressed_need_clear);
+STATIC_INLINE int db_get_compressed_size (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
+					     int compressed_size, bool compressed_need_clear)
+  __attribute__ ((ALWAYS_INLINE));
+
+int
+db_get_compressed_size (DB_VALUE * value)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return 0;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+
+  return value->data.ch.medium.compressed_size;
+}
+
+/*
+ *  db_set_compressed_string() - Sets the compressed string, its size and its need for clear in the DB_VALUE
+ *
+ *  value(in/out)             : The DB_VALUE
+ *  compressed_string(in)     :
+ *  compressed_size(in)       :
+ *  compressed_need_clear(in) :
+ */
+STATIC_INLINE void
+db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size, bool compressed_need_clear)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return;
+    }
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+
+  value->data.ch.medium.compressed_buf = compressed_string;
+  value->data.ch.medium.compressed_size = compressed_size;
+  value->data.ch.info.compressed_need_clear = compressed_need_clear;
+
+  return;
+}
 
 #endif /* _DBTYPE_H_ */

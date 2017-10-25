@@ -73,6 +73,11 @@ set(BASE_SOURCES
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
   )
+set (BASE_HEADERS
+  ${BASE_DIR}/contiguous_memory_buffer.hpp
+  ${BASE_DIR}/db_private_allocator.hpp
+  ${BASE_DIR}/extensible_array.hpp
+  )
 
 set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_common.c
@@ -223,7 +228,7 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE C
   )
 
-add_library(cubrid SHARED
+set (CUBRID_LIB_SOURCES
   ${COMPAT_SOURCES}
   ${THREAD_SOURCES}
   ${BASE_SOURCES}
@@ -240,6 +245,14 @@ add_library(cubrid SHARED
   ${EXECUTABLE_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  )
+set (CUBRID_LIB_HEADERS
+  ${BASE_HEADERS}
+  )
+
+add_library(cubrid SHARED
+  ${CUBRID_LIB_SOURCES}
+  ${CUBRID_LIB_HEADERS}
   )
 set_target_properties(cubrid PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 if(WIN32)
@@ -270,6 +283,36 @@ if(UNIX)
   add_dependencies(cubrid ${EP_TARGETS})
 endif(UNIX)
 
+if (WITH_UNIT_TESTS)
+  if (WIN32)
+  # in order to avoid adding all the functions used by unit tests in def file, it is more convenient to build a static
+  # lib too. more compile time, but less head-ache
+  # todo - is there any nicer way of doing this??
+  add_library (cubrid-win-lib STATIC
+    ${CUBRID_LIB_SOURCES}
+    ${CUBRID_LIB_HEADERS}
+    )
+
+  target_compile_definitions(cubrid-win-lib PRIVATE 
+    SERVER_MODE
+    ${COMMON_DEFS}
+    )
+
+  target_link_libraries(cubrid-win-lib PRIVATE
+    ws2_32
+    ${JVM_LIBS}
+    ${EP_LIBS}
+    )
+
+  target_include_directories(cubrid-win-lib PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/heaplayers/util
+    ${JAVA_INC}
+    ${EP_INCLUDES}
+    )
+
+  endif (WIN32)
+endif (WITH_UNIT_TESTS)
+
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubrid PRIVATE ${CMAKE_BINARY_DIR})
   add_dependencies(cubrid gen_probes)
@@ -285,7 +328,6 @@ install(FILES
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   RENAME dbi.h
   )
-
 
 # install pdb files for debugging on windows
 if(WIN32)
