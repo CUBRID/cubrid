@@ -1771,6 +1771,11 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, in
 			 slots_hash_entry->slot->lsa.pageid, slots_hash_entry->slot->lsa.offset);
 	}
     }
+  else if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
+    {
+      _er_log_debug (ARG_FILE_LINE, "Inserted hash key (%d, %d), LSA=(%lld,%d)",
+		     vpid->volid, vpid->pageid, slot->lsa.pageid, slot->lsa.offset);
+    }
 
   slots_hash_entry->slot = slot;
   pthread_mutex_unlock (&slots_hash_entry->mutex);
@@ -2498,10 +2503,9 @@ start:
 
 	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
-	      _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%d) \n",
+	      _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%lld) \n",
 			     current_block_no, double_Write_Buffer.blocks[current_block_no].version);
 	    }
-
 
 	  /*
 	   * The previous iteration didn't finished, needs to wait, in order to avoid buffer overwriting.
@@ -2518,7 +2522,7 @@ start:
 
 	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
-		  _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %d \n",
+		  _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %lld \n",
 				 error_code, current_block_no, double_Write_Buffer.blocks[current_block_no].version);
 		}
 	      return error_code;
@@ -3027,7 +3031,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	    {
 	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
-		  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%d) \n",
+		  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%lld) \n",
 				 prev_block_no, prev_block->version);
 		}
 
@@ -3582,7 +3586,7 @@ start:
     {
       if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%d) \n",
+	  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%lld) \n",
 			 current_block_no, double_Write_Buffer.blocks[current_block_no].version);
 	}
 
@@ -3612,7 +3616,7 @@ start:
 
 	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
-	      _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %d \n",
+	      _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %lld \n",
 			     error_code, current_block_no, double_Write_Buffer.blocks[current_block_no].version);
 	    }
 
