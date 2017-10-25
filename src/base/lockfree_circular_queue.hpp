@@ -30,66 +30,67 @@
 /* TODO: use std::atomic. However, we must give up on systems with gcc 4.5 or older and VS 2010 */
 #endif // USE_STD_ATOMIC
 
-namespace lockfree {
+namespace lockfree
+{
 
 template <class T>
 class circular_queue
 {
-public:
+  public:
 
-  circular_queue (size_t size);
-  ~circular_queue ();
+    circular_queue (size_t size);
+    ~circular_queue ();
 
-  // produce data. if successful, returns true, if full, returns false
-  inline bool produce (const T& element);
-  // consume data
-  inline bool consume (T& element);
-  inline bool is_empty () const;
-  inline bool is_full () const;
+    // produce data. if successful, returns true, if full, returns false
+    inline bool produce (const T &element);
+    // consume data
+    inline bool consume (T &element);
+    inline bool is_empty () const;
+    inline bool is_full () const;
 
-private:
+  private:
 #if USE_STD_ATOMIC
-  // std::atomic
-  typedef unsigned long long cursor_type;
-  typedef std::atomic<cursor_type> atomic_cursor_type;
-  typedef std::atomic<T> atomic_data_type;
+    // std::atomic
+    typedef unsigned long long cursor_type;
+    typedef std::atomic<cursor_type> atomic_cursor_type;
+    typedef std::atomic<T> atomic_data_type;
 #else // not USE_STD_ATOMIC
-  typedef unsigned long long cursor_type;
-  typedef volatile cursor_type atomic_cursor_type;
-  typedef volatile T atomic_data_type;
+    typedef unsigned long long cursor_type;
+    typedef volatile cursor_type atomic_cursor_type;
+    typedef volatile T atomic_data_type;
 #endif // not USE_STD_ATOMIC
-  typedef atomic_cursor_type atomic_flag_type;
+    typedef atomic_cursor_type atomic_flag_type;
 
-  static const cursor_type BLOCK_FLAG;
+    static const cursor_type BLOCK_FLAG;
 
-  // block default and copy constructors
-  circular_queue ();
-  circular_queue (const circular_queue&);
+    // block default and copy constructors
+    circular_queue ();
+    circular_queue (const circular_queue &);
 
-  inline size_t next_pow2 (size_t size);
+    inline size_t next_pow2 (size_t size);
 
-  inline bool test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor);
-  inline bool test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor);
+    inline bool test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor);
+    inline bool test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor);
 
-  inline cursor_type load_cursor (atomic_cursor_type & cursor);
-  inline bool test_and_increment_cursor (atomic_cursor_type& cursor, cursor_type& crt_value);
+    inline cursor_type load_cursor (atomic_cursor_type &cursor);
+    inline bool test_and_increment_cursor (atomic_cursor_type &cursor, cursor_type &crt_value);
 
-  inline T load_data (size_t index);
-  inline void store_data (size_t index, const T& data);
-  inline size_t get_cursor_index (cursor_type cursor);
+    inline T load_data (size_t index);
+    inline void store_data (size_t index, const T &data);
+    inline size_t get_cursor_index (cursor_type cursor);
 
-  inline bool is_blocked (cursor_type cursor);
-  inline bool block (cursor_type cursor);
-  inline void unblock (cursor_type cursor);
+    inline bool is_blocked (cursor_type cursor);
+    inline bool block (cursor_type cursor);
+    inline void unblock (cursor_type cursor);
 
-  atomic_data_type *m_data;   // data storage. access is atomic
-  atomic_flag_type *m_blocked_cursors;  // is_blocked flag; when producing new data, there is a time window between
-                                        // cursor increment and until data is copied. block flag will tell when
-                                        // produce is completed.
-  atomic_cursor_type m_produce_cursor;  // cursor for produce position
-  atomic_cursor_type m_consume_cursor;  // cursor for consume position
-  size_t m_capacity;                    // queue capacity
-  size_t m_index_mask;                  // mask used to compute a cursor's index in queue
+    atomic_data_type *m_data;   // data storage. access is atomic
+    atomic_flag_type *m_blocked_cursors;  // is_blocked flag; when producing new data, there is a time window between
+    // cursor increment and until data is copied. block flag will tell when
+    // produce is completed.
+    atomic_cursor_type m_produce_cursor;  // cursor for produce position
+    atomic_cursor_type m_consume_cursor;  // cursor for consume position
+    size_t m_capacity;                    // queue capacity
+    size_t m_index_mask;                  // mask used to compute a cursor's index in queue
 };
 
 } // namespace lockfree
@@ -101,7 +102,8 @@ private:
 #include "porting.h"
 #endif /* not USE_STD_ATOMIC */
 
-namespace lockfree {
+namespace lockfree
+{
 
 circular_queue::BLOCK_FLAG = (1 << (sizeof (BLOCK_FLAG) - 1)); // most significant bit
 
@@ -129,7 +131,7 @@ circular_queue<T>::~circular_queue ()
 
 template<class T>
 inline bool
-circular_queue<T>::produce (const T & element)
+circular_queue<T>::produce (const T &element)
 {
   cursor_type cc;
   cursor_type pc;
@@ -162,30 +164,30 @@ circular_queue<T>::produce (const T & element)
       cc = m_consume_cursor.load ();
 
       if (test_full_cursors (pc, cc))
-        {
-          /* cannot produce */
-          return false;
-        }
+	{
+	  /* cannot produce */
+	  return false;
+	}
 
       // first block position
       did_block = block (pc);
       // make sure cursor is incremented whether I blocked it or not
       if (test_and_increment_cursor (m_produce_cursor, pc))
-        {
-          // do nothing
-        }
+	{
+	  // do nothing
+	}
       if (did_block)
-        {
-          /* I blocked it, it is mine. I can write my data. */
-          store_data (idx, element);
-          unblock (pc);
-          return true;
-        }
+	{
+	  /* I blocked it, it is mine. I can write my data. */
+	  store_data (idx, element);
+	  unblock (pc);
+	  return true;
+	}
     }
 }
 
 template<class T>
-inline bool circular_queue<T>::consume (T & element)
+inline bool circular_queue<T>::consume (T &element)
 {
   cursor_type cc;
   cursor_type pc;
@@ -206,17 +208,17 @@ inline bool circular_queue<T>::consume (T & element)
       pc = load_cursor (m_produce_cursor);
 
       if (pc <= cc)
-        {
-          /* empty */
-          return false;
-        }
+	{
+	  /* empty */
+	  return false;
+	}
 
       if (is_blocked (cc))
-        {
-          // first element is not yet produced. this means we can consider the queue still empty
-          // todo: count these cases
-          return false;
-        }
+	{
+	  // first element is not yet produced. this means we can consider the queue still empty
+	  // todo: count these cases
+	  return false;
+	}
 
       // copy element first. however, the consume is not actually happening until cursor is successfully incremented.
       element = load_data (idx);
@@ -265,7 +267,7 @@ inline bool circular_queue<T>::test_full_cursors (cursor_type produce_cursor, cu
 }
 
 template<class T>
-inline cursor_type circular_queue<T>::load_cursor (atomic_cursor_type & cursor)
+inline cursor_type circular_queue<T>::load_cursor (atomic_cursor_type &cursor)
 {
 #ifdef USE_STD_ATOMIC
   return cursor.load ();
@@ -275,7 +277,7 @@ inline cursor_type circular_queue<T>::load_cursor (atomic_cursor_type & cursor)
 }
 
 template<class T>
-inline bool circular_queue<T>::test_and_increment_cursor (atomic_cursor_type & cursor, cursor_type & crt_value)
+inline bool circular_queue<T>::test_and_increment_cursor (atomic_cursor_type &cursor, cursor_type &crt_value)
 {
 #ifdef USE_STD_ATOMIC
   // can weak be used here?
@@ -286,7 +288,7 @@ inline bool circular_queue<T>::test_and_increment_cursor (atomic_cursor_type & c
 }
 
 template<class T>
-inline void circular_queue<T>::store_data (cursor_type cursor, const T & data)
+inline void circular_queue<T>::store_data (cursor_type cursor, const T &data)
 {
 #ifdef USE_STD_ATOMIC
   m_data[get_cursor_index (cursor)].store (data);
@@ -339,7 +341,7 @@ circular_queue<T>::block (cursor_type cursor)
 template<class T>
 inline void circular_queue<T>::unblock (cursor_type cursor)
 {
-  atomic_flag_type& ref_blocked_cursor = m_blocked_cursors[get_cursor_index (cursor)];
+  atomic_flag_type &ref_blocked_cursor = m_blocked_cursors[get_cursor_index (cursor)];
 #ifdef USE_STD_ATOMIC
   flag<cursor_type> blocked_cursor_value = ref_blocked_cursor.load ();
 #else /* not USE_STD_ATOMIC */
@@ -357,3 +359,4 @@ inline void circular_queue<T>::unblock (cursor_type cursor)
 }
 
 }  // namespace lockfree
+

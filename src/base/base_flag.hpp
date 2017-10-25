@@ -27,29 +27,29 @@
 template <typename T>
 class flag
 {
-public:
-  inline flag ();
-  inline flag (const flag<T> & other);
-  inline flag (const T& init_flags);
+  public:
+    inline flag ();
+    inline flag (const flag<T> &other);
+    inline flag (const T &init_flags);
 
-  inline flag& operator= (const flag<T> & other);
-  inline flag& operator= (const T& flags);
+    inline flag &operator= (const flag<T> &other);
+    inline flag &operator= (const T &flags);
 
-  inline void set (const T& flags);
-  inline void clear (const T& flags);
-  inline bool is_set (const T& flags);
-  inline bool is_all_set (const T& flags);
-  inline bool is_any_set (const T& flags);
-  inline T get_flags (void);
+    inline void set (const T &flags);
+    inline void clear (const T &flags);
+    inline bool is_set (const T &flags);
+    inline bool is_all_set (const T &flags);
+    inline bool is_any_set (const T &flags);
+    inline T get_flags (void);
 
-  static inline void set_flag (T & where_to_set, T & what_to_set);
-  static inline void clear_flag (T & where_to_clear, T & what_to_clear);
-  static inline bool is_flag_set (T & where_to_check, T & what_to_check);
-  static inline bool is_flag_all_set (T & where_to_check, T & what_to_check);
-  static inline bool is_flag_any_set (T & where_to_check, T & what_to_check);
+    static inline void set_flag (T &where_to_set, T &what_to_set);
+    static inline void clear_flag (T &where_to_clear, T &what_to_clear);
+    static inline bool is_flag_set (T &where_to_check, T &what_to_check);
+    static inline bool is_flag_all_set (T &where_to_check, T &what_to_check);
+    static inline bool is_flag_any_set (T &where_to_check, T &what_to_check);
 
-private:
-  T m_flags;
+  private:
+    T m_flags;
 };
 
 #endif /* _BASE_FLAG_HPP_ */
@@ -62,29 +62,29 @@ flag<T>::flag ()
 }
 
 template<typename T>
-inline flag<T>::flag (const flag & other)
+inline flag<T>::flag (const flag &other)
 {
   m_flags = other.m_flags;
 }
 
 template<typename T>
 inline
-flag<T>::flag (const T & init_flags)
+flag<T>::flag (const T &init_flags)
 {
   m_flags = init_flags;
 }
 
 template<typename T>
-inline flag&
-flag<T>::operator= (const flag& other)
+inline flag &
+flag<T>::operator= (const flag &other)
 {
   this->m_flags = other.m_flags;
   return *this;
 }
 
 template<typename T>
-inline flag&
-flag<T>::operator= (const T& flags)
+inline flag &
+flag<T>::operator= (const T &flags)
 {
   this->m_flags = flags;
   return *this;
@@ -92,34 +92,34 @@ flag<T>::operator= (const T& flags)
 
 template<typename T>
 inline void
-flag<T>::set (const T & flags)
+flag<T>::set (const T &flags)
 {
   m_flags = m_flags | flags;
 }
 
 template<typename T>
 inline void
-flag<T>::clear (const T & flags)
+flag<T>::clear (const T &flags)
 {
   m_flags = m_flags & (~flags);
 }
 
 template<typename T>
 inline bool
-flag<T>::is_set (const T & flags)
+flag<T>::is_set (const T &flags)
 {
   /* sugar syntax */
   return is_any_set (flags);
 }
 
 template<typename T>
-inline bool flag<T>::is_all_set (const T & flags)
+inline bool flag<T>::is_all_set (const T &flags)
 {
   return (m_flags & flags) == flags;
 }
 
 template<typename T>
-inline bool flag<T>::is_any_set (const T & flags)
+inline bool flag<T>::is_any_set (const T &flags)
 {
   return (m_flags & flags) != 0;
 }
@@ -133,34 +133,35 @@ flag<T>::get_flags (void)
 
 template<typename T>
 inline void
-flag<T>::set_flag (T & where_to_set, T & what_to_set)
+flag<T>::set_flag (T &where_to_set, T &what_to_set)
 {
   where_to_set = where_to_set | what_to_set;
 }
 
 template<typename T>
 inline void
-flag<T>::clear_flag (T & where_to_clear, T & what_to_clear)
+flag<T>::clear_flag (T &where_to_clear, T &what_to_clear)
 {
   where_to_clear = where_to_clear & (~what_to_clear);
 }
 
 template<typename T>
 inline bool
-flag<T>::is_flag_set (T & where_to_check, T & what_to_check)
+flag<T>::is_flag_set (T &where_to_check, T &what_to_check)
 {
   /* syntax sugar */
   return flag<T>::is_flag_any_set (where_to_check, what_to_check);
 }
 
 template<typename T>
-inline bool flag<T>::is_flag_all_set (T & where_to_check, T & what_to_check)
+inline bool flag<T>::is_flag_all_set (T &where_to_check, T &what_to_check)
 {
   return (where_to_check & what_to_check) == what_to_check;
 }
 
 template<typename T>
-inline bool flag<T>::is_flag_any_set (T & where_to_check, T & what_to_check)
+inline bool flag<T>::is_flag_any_set (T &where_to_check, T &what_to_check)
 {
   return (where_to_check & what_to_check) != 0;
 }
+

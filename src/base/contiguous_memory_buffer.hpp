@@ -55,29 +55,29 @@
 template <typename T, size_t Size, typename Allocator>
 class contiguous_memory_buffer
 {
-public:
+  public:
 
-  contiguous_memory_buffer (Allocator& alloc);
-  inline ~contiguous_memory_buffer ();
+    contiguous_memory_buffer (Allocator &alloc);
+    inline ~contiguous_memory_buffer ();
 
-  inline T* resize (size_t size);           // resize if size is bigger than current buffer and return updated buffer
-                                            // pointer
-  inline T* get_membuf_data (void) const;   // get current buffer pointer
+    inline T *resize (size_t size);           // resize if size is bigger than current buffer and return updated buffer
+    // pointer
+    inline T *get_membuf_data (void) const;   // get current buffer pointer
 
-private:
-  // no implicit constructor
-  contiguous_memory_buffer ();
+  private:
+    // no implicit constructor
+    contiguous_memory_buffer ();
 
-  inline size_t get_memsize (size_t count); // memory size for count T's
-  void extend (size_t size);                // extend buffer to hold count T's
-                                            // this is the only part not-inlined of contiguous_memory_buffer. it is
-                                            // supposed to be an exceptional case
+    inline size_t get_memsize (size_t count); // memory size for count T's
+    void extend (size_t size);                // extend buffer to hold count T's
+    // this is the only part not-inlined of contiguous_memory_buffer. it is
+    // supposed to be an exceptional case
 
-  Allocator &m_alloc;                       // heap allocator
-  size_t m_capacity;                        // current buffer capacity
-  T m_stack_membuf[Size];                   // stack buffer
-  T *m_heap_membuf;                         // heap buffer
-  T *m_current_membuf;                      // current buffer pointer
+    Allocator &m_alloc;                       // heap allocator
+    size_t m_capacity;                        // current buffer capacity
+    T m_stack_membuf[Size];                   // stack buffer
+    T *m_heap_membuf;                         // heap buffer
+    T *m_current_membuf;                      // current buffer pointer
 };
 
 #endif /* _CONTIGUOUS_MEMORY_BUFFER_HPP_ */
@@ -88,7 +88,7 @@ private:
 
 template<typename T, size_t Size, typename Allocator>
 inline
-contiguous_memory_buffer<T, Size, Allocator>::contiguous_memory_buffer (Allocator & alloc) :
+contiguous_memory_buffer<T, Size, Allocator>::contiguous_memory_buffer (Allocator &alloc) :
   m_alloc (alloc),
   m_capacity (Size),
   m_heap_membuf (NULL),
@@ -167,3 +167,4 @@ contiguous_memory_buffer<T, Size, Allocator>::extend (size_t size)
   // update capacity
   m_capacity = new_capacity;
 }
+
