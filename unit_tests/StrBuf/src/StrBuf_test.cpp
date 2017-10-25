@@ -28,94 +28,94 @@ struct Suffix
 class Test
 {
 private:
-  char                                                   _buf[sizeof(Prefix) + N + sizeof(Suffix)];// working buffer
-  size_t                                                 _dim;                                     //_ref[_dim]
-  size_t                                                 _len;                                     // sizeof(_ref)
-  char*                                                  _ref;                                     // reference buffer
-  Al::StackAllocator                                     _stackAllocator;
-  Al::AffixAllocator<Al::StackAllocator, Prefix, Suffix> _affixAllocator;
-  Al::Blk                                                _blk;
-  StrBuf                                                 _sb;
+  char                                                   m_buf[sizeof(Prefix) + N + sizeof(Suffix)];// working buffer
+  size_t                                                 m_dim;                                     //_ref[_dim]
+  size_t                                                 m_len;                                     // sizeof(_ref)
+  char*                                                  m_ref;                                     // reference buffer
+  Al::StackAllocator                                     m_stackAllocator;
+  Al::AffixAllocator<Al::StackAllocator, Prefix, Suffix> m_affixAllocator;
+  Al::Blk                                                m_blk;
+  StrBuf                                                 m_sb;
 
 public:
   Test()
-    : _buf()
-    , _dim(1024)
-    , _len(0)
-    , _ref((char*)calloc(_dim, 1))
-    , _stackAllocator(_buf, sizeof(_buf))
-    , _affixAllocator(_stackAllocator)
-    , _blk()
-    , _sb()
+    : m_buf()
+    , m_dim(1024)
+    , m_len(0)
+    , m_ref((char*)calloc(m_dim, 1))
+    , m_stackAllocator(m_buf, sizeof(m_buf))
+    , m_affixAllocator(m_stackAllocator)
+    , m_blk()
+    , m_sb()
   {
   }
 
   void operator()(size_t size)
   {// prepare for a test with a buffer of <size> bytes
-    if(_dim < size)
+    if(m_dim < size)
       {// adjust internal buffer is necessary
         do
           {
-            _dim *= 2;
+            m_dim *= 2;
           }
-        while(_dim < size);
-        char* p = (char*)malloc(_dim);
+        while(m_dim < size);
+        char* p = (char*)malloc(m_dim);
       }
-    _len = 0;
-    _stackAllocator.~StackAllocator();
-    _blk = _affixAllocator.allocate(size);
-    _sb.set(size, _blk.ptr);
+    m_len = 0;
+    m_stackAllocator.~StackAllocator();
+    m_blk = m_affixAllocator.allocate(size);
+    m_sb.set(size, m_blk.ptr);
   }
 
   template<size_t Size, typename... Args>
   void operator()(const char* file, int line, const char (&format)[Size], Args&&... args)
   {
-    int len = snprintf(_ref + _len, _len < _blk.dim ? _blk.dim - _len : 0, format, args...);
+    int len = snprintf(m_ref + m_len, m_len < m_blk.dim ? m_blk.dim - m_len : 0, format, args...);
     if(len < 0)
       {
-        ERR("[%s(%d)] StrBuf([%zu]) snprintf()=%d", file, line, _blk.dim, len);
+        ERR("[%s(%d)] StrBuf([%zu]) snprintf()=%d", file, line, m_blk.dim, len);
         return;
       }
     else
       {
-        _len += len;
+        m_len += len;
       }
-    _sb(format, args...);
-    if(_sb.len() != _len)
+    m_sb(format, args...);
+    if(m_sb.len() != m_len)
       {
-        ERR("[%s(%d)] StrBuf([%zu]) len()=%zu expect %zu", file, line, _blk.dim, _sb.len(), _len);
+        ERR("[%s(%d)] StrBuf([%zu]) len()=%zu expect %zu", file, line, m_blk.dim, m_sb.len(), m_len);
         return;
       }
-    if(strcmp(_sb, _ref))
+    if(strcmp(m_sb, m_ref))
       {
-        ERR("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect{\"%s\"}", file, line, _blk.dim, (const char*)_sb, _ref);
+        ERR("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect{\"%s\"}", file, line, m_blk.dim, (const char*)m_sb, m_ref);
         return;
       }
-    if(_affixAllocator.check(_blk))
+    if(m_affixAllocator.check(m_blk))
       {
-        ERR("[%s(%d)] StrBuf(buf[%zu]) memory corruption", file, line, _blk.dim);
+        ERR("[%s(%d)] StrBuf(buf[%zu]) memory corruption", file, line, m_blk.dim);
         return;
       }
   }
 
   void operator()(const char* file, int line, char ch)
   {
-    if(_len + 1 < _blk.dim)
+    if(m_len + 1 < m_blk.dim)
       {// include also '\0'
-        _ref[_len]     = ch;
-        _ref[_len + 1] = '\0';
+        m_ref[m_len]     = ch;
+        m_ref[m_len + 1] = '\0';
       }
-    ++_len;
+    ++m_len;
 
-    _sb += ch;
-    if(strcmp((const char*)_sb, _ref))
+    m_sb += ch;
+    if(strcmp((const char*)m_sb, m_ref))
       {
-        ERR("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect {\"%s\"}", file, line, _blk.dim, (const char*)_sb, _ref);
+        ERR("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect {\"%s\"}", file, line, m_blk.dim, (const char*)m_sb, m_ref);
         return;
       }
-    if(_affixAllocator.check(_blk))
+    if(m_affixAllocator.check(m_blk))
       {
-        ERR("[%s(%d)] StrBuf([%zu]) memory corruption", file, line, _blk.dim);
+        ERR("[%s(%d)] StrBuf([%zu]) memory corruption", file, line, m_blk.dim);
       }
   }
 };

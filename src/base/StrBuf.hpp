@@ -11,17 +11,18 @@
 #endif
 #endif
 
-class StrBuf
-{             // String Buffer to collect formatted text (printf-like syntax)
-  char*  _buf;// pointer to a memory buffer (not owned)
-  size_t _dim;// dimension|capacity of the buffer
-  size_t _len;// current length of the buffer content
+class StrBuf//String Buffer to collect formatted text (printf-like syntax)
+{             
+  char*  m_buf;// pointer to a memory buffer (not owned)
+  size_t m_dim;// dimension|capacity of the buffer
+  size_t m_len;// current length of the buffer content
 public:
   StrBuf(size_t capacity = 0, char* buffer = 0);
 
-         operator const char*() { return _buf; }
-  size_t len() { return _len; }
-  void   clr() { _buf[_len = 0] = '\0'; }
+  operator const char*() { return m_buf; }
+
+  size_t len() { return m_len; }
+  void   clr() { m_buf[m_len = 0] = '\0'; }
 
   void set(size_t capacity, char* buffer);// associate with a new buffer[capacity]
 
@@ -30,14 +31,14 @@ public:
 
   template<size_t Size, typename... Args> void operator()(const char (&format)[Size], Args&&... args)
   {
-    int len = snprintf(_buf + _len, _len < _dim ? _dim - _len : 0, format, args...);
+    int len = snprintf(m_buf + m_len, m_len < m_dim ? m_dim - m_len : 0, format, args...);
     if(len >= 0)
       {
-        if(_dim <= _len + len)
+        if(m_dim <= m_len + len)
           {
             // WRN not enough space in buffer
           }
-        _len += len;
+        m_len += len;
       }
   }
 };
