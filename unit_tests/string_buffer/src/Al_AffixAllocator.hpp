@@ -34,40 +34,40 @@ namespace Al
   template<typename Allocator, typename Prefix, typename Suffix> class AffixAllocator
   {
   private:
-    static const size_t m_pfxLen = sizeof(Prefix);
-    static const size_t m_sfxLen = sizeof(Suffix);
-    Allocator&          m_a;
+    static const size_t m_pfxLen = sizeof (Prefix);
+    static const size_t m_sfxLen = sizeof (Suffix);
+    Allocator& m_a;
 
   public:
-    AffixAllocator(Allocator& allocator)
-      : m_a(allocator)
+    AffixAllocator (Allocator& allocator)
+      : m_a (allocator)
     {
     }
 
-    Blk allocate(size_t size)
+    Blk allocate (size_t size)
     {
-      Blk blk = m_a.allocate(m_pfxLen + size + m_sfxLen);
-      if(!blk)
+      Blk blk = m_a.allocate (m_pfxLen + size + m_sfxLen);
+      if (!blk)
         return {0, 0};
-      new(blk.ptr) Prefix;                 //placement new to initialize Prefix memory
-      new(blk.ptr + m_pfxLen + size) Suffix;//placement new to initialize Suffix memory
+      new (blk.ptr) Prefix;                  //placement new to initialize Prefix memory
+      new (blk.ptr + m_pfxLen + size) Suffix;//placement new to initialize Suffix memory
       return {size, blk.ptr + m_pfxLen};
     }
 
-    void deallocate(Blk blk)
+    void deallocate (Blk blk)
     {
       //check if Prefix & Suffix are unchanged!
       //...
-      _a.deallocate({m_pfxLen + blk.dim + m_sfxLen, blk.ptr - m_pfxLen});
+      _a.deallocate ({m_pfxLen + blk.dim + m_sfxLen, blk.ptr - m_pfxLen});
     }
 
-    unsigned check(Blk blk)
+    unsigned check (Blk blk)
     {
       Prefix pfx;
       Suffix sfx;
-      int    err = 0;
-      err |= (memcmp(&pfx, blk.ptr - m_pfxLen, m_pfxLen)) ? 1 : 0;
-      err |= (memcmp(&sfx, blk.ptr + blk.dim, m_sfxLen)) ? 2 : 0;
+      int err = 0;
+      err |= (memcmp (&pfx, blk.ptr - m_pfxLen, m_pfxLen)) ? 1 : 0;
+      err |= (memcmp (&sfx, blk.ptr + blk.dim, m_sfxLen)) ? 2 : 0;
       return err;
     }
   };

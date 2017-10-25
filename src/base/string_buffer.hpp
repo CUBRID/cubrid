@@ -29,29 +29,29 @@
 #endif
 
 class string_buffer//collect formatted text (printf-like syntax)
-{             
-  char*  m_buf;// pointer to a memory buffer (not owned)
+{
+  char* m_buf; // pointer to a memory buffer (not owned)
   size_t m_dim;// dimension|capacity of the buffer
   size_t m_len;// current length of the buffer content
 public:
-  string_buffer(size_t capacity = 0, char* buffer = 0);
+  string_buffer (size_t capacity = 0, char* buffer = 0);
 
-  operator const char*() { return m_buf; }
+  operator const char* () { return m_buf; }
 
-  size_t len() { return m_len; }
-  void   clr() { m_buf[m_len = 0] = '\0'; }
+  size_t len () { return m_len; }
+  void clr () { m_buf[m_len = 0] = '\0'; }
 
-  void set(size_t capacity, char* buffer);// associate with a new buffer[capacity]
+  void set (size_t capacity, char* buffer);// associate with a new buffer[capacity]
 
-  void operator()(size_t len, void* bytes);// add "len" bytes to internal buffer; "bytes" can have '\0' in the middle
-  void operator+=(const char ch);
+  void operator() (size_t len, void* bytes);// add "len" bytes to internal buffer; "bytes" can have '\0' in the middle
+  void operator+= (const char ch);
 
-  template<size_t Size, typename... Args> void operator()(const char (&format)[Size], Args&&... args)
+  template<size_t Size, typename... Args> void operator() (const char (&format)[Size], Args&&... args)
   {
-    int len = snprintf(m_buf + m_len, m_len < m_dim ? m_dim - m_len : 0, format, args...);
-    if(len >= 0)
+    int len = snprintf (m_buf + m_len, m_len < m_dim ? m_dim - m_len : 0, format, args...);
+    if (len >= 0)
       {
-        if(m_dim <= m_len + len)
+        if (m_dim <= m_len + len)
           {
             // WRN not enough space in buffer
           }
