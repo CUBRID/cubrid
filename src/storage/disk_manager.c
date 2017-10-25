@@ -109,10 +109,19 @@ struct disk_recv_change_creation
   char vol_fullname[1];		/* Actually more than one */
 };
 
+/* todo: this is for backward compatibility of 10.1 Patch 1. we can remove it on cherry. */
+typedef struct disk_recv_init_pages_info DISK_RECV_INIT_PAGES_INFO;
+struct disk_recv_init_pages_info
+{				/* Recovery for volume page init */
+  INT32 start_pageid;
+  DKNPAGES npages;
+  INT16 volid;
+};
 /* recovery data for volume expand */
 typedef struct disk_recv_data_volume_expand DISK_RECV_DATA_VOLUME_EXPAND;
 struct disk_recv_data_volume_expand
 {
+  DISK_RECV_INIT_PAGES_INFO patch_10_1_info;	/* todo: remove me in cherry */
   DKNPAGES npages;
   INT16 volid;
 };
@@ -1534,12 +1543,19 @@ disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore, void *data)
 int
 disk_rv_redo_volume_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  DISK_RECV_DATA_VOLUME_EXPAND *info;
+  DISK_RECV_DATA_VOLUME_EXPAND info;
 
-  assert (rcv->length == sizeof (*info));
-  info = (DISK_RECV_DATA_VOLUME_EXPAND *) rcv->data;
+  assert (rcv->length == sizeof (info));
+  info = *((DISK_RECV_DATA_VOLUME_EXPAND *) rcv->data);
 
-  return fileio_expand_to (thread_p, info->volid, info->npages, DB_PERMANENT_VOLTYPE);
+  /* todo: this is for 10.1 Patch 1. to be removed in cherry */
+  if (rcv->length < sizeof (DISK_RECV_DATA_VOLUME_EXPAND))
+    {
+      info.volid = info.patch_10_1_info.volid;
+      info.npages = info.patch_10_1_info.start_pageid + info.patch_10_1_info.npages;
+    }
+
+  return fileio_expand_to (thread_p, info.volid, info.npages, DB_PERMANENT_VOLTYPE);
 }
 
 /*
@@ -1892,6 +1908,14 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
        */
       log_data.volid = volid;
       log_data.npages = volume_new_npages;
+
+      /* todo: this is for backward compatibility with 10.1. remove it on cherry.
+       *       it used to log volume ID, the start_pageid as first extended page and number of extended pages.
+       */
+      log_data.patch_10_1_info.volid = volid;
+      log_data.patch_10_1_info.start_pageid = DISK_SECTS_NPAGES (volheader->nsect_total - nsect_extend);
+      log_data.patch_10_1_info.npages = DISK_SECTS_NPAGES (nsect_extend);
+
       log_append_dboutside_redo (thread_p, RVDK_EXPAND_VOLUME, sizeof (DISK_RECV_DATA_VOLUME_EXPAND), &log_data);
     }
 
