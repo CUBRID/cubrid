@@ -1,6 +1,6 @@
 #include "Al_AffixAllocator.hpp"
 #include "Al_StackAllocator.hpp"
-#include "StrBuf.hpp"
+#include "string_buffer.hpp"
 #include <assert.h>
 #ifdef __linux__
 #include <stddef.h>//size_t on Linux
@@ -14,31 +14,31 @@
 #define ERR(format, ...) printf("ERR " format "\n", __VA_ARGS__)
 #define WRN(format, ...) printf("WRN " format "\n", __VA_ARGS__)
 
-struct Prefix
+struct prefix
 {
   char buf[66];
-  Prefix() { memset(buf, 0xBB, sizeof(buf)); }
+  prefix() { memset(buf, 0xBB, sizeof(buf)); }
 };
-struct Suffix
+struct suffix
 {
   char buf[64];
-  Suffix() { memset(buf, 0xEE, sizeof(buf)); }
+  suffix() { memset(buf, 0xEE, sizeof(buf)); }
 };
 
-class Test
+class test_string_buffer
 {
 private:
-  char                                                   m_buf[sizeof(Prefix) + N + sizeof(Suffix)];// working buffer
+  char                                                   m_buf[sizeof(prefix) + N + sizeof(suffix)];// working buffer
   size_t                                                 m_dim;                                     //_ref[_dim]
   size_t                                                 m_len;                                     // sizeof(_ref)
   char*                                                  m_ref;                                     // reference buffer
   Al::StackAllocator                                     m_stackAllocator;
-  Al::AffixAllocator<Al::StackAllocator, Prefix, Suffix> m_affixAllocator;
+  Al::AffixAllocator<Al::StackAllocator, prefix, suffix> m_affixAllocator;
   Al::Blk                                                m_blk;
-  StrBuf                                                 m_sb;
+  string_buffer                                          m_sb;
 
 public:
-  Test()
+  test_string_buffer()
     : m_buf()
     , m_dim(1024)
     , m_len(0)
@@ -119,10 +119,10 @@ public:
       }
   }
 };
-Test tst;
+test_string_buffer test;
 
-#define SB_FORMAT(format, ...) tst(__FILE__, __LINE__, format, ##__VA_ARGS__)
-#define SB_CHAR(ch) tst(__FILE__, __LINE__, ch);
+#define SB_FORMAT(format, ...) test(__FILE__, __LINE__, format, ##__VA_ARGS__)
+#define SB_CHAR(ch) test(__FILE__, __LINE__, ch);
 
 int main(int argc, char** argv)
 {
@@ -152,7 +152,7 @@ int main(int argc, char** argv)
   auto t0 = std::chrono::high_resolution_clock::now();
   for(size_t n = 1; n < N; ++n)
     {
-      tst(n);
+      test(n);
       SB_FORMAT("simple text.");
       SB_FORMAT("another.");
       SB_CHAR('x');

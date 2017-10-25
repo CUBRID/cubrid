@@ -29,4 +29,4 @@ if (WITH_UNIT_TEST_MEMORY_ALLOC)
   add_subdirectory(memory_alloc)
 endif(WITH_UNIT_TEST_MEMORY_ALLOC)
 
-add_subdirectory(StrBuf)
+add_subdirectory(string_buffer)

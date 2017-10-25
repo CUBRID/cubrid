@@ -1,7 +1,7 @@
-#include "StrBuf.hpp"
+#include "string_buffer.hpp"
 #include <memory.h>
 
-StrBuf::StrBuf(size_t capacity, char* buffer)
+string_buffer::string_buffer(size_t capacity, char* buffer)
   : m_buf(buffer)
   , m_dim(capacity)
   , m_len(0)
@@ -10,7 +10,7 @@ StrBuf::StrBuf(size_t capacity, char* buffer)
     m_buf[0] = '\0';
 }
 
-void StrBuf::set(size_t capacity, char* buffer)
+void string_buffer::set(size_t capacity, char* buffer)
 {// associate with a new buffer[capacity]
   m_buf = buffer;
   m_dim = capacity;
@@ -21,7 +21,7 @@ void StrBuf::set(size_t capacity, char* buffer)
   m_len = 0;
 }
 
-void StrBuf::operator()(size_t len, void* bytes)
+void string_buffer::operator()(size_t len, void* bytes)
 {// add "len" bytes to internal buffer; "bytes" can have '\0' in the middle
   if(bytes && m_len + len < m_dim)
     {
@@ -34,7 +34,7 @@ void StrBuf::operator()(size_t len, void* bytes)
     }
 }
 
-void StrBuf::operator+=(const char ch)
+void string_buffer::operator+=(const char ch)
 {
   if(m_len + 1 < m_dim)
     {// include also '\0'

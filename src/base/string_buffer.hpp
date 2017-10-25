@@ -11,13 +11,13 @@
 #endif
 #endif
 
-class StrBuf//String Buffer to collect formatted text (printf-like syntax)
+class string_buffer//collect formatted text (printf-like syntax)
 {             
   char*  m_buf;// pointer to a memory buffer (not owned)
   size_t m_dim;// dimension|capacity of the buffer
   size_t m_len;// current length of the buffer content
 public:
-  StrBuf(size_t capacity = 0, char* buffer = 0);
+  string_buffer(size_t capacity = 0, char* buffer = 0);
 
   operator const char*() { return m_buf; }
 

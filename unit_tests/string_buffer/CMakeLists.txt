@@ -1,4 +1,4 @@
-project(StrBuf_test)
+project(test_string_buffer)
 
 if (WIN32)
     ADD_DEFINITIONS(-D_CRT_SECURE_NO_WARNINGS)
@@ -15,16 +15,16 @@ INCLUDE_DIRECTORIES(
 )
 
 set(SRC
-    "../../src/base/StrBuf.hpp"
-    "../../src/base/StrBuf.cpp"
+    "../../src/base/string_buffer.hpp"
+    "../../src/base/string_buffer.cpp"
     "src/Al_AffixAllocator.hpp"
     "src/Al_Blk.hpp"
     "src/Al_StackAllocator.hpp"
-    "src/StrBuf_test.cpp"
+    "src/test_string_buffer.cpp"
 )
 
 #Visual Studio file filters
 source_group(""    FILES ${SRC})
 
-add_executable(StrBuf_test ${SRC})
+add_executable(test_string_buffer ${SRC})
 #install(TARGETS StrBuf_test DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/inst/")
