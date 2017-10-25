@@ -1,4 +1,3 @@
-#cmake_minimum_required(VERSION 3.5)
 project(StrBuf_test)
 
 if (WIN32)
