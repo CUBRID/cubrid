@@ -286,3 +286,4 @@ inline int xarr_char_append_object (extensible_array<char, Size, Allocator> &buf
   // append object data
   return buffer.append (reinterpret_cast<const char *> (&to_append), sizeof (to_append));
 }
+

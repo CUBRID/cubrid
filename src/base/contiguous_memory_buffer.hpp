@@ -167,3 +167,4 @@ contiguous_memory_buffer<T, Size, Allocator>::extend (size_t size)
   // update capacity
   m_capacity = new_capacity;
 }
+
