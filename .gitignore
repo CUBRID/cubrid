@@ -200,6 +200,7 @@ x86
 *.swp
 *.bak
 *.*~
+*.*.orig
 tags
 cscope.out
 

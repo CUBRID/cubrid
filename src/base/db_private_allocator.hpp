@@ -50,58 +50,58 @@
 template <typename T>
 class db_private_allocator
 {
-public:
-  /* standard allocator type definitions */
-  typedef T value_type;
-  typedef value_type* pointer;
-  typedef const value_type* const_pointer;
-  typedef value_type& reference;
-  typedef const value_type& const_reference;
-  typedef size_t size_type;
-  typedef ptrdiff_t difference_type;
+  public:
+    /* standard allocator type definitions */
+    typedef T value_type;
+    typedef value_type *pointer;
+    typedef const value_type *const_pointer;
+    typedef value_type &reference;
+    typedef const value_type &const_reference;
+    typedef size_t size_type;
+    typedef ptrdiff_t difference_type;
 
-  /* convert an allocator<T> to allocator<U> */
-  template <typename U>
-  struct rebind
-  {
-    typedef db_private_allocator<U> other;
-  };
+    /* convert an allocator<T> to allocator<U> */
+    template <typename U>
+    struct rebind
+    {
+      typedef db_private_allocator<U> other;
+    };
 
-  inline explicit db_private_allocator (THREAD_ENTRY * thread_p);
-  inline ~db_private_allocator ();
-  inline explicit db_private_allocator (const db_private_allocator & other);
-  template <typename U>
-  inline explicit db_private_allocator (const db_private_allocator<U> & other);
+    inline explicit db_private_allocator (THREAD_ENTRY *thread_p);
+    inline ~db_private_allocator ();
+    inline explicit db_private_allocator (const db_private_allocator &other);
+    template <typename U>
+    inline explicit db_private_allocator (const db_private_allocator<U> &other);
 
-  /* address */
-  inline pointer address (reference r)
-  {
-    return &r;
-  }
-  inline const_pointer address (const_reference r)
-  {
-    return &r;
-  }
+    /* address */
+    inline pointer address (reference r)
+    {
+      return &r;
+    }
+    inline const_pointer address (const_reference r)
+    {
+      return &r;
+    }
 
-  /* memory allocation */
-  inline pointer allocate (size_type count);
-  inline void deallocate (pointer p, size_type UNUSED (ingored) = 0);
+    /* memory allocation */
+    inline pointer allocate (size_type count);
+    inline void deallocate (pointer p, size_type UNUSED (ingored) = 0);
 
-  /* maximum number of allocations */
-  size_type max_size () const;
+    /* maximum number of allocations */
+    size_type max_size () const;
 
-  /* construction/destruction */
-  inline void construct (pointer p, const_reference t);
-  inline void destroy (pointer p);
+    /* construction/destruction */
+    inline void construct (pointer p, const_reference t);
+    inline void destroy (pointer p);
 
-  /* db_private_alloc accessors */
-  THREAD_ENTRY *get_thread_entry () const;
-  HL_HEAPID get_heapid () const;
+    /* db_private_alloc accessors */
+    THREAD_ENTRY *get_thread_entry () const;
+    HL_HEAPID get_heapid () const;
 
-private:
+  private:
 
-  THREAD_ENTRY *m_thread_p;
-  HL_HEAPID m_heapid;
+    THREAD_ENTRY *m_thread_p;
+    HL_HEAPID m_heapid;
 };
 
 /* interchangeable specializations */
@@ -125,7 +125,7 @@ bool operator!= (const db_private_allocator<T> &, const db_private_allocator<U> 
 
 template<typename T>
 inline
-db_private_allocator<T>::db_private_allocator (THREAD_ENTRY * thread_p) :
+db_private_allocator<T>::db_private_allocator (THREAD_ENTRY *thread_p) :
   m_thread_p (thread_p)
 {
 #if defined (SERVER_MODE)
@@ -145,7 +145,7 @@ db_private_allocator<T>::db_private_allocator (THREAD_ENTRY * thread_p) :
 
 template<typename T>
 inline
-db_private_allocator<T>::db_private_allocator (const db_private_allocator & other)
+db_private_allocator<T>::db_private_allocator (const db_private_allocator &other)
 {
   m_thread_p = other.m_thread_p;
   m_heapid = other.m_heapid;
@@ -158,7 +158,7 @@ db_private_allocator<T>::db_private_allocator (const db_private_allocator & othe
 template<typename T>
 template<typename U>
 inline
-db_private_allocator<T>::db_private_allocator (const db_private_allocator<U>& other)
+db_private_allocator<T>::db_private_allocator (const db_private_allocator<U> &other)
 {
   m_thread_p = other.get_thread_entry ();
   m_heapid = other.get_heapid ();
@@ -260,3 +260,4 @@ db_private_allocator<T>::get_heapid () const
 {
   return m_heapid;
 }
+
