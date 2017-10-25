@@ -810,7 +810,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
    */
   log_Gl.append.vdes =
     fileio_format (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, npages,
-		   prm_get_bool_value (PRM_ID_LOG_SWEEP_CLEAN), true, false, LOG_PAGESIZE, 0, false);
+		   prm_get_bool_value (PRM_ID_LOG_SWEEP_CLEAN), true, false, LOG_PAGESIZE, 0, false, false);
   if (log_Gl.append.vdes == NULL_VOLDES || logpb_fetch_start_append_page (thread_p) != NO_ERROR || loghdr_pgptr == NULL)
     {
       goto error;
@@ -1396,7 +1396,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
       bg_arv_info->vdes =
 	fileio_format (thread_p, log_Db_fullname, log_Name_bg_archive, LOG_DBLOG_BG_ARCHIVE_VOLID,
-		       log_Gl.hdr.npages + 1, false, false, false, LOG_PAGESIZE, 0, false);
+		       log_Gl.hdr.npages + 1, false, false, false, LOG_PAGESIZE, 0, false, false);
       if (bg_arv_info->vdes != NULL_VOLDES)
 	{
 	  bg_arv_info->start_page_id = log_Gl.hdr.nxarv_pageid;

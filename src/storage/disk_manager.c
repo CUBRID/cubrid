@@ -532,7 +532,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   /* create and initialize the volume. recovery information is initialized in every page. */
   vdes = fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages, vol_purpose == DB_PERMANENT_DATA_PURPOSE,
-			false, false, IO_PAGESIZE, kbytes_to_be_written_per_sec, false);
+			false, false, IO_PAGESIZE, kbytes_to_be_written_per_sec, false,
+			vol_purpose == DB_PERMANENT_DATA_PURPOSE);
   if (vdes == NULL_VOLDES)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -1156,7 +1157,7 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   if (fileio_find_volume_descriptor_with_label (vol_label) == NULL_VOLDES)
     {
       (void) fileio_format (thread_p, NULL, vol_label, vhdr->volid, DISK_SECTS_NPAGES (vhdr->nsect_total),
-			    vhdr->purpose != DB_TEMPORARY_DATA_PURPOSE, false, false, IO_PAGESIZE, 0, false);
+			    vhdr->purpose != DB_TEMPORARY_DATA_PURPOSE, false, false, IO_PAGESIZE, 0, false, false);
       (void) pgbuf_invalidate_all (thread_p, vhdr->volid);
     }
 
