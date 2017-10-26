@@ -1958,7 +1958,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       ux_set_utype_for_timestampltz (CCI_U_TYPE_TIMESTAMP);
     }
 #endif
-  ux_set_utype_for_json (CCI_U_TYPE_STRING);
+
+  /* Since DB_TYPE_JSON is mapped into CCI_U_TYPE_STRING, legacy drivers are also able to access JSON type. */
 
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
