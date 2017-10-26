@@ -22,14 +22,14 @@
 - constant allocation/dealocation time: O(1)
 #endif
 #pragma once
-#include "Al_Blk.hpp"
+#include "allocator_blk.hpp"
 #ifdef __linux__
 #include <stddef.h>//size_t on Linux
 #endif
 
-namespace Al
+namespace allocator
 {
-  class StackAllocator
+  class stack
   {
   private:
     char* m_ptr;//pointer to a contiguous memory block
@@ -38,14 +38,14 @@ namespace Al
   public:
     friend class StackAllocator_Test;//test class can access internals of this class
 
-    StackAllocator (void* buf, size_t size)
+    stack (void* buf, size_t size)
       : m_ptr ((char*)buf)
       , m_0 (m_ptr)
       , m_1 (m_ptr + size)
     {
     }
 
-    ~StackAllocator ()
+    ~stack ()
     {//can be called explicitly to reinitialize: a.~StackAllocator();
       m_0 = m_ptr;
     }
@@ -57,7 +57,7 @@ namespace Al
       m_1   = m_ptr + size;
     }
 
-    Blk allocate (size_t size)
+    blk allocate (size_t size)
     {
       //round to next aligned?! natural allignment
       //...
@@ -68,31 +68,31 @@ namespace Al
       return {size, (m_0 += size, m_0 - size)};
     }
 
-    void deallocate (Blk blk)
+    void deallocate (blk b)
     {
       //assert(owns(blk));
-      if ((char*)blk.ptr + blk.dim == m_0)
+      if ((char*)b.ptr + b.dim == m_0)
         {//last allocated block
-          m_0 = blk.ptr;
+          m_0 = b.ptr;
         }
     }
 
-    bool owns (Blk blk)
+    bool owns (blk b)
     {// test if blk in [_0, _1)
-      return (m_ptr <= blk.ptr && blk.ptr + blk.dim <= m_1);
+      return (m_ptr <= b.ptr && b.ptr + b.dim <= m_1);
     }
 
     size_t available () { return (m_1 - m_0); }
 
-    Blk realloc (Blk blk, size_t size)
+    blk realloc (blk b, size_t size)
     {//fit additional size bytes; extend block if possible
-      if (blk.ptr + blk.dim == m_0 && blk.ptr + blk.dim + size <= m_1)
+      if (b.ptr + b.dim == m_0 && b.ptr + b.dim + size <= m_1)
         {//last allocated block & enough space to extend
-          blk.dim += size;
+          b.dim += size;
           m_0 += size;
-          return blk;
+          return b;
         }
       return {0, 0};
     }
   };
-}// namespace Al
+}// namespace allocator

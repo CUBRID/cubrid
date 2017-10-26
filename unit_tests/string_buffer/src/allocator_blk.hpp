@@ -20,14 +20,14 @@
 #include <stddef.h>//size_t on Linux
 #endif
 
-namespace Al
-{//Allocator
-  struct Blk
+namespace allocator
+{
+  struct blk
   {
     size_t dim;//size of the memory block pointed by ptr
     char* ptr; //pointer to a memory block
 
-    Blk (size_t dim = 0, void* ptr = 0)
+    blk (size_t dim = 0, void* ptr = 0)
       : dim (dim)
       , ptr ((char*)ptr)
     {
@@ -35,8 +35,8 @@ namespace Al
 
     operator bool () { return (dim && ptr); }
 
-    friend bool operator== (Blk blk0, Blk blk1) { return (blk0.dim == blk1.dim && blk0.ptr == blk1.ptr); }
+    friend bool operator== (blk b0, blk b1) { return (b0.dim == b1.dim && b0.ptr == b1.ptr); }
 
-    friend bool operator!= (Blk blk0, Blk blk1) { return (blk0.dim != blk1.dim || blk0.ptr != blk1.ptr); }
+    friend bool operator!= (blk b0, blk b1) { return (b0.dim != b1.dim || b0.ptr != b1.ptr); }
   };
-}// namespace Al
+}// namespace allocator

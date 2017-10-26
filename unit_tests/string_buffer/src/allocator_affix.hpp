@@ -23,15 +23,15 @@
 USAGE:
 #endif
 #pragma once
-#include "Al_Blk.hpp"
+#include "allocator_blk.hpp"
 #ifdef __linux__
 #include <stddef.h>//size_t on Linux
 #endif
 #include <new>
 
-namespace Al
+namespace allocator
 {
-  template<typename Allocator, typename Prefix, typename Suffix> class AffixAllocator
+  template<typename Allocator, typename Prefix, typename Suffix> class affix
   {
   private:
     static const size_t m_pfxLen = sizeof (Prefix);
@@ -39,39 +39,39 @@ namespace Al
     Allocator& m_a;
 
   public:
-    AffixAllocator (Allocator& allocator)
-      : m_a (allocator)
+    affix (Allocator& a)
+      : m_a (a)
     {
     }
 
-    Blk allocate (size_t size)
+    blk allocate (size_t size)
     {
-      Blk blk = m_a.allocate (m_pfxLen + size + m_sfxLen);
-      if (!blk)
+      blk b = m_a.allocate (m_pfxLen + size + m_sfxLen);
+      if (!b)
         return {0, 0};
-      new (blk.ptr) Prefix;                  //placement new to initialize Prefix memory
-      new (blk.ptr + m_pfxLen + size) Suffix;//placement new to initialize Suffix memory
-      return {size, blk.ptr + m_pfxLen};
+      new (b.ptr) Prefix;                  //placement new to initialize Prefix memory
+      new (b.ptr + m_pfxLen + size) Suffix;//placement new to initialize Suffix memory
+      return {size, b.ptr + m_pfxLen};
     }
 
-    void deallocate (Blk blk)
+    void deallocate (blk b)
     {
       //check if Prefix & Suffix are unchanged!
       //...
-      _a.deallocate ({m_pfxLen + blk.dim + m_sfxLen, blk.ptr - m_pfxLen});
+      _a.deallocate ({m_pfxLen + b.dim + m_sfxLen, b.ptr - m_pfxLen});
     }
 
-    unsigned check (Blk blk)
+    unsigned check (blk b)
     {
       Prefix pfx;
       Suffix sfx;
       int err = 0;
-      err |= (memcmp (&pfx, blk.ptr - m_pfxLen, m_pfxLen)) ? 1 : 0;
-      err |= (memcmp (&sfx, blk.ptr + blk.dim, m_sfxLen)) ? 2 : 0;
+      err |= (memcmp (&pfx, b.ptr - m_pfxLen, m_pfxLen)) ? 1 : 0;
+      err |= (memcmp (&sfx, b.ptr + b.dim, m_sfxLen)) ? 2 : 0;
       return err;
     }
   };
-}// namespace Al
+}// namespace allocator
 
 #if 0//using inheritance
 template<typename Allocator, typename Prefix, typename Suffix=void> class AffixAllocator

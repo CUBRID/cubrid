@@ -15,8 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#include "Al_AffixAllocator.hpp"
-#include "Al_StackAllocator.hpp"
+#include "allocator_affix.hpp"
+#include "allocator_stack.hpp"
 #include "string_buffer.hpp"
 #include <assert.h>
 #ifdef __linux__
@@ -49,9 +49,9 @@ private:
   size_t m_dim;                                     //_ref[_dim]
   size_t m_len;                                     // sizeof(_ref)
   char* m_ref;                                      // reference buffer
-  Al::StackAllocator m_stackAllocator;
-  Al::AffixAllocator<Al::StackAllocator, prefix, suffix> m_affixAllocator;
-  Al::Blk m_blk;
+  allocator::stack m_stack_allocator;
+  allocator::affix<allocator::stack, prefix, suffix> m_affix_allocator;
+  allocator::blk m_blk;
   string_buffer m_sb;
 
 public:
@@ -60,8 +60,8 @@ public:
     , m_dim (1024)
     , m_len (0)
     , m_ref ((char*)calloc (m_dim, 1))
-    , m_stackAllocator (m_buf, sizeof (m_buf))
-    , m_affixAllocator (m_stackAllocator)
+    , m_stack_allocator (m_buf, sizeof (m_buf))
+    , m_affix_allocator (m_stack_allocator)
     , m_blk ()
     , m_sb ()
   {
@@ -79,8 +79,8 @@ public:
         char* p = (char*)malloc (m_dim);
       }
     m_len = 0;
-    m_stackAllocator.~StackAllocator ();
-    m_blk = m_affixAllocator.allocate (size);
+    m_stack_allocator.~stack ();
+    m_blk = m_affix_allocator.allocate (size);
     m_sb.set (size, m_blk.ptr);
   }
 
@@ -108,7 +108,7 @@ public:
         ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect{\"%s\"}", file, line, m_blk.dim, (const char*)m_sb, m_ref);
         return;
       }
-    if (m_affixAllocator.check (m_blk))
+    if (m_affix_allocator.check (m_blk))
       {
         ERR ("[%s(%d)] StrBuf(buf[%zu]) memory corruption", file, line, m_blk.dim);
         return;
@@ -130,7 +130,7 @@ public:
         ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect {\"%s\"}", file, line, m_blk.dim, (const char*)m_sb, m_ref);
         return;
       }
-    if (m_affixAllocator.check (m_blk))
+    if (m_affix_allocator.check (m_blk))
       {
         ERR ("[%s(%d)] StrBuf([%zu]) memory corruption", file, line, m_blk.dim);
       }

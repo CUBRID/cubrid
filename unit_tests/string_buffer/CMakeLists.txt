@@ -17,9 +17,9 @@ INCLUDE_DIRECTORIES(
 set(SRC
     "../../src/base/string_buffer.hpp"
     "../../src/base/string_buffer.cpp"
-    "src/Al_AffixAllocator.hpp"
-    "src/Al_Blk.hpp"
-    "src/Al_StackAllocator.hpp"
+    "src/allocator_affix.hpp"
+    "src/allocator_blk.hpp"
+    "src/allocator_stack.hpp"
     "src/test_string_buffer.cpp"
 )
 
