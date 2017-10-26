@@ -339,8 +339,8 @@ static void mr_data_readmem_null (OR_BUF * buf, void *memptr, TP_DOMAIN * domain
 static void mr_initval_null (DB_VALUE * value, int precision, int scale);
 static int mr_setval_null (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_writeval_null (OR_BUF * buf, DB_VALUE * value);
-static int mr_data_readval_null (OR_BUF * buf, DB_VALUE * value,
-				 TP_DOMAIN * domain, int size, bool copy, char *copy_buf, int copy_buf_len);
+static int mr_data_readval_null (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				 char *copy_buf, int copy_buf_len);
 static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_null (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 						     int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_null (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
@@ -372,8 +372,8 @@ static void mr_data_readmem_short (OR_BUF * buf, void *mem, TP_DOMAIN * domain, 
 static void mr_initval_short (DB_VALUE * value, int precision, int scale);
 static int mr_setval_short (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_writeval_short (OR_BUF * buf, DB_VALUE * value);
-static int mr_data_readval_short (OR_BUF * buf, DB_VALUE * value,
-				  TP_DOMAIN * domain, int size, bool copy, char *copy_buf, int copy_buf_len);
+static int mr_data_readval_short (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				  char *copy_buf, int copy_buf_len);
 static int mr_index_writeval_short (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_short (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				   char *copy_buf, int copy_buf_len);
@@ -413,8 +413,8 @@ static int mr_data_writeval_float (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_readval_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				  char *copy_buf, int copy_buf_len);
 static int mr_index_writeval_float (OR_BUF * buf, DB_VALUE * value);
-static int mr_index_readval_float (OR_BUF * buf, DB_VALUE * value,
-				   TP_DOMAIN * domain, int size, bool copy, char *copy_buf, int copy_buf_len);
+static int mr_index_readval_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				   char *copy_buf, int copy_buf_len);
 static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 						       int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
@@ -462,8 +462,8 @@ static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_timeltz (void *mem1, void *mem2,
 static DB_VALUE_COMPARE_RESULT mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 						  int total_order, int *start_colp, int collation);
 static int mr_index_writeval_time (OR_BUF * buf, DB_VALUE * value);
-static int mr_index_readval_time (OR_BUF * buf, DB_VALUE * value,
-				  TP_DOMAIN * domain, int size, bool copy, char *copy_buf, int copy_buf_len);
+static int mr_index_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				  char *copy_buf, int copy_buf_len);
 static int mr_index_readval_timeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				     char *copy_buf, int copy_buf_len);
 static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
@@ -3032,8 +3032,8 @@ mr_data_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
-		  int total_order, int *start_colp, int collation)
+mr_cmpval_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+		  int collation)
 {
   DB_BIGINT i1, i2;
 
@@ -3398,8 +3398,8 @@ mr_data_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_double (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
-		  int total_order, int *start_colp, int collation)
+mr_cmpval_double (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+		  int collation)
 {
   double d1, d2;
 
@@ -3986,8 +3986,8 @@ mr_data_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
-		  int total_order, int *start_colp, int collation)
+mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+		  int collation)
 {
   const DB_TIMETZ *t1, *t2;
   DB_VALUE_COMPARE_RESULT ret_cmp;
@@ -4715,8 +4715,8 @@ mr_index_readval_datetimeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain,
-			   int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+			   int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c;
   DB_DATETIME dt1, dt2;
@@ -4804,8 +4804,8 @@ mr_data_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
-		    int total_order, int *start_colp, int collation)
+mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+		    int collation)
 {
   const DB_DATETIME *dt1, *dt2;
   DB_VALUE_COMPARE_RESULT c;
