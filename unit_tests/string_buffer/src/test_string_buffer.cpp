@@ -19,10 +19,10 @@
 #include "allocator_stack.hpp"
 #include "string_buffer.hpp"
 #include <assert.h>
+#include <chrono>
 #ifdef __linux__
 #include <stddef.h>//size_t on Linux
 #endif
-#include <chrono>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

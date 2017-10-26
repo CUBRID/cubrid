@@ -28,7 +28,7 @@ string_buffer::string_buffer (size_t capacity, char* buffer)
 }
 
 void string_buffer::set (size_t capacity, char* buffer)
-{// associate with a new buffer[capacity]
+{
   m_buf = buffer;
   m_dim = capacity;
   if (m_buf)
@@ -39,7 +39,7 @@ void string_buffer::set (size_t capacity, char* buffer)
 }
 
 void string_buffer::operator() (size_t len, void* bytes)
-{// add "len" bytes to internal buffer; "bytes" can have '\0' in the middle
+{
   if (bytes && m_len + len < m_dim)
     {
       memcpy (m_buf + m_len, bytes, len);

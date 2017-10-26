@@ -23,11 +23,11 @@
 USAGE:
 #endif
 #pragma once
+#include <new>
 #include "allocator_blk.hpp"
 #ifdef __linux__
 #include <stddef.h>//size_t on Linux
 #endif
-#include <new>
 
 namespace allocator
 {
