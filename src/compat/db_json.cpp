@@ -85,7 +85,6 @@ typedef rapidjson::UTF8 <> JSON_ENCODING;
 typedef rapidjson::MemoryPoolAllocator <JSON_PRIVATE_ALLOCATOR > JSON_PRIVATE_MEMPOOL;
 typedef rapidjson::GenericValue <JSON_ENCODING, JSON_PRIVATE_MEMPOOL > JSON_VALUE;
 typedef rapidjson::GenericPointer <JSON_VALUE > JSON_POINTER;
-
 typedef rapidjson::GenericStringBuffer<JSON_ENCODING, JSON_PRIVATE_ALLOCATOR> JSON_STRING_BUFFER;
 
 class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL >
@@ -123,6 +122,12 @@ const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
 const int JSON_DOC::MAX_CHUNK_SIZE = 64 * 1024; /* TODO does 64K serve our needs? */
 
 static unsigned int db_json_value_get_depth (const JSON_VALUE *doc);
+static int db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALUE *value, bool &result);
+static DB_JSON_TYPE db_json_get_type_of_value (const JSON_VALUE *val);
+static bool db_json_value_has_numeric_type (const JSON_VALUE *doc);
+static int db_json_get_int_from_value (const JSON_VALUE *val);
+static double db_json_get_double_from_value (const JSON_VALUE *doc);
+static const char *db_json_get_string_from_value (const JSON_VALUE *doc);
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -649,27 +654,33 @@ db_json_remove_func (JSON_DOC *doc, char *raw_path)
 DB_JSON_TYPE
 db_json_get_type (const JSON_DOC *doc)
 {
-  if (doc->IsString())
+  return db_json_get_type_of_value (doc);
+}
+
+DB_JSON_TYPE
+db_json_get_type_of_value (const JSON_VALUE *val)
+{
+  if (val->IsString())
     {
       return DB_JSON_STRING;
     }
-  else if (doc->IsInt())
+  else if (val->IsInt())
     {
       return DB_JSON_INT;
     }
-  else if (doc->IsFloat() || doc->IsDouble())
+  else if (val->IsFloat() || val->IsDouble())
     {
       return DB_JSON_DOUBLE;
     }
-  else if (doc->IsObject())
+  else if (val->IsObject())
     {
       return DB_JSON_OBJECT;
     }
-  else if (doc->IsArray())
+  else if (val->IsArray())
     {
       return DB_JSON_ARRAY;
     }
-  else if (doc->IsNull())
+  else if (val->IsNull())
     {
       return DB_JSON_NULL;
     }
@@ -904,25 +915,167 @@ db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest)
 int
 db_json_get_int_from_document (const JSON_DOC *doc)
 {
-  assert (db_json_get_type (doc) == DB_JSON_INT);
-
-  return doc->GetInt();
+  return db_json_get_int_from_value (doc);
 }
 
 double
 db_json_get_double_from_document (const JSON_DOC *doc)
 {
-  assert (db_json_get_type (doc) == DB_JSON_DOUBLE);
-
-  return doc->GetDouble();
+  return db_json_get_double_from_value (doc);
 }
 
 const char *
 db_json_get_string_from_document (const JSON_DOC *doc)
 {
-  assert (db_json_get_type (doc) == DB_JSON_STRING);
+  return db_json_get_string_from_value (doc);
+}
+
+int
+db_json_get_int_from_value (const JSON_VALUE *val)
+{
+  assert (db_json_get_type_of_value (val) == DB_JSON_INT);
+
+  return val->GetInt();
+}
+
+double
+db_json_get_double_from_value (const JSON_VALUE *doc)
+{
+  assert (db_json_get_type_of_value (doc) == DB_JSON_DOUBLE
+          || db_json_get_type_of_value (doc) == DB_JSON_INT);
+
+  return db_json_get_type_of_value (doc) == DB_JSON_DOUBLE ? doc->GetDouble() : doc->GetInt();
+}
+
+const char *
+db_json_get_string_from_value (const JSON_VALUE *doc)
+{
+  assert (db_json_get_type_of_value (doc) == DB_JSON_STRING);
 
   return doc->GetString();
+}
+
+bool
+db_json_value_has_numeric_type (const JSON_VALUE *doc)
+{
+  return db_json_get_type_of_value (doc) == DB_JSON_INT ||
+         db_json_get_type_of_value (doc) == DB_JSON_DOUBLE;
+}
+
+/*
+ *  The following rules define containment:
+    A candidate scalar is contained in a target scalar if and only if they are comparable and are equal.
+    Two scalar values are comparable if they have the same JSON_TYPE() types,
+    with the exception that values of types INTEGER and DOUBLE are also comparable to each other.
+
+    A candidate array is contained in a target array if and only if
+    every element in the candidate is contained in some element of the target.
+
+    A candidate nonarray is contained in a target array if and only if the candidate
+    is contained in some element of the target.
+
+    A candidate object is contained in a target object if and only if for each key in the candidate
+    there is a key with the same name in the target and the value associated with the candidate key
+    is contained in the value associated with the target key.
+ */
+int
+db_json_value_is_contained_in_doc (const JSON_DOC *doc, const JSON_DOC *value, bool &result)
+{
+  return db_json_value_is_contained_in_doc_helper (doc, value, result);
+}
+
+int
+db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALUE *value, bool &result)
+{
+  int error_code = NO_ERROR;
+
+  if (db_json_get_type_of_value (doc) == db_json_get_type_of_value (value))
+    {
+      if (db_json_get_type_of_value (doc) == DB_JSON_STRING)
+        {
+          result = (strcmp (doc->GetString(), value->GetString()) == 0);
+        }
+      else if (db_json_get_type_of_value (doc) == DB_JSON_INT)
+        {
+          result = (db_json_get_int_from_value (doc) == db_json_get_int_from_value (value));
+        }
+      else if (db_json_get_type_of_value (doc) == DB_JSON_DOUBLE)
+        {
+          result = (db_json_get_double_from_value (doc) == db_json_get_double_from_value (value));
+        }
+      else if (db_json_get_type_of_value (doc) == DB_JSON_ARRAY)
+        {
+          for (JSON_VALUE::ConstValueIterator itr_val = value->Begin (); itr_val != value->End (); ++itr_val)
+            {
+              bool res;
+
+              result = false;
+              for (JSON_VALUE::ConstValueIterator itr_doc = doc->Begin (); itr_doc != doc->End (); ++itr_doc)
+                {
+                  error_code = db_json_value_is_contained_in_doc_helper (itr_doc, itr_val, res);
+                  if (error_code != NO_ERROR)
+                    {
+                      result = false;
+                      return error_code;
+                    }
+                  result |= res;
+                }
+              if (!result)
+                {
+                  return NO_ERROR;
+                }
+            }
+          result = true;
+        }
+      else if (db_json_get_type_of_value (doc) == DB_JSON_OBJECT)
+        {
+          for (JSON_VALUE::ConstMemberIterator itr_val = value->MemberBegin (); itr_val != value->MemberEnd (); ++itr_val)
+            {
+              if (doc->HasMember (itr_val->name))
+                {
+                  error_code = db_json_value_is_contained_in_doc_helper (& (*doc) [itr_val->name], &itr_val->value, result);
+                  if (error_code != NO_ERROR)
+                    {
+                      result = false;
+                      return error_code;
+                    }
+                  if (!result)
+                    {
+                      return NO_ERROR;
+                    }
+                }
+            }
+        }
+    }
+  else if (db_json_value_has_numeric_type (doc) && db_json_value_has_numeric_type (value))
+    {
+      double v1 = db_json_get_double_from_value (doc);
+      double v2 = db_json_get_double_from_value (value);
+
+      result = (v1 == v2);
+    }
+  else
+    {
+      if (db_json_get_type_of_value (doc) == DB_JSON_ARRAY)
+        {
+          for (JSON_VALUE::ConstValueIterator itr_doc = doc->Begin (); itr_doc != doc->End (); ++itr_doc)
+            {
+              error_code = db_json_value_is_contained_in_doc_helper (itr_doc, value, result);
+              if (error_code != NO_ERROR)
+                {
+                  result = false;
+                  return error_code;
+                }
+              if (result)
+                {
+                  return NO_ERROR;
+                }
+            }
+          result = false;
+        }
+    }
+
+  return error_code;
 }
 
 /*end of C functions*/

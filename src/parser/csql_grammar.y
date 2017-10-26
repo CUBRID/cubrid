@@ -25397,7 +25397,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
-    case PT_JSON_CONTAINS:
     case PT_JSON_EXTRACT:
       if (c != 2)
 	return NULL;
@@ -25509,6 +25508,22 @@ parser_keyword_func (const char *name, PT_NODE * args)
           node->do_not_fold = 1;
         }
       
+      return node;
+
+    case PT_JSON_CONTAINS:
+      if (c != 3 && c != 2)
+          return NULL;
+
+        a1 = args;
+        a2 = a1->next;
+        a3 = a2->next;
+        a1->next = NULL;
+        a2->next = NULL;
+        if (a3)
+          {
+            a3->next = NULL;
+          }
+      node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
 
     default:

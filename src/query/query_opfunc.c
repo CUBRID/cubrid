@@ -6517,9 +6517,10 @@ qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VAL
 }
 
 int
-qdata_json_contains_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_json_contains_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * dbval3_p, DB_VALUE * result_p,
+			   TP_DOMAIN * domain_p)
 {
-  int error_code = db_json_contains_dbval (dbval1_p, dbval2_p, result_p);
+  int error_code = db_json_contains_dbval (dbval1_p, dbval2_p, dbval3_p, result_p);
 
   if (error_code != NO_ERROR)
     {

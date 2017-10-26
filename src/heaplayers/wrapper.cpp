@@ -3,21 +3,21 @@
 /*
 
   Heap Layers: An Extensible Memory Allocation Infrastructure
-  
+
   Copyright (C) 2000-2007 by Emery Berger
   http://www.cs.umass.edu/~emery
   emery@cs.umass.edu
-  
+
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation; either version 2 of the License, or
   (at your option) any later version.
-  
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
-  
+
   You should have received a copy of the GNU General Public License
   along with this program; if not, write to the Free Software
   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
@@ -93,27 +93,28 @@
 
 /***** generic malloc functions *****/
 
-extern "C" void * MYCDECL CUSTOM_MALLOC (size_t sz)
+extern "C" void *MYCDECL CUSTOM_MALLOC (size_t sz)
 {
-  TheCustomHeapType * theCustomHeap = getCustomHeap();
-  void * ptr = theCustomHeap->malloc (sz);
+  TheCustomHeapType *theCustomHeap = getCustomHeap();
+  void *ptr = theCustomHeap->malloc (sz);
   return ptr;
 }
 
-extern "C" void * MYCDECL CUSTOM_CALLOC (size_t nelem, size_t elsize)
+extern "C" void *MYCDECL CUSTOM_CALLOC (size_t nelem, size_t elsize)
 {
   size_t n = nelem * elsize;
-  void * ptr = CUSTOM_MALLOC (n);
+  void *ptr = CUSTOM_MALLOC (n);
   // Zero out the malloc'd block.
-  if (ptr != NULL) {
-    memset (ptr, 0, n);
-  }
+  if (ptr != NULL)
+    {
+      memset (ptr, 0, n);
+    }
   return ptr;
 }
 
 
 #if !defined(_WIN32)
-extern "C" void * MYCDECL CUSTOM_MEMALIGN (size_t alignment, size_t size);
+extern "C" void *MYCDECL CUSTOM_MEMALIGN (size_t alignment, size_t size);
 
 extern "C" int posix_memalign (void **memptr, size_t alignment, size_t size)
 {
@@ -123,71 +124,82 @@ extern "C" int posix_memalign (void **memptr, size_t alignment, size_t size)
     {
       return EINVAL;
     }
-  void * ptr = CUSTOM_MEMALIGN (alignment, size);
-  if (!ptr) {
-    return ENOMEM;
-  } else {
-    *memptr = ptr;
-    return 0;
-  }
+  void *ptr = CUSTOM_MEMALIGN (alignment, size);
+  if (!ptr)
+    {
+      return ENOMEM;
+    }
+  else
+    {
+      *memptr = ptr;
+      return 0;
+    }
 }
 #endif
 
 
-extern "C" void * MYCDECL CUSTOM_MEMALIGN (size_t alignment, size_t size)
+extern "C" void *MYCDECL CUSTOM_MEMALIGN (size_t alignment, size_t size)
 {
   // NOTE: This function is deprecated.
-  if (alignment == sizeof(double)) {
-    return CUSTOM_MALLOC (size);
-  } else {
-    void * ptr = CUSTOM_MALLOC (size + 2 * alignment);
-    void * alignedPtr = (void *) (((size_t) ptr + alignment - 1) & ~(alignment - 1));
-    return alignedPtr;
-  }
+  if (alignment == sizeof (double))
+    {
+      return CUSTOM_MALLOC (size);
+    }
+  else
+    {
+      void *ptr = CUSTOM_MALLOC (size + 2 * alignment);
+      void *alignedPtr = (void *) (((size_t) ptr + alignment - 1) & ~ (alignment - 1));
+      return alignedPtr;
+    }
 }
 
-extern "C" size_t MYCDECL CUSTOM_GETSIZE (void * ptr)
+extern "C" size_t MYCDECL CUSTOM_GETSIZE (void *ptr)
 {
-  TheCustomHeapType * theCustomHeap = getCustomHeap();
-  if (ptr == NULL) {
-    return 0;
-  }
-  return theCustomHeap->getSize(ptr);
+  TheCustomHeapType *theCustomHeap = getCustomHeap();
+  if (ptr == NULL)
+    {
+      return 0;
+    }
+  return theCustomHeap->getSize (ptr);
 }
 
-extern "C" void MYCDECL CUSTOM_FREE (void * ptr)
+extern "C" void MYCDECL CUSTOM_FREE (void *ptr)
 {
-  TheCustomHeapType * theCustomHeap = getCustomHeap();
+  TheCustomHeapType *theCustomHeap = getCustomHeap();
   theCustomHeap->free (ptr);
 }
 
-extern "C" void * MYCDECL CUSTOM_REALLOC (void * ptr, size_t sz)
+extern "C" void *MYCDECL CUSTOM_REALLOC (void *ptr, size_t sz)
 {
-  if (ptr == NULL) {
-    ptr = CUSTOM_MALLOC (sz);
-    return ptr;
-  }
-  if (sz == 0) {
-    CUSTOM_FREE (ptr);
-    return NULL;
-  }
+  if (ptr == NULL)
+    {
+      ptr = CUSTOM_MALLOC (sz);
+      return ptr;
+    }
+  if (sz == 0)
+    {
+      CUSTOM_FREE (ptr);
+      return NULL;
+    }
 
   size_t objSize = CUSTOM_GETSIZE (ptr);
 
-  void * buf = CUSTOM_MALLOC ((size_t) (sz));
+  void *buf = CUSTOM_MALLOC ((size_t) (sz));
 
-  if (buf != NULL) {
-    if (objSize == CUSTOM_GETSIZE(buf)) {
-      // The objects are the same actual size.
-      // Free the new object and return the original.
-      CUSTOM_FREE (buf);
-      return ptr;
+  if (buf != NULL)
+    {
+      if (objSize == CUSTOM_GETSIZE (buf))
+        {
+          // The objects are the same actual size.
+          // Free the new object and return the original.
+          CUSTOM_FREE (buf);
+          return ptr;
+        }
+      // Copy the contents of the original object
+      // up to the size of the new block.
+      size_t minSize = (objSize < sz) ? objSize : sz;
+      memcpy (buf, ptr, minSize);
     }
-    // Copy the contents of the original object
-    // up to the size of the new block.
-    size_t minSize = (objSize < sz) ? objSize : sz;
-    memcpy (buf, ptr, minSize);
-  }
 
   // Free the old block.
   CUSTOM_FREE (ptr);
@@ -197,28 +209,32 @@ extern "C" void * MYCDECL CUSTOM_REALLOC (void * ptr, size_t sz)
 }
 
 #if defined(linux)
-extern "C" char * MYCDECL CUSTOM_PREFIX(strndup) (const char * s, size_t sz)
+extern "C" char *MYCDECL CUSTOM_PREFIX (strndup) (const char *s, size_t sz)
 {
-  char * newString = NULL;
-  if (s != NULL) {
-    size_t cappedLength = strnlen (s, sz);
-    if ((newString = (char *) CUSTOM_MALLOC(cappedLength + 1))) {
-      strncpy(newString, s, cappedLength);
-      newString[cappedLength] = '\0';
+  char *newString = NULL;
+  if (s != NULL)
+    {
+      size_t cappedLength = strnlen (s, sz);
+      if ((newString = (char *) CUSTOM_MALLOC (cappedLength + 1)))
+        {
+          strncpy (newString, s, cappedLength);
+          newString[cappedLength] = '\0';
+        }
     }
-  }
   return newString;
 }
 #endif
 
-extern "C" char * MYCDECL CUSTOM_PREFIX(strdup) (const char * s)
+extern "C" char *MYCDECL CUSTOM_PREFIX (strdup) (const char *s)
 {
-  char * newString = NULL;
-  if (s != NULL) {
-    if ((newString = (char *) CUSTOM_MALLOC(strlen(s) + 1))) {
-      strcpy(newString, s);
+  char *newString = NULL;
+  if (s != NULL)
+    {
+      if ((newString = (char *) CUSTOM_MALLOC (strlen (s) + 1)))
+        {
+          strcpy (newString, s);
+        }
     }
-  }
   return newString;
 }
 
@@ -231,60 +247,70 @@ extern "C" char * MYCDECL CUSTOM_PREFIX(strdup) (const char * s)
 #endif
 
 
-typedef char * getcwdFunction (char *, size_t);
+typedef char *getcwdFunction (char *, size_t);
 
-extern "C"  char * MYCDECL CUSTOM_PREFIX(getcwd) (char * buf, size_t size)
+extern "C"  char *MYCDECL CUSTOM_PREFIX (getcwd) (char *buf, size_t size)
 {
-  static getcwdFunction * real_getcwd
+  static getcwdFunction *real_getcwd
     = (getcwdFunction *) dlsym (RTLD_NEXT, "getcwd");
-  
-  if (!buf) {
-    if (size == 0) {
-      size = PATH_MAX;
+
+  if (!buf)
+    {
+      if (size == 0)
+        {
+          size = PATH_MAX;
+        }
+      buf = (char *) CUSTOM_PREFIX (malloc) (size);
     }
-    buf = (char *) CUSTOM_PREFIX(malloc)(size);
-  }
-  return (real_getcwd)(buf, size);
+  return (real_getcwd) (buf, size);
 }
 
 #endif
 
 
-void * operator new (size_t sz)
+void *operator new (size_t sz)
 {
-  void * ptr = CUSTOM_MALLOC (sz);
-  if (ptr == NULL) {
-    throw std::bad_alloc();
-  } else {
-    return ptr;
-  }
+  void *ptr = CUSTOM_MALLOC (sz);
+  if (ptr == NULL)
+    {
+      throw std::bad_alloc();
+    }
+  else
+    {
+      return ptr;
+    }
 }
 
-void operator delete (void * ptr)
+void operator delete (void *ptr)
 {
   CUSTOM_FREE (ptr);
 }
 
 #if !defined(__SUNPRO_CC) || __SUNPRO_CC > 0x420
-void * operator new (size_t sz, const std::nothrow_t&) throw() {
-  return CUSTOM_MALLOC(sz);
-} 
-
-void * operator new[] (size_t size) 
+void *operator new (size_t sz, const std::nothrow_t &) throw()
 {
-  void * ptr = CUSTOM_MALLOC(size);
-  if (ptr == NULL) {
-    throw std::bad_alloc();
-  } else {
-    return ptr;
-  }
+  return CUSTOM_MALLOC (sz);
 }
 
-void * operator new[] (size_t sz, const std::nothrow_t&) throw() {
-  return CUSTOM_MALLOC (sz);
-} 
+void *operator new[] (size_t size)
+{
+  void *ptr = CUSTOM_MALLOC (size);
+  if (ptr == NULL)
+    {
+      throw std::bad_alloc();
+    }
+  else
+    {
+      return ptr;
+    }
+}
 
-void operator delete[] (void * ptr)
+void *operator new[] (size_t sz, const std::nothrow_t &) throw()
+{
+  return CUSTOM_MALLOC (sz);
+}
+
+void operator delete[] (void *ptr)
 {
   CUSTOM_FREE (ptr);
 }
@@ -306,15 +332,16 @@ extern "C" int MYCDECL CUSTOM_MALLOPT (int number, int value)
 
 // NOTE: for convenience, we assume page size = 8192.
 
-extern "C" void * MYCDECL CUSTOM_VALLOC (size_t sz)
+extern "C" void *MYCDECL CUSTOM_VALLOC (size_t sz)
 {
   return CUSTOM_MEMALIGN (8192, sz);
 }
 
 
-extern "C" void * MYCDECL CUSTOM_PVALLOC (size_t sz)
+extern "C" void *MYCDECL CUSTOM_PVALLOC (size_t sz)
 {
   // Rounds up to the next pagesize and then calls valloc. Hoard
   // doesn't support aligned memory requests.
   return CUSTOM_VALLOC ((sz + 8191) & ~8191);
 }
+
