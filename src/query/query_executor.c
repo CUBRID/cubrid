@@ -22481,12 +22481,12 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	  db_make_string (&bracket1, "(");
 	  db_make_string (&bracket2, ")");
 
-	  if (db_string_concatenate (result, &bracket1, result, &data_stat) != NO_ERROR ||
-	      (data_stat != DATA_STATUS_OK) ||
-	      db_string_concatenate (result, &schema, result, &data_stat) != NO_ERROR ||
-	      (data_stat != DATA_STATUS_OK) ||
-	      db_string_concatenate (result, &bracket2, result, &data_stat) != NO_ERROR ||
-	      (data_stat != DATA_STATUS_OK))
+	  if (db_string_concatenate (result, &bracket1, result, &data_stat) != NO_ERROR
+	      || (data_stat != DATA_STATUS_OK)
+	      || db_string_concatenate (result, &schema, result, &data_stat) != NO_ERROR
+	      || (data_stat != DATA_STATUS_OK)
+	      || db_string_concatenate (result, &bracket2, result, &data_stat) != NO_ERROR
+	      || (data_stat != DATA_STATUS_OK))
 	    {
 	      pr_clear_value (&bracket1);
 	      pr_clear_value (&schema);
