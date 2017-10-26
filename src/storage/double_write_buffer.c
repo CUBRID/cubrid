@@ -144,6 +144,10 @@
 #define DWB_GET_PREV_BLOCK_NO(block_no) \
   ((block_no) > 0 ? ((block_no) - 1) : (DWB_NUM_TOTAL_BLOCKS - 1))
 
+/* Get DWB previous block. */
+#define DWB_GET_PREV_BLOCK(block_no) \
+  (&(double_Write_Buffer.blocks[DWB_GET_PREV_BLOCK_NO(block_no)]))
+
 /* Get DWB next block number. */
 #define DWB_GET_NEXT_BLOCK_NO(block_no) \
   ((block_no) == (DWB_NUM_TOTAL_BLOCKS - 1) ? 0 : ((block_no) + 1))
@@ -1383,7 +1387,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit_on_error;
     }
-  memset (blocks, 0, num_blocks * sizeof (blocks));
+  memset (blocks, 0, num_blocks * sizeof (DWB_BLOCK));
 
   for (i = 0; i < num_blocks; i++)
     {
@@ -3439,6 +3443,17 @@ start:
     start_flush_block:
       /* Flush all pages from current block */
       assert (flush_block != NULL && flush_block->count_wb_pages == DWB_BLOCK_NUM_PAGES);
+      if (DWB_GET_PREV_BLOCK (flush_block->block_no)->version < flush_block->version
+	  || ((DWB_GET_PREV_BLOCK (flush_block->block_no)->version == flush_block->version)
+	      && (flush_block->block_no > DWB_GET_PREV_BLOCK_NO (flush_block->block_no))))
+	{
+	  if (DWB_GET_PREV_BLOCK (flush_block->block_no)->count_wb_pages != 0)
+	    {
+	      /* TODO - assert_release */
+	      abort ();
+	    }
+	}
+
       error_code = dwb_flush_block (thread_p, flush_block, NULL);
       if (error_code != NO_ERROR)
 	{
