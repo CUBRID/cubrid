@@ -1239,6 +1239,7 @@ or_get_domain_internal (char *ptr)
     }
 
   return domain;
+
 error_cleanup:
   while (domain != NULL)
     {

@@ -10018,6 +10018,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      break;
 	    }
 	  break;
+
 	case DB_TYPE_JSON:
 	  {
 	    const char *json_str;
@@ -10044,14 +10045,15 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		status = DOMAIN_ERROR;
 		pr_clear_value (target);
 	      }
-	    else if (DB_VALUE_PRECISION (target) !=
-		     TP_FLOATING_PRECISION_VALUE && (DB_GET_STRING_LENGTH (target) > DB_VALUE_PRECISION (target)))
+	    else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
+		     && (DB_GET_STRING_LENGTH (target) > DB_VALUE_PRECISION (target)))
 	      {
 		status = DOMAIN_OVERFLOW;
 		pr_clear_value (target);
 	      }
 	  }
 	  break;
+
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
