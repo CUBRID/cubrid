@@ -8707,8 +8707,8 @@ or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
       rc = db_json_load_validator (str, validator);
       if (rc != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  assert (validator == NULL);
-	  /* TODO: er_set a proper error */
 	  goto exit;
 	}
       rc = NO_ERROR;
