@@ -525,9 +525,9 @@ extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
 extern INT64 thread_get_log_clock_msec (void);
 
-extern int thread_get_total_num_of_threads ();
+extern int thread_get_total_num_of_threads (void);
 extern THREAD_ENTRY *thread_get_entry_from_index (int index);
-extern int thread_get_total_num_of_workers ();
+extern int thread_get_total_num_of_workers (void);
 
 extern const char *thread_type_to_string (int type);
 extern const char *thread_status_to_string (int status);

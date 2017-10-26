@@ -260,3 +260,4 @@ db_private_allocator<T>::get_heapid () const
 {
   return m_heapid;
 }
+

@@ -1187,8 +1187,8 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	      type = PR_TYPE_FROM_ID (rat->typeid_);
 	      if (type == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_TF_INVALID_REPRESENTATION, 1, sm_ch_name ((MOBJ) class_));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
+			  sm_ch_name ((MOBJ) class_));
 
 		  db_ws_free (attmap);
 		  if (vars != NULL)
@@ -1254,8 +1254,8 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 		  type = PR_TYPE_FROM_ID (rat->typeid_);
 		  if (type == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_TF_INVALID_REPRESENTATION, 1, sm_ch_name ((MOBJ) class_));
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
+			      sm_ch_name ((MOBJ) class_));
 
 		      db_ws_free (attmap);
 		      db_ws_free (vars);
@@ -1626,7 +1626,6 @@ object_set_size (DB_OBJLIST * list)
   return (size);
 }
 
-
 /*
  * put_object_set - Translates a list objects into the disk represenataion of a
  * sequence of objects
@@ -1679,7 +1678,6 @@ put_object_set (OR_BUF * buf, DB_OBJLIST * list)
   return NO_ERROR;
 }
 
-
 /*
  * get_object_set - Extracts a sequence of objects in a disk representation
  * and converts it into an object list in memory.
@@ -1723,8 +1721,6 @@ get_object_set (OR_BUF * buf, int expected)
 
   return (list);
 }
-
-
 
 /*
  * substructure_set_size - Calculates the disk storage for a set created from
@@ -1770,7 +1766,6 @@ substructure_set_size (DB_LIST * list, LSIZER function)
 
   return (size);
 }
-
 
 /*
  * put_substructure_set - Write the disk representation of a substructure
@@ -1842,7 +1837,6 @@ put_substructure_set (OR_BUF * buf, DB_LIST * list, LWRITER writer, OID * class_
     }
 }
 
-
 /*
  * get_substructure_set - extracts a substructure set on disk and create a
  * list of memory structures.
@@ -1882,7 +1876,6 @@ get_substructure_set (OR_BUF * buf, LREADER reader, int expected)
   return (list);
 }
 
-
 /*
  * install_substructure_set - loads a substructure set from disk into a list
  * of memory structures.
@@ -1911,7 +1904,6 @@ install_substructure_set (OR_BUF * buf, DB_LIST * list, VREADER reader, int expe
 	}
     }
 }
-
 
 /*
  * property_list_size - Calculate the disk storage requirements for a
@@ -2012,7 +2004,6 @@ get_property_list (OR_BUF * buf, int expected_size)
   return (properties);
 }
 
-
 /*
  * domain_size - Calculates the number of bytes required to store a domain
  * list on disk.
@@ -2030,9 +2021,8 @@ domain_size (TP_DOMAIN * domain)
 
   size += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
 
-  size +=
-    domain->json_validator ==
-    NULL ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator));
+  size += (domain->json_validator == NULL
+	   ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator)));
 
   return (size);
 }
@@ -2071,9 +2061,8 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   offset += enumeration_size (&DOM_GET_ENUMERATION (domain));
 
   or_put_offset (buf, offset);
-  offset +=
-    domain->json_validator ==
-    NULL ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator));
+  offset += (domain->json_validator == NULL
+	     ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator)));
 
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -2086,8 +2075,8 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   or_put_int (buf, domain->collation_id);
   pr_write_mop (buf, domain->class_mop);
 
-  put_substructure_set (buf, (DB_LIST *) domain->setdomain,
-			(LWRITER) domain_to_disk, &tf_Metaclass_domain.mc_classoid, tf_Metaclass_domain.mc_repid);
+  put_substructure_set (buf, (DB_LIST *) domain->setdomain, (LWRITER) domain_to_disk, &tf_Metaclass_domain.mc_classoid,
+			tf_Metaclass_domain.mc_repid);
 
   put_enumeration (buf, &DOM_GET_ENUMERATION (domain));
 
@@ -2101,7 +2090,6 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
     }
 }
-
 
 /*
  * disk_to_domain2 - Create the memory representation for a domain list from
@@ -2167,8 +2155,8 @@ disk_to_domain2 (OR_BUF * buf)
 	  or_abort (buf);
 	}
     }
-  domain->setdomain =
-    (TP_DOMAIN *) get_substructure_set (buf, (LREADER) disk_to_domain2, vars[ORC_DOMAIN_SETDOMAIN_INDEX].length);
+  domain->setdomain = (TP_DOMAIN *) get_substructure_set (buf, (LREADER) disk_to_domain2,
+							  vars[ORC_DOMAIN_SETDOMAIN_INDEX].length);
   domain->enumeration.collation_id = domain->collation_id;
 
   if (get_enumeration (buf, &DOM_GET_ENUMERATION (domain), vars[ORC_DOMAIN_ENUMERATION_INDEX].length) != NO_ERROR)
@@ -2186,8 +2174,8 @@ disk_to_domain2 (OR_BUF * buf)
       or_get_json_schema (buf, schema_raw);
       if (schema_raw == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length + 1);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length + 1);
 	  tp_domain_free (domain);
 	  return NULL;
 	}
@@ -2205,7 +2193,6 @@ disk_to_domain2 (OR_BUF * buf)
 
   return (domain);
 }
-
 
 /*
  * disk_to_domain - Create the memory representation for a domain list from
@@ -2271,15 +2258,14 @@ metharg_to_disk (OR_BUF * buf, SM_METHOD_ARGUMENT * arg)
 
   or_put_int (buf, arg->index);
 
-  put_substructure_set (buf, (DB_LIST *) arg->domain,
-			(LWRITER) domain_to_disk, &tf_Metaclass_domain.mc_classoid, tf_Metaclass_domain.mc_repid);
+  put_substructure_set (buf, (DB_LIST *) arg->domain, (LWRITER) domain_to_disk, &tf_Metaclass_domain.mc_classoid,
+			tf_Metaclass_domain.mc_repid);
 
   if (start + offset != buf->ptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
     }
 }
-
 
 /*
  * metharg_size - Calculate the byte size for the disk representation of a
@@ -2297,7 +2283,6 @@ metharg_size (SM_METHOD_ARGUMENT * arg)
 
   return (size);
 }
-
 
 /*
  * disk_to_metharg - Read the disk represenation of a method argument and
@@ -2345,7 +2330,6 @@ disk_to_metharg (OR_BUF * buf)
   return (arg);
 }
 
-
 /*
  * methsig_to_disk - Write the disk representation of a method signature.
  *    return: void
@@ -2386,11 +2370,11 @@ methsig_to_disk (OR_BUF * buf, SM_METHOD_SIGNATURE * sig)
   put_string (buf, sig->function_name);
   put_string (buf, sig->sql_definition);
 
-  put_substructure_set (buf, (DB_LIST *) sig->value,
-			(LWRITER) metharg_to_disk, &tf_Metaclass_metharg.mc_classoid, tf_Metaclass_metharg.mc_repid);
+  put_substructure_set (buf, (DB_LIST *) sig->value, (LWRITER) metharg_to_disk, &tf_Metaclass_metharg.mc_classoid,
+			tf_Metaclass_metharg.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) sig->args, (LWRITER) metharg_to_disk,
-			&tf_Metaclass_metharg.mc_classoid, tf_Metaclass_metharg.mc_repid);
+  put_substructure_set (buf, (DB_LIST *) sig->args, (LWRITER) metharg_to_disk, &tf_Metaclass_metharg.mc_classoid,
+			tf_Metaclass_metharg.mc_repid);
 
   if (start + offset != buf->ptr)
     {
@@ -2399,7 +2383,6 @@ methsig_to_disk (OR_BUF * buf, SM_METHOD_SIGNATURE * sig)
 
   return NO_ERROR;
 }
-
 
 /*
  * methsig_size - Calculate the disk size of a method signature.
@@ -2419,7 +2402,6 @@ methsig_size (SM_METHOD_SIGNATURE * sig)
 
   return (size);
 }
-
 
 /*
  * disk_to_methsig - Read the disk represenation of a method signature and
@@ -2477,20 +2459,17 @@ disk_to_methsig (OR_BUF * buf)
 
 	  sig->num_args = nargs;
 	  sig->value =
-	    (SM_METHOD_ARGUMENT *) get_substructure_set (buf,
-							 (LREADER)
-							 disk_to_metharg, vars[ORC_METHSIG_RETURN_VALUE_INDEX].length);
+	    (SM_METHOD_ARGUMENT *) get_substructure_set (buf, (LREADER) disk_to_metharg,
+							 vars[ORC_METHSIG_RETURN_VALUE_INDEX].length);
 	  sig->args =
-	    (SM_METHOD_ARGUMENT *) get_substructure_set (buf,
-							 (LREADER)
-							 disk_to_metharg, vars[ORC_METHSIG_ARGUMENTS_INDEX].length);
+	    (SM_METHOD_ARGUMENT *) get_substructure_set (buf, (LREADER) disk_to_metharg,
+							 vars[ORC_METHSIG_ARGUMENTS_INDEX].length);
 	}
       free_var_table (vars);
     }
 
   return (sig);
 }
-
 
 /*
  * method_to_disk - Write the disk representation of a method.
@@ -2536,8 +2515,8 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
   put_string (buf, method->header.name);
 
   /* signatures */
-  put_substructure_set (buf, (DB_LIST *) method->signatures,
-			(LWRITER) methsig_to_disk, &tf_Metaclass_methsig.mc_classoid, tf_Metaclass_methsig.mc_repid);
+  put_substructure_set (buf, (DB_LIST *) method->signatures, (LWRITER) methsig_to_disk,
+			&tf_Metaclass_methsig.mc_classoid, tf_Metaclass_methsig.mc_repid);
 
   put_property_list (buf, method->properties);
 
@@ -2548,7 +2527,6 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
 
   return NO_ERROR;
 }
-
 
 /*
  * method_size - Calculates the disk size of a method.
@@ -2567,7 +2545,6 @@ method_size (SM_METHOD * method)
 
   return (size);
 }
-
 
 /*
  * disk_to_method - Reads the disk representation of a method and fills in
@@ -2606,9 +2583,8 @@ disk_to_method (OR_BUF * buf, SM_METHOD * method)
 
       /* variable attribute 1 : signatures */
       method->signatures =
-	(SM_METHOD_SIGNATURE *) get_substructure_set (buf,
-						      (LREADER)
-						      disk_to_methsig, vars[ORC_METHOD_SIGNATURE_INDEX].length);
+	(SM_METHOD_SIGNATURE *) get_substructure_set (buf, (LREADER) disk_to_methsig,
+						      vars[ORC_METHOD_SIGNATURE_INDEX].length);
 
       /* variable attribute 2 : property list */
       method->properties = get_property_list (buf, vars[ORC_METHOD_PROPERTIES_INDEX].length);
@@ -2616,7 +2592,6 @@ disk_to_method (OR_BUF * buf, SM_METHOD * method)
       free_var_table (vars);
     }
 }
-
 
 /*
  * methfile_to_disk - Write the disk representation of a method file.
@@ -2668,7 +2643,6 @@ methfile_to_disk (OR_BUF * buf, SM_METHOD_FILE * file)
   return NO_ERROR;
 }
 
-
 /*
  * methfile_size - Calculate the disk size of a method file.
  *    return: disk size of the method file
@@ -2685,7 +2659,6 @@ methfile_size (SM_METHOD_FILE * file)
 
   return (size);
 }
-
 
 /*
  * disk_to_methfile - Read the disk representation of a method file and
@@ -2738,7 +2711,6 @@ disk_to_methfile (OR_BUF * buf)
     }
   return (file);
 }
-
 
 /*
  * query_spec_to_disk - Write the disk representation of a virtual class
@@ -2908,8 +2880,8 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   or_put_value (buf, &att->default_value.original_value, 1, 1, 0);
 
   /* domain */
-  put_substructure_set (buf, (DB_LIST *) att->domain,
-			(LWRITER) domain_to_disk, &tf_Metaclass_domain.mc_classoid, tf_Metaclass_domain.mc_repid);
+  put_substructure_set (buf, (DB_LIST *) att->domain, (LWRITER) domain_to_disk, &tf_Metaclass_domain.mc_classoid,
+			tf_Metaclass_domain.mc_repid);
 
   /* triggers */
   put_object_set (buf, triggers);
@@ -3257,7 +3229,6 @@ disk_to_resolution (OR_BUF * buf)
   return (res);
 }
 
-
 /*
  * repattribute_to_disk - Writes the disk representation of a representation
  * attribute.
@@ -3289,8 +3260,8 @@ repattribute_to_disk (OR_BUF * buf, SM_REPR_ATTRIBUTE * rat)
   or_put_int (buf, (int) rat->typeid_);
 
   /* domain */
-  put_substructure_set (buf, (DB_LIST *) rat->domain,
-			(LWRITER) domain_to_disk, &tf_Metaclass_domain.mc_classoid, tf_Metaclass_domain.mc_repid);
+  put_substructure_set (buf, (DB_LIST *) rat->domain, (LWRITER) domain_to_disk, &tf_Metaclass_domain.mc_classoid,
+			tf_Metaclass_domain.mc_repid);
 
   if (start + offset != buf->ptr)
     {
@@ -3299,7 +3270,6 @@ repattribute_to_disk (OR_BUF * buf, SM_REPR_ATTRIBUTE * rat)
 
   return NO_ERROR;
 }
-
 
 /*
  * repattribute_size - Calculates the disk size for the REPATTRIBUTE.
@@ -3317,7 +3287,6 @@ repattribute_size (SM_REPR_ATTRIBUTE * rat)
 
   return (size);
 }
-
 
 /*
  * disk_to_repattribute - Reads the disk representation of a representation
@@ -3378,7 +3347,6 @@ representation_size (SM_REPRESENTATION * rep)
   return (size);
 }
 
-
 /*
  * representation_to_disk - Write the disk representation of an
  * SM_REPRESENTATION.
@@ -3413,8 +3381,7 @@ representation_to_disk (OR_BUF * buf, SM_REPRESENTATION * rep)
   /* no longer have the fixed_size field, leave it for future expansion */
   or_put_int (buf, 0);
 
-  put_substructure_set (buf, (DB_LIST *) rep->attributes,
-			(LWRITER) repattribute_to_disk,
+  put_substructure_set (buf, (DB_LIST *) rep->attributes, (LWRITER) repattribute_to_disk,
 			&tf_Metaclass_repattribute.mc_classoid, tf_Metaclass_repattribute.mc_repid);
 
   put_property_list (buf, NULL);
@@ -3426,7 +3393,6 @@ representation_to_disk (OR_BUF * buf, SM_REPRESENTATION * rep)
 
   return NO_ERROR;
 }
-
 
 /*
  * disk_to_representation - Read the disk representation for an
@@ -3468,9 +3434,8 @@ disk_to_representation (OR_BUF * buf)
 
       /* variable 0 : attributes */
       rep->attributes =
-	(SM_REPR_ATTRIBUTE *) get_substructure_set (buf,
-						    (LREADER)
-						    disk_to_repattribute, vars[ORC_REP_ATTRIBUTES_INDEX].length);
+	(SM_REPR_ATTRIBUTE *) get_substructure_set (buf, (LREADER) disk_to_repattribute,
+						    vars[ORC_REP_ATTRIBUTES_INDEX].length);
 
       /* variable 1 : properties */
       props = get_property_list (buf, vars[ORC_REP_PROPERTIES_INDEX].length);
@@ -3484,7 +3449,6 @@ disk_to_representation (OR_BUF * buf)
   free_var_table (vars);
   return (rep);
 }
-
 
 /*
  * check_class_structure - maps over the class prior to storage to make sure
@@ -3508,7 +3472,6 @@ check_class_structure (SM_CLASS * class_)
 /*  decache_attribute_properties(class); */
   return (ok);
 }
-
 
 /*
  * put_class_varinfo - Writes the variable offset table for a class object.
@@ -3603,7 +3566,6 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
   return (offset);
 }
 
-
 /*
  * put_class_attributes - Writes the fixed and variable attributes of a class.
  *    return: void
@@ -3656,41 +3618,35 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
   put_string (buf, sm_ch_name ((MOBJ) class_));
   put_string (buf, class_->loader_commands);
 
-  put_substructure_set (buf, (DB_LIST *) class_->representations,
-			(LWRITER) representation_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->representations, (LWRITER) representation_to_disk,
 			&tf_Metaclass_representation.mc_classoid, tf_Metaclass_representation.mc_repid);
 
   put_object_set (buf, class_->users);
 
   put_object_set (buf, class_->inheritance);
 
-  put_substructure_set (buf, (DB_LIST *) class_->attributes,
-			(LWRITER) attribute_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->attributes, (LWRITER) attribute_to_disk,
 			&tf_Metaclass_attribute.mc_classoid, tf_Metaclass_attribute.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->shared,
-			(LWRITER) attribute_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->shared, (LWRITER) attribute_to_disk,
 			&tf_Metaclass_attribute.mc_classoid, tf_Metaclass_attribute.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->class_attributes,
-			(LWRITER) attribute_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->class_attributes, (LWRITER) attribute_to_disk,
 			&tf_Metaclass_attribute.mc_classoid, tf_Metaclass_attribute.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->methods,
-			(LWRITER) method_to_disk, &tf_Metaclass_method.mc_classoid, tf_Metaclass_method.mc_repid);
+  put_substructure_set (buf, (DB_LIST *) class_->methods, (LWRITER) method_to_disk, &tf_Metaclass_method.mc_classoid,
+			tf_Metaclass_method.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->class_methods,
-			(LWRITER) method_to_disk, &tf_Metaclass_method.mc_classoid, tf_Metaclass_method.mc_repid);
+  put_substructure_set (buf, (DB_LIST *) class_->class_methods, (LWRITER) method_to_disk,
+			&tf_Metaclass_method.mc_classoid, tf_Metaclass_method.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->method_files,
-			(LWRITER) methfile_to_disk, &tf_Metaclass_methfile.mc_classoid, tf_Metaclass_methfile.mc_repid);
+  put_substructure_set (buf, (DB_LIST *) class_->method_files, (LWRITER) methfile_to_disk,
+			&tf_Metaclass_methfile.mc_classoid, tf_Metaclass_methfile.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->resolutions,
-			(LWRITER) resolution_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->resolutions, (LWRITER) resolution_to_disk,
 			&tf_Metaclass_resolution.mc_classoid, tf_Metaclass_resolution.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->query_spec,
-			(LWRITER) query_spec_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->query_spec, (LWRITER) query_spec_to_disk,
 			&tf_Metaclass_query_spec.mc_classoid, tf_Metaclass_query_spec.mc_repid);
 
   /* 
@@ -3704,11 +3660,9 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   put_string (buf, class_->comment);
 
-  put_substructure_set (buf, (DB_LIST *) class_->partition,
-			(LWRITER) partition_info_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->partition, (LWRITER) partition_info_to_disk,
 			&tf_Metaclass_partition.mc_classoid, tf_Metaclass_partition.mc_repid);
 }
-
 
 /*
  * class_to_disk - Write the disk representation of a class.
@@ -3927,7 +3881,6 @@ tag_component_namespace (SM_COMPONENT * components, SM_NAME_SPACE name_space)
     }
 }
 
-
 /*
  * disk_to_class - Reads the disk representation of a class and creates the
  * memory structure.
@@ -4008,9 +3961,8 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   /* REPRESENTATIONS */
   /* variable 2 */
   class_->representations =
-    (SM_REPRESENTATION *) get_substructure_set (buf,
-						(LREADER)
-						disk_to_representation, vars[ORC_REPRESENTATIONS_INDEX].length);
+    (SM_REPRESENTATION *) get_substructure_set (buf, (LREADER) disk_to_representation,
+						vars[ORC_REPRESENTATIONS_INDEX].length);
 
   /* variable 3 */
   class_->users = get_object_set (buf, vars[ORC_SUBCLASSES_INDEX].length);
@@ -4054,20 +4006,20 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   classobj_initialize_methods (class_->class_methods);
 
   /* variable 5 */
-  install_substructure_set (buf, (DB_LIST *) class_->attributes,
-			    (VREADER) disk_to_attribute, vars[ORC_ATTRIBUTES_INDEX].length);
+  install_substructure_set (buf, (DB_LIST *) class_->attributes, (VREADER) disk_to_attribute,
+			    vars[ORC_ATTRIBUTES_INDEX].length);
   /* variable 6 */
-  install_substructure_set (buf, (DB_LIST *) class_->shared,
-			    (VREADER) disk_to_attribute, vars[ORC_SHARED_ATTRS_INDEX].length);
+  install_substructure_set (buf, (DB_LIST *) class_->shared, (VREADER) disk_to_attribute,
+			    vars[ORC_SHARED_ATTRS_INDEX].length);
   /* variable 7 */
-  install_substructure_set (buf, (DB_LIST *) class_->class_attributes,
-			    (VREADER) disk_to_attribute, vars[ORC_CLASS_ATTRS_INDEX].length);
+  install_substructure_set (buf, (DB_LIST *) class_->class_attributes, (VREADER) disk_to_attribute,
+			    vars[ORC_CLASS_ATTRS_INDEX].length);
 
   /* variable 8 */
   install_substructure_set (buf, (DB_LIST *) class_->methods, (VREADER) disk_to_method, vars[ORC_METHODS_INDEX].length);
   /* variable 9 */
-  install_substructure_set (buf, (DB_LIST *) class_->class_methods,
-			    (VREADER) disk_to_method, vars[ORC_CLASS_METHODS_INDEX].length);
+  install_substructure_set (buf, (DB_LIST *) class_->class_methods, (VREADER) disk_to_method,
+			    vars[ORC_CLASS_METHODS_INDEX].length);
 
   /* 
    * fix up the name_space tags, could do this later but easier just

@@ -1245,13 +1245,13 @@ extern int or_replace_rep_id (RECDES * record, int repid);
 extern int or_chn (RECDES * record);
 extern int or_replace_chn (RECDES * record, int chn);
 extern int or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error);
-extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag,
-					int repid, int bound_bit, int variable_offset_size);
+extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit,
+					int variable_offset_size);
 extern char *or_class_name (RECDES * record);
 extern int or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
 extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
-extern int or_mvcc_add_header (RECDES * record,
-			       MVCC_REC_HEADER * mvcc_rec_header, int bound_bit, int variable_offset_size);
+extern int or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit,
+			       int variable_offset_size);
 
 /* Pointer based decoding functions */
 extern int or_set_element_offset (char *setptr, int element);
@@ -1481,16 +1481,14 @@ extern struct tp_domain *or_get_domain (OR_BUF * buf, struct tp_domain *dom, int
 extern int or_put_sub_domain (OR_BUF * buf);
 
 /* SET functions */
-extern void or_packed_set_info (DB_TYPE set_type, struct tp_domain *domain,
-				int include_domain, int *bound_bits,
+extern void or_packed_set_info (DB_TYPE set_type, struct tp_domain *domain, int include_domain, int *bound_bits,
 				int *offset_table, int *element_tags, int *element_size);
 
-extern int or_put_set_header (OR_BUF * buf, DB_TYPE set_type, int size,
-			      int domain, int bound_bits, int offset_table, int element_tags, int common_sub_header);
+extern int or_put_set_header (OR_BUF * buf, DB_TYPE set_type, int size, int domain, int bound_bits, int offset_table,
+			      int element_tags, int common_sub_header);
 
-extern int or_get_set_header (OR_BUF * buf, DB_TYPE * set_type, int *size,
-			      int *domain, int *bound_bits, int *offset_table,
-			      int *element_tags, int *common_sub_header);
+extern int or_get_set_header (OR_BUF * buf, DB_TYPE * set_type, int *size, int *domain, int *bound_bits,
+			      int *offset_table, int *element_tags, int *common_sub_header);
 
 extern int or_skip_set_header (OR_BUF * buf);
 
@@ -1504,8 +1502,8 @@ extern int or_disk_set_size (OR_BUF * buf, struct tp_domain *domain, DB_TYPE * s
 /* DB_VALUE functions */
 extern int or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids);
 
-extern int or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null,
-			 int include_domain, int include_domain_classoids);
+extern int or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_domain,
+			 int include_domain_classoids);
 
 extern int or_get_value (OR_BUF * buf, DB_VALUE * value, struct tp_domain *domain, int expected, bool copy);
 
@@ -1531,8 +1529,8 @@ STATIC_INLINE int or_get_varchar_compression_lengths (OR_BUF * buf, int *compres
   __attribute__ ((ALWAYS_INLINE));
 
 extern int or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files);
-extern char *or_pack_spacedb (char *ptr, const SPACEDB_ALL * all,
-			      const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files);
+extern char *or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols,
+			      const SPACEDB_FILES * files);
 extern char *or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files);
 
 /* class object */

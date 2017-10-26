@@ -6186,7 +6186,7 @@ thread_iterate (THREAD_ENTRY * thread_p)
 #endif /* !NDEBUG */
 
 int
-thread_get_total_num_of_threads ()
+thread_get_total_num_of_threads (void)
 {
   return thread_Manager.num_total;
 }
@@ -6198,7 +6198,7 @@ thread_get_entry_from_index (int index)
 }
 
 int
-thread_get_total_num_of_workers ()
+thread_get_total_num_of_workers (void)
 {
   return thread_Manager.num_workers;
 }
