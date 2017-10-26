@@ -188,10 +188,6 @@ circular_queue<T>::produce (const T & element)
           unblock (pc);
           return true;
         }
-      else
-        {
-          assert (false);
-        }
     }
 }
 

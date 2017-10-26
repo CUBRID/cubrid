@@ -39,6 +39,8 @@
 #include <sstream>
 #include <thread>
 #include <chrono>
+#include <iomanip>
+#include <array>
 
 /* TODO: replace with atomic */
 
@@ -144,6 +146,12 @@ test_cqueue_no_hang (size_t producer_count, size_t consumer_count, size_t op_cou
   atomic_size_t finished_producers_count = 0;
   atomic_size_t finished_consumers_count = 0;
 
+  std::cout << "  running test_cqueue_no_hang - " << std::endl;
+  std::cout << "    producer count      = " << producer_count << std::endl;
+  std::cout << "    consumer count      = " << consumer_count << std::endl;
+  std::cout << "    operation count     = " << op_count << std::endl;
+  std::cout << "    circular queue size = " << cqueue_size << std::endl;
+
   /* start threads */
   for (long long unsigned int i = 0; i < producer_count; i++)
     {
@@ -189,13 +197,137 @@ test_cqueue_no_hang (size_t producer_count, size_t consumer_count, size_t op_cou
     }
 
   /* all done */
+  std::cout << "  test successful (no hang)" << std::endl << std::endl;
+}
+
+const size_t MAX_VAL = 100;
+
+void
+consume_and_track_values (test_cqueue & cqueue, size_t op_count, std::array<atomic_size_t, MAX_VAL> & valcount)
+{
+  int val;
+  while (op_count > 0)
+    {
+      if (cqueue.consume (val))
+        {
+          test_common::custom_assert (val < MAX_VAL);
+#ifdef USE_ATOMIC
+          ++valcount[val];
+#else
+          ATOMIC_INC (&valcount[val], 1);
+#endif
+          op_count--;
+        }
+    }
+}
+
+void
+produce_and_track_values (test_cqueue & cqueue, size_t op_count, std::array<atomic_size_t, MAX_VAL> & valcount)
+{
+  int val;
+  while (op_count-- > 0)
+    {
+      val = std::rand () % MAX_VAL;
+      /* loop produce until successful */
+      while (!cqueue.produce (val));
+#ifdef USE_ATOMIC
+      ++valcount[val];
+#else
+      ATOMIC_INC (&valcount[val], 1);
+#endif
+    }
+}
+
+void
+test_cqueue_values_match (size_t thread_count, size_t ops_per_thread, size_t cqueue_size)
+{
+  std::array<atomic_size_t, MAX_VAL> produced_values;
+  std::array<atomic_size_t, MAX_VAL> consumed_values;
+
+  for (size_t index = 0; index < MAX_VAL; index++)
+    {
+      produced_values[index] = 0;
+      consumed_values[index] = 0;
+    }
+
+  std::thread *producers = new std::thread [thread_count];
+  std::thread *consumers = new std::thread [thread_count];
+
+  test_cqueue cqueue (cqueue_size);
+
+  std::cout << "  running test_cqueue_values_match - " << std::endl;
+  std::cout << "    producer/consumer count = " << thread_count << std::endl;
+  std::cout << "    ops per producer/consumer = " << ops_per_thread << std::endl;
+  std::cout << "    queue size = " << cqueue_size << std::endl;
+
+  for (size_t index = 0; index < thread_count; index++)
+    {
+      producers[index] = std::thread (produce_and_track_values, std::ref (cqueue), ops_per_thread,
+                                      std::ref (produced_values));
+      consumers[index] = std::thread (consume_and_track_values, std::ref (cqueue), ops_per_thread,
+                                      std::ref (consumed_values));
+    }
+  /* join all threads */
+  for (size_t index = 0; index < thread_count; index++)
+    {
+      producers[index].join ();
+      consumers[index].join ();
+    }
+
+  /* compare produce and consumed values */
+  for (size_t index = 0; index < MAX_VAL; index++)
+    {
+      if (produced_values[index] != consumed_values[index])
+        {
+          /* dump all */
+          std::cout << "    error!! values do not match" << std::endl;
+          for (index = 0; index < MAX_VAL; index++)
+            {
+              std::cout << "    " << std::setw (2) << index << ":  ";
+              std::cout << std::setw (10) << produced_values[index];
+              std::cout << std::setw (10) << consumed_values[index];
+              std::cout << std::endl;
+            }
+          test_common::custom_assert (false);
+        }
+    }
+  std::cout << "  run successful" << std::endl << std::endl;
 }
 
 int
 test_cqueue_functional (void)
 {
-  test_cqueue_no_hang (1, 5, 1000000, 1024);
-  test_cqueue_no_hang (1, 50, 1000000, 1024);
+  const size_t MAGIC_HARDWARE_CONCURRENCY = 24;
+  size_t core_count = std::thread::hardware_concurrency ();
+  core_count = core_count == 0 ? MAGIC_HARDWARE_CONCURRENCY : core_count;
+
+  size_t one_thread_count = 1;
+  size_t core_count_x2 = 2 * core_count;
+
+  /* op counts */
+  size_t one_mil_op_count = 1000000;
+
+  /* queue size */
+  size_t one_k_cqueue_size = 1024;
+
+#if 0
+  /* test for hangs */
+  test_cqueue_no_hang (one_thread_count, core_count, one_mil_op_count, one_k_cqueue_size);
+  test_cqueue_no_hang (one_thread_count, core_count_x2, one_mil_op_count, one_k_cqueue_size);
+  test_cqueue_no_hang (core_count, core_count, one_mil_op_count, one_k_cqueue_size);
+  test_cqueue_no_hang (core_count_x2, core_count_x2, one_mil_op_count, one_k_cqueue_size);
+
+  std::cout << std::endl;
+
+  /* test for correct produce/consume */
+  test_cqueue_values_match (one_thread_count, one_mil_op_count, one_k_cqueue_size);
+  test_cqueue_values_match (core_count, one_mil_op_count, one_k_cqueue_size);
+#endif
+
+  test_cqueue_values_match (core_count_x2, one_mil_op_count, one_k_cqueue_size);
+
+  std::cout << std::endl;
+
   return 0;
 }
 
