@@ -2619,9 +2619,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_JSON_CONTAINS:
-      if (qdata_json_contains_dbval
-	  (peek_left, peek_right, (arithptr->thirdptr == NULL ? NULL : peek_third), arithptr->value,
-	   regu_var->domain) != NO_ERROR)
+      if (qdata_json_contains_dbval (peek_left, peek_right, (arithptr->thirdptr == NULL ? NULL : peek_third),
+				     arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
