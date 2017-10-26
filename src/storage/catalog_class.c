@@ -693,8 +693,8 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p, OID 
   int error = NO_ERROR;
 
   error =
-    db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, (char *) name_p,
-		     strlen (name_p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+    db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, (char *) name_p, strlen (name_p), LANG_SYS_CODESET,
+		     LANG_SYS_COLLATION);
   if (error != NO_ERROR)
     {
       return error;
@@ -1154,8 +1154,8 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 	}
 
       error =
-	catcls_get_subset (thread_p, buf_p,
-			   vars[ORC_RESOLUTIONS_INDEX].length, resolution_p, catcls_get_or_value_from_resolution);
+	catcls_get_subset (thread_p, buf_p, vars[ORC_RESOLUTIONS_INDEX].length, resolution_p,
+			   catcls_get_or_value_from_resolution);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -3325,8 +3325,8 @@ error:
  *   class_oid(in):
  */
 static int
-catcls_put_or_value_into_record (THREAD_ENTRY * thread_p, OR_VALUE * value_p,
-				 int chn, RECDES * record_p, OID * class_oid_p)
+catcls_put_or_value_into_record (THREAD_ENTRY * thread_p, OR_VALUE * value_p, int chn, RECDES * record_p,
+				 OID * class_oid_p)
 {
   OR_BUF *buf_p, repr_buffer;
   DISK_REPR *repr_p = NULL;
