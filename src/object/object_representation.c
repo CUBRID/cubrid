@@ -8687,17 +8687,20 @@ int
 or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
 {
   int rc;
-  char *str;
+  char *str = NULL;
 
   rc = or_get_json_schema (buf, str);
   if (rc != NO_ERROR)
     {
-      return rc;
+      validator = NULL;
+      goto exit;
     }
 
-  if (strlen (str) == 0)
+  if (str == NULL || strlen (str) == 0)
     {
+      rc = NO_ERROR;
       validator = NULL;
+      goto exit;
     }
   else
     {
@@ -8706,12 +8709,17 @@ or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
 	{
 	  assert (validator == NULL);
 	  /* TODO: er_set a proper error */
-	  return rc;
+	  goto exit;
 	}
+      rc = NO_ERROR;
     }
 
-  db_private_free (NULL, str);
-  return NO_ERROR;
+exit:
+  if (str != NULL)
+    {
+      db_private_free_and_init (NULL, str);
+    }
+  return rc;
 }
 
 int
