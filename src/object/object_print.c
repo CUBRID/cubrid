@@ -517,8 +517,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 		}
 	      buffer = pt_append_nulstring (parser, buffer, "'");
 	      buffer =
-		pt_append_bytes (parser, buffer,
-				 DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (temp_domain, idx)),
+		pt_append_bytes (parser, buffer, DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (temp_domain, idx)),
 				 DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (temp_domain, idx)));
 	      buffer = pt_append_nulstring (parser, buffer, "'");
 	    }
