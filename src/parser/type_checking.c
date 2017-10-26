@@ -10900,13 +10900,13 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
     {
       common_type = PT_TYPE_DOUBLE;
     }
-  else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON) ||
-	   (arg1_type == PT_TYPE_JSON && PT_IS_NUMERIC_TYPE (arg2_type)))
+  else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
+	   || (arg1_type == PT_TYPE_JSON && PT_IS_NUMERIC_TYPE (arg2_type)))
     {
       common_type = PT_TYPE_CHAR;
     }
-  else if ((PT_IS_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON) ||
-	   (arg1_type == PT_TYPE_JSON && PT_IS_STRING_TYPE (arg2_type)))
+  else if ((PT_IS_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
+	   || (arg1_type == PT_TYPE_JSON && PT_IS_STRING_TYPE (arg2_type)))
     {
       common_type = PT_TYPE_CHAR;
     }
@@ -12401,11 +12401,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       break;
 
     case PT_FUNCTION_HOLDER:
-      if (node->info.function.function_type == F_ELT ||
-	  node->info.function.function_type == F_INSERT_SUBSTRING ||
-	  node->info.function.function_type == F_JSON_OBJECT || node->info.function.function_type == F_JSON_ARRAY ||
-	  node->info.function.function_type == F_JSON_INSERT || node->info.function.function_type == F_JSON_REMOVE ||
-	  node->info.function.function_type == F_JSON_MERGE)
+      if (node->info.function.function_type == F_ELT || node->info.function.function_type == F_INSERT_SUBSTRING
+	  || node->info.function.function_type == F_JSON_OBJECT || node->info.function.function_type == F_JSON_ARRAY
+	  || node->info.function.function_type == F_JSON_INSERT || node->info.function.function_type == F_JSON_REMOVE
+	  || node->info.function.function_type == F_JSON_MERGE)
 	{
 	  assert (dt == NULL);
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
@@ -13244,9 +13243,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case F_JSON_ARRAY:
       {
-	PT_TYPE_ENUM supported_types[] = { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_NUMERIC,
-	  PT_TYPE_MAYBE
-	};
+	PT_TYPE_ENUM supported_types[] =
+	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_NUMERIC, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	int len = sizeof (supported_types) / sizeof (supported_types[0]), i, found_supported_type = 0;
 
