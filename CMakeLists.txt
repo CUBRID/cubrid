@@ -841,8 +841,8 @@ if(WITH_LIBEDIT STREQUAL "BUNDLED")
   if(UNIX)
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libedit-20120601-3.0
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-widec
+      URL http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
