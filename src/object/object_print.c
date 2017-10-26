@@ -130,44 +130,37 @@ const int MAX_LINES = 1024;
 static int help_Max_set_elements = 20;
 
 static PARSER_VARCHAR *describe_set (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_SET * set);
-static PARSER_VARCHAR *describe_midxkey (const PARSER_CONTEXT * parser,
-					 PARSER_VARCHAR * buffer, const DB_MIDXKEY * midxkey);
+static PARSER_VARCHAR *describe_midxkey (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
+					 const DB_MIDXKEY * midxkey);
 static PARSER_VARCHAR *describe_double (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const double value);
 static PARSER_VARCHAR *describe_float (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const float value);
-static PARSER_VARCHAR *describe_bit_string (const PARSER_CONTEXT * parser,
-					    PARSER_VARCHAR * buffer, const DB_VALUE * value);
+static PARSER_VARCHAR *describe_bit_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
+					    const DB_VALUE * value);
 
 static void obj_print_free_strarray (char **strs);
 static char *obj_print_copy_string (const char *source);
 static const char **obj_print_convert_strlist (STRLIST * str_list);
 static const char *obj_print_trigger_condition_time (TR_TRIGGER * trigger);
 static const char *obj_print_trigger_action_time (TR_TRIGGER * trigger);
-static PARSER_VARCHAR *obj_print_describe_domain (PARSER_CONTEXT * parser,
-						  PARSER_VARCHAR * buffer,
-						  TP_DOMAIN * domain,
+static PARSER_VARCHAR *obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_DOMAIN * domain,
 						  OBJ_PRINT_TYPE prt_type, bool force_print_collation);
-static PARSER_VARCHAR *obj_print_identifier (PARSER_CONTEXT * parser,
-					     PARSER_VARCHAR * buffer, const char *identifier, OBJ_PRINT_TYPE prt_type);
-static char *obj_print_describe_attribute (MOP class_p,
-					   PARSER_CONTEXT * parser,
-					   SM_ATTRIBUTE * attribute_p,
+static PARSER_VARCHAR *obj_print_identifier (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const char *identifier,
+					     OBJ_PRINT_TYPE prt_type);
+static char *obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE * attribute_p,
 					   bool is_inherited, OBJ_PRINT_TYPE prt_type, bool force_print_collation);
-static char *obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
-						 SM_PARTITION * parts, OBJ_PRINT_TYPE prt_type);
+static char *obj_print_describe_partition_parts (PARSER_CONTEXT * parser, SM_PARTITION * parts,
+						 OBJ_PRINT_TYPE prt_type);
 static char *obj_print_describe_partition_info (PARSER_CONTEXT * parser, SM_PARTITION * partinfo);
-static char *obj_print_describe_constraint (PARSER_CONTEXT * parser,
-					    SM_CLASS * class_p,
+static char *obj_print_describe_constraint (PARSER_CONTEXT * parser, SM_CLASS * class_p,
 					    SM_CLASS_CONSTRAINT * constraint_p, OBJ_PRINT_TYPE prt_type);
-static PARSER_VARCHAR *obj_print_describe_argument (PARSER_CONTEXT * parser,
-						    PARSER_VARCHAR * buffer,
+static PARSER_VARCHAR *obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 						    SM_METHOD_ARGUMENT * argument_p, OBJ_PRINT_TYPE prt_type);
-static PARSER_VARCHAR *obj_print_describe_signature (PARSER_CONTEXT * parser,
-						     PARSER_VARCHAR * buffer,
+static PARSER_VARCHAR *obj_print_describe_signature (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 						     SM_METHOD_SIGNATURE * signature_p, OBJ_PRINT_TYPE prt_type);
-static PARSER_VARCHAR *obj_print_describe_method (PARSER_CONTEXT * parser,
-						  MOP op, SM_METHOD * method, OBJ_PRINT_TYPE prt_type);
-static PARSER_VARCHAR *obj_print_describe_resolution (PARSER_CONTEXT * parser,
-						      SM_RESOLUTION * resolution_p, OBJ_PRINT_TYPE prt_type);
+static PARSER_VARCHAR *obj_print_describe_method (PARSER_CONTEXT * parser, MOP op, SM_METHOD * method,
+						  OBJ_PRINT_TYPE prt_type);
+static PARSER_VARCHAR *obj_print_describe_resolution (PARSER_CONTEXT * parser, SM_RESOLUTION * resolution_p,
+						      OBJ_PRINT_TYPE prt_type);
 static PARSER_VARCHAR *obj_print_describe_method_file (PARSER_CONTEXT * parser, MOP class_p, SM_METHOD_FILE * file_p);
 static PARSER_VARCHAR *obj_print_describe_class_trigger (PARSER_CONTEXT * parser, TR_TRIGGER * trigger);
 static void obj_print_describe_trigger_list (PARSER_CONTEXT * parser, TR_TRIGLIST * triggers, STRLIST ** strings);
@@ -372,8 +365,8 @@ obj_print_identifier (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const ch
  */
 
 static PARSER_VARCHAR *
-obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-			   TP_DOMAIN * domain, OBJ_PRINT_TYPE prt_type, bool force_print_collation)
+obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_DOMAIN * domain,
+			   OBJ_PRINT_TYPE prt_type, bool force_print_collation)
 {
   TP_DOMAIN *temp_domain;
   char temp_buffer[27];
@@ -525,8 +518,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	      buffer = pt_append_nulstring (parser, buffer, "'");
 	      buffer =
 		pt_append_bytes (parser, buffer,
-				 DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM
-							  (temp_domain, idx)),
+				 DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (temp_domain, idx)),
 				 DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (temp_domain, idx)));
 	      buffer = pt_append_nulstring (parser, buffer, "'");
 	    }
@@ -563,8 +555,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  */
 
 static char *
-obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
-			      SM_ATTRIBUTE * attribute_p, bool is_inherited,
+obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE * attribute_p, bool is_inherited,
 			      OBJ_PRINT_TYPE prt_type, bool force_print_collation)
 {
   char *start;
@@ -866,8 +857,8 @@ obj_print_describe_partition_info (PARSER_CONTEXT * parser, SM_PARTITION * parti
  */
 
 static char *
-obj_print_describe_constraint (PARSER_CONTEXT * parser, SM_CLASS * class_p,
-			       SM_CLASS_CONSTRAINT * constraint_p, OBJ_PRINT_TYPE prt_type)
+obj_print_describe_constraint (PARSER_CONTEXT * parser, SM_CLASS * class_p, SM_CLASS_CONSTRAINT * constraint_p,
+			       OBJ_PRINT_TYPE prt_type)
 {
   PARSER_VARCHAR *buffer;
   SM_ATTRIBUTE **attribute_p;
@@ -1102,8 +1093,8 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser, SM_CLASS * class_p,
  */
 
 static PARSER_VARCHAR *
-obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-			     SM_METHOD_ARGUMENT * argument_p, OBJ_PRINT_TYPE prt_type)
+obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, SM_METHOD_ARGUMENT * argument_p,
+			     OBJ_PRINT_TYPE prt_type)
 {
   if (argument_p != NULL)
     {
@@ -1135,8 +1126,8 @@ obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  */
 
 static PARSER_VARCHAR *
-obj_print_describe_signature (PARSER_CONTEXT * parser,
-			      PARSER_VARCHAR * buffer, SM_METHOD_SIGNATURE * signature_p, OBJ_PRINT_TYPE prt_type)
+obj_print_describe_signature (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, SM_METHOD_SIGNATURE * signature_p,
+			      OBJ_PRINT_TYPE prt_type)
 {
   SM_METHOD_ARGUMENT *argument_p;
   int i;
@@ -1809,8 +1800,8 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	    {
 	      if (has_comment)
 		{
-		  snprintf (name_buf, max_name_size, "%-20s %s",
-			    (char *) sm_ch_name ((MOBJ) class_), describe_comment (parser, class_->comment));
+		  snprintf (name_buf, max_name_size, "%-20s %s", (char *) sm_ch_name ((MOBJ) class_),
+			    describe_comment (parser, class_->comment));
 		}
 	      else
 		{
@@ -1821,14 +1812,13 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	    {
 	      if (has_comment)
 		{
-		  snprintf (name_buf, max_name_size, "%-20s COLLATE %s %s",
-			    sm_ch_name ((MOBJ) class_),
+		  snprintf (name_buf, max_name_size, "%-20s COLLATE %s %s", sm_ch_name ((MOBJ) class_),
 			    lang_get_collation_name (class_->collation_id), describe_comment (parser, class_->comment));
 		}
 	      else
 		{
-		  snprintf (name_buf, max_name_size, "%-20s COLLATE %s",
-			    sm_ch_name ((MOBJ) class_), lang_get_collation_name (class_->collation_id));
+		  snprintf (name_buf, max_name_size, "%-20s COLLATE %s", sm_ch_name ((MOBJ) class_),
+			    lang_get_collation_name (class_->collation_id));
 		}
 	    }
 	  info->name = obj_print_copy_string (name_buf);
@@ -1987,8 +1977,8 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		  if (include_inherited || (!include_inherited && a->class_mop == op))
 		    {
 		      description =
-			obj_print_describe_attribute (op, parser, a,
-						      (a->class_mop != op), prt_type, force_print_att_coll);
+			obj_print_describe_attribute (op, parser, a, (a->class_mop != op), prt_type,
+						      force_print_att_coll);
 		      if (description == NULL)
 			{
 			  goto error_exit;
@@ -2037,8 +2027,8 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		  if (include_inherited || (!include_inherited && a->class_mop == op))
 		    {
 		      description =
-			obj_print_describe_attribute (op, parser, a,
-						      (a->class_mop != op), prt_type, force_print_att_coll);
+			obj_print_describe_attribute (op, parser, a, (a->class_mop != op), prt_type,
+						      force_print_att_coll);
 		      if (description == NULL)
 			{
 			  goto error_exit;
@@ -2875,8 +2865,8 @@ help_obj (MOP op)
 		      goto error_exit;
 		    }
 		  i = 0;
-		  for (attribute_p = class_->ordered_attributes;
-		       attribute_p != NULL; attribute_p = attribute_p->order_link)
+		  for (attribute_p = class_->ordered_attributes; attribute_p != NULL;
+		       attribute_p = attribute_p->order_link)
 		    {
 		      sprintf (temp_buffer, "%20s = ", attribute_p->header.name);
 		      /* 
@@ -2959,9 +2949,8 @@ help_fprint_obj (FILE * fp, MOP obj)
 	  cinfo = obj_print_help_class (obj, OBJ_PRINT_CSQL_SCHEMA_COMMAND);
 	  if (cinfo != NULL)
 	    {
-	      fprintf (fp,
-		       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP,
-				       MSGCAT_HELP_CLASS_TITLE), cinfo->class_type, cinfo->name);
+	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
+		       cinfo->class_type, cinfo->name);
 	      if (cinfo->supers != NULL)
 		{
 		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUPER_CLASSES));
@@ -3111,9 +3100,8 @@ help_fprint_obj (FILE * fp, MOP obj)
 	  oinfo = help_obj (obj);
 	  if (oinfo != NULL)
 	    {
-	      fprintf (fp,
-		       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP,
-				       MSGCAT_HELP_OBJECT_TITLE), oinfo->classname);
+	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_OBJECT_TITLE),
+		       oinfo->classname);
 	      if (oinfo->attributes != NULL)
 		{
 		  for (i = 0; oinfo->attributes[i] != NULL; i++)
@@ -3308,8 +3296,8 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
     {
       if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	{
-	  sprintf (oidbuffer, "%ld.%ld.%ld", (DB_C_LONG) WS_OID (obj)->volid,
-		   (DB_C_LONG) WS_OID (obj)->pageid, (DB_C_LONG) WS_OID (obj)->slotid);
+	  sprintf (oidbuffer, "%ld.%ld.%ld", (DB_C_LONG) WS_OID (obj)->volid, (DB_C_LONG) WS_OID (obj)->pageid,
+		   (DB_C_LONG) WS_OID (obj)->slotid);
 
 	  required = strlen (oidbuffer) + strlen (sm_ch_name ((MOBJ) class_)) + 2;
 	  if (locator_is_class (obj, DB_FETCH_READ) > 0)
@@ -4235,8 +4223,8 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB
  *   max_token_length(in) :
  */
 PARSER_VARCHAR *
-describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-		 const char *str, size_t str_length, int max_token_length)
+describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const char *str, size_t str_length,
+		 int max_token_length)
 {
   const char *src, *end, *pos;
   int token_length, length;
