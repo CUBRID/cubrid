@@ -61,6 +61,7 @@ set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editlin
 set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: BUNDLED)")
 set(WITH_LIBGPGERROR  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: BUNDLED)")
 set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: BUNDLED)")
+set(WITH_LIBNCURSES   "GIT" CACHE STRING "Build with ncurses library (default: GIT)")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -531,8 +532,6 @@ if(GCRYPT_LIBRARIES)
 endif(GCRYPT_LIBRARIES)
 
 if(UNIX)
-  include(FindCurses)
-  find_package(Curses REQUIRED)
   include(FindThreads)
 endif(UNIX)
 
@@ -805,6 +804,38 @@ if(WITH_LIBJANSSON STREQUAL "BUNDLED")
 endif(WITH_LIBJANSSON STREQUAL "BUNDLED")
 list(APPEND EP_INCLUDES ${LIBJANSSON_INCLUDES})
 list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
+
+# WITH_LIBNCURSES can have multiple values with different meanings
+# on Linux:
+# * "SYSTEM" - (default) uses ncurses installed in the system
+# * "GIT"    - does a git clone and builds it
+if(UNIX)
+  if(WITH_LIBNCURSES STREQUAL "GIT")
+    set(LIBNCURSES_TARGET libncurses)
+    externalproject_add(${LIBNCURSES_TARGET}
+      GIT_REPOSITORY    https://github.com/mirror/ncurses.git
+      GIT_TAG           v6.0
+      UPDATE_COMMAND    ""
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} "CFLAGS=${CFLAGS} -fPIC" "CXXFLAGS=${CXXFLAGS} -fPIC" --with-normal --without-debug --without-ada --with-cxx-binding --with-termlib=tinfo --with-ticlib=tic
+      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      )
+    set(LIBNCURSES ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libncurses.a)
+    set(LIBTINFO ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libtinfo.a)
+
+    # set curses variables, for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html
+    set(CURSES_FOUND TRUE)
+    set(CURSES_LIBRARIES ${LIBNCURSES};${LIBTINFO})
+    set(CURSES_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/include/ncurses)
+    set(CURSES_HAVE_CURSES_H ${CURSES_INCLUDE_DIR}/curses.h)
+    set(CURSES_HAVE_NCURSES_H ${CURSES_INCLUDE_DIR}/ncurses.h)
+
+    list(APPEND EP_TARGETS ${LIBNCURSES_TARGET})
+  elseif(WITH_LIBNCURSES STREQUAL "SYSTEM")
+    include(FindCurses)
+    find_package(Curses REQUIRED)
+  endif()
+endif(UNIX)
 
 if(WITH_LIBEDIT STREQUAL "BUNDLED")
   if(UNIX)
