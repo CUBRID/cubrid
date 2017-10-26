@@ -8687,7 +8687,6 @@ int
 or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
 {
   int rc;
-  DB_VALUE schema_value;
   char *str;
 
   rc = or_get_json_schema (buf, str);
@@ -8706,6 +8705,7 @@ or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
       if (rc != NO_ERROR)
 	{
 	  assert (validator == NULL);
+	  /* TODO: er_set a proper error */
 	  return rc;
 	}
     }
@@ -8727,6 +8727,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
   int rc;
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   rc = (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, false, NULL, 0);
   if (rc != NO_ERROR)
     {
@@ -8739,7 +8740,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
     }
   else
     {
-      schema = db_private_strdup (NULL, schema_value.data.ch.medium.buf);
+      schema = db_private_strdup (NULL, DB_PULL_STRING (&schema_value));
     }
 
   pr_clear_value (&schema_value);
@@ -8749,9 +8750,10 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
 int
 or_put_json_schema (OR_BUF * buf, const char *schema)
 {
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
   int rc;
   DB_VALUE schema_raw;
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   if (schema == NULL)
     {
@@ -8763,11 +8765,11 @@ or_put_json_schema (OR_BUF * buf, const char *schema)
     }
 
   rc = (*(tp_String.data_writeval)) (buf, &schema_raw);
-
   if (rc != NO_ERROR)
     {
       return rc;
     }
+
   pr_clear_value (&schema_raw);
   return NO_ERROR;
 }
