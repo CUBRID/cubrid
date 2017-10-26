@@ -242,9 +242,7 @@ TP_DOMAIN tp_Bigint_domain = { NULL, NULL, &tp_Bigint, DOMAIN_INIT4 (DB_BIGINT_P
 TP_DOMAIN tp_Float_domain = { NULL, NULL, &tp_Float, DOMAIN_INIT4 (DB_FLOAT_DECIMAL_PRECISION, 0) };
 TP_DOMAIN tp_Double_domain = { NULL, NULL, &tp_Double, DOMAIN_INIT4 (DB_DOUBLE_DECIMAL_PRECISION, 0) };
 
-TP_DOMAIN tp_Monetary_domain = { NULL, NULL, &tp_Monetary, DOMAIN_INIT4 (DB_MONETARY_DECIMAL_PRECISION,
-									 0)
-};
+TP_DOMAIN tp_Monetary_domain = { NULL, NULL, &tp_Monetary, DOMAIN_INIT4 (DB_MONETARY_DECIMAL_PRECISION, 0) };
 
 TP_DOMAIN tp_String_domain = { NULL, NULL, &tp_String, DB_MAX_VARCHAR_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
@@ -304,8 +302,7 @@ TP_DOMAIN tp_Enumeration_domain = { NULL, NULL, &tp_Enumeration, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-TP_DOMAIN tp_Numeric_domain = { NULL, NULL, &tp_Numeric, DB_DEFAULT_NUMERIC_PRECISION,
-  DB_DEFAULT_NUMERIC_SCALE,
+TP_DOMAIN tp_Numeric_domain = { NULL, NULL, &tp_Numeric, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE,
   DOMAIN_INIT2 (0, 0)
 };
 
@@ -595,9 +592,9 @@ static void format_floating_point (char *new_string, char *rve, int ndigits, int
 static void tp_ftoa (DB_VALUE const *src, DB_VALUE * result);
 static void tp_dtoa (DB_VALUE const *src, DB_VALUE * result);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
-static TP_DOMAIN_STATUS tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
-						const TP_DOMAIN * desired_domain, TP_COERCION_MODE coercion_mode,
-						bool do_domain_select, bool preserve_domain);
+static TP_DOMAIN_STATUS tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
+						TP_COERCION_MODE coercion_mode, bool do_domain_select,
+						bool preserve_domain);
 static DB_VALUE_COMPARE_RESULT oidcmp (OID * oid1, OID * oid2);
 static int tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact, bool match_order);
 #if defined(CUBRID_DEBUG)
@@ -2569,8 +2566,8 @@ tp_swizzle_oid (TP_DOMAIN * domain)
 
   type = TP_DOMAIN_TYPE (domain);
 
-  if ((type == DB_TYPE_OBJECT || type == DB_TYPE_OID || type == DB_TYPE_VOBJ)
-      && domain->class_mop == NULL && !OID_ISNULL (&domain->class_oid))
+  if ((type == DB_TYPE_OBJECT || type == DB_TYPE_OID || type == DB_TYPE_VOBJ) && domain->class_mop == NULL
+      && !OID_ISNULL (&domain->class_oid))
     {
       /* swizzle the pointer if we're on the client */
       domain->class_mop = ws_mop (&domain->class_oid, NULL);
@@ -9196,8 +9193,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	case DB_TYPE_DATETIMELTZ:
 	  {
-	    db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (src), &month,
-				&day, &year, &hour, &minute, &second, &millisecond);
+	    db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (src), &month, &day, &year, &hour, &minute, &second,
+				&millisecond);
 	    db_time_encode (&v_time, hour, minute, second);
 	    if (tz_create_session_tzid_for_time (&v_time, true, &v_timetz.tz_id) != NO_ERROR)
 	      {
@@ -9977,8 +9974,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
-		    make_desired_string_db_value (desired_type,
-						  desired_domain, new_string, target, &status, &data_stat);
+		    make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status,
+						  &data_stat);
 		  }
 	      }
 	    else if (convert_error == -1)
