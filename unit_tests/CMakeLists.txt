@@ -17,16 +17,27 @@
 #
 project(Test)
 
-add_subdirectory(common)
 set (TEST_INCLUDES
   ${EP_INCLUDES}
   ${CMAKE_CURRENT_SOURCE_DIR}/common  # todo: find a better solution
   )
 
-option (WITH_UNIT_TEST_MEMORY_ALLOC "Unit testing for memory allocation" OFF)
+option (UNIT_TEST_MEMORY_ALLOC  "Unit testing for memory allocation")
+option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
 
-if (WITH_UNIT_TEST_MEMORY_ALLOC)
+message("  unit_tests/...")
+
+#if (UNIT_TESTS OR UNIT_TEST_MEMORY_ALLOC)
+  message("    common")
+  add_subdirectory(common)
+#endif()
+
+if (UNIT_TESTS OR UNIT_TEST_MEMORY_ALLOC)
+  message("    memory_alloc")
   add_subdirectory(memory_alloc)
-endif(WITH_UNIT_TEST_MEMORY_ALLOC)
+endif()
 
-add_subdirectory(string_buffer)
+if (UNIT_TESTS OR UNIT_TEST_STRING_BUFFER)
+  message("    string_buffer")
+  add_subdirectory(string_buffer)
+endif()

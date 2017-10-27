@@ -283,7 +283,7 @@ if(UNIX)
   add_dependencies(cubrid ${EP_TARGETS})
 endif(UNIX)
 
-if (WITH_UNIT_TESTS)
+if (UNIT_TESTS)
   if (WIN32)
   # in order to avoid adding all the functions used by unit tests in def file, it is more convenient to build a static
   # lib too. more compile time, but less head-ache
@@ -311,7 +311,7 @@ if (WITH_UNIT_TESTS)
     )
 
   endif (WIN32)
-endif (WITH_UNIT_TESTS)
+endif (UNIT_TESTS)
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubrid PRIVATE ${CMAKE_BINARY_DIR})
