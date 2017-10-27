@@ -2701,8 +2701,9 @@ emit_domain_def (DB_DOMAIN * domains)
   DB_DOMAIN *domain;
   DB_OBJECT *class_;
   int precision;
-  const char *name;
   int has_collation;
+  const char *name;
+  const char *json_schema;
 
   for (domain = domains; domain != NULL; domain = db_domain_next (domain))
     {
@@ -2781,12 +2782,15 @@ emit_domain_def (DB_DOMAIN * domains)
 	      emit_domain_def (db_domain_set (domain));
 	      fprintf (output_file, ")");
 	      break;
+
 	    case DB_TYPE_JSON:
-	      if (db_domain_raw_json_schema (domain) != NULL)
+	      json_schema = db_domain_raw_json_schema (domain);
+	      if (json_schema != NULL)
 		{
-		  fprintf (output_file, "('%s')", db_domain_raw_json_schema (domain));
+		  fprintf (output_file, "('%s')", json_schema);
 		}
 	      break;
+
 	    default:
 	      break;
 	    }

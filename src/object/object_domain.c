@@ -3421,21 +3421,6 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  domain = tp_domain_resolve_default (value_type);
 	  break;
 
-	  /* 
-	   * things handled in logic outside the switch, shuts up compiler
-	   * warnings
-	   */
-	case DB_TYPE_SET:
-	case DB_TYPE_MULTISET:
-	case DB_TYPE_SEQUENCE:
-	case DB_TYPE_MIDXKEY:
-	  break;
-	case DB_TYPE_RESULTSET:
-	case DB_TYPE_TABLE:
-	  break;
-	case DB_TYPE_ELO:
-	  assert (false);
-	  break;
 	case DB_TYPE_JSON:
 	  if (dbuf == NULL)
 	    {
@@ -3450,6 +3435,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	      domain = dbuf;
 	      domain_init (domain, value_type);
 	    }
+
 	  if (db_get_json_schema (val) != NULL)
 	    {
 	      int error_code;
@@ -3466,12 +3452,28 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	    {
 	      domain->json_validator = NULL;
 	    }
+
 	  if (dbuf == NULL)
 	    {
 	      domain = tp_domain_cache (domain);
 	    }
 	  break;
 
+	  /* 
+	   * things handled in logic outside the switch, shuts up compiler
+	   * warnings
+	   */
+	case DB_TYPE_SET:
+	case DB_TYPE_MULTISET:
+	case DB_TYPE_SEQUENCE:
+	case DB_TYPE_MIDXKEY:
+	  break;
+	case DB_TYPE_RESULTSET:
+	case DB_TYPE_TABLE:
+	  break;
+	case DB_TYPE_ELO:
+	  assert (false);
+	  break;
 	}
     }
 
@@ -10032,9 +10034,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      {
 		json_str = db_json_get_raw_json_body_from_document (DB_GET_JSON_DOCUMENT (src));
 	      }
-	    len = strlen (json_str);
-	    err = DB_MAKE_CHAR (target, len, json_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
 
+	    len = strlen (json_str);
+
+	    err = DB_MAKE_CHAR (target, len, json_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
 	    if (err != NO_ERROR)
 	      {
 		status = DOMAIN_ERROR;

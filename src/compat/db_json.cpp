@@ -678,6 +678,8 @@ db_json_get_type (const JSON_DOC *doc)
 DB_JSON_TYPE
 db_json_get_type_of_value (const JSON_VALUE *val)
 {
+  /* TODO - handle (val == NULL) */
+
   if (val->IsString ())
     {
       return DB_JSON_STRING;
@@ -937,18 +939,21 @@ db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest)
 int
 db_json_get_int_from_document (const JSON_DOC *doc)
 {
+  /* TODO - handle doc == NULL */
   return db_json_get_int_from_value (doc);
 }
 
 double
 db_json_get_double_from_document (const JSON_DOC *doc)
 {
+  /* TODO - handle doc == NULL */
   return db_json_get_double_from_value (doc);
 }
 
 const char *
 db_json_get_string_from_document (const JSON_DOC *doc)
 {
+  /* TODO - handle doc == NULL */
   return db_json_get_string_from_value (doc);
 }
 
@@ -985,19 +990,19 @@ db_json_value_has_numeric_type (const JSON_VALUE *doc)
 
 /*
  *  The following rules define containment:
-    A candidate scalar is contained in a target scalar if and only if they are comparable and are equal.
-    Two scalar values are comparable if they have the same JSON_TYPE() types,
-    with the exception that values of types INTEGER and DOUBLE are also comparable to each other.
-
-    A candidate array is contained in a target array if and only if
-    every element in the candidate is contained in some element of the target.
-
-    A candidate nonarray is contained in a target array if and only if the candidate
-    is contained in some element of the target.
-
-    A candidate object is contained in a target object if and only if for each key in the candidate
-    there is a key with the same name in the target and the value associated with the candidate key
-    is contained in the value associated with the target key.
+ *  A candidate scalar is contained in a target scalar if and only if they are comparable and are equal.
+ *  Two scalar values are comparable if they have the same JSON_TYPE() types,
+ *  with the exception that values of types INTEGER and DOUBLE are also comparable to each other.
+ *
+ *  A candidate array is contained in a target array if and only if
+ *  every element in the candidate is contained in some element of the target.
+ *
+ *  A candidate nonarray is contained in a target array if and only if the candidate
+ *  is contained in some element of the target.
+ *
+ *  A candidate object is contained in a target object if and only if for each key in the candidate
+ *  there is a key with the same name in the target and the value associated with the candidate key
+ *  is contained in the value associated with the target key.
  */
 int
 db_json_value_is_contained_in_doc (const JSON_DOC *doc, const JSON_DOC *value, bool &result)
