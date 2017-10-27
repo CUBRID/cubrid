@@ -105,6 +105,7 @@ void db_json_set_double_to_doc (JSON_DOC *doc, double d);
 void db_json_set_int_to_doc (JSON_DOC *doc, int i);
 
 int db_json_value_is_contained_in_doc (const JSON_DOC *doc, const JSON_DOC *value, bool &result);
+bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2);
 /* end of C functions */
 
 template <typename Fn, typename... Args>

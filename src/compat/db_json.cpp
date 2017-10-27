@@ -1140,6 +1140,11 @@ void db_json_set_int_to_doc (JSON_DOC *doc, int i)
   doc->SetInt (i);
 }
 
+bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2)
+{
+  return *doc1 == *doc2;
+}
+
 /*end of C functions*/
 
 bool JSON_DOC::IsLeaf()

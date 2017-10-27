@@ -17474,14 +17474,15 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   else
     {
       JSON_DOC *doc = NULL;
+      const char *json_raw = DB_PULL_STRING (&json_body);
 
-      rc = db_json_get_json_from_str (DB_PULL_STRING (&json_body), doc);
+      rc = db_json_get_json_from_str (json_raw, doc);
       if (rc != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      db_make_json (value, db_private_strdup (NULL, DB_PULL_STRING (&json_body)), doc, true);
+      db_make_json (value, db_private_strdup (NULL, json_raw), doc, true);
     }
 
   if (DB_GET_STRING_SIZE (&schema_raw) > 0)
@@ -17507,10 +17508,16 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   DB_JSON *j1 = STATIC_CAST (DB_JSON *, mem1);
   DB_JSON *j2 = STATIC_CAST (DB_JSON *, mem2);
 
-  db_make_string (&str, j1->json_body);
-  db_make_string (&str2, j2->json_body);
+  bool res = db_json_are_docs_equal (j1->document, j2->document);
 
-  return mr_cmpval_string (&str, &str2, do_coercion, total_order, start_colp, domain->collation_id);
+  if (res)
+    {
+      return DB_EQ;
+    }
+  else
+    {
+      return DB_NE;
+    }
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -17518,10 +17525,16 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 {
   DB_VALUE str, str2;
 
-  mr_convert_json_to_string (value1, &str);
-  mr_convert_json_to_string (value2, &str2);
+  bool res = db_json_are_docs_equal (DB_GET_JSON_DOCUMENT (value1), DB_GET_JSON_DOCUMENT (value2));
 
-  return mr_cmpval_string (&str, &str2, do_coercion, total_order, start_colp, collation);
+  if (res)
+    {
+      return DB_EQ;
+    }
+  else
+    {
+      return DB_NE;
+    }
 }
 
 static void
