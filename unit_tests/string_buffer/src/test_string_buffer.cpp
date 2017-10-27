@@ -77,7 +77,7 @@ public:
             m_dim *= 2;
           }
         while (m_dim < size);
-        char* p = (char*) malloc (m_dim);
+        m_ref = (char*) realloc (m_ref, m_dim);
       }
     m_len = 0;
     m_stack_allocator.~stack ();

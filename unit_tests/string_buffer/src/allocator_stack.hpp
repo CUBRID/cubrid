@@ -80,7 +80,7 @@ namespace allocator
 
     bool owns (block b) { return (m_ptr <= b.ptr && b.ptr + b.dim <= m_stop); }
 
-    size_t get_available () { return (m_stop - m_start); }
+    size_t get_available () { return size_t(m_stop - m_start); }
 
     block realloc (block b, size_t size) //fit additional size bytes; extend block if possible
     {
