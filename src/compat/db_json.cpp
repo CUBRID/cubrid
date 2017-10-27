@@ -942,21 +942,18 @@ db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest)
 int
 db_json_get_int_from_document (const JSON_DOC *doc)
 {
-  /* TODO - handle doc == NULL */
   return db_json_get_int_from_value (doc);
 }
 
 double
 db_json_get_double_from_document (const JSON_DOC *doc)
 {
-  /* TODO - handle doc == NULL */
   return db_json_get_double_from_value (doc);
 }
 
 char *
 db_json_get_string_from_document (const JSON_DOC *doc)
 {
-  /* TODO - handle doc == NULL */
   return db_json_get_string_from_value (doc);
 }
 

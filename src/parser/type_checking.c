@@ -6168,7 +6168,8 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	{
 	  /* cast value when comparing column with value */
 	  if (PT_IS_NAME_NODE (arg1) && PT_IS_VALUE_NODE (arg2)
-	      && (arg3_type == PT_TYPE_NONE || PT_IS_VALUE_NODE (arg3)) && arg1_type != PT_TYPE_ENUMERATION)
+	      && (arg3_type == PT_TYPE_NONE || PT_IS_VALUE_NODE (arg3)) && arg1_type != PT_TYPE_ENUMERATION
+	      && arg1_type != PT_TYPE_JSON)
 	    {
 	      arg1_eq_type = arg2_eq_type = arg1_type;
 	      if (arg3_type != PT_TYPE_NONE)

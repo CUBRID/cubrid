@@ -10456,7 +10456,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       break;
     case DB_TYPE_JSON:
       {
-	char *str;
+	char *str = NULL;
 	JSON_DOC *doc = db_json_allocate_doc ();
 
 	switch (original_type)
@@ -10465,7 +10465,31 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  case DB_TYPE_VARCHAR:
 	  case DB_TYPE_NCHAR:
 	  case DB_TYPE_VARNCHAR:
-	    db_json_set_string_to_doc (doc, DB_GET_STRING (src));
+	    {
+	      unsigned int str_size = DB_GET_STRING_SIZE (src);
+	      int error_code;
+
+	      error_code = db_json_get_json_from_str (DB_GET_STRING (src), doc);
+	      if (error_code != NO_ERROR)
+		{
+		  assert (doc == NULL);
+		  return DOMAIN_ERROR;
+		}
+
+	      if (desired_domain->json_validator
+		  && db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  db_json_delete_doc (doc);
+		  return DOMAIN_ERROR;
+		}
+	      str = db_private_strdup (NULL, DB_GET_STRING (src));
+	      if (str == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
+		  return DOMAIN_ERROR;
+		}
+	    }
 	    break;
 	  case DB_TYPE_INTEGER:
 	    db_json_set_int_to_doc (doc, DB_GET_INT (src));
@@ -10485,7 +10509,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    status = DOMAIN_INCOMPATIBLE;
 	    break;
 	  }
-	str = db_json_get_raw_json_body_from_document (doc);
+
+	if (str == NULL)
+	  {
+	    str = db_json_get_raw_json_body_from_document (doc);
+	  }
 	db_make_json (target, str, doc, true);
       }
       break;
