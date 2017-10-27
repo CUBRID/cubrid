@@ -27,9 +27,14 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ___GETOPT_H___
-#define ___GETOPT_H___
+#ifndef _CUBRID_GETOPT_H_
+#define _CUBRID_GETOPT_H_
 
+#include "config.h"
+
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#else
 #if !defined(WINDOWS)
 #include <sys/cdefs.h>
 #define DllImport
@@ -48,7 +53,7 @@ struct option
 {
   /* name of long option */
   const char *name;
-  /* 
+  /*
    * one of no_argument, required_argument, and optional_argument:
    * whether option takes an argument
    */
@@ -77,5 +82,8 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+#endif
 
-#endif				/* !_GETOPT_H_ */
+#endif				/* !_CUBRID_GETOPT_H_ */
+
+typedef struct option GETOPT_LONG;

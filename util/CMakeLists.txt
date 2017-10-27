@@ -44,7 +44,7 @@ set(CSQL_SOURCES
   ${EXECUTABLES_DIR}/csql_launcher.c
   ${EXECUTABLES_DIR}/util_support.c
   ${BASE_DIR}/porting.c
-  ${BASE_DIR}/getopt_long.c
+  ${BASE_DIR}/cubrid_getopt_long.c
   )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -127,9 +127,9 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE CXX
   )
 if(WIN32)
-  list(APPEND CUBRID_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND CUBRID_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   SET_SOURCE_FILES_PROPERTIES(
-    ${BASE_DIR}/getopt_long.c
+    ${BASE_DIR}/cubrid_getopt_long.c
     PROPERTIES LANGUAGE CXX
   )
   list(APPEND CUBRID_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
@@ -202,7 +202,7 @@ endif(UNIX)
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c
   ${EXECUTABLES_DIR}/util_support.c
-  ${BASE_DIR}/getopt_long.c
+  ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/porting.c
   )
   
@@ -271,7 +271,7 @@ set(GENCAT_SOURCES
   ${EXECUTABLES_DIR}/gencat.c
   )
 if(WIN32)
-  list(APPEND GENCAT_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND GENCAT_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND GENCAT_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(gencat ${GENCAT_SOURCES})

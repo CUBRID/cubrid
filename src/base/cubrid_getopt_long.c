@@ -36,7 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "getopt.h"
+#include "cubrid_getopt.h"
 
 #define REPLACE_GETOPT
 
@@ -169,7 +169,7 @@ permute_args (int nonopt_start, int nonopt_end, int opt_end, char *const *nargv)
  *  Returns -2 if -- is found (can be long option or end of options marker).
  */
 static int
-getopt_internal (int nargc, char *const * nargv, const char *options)
+getopt_internal (int nargc, char *const *nargv, const char *options)
 {
   char *oli;			/* option letter list index */
   int optchar;
@@ -254,7 +254,7 @@ start:
 	  return -2;
 	}
     }
-  if ((optchar = (int) *place++) == (int) ':' || (oli = (char*) strchr (options + (IGNORE_FIRST ? 1 : 0), optchar))
+  if ((optchar = (int) *place++) == (int) ':' || (oli = (char *) strchr (options + (IGNORE_FIRST ? 1 : 0), optchar))
       == NULL)
     {
       /* option letter unknown or ':' */
@@ -358,7 +358,7 @@ getopt (int nargc, char *const *nargv, const char *options)
  *	Parse argc/argv argument vector.
  */
 int
-getopt_long (int nargc, char *const * nargv, const char *options, const struct option *long_options, int *idx)
+getopt_long (int nargc, char *const *nargv, const char *options, const struct option *long_options, int *idx)
 {
   int retval;
 
