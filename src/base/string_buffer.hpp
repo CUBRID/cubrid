@@ -36,8 +36,6 @@ class string_buffer//collect formatted text (printf-like syntax)
 public:
   string_buffer (size_t capacity = 0, char* buffer = 0);
 
-  operator const char* () { return m_buf; }
-
   size_t len () { return m_len; }
   void clr () { m_buf[m_len = 0] = '\0'; }
 

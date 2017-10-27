@@ -103,9 +103,9 @@ public:
         ERR ("[%s(%d)] StrBuf([%zu]) len()=%zu expect %zu", file, line, m_blk.dim, m_sb.len (), m_len);
         return;
       }
-    if (strcmp (m_sb, m_ref))
+    if (strcmp (m_blk.ptr, m_ref))
       {
-        ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect{\"%s\"}", file, line, m_blk.dim, (const char*)m_sb, m_ref);
+        ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect{\"%s\"}", file, line, m_blk.dim, m_blk.ptr, m_ref);
         return;
       }
     if (m_affix_allocator.check (m_blk))
@@ -125,9 +125,9 @@ public:
     ++m_len;
 
     m_sb += ch;
-    if (strcmp ((const char*)m_sb, m_ref))
+    if (strcmp (m_blk.ptr, m_ref))
       {
-        ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect {\"%s\"}", file, line, m_blk.dim, (const char*)m_sb, m_ref);
+        ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect {\"%s\"}", file, line, m_blk.dim, m_blk.ptr, m_ref);
         return;
       }
     if (m_affix_allocator.check (m_blk))
