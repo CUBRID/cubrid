@@ -127,7 +127,7 @@ static DB_JSON_TYPE db_json_get_type_of_value (const JSON_VALUE *val);
 static bool db_json_value_has_numeric_type (const JSON_VALUE *doc);
 static int db_json_get_int_from_value (const JSON_VALUE *val);
 static double db_json_get_double_from_value (const JSON_VALUE *doc);
-static const char *db_json_get_string_from_value (const JSON_VALUE *doc);
+static char *db_json_get_string_from_value (const JSON_VALUE *doc);
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -660,6 +660,11 @@ db_json_get_type (const JSON_DOC *doc)
 DB_JSON_TYPE
 db_json_get_type_of_value (const JSON_VALUE *val)
 {
+  if (val == NULL)
+    {
+      return DB_JSON_NULL;
+    }
+
   if (val->IsString())
     {
       return DB_JSON_STRING;
@@ -924,7 +929,7 @@ db_json_get_double_from_document (const JSON_DOC *doc)
   return db_json_get_double_from_value (doc);
 }
 
-const char *
+char *
 db_json_get_string_from_document (const JSON_DOC *doc)
 {
   return db_json_get_string_from_value (doc);
@@ -935,6 +940,12 @@ db_json_get_int_from_value (const JSON_VALUE *val)
 {
   assert (db_json_get_type_of_value (val) == DB_JSON_INT);
 
+  if (val == NULL)
+    {
+      assert (false);
+      return 0;
+    }
+
   return val->GetInt();
 }
 
@@ -944,15 +955,27 @@ db_json_get_double_from_value (const JSON_VALUE *doc)
   assert (db_json_get_type_of_value (doc) == DB_JSON_DOUBLE
           || db_json_get_type_of_value (doc) == DB_JSON_INT);
 
+  if (doc == NULL)
+    {
+      assert (false);
+      return 0;
+    }
+
   return db_json_get_type_of_value (doc) == DB_JSON_DOUBLE ? doc->GetDouble() : doc->GetInt();
 }
 
-const char *
+char *
 db_json_get_string_from_value (const JSON_VALUE *doc)
 {
+  if (doc == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
   assert (db_json_get_type_of_value (doc) == DB_JSON_STRING);
 
-  return doc->GetString();
+  return db_private_strdup (NULL, doc->GetString());
 }
 
 bool
@@ -1076,6 +1099,21 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
     }
 
   return error_code;
+}
+
+void db_json_set_string_to_doc (JSON_DOC *doc, const char *str)
+{
+  doc->SetString (str, doc->GetAllocator());
+}
+
+void db_json_set_double_to_doc (JSON_DOC *doc, double d)
+{
+  doc->SetDouble (d);
+}
+
+void db_json_set_int_to_doc (JSON_DOC *doc, int i)
+{
+  doc->SetInt (i);
 }
 
 /*end of C functions*/

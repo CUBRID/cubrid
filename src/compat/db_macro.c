@@ -6856,5 +6856,9 @@ db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
 JSON_DOC *
 db_get_json_document (const DB_VALUE * value)
 {
+  CHECK_1ARG_ZERO (value);
+
+  assert (value->domain.general_info.type == DB_TYPE_JSON);
+
   return value->data.json.document;
 }

@@ -13199,18 +13199,19 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	PT_NODE *arg = arg_list;
 	PT_TYPE_ENUM *current_types = supported_value_types;
+	unsigned int index = 0;
 
 	while (arg)
 	  {
-	    if (current_types == supported_key_types)
-	      {
-		current_types = supported_value_types;
-		len = supported_value_types_len;
-	      }
-	    else
+	    if (index % 2 == 0)
 	      {
 		current_types = supported_key_types;
 		len = supported_key_types_len;
+	      }
+	    else
+	      {
+		current_types = supported_value_types;
+		len = supported_value_types_len;
 	      }
 	    found_supported = 0;
 	    for (i = 0; i < len; i++)
@@ -13228,6 +13229,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 
 	    arg = arg->next;
+	    index++;
 	  }
 	if (!found_supported)
 	  {
@@ -13328,6 +13330,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	unsigned int supported_json_types_len = sizeof (supported_json_type) / sizeof (supported_json_type[0]);
 	unsigned int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
 	unsigned int supported_val_types_len = sizeof (supported_val_types) / sizeof (supported_val_types[0]);
+	unsigned int index = 0;
 
 	PT_NODE *arg = arg_list;
 	const PT_TYPE_ENUM *current_types = supported_val_types;
@@ -13352,15 +13355,15 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	arg = arg->next;
 	while (arg)
 	  {
-	    if (current_types == supported_path_types)
-	      {
-		current_types = supported_val_types;
-		len = supported_val_types_len;
-	      }
-	    else
+	    if (index % 2 == 0)
 	      {
 		current_types = supported_path_types;
 		len = supported_path_types_len;
+	      }
+	    else
+	      {
+		current_types = supported_val_types;
+		len = supported_val_types_len;
 	      }
 	    found_supported = 0;
 	    for (i = 0; i < len; i++)
@@ -13378,6 +13381,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 
 	    arg = arg->next;
+	    index++;
 	  }
 	if (!found_supported)
 	  {

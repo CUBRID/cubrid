@@ -2162,6 +2162,7 @@ disk_to_domain2 (OR_BUF * buf)
   if (get_enumeration (buf, &DOM_GET_ENUMERATION (domain), vars[ORC_DOMAIN_ENUMERATION_INDEX].length) != NO_ERROR)
     {
       free_var_table (vars);
+      tp_domain_free (domain);
       or_abort (buf);
       return NULL;
     }
@@ -2177,6 +2178,7 @@ disk_to_domain2 (OR_BUF * buf)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length + 1);
 	  tp_domain_free (domain);
+	  free_var_table (vars);
 	  return NULL;
 	}
       error_code = db_json_load_validator (schema_raw, domain->json_validator);
@@ -2185,6 +2187,7 @@ disk_to_domain2 (OR_BUF * buf)
 	{
 	  assert_release (false);
 	  tp_domain_free (domain);
+	  free_var_table (vars);
 	  return NULL;
 	}
     }

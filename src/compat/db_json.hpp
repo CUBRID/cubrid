@@ -98,7 +98,11 @@ DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 
 int db_json_get_int_from_document (const JSON_DOC *doc);
 double db_json_get_double_from_document (const JSON_DOC *doc);
-const char *db_json_get_string_from_document (const JSON_DOC *doc);
+char *db_json_get_string_from_document (const JSON_DOC *doc);
+
+void db_json_set_string_to_doc (JSON_DOC *doc, const char *str);
+void db_json_set_double_to_doc (JSON_DOC *doc, double d);
+void db_json_set_int_to_doc (JSON_DOC *doc, int i);
 
 int db_json_value_is_contained_in_doc (const JSON_DOC *doc, const JSON_DOC *value, bool &result);
 /* end of C functions */

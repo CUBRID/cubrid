@@ -2531,6 +2531,7 @@ pt_get_compatible_info_from_node (const PT_NODE * att, SEMAN_COMPATIBLE_INFO * c
   cinfo->coll_infer.can_force_cs = false;
   cinfo->prec = cinfo->scale = 0;
   cinfo->ref_att = att;
+  cinfo->force_cast = false;
 
   cinfo->type_enum = att->type_enum;
 
