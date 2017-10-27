@@ -15,18 +15,19 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#if 0//Affix Allocator: allocate(sizeof(Prefix) + size + sizeof(Suffix))
-- usefull for debug, statistics, information, ...
-    - use Prefix & Suffix as fences to detect wrong writes: "BBBBBBBB"..."EEEEEEEE"
-    - use Prefix & Suffix for human readable text to ease memory reading: "type=MyClass"..."end of type=MyClass"
-    - use Prefix & Suffix to store information & statistics (creation timestamp, source code file & line, access count, ...)
-USAGE:
-#endif
-#pragma once
+
+/* Affix Allocator: allocate(sizeof(Prefix) + size + sizeof(Suffix))
+ * usefull for debug, statistics, information, ...
+ * use Prefix & Suffix as fences to detect wrong writes: "BBBBBBBB"..."EEEEEEEE"
+ * use Prefix & Suffix for human readable text to ease memory reading: "type=MyClass"..."end of type=MyClass"
+ * use Prefix & Suffix to store information & statistics (creation timestamp, source code file & line, access count...)
+ */
+#ifndef ALLOCATOR_AFFIX_HPP
+#define ALLOCATOR_AFFIX_HPP
+#include "allocator_block.hpp"
 #include <new>
-#include "allocator_blk.hpp"
 #ifdef __linux__
-#include <stddef.h>//size_t on Linux
+#include <stddef.h> //size_t on Linux
 #endif
 
 namespace allocator
@@ -34,8 +35,8 @@ namespace allocator
   template<typename Allocator, typename Prefix, typename Suffix> class affix
   {
   private:
-    static const size_t m_pfxLen = sizeof (Prefix);
-    static const size_t m_sfxLen = sizeof (Suffix);
+    static const size_t m_prefix_len = sizeof (Prefix);
+    static const size_t m_suffix_len = sizeof (Suffix);
     Allocator& m_a;
 
   public:
@@ -44,51 +45,44 @@ namespace allocator
     {
     }
 
-    blk allocate (size_t size)
+    block allocate (size_t size)
     {
-      blk b = m_a.allocate (m_pfxLen + size + m_sfxLen);
-      if (!b)
+      block b = m_a.allocate (m_prefix_len + size + m_suffix_len);
+      if (!b.is_valid ())
         return {0, 0};
-      new (b.ptr) Prefix;                  //placement new to initialize Prefix memory
-      new (b.ptr + m_pfxLen + size) Suffix;//placement new to initialize Suffix memory
-      return {size, b.ptr + m_pfxLen};
+      new (b.ptr) Prefix;                       //placement new to initialize Prefix memory
+      new (b.ptr + m_prefix_len + size) Suffix; //placement new to initialize Suffix memory
+      return {size, b.ptr + m_prefix_len};
     }
 
-    void deallocate (blk b)
+    void deallocate (block b)
     {
       //check if Prefix & Suffix are unchanged!
       //...
-      _a.deallocate ({m_pfxLen + b.dim + m_sfxLen, b.ptr - m_pfxLen});
+      _a.deallocate ({m_prefix_len + b.dim + m_suffix_len, b.ptr - m_prefix_len});
     }
 
-    unsigned check (blk b)
+    unsigned check (block b)
     {
       Prefix pfx;
       Suffix sfx;
-      int err = 0;
-      err |= (memcmp (&pfx, b.ptr - m_pfxLen, m_pfxLen)) ? 1 : 0;
-      err |= (memcmp (&sfx, b.ptr + b.dim, m_sfxLen)) ? 2 : 0;
+      enum
+      {
+        ERR_NONE,
+        ERR_PREFIX = (1 << 0),
+        ERR_SUFFIX = (1 << 1),
+      };
+      unsigned err = 0;
+      if (memcmp (&pfx, b.ptr - m_prefix_len, m_prefix_len) != 0)
+        {
+          err |= ERR_PREFIX;
+        }
+      if (memcmp (&sfx, b.ptr + b.dim, m_suffix_len) != 0)
+        {
+          err |= ERR_SUFFIX;
+        }
       return err;
     }
   };
-}// namespace allocator
-
-#if 0//using inheritance
-template<typename Allocator, typename Prefix, typename Suffix=void> class AffixAllocator
-    : Allocator
-{
-public:
-    void* allocate(size_t size){
-        void* ptr = Allocator::allocate(sizeof(Prefix) + size + sizeof(Suffix));
-        new(ptr) Prefix;                    //placement new to initialize Prefix memory 
-        new(ptr+sizeof(Prefix)+size) Suffix;//placement new to initialize Suffix memory 
-        return ptr;
-    }
-
-    void deallocate(void* ptr, size_t size){
-        //check if Prefix & Suffix are unchanged!
-        //...
-        Allocator::deallocate(sizeof(Prefix) + size + sizeof(Suffix));
-    }
-};
+} // namespace allocator
 #endif

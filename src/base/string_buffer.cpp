@@ -27,7 +27,7 @@ string_buffer::string_buffer (size_t capacity, char* buffer)
     m_buf[0] = '\0';
 }
 
-void string_buffer::set (size_t capacity, char* buffer)
+void string_buffer::set_buffer (size_t capacity, char* buffer)
 {
   m_buf = buffer;
   m_dim = capacity;
@@ -53,9 +53,9 @@ void string_buffer::operator() (size_t len, void* bytes)
 
 void string_buffer::operator+= (const char ch)
 {
-  if (m_len + 1 < m_dim)
-    {// include also '\0'
-      m_buf[m_len]     = ch;
+  if (m_len + 1 < m_dim) // include also ending '\0'
+    {
+      m_buf[m_len] = ch;
       m_buf[m_len + 1] = '\0';
     }
   ++m_len;

@@ -16,12 +16,13 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 #include "allocator_affix.hpp"
+#include "allocator_block.hpp"
 #include "allocator_stack.hpp"
 #include "string_buffer.hpp"
 #include <assert.h>
 #include <chrono>
 #ifdef __linux__
-#include <stddef.h>//size_t on Linux
+#include <stddef.h> //size_t on Linux
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,13 +46,13 @@ struct suffix
 class test_string_buffer
 {
 private:
-  char m_buf[sizeof (prefix) + N + sizeof (suffix)];// working buffer
-  size_t m_dim;                                     //_ref[_dim]
-  size_t m_len;                                     // sizeof(_ref)
-  char* m_ref;                                      // reference buffer
+  char m_buf[sizeof (prefix) + N + sizeof (suffix)]; // working buffer
+  size_t m_dim;                                      //_ref[_dim]
+  size_t m_len;                                      // sizeof(_ref)
+  char* m_ref;                                       // reference buffer
   allocator::stack m_stack_allocator;
   allocator::affix<allocator::stack, prefix, suffix> m_affix_allocator;
-  allocator::blk m_blk;
+  allocator::block m_block;
   string_buffer m_sb;
 
 public:
@@ -59,38 +60,38 @@ public:
     : m_buf ()
     , m_dim (1024)
     , m_len (0)
-    , m_ref ((char*)calloc (m_dim, 1))
+    , m_ref ((char*) calloc (m_dim, 1))
     , m_stack_allocator (m_buf, sizeof (m_buf))
     , m_affix_allocator (m_stack_allocator)
-    , m_blk ()
+    , m_block ()
     , m_sb ()
   {
   }
 
-  void operator() (size_t size)
-  {// prepare for a test with a buffer of <size> bytes
-    if (m_dim < size)
-      {// adjust internal buffer is necessary
+  void operator() (size_t size) // prepare for a test with a buffer of <size> bytes
+  {
+    if (m_dim < size) // adjust internal buffer is necessary
+      {
         do
           {
             m_dim *= 2;
           }
         while (m_dim < size);
-        char* p = (char*)malloc (m_dim);
+        char* p = (char*) malloc (m_dim);
       }
     m_len = 0;
     m_stack_allocator.~stack ();
-    m_blk = m_affix_allocator.allocate (size);
-    m_sb.set (size, m_blk.ptr);
+    m_block = m_affix_allocator.allocate (size);
+    m_sb.set_buffer (size, m_block.ptr);
   }
 
   template<size_t Size, typename... Args>
   void operator() (const char* file, int line, const char (&format)[Size], Args&&... args)
   {
-    int len = snprintf (m_ref + m_len, m_len < m_blk.dim ? m_blk.dim - m_len : 0, format, args...);
+    int len = snprintf (m_ref + m_len, m_len < m_block.dim ? m_block.dim - m_len : 0, format, args...);
     if (len < 0)
       {
-        ERR ("[%s(%d)] StrBuf([%zu]) snprintf()=%d", file, line, m_blk.dim, len);
+        ERR ("[%s(%d)] StrBuf([%zu]) snprintf()=%d", file, line, m_block.dim, len);
         return;
       }
     else
@@ -100,70 +101,78 @@ public:
     m_sb (format, args...);
     if (m_sb.len () != m_len)
       {
-        ERR ("[%s(%d)] StrBuf([%zu]) len()=%zu expect %zu", file, line, m_blk.dim, m_sb.len (), m_len);
+        ERR ("[%s(%d)] StrBuf([%zu]) len()=%zu expect %zu", file, line, m_block.dim, m_sb.len (), m_len);
         return;
       }
-    if (strcmp (m_blk.ptr, m_ref))
+    if (strcmp (m_block.ptr, m_ref))
       {
-        ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect{\"%s\"}", file, line, m_blk.dim, m_blk.ptr, m_ref);
+        ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect{\"%s\"}", file, line, m_block.dim, m_block.ptr, m_ref);
         return;
       }
-    if (m_affix_allocator.check (m_blk))
+    if (m_affix_allocator.check (m_block))
       {
-        ERR ("[%s(%d)] StrBuf(buf[%zu]) memory corruption", file, line, m_blk.dim);
+        ERR ("[%s(%d)] StrBuf(buf[%zu]) memory corruption", file, line, m_block.dim);
         return;
       }
   }
 
   void operator() (const char* file, int line, char ch)
   {
-    if (m_len + 1 < m_blk.dim)
-      {// include also '\0'
-        m_ref[m_len]     = ch;
+    if (m_len + 1 < m_block.dim) // include also ending '\0'
+      {
+        m_ref[m_len] = ch;
         m_ref[m_len + 1] = '\0';
       }
     ++m_len;
 
     m_sb += ch;
-    if (strcmp (m_blk.ptr, m_ref))
+    if (strcmp (m_block.ptr, m_ref) != 0)
       {
-        ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect {\"%s\"}", file, line, m_blk.dim, m_blk.ptr, m_ref);
+        ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect {\"%s\"}", file, line, m_block.dim, m_block.ptr, m_ref);
         return;
       }
-    if (m_affix_allocator.check (m_blk))
+    if (m_affix_allocator.check (m_block))
       {
-        ERR ("[%s(%d)] StrBuf([%zu]) memory corruption", file, line, m_blk.dim);
+        ERR ("[%s(%d)] StrBuf([%zu]) memory corruption", file, line, m_block.dim);
       }
   }
 };
 test_string_buffer test;
 
 #define SB_FORMAT(format, ...) test (__FILE__, __LINE__, format, ##__VA_ARGS__)
-#define SB_CHAR(ch) test (__FILE__, __LINE__, ch);
+#define SB_CHAR(ch) test (__FILE__, __LINE__, ch)
 
 int main (int argc, char** argv)
 {
-  enum Flags
+  enum flags
   {
-    flDEBUG = (1 << 0),
-    flTIME  = (1 << 1)
+    FL_HELP = (1 << 0),
+    FL_DEBUG = (1 << 1),
+    FL_TIME = (1 << 1),
   };
   unsigned flags = 0;
   for (int i = 1; i < argc; ++i)
     {
-      unsigned char* p = (unsigned char*)argv[i];
-      unsigned f       = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];// little endian
-      switch (f)
+      unsigned command = argv[i][0] << 24 | argv[i][1] << 16 | argv[i][2] << 8 | argv[i][3]; // little endian
+      switch (command)
         {
-          case 'dbug': flags |= flDEBUG; break;
-          case 'time': flags |= flTIME; break;
+          case 'help': flags |= FL_HELP; break;
+          case 'dbug': flags |= FL_DEBUG; break;
+          case 'time': flags |= FL_TIME; break;
         }
     }
-  if (flags & flDEBUG)
+  if (flags & FL_HELP)
+    {
+      printf ("%s [dbug] [time]\n", argv[0]);
+      return 0;
+    }
+  if (flags & FL_DEBUG)
     {
       printf ("%s\n", argv[0]);
       for (int i = 1; i < argc; ++i)
-        printf ("    %s\n", argv[i]);
+        {
+          printf ("    %s\n", argv[i]);
+        }
     }
 
   auto t0 = std::chrono::high_resolution_clock::now ();
@@ -180,7 +189,7 @@ int main (int argc, char** argv)
     }
   auto t1 = std::chrono::high_resolution_clock::now ();
 
-  if (flags & flTIME)
+  if (flags & FL_TIME)
     {
       printf ("%.9lf ms\n", std::chrono::duration<double, std::milli> (t1 - t0).count ());
     }
