@@ -5479,59 +5479,56 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      break;
 
 	    case DB_TYPE_ENUMERATION:
-	      {
-		if ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) == OR_DOMAIN_ENUM_COLL_FLAG)
-		  {
-		    LANG_COLLATION *lc;
-		    collation_id = or_get_int (buf, &rc);
-		    assert (collation_id != LANG_COLL_ISO_BINARY);
-		    if (rc != NO_ERROR)
-		      {
-			goto error;
-		      }
-		    lc = lang_get_collation (collation_id);
-		    assert (lc != NULL);
-		    codeset = lc->codeset;
-		  }
-		else
-		  {
-		    collation_id = LANG_COLL_ISO_BINARY;
-		    codeset = INTL_CODESET_ISO88591;
-		  }
+	      if ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) == OR_DOMAIN_ENUM_COLL_FLAG)
+		{
+		  LANG_COLLATION *lc;
+		  collation_id = or_get_int (buf, &rc);
+		  assert (collation_id != LANG_COLL_ISO_BINARY);
+		  if (rc != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  lc = lang_get_collation (collation_id);
+		  assert (lc != NULL);
+		  codeset = lc->codeset;
+		}
+	      else
+		{
+		  collation_id = LANG_COLL_ISO_BINARY;
+		  codeset = INTL_CODESET_ISO88591;
+		}
 
-		db_enum.collation_id = collation_id;
+	      db_enum.collation_id = collation_id;
 
-		if (carrier & OR_DOMAIN_ENUMERATION_FLAG)
-		  {
-		    rc = or_get_enumeration (buf, &db_enum);
-		    if (rc != NO_ERROR)
-		      {
-			goto error;
-		      }
-		    dom = tp_domain_find_enumeration (&db_enum, is_desc);
-		    if (dom != NULL)
-		      {
-			/* we have to free the memory allocated for the enum above since we already have it cached */
-			tp_domain_clear_enumeration (&db_enum);
-		      }
-		  }
-	      }
+	      if (carrier & OR_DOMAIN_ENUMERATION_FLAG)
+		{
+		  rc = or_get_enumeration (buf, &db_enum);
+		  if (rc != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  dom = tp_domain_find_enumeration (&db_enum, is_desc);
+		  if (dom != NULL)
+		    {
+		      /* we have to free the memory allocated for the enum above since we already have it cached */
+		      tp_domain_clear_enumeration (&db_enum);
+		    }
+		}
 	      break;
-	    case DB_TYPE_JSON:
-	      {
-		if ((carrier & OR_DOMAIN_SCHEMA_FLAG) != 0)
-		  {
-		    rc = or_get_json_schema (buf, schema_raw);
-		    if (rc != NO_ERROR)
-		      {
-			goto error;
-		      }
-		    or_align (buf, OR_INT_SIZE);
-		    assert (er_errid () == NO_ERROR);
-		  }
 
-		break;
-	      }
+	    case DB_TYPE_JSON:
+	      if ((carrier & OR_DOMAIN_SCHEMA_FLAG) != 0)
+		{
+		  rc = or_get_json_schema (buf, schema_raw);
+		  if (rc != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  or_align (buf, OR_INT_SIZE);
+		  assert (er_errid () == NO_ERROR);
+		}
+	      break;
+
 	    default:
 	      break;
 	    }
@@ -5553,7 +5550,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  if (schema_raw != NULL)
 		    {
 		      rc = db_json_load_validator (schema_raw, dom->json_validator);
-		      db_private_free (NULL, schema_raw);
+		      db_private_free_and_init (NULL, schema_raw);
 		      if (rc != NO_ERROR)
 			{
 			  ASSERT_ERROR ();
