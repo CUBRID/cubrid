@@ -2181,8 +2181,8 @@ disk_to_domain2 (OR_BUF * buf)
 	  free_var_table (vars);
 	  return NULL;
 	}
-      error_code = db_json_load_validator (schema_raw, domain->json_validator);
 
+      error_code = db_json_load_validator (schema_raw, domain->json_validator);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);

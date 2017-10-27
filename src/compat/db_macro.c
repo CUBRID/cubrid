@@ -307,6 +307,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       value->data.enumeration.str_val.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
+
     case DB_TYPE_JSON:
       value->data.json.json_body = NULL;
       value->data.json.document = NULL;
@@ -691,10 +692,9 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       else
 	{
 	  db_make_enumeration (value, enumeration->count,
-			       enumeration->elements[enumeration->count -
-						     1].str_val.medium.buf,
-			       enumeration->elements[enumeration->count -
-						     1].str_val.medium.size, (unsigned char) codeset, collation_id);
+			       enumeration->elements[enumeration->count - 1].str_val.medium.buf,
+			       enumeration->elements[enumeration->count - 1].str_val.medium.size,
+			       (unsigned char) codeset, collation_id);
 	}
       break;
       /* case DB_TYPE_TABLE: internal use only */
@@ -5994,7 +5994,12 @@ db_domain_collation_id (const DB_DOMAIN * domain)
 const char *
 db_domain_raw_json_schema (const DB_DOMAIN * domain)
 {
-  return domain->json_validator == NULL ? NULL : db_json_get_schema_raw_from_validator (domain->json_validator);
+  if (domain == NULL || domain->json_validator == NULL)
+    {
+      return NULL;
+    }
+
+  return db_json_get_schema_raw_from_validator (domain->json_validator);
 }
 
 /*

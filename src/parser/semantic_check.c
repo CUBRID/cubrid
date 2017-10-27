@@ -571,6 +571,7 @@ pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * selec
 		  cinfo[k].type_enum = PT_TYPE_NONE;
 		  cinfo[k].prec = DB_DEFAULT_PRECISION;
 		  cinfo[k].scale = DB_DEFAULT_SCALE;
+		  cinfo[k].force_cast = false;
 		  cinfo[k].coll_infer.coll_id = LANG_SYS_COLLATION;
 		  cinfo[k].coll_infer.codeset = LANG_SYS_CODESET;
 		  cinfo[k].coll_infer.coerc_level = PT_COLLATION_NOT_COERC;
@@ -2532,6 +2533,8 @@ pt_get_compatible_info_from_node (const PT_NODE * att, SEMAN_COMPATIBLE_INFO * c
   cinfo->prec = cinfo->scale = 0;
   cinfo->ref_att = att;
   cinfo->force_cast = false;
+
+  /* TODO - cinfo->force_cast should also be inited */
 
   cinfo->type_enum = att->type_enum;
 
@@ -11093,7 +11096,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
     {
       int p = 0, s = 0;
       SEMAN_COMPATIBLE_INFO sci = {
-	0, PT_TYPE_NONE, 0, 0, NULL,
+	0, PT_TYPE_NONE, 0, 0, false,
 	{0, INTL_CODESET_NONE, PT_COLLATION_NOT_COERC, false},
 	NULL
       };

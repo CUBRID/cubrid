@@ -89,8 +89,7 @@ map_get_next_id (Map &map, Value &currValue)
   return currValue;
 }
 
-T_CCI_ERROR_CODE map_open_otc (T_CCI_CONN connection_id,
-                               T_CCI_CONN *mapped_conn_id)
+T_CCI_ERROR_CODE map_open_otc (T_CCI_CONN connection_id, T_CCI_CONN *mapped_conn_id)
 {
   T_CCI_ERROR_CODE error;
 
@@ -114,9 +113,7 @@ T_CCI_ERROR_CODE map_open_otc (T_CCI_CONN connection_id,
   return error;
 }
 
-T_CCI_ERROR_CODE map_get_otc_value (T_CCI_CONN mapped_conn_id,
-                                    T_CCI_CONN *connection_id,
-                                    bool force)
+T_CCI_ERROR_CODE map_get_otc_value (T_CCI_CONN mapped_conn_id, T_CCI_CONN *connection_id, bool force)
 {
   T_CCI_ERROR_CODE error;
 
@@ -204,8 +201,7 @@ T_CCI_ERROR_CODE map_close_otc (T_CCI_CONN mapped_conn_id)
   return error;
 }
 
-T_CCI_ERROR_CODE map_open_ots (T_CCI_REQ statement_id,
-                               T_CCI_REQ *mapped_stmt_id)
+T_CCI_ERROR_CODE map_open_ots (T_CCI_REQ statement_id, T_CCI_REQ *mapped_stmt_id)
 {
 
   if (mapped_stmt_id == NULL)
@@ -227,9 +223,7 @@ T_CCI_ERROR_CODE map_open_ots (T_CCI_REQ statement_id,
   return CCI_ER_NO_ERROR;
 }
 
-T_CCI_ERROR_CODE map_get_ots_value (T_CCI_REQ mapped_stmt_id,
-                                    T_CCI_REQ *statement_id,
-                                    bool force)
+T_CCI_ERROR_CODE map_get_ots_value (T_CCI_REQ mapped_stmt_id, T_CCI_REQ *statement_id, bool force)
 {
   T_CCI_ERROR_CODE error;
 
@@ -255,8 +249,7 @@ T_CCI_ERROR_CODE map_get_ots_value (T_CCI_REQ mapped_stmt_id,
           T_CON_HANDLE *connection;
           T_CCI_CONN connection_id = GET_CON_ID (*statement_id);
 
-          error = hm_get_connection_by_resolved_id (connection_id,
-                  &connection);
+          error = hm_get_connection_by_resolved_id (connection_id, &connection);
           if (error == CCI_ER_NO_ERROR)
             {
               if (connection->used)

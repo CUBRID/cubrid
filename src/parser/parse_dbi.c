@@ -2005,7 +2005,6 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
   int error = NO_ERROR;
   TP_DOMAIN_COLL_ACTION collation_flag;
   char *raw_schema = NULL;
-
   JSON_VALIDATOR *validator = NULL;
 
   if (dt == NULL)
@@ -2050,12 +2049,14 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
       if (dt->info.data_type.json_schema)
 	{
 	  int error_code;
+
 	  raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
 	  if (raw_schema == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, raw_schema);
 	      return NULL;
 	    }
+
 	  strcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes);
 	  error_code = db_json_load_validator (raw_schema, validator);
 	  free (raw_schema);
@@ -2349,9 +2350,11 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
     case PT_TYPE_VARCHAR:
       db_type = DB_TYPE_VARCHAR;
       break;
+
     case PT_TYPE_JSON:
       db_type = DB_TYPE_JSON;
       break;
+
     case PT_TYPE_OBJECT:
       db_type = DB_TYPE_OBJECT;
       break;
@@ -2619,9 +2622,6 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_TIMESTAMPLTZ:
       pt_type = PT_TYPE_TIMESTAMPLTZ;
       break;
-    case DB_TYPE_JSON:
-      pt_type = PT_TYPE_JSON;
-      break;
     case DB_TYPE_DATETIME:
       pt_type = PT_TYPE_DATETIME;
       break;
@@ -2685,6 +2685,9 @@ pt_db_to_type_enum (const DB_TYPE t)
       break;
     case DB_TYPE_VARIABLE:
       pt_type = PT_TYPE_MAYBE;
+      break;
+    case DB_TYPE_JSON:
+      pt_type = PT_TYPE_JSON;
       break;
 
       /* these guys should not get encountered */
@@ -3486,6 +3489,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
       break;
+
     case PT_TYPE_JSON:
       db_value->domain.general_info.type = DB_TYPE_JSON;
       db_value->domain.general_info.is_null = 0;
