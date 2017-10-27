@@ -15,6 +15,11 @@
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
+
+# unit tests logic:
+# - all: cmake -DUNIT_TESTS=ON <path>
+# - some: cmake -DUNIT_TEST_ABC=ON -DUNIT_TEST_XYZ=ON <path>
+
 project(Test)
 
 set (TEST_INCLUDES
