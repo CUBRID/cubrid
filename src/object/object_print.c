@@ -457,6 +457,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	  sprintf (temp_buffer, "(%d)", precision);
 	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);
 	  break;
+
 	case DB_TYPE_JSON:
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  ustr_upper (temp_buffer);
@@ -471,6 +472,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	      buffer = pt_append_nulstring (parser, buffer, temp_buffer);
 	    }
 	  break;
+
 	case DB_TYPE_NUMERIC:
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  ustr_upper (temp_buffer);
@@ -502,6 +504,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 		}
 	    }
 	  break;
+
 	case DB_TYPE_ENUMERATION:
 	  has_collation = 1;
 	  strcpy (temp_buffer, temp_domain->type->name);
@@ -523,6 +526,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	    }
 	  buffer = pt_append_nulstring (parser, buffer, ")");
 	  break;
+
 	default:
 	  break;
 	}
@@ -3886,11 +3890,12 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	    {
 	      buffer = pt_append_nulstring (parser, buffer, "NULL");
 	    }
-
 	  break;
+
 	case DB_TYPE_JSON:
 	  buffer = pt_append_nulstring (parser, buffer, value->data.json.json_body);
 	  break;
+
 	case DB_TYPE_MIDXKEY:
 	  midxkey = DB_GET_MIDXKEY (value);
 	  if (midxkey != NULL)
@@ -3937,6 +3942,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	  (void) db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
+
 	case DB_TYPE_TIMELTZ:
 	  (void) db_timeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
@@ -3956,6 +3962,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	  (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
+
 	case DB_TYPE_TIMESTAMPLTZ:
 	  (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
@@ -3975,6 +3982,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	  (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
+
 	case DB_TYPE_DATETIMELTZ:
 	  (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
@@ -4117,11 +4125,13 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;
+
 	case DB_TYPE_JSON:
 	  buffer = pt_append_nulstring (parser, buffer, "json '");
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;
+
 	case DB_TYPE_TIME:
 	  buffer = pt_append_nulstring (parser, buffer, "time '");
 	  buffer = describe_data (parser, buffer, value);
