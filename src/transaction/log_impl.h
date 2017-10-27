@@ -214,6 +214,7 @@ struct log_header
   INT64 ha_promotion_time;
   INT64 db_restore_time;
   bool mark_will_del;
+  INT64 vacuum_last_blockid;
 };
 #define LOG_HEADER_INITIALIZER                   \
   {                                              \
@@ -271,7 +272,9 @@ struct log_header
      /* db_restore_time */			 \
      0,						 \
      /* mark_will_del */			 \
-     false					 \
+     false,					 \
+     /* vacuum_last_blockid */                   \
+     0                                           \
   }
 
 #define LOGWR_HEADER_INITIALIZER                 \
@@ -330,7 +333,9 @@ struct log_header
      /* db_restore_time */			 \
      0,						 \
      /* mark_will_del */			 \
-     false					 \
+     false,					 \
+     /* vacuum_last_blockid */                   \
+     0                                           \
   }
 
 enum logwr_mode
@@ -2387,6 +2392,8 @@ extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
+
+extern void logpb_update_last_blockid (THREAD_ENTRY * thread_p, LOG_PAGEID page_id);
 
 /************************************************************************/
 /* Inline functions:                                                    */

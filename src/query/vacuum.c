@@ -4085,13 +4085,14 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   vacuum_Data.last_page = data_page;
   data_page = NULL;
   /* Get last_blockid. */
-  if (vacuum_Data.last_page->index_unvacuumed == vacuum_Data.last_page->index_free)
+  if (vacuum_Data.last_page->index_unvacuumed == vacuum_Data.last_page->index_free &&
+      vacuum_Data.first_page->index_unvacuumed == vacuum_Data.first_page->index_free)
     {
       /* Empty last page. */
       assert (vacuum_Data.last_page->index_unvacuumed == 0);
-      /* last_blockid is still saved in the first data entry. */
-      vacuum_Data.last_blockid = vacuum_Data.last_page->data->blockid;
-      assert (vacuum_Data.last_blockid == VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.last_blockid));
+      /* last_blockid is still saved in the global log header. */
+
+      vacuum_Data.last_blockid = log_Gl.hdr.vacuum_last_blockid;
     }
   else
     {
@@ -4641,6 +4642,7 @@ static void
 vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_page, VACUUM_DATA_PAGE ** data_page)
 {
   FILE_DESCRIPTORS fdes_update;
+  VACUUM_LOG_BLOCKID blockid = VACUUM_NULL_LOG_BLOCKID;
 
   /* We can have three expected cases here:
    * 1. This is the last page. We won't deallocate, just reset the page (even if it is also first page).
@@ -4658,7 +4660,27 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       vacuum_data_initialize_new_page (thread_p, *data_page);
       /* Even when vacuum data becomes empty, we need to save last_blockid to recover it after server crash or shutdown.
        */
-      (*data_page)->data->blockid = vacuum_Data.last_blockid;
+
+      /* Get last blockid from log header. */
+      blockid = log_Gl.hdr.vacuum_last_blockid;
+
+      if (vacuum_Data.first_page->index_unvacuumed == vacuum_Data.first_page->index_free)
+	{
+	  /* Vacuum completely empty. */
+	  if (vacuum_Data.last_blockid < blockid)
+	    {
+	      (*data_page)->data->blockid = blockid;
+	      vacuum_Data.last_blockid = blockid;
+	    }
+	  else
+	    {
+	      (*data_page)->data->blockid = vacuum_Data.last_blockid;
+	    }
+	}
+      else
+	{
+	  (*data_page)->data->blockid = vacuum_Data.last_blockid;
+	}
       log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) (*data_page), 0,
 			     sizeof (vacuum_Data.last_blockid), &vacuum_Data.last_blockid);
       vacuum_set_dirty_data_page (thread_p, *data_page, DONT_FREE);
@@ -5260,6 +5282,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 		     "vacuum_recover_lost_block_data, log_Gl.hdr.mvcc_op_log_lsa is null ");
 
       LSA_COPY (&log_lsa, &vacuum_Data.recovery_lsa);
+      /* todo: Find a better stopping point for this!! */
       /* Stop search if search reaches blocks already in vacuum data. */
       stop_at_pageid = VACUUM_LAST_LOG_PAGEID_IN_BLOCK (vacuum_Data.last_blockid);
       while (log_lsa.pageid > stop_at_pageid)
@@ -5586,16 +5609,15 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
    * If vacuum data is not empty, then we need to preserve the log starting with the first page of first unvacuumed
    * block.
    */
-  VACUUM_LOG_BLOCKID keep_from_blockid =
-    (vacuum_Data.first_page->index_unvacuumed == vacuum_Data.first_page->index_free ?
-     NULL_PAGEID : vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].blockid);
-
-  if (keep_from_blockid == NULL_PAGEID)
+  VACUUM_LOG_BLOCKID keep_from_blockid;
+  if (vacuum_Data.first_page->index_unvacuumed == vacuum_Data.first_page->index_free)
     {
+      keep_from_blockid = VACUUM_NULL_LOG_BLOCKID;
       vacuum_Data.keep_from_log_pageid = NULL_PAGEID;
     }
   else
     {
+      keep_from_blockid = vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].blockid;
       keep_from_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (keep_from_blockid);
       vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
     }

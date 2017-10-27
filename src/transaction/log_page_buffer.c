@@ -5973,9 +5973,18 @@ logpb_set_unavailable_archive (int arv_num)
 void
 logpb_decache_archive_info (THREAD_ENTRY * thread_p)
 {
+  char *vol_label_p;
+
   if (log_Gl.archive.vdes != NULL_VOLDES)
     {
-      fileio_dismount (thread_p, log_Gl.archive.vdes);
+      /* Check if the current cached archive volume is still available. */
+      vol_label_p = fileio_get_volume_label_by_fd (log_Gl.archive.vdes, PEEK);
+
+      if (vol_label_p != NULL)
+	{
+	  fileio_dismount (thread_p, log_Gl.archive.vdes);
+	}			/* else skip dismounting as the volume has been dismounted earlier. */
+
       log_Gl.archive.vdes = NULL_VOLDES;
     }
   if (log_Gl.archive.unav_archives != NULL)
@@ -6840,7 +6849,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   int first_arv_num_to_delete = -1;
   int last_arv_num_to_delete = -1;
   int min_arv_required_for_vacuum;
-  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID, new_page_id = NULL_PAGEID;
 #if defined(SERVER_MODE)
   LOG_PAGEID min_copied_pageid;
   int min_copied_arv_num;
@@ -6946,6 +6955,19 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
       if (last_arv_num_to_delete >= first_arv_num_to_delete)
 	{
 	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
+
+	  /* Update the last_blockid needed for vacuum. */
+	  new_page_id = logpb_Arv_page_info_table.page_info[last_arv_num_to_delete + 1].start_pageid;
+	  if (last_arv_num_to_delete == -1 || new_page_id == 0)
+	    {
+	      /* set as NULL_BLOCKID */
+	      logpb_update_last_blockid (thread_p, NULL_PAGEID);
+	    }
+	  else
+	    {
+	      logpb_update_last_blockid (thread_p, new_page_id);
+	    }
+
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
 
@@ -12138,4 +12160,13 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
   loghdr->last_block_oldest_mvccid = MVCCID_NULL;
   loghdr->last_block_newest_mvccid = MVCCID_NULL;
+}
+
+
+void
+logpb_update_last_blockid (THREAD_ENTRY * thread_p, LOG_PAGEID page_id)
+{
+  VACUUM_LOG_BLOCKID last_blockid;
+  last_blockid = vacuum_get_log_blockid (page_id);
+  log_Gl.hdr.vacuum_last_blockid = last_blockid;
 }
