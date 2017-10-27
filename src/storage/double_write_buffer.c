@@ -356,7 +356,8 @@ STATIC_INLINE int dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
 STATIC_INLINE void dwb_init_slot (DWB_SLOT * slot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_acquire_next_slot (THREAD_ENTRY * thread_p, bool can_wait, DWB_SLOT ** p_dwb_slot)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_set_slot_data (DWB_SLOT * dwb_slot, FILEIO_PAGE * io_page_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot,
+				      FILEIO_PAGE * io_page_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_signal_structure_modificated (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_position_with_flags)
@@ -2340,17 +2341,16 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
       assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
 #endif
 
-      if (VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i + 1].vpid))
+      if (VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i + 1].vpid)
+	  && !VPID_ISNULL (&p_dwb_ordered_slots[i].vpid))
 	{
 	  /* Next slot contains the same page, but that page is newer than the current one. Invalidate the VPID to
-	   * avoid flushing the page twice.
+	   * avoid flushing the page twice. I'm sure that the current slot is not in hash.
 	   */
 	  assert (LSA_LE (&p_dwb_ordered_slots[i].lsa, &p_dwb_ordered_slots[i + 1].lsa));
 	  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
 	  VPID_SET_NULL (&(block->slots[p_dwb_ordered_slots[i].position_in_block].vpid));
-	  io_page = p_dwb_ordered_slots[i].io_page;
-	  io_page->prv.pageid = NULL_PAGEID;
-	  io_page->prv.volid = NULL_VOLID;
+	  fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
 	}
     }
 
@@ -2574,11 +2574,12 @@ start:
  * dwb_set_slot_data () - Set DWB data at the location indicated by the slot.
  *
  * return   : Error code.
+ * thread_p(in): Thread entry
  * dwb_slot(in/out): DWB slot that contains the location where the data must be set.
  * io_page_p(in): The data.
  */
 STATIC_INLINE void
-dwb_set_slot_data (DWB_SLOT * dwb_slot, FILEIO_PAGE * io_page_p)
+dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot, FILEIO_PAGE * io_page_p)
 {
   assert (dwb_slot != NULL && io_page_p != NULL);
 
@@ -2591,6 +2592,11 @@ dwb_set_slot_data (DWB_SLOT * dwb_slot, FILEIO_PAGE * io_page_p)
   if (io_page_p->prv.pageid != NULL_PAGEID)
     {
       memcpy (dwb_slot->io_page, (char *) io_page_p, IO_PAGESIZE);
+    }
+  else
+    {
+      /* Initialize page for consistency. */
+      fileio_initialize_res (thread_p, &(dwb_slot->io_page->prv));
     }
 
   LSA_COPY (&dwb_slot->lsa, &io_page_p->prv.lsa);
@@ -2900,7 +2906,7 @@ dwb_set_data_on_next_slot (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, boo
     }
 
   /* Set data on slot. */
-  dwb_set_slot_data (*p_dwb_slot, io_page_p);
+  dwb_set_slot_data (thread_p, *p_dwb_slot, io_page_p);
 
   return NO_ERROR;
 }
@@ -2959,8 +2965,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	{
 	  /* Invalidate the slot to avoid flushing the same data twice. */
 	  VPID_SET_NULL (&dwb_slot->vpid);
-	  dwb_slot->io_page->prv.pageid = NULL_PAGEID;
-	  dwb_slot->io_page->prv.volid = NULL_VOLID;
+	  fileio_initialize_res (thread_p, &(dwb_slot->io_page->prv));
 	}
     }
 
