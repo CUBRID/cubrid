@@ -6496,7 +6496,7 @@ ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 
   json_body = (char *) db_private_strdup (NULL, str);
 
-  db_make_json (val, json_body, document, false);
+  db_make_json (val, json_body, document, true);
   return NO_ERROR;
 }
 

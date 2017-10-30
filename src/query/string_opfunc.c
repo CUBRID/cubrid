@@ -3058,9 +3058,6 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_INTEGER:
 	  db_json_add_member_to_object (new_doc, arg[i]->data.ch.medium.buf, arg[i + 1]->data.i);
 	  break;
-	case DB_TYPE_FLOAT:
-	  db_json_add_member_to_object (new_doc, arg[i]->data.ch.medium.buf, arg[i + 1]->data.f);
-	  break;
 	case DB_TYPE_DOUBLE:
 	  db_json_add_member_to_object (new_doc, arg[i]->data.ch.medium.buf, arg[i + 1]->data.d);
 	  break;
@@ -3107,9 +3104,6 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  break;
 	case DB_TYPE_INTEGER:
 	  db_json_add_element_to_array (new_doc, arg[i]->data.i);
-	  break;
-	case DB_TYPE_FLOAT:
-	  db_json_add_element_to_array (new_doc, arg[i]->data.f);
 	  break;
 	case DB_TYPE_DOUBLE:
 	  db_json_add_element_to_array (new_doc, arg[i]->data.d);
