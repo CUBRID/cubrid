@@ -6977,13 +6977,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
 		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ
-		  || node->info.expr.op == PT_JSON_CONTAINS || node->info.expr.op == PT_JSON_TYPE
+		  || node->info.expr.op == PT_JSON_TYPE
 		  || node->info.expr.op == PT_JSON_EXTRACT || node->info.expr.op == PT_JSON_VALID
 		  || node->info.expr.op == PT_JSON_LENGTH || node->info.expr.op == PT_JSON_DEPTH
 		  || node->info.expr.op == PT_JSON_SEARCH)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
-		  if (node->info.expr.op == PT_CONCAT && node->info.expr.arg2 == NULL)
+		  if ((node->info.expr.op == PT_CONCAT || node->info.expr.op == PT_JSON_LENGTH)
+		      && node->info.expr.arg2 == NULL)
 		    {
 		      r2 = NULL;
 		    }
@@ -7033,8 +7034,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		  if (node->info.expr.op == PT_DATE_FORMAT || node->info.expr.op == PT_STR_TO_DATE
 		      || node->info.expr.op == PT_TIME_FORMAT || node->info.expr.op == PT_FORMAT
-		      || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_JSON_SEARCH
-		      || node->info.expr.op == PT_JSON_CONTAINS)
+		      || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_JSON_SEARCH)
 		    {
 		      r3 = pt_to_regu_variable (parser, node->info.expr.arg3, unbox);
 		    }
@@ -7227,7 +7227,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_CONCAT_WS || node->info.expr.op == PT_FIELD
 		       || node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_MID
 		       || node->info.expr.op == PT_SUBSTRING_INDEX || node->info.expr.op == PT_MAKETIME
-		       || node->info.expr.op == PT_INDEX_CARDINALITY || node->info.expr.op == PT_NEW_TIME)
+		       || node->info.expr.op == PT_INDEX_CARDINALITY || node->info.expr.op == PT_NEW_TIME
+		       || node->info.expr.op == PT_JSON_CONTAINS)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if (node->info.expr.arg2 == NULL && node->info.expr.op == PT_CONCAT_WS)
@@ -7240,7 +7241,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    }
 
 		  if (node->info.expr.arg3 == NULL
-		      && (node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_SUBSTRING))
+		      && (node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_SUBSTRING ||
+			  node->info.expr.op == PT_JSON_CONTAINS))
 		    {
 		      r3 = NULL;
 		    }
