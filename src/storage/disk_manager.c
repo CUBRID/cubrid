@@ -1963,7 +1963,9 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
   /* to be sure expansion really happens on recovery too, we must flush log! */
+  LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
+  LOG_CS_EXIT (thread_p);
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
