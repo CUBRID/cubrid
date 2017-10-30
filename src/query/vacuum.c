@@ -5590,7 +5590,7 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
    * block.
    */
   VACUUM_LOG_BLOCKID keep_from_blockid;
-  if (vacuum_Data.first_page->index_unvacuumed == vacuum_Data.first_page->index_free)
+  if (vacuum_is_empty ())
     {
       keep_from_blockid = VACUUM_NULL_LOG_BLOCKID;
       vacuum_Data.keep_from_log_pageid = NULL_PAGEID;
