@@ -1,11 +1,9 @@
-/*	$NetBSD: fgetln.c,v 1.9 2008/04/29 06:53:03 martin Exp $	*/
-
 /*-
- * Copyright (c) 1998 The NetBSD Foundation, Inc.
+ * Copyright (c) 2000 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * This code is derived from software contributed to The NetBSD Foundation
- * by Christos Zoulas.
+ * by Dieter Baron and Thomas Klausner.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,79 +27,64 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef HAVE_NBTOOL_CONFIG_H
-#include "nbtool_config.h"
-#endif
+#ifndef _CUBRID_GETOPT_H_
+#define _CUBRID_GETOPT_H_
 
-#if !HAVE_FGETLN
 #include "config.h"
-#include <stdlib.h>
-#ifndef HAVE_NBTOOL_CONFIG_H
-/* These headers are required, but included from nbtool_config.h */
-#include <stdio.h>
-#include <unistd.h>
-#include <errno.h>
-#include <string.h>
+
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>		/* for getopt_long */
+#include <unistd.h>		/* for getopt */
+#else
+#if !defined(WINDOWS)
+#include <sys/cdefs.h>
+#define DllImport
+#else
+#define DllImport  __declspec(dllimport)
 #endif
 
-char *
-fgetln(FILE *fp, size_t *len)
+/*
+ * Gnu like getopt_long() and BSD4.4 getsubopt()/optreset extensions
+ */
+#define no_argument        0
+#define required_argument  1
+#define optional_argument  2
+
+struct option
 {
-	static char *buf = NULL;
-	static size_t bufsiz = 0;
-	char *ptr;
+  /* name of long option */
+  const char *name;
+  /*
+   * one of no_argument, required_argument, and optional_argument:
+   * whether option takes an argument
+   */
+  int has_arg;
+  /* if not NULL, set *flag to val when option found */
+  int *flag;
+  /* if flag not NULL, value to set *flag to; else return value */
+  int val;
+};
 
-
-	if (buf == NULL) {
-		bufsiz = BUFSIZ;
-		if ((buf = malloc(bufsiz)) == NULL)
-			return NULL;
-	}
-
-	if (fgets(buf, bufsiz, fp) == NULL)
-		return NULL;
-
-	*len = 0;
-	while ((ptr = strchr(&buf[*len], '\n')) == NULL) {
-		size_t nbufsiz = bufsiz + BUFSIZ;
-		char *nbuf = realloc(buf, nbufsiz);
-
-		if (nbuf == NULL) {
-			int oerrno = errno;
-			free(buf);
-			errno = oerrno;
-			buf = NULL;
-			return NULL;
-		} else
-			buf = nbuf;
-
-		if (fgets(&buf[bufsiz], BUFSIZ, fp) == NULL) {
-			buf[bufsiz] = '\0';
-			*len = strlen(buf);
-			return buf;
-		}
-
-		*len = bufsiz;
-		bufsiz = nbufsiz;
-	}
-
-	*len = (ptr - buf) + 1;
-	return buf;
-}
-
+#ifdef __cplusplus
+extern "C"
+{
 #endif
 
-#ifdef TEST
-int
-main(int argc, char *argv[])
-{
-	char *p;
-	size_t len;
+  int getopt (int, char *const *, const char *);
+  int getopt_long (int, char *const *, const char *, const struct option *, int *);
 
-	while ((p = fgetln(stdin, &len)) != NULL) {
-		(void)printf("%zu %s", len, p);
-		free(p);
-	}
-	return 0;
+/* On some platforms, this is in libc, but not in a system header */
+  extern DllImport int optreset;
+  extern DllImport char *optarg;
+  extern DllImport int opterr;
+  extern DllImport int optind;
+  extern DllImport int optopt;
+
+#ifdef __cplusplus
 }
 #endif
+#endif
+
+typedef struct option GETOPT_LONG;
+
+#endif /* !_CUBRID_GETOPT_H_ */

@@ -45,7 +45,7 @@
 #include "broker_filename.h"
 #include "cas_protocol.h"
 #include "cas_common.h"
-
+#include "cubrid_getopt.h"
 #include "cas_cci.h"
 
 #if defined(WINDOWS)
