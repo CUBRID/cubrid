@@ -4090,9 +4090,11 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   if (vacuum_is_empty ())
     {
       /* Get the maximum between what is currently stored in vacuum and the value stored
-       * on the log_Gl header.
+       * in the log_Gl header. After a long session in SA_MODE, the vacuum_Data.last_page->data->blockid will not
+       * be updated anymore. So we decided to use the last_blockid that's stored in the log_Gl.hdr, if its newer
+       * than the one already stored in vacuum.
        */
-      vacuum_Data.last_blockid = MAX (log_Gl.hdr.vacuum_last_blockid, vacuum_Data.last_blockid);
+      vacuum_Data.last_blockid = MAX (log_Gl.hdr.vacuum_last_blockid, vacuum_Data.last_page->data->blockid);
     }
   else
     {

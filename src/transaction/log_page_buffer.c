@@ -5973,18 +5973,9 @@ logpb_set_unavailable_archive (int arv_num)
 void
 logpb_decache_archive_info (THREAD_ENTRY * thread_p)
 {
-  char *vol_label_p;
-
   if (log_Gl.archive.vdes != NULL_VOLDES)
     {
-      /* Check if the current cached archive volume is still available. */
-      vol_label_p = fileio_get_volume_label_by_fd (log_Gl.archive.vdes, PEEK);
-
-      if (vol_label_p != NULL)
-	{
-	  fileio_dismount (thread_p, log_Gl.archive.vdes);
-	}			/* else skip dismounting as the volume has been dismounted earlier. */
-
+      fileio_dismount (thread_p, log_Gl.archive.vdes);
       log_Gl.archive.vdes = NULL_VOLDES;
     }
   if (log_Gl.archive.unav_archives != NULL)
@@ -7236,10 +7227,19 @@ logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first, int last
   int i;
   bool append_log_info = false;
   int deleted_count = 0;
+  int vol_des;
 
   for (i = first; i <= last; i++)
     {
       fileio_make_log_archive_name (logarv_name, log_Archive_path, log_Prefix, i);
+      /* If the current archive resides in the archive log stored in log_Global, decache it. */
+      vol_des = fileio_find_volume_descriptor_with_label (logarv_name);
+
+      if (log_Gl.archive.vdes != NULL_VOLID && log_Gl.archive.vdes == vol_des)
+	{
+	  log_Gl.archive.vdes = NULL_VOLID;
+	}
+
 #if defined(SERVER_MODE)
       if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING) && boot_Server_status == BOOT_SERVER_UP)
 	{
