@@ -77,7 +77,6 @@
 #ifdef HAVE_REGEX_H
 #include <regex.h>
 #endif
-#include "cubrid_getopt.h"
 #ifdef HAVE_LIBGEN_H
 #include <libgen.h>
 #endif

@@ -33,7 +33,8 @@
 #include "config.h"
 
 #ifdef HAVE_GETOPT_H
-#include <getopt.h>
+#include <getopt.h>		/* for getopt_long */
+#include <unistd.h>		/* for getopt */
 #else
 #if !defined(WINDOWS)
 #include <sys/cdefs.h>
