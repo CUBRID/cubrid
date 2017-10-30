@@ -32,9 +32,9 @@ test_compare_lfcqs (void)
   lockfree_cqueue_tester *lfcq_testers[LFCQ_IMPLEMENTATION_COUNT] =
     { create_lfcq_stdatomic_tester (), create_lfcq_portatomic_tester (), create_lfcq_old_tester () };
 
-  std::size_t thread_count = 4;
-  std::size_t op_count = 1000000;
-  std::size_t lfcq_size = 1024;
+  std::size_t thread_count = 24;
+  std::size_t op_count = 500000;
+  std::size_t lfcq_size = 16 * 1024;
 
   for (unsigned i = 0; i < LFCQ_IMPLEMENTATION_COUNT; i++)
     {

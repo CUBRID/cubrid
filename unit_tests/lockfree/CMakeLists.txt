@@ -39,7 +39,7 @@ add_executable(test_lockfree
   ${TEST_LOCKFREE_HEADERS}
   )
 
-target_compile_definitions(test_memory_alloc PRIVATE
+target_compile_definitions(test_lockfree PRIVATE
   SERVER_MODE
   ${COMMON_DEFS}
   )

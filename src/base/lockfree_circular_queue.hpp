@@ -75,7 +75,7 @@ private:
   inline bool test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor);
 
   inline cursor_type load_cursor (atomic_cursor_type & cursor);
-  inline bool test_and_increment_cursor (atomic_cursor_type& cursor, cursor_type& crt_value);
+  inline bool test_and_increment_cursor (atomic_cursor_type& cursor, cursor_type crt_value);
 
   inline T load_data (cursor_type consume_cursor);
   inline void store_data (size_t index, const T& data);
@@ -283,7 +283,7 @@ circular_queue<T>::load_cursor (atomic_cursor_type & cursor)
 }
 
 template<class T>
-inline bool circular_queue<T>::test_and_increment_cursor (atomic_cursor_type & cursor, cursor_type & crt_value)
+inline bool circular_queue<T>::test_and_increment_cursor (atomic_cursor_type & cursor, cursor_type crt_value)
 {
 #ifdef USE_STD_ATOMIC
   // can weak be used here?
