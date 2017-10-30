@@ -653,7 +653,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
     case T_JSON_TYPE:
     case T_JSON_VALID:
-    case T_JSON_LENGTH:
     case T_JSON_DEPTH:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
@@ -682,7 +681,19 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    }
 	}
       break;
-
+    case T_JSON_LENGTH:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->rightptr)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       goto error;
@@ -2650,7 +2661,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_JSON_LENGTH:
-      if (qdata_json_length_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_json_length_dbval
+	  (peek_left, (arithptr->rightptr == NULL ? NULL : peek_right), arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}

@@ -10131,6 +10131,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
       q = pt_append_nulstring (parser, q, " json_length(");
       q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 != NULL)
+	{
+	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
+
+	  q = pt_append_nulstring (parser, q, ", ");
+	  q = pt_append_varchar (parser, q, r2);
+	}
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_JSON_DEPTH:
@@ -18053,7 +18060,6 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_COLLATION:
 	case PT_JSON_TYPE:
 	case PT_JSON_VALID:
-	case PT_JSON_LENGTH:
 	case PT_JSON_DEPTH:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
@@ -18070,6 +18076,9 @@ pt_is_const_expr_node (PT_NODE * node)
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)
 		  && (node->info.expr.arg3 ? pt_is_const_expr_node (node->info.expr.arg3) : true)) ? true : false;
+	case PT_JSON_LENGTH:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && (node->info.expr.arg2 ? pt_is_const_expr_node (node->info.expr.arg2) : true)) ? true : false;
 	default:
 	  return false;
 	}

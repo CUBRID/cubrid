@@ -6557,9 +6557,9 @@ qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * do
 }
 
 int
-qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
-  return db_json_length_dbval (dbval1_p, result_p);
+  return db_json_length_dbval (dbval1_p, dbval2_p, result_p);
 }
 
 int

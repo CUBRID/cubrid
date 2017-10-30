@@ -7465,7 +7465,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_VALID, domain);
 		  break;
 		case PT_JSON_LENGTH:
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_LENGTH, domain);
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_JSON_LENGTH, domain);
 		  break;
 		case PT_JSON_DEPTH:
 		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_DEPTH, domain);

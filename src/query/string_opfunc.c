@@ -3072,7 +3072,12 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_JSON:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), arg[i + 1]->data.json.document);
 	  break;
-	  /* TODO - default */
+	case DB_TYPE_NULL:
+	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), (JSON_DOC *) NULL);
+	  break;
+	default:
+	  db_json_delete_doc (new_doc);
+	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
     }
 
@@ -3121,7 +3126,12 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_JSON:
 	  db_json_add_element_to_array (new_doc, arg[i]->data.json.document);
 	  break;
-	  /* TODO - default */
+	case DB_TYPE_NULL:
+	  db_json_add_element_to_array (new_doc, (JSON_DOC *) NULL);
+	  break;
+	default:
+	  db_json_delete_doc (new_doc);
+	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
     }
 
@@ -3140,8 +3150,12 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   if (num_args < 3)
     {
-      DB_MAKE_NULL (result);
-      return NO_ERROR;
+      return DB_MAKE_NULL (result);
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return DB_MAKE_NULL (result);
     }
 
   switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
@@ -3162,6 +3176,12 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 1; i < num_args; i += 2)
     {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+	}
+
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
@@ -3172,8 +3192,12 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_JSON:
 	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
-
-	  /* TODO - default */
+	case DB_TYPE_NULL:
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+	default:
+	  db_json_delete_doc (new_doc);
+	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
 
       if (error_code != NO_ERROR)
@@ -3202,6 +3226,11 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
+  if (DB_IS_NULL (arg[0]))
+    {
+      return DB_MAKE_NULL (result);
+    }
+
   switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
     {
     case DB_TYPE_CHAR:
@@ -3216,12 +3245,18 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
     case DB_TYPE_JSON:
       new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
       break;
-
-      /* TODO - default */
+    default:
+      return ER_QSTR_INVALID_DATA_TYPE;
     }
 
   for (i = 1; i < num_args; i++)
     {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+	}
+
       error_code = db_json_remove_func (new_doc, DB_PULL_STRING (arg[i]));
       if (error_code != NO_ERROR)
 	{
@@ -3270,7 +3305,12 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_CHAR:
 	  error_code = db_json_convert_string_and_call (DB_GET_STRING (arg[i]), db_json_merge_func, accumulator);
 	  break;
-	  /* TODO - default */
+	case DB_TYPE_NULL:
+	  db_json_delete_doc (accumulator);
+	  return DB_MAKE_NULL (result);
+	default:
+	  db_json_delete_doc (accumulator);
+	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
 
       if (error_code != NO_ERROR)

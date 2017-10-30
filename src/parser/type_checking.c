@@ -5008,7 +5008,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
-    case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
       num = 0;
 
@@ -5017,6 +5016,39 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* arg1 */
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+    case PT_JSON_LENGTH:
+      num = 0;
+
+      /* two overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_NONE;
 
       /* return type */
       sig.return_type.is_generic = false;
@@ -13191,7 +13223,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       {
 	PT_TYPE_ENUM supported_key_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_value_types[] =
-	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON, PT_TYPE_MAYBE };
+	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int num_bad = 0, len, i, found_supported = 0;
 	int supported_value_types_len = sizeof (supported_value_types) / sizeof (supported_value_types[0]);
@@ -13248,7 +13280,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_JSON_ARRAY:
       {
 	PT_TYPE_ENUM supported_types[] =
-	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_NUMERIC, PT_TYPE_MAYBE };
+	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_NUMERIC, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	int len = sizeof (supported_types) / sizeof (supported_types[0]);
 	int i, found_supported_type = 0;
@@ -13289,7 +13321,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_MERGE:
       {
-	PT_TYPE_ENUM supported_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	int len = sizeof (supported_types) / sizeof (supported_types[0]);
 	int i, found_supported_type = 0;
@@ -13330,9 +13362,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_INSERT:
       {
-	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
-	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
-	PT_TYPE_ENUM supported_val_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_val_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int num_bad = 0, len, i, found_supported = 0;
 	unsigned int supported_json_types_len = sizeof (supported_json_type) / sizeof (supported_json_type[0]);
@@ -13402,8 +13434,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_REMOVE:
       {
-	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
-	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int num_bad = 0, i, found_supported = 0;
 	unsigned int supported_json_types_len = sizeof (supported_json_type) / sizeof (supported_json_type[0]);
@@ -17292,7 +17324,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       break;
     case PT_JSON_LENGTH:
-      error = db_json_length_dbval (arg1, result);
+      error = db_json_length_dbval (arg1, (o2 == NULL ? NULL : arg2), result);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
