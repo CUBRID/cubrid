@@ -15,8 +15,27 @@
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
+message("======== CMakeLists.txt")
 
 cmake_minimum_required(VERSION 2.8)
+
+function(with_unit_tests res) #checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
+  #message("    ==== with_unit_tests() ...")
+  get_cmake_property(vars VARIABLES)
+  foreach(var ${vars})
+    if(NOT var MATCHES "^(UNIT_TESTS|UNIT_TEST_.*)$")
+      continue()
+    endif()
+    message("        var: ${var} = ${${var}}")
+    if(NOT ${${var}} STREQUAL "ON")
+      continue()
+    endif()
+    set(${res} 1 PARENT_SCOPE)  #at least one unit test was requested
+  endforeach()
+endfunction(with_unit_tests)
+
+with_unit_tests(AT_LEAST_ONE_UNIT_TEST)
+message("    ==== with_unit_tests() = ${AT_LEAST_ONE_UNIT_TEST}")
 
 #also searches for modules onto cubrid/cmake
 # add other Find[LIBRARY].cmake scripts in cubrid/cmake
@@ -48,6 +67,7 @@ option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
+option(UNIT_TESTS "Unit tests" OFF)
 
 # options for external libraries (BUNDLED or path)
 
