@@ -23,18 +23,11 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <assert.h>
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -61,6 +54,7 @@
 #include "utility.h"
 #include "util_support.h"
 #include "porting.h"
+#include "cubrid_getopt.h"
 
 #define COMMDB_CMD_ALLOWED_ON_REMOTE() \
   ((commdb_Arg_deact_stop_all == true) \

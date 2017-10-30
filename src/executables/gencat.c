@@ -98,11 +98,6 @@ up-to-date.  Many thanks.
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -117,6 +112,7 @@ typedef int int32_t;
 #endif /* WINDOWS */
 
 #include "porting.h"
+#include "cubrid_getopt.h"
 
 #ifndef NL_SETMAX
 #define NL_SETMAX 255
