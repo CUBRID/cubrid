@@ -650,6 +650,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  goto error;
 	}
       break;
+
     case T_JSON_TYPE:
     case T_JSON_VALID:
     case T_JSON_LENGTH:
@@ -659,6 +660,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  goto error;
 	}
       break;
+
     case T_JSON_SEARCH:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
       goto error;
@@ -2625,36 +2627,42 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  goto error;
 	}
       break;
+
     case T_JSON_TYPE:
       if (qdata_json_type_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
+
     case T_JSON_EXTRACT:
       if (qdata_json_extract_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
+
     case T_JSON_VALID:
       if (qdata_json_valid_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
+
     case T_JSON_LENGTH:
       if (qdata_json_length_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
+
     case T_JSON_DEPTH:
       if (qdata_json_depth_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
+
     case T_CONCAT:
       if (arithptr->rightptr != NULL)
 	{
@@ -4092,6 +4100,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 		  }
 	      }
 	      break;
+
 	    case F_INSERT_SUBSTRING:
 	      /* should sync with qdata_insert_substring_function () */
 	      {

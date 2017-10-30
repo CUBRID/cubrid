@@ -5131,8 +5131,8 @@ db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_
   if (path != NULL && !DB_IS_NULL (path))
     {
       const char *raw_path = db_get_string (path);
-      error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
 
+      error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -5145,11 +5145,12 @@ db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_
 
   if (result_doc != NULL)
     {
-      assert (value->domain.general_info.type == DB_TYPE_JSON);
       int error_code;
       bool has_member;
-      error_code = db_json_value_is_contained_in_doc (result_doc, DB_GET_JSON_DOCUMENT (value), has_member);
 
+      assert (value->domain.general_info.type == DB_TYPE_JSON);
+
+      error_code = db_json_value_is_contained_in_doc (result_doc, DB_GET_JSON_DOCUMENT (value), has_member);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -5171,10 +5172,13 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
     }
   else
     {
+      const char *type;
+      unsigned int length;
+
       assert (json->data.json.json_body != NULL);
 
-      const char *type = db_json_get_type_as_str (json->data.json.document);
-      unsigned int length = strlen (type);
+      type = db_json_get_type_as_str (json->data.json.document);
+      length = strlen (type);
 
       return DB_MAKE_CHAR (type_res, length, type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
     }
@@ -5189,7 +5193,8 @@ db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res)
     }
   else
     {
-      bool valid = db_json_is_valid (json->data.ch.medium.buf);
+      bool valid = db_json_is_valid (DB_PULL_STRING (json));
+
       return DB_MAKE_INT (type_res, (int) valid);
     }
 }
@@ -5219,6 +5224,7 @@ db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
   else
     {
       unsigned int depth = db_json_get_depth (json->data.json.document);
+
       return DB_MAKE_INT (res, depth);
     }
 }
@@ -5227,13 +5233,12 @@ int
 db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
 {
   JSON_DOC *this_doc = json->data.json.document;
-  const char *raw_path = path->data.ch.medium.buf;
+  const char *raw_path = DB_PULL_STRING (path);
   char *json_body;
   JSON_DOC *result_doc = NULL;
   int error_code;
 
   error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
-
   if (error_code != NO_ERROR)
     {
       return error_code;

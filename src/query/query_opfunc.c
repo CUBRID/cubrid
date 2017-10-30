@@ -8901,18 +8901,25 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
 
     case F_INSERT_SUBSTRING:
       return qdata_insert_substring_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_ELT:
       return qdata_elt (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_JSON_OBJECT:
       return qdata_json_object (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_JSON_ARRAY:
       return qdata_json_array (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_JSON_INSERT:
       return qdata_json_insert (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_JSON_REMOVE:
       return qdata_json_remove (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_JSON_MERGE:
       return qdata_json_merge (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_FAILED;
@@ -10565,9 +10572,9 @@ qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
       operand = operand->next;
     }
 
-  args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
-  operand = function_p->operand;
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
 
+  operand = function_p->operand;
   while (operand != NULL)
     {
       error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &key);
@@ -10575,11 +10582,13 @@ qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 	{
 	  goto error_exit;
 	}
+
       error_status = fetch_peek_dbval (thread_p, &operand->next->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
       if (error_status != NO_ERROR)
 	{
 	  goto error_exit;
 	}
+
       args[index++] = key;
       args[index++] = value;
 
@@ -10588,16 +10597,17 @@ qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 
   assert (index == no_args);
 
-  if (db_json_object (function_p->value, args, no_args) != NO_ERROR)
+  error_status = db_json_object (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
     {
       goto error_exit;
     }
 
-  db_private_free (NULL, args);
+  db_private_free (thread_p, args);
   return NO_ERROR;
 
 error_exit:
-  db_private_free (NULL, args);
+  db_private_free (thread_p, args);
   return error_status;
 }
 
@@ -10625,9 +10635,9 @@ qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR
       operand = operand->next;
     }
 
-  args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
-  operand = function_p->operand;
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
 
+  operand = function_p->operand;
   while (operand != NULL)
     {
       error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
@@ -10642,16 +10652,17 @@ qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR
 
   assert (index == no_args);
 
-  if (db_json_array (function_p->value, args, no_args) != NO_ERROR)
+  error_status = db_json_array (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
     {
       goto error_exit;
     }
 
-  db_private_free (NULL, args);
+  db_private_free (thread_p, args);
   return NO_ERROR;
 
 error_exit:
-  db_private_free (NULL, args);
+  db_private_free (thread_p, args);
   return error_status;
 }
 
@@ -10679,9 +10690,9 @@ qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
       operand = operand->next;
     }
 
-  args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
-  operand = function_p->operand;
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
 
+  operand = function_p->operand;
   while (operand != NULL)
     {
       error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
@@ -10696,16 +10707,17 @@ qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 
   assert (index == no_args);
 
-  if (db_json_insert (function_p->value, args, no_args) != NO_ERROR)
+  error_status = db_json_insert (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
     {
       goto error_exit;
     }
 
-  db_private_free (NULL, args);
+  db_private_free (thread_p, args);
   return NO_ERROR;
 
 error_exit:
-  db_private_free (NULL, args);
+  db_private_free (thread_p, args);
   return error_status;
 }
 
@@ -10733,9 +10745,9 @@ qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
       operand = operand->next;
     }
 
-  args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
-  operand = function_p->operand;
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
 
+  operand = function_p->operand;
   while (operand != NULL)
     {
       error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
@@ -10750,16 +10762,17 @@ qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 
   assert (index == no_args);
 
-  if (db_json_remove (function_p->value, args, no_args) != NO_ERROR)
+  error_status = db_json_remove (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
     {
       goto error_exit;
     }
 
-  db_private_free (NULL, args);
+  db_private_free (thread_p, args);
   return NO_ERROR;
 
 error_exit:
-  db_private_free (NULL, args);
+  db_private_free (thread_p, args);
   return error_status;
 }
 
@@ -10787,9 +10800,9 @@ qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR
       operand = operand->next;
     }
 
-  args = (DB_VALUE **) db_private_alloc (NULL, sizeof (DB_VALUE *) * no_args);
-  operand = function_p->operand;
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
 
+  operand = function_p->operand;
   while (operand != NULL)
     {
       error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
@@ -10804,16 +10817,17 @@ qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR
 
   assert (index == no_args);
 
-  if (db_json_merge (function_p->value, args, no_args) != NO_ERROR)
+  error_status = db_json_merge (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
     {
       goto error_exit;
     }
 
-  db_private_free (NULL, args);
+  db_private_free (thread_p, args);
   return NO_ERROR;
 
 error_exit:
-  db_private_free (NULL, args);
+  db_private_free (thread_p, args);
   return error_status;
 }
 

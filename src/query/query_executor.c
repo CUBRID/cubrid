@@ -22472,6 +22472,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
     {
       DB_DATA_STATUS data_stat;
       DB_VALUE bracket1, bracket2, db_name, schema;
+      bool err = false;
 
       if (db_json_get_schema_raw_from_validator (validator) != NULL)
 	{
@@ -22488,9 +22489,14 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	      || db_string_concatenate (result, &bracket2, result, &data_stat) != NO_ERROR
 	      || (data_stat != DATA_STATUS_OK))
 	    {
-	      pr_clear_value (&bracket1);
-	      pr_clear_value (&schema);
-	      pr_clear_value (&bracket2);
+	      err = true;
+	    }
+
+	  pr_clear_value (&schema);
+
+	  if (err)
+	    {
+	      pr_clear_value (result);
 	      goto exit_on_error;
 	    }
 	}

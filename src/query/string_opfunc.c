@@ -2997,7 +2997,6 @@ db_string_elt (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-
   if (DB_IS_NULL (arg[0]))
     {
       DB_MAKE_NULL (result);
@@ -3050,28 +3049,30 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 0; i < num_args; i += 2)
     {
-      switch (arg[i + 1]->domain.general_info.type)
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
-	  db_json_add_member_to_object (new_doc, arg[i]->data.ch.medium.buf, arg[i + 1]->data.ch.medium.buf);
+	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_PULL_STRING (arg[i + 1]));
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_json_add_member_to_object (new_doc, arg[i]->data.ch.medium.buf, arg[i + 1]->data.i);
+	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_GET_INT (arg[i + 1]));
 	  break;
 	case DB_TYPE_DOUBLE:
-	  db_json_add_member_to_object (new_doc, arg[i]->data.ch.medium.buf, arg[i + 1]->data.d);
+	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_GET_DOUBLE (arg[i + 1]));
 	  break;
 	case DB_TYPE_NUMERIC:
 	  {
 	    DB_VALUE double_value;
+
 	    db_value_coerce (arg[i + 1], &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
-	    db_json_add_member_to_object (new_doc, arg[i]->data.ch.medium.buf, double_value.data.d);
+	    db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_GET_DOUBLE (&double_value));
 	    pr_clear_value (&double_value);
 	  }
 	  break;
 	case DB_TYPE_JSON:
-	  db_json_add_member_to_object (new_doc, arg[i]->data.ch.medium.buf, arg[i + 1]->data.json.document);
+	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), arg[i + 1]->data.json.document);
 	  break;
+	  /* TODO - default */
 	}
     }
 
@@ -3097,28 +3098,30 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (int i = 0; i < num_args; i++)
     {
-      switch (arg[i]->domain.general_info.type)
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i]))
 	{
 	case DB_TYPE_CHAR:
-	  db_json_add_element_to_array (new_doc, arg[i]->data.ch.medium.buf);
+	  db_json_add_element_to_array (new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_json_add_element_to_array (new_doc, arg[i]->data.i);
+	  db_json_add_element_to_array (new_doc, DB_GET_INT (arg[i]));
 	  break;
 	case DB_TYPE_DOUBLE:
-	  db_json_add_element_to_array (new_doc, arg[i]->data.d);
+	  db_json_add_element_to_array (new_doc, DB_GET_DOUBLE (arg[i]));
 	  break;
 	case DB_TYPE_NUMERIC:
 	  {
 	    DB_VALUE double_value;
+
 	    db_value_coerce (arg[i], &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
-	    db_json_add_element_to_array (new_doc, double_value.data.d);
+	    db_json_add_element_to_array (new_doc, DB_GET_DOUBLE (&double_value));
 	    pr_clear_value (&double_value);
 	  }
 	  break;
 	case DB_TYPE_JSON:
 	  db_json_add_element_to_array (new_doc, arg[i]->data.json.document);
 	  break;
+	  /* TODO - default */
 	}
     }
 
@@ -3141,17 +3144,17 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  switch (arg[0]->domain.general_info.type)
+  switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
     {
     case DB_TYPE_CHAR:
-      error_code = db_json_get_json_from_str (arg[0]->data.ch.medium.buf, new_doc);
-
+      error_code = db_json_get_json_from_str (DB_PULL_STRING (arg[0]), new_doc);
       if (error_code != NO_ERROR)
 	{
 	  assert (new_doc == NULL);
 	  return error_code;
 	}
       break;
+
     case DB_TYPE_JSON:
       new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
       break;
@@ -3159,15 +3162,18 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 1; i < num_args; i += 2)
     {
-      switch (arg[i + 1]->domain.general_info.type)
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
-	  error_code = db_json_convert_string_and_call (arg[i + 1]->data.ch.medium.buf,
-							db_json_insert_func, new_doc, arg[i]->data.ch.medium.buf);
+	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
+							db_json_insert_func, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
+
 	case DB_TYPE_JSON:
-	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, arg[i]->data.ch.medium.buf);
+	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
+
+	  /* TODO - default */
 	}
 
       if (error_code != NO_ERROR)
@@ -3196,25 +3202,27 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-  switch (arg[0]->domain.general_info.type)
+  switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
     {
     case DB_TYPE_CHAR:
-      error_code = db_json_get_json_from_str (arg[0]->data.ch.medium.buf, new_doc);
-
+      error_code = db_json_get_json_from_str (DB_PULL_STRING (arg[0]), new_doc);
       if (error_code != NO_ERROR)
 	{
 	  assert (new_doc == NULL);
 	  return error_code;
 	}
       break;
+
     case DB_TYPE_JSON:
       new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
       break;
+
+      /* TODO - default */
     }
 
   for (i = 1; i < num_args; i++)
     {
-      error_code = db_json_remove_func (new_doc, arg[i]->data.ch.medium.buf);
+      error_code = db_json_remove_func (new_doc, DB_PULL_STRING (arg[i]));
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -3244,24 +3252,25 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int error_code;
   JSON_DOC *accumulator;
 
-  accumulator = db_json_allocate_doc ();
-
   if (num_args < 2)
     {
       DB_MAKE_NULL (result);
       return NO_ERROR;
     }
 
+  accumulator = db_json_allocate_doc ();
+
   for (i = 0; i < num_args; i++)
     {
-      switch (db_value_type (arg[i]))
+      switch (DB_VALUE_TYPE (arg[i]))
 	{
 	case DB_TYPE_JSON:
 	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator);
 	  break;
 	case DB_TYPE_CHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_json_merge_func, accumulator);
+	  error_code = db_json_convert_string_and_call (DB_GET_STRING (arg[i]), db_json_merge_func, accumulator);
 	  break;
+	  /* TODO - default */
 	}
 
       if (error_code != NO_ERROR)
@@ -3273,6 +3282,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   str = db_json_get_raw_json_body_from_document (accumulator);
   db_make_json (result, str, accumulator, true);
+
   return NO_ERROR;
 }
 
