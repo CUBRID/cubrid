@@ -7382,7 +7382,6 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   LOG_CS_ENTER (thread_p);
 
   xlogtb_dump_trantable (thread_p, out_fp);
-  logpb_dump (thread_p, out_fp);
   logpb_flush_pages_direct (thread_p);
   logpb_flush_header (thread_p);
 

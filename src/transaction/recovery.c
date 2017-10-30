@@ -104,7 +104,7 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVDK_VOLHEAD_EXPAND,
    "RVDK_VOLHEAD_EXPAND",
-   NULL,
+   disk_rv_volhead_extend_undo,
    disk_rv_volhead_extend_redo,
    NULL,
    NULL},

@@ -307,6 +307,26 @@ static bool disk_Logging = false;
     _er_log_debug (ARG_FILE_LINE, "DISK " func " " LOG_THREAD_TRAN_MSG ": \n\t" msg "\n", \
                    LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 
+#define DISK_VOLHEADER_MSG \
+  "\t\tvolume header: \n" \
+  "\t\t\tvolid = %d\n" \
+  "\t\t\ttype = %s\n" \
+  "\t\t\tpurpose = %s\n" \
+  "\t\t\tsectors: total = %d, max = %d\n" \
+  "\t\t\thint_allocset = %d\n" \
+  "\t\t\tsector allocation table: start = %d, num pages = %d\n" \
+  "\t\t\tchkpt_lsa = %lld|%d\n" \
+  "\t\t\tnext_volid = %d\n"
+#define DISK_VOLHEADER_AS_ARGS(arg_volh) \
+  (arg_volh)->volid, \
+  disk_type_to_string ((arg_volh)->type), \
+  disk_purpose_to_string ((arg_volh)->purpose), \
+  (arg_volh)->nsect_total, (arg_volh)->nsect_max, \
+  (arg_volh)->hint_allocsect, \
+  (arg_volh)->stab_first_page, (arg_volh)->stab_npages, \
+  LSA_AS_ARGS (&(arg_volh)->chkpt_lsa), \
+  (arg_volh)->next_volid
+
 #define DISK_RESERVE_CONTEXT_MSG \
   "\t\tcontext: \n" \
   "\t\t\tnsect_total = %d\n" \
@@ -1858,14 +1878,20 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   int volume_new_npages;
   bool do_logging;
   int error_code = NO_ERROR;
+  LOG_LSA prev_lsa = LSA_INITIALIZER;
 
   assert (nsect_extend > 0);
 
   /* how it works:
    *
-   * to make sure extension is correctly recovered, we need to log disk extension while holding the volume header page.
-   * the redo log for disk extension is not tied to the page and will be reexecuted every time; the extension is
-   * skipped thought if volume size is equal or bigger to the extension size.
+   * to make sure extension is correctly recovered, we need to:
+   * 1. use a system operation (we need to undo change in volume header if expand is not completed).
+   * 2. undoredo update on volume header.
+   * 3. log expansion (unattached redo - is always executed). 
+   * 4. commit system operation (to cancel the volume header change undo).
+   * 5. flush log! without this last step, it is still possible to expand the volume without recovery
+   * 6. now it is safe to expand volume.
+   * 
    */
 
   /* round up */
@@ -1883,14 +1909,21 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   assert (volheader->type == voltype);
   do_logging = (volheader->type == DB_PERMANENT_VOLTYPE);
 
+  /* we need system op here */
+  log_sysop_start (thread_p);
+
   /* update sector total number */
   volheader->nsect_total += nsect_extend;
   disk_verify_volume_header (thread_p, page_volheader);
   if (do_logging)
     {
-      log_append_redo_data2 (thread_p, RVDK_VOLHEAD_EXPAND, NULL, page_volheader, NULL_OFFSET, sizeof (nsect_extend),
-			     &nsect_extend);
+      prev_lsa = *pgbuf_get_lsa (page_volheader);
+      log_append_undoredo_data2 (thread_p, RVDK_VOLHEAD_EXPAND, NULL, page_volheader, NULL_OFFSET,
+				 sizeof (nsect_extend), sizeof (nsect_extend), &nsect_extend, &nsect_extend);
     }
+  disk_log ("disk_volume_expand", "add %d more sectors to: \n" DISK_VOLHEADER_MSG
+	    "\t\t\t" PGBUF_PAGE_MODIFY_MSG ("page"), nsect_extend,
+	    DISK_VOLHEADER_AS_ARGS (volheader), PGBUF_PAGE_MODIFY_ARGS (page_volheader, &prev_lsa));
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
@@ -1919,10 +1952,18 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
       log_append_dboutside_redo (thread_p, RVDK_EXPAND_VOLUME, sizeof (DISK_RECV_DATA_VOLUME_EXPAND), &log_data);
     }
 
-  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
-
   /* now it is safe to free volume header */
   pgbuf_set_dirty_and_free (thread_p, page_volheader);
+
+  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
+
+  /* we can now end system op. */
+  log_sysop_commit (thread_p);
+
+  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
+
+  /* to be sure expansion really happens on recovery too, we must flush log! */
+  logpb_flush_pages_direct (thread_p);
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
@@ -1998,6 +2039,40 @@ disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   disk_log ("disk_rv_volhead_extend_redo", "extended volume %d total sectors %d (out of which %d were free). "
 	    "volume header lsa %lld|%d", volheader->volid, nsect_extend, nfree, PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr));
 
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * disk_rv_volhead_extend_undo () - undo the volume header update on aborted expansion
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+disk_rv_volhead_extend_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  DISK_VOLUME_HEADER *volheader = (DISK_VOLUME_HEADER *) rcv->pgptr;
+  DKNSECTS nsect_extend = *(DKNSECTS *) rcv->data;
+
+  assert (rcv->length == sizeof (nsect_extend));
+  assert (volheader->type == DB_PERMANENT_VOLTYPE);
+  assert (volheader->purpose == DB_PERMANENT_DATA_PURPOSE);
+
+  disk_verify_volume_header (thread_p, rcv->pgptr);
+  volheader->nsect_total -= nsect_extend;
+  disk_verify_volume_header (thread_p, rcv->pgptr);
+
+  /* disk cache is updated, but no sector could be reserved.
+   * NOTE: I assume here that extension is part of a committed sysop */
+  disk_Cache->perm_purpose_info.extend_info.nsect_total -= nsect_extend;
+  disk_cache_lock_reserve_for_purpose (DB_PERMANENT_DATA_PURPOSE);
+  disk_cache_update_vol_free (volheader->volid, -nsect_extend);
+  disk_cache_unlock_reserve_for_purpose (DB_PERMANENT_DATA_PURPOSE);
+
+  disk_log ("disk_rv_volhead_extend_undo", "undo volume %d extension - remove %d sectors. volume header lsa %lld|%d\n",
+	    volheader->volid, nsect_extend, PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr));
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }
