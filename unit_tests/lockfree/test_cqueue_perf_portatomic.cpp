@@ -17,14 +17,26 @@
  *
  */
 
-#include "test_cqueue_functional.hpp"
-#include "test_cqueue_perf.hpp"
+#include "test_cqueue_perf_interface.hpp"
 
-int
-main (int, char **)
+#undef USE_STD_ATOMIC
+#include "lockfree_circular_queue.hpp"
+
+namespace test_lockfree {
+
+class lcfq_porttomic_tester : public lockfree_cqueue_tester
 {
-  //int err = test_lockfree::test_cqueue_functional ();
+public:
+  void test_run_count (std::size_t thread_count, std::size_t op_count, std::size_t cqueue_size)
+    {
+      run_count<lockfree::circular_queue<int> > (thread_count, op_count, cqueue_size);
+    }
+};
 
-  test_lockfree::test_compare_lfcqs ();
-  return 0;
+lockfree_cqueue_tester*
+create_lfcq_portatomic_tester ()
+{
+  return new lcfq_porttomic_tester ();
 }
+
+} // namespace test_lockfree

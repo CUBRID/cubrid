@@ -17,14 +17,29 @@
  *
  */
 
-#include "test_cqueue_functional.hpp"
+/*
+ * test_cqueue_perf.cpp - implementation of performance compare
+ */
+
 #include "test_cqueue_perf.hpp"
+#include "test_cqueue_perf_interface.hpp"
 
-int
-main (int, char **)
+namespace test_lockfree {
+
+void
+test_compare_lfcqs (void)
 {
-  //int err = test_lockfree::test_cqueue_functional ();
+  lockfree_cqueue_tester *lfcq_testers[LFCQ_IMPLEMENTATION_COUNT] =
+    { create_lfcq_stdatomic_tester (), create_lfcq_portatomic_tester (), create_lfcq_old_tester () };
 
-  test_lockfree::test_compare_lfcqs ();
-  return 0;
+  std::size_t thread_count = 4;
+  std::size_t op_count = 1000000;
+  std::size_t lfcq_size = 1024;
+
+  for (unsigned i = 0; i < LFCQ_IMPLEMENTATION_COUNT; i++)
+    {
+      lfcq_testers[i]->test_run_count (thread_count, op_count, lfcq_size);
+    }
 }
+
+} // namespace test_lockfree

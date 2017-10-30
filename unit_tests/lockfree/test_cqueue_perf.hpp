@@ -17,14 +17,17 @@
  *
  */
 
-#include "test_cqueue_functional.hpp"
-#include "test_cqueue_perf.hpp"
+/*
+ * test_cqueue_perf.hpp - performance compare between lfcq implementations
+ */
 
-int
-main (int, char **)
-{
-  //int err = test_lockfree::test_cqueue_functional ();
+#ifndef _TEST_CQUEUE_PERF_HPP_
+#define _TEST_CQUEUE_PERF_HPP_
 
-  test_lockfree::test_compare_lfcqs ();
-  return 0;
-}
+namespace test_lockfree {
+
+void test_compare_lfcqs (void);
+
+} // namespace test_lockfree
+
+#endif // _TEST_CQUEUE_PERF_HPP_

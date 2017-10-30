@@ -1,0 +1,69 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
+
+#include "test_cqueue_perf_interface.hpp"
+
+#include "lock_free.h"
+
+namespace test_lockfree {
+
+class lfcq_wrapper
+{
+public:
+  lfcq_wrapper (size_t size)
+  {
+    m_queue_p = lf_circular_queue_create (size, sizeof (int));
+  }
+  ~lfcq_wrapper ()
+  {
+    lf_circular_queue_destroy (m_queue_p);
+  }
+
+  inline bool
+  produce (int & value)
+  {
+    return lf_circular_queue_produce (m_queue_p, &value);
+  }
+
+  inline bool
+  consume (int & value)
+  {
+    return lf_circular_queue_consume (m_queue_p, &value);
+  }
+
+private:
+  LOCK_FREE_CIRCULAR_QUEUE *m_queue_p;
+};
+
+class lcfq_old_tester : public lockfree_cqueue_tester
+{
+public:
+  void test_run_count (std::size_t thread_count, std::size_t op_count, std::size_t cqueue_size)
+    {
+      run_count<lfcq_wrapper> (thread_count, op_count, cqueue_size);
+    }
+};
+
+lockfree_cqueue_tester*
+create_lfcq_old_tester ()
+{
+  return new lcfq_old_tester ();
+}
+
+} // namespace test_lockfree
