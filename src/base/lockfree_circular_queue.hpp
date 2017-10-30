@@ -27,7 +27,7 @@
 #include <type_traits>
 #include <climits>
 #include <cstdint>
-#if USE_STD_ATOMIC
+#ifdef USE_STD_ATOMIC
 #include <atomic>
 /* TODO: use std::atomic. However, we must give up on systems with gcc 4.5 or older and VS 2010 */
 #endif // USE_STD_ATOMIC
@@ -51,7 +51,7 @@ public:
   inline bool is_full () const;
 
 private:
-#if USE_STD_ATOMIC
+#ifdef USE_STD_ATOMIC
   // std::atomic
   typedef std::uint64_t cursor_type;
   typedef std::atomic<cursor_type> atomic_cursor_type;
@@ -325,7 +325,7 @@ inline bool
 circular_queue<T>::is_blocked (cursor_type cursor)
 {
 #ifdef USE_STD_ATOMIC
-  cursor_type block_val = m_blocked_cursors[get_cursor_index (cursor)]->load ();
+  cursor_type block_val = m_blocked_cursors[get_cursor_index (cursor)].load ();
 #else /* not USE_STD_ATOMIC */
   cursor_type block_val = ATOMIC_LOAD (&m_blocked_cursors[get_cursor_index (cursor)]);
 #endif /* not USE_STD_ATOMIC */
