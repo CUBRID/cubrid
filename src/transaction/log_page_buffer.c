@@ -12162,7 +12162,14 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
   loghdr->last_block_newest_mvccid = MVCCID_NULL;
 }
 
-
+/*
+ * logpb_update_last_blockid () - Updates the last_blockid needed later for vacuum.
+ * 
+ * return :- void
+ *
+ * thread_p (in) :- Thread context.
+ * page_id (in)  :- The first page id of the block that must updated to.
+ */
 void
 logpb_update_last_blockid (THREAD_ENTRY * thread_p, LOG_PAGEID page_id)
 {
