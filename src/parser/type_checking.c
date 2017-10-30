@@ -12980,9 +12980,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   bool is_agg_function = false;
   PT_NODE *prev = NULL;
   PT_NODE *arg = NULL;
+
   is_agg_function = pt_is_aggregate_function (parser, node);
   arg_list = node->info.function.arg_list;
   fcode = node->info.function.function_type;
+
   if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM && fcode != PT_ROW_NUMBER && fcode != PT_RANK
       && fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK)
     {
@@ -13189,9 +13191,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       {
 	PT_TYPE_ENUM supported_key_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_value_types[] =
-	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON,
-	  PT_TYPE_MAYBE
-	};
+	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int num_bad = 0, len, i, found_supported = 0;
 	int supported_value_types_len = sizeof (supported_value_types) / sizeof (supported_value_types[0]);
@@ -13229,6 +13229,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	    arg = arg->next;
 	  }
+
 	if (!found_supported)
 	  {
 	    arg_type = PT_TYPE_NONE;
@@ -13241,12 +13242,14 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
       }
       break;
+
     case F_JSON_ARRAY:
       {
 	PT_TYPE_ENUM supported_types[] =
 	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_NUMERIC, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
-	int len = sizeof (supported_types) / sizeof (supported_types[0]), i, found_supported_type = 0;
+	int len = sizeof (supported_types) / sizeof (supported_types[0]);
+	int i, found_supported_type = 0;
 
 	PT_NODE *arg = arg_list;
 
@@ -13268,6 +13271,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 	    arg = arg->next;
 	  }
+
 	if (!found_supported_type)
 	  {
 	    arg_type = PT_TYPE_NONE;
@@ -13280,11 +13284,13 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
       }
       break;
+
     case F_JSON_MERGE:
       {
 	PT_TYPE_ENUM supported_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
-	int len = sizeof (supported_types) / sizeof (supported_types[0]), i, found_supported_type = 0;
+	int len = sizeof (supported_types) / sizeof (supported_types[0]);
+	int i, found_supported_type = 0;
 
 	PT_NODE *arg = arg_list;
 
@@ -13306,6 +13312,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 	    arg = arg->next;
 	  }
+
 	if (!found_supported_type)
 	  {
 	    arg_type = PT_TYPE_NONE;
@@ -13318,6 +13325,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
       }
       break;
+
     case F_JSON_INSERT:
       {
 	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
@@ -13387,6 +13395,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
       }
       break;
+
     case F_JSON_REMOVE:
       {
 	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_MAYBE };
@@ -13434,6 +13443,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	    arg = arg->next;
 	  }
+
 	if (!found_supported)
 	  {
 	    arg_type = PT_TYPE_NONE;
@@ -13442,6 +13452,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
       }
       break;
+
     case F_ELT:
       {
 	/* all types used in the arguments list */
