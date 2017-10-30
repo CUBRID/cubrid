@@ -24,6 +24,8 @@
 #ifndef _TEST_CQUEUE_PERF_INTERFACE_HPP_
 #define _TEST_CQUEUE_PERF_INTERFACE_HPP_
 
+#include "test_debug.hpp"
+
 #include <thread>
 #include <chrono>
 #include <iostream>
@@ -42,7 +44,7 @@ produce_count (LFCQ & lfcq, std::size_t op_count)
       while (!lfcq.produce (val))
         {
           /* should not fail */
-          custom_assert (false);
+          test_common::custom_assert (false);
         }
     }
 }
