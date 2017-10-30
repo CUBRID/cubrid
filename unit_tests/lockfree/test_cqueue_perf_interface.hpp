@@ -39,7 +39,11 @@ produce_count (LFCQ & lfcq, std::size_t op_count)
   int val = 1;
   while (op_count-- > 0)
     {
-      while (!lfcq.produce (val));
+      while (!lfcq.produce (val))
+        {
+          /* should not fail */
+          custom_assert (false);
+        }
     }
 }
 
@@ -70,11 +74,11 @@ run_count (std::size_t thread_count, std::size_t op_count, std::size_t cqueue_si
 
   for (std::size_t i = 0; i < thread_count; i++)
     {
-      producers[i] = std::thread (produce_count<LFCQ>, std::ref (lfcq), op_count);
+      consumers[i] = std::thread (consume_count<LFCQ>, std::ref (lfcq), op_count);
     }
   for (std::size_t i = 0; i < thread_count; i++)
     {
-      consumers[i] = std::thread (consume_count<LFCQ>, std::ref (lfcq), op_count);
+      producers[i] = std::thread (produce_count<LFCQ>, std::ref (lfcq), op_count);
     }
 
   for (std::size_t i = 0; i < thread_count; i++)
