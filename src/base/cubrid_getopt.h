@@ -85,6 +85,6 @@ extern "C"
 #endif
 #endif
 
-#endif				/* !_CUBRID_GETOPT_H_ */
-
 typedef struct option GETOPT_LONG;
+
+#endif /* !_CUBRID_GETOPT_H_ */
