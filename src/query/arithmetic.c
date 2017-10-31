@@ -5127,6 +5127,7 @@ db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_
   int error_code = NO_ERROR;
   JSON_DOC *result_doc = NULL;
   JSON_DOC *this_doc;
+  bool doc_needs_clear = false;
 
   if (DB_IS_NULL (json) || DB_IS_NULL (value) || (path != NULL && DB_IS_NULL (path)))
     {
@@ -5142,8 +5143,10 @@ db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_
       error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
       if (error_code != NO_ERROR)
 	{
+	  assert (result_doc == NULL);
 	  return error_code;
 	}
+      doc_needs_clear = true;
     }
   else
     {
@@ -5158,6 +5161,10 @@ db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_
       assert (value->domain.general_info.type == DB_TYPE_JSON);
 
       error_code = db_json_value_is_contained_in_doc (result_doc, DB_GET_JSON_DOCUMENT (value), has_member);
+      if (doc_needs_clear)
+	{
+	  db_json_delete_doc (result_doc);
+	}
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -5211,6 +5218,7 @@ db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * r
 {
   JSON_DOC *this_doc = NULL;
   int error_code;
+  bool doc_needs_clear = false;
 
   if (DB_IS_NULL (json) || (path != NULL && DB_IS_NULL (path)))
     {
@@ -5226,8 +5234,10 @@ db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * r
 	  error_code = db_json_extract_document_from_path (DB_GET_JSON_DOCUMENT (json), raw_path, this_doc);
 	  if (error_code != NO_ERROR)
 	    {
+	      assert (this_doc == NULL);
 	      return error_code;
 	    }
+	  doc_needs_clear = true;
 	}
       else
 	{
@@ -5236,6 +5246,11 @@ db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * r
       if (this_doc != NULL)
 	{
 	  length = db_json_get_length (this_doc);
+
+	  if (doc_needs_clear)
+	    {
+	      db_json_delete_doc (this_doc);
+	    }
 	  return DB_MAKE_INT (res, length);
 	}
       else
@@ -5280,6 +5295,7 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
   error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
   if (error_code != NO_ERROR)
     {
+      assert (result_doc == NULL);
       return error_code;
     }
 
