@@ -20,17 +20,13 @@ message("======== CMakeLists.txt")
 cmake_minimum_required(VERSION 2.8)
 
 function(with_unit_tests res) #checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
-  #message("    ==== with_unit_tests() ...")
   get_cmake_property(vars VARIABLES)
   foreach(var ${vars})
-    if(NOT var MATCHES "^(UNIT_TESTS|UNIT_TEST_.*)$")
-      continue()
+    if(var MATCHES "^(UNIT_TESTS|UNIT_TEST_.*)$")
+      if(${${var}} STREQUAL "ON")
+        set(${res} 1 PARENT_SCOPE)  #at least one unit test was requested
+      endif()
     endif()
-    message("        var: ${var} = ${${var}}")
-    if(NOT ${${var}} STREQUAL "ON")
-      continue()
-    endif()
-    set(${res} 1 PARENT_SCOPE)  #at least one unit test was requested
   endforeach()
 endfunction(with_unit_tests)
 
