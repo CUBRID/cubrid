@@ -9855,10 +9855,6 @@ start_copy_page:
 	  iopage = NULL;
 	  goto copy_unflushed_lsa;
 	}
-      else
-	{
-	  uses_dwb = false;
-	}
     }
 
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
