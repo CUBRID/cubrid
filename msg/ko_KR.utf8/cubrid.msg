@@ -1266,7 +1266,8 @@ $ LOADDB
 1197 Invalid json: %1$s (%2$d)
 1198 A json object must be provided
 1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 마지막 에러
+1200 Invalid JSON path
+1201 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

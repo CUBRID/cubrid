@@ -1266,7 +1266,8 @@ $ LOADDB
 1197 Invalid json: %1$s (%2$d)
 1198 A json object must be provided
 1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Son Hata
+1200 Invalid JSON path
+1201 Son Hata
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
 2 Uygun hata mesajı bulunmamakta.

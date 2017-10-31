@@ -1266,7 +1266,8 @@ $ LOADDB
 1197 Json invalid: %1$s (%2$d)
 1198 Trebuie furnizat un obiect de tipul json.
 1199 Json-ul furnizat a fost invalidat de catre schema json (Calea catre schema invalidă: %1$s, Cuvantul cheie: %2$s, Calea catre json-ul invalid furnizat: %3$s)
-1200 Ultima eroare
+1200 Cale de JSON invalida
+1201 Ultima eroare
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
 2 Niciun mesaj de eroare disponibil.
