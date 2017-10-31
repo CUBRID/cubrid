@@ -68,6 +68,15 @@ public:
   {
   }
 
+  ~test_string_buffer ()
+  {
+    if (m_ref != 0)
+      {
+        free (m_ref);
+        m_ref = 0;
+      }
+  }
+
   void operator() (size_t size) // prepare for a test with a buffer of <size> bytes
   {
     if (m_dim < size) // adjust internal buffer is necessary
@@ -148,7 +157,7 @@ int main (int argc, char** argv)
   {
     FL_HELP = (1 << 0),
     FL_DEBUG = (1 << 1),
-    FL_TIME = (1 << 1),
+    FL_TIME = (1 << 2),
   };
   unsigned flags = 0;
   for (int i = 1; i < argc; ++i)
