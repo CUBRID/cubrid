@@ -24,7 +24,7 @@
 
 namespace test_lockfree {
 
-class lcfq_statomic_tester : public lockfree_cqueue_tester
+class lcfq_stdatomic_tester : public lockfree_cqueue_tester
 {
 public:
   void test_run_count (std::size_t thread_count, std::size_t op_count, std::size_t cqueue_size)
@@ -36,7 +36,7 @@ public:
 lockfree_cqueue_tester*
 create_lfcq_stdatomic_tester ()
 {
-  return new lcfq_statomic_tester ();
+  return new lcfq_stdatomic_tester ();
 }
 
 } // namespace test_lockfree

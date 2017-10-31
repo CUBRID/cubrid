@@ -26,6 +26,8 @@ namespace test_lockfree {
 class lfcq_wrapper
 {
 public:
+  typedef int local_history;
+
   lfcq_wrapper (size_t size)
   {
     m_queue_p = lf_circular_queue_create (size, sizeof (int));
@@ -36,13 +38,21 @@ public:
   }
 
   inline bool
-  produce (int & value)
+  produce (int & value
+#if defined (DEBUG_LFCQ)
+           , local_history & hist
+#endif // DEBUG_LFCQ
+  )
   {
     return lf_circular_queue_produce (m_queue_p, &value);
   }
 
   inline bool
-  consume (int & value)
+  consume (int & value
+#if defined (DEBUG_LFCQ)
+           , local_history & hist
+#endif // DEBUG_LFCQ
+  )
   {
     return lf_circular_queue_consume (m_queue_p, &value);
   }

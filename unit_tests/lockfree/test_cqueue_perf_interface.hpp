@@ -34,17 +34,26 @@
 
 namespace test_lockfree {
 
+#define DEBUG_LFCQ
+
 template <class LFCQ>
 void
 produce_count (LFCQ & lfcq, std::size_t op_count)
 {
   int val = 1;
+#if defined (DEBUG_LFCQ)
+  LFCQ::local_history history;
+#endif // DEBUG_LFCQ
+
   while (op_count-- > 0)
     {
+#if defined (DEBUG_LFCQ)
+      while (!lfcq.produce (val, history))
+#else // not DEBUG_LFCQ
       while (!lfcq.produce (val))
+#endif // not DEBUG_LFCQ
         {
-          /* should not fail */
-          test_common::custom_assert (false);
+          // sometimes a produce is preempted for a long time
         }
     }
 }
@@ -54,9 +63,17 @@ void
 consume_count (LFCQ & lfcq, std::size_t op_count)
 {
   int val;
+#if defined (DEBUG_LFCQ)
+  LFCQ::local_history history;
+#endif // DEBUG_LFCQ
+
   while (op_count > 0)
     {
+#if defined (DEBUG_LFCQ)
+      if (lfcq.consume (val, history))
+#else // not DEBUG_LFCQ
       if (lfcq.consume (val))
+#endif // not DEBUG_LFCQ
         {
           op_count--;
         }

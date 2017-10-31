@@ -33,24 +33,22 @@
 #endif // USE_STD_ATOMIC
 #include <cassert>
 
+#if !defined (DEBUG_LGFCQ) && !defined (NDEBUG)
+#define DEBUG_LFCQ
+#endif // !defined (DEBUG_LGFCQ) && !defined (NDEBUG)
+
 namespace lockfree {
 
 template <class T>
 class circular_queue
 {
-public:
-
-  circular_queue (size_t size);
-  ~circular_queue ();
-
-  // produce data. if successful, returns true, if full, returns false
-  inline bool produce (const T& element);
-  // consume data
-  inline bool consume (T& element);
-  inline bool is_empty () const;
-  inline bool is_full () const;
-
+#if defined (DEBUG_LFCQ)
 private:
+  enum class local_action;
+  struct local_event;
+#endif // defined (DEBUG_LFCQ)
+
+public:
 #ifdef USE_STD_ATOMIC
   // std::atomic
   typedef std::uint64_t cursor_type;
@@ -63,6 +61,58 @@ private:
 #endif // not USE_STD_ATOMIC
   typedef atomic_cursor_type atomic_flag_type;
 
+  circular_queue (size_t size);
+  ~circular_queue ();
+
+#if defined (DEBUG_LFCQ)
+  class local_history
+  {
+  public:
+    local_history ()
+      : m_cursor (0)
+    {
+    }
+
+    inline void register_event (local_action action)
+    {
+      m_cursor = (m_cursor + 1) % LOCAL_HISTORY_SIZE;
+      m_events[m_cursor].action = action;
+    }
+
+    inline void register_event (local_action action, cursor_type cursor)
+    {
+      register_event (action);
+      m_events[m_cursor].m_consequence.cursor_value = cursor;
+    }
+
+    inline void register_event (local_action action, T data)
+    {
+      register_event (action);
+      m_events[m_cursor].m_consequence.data_value = data;
+    }
+  private:
+    static const size_t LOCAL_HISTORY_SIZE = 64;
+    local_event m_events[LOCAL_HISTORY_SIZE];
+    size_t m_cursor;
+  };
+#endif // DEBUG_LFCQ
+
+  // produce data. if successful, returns true, if full, returns false
+  inline bool produce (const T& element
+#if defined (DEBUG_LFCQ)
+                       , local_history & my_history = m_shared_dummy_history
+#endif // DEBUG_LFCQ
+                       );
+  // consume data
+  inline bool consume (T& element
+#if defined (DEBUG_LFCQ)
+                       , local_history & my_history = m_shared_dummy_history
+#endif // DEBUG_LFCQ
+                       );
+  inline bool is_empty () const;
+  inline bool is_full () const;
+
+private:
   static const cursor_type BLOCK_FLAG;
 
   // block default and copy constructors
@@ -94,6 +144,46 @@ private:
   atomic_cursor_type m_consume_cursor;  // cursor for consume position
   size_t m_capacity;                    // queue capacity
   size_t m_index_mask;                  // mask used to compute a cursor's index in queue
+
+#if defined (DEBUG_LFCQ)
+  enum class local_action
+  {
+    NO_ACTION,
+    LOOP_PRODUCE,
+    LOOP_CONSUME,
+    LOAD_PRODUCE_CURSOR,
+    LOAD_CONSUME_CURSOR,
+    INCREMENT_PRODUCE_CURSOR,
+    INCREMENT_CONSUME_CURSOR,
+    NOT_INCREMENT_PRODUCE_CURSOR,
+    NOT_INCREMENT_CONSUME_CURSOR,
+    BLOCKED_CURSOR,
+    NOT_BLOCKED_CURSOR,
+    UNBLOCKED_CURSOR,
+    LOADED_DATA,
+    STORED_DATA,
+    QUEUE_FULL,
+    QUEUE_EMPTY
+  };
+  struct local_event
+  {
+    local_action action;
+    union consequence
+    {
+      consequence () : cursor_value (0) {}
+
+      cursor_type cursor_value;
+      T data_value;
+    } m_consequence;
+
+    local_event ()
+      : action (local_action::NO_ACTION)
+      , m_consequence ()
+    {
+    }
+  };
+  static local_history m_shared_dummy_history;
+#endif // DEBUG_LFCQ
 };
 
 } // namespace lockfree
@@ -136,7 +226,11 @@ circular_queue<T>::~circular_queue ()
 
 template<class T>
 inline bool
-circular_queue<T>::produce (const T & element)
+circular_queue<T>::produce (const T & element
+#if defined (DEBUG_LFCQ)
+                            , local_history & my_history
+#endif // DEBUG_LFCQ
+                            )
 {
   cursor_type cc;
   cursor_type pc;
@@ -165,34 +259,70 @@ circular_queue<T>::produce (const T & element)
 
   while (true)
     {
+#if defined (DEBUG_LFCQ)
+      my_history.register_event (local_action::LOOP_PRODUCE);
+#endif // DEBUG_LFCQ
+
       pc = load_cursor (m_produce_cursor);
+#if defined (DEBUG_LFCQ)
+      my_history.register_event (local_action::LOAD_PRODUCE_CURSOR, pc);
+#endif // DEBUG_LFCQ
+
       cc = load_cursor (m_consume_cursor);
+#if defined (DEBUG_LFCQ)
+      my_history.register_event (local_action::LOAD_CONSUME_CURSOR, cc);
+#endif // DEBUG_LFCQ
 
       if (test_full_cursors (pc, cc))
         {
           /* cannot produce */
+#if defined (DEBUG_LFCQ)
+          my_history.register_event (local_action::QUEUE_FULL);
+#endif // DEBUG_LFCQ
           return false;
         }
 
       // first block position
       did_block = block (pc);
+#if defined (DEBUG_LFCQ)
+      my_history.register_event (did_block ? local_action::BLOCKED_CURSOR : local_action::NOT_BLOCKED_CURSOR, pc);
+#endif // DEBUG_LFCQ
+
       // make sure cursor is incremented whether I blocked it or not
       if (test_and_increment_cursor (m_produce_cursor, pc))
         {
           // do nothing
+#if defined (DEBUG_LFCQ)
+          my_history.register_event (local_action::INCREMENT_PRODUCE_CURSOR, pc);
+        }
+      else
+        {
+          my_history.register_event (local_action::NOT_INCREMENT_PRODUCE_CURSOR, pc);
+#endif // DEBUG_LFCQ
         }
       if (did_block)
         {
           /* I blocked it, it is mine. I can write my data. */
           store_data (pc, element);
+#if defined (DEBUG_LFCQ)
+          my_history.register_event (local_action::STORED_DATA, element);
+#endif // DEBUG_LFCQ
+
           unblock (pc);
+#if defined (DEBUG_LFCQ)
+          my_history.register_event (local_action::UNBLOCKED_CURSOR, pc);
+#endif // DEBUG_LFCQ
           return true;
         }
     }
 }
 
 template<class T>
-inline bool circular_queue<T>::consume (T & element)
+inline bool circular_queue<T>::consume (T & element
+#if defined (DEBUG_LFCQ)
+                                        , local_history & my_history
+#endif // DEBUG_LFCQ
+                                        )
 {
   cursor_type cc;
   cursor_type pc;
@@ -207,28 +337,64 @@ inline bool circular_queue<T>::consume (T & element)
   // the slot is freed for further produce operations immediately after the update.
   //
 
-  do
+  while (true)
     {
+#if defined (DEBUG_LFCQ)
+      my_history.register_event (local_action::LOOP_CONSUME);
+#endif /* DEBUG_LFCQ */
+
       cc = load_cursor (m_consume_cursor);
+#if defined (DEBUG_LFCQ)
+      my_history.register_event (local_action::LOAD_CONSUME_CURSOR, cc);
+#endif /* DEBUG_LFCQ */
+
       pc = load_cursor (m_produce_cursor);
+#if defined (DEBUG_LFCQ)
+      my_history.register_event (local_action::LOAD_PRODUCE_CURSOR, pc);
+#endif /* DEBUG_LFCQ */
 
       if (pc <= cc)
         {
           /* empty */
+#if defined (DEBUG_LFCQ)
+          my_history.register_event (local_action::QUEUE_EMPTY);
+#endif /* DEBUG_LFCQ */
           return false;
         }
 
       if (is_blocked (cc))
         {
           // first element is not yet produced. this means we can consider the queue still empty
-          // todo: count these cases
+#if defined (DEBUG_LFCQ)
+          my_history.register_event (local_action::QUEUE_EMPTY);
+#endif /* DEBUG_LFCQ */
           return false;
         }
 
       // copy element first. however, the consume is not actually happening until cursor is successfully incremented.
       element = load_data (cc);
+#if defined (DEBUG_LFCQ)
+      my_history.register_event (local_action::LOADED_DATA, element);
+#endif /* DEBUG_LFCQ */
+
+      if (test_and_increment_cursor (m_consume_cursor, cc))
+        {
+          // consume is complete
+#if defined (DEBUG_LFCQ)
+          my_history.register_event (local_action::INCREMENT_CONSUME_CURSOR, cc);
+#endif /* DEBUG_LFCQ */
+
+          /* break loop */
+          break;
+        }
+      else
+        {
+          // consume unsuccessful
+#if defined (DEBUG_LFCQ)
+          my_history.register_event (local_action::NOT_INCREMENT_CONSUME_CURSOR, cc);
+#endif /* DEBUG_LFCQ */
+        }
     }
-  while (!test_and_increment_cursor (m_consume_cursor, cc));
 
   // consume successful
   return true;
@@ -377,5 +543,10 @@ circular_queue<T>::init_blocked_cursors (void)
       m_blocked_cursors[cursor] = cursor;
     }
 }
+
+#if defined (DEBUG_LFCQ)
+template <class T>
+typename circular_queue<T>::local_history circular_queue<T>::m_shared_dummy_history;
+#endif // DEBUG_LFCQ
 
 }  // namespace lockfree
