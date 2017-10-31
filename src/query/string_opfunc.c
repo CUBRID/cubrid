@@ -3015,6 +3015,7 @@ db_string_elt (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       index = DB_GET_SMALLINT (arg[0]);
       break;
     default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
       return ER_QSTR_INVALID_DATA_TYPE;
     }
 
@@ -3077,6 +3078,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  break;
 	default:
 	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
 	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
     }
@@ -3131,6 +3133,7 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  break;
 	default:
 	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
 	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
     }
@@ -3197,6 +3200,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return DB_MAKE_NULL (result);
 	default:
 	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
 	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
 
@@ -3246,6 +3250,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
       break;
     default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
       return ER_QSTR_INVALID_DATA_TYPE;
     }
 
@@ -3310,6 +3315,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return DB_MAKE_NULL (result);
 	default:
 	  db_json_delete_doc (accumulator);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
 	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
 
