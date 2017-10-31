@@ -633,12 +633,12 @@
 
 #define db_make_json(v, j, d, cl) \
     ((v)->domain.general_info.type = DB_TYPE_JSON, \
-    (v)->data.json.json_body = (j), \
-    (v)->data.json.document = (d), \
-    (v)->domain.general_info.is_null = 0, \
-    (v)->need_clear = cl, \
-    (v)->data.json.schema_raw = NULL, \
-    NO_ERROR)
+     (v)->data.json.json_body = (j), \
+     (v)->data.json.document = (d), \
+     (v)->domain.general_info.is_null = 0, \
+     (v)->need_clear = (cl), \
+     (v)->data.json.schema_raw = NULL, \
+     NO_ERROR)
 
 #define db_make_midxkey(v, m) \
     ((v)->domain.general_info.type = DB_TYPE_MIDXKEY, \

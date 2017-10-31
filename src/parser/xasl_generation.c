@@ -7241,8 +7241,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    }
 
 		  if (node->info.expr.arg3 == NULL
-		      && (node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_SUBSTRING ||
-			  node->info.expr.op == PT_JSON_CONTAINS))
+		      && (node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_SUBSTRING
+			  || node->info.expr.op == PT_JSON_CONTAINS))
 		    {
 		      r3 = NULL;
 		    }

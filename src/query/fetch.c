@@ -2661,8 +2661,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_JSON_LENGTH:
-      if (qdata_json_length_dbval
-	  (peek_left, (arithptr->rightptr == NULL ? NULL : peek_right), arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_json_length_dbval (peek_left, (arithptr->rightptr == NULL ? NULL : peek_right), arithptr->value,
+				   regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
