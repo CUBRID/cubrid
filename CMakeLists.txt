@@ -19,7 +19,7 @@ message("======== CMakeLists.txt")
 
 cmake_minimum_required(VERSION 2.8)
 
-function(with_unit_tests res) #checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
+function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
   get_cmake_property(vars VARIABLES)
   foreach(var ${vars})
     if(var MATCHES "^(UNIT_TESTS|UNIT_TEST_.*)$")
