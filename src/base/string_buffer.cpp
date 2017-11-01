@@ -18,16 +18,18 @@
 #include "string_buffer.hpp"
 #include <memory.h>
 
-string_buffer::string_buffer (size_t capacity, char* buffer)
+string_buffer::string_buffer (size_t capacity, char *buffer)
   : m_buf (buffer)
   , m_dim (capacity)
   , m_len (0)
 {
   if (buffer)
-    m_buf[0] = '\0';
+    {
+      m_buf[0] = '\0';
+    }
 }
 
-void string_buffer::set_buffer (size_t capacity, char* buffer)
+void string_buffer::set_buffer (size_t capacity, char *buffer)
 {
   m_buf = buffer;
   m_dim = capacity;
@@ -38,7 +40,7 @@ void string_buffer::set_buffer (size_t capacity, char* buffer)
   m_len = 0;
 }
 
-void string_buffer::operator() (size_t len, void* bytes)
+void string_buffer::operator() (size_t len, void *bytes)
 {
   if (bytes && m_len + len < m_dim)
     {

@@ -21,77 +21,88 @@
  * - usually used with a stack allocated buffer => no sync needed
  * - constant allocation/dealocation time: O(1)
  */
-#ifndef ALLOCATOR_STACK_HPP
-#define ALLOCATOR_STACK_HPP
+
+#ifndef _ALLOCATOR_STACK_HPP_
+#define _ALLOCATOR_STACK_HPP_
+
 #include "allocator_block.hpp"
-#ifdef __linux__
+
+#if defined (LINUX)
 #include <stddef.h> //size_t on Linux
-#endif
+#endif /* LINUX */
 
 namespace allocator
 {
   class stack
   {
-  private:
-    char* m_ptr;   // pointer to a contiguous memory block
-    char* m_start; // begin of the available memory (inside given block)
-    char* m_stop;  // end of available memory (=_ptr+SIZE)
-  public:
-    friend class StackAllocator_Test; //test class can access internals of this class
+    private:
+      char *m_ptr;   // pointer to a contiguous memory block
+      char *m_start; // begin of the available memory (inside given block)
+      char *m_stop;  // end of available memory (=_ptr+SIZE)
 
-    stack (void* buf, size_t size)
-      : m_ptr ((char*) buf)
-      , m_start (m_ptr)
-      , m_stop (m_ptr + size)
-    {
-    }
+    public:
+      friend class StackAllocator_Test; //test class can access internals of this class
 
-    ~stack () //can be called explicitly to reinitialize: a.~StackAllocator();
-    {
-      m_start = m_ptr;
-    }
+      stack (void *buf, size_t size)
+	: m_ptr ((char *) buf)
+	, m_start (m_ptr)
+	, m_stop (m_ptr + size)
+      {
+      }
 
-    void operator() (void* buf, size_t size)
-    {
-      m_ptr = (char*) buf;
-      m_start = m_ptr;
-      m_stop = m_ptr + size;
-    }
+      ~stack () //can be called explicitly to reinitialize: a.~StackAllocator();
+      {
+	m_start = m_ptr;
+      }
 
-    block allocate (size_t size)
-    {
-      //round to next aligned?! natural allignment
-      //...
-      if (m_start + size > m_stop) //not enough free memory available
-        {
-          return {0, 0};
-        }
-      return {size, (m_start += size, m_start - size)};
-    }
+      void operator() (void *buf, size_t size)
+      {
+	m_ptr = (char *) buf;
+	m_start = m_ptr;
+	m_stop = m_ptr + size;
+      }
 
-    void deallocate (block b)
-    {
-      //assert(owns(blk));
-      if ((char*) b.ptr + b.dim == m_start) // last allocated block
-        {
-          m_start = b.ptr;
-        }
-    }
+      block allocate (size_t size)
+      {
+	//round to next aligned?! natural allignment
+	//...
+	if (m_start + size > m_stop) //not enough free memory available
+	  {
+	    return {0, 0};
+	  }
+	return {size, (m_start += size, m_start - size)};
+      }
 
-    bool owns (block b) { return (m_ptr <= b.ptr && b.ptr + b.dim <= m_stop); }
+      void deallocate (block b)
+      {
+	//assert(owns(blk));
+	if ((char *) b.ptr + b.dim == m_start) // last allocated block
+	  {
+	    m_start = b.ptr;
+	  }
+      }
 
-    size_t get_available () { return size_t(m_stop - m_start); }
+      bool owns (block b)
+      {
+	return (m_ptr <= b.ptr && b.ptr + b.dim <= m_stop);
+      }
 
-    block realloc (block b, size_t size) //fit additional size bytes; extend block if possible
-    {
-      if (b.ptr + b.dim == m_start && b.ptr + b.dim + size <= m_stop) //last allocated block & enough space to extend
-        {
-          b.dim += size;
-          m_start += size;
-          return b;
-        }
-      return {0, 0};
-    }
+      size_t get_available ()
+      {
+	return size_t (m_stop - m_start);
+      }
+
+      block realloc (block b, size_t size) //fit additional size bytes; extend block if possible
+      {
+	if (b.ptr + b.dim == m_start && b.ptr + b.dim + size <= m_stop) //last allocated block & enough space to extend
+	  {
+	    b.dim += size;
+	    m_start += size;
+	    return b;
+	  }
+	return {0, 0};
+      }
   };
 } // namespace allocator
-#endif
+
+#endif /* _ALLOCATOR_STACK_HPP_ */

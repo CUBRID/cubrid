@@ -21,38 +21,50 @@
  * - keeps the pointer and size physically together (logically they are together)
  * - allows better & cleaner design
  * Usage:
-  block b = some_allocator.allocate(1024);
-  if(b.is_valid())
-    snprintf(b.ptr, b.dim, "format...");
-  some_allocator.resize(b, 2048);
-  if(b.is_valid())
-    snprintf(b.ptr, b.dim, "something bigger...");
-  some_allocator.deallocate(b);
+ *   block b = some_allocator.allocate(1024);
+ *   if(b.is_valid())
+ *     snprintf(b.ptr, b.dim, "format...");
+ *   some_allocator.resize(b, 2048);
+ *   if(b.is_valid())
+ *     snprintf(b.ptr, b.dim, "something bigger...");
+ *   some_allocator.deallocate(b);
  */
-#ifndef ALLOCATOR_BLOCK_HPP
-#define ALLOCATOR_BLOCK_HPP
-#ifdef __linux__
+
+#ifndef _ALLOCATOR_BLOCK_HPP_
+#define _ALLOCATOR_BLOCK_HPP_
+
+#if defined (LINUX)
 #include <stddef.h> //size_t on Linux
-#endif
+#endif /* LINUX */
 
 namespace allocator
 {
   struct block
   {
     size_t dim; //size of the memory block pointed by ptr
-    char* ptr;  //pointer to a memory block
+    char *ptr;  //pointer to a memory block
 
-    block (size_t dim = 0, void* ptr = 0)
+    block (size_t dim = 0, void *ptr = 0)
       : dim (dim)
-      , ptr ((char*) ptr)
+      , ptr ((char *) ptr)
     {
     }
 
-    bool is_valid () { return (dim != 0 && ptr != 0); }
+    bool is_valid ()
+    {
+      return (dim != 0 && ptr != 0);
+    }
 
-    friend bool operator== (block b0, block b1) { return (b0.dim == b1.dim && b0.ptr == b1.ptr); }
+    friend bool operator== (block b0, block b1)
+    {
+      return (b0.dim == b1.dim && b0.ptr == b1.ptr);
+    }
 
-    friend bool operator!= (block b0, block b1) { return (b0.dim != b1.dim || b0.ptr != b1.ptr); }
+    friend bool operator!= (block b0, block b1)
+    {
+      return (b0.dim != b1.dim || b0.ptr != b1.ptr);
+    }
   };
 } // namespace allocator
-#endif
+
+#endif /* _ALLOCATOR_BLOCK_HPP_ */
