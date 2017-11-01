@@ -355,6 +355,8 @@ struct thread_entry
 
 #if !defined(NDEBUG)
   struct fi_test_item *fi_test_array;
+
+  int count_private_allocators;
 #endif
 };
 
@@ -504,6 +506,8 @@ extern int thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p);
 extern void thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_name, const int line_no, int amount,
 				   void *ptr, int rc_idx, int mgr_idx);
+extern void thread_rc_track_initialize (THREAD_ENTRY * thread_p);
+extern void thread_rc_track_finalize (THREAD_ENTRY * thread_p);
 extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
 extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
 

@@ -29,8 +29,6 @@
 #include <inttypes.h>
 #endif
 
-#include "config.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -38,11 +36,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <assert.h>
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -65,6 +58,7 @@
 #include <sys/time.h>
 #endif
 
+#include "cubrid_getopt.h"
 #include "porting.h"
 #include "cas_common.h"
 #include "broker_config.h"
@@ -96,7 +90,7 @@
 #define         UNUSABLE_DATABASES_FLAG_MASK 0x20
 
 #if defined(WINDOWS) && !defined(PRId64)
-# define PRId64 "lld"
+#define PRId64 "lld"
 #endif
 
 typedef enum

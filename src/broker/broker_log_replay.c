@@ -32,13 +32,9 @@
 #else /* WINDOWS */
 #include <unistd.h>
 #endif /* !WINDOWS */
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 #include <assert.h>
 
+#include "cubrid_getopt.h"
 #include "cas_common.h"
 #include "cas_cci.h"
 #include "broker_log_util.h"

@@ -16,7 +16,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-message(WARNING "Flex loader outputs: ${FLEX_loader_lexer_OUTPUTS}")
+message(STATUS "Flex loader outputs: ${FLEX_loader_lexer_OUTPUTS}")
 
 set(EXECUTABLE_SOURCES
   ${BISON_loader_grammar_OUTPUTS}
@@ -95,7 +95,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/variable_string.c
-  ${BASE_DIR}/getopt_long.c
+  ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/perf.c
