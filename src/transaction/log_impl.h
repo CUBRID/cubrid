@@ -194,8 +194,7 @@ struct log_header
   LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2 */
   char prefix_name[MAXLOGNAME];	/* Log prefix name */
   bool has_logging_been_skipped;	/* Has logging been skipped ? */
-  int reserved_int_1;		/* for backward compatibility - previously used for lowest_arv_num_for_backup */
-  int reserved_int_2;		/* for backward compatibility - previously used for highest_arv_num_for_backup */
+  INT64 vacuum_last_blockid;	/* Last processed blockid needed for vacuum. */
   int perm_status;		/* Reserved for future expansion and permanent status indicators, e.g. to mark
 				 * RESTORE_IN_PROGRESS */
   LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
@@ -214,7 +213,6 @@ struct log_header
   INT64 ha_promotion_time;
   INT64 db_restore_time;
   bool mark_will_del;
-  INT64 vacuum_last_blockid;
 };
 #define LOG_HEADER_INITIALIZER                   \
   {                                              \
@@ -253,7 +251,7 @@ struct log_header
      {'0'},                                      \
      /* has_logging_been_skipped */              \
      false,                                      \
-     0, 0, 0,                                    \
+     0, 0,                                       \
      /* bkinfo */                                \
      {{0, 0, 0, 0, 0}},                          \
      0, 0,                                       \
@@ -272,9 +270,7 @@ struct log_header
      /* db_restore_time */			 \
      0,						 \
      /* mark_will_del */			 \
-     false,					 \
-     /* vacuum_last_blockid */                   \
-     0                                           \
+     false					 \
   }
 
 #define LOGWR_HEADER_INITIALIZER                 \
@@ -314,7 +310,7 @@ struct log_header
      {'0'},                                      \
      /* has_logging_been_skipped */              \
      false,                                      \
-     0, 0, 0,                                    \
+     0, 0,                                       \
      /* bkinfo */                                \
      {{0, 0, 0, 0, 0}},                          \
      0, 0,                                       \
@@ -333,9 +329,7 @@ struct log_header
      /* db_restore_time */			 \
      0,						 \
      /* mark_will_del */			 \
-     false,					 \
-     /* vacuum_last_blockid */                   \
-     0                                           \
+     false					 \
   }
 
 enum logwr_mode
