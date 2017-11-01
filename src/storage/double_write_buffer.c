@@ -2633,7 +2633,7 @@ dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
 
   assert (block_no != NULL);
 
-  *block_no = DWB_BLOCK_NUM_PAGES;
+  *block_no = DWB_NUM_TOTAL_BLOCKS;
   /* First, check whether the next block can be flushed. Then check whether its whole slots checksum were computed. */
   if (double_Write_Buffer.blocks[double_Write_Buffer.next_block_to_flush].count_wb_pages != DWB_BLOCK_NUM_PAGES)
     {
