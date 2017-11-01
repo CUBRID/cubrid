@@ -26,8 +26,10 @@
 #ifndef _UTILITY_H_
 #define _UTILITY_H_
 
-#include <config.h>
 #include <stdio.h>
+
+#include "config.h"
+#include "cubrid_getopt.h"
 #include "util_func.h"
 #include "dynamic_array.h"
 
@@ -752,8 +754,6 @@ typedef enum
   ARG_BOOLEAN,
   ARG_BIGINT
 } UTIL_ARG_TYPE;
-
-typedef struct option GETOPT_LONG;
 
 typedef struct
 {

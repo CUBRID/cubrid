@@ -23,16 +23,14 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #include <stdio.h>
 #include <string.h>
-#include <getopt.h>
 #include <errno.h>
 #if !defined(WINDOWS)
-#include <unistd.h>
 #include <dlfcn.h>
 #endif
+
+#include "cubrid_getopt.h"
 #include "error_code.h"
 #include "util_support.h"
 #include "utility.h"

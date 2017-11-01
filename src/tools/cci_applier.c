@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
-#include <unistd.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -10,7 +9,8 @@
 #include <ctype.h>
 #include <assert.h>
 #include <libgen.h>
-#include <getopt.h>
+
+#include "cubrid_getopt.h"
 #include "cas_cci.h"
 #include "cci_applier.h"
 #include "log_applier.h"

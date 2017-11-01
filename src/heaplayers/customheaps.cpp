@@ -25,7 +25,7 @@ class TheFixedHeapType :
 UINTPTR
 hl_register_fixed_heap (int chunk_size)
 {
-  TheFixedHeapType * th = new TheFixedHeapType;
+  TheFixedHeapType *th = new TheFixedHeapType;
   if (th)
     {
       th->reset (chunk_size);
@@ -37,7 +37,7 @@ hl_register_fixed_heap (int chunk_size)
 void
 hl_unregister_fixed_heap (UINTPTR heap_id)
 {
-  TheFixedHeapType * th = (TheFixedHeapType *) heap_id;
+  TheFixedHeapType *th = (TheFixedHeapType *) heap_id;
   if (th)
     {
       delete th;
@@ -48,7 +48,7 @@ hl_unregister_fixed_heap (UINTPTR heap_id)
 void *
 hl_fixed_alloc (UINTPTR heap_id, size_t sz)
 {
-  TheFixedHeapType * th = (TheFixedHeapType *) heap_id;
+  TheFixedHeapType *th = (TheFixedHeapType *) heap_id;
   if (th)
     {
       return th->malloc (sz);
@@ -57,9 +57,9 @@ hl_fixed_alloc (UINTPTR heap_id, size_t sz)
 }
 
 void
-hl_fixed_free (UINTPTR heap_id, void * ptr)
+hl_fixed_free (UINTPTR heap_id, void *ptr)
 {
-  TheFixedHeapType * th = (TheFixedHeapType *) heap_id;
+  TheFixedHeapType *th = (TheFixedHeapType *) heap_id;
   if (th)
     {
       th->free (ptr);
@@ -78,10 +78,10 @@ class TheObstackHeapType :
 UINTPTR
 hl_register_ostk_heap (int chunk_size)
 {
-  TheObstackHeapType * th = new TheObstackHeapType;
+  TheObstackHeapType *th = new TheObstackHeapType;
   if (th)
     {
-      th->reset(chunk_size);
+      th->reset (chunk_size);
       return (UINTPTR) th;
     }
   return 0;
@@ -90,7 +90,7 @@ hl_register_ostk_heap (int chunk_size)
 void
 hl_clear_ostk_heap (UINTPTR heap_id)
 {
-  TheObstackHeapType * th = (TheObstackHeapType *) heap_id;
+  TheObstackHeapType *th = (TheObstackHeapType *) heap_id;
   if (th)
     {
       th->clear();
@@ -100,7 +100,7 @@ hl_clear_ostk_heap (UINTPTR heap_id)
 void
 hl_unregister_ostk_heap (UINTPTR heap_id)
 {
-  TheObstackHeapType * th = (TheObstackHeapType *) heap_id;
+  TheObstackHeapType *th = (TheObstackHeapType *) heap_id;
   if (th)
     {
       delete th;
@@ -111,7 +111,7 @@ hl_unregister_ostk_heap (UINTPTR heap_id)
 void *
 hl_ostk_alloc (UINTPTR heap_id, size_t sz)
 {
-  TheObstackHeapType * th = (TheObstackHeapType *) heap_id;
+  TheObstackHeapType *th = (TheObstackHeapType *) heap_id;
   if (th)
     {
       return th->malloc (sz);
@@ -122,10 +122,10 @@ hl_ostk_alloc (UINTPTR heap_id, size_t sz)
 void *
 hl_ostk_realloc (UINTPTR heap_id, void *ptr, size_t sz)
 {
-  TheObstackHeapType * th = (TheObstackHeapType *) heap_id;
+  TheObstackHeapType *th = (TheObstackHeapType *) heap_id;
   if (th)
     {
-      void * new_ptr = th->malloc (sz);
+      void *new_ptr = th->malloc (sz);
       size_t old_sz = th->getSize (ptr);
 
       memcpy (new_ptr, ptr, (old_sz > sz ? sz : old_sz));
@@ -138,9 +138,9 @@ hl_ostk_realloc (UINTPTR heap_id, void *ptr, size_t sz)
 }
 
 void
-hl_ostk_free (UINTPTR heap_id, void * ptr)
+hl_ostk_free (UINTPTR heap_id, void *ptr)
 {
-  TheObstackHeapType * th = (TheObstackHeapType *) heap_id;
+  TheObstackHeapType *th = (TheObstackHeapType *) heap_id;
   if (th)
     {
       th->free (ptr);
@@ -161,7 +161,7 @@ class TheKingsleyHeapType :
 UINTPTR
 hl_register_kingsley_heap (/*int chunk_size*/)
 {
-  TheKingsleyHeapType * th = new TheKingsleyHeapType;
+  TheKingsleyHeapType *th = new TheKingsleyHeapType;
   if (th)
     {
       //th->reset(chunk_size);
@@ -185,7 +185,7 @@ hl_clear_kingsley_heap (unsigned int heap_id)
 void
 hl_unregister_kingsley_heap (UINTPTR heap_id)
 {
-  TheKingsleyHeapType * th = (TheKingsleyHeapType *) heap_id;
+  TheKingsleyHeapType *th = (TheKingsleyHeapType *) heap_id;
   if (th)
     {
       delete th;
@@ -196,7 +196,7 @@ hl_unregister_kingsley_heap (UINTPTR heap_id)
 void *
 hl_kingsley_alloc (UINTPTR heap_id, size_t sz)
 {
-  TheKingsleyHeapType * th = (TheKingsleyHeapType *) heap_id;
+  TheKingsleyHeapType *th = (TheKingsleyHeapType *) heap_id;
   if (th)
     {
       return th->malloc (sz);
@@ -207,26 +207,30 @@ hl_kingsley_alloc (UINTPTR heap_id, size_t sz)
 void *
 hl_kingsley_realloc (UINTPTR heap_id, void *ptr, size_t sz)
 {
-  TheKingsleyHeapType * th = (TheKingsleyHeapType *) heap_id;
+  TheKingsleyHeapType *th = (TheKingsleyHeapType *) heap_id;
   if (th)
     {
-      void * new_ptr = th->malloc (sz);
+      void *new_ptr = th->malloc (sz);
       size_t old_sz = th->getSize (ptr);
 
       memcpy (new_ptr, ptr, (old_sz > sz ? sz : old_sz));
 
-      if (ptr) th->free (ptr);
+      if (ptr)
+	{
+	  th->free (ptr);
+	}
       return new_ptr;
     }
   return NULL;
 }
 
 void
-hl_kingsley_free (UINTPTR heap_id, void * ptr)
+hl_kingsley_free (UINTPTR heap_id, void *ptr)
 {
-  TheKingsleyHeapType * th = (TheKingsleyHeapType *) heap_id;
+  TheKingsleyHeapType *th = (TheKingsleyHeapType *) heap_id;
   if (th)
     {
       th->free (ptr);
     }
 }
+
