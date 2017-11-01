@@ -494,11 +494,11 @@ static DISK_ISVALID disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, boo
  * ext_info (in)        : all extension info
  * nsect_free_out (out) : output number of free sectors in new volume
  */
-int
+static int
 disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL_EXT_INFO * ext_info,
 	     DKNSECTS * nsect_free_out)
 {
-#ifdef DEBUG
+#if !defined (NDEBUG)
   /* inject faults to test recovery */
 #define fault_inject_random_crash() \
   if (vol_purpose == DB_PERMANENT_DATA_PURPOSE) FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_ADD, 0)
@@ -561,8 +561,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   /* create and initialize the volume. recovery information is initialized in every page. */
   vdes = fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages, vol_purpose == DB_PERMANENT_DATA_PURPOSE,
-			false, false, IO_PAGESIZE, kbytes_to_be_written_per_sec, false,
-			vol_purpose == DB_PERMANENT_DATA_PURPOSE);
+			false, false, IO_PAGESIZE, kbytes_to_be_written_per_sec, false);
   if (vdes == NULL_VOLDES)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -1186,7 +1185,7 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   if (fileio_find_volume_descriptor_with_label (vol_label) == NULL_VOLDES)
     {
       (void) fileio_format (thread_p, NULL, vol_label, vhdr->volid, DISK_SECTS_NPAGES (vhdr->nsect_total),
-			    vhdr->purpose != DB_TEMPORARY_DATA_PURPOSE, false, false, IO_PAGESIZE, 0, false, false);
+			    vhdr->purpose != DB_TEMPORARY_DATA_PURPOSE, false, false, IO_PAGESIZE, 0, false);
       (void) pgbuf_invalidate_all (thread_p, vhdr->volid);
     }
 

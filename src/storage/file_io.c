@@ -2073,9 +2073,6 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   int o_sync;
 #endif /* WINDOWS */
 
-  // todo: remove me
-  er_print_callstack (ARG_FILE_LINE, "Create file %s \n", db_full_name_p);
-
 #if !defined(CS_MODE)
   /* Make sure that the volume is not already mounted. if it is, dismount the volume. */
   vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
@@ -2274,7 +2271,7 @@ fileio_create_backup_volume (THREAD_ENTRY * thread_p, const char *db_full_name_p
 int
 fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *vol_label_p, VOLID vol_id,
 	       DKNPAGES npages, bool is_sweep_clean, bool is_do_lock, bool is_do_sync, size_t page_size,
-	       int kbytes_to_be_written_per_sec, bool reuse_file, bool allow_fault_inject)
+	       int kbytes_to_be_written_per_sec, bool reuse_file)
 {
   int vol_fd;
   FILEIO_PAGE *malloc_io_page_p;
@@ -2369,10 +2366,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   (void) fileio_initialize_res (thread_p, &(malloc_io_page_p->prv));
 
   vol_fd = fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id, is_do_lock, is_do_sync);
-  if (allow_fault_inject)
-    {
-      FI_TEST (thread_p, FI_TEST_FILE_IO_FORMAT, 0);
-    }
+  FI_TEST (thread_p, FI_TEST_FILE_IO_FORMAT, 0);
   if (vol_fd != NULL_VOLDES)
     {
       /* initialize the pages of the volume. */
@@ -2781,8 +2775,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
   to_vol_desc = fileio_create (NULL, to_vol_label_p, to_vol_id, false, false);
 #else /* HPUX */
   to_vol_desc =
-    fileio_format (thread_p, NULL, to_vol_label_p, to_vol_id, npages, false, false, false, IO_PAGESIZE, 0, false,
-		   false);
+    fileio_format (thread_p, NULL, to_vol_label_p, to_vol_id, npages, false, false, false, IO_PAGESIZE, 0, false);
 #endif /* HPUX */
   if (to_vol_desc == NULL_VOLDES)
     {
@@ -10072,7 +10065,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
     {
       session_p->dbfile.vdes =
 	fileio_format (thread_p, NULL, session_p->dbfile.vlabel, session_p->dbfile.volid, npages, false, false, false,
-		       IO_PAGESIZE, 0, false, false);
+		       IO_PAGESIZE, 0, false);
     }
   else
     {
