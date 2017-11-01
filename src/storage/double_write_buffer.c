@@ -415,6 +415,7 @@ static unsigned int dwb_slots_hash_key (void *key, int hash_table_size);
 
 STATIC_INLINE int dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, int *inserted)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot);
 
 /* Slots entry descriptor */
 static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
@@ -1378,6 +1379,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
   DWB_SLOT *slots[DWB_MAX_BLOCKS];
   unsigned int block_buffer_size, i, j;
   int error_code;
+  FILEIO_PAGE *io_page;
 
   *p_blocks = NULL;
 
@@ -1423,7 +1425,9 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
       /* No need to initialize FILEIO_PAGE header here, since is overwritten before flushing */
       for (j = 0; j < num_block_pages; j++)
 	{
-	  dwb_intialize_slot (&slots[i][j], (FILEIO_PAGE *) (blocks_write_buffer[i] + j * IO_PAGESIZE), j, i);
+	  io_page = (FILEIO_PAGE *) (blocks_write_buffer[i] + j * IO_PAGESIZE);
+	  fileio_initialize_res (thread_p, &io_page->prv);
+	  dwb_intialize_slot (&slots[i][j], io_page, j, i);
 	}
 
       dwb_initialize_block (&blocks[i], i, 0, blocks_write_buffer[i], slots[i]);
@@ -2166,6 +2170,81 @@ dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slo
 }
 
 /*
+* dwb_slots_hash_delete () - Delete entry in slots hash.
+*
+* return   : Error code.
+* thread_p (in): The thread entry.
+* slot(in): The DWB slot. 
+*/
+STATIC_INLINE int
+dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot)
+{
+  int error_code = NO_ERROR;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
+  int success;
+  VPID *vpid;
+  DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
+
+  vpid = &slot->vpid;
+  if (VPID_ISNULL (vpid))
+    {
+      /* Nothing to do, the slot is not in hash. */
+      return NO_ERROR;
+    }
+  /* Remove the old vpid from hash. */
+  error_code = lf_hash_find (t_entry, &double_Write_Buffer.slots_hash->ht, (void *) vpid, (void **) &slots_hash_entry);
+  if (error_code != NO_ERROR)
+    {
+      /* Should not happen. */
+      ASSERT_ERROR ();
+      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "DWB hash find key (%d, %d) with %d error: \n", vpid->volid,
+			 vpid->pageid, error_code);
+	}
+      return error_code;
+    }
+
+  if (slots_hash_entry == NULL)
+    {
+      /* Already removed from hash by others, nothing to do. */
+      return NO_ERROR;
+    }
+
+  assert (VPID_ISNULL (&(slots_hash_entry->slot->vpid)) || VPID_EQ (&(slots_hash_entry->slot->vpid), vpid));
+
+  /* Check the slot. */
+  if (slots_hash_entry->slot == slot)
+    {
+      assert (VPID_EQ (&(slots_hash_entry->slot->vpid), vpid));
+      assert (slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
+	      && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
+
+      error_code = lf_hash_delete_already_locked (t_entry, &double_Write_Buffer.slots_hash->ht, vpid,
+						  slots_hash_entry, &success);
+      if (error_code != NO_ERROR || !success)
+	{
+	  assert_release (false);
+	  /* Should not happen. */
+	  pthread_mutex_unlock (&slots_hash_entry->mutex);
+	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "DWB hash delete key (%d, %d) with %d error: \n", vpid->volid,
+			     vpid->pageid, error_code);
+	    }
+	  return error_code;
+	}
+
+    }
+  else
+    {
+      pthread_mutex_unlock (&slots_hash_entry->mutex);
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * dwb_write_block () - Write block pages in specified order.
  *
  * return   : Error code.
@@ -2183,8 +2262,6 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
   int vol_fd;
   VPID *vpid;
   int error_code = NO_ERROR;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
-  int success;
   DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -2193,6 +2270,11 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 
   assert (block != NULL && p_dwb_ordered_slots != NULL);
 
+  /*
+   * Write the whole slots data first and then remove it from hash. Is better to do in this way. Thus, the fileio_write
+   * may be slow. While the current transaction has delays caused by fileio_write, the concurrent transaction still
+   * can access the data from memory instead disk
+   */
   volid = NULL_VOLID;
   assert (block->count_wb_pages < ordered_slots_length);
   for (i = 0; i < block->count_wb_pages; i++)
@@ -2235,85 +2317,39 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	      /* Something wrong happened. */
 	      return ER_FAILED;
 	    }
+	}
+    }
 
-	  is_perf_tracking = perfmon_is_perf_tracking ();
-	  if (is_perf_tracking)
-	    {
-	      tsc_getticks (&start_tick);
-	    }
+  /* Remove the corresponding entries from hash. */
+  is_perf_tracking = perfmon_is_perf_tracking ();
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
 
-	  /* Since the page was written, remove it from hash. */
-	  error_code = lf_hash_find (t_entry, &double_Write_Buffer.slots_hash->ht, (void *) vpid,
-				     (void **) &slots_hash_entry);
-	  if (error_code != NO_ERROR)
-	    {
-	      /* Should not happen. */
-	      ASSERT_ERROR ();
-	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
-		{
-		  _er_log_debug (ARG_FILE_LINE, "DWB hash find key (%d, %d) with %d error: \n", vpid->volid,
-				 vpid->pageid, error_code);
-		}
-	      return error_code;
-	    }
+  for (i = 0; i < block->count_wb_pages; i++)
+    {
+      vpid = &p_dwb_ordered_slots[i].vpid;
+      if (VPID_ISNULL (vpid))
+	{
+	  continue;
+	}
 
-	  if (slots_hash_entry == NULL)
-	    {
-	      /* Already removed from hash by others, continue with the next slot. */
-	      if (is_perf_tracking)
-		{
-		  tsc_getticks (&end_tick);
-		  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-		  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-		  if (oldest_time > 0)
-		    {
-		      perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES, oldest_time);
-		    }
-		}
+      error_code = dwb_slots_hash_delete (thread_p, &block->slots[p_dwb_ordered_slots[i].position_in_block]);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
 
-	      continue;
-	    }
-
-	  assert (VPID_ISNULL (&(slots_hash_entry->slot->vpid)) || VPID_EQ (&(slots_hash_entry->slot->vpid), vpid));
-
-	  /* Check the slot. */
-	  if (slots_hash_entry->slot == &(block->slots[p_dwb_ordered_slots[i].position_in_block]))
-	    {
-	      assert (VPID_EQ (&(slots_hash_entry->slot->vpid), vpid));
-	      assert (slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
-		      && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
-
-	      error_code = lf_hash_delete_already_locked (t_entry, &double_Write_Buffer.slots_hash->ht, vpid,
-							  slots_hash_entry, &success);
-	      if (error_code != NO_ERROR || !success)
-		{
-		  assert_release (false);
-		  /* Should not happen. */
-		  pthread_mutex_unlock (&slots_hash_entry->mutex);
-		  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
-		    {
-		      _er_log_debug (ARG_FILE_LINE, "DWB hash delete key (%d, %d) with %d error: \n", vpid->volid,
-				     vpid->pageid, error_code);
-		    }
-		  return error_code;
-		}
-
-	    }
-	  else
-	    {
-	      pthread_mutex_unlock (&slots_hash_entry->mutex);
-	    }
-
-	  if (is_perf_tracking)
-	    {
-	      tsc_getticks (&end_tick);
-	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-	      if (oldest_time > 0)
-		{
-		  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES, oldest_time);
-		}
-	    }
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (oldest_time > 0)
+	{
+	  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES, oldest_time);
 	}
     }
 
