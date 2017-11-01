@@ -2186,6 +2186,10 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
   int success;
   DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 oldest_time;
+  bool is_perf_tracking = false;
 
   assert (block != NULL && p_dwb_ordered_slots != NULL);
 
@@ -2232,6 +2236,12 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	      return ER_FAILED;
 	    }
 
+	  is_perf_tracking = perfmon_is_perf_tracking ();
+	  if (is_perf_tracking)
+	    {
+	      tsc_getticks (&start_tick);
+	    }
+
 	  /* Since the page was written, remove it from hash. */
 	  error_code = lf_hash_find (t_entry, &double_Write_Buffer.slots_hash->ht, (void *) vpid,
 				     (void **) &slots_hash_entry);
@@ -2250,6 +2260,17 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  if (slots_hash_entry == NULL)
 	    {
 	      /* Already removed from hash by others, continue with the next slot. */
+	      if (is_perf_tracking)
+		{
+		  tsc_getticks (&end_tick);
+		  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+		  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+		  if (oldest_time > 0)
+		    {
+		      perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES, oldest_time);
+		    }
+		}
+
 	      continue;
 	    }
 
@@ -2281,6 +2302,17 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  else
 	    {
 	      pthread_mutex_unlock (&slots_hash_entry->mutex);
+	    }
+
+	  if (is_perf_tracking)
+	    {
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+	      if (oldest_time > 0)
+		{
+		  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES, oldest_time);
+		}
 	    }
 	}
     }
