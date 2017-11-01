@@ -12173,6 +12173,7 @@ void
 logpb_update_last_blockid (THREAD_ENTRY * thread_p, LOG_PAGEID page_id)
 {
   VACUUM_LOG_BLOCKID last_blockid;
+
   last_blockid = vacuum_get_log_blockid (page_id);
   log_Gl.hdr.vacuum_last_blockid = last_blockid;
 }
