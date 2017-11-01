@@ -29,69 +29,62 @@
 #include <new>
 
 #if defined (LINUX)
-#include <stddef.h>		//size_t on Linux
+#include <stddef.h> //size_t on Linux
 #endif /* LINUX */
 
 namespace allocator
 {
-  template < typename Allocator, typename Prefix,
-    typename Suffix > class affix
+  template<typename Allocator, typename Prefix, typename Suffix> class affix
   {
-  private:
-    static const size_t m_prefix_len = sizeof (Prefix);
-    static const size_t m_suffix_len = sizeof (Suffix);
-      Allocator & m_a;
+    private:
+      static const size_t m_prefix_len = sizeof (Prefix);
+      static const size_t m_suffix_len = sizeof (Suffix);
+      Allocator &m_a;
 
-  public:
-      affix (Allocator & a):m_a (a)
-    {
-    }
-
-    block allocate (size_t size)
-    {
-      block b = m_a.allocate (m_prefix_len + size + m_suffix_len);
-      if (!b.is_valid ())
-	return
-	{
-	0, 0};
-      new (b.ptr) Prefix;	//placement new to initialize Prefix memory
-      new (b.ptr + m_prefix_len + size) Suffix;	//placement new to initialize Suffix memory
-      return
+    public:
+      affix (Allocator &a)
+	: m_a (a)
       {
-      size, b.ptr + m_prefix_len};
-    }
+      }
 
-    void deallocate (block b)
-    {
-      //check if Prefix & Suffix are unchanged!
-      //...
-      _a.deallocate (
-		      {
-		      m_prefix_len + b.dim + m_suffix_len,
-		      b.ptr - m_prefix_len});
-    }
-
-    unsigned check (block b)
-    {
-      Prefix pfx;
-      Suffix sfx;
-      enum
+      block allocate (size_t size)
       {
-	ERR_NONE,
-	ERR_PREFIX = (1 << 0),
-	ERR_SUFFIX = (1 << 1),
-      };
-      unsigned err = 0;
-      if (memcmp (&pfx, b.ptr - m_prefix_len, m_prefix_len) != 0)
+	block b = m_a.allocate (m_prefix_len + size + m_suffix_len);
+	if (!b.is_valid ())
+	  return {0, 0};
+	new (b.ptr) Prefix;                       //placement new to initialize Prefix memory
+	new (b.ptr + m_prefix_len + size) Suffix; //placement new to initialize Suffix memory
+	return {size, b.ptr + m_prefix_len};
+      }
+
+      void deallocate (block b)
+      {
+	//check if Prefix & Suffix are unchanged!
+	//...
+	_a.deallocate ({m_prefix_len + b.dim + m_suffix_len, b.ptr - m_prefix_len});
+      }
+
+      unsigned check (block b)
+      {
+	Prefix pfx;
+	Suffix sfx;
+	enum
 	{
-	  err |= ERR_PREFIX;
-	}
-      if (memcmp (&sfx, b.ptr + b.dim, m_suffix_len) != 0)
-	{
-	  err |= ERR_SUFFIX;
-	}
-      return err;
-    }
+	  ERR_NONE,
+	  ERR_PREFIX = (1 << 0),
+	  ERR_SUFFIX = (1 << 1),
+	};
+	unsigned err = 0;
+	if (memcmp (&pfx, b.ptr - m_prefix_len, m_prefix_len) != 0)
+	  {
+	    err |= ERR_PREFIX;
+	  }
+	if (memcmp (&sfx, b.ptr + b.dim, m_suffix_len) != 0)
+	  {
+	    err |= ERR_SUFFIX;
+	  }
+	return err;
+      }
   };
-}				// namespace allocator
+} // namespace allocator
 #endif /* _ALLOCATOR_AFFIX_HPP_ */

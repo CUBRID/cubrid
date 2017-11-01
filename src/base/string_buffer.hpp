@@ -39,59 +39,54 @@
 #define _STRING_BUFFER_HPP_
 
 #if defined (LINUX)
-#include <stddef.h>		//size_t on Linux
+#include <stddef.h> //size_t on Linux
 #endif /* LINUX */
 
 #include <stdio.h>
 
-#if 0				//!!! snprintf() != _sprintf_p() when buffer capacity is exceeded !!! (disabled until further testing)
+#if 0 //!!! snprintf() != _sprintf_p() when buffer capacity is exceeded !!! (disabled until further testing)
 #ifdef _WIN32
 #define snprintf                                                                                                       \
-  _sprintf_p			// snprintf() on Windows doesn't support positional parms but there is a similar function; snprintf_p();  \
+  _sprintf_p // snprintf() on Windows doesn't support positional parms but there is a similar function; snprintf_p();  \
 // on Linux supports positional parms by default
 #endif
 #endif
 
-class string_buffer		//collect formatted text (printf-like syntax)
+class string_buffer //collect formatted text (printf-like syntax)
 {
-  char *m_buf;			// pointer to a memory buffer (not owned)
-  size_t m_dim;			// dimension|capacity of the buffer
-  size_t m_len;			// current length of the buffer content
-public:
+    char *m_buf;  // pointer to a memory buffer (not owned)
+    size_t m_dim; // dimension|capacity of the buffer
+    size_t m_len; // current length of the buffer content
+  public:
     string_buffer (size_t capacity = 0, char *buffer = 0);
 
-  size_t len ()
-  {
-    return m_len;
-  }
+    size_t len ()
+    {
+      return m_len;
+    }
+    void clear ()
+    {
+      m_len = 0;
+      m_buf[0] = '\0';
+    }
 
-  void clear ()
-  {
-    m_len = 0;
-    m_buf[0] = '\0';
-  }
+    void set_buffer (size_t capacity, char *buffer); // associate with a new buffer[capacity]
 
-  void set_buffer (size_t capacity, char *buffer);	// associate with a new buffer[capacity]
+    void operator() (size_t len, void *bytes); // add "len" bytes to internal buffer; "bytes" can have '\0' in the middle
+    void operator+= (const char ch);
 
-  void operator  () (size_t len, void *bytes);	// add "len" bytes to internal buffer; "bytes" can have '\0' in the middle
-  void operator+= (const char ch);
-
-  template < size_t Size,
-    typename...Args > void operator  () (const char (&format)[Size], Args
-					 && ... args)
-  {
-    int len =
-      snprintf (m_buf + m_len, m_len < m_dim ? m_dim - m_len : 0, format,
-		args...);
-    if (len >= 0)
-      {
-	if (m_dim <= m_len + len)
-	  {
-	    // WRN not enough space in buffer
-	  }
-	m_len += len;
-      }
-  }
+    template<size_t Size, typename... Args> void operator() (const char (&format)[Size], Args &&... args)
+    {
+      int len = snprintf (m_buf + m_len, m_len < m_dim ? m_dim - m_len : 0, format, args...);
+      if (len >= 0)
+	{
+	  if (m_dim <= m_len + len)
+	    {
+	      // WRN not enough space in buffer
+	    }
+	  m_len += len;
+	}
+    }
 };
 
 #endif /* _STRING_BUFFER_HPP_ */
