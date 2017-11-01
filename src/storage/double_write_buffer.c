@@ -2354,6 +2354,17 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	}
     }
 
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (oldest_time > 0)
+	{
+	  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS, oldest_time);
+	}
+    }
+
   /* First, write and flush the double write file buffer. */
   if (fileio_write_pages (thread_p, double_Write_Buffer.vdes, block->write_buffer, 0, block->count_wb_pages,
 			  IO_PAGESIZE, true) == NULL)
