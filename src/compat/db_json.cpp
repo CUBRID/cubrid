@@ -778,6 +778,47 @@ db_json_remove_func (JSON_DOC *doc, char *raw_path)
   return NO_ERROR;
 }
 
+int
+db_json_array_append_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
+{
+  JSON_POINTER p (raw_path);
+  JSON_VALUE val, *resulting_json, *resulting_json_parent;
+  int i, raw_path_len;
+  char *raw_path_parent;
+
+  if (!p.IsValid())
+    {
+      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
+    }
+
+  resulting_json = p.Get(*doc);
+
+  if (resulting_json == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  val.CopyFrom(*value, doc->GetAllocator());
+
+  if (resulting_json->IsArray())
+    {
+      resulting_json->PushBack(val, doc->GetAllocator());
+    }
+  else
+    {
+      JSON_VALUE value;
+
+      value.SetArray();
+      value.PushBack(*resulting_json, doc->GetAllocator());
+      resulting_json->Swap(value);
+
+      resulting_json->PushBack(val, doc->GetAllocator());
+    }
+
+  return NO_ERROR;
+}
+
 DB_JSON_TYPE
 db_json_get_type (const JSON_DOC *doc)
 {

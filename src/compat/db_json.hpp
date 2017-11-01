@@ -78,6 +78,7 @@ int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 
 int db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
+int db_json_array_append_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
 int db_json_remove_func (JSON_DOC *doc, char *raw_path);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest);
 

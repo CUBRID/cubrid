@@ -1377,6 +1377,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "JSON_INSERT";
     case F_JSON_REMOVE:
       return "JSON_REMOVE";
+    case F_JSON_ARRAY_APPEND:
+      return "JSON_ARRAY_APPEND";
     case F_JSON_MERGE:
       return "JSON_MERGE";
     default:
