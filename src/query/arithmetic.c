@@ -5227,6 +5227,7 @@ db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * r
   else
     {
       unsigned int length;
+
       if (path != NULL)
 	{
 	  const char *raw_path = db_get_string (path);
@@ -5243,6 +5244,7 @@ db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * r
 	{
 	  this_doc = DB_GET_JSON_DOCUMENT (json);
 	}
+
       if (this_doc != NULL)
 	{
 	  length = db_json_get_length (this_doc);

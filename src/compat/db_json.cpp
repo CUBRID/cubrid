@@ -1031,13 +1031,13 @@ db_json_get_string_from_document (const JSON_DOC *doc)
 int
 db_json_get_int_from_value (const JSON_VALUE *val)
 {
-  assert (db_json_get_type_of_value (val) == DB_JSON_INT);
-
   if (val == NULL)
     {
       assert (false);
       return 0;
     }
+
+  assert (db_json_get_type_of_value (val) == DB_JSON_INT);
 
   return val->GetInt ();
 }
@@ -1045,14 +1045,14 @@ db_json_get_int_from_value (const JSON_VALUE *val)
 double
 db_json_get_double_from_value (const JSON_VALUE *doc)
 {
-  assert (db_json_get_type_of_value (doc) == DB_JSON_DOUBLE
-	  || db_json_get_type_of_value (doc) == DB_JSON_INT);
-
   if (doc == NULL)
     {
       assert (false);
       return 0;
     }
+
+  assert (db_json_get_type_of_value (doc) == DB_JSON_DOUBLE
+	  || db_json_get_type_of_value (doc) == DB_JSON_INT);
 
   return db_json_get_type_of_value (doc) == DB_JSON_DOUBLE ? doc->GetDouble () : doc->GetInt ();
 }
