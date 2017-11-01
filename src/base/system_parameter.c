@@ -2133,7 +2133,7 @@ static unsigned int prm_dwb_size_lower = 0;
 unsigned int PRM_DWB_BLOCKS = 2;
 static unsigned int prm_dwb_blocks_flag = 0;
 static unsigned int prm_dwb_blocks_default = 2;
-static unsigned int prm_dwb_blocks_upper = 8;
+static unsigned int prm_dwb_blocks_upper = 32;
 static unsigned int prm_dwb_blocks_lower = 0;
 
 bool PRM_ENABLE_DWB_FLUSH_THREAD = true;

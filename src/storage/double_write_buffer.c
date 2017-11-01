@@ -39,7 +39,7 @@
 #define DWB_MIN_SIZE			    (512 * 1024)
 #define DWB_MAX_SIZE			    (8 * 1024 * 1024)
 #define DWB_MIN_BLOCKS			    1
-#define DWB_MAX_BLOCKS			    8
+#define DWB_MAX_BLOCKS			    32
 #define DWB_CHECKSUM_ELEMENT_NO_BITS	    64
 #define DWB_CHECKSUM_ELEMENT_LOG2_NO_BITS   6
 #define DWB_CHECKSUM_ELEMENT_ALL_BITS	    0xffffffffffffffff
@@ -58,13 +58,13 @@
 #define DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK   (double_Write_Buffer.checksum_info->num_checksum_elements_in_block)
 
 /* Position mask. */
-#define DWB_POSITION_MASK	    0x00000000ffffffff
+#define DWB_POSITION_MASK	    0x000000003fffffff
 /* Block status mask. */
-#define DWB_BLOCKS_STATUS_MASK	    0xff00000000000000
+#define DWB_BLOCKS_STATUS_MASK	    0xffffffff00000000
 /* Structure modification mask. */
-#define DWB_MODIFY_STRUCTURE	    0x0080000000000000
+#define DWB_MODIFY_STRUCTURE	    0x0000000080000000
 /* Create mask. */
-#define DWB_CREATE		    0x0040000000000000
+#define DWB_CREATE		    0x0000000040000000
 /* Create or modify mask. */
 #define DWB_CREATE_OR_MODIFY_MASK   (DWB_CREATE | DWB_MODIFY_STRUCTURE)
 /* Flags mask. */
