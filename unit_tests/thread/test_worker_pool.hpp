@@ -18,22 +18,16 @@
  */
 
 /*
- * test_output.hpp - implementation of outputting test results
+ * test_worker_pool.hpp - interface to test thread worker pool
  */
 
-#include "test_output.hpp"
+#ifndef _TEST_WORKER_POOL_HPP_
+#define _TEST_WORKER_POOL_HPP_
 
-#include <iostream>
-#include <mutex>
+namespace test_thread {
 
-namespace test_common {
+int test_worker_pool (void);
 
-static std::mutex stc_cout_mutex;    // global
-void
-sync_cout (const std::string & str)
-{
-  std::lock_guard<std::mutex> lock (stc_cout_mutex);
-  std::cout << str.c_str ();
-}
+} // namespace test_thread
 
-} // namespace test_common
+#endif // _TEST_WORKER_POOL_HPP_

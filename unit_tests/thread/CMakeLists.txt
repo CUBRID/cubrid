@@ -16,43 +16,42 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-set (TEST_LOCKFREE_SOURCES
+set (TEST_THREAD_SOURCES
   test_main.cpp
-  test_cqueue_functional.cpp
-)
-set (TEST_LOCKFREE_HEADERS
-  test_cqueue_functional.hpp
-)
+  test_worker_pool.cpp
+  )
+set (TEST_THREAD_HEADERS
+  test_worker_pool.hpp
+  )
 SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_LOCKFREE_SOURCES}
+  ${TEST_THREAD_SOURCES}
   PROPERTIES LANGUAGE CXX
-)
-
-add_executable(test_lockfree
-  ${TEST_LOCKFREE_SOURCES}
-  ${TEST_LOCKFREE_HEADERS}
   )
 
-target_compile_definitions(test_lockfree PRIVATE
-  SERVER_MODE
+add_executable(test_thread
+  ${TEST_THREAD_SOURCES}
+  ${TEST_THREAD_HEADERS}
+  )
+  
+target_compile_definitions(test_thread PRIVATE
   ${COMMON_DEFS}
   )
 
-target_include_directories(test_lockfree PRIVATE
+target_include_directories(test_thread PRIVATE
   ${TEST_INCLUDES}
   )
 
-target_link_libraries(test_lockfree PRIVATE
+target_link_libraries(test_thread PRIVATE
   test_common
   )
 if(UNIX)
-  target_link_libraries(test_lockfree PRIVATE
+  target_link_libraries(test_thread PRIVATE
     cubrid
     )
 elseif(WIN32)
-  target_link_libraries(test_lockfree PRIVATE
+  target_link_libraries(test_thread PRIVATE
     cubrid-win-lib
     )
 else()
-  message( SEND_ERROR "Lockfree unit testing is for unix/windows")
+  message( SEND_ERROR "Thread unit testing is for unix/windows")
 endif ()

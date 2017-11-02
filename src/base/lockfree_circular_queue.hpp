@@ -289,7 +289,18 @@ circular_queue<T>::produce (const T & element)
 }
 
 template<class T>
-inline bool circular_queue<T>::consume (T & element)
+inline void
+circular_queue<T>::force_produce (const T & element)
+{
+  while (!produce (element))
+    {
+      std::this_thread::yield ();
+    }
+}
+
+template<class T>
+inline bool
+circular_queue<T>::consume (T & element)
 {
   cursor_type cc;
   cursor_type pc;

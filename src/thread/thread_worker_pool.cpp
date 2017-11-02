@@ -19,25 +19,27 @@
 
 #include "thread_worker_pool.hpp"
 
-#include <thread>
+namespace thread {
 
 bool
-thread::worker_pool::try_execute (work * work_arg)
+worker_pool::try_execute (work * work_arg)
 {
-  if (register_worker ())
+  std::thread* thread_p = register_worker ();
+  if (thread_p != NULL)
     {
-      std::thread (run, std::ref (*this), std::forward (work_arg)).detach ();
+      std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<work *> (work_arg)).detach ();
       return true;
     }
   return false;
 }
 
 void
-thread::worker_pool::execute (work * work_arg)
+worker_pool::execute (work * work_arg)
 {
-  if (register_worker ())
+  std::thread* thread_p = register_worker ();
+  if (thread_p != NULL)
     {
-      std::thread (run, std::ref (*this), std::forward (work_arg)).detach ();
+      std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<work *> (work_arg)).detach ();
     }
   else if (!m_work_queue.produce (work_arg))
     {
@@ -48,7 +50,7 @@ thread::worker_pool::execute (work * work_arg)
 }
 
 void
-thread::worker_pool::run (worker_pool & pool, work * work_arg)
+worker_pool::run (worker_pool & pool, std::thread & thread_arg, work * work_arg)
 {
   do
     {
@@ -58,30 +60,19 @@ thread::worker_pool::run (worker_pool & pool, work * work_arg)
   while (pool.m_work_queue.consume (work_arg));
 
   // no work in queue. deregister worker
-  deregister_worker ();
+  pool.deregister_worker (thread_arg);
 }
 
-inline bool
-thread::worker_pool::register_worker (void)
+inline std::thread*
+worker_pool::register_worker (void)
 {
-  size_t worker_count;
-  do
-    {
-      worker_count = m_worker_count.load ();
-      if (worker_count >= m_max_workers)
-        {
-          assert (worker_count == m_max_workers);
-          return false;
-        }
-    }
-  while (!m_worker_count.compare_exchange_weak (worker_count, worker_count + 1));
-
-  // worker registered
-  return true;
+  return m_thread_dispatcher.claim ();
 }
 
 inline void
-thread::worker_pool::deregister_worker (void)
+worker_pool::deregister_worker (std::thread & thread_arg)
 {
-  --m_worker_count;
+  m_thread_dispatcher.retire (thread_arg);
 }
+
+} // namespace thread

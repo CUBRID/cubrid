@@ -30,6 +30,10 @@ set(COMPAT_SOURCES
 set(THREAD_SOURCES
   ${THREAD_DIR}/thread.c
   ${THREAD_DIR}/critical_section.c
+  ${THREAD_DIR}/thread_worker_pool.cpp
+  )
+set(THREAD_HEADERS
+  ${THREAD_DIR}/thread_worker_pool.hpp
   )
 
 set(BASE_SOURCES
@@ -250,6 +254,7 @@ set (CUBRID_LIB_SOURCES
   )
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
+  ${THREAD_HEADERS}
   )
 
 add_library(cubrid SHARED

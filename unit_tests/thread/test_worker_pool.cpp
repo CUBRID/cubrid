@@ -18,22 +18,40 @@
  */
 
 /*
- * test_output.hpp - implementation of outputting test results
+ * test_worker_pool.cpp - implementation for test thread worker pool
  */
+
+#include "test_worker_pool.hpp"
 
 #include "test_output.hpp"
 
+#include "thread_worker_pool.hpp"
+
 #include <iostream>
-#include <mutex>
 
-namespace test_common {
+namespace test_thread {
 
-static std::mutex stc_cout_mutex;    // global
-void
-sync_cout (const std::string & str)
+class dummy_work : public thread::work
 {
-  std::lock_guard<std::mutex> lock (stc_cout_mutex);
-  std::cout << str.c_str ();
+public:
+  void execute_task ()
+  {
+    test_common::sync_cout ("dummy test");
+  }
+
+  ~dummy_work ()
+  {
+
+  }
+};
+
+int
+test_worker_pool (void)
+{
+  thread::worker_pool pool (1, 1);
+  dummy_work* dwp = new dummy_work ();
+  pool.execute (dwp);
+  return 0;
 }
 
-} // namespace test_common
+} // namespace test_thread
