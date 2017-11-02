@@ -37,7 +37,9 @@
 #include "db.h"
 #include "class_object.h"
 #include "object_print.h"
+#include "object_print_parser.hpp"
 #include "server_interface.h"
+#include "string_buffer.hpp"
 #include "boot_cl.h"
 #include "locator_cl.h"
 #include "schema_manager.h"
@@ -2406,9 +2408,7 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
   DB_TYPE type;
   DB_OBJECT *class_op;
   CLASS_HELP *class_schema = NULL;
-  PARSER_VARCHAR *buffer;
   const char *table_name;
-  char *schema_str;
   int error_status = NO_ERROR;
 
   assert (result != (DB_VALUE *) NULL);
@@ -2447,16 +2447,12 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
       if (class_schema == NULL)
 	{
 	  goto error;
-	}
-
-      buffer = obj_print_describe_class (parser, class_schema, class_op);
-      if (buffer == NULL)
-	{
-	  goto error;
-	}
-
-      schema_str = (char *) pt_get_varchar_bytes (buffer);
-      db_make_string_copy (result, schema_str);
+        }
+        char buffer[8192] = {0};
+        string_buffer sb(sizeof(buffer), buffer);
+        object_print_parser obj_print(sb);
+        obj_print.describe_class(class_schema, class_op);
+        db_make_string_copy (result, sb.get_buffer());
     }
   else
     {

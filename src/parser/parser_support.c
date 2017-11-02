@@ -57,6 +57,8 @@
 #include "object_print.h"
 #include "show_meta.h"
 #include "db.h"
+#include "object_print_parser.hpp"
+#include "string_buffer.hpp"
 
 #define DEFAULT_VAR "."
 
@@ -9006,7 +9008,6 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 {
   DB_OBJECT *class_op;
   CLASS_HELP *class_schema = NULL;
-  PARSER_VARCHAR *buffer;
   int is_class = 0;
 
   /* look up class in all schema's */
@@ -9055,12 +9056,15 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
       return NULL;
     }
 
-  buffer = obj_print_describe_class (parser, class_schema, class_op);
-
+  char b[8192] = {0}; //bSolo: use parser based allocator because this code is not for server
+  string_buffer sb(sizeof(b), b);
+  object_print_parser obj_print(sb);
+  obj_print.describe_class(class_schema, class_op);
   if (class_schema != NULL)
     {
       obj_print_help_free_class (class_schema);
     }
+  PARSER_VARCHAR *buffer = pt_append_nulstring(parser, NULL, b);
   return ((char *) pt_get_varchar_bytes (buffer));
 }
 
@@ -10244,7 +10248,7 @@ pt_is_operator_logical (PT_OP_TYPE op)
     case PT_SUPERSETEQ:
     case PT_SUPERSET:
     case PT_RANGE:
-      return true;
+        return true;
     default:
       return false;
     }

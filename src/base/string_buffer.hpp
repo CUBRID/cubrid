@@ -64,10 +64,16 @@ class string_buffer //collect formatted text (printf-like syntax)
     {
       return m_len;
     }
-    void clear ()
+
+    void clear()
     {
       m_len = 0;
       m_buf[0] = '\0';
+    }
+
+    const char *get_buffer() const
+    {
+      return m_buf;
     }
 
     void set_buffer (size_t capacity, char *buffer); // associate with a new buffer[capacity]

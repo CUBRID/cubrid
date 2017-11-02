@@ -67,6 +67,8 @@
 #if defined (SA_MODE)
 #include "connection_support.h"
 #endif /* defined (SA_MODE) */
+#include "string_buffer.hpp"
+#include "object_print_common.hpp"
 
 #if !defined(SERVER_MODE)
 
@@ -6385,30 +6387,33 @@ log_hexa_dump (FILE * out_fp, int length, void *data)
   fprintf (out_fp, "\n");
 }
 
-static void
-log_repl_data_dump (FILE * out_fp, int length, void *data)
+//--------------------------------------------------------------------------------
+static void log_repl_data_dump(FILE* out_fp, int length, void* data) //bSolo: length not used???
 {
-#if 0
-  /* fixme */
-  char *ptr;
+  char* ptr = (char*)data;
   char *class_name;
   DB_VALUE value;
-  PARSER_VARCHAR *buf;
-  PARSER_CONTEXT *parser;
+  ptr = or_unpack_string_nocopy(ptr, &class_name);
+  ptr = or_unpack_mem_value(ptr, &value);
 
-  ptr = (char *) data;
-  ptr = or_unpack_string_nocopy (ptr, &class_name);
-  ptr = or_unpack_mem_value (ptr, &value);
+  char b[8192] = {0};//bSolo: temp hack
+  string_buffer sb(sizeof(b), b);
+  object_print_common obj_print(sb);
+  char* dynBuf = nullptr;
 
-  parser = parser_create_parser ();
-  if (parser != NULL)
-    {
-      buf = describe_value (parser, NULL, &value);
-      fprintf (out_fp, "C[%s] K[%s]\n", class_name, pt_get_varchar_bytes (buf));
-      parser_free_parser (parser);
-    }
-  pr_clear_value (&value);
-#endif
+  obj_print.describe_value(&value);
+  if(sizeof(b) < sb.len())//realloc and repeat
+  {
+    dynBuf = new char[sb.len()+1];//bSolo: use specific allocator
+    sb.set_buffer(sb.len()+1, dynBuf);
+    obj_print.describe_value(&value);
+  }
+  fprintf(out_fp, "C[%s] K[%s]\n", class_name, sb.get_buffer());
+  if(dynBuf)
+  {
+    delete dynBuf;//bSolo: use specific allocator
+  }
+  pr_clear_value(&value);
 }
 
 static void

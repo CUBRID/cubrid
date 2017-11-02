@@ -6536,28 +6536,10 @@ tr_is_trigger (DB_OBJECT * trigger_object, int *status)
  *    return: const char
  *    time(in): trigger time constant
  */
-const char *
-tr_time_as_string (DB_TRIGGER_TIME time)
+const char* tr_time_as_string(DB_TRIGGER_TIME time)
 {
-  const char *string;
-
-  switch (time)
-    {
-    case TR_TIME_BEFORE:
-      string = "BEFORE";
-      break;
-    case TR_TIME_AFTER:
-      string = "AFTER";
-      break;
-    case TR_TIME_DEFERRED:
-      string = "DEFERRED";
-      break;
-    default:
-      string = "???";
-      break;
-    }
-
-  return string;
+    static const char* str[] = {"NULL", "BEFORE", "AFTER", "DEFERRED", "???"};//keep in sync with DB_TRIGGER_TIME (or use X-macro)
+    return str[time];
 }
 
 /*
