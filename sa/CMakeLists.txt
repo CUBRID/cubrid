@@ -94,6 +94,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/misc_string.c
+  ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/variable_string.c
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/binaryheap.c
@@ -196,6 +197,8 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_primitive.c
+  ${OBJECT_DIR}/object_print_common.cpp
+  ${OBJECT_DIR}/object_print_parser.cpp
   ${OBJECT_DIR}/quick_fit.c
   ${OBJECT_DIR}/transform_cl.c
   ${OBJECT_DIR}/transform.c

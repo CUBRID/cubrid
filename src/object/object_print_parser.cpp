@@ -1,0 +1,1099 @@
+#include "object_print_parser.hpp"
+#include "class_object.h"
+#include "dbdef.h"
+#include "dbi.h"
+#include "dbtype.h"
+#include "dbval.h"
+#include "misc_string.h"
+#include "object_print_common.hpp"
+#include "object_domain.h"
+#include "object_primitive.h"
+#include "object_print.h" //bSolo: temp for obj_print_type
+#include "parse_tree.h"
+#include "schema_manager.h"
+#include "set_object.h"
+#include "string_buffer.hpp"
+#include "trigger_manager.h"
+#include "work_space.h"
+#include <assert.h>
+
+//--------------------------------------------------------------------------------
+void object_print_parser::describe_comment(const char *comment){
+    db_value comment_value;
+    assert(comment != NULL);
+    DB_MAKE_NULL(&comment_value);
+    DB_MAKE_STRING(&comment_value, comment);
+    m_buf("COMMENT ");
+    if(comment != NULL && comment[0] != '\0')
+    {
+        object_print_common obj_print(m_buf);
+        obj_print.describe_value(&comment_value);
+    }
+    else
+    {
+        m_buf("''");
+    }
+    pr_clear_value(&comment_value);
+}
+
+//--------------------------------------------------------------------------------
+void object_print_parser::describe_partition_parts(sm_partition* parts, obj_print_type prt_type) {
+    DB_VALUE ele;
+    int setsize, i;
+    object_print_common obj_print(m_buf);
+
+    if(parts == NULL)
+    {
+        return;
+    }
+
+    DB_MAKE_NULL(&ele);
+
+    m_buf("PARTITION ");
+    describe_identifier(parts->pname, prt_type);
+
+    switch(parts->partition_type)
+    {
+    case PT_PARTITION_HASH:
+        break;
+    case PT_PARTITION_RANGE:
+        m_buf(" VALUES LESS THAN ");
+        if(!set_get_element(parts->values, 1, &ele))
+        {			/* 0:MIN, 1: MAX */
+            if(DB_IS_NULL(&ele))
+            {
+                m_buf("MAXVALUE");
+            }
+            else
+            {
+                m_buf("(");
+                obj_print.describe_value(&ele);
+                m_buf(")");
+            }
+        }
+        break;
+    case PT_PARTITION_LIST:
+        m_buf(" VALUES IN (");
+        setsize = set_size(parts->values);
+        for(i = 0; i < setsize; i++)
+        {
+            if(i > 0)
+            {
+                m_buf(", ");
+            }
+            if(set_get_element(parts->values, i, &ele) == NO_ERROR)
+            {
+                obj_print.describe_value(&ele);
+            }
+        }
+        m_buf(")");
+        break;
+    }
+    if(parts->comment != NULL && parts->comment[0] != '\0')
+    {
+        m_buf(" ");
+        describe_comment(parts->comment);
+    }
+    pr_clear_value(&ele);
+}
+
+/*
+ * object_print_identifier() - help function to print identifier string.
+ *                             if prt_type is OBJ_PRINT_SHOW_CREATE_TABLE,
+ *                             we need wrap it with "[" and "]".
+ *      return: advanced buffer pointer
+ *  parser(in) :
+ *  buffer(in) : current buffer pointer
+ *  identifier(in) : identifier string,.such as: table name.
+ *  prt_type(in): the print type: csql schema or show create table
+ *
+ */
+ //--------------------------------------------------------------------------------
+void object_print_parser::describe_identifier(const char* identifier, obj_print_type prt_type) {
+    if(prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+    {
+        m_buf("%s", identifier);
+    }
+    else
+    {//prt_type == OBJ_PRINT_SHOW_CREATE_TABLE
+        m_buf("[%s]", identifier);
+    }
+}
+
+/* CLASS COMPONENT DESCRIPTION FUNCTIONS */
+
+/*
+ * obj_print_describe_domain() - Describe the domain of an attribute
+ *      return: advanced buffer pointer
+ *  parser(in) :
+ *  buffer(in) : current buffer pointer
+ *  domain(in) : domain structure to describe
+ *  prt_type(in): the print type: csql schema or show create table
+ *  force_print_collation(in): true if collation is printed no matter system
+ *			       collation
+ *
+ */
+ //--------------------------------------------------------------------------------
+void object_print_parser::describe_domain(tp_domain* domain, obj_print_type prt_type, bool force_print_collation) {
+    TP_DOMAIN *temp_domain;
+    char temp_buffer[27];
+    int precision = 0, idx, count;
+    int has_collation;
+
+    if(domain == NULL)
+    {
+        return;
+    }
+
+    /* filter first, usually not necessary but this is visible */
+    sm_filter_domain(domain, NULL);
+
+    for(temp_domain = domain; temp_domain != NULL; temp_domain = temp_domain->next)
+    {
+        has_collation = 0;
+        switch(TP_DOMAIN_TYPE(temp_domain))
+        {
+        case DB_TYPE_INTEGER:
+        case DB_TYPE_BIGINT:
+        case DB_TYPE_FLOAT:
+        case DB_TYPE_DOUBLE:
+        case DB_TYPE_BLOB:
+        case DB_TYPE_CLOB:
+        case DB_TYPE_TIME:
+        case DB_TYPE_TIMETZ:
+        case DB_TYPE_TIMELTZ:
+        case DB_TYPE_UTIME:
+        case DB_TYPE_TIMESTAMPTZ:
+        case DB_TYPE_TIMESTAMPLTZ:
+        case DB_TYPE_DATETIME:
+        case DB_TYPE_DATETIMETZ:
+        case DB_TYPE_DATETIMELTZ:
+        case DB_TYPE_DATE:
+        case DB_TYPE_MONETARY:
+        case DB_TYPE_SUB:
+        case DB_TYPE_POINTER:
+        case DB_TYPE_ERROR:
+        case DB_TYPE_SHORT:
+        case DB_TYPE_VOBJ:
+        case DB_TYPE_OID:
+        case DB_TYPE_NULL:
+        case DB_TYPE_VARIABLE:
+        case DB_TYPE_DB_VALUE:
+            strcpy(temp_buffer, temp_domain->type->name);
+            m_buf("%s", ustr_upper(temp_buffer));
+            break;
+
+        case DB_TYPE_OBJECT:
+            if(temp_domain->class_mop != NULL)
+            {
+                describe_identifier(sm_get_ch_name(temp_domain->class_mop), prt_type);
+            }
+            else
+            {
+                m_buf("%s", temp_domain->type->name);
+            }
+            break;
+
+        case DB_TYPE_VARCHAR:
+            has_collation = 1;
+            if(temp_domain->precision == TP_FLOATING_PRECISION_VALUE)
+            {
+                m_buf("STRING");
+                break;
+            }
+            /* fall through */
+        case DB_TYPE_CHAR:
+        case DB_TYPE_NCHAR:
+        case DB_TYPE_VARNCHAR:
+            has_collation = 1;
+        case DB_TYPE_BIT:
+        case DB_TYPE_VARBIT:
+            strcpy(temp_buffer, temp_domain->type->name);
+            if(temp_domain->precision == TP_FLOATING_PRECISION_VALUE)
+            {
+                precision = DB_MAX_STRING_LENGTH;
+            }
+            else
+            {
+                precision = temp_domain->precision;
+            }
+            m_buf("%s(%d)", ustr_upper(temp_buffer), precision);
+            break;
+
+        case DB_TYPE_NUMERIC:
+            strcpy(temp_buffer, temp_domain->type->name);
+            m_buf("%s(%d,%d)", ustr_upper(temp_buffer), temp_domain->precision, temp_domain->scale);
+            break;
+
+        case DB_TYPE_SET:
+        case DB_TYPE_MULTISET:
+        case DB_TYPE_SEQUENCE:
+            strcpy(temp_buffer, temp_domain->type->name);
+            ustr_upper(temp_buffer);
+            m_buf("%s OF ", temp_buffer);
+            if(temp_domain->setdomain != NULL)
+            {
+                if(temp_domain->setdomain->next != NULL && prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
+                {
+                    m_buf("(");
+                    describe_domain(temp_domain->setdomain, prt_type, force_print_collation);
+                    m_buf(")");
+                }
+                else
+                {
+                    describe_domain(temp_domain->setdomain, prt_type, force_print_collation);
+                }
+            }
+            break;
+        case DB_TYPE_ENUMERATION:
+            has_collation = 1;
+            strcpy(temp_buffer, temp_domain->type->name);
+            m_buf("%s(", ustr_upper(temp_buffer));
+            count = DOM_GET_ENUM_ELEMS_COUNT(temp_domain);
+            for(idx = 1; idx <= count; idx++)
+            {
+                if(idx > 1)
+                {
+                    m_buf(", ");
+                }
+                m_buf("'");
+                m_buf(DB_GET_ENUM_ELEM_STRING_SIZE(&DOM_GET_ENUM_ELEM(temp_domain, idx)), DB_GET_ENUM_ELEM_STRING(&DOM_GET_ENUM_ELEM(temp_domain, idx)));
+                m_buf("'");
+            }
+            m_buf(")");
+            break;
+        default:
+            break;
+        }
+
+        if(has_collation && (force_print_collation || temp_domain->collation_id != LANG_SYS_COLLATION))
+        {
+            m_buf(" COLLATE %s", lang_get_collation_name(temp_domain->collation_id));
+        }
+        if(temp_domain->next != NULL)
+        {
+            m_buf(", ");
+        }
+    }
+}
+
+/*
+ * obj_print_describe_argument() - Describes a method argument
+ *      return: advanced buffer pointer
+ *  parser(in) :
+ *  buffer(in) : current buffer pointer
+ *  argument_p(in) : method argument to describe
+ *  prt_type(in): the print type: csql schema or show create table
+ *
+ */
+ //--------------------------------------------------------------------------------
+void object_print_parser::describe_argument(sm_method_argument* argument_p, obj_print_type prt_type) {
+    if(argument_p != NULL)
+    {
+        if(argument_p->domain != NULL)
+        {
+            /* method and its arguments do not inherit collation from class, collation printing is not enforced */
+            describe_domain(argument_p->domain, prt_type, false);
+        }
+        else if(argument_p->type)
+        {
+            m_buf("%s", argument_p->type->name);
+        }
+        else
+        {
+            m_buf("invalid type");
+        }
+    }
+}
+
+/*
+ * describe_method() - Describes the definition of a method in a class
+ *      return: advanced buffer pointer
+ *  parser(in) : current buffer pointer
+ *  op(in) : class with method
+ *  method_p(in) : method to describe
+ *  prt_type(in): the print type: csql schema or show create table
+ *
+ */
+ //--------------------------------------------------------------------------------
+void object_print_parser::describe_method(struct db_object* op, sm_method* method_p, obj_print_type prt_type) {
+    SM_METHOD_SIGNATURE *signature_p;
+
+    /* assume for the moment that there can only be one signature, simplifies the output */
+    if(method_p == NULL)
+    {
+        return;
+    }
+    describe_identifier(method_p->header.name, prt_type);
+    signature_p = method_p->signatures;
+    if(signature_p == NULL)
+    {
+        m_buf("()");
+    }
+    else
+    {
+        m_buf("(");
+        describe_signature(signature_p, prt_type);
+        m_buf(") ");
+
+        if(signature_p->value != NULL)
+        {
+            /* make this look more like the actual definition instead strcpy(line, "returns "); line += strlen(line); */
+            describe_argument(signature_p->value, prt_type);
+        }
+        if(signature_p->function_name != NULL)
+        {
+            m_buf(" FUNCTION ");
+            describe_identifier(signature_p->function_name, prt_type);
+        }
+    }
+    /* add the inheritance source */
+    if(method_p->class_mop != NULL && method_p->class_mop != op)
+    {
+
+        m_buf("(from ");
+        describe_identifier(sm_get_ch_name(method_p->class_mop), prt_type);
+        m_buf(")");
+    }
+}
+
+/*
+ * obj_print_describe_signature() - Describes a method signature
+ *      return: advanced buffer pointer
+ *  parser(in) :
+ *  buffer(in) : current buffer pointer
+ *  signature_p(in) : signature to describe
+ *  prt_type(in): the print type: csql schema or show create table
+ *
+ */
+ //--------------------------------------------------------------------------------
+void object_print_parser::describe_signature(sm_method_signature* signature_p, obj_print_type prt_type) {
+    SM_METHOD_ARGUMENT *argument_p;
+    int i;
+
+    if(signature_p == NULL)
+    {
+        return;
+    }
+
+    for(i = 1; i <= signature_p->num_args; i++)
+    {
+        for(argument_p = signature_p->args; argument_p!=NULL && argument_p->index!=i; argument_p=argument_p->next);
+        if(argument_p != NULL)
+        {
+            describe_argument(argument_p, prt_type);
+        }
+        else
+        {
+            m_buf("??");
+        }
+        if(i < signature_p->num_args)
+        {
+            m_buf(", ");
+        }
+    }
+}
+
+/* CLASS COMPONENT DESCRIPTION FUNCTIONS */
+
+/*
+ * obj_print_describe_attribute() - Describes the definition of an attribute
+ *                                  in a class
+ *      return: advanced bufbuffer pointer
+ *  class_p(in) : class being examined
+ *  parser(in) :
+ *  attribute_p(in) : attribute of the class
+ *  is_inherited(in) : is the attribute inherited
+ *  prt_type(in): the print type: csql schema or show create table
+ *  obj_print_describe_attribute(in):
+ *
+ */
+ //--------------------------------------------------------------------------------
+void object_print_parser::describe_attribute(struct db_object* class_p, sm_attribute* attribute_p, bool is_inherited, obj_print_type prt_type, bool force_print_collation) {
+    char str_buf[NUMERIC_MAX_STRING_SIZE];
+    if(attribute_p == NULL)
+    {
+        return;
+    }
+    object_print_common obj_print(m_buf);
+
+    if(prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+    {
+        m_buf("%-20s ", attribute_p->header.name);
+    }
+    else
+    {/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+        describe_identifier(attribute_p->header.name, prt_type);
+        m_buf(" ");
+    }
+
+    /* could filter here but do in describe_domain */
+    describe_domain(attribute_p->domain, prt_type, force_print_collation);
+
+    if(attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
+    {
+        m_buf(" SHARED ");
+        if(!DB_IS_NULL(&attribute_p->default_value.value))
+        {
+            obj_print.describe_value(&attribute_p->default_value.value);
+        }
+    }
+    else if(attribute_p->header.name_space == ID_ATTRIBUTE)
+    {
+        if(attribute_p->flags & SM_ATTFLAG_AUTO_INCREMENT)
+        {
+            m_buf(" AUTO_INCREMENT ");
+            assert(is_inherited || attribute_p->auto_increment != NULL);
+            if(prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
+            {
+                DB_VALUE min_val, inc_val;
+                char buff[DB_MAX_NUMERIC_PRECISION * 2 + 4];
+                int offset;
+                assert(attribute_p->auto_increment != NULL);
+
+                DB_MAKE_NULL(&min_val);
+                DB_MAKE_NULL(&inc_val);
+
+                if(db_get(attribute_p->auto_increment, "min_val", &min_val) != NO_ERROR)
+                {
+                    return;
+                }
+
+                if(db_get(attribute_p->auto_increment, "increment_val", &inc_val) != NO_ERROR)
+                {
+                    pr_clear_value(&min_val);
+                    return;
+                }
+
+                offset =
+                    snprintf(buff, DB_MAX_NUMERIC_PRECISION + 3, "(%s, ", numeric_db_value_print(&min_val, str_buf));
+                snprintf(buff + offset, DB_MAX_NUMERIC_PRECISION + 1, "%s)", numeric_db_value_print(&inc_val, str_buf));
+                m_buf(buff);
+
+                pr_clear_value(&min_val);
+                pr_clear_value(&inc_val);
+            }
+        }
+        if(!DB_IS_NULL(&attribute_p->default_value.value)
+            || attribute_p->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+        {
+            const char *default_expr_type_str;
+
+            m_buf(" DEFAULT ");
+
+            if(attribute_p->default_value.default_expr.default_expr_op == T_TO_CHAR)
+            {
+                m_buf("TO_CHAR(");
+            }
+
+            default_expr_type_str = db_default_expression_string(attribute_p->default_value.default_expr.default_expr_type);
+            if(default_expr_type_str != NULL)
+            {
+                m_buf("%s", default_expr_type_str);
+            }
+            else
+            {
+                assert(attribute_p->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR);
+                obj_print.describe_value(&attribute_p->default_value.value);
+            }
+
+            if(attribute_p->default_value.default_expr.default_expr_op == T_TO_CHAR)
+            {
+                if(attribute_p->default_value.default_expr.default_expr_format)
+                {
+                    m_buf(", \'%s\'", attribute_p->default_value.default_expr.default_expr_format);
+                }
+                m_buf(")");
+            }
+        }
+    }
+    else if(attribute_p->header.name_space == ID_CLASS_ATTRIBUTE)
+    {
+        if(!DB_IS_NULL(&attribute_p->default_value.value))
+        {
+            m_buf(" VALUE ");
+            obj_print.describe_value(&attribute_p->default_value.value);
+        }
+    }
+
+    if(attribute_p->flags & SM_ATTFLAG_NON_NULL)
+    {
+        m_buf(" NOT NULL");
+    }
+    if(attribute_p->class_mop != NULL && attribute_p->class_mop != class_p)
+    {
+        m_buf(" /* from ");
+        describe_identifier(sm_get_ch_name(attribute_p->class_mop), prt_type);
+        m_buf(" */");
+    }
+
+    if(attribute_p->comment != NULL && attribute_p->comment[0] != '\0')
+    {
+        m_buf(" ");
+        describe_comment(attribute_p->comment);
+    }
+}
+
+/*
+ * obj_print_describe_constraint() - Describes the definition of an attribute
+ *                                   in a class
+ *      return: advanced buffer pointer
+ *  parser(in) :
+ *  class_p(in) : class being examined
+ *  constraint_p(in) :
+ *  prt_type(in): the print type: csql schema or show create table
+ *
+ */
+ //--------------------------------------------------------------------------------
+void object_print_parser::describe_constraint(sm_class* class_p, sm_class_constraint* constraint_p, obj_print_type prt_type) {
+    SM_ATTRIBUTE **attribute_p;
+    const int *asc_desc;
+    const int *prefix_length;
+    int k, n_attrs = 0;
+
+    if(!class_p || !constraint_p)
+    {
+        return;
+    }
+
+    if(prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+    {
+        switch(constraint_p->type)
+        {
+        case SM_CONSTRAINT_INDEX:
+            m_buf("INDEX ");
+            break;
+        case SM_CONSTRAINT_UNIQUE:
+            m_buf("UNIQUE ");
+            break;
+        case SM_CONSTRAINT_REVERSE_INDEX:
+            m_buf("REVERSE INDEX ");
+            break;
+        case SM_CONSTRAINT_REVERSE_UNIQUE:
+            m_buf("REVERSE UNIQUE ");
+            break;
+        case SM_CONSTRAINT_PRIMARY_KEY:
+            m_buf("PRIMARY KEY ");
+            break;
+        case SM_CONSTRAINT_FOREIGN_KEY:
+            m_buf("FOREIGN KEY ");
+            break;
+        default:
+            m_buf("CONSTRAINT ");
+            break;
+        }
+        m_buf("%s ON %s (", constraint_p->name, sm_ch_name((MOBJ)class_p));
+        asc_desc = NULL;		/* init */
+        if(!SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(constraint_p->type))
+        {
+            asc_desc = constraint_p->asc_desc;
+        }
+    }
+    else
+    {				/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+        switch(constraint_p->type)
+        {
+        case SM_CONSTRAINT_INDEX:
+        case SM_CONSTRAINT_REVERSE_INDEX:
+            m_buf(" INDEX ");
+            describe_identifier(constraint_p->name, prt_type);
+            break;
+        case SM_CONSTRAINT_UNIQUE:
+        case SM_CONSTRAINT_REVERSE_UNIQUE:
+            m_buf(" CONSTRAINT ");
+            describe_identifier(constraint_p->name, prt_type);
+            m_buf(" UNIQUE KEY ");
+            break;
+        case SM_CONSTRAINT_PRIMARY_KEY:
+            m_buf(" CONSTRAINT ");
+            describe_identifier(constraint_p->name, prt_type);
+            m_buf(" PRIMARY KEY ");
+            break;
+        case SM_CONSTRAINT_FOREIGN_KEY:
+            m_buf(" CONSTRAINT ");
+            describe_identifier(constraint_p->name, prt_type);
+            m_buf(" FOREIGN KEY ");
+            break;
+        default:
+            assert(false);
+            break;
+        }
+        m_buf(" (");
+        asc_desc = constraint_p->asc_desc;
+    }
+
+    prefix_length = constraint_p->attrs_prefix_length;
+
+    /* If the index is a function index, then the corresponding expression is printed at the right position in the
+     * attribute list. Since the expression is not part of the attribute list, when searching through that list we must
+     * check if the position of the expression is reached and then print it. */
+    k = 0;
+    if(constraint_p->func_index_info)
+    {
+        n_attrs = constraint_p->func_index_info->attr_index_start + 1;
+    }
+    else
+    {
+        for(attribute_p = constraint_p->attributes; *attribute_p; attribute_p++)
+        {
+            n_attrs++;
+        }
+    }
+    for(attribute_p = constraint_p->attributes; k < n_attrs; attribute_p++)
+    {
+        if(constraint_p->func_index_info && k == constraint_p->func_index_info->col_id)
+        {
+            if(k > 0)
+            {
+                m_buf(", ");
+            }
+            m_buf("%s", constraint_p->func_index_info->expr_str);
+            if(constraint_p->func_index_info->fi_domain->is_desc)
+            {
+                m_buf(" DESC");
+            }
+            k++;
+        }
+        if(k == n_attrs)
+        {
+            break;
+        }
+        if(k > 0)
+        {
+            m_buf(", ");
+        }
+        describe_identifier((*attribute_p)->header.name, prt_type);
+
+        if(prefix_length)
+        {
+            if(*prefix_length != -1)
+            {
+                m_buf("(%d)", *prefix_length);
+            }
+
+            prefix_length++;
+        }
+
+        if(asc_desc)
+        {
+            if(*asc_desc == 1)
+            {
+                m_buf(" DESC");
+            }
+            asc_desc++;
+        }
+        k++;
+    }
+    m_buf(")");
+
+    if(constraint_p->filter_predicate && constraint_p->filter_predicate->pred_string)
+    {
+        m_buf(" WHERE %s", constraint_p->filter_predicate->pred_string);
+    }
+
+    if(constraint_p->type == SM_CONSTRAINT_FOREIGN_KEY && constraint_p->fk_info)
+    {
+        MOP ref_clsop;
+        SM_CLASS *ref_cls;
+        SM_CLASS_CONSTRAINT *c;
+
+        ref_clsop = ws_mop(&(constraint_p->fk_info->ref_class_oid), NULL);
+        if(au_fetch_class_force(ref_clsop, &ref_cls, AU_FETCH_READ) != NO_ERROR)
+        {
+            return;
+        }
+
+        m_buf(" REFERENCES ");
+        describe_identifier(sm_ch_name((MOBJ)ref_cls), prt_type);
+
+        if(prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
+        {
+            for(c = ref_cls->constraints; c; c = c->next)
+            {
+                if(c->type == SM_CONSTRAINT_PRIMARY_KEY && c->attributes != NULL)
+                {
+                    m_buf(" (");
+                    for(k = 0; k < n_attrs; k++)
+                    {
+                        if(c->attributes[k] != NULL)
+                        {
+                            describe_identifier(c->attributes[k]->header.name, prt_type);
+                            if(k != (n_attrs - 1))
+                            {
+                                m_buf(", ");
+                            }
+                        }
+                    }
+                    m_buf(")");
+                    break;
+                }
+            }
+        }
+
+        m_buf(" ON DELETE %s", classobj_describe_foreign_key_action(constraint_p->fk_info->delete_action));
+
+        if(prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+        {
+            m_buf(",");
+        }
+        m_buf(" ON UPDATE %s", classobj_describe_foreign_key_action(constraint_p->fk_info->update_action));
+    }
+
+    if(constraint_p->comment != NULL && constraint_p->comment[0] != '\0')
+    {
+        m_buf(" ");
+        describe_comment(constraint_p->comment);
+    }
+}
+
+/*
+ * obj_print_describe_resolution() - Describes a resolution specifier
+ *      return: advanced buffer pointer
+ *  parser(in) :
+ *  resolution_p(in) : resolution to describe
+ *  prt_type(in): the print type: csql schema or show create table
+ *
+ */
+ //--------------------------------------------------------------------------------
+void object_print_parser::describe_resolution(sm_resolution* resolution_p, obj_print_type prt_type) {
+    if(resolution_p != NULL)
+    {
+        if(prt_type != OBJ_PRINT_SHOW_CREATE_TABLE)
+        {
+            if(resolution_p->name_space == ID_CLASS)
+            {
+                m_buf("inherit CLASS ");
+            }
+            else
+            {
+                m_buf("inherit ");
+            }
+        }
+        describe_identifier(resolution_p->name, prt_type);
+        m_buf(" of ");
+        describe_identifier(sm_get_ch_name(resolution_p->class_mop), prt_type);
+        if(resolution_p->alias != NULL)
+        {
+            m_buf(" as ");
+            describe_identifier(resolution_p->alias, prt_type);
+        }
+    }
+}
+
+/*
+ * obj_print_describe_method_file () - Describes a method file.
+ *   return: advanced buffer pointer
+ *   parser(in) :
+ *   class_p(in) :
+ *   file_p(in): method file descriptor
+ */
+ //--------------------------------------------------------------------------------
+void object_print_parser::describe_method_file(struct db_object* class_p, sm_method_file* file_p) {
+    if(file_p != NULL)
+    {
+        m_buf("%s", file_p->name);
+        if(file_p->class_mop != NULL && file_p->class_mop != class_p)
+        {
+            m_buf(" (from %s)", sm_get_ch_name(file_p->class_mop));
+        }
+    }
+}
+
+/*
+ * describe_class_trigger () - Describes the given trigger object to a buffer.
+ *   return: PARSER_VARCHAR *
+ *   parser(in): buffer for description
+ *   trigger(in): trigger object
+ * Note :
+ *    This description is for the class help and as such it contains
+ *    a condensed versino of the trigger help.
+ */
+ //--------------------------------------------------------------------------------
+void object_print_parser::describe_class_trigger(tr_trigger* trigger) {
+    m_buf("%s : %s %s ", trigger->name, describe_trigger_condition_time(trigger), tr_event_as_string(trigger->event));
+    if(trigger->attribute != NULL)
+    {
+        m_buf("OF %s", trigger->attribute);
+    }
+    if(trigger->comment != NULL && trigger->comment[0] != '\0')
+    {
+        m_buf(" ");
+        describe_comment(trigger->comment);
+    }
+}
+
+/*
+ * obj_print_trigger_condition_time() -
+ *      return: char *
+ *  trigger(in) :
+ */
+ //--------------------------------------------------------------------------------
+const char* object_print_parser::describe_trigger_condition_time(tr_trigger* trigger) {
+    DB_TRIGGER_TIME time = TR_TIME_NULL;
+    if(trigger->condition != NULL)
+    {
+        time = trigger->condition->time;
+    }
+    else if(trigger->action != NULL)
+    {
+        time = trigger->action->time;
+    }
+    return (tr_time_as_string(time));
+}
+
+/*
+ * obj_print_trigger_action_time() -
+ *      return: char *
+ *  trigger(in) :
+ */
+ //--------------------------------------------------------------------------------
+const char* object_print_parser::describe_trigger_action_time(tr_trigger* trigger) {
+    DB_TRIGGER_TIME time = TR_TIME_NULL;
+    if(trigger->action != NULL)
+    {
+        time = trigger->action->time;
+    }
+    return (tr_time_as_string(time));
+}
+
+/*
+ * obj_print_describe_class() - Describes the definition of a class
+ *   return: create table string
+ *   parser(in):
+ *   class_schema(in):
+ *   class_op(in):
+ */
+//--------------------------------------------------------------------------------
+void object_print_parser::describe_class(class_description* class_schema, struct db_object* class_op){
+  char **line_ptr;
+  /* class name */
+  m_buf("CREATE TABLE %s", class_schema->name);
+
+  /* under or as subclass of */
+  if (class_schema->supers != NULL)
+    {
+      m_buf(" UNDER ");
+      for (line_ptr = class_schema->supers; *line_ptr != NULL; line_ptr++)
+      {
+          if(line_ptr != class_schema->supers)
+          {
+              m_buf(", ");
+          }
+          m_buf("%s", (*line_ptr));
+      }
+    }
+
+  /* class attributes */
+  if (class_schema->class_attributes != NULL)
+    {
+      m_buf(" CLASS ATTRIBUTE (");
+      for (line_ptr = class_schema->class_attributes; *line_ptr != NULL; line_ptr++)
+      {
+          if(line_ptr != class_schema->class_attributes)
+          {
+              m_buf(", ");
+          }
+          m_buf("%s", *line_ptr);
+      }
+      m_buf(")");
+    }
+
+  /* attributes and constraints */
+  if (class_schema->attributes != NULL || class_schema->constraints != NULL)
+    {
+      m_buf(" (");
+      if (class_schema->attributes != NULL)
+      {
+          for(line_ptr = class_schema->attributes; *line_ptr != NULL; line_ptr++)
+          {
+              if(line_ptr != class_schema->attributes)
+              {
+                  m_buf(", ");
+              }
+              m_buf("%s", *line_ptr);
+          }
+      }
+      if (class_schema->constraints != NULL)
+      {
+          for(line_ptr = class_schema->constraints; *line_ptr != NULL; line_ptr++)
+          {
+              if(line_ptr != class_schema->constraints || class_schema->attributes != NULL)
+              {
+                  m_buf(", ");
+              }
+              m_buf("%s", *line_ptr);
+          }
+      }
+      m_buf(")");
+    }
+
+  /* reuse_oid flag */
+  if (sm_is_reuse_oid_class (class_op))
+    {
+      m_buf(" REUSE_OID");
+      if (class_schema->collation != NULL)
+      {
+          m_buf(",");
+      }
+      else
+      {
+          m_buf(" ");
+      }
+  }
+
+  /* collation */
+  if (class_schema->collation != NULL)
+    {
+      m_buf(" COLLATE %s", class_schema->collation);
+    }
+
+  /* methods and class_methods */
+  if (class_schema->methods != NULL || class_schema->class_methods != NULL)
+    {
+      m_buf(" METHOD ");
+      if (class_schema->methods != NULL)
+	{
+	  for (line_ptr = class_schema->methods; *line_ptr != NULL; line_ptr++)
+	    {
+	      if (line_ptr != class_schema->methods)
+		{
+		  m_buf(", ");
+		}
+	      m_buf("%s", *line_ptr);
+	    }
+	}
+      if(class_schema->class_methods != NULL)
+      {
+          for(line_ptr = class_schema->class_methods; *line_ptr != NULL; line_ptr++)
+          {
+              if(line_ptr != class_schema->class_methods || class_schema->methods != NULL)
+              {
+                  m_buf(", ");
+              }
+              m_buf(" CLASS %s", *line_ptr);
+          }
+      }
+  }
+
+  /* method files */
+  if (class_schema->method_files != NULL)
+    {
+      char tmp[PATH_MAX + 2];
+
+      m_buf(" FILE ");
+      for (line_ptr = class_schema->method_files; *line_ptr != NULL; line_ptr++)
+      {
+          if(line_ptr != class_schema->method_files)
+          {
+              m_buf(", ");
+          }
+          m_buf("'%s'", *line_ptr);
+      }
+    }
+
+  /* inherit */
+  if (class_schema->resolutions != NULL)
+    {
+      m_buf(" INHERIT ");
+      for (line_ptr = class_schema->resolutions; *line_ptr != NULL; line_ptr++)
+      {
+          if(line_ptr != class_schema->resolutions)
+          {
+              m_buf(", ");
+          }
+          m_buf("%s", *line_ptr);
+      }
+    }
+
+  /* partition */
+  if (class_schema->partition != NULL)
+    {
+      char **first_ptr;
+
+      line_ptr = class_schema->partition;
+      m_buf(" %s", *line_ptr);
+      line_ptr++;
+      if (*line_ptr != NULL)
+      {
+          m_buf(" (");
+          for(first_ptr = line_ptr; *line_ptr != NULL; line_ptr++)
+          {
+              if(line_ptr != first_ptr)
+              {
+                  m_buf(", ");
+              }
+              m_buf("%s", *line_ptr);
+          }
+          m_buf(")");
+      }
+    }
+
+  /* comment */
+  if (class_schema->comment != NULL && class_schema->comment[0] != '\0')
+    {
+      DB_VALUE comment_value;
+      DB_MAKE_NULL (&comment_value);
+      DB_MAKE_STRING (&comment_value, class_schema->comment);
+
+      m_buf(" COMMENT=");
+      object_print_common obj_print(m_buf);
+      obj_print.describe_value(&comment_value);
+      pr_clear_value (&comment_value);
+    }
+}
+
+/*
+ * obj_print_describe_partition_info() -
+ *      return: char *
+ *  parser(in) :
+ *  partinfo(in) :
+ *
+ */
+//--------------------------------------------------------------------------------
+void object_print_parser::describe_partition_info(sm_partition* partinfo){
+  DB_VALUE ele;
+  char line[SM_MAX_IDENTIFIER_LENGTH + 1], *ptr, *ptr2, *tmp;
+  char col_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+
+  if (partinfo == NULL)
+    {
+      return;
+    }
+
+  m_buf("PARTITION BY ");
+  switch (partinfo->partition_type)
+    {
+    case PT_PARTITION_HASH:
+      m_buf("HASH (");
+      break;
+    case PT_PARTITION_RANGE:
+      m_buf("RANGE (");
+      break;
+    case PT_PARTITION_LIST:
+      m_buf("LIST (");
+      break;
+    }
+
+  tmp = (char *) partinfo->expr;
+  assert (tmp != NULL);
+
+  ptr = tmp ? strstr (tmp, "SELECT ") : NULL;
+  if (ptr)
+    {
+      ptr2 = strstr (ptr + 7, " FROM ");
+      if (ptr2)
+      {
+          strncpy(col_name, ptr + 7, CAST_STRLEN(ptr2 - (ptr + 7)));
+          col_name[CAST_STRLEN(ptr2 - (ptr + 7))] = 0;
+          m_buf("%s) ", col_name);
+      }
+    }
+
+  if (partinfo->partition_type == PT_PARTITION_HASH)
+    {
+      if (set_get_element (partinfo->values, 1, &ele) == NO_ERROR)
+      {
+          m_buf("PARTITIONS %d", DB_GET_INTEGER(&ele));
+      }
+    }
+}

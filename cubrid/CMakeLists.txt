@@ -67,6 +67,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
+  ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/tz_support.c
@@ -133,6 +134,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_primitive.c
+  ${OBJECT_DIR}/object_print_common.cpp
   ${OBJECT_DIR}/transform.c
   ${OBJECT_DIR}/object_domain.c
   )

@@ -87,6 +87,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
+  ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/tz_support.c
@@ -179,6 +180,8 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/transform_cl.c
   ${OBJECT_DIR}/transform.c
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_print_common.cpp
+  ${OBJECT_DIR}/object_print_parser.cpp
   ${OBJECT_DIR}/work_space.c
   )
 
