@@ -1,0 +1,5 @@
+#StrBuf test input 1
+"simple text, no format"
+"format int: %d", 1973
+"format double: %lf", 73.11
+"format string: %s", "Novembr"

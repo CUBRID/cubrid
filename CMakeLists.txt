@@ -15,8 +15,23 @@
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
+message("======== CMakeLists.txt")
 
 cmake_minimum_required(VERSION 2.8)
+
+function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
+  get_cmake_property(vars VARIABLES)
+  foreach(var ${vars})
+    if(var MATCHES "^(UNIT_TESTS|UNIT_TEST_.*)$")
+      if(${${var}} STREQUAL "ON")
+        set(${res} 1 PARENT_SCOPE)  #at least one unit test was requested
+      endif()
+    endif()
+  endforeach()
+endfunction(with_unit_tests)
+
+with_unit_tests(AT_LEAST_ONE_UNIT_TEST)
+message("    ==== with_unit_tests() = ${AT_LEAST_ONE_UNIT_TEST}")
 
 #also searches for modules onto cubrid/cmake
 # add other Find[LIBRARY].cmake scripts in cubrid/cmake
@@ -48,7 +63,7 @@ option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
-option (WITH_UNIT_TESTS "Unit tests" OFF)
+option(UNIT_TESTS "Unit tests" OFF)
 
 # options for external libraries (BUNDLED or path)
 
@@ -61,7 +76,17 @@ set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editlin
 set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: BUNDLED)")
 set(WITH_LIBGPGERROR  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: BUNDLED)")
 set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: BUNDLED)")
-set(WITH_LIBNCURSES   "GIT" CACHE STRING "Build with ncurses library (default: GIT)")
+
+# NCURSES - gcc 4.7+ systems: GIT, Otherwise: SYSTEM
+if(UNIX)
+  if(CMAKE_COMPILER_IS_GNUCC)
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
+      set(WITH_LIBNCURSES   "GIT" CACHE STRING "Build with ncurses library (default: GIT)")
+    else(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
+      set(WITH_LIBNCURSES   "SYSTEM" CACHE STRING "Build with ncurses library (default: SYSTEM)")
+    endif(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
+  endif(CMAKE_COMPILER_IS_GNUCC)
+endif(UNIX)
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -144,6 +169,10 @@ if(UNIX)
       message(FATAL_ERROR "4.3.4 or higher version is required. (ref. https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185)")
     endif(ENABLE_32BIT AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.3.4)
     
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
+      message(SEND_ERROR "Cannot compile with gcc version ${CMAKE_CXX_COMPILER_VERSION}. Require at least 4.4.7.")
+    endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
+
     set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer -std=c++0x")
     set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
@@ -232,7 +261,7 @@ else(BISON_FOUND)
 endif(BISON_FOUND)
 
 include(FindFLEX)
-find_package(FLEX)
+find_package(FLEX 2.5.34 REQUIRED)
 
 if(USE_BISON_NEWDIRECTIVE)
   # replace old bison directives with new ones
@@ -1004,10 +1033,9 @@ add_subdirectory(contrib)
 add_subdirectory(tools)
 add_subdirectory(locales)
 add_subdirectory(timezones)
-
-if(WITH_UNIT_TESTS)
-add_subdirectory(unit_tests)
-endif(WITH_UNIT_TESTS)
+if(AT_LEAST_ONE_UNIT_TEST)
+  add_subdirectory(unit_tests)
+endif()
 
 if(WITH_JDBC)
   find_program(ANT ant PATHS $ENV{ANT_HOME} ENV PATH)

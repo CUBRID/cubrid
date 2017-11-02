@@ -1194,21 +1194,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  pgbuf_unfix_and_init (thread_p, helper.home_page);
 	  return NO_ERROR;
 	}
-      /* page still could be reused as new heap page in same file. in this case the slot may be invalid or it may hold
-       * another record (but that won't bother us, because we always check the record header).
-       * stop if slot no longer exists. */
-      if (spage_number_of_slots (helper.home_page) <= heap_objects[0].oid.slotid)
-	{
-	  /* slot does not exist */
-	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
-	  assert (n_heap_objects == 1);
-
-	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run and reused as"
-				 " new heap page\n", VPID_AS_ARGS (&helper.home_vpid));
-
-	  pgbuf_unfix_and_init (thread_p, helper.home_page);
-	  return NO_ERROR;
-	}
     }
   else
     {
