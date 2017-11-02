@@ -6947,11 +6947,8 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	{
 	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
 
-	  /* Update the last_blockid needed for vacuum. Get the first page_id of the last archive added 
-	   * in the page table info.
-	   */
-	  local_rear = logpb_Arv_page_info_table.rear;
-	  new_page_id = logpb_Arv_page_info_table.page_info[local_rear].start_pageid;
+	  /* Update the last_blockid needed for vacuum. Get the first page_id of the previously logged archive */
+	  new_page_id = log_Gl.append.prev_lsa.pageid;
 	  if (last_arv_num_to_delete == -1 || new_page_id == 0)
 	    {
 	      /* set as NULL_BLOCKID */
@@ -7231,11 +7228,12 @@ logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first, int last
   bool append_log_info = false;
   int deleted_count = 0;
 
+  /* Decache any archive remaining in the log_Gl.archive. */
+  logpb_decache_archive_info (thread_p);
+
   for (i = first; i <= last; i++)
     {
       fileio_make_log_archive_name (logarv_name, log_Archive_path, log_Prefix, i);
-      /* Decache any archive remaining in the log_Gl.archive. */
-      logpb_decache_archive_info (thread_p);
 
 #if defined(SERVER_MODE)
       if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING) && boot_Server_status == BOOT_SERVER_UP)
