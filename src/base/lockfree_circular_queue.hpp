@@ -27,90 +27,42 @@
 #include <type_traits>
 #include <climits>
 #include <cstdint>
-#ifdef USE_STD_ATOMIC
 #include <atomic>
-/* TODO: use std::atomic. However, we must give up on systems with gcc 4.5 or older and VS 2010 */
-#endif // USE_STD_ATOMIC
 #include <cassert>
 
-#if !defined (DEBUG_LGFCQ) && !defined (NDEBUG)
-#define DEBUG_LFCQ
-#endif // !defined (DEBUG_LGFCQ) && !defined (NDEBUG)
+// activate preprocessor if you need to debug low-level execution of lockfree circular queue
+// note that if you wanna track the execution history of low-level operation of a certain queue, you also need to
+// replace produce/consume functions with produce_debug/consume_debug
+//
+// #define DEBUG_LFCQ
 
 namespace lockfree {
 
 template <class T>
 class circular_queue
 {
-#if defined (DEBUG_LFCQ)
-private:
-  enum class local_action;
-  struct local_event;
-#endif // defined (DEBUG_LFCQ)
-
 public:
-#ifdef USE_STD_ATOMIC
-  // std::atomic
   typedef std::uint64_t cursor_type;
   typedef std::atomic<cursor_type> atomic_cursor_type;
   typedef std::atomic<T> atomic_data_type;
-#else // not USE_STD_ATOMIC
-  typedef std::uint64_t cursor_type;
-  typedef volatile cursor_type atomic_cursor_type;
-  typedef volatile T atomic_data_type;
-#endif // not USE_STD_ATOMIC
   typedef atomic_cursor_type atomic_flag_type;
 
   circular_queue (size_t size);
   ~circular_queue ();
 
-#if defined (DEBUG_LFCQ)
-  class local_history
-  {
-  public:
-    local_history ()
-      : m_cursor (0)
-    {
-    }
+  inline bool is_empty () const;              // is query empty?
+  inline bool is_full () const;               // is query full?
 
-    inline void register_event (local_action action)
-    {
-      m_cursor = (m_cursor + 1) % LOCAL_HISTORY_SIZE;
-      m_events[m_cursor].action = action;
-    }
-
-    inline void register_event (local_action action, cursor_type cursor)
-    {
-      register_event (action);
-      m_events[m_cursor].m_consequence.cursor_value = cursor;
-    }
-
-    inline void register_event (local_action action, T data)
-    {
-      register_event (action);
-      m_events[m_cursor].m_consequence.data_value = data;
-    }
-  private:
-    static const size_t LOCAL_HISTORY_SIZE = 64;
-    local_event m_events[LOCAL_HISTORY_SIZE];
-    size_t m_cursor;
-  };
-#endif // DEBUG_LFCQ
-
-  // produce data. if successful, returns true, if full, returns false
-  inline bool produce (const T& element
-#if defined (DEBUG_LFCQ)
-                       , local_history & my_history = m_shared_dummy_history
-#endif // DEBUG_LFCQ
-                       );
-  // consume data
-  inline bool consume (T& element
-#if defined (DEBUG_LFCQ)
-                       , local_history & my_history = m_shared_dummy_history
-#endif // DEBUG_LFCQ
-                       );
-  inline bool is_empty () const;
-  inline bool is_full () const;
+  inline bool consume (T & element);              // consume one element from queue; returns false on fail
+  inline bool produce (const T & element);        // produce an element to queue; returns false on fail
+  inline void force_produce (const T & element);  // force produce (loop until successful)
+  // note:
+  //
+  //    above functions are cloned by debug counterparts which track a history of executed low-level operations.
+  //    they were not cloned initially, but the code became unreadable with all the #ifdef DEBUG_LFCQ/#endif
+  //    preprocessor directives.
+  //    therefore, if you update the code for any of these functions, please make sure the debug counterparts are
+  //    updated too.
 
 private:
   static const cursor_type BLOCK_FLAG;
@@ -146,6 +98,50 @@ private:
   size_t m_index_mask;                  // mask used to compute a cursor's index in queue
 
 #if defined (DEBUG_LFCQ)
+private:
+  enum class local_action;
+  struct local_event;
+
+public:
+  class local_history
+  {
+  public:
+    local_history ()
+      : m_cursor (0)
+    {
+    }
+
+    inline void register_event (local_action action)
+    {
+      m_cursor = (m_cursor + 1) % LOCAL_HISTORY_SIZE;
+      m_events[m_cursor].action = action;
+    }
+
+    inline void register_event (local_action action, cursor_type cursor)
+    {
+      register_event (action);
+      m_events[m_cursor].m_consequence.cursor_value = cursor;
+    }
+
+    inline void register_event (local_action action, T data)
+    {
+      register_event (action);
+      m_events[m_cursor].m_consequence.data_value = data;
+    }
+  private:
+    static const size_t LOCAL_HISTORY_SIZE = 64;
+    local_event m_events[LOCAL_HISTORY_SIZE];
+    size_t m_cursor;
+  };
+
+  // clones of produce/consume with additional debug code. caller should keep its history in thread context to be
+  // inspected on demand
+  inline bool consume_debug (T& element, local_history & my_history);
+  inline bool produce_debug (const T& element, local_history & my_history);
+  inline bool force_produce_debug (const T& element, local_history & my_history);
+
+private:
+
   enum class local_action
   {
     NO_ACTION,
@@ -191,9 +187,6 @@ private:
 #endif // !_LOCKFREE_CIRCULAR_QUEUE_HPP_
 
 #include "base_flag.hpp"
-#ifndef USE_STD_ATOMIC
-#include "porting.h"
-#endif /* not USE_STD_ATOMIC */
 
 namespace lockfree {
 
@@ -226,11 +219,7 @@ circular_queue<T>::~circular_queue ()
 
 template<class T>
 inline bool
-circular_queue<T>::produce (const T & element
-#if defined (DEBUG_LFCQ)
-                            , local_history & my_history
-#endif // DEBUG_LFCQ
-                            )
+circular_queue<T>::produce (const T & element)
 {
   cursor_type cc;
   cursor_type pc;
@@ -256,73 +245,51 @@ circular_queue<T>::produce (const T & element
   //  1. the queue is full and push fails
   //  2. the producer successfully blocks a cursor
   //
+  // NOTE: I have an implementation issue I don't know how to fix without a significant overhead. When the queue is
+  //       very stressed (many threads produce/consume very often), the system may preempt a thread while it has a slot
+  //       blocked and may keep it preempted for a very long time (long enough to produce and consume an entire
+  //       generation). I'd like to any blocking of any kind.
+  //       One possible direction is to separate data storage (and slot index) from cursor. When one wants to produce
+  //       an element, it first reserves a slot in storage, adds his data, and then saves slot index/cursor in what is
+  //       now m_blocked_cursors using CAS operation. if this succeeds, produced data is immediately available for
+  //       consumption. any preemption would not block the queue (just delay when the produce is happening).
+  //
+  //       however, finding a way to dispatch slots to producers safely and without a sensible overhead is not quite
+  //       straightforward.
+  //
 
   while (true)
     {
-#if defined (DEBUG_LFCQ)
-      my_history.register_event (local_action::LOOP_PRODUCE);
-#endif // DEBUG_LFCQ
-
       pc = load_cursor (m_produce_cursor);
-#if defined (DEBUG_LFCQ)
-      my_history.register_event (local_action::LOAD_PRODUCE_CURSOR, pc);
-#endif // DEBUG_LFCQ
-
       cc = load_cursor (m_consume_cursor);
-#if defined (DEBUG_LFCQ)
-      my_history.register_event (local_action::LOAD_CONSUME_CURSOR, cc);
-#endif // DEBUG_LFCQ
 
       if (test_full_cursors (pc, cc))
         {
           /* cannot produce */
-#if defined (DEBUG_LFCQ)
-          my_history.register_event (local_action::QUEUE_FULL);
-#endif // DEBUG_LFCQ
           return false;
         }
 
       // first block position
       did_block = block (pc);
-#if defined (DEBUG_LFCQ)
-      my_history.register_event (did_block ? local_action::BLOCKED_CURSOR : local_action::NOT_BLOCKED_CURSOR, pc);
-#endif // DEBUG_LFCQ
 
       // make sure cursor is incremented whether I blocked it or not
       if (test_and_increment_cursor (m_produce_cursor, pc))
         {
           // do nothing
-#if defined (DEBUG_LFCQ)
-          my_history.register_event (local_action::INCREMENT_PRODUCE_CURSOR, pc);
-        }
-      else
-        {
-          my_history.register_event (local_action::NOT_INCREMENT_PRODUCE_CURSOR, pc);
-#endif // DEBUG_LFCQ
         }
       if (did_block)
         {
           /* I blocked it, it is mine. I can write my data. */
           store_data (pc, element);
-#if defined (DEBUG_LFCQ)
-          my_history.register_event (local_action::STORED_DATA, element);
-#endif // DEBUG_LFCQ
 
           unblock (pc);
-#if defined (DEBUG_LFCQ)
-          my_history.register_event (local_action::UNBLOCKED_CURSOR, pc);
-#endif // DEBUG_LFCQ
           return true;
         }
     }
 }
 
 template<class T>
-inline bool circular_queue<T>::consume (T & element
-#if defined (DEBUG_LFCQ)
-                                        , local_history & my_history
-#endif // DEBUG_LFCQ
-                                        )
+inline bool circular_queue<T>::consume (T & element)
 {
   cursor_type cc;
   cursor_type pc;
@@ -334,55 +301,34 @@ inline bool circular_queue<T>::consume (T & element
   // to make sure this condition is met and consume is possible concurrently and without locks, a consume cursor is
   // used. the entry at a certain cursor is consumed only by the thread who successfully increments the cursor by one
   // (using compare and swap, not atomic increment). the "consumed" entry is read before the cursor update, therefore
-  // the slot is freed for further produce operations immediately after the update.
+  // the slot is freed for further produce operations immediately after the update
+  //
+  // unlike producers, a consumer cannot block the queue if it is preempted during execution
   //
 
   while (true)
     {
-#if defined (DEBUG_LFCQ)
-      my_history.register_event (local_action::LOOP_CONSUME);
-#endif /* DEBUG_LFCQ */
-
       cc = load_cursor (m_consume_cursor);
-#if defined (DEBUG_LFCQ)
-      my_history.register_event (local_action::LOAD_CONSUME_CURSOR, cc);
-#endif /* DEBUG_LFCQ */
-
       pc = load_cursor (m_produce_cursor);
-#if defined (DEBUG_LFCQ)
-      my_history.register_event (local_action::LOAD_PRODUCE_CURSOR, pc);
-#endif /* DEBUG_LFCQ */
-
+      
       if (pc <= cc)
         {
           /* empty */
-#if defined (DEBUG_LFCQ)
-          my_history.register_event (local_action::QUEUE_EMPTY);
-#endif /* DEBUG_LFCQ */
           return false;
         }
 
       if (is_blocked (cc))
         {
           // first element is not yet produced. this means we can consider the queue still empty
-#if defined (DEBUG_LFCQ)
-          my_history.register_event (local_action::QUEUE_EMPTY);
-#endif /* DEBUG_LFCQ */
           return false;
         }
 
       // copy element first. however, the consume is not actually happening until cursor is successfully incremented.
       element = load_data (cc);
-#if defined (DEBUG_LFCQ)
-      my_history.register_event (local_action::LOADED_DATA, element);
-#endif /* DEBUG_LFCQ */
 
       if (test_and_increment_cursor (m_consume_cursor, cc))
         {
           // consume is complete
-#if defined (DEBUG_LFCQ)
-          my_history.register_event (local_action::INCREMENT_CONSUME_CURSOR, cc);
-#endif /* DEBUG_LFCQ */
 
           /* break loop */
           break;
@@ -390,9 +336,6 @@ inline bool circular_queue<T>::consume (T & element
       else
         {
           // consume unsuccessful
-#if defined (DEBUG_LFCQ)
-          my_history.register_event (local_action::NOT_INCREMENT_CONSUME_CURSOR, cc);
-#endif /* DEBUG_LFCQ */
         }
     }
 
@@ -441,43 +384,27 @@ template<class T>
 inline typename circular_queue<T>::cursor_type
 circular_queue<T>::load_cursor (atomic_cursor_type & cursor)
 {
-#ifdef USE_STD_ATOMIC
   return cursor.load ();
-#else
-  return ATOMIC_LOAD (&cursor);
-#endif /* */
 }
 
 template<class T>
 inline bool circular_queue<T>::test_and_increment_cursor (atomic_cursor_type & cursor, cursor_type crt_value)
 {
-#ifdef USE_STD_ATOMIC
-  // can weak be used here?
+  // can weak be used here? I tested, no performance difference from using one or the other
   return cursor.compare_exchange_strong (crt_value, crt_value + 1);
-#else /* not USE_STD_ATOMIC */
-  return ATOMIC_CAS (&cursor, crt_value, crt_value + 1);
-#endif /* not USE_STD_ATOMIC */
 }
 
 template<class T>
 inline void circular_queue<T>::store_data (cursor_type cursor, const T & data)
 {
-#ifdef USE_STD_ATOMIC
   m_data[get_cursor_index (cursor)].store (data);
-#else /* not USE_STD_ATOMIC */
-  ATOMIC_STORE (&m_data[get_cursor_index (cursor)], data);
-#endif /* not USE_STD_ATOMIC */
 }
 
 template<class T>
 inline T
 circular_queue<T>::load_data (cursor_type consume_cursor)
 {
-#ifdef USE_STD_ATOMIC
   return m_data[get_cursor_index (consume_cursor)].load ();
-#else /* not USE_STD_ATOMIC */
-  return ATOMIC_LOAD (&m_data[get_cursor_index (consume_cursor)]);
-#endif /* not USE_STD_ATOMIC */
 }
 
 template<class T>
@@ -490,11 +417,7 @@ template<class T>
 inline bool
 circular_queue<T>::is_blocked (cursor_type cursor)
 {
-#ifdef USE_STD_ATOMIC
   cursor_type block_val = m_blocked_cursors[get_cursor_index (cursor)].load ();
-#else /* not USE_STD_ATOMIC */
-  cursor_type block_val = ATOMIC_LOAD (&m_blocked_cursors[get_cursor_index (cursor)]);
-#endif /* not USE_STD_ATOMIC */
   return flag<cursor_type>::is_flag_set (block_val, BLOCK_FLAG);
 }
 
@@ -503,12 +426,8 @@ inline bool
 circular_queue<T>::block (cursor_type cursor)
 {
   cursor_type block_val = flag<cursor_type> (cursor).set (BLOCK_FLAG).get_flags ();
-#ifdef USE_STD_ATOMIC
   // can weak be used here?
   return m_blocked_cursors[get_cursor_index (cursor)].compare_exchange_strong (cursor, block_val);
-#else /* not USE_STD_ATOMIC */
-  return ATOMIC_CAS (&m_blocked_cursors[get_cursor_index (cursor)], cursor, block_val);
-#endif /* not USE_STD_ATOMIC */
 }
 
 template<class T>
@@ -516,20 +435,12 @@ inline void
 circular_queue<T>::unblock (cursor_type cursor)
 {
   atomic_flag_type& ref_blocked_cursor = m_blocked_cursors[get_cursor_index (cursor)];
-#ifdef USE_STD_ATOMIC
   flag<cursor_type> blocked_cursor_value = ref_blocked_cursor.load ();
-#else /* not USE_STD_ATOMIC */
-  flag<cursor_type> blocked_cursor_value = ATOMIC_LOAD (&ref_blocked_cursor);
-#endif /* not USE_STD_ATOMIC */
 
   assert (blocked_cursor_value.is_set (BLOCK_FLAG));
   cursor_type nextgen_cursor = blocked_cursor_value.clear (BLOCK_FLAG).get_flags () + m_capacity;
 
-#ifdef USE_STD_ATOMIC
   ref_blocked_cursor.store (nextgen_cursor);
-#else /* not USE_STD_ATOMIC */
-  ATOMIC_STORE (&ref_blocked_cursor, nextgen_cursor);
-#endif /* not USE_STD_ATOMIC */
 }
 
 template<class T>
@@ -545,8 +456,119 @@ circular_queue<T>::init_blocked_cursors (void)
 }
 
 #if defined (DEBUG_LFCQ)
-template <class T>
-typename circular_queue<T>::local_history circular_queue<T>::m_shared_dummy_history;
+template<class T>
+inline bool
+circular_queue<T>::produce_debug (const T & element, local_history & my_history)
+{
+  cursor_type cc;
+  cursor_type pc;
+  bool did_block;
+
+  while (true)
+    {
+      my_history.register_event (local_action::LOOP_PRODUCE);
+
+      pc = load_cursor (m_produce_cursor);
+      my_history.register_event (local_action::LOAD_PRODUCE_CURSOR, pc);
+
+      cc = load_cursor (m_consume_cursor);
+      my_history.register_event (local_action::LOAD_CONSUME_CURSOR, cc);
+
+      if (test_full_cursors (pc, cc))
+        {
+          /* cannot produce */
+          my_history.register_event (local_action::QUEUE_FULL);
+          return false;
+        }
+
+      // first block position
+      did_block = block (pc);
+      my_history.register_event (did_block ? local_action::BLOCKED_CURSOR : local_action::NOT_BLOCKED_CURSOR, pc);
+
+      // make sure cursor is incremented whether I blocked it or not
+      if (test_and_increment_cursor (m_produce_cursor, pc))
+        {
+          // do nothing
+          my_history.register_event (local_action::INCREMENT_PRODUCE_CURSOR, pc);
+        }
+      else
+        {
+          my_history.register_event (local_action::NOT_INCREMENT_PRODUCE_CURSOR, pc);
+        }
+      if (did_block)
+        {
+          /* I blocked it, it is mine. I can write my data. */
+          store_data (pc, element);
+          my_history.register_event (local_action::STORED_DATA, element);
+
+          unblock (pc);
+          my_history.register_event (local_action::UNBLOCKED_CURSOR, pc);
+          return true;
+        }
+    }
+}
+
+template<class T>
+inline bool circular_queue<T>::force_produce_debug (const T& element, local_history & my_history)
+{
+  while (!produce_debug (element, my_history))
+    {
+      std::this_thread::yield ();
+    }
+}
+
+template<class T>
+inline bool circular_queue<T>::consume_debug (T & element, local_history & my_history)
+{
+  cursor_type cc;
+  cursor_type pc;
+
+  while (true)
+    {
+      my_history.register_event (local_action::LOOP_CONSUME);
+
+      cc = load_cursor (m_consume_cursor);
+      my_history.register_event (local_action::LOAD_CONSUME_CURSOR, cc);
+
+      pc = load_cursor (m_produce_cursor);
+      my_history.register_event (local_action::LOAD_PRODUCE_CURSOR, pc);
+
+      if (pc <= cc)
+        {
+          /* empty */
+          my_history.register_event (local_action::QUEUE_EMPTY);
+          return false;
+        }
+
+      if (is_blocked (cc))
+        {
+          // first element is not yet produced. this means we can consider the queue still empty
+          my_history.register_event (local_action::QUEUE_EMPTY);
+          return false;
+        }
+
+      // copy element first. however, the consume is not actually happening until cursor is successfully incremented.
+      element = load_data (cc);
+      my_history.register_event (local_action::LOADED_DATA, element);
+
+      if (test_and_increment_cursor (m_consume_cursor, cc))
+        {
+          // consume is complete
+          my_history.register_event (local_action::INCREMENT_CONSUME_CURSOR, cc);
+
+          /* break loop */
+          break;
+        }
+      else
+        {
+          // consume unsuccessful
+          my_history.register_event (local_action::NOT_INCREMENT_CONSUME_CURSOR, cc);
+        }
+    }
+
+  // consume successful
+  return true;
+}
 #endif // DEBUG_LFCQ
 
 }  // namespace lockfree

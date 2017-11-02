@@ -18,13 +18,10 @@
  */
 
 #include "test_cqueue_functional.hpp"
-#include "test_cqueue_perf.hpp"
 
 int
 main (int, char **)
 {
-  //int err = test_lockfree::test_cqueue_functional ();
-
-  test_lockfree::test_compare_lfcqs ();
+  int err = test_lockfree::test_cqueue_functional ();
   return 0;
 }
