@@ -21,7 +21,10 @@
 #include "string_buffer.hpp"
 
 #include <assert.h>
+
+#if !defined (_MSC_VER) || (_MSC_VER >= 1700)
 #include <chrono>
+#endif /* !_MSC_VER || _MSC_VER >= 1700 */
 
 #if defined (LINUX)
 #include <stddef.h> //size_t on Linux
@@ -200,7 +203,10 @@ int main (int argc, char **argv)
 	}
     }
 
+#if !defined (_MSC_VER) || (_MSC_VER >= 1700)
   auto t0 = std::chrono::high_resolution_clock::now ();
+#endif
+
   for (size_t n = 1; n < N; ++n)
     {
       test (n);
@@ -212,12 +218,17 @@ int main (int argc, char **argv)
       SB_FORMAT ("%1$04d-%2$02d-%3$02d.", 1973, 11, 28);
       SB_FORMAT ("%3$02d.%2$02d.%1$04d.", 1973, 11, 28);
     }
-  auto t1 = std::chrono::high_resolution_clock::now ();
 
+#if !defined (_MSC_VER) || (_MSC_VER >= 1700)
+  auto t1 = std::chrono::high_resolution_clock::now ();
+#endif
+
+#if !defined (_MSC_VER) || (_MSC_VER >= 1700)
   if (flags & FL_TIME)
     {
       printf ("%.9lf ms\n", std::chrono::duration<double, std::milli> (t1 - t0).count ());
     }
+#endif
 
   return 0;
 }
