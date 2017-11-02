@@ -32,10 +32,10 @@ option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
 
 message("  unit_tests/...")
 
-#if (AT_LEAST_ONE_UNIT_TEST)
+if (AT_LEAST_ONE_UNIT_TEST)
   message("    common")
   add_subdirectory(common)
-#endif()
+endif()
 
 if (UNIT_TESTS OR UNIT_TEST_MEMORY_ALLOC)
   message("    memory_alloc")
