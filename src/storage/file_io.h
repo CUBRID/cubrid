@@ -391,8 +391,8 @@ extern int fileio_open (const char *vlabel, int flags, int mode);
 extern void fileio_close (int vdes);
 extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			  DKNPAGES npages, bool sweep_clean, bool dolock, bool dosync, size_t page_size,
-			  int kbytes_to_be_written_per_sec, bool reuse_file);
-extern DKNPAGES fileio_expand (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npages_toadd, DB_VOLTYPE voltype);
+			  int kbytes_to_be_written_per_sec, bool reuse_file, bool allow_fault_inject);
+extern int fileio_expand_to (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npages_toadd, DB_VOLTYPE voltype);
 extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, void *io_pgptr, DKNPAGES start_pageid,
 				      DKNPAGES npages, size_t page_size, int kbytes_to_be_written_per_sec);
 extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE_RESERVED * prv_p);

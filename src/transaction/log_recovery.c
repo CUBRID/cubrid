@@ -686,6 +686,9 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       log_Gl.hdr.has_logging_been_skipped = false;
     }
 
+  er_log_debug (ARG_FILE_LINE, "RECOVERY: start with %lld|%d and stop at %lld", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa),
+		stopat != NULL ? *stopat : -1);
+
   /* Find the starting LSA for the analysis phase */
 
   LSA_COPY (&rcv_lsa, &log_Gl.hdr.chkpt_lsa);
@@ -5039,7 +5042,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 
 	  log_Gl.append.vdes =
 	    fileio_format (thread_p, log_Db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID,
-			   log_get_num_pages_for_creation (-1), false, true, false, LOG_PAGESIZE, 0, false);
+			   log_get_num_pages_for_creation (-1), false, true, false, LOG_PAGESIZE, 0, false, false);
 
 	  if (log_Gl.append.vdes != NULL_VOLDES)
 	    {
