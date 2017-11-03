@@ -28,6 +28,7 @@
 #include "thread_worker_pool.hpp"
 
 #include <iostream>
+#include <chrono>
 
 namespace test_thread {
 
@@ -36,21 +37,94 @@ class dummy_work : public thread::work
 public:
   void execute_task ()
   {
-    test_common::sync_cout ("dummy test");
-  }
-
-  ~dummy_work ()
-  {
-
+    test_common::sync_cout ("dummy test\n");
   }
 };
+
+class start_end_work : public thread::work
+{
+public:
+  void
+  execute_task ()
+  {
+    test_common::sync_cout ("start\n");
+    std::this_thread::sleep_for (std::chrono::duration<int> (1));
+    test_common::sync_cout ("end\n");
+  }
+};
+
+class inc_work : public thread::work
+{
+public:
+  void execute_task ()
+  {
+    if (++m_count % 1000 == 0)
+      {
+        test_common::sync_cout ("10k increments\n");
+      }
+  }
+
+private:
+  static std::atomic<size_t> m_count;
+};
+std::atomic<size_t> inc_work::m_count = 0;
+
+int
+test_one_thread_pool (void)
+{
+  thread::worker_pool pool (1, 1);
+  pool.execute (new dummy_work ());
+  pool.execute (new dummy_work ());
+
+  std::this_thread::sleep_for (std::chrono::duration<int> (1));
+  pool.execute (new dummy_work ());
+
+  std::this_thread::sleep_for (std::chrono::duration<int> (1));
+  pool.close ();
+  return 0;
+}
+
+int
+test_two_threads_pool (void)
+{
+  thread::worker_pool pool (2, 16);
+
+  pool.execute (new start_end_work ());
+  pool.execute (new start_end_work ());
+
+  pool.close ();
+
+  return 0;
+}
+
+int
+test_stress (void)
+{
+  size_t nthreads = std::thread::hardware_concurrency ();
+  nthreads = nthreads == 0 ? 24 : nthreads;
+
+  nthreads *= 4;
+
+  thread::worker_pool workpool (nthreads, nthreads * 16);
+
+  auto start_time = std::chrono::high_resolution_clock::now ();
+  for (int i = 0; i < 10000; i++)
+    {
+      workpool.execute (new inc_work ());
+    }
+  auto end_time = std::chrono::high_resolution_clock::now ();
+
+  std::cout << "  duration - " << std::chrono::duration<double> (end_time - start_time).count ();
+  workpool.close ();
+  return 0;
+}
 
 int
 test_worker_pool (void)
 {
-  thread::worker_pool pool (1, 1);
-  dummy_work* dwp = new dummy_work ();
-  pool.execute (dwp);
+  test_one_thread_pool ();
+  test_two_threads_pool ();
+  test_stress ();
   return 0;
 }
 

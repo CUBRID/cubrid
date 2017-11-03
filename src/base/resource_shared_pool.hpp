@@ -60,8 +60,14 @@ public:
 
   inline T* claim (void)
   {
+    assert (m_free_stack_size <= m_size);
+
     std::unique_lock<std::mutex> ulock (m_mutex);
-    return m_free_stack[m_free_stack_size--];
+    if (m_free_stack_size == 0)
+      {
+        return NULL;
+      }
+    return m_free_stack[--m_free_stack_size];
   }
 
   inline void retire (T& claimed)

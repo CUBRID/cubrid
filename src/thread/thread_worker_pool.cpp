@@ -24,11 +24,11 @@ namespace thread {
 bool
 worker_pool::try_execute (work * work_arg)
 {
+  assert (m_open);
   std::thread* thread_p = register_worker ();
   if (thread_p != NULL)
     {
-      std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<work *> (work_arg)).detach ();
-      return true;
+      *thread_p = std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<work *> (work_arg));
     }
   return false;
 }
@@ -36,10 +36,11 @@ worker_pool::try_execute (work * work_arg)
 void
 worker_pool::execute (work * work_arg)
 {
+  assert (m_open);
   std::thread* thread_p = register_worker ();
   if (thread_p != NULL)
     {
-      std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<work *> (work_arg)).detach ();
+      *thread_p = std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<work *> (work_arg));
     }
   else if (!m_work_queue.produce (work_arg))
     {
@@ -47,6 +48,19 @@ worker_pool::execute (work * work_arg)
       assert (false);
       m_work_queue.force_produce (work_arg);
     }
+}
+
+void
+worker_pool::close (void)
+{
+  for (int i = 0; i < m_max_workers; i++)
+    {
+      if (m_threads[i].joinable ())
+        {
+          m_threads[i].join ();
+        }
+    }
+  m_open = false;
 }
 
 void
@@ -66,7 +80,17 @@ worker_pool::run (worker_pool & pool, std::thread & thread_arg, work * work_arg)
 inline std::thread*
 worker_pool::register_worker (void)
 {
-  return m_thread_dispatcher.claim ();
+  std::thread *thread_p;
+  thread_p = m_thread_dispatcher.claim ();
+  if (thread_p == NULL)
+    {
+      return NULL;
+    }
+  if (thread_p->joinable ())
+    {
+      thread_p->join ();
+    }
+  return thread_p;
 }
 
 inline void

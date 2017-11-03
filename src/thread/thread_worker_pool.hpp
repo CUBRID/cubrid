@@ -50,23 +50,19 @@ public:
     , m_work_queue (work_queue_size)
     , m_threads (new std::thread [m_max_workers])
     , m_thread_dispatcher (m_threads, m_max_workers)
+    , m_open (true)
   {
   }
 
   ~worker_pool ()
   {
-    for (int i = 0; i < m_max_workers; i++)
-      {
-        if (m_threads[i].joinable ())
-          {
-            m_threads[i].join ();
-          }
-      }
+    assert (!m_open);
     delete [] m_threads;
   }
 
   bool try_execute (work * work_arg);
   void execute (work * work_arg);
+  void close (void);
 
 private:
   static void run (worker_pool & pool, std::thread & thread_arg, work * work_arg);
@@ -79,6 +75,7 @@ private:
   lockfree::circular_queue<work *> m_work_queue;
   std::thread *m_threads;
   resource_shared_pool<std::thread> m_thread_dispatcher;
+  bool m_open;
 };
 
 } // namespace thread
