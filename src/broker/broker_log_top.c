@@ -32,16 +32,12 @@
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #ifdef MT_MODE
 #include <pthread.h>
 #endif
 
+#include "cubrid_getopt.h"
 #include "cas_common.h"
 #include "cas_query_info.h"
 #include "broker_log_time.h"
