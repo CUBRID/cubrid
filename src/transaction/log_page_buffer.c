@@ -6848,7 +6848,6 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   int log_max_archives = prm_get_integer_value (PRM_ID_LOG_MAX_ARCHIVES);
   char *catmsg;
   int deleted_count = 0;
-  int local_rear = 0;
 
   if (log_max_archives == INT_MAX)
     {
@@ -6949,15 +6948,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
 	  /* Update the last_blockid needed for vacuum. Get the first page_id of the previously logged archive */
 	  new_page_id = log_Gl.append.prev_lsa.pageid;
-	  if (last_arv_num_to_delete == -1 || new_page_id == 0)
-	    {
-	      /* set as NULL_BLOCKID */
-	      logpb_update_last_blockid (thread_p, NULL_PAGEID);
-	    }
-	  else
-	    {
-	      logpb_update_last_blockid (thread_p, new_page_id);
-	    }
+	  logpb_update_last_blockid (thread_p, new_page_id);
 
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
