@@ -31,6 +31,7 @@
 #include "log_impl.h"
 #include "boot_sr.h"
 #include "perf_monitor.h"
+#include "util_func.h"
 
 
 #define DWB_SLOTS_HASH_SIZE		    1000
@@ -250,6 +251,10 @@ struct dwb_checksum_info
 typedef struct double_write_block DWB_BLOCK;
 struct double_write_block
 {
+  int *to_flush_vdes;		/* Volume descriptor to flush. */
+  unsigned int count_to_flush_vdes;	/* Count volume descriptors to flush. */
+  unsigned int max_to_flush_vdes;	/* Maximum volume descriptors to flush. */
+
   pthread_mutex_t mutex;	/* The mutex to protect the queue. */
   DWB_WAIT_QUEUE wait_queue;	/* The wait queue for the current block. */
 
@@ -349,6 +354,10 @@ STATIC_INLINE void dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLO
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slots,
 						  unsigned int *p_ordered_slots_length) __attribute__ ((ALWAYS_INLINE));
+static int dwb_compare_vol_fd (const void *v1, const void *v2);
+STATIC_INLINE void
+dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, int vol_fd)
+__attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_slots,
 				   unsigned int ordered_slots_length) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
@@ -373,8 +382,9 @@ STATIC_INLINE int dwb_create_slots_hash (THREAD_ENTRY * thread_p, DWB_SLOTS_HASH
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_finalize_slots_hash (DWB_SLOTS_HASH * slots_hash) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_initialize_block (DWB_BLOCK * block, unsigned int block_no,
-					 unsigned int count_wb_pages, char *write_buffer, DWB_SLOT * slots)
-  __attribute__ ((ALWAYS_INLINE));
+					 unsigned int count_wb_pages, char *write_buffer, DWB_SLOT * slots,
+					 int *to_flush_vdes, unsigned int count_to_flush_vdes,
+					 unsigned int max_to_flush_vdes) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned int num_block_pages,
 				     DWB_BLOCK ** p_blocks) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_finalize_block (DWB_BLOCK * block) __attribute__ ((ALWAYS_INLINE));
@@ -917,7 +927,7 @@ dwb_ends_structure_modification (THREAD_ENTRY * thread_p, UINT64 current_positio
 }
 
 /*
- * dwb_initialize_block () - Initialize a DWB slot.
+ * dwb_intialize_slot () - Initialize a DWB slot.
  *
  * return   : Error code.
  * slot (in/out) : The slot to initialize.
@@ -1344,12 +1354,20 @@ dwb_finalize_slots_hash (DWB_SLOTS_HASH * slots_hash)
  * count_wb_pages (in): Count DWB pages.
  * write_buffer(in): The write buffer.
  * slots(in): The slots.
+ * to_flush_vdes(in): The area containing volume descriptors to flush.
+ * count_to_flush_vdes(in): Count volume descriptor to flush.
+ * max_to_flush_vdes(in): The maximum volume descriptors to flush.
  */
 STATIC_INLINE void
 dwb_initialize_block (DWB_BLOCK * block, unsigned int block_no, unsigned int count_wb_pages, char *write_buffer,
-		      DWB_SLOT * slots)
+		      DWB_SLOT * slots, int *to_flush_vdes, unsigned int count_to_flush_vdes,
+		      unsigned int max_to_flush_vdes)
 {
   assert (block != NULL);
+
+  block->to_flush_vdes = to_flush_vdes;
+  block->count_to_flush_vdes = count_to_flush_vdes;	/* Current volume descriptors to flush. */
+  block->max_to_flush_vdes = max_to_flush_vdes;	/* Maximum volume descriptors to flush. */
 
   pthread_mutex_init (&block->mutex, NULL);
   dwb_init_wait_queue (&block->wait_queue);
@@ -1376,6 +1394,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
 {
   DWB_BLOCK *blocks = NULL;
   char *blocks_write_buffer[DWB_MAX_BLOCKS];
+  int *to_flush_vdes[DWB_MAX_BLOCKS];
   DWB_SLOT *slots[DWB_MAX_BLOCKS];
   unsigned int block_buffer_size, i, j;
   int error_code;
@@ -1396,6 +1415,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
     {
       blocks_write_buffer[i] = NULL;
       slots[i] = NULL;
+      to_flush_vdes[i] = NULL;
     }
 
   block_buffer_size = num_block_pages * IO_PAGESIZE;
@@ -1418,6 +1438,15 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
 	  goto exit_on_error;
 	}
       memset (slots[i], 0, num_block_pages * sizeof (DWB_SLOT));
+
+      to_flush_vdes[i] = (int *) malloc (num_block_pages * sizeof (int));
+      if (to_flush_vdes[i] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, num_block_pages * sizeof (int));
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit_on_error;
+	}
+      memset (to_flush_vdes[i], 0, num_block_pages * sizeof (int));
     }
 
   for (i = 0; i < num_blocks; i++)
@@ -1430,7 +1459,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
 	  dwb_intialize_slot (&slots[i][j], io_page, j, i);
 	}
 
-      dwb_initialize_block (&blocks[i], i, 0, blocks_write_buffer[i], slots[i]);
+      dwb_initialize_block (&blocks[i], i, 0, blocks_write_buffer[i], slots[i], to_flush_vdes[i], 0, num_block_pages);
     }
 
   *p_blocks = blocks;
@@ -1438,25 +1467,21 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
   return NO_ERROR;
 
 exit_on_error:
-  if (slots != NULL)
+  for (i = 0; i < DWB_MAX_BLOCKS; i++)
     {
-      for (i = 0; i < DWB_MAX_BLOCKS; i++)
+      if (slots[i] != NULL)
 	{
-	  if (slots[i] != NULL)
-	    {
-	      free_and_init (slots[i]);
-	    }
+	  free_and_init (slots[i]);
 	}
-    }
 
-  if (blocks_write_buffer)
-    {
-      for (i = 0; i < DWB_MAX_BLOCKS; i++)
+      if (blocks_write_buffer[i] != NULL)
 	{
-	  if (blocks_write_buffer[i] != NULL)
-	    {
-	      free_and_init (blocks_write_buffer[i]);
-	    }
+	  free_and_init (blocks_write_buffer[i]);
+	}
+
+      if (to_flush_vdes[i] != NULL)
+	{
+	  free_and_init (to_flush_vdes[i]);
 	}
     }
 
@@ -1485,6 +1510,10 @@ dwb_finalize_block (DWB_BLOCK * block)
   if (block->write_buffer)
     {
       free_and_init (block->write_buffer);
+    }
+  if (block->to_flush_vdes != NULL)
+    {
+      free_and_init (block->to_flush_vdes);
     }
   dwb_destroy_wait_queue (&block->wait_queue, &block->mutex);
   pthread_mutex_destroy (&block->mutex);
@@ -2245,6 +2274,63 @@ dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot)
 }
 
 /*
+ * dwb_compare_vol_fd () - Compare two volume file descriptors.
+ *
+ * return    : v1 - v2.
+ * v1(in)    : Pointer to volume1.
+ * v2(in)    : Pointer to volume2.
+ */
+static int
+dwb_compare_vol_fd (const void *v1, const void *v2)
+{
+  int *vol_fd1 = (int *) v1;
+  int *vol_fd2 = (int *) v2;
+
+  assert (vol_fd1 != NULL && vol_fd2 != NULL);
+
+  return ((*vol_fd1) - (*vol_fd2));
+}
+
+/*
+ * dwb_add_volume_to_block_flush_area () - Add a volume to block flush area.
+ *
+ * return   : Error code.
+ * thread_p (in): The thread entry.
+ * block(in): The block where the flush area reside.
+ * vol_fd(in): The volume to add. 
+ *
+ *  Note: The volume is added if is not already in block flush area.
+ */
+STATIC_INLINE void
+dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, int vol_fd)
+{
+  int position;
+  bool found;
+
+  if (vol_fd != NULL_VOLDES)
+    {
+      /* New volume. Search whether is in array. */
+      position = util_bsearch (&vol_fd, block->to_flush_vdes, block->count_to_flush_vdes, sizeof (int),
+			       dwb_compare_vol_fd, &found);
+      if (found)
+	{
+	  /* Already in array, nothing to do. */
+	  return;
+	}
+
+      if (block->count_to_flush_vdes > position)
+	{
+	  /* Not found, insert now. */
+	  memmove (block->to_flush_vdes + position + 1, block->to_flush_vdes + position,
+		   (block->count_to_flush_vdes - position) * sizeof (int));
+	}
+      block->to_flush_vdes[position] = vol_fd;
+      block->count_to_flush_vdes++;
+      assert (block->count_to_flush_vdes < block->max_to_flush_vdes);
+    }
+}
+
+/*
  * dwb_write_block () - Write block pages in specified order.
  *
  * return   : Error code.
@@ -2252,6 +2338,8 @@ dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot)
  * block(in): The block that is written.
  * p_dwb_ordered_slots(in): The slots that gives the pages flush order.
  * ordered_slots_length(in): The ordered slots array length.
+ *
+ *  Note: This function fills to_flush_vdes array with the volumes that must be flushed.
  */
 STATIC_INLINE int
 dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_ordered_slots,
@@ -2292,6 +2380,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  /* Update the current VPID and get the volume descriptor. */
 	  volid = vpid->volid;
 	  vol_fd = fileio_get_volume_descriptor (volid);
+	  dwb_add_volume_to_block_flush_area (thread_p, block, vol_fd);
 	}
 
       /* Check whether the volume was removed meanwhile. */
@@ -2454,17 +2543,27 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
     {
       goto end;
     }
-  fileio_synchronize_all (thread_p, false);
 
-  block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (block->block_no);
-  for (block_checksum_element_position = 0; block_checksum_element_position < DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK;
-       block_checksum_element_position++)
+  /* Now, flush the volumes has pages in current block. */
+  for (i = 0; i < block->count_to_flush_vdes; i++)
     {
-      element_position = block_checksum_start_position + block_checksum_element_position;
-      DWB_RESET_REQUESTED_CHECKSUMS_ELEMENT (element_position);
-      DWB_RESET_COMPUTED_CHECKSUMS_ELEMENT (element_position);
-      DWB_RESET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
+      fileio_synchronize (thread_p, block->to_flush_vdes[i], NULL);
     }
+  block->count_to_flush_vdes = 0;
+
+  if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
+    {
+      block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (block->block_no);
+      for (block_checksum_element_position = 0; block_checksum_element_position < DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK;
+	   block_checksum_element_position++)
+	{
+	  element_position = block_checksum_start_position + block_checksum_element_position;
+	  DWB_RESET_REQUESTED_CHECKSUMS_ELEMENT (element_position);
+	  DWB_RESET_COMPUTED_CHECKSUMS_ELEMENT (element_position);
+	  DWB_RESET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
+	}
+    }
+
   ATOMIC_TAS_32 (&block->count_wb_pages, 0);
   ATOMIC_INC_64 (&block->version, 1ULL);
 
@@ -3357,7 +3456,7 @@ int
 dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p)
 {
   int error_code = NO_ERROR, read_fd = NULL_VOLDES;
-  unsigned int num_pages, buffer_size, ordered_slots_length;
+  unsigned int num_pages, buffer_size, ordered_slots_length, i;
   char *buffer = NULL;
   DWB_BLOCK *rcv_block = NULL;
   DWB_SLOT *p_dwb_ordered_slots = NULL;
@@ -3413,7 +3512,12 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	{
 	  goto end;
 	}
-      fileio_synchronize_all (thread_p, false);
+      /* Now, flush the volumes has pages in current block. */
+      for (i = 0; i < rcv_block->count_to_flush_vdes; i++)
+	{
+	  fileio_synchronize (thread_p, rcv_block->to_flush_vdes[i], NULL);
+	}
+      rcv_block->count_to_flush_vdes = 0;
 
       /* Dismount the file. */
       fileio_dismount (thread_p, read_fd);
