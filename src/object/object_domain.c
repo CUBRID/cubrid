@@ -63,14 +63,6 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-#if !defined (SERVER_MODE)
-#define pthread_mutex_init(a, b)
-#define pthread_mutex_destroy(a)
-#define pthread_mutex_lock(b) 0
-#define pthread_mutex_unlock(a)
-static int rv;
-#endif /* !SERVER_MODE */
-
 /*
  * used by versant_driver to avoid doing foolish things
  * like au_fetch_instance on DB_TYPE_OBJECT values that
@@ -1307,8 +1299,6 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	    }
 	  else
 	    {
-	      int schema_len = 0;
-
 	      /* copy over the domain parameters */
 	      new_domain->class_mop = d->class_mop;
 	      new_domain->class_oid = d->class_oid;
@@ -2921,7 +2911,6 @@ TP_DOMAIN *
 tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc)
 {
   TP_DOMAIN *dom = NULL;
-  DB_ENUM_ELEMENT *db_enum1 = NULL, *db_enum2 = NULL;
 
   /* search the list for a domain that matches */
   for (dom = tp_domain_get_list (DB_TYPE_ENUMERATION, NULL); dom != NULL; dom = dom->next_list)
@@ -6509,7 +6498,6 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  {
 	    DB_DATE date = 0;
-	    int year = 0, month = 0, day = 0;
 
 	    if (tp_atodate (src, &date) != NO_ERROR)
 	      {
@@ -6521,7 +6509,6 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	case DB_TYPE_DATETIME:
 	  {
-	    DB_DATE v_date = 0;
 	    DB_DATETIME *src_dt = NULL;
 
 	    src_dt = DB_GET_DATETIME (src);
@@ -7287,7 +7274,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
        */
       DB_JSON_TYPE json_type = db_json_get_type (DB_GET_JSON_DOCUMENT (src));
       JSON_DOC *src_doc = DB_GET_JSON_DOCUMENT (src);
-      TP_DOMAIN_STATUS domain_status;
 
       switch (json_type)
 	{
@@ -12243,8 +12229,6 @@ tp_hex_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative
 
   int error = NO_ERROR;
   char *p = NULL;
-  size_t n_digits = 0;
-  DB_BIGINT bigint = 0;
   UINT64 ubi = 0;
   unsigned int tmp_ui = 0;
   bool round = false;
@@ -12367,8 +12351,6 @@ tp_scientific_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_n
 			 DB_DATA_STATUS * data_stat)
 {
   int error = NO_ERROR;
-  double d = 0.0;
-  DB_BIGINT bigint = 0;
   UINT64 ubi = 0;
   bool truncated = false;
   bool round = false;

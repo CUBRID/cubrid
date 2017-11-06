@@ -2070,7 +2070,6 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
   char fullname[PATH_MAX];
   VOLID volid;
   DKNSECTS nsect_part_max;
-  bool is_sysop_started = true;
   int error_code = NO_ERROR;
 
   /* how it works:
@@ -3918,7 +3917,6 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
   DISK_VOLUME_HEADER *volheader = NULL;
   DISK_STAB_CURSOR start_cursor = DISK_STAB_CURSOR_INITIALIZER;
   DISK_STAB_CURSOR end_cursor = DISK_STAB_CURSOR_INITIALIZER;
-  int vol_free_sects = 0;
   int error_code = NO_ERROR;
 
   volid = context->cache_vol_reserve[vol_index].volid;
@@ -4139,11 +4137,6 @@ int
 disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID volid_hint, int n_sectors,
 		      VSID * reserved_sectors)
 {
-  int n_sectors_found = 0;
-  int n_sectors_found_in_last_volume = 0;
-  int n_sectors_to_find = n_sectors;
-  VOLID volid = NULL_VOLID;
-  VOLID banned_volid = NULL_VOLID;
   int iter;
   DISK_RESERVE_CONTEXT context;
   int nreserved;
@@ -4987,7 +4980,6 @@ disk_check_sectors_are_reserved (THREAD_ENTRY * thread_p, VSID * vsids, int nsec
 
   DISK_ISVALID valid = DISK_VALID;
   DISK_ISVALID allvalid = DISK_VALID;
-  int error_code = NO_ERROR;
 
   context.nsect_total = nsects;
   context.n_cache_vol_reserve = 0;

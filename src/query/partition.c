@@ -135,7 +135,6 @@ static MATCH_STATUS partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABL
 				     PRUNING_BITSET * pruned);
 static MATCH_STATUS partition_prune_db_val (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
 					    PRUNING_BITSET * pruned);
-static bool partition_is_reguvar_constant (const REGU_VARIABLE * regu_var);
 static int partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key, DB_VALUE * attr_key,
 					 bool * is_present);
 static int partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * src, DB_VALUE * value_p,
@@ -771,8 +770,6 @@ partition_cache_finalize (THREAD_ENTRY * thread_p)
 void
 partition_decache_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
-  int error = NO_ERROR;
-
   if (!PARTITION_IS_CACHE_INITIALIZED ())
     {
       return;
@@ -1781,8 +1778,7 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE *
 				  bool * is_value)
 {
   int error = NO_ERROR;
-  DB_VALUE *val_backup = NULL, *peek_val = NULL;
-  ARITH_TYPE *arithptr = NULL;
+  DB_VALUE *peek_val = NULL;
 
   assert_release (src != NULL);
   assert_release (value_p != NULL);
@@ -2119,8 +2115,7 @@ static MATCH_STATUS
 partition_match_index_key (PRUNING_CONTEXT * pinfo, const KEY_INFO * key, RANGE_TYPE range_type,
 			   PRUNING_BITSET * pruned)
 {
-  int error = NO_ERROR, i;
-  int ptype = pinfo->partitions[0].partition_type;
+  int i;
   PRUNING_BITSET key_pruned;
   MATCH_STATUS status;
 
@@ -2248,7 +2243,6 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p, const OID * class_oid, 
 {
   int error = NO_ERROR;
   OR_PARTITION *master = NULL;
-  MATCH_STATUS status = MATCH_NOT_FOUND;
   bool is_modified = false;
   bool already_exists = false;
 
@@ -3159,7 +3153,6 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES *
 {
   PRUNING_CONTEXT pinfo;
   int error = NO_ERROR;
-  int super_count = 0;
   OID super_class;
   bool keep_pruning_context = false;
 

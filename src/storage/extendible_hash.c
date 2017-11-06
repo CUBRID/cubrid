@@ -5416,7 +5416,9 @@ ehash_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 {
   EHID ehid;
   char *record_p = (char *) recv_p->data;
+#if defined (ENABLE_UNUSED_FUNCTION)
   short record_type = recv_p->offset;
+#endif
 
   record_p = ehash_read_ehid_from_record (record_p, &ehid);
   record_p += sizeof (OID);
@@ -5509,8 +5511,10 @@ ehash_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   EHID ehid;
   OID oid;
   char *record_p = (char *) recv_p->data;
-  short record_type = recv_p->offset;
   int error = NO_ERROR;
+#if defined (ENABLE_UNUSED_FUNCTION)
+  short record_type = recv_p->offset;
+#endif
 
   record_p = ehash_read_ehid_from_record (record_p, &ehid);
   record_p = ehash_read_oid_from_record (record_p, &oid);

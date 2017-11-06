@@ -228,7 +228,6 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
   pid = fork ();
   if (pid == 0)
     {
-      char *installed_path;
       char err_log[PATH_MAX];
       int ppid;
       int fd, fd_max;

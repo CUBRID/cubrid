@@ -5349,7 +5349,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
   char *serial_name, *owner_name;
-  int error = NO_ERROR, found = 0;
+  int error = NO_ERROR;
 
   db_make_null (returnval);
 

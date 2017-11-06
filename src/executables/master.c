@@ -98,7 +98,6 @@ static int css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set *
 static int css_enroll_master_read_sockets (fd_set * fd_var);
 static int css_enroll_master_write_sockets (fd_set * fd_var);
 static int css_enroll_master_exception_sockets (fd_set * fd_var);
-static void css_select_error (SOCKET_QUEUE_ENTRY ** anchor_p);
 static void css_master_select_error (void);
 static void css_check_master_socket_input (int *count, fd_set * fd_var);
 static void css_check_master_socket_output (void);
@@ -165,7 +164,7 @@ static int
 css_master_timeout (void)
 {
 #if !defined(WINDOWS)
-  int pid, rv;
+  int rv;
   SOCKET_QUEUE_ENTRY *temp;
 #endif
   struct timeval timeout;

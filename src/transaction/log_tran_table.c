@@ -1078,9 +1078,6 @@ static int
 logtb_initialize_mvcctable (void)
 {
   MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
-  MVCC_INFO *curr_mvcc_info = NULL;
-  MVCC_SNAPSHOT *p_mvcc_snapshot = NULL;
-  LOG_TDES *tdes = NULL;
   int error_code = NO_ERROR;
   int size, i, size2;
   MVCC_TRANS_STATUS *current_trans_status, *trans_status_history;
@@ -4142,7 +4139,6 @@ static int
 logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
 {
   MVCCID lowest_active_mvccid, bit_area_start_mvccid, highest_completed_mvccid;
-  LOG_TDES *curr_tdes = NULL;
   int tran_index, error_code = NO_ERROR;
   LOG_TDES *tdes;
   MVCCID curr_mvccid;
@@ -4150,7 +4146,6 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   MVCC_INFO *curr_mvcc_info = NULL;
   unsigned int bit_area_length, long_tran_mvccids_length = 0;
   MVCCTABLE *mvcc_table = NULL;
-  int try_count = 0;
   volatile MVCCID *p_transaction_lowest_active_mvccid = NULL;
   int index;
   unsigned int trans_status_version;
@@ -4384,7 +4379,6 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 {
   MVCCID lowest_active_mvccid = 0;
   MVCCTABLE *mvcc_table = NULL;
-  UINT64 *lowest_bit_area = NULL;
   size_t size;
   int i, num_elems_behind, waiting_mvccids_length;
   MVCCID *transaction_lowest_active_mvccids = NULL,
@@ -5673,7 +5667,6 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_m
 {
   MVCCID id = MVCCID_NULL, mvcc_subid;
   MVCCTABLE *mvcc_table;
-  int shifts_count = 0;
   int r;
   MVCC_TRANS_STATUS *current_trans_status = &log_Gl.mvcc_table.current_trans_status;
 #if !defined(NDEBUG) && defined(HAVE_ATOMIC_BUILTINS)
@@ -6136,15 +6129,11 @@ void
 logtb_get_highest_completed_mvccid (UINT64 * bit_area, int bit_area_length, MVCCID bit_area_start_mvccid,
 				    MVCCID * highest_completed_mvccid)
 {
-  MVCC_INFO *mvccinfo = NULL;
-  MVCCTABLE *mvcc_table = NULL;
-  int try_count = 0;
   UINT64 *highest_completed_bit_area = NULL;
   int bit_pos, count_bits;
-  bool need_transaction_lowest_active_mvccid = false;
   UINT64 bits;
   int highest_bit_pos, end_position;
-  int position = 0;
+
   assert (bit_area != NULL && highest_completed_mvccid != NULL && bit_area_start_mvccid >= MVCCID_FIRST
 	  && bit_area_length >= 0);
 
@@ -6217,10 +6206,7 @@ logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length, MVCCID b
 				MVCCID * long_tran_mvccids, unsigned int long_tran_mvccids_length,
 				MVCCID * lowest_active_mvccid)
 {
-  MVCC_INFO *mvccinfo = NULL;
-  MVCCTABLE *mvcc_table = NULL;
   int bit_pos, count_bits;
-  bool need_transaction_lowest_active_mvccid = false;
   UINT64 bits, mask;
   UINT64 *lowest_active_bit_area = NULL, *end_bit_area;
   int lowest_bit_pos, end_position;
@@ -6562,7 +6548,6 @@ logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   /* Because we update the statistics with absolute values (this means that we override old values) we don't need to
    * load from btree header old values and, therefore, we give a 'false' value to 'load_at_creation' parameter */

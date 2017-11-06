@@ -433,7 +433,6 @@ PT_NODE *
 pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_CLASS_LOCKS lcks;
-  int error = NO_ERROR;
   PT_NODE *node = NULL;
   LOCK lock_rr_tran = NULL_LOCK;
   LC_FIND_CLASSNAME find_result;
@@ -1149,8 +1148,6 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
   if (statement != NULL && statement->info.scope.stmt->info.trigger_action.expression != NULL
       && statement->info.scope.stmt->info.trigger_action.expression->node_type == PT_DELETE)
     {
-      PT_NODE *node = NULL, *prev = NULL;
-
       if (pt_split_delete_stmt (parser, statement->info.scope.stmt->info.trigger_action.expression) != NO_ERROR)
 	{
 	  return NULL;

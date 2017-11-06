@@ -895,7 +895,9 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
 #if !defined (WINDOWS)
   int psize;
 #endif
+#ifdef GET_PSINFO
   char buf[256];
+#endif
   int shard_flag = shm_appl->shard_flag;
 
   if (shm_appl->shard_flag == ON)
@@ -2357,7 +2359,6 @@ free_and_error:
 static int
 client_monitor (void)
 {
-  T_SHM_APPL_SERVER *shm_appl = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_CLIENT_INFO *client_info_p = NULL;

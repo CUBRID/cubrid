@@ -4017,7 +4017,6 @@ qe_get_data_req_handle (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, ch
   int error = CCI_ER_NO_ERROR;
   int statement_id = -1;
   int srv_handle = 0;
-  int out_srv_handle = 0;
   char *result_msg = NULL;
   int result_msg_size;
 
@@ -4980,7 +4979,9 @@ fetch_info_decode (char *buf, int size, int num_cols, T_TUPLE_VALUE ** tuple_val
   int err_code = 0;
   int num_tuple, i, j;
   T_TUPLE_VALUE *tmp_tuple_value = NULL;
+#if defined (WINDOWS)
   char *charset = con_handle->charset;
+#endif
 
   if (fetch_type == FETCH_FETCH || fetch_type == FETCH_COL_GET)
     {
@@ -5936,7 +5937,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	case CCI_U_TYPE_TIMESTAMPTZ:
 	case CCI_U_TYPE_TIMESTAMPLTZ:
 	  {
-	    const char *p_tz = NULL;
 	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
 
 	    err_code = ut_str_to_timestamptz ((char *) value, &date_tz);

@@ -1381,7 +1381,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
-      int vdes = NULL_VOLDES;
       BACKGROUND_ARCHIVING_INFO *bg_arv_info;
 
       bg_arv_info = &log_Gl.bg_archive_info;
@@ -2124,7 +2123,6 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
-  int i = 0;
   int error_code = NO_ERROR;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
@@ -3834,8 +3832,6 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
     }
   else
     {
-      LOG_PRIOR_NODE *node = NULL;
-
       /* we are here because either system operation is not empty, or this is the end of a logical system operation.
        * we don't actually allow empty logical system operation because it might hide a logic flaw. however, there are
        * unusual cases when a logical operation does not really require logging (see RVPGBUF_FLUSH_PAGE). if you create
@@ -4040,7 +4036,6 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
     }
   else
     {
-      LOG_PRIOR_NODE *node = NULL;
       TRAN_STATE save_state;
 
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
@@ -5267,8 +5262,8 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
 									 "LOB_TRANSIENT_DELETED"
 									 : ((entry->top->state ==
 									     LOB_PERMANENT_CREATED) ?
-									    "LOB_PERMANENT_CREATED" : (entry->
-												       top->state ==
+									    "LOB_PERMANENT_CREATED" : (entry->top->
+												       state ==
 												       LOB_PERMANENT_DELETED)
 									    ? "LOB_PERMANENT_DELETED" : "LOB_UNKNOWN")),
 		    entry->top->savept_lsa.pageid, entry->top->savept_lsa.offset);
@@ -8733,7 +8728,6 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 {
   LOG_LSA ref_lsa;		/* The address of a postpone record */
   LOG_REC_REDO redo;		/* A redo log record */
-  int rcv_length = 0;
   char *rcv_data = NULL;
   char *area = NULL;
 
@@ -9369,7 +9363,6 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 				  void **ptr)
 {
   int error = NO_ERROR;
-  int idx_val = 0;
   const char *path;
   int fd = -1;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
@@ -9728,7 +9721,7 @@ int
 log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				   void **ptr)
 {
-  int idx = 0, error = NO_ERROR;
+  int error = NO_ERROR;
   const char *path;
   int fd;
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];

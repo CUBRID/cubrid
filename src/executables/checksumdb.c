@@ -1624,7 +1624,6 @@ chksum_insert_schema_definition (const char *table_name, int repid)
   DB_QUERY_ERROR query_error;
   int res, error = NO_ERROR;
   char query_buf[QUERY_BUF_SIZE];
-  char err_msg[LINE_MAX];
 
   snprintf (query_buf, sizeof (query_buf), "REPLACE INTO %s " "SELECT '%s', %d, NULL, SCHEMA_DEF ('%s'), NULL;",
 	    chksum_schema_Table_name, table_name, repid, table_name);
@@ -1666,12 +1665,8 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, cons
 			   DB_ATTRIBUTE * attributes, PARSER_VARCHAR * lower_bound, int chunk_id, int chunk_size)
 {
   PARSER_VARCHAR *checksum_query = NULL;
-  PARSER_VARCHAR *update_checksum_query = NULL;
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
-  DB_VALUE value;
-  DB_OBJECT *obj;
-  int checksum_result = 0;
   char err_msg[LINE_MAX];
   const char *query;
   int res;

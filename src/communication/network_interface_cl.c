@@ -3513,7 +3513,6 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
   int tran_index = NULL_TRAN_INDEX;
   int request_size, area_size, req_error, temp_int;
   char *request, *reply, *area, *ptr;
-  int row_count = DB_ROW_COUNT_NOT_SET;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -3591,9 +3590,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 
   return tran_index;
 #else /* CS_MODE */
-  int err_code = NO_ERROR;
   int tran_index = NULL_TRAN_INDEX;
-  int row_count = DB_ROW_COUNT_NOT_SET;
 
   ENTER_SERVER ();
 
@@ -4877,7 +4874,7 @@ csession_set_session_variables (DB_VALUE * variables, const int count)
 #if defined (CS_MODE)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request = NULL, *reply = NULL, *data_request = NULL, *ptr = NULL;
+  char *request = NULL, *data_request = NULL, *ptr = NULL;
   int req_size = 0, i = 0, err = NO_ERROR;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -4946,7 +4943,7 @@ csession_drop_session_variables (DB_VALUE * variables, const int count)
 #if defined (CS_MODE)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request = NULL, *reply = NULL, *data_request = NULL, *ptr = NULL;
+  char *request = NULL, *data_request = NULL, *ptr = NULL;
   int req_size = 0, i = 0, err = NO_ERROR;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -5015,7 +5012,7 @@ csession_get_variable (DB_VALUE * name, DB_VALUE * value)
 #if defined (CS_MODE)
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *request = NULL, *reply = NULL, *ptr = NULL;
-  int req_size = 0, i = 0, err = NO_ERROR, reply_size = 0;
+  int req_size = 0, err = NO_ERROR, reply_size = 0;
 
   assert (value != NULL);
 

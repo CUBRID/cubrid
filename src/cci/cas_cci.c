@@ -175,7 +175,9 @@ static const char *cci_get_err_msg_internal (int error);
 static T_CON_HANDLE *get_new_connection (char *ip, int port, char *db_name, char *db_user, char *dbpasswd);
 static bool cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CCI_ERROR * err_buf);
 
+#ifdef CCI_DEBUG
 static int cci_time_string (char *buf, struct timeval *time_val);
+#endif
 static void set_error_buffer (T_CCI_ERROR * err_buf_p, int error, const char *message, ...);
 static void copy_error_buffer (T_CCI_ERROR * dest_err_buf_p, T_CCI_ERROR * src_err_buf_p);
 static int cci_datasource_release_internal (T_CCI_DATASOURCE * ds, T_CON_HANDLE * con_handle);
@@ -842,7 +844,6 @@ cci_prepare (int mapped_conn_id, char *sql_stmt, char flag, T_CCI_ERROR * err_bu
 {
   int statement_id = -1;
   int error = CCI_ER_NO_ERROR;
-  int con_err_code = 0;
   T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
   int is_first_prepare_in_tran;
@@ -1273,7 +1274,6 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size, T_CCI_ERROR * err_
   T_REQ_HANDLE *req_handle = NULL;
   T_CON_HANDLE *con_handle = NULL;
   int error = CCI_ER_NO_ERROR;
-  int con_err_code = 0;
   struct timeval st, et;
   bool is_first_exec_in_tran = false;
   T_BROKER_VERSION broker_ver;
@@ -1638,7 +1638,6 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr, T_CCI_ERROR * e
   T_REQ_HANDLE *req_handle = NULL;
   T_CON_HANDLE *con_handle = NULL;
   int error = CCI_ER_NO_ERROR;
-  int con_err_code = CCI_ER_NO_ERROR;
   bool is_first_exec_in_tran = false;
   T_BROKER_VERSION broker_ver;
   int loop;

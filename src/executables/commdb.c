@@ -88,7 +88,6 @@ static void process_master_kill (CSS_CONN_ENTRY * conn);
 static void process_master_stop_shutdown (CSS_CONN_ENTRY * conn);
 static void process_master_shutdown (CSS_CONN_ENTRY * conn, int minutes);
 static void process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes, int pid);
-static void process_immediate_kill (CSS_CONN_ENTRY * conn, char *slave_name);
 static int process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_type);
 static void process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name);
 static void process_ha_node_info_query (CSS_CONN_ENTRY * conn, int verbose_yn);

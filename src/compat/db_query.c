@@ -538,7 +538,7 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 int
 db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 {
-  int param_cnt = 0, len = 0, i = 0;
+  int i = 0;
   char *ptr = NULL;
 
   assert (info != NULL);
@@ -1081,8 +1081,8 @@ db_dump_query_result (DB_QUERY_RESULT * r)
   fprintf (stdout, "\nQuery Result Structure: \n");
   fprintf (stdout, "Type: %s \n",
 	   (r->type == T_SELECT) ? "T_SELECT" : (r->type == T_CALL) ? "T_CALL" : (r->type ==
-										  T_OBJFETCH) ? "T_OBJFETCH" : (r->
-														type ==
+										  T_OBJFETCH) ? "T_OBJFETCH" : (r->type
+														==
 														T_GET) ?
 	   "T_GET" : "T_UNKNOWN");
   fprintf (stdout, "Status: %s \n",

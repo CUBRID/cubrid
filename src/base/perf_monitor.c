@@ -531,7 +531,9 @@ STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STA
 static void perfmon_server_calc_stats (UINT64 * stats);
 
 STATIC_INLINE const char *perfmon_stat_module_name (const int module) __attribute__ ((ALWAYS_INLINE));
+#if defined (SERVER_MODE) || defined (SA_MODE)
 STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+#endif
 STATIC_INLINE const char *perfmon_stat_page_type_name (const int page_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_page_mode_name (const int page_mode) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_holder_latch_name (const int holder_latch) __attribute__ ((ALWAYS_INLINE));
@@ -3856,7 +3858,9 @@ int
 perfmon_initialize (int num_trans)
 {
   int idx = 0;
+#if defined (SERVER_MODE) || defined (SA_MODE)
   int memsize = 0;
+#endif
 
   pstat_Global.n_stat_values = 0;
   pstat_Global.global_stats = NULL;

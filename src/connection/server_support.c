@@ -1142,9 +1142,7 @@ static void
 css_process_change_server_ha_mode_request (SOCKET master_fd)
 {
 #if !defined(WINDOWS)
-  int rv;
   HA_SERVER_STATE state;
-  int response;
   THREAD_ENTRY *thread_p;
 
   state = (HA_SERVER_STATE) css_get_master_request (master_fd);
