@@ -392,8 +392,6 @@ int
 or_set_rep_id (RECDES * record, int repid)
 {
   OR_BUF orep, *buf;
-  bool is_bound_bit = false;
-  int offset_size = 0;
   unsigned int new_bits = 0;
 
   if (record->length < OR_HEADER_SIZE (record->data))
@@ -611,7 +609,6 @@ static void
 or_mvcc_set_flag (RECDES * record, char flags)
 {
   OR_BUF orep, *buf;
-  int mvcc_flag = 1;
   int repid_and_flag = 0;
 
   assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE);
@@ -858,7 +855,6 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
   int mvcc_old_flag = 0;
   int repid_and_flag_bits = 0;
   int old_mvcc_size = 0, new_mvcc_size = 0;
-  bool is_bigone = false;
 
   assert (record != NULL && record->data != NULL && record->length != 0 && record->length >= OR_MVCC_MIN_HEADER_SIZE);
 
@@ -941,10 +937,6 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
 {
   OR_BUF orep, *buf;
   int error = NO_ERROR;
-  int mvcc_old_flag = 0;
-  int repid_and_flag_bits = 0;
-  int old_mvcc_size = 0, new_mvcc_size = 0;
-  bool is_bigone = false;
 
   assert (record != NULL && record->data != NULL && record->length == 0);
 
@@ -1222,7 +1214,6 @@ int
 or_get_align (OR_BUF * buf, int align)
 {
   char *ptr;
-  int rc = NO_ERROR;
 
   ptr = PTR_ALIGN (buf->ptr, align);
   if (ptr > buf->endptr)
@@ -3017,7 +3008,6 @@ static char *
 or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size)
 {
   int i, offset, offset2;
-  int rc = NO_ERROR;
 
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -5255,7 +5245,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
   OID class_oid;
   struct db_object *class_mop = NULL;
   int rc = NO_ERROR;
-  int enum_vals_cnt = 0;
   DB_ENUMERATION db_enum = { NULL, 0, 0 };
   unsigned int collation_storage;
   unsigned char collation_flag;
@@ -8198,8 +8187,6 @@ or_unpack_sha1 (char *ptr, SHA1Hash * sha1)
 STATIC_INLINE int
 or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
-  int error_code = NO_ERROR;
-
   assert (buf != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -8231,7 +8218,6 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 STATIC_INLINE int
 or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
 {
-  int error_code = NO_ERROR;
   assert (buf != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);

@@ -13362,12 +13362,12 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_INSERT:
       {
-	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_json_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_val_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int num_bad = 0, len, i, found_supported = 0;
-	unsigned int supported_json_types_len = sizeof (supported_json_type) / sizeof (supported_json_type[0]);
+	unsigned int supported_json_types_len = sizeof (supported_json_types) / sizeof (supported_json_types[0]);
 	unsigned int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
 	unsigned int supported_val_types_len = sizeof (supported_val_types) / sizeof (supported_val_types[0]);
 	unsigned int index = 0;
@@ -13377,7 +13377,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	for (i = 0; i < supported_json_types_len; i++)
 	  {
-	    if (arg->type_enum == supported_json_type[i])
+	    if (arg->type_enum == supported_json_types[i])
 	      {
 		found_supported = 1;
 		break;
@@ -13434,17 +13434,17 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_REMOVE:
       {
-	PT_TYPE_ENUM supported_json_type[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_json_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int num_bad = 0, i, found_supported = 0;
-	unsigned int supported_json_types_len = sizeof (supported_json_type) / sizeof (supported_json_type[0]);
+	unsigned int supported_json_types_len = sizeof (supported_json_types) / sizeof (supported_json_types[0]);
 	unsigned int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
 	PT_NODE *arg = arg_list;
 
 	for (i = 0; i < supported_json_types_len; i++)
 	  {
-	    if (arg->type_enum == supported_json_type[i])
+	    if (arg->type_enum == supported_json_types[i])
 	      {
 		found_supported = 1;
 		break;

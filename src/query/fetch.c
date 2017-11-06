@@ -4096,8 +4096,6 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    case F_JSON_MERGE:
 	      {
 		REGU_VARIABLE_LIST operand;
-		int error_status = NO_ERROR;
-		int no_args = 0, index = 0;
 
 		operand = funcp->operand;
 

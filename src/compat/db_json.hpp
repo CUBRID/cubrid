@@ -21,8 +21,8 @@
  * db_json.hpp - functions related to json
  */
 
-#ifndef _DB_JSON_H
-#define _DB_JSON_H
+#ifndef _DB_JSON_H_
+#define _DB_JSON_H_
 
 #include "error_manager.h"
 
@@ -56,7 +56,7 @@ const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
 int db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path,
-                                        JSON_DOC *&result);
+					JSON_DOC *&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
 
@@ -126,4 +126,4 @@ db_json_convert_string_and_call (const char *json_raw, Fn &&func, Args &&... arg
 
 #endif /* defined (__cplusplus) */
 
-#endif /* db_json.hpp */
+#endif /* _DB_JSON_H_ */

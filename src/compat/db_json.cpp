@@ -293,7 +293,7 @@ JSON_PRIVATE_ALLOCATOR::Free (void *ptr)
   db_private_free (NULL, ptr);
 }
 
-/*C functions*/
+/* C functions */
 
 bool
 db_json_is_valid (const char *json_str)
@@ -467,7 +467,6 @@ db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
   JSON_STRING_BUFFER buffer;
   rapidjson::Writer <JSON_STRING_BUFFER> writer (buffer);
   char *json_body;
-  const char *buffer_str;
 
   buffer.Clear ();
 
@@ -539,10 +538,10 @@ db_json_add_member_to_object (JSON_DOC *doc, char *name, double value)
     }
 
   /*
-  * JSON_VALUE uses a MemoryPoolAllocator which doesn't free memory,
-  * so when key gets out of scope, the string wouldn't be freed
-  * the memory will be freed only when doc is deleted
-  */
+   * JSON_VALUE uses a MemoryPoolAllocator which doesn't free memory,
+   * so when key gets out of scope, the string wouldn't be freed
+   * the memory will be freed only when doc is deleted
+   */
   key.SetString (name, strlen (name), doc->GetAllocator ());
   doc->AddMember (key, JSON_VALUE ().SetDouble (value), doc->GetAllocator ());
 }
@@ -1230,7 +1229,7 @@ bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2)
   return *doc1 == *doc2;
 }
 
-/*end of C functions*/
+/* end of C functions */
 
 bool JSON_DOC::IsLeaf ()
 {

@@ -86,19 +86,6 @@ static unsigned char powers_of_10[TWICE_NUM_MAX_PREC + 1][DB_NUMERIC_BUF_SIZE];
 static bool initialized_10 = false;
 #endif
 
-static double numeric_Upper_limit[10] = {
-  (double) DB_INT32_MAX,
-  (double) DB_INT32_MAX / 1e1,
-  (double) DB_INT32_MAX / 1e2,
-  (double) DB_INT32_MAX / 1e3,
-  (double) DB_INT32_MAX / 1e4,
-  (double) DB_INT32_MAX / 1e5,
-  (double) DB_INT32_MAX / 1e6,
-  (double) DB_INT32_MAX / 1e7,
-  (double) DB_INT32_MAX / 1e8,
-  (double) DB_INT32_MAX / 1e9
-};
-
 static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
@@ -2575,8 +2562,6 @@ numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *adouble)
 static int
 numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale)
 {
-
-
   double scaled_double;
   int scaled_int, estimated_precision;
   scaled_double = (adouble * numeric_Pow_of_10[dst_scale]) + (adouble < 0.0 ? -0.5 : 0.5);

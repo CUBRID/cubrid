@@ -131,7 +131,6 @@ static PARSER_VARCHAR *pt_append_quoted_string (const PARSER_CONTEXT * parser, P
 						size_t str_length);
 static PARSER_VARCHAR *pt_append_string_prefix (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buf,
 						const PT_NODE * value);
-static bool pt_is_function_indexable_op (PT_OP_TYPE op);
 static bool pt_is_nested_expr (const PT_NODE * node);
 static bool pt_is_allowed_as_function_index (const PT_NODE * expr);
 
@@ -1979,7 +1978,6 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no, int col_no, 
        * parameter "%1$s", of size 4 */
       int before_context_len = strlen (before_context_str) - 4;
       int context_len = strlen (context);
-      int msg_len = strlen (msg);
       int end_of_statement = 0;
       int str_len = 0;
       char *s = NULL;
@@ -10104,7 +10102,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_JSON_EXTRACT:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
-      r3 = pt_print_bytes (parser, p->info.expr.arg3);
 
       q = pt_append_nulstring (parser, q, " json_extract(");
       q = pt_append_varchar (parser, q, r1);
@@ -17781,7 +17778,6 @@ pt_is_const_expr_node (PT_NODE * node)
 	{
 	case PT_FUNCTION_HOLDER:
 	  {
-	    int err = NO_ERROR, num_args = 0, i = 0;
 	    bool const_function_holder = false;
 	    PT_NODE *function = node->info.expr.arg1;
 	    PT_NODE *f_arg = function->info.function.arg_list;
@@ -18546,8 +18542,6 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
 bool
 pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_error)
 {
-  PT_NODE *func = NULL;
-  PT_NODE *arg = NULL;
   if (!expr)
     {
       return false;
@@ -18857,7 +18851,7 @@ pt_init_vacuum (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_vacuum (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = NULL, *r1 = NULL;
+  PARSER_VARCHAR *q = NULL;
 
   assert (PT_IS_VACUUM_NODE (p));
 

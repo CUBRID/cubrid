@@ -3936,7 +3936,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
   switch (t)
     {
     case PT_TYPE_JSON:
-      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
 	{
 	  return NULL;
 	}
@@ -3960,7 +3961,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
     case PT_TYPE_VARCHAR:
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
-      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
 	{
 	  return NULL;
 	}
@@ -3976,7 +3978,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 
     case PT_TYPE_OBJECT:
       /* get the object */
-      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
 	{
 	  return NULL;
 	}
@@ -4057,7 +4060,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	DB_ENUM_ELEMENT *db_enum = NULL;
 	int idx;
 
-	if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+	result = parser_new_node (parser, PT_DATA_TYPE);
+	if (result == NULL)
 	  {
 	    return NULL;
 	  }
@@ -4084,7 +4088,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       break;
 
     default:
-      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
 	{
 	  return NULL;
 	}

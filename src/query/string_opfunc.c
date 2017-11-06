@@ -2060,7 +2060,6 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
   QSTR_CATEGORY src_categ, delim_categ;
   int error_status = NO_ERROR, count_i = 0;
   DB_TYPE src_type, delim_type;
-  unsigned char *buf = NULL;
   DB_VALUE empty_string1, empty_string2;
   INTL_CODESET src_cs, delim_cs;
   int src_coll, delim_coll;
@@ -3175,6 +3174,12 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
     case DB_TYPE_JSON:
       new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
       break;
+
+      /* TODO - confirm DB_TYPE_NULL */
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
     }
 
   for (i = 1; i < num_args; i += 2)
@@ -4922,7 +4927,6 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 
   unsigned char *tar_ptr, *end_tar;
   unsigned char *expr_ptr, *end_expr;
-  int substrlen = 0;
   bool escape_is_match_one = ((escape != NULL) && *escape == LIKE_WILDCARD_MATCH_ONE);
   bool escape_is_match_many = ((escape != NULL) && *escape == LIKE_WILDCARD_MATCH_MANY);
   unsigned char pad_char[2];
@@ -4942,7 +4946,6 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 
   while (1)
     {
-      int char_size = 1;
       int dummy = 1;
 
       if (status == IN_CHECK)
@@ -5532,9 +5535,6 @@ db_string_translate (const DB_VALUE * src_string, const DB_VALUE * from_string, 
 		     DB_VALUE * transed_string)
 {
   int error_status = NO_ERROR;
-  int from_string_is_null = false;
-  int to_string_is_null = false;
-
   unsigned char *result_ptr = NULL;
   int result_length = 0, result_size = 0;
   DB_TYPE result_type = DB_TYPE_NULL;
@@ -10000,8 +10000,6 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
   DB_TYPE type = DB_TYPE_UNKNOWN;
   int error_status = NO_ERROR;
   time_t ts = 0;
-  int month = 0, day = 0, year = 0;
-  int second = 0, minute = 0, hour = 0, ms = 0;
 
   if (DB_IS_NULL (src_date))
     {
@@ -11743,7 +11741,7 @@ db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2, DB_VAL
 {
   int error_status = NO_ERROR;
   int year, month, day, hour, minute, second, millisecond;
-  int y = 0, m = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
+  int h = 0, mi = 0, s = 0, ms = 0;
   DB_BIGINT amount = 0;
   double amount_d = 0;
   DB_TYPE type;
@@ -16484,7 +16482,6 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
   else
     {
       INTL_CODESET frmt_codeset;
-      int retval = NO_ERROR;
       char tzr[TZR_SIZE + 1], tzd[TZ_DS_STRING_SIZE + 1];
       int tzh, tzm;
       int ntzr = 0, ntzd = 0;
@@ -18574,7 +18571,6 @@ scientific_to_decimal_string (const INTL_LANG lang, char *src_string, char **sci
   int i;
   int tmp_digit;
   const char fraction_symbol = lang_digit_fractional_symbol (lang);
-  const char digit_grouping_symbol = lang_digit_grouping_symbol (lang);
 
   while (char_isspace (*ptr))
     {
@@ -23620,8 +23616,7 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value, const TP_DOMA
   DB_TYPE type;
   char *res_s;
   int hour = 0, min = 0, sec = 0, milisec = 0;
-  int size, error_status = NO_ERROR;
-  bool alloc_ok = true;
+  int size;
 
   if (DB_IS_NULL (datetime_value))
     {
@@ -24743,8 +24738,6 @@ db_get_datetime_from_dbvalue (const DB_VALUE * src_date, int *year, int *month, 
 			      int *second, int *millisecond, const char **endp)
 {
   DB_TYPE arg_type = DB_TYPE_UNKNOWN;
-  DB_DATETIME datetime = { 0, 0 };
-  int error_status = NO_ERROR;
 
   if (DB_IS_NULL (src_date))
     {
@@ -26266,7 +26259,7 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
   char *str = NULL, *hexval = NULL;
-  int str_size = 0, hexval_len = 0, i = 0, err = 0, error_code = NO_ERROR;
+  int str_size = 0, hexval_len = 0, i = 0, error_code = NO_ERROR;
 
   /* check parameters for NULL values */
   if (param == NULL || result == NULL)
@@ -27074,7 +27067,6 @@ init_builtin_calendar_names (LANG_LOCALE_DATA * lld)
 int
 db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP_DOMAIN * enum_domain)
 {
-  int error = NO_ERROR;
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
   if (src == NULL || result == NULL || enum_domain == NULL)
@@ -27247,7 +27239,6 @@ db_inet_ntoa (DB_VALUE * result_ip_string, const DB_VALUE * number)
   DB_BIGINT ip_number = 0;
   char ip_string[16] = { '\0' };
   char ip_seg_string[4] = { '\0' };
-  const int ip_string_cnt = 16;
   const int ip_seg_string_cnt = 4;
   const DB_BIGINT ipmax = (DB_BIGINT) 256 * 256 * 256 * 256;
   const unsigned int ipv4_mask[] = { 0xFF000000, 0xFF0000, 0xFF00, 0xFF };
@@ -28204,7 +28195,6 @@ db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
   char *timezone;
   int len_timezone, error = NO_ERROR;
   DB_DATETIME *datetime = NULL;
-  DB_TIME *time = NULL;
 
   /* 
    *  Assert that DB_VALUE structures have been allocated.

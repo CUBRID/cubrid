@@ -11203,7 +11203,6 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
   bool is_temporary_data = false;
   const char *str;
   int rc = NO_ERROR;
-  char *compressed_string = NULL;
   int compressed_size = 0;
 
   if (DB_IS_NULL (value))
@@ -14003,7 +14002,6 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
   int src_size, len, rc = NO_ERROR;
   const char *str;
   bool is_temporary_data = false;
-  char *compressed_string = NULL;
   int compressed_size = 0;
 
 #if !defined (SERVER_MODE)
@@ -16230,8 +16228,6 @@ static int
 mr_getmem_enumeration (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
   unsigned short short_val = 0;
-  int str_size = 0;
-  char *str_val = NULL, *copy_str = NULL;
 
   short_val = *(short *) mem;
 
@@ -17504,7 +17500,6 @@ exit:
 static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  DB_VALUE str, str2;
   DB_JSON *j1 = STATIC_CAST (DB_JSON *, mem1);
   DB_JSON *j2 = STATIC_CAST (DB_JSON *, mem2);
 
@@ -17523,8 +17518,6 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  DB_VALUE str, str2;
-
   bool res = db_json_are_docs_equal (DB_GET_JSON_DOCUMENT (value1), DB_GET_JSON_DOCUMENT (value2));
 
   if (res)

@@ -1366,7 +1366,7 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 error:
   for (d = first; d != NULL; d = d->next)
     {
-      tp_domain_free (const_cast < TP_DOMAIN * >(d));
+      tp_domain_free (CONST_CAST (TP_DOMAIN *, d));
     }
   return NULL;
 }
