@@ -47,6 +47,7 @@
 #include "show_meta.h"
 #include "network_interface_cl.h"
 #include "locator_cl.h"
+#include "db_json.hpp"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -3934,6 +3935,25 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
   t = pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
   switch (t)
     {
+    case PT_TYPE_JSON:
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
+	{
+	  return NULL;
+	}
+      result->type_enum = t;
+      if (domain->json_validator != NULL)
+	{
+	  result->info.data_type.json_schema =
+	    pt_append_bytes (parser, NULL, db_json_get_schema_raw_from_validator (domain->json_validator),
+			     (int) strlen (db_json_get_schema_raw_from_validator (domain->json_validator)));
+	}
+      else
+	{
+	  result->info.data_type.json_schema = NULL;
+	}
+      break;
+
     case PT_TYPE_NUMERIC:
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
@@ -3941,7 +3961,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
     case PT_TYPE_VARCHAR:
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
-      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
 	{
 	  return NULL;
 	}
@@ -3957,7 +3978,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 
     case PT_TYPE_OBJECT:
       /* get the object */
-      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
 	{
 	  return NULL;
 	}
@@ -4038,7 +4060,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	DB_ENUM_ELEMENT *db_enum = NULL;
 	int idx;
 
-	if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+	result = parser_new_node (parser, PT_DATA_TYPE);
+	if (result == NULL)
 	  {
 	    return NULL;
 	  }
@@ -4065,7 +4088,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       break;
 
     default:
-      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
 	{
 	  return NULL;
 	}
@@ -4384,6 +4408,7 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * at
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_ENUMERATION:
+    case PT_TYPE_JSON:
       attr->data_type = pt_domain_to_data_type (parser, dom);
       break;
     default:

@@ -153,6 +153,13 @@ void object_print_common::describe_value(const db_value* value){
             describe_data(value);
             m_buf("'");
             break;
+
+	case DB_TYPE_JSON:
+	  m_buf("json '");
+	  describe_data(value);
+	  m_buf("'");
+	  break;
+
         case DB_TYPE_TIME:
             m_buf("time '");
             describe_data(value);
@@ -365,6 +372,9 @@ void object_print_common::describe_data(const db_value* value) {
         }
         break;
 
+    case DB_TYPE_JSON:
+	  m_buf("%s", value->data.json.json_body);
+  	  break;
     case DB_TYPE_MIDXKEY:
         midxkey = DB_GET_MIDXKEY(value);
         if(midxkey != NULL)

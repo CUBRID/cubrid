@@ -990,6 +990,7 @@ enum
 {
   ORC_DOMAIN_SETDOMAIN_INDEX = 0,
   ORC_DOMAIN_ENUMERATION_INDEX = 1,
+  ORC_DOMAIN_SCHEMA_JSON_OFFSET = 2,
 
   /* add a new one above */
 
@@ -1137,6 +1138,10 @@ struct db_set
   int disk_size;
   bool need_clear;
 };
+
+#if defined (__cplusplus)
+class JSON_VALIDATOR;
+#endif
 
 /*
  * SETOBJ
@@ -1400,7 +1405,8 @@ extern int or_put_date (OR_BUF * buf, DB_DATE * date);
 extern int or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval);
 extern int or_put_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz);
 extern int or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary);
-extern int or_put_string (OR_BUF * buf, char *string);
+extern int or_put_string_aligned (OR_BUF * buf, char *string);
+extern int or_put_string_aligned_with_length (OR_BUF * buf, char *str);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_put_binary (OR_BUF * buf, DB_BINARY * binary);
 #endif
@@ -1510,7 +1516,6 @@ extern int or_packed_enumeration_size (const DB_ENUMERATION * e);
 extern int or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * e);
 extern int or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * e);
 extern int or_header_size (char *ptr);
-
 extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
 extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
@@ -1532,6 +1537,12 @@ extern char *or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** 
 extern int classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, int *pageid);
 extern void classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr);
 extern int classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
+#if defined (__cplusplus)
+extern int or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator));
+extern int or_put_json_validator (OR_BUF * buf, JSON_VALIDATOR * validator);
+extern int or_get_json_schema (OR_BUF * buf, REFPTR (char, schema));
+extern int or_put_json_schema (OR_BUF * buf, const char *schema);
+#endif
 
 /* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
 #define OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
@@ -1617,5 +1628,4 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
 
   return rc;
 }
-
 #endif /* _OBJECT_REPRESENTATION_H_ */

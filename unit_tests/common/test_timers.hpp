@@ -26,7 +26,8 @@
 
 #include <chrono>
 
-namespace test_common {
+namespace test_common
+{
 
 /* timer - time durations between checkpoints.
  *
@@ -37,37 +38,37 @@ namespace test_common {
 template <typename Units>
 class timer
 {
-public:
-  inline timer ()
-  {
-    reset ();
-  }
-  
-  inline Units time ()
-  {
-    return (std::chrono::duration_cast<Units> (get_now () - m_saved_time));
-  }
+  public:
+    inline timer ()
+    {
+      reset ();
+    }
 
-  inline void reset ()
-  {
-    m_saved_time = get_now ();
-  }
+    inline Units time ()
+    {
+      return (std::chrono::duration_cast<Units> (get_now () - m_saved_time));
+    }
 
-  inline Units time_and_reset ()
-  {
-    Units diff = time ();
-    reset ();
-    return diff;
-  }
+    inline void reset ()
+    {
+      m_saved_time = get_now ();
+    }
 
-private:
+    inline Units time_and_reset ()
+    {
+      Units diff = time ();
+      reset ();
+      return diff;
+    }
 
-  static inline std::chrono::system_clock::time_point get_now (void)
-  {
-    return std::chrono::system_clock::now ();
-  }
+  private:
 
-  std::chrono::system_clock::time_point m_saved_time;
+    static inline std::chrono::system_clock::time_point get_now (void)
+    {
+      return std::chrono::system_clock::now ();
+    }
+
+    std::chrono::system_clock::time_point m_saved_time;
 };
 
 /* Specialization for microseconds and milliseconds */

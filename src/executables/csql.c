@@ -67,6 +67,10 @@
 #include "file_io.h"		/* needed for _wyield() */
 #endif /* WINDOWS */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* input type specification for csql_execute_statements() */
 enum
 {

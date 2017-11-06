@@ -59,6 +59,10 @@
 #include "string_buffer.hpp"
 #include "dbval.h"		/* this must be the last header file included!!! */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #if !defined(SERVER_MODE)
 
 #define MATCH_TOKEN(string, token) \

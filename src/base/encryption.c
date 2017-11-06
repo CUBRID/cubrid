@@ -138,7 +138,7 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
 	      return -1;
 	    }
 
-	  dwLength = strlen (line);
+	  dwLength = (int) strlen (line);
 	  memcpy (pbBuffer, line, dwLength);
 	  dwCount = dwLength;
 
@@ -268,7 +268,7 @@ crypt_encrypt_sha1_printable (const char *line, char *crypt, int maxlen)
   int i;
 
   SHA1Reset (&sha);
-  SHA1Input (&sha, (const unsigned char *) line, strlen (line));
+  SHA1Input (&sha, (const unsigned char *) line, (int) strlen (line));
 
   if (!SHA1Result (&sha))
     {

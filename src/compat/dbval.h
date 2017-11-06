@@ -393,6 +393,10 @@
       ((INTL_CODESET) ((v)->data.enumeration.str_val.info.codeset))
 #define DB_GET_ENUM_COLLATION(v) \
       ((v)->domain.char_info.collation_id)
+#define DB_GET_JSON_SCHEMA(v) \
+      ((v)->data.json.schema_raw)
+#define DB_GET_JSON_RAW_BODY(v) \
+      ((v)->data.json.json_body)
 
 #define db_value_is_null(v) DB_IS_NULL(v)
 #define db_value_type(v) DB_VALUE_TYPE(v)
@@ -443,6 +447,8 @@
 #define db_get_enum_string_size(v) DB_GET_ENUM_STRING_SIZE(v)
 #define db_get_enum_codeset(v) DB_GET_ENUM_CODESET(v)
 #define db_get_enum_collation(v) DB_GET_ENUM_COLLATION(v)
+#define db_get_json_schema(v) DB_GET_JSON_SCHEMA(v)
+#define db_get_json_raw_body(v) DB_GET_JSON_RAW_BODY(v)
 
 #define db_make_null(v) \
     ((v)->domain.general_info.type = DB_TYPE_NULL, \
@@ -547,7 +553,7 @@
      (v)->data.ch.info.is_max_string = false, \
      (v)->data.ch.info.compressed_need_clear = false, \
      (v)->data.ch.medium.codeset = (c), \
-     (v)->data.ch.medium.size = (s), \
+     (v)->data.ch.medium.size = (int) (s), \
      (v)->data.ch.medium.buf = (char *) (p), \
      (v)->data.ch.medium.compressed_buf = NULL, \
      (v)->data.ch.medium.compressed_size = 0, \
@@ -623,6 +629,15 @@
      (v)->data.rset = (n), \
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
+     NO_ERROR)
+
+#define db_make_json(v, j, d, cl) \
+    ((v)->domain.general_info.type = DB_TYPE_JSON, \
+     (v)->data.json.json_body = (j), \
+     (v)->data.json.document = (d), \
+     (v)->domain.general_info.is_null = 0, \
+     (v)->need_clear = (cl), \
+     (v)->data.json.schema_raw = NULL, \
      NO_ERROR)
 
 #define db_make_midxkey(v, m) \

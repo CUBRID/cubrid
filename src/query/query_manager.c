@@ -3313,7 +3313,7 @@ qmgr_reset_query_exec_info (int tran_index)
  *   So the SQL_ID of a query is different in CUBRID and oracle, even though the length is same.
  */
 int
-qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, int sql_len)
+qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, size_t sql_len)
 {
   char hashstring[32 + 1] = { '\0' };
   char *ret_buf;

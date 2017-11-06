@@ -1,5 +1,6 @@
 #include "object_print_parser.hpp"
 #include "class_object.h"
+#include "db_json.hpp"
 #include "dbdef.h"
 #include "dbi.h"
 #include "dbtype.h"
@@ -210,6 +211,18 @@ void object_print_parser::describe_domain(/*const*/tp_domain& domain, object_pri
             m_buf("%s(%d)", ustr_upper(temp_buffer), precision);
             break;
 
+         case DB_TYPE_JSON:
+          strcpy (temp_buffer, temp_domain->type->name);
+          ustr_upper (temp_buffer);
+          if (temp_domain->json_validator != NULL)
+            {
+              m_buf("%s(%s)", temp_buffer, db_json_get_schema_raw_from_validator (temp_domain->json_validator));
+            }
+          else
+            {
+              m_buf(temp_buffer);
+            }
+          break;
         case DB_TYPE_NUMERIC:
             strcpy(temp_buffer, temp_domain->type->name);
             m_buf("%s(%d,%d)", ustr_upper(temp_buffer), temp_domain->precision, temp_domain->scale);

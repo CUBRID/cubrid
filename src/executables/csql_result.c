@@ -37,6 +37,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* max columns to display each data type
  * NOTE: some of these are totally dependent on report-writer's
  * rendering library.
@@ -500,6 +504,8 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
   DB_QUERY_RESULT *result = result_info->query_result;
   int num_attrs = result_info->num_attrs;
 
+  DB_MAKE_NULL (&db_value);
+
   val = (char **) malloc (sizeof (char *) * num_attrs);
   if (val == NULL)
     {
@@ -640,6 +646,11 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 	{
 	  len[i] = strlen (val[i]);
 	}
+
+      if (db_value.need_clear)
+	{
+	  pr_clear_value (&db_value);
+	}
     }
 
   if (lengths)
@@ -663,6 +674,10 @@ error:
   if (len != NULL)
     {
       free_and_init (len);
+    }
+  if (db_value.need_clear)
+    {
+      pr_clear_value (&db_value);
     }
   return ((char **) NULL);
 }

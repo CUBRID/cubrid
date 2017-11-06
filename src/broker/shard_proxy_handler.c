@@ -1967,8 +1967,8 @@ char *
 shard_str_sqls (char *sql)
 {
   static char buffer[LINE_MAX];
-  int len;
-  int head_len, ws_len, tail_len;
+  size_t len;
+  size_t head_len, ws_len, tail_len;
   char *from, *to;
 
   if (sql == NULL)

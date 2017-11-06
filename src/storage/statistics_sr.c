@@ -1093,6 +1093,10 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  fprintf (fpp, "DB_TYPE_SET \n");
 	  break;
 
+	case DB_TYPE_JSON:
+	  fprintf (fpp, "DB_TYPE_JSON \n");
+	  break;
+
 	case DB_TYPE_MULTISET:
 	  fprintf (fpp, "DB_TYPE_MULTISET \n");
 	  break;

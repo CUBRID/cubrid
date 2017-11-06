@@ -37,7 +37,7 @@ rem set default value
 set VERSION=0
 set VERSION_FILE=VERSION
 set BUILD_NUMBER=0
-set BUILD_GENERATOR="Visual Studio 10 2010"
+set BUILD_GENERATOR="Visual Studio 15 2017"
 set BUILD_TARGET=x64
 set BUILD_MODE=Release
 set BUILD_TYPE=RelWithDebInfo
@@ -115,6 +115,11 @@ GOTO :EOF
 
 
 :BUILD_PREPARE
+echo Checking for requirements...
+call :FINDEXEC cmake.exe CMAKE_PATH "%CMAKE_PATH%"
+call :FINDEXEC cpack.exe CPACK_PATH "%CPACK_PATH%"
+call :FINDEXEC git.exe GIT_PATH "%GIT_PATH%"
+
 echo Checking for root source path [%SOURCE_DIR%]...
 if NOT EXIST "%SOURCE_DIR%\src" echo Root path for source is not valid. & GOTO :EOF
 if NOT EXIST "%SOURCE_DIR%\VERSION" set VERSION_FILE=VERSION-DIST
@@ -238,6 +243,14 @@ GOTO :EOF
 
 :ABSPATH
 set %2=%~f1
+GOTO :EOF
+
+:FINDEXEC
+if EXIST %3 set %2=%~3
+if NOT EXIST %3 for %%X in (%1) do set FOUNDINPATH=%%~$PATH:X
+if defined FOUNDINPATH set %2=%FOUNDINPATH:"=%
+if NOT defined FOUNDINPATH if NOT EXIST %3 echo Executable [%1] is not found & GOTO :EOF
+call echo Executable [%1] is found at [%%%2%%]
 GOTO :EOF
 
 

@@ -42,7 +42,6 @@
 #endif /* SERVER_MODE */
 
 #include "lock_free.h"
-
 enum
 {
   THREAD_TS_SPAGE_SAVING = 0,
@@ -526,7 +525,13 @@ extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
 extern INT64 thread_get_log_clock_msec (void);
 
-extern int thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ctx);
+extern int thread_get_total_num_of_threads (void);
+extern THREAD_ENTRY *thread_get_entry_from_index (int index);
+extern int thread_get_total_num_of_workers (void);
+
+extern const char *thread_type_to_string (int type);
+extern const char *thread_status_to_string (int status);
+extern const char *thread_resume_status_to_string (int resume_status);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);

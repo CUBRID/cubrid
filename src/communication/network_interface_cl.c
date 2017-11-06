@@ -4563,7 +4563,7 @@ cleanup:
   char *local_name = NULL;
   char *local_alias_print = NULL;
   char *local_stmt_info = NULL;
-  int len = 0;
+  size_t len = 0;
   SHA1Hash alias_sha1 = SHA1_HASH_INITIALIZER;
 
   ENTER_SERVER ();
@@ -4577,7 +4577,7 @@ cleanup:
       local_name = (char *) malloc (len + 1);
       if (local_name == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len + 1);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len + 1);
 	  result = ER_FAILED;
 	  goto error;
 	}
@@ -4592,7 +4592,7 @@ cleanup:
       local_alias_print = (char *) malloc (len + 1);
       if (local_alias_print == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len + 1);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len + 1);
 	  result = ER_FAILED;
 	  goto error;
 	}

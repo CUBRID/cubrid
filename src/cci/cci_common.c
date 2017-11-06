@@ -767,7 +767,7 @@ hostname2uchar (char *host, unsigned char *ip_addr)
   else
     {
 #ifdef HAVE_GETHOSTBYNAME_R
-# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+#if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
       struct hostent *hp, hent;
       int herr;
       char buf[1024];
@@ -777,7 +777,7 @@ hostname2uchar (char *host, unsigned char *ip_addr)
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+#elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
       int herr;
       char buf[1024];
@@ -787,7 +787,7 @@ hostname2uchar (char *host, unsigned char *ip_addr)
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+#elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
       struct hostent_data ht_data;
 
@@ -796,9 +796,9 @@ hostname2uchar (char *host, unsigned char *ip_addr)
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# else
-#   error "HAVE_GETHOSTBYNAME_R"
-# endif
+#else
+#error "HAVE_GETHOSTBYNAME_R"
+#endif
 #else /* HAVE_GETHOSTBYNAME_R */
       struct hostent *hp;
 

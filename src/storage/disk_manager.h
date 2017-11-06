@@ -148,11 +148,12 @@ extern int disk_rv_undoredo_set_boot_hfid (THREAD_ENTRY * thread_p, LOG_RCV * rc
 extern void disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore, void *data);
 extern int disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void disk_rv_dump_link (FILE * fp, int length_ignore, void *data);
-extern int disk_rv_redo_dboutside_init_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void disk_rv_dump_init_pages (FILE * fp, int length_ignore, void *data);
+extern int disk_rv_redo_volume_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void disk_rv_dump_volume_expand (FILE * fp, int length_ignore, void *data);
 extern int disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_volhead_extend_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 #if !defined (NDEBUG)
 extern void disk_volheader_check_magic (THREAD_ENTRY * thread_p, const PAGE_PTR page_volheader);

@@ -686,7 +686,6 @@ xlocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p, const char *class
 {
   int tran_index;
   LOCATOR_CLASSNAME_ENTRY *entry;
-  bool is_reserved = false;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
@@ -1713,7 +1712,8 @@ locator_print_class_name (FILE * outfp, const void *key, void *ent, void *args)
   int *class_no_p = (int *) args;
   LOCATOR_CLASSNAME_ACTION *action;
   const char *str_action;
-  int key_size, i;
+  int i;
+  size_t key_size;
 
   assert (class_no_p != NULL);
 
@@ -4858,7 +4858,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   HFID real_hfid;
   HEAP_SCANCACHE *local_scan_cache = NULL;
   FUNC_PRED_UNPACK_INFO *local_func_preds = NULL;
-  OID null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   HEAP_OPERATION_CONTEXT context;
 
   assert (class_oid != NULL);
@@ -7649,10 +7648,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index;
   int error_code = NO_ERROR;
-  PR_EVAL_FNC filter_eval_func = NULL;
-  DB_TYPE single_node_type = DB_TYPE_NULL;
   OR_PREDICATE *or_pred = NULL;
-  PRED_EXPR_WITH_CONTEXT *pred_filter = NULL;
   DB_LOGICAL ev_res;
   bool use_mvcc = false;
   MVCCID mvccid;
@@ -8777,7 +8773,6 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
   BTID inst_btid;
   DB_VALUE dbvalue;
   DB_VALUE *dbvalue_ptr = NULL;
-  DB_VALUE *key_del = NULL;
   SCAN_CODE scan;
   char *new_area;
   BTREE_UNIQUE_STATS unique_info;
@@ -12679,7 +12674,7 @@ static int
 redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list)
 {
   int error = NO_ERROR;
-  int i = 0, j = 0;
+  int i = 0;
   RECDES recdes;
   HFID hfid, class_hfid;
   OID inst_oid;

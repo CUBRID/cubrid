@@ -1959,6 +1959,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 #endif
 
+  /* Since DB_TYPE_JSON is mapped into CCI_U_TYPE_STRING, legacy drivers are also able to access JSON type. */
+
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);

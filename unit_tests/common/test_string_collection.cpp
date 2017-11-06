@@ -23,7 +23,8 @@
 
 #include "test_string_collection.hpp"
 
-namespace test_common {
+namespace test_common
+{
 
 size_t
 string_collection::get_count () const

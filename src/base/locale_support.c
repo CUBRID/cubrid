@@ -48,6 +48,10 @@
 #endif /* !WINDOWS */
 #include "locale_support.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define TXT_CONV_LINE_SIZE 512
 #define TXT_CONV_ITEM_GROW_COUNT 128
 

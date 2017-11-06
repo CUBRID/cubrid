@@ -27,7 +27,8 @@
 
 #include "porting.h"
 
-namespace test_common {
+namespace test_common
+{
 
 /*  Collect runtime timer statistics with various scenarios and compare results.
  *
@@ -51,56 +52,56 @@ namespace test_common {
  */
 class perf_compare
 {
-public:
-  
-  /* instantiate with an vector containing step names. */
-  perf_compare (const string_collection & scenarios, const string_collection & steps);
+  public:
 
-  /* register the time for step_index step of scenario_index scenario. multiple timers can stack on the same value
-   * concurrently. */
-  inline void register_time (us_timer & timer, size_t scenario_index, size_t step_index)
-  {
-    custom_assert (scenario_index < m_scenario_names.get_count ());
-    custom_assert (step_index < m_step_names.get_count ());
+    /* instantiate with an vector containing step names. */
+    perf_compare (const string_collection &scenarios, const string_collection &steps);
 
-    value_type time = timer.time_and_reset ().count ();
+    /* register the time for step_index step of scenario_index scenario. multiple timers can stack on the same value
+     * concurrently. */
+    inline void register_time (us_timer &timer, size_t scenario_index, size_t step_index)
+    {
+      custom_assert (scenario_index < m_scenario_names.get_count ());
+      custom_assert (step_index < m_step_names.get_count ());
 
-    /* can be called concurrently, so use atomic inc */
-    (void) ATOMIC_INC_64 (&m_values[scenario_index][step_index], time);
-  }
+      value_type time = timer.time_and_reset ().count ();
 
-  /* print formatted results */
-  void print_results (std::ostream & output);
+      /* can be called concurrently, so use atomic inc */
+      (void) ATOMIC_INC_64 (&m_values[scenario_index][step_index], time);
+    }
 
-  /* check where first scenario was worse than others and print warnings */
-  void print_warnings (std::ostream & output);
+    /* print formatted results */
+    void print_results (std::ostream &output);
 
-  /* print both results and warnings */
-  void print_results_and_warnings (std::ostream & output);
+    /* check where first scenario was worse than others and print warnings */
+    void print_warnings (std::ostream &output);
 
-  /* get step count */
-  size_t get_step_count (void);
+    /* print both results and warnings */
+    void print_results_and_warnings (std::ostream &output);
 
-private:
-  typedef unsigned long long value_type;
-  typedef std::vector<value_type> value_container_type;
+    /* get step count */
+    size_t get_step_count (void);
 
-  perf_compare (); // prevent implicit constructor
-  perf_compare (const perf_compare& other); // prevent copy
+  private:
+    typedef unsigned long long value_type;
+    typedef std::vector<value_type> value_container_type;
 
-  inline void print_value (value_type value, std::ostream & output);
-  inline void print_leftmost_column (const char *str, std::ostream & output);
-  inline void print_alloc_name_column (const char *str, std::ostream & output);
-  inline void print_result_header (std::ostream & output);
-  inline void print_result_row (size_t row, std::ostream & output);
-  inline void print_warning_header (bool & no_warnings, std::ostream & output);
-  inline void check_row_and_print_warning (size_t row, bool & no_warnings, std::ostream & output);
+    perf_compare (); // prevent implicit constructor
+    perf_compare (const perf_compare &other); // prevent copy
 
-  const string_collection & m_scenario_names;
-  const string_collection & m_step_names;
+    inline void print_value (value_type value, std::ostream &output);
+    inline void print_leftmost_column (const char *str, std::ostream &output);
+    inline void print_alloc_name_column (const char *str, std::ostream &output);
+    inline void print_result_header (std::ostream &output);
+    inline void print_result_row (size_t row, std::ostream &output);
+    inline void print_warning_header (bool &no_warnings, std::ostream &output);
+    inline void check_row_and_print_warning (size_t row, bool &no_warnings, std::ostream &output);
 
-  std::vector<value_container_type> m_values;
-  size_t m_leftmost_column_length;
+    const string_collection &m_scenario_names;
+    const string_collection &m_step_names;
+
+    std::vector<value_container_type> m_values;
+    size_t m_leftmost_column_length;
 };
 
 } // namespace test_common

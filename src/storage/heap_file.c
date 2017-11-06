@@ -18130,7 +18130,7 @@ heap_bestspace_to_string (char *buf, int buf_size, const HEAP_BESTSPACE * hb)
 static int
 fill_string_to_buffer (char **start, char *end, const char *str)
 {
-  int len = strlen (str);
+  int len = (int) strlen (str);
 
   if (*start + len >= end)
     {

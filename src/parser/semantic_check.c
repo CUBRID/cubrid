@@ -62,6 +62,7 @@ typedef struct seman_compatible_info
   PT_TYPE_ENUM type_enum;
   int prec;
   int scale;
+  bool force_cast;
   PT_COLL_INFER coll_infer;
   const PT_NODE *ref_att;	/* column node having current compat info */
 } SEMAN_COMPATIBLE_INFO;
@@ -570,6 +571,7 @@ pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * selec
 		  cinfo[k].type_enum = PT_TYPE_NONE;
 		  cinfo[k].prec = DB_DEFAULT_PRECISION;
 		  cinfo[k].scale = DB_DEFAULT_SCALE;
+		  cinfo[k].force_cast = false;
 		  cinfo[k].coll_infer.coll_id = LANG_SYS_COLLATION;
 		  cinfo[k].coll_infer.codeset = LANG_SYS_CODESET;
 		  cinfo[k].coll_infer.coerc_level = PT_COLLATION_NOT_COERC;
@@ -2297,6 +2299,11 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
 
   *is_cast_allowed = true;
 
+  if (dest_sci->force_cast && dest_sci->type_enum == PT_TYPE_JSON)
+    {
+      return false;
+    }
+
   if (dest_sci->type_enum != src->type_enum)
     {
       return false;
@@ -2525,6 +2532,7 @@ pt_get_compatible_info_from_node (const PT_NODE * att, SEMAN_COMPATIBLE_INFO * c
   cinfo->coll_infer.can_force_cs = false;
   cinfo->prec = cinfo->scale = 0;
   cinfo->ref_att = att;
+  cinfo->force_cast = false;
 
   cinfo->type_enum = att->type_enum;
 
@@ -5218,6 +5226,11 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     {
     case F_INSERT_SUBSTRING:
     case F_ELT:
+    case F_JSON_OBJECT:
+    case F_JSON_ARRAY:
+    case F_JSON_INSERT:
+    case F_JSON_REMOVE:
+    case F_JSON_MERGE:
       break;
     default:
       return 0;			/* unsupported function */
@@ -11081,7 +11094,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
     {
       int p = 0, s = 0;
       SEMAN_COMPATIBLE_INFO sci = {
-	0, PT_TYPE_NONE, 0, 0,
+	0, PT_TYPE_NONE, 0, 0, false,
 	{0, INTL_CODESET_NONE, PT_COLLATION_NOT_COERC, false},
 	NULL
       };
@@ -11092,6 +11105,10 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	{
 	  sci.prec = lhs->data_type->info.data_type.precision;
 	  sci.scale = lhs->data_type->info.data_type.dec_precision;
+	  if (lhs->type_enum == PT_TYPE_JSON && lhs->data_type->info.data_type.json_schema != NULL)
+	    {
+	      sci.force_cast = true;
+	    }
 	}
 
       if (PT_HAS_COLLATION (lhs->type_enum))
@@ -15118,6 +15135,11 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	  /* the functions above are used in the argument IN (values list) expression */
 	case F_ELT:
 	case F_INSERT_SUBSTRING:
+	case F_JSON_OBJECT:
+	case F_JSON_ARRAY:
+	case F_JSON_INSERT:
+	case F_JSON_REMOVE:
+	case F_JSON_MERGE:
 	  /* valid expression, nothing to do */
 	  break;
 	default:
