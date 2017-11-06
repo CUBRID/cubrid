@@ -3862,8 +3862,9 @@ fmt_weekday_date (int month, int day, int year, int weekday)
 static const char *
 fmt_time_string (const DB_TIME * the_time, const char *descriptor)
 {
+#if defined (ENABLE_UNUSED_FUNCTION)
   static char time_string[FMT_MAX_TIME_STRING * MB_LEN_MAX + 1];
-
+#endif
   const char *string = NULL;
 
   assert (mbs_eql (descriptor, "R") || mbs_eql (descriptor, "r") || mbs_eql (descriptor, "T")

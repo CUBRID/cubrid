@@ -114,8 +114,6 @@ typedef enum
   SORT_LIST_ANALYTIC_WINDOW
 } SORT_LIST_MODE;
 
-static int pt_Hostvar_sno = 1;
-
 typedef struct set_numbering_node_etc_info
 {
   DB_VALUE **instnum_valp;
@@ -617,7 +615,6 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
     {
       /* handle special case of query without joins */
       PT_NODE *save_where, *save_from;
-      PT_SELECT_INFO *select_info = &select_node->info.query.q.select;
 
       save_where = select_node->info.query.q.select.where;
       select_node->info.query.q.select.where = select_node->info.query.q.select.connect_by;
@@ -2988,7 +2985,7 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	    {
 	      /* flush all partitions */
 	      DB_OBJLIST *user = NULL;
-	      SM_CLASS *subclass = NULL;
+
 	      for (user = smcls->users; user != NULL; user = user->next)
 		{
 		  if (WS_ISDIRTY (user->op) || ws_has_dirty_objects (user->op, &isvirt))
@@ -3189,7 +3186,7 @@ pt_is_single_tuple (PARSER_CONTEXT * parser, PT_NODE * select_node)
 static PT_NODE *
 pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
-  PT_NODE **last, *temp1, *temp2, *chk_parent = NULL;
+  PT_NODE **last, *temp1, *temp2;
   PT_FLAT_SPEC_INFO info;
 
   if (spec)
@@ -3547,7 +3544,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   VAL_LIST *value_list;
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
-  int *attr_offsets = NULL;
   PT_NODE *pointer = NULL;
   PT_NODE *pt_val = NULL;
   PT_NODE *percentile = NULL;
@@ -6731,9 +6727,8 @@ static PT_NODE *
 pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser, PT_NODE * where_key_part, PT_NODE * where_part,
 				  QO_XASL_INDEX_INFO * index_pred)
 {
-  PT_NODE *ipl_where_part = NULL, *where_part_save = NULL;
+  PT_NODE *ipl_where_part = NULL;
   PT_NODE *diff_part;
-  PT_NODE *ipl_where_term = NULL;
   PT_NODE *ipl_if_part, *ipl_instnum_part;
   int i;
   PT_NODE *save_next = NULL;
@@ -6811,7 +6806,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
   PT_NODE *data_type = NULL;
   PT_NODE *save_node = NULL, *save_next = NULL;
   REGU_VARIABLE *r1 = NULL, *r2 = NULL, *r3 = NULL;
-  PT_NODE *empty_str = NULL;
 
   if (node == NULL)
     {
@@ -8308,7 +8302,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    DB_VALUE dbval;
 		    PT_NODE *serial_obj_node_p = NULL;
 		    PT_NODE *cached_num_node_p = NULL;
-		    const char *serial_name = NULL;
 		    int cached_num;
 		    OPERATOR_TYPE op;
 
@@ -11410,7 +11403,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
   REGU_VARIABLE_LIST regu_attributes_key;
   HEAP_CACHE_ATTRINFO *cache_key = NULL;
   PT_NODE *key_attrs = NULL;
-  PT_NODE *where_range_part = NULL;
   int *key_offsets = NULL;
   PRED_EXPR *where = NULL, *where_range = NULL;
   REGU_VARIABLE_LIST regu_attributes_pred, regu_attributes_rest;
@@ -14699,10 +14691,10 @@ static ANALYTIC_EVAL_TYPE *
 pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool * no_optimization)
 {
   ANALYTIC_EVAL_TYPE *ret = NULL;
-  ANALYTIC_TYPE *func_p, *save_next;
+  ANALYTIC_TYPE *func_p;
   PT_NODE *sort_list;
   bool found;
-  int group_id = 0, i, j, level = 0;
+  int i, j, level = 0;
 
   /* sort list index */
   PT_NODE *sc_index[ANALYTIC_OPT_MAX_SORT_LIST_COLUMNS];
@@ -18579,7 +18571,7 @@ static int
 pt_mvcc_set_spec_assign_reev_extra_indexes (PARSER_CONTEXT * parser, PT_NODE * spec_assign, PT_NODE * spec_list,
 					    PT_NODE * assign_list, int *indexes, int indexes_alloc_size)
 {
-  PT_NODE *nodes_list = NULL, *spec = NULL, *node = NULL;
+  PT_NODE *nodes_list = NULL, *spec = NULL;
   PT_NODE *real_refs = NULL;
   PT_ASSIGNMENTS_HELPER ah;
   int idx, count = 0;
@@ -18829,7 +18821,6 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 	  for (spec = statement->info.query.q.select.from; spec; spec = spec->next)
 	    {
 	      PT_NODE *name = NULL, *val = NULL, *last_val = NULL;
-	      PT_NODE *join_spec = NULL;
 
 	      if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
 		{
@@ -19308,7 +19299,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (xasl != NULL)
     {
-      PT_NODE *node, *flat = NULL;
+      PT_NODE *node;
 
       delete_ = &xasl->proc.delete_;
 
@@ -23932,7 +23923,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
 		  PT_NODE ** non_null_ins_attrs, PT_NODE * default_expr_attrs)
 {
   XASL_NODE *xasl, *xptr;
-  XASL_NODE *update_xasl = NULL, *insert_xasl = NULL, *delete_xasl = NULL;
+  XASL_NODE *update_xasl = NULL, *insert_xasl = NULL;
   OID *oid = NULL;
   int error = NO_ERROR;
   bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);

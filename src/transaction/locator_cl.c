@@ -5546,7 +5546,6 @@ locator_all_flush (void)
   LOCATOR_MFLUSH_CACHE mflush;	/* Structure which describes objects to flush */
   int error_code;
   int map_status;
-  int num_failed_to_flush = 0;
 
   /* flush dirty vclass objects */
   if (vid_allflush () != NO_ERROR)

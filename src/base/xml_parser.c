@@ -699,7 +699,6 @@ xml_elem_start (void *data, const char *parsed_el_name, const char **attr)
   if (found)
     {
       int elem_start_res = 0;
-      int handle_res = 0;
       ELEM_START_FUNC start_func = START_FUNC (el);
       ELEM_DATA_FUNC data_func = DATA_FUNC (el);
       XML_ELEMENT *saved_el = NULL;

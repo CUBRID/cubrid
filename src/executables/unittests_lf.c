@@ -825,7 +825,7 @@ test_freelist (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, bool test_local_tran)
 
   /* results */
   {
-    volatile XENTRY *e, *a, *r;
+    volatile XENTRY *e, *a;
     volatile int active, retired, _a, _r, _t;
 
     a = (XENTRY *) VOLATILE_ACCESS (freelist.available, void *);
@@ -1035,7 +1035,6 @@ test_hash_iterator ()
   static LF_TRAN_SYSTEM ts;
   static LF_HASH_TABLE hash;
   static LF_TRAN_ENTRY *te;
-  pthread_t threads[NUM_THREADS];
   int i;
 
   begin ("hash table iterator");

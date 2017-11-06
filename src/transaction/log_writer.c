@@ -123,9 +123,7 @@ static void logwr_finalize (void);
 static LOG_PAGE **logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages);
 static int logwr_flush_all_append_pages (void);
 static int logwr_archive_active_log (void);
-static int logwr_background_archiving (void);
 static int logwr_flush_bgarv_header_page (void);
-static void logwr_send_end_msg (LOGWR_CONTEXT * ctx_ptr, int error);
 static void logwr_reinit_copylog (void);
 
 /*
@@ -634,11 +632,9 @@ logwr_set_hdr_and_flush_info (void)
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
       hdr = *((LOG_HEADER *) log_pgptr->area);
 
-      if ((hdr.ha_server_state != HA_SERVER_STATE_ACTIVE && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
-	   && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY) && (hdr.ha_promotion_time == 0
-									|| difftime64 (hdr.ha_promotion_time,
-										       logwr_Gl.hdr.
-										       ha_promotion_time) == 0)
+      if (hdr.ha_server_state != HA_SERVER_STATE_ACTIVE && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
+	  && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY
+	  && (hdr.ha_promotion_time == 0 || difftime64 (hdr.ha_promotion_time, logwr_Gl.hdr.ha_promotion_time) == 0)
 	  && difftime64 (hdr.db_restore_time, logwr_Gl.hdr.db_restore_time) != 0)
 	{
 	  logwr_Gl.reinit_copylog = true;
@@ -1106,7 +1102,6 @@ static int
 logwr_archive_active_log (void)
 {
   char archive_name[PATH_MAX] = { '\0' };
-  LOG_PAGE *arvhdr_pgptr = NULL;
   LOG_ARV_HEADER *arvhdr;
   char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
@@ -1594,7 +1589,6 @@ logwr_reinit_copylog (void)
   char archive_log_prefix[PATH_MAX];
   int archive_log_prefix_len;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
-  LOG_BGARV_HEADER *bgarvhdr = NULL;
 
   /* mark will be deleted */
   logwr_Gl.hdr.mark_will_del = true;

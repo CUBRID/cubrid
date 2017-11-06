@@ -123,8 +123,6 @@ fn_get_shard_key_default (const char *shard_key, T_SHARD_U_TYPE type, const void
 int
 proxy_find_shard_id_by_hint_value (SP_VALUE * value_p, const char *key_column)
 {
-  T_SHARD_KEY_RANGE *range_p = NULL;
-
   int shard_key_id = -1;
   INT64 shard_key_val_int;
   char *shard_key_val_string;

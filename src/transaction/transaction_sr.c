@@ -107,10 +107,10 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 TRAN_STATE
 xtran_server_abort (THREAD_ENTRY * thread_p)
 {
-  CSS_CONN_ENTRY *conn = NULL;
   TRAN_STATE state;
   int tran_index;
 #if defined(SERVER_MODE)
+  CSS_CONN_ENTRY *conn = NULL;
   bool continue_check;
 #endif
 

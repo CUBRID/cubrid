@@ -799,7 +799,6 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
   unsigned int failover_wait_time;
   HB_JOB_ARG *job_arg;
   HB_CLUSTER_JOB_ARG *clst_arg;
-  HB_NODE_ENTRY *node;
   char hb_info_str[HB_INFO_STR_MAX];
 
   ENTER_FUNC ();
@@ -1441,7 +1440,6 @@ static int
 hb_cluster_calc_score (void)
 {
   int num_master = 0;
-  short min_index = -1;
   short min_score = HB_NODE_SCORE_UNKNOWN;
   HB_NODE_ENTRY *node;
   struct timeval now;
@@ -1523,7 +1521,6 @@ static void
 hb_cluster_request_heartbeat_to_all (void)
 {
   HB_NODE_ENTRY *node;
-  int i;
 
   if (hb_Cluster == NULL)
     {
@@ -1552,12 +1549,6 @@ hb_cluster_request_heartbeat_to_all (void)
 static void
 hb_cluster_send_heartbeat_req (char *dest_host_name)
 {
-  int error;
-  HBP_HEADER *hbp_header;
-  char buffer[HB_BUFFER_SZ], *p;
-  size_t msg_len;
-  int send_len;
-
   struct sockaddr_in saddr;
   socklen_t saddr_len;
 
@@ -2650,11 +2641,9 @@ static void
 hb_resource_job_cleanup_all (HB_JOB_ARG * arg)
 {
   int rv, i, error;
-  HB_PROC_ENTRY *proc, *proc_next;
-  SOCKET_QUEUE_ENTRY *sock_ent, *next;
+  HB_PROC_ENTRY *proc;
   HB_JOB_ARG *job_arg;
   HB_RESOURCE_JOB_ARG *resource_job_arg;
-  char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
   rv = pthread_mutex_lock (&hb_Resource->lock);
@@ -3059,12 +3048,9 @@ static void
 hb_resource_job_demote_confirm_shutdown (HB_JOB_ARG * arg)
 {
   int error, rv;
-  int num_remaining_server_proc = 0;
   HB_JOB_ARG *job_arg;
   HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? &(arg->resource_job_arg) : NULL;
   HB_CLUSTER_JOB_ARG *clst_arg;
-  char hb_info_str[HB_INFO_STR_MAX] = "";
-  char error_string[LINE_MAX] = "";
 
   if (arg == NULL || proc_arg == NULL)
     {
@@ -3433,7 +3419,7 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG * arg)
 static void
 hb_resource_job_change_mode (HB_JOB_ARG * arg)
 {
-  int i, error, rv;
+  int error, rv;
   HB_PROC_ENTRY *proc;
   char hb_info_str[HB_INFO_STR_MAX];
 
@@ -3633,7 +3619,6 @@ hb_remove_all_procs (HB_PROC_ENTRY * first)
 static HB_PROC_ENTRY *
 hb_return_proc_by_args (char *args)
 {
-  int i;
   HB_PROC_ENTRY *proc;
 
   for (proc = hb_Resource->procs; proc; proc = proc->next)
@@ -3656,7 +3641,6 @@ hb_return_proc_by_args (char *args)
 static HB_PROC_ENTRY *
 hb_return_proc_by_pid (int pid)
 {
-  int i;
   HB_PROC_ENTRY *proc;
 
   for (proc = hb_Resource->procs; proc; proc = proc->next)
@@ -3680,7 +3664,6 @@ hb_return_proc_by_pid (int pid)
 static HB_PROC_ENTRY *
 hb_return_proc_by_fd (int sfd)
 {
-  int i;
   HB_PROC_ENTRY *proc;
 
   for (proc = hb_Resource->procs; proc; proc = proc->next)
@@ -3847,7 +3830,6 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
 bool
 hb_is_registered_process (CSS_CONN_ENTRY * conn, char *args)
 {
-  int rv;
   HB_PROC_ENTRY *proc;
 
   if (hb_Resource == NULL)
@@ -3885,7 +3867,6 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 {
   int rv, buffer_size;
   HBP_PROC_REGISTER *hbp_proc_register = NULL;
-  SOCKET_QUEUE_ENTRY *temp;
   HB_PROC_ENTRY *proc;
   unsigned char proc_state = HB_PSTATE_UNKNOWN;
   char buffer[HB_BUFFER_SZ];
@@ -4091,11 +4072,10 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
 void
 hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
 {
-  int sfd, error, rv;
+  int sfd, rv;
   HB_PROC_ENTRY *proc;
   HA_SERVER_STATE state;
   int nstate;
-  char *ptr;
   char error_string[LINE_MAX] = "";
 
   if (hb_Resource == NULL)
@@ -4331,7 +4311,7 @@ static void *
 hb_thread_cluster_reader (void *arg)
 #endif
 {
-  int error, rv;
+  int error;
   SOCKET sfd;
   char buffer[HB_BUFFER_SZ + MAX_ALIGNMENT], *aligned_buffer;
   int len;
@@ -4437,7 +4417,6 @@ hb_thread_check_disk_failure (void *arg)
   int rv, error;
   int interval;
   INT64 remaining_time_msecs = 0;
-  char error_string[LINE_MAX];
 #if defined (HB_VERBOSE_DEBUG)
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "thread started. (thread:{%s}, tid:%d).\n", __func__, THREAD_ID ());
 #endif
@@ -4557,8 +4536,7 @@ hb_cluster_job_initialize (void)
 static int
 hb_cluster_initialize (const char *nodes, const char *replicas)
 {
-  int rv, error;
-  HB_NODE_ENTRY *node;
+  int rv;
   struct sockaddr_in udp_saddr;
   char host_name[MAXHOSTNAMELEN];
 
@@ -4668,9 +4646,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 static int
 hb_resource_initialize (void)
 {
-  int rv, error;
-  CSS_CONN_ENTRY *conn;
-  HB_PROC_ENTRY *proc;
+  int rv;
 
   if (hb_Resource == NULL)
     {
@@ -4749,7 +4725,6 @@ hb_thread_initialize (void)
   pthread_attr_t thread_attr;
   size_t ts_size;
   pthread_t cluster_worker_th;
-  pthread_t cluster_reader_th;
   pthread_t resource_worker_th;
   pthread_t check_disk_failure_th;
 
@@ -4943,7 +4918,7 @@ static void
 hb_resource_shutdown_all_ha_procs (void)
 {
   HB_PROC_ENTRY *proc;
-  SOCKET_QUEUE_ENTRY *sock_ent, *next;
+  SOCKET_QUEUE_ENTRY *sock_ent;
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   /* set process state to deregister and close connection */
@@ -5970,9 +5945,7 @@ hb_deregister_process (HB_PROC_ENTRY * proc)
 {
   HB_JOB_ARG *job_arg;
   HB_RESOURCE_JOB_ARG *proc_arg;
-  int rv, error;
   char error_string[LINE_MAX] = "";
-  char *p, *last;
 
   if ((proc->state < HB_PSTATE_DEAD) || (proc->state >= HB_PSTATE_MAX) || (proc->pid < 0))
     {
@@ -6012,11 +5985,8 @@ hb_deregister_process (HB_PROC_ENTRY * proc)
 void
 hb_reconfig_heartbeat (char **str)
 {
-  int rv, error;
+  int error;
   char error_string[LINE_MAX] = "";
-  char *p, *last;
-  HB_NODE_ENTRY *node;
-  char node_entries[HB_MAX_NUM_NODES * (MAXHOSTNAMELEN + 2)];
 
   error = hb_reload_config ();
   if (error)
@@ -6089,7 +6059,6 @@ hb_prepare_deactivate_heartbeat (void)
 int
 hb_deactivate_heartbeat (void)
 {
-  int rv;
   char error_string[LINE_MAX] = "";
 
   if (hb_Cluster == NULL)
@@ -6182,7 +6151,6 @@ hb_activate_heartbeat (void)
 int
 hb_start_util_process (char *args)
 {
-  int error = NO_ERROR;
   char error_string[LINE_MAX] = "";
   HB_PROC_ENTRY *proc;
   int pid;

@@ -826,7 +826,7 @@ hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE * con_handle)
 void
 hm_req_handle_fetch_buf_free (T_REQ_HANDLE * req_handle)
 {
-  int i, j, fetched_tuple;
+  int i, fetched_tuple;
 
   if (req_handle->tuple_value)
     {
@@ -834,6 +834,8 @@ hm_req_handle_fetch_buf_free (T_REQ_HANDLE * req_handle)
       for (i = 0; i < fetched_tuple; i++)
 	{
 #if defined(WINDOWS)
+	  int j;
+
 	  for (j = 0; j < req_handle->num_col_info; j++)
 	    {
 	      FREE_MEM (req_handle->tuple_value[i].decoded_ptr[j]);

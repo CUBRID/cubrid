@@ -1677,7 +1677,6 @@ fn_proxy_client_set_db_parameter (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event
   T_CLIENT_INFO *client_info_p = NULL;
   char *driver_info;
   T_PROXY_EVENT *new_event_p = NULL;
-  const char func_code = CAS_FC_SET_DB_PARAMETER;
 
   if (argc < 2)
     {
@@ -1775,7 +1774,6 @@ fn_proxy_client_get_db_parameter (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event
   T_CLIENT_INFO *client_info_p = NULL;
   char *driver_info;
   T_PROXY_EVENT *new_event_p = NULL;
-  const char func_code = CAS_FC_SET_DB_PARAMETER;
 
   if (argc < 1)
     {
@@ -2260,8 +2258,6 @@ fn_proxy_client_check_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p, int
   char *response_p = NULL;
   char *driver_info;
   T_PROXY_EVENT *new_event_p = NULL;
-  T_CLIENT_IO *client_io_p = NULL;
-  T_SOCKET_IO *sock_io_p = NULL;
 
   ENTER_FUNC ();
 
@@ -2420,8 +2416,6 @@ fn_proxy_client_get_db_version (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p
   int error = 0;
   char *db_version = NULL;
   char auto_commit_mode;
-
-  const char func_code = CAS_FC_GET_DB_VERSION;
 
   ENTER_FUNC ();
 
@@ -3751,7 +3745,6 @@ fn_proxy_cas_check_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   char *driver_info = NULL;
   T_BROKER_VERSION client_version;
   struct timeval client_start_time;
-  T_SOCKET_IO *sock_io_p = NULL;
   T_PROXY_EVENT *new_event_p = NULL;
 
   gettimeofday (&client_start_time, NULL);

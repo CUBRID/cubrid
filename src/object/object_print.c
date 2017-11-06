@@ -168,8 +168,6 @@ static const char **obj_print_describe_class_triggers (PARSER_CONTEXT * parser, 
 static CLASS_HELP *obj_print_make_class_help (void);
 static TRIGGER_HELP *obj_print_make_trigger_help (void);
 static OBJ_HELP *obj_print_make_obj_help (void);
-static char **obj_print_read_section (FILE * fp);
-static COMMAND_HELP *obj_print_load_help_file (FILE * fp, const char *keyword);
 static char *obj_print_next_token (char *ptr, char *buf);
 
 
@@ -1729,7 +1727,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
   SM_QUERY_SPEC *p;
   CLASS_HELP *info = NULL;
   DB_OBJLIST *super, *user;
-  int count, i, is_cubrid = 0;
+  int count, i;
   char **strs;
   const char *kludge;
   PARSER_VARCHAR *buffer;

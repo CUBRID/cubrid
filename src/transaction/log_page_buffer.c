@@ -351,7 +351,6 @@ static int logpb_backup_needed_archive_logs (THREAD_ENTRY * thread_p, FILEIO_BAC
 					     int first_arv_num, int last_arv_num);
 #endif /* SERVER_MODE */
 static bool logpb_remote_ask_user_before_delete_volumes (THREAD_ENTRY * thread_p, const char *volpath);
-static int logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p);
 static int logpb_initialize_flush_info (void);
 static void logpb_finalize_flush_info (void);
 static void logpb_finalize_writer_info (void);
@@ -4007,22 +4006,14 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
   bool hold_flush_mutex = false;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
-  LOG_RECORD_HEADER save_record = {
-    {NULL_PAGEID, NULL_OFFSET},	/* prev_tranlsa */
-    {NULL_PAGEID, NULL_OFFSET},	/* back_lsa */
-    {NULL_PAGEID, NULL_OFFSET},	/* forw_lsa */
-    NULL_TRANID,		/* trid */
-    LOG_SMALLER_LOGREC_TYPE	/* type */
-  };				/* Save last record */
-
+  int rv;
+#if defined(SERVER_MODE)
   INT64 flush_start_time = 0;
   INT64 flush_completed_time = 0;
   INT64 all_writer_thr_end_time = 0;
 
-  int rv;
-#if defined(SERVER_MODE)
+  LOGWR_INFO *writer_info = &log_Gl.writer_info;
   LOGWR_ENTRY *entry;
 #endif /* SERVER_MODE */
 
@@ -6554,29 +6545,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   arvhdr->fpageid = log_Gl.hdr.nxarv_pageid;
   last_pageid = log_Gl.append.prev_lsa.pageid - 1;
 
-#if 0
-  /* 
-   * logpb_must_archive_last_log_page can call logpb_archive_active_log again
-   * and then, log_Gl.hdr could be changed and it make trouble. (assert or shutdown)
-   *
-   * so, new behavior of logpb_backup is fixed as don't copy incomplete last page
-   * as the result, this code block is commented.
-   */
-  /* 
-   * When forcing an archive for backup purposes, it is imperative that
-   * every single log record make it into the archive including the
-   * current page.  This often means archiving an incomplete page.
-   * To archive the last page in a way that recovery analysis will
-   * realize it is incomplete, requires a dummy record with no forward
-   * lsa pointer.  It also requires the the next record after that
-   * be appended to a new page (which will happen automatically).
-   */
-  if (logpb_must_archive_last_log_page (thread_p) != NO_ERROR)
-    {
-      goto error;
-    }
-#endif
-
   if (last_pageid < arvhdr->fpageid)
     {
       last_pageid = arvhdr->fpageid;
@@ -8350,6 +8318,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 #if defined(SERVER_MODE)
   int rv;
   time_t wait_checkpoint_begin_time;
+  bool print_backupdb_waiting_reason = false;
 #endif /* SERVER_MODE */
   int error_code = NO_ERROR;
   FILEIO_BACKUP_HEADER *io_bkup_hdr_p;
@@ -8360,7 +8329,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
-  bool print_backupdb_waiting_reason = false;
 
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
 

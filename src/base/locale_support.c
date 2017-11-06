@@ -161,7 +161,6 @@ static TRANSFORM_RULE *new_transform_rule (LOCALE_DATA * ld);
 static CUBRID_TAILOR_RULE *new_collation_cubrid_rule (LOCALE_DATA * ld);
 static void locale_alloc_collation_id (COLL_TAILORING * coll_tail);
 static int locale_check_collation_id (const COLL_TAILORING * coll_tail);
-static void locale_destroy_collation (LOCALE_COLLATION * lc);
 
 static void print_debug_start_el (void *data, const char **attrs, const char *msg, const int status);
 static void print_debug_end_el (void *data, const char *msg, const int status);
@@ -346,9 +345,11 @@ XML_ELEMENT_DEF ldml_elem_ldml = { "ldml", 1, (ELEM_START_FUNC) (&start_element_
 XML_ELEMENT_DEF ldml_elem_dates = { "ldml dates", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_calendars = { "ldml dates calendars", 3, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_calendar = { "ldml dates calendars calendar", 4, (ELEM_START_FUNC) (&start_calendar),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
@@ -357,46 +358,56 @@ XML_ELEMENT_DEF ldml_elem_dateFormatCUBRID = { "ldml dates calendars calendar da
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_dateFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_timeFormatCUBRID = { "ldml dates calendars calendar timeFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timeFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_datetimeFormatCUBRID = { "ldml dates calendars calendar datetimeFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_datetimeFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_timestampFormatCUBRID = { "ldml dates calendars calendar timestampFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timestampFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_timetzFormatCUBRID = { "ldml dates calendars calendar timetzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timetzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_datetimetzFormatCUBRID = { "ldml dates calendars calendar datetimetzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_datetimetzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_timestamptzFormatCUBRID = { "ldml dates calendars calendar timestamptzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timestamptzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_months = { "ldml dates calendars calendar months", 5,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_monthContext = { "ldml dates calendars calendar months monthContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_monthWidth = { "ldml dates calendars calendar months monthContext monthWidth", 7,
   (ELEM_START_FUNC) (&start_month_day_Width),
   (ELEM_END_FUNC) (&end_month_day_Width), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_month = { "ldml dates calendars calendar months monthContext monthWidth month", 8,
   (ELEM_START_FUNC) (&start_month), (ELEM_END_FUNC) (&end_month),
   (ELEM_DATA_FUNC) (&handle_data)
@@ -406,14 +417,17 @@ XML_ELEMENT_DEF ldml_elem_days = { "ldml dates calendars calendar days", 5,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_dayContext = { "ldml dates calendars calendar days dayContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_dayWidth = { "ldml dates calendars calendar days dayContext dayWidth", 7,
   (ELEM_START_FUNC) (&start_month_day_Width),
   (ELEM_END_FUNC) (&end_month_day_Width), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_day = { "ldml dates calendars calendar days dayContext dayWidth day", 8,
   (ELEM_START_FUNC) (&start_day), (ELEM_END_FUNC) (&end_day),
   (ELEM_DATA_FUNC) (&handle_data)
@@ -423,10 +437,12 @@ XML_ELEMENT_DEF ldml_elem_dayPeriods = { "ldml dates calendars calendar dayPerio
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_dayPeriodContext = { "ldml dates calendars calendar dayPeriods dayPeriodContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_dayPeriodWidth = {
   "ldml dates calendars calendar dayPeriods dayPeriodContext dayPeriodWidth",
   7,
@@ -434,6 +450,7 @@ XML_ELEMENT_DEF ldml_elem_dayPeriodWidth = {
   (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_dayPeriod = {
   "ldml dates calendars calendar dayPeriods dayPeriodContext dayPeriodWidth dayPeriod",
   8,
@@ -444,18 +461,23 @@ XML_ELEMENT_DEF ldml_elem_dayPeriod = {
 XML_ELEMENT_DEF ldml_elem_numbers = { "ldml numbers", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_numbers_symbols = { "ldml numbers symbols", 3, (ELEM_START_FUNC) (&start_numbers_symbols),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_symbol_decimal = { "ldml numbers symbols decimal", 4, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_number_symbol), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_symbol_group = { "ldml numbers symbols group", 4, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_number_symbol), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_currencies = { "ldml numbers currencies", 3, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_currency = { "ldml numbers currencies currency", 4,
   (ELEM_START_FUNC) (&start_currency),
   (ELEM_END_FUNC) (&end_element_ok), NULL
@@ -464,56 +486,68 @@ XML_ELEMENT_DEF ldml_elem_currency = { "ldml numbers currencies currency", 4,
 XML_ELEMENT_DEF ldml_elem_collations = { "ldml collations", 2, (ELEM_START_FUNC) (&start_collations),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation = { "ldml collations collation", 3, (ELEM_START_FUNC) (&start_one_collation),
   (ELEM_END_FUNC) (&end_one_collation), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_rules = { "ldml collations collation rules", 4,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_settings = { "ldml collations collation settings", 4,
   (ELEM_START_FUNC) (&start_collation_settings),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset = { "ldml collations collation rules reset", 5,
   (ELEM_START_FUNC) (&start_collation_reset),
   (ELEM_END_FUNC) (&end_collation_reset), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_p = { "ldml collations collation rules p", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_s = { "ldml collations collation rules s", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_t = { "ldml collations collation rules t", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_i = { "ldml collations collation rules i", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_pc = { "ldml collations collation rules pc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_sc = { "ldml collations collation rules sc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_tc = { "ldml collations collation rules tc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_ic = { "ldml collations collation rules ic", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
@@ -524,30 +558,36 @@ XML_ELEMENT_DEF ldml_elem_collation_x = { "ldml collations collation rules x", 5
   (ELEM_START_FUNC) (&start_collation_x), (ELEM_END_FUNC) (&end_collation_x),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_p = { "ldml collations collation rules x p", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_s = { "ldml collations collation rules x s", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_t = { "ldml collations collation rules x t", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_i = { "ldml collations collation rules x i", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_extend = { "ldml collations collation rules x extend", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_extend), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_context = { "ldml collations collation rules x context", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_context), (ELEM_DATA_FUNC) (&handle_data)
@@ -557,138 +597,168 @@ XML_ELEMENT_DEF ldml_elem_collation_reset_first_variable = { "ldml collations co
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_variable = { "ldml collations collation rules reset last_variable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_first_primary_ignorable =
   { "ldml collations collation rules reset first_primary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_primary_ignorable =
   { "ldml collations collation rules reset last_primary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_first_secondary_ignorable =
   { "ldml collations collation rules reset first_secondary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_secondary_ignorable =
   { "ldml collations collation rules reset last_secondary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_first_tertiary_ignorable =
   { "ldml collations collation rules reset first_tertiary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_tertiary_ignorable =
   { "ldml collations collation rules reset last_tertiary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_first_non_ignorable =
   { "ldml collations collation rules reset first_non_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_non_ignorable =
   { "ldml collations collation rules reset last_non_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_first_trailing = { "ldml collations collation rules reset first_trailing", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_trailing = { "ldml collations collation rules reset last_trailing", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules = {
   "ldml collations collation cubridrules", 4,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set = { "ldml collations collation cubridrules set", 5,
   (ELEM_START_FUNC) (&start_collation_cubrid_rule),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ch = { "ldml collations collation cubridrules set ch", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_sch = { "ldml collations collation cubridrules set sch", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ech = { "ldml collations collation cubridrules set ech", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_ech_ecp),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_cp = { "ldml collations collation cubridrules set cp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_scp = { "ldml collations collation cubridrules set scp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ecp = { "ldml collations collation cubridrules set ecp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_ech_ecp),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_w = { "ldml collations collation cubridrules set w", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_w_wr),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_wr = { "ldml collations collation cubridrules set wr", 6,
   (ELEM_START_FUNC) (&start_collation_cubrid_rule_set_wr),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_w_wr),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabets = { "ldml alphabets", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_include_collation = { "ldml collations include", 3,
   (ELEM_START_FUNC) (&start_include_collation),
   (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet = { "ldml alphabets alphabet", 3, (ELEM_START_FUNC) (&start_one_alphabet),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_upper = { "ldml alphabets alphabet u", 4,
   (ELEM_START_FUNC) (&start_upper_case_rule),
   (ELEM_END_FUNC) (&end_case_rule), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_upper_src =
   { "ldml alphabets alphabet u s", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_upper_dest =
   { "ldml alphabets alphabet u d", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_lower = { "ldml alphabets alphabet l", 4,
   (ELEM_START_FUNC) (&start_lower_case_rule),
   (ELEM_END_FUNC) (&end_case_rule), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_lower_src =
   { "ldml alphabets alphabet l s", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_lower_dest =
   { "ldml alphabets alphabet l d", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
@@ -2161,8 +2231,6 @@ start_collation_cubrid_rule (void *data, const char **attr)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   CUBRID_TAILOR_RULE *ct_rule = NULL;
-  char *ref_buf_p = NULL;
-  int ref_buf_size = 0;
 
   assert (data != NULL);
 
@@ -2841,7 +2909,6 @@ end_collation_x_context (void *data, const char *el_name)
     {
       char msg[ERR_MSG_SIZE];
       int rule_id = curr_coll_tail->count_rules;
-      TAILOR_RULE *t_rule = &(curr_coll_tail->rules[rule_id]);
 
       snprintf (msg, sizeof (msg) - 1, "* Rule %d *", rule_id);
       PRINT_DEBUG_END (data, msg, 0);
@@ -2868,7 +2935,6 @@ start_collation_logical_pos (void *data, const char **attr)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
-  char *att_val = NULL;
 
   assert (data != NULL);
 
@@ -5268,8 +5334,6 @@ error:
 static int
 save_contraction_to_C_file (FILE * fp, COLL_CONTRACTION * c, bool use_expansion, bool use_level_4)
 {
-  int res = 0;
-
   assert (c != NULL);
   assert (fp != NULL);
 
@@ -5724,7 +5788,6 @@ static int
 locale_save_console_conv_to_C_file (FILE * fp, LOCALE_DATA * ld)
 {
   int i;
-  int res = 0;
 
   TEXT_CONVERSION *tc;
 

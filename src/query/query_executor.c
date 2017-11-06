@@ -641,8 +641,6 @@ static int qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLA
 					     UPDDEL_CLASS_INFO_INTERNAL * class_info, int op_type, OID * current_oid);
 static int qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 					  UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid);
-static HEAP_SCANCACHE *qexec_reset_caches (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext,
-					   UPDDEL_CLASS_INFO_INTERNAL * class_, int op_type);
 static int qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
 					     AGGREGATE_TYPE * aggregate_list, HIERARCHY_AGGREGATE_HELPER ** helpers,
 					     int *helpers_countp);
@@ -658,8 +656,6 @@ static TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES
 					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
 static int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					 bool is_final);
-static int qexec_tuple_descr_to_topn_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * tpldescr,
-					    TOPN_TUPLE * tuple);
 static void qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count);
 static int qexec_get_orderbynum_upper_bound (THREAD_ENTRY * tread_p, PRED_EXPR * pred, VAL_DESCR * vd,
 					     DB_VALUE * ubound);

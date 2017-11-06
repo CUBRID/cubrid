@@ -230,7 +230,9 @@ static THREAD_DAEMON *thread_Daemons = NULL;
     } \
   while (0)
 
+#if defined(WINDOWS)
 static int thread_initialize_sync_object (void);
+#endif /* WINDOWS */
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex);
 static void thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor);
 
@@ -3163,13 +3165,8 @@ thread_check_ha_delay_info_thread (void *arg_p)
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  struct timeval cur_time = {
-    0, 0
-  };
-
-  struct timespec wakeup_time = {
-    0, 0
-  };
+  struct timeval cur_time = { 0, 0 };
+  struct timespec wakeup_time = { 0, 0 };
 
   int rv;
   INT64 tmp_usec;
@@ -3181,7 +3178,6 @@ thread_check_ha_delay_info_thread (void *arg_p)
   int acceptable_delay_in_secs;
   int curr_delay_in_secs;
   HA_SERVER_STATE server_state;
-  char buffer[LINE_MAX];
 #endif
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
@@ -3556,22 +3552,14 @@ thread_flush_control_thread (void *arg_p)
 #endif /* !HPUX */
   int rv;
 
-  struct timespec wakeup_time = {
-    0, 0
-  };
+  struct timespec wakeup_time = { 0, 0 };
 
   struct timeval begin_tv, end_tv, diff_tv;
   INT64 diff_usec;
   int wakeup_interval_in_msec = 50;	/* 1 msec */
 
-  int elapsed_usec = 0;
-  int usec_consumed = 0;
-  int usec_consumed_sum = 0;
   int token_gen = 0;
-  int token_gen_sum = 0;
-  int token_shared = 0;
   int token_consumed = 0;
-  int token_consumed_sum = 0;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 

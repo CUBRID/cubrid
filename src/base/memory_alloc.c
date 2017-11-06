@@ -425,7 +425,10 @@ void *
 db_private_alloc_release (void *thrd, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
+#if !defined (CS_MODE)
   void *ptr = NULL;
+#endif /* !CS_MODE */
+
 #if defined (SERVER_MODE)
   HL_HEAPID heap_id;
 #endif
@@ -543,7 +546,10 @@ void *
 db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
+#if !defined (CS_MODE)
   void *new_ptr = NULL;
+#endif /* !CS_MODE */
+
 #if defined (SERVER_MODE)
   HL_HEAPID heap_id;
 #endif

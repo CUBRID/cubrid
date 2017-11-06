@@ -3022,7 +3022,6 @@ emit_partition_info (MOP clsobj)
   const char *name;
   SM_CLASS *class_, *subclass;
   DB_OBJLIST *user;
-  char *pexpr_str = NULL;
 
   if (clsobj == NULL)
     {
