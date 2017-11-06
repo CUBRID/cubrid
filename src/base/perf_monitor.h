@@ -62,7 +62,8 @@
 #define PERFMON_ACTIVE_LOCK_OBJECT                4
 #define PERFMON_ACTIVE_PB_HASH_ANCHOR             8
 #define PERFMON_ACTIVE_PB_VICTIMIZATION           16
-#define PERFMON_ACTIVE_MAX_VALUE                  31	/* must update when adding new conditions */
+#define PERFMON_ACTIVE_FLUSHED_BLOCK_VOLUMES      32
+#define PERFMON_ACTIVE_MAX_VALUE                  63	/* must update when adding new conditions */
 
 /* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \
@@ -136,6 +137,7 @@
    + (rec_type) * PERF_SNAPSHOT_VISIBILITY_CNT + (visibility))
 
 #define PERF_OBJ_LOCK_STAT_COUNTERS (SCH_M_LOCK + 1)
+#define PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT 10
 
 #define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
 
@@ -618,9 +620,10 @@ typedef enum
   PSTAT_PBX_FIX_TIME_COUNTERS,
   PSTAT_MVCC_SNAPSHOT_COUNTERS,
   PSTAT_OBJ_LOCK_TIME_COUNTERS,
+  PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES,
 
   /* Only complex stats can be added here. The other type of statistics must be inserted before the complex stats. */
-  PSTAT_COUNT = PSTAT_OBJ_LOCK_TIME_COUNTERS + 1
+  PSTAT_COUNT = PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES + 1
 } PERF_STAT_ID;
 
 /* All globals on statistics will be here. */
@@ -1522,6 +1525,7 @@ extern void perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_typ
 extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 					  int cond_type, UINT64 amount);
 extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
+extern void perfmon_db_flushed_block_volumes (THREAD_ENTRY * thread_p, int num_volumes);
 
 #endif /* SERVER_MODE || SA_MODE */
 

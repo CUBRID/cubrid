@@ -2549,6 +2549,11 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
     {
       fileio_synchronize (thread_p, block->to_flush_vdes[i], NULL);
     }
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_FLUSHED_BLOCK_VOLUMES))
+    {
+      perfmon_db_flushed_block_volumes (thread_p, block->count_to_flush_vdes);
+    }
   block->count_to_flush_vdes = 0;
 
   if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
