@@ -38,6 +38,10 @@
 #include "error_manager.h"
 #include "loader.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /*#define PARSER_DEBUG*/
 #ifdef PARSER_DEBUG
 #define DBG_PRINT(s) printf("rule: %s\n", (s));

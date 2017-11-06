@@ -749,7 +749,7 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, u
 
   if (server_name)
     {
-      length = strlen (server_name) + 1;
+      length = (int) strlen (server_name) + 1;
     }
   else
     {

@@ -77,6 +77,10 @@
 #include "object_accessor.h"
 #include "boot_cl.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define UNIQUE_SAVEPOINT_NAME "aDDuNIQUEcONSTRAINT"
 #define UNIQUE_SAVEPOINT_NAME2 "dELETEcLASSmOP"
 #define UNIQUE_SAVEPOINT_SM_TRUNCATE "SmtRUnCATE"

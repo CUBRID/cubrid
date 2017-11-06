@@ -1965,7 +1965,7 @@ get_server_state_from_master (CSS_CONN_ENTRY * conn, const char *db_name)
       return SERVER_STATE_DEAD;
     }
 
-  error = css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, strlen (db_name) + 1);
+  error = css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, (int) strlen (db_name) + 1);
   if (error != NO_ERRORS)
     {
       return SERVER_STATE_DEAD;

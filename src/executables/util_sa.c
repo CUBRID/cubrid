@@ -68,6 +68,10 @@
 #include <dlfcn.h>
 #endif
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define MAX_LINE_LEN            4096
 
 #define COMMENT_CHAR            '-'

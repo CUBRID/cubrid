@@ -24,7 +24,7 @@
 
 template <typename Func, typename ... Args>
 int
-test_module (int & global_error, Func && f, Args &&... args)
+test_module (int &global_error, Func &&f, Args &&... args)
 {
   std::cout << std::endl;
   std::cout << "  start testing module ";
@@ -41,7 +41,7 @@ test_module (int & global_error, Func && f, Args &&... args)
     }
   return err;
 }
- 
+
 int main ()
 {
   int global_error = 0;

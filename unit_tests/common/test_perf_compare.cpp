@@ -32,7 +32,8 @@
 #include <ostream>
 #include <iomanip>
 
-namespace test_common {
+namespace test_common
+{
 
 const char *DECIMAL_SEPARATOR = ".";
 const char *TIME_UNIT = " usec";
@@ -44,8 +45,8 @@ const size_t TEST_RESULT_VALUE_TOTAL_LENGTH =
   TEST_RESULT_VALUE_PRINT_LENGTH + TEST_RESTUL_VALUE_PRECISION_LENGTH + std::strlen (DECIMAL_SEPARATOR)
   + std::strlen (TIME_UNIT);
 
-perf_compare::perf_compare (const string_collection & scenarios,
-                                                    const string_collection & steps) :
+perf_compare::perf_compare (const string_collection &scenarios,
+                            const string_collection &steps) :
   m_scenario_names (scenarios),
   m_step_names (steps)
 {
@@ -79,7 +80,7 @@ perf_compare::perf_compare (const string_collection & scenarios,
 * concurrently. */
 
 void
-perf_compare::print_results (std::ostream & output)
+perf_compare::print_results (std::ostream &output)
 {
   print_result_header (output);
   for (size_t row = 0; row < m_step_names.get_count (); row++)
@@ -92,7 +93,7 @@ perf_compare::print_results (std::ostream & output)
 /* check where first scenario was worse than others and print warnings */
 
 void
-perf_compare::print_warnings (std::ostream & output)
+perf_compare::print_warnings (std::ostream &output)
 {
   bool no_warnings = true;
   for (size_t row = 0; row < m_step_names.get_count (); row++)
@@ -108,7 +109,7 @@ perf_compare::print_warnings (std::ostream & output)
 /* print both results and warnings */
 
 void
-perf_compare::print_results_and_warnings (std::ostream & output)
+perf_compare::print_results_and_warnings (std::ostream &output)
 {
   print_results (output);
   print_warnings (output);
@@ -123,7 +124,7 @@ perf_compare::get_step_count (void)
 }
 
 inline void
-perf_compare::print_value (value_type value, std::ostream & output)
+perf_compare::print_value (value_type value, std::ostream &output)
 {
   output << std::right << std::setw (TEST_RESULT_VALUE_PRINT_LENGTH) << value / 1000;
   output << DECIMAL_SEPARATOR;
@@ -132,7 +133,7 @@ perf_compare::print_value (value_type value, std::ostream & output)
 }
 
 inline void
-perf_compare::print_leftmost_column (const char * str, std::ostream & output)
+perf_compare::print_leftmost_column (const char *str, std::ostream &output)
 {
   output << "    ";   // prefix
   output << std::left << std::setw (m_leftmost_column_length) << str;
@@ -140,13 +141,13 @@ perf_compare::print_leftmost_column (const char * str, std::ostream & output)
 }
 
 inline void
-perf_compare::print_alloc_name_column (const char * str, std::ostream & output)
+perf_compare::print_alloc_name_column (const char *str, std::ostream &output)
 {
   output << std::right << std::setw (TEST_RESULT_VALUE_TOTAL_LENGTH) << str;
 }
 
 inline void
-perf_compare::print_result_header (std::ostream & output)
+perf_compare::print_result_header (std::ostream &output)
 {
   print_leftmost_column ("Results", output);
 
@@ -158,7 +159,7 @@ perf_compare::print_result_header (std::ostream & output)
 }
 
 inline void
-perf_compare::print_result_row (size_t row, std::ostream & output)
+perf_compare::print_result_row (size_t row, std::ostream &output)
 {
   print_leftmost_column (m_step_names.get_name (row), output);
 
@@ -170,17 +171,17 @@ perf_compare::print_result_row (size_t row, std::ostream & output)
 }
 
 inline void
-perf_compare::print_warning_header (bool & no_warnings, std::ostream & output)
+perf_compare::print_warning_header (bool &no_warnings, std::ostream &output)
 {
   if (no_warnings)
     {
-    output << "    Warnings:" << std::endl;
-    no_warnings = false;
+      output << "    Warnings:" << std::endl;
+      no_warnings = false;
     }
 }
 
 inline void
-perf_compare::check_row_and_print_warning (size_t row, bool & no_warnings, std::ostream & output)
+perf_compare::check_row_and_print_warning (size_t row, bool &no_warnings, std::ostream &output)
 {
   bool found_better = false;
 

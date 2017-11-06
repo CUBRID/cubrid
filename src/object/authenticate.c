@@ -71,6 +71,10 @@
 #include "network_interface_cl.h"
 #include "dbval.h"		/* this must be the last header file included */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #if defined(SA_MODE)
 extern bool catcls_Enable;
 #endif /* SA_MODE */

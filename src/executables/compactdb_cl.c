@@ -264,7 +264,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	}
       else
 	{
-	  len = strlen (buffer);
+	  len = (int) strlen (buffer);
 	}
 
       if (len < 1)

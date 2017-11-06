@@ -325,15 +325,15 @@ extern int free_space (const char *, int);
 #else /* WINDOWS */
 
 #if !defined (HAVE_CTIME_R)
-#  error "HAVE_CTIME_R"
+#error "HAVE_CTIME_R"
 #endif
 
 #if !defined (HAVE_LOCALTIME_R)
-#  error "HAVE_LOCALTIME_R"
+#error "HAVE_LOCALTIME_R"
 #endif
 
 #if !defined (HAVE_DRAND48_R)
-#  error "HAVE_DRAND48_R"
+#error "HAVE_DRAND48_R"
 #endif
 
 
@@ -452,7 +452,15 @@ extern int itona (int i, char *s, size_t n);
 
 extern char *stristr (const char *s, const char *find);
 
+#if 1
+#define SUPPRESS_STRLEN_WARNING
+#else /* !1 */
+/* TODO: this causes a compile error on windows, since it uses in its headers std::strlen. anyway, this is an ugly hack
+ *       too.
+ *       now, we have hundreds of annoying warnings of casts from size_t to int. so either rename this define and all
+ *       its usages, or replaces all occurrences of strlen with (int) strlen. either way, all project is changed. */
 #define strlen(s1)  ((int) strlen(s1))
+#endif /* !1 */
 #define CAST_STRLEN (int)
 #define CAST_BUFLEN (int)
 #if defined(_FILE_OFFSET_BITS) && _FILE_OFFSET_BITS == 32
@@ -1011,15 +1019,67 @@ extern "C"
 #endif
 
 #ifdef __GNUC__
-#  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+#define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
 #else
-#  define UNUSED(x) x
+#define UNUSED(x) x
 #endif
 
 #ifdef __GNUC__
-#  define UNUSED_FUNCTION(x) __attribute__((__unused__)) UNUSED_ ## x
+#define UNUSED_FUNCTION(x) __attribute__((__unused__)) UNUSED_ ## x
 #else
-#  define UNUSED_FUNCTION(x) x
+#define UNUSED_FUNCTION(x) x
 #endif
+
+/* casts for C++ and C to be used in *.c files; cpp files should use C++ specific syntax. */
+/* todo: we should split porting.h into several files to avoid recompiling whole project every time we change
+ *       something. when we do that, we can avoid including dangerous macro's like these in header files.
+ *       so, try not to include this in header files. */
+#ifdef STATIC_CAST
+#error "STATIC_CAST definition conflict"
+#else				/* !STATIC_CAST */
+#ifdef __cplusplus
+#define STATIC_CAST(dest_type, expr) static_cast<dest_type>(expr)
+#else				/* !__cplusplus */
+#define STATIC_CAST(dest_type, expr) ((dest_type) (expr))
+#endif				/* !__cplusplus */
+#endif				/* !STATIC_CAST */
+
+#ifdef CONST_CAST
+#error "CONST_CAST definition conflict"
+#else				/* !CONST_CAST */
+#ifdef __cplusplus
+#define CONST_CAST(dest_type, expr) const_cast<dest_type>(expr)
+#else				/* !__cplusplus */
+#define CONST_CAST(dest_type, expr) ((dest_type) (expr))
+#endif				/* !__cplusplus */
+#endif				/* !CONST_CAST */
+
+#ifdef DYNAMIC_CAST
+#error "DYNAMIC_CAST definition conflict"
+#else				/* !DYNAMIC_CAST */
+#ifdef __cplusplus
+#define DYNAMIC_CAST(dest_type, expr) dynamic_cast<dest_type>(expr)
+#else				/* !__cplusplus */
+#define DYNAMIC_CAST(dest_type, expr) ((dest_type) (expr))
+#endif				/* !__cplusplus */
+#endif				/* !DYNAMIC_CAST */
+
+#ifdef REINTERPRET_CAST
+#error "REINTERPRET_CAST definition conflict"
+#else				/* !REINTERPRET_CAST */
+#ifdef __cplusplus
+#define REINTERPRET_CAST(dest_type, expr) reinterpret_cast<dest_type>(expr)
+#else				/* !__cplusplus */
+#define REINTERPRET_CAST(dest_type, expr) ((dest_type) (expr))
+#endif				/* !__cplusplus */
+#endif				/* !REINTERPRET_CAST */
+
+
+/* Use REFP to declare a reference to pointer in *.c files without indent complaining. Do not use it in .cpp files. */
+#ifdef REFPTR
+#error "REFP definition conflict"
+#else				/* !REFPTR */
+#define REFPTR(T, name) T *& name
+#endif				/* !REFPTR */
 
 #endif				/* _PORTING_H_ */

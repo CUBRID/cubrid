@@ -976,6 +976,12 @@ void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
 		int ismedia_crash, BO_RESTART_ARG * r_args)
 {
+  er_log_debug (ARG_FILE_LINE, "LOG INITIALIZE\n" "\tdb_fullname = %s \n" "\tlogpath = %s \n"
+		"\tprefix_logname = %s \n" "\tismedia_crash = %d \n",
+		db_fullname != NULL ? db_fullname : "(UNKNOWN)",
+		logpath != NULL ? logpath : "(UNKNOWN)",
+		prefix_logname != NULL ? prefix_logname : "(UNKNOWN)", ismedia_crash);
+
   (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash, r_args, false);
 
   log_No_logging = prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
@@ -2193,6 +2199,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL);
   if (node == NULL)
     {
+      assert (false);
       return;
     }
 
@@ -3326,7 +3333,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       return NULL;
     }
 
-  length = strlen (savept_name) + 1;
+  length = (int) strlen (savept_name) + 1;
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_SAVEPOINT, RV_NOT_DEFINED, NULL, length, (char *) savept_name, 0,
@@ -5039,7 +5046,7 @@ xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_
   LOB_LOCATOR_ENTRY *entry;
   LOB_SAVEPOINT_ENTRY *savept;
   char *key;
-  int key_len;
+  size_t key_len;
 
   assert (log_is_valid_locator (locator));
 
@@ -7361,7 +7368,6 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   LOG_CS_ENTER (thread_p);
 
   xlogtb_dump_trantable (thread_p, out_fp);
-  logpb_dump (thread_p, out_fp);
   logpb_flush_pages_direct (thread_p);
   logpb_flush_header (thread_p);
 

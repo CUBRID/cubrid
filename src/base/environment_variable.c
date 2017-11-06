@@ -515,7 +515,7 @@ void
 envvar_trim_char (char *env_val, const int c)
 {
   char *buf;
-  int size;
+  size_t size;
 
   if (env_val == NULL)
     {

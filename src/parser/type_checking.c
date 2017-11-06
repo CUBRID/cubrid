@@ -4939,7 +4939,163 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
+    case PT_JSON_CONTAINS:
+      num = 0;
 
+      /* two overloads */
+
+      /* json_contains (target, candidate, path) */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_JSON;
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      /* json_contains (target, candidate) */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_JSON;
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_NONE;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+    case PT_JSON_TYPE:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_CHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+    case PT_JSON_VALID:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+    case PT_JSON_DEPTH:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+    case PT_JSON_LENGTH:
+      num = 0;
+
+      /* two overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_NONE;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+    case PT_JSON_EXTRACT:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_JSON;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+    case PT_JSON_SEARCH:
+      num = 0;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_CHAR;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_JSON;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
     default:
       return false;
     }
@@ -6934,6 +7090,13 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_CRC32:
     case PT_SCHEMA_DEF:
     case PT_CONV_TZ:
+    case PT_JSON_CONTAINS:
+    case PT_JSON_TYPE:
+    case PT_JSON_EXTRACT:
+    case PT_JSON_VALID:
+    case PT_JSON_LENGTH:
+    case PT_JSON_DEPTH:
+    case PT_JSON_SEARCH:
       return false;
 
     default:
@@ -10769,6 +10932,16 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
     {
       common_type = PT_TYPE_DOUBLE;
     }
+  else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
+	   || (arg1_type == PT_TYPE_JSON && PT_IS_NUMERIC_TYPE (arg2_type)))
+    {
+      common_type = PT_TYPE_JSON;
+    }
+  else if ((PT_IS_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
+	   || (arg1_type == PT_TYPE_JSON && PT_IS_STRING_TYPE (arg2_type)))
+    {
+      common_type = PT_TYPE_JSON;
+    }
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_MAYBE)
 	   || (PT_IS_NUMERIC_TYPE (arg2_type) && arg1_type == PT_TYPE_MAYBE))
     {
@@ -12260,7 +12433,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       break;
 
     case PT_FUNCTION_HOLDER:
-      if (node->info.function.function_type == F_ELT || node->info.function.function_type == F_INSERT_SUBSTRING)
+      if (node->info.function.function_type == F_ELT || node->info.function.function_type == F_INSERT_SUBSTRING
+	  || node->info.function.function_type == F_JSON_OBJECT || node->info.function.function_type == F_JSON_ARRAY
+	  || node->info.function.function_type == F_JSON_INSERT || node->info.function.function_type == F_JSON_REMOVE
+	  || node->info.function.function_type == F_JSON_MERGE)
 	{
 	  assert (dt == NULL);
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
@@ -12836,9 +13012,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   bool is_agg_function = false;
   PT_NODE *prev = NULL;
   PT_NODE *arg = NULL;
+
   is_agg_function = pt_is_aggregate_function (parser, node);
   arg_list = node->info.function.arg_list;
   fcode = node->info.function.function_type;
+
   if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM && fcode != PT_ROW_NUMBER && fcode != PT_RANK
       && fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK)
     {
@@ -13039,6 +13217,276 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  arg_type = PT_TYPE_INTEGER;
 	  node->info.function.arg_list = arg_list;
 	}
+      break;
+
+    case F_JSON_OBJECT:
+      {
+	PT_TYPE_ENUM supported_key_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_value_types[] =
+	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM unsupported_type;
+	unsigned int num_bad = 0, len, i, found_supported = 0;
+	int supported_value_types_len = sizeof (supported_value_types) / sizeof (supported_value_types[0]);
+	int supported_key_types_len = sizeof (supported_key_types) / sizeof (supported_key_types[0]);
+
+	PT_NODE *arg = arg_list;
+	PT_TYPE_ENUM *current_types = supported_value_types;
+	unsigned int index = 0;
+
+	while (arg)
+	  {
+	    if (index % 2 == 0)
+	      {
+		current_types = supported_key_types;
+		len = supported_key_types_len;
+	      }
+	    else
+	      {
+		current_types = supported_value_types;
+		len = supported_value_types_len;
+	      }
+	    found_supported = 0;
+	    for (i = 0; i < len; i++)
+	      {
+		if (arg->type_enum == current_types[i])
+		  {
+		    found_supported = 1;
+		    break;
+		  }
+	      }
+	    if (!found_supported)
+	      {
+		unsupported_type = arg->type_enum;
+		break;
+	      }
+
+	    arg = arg->next;
+	    index++;
+	  }
+
+	if (!found_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+	  }
+	else
+	  {
+	    arg_type = PT_TYPE_JSON;
+	  }
+      }
+      break;
+
+    case F_JSON_ARRAY:
+      {
+	PT_TYPE_ENUM supported_types[] =
+	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_NUMERIC, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM unsupported_type;
+	int len = sizeof (supported_types) / sizeof (supported_types[0]);
+	int i, found_supported_type = 0;
+
+	PT_NODE *arg = arg_list;
+
+	while (arg)
+	  {
+	    found_supported_type = 0;
+	    for (i = 0; i < len; i++)
+	      {
+		if (supported_types[i] == arg->type_enum)
+		  {
+		    found_supported_type = 1;
+		    break;
+		  }
+	      }
+	    if (!found_supported_type)
+	      {
+		unsupported_type = arg->type_enum;
+		break;
+	      }
+	    arg = arg->next;
+	  }
+
+	if (!found_supported_type)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+	  }
+	else
+	  {
+	    arg_type = PT_TYPE_JSON;
+	  }
+      }
+      break;
+
+    case F_JSON_MERGE:
+      {
+	PT_TYPE_ENUM supported_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM unsupported_type;
+	int len = sizeof (supported_types) / sizeof (supported_types[0]);
+	int i, found_supported_type = 0;
+
+	PT_NODE *arg = arg_list;
+
+	while (arg)
+	  {
+	    found_supported_type = 0;
+	    for (i = 0; i < len; i++)
+	      {
+		if (supported_types[i] == arg->type_enum)
+		  {
+		    found_supported_type = 1;
+		    break;
+		  }
+	      }
+	    if (!found_supported_type)
+	      {
+		unsupported_type = arg->type_enum;
+		break;
+	      }
+	    arg = arg->next;
+	  }
+
+	if (!found_supported_type)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+	  }
+	else
+	  {
+	    arg_type = PT_TYPE_JSON;
+	  }
+      }
+      break;
+
+    case F_JSON_INSERT:
+      {
+	PT_TYPE_ENUM supported_json_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_val_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM unsupported_type;
+	unsigned int num_bad = 0, len, i, found_supported = 0;
+	unsigned int supported_json_types_len = sizeof (supported_json_types) / sizeof (supported_json_types[0]);
+	unsigned int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
+	unsigned int supported_val_types_len = sizeof (supported_val_types) / sizeof (supported_val_types[0]);
+	unsigned int index = 0;
+
+	PT_NODE *arg = arg_list;
+	const PT_TYPE_ENUM *current_types = supported_val_types;
+
+	for (i = 0; i < supported_json_types_len; i++)
+	  {
+	    if (arg->type_enum == supported_json_types[i])
+	      {
+		found_supported = 1;
+		break;
+	      }
+	  }
+
+	if (!found_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
+	    break;
+	  }
+
+	arg = arg->next;
+	while (arg)
+	  {
+	    if (index % 2 == 0)
+	      {
+		current_types = supported_path_types;
+		len = supported_path_types_len;
+	      }
+	    else
+	      {
+		current_types = supported_val_types;
+		len = supported_val_types_len;
+	      }
+	    found_supported = 0;
+	    for (i = 0; i < len; i++)
+	      {
+		if (arg->type_enum == current_types[i])
+		  {
+		    found_supported = 1;
+		    break;
+		  }
+	      }
+	    if (!found_supported)
+	      {
+		unsupported_type = arg->type_enum;
+		break;
+	      }
+
+	    arg = arg->next;
+	    index++;
+	  }
+	if (!found_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+	  }
+      }
+      break;
+
+    case F_JSON_REMOVE:
+      {
+	PT_TYPE_ENUM supported_json_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_NULL, PT_TYPE_MAYBE };
+	PT_TYPE_ENUM unsupported_type;
+	unsigned int num_bad = 0, i, found_supported = 0;
+	unsigned int supported_json_types_len = sizeof (supported_json_types) / sizeof (supported_json_types[0]);
+	unsigned int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
+	PT_NODE *arg = arg_list;
+
+	for (i = 0; i < supported_json_types_len; i++)
+	  {
+	    if (arg->type_enum == supported_json_types[i])
+	      {
+		found_supported = 1;
+		break;
+	      }
+	  }
+
+	if (!found_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
+	    break;
+	  }
+
+	arg = arg->next;
+	while (arg)
+	  {
+	    found_supported = 0;
+	    for (i = 0; i < supported_path_types_len; i++)
+	      {
+		if (arg->type_enum == supported_path_types[i])
+		  {
+		    found_supported = 1;
+		    break;
+		  }
+	      }
+	    if (!found_supported)
+	      {
+		unsupported_type = arg->type_enum;
+		break;
+	      }
+
+	    arg = arg->next;
+	  }
+
+	if (!found_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+	  }
+      }
       break;
 
     case F_ELT:
@@ -13366,7 +13814,13 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->data_type = NULL;
 
 	  break;
-
+	case F_JSON_OBJECT:
+	case F_JSON_ARRAY:
+	case F_JSON_INSERT:
+	case F_JSON_REMOVE:
+	case F_JSON_MERGE:
+	  node->type_enum = PT_TYPE_JSON;
+	  break;
 	case PT_MEDIAN:
 	case PT_PERCENTILE_CONT:
 	case PT_PERCENTILE_DISC:
@@ -14655,7 +15109,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  db_make_null (result);
 	}
       break;
-
     case PT_CONCAT_WS:
       if (DB_VALUE_TYPE (arg3) == DB_TYPE_NULL)
 	{
@@ -16838,7 +17291,59 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 0;
 	}
       break;
-
+    case PT_JSON_CONTAINS:
+      error = db_json_contains_dbval (arg1, arg2, (o3 == NULL ? NULL : arg3), result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
+    case PT_JSON_TYPE:
+      error = db_json_type_dbval (arg1, result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
+    case PT_JSON_EXTRACT:
+      error = db_json_extract_dbval (arg1, arg2, result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
+    case PT_JSON_VALID:
+      error = db_json_valid_dbval (arg1, result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
+    case PT_JSON_LENGTH:
+      error = db_json_length_dbval (arg1, (o2 == NULL ? NULL : arg2), result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
+    case PT_JSON_DEPTH:
+      error = db_json_depth_dbval (arg1, result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
+    case PT_JSON_SEARCH:
+      error = ER_DB_UNIMPLEMENTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
+      PT_ERRORc (parser, o1, er_msg ());
+      return 0;
     case PT_POWER:
       error = db_power_dbval (result, arg1, arg2);
       if (error != NO_ERROR)
@@ -18054,8 +18559,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	db_value_domain_init (result, DB_TYPE_TIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	t_source = tz_get_system_timezone ();
 	t_dest = tz_get_session_local_timezone ();
-	len_source = strlen (t_source);
-	len_dest = strlen (t_dest);
+	len_source = (int) strlen (t_source);
+	len_dest = (int) strlen (t_dest);
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	tmp_time = tmp_datetime->time / 1000;
 
@@ -18422,6 +18927,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    {
 	      db_make_null (result);
 	      return 1;
+	    }
+	  if (er_errid () != NO_ERROR)
+	    {
+	      PT_ERRORc (parser, o1, er_msg ());
 	    }
 	  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 		       pt_short_print (parser, o1), pt_show_type_enum (rTyp));
@@ -20150,6 +20659,46 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       error = db_string_elt (result, args, num_args);
       if (error != NO_ERROR)
 	{
+	  return 0;
+	}
+      break;
+    case F_JSON_OBJECT:
+      error = db_json_object (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, NULL, er_msg ());
+	  return 0;
+	}
+      break;
+    case F_JSON_ARRAY:
+      error = db_json_array (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, NULL, er_msg ());
+	  return 0;
+	}
+      break;
+    case F_JSON_INSERT:
+      error = db_json_insert (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, NULL, er_msg ());
+	  return 0;
+	}
+      break;
+    case F_JSON_REMOVE:
+      error = db_json_remove (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, NULL, er_msg ());
+	  return 0;
+	}
+      break;
+    case F_JSON_MERGE:
+      error = db_json_merge (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, NULL, er_msg ());
 	  return 0;
 	}
       break;

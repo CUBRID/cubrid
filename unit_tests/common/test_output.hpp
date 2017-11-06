@@ -25,10 +25,11 @@
 
 #include <string>
 
-namespace test_common {
+namespace test_common
+{
 
 /* Sync output */
-void sync_cout (const std::string & str);
+void sync_cout (const std::string &str);
 
 } // namespace test_common
 

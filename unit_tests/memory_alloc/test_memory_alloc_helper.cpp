@@ -26,7 +26,7 @@ namespace test_memalloc
 {
 
 const test_common::string_collection allocator_names ("Private", "Standard", "Malloc");
-const test_common::string_collection & get_allocator_names (void)
+const test_common::string_collection &get_allocator_names (void)
 {
   return allocator_names;
 }
@@ -54,7 +54,7 @@ custom_thread_entry::~custom_thread_entry ()
   thread_rc_track_finalize (&m_thread_entry);
 }
 
-THREAD_ENTRY * custom_thread_entry::get_thread_entry ()
+THREAD_ENTRY *custom_thread_entry::get_thread_entry ()
 {
   return &m_thread_entry;
 }

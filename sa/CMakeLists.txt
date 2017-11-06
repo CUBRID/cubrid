@@ -56,6 +56,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_temp.c
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
+  ${COMPAT_DIR}/db_json.cpp
   )
 
 set(BASE_SOURCES
@@ -277,6 +278,9 @@ set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
+if(UNIX)
+set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql.c
@@ -398,9 +402,7 @@ endif(UNIX)
 
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 
-if(UNIX)
-  add_dependencies(cubridsa ${EP_TARGETS})
-endif(UNIX)
+add_dependencies(cubridsa ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})

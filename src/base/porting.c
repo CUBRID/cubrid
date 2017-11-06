@@ -89,7 +89,7 @@ realpath (const char *path, char *resolved_path)
   struct stat stat_buf;
   char *tmp_str = _fullpath (resolved_path, path, _MAX_PATH);
   char tmp_path[_MAX_PATH] = { 0 };
-  int len = 0;
+  size_t len = 0;
 
   if (tmp_str != NULL)
     {

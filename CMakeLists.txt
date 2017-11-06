@@ -441,6 +441,10 @@ check_function_exists(open_memstream HAVE_OPEN_MEMSTREAM)
 check_function_exists(strdup HAVE_STRDUP)
 check_function_exists(strlcpy HAVE_STRLCPY)
 
+if(WIN32)
+  set(NOMINMAX 1)
+endif(WIN32)
+
 include(CheckIncludeFile)
 check_include_file(err.h HAVE_ERR_H)
 check_include_file(getopt.h HAVE_GETOPT_H)
@@ -574,7 +578,8 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter")
+
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
   endif(SIZEOF_OFF64_T)
@@ -618,7 +623,6 @@ endif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 
 # common definitions
 set(COMMON_DEFS SYSV MAXPATHLEN=1024 -D_REENTRANT)
-
 
 # For systemtap options
 if(ENABLE_SYSTEMTAP)
@@ -1016,6 +1020,25 @@ if(WIN32)
   list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
 
+# rapidjson
+ExternalProject_Add(rapidjson
+
+  # tried URL but archive gets downloaded every time. URL_MD5 may help
+  GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git"
+  GIT_TAG "v1.1.0"
+
+  # don't install
+  INSTALL_COMMAND ""
+
+  # don't build test, doc and examples
+  CMAKE_CACHE_ARGS -DRAPIDJSON_BUILD_TESTS:string=off
+                   -DRAPIDJSON_BUILD_DOC:string=off
+                   -DRAPIDJSON_BUILD_EXAMPLES:string=off
+)
+# add to include directories
+include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
+# add to external project targets
+list(APPEND EP_TARGETS rapidjson)
 
 # include subdirectories
 add_subdirectory(cas)

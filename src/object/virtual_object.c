@@ -2058,7 +2058,8 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
 {
   OID obj_id;
   DB_VALUE val;
-  int vobj_len = 0, len, rc = NO_ERROR;
+  int vobj_len = 0, rc = NO_ERROR;
+  size_t len;
   OR_BUF buf;
   char vobj_buf[MAX_STRING_OID_LENGTH], *bufp = vobj_buf;
 
@@ -2075,11 +2076,11 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
       return ER_OBJ_INVALID_ARGUMENT;
     }
 
-  /* guard against overruning vobj_buf */
+  /* guard against overrunning vobj_buf */
   len = strlen (string);
   if (len >= MAX_STRING_OID_LENGTH && (bufp = (char *) malloc (len)) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

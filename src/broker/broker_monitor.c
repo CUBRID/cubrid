@@ -74,6 +74,10 @@
 #include "shard_metadata.h"
 #include "util_func.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define		DEFAULT_CHECK_PERIOD		300	/* seconds */
 #define		MAX_APPL_NUM		100
 

@@ -58,6 +58,10 @@
 #include "show_meta.h"
 #include "db.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define DEFAULT_VAR "."
 
 struct pt_host_vars
@@ -710,7 +714,9 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
   if (node->node_type == PT_FUNCTION)
     {
       function_type = node->info.function.function_type;
-      if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT)
+      if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT || function_type == F_JSON_OBJECT
+	  || function_type == F_JSON_ARRAY || function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE
+	  || function_type == F_JSON_MERGE)
 	{
 	  return true;
 	}

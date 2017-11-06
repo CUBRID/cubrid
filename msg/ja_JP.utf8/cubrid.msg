@@ -1263,7 +1263,11 @@ $ LOADDB
 1194 Unable to check file %1$d|%2$d because lock on class %3$d|%4$d|%5$d is not immediately granted.
 1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
 1196 Maximum recursions %1$d reached executing CTE.
-1197 ラストエラー
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 ラストエラー
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
 2 エラーメッセージが使用できません。

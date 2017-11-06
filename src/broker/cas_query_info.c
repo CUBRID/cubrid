@@ -250,7 +250,7 @@ query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res, char *filenam
 	  goto query_info_add_end;
 	}
       sprintf (query_info_arr[qi_idx].cas_log, "%s:%d\n", filename, lineno);
-      query_info_arr[qi_idx].cas_log_len = strlen (query_info_arr[qi_idx].cas_log);
+      query_info_arr[qi_idx].cas_log_len = (int) strlen (query_info_arr[qi_idx].cas_log);
       memcpy (query_info_arr[qi_idx].cas_log + query_info_arr[qi_idx].cas_log_len, qi->cas_log, qi->cas_log_len);
       query_info_arr[qi_idx].cas_log_len += qi->cas_log_len;
     }

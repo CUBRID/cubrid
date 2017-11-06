@@ -81,6 +81,7 @@
 #include "connection_error.h"
 #include "release_string.h"
 #include "log_impl.h"
+#include "fault_injection.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -2365,6 +2366,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   (void) fileio_initialize_res (thread_p, &(malloc_io_page_p->prv));
 
   vol_fd = fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id, is_do_lock, is_do_sync);
+  FI_TEST (thread_p, FI_TEST_FILE_IO_FORMAT, 0);
   if (vol_fd != NULL_VOLDES)
     {
       /* initialize the pages of the volume. */
@@ -2429,53 +2431,77 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 }
 
 /*
- * fileio_expand () -  Expand a volume with the given number of data pages
- *   return: npages
- *   volid(in): Volume identifier
- *   npages_toadd(in): Number of pages to add
+ * fileio_expand_to () -  Expand a volume to the given number of pages.
  *
- * Note: Pages are not sweep_clean/initialized if they are part of
- *       temporary volumes.
+ *  return:
  *
- *       NOTE: No checking for temporary volumes is performed by this function.
+ *    error code or NO_ERROR
  *
- *	 NOTE: On WINDOWS && SERVER MODE io_mutex lock must be obtained before
- *	  calling lseek. Otherwise, expanding can interfere with fileio_read
- *	  and fileio_write calls. This caused corruptions in the temporary
- *	  file, random pages being written at the end of file instead of being
- *	  written at their designated places.
+ *
+ *  arguments:
+ *
+ *    vol_id      : Volume identifier
+ *    size_npages : New size in pages
+ *    voltype     : temporary or permanent volume type
+ *
+ *
+ *  How it works:
+ *
+ *    A new size for file is provided. The new size is expected to be bigger than current size (with the exception of
+ *    recovery cases). This approach replaced extending by a given size to fix recovery errors (file extension could
+ *    be executed twice).
+ *
+ *    Enough disk space is checked first before doing extend.
+ *
+ *  Notes:
+ *
+ *    Pages are not sweep_clean/initialized if they are part of temporary volumes.
+ *
+ *    No checking for temporary volumes is performed by this function.
+ *
+ *    On WINDOWS && SERVER MODE io_mutex lock must be obtained before calling lseek. Otherwise, expanding can
+ *    interfere with fileio_read and fileio_write calls. This caused corruptions in the temporary file, random pages
+ *    being written at the end of file instead of being written at their designated places.
  */
-DKNPAGES
-fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_VOLTYPE voltype)
+int
+fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, DB_VOLTYPE voltype)
 {
   int vol_fd;
   const char *vol_label_p;
-  FILEIO_PAGE *malloc_io_page_p;
-  off_t start_offset, last_offset;
+  FILEIO_PAGE *io_page_p;
   DKNPAGES max_npages;
-  DKNPAGES start_pageid, last_pageid;
+  size_t max_size;
+  PAGEID start_pageid;
+  size_t current_size;
+  PAGEID last_pageid;
+  size_t new_size;
+  size_t desired_extend_size;
+  size_t max_extend_size;
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
   pthread_mutex_t *io_mutex;
   static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
-#endif
+#endif /* WINDOWS && SERVER_MODE */
+
+  int error_code = NO_ERROR;
+
+  assert (size_npages > 0);
 
   vol_fd = fileio_get_volume_descriptor (vol_id);
   vol_label_p = fileio_get_volume_label (vol_id, PEEK);
 
   if (vol_fd == NULL_VOLDES || vol_label_p == NULL)
     {
-      return -1;
-    }
-
-  /* Check for bad number of pages and overflow */
-  if (npages_toadd <= 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_BAD_NPAGES, 2, vol_label_p, npages_toadd);
-      return -1;
+      assert (false);		/* I don't think we can accept this case */
+      return ER_FAILED;
     }
 
   max_npages = fileio_get_number_of_partition_free_pages (vol_label_p, IO_PAGESIZE);
+  if (max_npages < 0)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
   io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
@@ -2487,61 +2513,72 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_
   rv = pthread_mutex_lock (io_mutex);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
-      return -1;
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
     }
-#endif
+#endif /* WINDOWS && SERVER_MODE */
 
-  /* Find the offset to the end of the file, then add the given number of pages */
-  start_offset = lseek (vol_fd, 0, SEEK_END);
+  /* get current size */
+  current_size = lseek (vol_fd, 0, SEEK_END);
 #if defined(WINDOWS) && defined(SERVER_MODE)
   pthread_mutex_unlock (io_mutex);
-#endif
-  last_offset = start_offset + FILEIO_GET_FILE_SIZE (IO_PAGESIZE, npages_toadd - 1);
+#endif /* WINDOWS && SERVER_MODE */
+  assert ((current_size % IO_PAGESIZE) == 0);
 
-  /* 
-   * Make sure that there is enough pages on the given partition before we
-   * create and initialize the volume.
-   * We should also check for overflow condition.
-   */
-  if (npages_toadd > max_npages || last_offset < npages_toadd)
+  /* compute new size */
+  new_size = ((size_t) size_npages) * IO_PAGESIZE;
+
+  if (new_size <= current_size)
     {
-      if (last_offset < npages_toadd)
-	{
-	  /* Overflow */
-	  last_offset = FILEIO_GET_FILE_SIZE (IO_PAGESIZE, VOL_MAX_NPAGES (IO_PAGESIZE));
-	}
-      if (npages_toadd > max_npages && max_npages >= 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE, 5, vol_label_p, npages_toadd,
-		  last_offset / 1024, max_npages, FILEIO_GET_FILE_SIZE (IO_PAGESIZE / 1024, max_npages));
-	}
-      else
-	{
-	  /* There was an error in fileio_get_number_of_partition_free_pages */
-	}
-      return -1;
+      /* this must be recovery. */
+#ifdef SERVER_MODE
+      assert (!LOG_ISRESTARTED ());
+#endif /* SERVER_MODE */
+      er_log_debug (ARG_FILE_LINE, "skip extending volume %d with current size %zu to new size %zu\n",
+		    vol_id, current_size, new_size);
+      return NO_ERROR;
     }
 
-  malloc_io_page_p = (FILEIO_PAGE *) malloc (IO_PAGESIZE);
-  if (malloc_io_page_p == NULL)
+  /* overflow safety check */
+  /* is this necessary? we dropped support for 32-bits systems. for now, I'll leave this check */
+  max_size = ((size_t) VOL_MAX_NPAGES (IO_PAGESIZE)) * IO_PAGESIZE;
+  new_size = MIN (new_size, max_size);
+
+  /* consider disk free space */
+  desired_extend_size = new_size - current_size;
+  max_extend_size = ((size_t) max_npages) * IO_PAGESIZE;
+
+  if (max_extend_size < desired_extend_size)
     {
+      const size_t ONE_KILO = 1024;
+      error_code = ER_IO_EXPAND_OUT_OF_SPACE;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE, 5, vol_label_p,
+	      desired_extend_size / IO_PAGESIZE, new_size / ONE_KILO, max_npages,
+	      FILEIO_GET_FILE_SIZE (IO_PAGESIZE / ONE_KILO, max_npages));
+    }
+
+  /* init page */
+  io_page_p = (FILEIO_PAGE *) db_private_alloc (thread_p, IO_PAGESIZE);
+  if (io_page_p == NULL)
+    {
+      /* TBD: remove memory allocation manual checks. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) IO_PAGESIZE);
-      return -1;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  memset ((char *) malloc_io_page_p, 0, IO_PAGESIZE);
-  (void) fileio_initialize_res (thread_p, &(malloc_io_page_p->prv));
+  memset (io_page_p, 0, IO_PAGESIZE);
+  (void) fileio_initialize_res (thread_p, &(io_page_p->prv));
 
-  start_pageid = (DKNPAGES) (start_offset / IO_PAGESIZE);
-  last_pageid = (DKNPAGES) (last_offset / IO_PAGESIZE);
+  start_pageid = (PAGEID) (current_size / IO_PAGESIZE);
+  last_pageid = (PAGEID) (new_size / IO_PAGESIZE);
 
   if (voltype == DB_TEMPORARY_VOLTYPE)
     {
       /* Write the last page */
-      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE) != malloc_io_page_p)
+      if (fileio_write (thread_p, vol_fd, io_page_p, last_pageid, IO_PAGESIZE) != io_page_p)
 	{
-	  npages_toadd = -1;
+	  ASSERT_ERROR_AND_SET (error_code);
 	}
     }
   else
@@ -2549,25 +2586,29 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_
       /* support generic volume only */
       assert_release (voltype == DB_PERMANENT_VOLTYPE);
 
-      if (fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, start_pageid, last_pageid - start_pageid + 1,
+      if (fileio_initialize_pages (thread_p, vol_fd, io_page_p, start_pageid, last_pageid - start_pageid + 1,
 				   IO_PAGESIZE, -1) == NULL)
 	{
-	  npages_toadd = -1;
+	  ASSERT_ERROR_AND_SET (error_code);
 	}
     }
 
-  if (npages_toadd < 0 && er_errid () != ER_INTERRUPTED)
+  if (error_code != NO_ERROR && error_code != ER_INTERRUPTED)
     {
+      /* I don't like below assumption, it can be misleading. From what I have seen, errors are already set. */
+#if 0
       /* It is likely that we run of space. The partition where the volume was created has been used since we checked
-       * above. */
+       * above.
+       */
       max_npages = fileio_get_number_of_partition_free_pages (vol_label_p, IO_PAGESIZE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE, 5, vol_label_p, npages_toadd,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE, 5, vol_label_p, size_npages,
 	      last_offset / 1024, max_npages, FILEIO_GET_FILE_SIZE (IO_PAGESIZE / 1024, max_npages));
+#endif /* 0 */
     }
 
-  free_and_init (malloc_io_page_p);
+  db_private_free (thread_p, io_page_p);
 
-  return npages_toadd;
+  return NO_ERROR;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)

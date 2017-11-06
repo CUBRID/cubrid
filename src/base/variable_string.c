@@ -321,7 +321,7 @@ vs_prepend (varstring * vstr, const char *prefix)
       return NO_ERROR;
     }
 
-  n = strlen (prefix);
+  n = (int) strlen (prefix);
   if (n == 0)
     {
       return NO_ERROR;
@@ -407,7 +407,7 @@ vs_strcat (varstring * vstr, const char *str)
       return ER_FAILED;
     }
 
-  if (str == NULL || (n = strlen (str)) == 0)
+  if (str == NULL || (n = (int) strlen (str)) == 0)
     {
       return NO_ERROR;
     }

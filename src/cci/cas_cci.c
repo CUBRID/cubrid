@@ -4343,7 +4343,7 @@ cci_last_insert_id (int mapped_conn_id, void *value, T_CCI_ERROR * err_buf)
   if (error == CCI_ER_NO_ERROR && ptr != NULL && value != NULL)
     {
       /* 2 for sign & null termination */
-      int value_len = strnlen (ptr, MAX_NUMERIC_PRECISION + 2);
+      size_t value_len = strnlen (ptr, MAX_NUMERIC_PRECISION + 2);
       assert (value_len < MAX_NUMERIC_PRECISION + 2);
 
       val = (char *) MALLOC (value_len + 1);

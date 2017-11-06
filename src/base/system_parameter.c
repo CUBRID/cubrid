@@ -86,6 +86,10 @@
 
 #include "fault_injection.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 
 #define ER_LOG_FILE_DIR	"server"
 #if !defined (CS_MODE)

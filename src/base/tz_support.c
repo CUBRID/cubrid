@@ -46,6 +46,10 @@
 #endif /* !defined (SERVER_MODE) */
 #include "boot_sr.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 typedef struct tz_decode_info TZ_DECODE_INFO;
 struct tz_decode_info
 {

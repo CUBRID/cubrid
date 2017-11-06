@@ -27,38 +27,39 @@
  * string_collection - a class collection of strings
  */
 
-namespace test_common {
+namespace test_common
+{
 
 class string_collection
 {
-public:
-  template <typename ... Args>
-  string_collection (Args &... args)
-  {
-    register_names (args...);
-  }
+  public:
+    template <typename ... Args>
+    string_collection (Args &... args)
+    {
+      register_names (args...);
+    }
 
-  size_t get_count () const;
-  size_t get_max_length () const;
-  const char * get_name (size_t name_index) const;
+    size_t get_count () const;
+    size_t get_max_length () const;
+    const char *get_name (size_t name_index) const;
 
-private:
-  string_collection ();
+  private:
+    string_collection ();
 
-  template <typename FirstArg, typename ... OtherArgs>
-  void register_names (FirstArg & first, OtherArgs &... other)
-  {
-    m_names.push_back (first);
-    register_names (other...);
-  }
+    template <typename FirstArg, typename ... OtherArgs>
+    void register_names (FirstArg &first, OtherArgs &... other)
+    {
+      m_names.push_back (first);
+      register_names (other...);
+    }
 
-  template <typename OneArg>
-  void register_names (OneArg & arg)
-  {
-    m_names.push_back (arg);
-  }
-  
-  std::vector<std::string> m_names;
+    template <typename OneArg>
+    void register_names (OneArg &arg)
+    {
+      m_names.push_back (arg);
+    }
+
+    std::vector<std::string> m_names;
 };
 
 }  // namespace test_common

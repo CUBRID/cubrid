@@ -2648,7 +2648,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 		    {
 		      char *sql = ent->sql_info.sql_hash_text;
 
-		      if (qmgr_get_sql_id (thread_p, &query_exec_info[i].sql_id, sql, strlen (sql)) != NO_ERROR)
+		      if (qmgr_get_sql_id (thread_p, &query_exec_info[i].sql_id, sql, (int) strlen (sql)) != NO_ERROR)
 			{
 			  goto error;
 			}

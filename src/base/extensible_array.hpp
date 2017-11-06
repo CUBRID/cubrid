@@ -167,7 +167,7 @@ class extensible_array
  */
 template <size_t Size, typename Allocator = std::allocator<char> >
 inline int xarr_char_append_string (extensible_array<char, Size, Allocator> &buffer, const char *str,
-				    size_t length = 0);
+                                    size_t length = 0);
 
 /* extensible_charbuf_append_object - append object data to extensible char buffer.
  *

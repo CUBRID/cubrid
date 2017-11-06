@@ -1933,7 +1933,7 @@ db_get_user_and_host_name (void)
       return NULL;
     }
 
-  len = strlen (hostname) + strlen (username) + 2;
+  len = (int) strlen (hostname) + (int) strlen (username) + 2;
   user = (char *) db_private_alloc (NULL, len);
   if (!user)
     {
