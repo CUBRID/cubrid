@@ -38,7 +38,7 @@
 #define DWB_SLOTS_FREE_LIST_SIZE	    100
 
 #define DWB_MIN_SIZE			    (512 * 1024)
-#define DWB_MAX_SIZE			    (8 * 1024 * 1024)
+#define DWB_MAX_SIZE			    (16 * 1024 * 1024)
 #define DWB_MIN_BLOCKS			    1
 #define DWB_MAX_BLOCKS			    32
 #define DWB_CHECKSUM_ELEMENT_NO_BITS	    64
@@ -2544,7 +2544,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
       goto end;
     }
 
-  /* Now, flush the volumes has pages in current block. */
+  /* Now, flush only the volumes having pages in current block. */
   for (i = 0; i < block->count_to_flush_vdes; i++)
     {
       fileio_synchronize (thread_p, block->to_flush_vdes[i], NULL);

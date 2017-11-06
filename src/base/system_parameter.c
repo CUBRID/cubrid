@@ -2127,7 +2127,7 @@ static unsigned int prm_cte_max_recursions_flag = 0;
 unsigned int PRM_DWB_SIZE = 2 * 1024 * 1024;	/* 2M */
 static unsigned int prm_dwb_size_flag = 0;
 static unsigned int prm_dwb_size_default = (2 * 1024 * 1024);	/* 2M */
-static unsigned int prm_dwb_size_upper = (8 * 1024 * 1024);	/* 4M */
+static unsigned int prm_dwb_size_upper = (16 * 1024 * 1024);	/* 16M */
 static unsigned int prm_dwb_size_lower = 0;
 
 unsigned int PRM_DWB_BLOCKS = 2;
