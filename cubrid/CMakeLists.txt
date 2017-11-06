@@ -31,10 +31,12 @@ set(COMPAT_SOURCES
 set(THREAD_SOURCES
   ${THREAD_DIR}/thread.c
   ${THREAD_DIR}/critical_section.c
+  ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_worker_pool.cpp
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/thread_worker_pool.hpp
+  ${THREAD_DIR}/thread_manager.hpp
   )
 
 set(BASE_SOURCES
@@ -320,7 +322,8 @@ if(AT_LEAST_ONE_UNIT_TEST)
     ${JAVA_INC}
     ${EP_INCLUDES}
     )
-
+  
+  add_dependencies(cubrid-win-lib ${EP_TARGETS})
   endif (WIN32)
 endif (AT_LEAST_ONE_UNIT_TEST)
 

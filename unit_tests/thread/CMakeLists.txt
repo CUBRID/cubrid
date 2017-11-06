@@ -18,9 +18,11 @@
 
 set (TEST_THREAD_SOURCES
   test_main.cpp
+  test_manager.cpp
   test_worker_pool.cpp
   )
 set (TEST_THREAD_HEADERS
+  test_manager.hpp
   test_worker_pool.hpp
   )
 SET_SOURCE_FILES_PROPERTIES(
