@@ -895,7 +895,7 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
 #if !defined (WINDOWS)
   int psize;
 #endif
-#ifdef GET_PSINFO
+#if defined (GET_PSINFO) || defined (WINDOWS)
   char buf[256];
 #endif
   int shard_flag = shm_appl->shard_flag;
