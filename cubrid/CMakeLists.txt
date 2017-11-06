@@ -316,6 +316,8 @@ if(AT_LEAST_ONE_UNIT_TEST)
     ${EP_INCLUDES}
     )
 
+  add_dependencies(cubrid-win-lib ${EP_TARGETS})
+
   endif (WIN32)
 endif (AT_LEAST_ONE_UNIT_TEST)
 
