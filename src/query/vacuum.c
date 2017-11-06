@@ -661,6 +661,8 @@ static int vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p, VPID * 
 static bool is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header);
 static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_header, int btree_node_type);
 
+static bool vacuum_is_empty (void);
+
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
 static void vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p);
@@ -997,6 +999,10 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
       lf_circular_queue_destroy (vacuum_Job_queue);
       vacuum_Job_queue = NULL;
     }
+
+#if !defined(SERVER_MODE)	/* SA_MODE */
+  vacuum_log_last_blockid (thread_p);
+#endif
 
   /* Finalize vacuum data. */
   vacuum_unfix_first_and_last_data_page (thread_p);
@@ -4066,13 +4072,23 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   vacuum_Data.last_page = data_page;
   data_page = NULL;
   /* Get last_blockid. */
-  if (vacuum_Data.last_page->index_unvacuumed == vacuum_Data.last_page->index_free)
+  if (vacuum_is_empty ())
     {
-      /* Empty last page. */
-      assert (vacuum_Data.last_page->index_unvacuumed == 0);
-      /* last_blockid is still saved in the first data entry. */
-      vacuum_Data.last_blockid = vacuum_Data.last_page->data->blockid;
-      assert (vacuum_Data.last_blockid == VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.last_blockid));
+      if (LSA_ISNULL (&vacuum_Data.recovery_lsa))
+	{
+	  /* No recovery needed. This is used for 10.1 version to keep the functionality of the database.
+	   * In this case, we are updating the last_blockid of the vacuum to the last block that was logged.
+	   */
+	  vacuum_Data.last_blockid = vacuum_get_log_blockid (log_Gl.append.prev_lsa.pageid) - 1;
+	}
+      else
+	{
+	  /* Get the maximum between what is currently stored in vacuum and the value stored
+	   * in the log_Gl header. After a long session in SA_MODE, the vacuum_Data.last_page->data->blockid will
+	   * be outdated. Instead, SA_MODE updates log_Gl.hdr.vacuum_last_blockid before removing old archives.
+	   */
+	  vacuum_Data.last_blockid = MAX (log_Gl.hdr.vacuum_last_blockid, vacuum_Data.last_page->data->blockid);
+	}
     }
   else
     {
@@ -4622,6 +4638,7 @@ static void
 vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_page, VACUUM_DATA_PAGE ** data_page)
 {
   FILE_DESCRIPTORS fdes_update;
+  VACUUM_LOG_BLOCKID blockid = VACUUM_NULL_LOG_BLOCKID;
 
   /* We can have three expected cases here:
    * 1. This is the last page. We won't deallocate, just reset the page (even if it is also first page).
@@ -5241,6 +5258,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 		     "vacuum_recover_lost_block_data, log_Gl.hdr.mvcc_op_log_lsa is null ");
 
       LSA_COPY (&log_lsa, &vacuum_Data.recovery_lsa);
+      /* todo: Find a better stopping point for this!! */
       /* Stop search if search reaches blocks already in vacuum data. */
       stop_at_pageid = VACUUM_LAST_LOG_PAGEID_IN_BLOCK (vacuum_Data.last_blockid);
       while (log_lsa.pageid > stop_at_pageid)
@@ -5561,15 +5579,25 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
    * does not remove log required for vacuum.
    * If vacuum data is empty, then all blocks until (and including) vacuum_Data.last_blockid have been
    * vacuumed, and first page belonging to next block must be preserved (this is most likely in the active area of the
-   * log, for now).
+   * log, for now). However, it might happen that the page referred might belong in a log archive that might have 
+   * been removed due to a previous action. So to be sure, we set the pageid, from which the vacuum must keep
+   * the remaining pages, to NULL_PAGEID.
    * If vacuum data is not empty, then we need to preserve the log starting with the first page of first unvacuumed
    * block.
    */
-  VACUUM_LOG_BLOCKID keep_from_blockid =
-    (vacuum_Data.first_page->index_unvacuumed == vacuum_Data.first_page->index_free ?
-     vacuum_Data.last_blockid + 1 : vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].blockid);
-  keep_from_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (keep_from_blockid);
-  vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
+  VACUUM_LOG_BLOCKID keep_from_blockid;
+
+  if (vacuum_is_empty ())
+    {
+      keep_from_blockid = VACUUM_NULL_LOG_BLOCKID;
+      vacuum_Data.keep_from_log_pageid = NULL_PAGEID;
+    }
+  else
+    {
+      keep_from_blockid = vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].blockid;
+      keep_from_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (keep_from_blockid);
+      vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
+    }
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "Update keep_from_log_pageid to %lld ", (long long int) vacuum_Data.keep_from_log_pageid);
@@ -7711,4 +7739,50 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
     }
 
   return NO_ERROR;
+}
+
+/* 
+ *	vacuum_is_empty() - Checks if the vacuum is empty.
+ *
+ *	return :- true or false
+ */
+bool
+vacuum_is_empty (void)
+{
+  if (vacuum_Data.first_page->index_unvacuumed == vacuum_Data.first_page->index_free)
+    {
+      assert (vacuum_Data.first_page == vacuum_Data.last_page);
+      assert (vacuum_Data.last_page->index_unvacuumed == 0);
+      return true;
+    }
+
+  return false;
+}
+
+/*
+ *  vacuum_log_last_blockid () - Logs the vacuum_Data.last_blockid similar to vacuum_empty_data_page
+ *
+ *  thread_p(in) :- Thread context.
+ */
+void
+vacuum_log_last_blockid (THREAD_ENTRY * thread_p)
+{
+  VACUUM_DATA_PAGE *data_page = vacuum_Data.first_page;
+
+  /* We should have only 1 page in vacuum_Data. */
+  assert (vacuum_Data.first_page == vacuum_Data.last_page);
+
+  vacuum_data_initialize_new_page (thread_p, data_page);
+  data_page->data->blockid = vacuum_Data.last_blockid;
+
+  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) (data_page), 0,
+			 sizeof (vacuum_Data.last_blockid), &vacuum_Data.last_blockid);
+  vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
+
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
+		 "Last page, vpid = %d|%d, is empty and was reset. %s",
+		 pgbuf_get_vpid_ptr ((PAGE_PTR) (data_page))->volid,
+		 pgbuf_get_vpid_ptr ((PAGE_PTR) (data_page))->pageid,
+		 vacuum_Data.first_page == vacuum_Data.last_page ?
+		 "This is also first page." : "This is different from first page.");
 }

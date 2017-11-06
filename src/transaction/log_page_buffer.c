@@ -1362,8 +1362,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
     {
       loghdr->prefix_name[0] = '\0';
     }
-  loghdr->reserved_int_1 = -1;
-  loghdr->reserved_int_2 = -1;
+  loghdr->vacuum_last_blockid = 0;
   loghdr->perm_status = LOG_PSTAT_CLEAR;
 
   for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
@@ -6840,7 +6839,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   int first_arv_num_to_delete = -1;
   int last_arv_num_to_delete = -1;
   int min_arv_required_for_vacuum;
-  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID, new_page_id = NULL_PAGEID;
 #if defined(SERVER_MODE)
   LOG_PAGEID min_copied_pageid;
   int min_copied_arv_num;
@@ -6946,6 +6945,11 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
       if (last_arv_num_to_delete >= first_arv_num_to_delete)
 	{
 	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
+
+	  /* Update the last_blockid needed for vacuum. Get the first page_id of the previously logged archive */
+	  new_page_id = log_Gl.append.prev_lsa.pageid;
+	  logpb_update_last_blockid (thread_p, new_page_id);
+
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
 
@@ -7215,9 +7219,13 @@ logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first, int last
   bool append_log_info = false;
   int deleted_count = 0;
 
+  /* Decache any archive remaining in the log_Gl.archive. */
+  logpb_decache_archive_info (thread_p);
+
   for (i = first; i <= last; i++)
     {
       fileio_make_log_archive_name (logarv_name, log_Archive_path, log_Prefix, i);
+
 #if defined(SERVER_MODE)
       if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING) && boot_Server_status == BOOT_SERVER_UP)
 	{
@@ -12145,4 +12153,21 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
   loghdr->last_block_oldest_mvccid = MVCCID_NULL;
   loghdr->last_block_newest_mvccid = MVCCID_NULL;
+}
+
+/*
+ * logpb_update_last_blockid () - Updates the last_blockid needed later for vacuum.
+ * 
+ * return :- void
+ *
+ * thread_p (in) :- Thread context.
+ * page_id (in)  :- The first page id of the block that must updated to.
+ */
+void
+logpb_update_last_blockid (THREAD_ENTRY * thread_p, LOG_PAGEID page_id)
+{
+  VACUUM_LOG_BLOCKID last_blockid;
+
+  last_blockid = vacuum_get_log_blockid (page_id);
+  log_Gl.hdr.vacuum_last_blockid = last_blockid;
 }
