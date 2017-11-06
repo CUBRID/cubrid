@@ -46,6 +46,10 @@
 #include "broker_log_top.h"
 #include "broker_log_util.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define MAX_SRV_HANDLE		3000
 #define CLIENT_MSG_BUF_SIZE	1024
 #define CONNECT_MSG_BUF_SIZE	1024

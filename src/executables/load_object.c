@@ -1515,7 +1515,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       len = db_get_string_size (value);
       if (len < 0)
 	{
-	  len = strlen (ptr);
+	  len = (int) strlen (ptr);
 	}
 
       CHECK_PRINT_ERROR (print_quoted_str (tout, ptr, len, MAX_DISPLAY_COLUMN));
@@ -1566,6 +1566,10 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 
     case DB_TYPE_POINTER:
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%p", DB_GET_POINTER (value)));
+      break;
+
+    case DB_TYPE_JSON:
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "'%s'", DB_GET_JSON_RAW_BODY (value)));	//, strlen (DB_GET_JSON_RAW_BODY (value)), NULL));
       break;
 
     default:

@@ -25,6 +25,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
+  ${COMPAT_DIR}/db_json.cpp
   )
 
 set(THREAD_SOURCES
@@ -205,6 +206,10 @@ endif(UNIX)
 
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
+if(UNIX)
+set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
+
 SET_SOURCE_FILES_PROPERTIES(
   ${COMPAT_SOURCES}
   ${THREAD_SOURCES}
@@ -281,9 +286,7 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
-if(UNIX)
-  add_dependencies(cubrid ${EP_TARGETS})
-endif(UNIX)
+add_dependencies(cubrid ${EP_TARGETS})
 
 if(AT_LEAST_ONE_UNIT_TEST)
   message("    ==== add cubrid static libs for unit tests (WIN only)")

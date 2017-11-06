@@ -189,12 +189,12 @@ extern "C" void *MYCDECL CUSTOM_REALLOC (void *ptr, size_t sz)
   if (buf != NULL)
     {
       if (objSize == CUSTOM_GETSIZE (buf))
-	{
-	  // The objects are the same actual size.
-	  // Free the new object and return the original.
-	  CUSTOM_FREE (buf);
-	  return ptr;
-	}
+        {
+          // The objects are the same actual size.
+          // Free the new object and return the original.
+          CUSTOM_FREE (buf);
+          return ptr;
+        }
       // Copy the contents of the original object
       // up to the size of the new block.
       size_t minSize = (objSize < sz) ? objSize : sz;
@@ -216,10 +216,10 @@ extern "C" char *MYCDECL CUSTOM_PREFIX (strndup) (const char *s, size_t sz)
     {
       size_t cappedLength = strnlen (s, sz);
       if ((newString = (char *) CUSTOM_MALLOC (cappedLength + 1)))
-	{
-	  strncpy (newString, s, cappedLength);
-	  newString[cappedLength] = '\0';
-	}
+        {
+          strncpy (newString, s, cappedLength);
+          newString[cappedLength] = '\0';
+        }
     }
   return newString;
 }
@@ -231,9 +231,9 @@ extern "C" char *MYCDECL CUSTOM_PREFIX (strdup) (const char *s)
   if (s != NULL)
     {
       if ((newString = (char *) CUSTOM_MALLOC (strlen (s) + 1)))
-	{
-	  strcpy (newString, s);
-	}
+        {
+          strcpy (newString, s);
+        }
     }
   return newString;
 }
@@ -257,9 +257,9 @@ extern "C"  char *MYCDECL CUSTOM_PREFIX (getcwd) (char *buf, size_t size)
   if (!buf)
     {
       if (size == 0)
-	{
-	  size = PATH_MAX;
-	}
+        {
+          size = PATH_MAX;
+        }
       buf = (char *) CUSTOM_PREFIX (malloc) (size);
     }
   return (real_getcwd) (buf, size);

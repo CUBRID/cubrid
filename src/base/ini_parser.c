@@ -91,7 +91,8 @@ ini_dblalloc (void *p, int size)
 static unsigned int
 ini_table_hash (char *key)
 {
-  int len, i;
+  size_t len;
+  int i;
   unsigned int hash;
 
   len = strlen (key);
@@ -794,7 +795,7 @@ ini_seccmp (const char *key1, const char *key2)
     }
   else
     {
-      key1_sec_len = strlen (key1);
+      key1_sec_len = (int) strlen (key1);
     }
 
   if (s2)
@@ -803,7 +804,7 @@ ini_seccmp (const char *key1, const char *key2)
     }
   else
     {
-      key2_sec_len = strlen (key2);
+      key2_sec_len = (int) strlen (key2);
     }
 
   if (key1_sec_len != key2_sec_len)

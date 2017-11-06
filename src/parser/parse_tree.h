@@ -980,6 +980,7 @@ enum pt_type_enum
   PT_TYPE_VARBIT,
   PT_TYPE_LOGICAL,
   PT_TYPE_MAYBE,
+  PT_TYPE_JSON,
 
   /* special values */
   PT_TYPE_NA,			/* in SELECT NA */
@@ -1531,6 +1532,13 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
+  PT_JSON_CONTAINS,
+  PT_JSON_TYPE,
+  PT_JSON_EXTRACT,
+  PT_JSON_VALID,
+  PT_JSON_LENGTH,
+  PT_JSON_DEPTH,
+  PT_JSON_SEARCH,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -2111,6 +2119,7 @@ struct pt_data_type_info
   bool has_cs_spec;		/* this is used only when defining collatable types: true if charset was explicitly
 				 * set, false otherwise (charset defaulted to that of the system) */
   PT_MISC_TYPE inout;		/* input or output method parameter */
+  PARSER_VARCHAR *json_schema;
 };
 
 
@@ -3035,6 +3044,11 @@ typedef DB_TIMESTAMPTZ PT_TIMESTAMPTZ;
 typedef long PT_DATE;
 typedef DB_DATETIME PT_DATETIME;
 typedef DB_DATETIMETZ PT_DATETIMETZ;
+typedef struct
+{
+  char *json_body;
+  JSON_DOC *document;
+} PT_JSON;
 
 /* enum currency types */
 typedef enum pt_currency_types
@@ -3100,6 +3114,7 @@ union pt_data_value
   PT_MONETARY money;
   PT_NODE *set;			/* constant sets */
   DB_ELO elo;			/* ??? */
+  PT_JSON json;
   int b;
   PT_ENUM_ELEMENT enumeration;
 };

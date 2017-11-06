@@ -1040,7 +1040,8 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
   SESSION_VARIABLE *var = NULL;
   SESSION_VARIABLE *current = NULL;
   DB_VALUE *val = NULL;
-  int len = 0, count = 0;
+  int count = 0;
+  size_t len;
   const char *name_str;
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
@@ -1107,7 +1108,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
   var->name = (char *) malloc (len + 1);
   if (var->name == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (len + 1));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len + 1);
       goto error;
     }
 
@@ -2011,7 +2012,7 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE *
     {
       /* we didn't find it, set error and exit */
       char *var_name = NULL;
-      int name_len = strlen (name_str);
+      size_t name_len = strlen (name_str);
 
       var_name = (char *) malloc (name_len + 1);
       if (var_name != NULL)
@@ -2049,7 +2050,7 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_ID id;
   SESSION_STATE *state_p = NULL;
-  int name_len;
+  size_t name_len;
   const char *name_str;
   SESSION_VARIABLE *var;
   int ret;

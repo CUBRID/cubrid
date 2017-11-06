@@ -1172,6 +1172,8 @@ qdump_data_type_string (DB_TYPE type)
       return "DB_TABLE";
     case DB_TYPE_ENUMERATION:
       return "ENUM";
+    case DB_TYPE_JSON:
+      return "JSON";
     default:
       return "[***UNKNOWN***]";
     }
@@ -1367,6 +1369,16 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "INSERT_SUBSTRING";
     case F_ELT:
       return "ELT";
+    case F_JSON_OBJECT:
+      return "JSON_OBJECT";
+    case F_JSON_ARRAY:
+      return "JSON_ARRAY";
+    case F_JSON_INSERT:
+      return "JSON_INSERT";
+    case F_JSON_REMOVE:
+      return "JSON_REMOVE";
+    case F_JSON_MERGE:
+      return "JSON_MERGE";
     default:
       return "***UNKNOWN***";
     }

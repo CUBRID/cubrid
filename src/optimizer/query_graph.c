@@ -731,7 +731,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
   env->nterms = 0;
   env->neqclasses = 0;
 
-  QO_INFINITY = infinity ();
+  QO_INFINITY = UTIL_infinity ();
 
   return env;
 
@@ -3256,6 +3256,11 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
   switch (fcode)
     {
     case F_ELT:
+    case F_JSON_OBJECT:
+    case F_JSON_ARRAY:
+    case F_JSON_REMOVE:
+    case F_JSON_MERGE:
+    case F_JSON_INSERT:
       return RANK_EXPR_LIGHT;
     case F_INSERT_SUBSTRING:
       return RANK_EXPR_MEDIUM;
@@ -7279,7 +7284,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		      temp_name = consp->attributes[0]->header.name;
 		      if (temp_name)
 			{
-			  int len = strlen (temp_name) + 1;
+			  size_t len = strlen (temp_name) + 1;
 			  index_entryp->statistics_attribute_name = (char *) malloc (sizeof (char) * len);
 			  if (index_entryp->statistics_attribute_name == NULL)
 			    {

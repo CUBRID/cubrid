@@ -95,7 +95,7 @@ extern "C"
   typedef struct msg_catd
   {
     const char *file;		/* file name of this message catalog */
-    void *catd;			/* nl_catd from POSIX catopen() */
+    void *catd;			/* cub_nl_catd from POSIX cub_catopen() */
   } *MSG_CATD;
 
 /* base functions for message catalog support */

@@ -49,28 +49,28 @@ test_common::string_collection string_buffer_names ("Extensible Array", "std::st
 template <size_t Size>
 class cstyle_char_array
 {
-public:
-  cstyle_char_array ()
-  {
-    ptr = buffer;
-  }
+  public:
+    cstyle_char_array ()
+    {
+      ptr = buffer;
+    }
 
-  void append (const char * str, size_t len)
-  {
+    void append (const char *str, size_t len)
+    {
 #ifdef DEBUG
-    if (buffer + Size - ptr < str.size ())
-      {
-        assert (false);
-        return;
-      }
+      if (buffer + Size - ptr < str.size ())
+        {
+          assert (false);
+          return;
+        }
 #endif
-    memcpy (ptr, str, len);
-    ptr += len;
-  }
+      memcpy (ptr, str, len);
+      ptr += len;
+    }
 
-private:
-  char buffer [Size];
-  char *ptr;
+  private:
+    char buffer [Size];
+    char *ptr;
 };
 
 test_common::string_collection append_step_names ("Successive appends");
@@ -90,10 +90,10 @@ test_common::string_collection append_step_names ("Successive appends");
  */
 template <typename Buf>
 static int
-test_append_strings (test_common::perf_compare & result, Buf & buf, test_string_buffer_types buf_type,
+test_append_strings (test_common::perf_compare &result, Buf &buf, test_string_buffer_types buf_type,
                      size_t append_size, unsigned append_count)
 {
-  static std::string log_string = std::string (4,' ') + PORTABLE_FUNC_NAME + "<" + typeid(Buf).name () + ">\n";
+  static std::string log_string = std::string (4,' ') + PORTABLE_FUNC_NAME + "<" + typeid (Buf).name () + ">\n";
   test_common::sync_cout (log_string);
 
   char *str = new char [append_size];
@@ -139,9 +139,9 @@ test_append_strings (test_common::perf_compare & result, Buf & buf, test_string_
  */
 template <size_t AppendSize, unsigned AppendCount>
 static void
-test_compare_append_strings_performance (int & global_error)
+test_compare_append_strings_performance (int &global_error)
 {
-  typedef extensible_array<char, AppendSize * AppendCount, std::allocator<char> > xarr_type;
+  typedef extensible_array<char, AppendSize *AppendCount, std::allocator<char> > xarr_type;
 
   test_common::perf_compare compare_result (string_buffer_names, append_step_names);
   size_t append_size = AppendSize;
@@ -160,8 +160,8 @@ test_compare_append_strings_performance (int & global_error)
             test_string_buffer_types::STD_STRING, append_size, append_count);
 
   /* test c-style char array */
-  cstyle_char_array<AppendSize * AppendCount> charr;
-  run_test (global_error, test_append_strings<cstyle_char_array<AppendSize * AppendCount>>, std::ref (compare_result),
+  cstyle_char_array<AppendSize *AppendCount> charr;
+  run_test (global_error, test_append_strings<cstyle_char_array<AppendSize *AppendCount>>, std::ref (compare_result),
             std::ref (charr), test_string_buffer_types::CSTYLE_STRING, append_size, append_count);
 
   std::cout << std::endl;
@@ -173,9 +173,9 @@ test_compare_append_strings_performance (int & global_error)
  *  Run one append operation into both std::string and extensible array, then compare length and content.
  */
 static void
-test_extensible_array_correctness_append (int & global_error, test_common::perf_compare & test_compare,
-                                          extensible_array<char, SIZE_64> & xarr_buf,
-                                          std::string & string_buf, size_t append_size)
+test_extensible_array_correctness_append (int &global_error, test_common::perf_compare &test_compare,
+    extensible_array<char, SIZE_64> &xarr_buf,
+    std::string &string_buf, size_t append_size)
 {
   run_test (global_error, test_append_strings<extensible_array<char, SIZE_64> >, test_compare, xarr_buf,
             test_string_buffer_types::EXTENSIBLE_ARRAY, append_size, 1);
@@ -203,7 +203,7 @@ test_extensible_array_correctness_append (int & global_error, test_common::perf_
  *  test_extensible_array_correctness_append). The array is extended beyond its static size.
  */
 static void
-test_extensible_array_correctness (int & global_error)
+test_extensible_array_correctness (int &global_error)
 {
   const size_t APPEND_COUNT = 6;
 

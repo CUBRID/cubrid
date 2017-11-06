@@ -82,7 +82,7 @@ static char *
 pt_trim_as_identifier (char *name)
 {
   char *tmp_name;
-  int len;
+  size_t len;
 
   len = strlen (name);
   if (len >= 2
@@ -541,7 +541,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
       while (hint_p)
 	{
 	  has_parenthesis = false;
-	  len = strlen (hint_table[i].tokens);
+	  len = (int) strlen (hint_table[i].tokens);
 	  /* check token before */
 	  if ((count == 0 && (prev_is_white_char || (hint_p > hint_buf && IS_WHITE_CHAR (*(hint_p - 1)))))
 	      || IS_WHITE_CHAR (*(hint_p - 1)))

@@ -4457,7 +4457,7 @@ qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
   {
     int title_len;
 
-    title_len = title ? strlen (title) : 0;
+    title_len = title ? (int) strlen (title) : 0;
     howfar += (title_len + INDENT_INCR);
   }
 

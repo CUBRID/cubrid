@@ -44,6 +44,10 @@
 #include "shard_shm.h"
 #include "broker_acl.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #if defined(WINDOWS)
 #define O_NONBLOCK		FIONBIO
 #define HZ				1000

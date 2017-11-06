@@ -32,6 +32,10 @@
 #include "intl_support.h"
 #include "language_support.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /*#define LEXER_DEBUG*/
 
 #ifdef LEXER_DEBUG

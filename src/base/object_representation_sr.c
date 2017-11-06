@@ -1168,13 +1168,7 @@ or_get_domain_internal (char *ptr)
       new_ = tp_domain_new (typeid_);
       if (new_ == NULL)
 	{
-	  while (domain != NULL)
-	    {
-	      TP_DOMAIN *next = domain->next;
-	      tp_domain_free (domain);
-	      domain = next;
-	    }
-	  return NULL;
+	  goto error_cleanup;
 	}
 
       if (last == NULL)
@@ -1225,18 +1219,35 @@ or_get_domain_internal (char *ptr)
 	  error = or_get_enumeration (&buf, &DOM_GET_ENUMERATION (new_));
 	  if (error != NO_ERROR)
 	    {
-	      while (domain != NULL)
-		{
-		  TP_DOMAIN *next = domain->next;
-		  tp_domain_free (domain);
-		  domain = next;
-		}
-	      return NULL;
+	      goto error_cleanup;
+	    }
+	}
+
+      if (OR_VAR_TABLE_ELEMENT_LENGTH (dstart, ORC_DOMAIN_SCHEMA_JSON_OFFSET) != 0)
+	{
+	  OR_BUF buf;
+
+	  offset = OR_VAR_TABLE_ELEMENT_OFFSET (dstart, ORC_DOMAIN_SCHEMA_JSON_OFFSET);
+	  or_init (&buf, dstart + offset, 0);
+
+	  error = or_get_json_validator (&buf, domain->json_validator);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_cleanup;
 	    }
 	}
     }
 
   return domain;
+
+error_cleanup:
+  while (domain != NULL)
+    {
+      TP_DOMAIN *next = domain->next;
+      tp_domain_free (domain);
+      domain = next;
+    }
+  return NULL;
 }
 
 /*

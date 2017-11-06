@@ -183,7 +183,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	  *p = '\0';
 	}
 
-      len = strlen (line);
+      len = (int) strlen (line);
       if (line[0] == '\0' || len <= 0)
 	{
 	  continue;
@@ -302,7 +302,7 @@ shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	  *p = '\0';
 	}
 
-      len = strlen (line);
+      len = (int) strlen (line);
       if (line[0] == '\0')
 	{
 	  continue;
