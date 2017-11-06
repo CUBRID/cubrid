@@ -53,6 +53,11 @@ worker_pool::execute (work * work_arg)
 void
 worker_pool::close (void)
 {
+  if (!m_open)
+    {
+      // already closed
+      return;
+    }
   for (int i = 0; i < m_max_workers; i++)
     {
       if (m_threads[i].joinable ())
@@ -63,6 +68,12 @@ worker_pool::close (void)
   m_open = false;
 }
 
+bool
+worker_pool::is_open (void)
+{
+  return m_open;
+}
+
 void
 worker_pool::run (worker_pool & pool, std::thread & thread_arg, work * work_arg)
 {
@@ -70,8 +81,10 @@ worker_pool::run (worker_pool & pool, std::thread & thread_arg, work * work_arg)
     {
       work_arg->execute_task ();
       work_arg->retire ();
+
+      // loop while there are jobs in queue. there is no point in stopping and restarting another thread
     }
-  while (pool.m_work_queue.consume (work_arg));
+  while (pool.is_open () && pool.m_work_queue.consume (work_arg));
 
   // no work in queue. deregister worker
   pool.deregister_worker (thread_arg);

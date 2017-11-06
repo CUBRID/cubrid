@@ -63,6 +63,7 @@ public:
   bool try_execute (work * work_arg);
   void execute (work * work_arg);
   void close (void);
+  bool is_open (void);
 
 private:
   static void run (worker_pool & pool, std::thread & thread_arg, work * work_arg);
