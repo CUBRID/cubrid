@@ -632,11 +632,9 @@ logwr_set_hdr_and_flush_info (void)
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
       hdr = *((LOG_HEADER *) log_pgptr->area);
 
-      if ((hdr.ha_server_state != HA_SERVER_STATE_ACTIVE && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
-	   && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY) && (hdr.ha_promotion_time == 0
-									|| difftime64 (hdr.ha_promotion_time,
-										       logwr_Gl.
-										       hdr.ha_promotion_time) == 0)
+      if (hdr.ha_server_state != HA_SERVER_STATE_ACTIVE && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
+	  && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY
+	  && (hdr.ha_promotion_time == 0 || difftime64 (hdr.ha_promotion_time, logwr_Gl.hdr.ha_promotion_time) == 0)
 	  && difftime64 (hdr.db_restore_time, logwr_Gl.hdr.db_restore_time) != 0)
 	{
 	  logwr_Gl.reinit_copylog = true;
