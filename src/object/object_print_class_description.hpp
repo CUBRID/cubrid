@@ -20,15 +20,17 @@
 #ifndef _OBJECT_PRINT_CLASS_DESCRIPTION_HPP_
 #define _OBJECT_PRINT_CLASS_DESCRIPTION_HPP_
 #if defined(SERVER_MODE)
+
 #error Does not belong to server module
 #endif //defined(SERVER_MODE)
+
 struct db_object;
 
 /*
  * CLASS_HELP
  *
  * Note :
- *    This structure contains information about a class defined in the database. 
+ *    This structure contains information about a class defined in the database.
  *    This will be built and returned by help_class or help_class_name.
  */
 namespace object_print
@@ -41,7 +43,7 @@ namespace object_print
 
   struct class_description
   {
-      
+
     char *name;
     char *class_type;
     char *collation;
@@ -60,10 +62,12 @@ namespace object_print
     char **partition;
     char *comment;
 
-    class_description();
-    class_description(const char* name);
-    class_description(struct db_object* op, type prt_type);
-    ~class_description();
+    class_description();                                     // former obj_print_make_class_help()
+    class_description (const char *name);                    // former obj_print_help_class()
+    class_description (struct db_object *op, type prt_type); // former obj_print_help_class()
+    ~class_description();                                    // former obj_print_help_free_class()
+
+    //ToDo: other special methods: copy&move ctor/assign
   };
 }
 

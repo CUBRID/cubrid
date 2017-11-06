@@ -14,7 +14,7 @@
  *      build the array in reverse order so the resulting array will
  *      "read" correctly.
  */
-const char ** object_print::convert_strlist (strlist * str_list)
+const char **object_print::convert_strlist (strlist *str_list)
 {
   strlist *l, *next;
   const char **array;

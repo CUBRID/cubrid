@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -17,8 +17,12 @@
  *
  */
 
- #if !defined(_OBJECT_PRINT_UTIL_HPP_)
+/* Utility structures and functions extracted from object_print
+*/
+
+#if !defined(_OBJECT_PRINT_UTIL_HPP_)
 #define _OBJECT_PRINT_UTIL_HPP_
+
 #if defined(SERVER_MODE)
 #error Does not belong to server module
 #endif //defined(SERVER_MODE)
@@ -42,9 +46,9 @@ namespace object_print
 
   };
 
-  const char** convert_strlist (strlist * str_list);
-  void free_strarray (char **strs);
-  char* copy_string (const char *source);
+  const char **convert_strlist (strlist *str_list);   //former obj_print_convert_strlist()
+  void free_strarray (char **strs);                   //former obj_print_free_strarray()
+  char *copy_string (const char *source);             //former obj_print_copy_string()
 }
 
 #endif //!defined(_OBJECT_PRINT_UTIL_HPP_)

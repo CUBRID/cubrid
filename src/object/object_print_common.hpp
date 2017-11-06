@@ -17,10 +17,12 @@
  */
 
 /* format db values
+ * common things (server & client) extracted from object_print
  */
 
 #ifndef _OBJECT_PRINT_COMMON_HPP_
 #define _OBJECT_PRINT_COMMON_HPP_
+
 struct db_collection;
 struct db_midxkey;
 struct db_monetary;
@@ -38,13 +40,13 @@ class object_print_common
       : m_buf (buf)
     {}
 
-    void describe_money (const db_monetary *value);
-    void describe_value (const db_value *value);
-    void describe_data (const db_value *value);
+    void describe_money (const db_monetary *value); //former describe_money(parser...)
+    void describe_value (const db_value *value);    //former describe_value(parser...)
+    void describe_data (const db_value *value);     //former describe_data(parser...)
 
   protected:
-    void describe_midxkey (const db_midxkey *midxkey, int help_Max_set_elements=20);
-    void describe_set (const db_collection *set, int help_Max_set_elements=20);
+    void describe_midxkey (const db_midxkey *midxkey, int help_Max_set_elements=20);  //former describe_midxkey()
+    void describe_set (const db_collection *set, int help_Max_set_elements=20);       //former describe_set()
 };
 
 #endif //_OBJECT_PRINT_COMMON_HPP_

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -17,12 +17,16 @@
  *
  */
 
+/* parser specific, object_print related code
+*/
+
 #if !defined(_OBJECT_PRINT_PARSER_HPP_)
 #define _OBJECT_PRINT_PARSER_HPP_
 
 #if defined(SERVER_MODE)
 #error Does not belong to server module
 #endif //defined(SERVER_MODE)
+
 #include "object_print_class_description.hpp"
 struct db_object;
 struct sm_attribute;
@@ -38,7 +42,8 @@ struct tp_domain;
 struct tr_triglist;
 struct tr_trigger;
 class string_buffer;
-namespace object_print{
+namespace object_print
+{
   struct strlist;
 }
 
@@ -60,17 +65,17 @@ class object_print_parser
     void describe_signature (const sm_method_signature &signature_p, object_print::type prt_type);
     void describe_attribute (const struct db_object &class_p, const sm_attribute &attribute_p, bool is_inherited,
 			     object_print::type prt_type, bool force_print_collation);
-    void describe_constraint (const sm_class &class_p, 
-                              const sm_class_constraint &constraint_p, 
-                              object_print::type prt_type);
+    void describe_constraint (const sm_class &class_p,
+			      const sm_class_constraint &constraint_p,
+			      object_print::type prt_type);
     void describe_resolution (const sm_resolution &resolution, object_print::type prt_type);
     void describe_method_file (const struct db_object &obj, const sm_method_file &file);
     void describe_class_trigger (const tr_trigger &trigger);
     void describe_class (object_print::class_description &class_schema, struct db_object *class_op);
     void describe_partition_info (const sm_partition &partinfo);
 
-    void describe_trigger_list(tr_triglist* triggers, object_print::strlist** strings);
-    const char** describe_class_triggers (const sm_class& cls, struct db_object& class_mop);
+    void describe_trigger_list (tr_triglist *triggers, object_print::strlist **strings);
+    const char **describe_class_triggers (const sm_class &cls, struct db_object &class_mop);
 
     static const char *describe_trigger_condition_time (const tr_trigger &trigger);
     static const char *describe_trigger_action_time (const tr_trigger &trigger);
