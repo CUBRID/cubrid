@@ -55,6 +55,7 @@
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "object_print.h"
+#include "object_print_class_description.hpp"
 #include "show_meta.h"
 #include "db.h"
 #include "object_print_parser.hpp"
@@ -9007,7 +9008,6 @@ static char *
 pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 {
   DB_OBJECT *class_op;
-  CLASS_HELP *class_schema = NULL;
   int is_class = 0;
 
   /* look up class in all schema's */
@@ -9036,8 +9036,8 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 		   table_name->info.name.original, pt_show_misc_type (PT_CLASS));
     }
 
-  class_schema = obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
-  if (class_schema == NULL)
+  object_print::class_description class_schema(class_op, object_print::SHOW_CREATE_TABLE);
+  if (class_schema.name == NULL)
     {
       int error;
 
@@ -9060,10 +9060,6 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   string_buffer sb(sizeof(b), b);
   object_print_parser obj_print(sb);
   obj_print.describe_class(class_schema, class_op);
-  if (class_schema != NULL)
-    {
-      obj_print_help_free_class (class_schema);
-    }
   PARSER_VARCHAR *buffer = pt_append_nulstring(parser, NULL, b);
   return ((char *) pt_get_varchar_bytes (buffer));
 }

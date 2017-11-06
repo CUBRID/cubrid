@@ -184,25 +184,29 @@ set(QUERY_SOURCES
   )
 
 set(OBJECT_SOURCES
-  ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/authenticate.c
-  ${OBJECT_DIR}/object_print.c
-  ${OBJECT_DIR}/object_accessor.c
-  ${OBJECT_DIR}/object_template.c
-  ${OBJECT_DIR}/set_object.c
-  ${OBJECT_DIR}/trigger_manager.c
-  ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/class_object.c
-  ${OBJECT_DIR}/schema_manager.c
-  ${OBJECT_DIR}/schema_template.c
-  ${OBJECT_DIR}/object_representation.c
+  ${OBJECT_DIR}/elo.c
+  ${OBJECT_DIR}/object_description.cpp
+  ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_accessor.c
   ${OBJECT_DIR}/object_primitive.c
+  ${OBJECT_DIR}/object_print.c
+  ${OBJECT_DIR}/object_print_class_description.cpp
   ${OBJECT_DIR}/object_print_common.cpp
   ${OBJECT_DIR}/object_print_parser.cpp
+  ${OBJECT_DIR}/object_print_util.cpp
+  ${OBJECT_DIR}/object_representation.c
+  ${OBJECT_DIR}/object_template.c
   ${OBJECT_DIR}/quick_fit.c
-  ${OBJECT_DIR}/transform_cl.c
+  ${OBJECT_DIR}/schema_manager.c
+  ${OBJECT_DIR}/schema_template.c
+  ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
-  ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/transform_cl.c
+  ${OBJECT_DIR}/trigger_description.cpp
+  ${OBJECT_DIR}/trigger_manager.c
+  ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
   )
 

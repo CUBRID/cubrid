@@ -1,9 +1,29 @@
-#pragma once
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
+
+#if !defined(_OBJECT_PRINT_PARSER_HPP_)
+#define _OBJECT_PRINT_PARSER_HPP_
+
 #if defined(SERVER_MODE)
 #error Does not belong to server module
 #endif //defined(SERVER_MODE)
-struct class_description;
-enum   obj_print_type;
+#include "object_print_class_description.hpp"
 struct db_object;
 struct sm_attribute;
 struct sm_class;
@@ -15,8 +35,12 @@ struct sm_method_signature;
 struct sm_partition;
 struct sm_resolution;
 struct tp_domain;
+struct tr_triglist;
 struct tr_trigger;
 class string_buffer;
+namespace object_print{
+  struct strlist;
+}
 
 class object_print_parser
 {
@@ -28,23 +52,30 @@ class object_print_parser
     {}
 
     void describe_comment (const char *comment);
-    void describe_partition_parts (sm_partition *parts, obj_print_type prt_type);
-    void describe_identifier (const char *identifier, obj_print_type prt_type);
-    void describe_domain (tp_domain *domain, obj_print_type prt_type, bool force_print_collation);
-    void describe_argument (sm_method_argument *argument_p, obj_print_type prt_type);
-    void describe_method (struct db_object *op, sm_method *method_p, obj_print_type prt_type);
-    void describe_signature (sm_method_signature *signature_p, obj_print_type prt_type);
-    void describe_attribute (struct db_object *class_p, sm_attribute *attribute_p, bool is_inherited,
-			     obj_print_type prt_type, bool force_print_collation);
-    void describe_constraint (sm_class *class_p, sm_class_constraint *constraint_p, obj_print_type prt_type);
-    void describe_resolution (sm_resolution *resolution_p, obj_print_type prt_type);
-    void describe_method_file (struct db_object *class_p, sm_method_file *file_p);
-    void describe_class_trigger (tr_trigger *trigger);
-    void describe_class (class_description *class_schema, struct db_object *class_op);
-    void describe_partition_info (sm_partition *partinfo);
+    void describe_partition_parts (const sm_partition &parts, object_print::type prt_type);
+    void describe_identifier (const char *identifier, object_print::type prt_type);
+    void describe_domain (/*const*/ tp_domain &domain, object_print::type prt_type, bool force_print_collation);
+    void describe_argument (const sm_method_argument &argument, object_print::type prt_type);
+    void describe_method (const struct db_object &op, const sm_method &method_p, object_print::type prt_type);
+    void describe_signature (const sm_method_signature &signature_p, object_print::type prt_type);
+    void describe_attribute (const struct db_object &class_p, const sm_attribute &attribute_p, bool is_inherited,
+			     object_print::type prt_type, bool force_print_collation);
+    void describe_constraint (const sm_class &class_p, 
+                              const sm_class_constraint &constraint_p, 
+                              object_print::type prt_type);
+    void describe_resolution (const sm_resolution &resolution, object_print::type prt_type);
+    void describe_method_file (const struct db_object &obj, const sm_method_file &file);
+    void describe_class_trigger (const tr_trigger &trigger);
+    void describe_class (object_print::class_description &class_schema, struct db_object *class_op);
+    void describe_partition_info (const sm_partition &partinfo);
 
-    static const char *describe_trigger_condition_time (tr_trigger *trigger);
-    static const char *describe_trigger_action_time (tr_trigger *trigger);
+    void describe_trigger_list(tr_triglist* triggers, object_print::strlist** strings);
+    const char** describe_class_triggers (const sm_class& cls, struct db_object& class_mop);
+
+    static const char *describe_trigger_condition_time (const tr_trigger &trigger);
+    static const char *describe_trigger_action_time (const tr_trigger &trigger);
 
   protected:
 };
+
+#endif //!defined(_OBJECT_PRINT_PARSER_HPP_)

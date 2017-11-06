@@ -37,6 +37,7 @@
 #include "db.h"
 #include "class_object.h"
 #include "object_print.h"
+#include "object_print_class_description.hpp"
 #include "object_print_parser.hpp"
 #include "server_interface.h"
 #include "string_buffer.hpp"
@@ -50,6 +51,8 @@
 #include "parser.h"
 #include "authenticate.h"
 #include "network_interface_cl.h"
+#include "dbdef.h"
+#include "dbtype.h"
 
 /*
  *  CLASS LOCATION
@@ -2406,8 +2409,6 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 {
   PARSER_CONTEXT *parser;
   DB_TYPE type;
-  DB_OBJECT *class_op;
-  CLASS_HELP *class_schema = NULL;
   const char *table_name;
   int error_status = NO_ERROR;
 
@@ -2431,7 +2432,7 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
       table_name = db_get_string (name_val);
       assert (table_name != NULL);
 
-      class_op = sm_find_class (table_name);
+      struct db_object *class_op = sm_find_class (table_name);
       if (class_op == NULL)
 	{
 	  goto error;
@@ -2443,8 +2444,8 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 	  goto error;
 	}
 
-      class_schema = obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
-      if (class_schema == NULL)
+      object_print::class_description class_schema(class_op, object_print::SHOW_CREATE_TABLE);
+      if (class_schema.name == NULL)
 	{
 	  goto error;
         }
@@ -2465,11 +2466,6 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
       parser_free_parser (parser);
     }
 
-  if (class_schema != NULL)
-    {
-      obj_print_help_free_class (class_schema);
-    }
-
   return error_status;
 
 error:
@@ -2478,11 +2474,6 @@ error:
   if (parser != NULL)
     {
       parser_free_parser (parser);
-    }
-
-  if (class_schema != NULL)
-    {
-      obj_print_help_free_class (class_schema);
     }
 
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
