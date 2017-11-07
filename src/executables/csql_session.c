@@ -387,21 +387,21 @@ csql_help_schema (const char *class_name)
 	  }
       }
 
-    if (class_descr.triggers != NULL)
+    if (!class_descr.triggers.empty())
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_HEAD_TEXT));
-        for (line_ptr = class_descr.triggers; *line_ptr != NULL; line_ptr++)
+        for (auto it : class_descr.triggers)
 	  {
-	    APPEND_MORE_LINE (5, *line_ptr);
+	    APPEND_MORE_LINE (5, it);
 	  }
       }
 
-    if (class_descr.partition != NULL)
+    if (!class_descr.partition.empty())
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_PARTITION_HEAD_TEXT));
-        for (line_ptr = class_descr.partition; *line_ptr != NULL; line_ptr++)
+        for(auto it: class_descr.partition)
 	  {
-	    APPEND_MORE_LINE (5, *line_ptr);
+	    APPEND_MORE_LINE (5, it);
 	  }
       }
 

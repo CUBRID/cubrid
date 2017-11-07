@@ -24,6 +24,7 @@
 #error Does not belong to server module
 #endif //defined(SERVER_MODE)
 
+#include <vector>
 struct db_object;
 
 /*
@@ -54,9 +55,9 @@ struct class_description
   char **method_files;
   char **query_spec;
   char *object_id;
-  char **triggers;
+  std::vector<char*> triggers;
   char **constraints;
-  char **partition;
+  std::vector<char*> partition; //all members should be refactored but for the moment is only this one
   char *comment;
 
   class_description ();                                    //former obj_print_make_class_help()

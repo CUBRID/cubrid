@@ -1025,26 +1025,19 @@ void object_printer::describe_class (struct db_object *class_op)
     }
 
   /* partition */
-  if (class_descr.partition != NULL)
+  if (!class_descr.partition.empty())
     {
-      char **first_ptr;
-
-      line_ptr = class_descr.partition;
-      m_buf (" %s", *line_ptr);
-      line_ptr++;
-      if (*line_ptr != NULL)
-	{
-	  m_buf (" (");
-	  for (first_ptr = line_ptr; *line_ptr != NULL; line_ptr++)
-	    {
-	      if (line_ptr != first_ptr)
-		{
-		  m_buf (", ");
-		}
-	      m_buf ("%s", *line_ptr);
-	    }
-	  m_buf (")");
-	}
+      m_buf (" %s", *class_descr.partition[0]);
+      size_t len = class_descr.partition.size();
+      if(len > 1)
+        {
+          m_buf (" (%s", class_descr.partition[1]);
+          for(size_t i=2; i<len; ++i)
+            {
+              m_buf (", %s", class_descr.partition[i]);
+            }
+          m_buf (")");
+        }
     }
 
   /* comment */
