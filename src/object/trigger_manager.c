@@ -6540,26 +6540,26 @@ tr_is_trigger (DB_OBJECT * trigger_object, int *status)
  *    time(in): trigger time constant
  */
 const char *tr_time_as_string(DB_TRIGGER_TIME time)
-  {
-    const char *string;
-    switch (time)
-      {
-      case TR_TIME_BEFORE:
-        string = "BEFORE";
-        break;
-      case TR_TIME_AFTER:
-        string = "AFTER";
-        break;
-      case TR_TIME_DEFERRED:
-        string = "DEFERRED";
-        break;
-      default:
-        string = "???";
-        break;
-      }
+{
+  const char *string;
+  switch (time)
+    {
+    case TR_TIME_BEFORE:
+      string = "BEFORE";
+      break;
+    case TR_TIME_AFTER:
+      string = "AFTER";
+      break;
+    case TR_TIME_DEFERRED:
+      string = "DEFERRED";
+      break;
+    default:
+      string = "???";
+      break;
+    }
     
-    return string;
-  }
+  return string;
+}
 
 /*
  * tr_event_as_string() - Returns the ASCII representation of an event constant

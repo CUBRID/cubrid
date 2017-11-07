@@ -692,3 +692,63 @@ bool class_description::init(struct db_object *op, type prt_type)
 error_exit:
  return false;
 }
+
+namespace
+{
+void describe_trigger_list (tr_triglist *trig, string_buffer& sb, object_printer& printer, std::vector<char*>& v)
+{
+  for (TR_TRIGLIST *t = trig; t != NULL; t = t->next)
+    {
+      sb.clear();
+      printer.describe_class_trigger (*t->trigger);
+      v.push_back(object_print::copy_string (sb.get_buffer()));
+    }
+}
+}
+
+void class_description::init_triggers (const sm_class &cls, struct db_object &dbo)
+{
+  SM_ATTRIBUTE *attribute_p;
+  TR_SCHEMA_CACHE *cache;
+  int i;
+
+  char b[8192] = { 0 };//bSolo: temp hack
+  string_buffer sb(sizeof(b), b);
+  object_printer printer(sb);
+
+
+  cache = cls.triggers;
+  if (cache != NULL && !tr_validate_schema_cache (cache, &dbo))
+    {
+      for (i = 0; i < cache->array_length; i++)
+	{
+	  describe_trigger_list (cache->triggers[i], sb, printer, triggers);
+	}
+    }
+
+  for (attribute_p = cls.ordered_attributes; attribute_p != NULL; attribute_p = attribute_p->order_link)
+    {
+      cache = attribute_p->triggers;
+      if (cache != NULL && !tr_validate_schema_cache (cache, &dbo))
+	{
+	  for (i = 0; i < cache->array_length; i++)
+	    {
+	      describe_trigger_list (cache->triggers[i], sb, printer, triggers);
+	    }
+	}
+    }
+
+  for (attribute_p = cls.class_attributes; attribute_p != NULL;
+       attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
+    {
+      cache = attribute_p->triggers;
+      if (cache != NULL && !tr_validate_schema_cache (cache, &dbo))
+	{
+	  for (i = 0; i < cache->array_length; i++)
+	    {
+	      describe_trigger_list (cache->triggers[i], sb, printer, triggers);
+	    }
+	}
+    }
+
+}

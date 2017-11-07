@@ -29,24 +29,6 @@
 
 namespace object_print
 {
-
-  /*
-   * STRLIST
-   *
-   * Note :
-   *    Internal structure used for maintaining lists of strings.
-   *    Makes it easier to collect up strings before putting them into a
-   *    fixed length array.
-   *    Could be generalized into a more globally useful utility.
-   */
-  struct strlist
-  {
-    struct strlist *next;
-    const char *string;
-
-  };
-
-  const char **convert_strlist (strlist *str_list);   //former obj_print_convert_strlist()
   void free_strarray (char **strs);                   //former obj_print_free_strarray()
   char *copy_string (const char *source);             //former obj_print_copy_string()
 }

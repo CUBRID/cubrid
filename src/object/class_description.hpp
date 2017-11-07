@@ -19,13 +19,15 @@
 
 #if !defined(_CLASS_DESCRIPTION_HPP_)
 #define _CLASS_DESCRIPTION_HPP_
-#if defined(SERVER_MODE)
 
+#if defined(SERVER_MODE)
 #error Does not belong to server module
 #endif //defined(SERVER_MODE)
 
 #include <vector>
 struct db_object;
+struct sm_class;
+struct tr_triglist;
 
 /*
  * CLASS_HELP
@@ -66,7 +68,10 @@ struct class_description
 
   bool init(struct db_object *op, type prt_type);
 
+private:
+  void init_triggers(const sm_class &cls, struct db_object &dbo);//former describe_class_triggers()
+
   //ToDo: other special methods: copy&move ctor/assign
 };
 
-#endif //_CLASS_DESCRIPTION_HPP_
+#endif //!defined(_CLASS_DESCRIPTION_HPP_)

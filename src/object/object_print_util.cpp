@@ -4,44 +4,6 @@
 #include <assert.h>
 
 /*
- * obj_print_convert_strlist() - This converts a string list into an array
- *                               of strings
- *      return: NULL terminated array of strings
- *  str_list(in) : string list
- *
- *  Note :
- *      Since the strings are pushed on the list in reverse order, we
- *      build the array in reverse order so the resulting array will
- *      "read" correctly.
- */
-const char **object_print::convert_strlist (strlist *str_list)
-{
-  strlist *l, *next;
-  const char **array;
-  int count, i;
-
-  assert (str_list != 0);
-
-  array = 0;
-  count = ws_list_length ((DB_LIST *) str_list);
-
-  if (count)
-    {
-      array = (const char **) malloc (sizeof (char *) * (count + 1));
-      if (array != 0)
-	{
-	  for (i = count - 1, l = str_list, next = NULL; i >= 0; i--, l = next)
-	    {
-	      next = l->next;
-	      array[i] = l->string;
-	      free_and_init (l);
-	    }
-	  array[count] = 0;
-	}
-    }
-  return array;
-}
-/*
  * obj_print_free_strarray() -  Most of the help functions build an array of
  *                              strings that contains the descriptions
  *                              of the object

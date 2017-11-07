@@ -75,7 +75,6 @@ class object_printer
     void describe_partition_info (const sm_partition &partinfo);
 
     void describe_trigger_list (tr_triglist *triggers, object_print::strlist **strings);
-    const char **describe_class_triggers (const sm_class &cls, struct db_object &class_mop);
 
     static const char *describe_trigger_condition_time (const tr_trigger &trigger);
     static const char *describe_trigger_action_time (const tr_trigger &trigger);
