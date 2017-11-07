@@ -4080,7 +4080,7 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	  /* No recovery needed. This is used for 10.1 version to keep the functionality of the database.
 	   * In this case, we are updating the last_blockid of the vacuum to the last block that was logged.
 	   */
-	  vacuum_Data.last_blockid = vacuum_get_log_blockid (log_Gl.append.prev_lsa.pageid) - 1;
+	  vacuum_Data.last_blockid = logpb_last_complete_blockid ();
 	}
       else
 	{

@@ -82,6 +82,9 @@
 #include "release_string.h"
 #include "log_impl.h"
 #include "fault_injection.h"
+#if defined (SERVER_MODE)
+#include "vacuum.h"
+#endif /* SERVER_MODE */
 
 #if defined(WINDOWS)
 #include "wintcp.h"
