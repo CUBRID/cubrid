@@ -274,7 +274,6 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
 			int num_alloc, int is_auto_increment, bool force_set_last_insert_id)
 {
   int ret = NO_ERROR, granted;
-  const char *oid_str = NULL;
   SERIAL_CACHE_ENTRY *entry;
   bool is_cache_mutex_locked = false;
   bool is_oid_locked = false;

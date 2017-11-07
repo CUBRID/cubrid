@@ -4043,7 +4043,6 @@ spage_mark_deleted_slot_as_reusable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, P
 {
   SPAGE_HEADER *page_header_p = NULL;
   SPAGE_SLOT *slot_p = NULL;
-  SPAGE_SLOT *first_slot_p = NULL;
 
   assert (page_p != NULL);
 

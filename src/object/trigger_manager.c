@@ -2604,9 +2604,8 @@ int
 tr_validate_schema_cache (TR_SCHEMA_CACHE * cache, MOP class_mop)
 {
   int error = NO_ERROR;
-  DB_OBJLIST *object_list, *prev, *next, *u = NULL;
+  DB_OBJLIST *object_list, *prev, *next;
   TR_TRIGGER *trigger;
-  SM_CLASS *class_ = NULL;
   bool mop_found;
 
   if (cache == NULL)

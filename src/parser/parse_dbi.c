@@ -709,7 +709,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       {
 	int max_length = 0;
 	char *printed_bit = NULL;
-	char *result_string = NULL;
+
 	size = 0;
 	bytes = DB_GET_BIT (val, &size);
 	max_length = ((size + 3) / 4) + 4;
@@ -1650,7 +1650,6 @@ static int
 pt_get_enumeration_from_data_type (PARSER_CONTEXT * parser, PT_NODE * dt, DB_ENUMERATION * enumeration)
 {
   int err = NO_ERROR;
-  TP_DOMAIN *domain = NULL;
   PT_NODE *node = NULL;
   DB_ENUM_ELEMENT *db_enum = NULL, *enum_elements = NULL;
   char *str_val = NULL;

@@ -663,7 +663,6 @@ static int
 destroy_uca_instance (void)
 {
   int i;
-  int err_status = NO_ERROR;
 
   if (curr_uca.coll_cp != NULL)
     {
@@ -1626,7 +1625,6 @@ create_opt_weights (LOCALE_COLLATION * lc)
   unsigned int current_weight;
   int err_status = NO_ERROR;
   UCA_COLL_KEY *prev_key = NULL;
-  UCA_COLL_KEY *curr_key = NULL;
   UCA_COLL_KEY max_cp_key;
   UCA_COLL_CE_LIST *prev_ce_list = NULL;
 

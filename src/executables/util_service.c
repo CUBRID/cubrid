@@ -2432,7 +2432,6 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db
   HA_NODE_CONF *nc;
   char db_host[PATH_MAX], log_path[PATH_MAX];
   char **dbs;
-  bool is_registered;
 
   num_nodes = ha_conf->num_node_conf;
   dbs = ha_conf->db_names;
@@ -2566,13 +2565,11 @@ static int
 us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name, const char *remote_host)
 {
   int status = NO_ERROR;
-  int pid;
   int i, j, num_nodes;
   int num_db_found = 0, num_node_found = 0;
   HA_NODE_CONF *nc;
   char db_host[PATH_MAX], log_path[PATH_MAX];
   char **dbs;
-  bool is_registered;
   int wait_time = 0;
 
   num_nodes = ha_conf->num_node_conf;
@@ -2705,7 +2702,6 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *d
   HA_NODE_CONF *nc;
   char log_path[PATH_MAX], db_host[PATH_MAX], mem_size[PATH_MAX];
   char **dbs;
-  bool is_registered;
 
   num_nodes = ha_conf->num_node_conf;
   dbs = ha_conf->db_names;
@@ -2836,13 +2832,11 @@ static int
 us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name, const char *remote_host)
 {
   int status = NO_ERROR;
-  int pid;
   int i, j, num_nodes;
   int num_db_found = 0, num_node_found = 0;
   HA_NODE_CONF *nc;
   char log_path[PATH_MAX], db_host[PATH_MAX], mem_size[PATH_MAX];
   char **dbs;
-  bool is_registered;
   int wait_time = 0;
 
   num_nodes = ha_conf->num_node_conf;
@@ -2976,7 +2970,6 @@ us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char
   HA_NODE_CONF *nc;
   char log_path[PATH_MAX], db_host[PATH_MAX];
   char **dbs;
-  bool is_registered;
 
   num_nodes = ha_conf->num_node_conf;
   dbs = ha_conf->db_names;
@@ -3106,13 +3099,11 @@ static int
 us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name, const char *remote_host)
 {
   int status = NO_ERROR;
-  int pid;
   int i, j, num_nodes;
   int num_db_found = 0, num_node_found = 0;
   HA_NODE_CONF *nc;
   char log_path[PATH_MAX], db_host[PATH_MAX];
   char **dbs;
-  bool is_registered;
   int wait_time = 0;
 
   num_nodes = ha_conf->num_node_conf;
@@ -3488,7 +3479,6 @@ static int
 us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
 {
   int status = NO_ERROR;
-  int i;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_STOP);
 
@@ -4477,7 +4467,6 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
 {
   int status = NO_ERROR;
   int sub_command_type;
-  int master_port;
 
   char db_name[64];
   char node_name[MAXHOSTNAMELEN];

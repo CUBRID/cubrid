@@ -1029,17 +1029,12 @@ shard_dispatch_thr_f (void *arg)
 {
   T_MAX_HEAP_NODE *job_queue;
   T_MAX_HEAP_NODE cur_job;
-#if !defined(WINDOWS)
-  SOCKET srv_sock_fd;
-#endif /* !WINDOWS */
-
   int ip_addr;
 #if defined(WINDOWS)
   int proxy_port;
 #else
   SOCKET proxy_fd;
   int proxy_status;
-  unsigned int len;
   int ret_val;
 #endif
 
@@ -1725,7 +1720,6 @@ connect_srv (char *br_name, int as_index)
   struct sockaddr_in sock_addr;
 #else
   struct sockaddr_un sock_addr;
-  struct timeval tv;
 #endif
   SOCKET srv_sock_fd;
   int one = 1;
@@ -1909,9 +1903,6 @@ cas_monitor_thr_f (void *ar)
 {
   int i, tmp_num_busy_uts;
 
-  T_PROXY_INFO *proxy_info_p = NULL;
-  T_SHARD_INFO *shard_info_p = NULL;
-
   while (process_flag)
     {
       tmp_num_busy_uts = 0;
@@ -2020,7 +2011,7 @@ insert_db_server_check_list (T_DB_SERVER * list_p, int check_list_cnt, const cha
 static THREAD_FUNC
 server_monitor_thr_f (void *arg)
 {
-  int i, j, cnt, port_id;
+  int i, j, cnt;
   int u_index;
   int check_list_cnt = 0;
   T_APPL_SERVER_INFO *as_info_p;

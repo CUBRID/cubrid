@@ -1134,8 +1134,6 @@ static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
 STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE void pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
-  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
@@ -3199,12 +3197,12 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   float lru_sum_flush_priority;
   int count_need_wal = 0;
   LOG_LSA lsa_need_wal = LSA_INITIALIZER;
-  LOG_LSA save_lsa_need_wal = LSA_INITIALIZER;
 #if defined(SERVER_MODE)
+  LOG_LSA save_lsa_need_wal = LSA_INITIALIZER;
   static THREAD_ENTRY *page_flush_thread = NULL;
+  bool repeated = false;
 #endif /* SERVER_MODE */
   bool is_bcb_locked = false;
-  bool repeated = false;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool assigned_directly = false;
 #if !defined (NDEBUG) && defined (SERVER_MODE)
@@ -3569,9 +3567,6 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int collected_bcbs;
   int error = NO_ERROR;
-#if defined(SERVER_MODE)
-  struct timeval cur_time = { 0, 0 };
-#endif /* SERVER_MODE */
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : flush_upto_LSA:%d, prev_chkpt_redo_LSA:%d\n",
 		flush_upto_lsa->pageid, (prev_chkpt_redo_lsa ? prev_chkpt_redo_lsa->pageid : -1));
@@ -3807,11 +3802,13 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 		      const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * chkpt_smallest_lsa, int *time_rem)
 {
   PGBUF_BCB *bufptr;
-  double sleep_msecs = 0;
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int error = NO_ERROR;
   int avail_time_msec = 0, time_rem_msec = 0;
+#if defined (SERVER_MODE)
+  double sleep_msecs = 0;
   struct timeval cur_time = { 0, 0 };
+#endif /* SERVER_MODE */
   int flush_per_interval;
   int cnt_writes;
   int dropped_pages;
@@ -11017,7 +11014,6 @@ bool
 pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
 {
   int thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
-  int count = 0;
   PGBUF_HOLDER *holder = NULL;
 
   if (pgbuf_Pool.thrd_holder_info[thrd_idx].num_hold_cnt == 0)
@@ -11448,9 +11444,6 @@ STATIC_INLINE int
 pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * expected_vpid, bool * flushed)
 {
   int error = NO_ERROR;
-#if defined (SERVER_MODE)
-  int rv = 0;
-#endif /* SERVER_MODE */
   bool is_bcb_locked = true;
 
   assert (bufptr != NULL);
@@ -14141,7 +14134,6 @@ pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 void
 pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 {
-  PGBUF_BUFFER_HASH *hash_anchor = NULL;
   PGBUF_BCB *bcb = NULL;
   PAGE_TYPE ptype;
   int holder_status;
@@ -14376,7 +14368,6 @@ bool
 pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *bcb_flushed = NULL;
-  THREAD_ENTRY *thrd_blocked = NULL;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool not_empty = false;
   /* invalidation flag for direct victim assignment: any flag invalidating victim candidates, except is flushing flag */

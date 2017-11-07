@@ -3124,8 +3124,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      if (redo->data.rcvindex == RVVAC_COMPLETE)
 		{
-		  LOG_LSA null_lsa = LSA_INITIALIZER;
-
 		  /* Reset log header MVCC info */
 		  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 		}
@@ -5525,9 +5523,6 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
   int nxtop_count = 0;
   bool start_postpone_lsa_wasapplied = false;
 
-  LOG_REC_SYSOP_END *topop_result = NULL;
-  bool found_commit_with_postpone = false;
-
   assert (ret_lsa && start_postpone_lsa && tdes);
 
   LSA_SET_NULL (ret_lsa);
@@ -5926,7 +5921,6 @@ log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_u
   PGSLOTID slotid = rcv->offset & (~LOG_RV_RECORD_MODIFY_MASK);
   RECDES record;
   char data_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  INT16 rec_type = REC_UNKNOWN;
   char *ptr = NULL;
   int error_code = NO_ERROR;
 

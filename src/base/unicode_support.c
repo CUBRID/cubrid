@@ -511,8 +511,6 @@ load_unicode_data (const LOCALE_DATA * ld)
 
 	      do
 		{
-		  bool is_format_tag = false;
-
 		  /* if no decomposition available, or decomposition is a compatibility one, discard the specified
 		   * decomposition */
 		  if (str_p[0] == ';' || str_p[0] == '<')
@@ -1276,7 +1274,6 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
 bool
 unicode_string_need_decompose (char *str_in, const int size_in, int *decomp_size, const UNICODE_NORMALIZATION * norm)
 {
-  int err_status = NO_ERROR;
   int bytes_read, decomp_index, decomposed_size = 0;
   unsigned int cp;
   char *src_cursor;

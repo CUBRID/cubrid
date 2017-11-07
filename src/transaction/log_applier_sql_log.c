@@ -109,6 +109,7 @@ sl_write_catalog ()
 
   return NO_ERROR;
 }
+
 static int
 sl_read_catalog ()
 {
@@ -395,11 +396,10 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   PARSER_CONTEXT *parser;
   PARSER_VARCHAR *buffer = NULL, *select = NULL;
   PARSER_VARCHAR *att_set, *pkey;
-  PARSER_VARCHAR *serial_name, *serial_value;
+  PARSER_VARCHAR *serial_name;
   DB_VALUE *cur_value, *incr_value;
   DB_VALUE next_value;
   char str_next_value[NUMERIC_MAX_STRING_SIZE];
-  bool is_db_serial = false;
   int result;
 
   parser = parser_create_parser ();

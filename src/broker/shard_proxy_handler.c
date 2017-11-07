@@ -319,7 +319,6 @@ int
 proxy_context_send_error (T_PROXY_CONTEXT * ctx_p)
 {
   int error;
-  char *error_msg = NULL;
   T_PROXY_EVENT *event_p;
   T_CLIENT_INFO *client_info_p = NULL;
   char *driver_info;
@@ -379,7 +378,6 @@ proxy_handler_process_cas_response (T_PROXY_EVENT * event_p)
   int error = NO_ERROR;
   int error_ind;
   char *response_p;
-  char **argv = NULL;
   T_PROXY_CONTEXT *ctx_p = NULL;
   T_CLIENT_INFO *client_info_p;
   char func_code;

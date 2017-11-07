@@ -400,10 +400,9 @@ static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_T
 
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
 
-static void sm_method_final ();
-
-static DB_OBJLIST *sm_get_all_objects (DB_OBJECT * op);
-static TP_DOMAIN *sm_get_set_domain (MOP classop, int att_id);
+#if defined (WINDOWS)
+static void sm_method_final (void);
+#endif
 
 static int sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 				 const char *constraint_name, const char **att_names, const int *asc_desc,
@@ -430,6 +429,8 @@ static void sm_print (MOP classmop);
 #endif
 
 #if defined(ENABLE_UNUSED_FUNCTION)
+static DB_OBJLIST *sm_get_all_objects (DB_OBJECT * op);
+static TP_DOMAIN *sm_get_set_domain (MOP classop, int att_id);
 static DB_OBJLIST *sm_query_lock (MOP classop, DB_OBJLIST * exceptions, int only, int update);
 static DB_OBJLIST *sm_get_all_classes (int external_list);
 static DB_OBJLIST *sm_get_base_classes (int external_list);
@@ -1375,7 +1376,7 @@ load_dll (const char *name)
  */
 
 void
-sm_method_final ()
+sm_method_final (void)
 {
   PC_DLL *dll, *next;
 
@@ -3096,7 +3097,6 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
 	{
 	  /* Fetch the root partition class. Partitions can only inherit from one class which is the partitioned table */
 	  MOP root_op = NULL;
-	  int au_save = 0;
 
 	  error = do_get_partition_parent (classop, &root_op);
 	  if (error != NO_ERROR || root_op == NULL)
@@ -4851,7 +4851,6 @@ sm_get_ch_heap (MOP classmop)
 {
   SM_CLASS *class_ = NULL;
   HFID *ch_heap;
-  int is_class = 0;
 
   ch_heap = NULL;
   if (locator_is_class (classmop, DB_FETCH_READ) > 0)
@@ -8677,7 +8676,6 @@ retain_former_ids (SM_TEMPLATE * flat)
   if (flat->current != NULL)
     {
       bool is_partition = false;
-      int error = NO_ERROR;
 
       if (flat->current->partition)
 	{
@@ -10525,7 +10523,6 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT 
   SM_CLASS_CONSTRAINT *super_con, *shared_con;
   const int *asc_desc;
   int is_global = 0;
-  DB_CLASS_PARTITION_TYPE partition_type = DB_NOT_PARTITIONED_CLASS;
   SM_ATTRIBUTE *attr = NULL;
   SM_ATTRIBUTE *key_attr = NULL;
   int i = 0, j = 0;
@@ -14394,7 +14391,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment)
 {
   int error = NO_ERROR;
-  char *shared_cons_name = NULL;
   SM_TEMPLATE *def;
   MOP newmop = NULL;
 
@@ -14960,7 +14956,6 @@ sm_save_function_index_info (SM_FUNCTION_INFO ** save_info, SM_FUNCTION_INFO * f
 
   if (func_index_info != NULL)
     {
-      int i = 0;
       int len = strlen (func_index_info->expr_str);
 
       new_func_index_info = (SM_FUNCTION_INFO *) calloc (1, sizeof (SM_FUNCTION_INFO));

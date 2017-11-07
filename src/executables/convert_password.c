@@ -41,7 +41,6 @@ static void crypt_seed_old (const char *key);
 int
 main (int argc, char *argv[])
 {
-  float disk_compat_level = 0.0f;
   char *prog_name;
   const char *qp1 = "select [db_user], [password].[password] from [db_user]";
   DB_VALUE user_val, password_val;

@@ -162,9 +162,6 @@ static OID boot_Header_oid;	/* Location of parameters */
 static BOOT_DB_PARM boot_Struct_db_parm;	/* The structure */
 static BOOT_DB_PARM *boot_Db_parm = &boot_Struct_db_parm;
 static OID *boot_Db_parm_oid = &boot_Header_oid;
-static int boot_Temp_volumes_tpgs = 0;
-static int boot_Temp_volumes_max_sects = -2;
-static int boot_Temp_volumes_sys_pages = 0;
 static char boot_Lob_path[PATH_MAX + LOB_PATH_PREFIX_MAX] = "";
 static bool skip_to_check_ct_classes_for_rebuild = false;
 static char boot_Server_session_key[SERVER_SESSION_KEY_SIZE];
@@ -2936,9 +2933,11 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 {
   int tran_index;
   char *db_user_save;
-  char *adm_prg_file_name = NULL;
   char db_user_upper[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+#if defined(SA_MODE)
+  char *adm_prg_file_name = NULL;
   CHECK_ARGS check_coll_and_timezone = { true, true };
+#endif /* SA_MODE */
 
 #if defined(SA_MODE)
   if (client_credential != NULL && client_credential->program_name != NULL

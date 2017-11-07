@@ -796,7 +796,6 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec, int *
 #else
   TOKEN_BUCKET *tb = fc_Token_bucket;
   int gen_tokens;
-  int overflow_tokens = 0, overflow_capacity = 0;
   int rv = NO_ERROR;
 
   assert (token_gen != NULL);
@@ -3942,7 +3941,6 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
   off_t offset;
   ssize_t nbytes;
   size_t read_bytes;
-  bool is_retry = true;
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;

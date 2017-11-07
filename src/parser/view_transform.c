@@ -335,9 +335,6 @@ static int mq_mget_exprs (DB_OBJECT ** objects, int rows, char **exprs, int cols
 
 static void mq_insert_symbol (PARSER_CONTEXT * parser, PT_NODE ** listhead, PT_NODE * attr);
 
-
-static DB_OBJECT **mq_fetch_real_classes (DB_OBJECT * vclass);
-
 static const char *get_authorization_name (DB_AUTH auth);
 
 static PT_NODE *mq_add_dummy_from_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -5413,7 +5410,6 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
   PT_NODE *query_spec;
   PT_NODE *statements;
   PT_NODE *local_query;
-  PT_NODE *order_by = NULL;
   const char *query_spec_string;
   int cascaded_check;
   int local_check;
@@ -6440,7 +6436,6 @@ pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser, PT_NODE * query)
   PT_NODE *from = NULL, *spec = NULL;
   bool has_for_update = false;
   int err = NO_ERROR;
-  DB_OBJECT *class_obj = NULL;
 
   if (query == NULL || query->node_type != PT_SELECT)
     {
@@ -6485,7 +6480,6 @@ static int
 pt_for_update_prepare_query (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   int err = NO_ERROR;
-  PT_NODE *node = NULL;
 
   if (query == NULL)
     {
@@ -8297,7 +8291,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 		 PT_NODE * class_where_part, PT_NODE * class_check_part, PT_NODE * class_group_by_part,
 		 PT_NODE * class_having_part)
 {
-  PT_NODE *spec, *node = NULL;
+  PT_NODE *spec;
   PT_NODE **specptr = NULL;
   PT_NODE **where_part = NULL, **where_part_ex = NULL;
   PT_NODE **check_where_part = NULL;
@@ -9869,7 +9863,6 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_,
 {
   PARSER_CONTEXT *query_cache;
   DB_OBJECT *class_object;
-  int is_class = 0;
 
   if (!class_ || !(class_object = class_->info.name.db_object) || !qry_cache || db_is_class (class_object))
     {

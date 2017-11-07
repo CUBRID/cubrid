@@ -482,7 +482,6 @@ cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key, bool free_data)
   unsigned int hash;
   CCI_HENTRY_PTR prev_hentry;
   CCI_HENTRY_PTR hentry;
-  int error_code = CCI_ER_NO_ERROR;
   void *data = NULL;
 
   assert (ht != NULL && key != NULL);

@@ -118,6 +118,7 @@ static const TZ_FILE_DESCRIPTOR tz_Files[] = {
   {TZF_LEAP, "leapseconds"}
 #endif
 };
+
 static int tz_File_count = DIM (tz_Files);
 
 typedef struct tz_raw_country TZ_RAW_COUNTRY;
@@ -433,7 +434,6 @@ static int comp_func_raw_offset_rules (const void *arg1, const void *arg2);
 static int comp_func_raw_ds_rulesets (const void *arg1, const void *arg2);
 static int comp_func_raw_ds_rules (const void *arg1, const void *arg2);
 static int comp_func_tz_names (const void *arg1, const void *arg2);
-static int comp_func_zone_info (const void *arg1, const void *arg2);
 
 static void print_seconds_as_time_hms_var (int seconds);
 
@@ -913,7 +913,6 @@ static int
 tzc_import_old_data (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
 {
   int err_status = NO_ERROR;
-  TZ_DATA *data = NULL;
 
   if (mode == TZ_GEN_TYPE_NEW)
     {
@@ -1148,7 +1147,6 @@ tzc_load_zone_names (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   int i, file_index = -1;
   char zone_filepath[PATH_MAX] = { 0 };
   char str[256];
-  char *str_cursor = NULL;
   FILE *fp = NULL;
   TZ_RAW_ZONE_INFO *temp_zone_info = NULL;
   char *col_code, *col_coord, *col_tz_name, *col_comments;
@@ -1250,9 +1248,7 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index, const char *inp
   char filepath[PATH_MAX] = { 0 };
   char str[TZ_MAX_LINE_LEN] = { 0 };
   FILE *fp = NULL;
-  void *block_alloc = NULL;
   char *entry_type_str = NULL;
-  char *prev_entry_type_str = NULL;
   TZ_RAW_ZONE_INFO *last_zone = NULL;
   char *next_token = NULL;
   bool check_zone = false;
@@ -1405,7 +1401,6 @@ tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   char filepath[PATH_MAX] = { 0 };
   char str[TZ_MAX_LINE_LEN] = { 0 };
   FILE *fp = NULL;
-  void *block_alloc = NULL;
   char *entry_type_str = NULL;
   char *next_token = NULL, *zone_name = NULL, *alias = NULL;
 
@@ -1504,7 +1499,6 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   char filepath[PATH_MAX] = { 0 };
   char str[TZ_MAX_LINE_LEN] = { 0 };
   FILE *fp = NULL;
-  void *block_alloc = NULL;
   const char *next_token, *str_next, *entry_type_str;
   bool leap_corr_minus = false;
   bool leap_is_rolling = false;
@@ -1830,7 +1824,6 @@ static int
 tzc_get_zone (const TZ_RAW_DATA * tzd_raw, const char *zone_name, TZ_RAW_ZONE_INFO ** zone)
 {
   int i;
-  int err_status = NO_ERROR;
 
   assert (tzd_raw != NULL);
 
@@ -2365,8 +2358,6 @@ tzc_free_raw_data (TZ_RAW_DATA * tzd_raw)
     }
   if (tzd_raw->ds_rulesets != NULL)
     {
-      TZ_RAW_DS_RULE *rule = NULL;
-
       for (i = 0; i < tzd_raw->ruleset_count; i++)
 	{
 	  free_and_init (tzd_raw->ds_rulesets[i].rules);
@@ -3458,7 +3449,6 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
   const char *str_cursor;
   const char *str_next;
   const char *str_end;
-  int year = 0;
   int val_read = 0;
   int type = -1, day = -1, bound = -1;
   int hour = 0, min = 0, sec = 0;

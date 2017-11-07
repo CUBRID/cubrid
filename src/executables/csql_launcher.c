@@ -38,7 +38,7 @@ typedef const char *(*CSQL_GET_MESSAGE) (int message_index);
 typedef int (*CSQL) (const char *argv0, CSQL_ARGUMENT * csql_arg);
 
 static void utility_csql_usage (void);
-static void utility_csql_version (void);
+static void utility_csql_print (void);
 
 /*
  * utility_csql_usage() - display csql usage
@@ -67,7 +67,7 @@ utility_csql_usage (void)
 }
 
 /*
- * utility_csql_version - display a version of this utility
+ * utility_csql_print - display a version of this utility
  *
  * return:
  *
