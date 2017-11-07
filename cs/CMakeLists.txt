@@ -165,6 +165,7 @@ set(QUERY_SOURCES
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
+  ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
   ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/object_accessor.c
@@ -172,7 +173,6 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_domain.c
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_print.c
-  ${OBJECT_DIR}/object_print_class_description.cpp
   ${OBJECT_DIR}/object_print_common.cpp
   ${OBJECT_DIR}/object_print_parser.cpp
   ${OBJECT_DIR}/object_print_util.cpp

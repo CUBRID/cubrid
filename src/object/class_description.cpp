@@ -17,7 +17,7 @@
  *
  */
 
-#include "object_print_class_description.hpp"
+#include "class_description.hpp"
 #include "authenticate.h"
 #include "class_object.h"
 #include "locator_cl.h"
@@ -33,28 +33,28 @@
 static PARSER_CONTEXT *parser;
 
 //former obj_print_make_class_help()
-object_print::class_description::class_description()
-  : name (0)
-  , class_type (0)
-  , collation (0)
-  , supers (0)
-  , subs (0)
-  , attributes (0)
-  , class_attributes (0)
-  , methods (0)
-  , class_methods (0)
-  , resolutions (0)
-  , method_files (0)
-  , query_spec (0)
-  , object_id (0)
-  , triggers (0)
-  , constraints (0)
-  , partition (0)
-  , comment (0)
+class_description::class_description()
+  : name (NULL)
+  , class_type (NULL)
+  , collation (NULL)
+  , supers (NULL)
+  , subs (NULL)
+  , attributes (NULL)
+  , class_attributes (NULL)
+  , methods (NULL)
+  , class_methods (NULL)
+  , resolutions (NULL)
+  , method_files (NULL)
+  , query_spec (NULL)
+  , object_id (NULL)
+  , triggers (NULL)
+  , constraints (NULL)
+  , partition (NULL)
+  , comment (NULL)
 {
 }
 
-object_print::class_description::class_description (const char *name)
+class_description::class_description (const char *name)
   : class_description (sm_find_class (name), CSQL_SCHEMA_COMMAND)
 {
 }
@@ -66,7 +66,7 @@ object_print::class_description::class_description (const char *name)
  *   op(in): class object
  *   prt_type(in): the print type: csql schema or show create table
  */
-object_print::class_description::class_description (db_object *op, type prt_type)
+class_description::class_description (db_object *op, type prt_type)
   : class_description()
 {
   SM_CLASS *class_;
@@ -84,7 +84,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
   bool has_comment = false;
   int max_name_size = SM_MAX_IDENTIFIER_LENGTH + 50;
   size_t buf_size = 0;
-  strlist *str_list_head = 0, *current_str = 0, *tmp_str = 0;
+  object_print::strlist *str_list_head = 0, *current_str = 0, *tmp_str = 0;
   char b[8192] = {0};//bSolo: temp hack
   string_buffer sb (sizeof (b), b);
   object_print_parser obj_print (sb);
@@ -163,7 +163,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
 		  sb ("%-20s COLLATE %s", sm_ch_name ((MOBJ)class_), lang_get_collation_name (class_->collation_id));
 		}
 	    }
-	  this->name = copy_string (sb.get_buffer());
+	  this->name = object_print::copy_string (sb.get_buffer());
 	}
       else
 	{
@@ -173,27 +173,23 @@ object_print::class_description::class_description (db_object *op, type prt_type
 	   */
 	  sb.clear();
 	  sb ("[%s]", sm_ch_name ((MOBJ) class_));
-	  this->name = copy_string (sb.get_buffer());
+	  this->name = object_print::copy_string (sb.get_buffer());
 	}
 
       switch (class_->class_type)
 	{
 	default:
-	  this->class_type =
-		  copy_string (msgcat_message
-			       (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_META_CLASS_HEADER));
+	  this->class_type =object_print::copy_string (msgcat_message(MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_META_CLASS_HEADER));
 	  break;
 	case SM_CLASS_CT:
-	  this->class_type =
-		  copy_string (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_HEADER));
+	  this->class_type = object_print::copy_string (msgcat_message(MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_HEADER));
 	  break;
 	case SM_VCLASS_CT:
-	  this->class_type =
-		  copy_string (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_VCLASS_HEADER));
+	  this->class_type = object_print::copy_string (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_VCLASS_HEADER));
 	  break;
 	}
 
-      this->collation = copy_string (lang_get_collation_name (class_->collation_id));
+      this->collation = object_print::copy_string (lang_get_collation_name (class_->collation_id));
       if (this->collation == 0)
 	{
 	  goto error_exit;
@@ -205,7 +201,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
 	   * For the case except "print schema",
 	   * comment is copied to this->comment anyway
 	   */
-	  this->comment = copy_string (class_->comment);
+	  this->comment = object_print::copy_string (class_->comment);
 	  if (this->comment == 0)
 	    {
 	      goto error_exit;
@@ -235,14 +231,14 @@ object_print::class_description::class_description (db_object *op, type prt_type
 
 	      if (prt_type == CSQL_SCHEMA_COMMAND)
 		{
-		  strs[i] = copy_string ((char *) kludge);
+		  strs[i] = object_print::copy_string ((char *) kludge);
 		}
 	      else
 		{
 		  /* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
 		  sb.clear();
 		  sb ("[%s]", kludge);
-		  strs[i] = copy_string (sb.get_buffer());
+		  strs[i] = object_print::copy_string (sb.get_buffer());
 		}
 	      i++;
 	    }
@@ -273,14 +269,14 @@ object_print::class_description::class_description (db_object *op, type prt_type
 
 	      if (prt_type == CSQL_SCHEMA_COMMAND)
 		{
-		  strs[i] = copy_string ((char *) kludge);
+		  strs[i] = object_print::copy_string ((char *) kludge);
 		}
 	      else
 		{
 		  /* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
 		  sb.clear();
 		  sb ("[%s]", kludge);
-		  strs[i] = copy_string (sb.get_buffer());
+		  strs[i] = object_print::copy_string (sb.get_buffer());
 		}
 
 	      i++;
@@ -329,7 +325,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
 			{
 			  goto error_exit;
 			}
-		      strs[i] = copy_string (sb.get_buffer());
+		      strs[i] = object_print::copy_string (sb.get_buffer());
 		      i++;
 		    }
 		}
@@ -378,7 +374,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
 			{
 			  goto error_exit;
 			}
-		      strs[i] = copy_string (sb.get_buffer());
+		      strs[i] = object_print::copy_string (sb.get_buffer());
 		      i++;
 		    }
 		}
@@ -422,7 +418,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
 		    {
 		      sb.clear();
 		      obj_print.describe_method (*op, *m, prt_type);
-		      strs[i] = copy_string (sb.get_buffer());
+		      strs[i] = object_print::copy_string (sb.get_buffer());
 		      i++;
 		    }
 		}
@@ -466,7 +462,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
 		    {
 		      sb.clear();
 		      obj_print.describe_method (*op, *m, prt_type);
-		      strs[i] = copy_string (sb.get_buffer());
+		      strs[i] = object_print::copy_string (sb.get_buffer());
 		      i++;
 		    }
 		}
@@ -491,7 +487,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
 	    {
 	      sb.clear();
 	      obj_print.describe_resolution (*r, prt_type);
-	      strs[i] = copy_string (sb.get_buffer());
+	      strs[i] = object_print::copy_string (sb.get_buffer());
 	      i++;
 	    }
 	  strs[i] = 0;
@@ -533,7 +529,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
 		    {
 		      sb.clear();
 		      obj_print.describe_method_file (*op, *f);
-		      strs[i] = copy_string (sb.get_buffer());
+		      strs[i] = object_print::copy_string (sb.get_buffer());
 		      i++;
 		    }
 		}
@@ -555,7 +551,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
 	  i = 0;
 	  for (p = class_->query_spec; p != 0; p = p->next)
 	    {
-	      strs[i] = copy_string ((char *) p->specification);
+	      strs[i] = object_print::copy_string ((char *) p->specification);
 	      i++;
 	    }
 	  strs[i] = 0;
@@ -611,7 +607,7 @@ object_print::class_description::class_description (db_object *op, type prt_type
 			{
 			  sb.clear();
 			  obj_print.describe_constraint (*class_, *c, prt_type);
-			  strs[i] = copy_string (sb.get_buffer());
+			  strs[i] = object_print::copy_string (sb.get_buffer());
 			  if (strs[i] == 0)
 			    {
 			      this->constraints = strs;
@@ -652,12 +648,12 @@ object_print::class_description::class_description (db_object *op, type prt_type
 		    {
 		      sb.clear();
 		      obj_print.describe_partition_parts (*subclass->partition, prt_type);
-		      PARSER_VARCHAR *descr = pt_append_nulstring (parser, 0, sb.get_buffer());
+		      PARSER_VARCHAR *descr = pt_append_nulstring (parser, NULL, sb.get_buffer());
 
 		      /* Temporarily store it into STRLIST, later we will copy it into a fixed length array of which
 		       * the size should be determined by the counter of this iteration. */
-		      buf_size = sizeof (strlist);
-		      tmp_str = (strlist *) malloc (buf_size);
+		      buf_size = sizeof (object_print::strlist);
+		      tmp_str = (object_print::strlist *) malloc (buf_size);
 		      if (tmp_str == 0)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
@@ -701,12 +697,12 @@ object_print::class_description::class_description (db_object *op, type prt_type
 
 	  sb.clear();
 	  obj_print.describe_partition_info (*class_->partition);
-	  strs[0] = copy_string (sb.get_buffer());
+	  strs[0] = object_print::copy_string (sb.get_buffer());
 
 	  /* Copy all from the list into the array and release the list */
 	  for (current_str = str_list_head, i = 1; current_str != 0; i++)
 	    {
-	      strs[i] = copy_string (current_str->string);
+	      strs[i] = object_print::copy_string (current_str->string);
 
 	      tmp_str = current_str;
 	      current_str = current_str->next;
@@ -740,7 +736,7 @@ error_exit:
     }
 }
 
-object_print::class_description::~class_description()
+class_description::~class_description()
 {
   if (name != 0)
     {
@@ -758,18 +754,18 @@ object_print::class_description::~class_description()
     {
       free (collation);
     }
-  free_strarray (supers);
-  free_strarray (subs);
-  free_strarray (attributes);
-  free_strarray (class_attributes);
-  free_strarray (methods);
-  free_strarray (class_methods);
-  free_strarray (resolutions);
-  free_strarray (method_files);
-  free_strarray (query_spec);
-  free_strarray (triggers);
-  free_strarray (constraints);
-  free_strarray (partition);
+  object_print::free_strarray (supers);
+  object_print::free_strarray (subs);
+  object_print::free_strarray (attributes);
+  object_print::free_strarray (class_attributes);
+  object_print::free_strarray (methods);
+  object_print::free_strarray (class_methods);
+  object_print::free_strarray (resolutions);
+  object_print::free_strarray (method_files);
+  object_print::free_strarray (query_spec);
+  object_print::free_strarray (triggers);
+  object_print::free_strarray (constraints);
+  object_print::free_strarray (partition);
   if (comment != 0)
     {
       free (comment);

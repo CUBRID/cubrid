@@ -33,42 +33,38 @@ struct db_object;
  *    This structure contains information about a class defined in the database.
  *    This will be built and returned by help_class or help_class_name.
  */
-namespace object_print
+struct class_description
 {
   enum type
   {
-    /*OBJ_PRINT_*/CSQL_SCHEMA_COMMAND,
-    /*OBJ_PRINT_*/SHOW_CREATE_TABLE
+    /*OBJ_PRINT_*/ CSQL_SCHEMA_COMMAND,
+    /*OBJ_PRINT_*/ SHOW_CREATE_TABLE
   };
 
-  struct class_description
-  {
+  char *name;
+  char *class_type;
+  char *collation;
+  char **supers;
+  char **subs;
+  char **attributes;
+  char **class_attributes;
+  char **methods;
+  char **class_methods;
+  char **resolutions;
+  char **method_files;
+  char **query_spec;
+  char *object_id;
+  char **triggers;
+  char **constraints;
+  char **partition;
+  char *comment;
 
-    char *name;
-    char *class_type;
-    char *collation;
-    char **supers;
-    char **subs;
-    char **attributes;
-    char **class_attributes;
-    char **methods;
-    char **class_methods;
-    char **resolutions;
-    char **method_files;
-    char **query_spec;
-    char *object_id;
-    char **triggers;
-    char **constraints;
-    char **partition;
-    char *comment;
+  class_description ();                                    //former obj_print_make_class_help()
+  class_description (const char *name);                    //former obj_print_help_class()
+  class_description (struct db_object *op, type prt_type); //former obj_print_help_class()
+  ~class_description ();                                   //former obj_print_help_free_class()
 
-    class_description();                                     // former obj_print_make_class_help()
-    class_description (const char *name);                    // former obj_print_help_class()
-    class_description (struct db_object *op, type prt_type); // former obj_print_help_class()
-    ~class_description();                                    // former obj_print_help_free_class()
-
-    //ToDo: other special methods: copy&move ctor/assign
-  };
-}
+  //ToDo: other special methods: copy&move ctor/assign
+};
 
 #endif //_OBJECT_PRINT_CLASS_DESCRIPTION_HPP_

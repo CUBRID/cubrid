@@ -38,6 +38,7 @@
 #endif
 
 #include "chartype.h"
+#include "class_description.hpp"
 #include "parser.h"
 #include "parser_message.h"
 #include "memory_alloc.h"
@@ -55,7 +56,6 @@
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "object_print.h"
-#include "object_print_class_description.hpp"
 #include "show_meta.h"
 #include "db.h"
 #include "object_print_parser.hpp"
@@ -9042,8 +9042,8 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 		   table_name->info.name.original, pt_show_misc_type (PT_CLASS));
     }
 
-  object_print::class_description class_schema(class_op, object_print::SHOW_CREATE_TABLE);
-  if (class_schema.name == NULL)
+  class_description class_description(class_op, class_description::SHOW_CREATE_TABLE);
+  if (class_description.name == NULL)
     {
       int error;
 
@@ -9065,7 +9065,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   char b[8192] = {0}; //bSolo: use parser based allocator because this code is not for server
   string_buffer sb(sizeof(b), b);
   object_print_parser obj_print(sb);
-  obj_print.describe_class(class_schema, class_op);
+  obj_print.describe_class(class_description, class_op);
   PARSER_VARCHAR *buffer = pt_append_nulstring(parser, NULL, b);
   return ((char *) pt_get_varchar_bytes (buffer));
 }

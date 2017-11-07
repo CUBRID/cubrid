@@ -37,6 +37,7 @@
 #include "error_manager.h"
 #if !defined (SERVER_MODE)
 #include "chartype.h"
+#include "class_description.hpp"
 #include "misc_string.h"
 #include "dbi.h"
 #include "schema_manager.h"
@@ -50,7 +51,6 @@
 #include "msgcat_help.hpp"
 #include "network_interface_cl.h"
 #include "object_description.hpp"
-#include "object_print_class_description.hpp"
 #include "object_print_parser.hpp"
 #include "object_print_util.hpp"
 #include "class_object.h"
@@ -173,7 +173,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 	}
       else
 	{
-	  object_print::class_description cinfo(obj, object_print::CSQL_SCHEMA_COMMAND);
+	  class_description cinfo(obj, class_description::CSQL_SCHEMA_COMMAND);
 	  if (cinfo.name != NULL)
 	    {
 	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
@@ -778,7 +778,7 @@ void help_fprint_describe_comment(FILE* fp, const char* comment)
 #if !defined (SERVER_MODE)
   char *desc = NULL;
   char b[8192] = {0};//bSolo: temp hack
-  char* dynBuf = nullptr;
+  char* dynBuf = NULL;
   string_buffer sb(sizeof(b), b);
   object_print_parser obj_print(sb);
 

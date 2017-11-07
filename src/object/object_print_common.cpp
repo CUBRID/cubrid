@@ -70,7 +70,7 @@ namespace {
 
 //--------------------------------------------------------------------------------
 void object_print_common::describe_money(const db_monetary* value){
-    assert(value != nullptr);
+    assert(value != NULL);
     m_buf("%s%.2f", intl_get_money_esc_ISO_symbol(value->type), value->amount);
     if(strstr(m_buf.get_buffer(), "Inf"))
     {

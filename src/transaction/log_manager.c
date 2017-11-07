@@ -6406,7 +6406,7 @@ static void log_repl_data_dump(FILE* out_fp, int length, void* data) //bSolo: le
   char b[8192] = {0};//bSolo: temp hack
   string_buffer sb(sizeof(b), b);
   object_print_common obj_print(sb);
-  char* dynBuf = nullptr;
+  char* dynBuf = NULL;
 
   obj_print.describe_value(&value);
   if(sizeof(b) < sb.len())//realloc and repeat

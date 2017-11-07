@@ -32,20 +32,20 @@
 #include <ctype.h>
 #include <assert.h>
 
-#include "system_parameter.h"
-#include "storage_common.h"
-#include "db.h"
+#include "boot_cl.h"
+#include "class_description.hpp"
 #include "class_object.h"
+#include "db.h"
 #include "object_print.h"
-#include "object_print_class_description.hpp"
 #include "object_print_parser.hpp"
 #include "server_interface.h"
 #include "string_buffer.hpp"
-#include "boot_cl.h"
 #include "locator_cl.h"
+#include "object_accessor.h"
 #include "schema_manager.h"
 #include "schema_template.h"
-#include "object_accessor.h"
+#include "storage_common.h"
+#include "system_parameter.h"
 #include "set_object.h"
 #include "virtual_object.h"
 #include "parser.h"
@@ -2444,15 +2444,15 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 	  goto error;
 	}
 
-      object_print::class_description class_schema(class_op, object_print::SHOW_CREATE_TABLE);
-      if (class_schema.name == NULL)
+      class_description class_descr(class_op, class_description::SHOW_CREATE_TABLE);
+      if (class_descr.name == NULL)
 	{
 	  goto error;
         }
         char buffer[8192] = {0};
         string_buffer sb(sizeof(buffer), buffer);
         object_print_parser obj_print(sb);
-        obj_print.describe_class(class_schema, class_op);
+        obj_print.describe_class(class_descr, class_op);
         db_make_string_copy (result, sb.get_buffer());
     }
   else

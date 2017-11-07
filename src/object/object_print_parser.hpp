@@ -27,7 +27,7 @@
 #error Does not belong to server module
 #endif //defined(SERVER_MODE)
 
-#include "object_print_class_description.hpp"
+#include "class_description.hpp"
 struct db_object;
 struct sm_attribute;
 struct sm_class;
@@ -57,21 +57,21 @@ class object_print_parser
     {}
 
     void describe_comment (const char *comment);
-    void describe_partition_parts (const sm_partition &parts, object_print::type prt_type);
-    void describe_identifier (const char *identifier, object_print::type prt_type);
-    void describe_domain (/*const*/ tp_domain &domain, object_print::type prt_type, bool force_print_collation);
-    void describe_argument (const sm_method_argument &argument, object_print::type prt_type);
-    void describe_method (const struct db_object &op, const sm_method &method_p, object_print::type prt_type);
-    void describe_signature (const sm_method_signature &signature_p, object_print::type prt_type);
+    void describe_partition_parts (const sm_partition &parts, class_description::type prt_type);
+    void describe_identifier (const char *identifier, class_description::type prt_type);
+    void describe_domain (/*const*/ tp_domain &domain, class_description::type prt_type, bool force_print_collation);
+    void describe_argument (const sm_method_argument &argument, class_description::type prt_type);
+    void describe_method (const struct db_object &op, const sm_method &method_p, class_description::type prt_type);
+    void describe_signature (const sm_method_signature &signature_p, class_description::type prt_type);
     void describe_attribute (const struct db_object &class_p, const sm_attribute &attribute_p, bool is_inherited,
-			     object_print::type prt_type, bool force_print_collation);
+			     class_description::type prt_type, bool force_print_collation);
     void describe_constraint (const sm_class &class_p,
 			      const sm_class_constraint &constraint_p,
-			      object_print::type prt_type);
-    void describe_resolution (const sm_resolution &resolution, object_print::type prt_type);
+			      class_description::type prt_type);
+    void describe_resolution (const sm_resolution &resolution, class_description::type prt_type);
     void describe_method_file (const struct db_object &obj, const sm_method_file &file);
     void describe_class_trigger (const tr_trigger &trigger);
-    void describe_class (object_print::class_description &class_schema, struct db_object *class_op);
+    void describe_class (class_description &class_schema, struct db_object *class_op);
     void describe_partition_info (const sm_partition &partinfo);
 
     void describe_trigger_list (tr_triglist *triggers, object_print::strlist **strings);

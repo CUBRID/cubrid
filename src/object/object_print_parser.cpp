@@ -1,4 +1,5 @@
 #include "object_print_parser.hpp"
+#include "class_description.hpp"
 #include "class_object.h"
 #include "db_json.hpp"
 #include "dbdef.h"
@@ -8,7 +9,6 @@
 #include "misc_string.h"
 #include "object_print_common.hpp"
 #include "object_domain.h"
-#include "object_print_class_description.hpp"
 #include "object_print_util.hpp"
 #include "parse_tree.h"
 #include "schema_manager.h"
@@ -39,7 +39,7 @@ void object_print_parser::describe_comment (const char *comment)
 }
 
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_partition_parts (const sm_partition &parts, object_print::type prt_type)
+void object_print_parser::describe_partition_parts (const sm_partition &parts, class_description::type prt_type)
 {
   DB_VALUE ele;
   int setsize, i;
@@ -108,9 +108,9 @@ void object_print_parser::describe_partition_parts (const sm_partition &parts, o
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_identifier (const char *identifier, object_print::type prt_type)
+void object_print_parser::describe_identifier (const char *identifier, class_description::type prt_type)
 {
-  if (prt_type == object_print::CSQL_SCHEMA_COMMAND)
+  if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
       m_buf ("%s", identifier);
     }
@@ -135,7 +135,7 @@ void object_print_parser::describe_identifier (const char *identifier, object_pr
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_domain (/*const*/tp_domain &domain, object_print::type prt_type,
+void object_print_parser::describe_domain (/*const*/tp_domain &domain, class_description::type prt_type,
     bool force_print_collation)
 {
   TP_DOMAIN *temp_domain;
@@ -243,7 +243,7 @@ void object_print_parser::describe_domain (/*const*/tp_domain &domain, object_pr
 	  m_buf ("%s OF ", temp_buffer);
 	  if (temp_domain->setdomain != NULL)
 	    {
-	      if (temp_domain->setdomain->next != NULL && prt_type == object_print::SHOW_CREATE_TABLE)
+	      if (temp_domain->setdomain->next != NULL && prt_type == class_description::SHOW_CREATE_TABLE)
 		{
 		  m_buf ("(");
 		  describe_domain (*temp_domain->setdomain, prt_type, force_print_collation);
@@ -298,7 +298,7 @@ void object_print_parser::describe_domain (/*const*/tp_domain &domain, object_pr
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_argument (const sm_method_argument &argument, object_print::type prt_type)
+void object_print_parser::describe_argument (const sm_method_argument &argument, class_description::type prt_type)
 {
   if (argument.domain != NULL)
     {
@@ -326,7 +326,7 @@ void object_print_parser::describe_argument (const sm_method_argument &argument,
  */
 //--------------------------------------------------------------------------------
 void object_print_parser::describe_method (const struct db_object &op, const sm_method &method,
-    object_print::type prt_type)
+    class_description::type prt_type)
 {
   SM_METHOD_SIGNATURE *signature_p;
 
@@ -374,7 +374,7 @@ void object_print_parser::describe_method (const struct db_object &op, const sm_
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_signature (const sm_method_signature &signature, object_print::type prt_type)
+void object_print_parser::describe_signature (const sm_method_signature &signature, class_description::type prt_type)
 {
   SM_METHOD_ARGUMENT *argument_p;
   int i;
@@ -413,12 +413,12 @@ void object_print_parser::describe_signature (const sm_method_signature &signatu
  */
 //--------------------------------------------------------------------------------
 void object_print_parser::describe_attribute (const struct db_object &cls, const sm_attribute &attribute,
-    bool is_inherited, object_print::type prt_type, bool force_print_collation)
+    bool is_inherited, class_description::type prt_type, bool force_print_collation)
 {
   char str_buf[NUMERIC_MAX_STRING_SIZE];
   object_print_common obj_print (m_buf);
 
-  if (prt_type == object_print::CSQL_SCHEMA_COMMAND)
+  if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
       m_buf ("%-20s ", attribute.header.name);
     }
@@ -446,7 +446,7 @@ void object_print_parser::describe_attribute (const struct db_object &cls, const
 	{
 	  m_buf (" AUTO_INCREMENT ");
 	  assert (is_inherited || attribute.auto_increment != NULL);
-	  if (prt_type == object_print::SHOW_CREATE_TABLE)
+	  if (prt_type == class_description::SHOW_CREATE_TABLE)
 	    {
 	      DB_VALUE min_val, inc_val;
 	      char buff[DB_MAX_NUMERIC_PRECISION * 2 + 4];
@@ -548,14 +548,14 @@ void object_print_parser::describe_attribute (const struct db_object &cls, const
  */
 //--------------------------------------------------------------------------------
 void object_print_parser::describe_constraint (const sm_class &cls, const sm_class_constraint &constraint,
-    object_print::type prt_type)
+    class_description::type prt_type)
 {
   SM_ATTRIBUTE **attribute_p;
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
 
-  if (prt_type == object_print::CSQL_SCHEMA_COMMAND)
+  if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
       switch (constraint.type)
 	{
@@ -706,7 +706,7 @@ void object_print_parser::describe_constraint (const sm_class &cls, const sm_cla
       m_buf (" REFERENCES ");
       describe_identifier (sm_ch_name ((MOBJ)ref_cls), prt_type);
 
-      if (prt_type == object_print::SHOW_CREATE_TABLE)
+      if (prt_type == class_description::SHOW_CREATE_TABLE)
 	{
 	  for (c = ref_cls->constraints; c; c = c->next)
 	    {
@@ -732,7 +732,7 @@ void object_print_parser::describe_constraint (const sm_class &cls, const sm_cla
 
       m_buf (" ON DELETE %s", classobj_describe_foreign_key_action (constraint.fk_info->delete_action));
 
-      if (prt_type == object_print::CSQL_SCHEMA_COMMAND)
+      if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
 	{
 	  m_buf (",");
 	}
@@ -755,9 +755,9 @@ void object_print_parser::describe_constraint (const sm_class &cls, const sm_cla
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_resolution (const sm_resolution &resolution, object_print::type prt_type)
+void object_print_parser::describe_resolution (const sm_resolution &resolution, class_description::type prt_type)
 {
-  if (prt_type != object_print::SHOW_CREATE_TABLE)
+  if (prt_type != class_description::SHOW_CREATE_TABLE)
     {
       if (resolution.name_space == ID_CLASS)
 	{
@@ -863,7 +863,7 @@ const char *object_print_parser::describe_trigger_action_time (const tr_trigger 
  *   class_op(in):
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_class (object_print::class_description &class_schema, struct db_object *class_op)
+void object_print_parser::describe_class (class_description &class_schema, struct db_object *class_op)
 {
   char **line_ptr;
   /* class name */

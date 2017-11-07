@@ -30,7 +30,7 @@
 #include <signal.h>
 #include <assert.h>
 
-#include "object_print_class_description.hpp"
+#include "class_description.hpp"
 #include "porting.h"
 #include "csql.h"
 #include "memory_alloc.h"
@@ -273,8 +273,8 @@ csql_help_schema (const char *class_name)
     }
 
   {
-    object_print::class_description class_schema(class_name);
-    if (class_schema.name == NULL)
+    class_description class_descr(class_name);
+    if (class_descr.name == NULL)
       {
         csql_Error_code = CSQL_ERR_SQL_ERROR;
         goto error;
@@ -282,124 +282,124 @@ csql_help_schema (const char *class_name)
 
     snprintf (class_title, (2 * DB_MAX_IDENTIFIER_LENGTH + 2),
 	      msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CLASS_HEAD_TEXT),
-	      class_schema.class_type);
+	      class_descr.class_type);
     APPEND_HEAD_LINE (class_title);
-    APPEND_MORE_LINE (5, class_schema.name);
+    APPEND_MORE_LINE (5, class_descr.name);
 
-    if (class_schema.supers != NULL)
+    if (class_descr.supers != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_SUPER_CLASS_HEAD_TEXT));
-        for (line_ptr = class_schema.supers; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.supers; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (class_schema.subs != NULL)
+    if (class_descr.subs != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_SUB_CLASS_HEAD_TEXT));
-        for (line_ptr = class_schema.subs; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.subs; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
     APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_ATTRIBUTE_HEAD_TEXT));
-    if (class_schema.attributes == NULL)
+    if (class_descr.attributes == NULL)
       {
         APPEND_MORE_LINE (5, msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_NONE_TEXT));
       }
     else
       {
-        for (line_ptr = class_schema.attributes; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.attributes; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (class_schema.class_attributes != NULL)
+    if (class_descr.class_attributes != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message
 			  (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CLASS_ATTRIBUTE_HEAD_TEXT));
-        for (line_ptr = class_schema.class_attributes; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.class_attributes; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (class_schema.constraints != NULL)
+    if (class_descr.constraints != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CONSTRAINT_HEAD_TEXT));
-        for (line_ptr = class_schema.constraints; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.constraints; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (class_schema.object_id != NULL)
+    if (class_descr.object_id != NULL)
       {
         APPEND_MORE_LINE (0, "");
-        APPEND_MORE_LINE (1, class_schema.object_id);
+        APPEND_MORE_LINE (1, class_descr.object_id);
       }
 
-    if (class_schema.methods != NULL)
+    if (class_descr.methods != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_METHOD_HEAD_TEXT));
-        for (line_ptr = class_schema.methods; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.methods; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (class_schema.class_methods != NULL)
+    if (class_descr.class_methods != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CLASS_METHOD_HEAD_TEXT));
-        for (line_ptr = class_schema.class_methods; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.class_methods; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (class_schema.resolutions != NULL)
+    if (class_descr.resolutions != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_RESOLUTION_HEAD_TEXT));
-        for (line_ptr = class_schema.resolutions; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.resolutions; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (class_schema.method_files != NULL)
+    if (class_descr.method_files != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_METHFILE_HEAD_TEXT));
-        for (line_ptr = class_schema.method_files; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.method_files; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (class_schema.query_spec != NULL)
+    if (class_descr.query_spec != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_QUERY_SPEC_HEAD_TEXT));
-        for (line_ptr = class_schema.query_spec; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.query_spec; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (class_schema.triggers != NULL)
+    if (class_descr.triggers != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_HEAD_TEXT));
-        for (line_ptr = class_schema.triggers; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.triggers; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (class_schema.partition != NULL)
+    if (class_descr.partition != NULL)
       {
         APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_PARTITION_HEAD_TEXT));
-        for (line_ptr = class_schema.partition; *line_ptr != NULL; line_ptr++)
+        for (line_ptr = class_descr.partition; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }

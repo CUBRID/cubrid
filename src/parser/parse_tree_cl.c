@@ -2609,7 +2609,7 @@ AGAIN:
     }
   /* restore custom print */
   parser->custom_print = save_custom;
-  result = pt_append_nulstring(parser, nullptr, buf.get_buffer());
+  result = pt_append_nulstring(parser, NULL, buf.get_buffer());
   return result;
 }
 
