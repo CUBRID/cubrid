@@ -41,7 +41,11 @@
 #include "log_compress.h"
 #endif /* SERVER_MODE */
 
-#include "lock_free.h"
+#if defined (SERVER_MODE)
+#include "thread_entry.hpp"
+#else
+// TODO: this is duplicate code from thread_entry.hpp; fix it!
+// for lock-free
 enum
 {
   THREAD_TS_SPAGE_SAVING = 0,
@@ -58,6 +62,10 @@ enum
 };
 
 #define THREAD_TS_COUNT  THREAD_TS_LAST
+#endif
+
+#include "lock_free.h"
+
 
 #if !defined(SERVER_MODE)
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) thread_get_current_entry_index()
@@ -143,17 +151,6 @@ enum
   THREAD_ALLOC_BCB_SUSPENDED = 21,
   THREAD_ALLOC_BCB_RESUMED = 22,
 };
-
-typedef enum
-{
-  TT_MASTER,
-  TT_SERVER,
-  TT_WORKER,
-  TT_DAEMON,
-  TT_VACUUM_MASTER,
-  TT_VACUUM_WORKER,
-  TT_NONE
-} THREAD_TYPE;
 
 enum
 { THREAD_STOP_WORKERS_EXCEPT_LOGWR, THREAD_STOP_LOGWR };
@@ -247,117 +244,6 @@ struct thread_resource_track
 /* Forward definition to fix compile error. */
 struct vacuum_worker;
 struct fi_test_item;
-
-
-typedef struct thread_entry THREAD_ENTRY;
-
-/* stats for event logging */
-typedef struct event_stat EVENT_STAT;
-struct event_stat
-{
-  /* slow query stats */
-  struct timeval cs_waits;
-  struct timeval lock_waits;
-  struct timeval latch_waits;
-
-  /* temp volume expand stats */
-  struct timeval temp_expand_time;
-  int temp_expand_pages;
-
-  /* save PRM_ID_SQL_TRACE_SLOW_MSECS for performance */
-  bool trace_slow_query;
-
-  /* log flush thread wait time */
-  int trace_log_flush_time;
-};
-
-struct thread_entry
-{
-#if defined(WINDOWS)
-  UINTPTR thread_handle;	/* thread handle */
-#endif				/* WINDOWS */
-  int index;			/* thread entry index */
-  THREAD_TYPE type;		/* thread type */
-  pthread_t tid;		/* thread id */
-  pthread_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
-				 * thread */
-  int client_id;		/* client id whom this thread is responding */
-  int tran_index;		/* tran index to which this thread belongs */
-  int private_lru_index;	/* private lru index when transaction quota is used */
-  pthread_mutex_t tran_index_lock;
-  unsigned int rid;		/* request id which this thread is processing */
-  int status;			/* thread status */
-
-  pthread_mutex_t th_entry_lock;	/* latch for this thread entry */
-  pthread_cond_t wakeup_cond;	/* wakeup condition */
-
-  HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
-  ADJ_ARRAY *cnv_adj_buffer[3];	/* conversion buffer */
-
-  struct css_conn_entry *conn_entry;	/* conn entry ptr */
-
-  ER_MSG ermsg;			/* error msg area */
-  ER_MSG *er_Msg;		/* last error */
-  char er_emergency_buf[ER_EMERGENCY_BUF_SIZE];	/* error msg buffer for emergency */
-
-  void *xasl_unpack_info_ptr;	/* XASL_UNPACK_INFO * */
-  int xasl_errcode;		/* xasl errorcode */
-  int xasl_recursion_depth;
-
-  unsigned int rand_seed;	/* seed for rand_r() */
-  struct drand48_data rand_buf;	/* seed for lrand48_r(), drand48_r() */
-
-  int resume_status;		/* resume status */
-  int request_latch_mode;	/* for page latch support */
-  int request_fix_count;
-  bool victim_request_fail;
-  bool interrupted;		/* is this request/transaction interrupted ? */
-  bool shutdown;		/* is server going down? */
-  bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
-  bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
-  struct thread_entry *next_wait_thrd;
-
-  void *lockwait;
-  INT64 lockwait_stime;		/* time in milliseconds */
-  int lockwait_msecs;		/* time in milliseconds */
-  int lockwait_state;
-  void *query_entry;
-  struct thread_entry *tran_next_wait;
-  struct thread_entry *worker_thrd_list;	/* worker thrd on jobq list */
-
-  LOG_ZIP *log_zip_undo;
-  LOG_ZIP *log_zip_redo;
-  char *log_data_ptr;
-  int log_data_length;
-
-  int net_request_index;	/* request index of net server functions */
-
-  struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
-
-  /* resource track info */
-  THREAD_RC_TRACK *track;
-  int track_depth;
-  int track_threshold;		/* for future work, get PRM */
-  THREAD_RC_TRACK *track_free_list;
-
-  bool sort_stats_active;
-
-  EVENT_STAT event_stats;
-
-  /* for query profile */
-  int trace_format;
-  bool on_trace;
-  bool clear_trace;
-
-  /* for lock free structures */
-  LF_TRAN_ENTRY *tran_entries[THREAD_TS_COUNT];
-
-#if !defined(NDEBUG)
-  struct fi_test_item *fi_test_array;
-
-  int count_private_allocators;
-#endif
-};
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
   ((thread_p)->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && \
