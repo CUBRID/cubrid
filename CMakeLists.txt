@@ -90,6 +90,10 @@ set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.8.1.t
 set(WITH_LIBNCURSES_GIT_REPOSITORY "https://github.com/mirror/ncurses.git")
 set(WITH_LIBNCURSES_GIT_TAG "v6.0")
 
+# rapidjson library git properties
+set(WITH_RAPIDJSON_GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git")
+set(WITH_RAPIDJSON_GIT_TAG "v1.1.0")
+
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
 set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SYSTEM)")
@@ -106,9 +110,9 @@ set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt 
 if(UNIX)
   if(CMAKE_COMPILER_IS_GNUCC)
     if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
-      set(WITH_LIBNCURSES   "GIT" CACHE STRING "Build with ncurses library (default: GIT)")
+      set(WITH_LIBNCURSES   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with ncurses library (default: EXTERNAL)")
     else(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
-      set(WITH_LIBNCURSES   "SYSTEM" CACHE STRING "Build with ncurses library (default: SYSTEM)")
+      set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
   endif(CMAKE_COMPILER_IS_GNUCC)
 endif(UNIX)
@@ -902,7 +906,7 @@ if(UNIX)
       GIT_REPOSITORY    ${WITH_LIBNCURSES_GIT_REPOSITORY}
       GIT_TAG           ${WITH_LIBNCURSES_GIT_TAG}
       UPDATE_COMMAND    ""
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} "CFLAGS=${CFLAGS} -fPIC" "CXXFLAGS=${CXXFLAGS} -fPIC" --with-normal --without-debug --without-ada --with-cxx-binding --with-termlib=tinfo
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} "CPPFLAGS=${CPPFLAGS} -P -fPIC" --with-normal --without-debug --without-ada --with-cxx-binding --with-termlib=tinfo
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
@@ -1086,11 +1090,11 @@ if(WIN32)
 endif(WIN32)
 
 # rapidjson
-ExternalProject_Add(rapidjson
-
+set(RAPIDJSON_TARGET rapidjson)
+externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
-  GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git"
-  GIT_TAG "v1.1.0"
+  GIT_REPOSITORY ${WITH_RAPIDJSON_GIT_REPOSITORY}
+  GIT_TAG        ${WITH_RAPIDJSON_GIT_TAG}
 
   # don't install
   INSTALL_COMMAND ""
@@ -1103,7 +1107,7 @@ ExternalProject_Add(rapidjson
 # add to include directories
 include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
 # add to external project targets
-list(APPEND EP_TARGETS rapidjson)
+list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
 
 # include subdirectories
 add_subdirectory(cas)
