@@ -2387,7 +2387,7 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
-extern void logpb_update_last_blockid (THREAD_ENTRY * thread_p, LOG_PAGEID page_id);
+extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
 
 /************************************************************************/
 /* Inline functions:                                                    */
