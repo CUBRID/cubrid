@@ -2426,6 +2426,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   return vol_fd;
 }
 
+#if !defined (CS_MODE)
 /*
  * fileio_expand_to () -  Expand a volume to the given number of pages.
  *
@@ -2528,9 +2529,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
   if (new_size <= current_size)
     {
       /* this must be recovery. */
-#ifdef SERVER_MODE
       assert (!LOG_ISRESTARTED ());
-#endif /* SERVER_MODE */
       er_log_debug (ARG_FILE_LINE, "skip extending volume %d with current size %zu to new size %zu\n",
 		    vol_id, current_size, new_size);
       return NO_ERROR;
@@ -2607,6 +2606,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 
   return NO_ERROR;
 }
+#endif /* not CS_MODE */
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
