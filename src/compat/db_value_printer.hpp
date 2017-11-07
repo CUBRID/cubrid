@@ -36,7 +36,7 @@ class db_value_printer
   public:
     static constexpr char DECIMAL_FORMAT[] = "%#.*g";
 
-    db_value_printer(string_buffer &buf)
+    db_value_printer (string_buffer &buf)
       : m_buf (buf)
     {}
 

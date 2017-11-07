@@ -326,7 +326,7 @@ void object_printer::describe_argument (const sm_method_argument &argument, clas
  */
 //--------------------------------------------------------------------------------
 void object_printer::describe_method (const struct db_object &op, const sm_method &method,
-    class_description::type prt_type)
+				      class_description::type prt_type)
 {
   SM_METHOD_SIGNATURE *signature_p;
 
@@ -866,23 +866,23 @@ const char *object_printer::describe_trigger_action_time (const tr_trigger &trig
 void object_printer::describe_class (struct db_object *class_op)
 {
   class_description class_descr;
-  if (!class_descr.init(class_op, class_description::SHOW_CREATE_TABLE))
-  {
-#if 0
-    int error = er_errid();
-    assert(error != NO_ERROR);
-    if (error == ER_AU_SELECT_FAILURE)
+  if (!class_descr.init (class_op, class_description::SHOW_CREATE_TABLE))
     {
-      PT_ERRORmf2(parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
-        db_get_class_name(class_op));
-    }
-    else
-    {
-      PT_ERRORc(parser, table_name, er_msg());
-    }
+#if 0 //what do we do in case of error???
+      int error = er_errid();
+      assert (error != NO_ERROR);
+      if (error == ER_AU_SELECT_FAILURE)
+	{
+	  PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
+		       db_get_class_name (class_op));
+	}
+      else
+	{
+	  PT_ERRORc (parser, table_name, er_msg());
+	}
 #endif
-    return;
-  }
+      return;
+    }
 
   char **line_ptr;
   /* class name */
@@ -1029,15 +1029,15 @@ void object_printer::describe_class (struct db_object *class_op)
     {
       m_buf (" %s", *class_descr.partition[0]);
       size_t len = class_descr.partition.size();
-      if(len > 1)
-        {
-          m_buf (" (%s", class_descr.partition[1]);
-          for(size_t i=2; i<len; ++i)
-            {
-              m_buf (", %s", class_descr.partition[i]);
-            }
-          m_buf (")");
-        }
+      if (len > 1)
+	{
+	  m_buf (" (%s", class_descr.partition[1]);
+	  for (size_t i=2; i<len; ++i)
+	    {
+	      m_buf (", %s", class_descr.partition[i]);
+	    }
+	  m_buf (")");
+	}
     }
 
   /* comment */

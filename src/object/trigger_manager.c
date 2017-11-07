@@ -6557,7 +6557,7 @@ const char *tr_time_as_string(DB_TRIGGER_TIME time)
       string = "???";
       break;
     }
-    
+
   return string;
 }
 

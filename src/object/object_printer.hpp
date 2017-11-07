@@ -71,7 +71,7 @@ class object_printer
     void describe_resolution (const sm_resolution &resolution, class_description::type prt_type);
     void describe_method_file (const struct db_object &obj, const sm_method_file &file);
     void describe_class_trigger (const tr_trigger &trigger);
-    void describe_class(struct db_object *class_op);
+    void describe_class (struct db_object *class_op);
     void describe_partition_info (const sm_partition &partinfo);
 
     void describe_trigger_list (tr_triglist *triggers, object_print::strlist **strings);

@@ -7,7 +7,7 @@
 #include "work_space.h"
 
 /* safe string free */
-#define STRFREE_W(string) \
+#define STRFREE_W(string)                               \
   if (string != NULL) db_string_free((char *) (string))
 
 trigger_description::trigger_description()

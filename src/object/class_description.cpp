@@ -54,7 +54,7 @@ class_description::class_description()
 
 class_description::class_description (const char *name)
 {
-  init(sm_find_class(name), CSQL_SCHEMA_COMMAND);
+  init (sm_find_class (name), CSQL_SCHEMA_COMMAND);
 }
 
 class_description::~class_description()
@@ -84,17 +84,17 @@ class_description::~class_description()
   object_print::free_strarray (resolutions);
   object_print::free_strarray (method_files);
   object_print::free_strarray (query_spec);
-  for(auto it: triggers)
-  {
-    free(it);
-    *it = NULL;
-  }
+  for (auto it: triggers)
+    {
+      free (it);
+      *it = NULL;
+    }
   triggers.clear();
   object_print::free_strarray (constraints);
-  for(auto it: partition)
-  {
-    free(it);
-  }
+  for (auto it: partition)
+    {
+      free (it);
+    }
   partition.clear();
   if (comment != 0)
     {
@@ -102,7 +102,7 @@ class_description::~class_description()
     }
 }
 
-bool class_description::init(struct db_object *op, type prt_type)
+bool class_description::init (struct db_object *op, type prt_type)
 {
   this->~class_description();//cleanup before (re)initialize
 
@@ -122,588 +122,591 @@ bool class_description::init(struct db_object *op, type prt_type)
   int max_name_size = SM_MAX_IDENTIFIER_LENGTH + 50;
   size_t buf_size = 0;
   char b[8192] = { 0 };//bSolo: temp hack
-  string_buffer sb(sizeof(b), b);
-  object_printer printer(sb);
+  string_buffer sb (sizeof (b), b);
+  object_printer printer (sb);
 
   include_inherited = (prt_type == CSQL_SCHEMA_COMMAND);
 
-  is_class = locator_is_class(op, DB_FETCH_READ);
+  is_class = locator_is_class (op, DB_FETCH_READ);
   if (is_class < 0)
-  {
-    goto error_exit;
-  }
-  if (!is_class || locator_is_root(op))
-  {
-    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-    goto error_exit;
-  }
-
-  else if (au_fetch_class(op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
-  {
-    if (class_->comment != 0 && class_->comment[0] != '\0')
-    {
-      has_comment = true;
-      max_name_size = SM_MAX_IDENTIFIER_LENGTH + SM_MAX_CLASS_COMMENT_LENGTH + 50;
-    }
-
-    force_print_att_coll = (class_->collation_id != LANG_SYS_COLLATION) ? true : false;
-    /* make sure all the information is up to date */
-    if (sm_clean_class(op, class_) != NO_ERROR)
     {
       goto error_exit;
     }
-
-
-    if (prt_type == CSQL_SCHEMA_COMMAND)
+  if (!is_class || locator_is_root (op))
     {
-      /*
-      * For the case of "print schema",
-      * this->name is set to:
-      *   exact class name
-      *   + COLLATE collation_name if exists;
-      *   + COMMENT 'text' if exists;
-      *
-      * The caller uses this->name to fill in "<Class Name> $name"
-      */
-      if (class_->collation_id == LANG_SYS_COLLATION)
-      {
-        sb.clear();
-        if (has_comment)
-        {
-          sb("%-20s ", (char *)sm_ch_name((MOBJ)class_));
-          printer.describe_comment(class_->comment);
-        }
-        else
-        {
-          sb("%s", (char *)sm_ch_name((MOBJ)class_));
-        }
-      }
-      else
-      {
-        if (has_comment)
-        {
-          sb("%-20s COLLATE %s ", sm_ch_name((MOBJ)class_), lang_get_collation_name(class_->collation_id));
-          printer.describe_comment(class_->comment);
-        }
-        else
-        {
-          sb("%-20s COLLATE %s", sm_ch_name((MOBJ)class_), lang_get_collation_name(class_->collation_id));
-        }
-      }
-      this->name = object_print::copy_string(sb.get_buffer());
-    }
-    else
-    {
-      /*
-      * For the case prt_type == OBJ_PRINT_SHOW_CREATE_TABLE
-      * this->name is set to the exact class name
-      */
-      sb.clear();
-      sb("[%s]", sm_ch_name((MOBJ)class_));
-      this->name = object_print::copy_string(sb.get_buffer());
-    }
-
-    switch (class_->class_type)
-    {
-    default:
-      this->class_type = object_print::copy_string(msgcat_message(MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_META_CLASS_HEADER));
-      break;
-    case SM_CLASS_CT:
-      this->class_type = object_print::copy_string(msgcat_message(MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_HEADER));
-      break;
-    case SM_VCLASS_CT:
-      this->class_type = object_print::copy_string(msgcat_message(MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_VCLASS_HEADER));
-      break;
-    }
-
-    this->collation = object_print::copy_string(lang_get_collation_name(class_->collation_id));
-    if (this->collation == 0)
-    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       goto error_exit;
     }
 
-    if (has_comment && prt_type != CSQL_SCHEMA_COMMAND)
+  else if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
-      /*
-      * For the case except "print schema",
-      * comment is copied to this->comment anyway
-      */
-      this->comment = object_print::copy_string(class_->comment);
-      if (this->comment == 0)
-      {
-        goto error_exit;
-      }
-    }
+      if (class_->comment != 0 && class_->comment[0] != '\0')
+	{
+	  has_comment = true;
+	  max_name_size = SM_MAX_IDENTIFIER_LENGTH + SM_MAX_CLASS_COMMENT_LENGTH + 50;
+	}
 
-    if (class_->inheritance != 0)
-    {
-      count = ws_list_length((DB_LIST *)class_->inheritance);
-      buf_size = sizeof(char *) * (count + 1);
-      strs = (char **)malloc(buf_size);
-      if (strs == 0)
-      {
-        er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-        goto error_exit;
-      }
-      i = 0;
-      for (super = class_->inheritance; super != 0; super = super->next)
-      {
-        /* kludge for const vs. non-const warnings */
-        kludge = sm_get_ch_name(super->op);
-        if (kludge == 0)
-        {
-          assert(er_errid() != NO_ERROR);
-          goto error_exit;
-        }
+      force_print_att_coll = (class_->collation_id != LANG_SYS_COLLATION) ? true : false;
+      /* make sure all the information is up to date */
+      if (sm_clean_class (op, class_) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
 
-        if (prt_type == CSQL_SCHEMA_COMMAND)
-        {
-          strs[i] = object_print::copy_string((char *)kludge);
-        }
-        else
-        {
-          /* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
-          sb.clear();
-          sb("[%s]", kludge);
-          strs[i] = object_print::copy_string(sb.get_buffer());
-        }
-        i++;
-      }
-      strs[i] = 0;
-      this->supers = strs;
-    }
 
-    if (class_->users != 0)
-    {
-      count = ws_list_length((DB_LIST *)class_->users);
-      buf_size = sizeof(char *) * (count + 1);
-      strs = (char **)malloc(buf_size);
-      if (strs == 0)
-      {
-        er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-        goto error_exit;
-      }
-      i = 0;
-      for (user = class_->users; user != 0; user = user->next)
-      {
-        /* kludge for const vs. non-const warnings */
-        kludge = sm_get_ch_name(user->op);
-        if (kludge == 0)
-        {
-          assert(er_errid() != NO_ERROR);
-          goto error_exit;
-        }
-
-        if (prt_type == CSQL_SCHEMA_COMMAND)
-        {
-          strs[i] = object_print::copy_string((char *)kludge);
-        }
-        else
-        {
-          /* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
-          sb.clear();
-          sb("[%s]", kludge);
-          strs[i] = object_print::copy_string(sb.get_buffer());
-        }
-
-        i++;
-      }
-      strs[i] = 0;
-      this->subs = strs;
-    }
-
-    if (class_->attributes != 0 || class_->shared != 0)
-    {
-      if (include_inherited)
-      {
-        count = class_->att_count + class_->shared_count;
-      }
+      if (prt_type == CSQL_SCHEMA_COMMAND)
+	{
+	  /*
+	  * For the case of "print schema",
+	  * this->name is set to:
+	  *   exact class name
+	  *   + COLLATE collation_name if exists;
+	  *   + COMMENT 'text' if exists;
+	  *
+	  * The caller uses this->name to fill in "<Class Name> $name"
+	  */
+	  if (class_->collation_id == LANG_SYS_COLLATION)
+	    {
+	      sb.clear();
+	      if (has_comment)
+		{
+		  sb ("%-20s ", (char *)sm_ch_name ((MOBJ)class_));
+		  printer.describe_comment (class_->comment);
+		}
+	      else
+		{
+		  sb ("%s", (char *)sm_ch_name ((MOBJ)class_));
+		}
+	    }
+	  else
+	    {
+	      if (has_comment)
+		{
+		  sb ("%-20s COLLATE %s ", sm_ch_name ((MOBJ)class_), lang_get_collation_name (class_->collation_id));
+		  printer.describe_comment (class_->comment);
+		}
+	      else
+		{
+		  sb ("%-20s COLLATE %s", sm_ch_name ((MOBJ)class_), lang_get_collation_name (class_->collation_id));
+		}
+	    }
+	  this->name = object_print::copy_string (sb.get_buffer());
+	}
       else
-      {
-        count = 0;
-        /* find the number own by itself */
-        for (a = class_->ordered_attributes; a != 0; a = a->order_link)
-        {
-          if (a->class_mop == op)
-          {
-            count++;
-          }
-        }
-      }
+	{
+	  /*
+	  * For the case prt_type == OBJ_PRINT_SHOW_CREATE_TABLE
+	  * this->name is set to the exact class name
+	  */
+	  sb.clear();
+	  sb ("[%s]", sm_ch_name ((MOBJ)class_));
+	  this->name = object_print::copy_string (sb.get_buffer());
+	}
 
-      if (count > 0)
-      {
-        buf_size = sizeof(char *) * (count + 1);
-        strs = (char **)malloc(buf_size);
-        if (strs == 0)
-        {
-          er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-          goto error_exit;
-        }
+      switch (class_->class_type)
+	{
+	default:
+	  this->class_type = object_print::copy_string (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP,
+			     MSGCAT_HELP_META_CLASS_HEADER));
+	  break;
+	case SM_CLASS_CT:
+	  this->class_type = object_print::copy_string (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP,
+			     MSGCAT_HELP_CLASS_HEADER));
+	  break;
+	case SM_VCLASS_CT:
+	  this->class_type = object_print::copy_string (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP,
+			     MSGCAT_HELP_VCLASS_HEADER));
+	  break;
+	}
 
-        i = 0;
-        for (a = class_->ordered_attributes; a != 0; a = a->order_link)
-        {
-          if (include_inherited || (!include_inherited && a->class_mop == op))
-          {
-            sb.clear();
-            printer.describe_attribute(*op, *a, (a->class_mop != op), prt_type, force_print_att_coll);
-            if (sb.len() == 0)
-            {
-              goto error_exit;
-            }
-            strs[i] = object_print::copy_string(sb.get_buffer());
-            i++;
-          }
-        }
-        strs[i] = 0;
-        this->attributes = strs;
-      }
-    }
+      this->collation = object_print::copy_string (lang_get_collation_name (class_->collation_id));
+      if (this->collation == 0)
+	{
+	  goto error_exit;
+	}
 
-    if (class_->class_attributes != 0)
-    {
-      if (include_inherited)
-      {
-        count = class_->class_attribute_count;
-      }
-      else
-      {
-        count = 0;
-        /* find the number own by itself */
-        for (a = class_->class_attributes; a != 0; a = (SM_ATTRIBUTE *)a->header.next)
-        {
-          if (a->class_mop == op)
-          {
-            count++;
-          }
-        }
-      }
+      if (has_comment && prt_type != CSQL_SCHEMA_COMMAND)
+	{
+	  /*
+	  * For the case except "print schema",
+	  * comment is copied to this->comment anyway
+	  */
+	  this->comment = object_print::copy_string (class_->comment);
+	  if (this->comment == 0)
+	    {
+	      goto error_exit;
+	    }
+	}
 
-      if (count > 0)
-      {
-        buf_size = sizeof(char *) * (count + 1);
-        strs = (char **)malloc(buf_size);
-        if (strs == 0)
-        {
-          er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-          goto error_exit;
-        }
+      if (class_->inheritance != 0)
+	{
+	  count = ws_list_length ((DB_LIST *)class_->inheritance);
+	  buf_size = sizeof (char *) * (count + 1);
+	  strs = (char **)malloc (buf_size);
+	  if (strs == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      goto error_exit;
+	    }
+	  i = 0;
+	  for (super = class_->inheritance; super != 0; super = super->next)
+	    {
+	      /* kludge for const vs. non-const warnings */
+	      kludge = sm_get_ch_name (super->op);
+	      if (kludge == 0)
+		{
+		  assert (er_errid() != NO_ERROR);
+		  goto error_exit;
+		}
 
-        i = 0;
-        for (a = class_->class_attributes; a != 0; a = (SM_ATTRIBUTE *)a->header.next)
-        {
-          if (include_inherited || (!include_inherited && a->class_mop == op))
-          {
-            sb.clear();
-            printer.describe_attribute(*op, *a, (a->class_mop != op), prt_type, force_print_att_coll);
-            if (sb.len() == 0)
-            {
-              goto error_exit;
-            }
-            strs[i] = object_print::copy_string(sb.get_buffer());
-            i++;
-          }
-        }
-        strs[i] = 0;
-        this->class_attributes = strs;
-      }
-    }
+	      if (prt_type == CSQL_SCHEMA_COMMAND)
+		{
+		  strs[i] = object_print::copy_string ((char *)kludge);
+		}
+	      else
+		{
+		  /* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+		  sb.clear();
+		  sb ("[%s]", kludge);
+		  strs[i] = object_print::copy_string (sb.get_buffer());
+		}
+	      i++;
+	    }
+	  strs[i] = 0;
+	  this->supers = strs;
+	}
 
-    if (class_->methods != 0)
-    {
-      if (include_inherited)
-      {
-        count = class_->method_count;
-      }
-      else
-      {
-        count = 0;
-        /* find the number own by itself */
-        for (m = class_->methods; m != 0; m = (SM_METHOD *)m->header.next)
-        {
-          if (m->class_mop == op)
-          {
-            count++;
-          }
-        }
-      }
+      if (class_->users != 0)
+	{
+	  count = ws_list_length ((DB_LIST *)class_->users);
+	  buf_size = sizeof (char *) * (count + 1);
+	  strs = (char **)malloc (buf_size);
+	  if (strs == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      goto error_exit;
+	    }
+	  i = 0;
+	  for (user = class_->users; user != 0; user = user->next)
+	    {
+	      /* kludge for const vs. non-const warnings */
+	      kludge = sm_get_ch_name (user->op);
+	      if (kludge == 0)
+		{
+		  assert (er_errid() != NO_ERROR);
+		  goto error_exit;
+		}
 
-      if (count > 0)
-      {
-        buf_size = sizeof(char *) * (count + 1);
-        strs = (char **)malloc(buf_size);
-        if (strs == 0)
-        {
-          er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-          goto error_exit;
-        }
-        i = 0;
-        for (m = class_->methods; m != 0; m = (SM_METHOD *)m->header.next)
-        {
-          if (include_inherited || (!include_inherited && m->class_mop == op))
-          {
-            sb.clear();
-            printer.describe_method(*op, *m, prt_type);
-            strs[i] = object_print::copy_string(sb.get_buffer());
-            i++;
-          }
-        }
-        strs[i] = 0;
-        this->methods = strs;
-      }
-    }
+	      if (prt_type == CSQL_SCHEMA_COMMAND)
+		{
+		  strs[i] = object_print::copy_string ((char *)kludge);
+		}
+	      else
+		{
+		  /* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+		  sb.clear();
+		  sb ("[%s]", kludge);
+		  strs[i] = object_print::copy_string (sb.get_buffer());
+		}
 
-    if (class_->class_methods != 0)
-    {
-      if (include_inherited)
-      {
-        count = class_->class_method_count;
-      }
-      else
-      {
-        count = 0;
-        /* find the number own by itself */
-        for (m = class_->class_methods; m != 0; m = (SM_METHOD *)m->header.next)
-        {
-          if (m->class_mop == op)
-          {
-            count++;
-          }
-        }
-      }
+	      i++;
+	    }
+	  strs[i] = 0;
+	  this->subs = strs;
+	}
 
-      if (count > 0)
-      {
-        buf_size = sizeof(char *) * (count + 1);
-        strs = (char **)malloc(buf_size);
-        if (strs == 0)
-        {
-          er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-          goto error_exit;
-        }
-        i = 0;
-        for (m = class_->class_methods; m != 0; m = (SM_METHOD *)m->header.next)
-        {
-          if (include_inherited || (!include_inherited && m->class_mop == op))
-          {
-            sb.clear();
-            printer.describe_method(*op, *m, prt_type);
-            strs[i] = object_print::copy_string(sb.get_buffer());
-            i++;
-          }
-        }
-        strs[i] = 0;
-        this->class_methods = strs;
-      }
-    }
+      if (class_->attributes != 0 || class_->shared != 0)
+	{
+	  if (include_inherited)
+	    {
+	      count = class_->att_count + class_->shared_count;
+	    }
+	  else
+	    {
+	      count = 0;
+	      /* find the number own by itself */
+	      for (a = class_->ordered_attributes; a != 0; a = a->order_link)
+		{
+		  if (a->class_mop == op)
+		    {
+		      count++;
+		    }
+		}
+	    }
 
-    if (class_->resolutions != 0)
-    {
-      count = ws_list_length((DB_LIST *)class_->resolutions);
-      buf_size = sizeof(char *) * (count + 1);
-      strs = (char **)malloc(buf_size);
-      if (strs == 0)
-      {
-        er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-        goto error_exit;
-      }
-      i = 0;
+	  if (count > 0)
+	    {
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **)malloc (buf_size);
+	      if (strs == 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  goto error_exit;
+		}
 
-      for (SM_RESOLUTION *r = class_->resolutions; r != 0; r = r->next)
-      {
-        sb.clear();
-        printer.describe_resolution(*r, prt_type);
-        strs[i] = object_print::copy_string(sb.get_buffer());
-        i++;
-      }
-      strs[i] = 0;
-      this->resolutions = strs;
-    }
+	      i = 0;
+	      for (a = class_->ordered_attributes; a != 0; a = a->order_link)
+		{
+		  if (include_inherited || (!include_inherited && a->class_mop == op))
+		    {
+		      sb.clear();
+		      printer.describe_attribute (*op, *a, (a->class_mop != op), prt_type, force_print_att_coll);
+		      if (sb.len() == 0)
+			{
+			  goto error_exit;
+			}
+		      strs[i] = object_print::copy_string (sb.get_buffer());
+		      i++;
+		    }
+		}
+	      strs[i] = 0;
+	      this->attributes = strs;
+	    }
+	}
 
-    if (class_->method_files != 0)
-    {
-      if (include_inherited)
-      {
-        count = ws_list_length((DB_LIST *)class_->method_files);
-      }
-      else
-      {
-        count = 0;
-        /* find the number own by itself */
-        for (SM_METHOD_FILE *f = class_->method_files; f != 0; f = f->next)
-        {
-          if (f->class_mop == op)
-          {
-            count++;
-          }
-        }
-      }
+      if (class_->class_attributes != 0)
+	{
+	  if (include_inherited)
+	    {
+	      count = class_->class_attribute_count;
+	    }
+	  else
+	    {
+	      count = 0;
+	      /* find the number own by itself */
+	      for (a = class_->class_attributes; a != 0; a = (SM_ATTRIBUTE *)a->header.next)
+		{
+		  if (a->class_mop == op)
+		    {
+		      count++;
+		    }
+		}
+	    }
 
-      if (count > 0)
-      {
-        buf_size = sizeof(char *) * (count + 1);
-        strs = (char **)malloc(buf_size);
-        if (strs == 0)
-        {
-          er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-          goto error_exit;
-        }
-        i = 0;
-        for (SM_METHOD_FILE *f = class_->method_files; f != 0; f = f->next)
-        {
-          if (include_inherited || (!include_inherited && f->class_mop == op))
-          {
-            sb.clear();
-            printer.describe_method_file(*op, *f);
-            strs[i] = object_print::copy_string(sb.get_buffer());
-            i++;
-          }
-        }
-        strs[i] = 0;
-        this->method_files = strs;
-      }
-    }
+	  if (count > 0)
+	    {
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **)malloc (buf_size);
+	      if (strs == 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  goto error_exit;
+		}
 
-    if (class_->query_spec != 0)
-    {
-      count = ws_list_length((DB_LIST *)class_->query_spec);
-      buf_size = sizeof(char *) * (count + 1);
-      strs = (char **)malloc(buf_size);
-      if (strs == 0)
-      {
-        er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-        goto error_exit;
-      }
-      i = 0;
-      for (p = class_->query_spec; p != 0; p = p->next)
-      {
-        strs[i] = object_print::copy_string((char *)p->specification);
-        i++;
-      }
-      strs[i] = 0;
-      this->query_spec = strs;
-    }
+	      i = 0;
+	      for (a = class_->class_attributes; a != 0; a = (SM_ATTRIBUTE *)a->header.next)
+		{
+		  if (include_inherited || (!include_inherited && a->class_mop == op))
+		    {
+		      sb.clear();
+		      printer.describe_attribute (*op, *a, (a->class_mop != op), prt_type, force_print_att_coll);
+		      if (sb.len() == 0)
+			{
+			  goto error_exit;
+			}
+		      strs[i] = object_print::copy_string (sb.get_buffer());
+		      i++;
+		    }
+		}
+	      strs[i] = 0;
+	      this->class_attributes = strs;
+	    }
+	}
 
-    /* these are a bit more complicated */
+      if (class_->methods != 0)
+	{
+	  if (include_inherited)
+	    {
+	      count = class_->method_count;
+	    }
+	  else
+	    {
+	      count = 0;
+	      /* find the number own by itself */
+	      for (m = class_->methods; m != 0; m = (SM_METHOD *)m->header.next)
+		{
+		  if (m->class_mop == op)
+		    {
+		      count++;
+		    }
+		}
+	    }
+
+	  if (count > 0)
+	    {
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **)malloc (buf_size);
+	      if (strs == 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  goto error_exit;
+		}
+	      i = 0;
+	      for (m = class_->methods; m != 0; m = (SM_METHOD *)m->header.next)
+		{
+		  if (include_inherited || (!include_inherited && m->class_mop == op))
+		    {
+		      sb.clear();
+		      printer.describe_method (*op, *m, prt_type);
+		      strs[i] = object_print::copy_string (sb.get_buffer());
+		      i++;
+		    }
+		}
+	      strs[i] = 0;
+	      this->methods = strs;
+	    }
+	}
+
+      if (class_->class_methods != 0)
+	{
+	  if (include_inherited)
+	    {
+	      count = class_->class_method_count;
+	    }
+	  else
+	    {
+	      count = 0;
+	      /* find the number own by itself */
+	      for (m = class_->class_methods; m != 0; m = (SM_METHOD *)m->header.next)
+		{
+		  if (m->class_mop == op)
+		    {
+		      count++;
+		    }
+		}
+	    }
+
+	  if (count > 0)
+	    {
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **)malloc (buf_size);
+	      if (strs == 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  goto error_exit;
+		}
+	      i = 0;
+	      for (m = class_->class_methods; m != 0; m = (SM_METHOD *)m->header.next)
+		{
+		  if (include_inherited || (!include_inherited && m->class_mop == op))
+		    {
+		      sb.clear();
+		      printer.describe_method (*op, *m, prt_type);
+		      strs[i] = object_print::copy_string (sb.get_buffer());
+		      i++;
+		    }
+		}
+	      strs[i] = 0;
+	      this->class_methods = strs;
+	    }
+	}
+
+      if (class_->resolutions != 0)
+	{
+	  count = ws_list_length ((DB_LIST *)class_->resolutions);
+	  buf_size = sizeof (char *) * (count + 1);
+	  strs = (char **)malloc (buf_size);
+	  if (strs == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      goto error_exit;
+	    }
+	  i = 0;
+
+	  for (SM_RESOLUTION *r = class_->resolutions; r != 0; r = r->next)
+	    {
+	      sb.clear();
+	      printer.describe_resolution (*r, prt_type);
+	      strs[i] = object_print::copy_string (sb.get_buffer());
+	      i++;
+	    }
+	  strs[i] = 0;
+	  this->resolutions = strs;
+	}
+
+      if (class_->method_files != 0)
+	{
+	  if (include_inherited)
+	    {
+	      count = ws_list_length ((DB_LIST *)class_->method_files);
+	    }
+	  else
+	    {
+	      count = 0;
+	      /* find the number own by itself */
+	      for (SM_METHOD_FILE *f = class_->method_files; f != 0; f = f->next)
+		{
+		  if (f->class_mop == op)
+		    {
+		      count++;
+		    }
+		}
+	    }
+
+	  if (count > 0)
+	    {
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **)malloc (buf_size);
+	      if (strs == 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  goto error_exit;
+		}
+	      i = 0;
+	      for (SM_METHOD_FILE *f = class_->method_files; f != 0; f = f->next)
+		{
+		  if (include_inherited || (!include_inherited && f->class_mop == op))
+		    {
+		      sb.clear();
+		      printer.describe_method_file (*op, *f);
+		      strs[i] = object_print::copy_string (sb.get_buffer());
+		      i++;
+		    }
+		}
+	      strs[i] = 0;
+	      this->method_files = strs;
+	    }
+	}
+
+      if (class_->query_spec != 0)
+	{
+	  count = ws_list_length ((DB_LIST *)class_->query_spec);
+	  buf_size = sizeof (char *) * (count + 1);
+	  strs = (char **)malloc (buf_size);
+	  if (strs == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      goto error_exit;
+	    }
+	  i = 0;
+	  for (p = class_->query_spec; p != 0; p = p->next)
+	    {
+	      strs[i] = object_print::copy_string ((char *)p->specification);
+	      i++;
+	    }
+	  strs[i] = 0;
+	  this->query_spec = strs;
+	}
+
+      /* these are a bit more complicated */
 #if 0
-    this->triggers = (char **)printer.describe_class_triggers(*class_, *op);
+      this->triggers = (char **)printer.describe_class_triggers (*class_, *op);
 #else //bSolo: ToDo
-    //...............................
+      //...............................
 #endif
 
-    /*
-    *  Process multi-column class constraints (Unique and Indexes).
-    *  Single column constraints (NOT 0) are displayed along with
-    *  the attributes.
-    */
-    this->constraints = 0;	/* initialize */
-    if (class_->constraints != 0)
-    {
-      SM_CLASS_CONSTRAINT *c;
+      /*
+      *  Process multi-column class constraints (Unique and Indexes).
+      *  Single column constraints (NOT 0) are displayed along with
+      *  the attributes.
+      */
+      this->constraints = 0;	/* initialize */
+      if (class_->constraints != 0)
+	{
+	  SM_CLASS_CONSTRAINT *c;
 
-      count = 0;
-      for (c = class_->constraints; c; c = c->next)
-      {
-        if (SM_IS_CONSTRAINT_INDEX_FAMILY(c->type))
-        {
-          /* Csql schema command will print all constraints, which include the constraints belong to the table
-          * itself and belong to the parent table. But show create table will only print the constraints which
-          * belong to the table itself. */
-          if (include_inherited
-            || (!include_inherited && c->attributes[0] != 0 && c->attributes[0]->class_mop == op))
-          {
-            count++;
-          }
-        }
-      }
+	  count = 0;
+	  for (c = class_->constraints; c; c = c->next)
+	    {
+	      if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
+		{
+		  /* Csql schema command will print all constraints, which include the constraints belong to the table
+		  * itself and belong to the parent table. But show create table will only print the constraints which
+		  * belong to the table itself. */
+		  if (include_inherited
+		      || (!include_inherited && c->attributes[0] != 0 && c->attributes[0]->class_mop == op))
+		    {
+		      count++;
+		    }
+		}
+	    }
 
-      if (count > 0)
-      {
-        buf_size = sizeof(char *) * (count + 1);
-        strs = (char **)malloc(buf_size);
-        if (strs == 0)
-        {
-          er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-          goto error_exit;
-        }
+	  if (count > 0)
+	    {
+	      buf_size = sizeof (char *) * (count + 1);
+	      strs = (char **)malloc (buf_size);
+	      if (strs == 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  goto error_exit;
+		}
 
-        i = 0;
-        for (c = class_->constraints; c; c = c->next)
-        {
-          if (SM_IS_CONSTRAINT_INDEX_FAMILY(c->type))
-          {
-            if (include_inherited
-              || (!include_inherited && c->attributes[0] != 0 && c->attributes[0]->class_mop == op))
-            {
-              sb.clear();
-              printer.describe_constraint(*class_, *c, prt_type);
-              strs[i] = object_print::copy_string(sb.get_buffer());
-              if (strs[i] == 0)
-              {
-                this->constraints = strs;
-                goto error_exit;
-              }
-              i++;
-            }
-          }
-        }
-        strs[i] = 0;
-        this->constraints = strs;
-      }
+	      i = 0;
+	      for (c = class_->constraints; c; c = c->next)
+		{
+		  if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
+		    {
+		      if (include_inherited
+			  || (!include_inherited && c->attributes[0] != 0 && c->attributes[0]->class_mop == op))
+			{
+			  sb.clear();
+			  printer.describe_constraint (*class_, *c, prt_type);
+			  strs[i] = object_print::copy_string (sb.get_buffer());
+			  if (strs[i] == 0)
+			    {
+			      this->constraints = strs;
+			      goto error_exit;
+			    }
+			  i++;
+			}
+		    }
+		}
+	      strs[i] = 0;
+	      this->constraints = strs;
+	    }
+	}
+
+      //partition
+      if (class_->partition != 0 && class_->partition->pname == 0)
+	{
+	  sb.clear();
+	  printer.describe_partition_info (*class_->partition);
+	  partition.push_back (object_print::copy_string (sb.get_buffer()));
+
+	  bool is_print_partition = true;
+	  count = 0;
+
+	  /* Show create table will not print the sub partition for hash partition table. */
+	  if (prt_type == SHOW_CREATE_TABLE)
+	    {
+	      is_print_partition = (class_->partition->partition_type != PT_PARTITION_HASH);
+	    }
+	  if (is_print_partition)
+	    {
+	      for (user = class_->users; user != 0; user = user->next)
+		{
+		  if (au_fetch_class (user->op, &subclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+		    {
+		      goto error_exit;
+		    }
+		  if (subclass->partition)
+		    {
+		      sb.clear();
+		      printer.describe_partition_parts (*subclass->partition, prt_type);
+		      partition.push_back (object_print::copy_string (sb.get_buffer()));
+		    }
+		}
+	    }
+	}
     }
-
-    //partition
-    if (class_->partition != 0 && class_->partition->pname == 0)
-    {
-      sb.clear();
-      printer.describe_partition_info(*class_->partition);
-      partition.push_back(object_print::copy_string(sb.get_buffer()));
-
-      bool is_print_partition = true;
-      count = 0;
-
-      /* Show create table will not print the sub partition for hash partition table. */
-      if (prt_type == SHOW_CREATE_TABLE)
-      {
-        is_print_partition = (class_->partition->partition_type != PT_PARTITION_HASH);
-      }
-      if (is_print_partition)
-      {
-        for (user = class_->users; user != 0; user = user->next)
-        {
-          if (au_fetch_class(user->op, &subclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
-          {
-            goto error_exit;
-          }
-          if (subclass->partition)
-          {
-            sb.clear();
-            printer.describe_partition_parts(*subclass->partition, prt_type);
-            partition.push_back(object_print::copy_string(sb.get_buffer()));
-          }
-        }
-      }
-    }
-  }
 
   return true;
 
 error_exit:
- return false;
+  return false;
 }
 
 namespace
 {
-void describe_trigger_list (tr_triglist *trig, string_buffer& sb, object_printer& printer, std::vector<char*>& v)
-{
-  for (TR_TRIGLIST *t = trig; t != NULL; t = t->next)
-    {
-      sb.clear();
-      printer.describe_class_trigger (*t->trigger);
-      v.push_back(object_print::copy_string (sb.get_buffer()));
-    }
-}
+  void describe_trigger_list (tr_triglist *trig, string_buffer &sb, object_printer &printer, std::vector<char *> &v)
+  {
+    for (TR_TRIGLIST *t = trig; t != NULL; t = t->next)
+      {
+	sb.clear();
+	printer.describe_class_trigger (*t->trigger);
+	v.push_back (object_print::copy_string (sb.get_buffer()));
+      }
+  }
 }
 
 void class_description::init_triggers (const sm_class &cls, struct db_object &dbo)
@@ -713,8 +716,8 @@ void class_description::init_triggers (const sm_class &cls, struct db_object &db
   int i;
 
   char b[8192] = { 0 };//bSolo: temp hack
-  string_buffer sb(sizeof(b), b);
-  object_printer printer(sb);
+  string_buffer sb (sizeof (b), b);
+  object_printer printer (sb);
 
 
   cache = cls.triggers;
