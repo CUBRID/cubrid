@@ -69,6 +69,7 @@
 #include "system_parameter.h"
 #include "xserver_interface.h"
 #include "heap_file.h"
+#include "vacuum.h"
 #include "xasl_cache.h"
 
 #if defined (SERVER_MODE)

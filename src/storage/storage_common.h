@@ -778,6 +778,13 @@ struct spacedb_files
   DKNPAGES npage_reserved;
 };
 
+/* vacuum blocks */
+/*
+ * Note that develop branch has these definitions in log_impl.h
+ */
+typedef INT64 VACUUM_LOG_BLOCKID;
+#define VACUUM_NULL_LOG_BLOCKID -1
+
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);
 extern INT16 db_log_page_size (void);
