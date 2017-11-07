@@ -34,7 +34,7 @@
 #include "intl_support.h"
 #include "dbtype.h"
 #include "numeric_opfunc.h"
-#include "regex38a.h"
+#include "libregex38a/regex38a.h"
 #include "language_support.h"
 #include "object_domain.h"
 #if !defined (CS_MODE)

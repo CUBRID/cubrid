@@ -48,56 +48,55 @@ option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
-option (WITH_UNIT_TESTS "Unit tests" OFF)
+option(WITH_UNIT_TESTS "Unit tests" OFF)
 
-# options for external libraries
-#set(WITH_LIBGCRYPT "SYSTEM")
-#set(WITH_LIBGPG_ERROR "SYSTEM")
-#set(WITH_LIBEDIT "SYSTEM")
-#set(WITH_LIBLZO "SYSTEM")
-#set(WITH_LIBNCURSES "SYSTEM")
-#set(WITH_LIBEXPAT "SYSTEM")
-#set(WITH_LIBJANSSON "SYSTEM")
-
-set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
-if(NOT DEFINED WITH_LIBEDIT)
-  set(WITH_LIBEDIT "EXTERNAL")
-endif()
-
-set(WITH_LIBLZO_URL "http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz")
-if(NOT DEFINED WITH_LIBLZO)
-  set(WITH_LIBLZO ${WITH_LIBLZO_URL})
-endif()
-
-set(WITH_LIBNCURSES_GIT_REPOSITORY "https://github.com/mirror/ncurses.git")
-set(WITH_LIBNCURSES_GIT_TAG "v6.0")
-if(NOT DEFINED WITH_LIBNCURSES)
-  set(WITH_LIBNCURSES "EXTERNAL")
-endif()
-
-set(WITH_LIBGCRYPT_GIT_REPOSITORY "https://dev.gnupg.org/source/libgcrypt.git")
-set(WITH_LIBGCRYPT_GIT_TAG "libgcrypt-1.8.1")
-if(NOT DEFINED WITH_LIBGCRYPT)
-  set(WITH_LIBGCRYPT "EXTERNAL")
-endif()
-
-set(WITH_LIBGPG_ERROR_GIT_REPOSITORY "https://dev.gnupg.org/source/libgpg-error.git")
-set(WITH_LIBGPG_ERROR_GIT_TAG "libgpg-error-1.27")
-if(NOT DEFINED WITH_LIBGPG_ERROR)
-  set(WITH_LIBGPG_ERROR "EXTERNAL")
-endif()
-
+# options for external libraries (BUNDLED, EXTERAL or SYSTEM)
+# expat library git properties
 set(WITH_LIBEXPAT_GIT_REPOSITORY "https://github.com/libexpat/libexpat.git")
-set(WITH_LIBEXPAT_GIT_TAG "R_2_2_4")
-if(NOT DEFINED WITH_LIBEXPAT)
-  set(WITH_LIBEXPAT "EXTERNAL")
-endif()
+set(WITH_LIBEXPAT_GIT_TAG "R_2_2_5")
 
+# jansson library git properties
 set(WITH_LIBJANSSON_GIT_REPOSITORY "https://github.com/akheron/jansson.git")
 set(WITH_LIBJANSSON_GIT_TAG "v2.10")
-if(NOT DEFINED WITH_LIBJANSSON)
-  set(WITH_LIBJANSSON "EXTERNAL")
-endif()
+
+# editline library sources URL
+set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
+
+# lzo library sources URL
+set(WITH_LIBLZO_URL "http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz")
+
+# gpg-error library sources URL
+set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.27.tar.bz2")
+
+# gcrypt library sources URL
+set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.8.1.tar.bz2")
+
+# ncurses library git properties
+set(WITH_LIBNCURSES_GIT_REPOSITORY "https://github.com/mirror/ncurses.git")
+set(WITH_LIBNCURSES_GIT_TAG "v6.0")
+
+set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
+set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
+set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SYSTEM)")
+
+set(WITH_LIBREGEX     "${WITH_BUNDLED_PREFIX}" CACHE STRING "Build with regex library (default: BUNDLED)")
+set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
+set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
+set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
+set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: EXTERNAL)")
+set(WITH_LIBGPG_ERROR "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: EXTERNAL)")
+set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: EXTERNAL)")
+
+# NCURSES - gcc 4.7+ systems: GIT, Otherwise: SYSTEM
+if(UNIX)
+  if(CMAKE_COMPILER_IS_GNUCC)
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
+      set(WITH_LIBNCURSES   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with ncurses library (default: EXTERNAL)")
+    else(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
+      set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
+    endif(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
+  endif(CMAKE_COMPILER_IS_GNUCC)
+endif(UNIX)
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
@@ -106,10 +105,6 @@ message(STATUS "Build with gcrypt library: ${WITH_LIBGCRYPT}")
 message(STATUS "Build with gpg-error library: ${WITH_LIBGPG_ERROR}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
-
-set(WITH_EXTERNAL_PREFIX "BUNDLED" CACHE STRING "External library prefix (default: BUNDLED)")
-
-set(WITH_LIBREGEX     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with regex library (default: BUNDLED)")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -773,7 +768,6 @@ endif(USE_CUBRID_ENV)
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
 set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=${CMAKE_C_FLAGS} CXXFLAGS=${CMAKE_CXX_FLAGS})
-set(DEFAULT_AUTOGEN_CMD <SOURCE_DIR>/autogen.sh)
 
 if(WITH_LIBREGEX STREQUAL "BUNDLED")
   if(UNIX)
@@ -797,8 +791,13 @@ if(WITH_LIBREGEX STREQUAL "BUNDLED")
     endif(TARGET_PLATFORM_BITS EQUAL 32)
     set(LIBREGEX_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
   endif(UNIX)
-  # TODO: support system or user provided library
-endif(WITH_LIBREGEX STREQUAL "BUNDLED")
+elseif(WITH_LIBREGEX STREQUAL "SYSTEM")
+  find_library(LIBREGEX_LIBS NAMES libregex38a.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBREGEX_ROOT_PATH}/lib REQUIRED)
+  find_path(LIBREGEX_INCLUDES NAMES libregex38a/regex38a.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBREGEX_ROOT_PATH}/include REQUIRED)
+
+  message(STATUS "Found regex library: ${LIBREGEX_LIBS}")
+  message(STATUS "Found regex headers: ${LIBREGEX_INCLUDES}")
+endif()
 list(APPEND EP_INCLUDES ${LIBREGEX_INCLUDES})
 list(APPEND EP_LIBS ${LIBREGEX_LIBS})
 
@@ -810,6 +809,7 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       GIT_TAG           ${WITH_LIBEXPAT_GIT_TAG}
       UPDATE_COMMAND    ""
       COMMAND           ${CMAKE_COMMAND} -E copy_directory <SOURCE_DIR>/expat <SOURCE_DIR>
+      COMMAND           ${CMAKE_COMMAND} -E make_directory <SOURCE_DIR>/m4
       COMMAND           ./buildconf.sh
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
       BUILD_COMMAND     make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -827,9 +827,11 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
     set(LIBEXPAT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
   endif(UNIX)
 elseif(WITH_LIBEXPAT STREQUAL "SYSTEM")
-  find_library(LIBEXPAT_LIBS NAMES libexpat.so REQUIRED)
-  find_path(LIBEXPAT_INCLUDES NAMES expat.h expat_config.h expat_external.h REQUIRED)
-  message(STATUS "Found expat: ${LIBEXPAT_LIBS}")
+  find_library(LIBEXPAT_LIBS NAMES libexpat.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBEXPAT_ROOT_PATH}/lib REQUIRED)
+  find_path(LIBEXPAT_INCLUDES NAMES expat.h expat_config.h expat_external.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBEXPAT_ROOT_PATH}/include REQUIRED)
+
+  message(STATUS "Found expat library: ${LIBEXPAT_LIBS}")
+  message(STATUS "Found expat headers: ${LIBEXPAT_INCLUDES}")
 endif()
 list(APPEND EP_INCLUDES ${LIBEXPAT_INCLUDES})
 list(APPEND EP_LIBS ${LIBEXPAT_LIBS})
@@ -858,9 +860,11 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
     set(LIBJANSSON_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
   endif(UNIX)
 elseif(WITH_LIBJANSSON STREQUAL "SYSTEM")
-  find_library(LIBJANSSON_LIBS NAMES libjansson.a REQUIRED)
-  find_path(LIBJANSSON_INCLUDES NAMES jansson.h jansson_config.h REQUIRED)
-  message(STATUS "Found jansson: ${LIBJANSSON_LIBS}")
+  find_library(LIBJANSSON_LIBS NAMES libjansson.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBJANSSON_ROOT_PATH}/lib REQUIRED)
+  find_path(LIBJANSSON_INCLUDES NAMES jansson.h jansson_config.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBJANSSON_ROOT_PATH}/include REQUIRED)
+
+  message(STATUS "Found jansson library: ${LIBJANSSON_LIBS}")
+  message(STATUS "Found jansson headers: ${LIBJANSSON_INCLUDES}")
 endif()
 list(APPEND EP_INCLUDES ${LIBJANSSON_INCLUDES})
 list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
@@ -902,7 +906,7 @@ if(WITH_LIBEDIT STREQUAL "EXTERNAL")
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
       URL               ${WITH_LIBEDIT_URL}
-      DEPENDS           libncurses
+      #DEPENDS           libncurses
       CONFIGURE_COMMAND "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -912,9 +916,11 @@ if(WITH_LIBEDIT STREQUAL "EXTERNAL")
     list(APPEND EP_TARGETS ${LIBEDIT_TARGET})
   endif(UNIX)
 elseif(WITH_LIBEDIT STREQUAL "SYSTEM")
-  find_library(LIBEDIT_LIBS NAMES libedit.so REQUIRED)
-  find_path(LIBEDIT_INCLUDES NAMES editline/readline.h histedit.h REQUIRED)
-  message(STATUS "Found editline: ${LIBEDIT_LIBS}")
+  find_library(LIBEDIT_LIBS NAMES libedit.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBEDIT_ROOT_PATH}/lib REQUIRED)
+  find_path(LIBEDIT_INCLUDES NAMES editline/readline.h histedit.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBEDIT_ROOT_PATH}/include REQUIRED)
+
+  message(STATUS "Found editline library: ${LIBEDIT_LIBS}")
+  message(STATUS "Found editline headers: ${LIBEDIT_INCLUDES}")
 endif()
 list(APPEND EP_LIBS ${LIBEDIT_LIBS})
 list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
@@ -963,13 +969,13 @@ if(WITH_LIBLZO MATCHES "^BUNDLED")
     endif(TARGET_PLATFORM_BITS EQUAL 32)
     set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/lzo)
   endif(UNIX)
-elseif(WITH_LIBLZO MATCHES "^http")
+elseif(WITH_LIBLZO STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBLZO_TARGET liblzo)
     #compile LZO library given an internet url to a LZO archive
     #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
     externalproject_add(${LIBLZO_TARGET}
-      URL ${WITH_LIBLZO}
+      URL ${WITH_LIBLZO_URL}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -996,11 +1002,8 @@ if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBGPGERROR_TARGET libgpg-error)
     externalproject_add(${LIBGPGERROR_TARGET}
-      GIT_REPOSITORY    ${WITH_LIBGPG_ERROR_GIT_REPOSITORY}
-      GIT_TAG           ${WITH_LIBGPG_ERROR_GIT_TAG}
-      UPDATE_COMMAND    ""
-      COMMAND           ${DEFAULT_AUTOGEN_CMD}
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --disable-doc --disable-tests
+      URL               ${WITH_LIBGPG_ERROR_URL}
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
@@ -1009,9 +1012,11 @@ if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
     list(APPEND EP_TARGETS ${LIBGPGERROR_TARGET})
   endif(UNIX)
 elseif(WITH_LIBGPG_ERROR STREQUAL "SYSTEM")
-  find_library(LIBGPG_ERROR_LIBS NAMES libgpg-error.so REQUIRED)
-  find_path(LIBGPG_ERROR_INCLUDES NAMES gpg-error.h gpgrt.h REQUIRED)
-  message(STATUS "Found gpg-error: ${LIBGPG_ERROR_LIBS}")
+  find_library(LIBGPG_ERROR_LIBS NAMES libgpg-error.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/lib REQUIRED)
+  find_path(LIBGPG_ERROR_INCLUDES NAMES gpg-error.h gpgrt.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/include REQUIRED)
+
+  message(STATUS "Found gpg-error library: ${LIBGPG_ERROR_LIBS}")
+  message(STATUS "Found gpg-error headers: ${LIBGPG_ERROR_INCLUDES}")
 endif()
 list(APPEND EP_INCLUDES ${LIBGPG_ERROR_INCLUDES})
 list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
@@ -1020,12 +1025,9 @@ if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBGCRYPT_TARGET libgcrypt)
     externalproject_add(${LIBGCRYPT_TARGET}
-      GIT_REPOSITORY    ${WITH_LIBGCRYPT_GIT_REPOSITORY}
-      GIT_TAG           ${WITH_LIBGCRYPT_GIT_TAG}
-      DEPENDS           libgpg-error
-      UPDATE_COMMAND    ""
-      COMMAND           ${DEFAULT_AUTOGEN_CMD}
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --disable-doc --with-libgpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external
+      URL               ${WITH_LIBGCRYPT_URL}
+      #DEPENDS           libgpg-error
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --with-libgpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
@@ -1041,9 +1043,11 @@ if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
     set(LIBGCRYPT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
   endif(UNIX)
 elseif(WITH_LIBGCRYPT STREQUAL "SYSTEM")
-  find_library(LIBGCRYPT_LIBS NAMES libgcrypt.so REQUIRED)
-  find_path(LIBGCRYPT_INCLUDES NAMES gcrypt.h REQUIRED)
-  message(STATUS "Found gcrypt: ${LIBGCRYPT_LIBS}")
+  find_library(LIBGCRYPT_LIBS NAMES libgcrypt.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBGCRYPT_ROOT_PATH}/lib REQUIRED)
+  find_path(LIBGCRYPT_INCLUDES NAMES gcrypt.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBGCRYPT_ROOT_PATH}/include REQUIRED)
+
+  message(STATUS "Found gcrypt library: ${LIBGCRYPT_LIBS}")
+  message(STATUS "Found gcrypt headers: ${LIBGCRYPT_INCLUDES}")
 endif()
 list(APPEND EP_INCLUDES ${LIBGCRYPT_INCLUDES})
 list(APPEND EP_LIBS ${LIBGCRYPT_LIBS})
