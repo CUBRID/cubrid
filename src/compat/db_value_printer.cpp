@@ -1,4 +1,4 @@
-#include "object_print_common.hpp"
+#include "db_value_printer.hpp"
 #include "db_date.h"
 #include "dbtype.h"
 #include "dbval.h"
@@ -58,10 +58,10 @@ namespace {
     //--------------------------------------------------------------------------------
     string_buffer& _describe_real(string_buffer& buf, double value, int precision) {
         char tbuf[24];
-        snprintf(tbuf, sizeof(tbuf), object_print_common::DECIMAL_FORMAT, precision, value);
+        snprintf(tbuf, sizeof(tbuf), db_value_printer::DECIMAL_FORMAT, precision, value);
         if(strstr(tbuf, "Inf"))
         {
-            snprintf(tbuf, sizeof(tbuf), object_print_common::DECIMAL_FORMAT, precision, (value>0 ? FLT_MAX : -FLT_MAX));
+            snprintf(tbuf, sizeof(tbuf), db_value_printer::DECIMAL_FORMAT, precision, (value>0 ? FLT_MAX : -FLT_MAX));
         }
         buf(tbuf);
         return buf;
@@ -69,7 +69,7 @@ namespace {
 }//namespace
 
 //--------------------------------------------------------------------------------
-void object_print_common::describe_money(const db_monetary* value){
+void db_value_printer::describe_money(const db_monetary* value){
     assert(value != NULL);
     m_buf("%s%.2f", intl_get_money_esc_ISO_symbol(value->type), value->amount);
     if(strstr(m_buf.get_buffer(), "Inf"))
@@ -79,7 +79,7 @@ void object_print_common::describe_money(const db_monetary* value){
 }
 
 //--------------------------------------------------------------------------------
-void object_print_common::describe_value(const db_value* value){
+void db_value_printer::describe_value(const db_value* value){
     INTL_CODESET codeset = INTL_CODESET_NONE;
     if(DB_IS_NULL(value))
     {
@@ -235,7 +235,7 @@ void object_print_common::describe_value(const db_value* value){
 }
 
 //--------------------------------------------------------------------------------
-void object_print_common::describe_data(const db_value* value) {
+void db_value_printer::describe_data(const db_value* value) {
     OID*         oid = 0;
     db_object*   obj = 0;
     db_monetary* money = 0;
@@ -501,7 +501,7 @@ void object_print_common::describe_data(const db_value* value) {
 }
 
 //--------------------------------------------------------------------------------
-void object_print_common::describe_midxkey(const db_midxkey* midxkey, int help_Max_set_elements) {
+void db_value_printer::describe_midxkey(const db_midxkey* midxkey, int help_Max_set_elements) {
     db_value value;
     int size, end, i;
     int prev_i_index;
@@ -543,7 +543,7 @@ void object_print_common::describe_midxkey(const db_midxkey* midxkey, int help_M
 }
 
 //--------------------------------------------------------------------------------
-void object_print_common::describe_set(const DB_SET* set, int help_Max_set_elements) {
+void db_value_printer::describe_set(const DB_SET* set, int help_Max_set_elements) {
     DB_VALUE value;
     int size, end, i;
 

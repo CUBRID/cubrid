@@ -33,11 +33,10 @@
 #include <assert.h>
 
 #include "boot_cl.h"
-#include "class_description.hpp"
 #include "class_object.h"
 #include "db.h"
 #include "object_print.h"
-#include "object_print_parser.hpp"
+#include "object_printer.hpp"
 #include "server_interface.h"
 #include "string_buffer.hpp"
 #include "locator_cl.h"
@@ -2444,15 +2443,10 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 	  goto error;
 	}
 
-      class_description class_descr(class_op, class_description::SHOW_CREATE_TABLE);
-      if (class_descr.name == NULL)
-	{
-	  goto error;
-        }
         char buffer[8192] = {0};
         string_buffer sb(sizeof(buffer), buffer);
-        object_print_parser obj_print(sb);
-        obj_print.describe_class(class_descr, class_op);
+        object_printer obj_print(sb);
+        obj_print.describe_class(class_op);
         db_make_string_copy (result, sb.get_buffer());
     }
   else

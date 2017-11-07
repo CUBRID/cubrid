@@ -20,8 +20,8 @@
  * common things (server & client) extracted from object_print
  */
 
-#ifndef _OBJECT_PRINT_COMMON_HPP_
-#define _OBJECT_PRINT_COMMON_HPP_
+#if !defined(_DB_VALUE_PRINTER_HPP_)
+#define _DB_VALUE_PRINTER_HPP_
 
 struct db_collection;
 struct db_midxkey;
@@ -29,14 +29,14 @@ struct db_monetary;
 struct db_value;
 class string_buffer;
 
-class object_print_common
+class db_value_printer
 {
   private:
     string_buffer &m_buf;
   public:
     static constexpr char DECIMAL_FORMAT[] = "%#.*g";
 
-    object_print_common (string_buffer &buf)
+    db_value_printer(string_buffer &buf)
       : m_buf (buf)
     {}
 
@@ -49,4 +49,4 @@ class object_print_common
     void describe_set (const db_collection *set, int help_Max_set_elements=20);       //former describe_set()
 };
 
-#endif //_OBJECT_PRINT_COMMON_HPP_
+#endif //_DB_VALUE_PRINTER_HPP_

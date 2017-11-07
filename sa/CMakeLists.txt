@@ -46,17 +46,18 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
-  ${COMPAT_DIR}/db_info.c
   ${COMPAT_DIR}/db_elo.c 
+  ${COMPAT_DIR}/db_info.c
+  ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_obj.c
   ${COMPAT_DIR}/db_old.c
   ${COMPAT_DIR}/db_query.c
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_temp.c
+  ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
-  ${COMPAT_DIR}/db_json.cpp
   )
 
 set(BASE_SOURCES
@@ -194,8 +195,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_accessor.c
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_print.c
-  ${OBJECT_DIR}/object_print_common.cpp
-  ${OBJECT_DIR}/object_print_parser.cpp
+  ${OBJECT_DIR}/object_printer.cpp
   ${OBJECT_DIR}/object_print_util.cpp
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_template.c

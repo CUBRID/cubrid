@@ -23,9 +23,10 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
+  ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
-  ${COMPAT_DIR}/db_json.cpp
+  ${COMPAT_DIR}/db_value_printer.cpp
   )
 
 set(THREAD_SOURCES
@@ -135,7 +136,6 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_primitive.c
-  ${OBJECT_DIR}/object_print_common.cpp
   ${OBJECT_DIR}/transform.c
   ${OBJECT_DIR}/object_domain.c
   )

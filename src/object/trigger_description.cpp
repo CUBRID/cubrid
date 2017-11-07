@@ -1,6 +1,6 @@
 #include "trigger_description.hpp"
 #include "dbi.h"
-#include "object_print_parser.hpp"
+#include "object_printer.hpp"
 #include "object_print_util.hpp"
 #include "schema_manager.h"
 #include "trigger_manager.h"
@@ -64,8 +64,8 @@ trigger_description::trigger_description (struct db_object *trobj)
 
   /* these are constant strings that don't need to ever change */
   this->event = tr_event_as_string (trigger->event);
-  this->condition_time = object_print_parser::describe_trigger_condition_time (*trigger);
-  this->action_time = object_print_parser::describe_trigger_action_time (*trigger);
+  this->condition_time = object_printer::describe_trigger_condition_time (*trigger);
+  this->action_time = object_printer::describe_trigger_action_time (*trigger);
 
   /* only show status if its inactive */
   if (trigger->status != TR_STATUS_ACTIVE)

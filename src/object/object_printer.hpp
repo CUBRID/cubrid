@@ -20,8 +20,8 @@
 /* parser specific, object_print related code
 */
 
-#if !defined(_OBJECT_PRINT_PARSER_HPP_)
-#define _OBJECT_PRINT_PARSER_HPP_
+#if !defined(_OBJECT_PRINTER_HPP_)
+#define _OBJECT_PRINTER_HPP_
 
 #if defined(SERVER_MODE)
 #error Does not belong to server module
@@ -47,12 +47,12 @@ namespace object_print
   struct strlist;
 }
 
-class object_print_parser
+class object_printer
 {
   private:
     string_buffer &m_buf;
   public:
-    object_print_parser (string_buffer &buf)
+    object_printer (string_buffer &buf)
       : m_buf (buf)
     {}
 
@@ -71,7 +71,7 @@ class object_print_parser
     void describe_resolution (const sm_resolution &resolution, class_description::type prt_type);
     void describe_method_file (const struct db_object &obj, const sm_method_file &file);
     void describe_class_trigger (const tr_trigger &trigger);
-    void describe_class (class_description &class_schema, struct db_object *class_op);
+    void describe_class(struct db_object *class_op);
     void describe_partition_info (const sm_partition &partinfo);
 
     void describe_trigger_list (tr_triglist *triggers, object_print::strlist **strings);
@@ -83,4 +83,4 @@ class object_print_parser
   protected:
 };
 
-#endif //!defined(_OBJECT_PRINT_PARSER_HPP_)
+#endif //!defined(_OBJECT_PRINTER_HPP_)

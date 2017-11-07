@@ -67,8 +67,8 @@
 #if defined (SA_MODE)
 #include "connection_support.h"
 #endif /* defined (SA_MODE) */
+#include "db_value_printer.hpp"
 #include "string_buffer.hpp"
-#include "object_print_common.hpp"
 
 #if !defined(SERVER_MODE)
 
@@ -6400,15 +6400,15 @@ static void log_repl_data_dump(FILE* out_fp, int length, void* data) //bSolo: le
 
   char b[8192] = {0};//bSolo: temp hack
   string_buffer sb(sizeof(b), b);
-  object_print_common obj_print(sb);
+  db_value_printer printer(sb);
   char* dynBuf = NULL;
 
-  obj_print.describe_value(&value);
+  printer.describe_value(&value);
   if(sizeof(b) < sb.len())//realloc and repeat
   {
     dynBuf = new char[sb.len()+1];//bSolo: use specific allocator
     sb.set_buffer(sb.len()+1, dynBuf);
-    obj_print.describe_value(&value);
+    printer.describe_value(&value);
   }
   fprintf(out_fp, "C[%s] K[%s]\n", class_name, sb.get_buffer());
   if(dynBuf)

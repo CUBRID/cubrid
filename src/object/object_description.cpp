@@ -1,9 +1,9 @@
 #include "object_description.hpp"
 #include "authenticate.h"
 #include "class_object.h"
+#include "db_value_printer.hpp"
 #include "dbi.h"
 #include "locator_cl.h"
-#include "object_print_common.hpp"
 #include "object_print_util.hpp"
 #include "schema_manager.h"
 #include "string_buffer.hpp"
@@ -32,7 +32,7 @@ object_description::object_description (struct db_object *op)
   DB_VALUE value;
   char b[8192] = {0};
   string_buffer sb (sizeof (b), b);
-  object_print_common obj_print (sb);
+  db_value_printer printer (sb);
 
   if (op != NULL)
     {
@@ -90,12 +90,12 @@ object_description::object_description (struct db_object *op)
 		      sb ("%20s = ", attribute_p->header.name);
 		      if (attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
 			{
-			  obj_print.describe_value (&attribute_p->default_value.value);
+			  printer.describe_value (&attribute_p->default_value.value);
 			}
 		      else
 			{
 			  db_get (op, attribute_p->header.name, &value);
-			  obj_print.describe_value (&value);
+			  printer.describe_value (&value);
 			}
 		      strs[i] = object_print::copy_string (sb.get_buffer());
 		      i++;

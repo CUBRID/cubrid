@@ -1,13 +1,13 @@
-#include "object_print_parser.hpp"
+#include "object_printer.hpp"
 #include "class_description.hpp"
 #include "class_object.h"
 #include "db_json.hpp"
+#include "db_value_printer.hpp"
 #include "dbdef.h"
 #include "dbi.h"
 #include "dbtype.h"
 #include "dbval.h"
 #include "misc_string.h"
-#include "object_print_common.hpp"
 #include "object_domain.h"
 #include "object_print_util.hpp"
 #include "parse_tree.h"
@@ -19,7 +19,7 @@
 #include <assert.h>
 
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_comment (const char *comment)
+void object_printer::describe_comment (const char *comment)
 {
   db_value comment_value;
   assert (comment != NULL);
@@ -28,8 +28,8 @@ void object_print_parser::describe_comment (const char *comment)
   m_buf ("COMMENT ");
   if (comment != NULL && comment[0] != '\0')
     {
-      object_print_common obj_print (m_buf);
-      obj_print.describe_value (&comment_value);
+      db_value_printer printer (m_buf);
+      printer.describe_value (&comment_value);
     }
   else
     {
@@ -39,11 +39,11 @@ void object_print_parser::describe_comment (const char *comment)
 }
 
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_partition_parts (const sm_partition &parts, class_description::type prt_type)
+void object_printer::describe_partition_parts (const sm_partition &parts, class_description::type prt_type)
 {
   DB_VALUE ele;
   int setsize, i;
-  object_print_common obj_print (m_buf);
+  db_value_printer obj_print (m_buf);
 
   DB_MAKE_NULL (&ele);
 
@@ -108,7 +108,7 @@ void object_print_parser::describe_partition_parts (const sm_partition &parts, c
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_identifier (const char *identifier, class_description::type prt_type)
+void object_printer::describe_identifier (const char *identifier, class_description::type prt_type)
 {
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
@@ -135,7 +135,7 @@ void object_print_parser::describe_identifier (const char *identifier, class_des
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_domain (/*const*/tp_domain &domain, class_description::type prt_type,
+void object_printer::describe_domain (/*const*/tp_domain &domain, class_description::type prt_type,
     bool force_print_collation)
 {
   TP_DOMAIN *temp_domain;
@@ -298,7 +298,7 @@ void object_print_parser::describe_domain (/*const*/tp_domain &domain, class_des
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_argument (const sm_method_argument &argument, class_description::type prt_type)
+void object_printer::describe_argument (const sm_method_argument &argument, class_description::type prt_type)
 {
   if (argument.domain != NULL)
     {
@@ -325,7 +325,7 @@ void object_print_parser::describe_argument (const sm_method_argument &argument,
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_method (const struct db_object &op, const sm_method &method,
+void object_printer::describe_method (const struct db_object &op, const sm_method &method,
     class_description::type prt_type)
 {
   SM_METHOD_SIGNATURE *signature_p;
@@ -374,7 +374,7 @@ void object_print_parser::describe_method (const struct db_object &op, const sm_
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_signature (const sm_method_signature &signature, class_description::type prt_type)
+void object_printer::describe_signature (const sm_method_signature &signature, class_description::type prt_type)
 {
   SM_METHOD_ARGUMENT *argument_p;
   int i;
@@ -412,11 +412,11 @@ void object_print_parser::describe_signature (const sm_method_signature &signatu
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_attribute (const struct db_object &cls, const sm_attribute &attribute,
+void object_printer::describe_attribute (const struct db_object &cls, const sm_attribute &attribute,
     bool is_inherited, class_description::type prt_type, bool force_print_collation)
 {
   char str_buf[NUMERIC_MAX_STRING_SIZE];
-  object_print_common obj_print (m_buf);
+  db_value_printer printer (m_buf);
 
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
@@ -437,7 +437,7 @@ void object_print_parser::describe_attribute (const struct db_object &cls, const
       m_buf (" SHARED ");
       if (!DB_IS_NULL (&attribute.default_value.value))
 	{
-	  obj_print.describe_value (&attribute.default_value.value);
+	  printer.describe_value (&attribute.default_value.value);
 	}
     }
   else if (attribute.header.name_space == ID_ATTRIBUTE)
@@ -496,7 +496,7 @@ void object_print_parser::describe_attribute (const struct db_object &cls, const
 	  else
 	    {
 	      assert (attribute.default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR);
-	      obj_print.describe_value (&attribute.default_value.value);
+	      printer.describe_value (&attribute.default_value.value);
 	    }
 
 	  if (attribute.default_value.default_expr.default_expr_op == T_TO_CHAR)
@@ -514,7 +514,7 @@ void object_print_parser::describe_attribute (const struct db_object &cls, const
       if (!DB_IS_NULL (&attribute.default_value.value))
 	{
 	  m_buf (" VALUE ");
-	  obj_print.describe_value (&attribute.default_value.value);
+	  printer.describe_value (&attribute.default_value.value);
 	}
     }
 
@@ -547,7 +547,7 @@ void object_print_parser::describe_attribute (const struct db_object &cls, const
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_constraint (const sm_class &cls, const sm_class_constraint &constraint,
+void object_printer::describe_constraint (const sm_class &cls, const sm_class_constraint &constraint,
     class_description::type prt_type)
 {
   SM_ATTRIBUTE **attribute_p;
@@ -755,7 +755,7 @@ void object_print_parser::describe_constraint (const sm_class &cls, const sm_cla
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_resolution (const sm_resolution &resolution, class_description::type prt_type)
+void object_printer::describe_resolution (const sm_resolution &resolution, class_description::type prt_type)
 {
   if (prt_type != class_description::SHOW_CREATE_TABLE)
     {
@@ -786,7 +786,7 @@ void object_print_parser::describe_resolution (const sm_resolution &resolution, 
  *   file_p(in): method file descriptor
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_method_file (const struct db_object &obj, const sm_method_file &file)
+void object_printer::describe_method_file (const struct db_object &obj, const sm_method_file &file)
 {
   m_buf ("%s", file.name);
   if (file.class_mop != NULL && file.class_mop != &obj)
@@ -805,7 +805,7 @@ void object_print_parser::describe_method_file (const struct db_object &obj, con
  *    a condensed versino of the trigger help.
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_class_trigger (const tr_trigger &trigger)
+void object_printer::describe_class_trigger (const tr_trigger &trigger)
 {
   m_buf ("%s : %s %s ", trigger.name, describe_trigger_condition_time (trigger), tr_event_as_string (trigger.event));
   if (trigger.attribute != NULL)
@@ -825,7 +825,7 @@ void object_print_parser::describe_class_trigger (const tr_trigger &trigger)
  *  trigger(in) :
  */
 //--------------------------------------------------------------------------------
-const char *object_print_parser::describe_trigger_condition_time (const tr_trigger &trigger)
+const char *object_printer::describe_trigger_condition_time (const tr_trigger &trigger)
 {
   DB_TRIGGER_TIME time = TR_TIME_NULL;
   if (trigger.condition != NULL)
@@ -845,7 +845,7 @@ const char *object_print_parser::describe_trigger_condition_time (const tr_trigg
  *  trigger(in) :
  */
 //--------------------------------------------------------------------------------
-const char *object_print_parser::describe_trigger_action_time (const tr_trigger &trigger)
+const char *object_printer::describe_trigger_action_time (const tr_trigger &trigger)
 {
   DB_TRIGGER_TIME time = TR_TIME_NULL;
   if (trigger.action != NULL)
@@ -863,19 +863,38 @@ const char *object_print_parser::describe_trigger_action_time (const tr_trigger 
  *   class_op(in):
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_class (class_description &class_schema, struct db_object *class_op)
+void object_printer::describe_class (struct db_object *class_op)
 {
+  class_description class_descr;
+  if (!class_descr.init(class_op, class_description::SHOW_CREATE_TABLE))
+  {
+#if 0
+    int error = er_errid();
+    assert(error != NO_ERROR);
+    if (error == ER_AU_SELECT_FAILURE)
+    {
+      PT_ERRORmf2(parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
+        db_get_class_name(class_op));
+    }
+    else
+    {
+      PT_ERRORc(parser, table_name, er_msg());
+    }
+#endif
+    return;
+  }
+
   char **line_ptr;
   /* class name */
-  m_buf ("CREATE TABLE %s", class_schema.name);
+  m_buf ("CREATE TABLE %s", class_descr.name);
 
   /* under or as subclass of */
-  if (class_schema.supers != NULL)
+  if (class_descr.supers != NULL)
     {
       m_buf (" UNDER ");
-      for (line_ptr = class_schema.supers; *line_ptr != NULL; line_ptr++)
+      for (line_ptr = class_descr.supers; *line_ptr != NULL; line_ptr++)
 	{
-	  if (line_ptr != class_schema.supers)
+	  if (line_ptr != class_descr.supers)
 	    {
 	      m_buf (", ");
 	    }
@@ -884,12 +903,12 @@ void object_print_parser::describe_class (class_description &class_schema, struc
     }
 
   /* class attributes */
-  if (class_schema.class_attributes != NULL)
+  if (class_descr.class_attributes != NULL)
     {
       m_buf (" CLASS ATTRIBUTE (");
-      for (line_ptr = class_schema.class_attributes; *line_ptr != NULL; line_ptr++)
+      for (line_ptr = class_descr.class_attributes; *line_ptr != NULL; line_ptr++)
 	{
-	  if (line_ptr != class_schema.class_attributes)
+	  if (line_ptr != class_descr.class_attributes)
 	    {
 	      m_buf (", ");
 	    }
@@ -899,25 +918,25 @@ void object_print_parser::describe_class (class_description &class_schema, struc
     }
 
   /* attributes and constraints */
-  if (class_schema.attributes != NULL || class_schema.constraints != NULL)
+  if (class_descr.attributes != NULL || class_descr.constraints != NULL)
     {
       m_buf (" (");
-      if (class_schema.attributes != NULL)
+      if (class_descr.attributes != NULL)
 	{
-	  for (line_ptr = class_schema.attributes; *line_ptr != NULL; line_ptr++)
+	  for (line_ptr = class_descr.attributes; *line_ptr != NULL; line_ptr++)
 	    {
-	      if (line_ptr != class_schema.attributes)
+	      if (line_ptr != class_descr.attributes)
 		{
 		  m_buf (", ");
 		}
 	      m_buf ("%s", *line_ptr);
 	    }
 	}
-      if (class_schema.constraints != NULL)
+      if (class_descr.constraints != NULL)
 	{
-	  for (line_ptr = class_schema.constraints; *line_ptr != NULL; line_ptr++)
+	  for (line_ptr = class_descr.constraints; *line_ptr != NULL; line_ptr++)
 	    {
-	      if (line_ptr != class_schema.constraints || class_schema.attributes != NULL)
+	      if (line_ptr != class_descr.constraints || class_descr.attributes != NULL)
 		{
 		  m_buf (", ");
 		}
@@ -931,7 +950,7 @@ void object_print_parser::describe_class (class_description &class_schema, struc
   if (sm_is_reuse_oid_class (class_op))
     {
       m_buf (" REUSE_OID");
-      if (class_schema.collation != NULL)
+      if (class_descr.collation != NULL)
 	{
 	  m_buf (",");
 	}
@@ -942,31 +961,31 @@ void object_print_parser::describe_class (class_description &class_schema, struc
     }
 
   /* collation */
-  if (class_schema.collation != NULL)
+  if (class_descr.collation != NULL)
     {
-      m_buf (" COLLATE %s", class_schema.collation);
+      m_buf (" COLLATE %s", class_descr.collation);
     }
 
   /* methods and class_methods */
-  if (class_schema.methods != NULL || class_schema.class_methods != NULL)
+  if (class_descr.methods != NULL || class_descr.class_methods != NULL)
     {
       m_buf (" METHOD ");
-      if (class_schema.methods != NULL)
+      if (class_descr.methods != NULL)
 	{
-	  for (line_ptr = class_schema.methods; *line_ptr != NULL; line_ptr++)
+	  for (line_ptr = class_descr.methods; *line_ptr != NULL; line_ptr++)
 	    {
-	      if (line_ptr != class_schema.methods)
+	      if (line_ptr != class_descr.methods)
 		{
 		  m_buf (", ");
 		}
 	      m_buf ("%s", *line_ptr);
 	    }
 	}
-      if (class_schema.class_methods != NULL)
+      if (class_descr.class_methods != NULL)
 	{
-	  for (line_ptr = class_schema.class_methods; *line_ptr != NULL; line_ptr++)
+	  for (line_ptr = class_descr.class_methods; *line_ptr != NULL; line_ptr++)
 	    {
-	      if (line_ptr != class_schema.class_methods || class_schema.methods != NULL)
+	      if (line_ptr != class_descr.class_methods || class_descr.methods != NULL)
 		{
 		  m_buf (", ");
 		}
@@ -976,14 +995,14 @@ void object_print_parser::describe_class (class_description &class_schema, struc
     }
 
   /* method files */
-  if (class_schema.method_files != NULL)
+  if (class_descr.method_files != NULL)
     {
       char tmp[PATH_MAX + 2];
 
       m_buf (" FILE ");
-      for (line_ptr = class_schema.method_files; *line_ptr != NULL; line_ptr++)
+      for (line_ptr = class_descr.method_files; *line_ptr != NULL; line_ptr++)
 	{
-	  if (line_ptr != class_schema.method_files)
+	  if (line_ptr != class_descr.method_files)
 	    {
 	      m_buf (", ");
 	    }
@@ -992,12 +1011,12 @@ void object_print_parser::describe_class (class_description &class_schema, struc
     }
 
   /* inherit */
-  if (class_schema.resolutions != NULL)
+  if (class_descr.resolutions != NULL)
     {
       m_buf (" INHERIT ");
-      for (line_ptr = class_schema.resolutions; *line_ptr != NULL; line_ptr++)
+      for (line_ptr = class_descr.resolutions; *line_ptr != NULL; line_ptr++)
 	{
-	  if (line_ptr != class_schema.resolutions)
+	  if (line_ptr != class_descr.resolutions)
 	    {
 	      m_buf (", ");
 	    }
@@ -1006,11 +1025,11 @@ void object_print_parser::describe_class (class_description &class_schema, struc
     }
 
   /* partition */
-  if (class_schema.partition != NULL)
+  if (class_descr.partition != NULL)
     {
       char **first_ptr;
 
-      line_ptr = class_schema.partition;
+      line_ptr = class_descr.partition;
       m_buf (" %s", *line_ptr);
       line_ptr++;
       if (*line_ptr != NULL)
@@ -1029,15 +1048,15 @@ void object_print_parser::describe_class (class_description &class_schema, struc
     }
 
   /* comment */
-  if (class_schema.comment != NULL && class_schema.comment[0] != '\0')
+  if (class_descr.comment != NULL && class_descr.comment[0] != '\0')
     {
       DB_VALUE comment_value;
       DB_MAKE_NULL (&comment_value);
-      DB_MAKE_STRING (&comment_value, class_schema.comment);
+      DB_MAKE_STRING (&comment_value, class_descr.comment);
 
       m_buf (" COMMENT=");
-      object_print_common obj_print (m_buf);
-      obj_print.describe_value (&comment_value);
+      db_value_printer printer (m_buf);
+      printer.describe_value (&comment_value);
       pr_clear_value (&comment_value);
     }
 }
@@ -1050,7 +1069,7 @@ void object_print_parser::describe_class (class_description &class_schema, struc
  *
  */
 //--------------------------------------------------------------------------------
-void object_print_parser::describe_partition_info (const sm_partition &partinfo)
+void object_printer::describe_partition_info (const sm_partition &partinfo)
 {
   DB_VALUE ele;
   char line[SM_MAX_IDENTIFIER_LENGTH + 1], *ptr, *ptr2, *tmp;
@@ -1112,7 +1131,7 @@ void object_print_parser::describe_partition_info (const sm_partition &partinfo)
  *    a condensed version of the trigger description.
  */
 
-void object_print_parser::describe_trigger_list (tr_triglist *triggers, object_print::strlist **strings)
+void object_printer::describe_trigger_list (tr_triglist *triggers, object_print::strlist **strings)
 {
   TR_TRIGLIST *t;
   object_print::strlist *new_p;
@@ -1145,7 +1164,7 @@ void object_print_parser::describe_trigger_list (tr_triglist *triggers, object_p
 *   parser(in):
 *   class(in): class to examine
 */
-const char **object_print_parser::describe_class_triggers (const sm_class &cls, struct db_object &class_mop)
+const char **object_printer::describe_class_triggers (const sm_class &cls, struct db_object &class_mop)
 {
   SM_ATTRIBUTE *attribute_p;
   object_print::strlist *strings;

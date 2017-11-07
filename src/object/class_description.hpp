@@ -17,8 +17,8 @@
  *
  */
 
-#ifndef _OBJECT_PRINT_CLASS_DESCRIPTION_HPP_
-#define _OBJECT_PRINT_CLASS_DESCRIPTION_HPP_
+#if !defined(_CLASS_DESCRIPTION_HPP_)
+#define _CLASS_DESCRIPTION_HPP_
 #if defined(SERVER_MODE)
 
 #error Does not belong to server module
@@ -61,10 +61,11 @@ struct class_description
 
   class_description ();                                    //former obj_print_make_class_help()
   class_description (const char *name);                    //former obj_print_help_class()
-  class_description (struct db_object *op, type prt_type); //former obj_print_help_class()
   ~class_description ();                                   //former obj_print_help_free_class()
+
+  bool init(struct db_object *op, type prt_type);
 
   //ToDo: other special methods: copy&move ctor/assign
 };
 
-#endif //_OBJECT_PRINT_CLASS_DESCRIPTION_HPP_
+#endif //_CLASS_DESCRIPTION_HPP_

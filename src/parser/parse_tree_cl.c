@@ -33,6 +33,7 @@
 #include <assert.h>
 #include <math.h>
 
+#include "db_value_printer.hpp"
 #include "porting.h"
 #include "parser.h"
 #include "parser_message.h"
@@ -41,7 +42,6 @@
 #include "memory_alloc.h"
 #include "language_support.h"
 #include "object_print.h"
-#include "object_print_common.hpp"
 #include "optimizer.h"
 #include "system_parameter.h"
 #include "show_meta.h"
@@ -2521,7 +2521,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   unsigned int save_custom = parser->custom_print;
   char b[8192] = {0};
   string_buffer buf(sizeof(b), b);
-  object_print_common obj_print(buf);
+  db_value_printer printer(buf);
 
   if (val == NULL)
     {
@@ -2544,12 +2544,12 @@ AGAIN:
       if (size > 0)
         {
           error = db_set_get (db_get_set ((DB_VALUE *) val), 0, &element);
-          obj_print.describe_value(&element);
+          printer.describe_value(&element);
           for (i = 1; i < size; i++)
             {
               error = db_set_get (db_get_set ((DB_VALUE *) val), i, &element);
               buf(", ");
-              obj_print.describe_value(&element);
+              printer.describe_value(&element);
             }
         }
       buf("}");
@@ -2562,32 +2562,32 @@ AGAIN:
 
     case DB_TYPE_MONETARY:
       /* This is handled explicitly because describe_value will add a currency symbol, and it isn't needed here. */
-      obj_print.describe_money(DB_GET_MONETARY((DB_VALUE*)val));
+      printer.describe_money(DB_GET_MONETARY((DB_VALUE*)val));
       break;
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       /* csql & everyone else get X'some_hex_string' */
-      obj_print.describe_value(val);
+      printer.describe_value(val);
       break;
 
     case DB_TYPE_DATE:
       /* csql & everyone else want DATE'mm/dd/yyyy' */
-      obj_print.describe_value(val);
+      printer.describe_value(val);
       break;
 
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
       /* csql & everyone else get time 'hh:mi:ss' */
-      obj_print.describe_value(val);
+      printer.describe_value(val);
       break;
 
     case DB_TYPE_UTIME:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
       /* everyone else gets csql's utime format */
-      obj_print.describe_value(val);
+      printer.describe_value(val);
 
       break;
 
@@ -2595,11 +2595,11 @@ AGAIN:
     case DB_TYPE_DATETIMETZ:
     case DB_TYPE_DATETIMELTZ:
       /* everyone else gets csql's utime format */
-      obj_print.describe_value(val);
+      printer.describe_value(val);
       break;
 
     default:
-      obj_print.describe_value(val);
+      printer.describe_value(val);
       break;
     }
     if(buf.len() > sizeof(b)){//allocate a bigger buffer (deallocated when parser is cleaned up)
@@ -16436,10 +16436,10 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  switch (p->type_enum)
 	    {
 	    case PT_TYPE_FLOAT:
-          sprintf(s, object_print_common::DECIMAL_FORMAT, DB_FLOAT_DECIMAL_PRECISION, p->info.value.data_value.f);
+          sprintf(s, db_value_printer::DECIMAL_FORMAT, DB_FLOAT_DECIMAL_PRECISION, p->info.value.data_value.f);
 	      break;
 	    case PT_TYPE_DOUBLE:
-          sprintf(s, object_print_common::DECIMAL_FORMAT, DB_DOUBLE_DECIMAL_PRECISION, p->info.value.data_value.d);
+          sprintf(s, db_value_printer::DECIMAL_FORMAT, DB_DOUBLE_DECIMAL_PRECISION, p->info.value.data_value.d);
 	      break;
 	    case PT_TYPE_NUMERIC:
 	      strcpy (s, (const char *) p->info.value.data_value.str->bytes);

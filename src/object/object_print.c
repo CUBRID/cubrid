@@ -25,7 +25,7 @@
 
 #include "object_print.h"
 #include "config.h"
-#include "object_print_common.hpp"
+#include "db_value_printer.hpp"
 
 #include <stdlib.h>
 #include <float.h>
@@ -51,7 +51,7 @@
 #include "msgcat_help.hpp"
 #include "network_interface_cl.h"
 #include "object_description.hpp"
-#include "object_print_parser.hpp"
+#include "object_printer.hpp"
 #include "object_print_util.hpp"
 #include "class_object.h"
 #include "work_space.h"
@@ -173,8 +173,8 @@ help_fprint_obj (FILE * fp, MOP obj)
 	}
       else
 	{
-	  class_description cinfo(obj, class_description::CSQL_SCHEMA_COMMAND);
-	  if (cinfo.name != NULL)
+	  class_description cinfo;
+	  if (cinfo.init(obj, class_description::CSQL_SCHEMA_COMMAND))
 	    {
 	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
 		       cinfo.class_type, cinfo.name);
@@ -730,12 +730,12 @@ void help_fprint_value(FILE* fp, const DB_VALUE* value)
     char b[8192] = {0};//bSolo ToDo: use parser specific allocator
 #endif
   string_buffer buf(sizeof(b), b);
-  object_print_common obj_print(buf);
-  obj_print.describe_value(value);
+  db_value_printer printer(buf);
+  printer.describe_value(value);
   if(buf.len() > sizeof(b))//realloc a bigger buffer and try again
   {
       buf.clear();
-      obj_print.describe_value(value);
+      printer.describe_value(value);
   }
   fprintf (fp, "%.*s", (int)buf.len(), b);
 }
@@ -758,8 +758,8 @@ void help_fprint_value(FILE* fp, const DB_VALUE* value)
 int help_sprint_value(const DB_VALUE* value, char *buffer, int max_length)
 {
   string_buffer buf(max_length, buffer);
-  object_print_common obj_print(buf);
-  obj_print.describe_value(value);
+  db_value_printer printer(buf);
+  printer.describe_value(value);
   int length = (int)buf.len();
   if(length > max_length)
     {
@@ -780,7 +780,7 @@ void help_fprint_describe_comment(FILE* fp, const char* comment)
   char b[8192] = {0};//bSolo: temp hack
   char* dynBuf = NULL;
   string_buffer sb(sizeof(b), b);
-  object_print_parser obj_print(sb);
+  object_printer obj_print(sb);
 
   assert (fp != NULL);
   assert (comment != NULL);
