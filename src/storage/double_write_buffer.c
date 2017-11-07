@@ -410,7 +410,6 @@ STATIC_INLINE int dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_
 STATIC_INLINE void dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool dwb_block_has_all_checksums_computed (unsigned int block_no);
-STATIC_INLINE void dwb_find_block_with_all_checksums_requested (unsigned int *block_no) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
 					       bool * block_slots_checksum_computed, bool * block_needs_flush)
   __attribute__ ((ALWAYS_INLINE));
@@ -2879,50 +2878,6 @@ dwb_block_has_all_checksums_computed (unsigned int block_no)
 }
 
 /*
- * dwb_find_block_with_all_checksums_requested(): Find a block with all cheksums requested.
- *
- *   returns: Nothing. 
- * block_no(out): The block number if is found, otherwise DWB_NUM_TOTAL_BLOCKS.
- */
-STATIC_INLINE void
-dwb_find_block_with_all_checksums_requested (unsigned int *block_no)
-{
-  unsigned int block_checksum_start_position, block_checksum_element_position, element_position, start_block, end_block,
-    num_block;
-  bool found;
-
-  assert (block_no != NULL);
-
-  *block_no = DWB_NUM_TOTAL_BLOCKS;
-  start_block = 0;
-  end_block = double_Write_Buffer.num_blocks;
-  /* First, search for blocks that must be flushed, to avoid delays caused by checksum computation in other block. */
-  for (num_block = 0; num_block < DWB_NUM_TOTAL_BLOCKS; num_block++)
-    {
-      found = true;
-      block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (num_block);
-      for (block_checksum_element_position = 0; block_checksum_element_position < DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK;
-	   block_checksum_element_position++)
-	{
-	  element_position = block_checksum_start_position + block_checksum_element_position;
-	  if (DWB_GET_REQUESTED_CHECKSUMS_ELEMENT (element_position)
-	      != DWB_GET_COMPLETED_CHECKSUMS_ELEMENT (block_checksum_element_position))
-	    {
-	      found = false;
-	      break;
-	    }
-	}
-
-      if (found)
-	{
-	  /* Needs to flush the block, after computing checksums. */
-	  *block_no = num_block;
-	  break;
-	}
-    }
-}
-
-/*
  * dwb_compute_block_checksums(): Computes checksums for requested slots in specified block.
  *
  *   returns: Error code.
@@ -3858,14 +3813,14 @@ start:
       return true;
     }
 
-  dwb_find_block_with_all_checksums_requested (&start_block);
-  if (start_block < DWB_NUM_TOTAL_BLOCKS)
+  start_block = double_Write_Buffer.next_block_to_flush;
+  if (!dwb_block_has_all_checksums_computed (start_block))
     {
+      /* Compute only for the block that must be flushed first, to avoid delays. */
       end_block = start_block + 1;
     }
   else
     {
-      start_block = 0;
       end_block = double_Write_Buffer.num_blocks;
     }
 
