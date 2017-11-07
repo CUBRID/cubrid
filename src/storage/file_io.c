@@ -2429,6 +2429,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   return vol_fd;
 }
 
+#if defined (SERVER_MODE)
 /*
  * fileio_expand_to () -  Expand a volume to the given number of pages.
  *
@@ -2476,11 +2477,11 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
   size_t new_size;
   size_t desired_extend_size;
   size_t max_extend_size;
-#if defined(WINDOWS) && defined(SERVER_MODE)
+#if defined(WINDOWS)
   int rv;
   pthread_mutex_t *io_mutex;
   static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
-#endif /* WINDOWS && SERVER_MODE */
+#endif /* WINDOWS */
 
   int error_code = NO_ERROR;
 
@@ -2502,7 +2503,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
       return error_code;
     }
 
-#if defined(WINDOWS) && defined(SERVER_MODE)
+#if defined(WINDOWS)
   io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
   if (io_mutex == NULL)
     {
@@ -2515,13 +2516,13 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
-#endif /* WINDOWS && SERVER_MODE */
+#endif /* WINDOWS */
 
   /* get current size */
   current_size = lseek (vol_fd, 0, SEEK_END);
-#if defined(WINDOWS) && defined(SERVER_MODE)
+#if defined(WINDOWS)
   pthread_mutex_unlock (io_mutex);
-#endif /* WINDOWS && SERVER_MODE */
+#endif /* WINDOWS */
   /* safe-guard: current size is rounded to IO_PAGESIZE... unless it crashed during an expand */
   assert (!LOG_ISRESTARTED () || (current_size % IO_PAGESIZE) == 0);
 
@@ -2531,9 +2532,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
   if (new_size <= current_size)
     {
       /* this must be recovery. */
-#ifdef SERVER_MODE
       assert (!LOG_ISRESTARTED ());
-#endif /* SERVER_MODE */
       er_log_debug (ARG_FILE_LINE, "skip extending volume %d with current size %zu to new size %zu\n",
 		    vol_id, current_size, new_size);
       return NO_ERROR;
@@ -2610,6 +2609,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 
   return NO_ERROR;
 }
+#endif /* SERVER_MODE */
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
