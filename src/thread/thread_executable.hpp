@@ -17,44 +17,27 @@
  *
  */
 
-/*
- * test_manager.cpp - implementation for thread manager tests
- */
+#ifndef _THREAD_EXECUTABLE_HPP_
+#define _THREAD_EXECUTABLE_HPP_
 
-#include "test_manager.hpp"
+#include <mutex>
+#include <thread>
 
-#include "test_output.hpp"
+namespace thread {
 
-#include "thread_executable.hpp"
-#include "thread_manager.hpp"
-
-#include <iostream>
-
-namespace test_thread
+class executable
 {
-
-class dummy_exec : public thread::executable
-{
-  void execute_task ()
+public:
+  virtual void execute_task () = 0;       // function to execute
+  virtual void retire ()                  // what happens with executable instance when task is executed; default is delete
   {
-    test_common::sync_cout ("dummy_exec\n");
+    delete this;
+  }
+  virtual ~executable ()                        // virtual destructor
+  {
   }
 };
 
-int
-test_manager (void)
-{
-  thread::manager thread_manager;
+} // namespace thread
 
-  thread::worker_pool *dummy_pool = thread_manager.create_worker_pool (1, 1);
-  thread_manager.destroy_worker_pool (dummy_pool);
-
-  thread::daemon *daemon = thread_manager.create_daemon (thread::looper (), new dummy_exec ());
-  thread_manager.destroy_daemon (daemon);
-
-  std::cout << "  test_manager successful" << std::endl;
-
-  return 0;
-}
-
-} // namespace test_thread
+#endif // _THREAD_EXECUTABLE_HPP_

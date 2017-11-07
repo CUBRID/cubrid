@@ -19,28 +19,30 @@
 
 #include "thread_worker_pool.hpp"
 
+#include "thread_executable.hpp"
+
 namespace thread {
 
 bool
-worker_pool::try_execute (work * work_arg)
+worker_pool::try_execute (executable * work_arg)
 {
-  assert (m_open);
+  assert (!m_stopped);
   std::thread* thread_p = register_worker ();
   if (thread_p != NULL)
     {
-      *thread_p = std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<work *> (work_arg));
+      *thread_p = std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<executable *> (work_arg));
     }
   return false;
 }
 
 void
-worker_pool::execute (work * work_arg)
+worker_pool::execute (executable * work_arg)
 {
-  assert (m_open);
+  assert (!m_stopped);
   std::thread* thread_p = register_worker ();
   if (thread_p != NULL)
     {
-      *thread_p = std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<work *> (work_arg));
+      *thread_p = std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<executable *> (work_arg));
     }
   else if (!m_work_queue.produce (work_arg))
     {
@@ -51,9 +53,9 @@ worker_pool::execute (work * work_arg)
 }
 
 void
-worker_pool::close (void)
+worker_pool::stop (void)
 {
-  if (!m_open)
+  if (m_stopped)
     {
       // already closed
       return;
@@ -65,17 +67,17 @@ worker_pool::close (void)
           m_threads[i].join ();
         }
     }
-  m_open = false;
+  m_stopped = true;
 }
 
 bool
-worker_pool::is_open (void)
+worker_pool::is_running (void)
 {
-  return m_open;
+  return !m_stopped;
 }
 
 void
-worker_pool::run (worker_pool & pool, std::thread & thread_arg, work * work_arg)
+worker_pool::run (worker_pool & pool, std::thread & thread_arg, executable * work_arg)
 {
   do
     {
@@ -84,9 +86,9 @@ worker_pool::run (worker_pool & pool, std::thread & thread_arg, work * work_arg)
 
       // loop while there are jobs in queue. there is no point in stopping and restarting another thread
     }
-  while (pool.is_open () && pool.m_work_queue.consume (work_arg));
+  while (pool.is_running () && pool.m_work_queue.consume (work_arg));
 
-  // no work in queue. deregister worker
+  // no executable in queue. deregister worker
   pool.deregister_worker (thread_arg);
 }
 

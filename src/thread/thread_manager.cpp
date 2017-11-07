@@ -36,50 +36,73 @@ manager::~manager ()
   // pool container should be empty by now
   assert (m_worker_pools.empty ());
 
-  // make sure that we close all
-  for (auto pool_iter = m_worker_pools.begin ();
-       pool_iter != m_worker_pools.end ();
-       pool_iter = m_worker_pools.erase (pool_iter))
+  // make sure that we stop and free all
+  destroy_and_untrack_all_resources (m_worker_pools);
+  destroy_and_untrack_all_resources (m_daemons);
+}
+
+template<typename Res>
+void manager::destroy_and_untrack_all_resources (std::vector<Res*>& tracker)
+{
+  assert (tracker.empty ());
+
+  for (auto iter = tracker.begin (); iter != tracker.end (); iter = tracker.erase (iter))
     {
-      (*pool_iter)->close ();
-      delete *pool_iter;
+      (*iter)->stop ();
+      delete *iter;
     }
 }
 
-worker_pool *
-manager::create_worker_pool (size_t thread_count, size_t job_queue_size)
+template<typename Res>
+inline void manager::destroy_and_untrack_resource (std::vector<Res*>& tracker, Res *& res)
 {
   std::unique_lock<std::mutex> lock (m_mutex);    // safe-guard
-  worker_pool *new_pool = new worker_pool (thread_count, job_queue_size);
 
-  m_worker_pools.push_back (new_pool);
-  return new_pool;
+  if (res == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  for (auto iter = tracker.begin (); iter != tracker.end (); ++iter)
+    {
+      if (res == *iter)
+        {
+          // remove resource from tracker
+          (void) tracker.erase (iter);
+
+          // stop resource and delete
+          res->stop ();
+          delete res;
+          res = NULL;
+
+          return;
+        }
+    }
+  // resource not found
+  assert (false);
 }
 
 void
 manager::destroy_worker_pool (worker_pool *& worker_pool_arg)
 {
+  return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg);
+}
+
+void manager::destroy_daemon (daemon *& daemon_arg)
+{
+  return destroy_and_untrack_resource (m_daemons, daemon_arg);
   std::unique_lock<std::mutex> lock (m_mutex);    // safe-guard
 
-  assert (worker_pool_arg != NULL);
+  assert (daemon_arg != NULL);
 
-  for (auto pool_iter = m_worker_pools.begin (); pool_iter != m_worker_pools.end (); ++pool_iter)
+  for (auto daemon_iter = m_daemons.begin (); daemon_iter != m_daemons.end (); ++daemon_iter)
     {
-      if (*pool_iter == worker_pool_arg)
+      if (*daemon_iter == daemon_arg)
         {
-          // remove pool from pools
-          (void) m_worker_pools.erase (pool_iter);
           
-          // close pool and delete
-          worker_pool_arg->close ();
-          delete worker_pool_arg;
-          worker_pool_arg = NULL;
-
-          return;
         }
     }
-  // untracked pool?
-  assert (false);
 }
 
 } // namespace thread

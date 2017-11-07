@@ -18,43 +18,65 @@
  */
 
 /*
- * test_manager.cpp - implementation for thread manager tests
+ *
  */
 
-#include "test_manager.hpp"
-
-#include "test_output.hpp"
+#include "thread_daemon.hpp"
 
 #include "thread_executable.hpp"
-#include "thread_manager.hpp"
 
-#include <iostream>
-
-namespace test_thread
+namespace thread
 {
 
-class dummy_exec : public thread::executable
+daemon::daemon (looper & loop_pattern, executable * exec)
+  : m_waiter ()
+  , m_looper (loop_pattern)
+  , m_thread (daemon::loop, this, exec)
 {
-  void execute_task ()
-  {
-    test_common::sync_cout ("dummy_exec\n");
-  }
-};
-
-int
-test_manager (void)
-{
-  thread::manager thread_manager;
-
-  thread::worker_pool *dummy_pool = thread_manager.create_worker_pool (1, 1);
-  thread_manager.destroy_worker_pool (dummy_pool);
-
-  thread::daemon *daemon = thread_manager.create_daemon (thread::looper (), new dummy_exec ());
-  thread_manager.destroy_daemon (daemon);
-
-  std::cout << "  test_manager successful" << std::endl;
-
-  return 0;
 }
 
-} // namespace test_thread
+daemon::~daemon ()
+{
+  // thread must be stopped
+  stop ();
+}
+
+void
+daemon::wakeup (void)
+{
+  m_waiter.wakeup ();
+}
+
+void
+daemon::stop (void)
+{
+  if (m_looper.is_stopped ())
+    {
+      // already stopped
+      return;
+    }
+  // first signal stop
+  m_looper.stop ();
+  // make sure thread will wakeup
+  wakeup ();
+  // then wait for thread to finish
+  m_thread.join ();
+}
+
+void
+daemon::loop (daemon * daemon_arg, executable * exec)
+{
+  while (!daemon_arg->m_looper.is_stopped ())
+    {
+      exec->execute_task ();
+      daemon_arg->pause ();
+    }
+  exec->retire ();
+}
+
+void daemon::pause (void)
+{
+  m_looper.put_to_sleep (m_waiter);
+}
+
+} // namespace thread

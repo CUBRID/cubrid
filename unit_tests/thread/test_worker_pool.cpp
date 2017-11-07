@@ -25,6 +25,7 @@
 
 #include "test_output.hpp"
 
+#include "thread_executable.hpp"
 #include "thread_worker_pool.hpp"
 
 #include <iostream>
@@ -32,7 +33,7 @@
 
 namespace test_thread {
 
-class dummy_work : public thread::work
+class dummy_work : public thread::executable
 {
 public:
   void execute_task ()
@@ -41,7 +42,7 @@ public:
   }
 };
 
-class start_end_work : public thread::work
+class start_end_work : public thread::executable
 {
 public:
   void
@@ -53,7 +54,7 @@ public:
   }
 };
 
-class inc_work : public thread::work
+class inc_work : public thread::executable
 {
 public:
   void execute_task ()
@@ -80,7 +81,7 @@ test_one_thread_pool (void)
   pool.execute (new dummy_work ());
 
   std::this_thread::sleep_for (std::chrono::duration<int> (1));
-  pool.close ();
+  pool.stop ();
   return 0;
 }
 
@@ -92,7 +93,7 @@ test_two_threads_pool (void)
   pool.execute (new start_end_work ());
   pool.execute (new start_end_work ());
 
-  pool.close ();
+  pool.stop ();
 
   return 0;
 }
@@ -114,8 +115,8 @@ test_stress (void)
     }
   auto end_time = std::chrono::high_resolution_clock::now ();
 
-  std::cout << "  duration - " << std::chrono::duration<double> (end_time - start_time).count ();
-  workpool.close ();
+  std::cout << "  duration - " << std::chrono::duration<double> (end_time - start_time).count () << std::endl;
+  workpool.stop ();
   return 0;
 }
 

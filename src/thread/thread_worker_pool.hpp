@@ -28,18 +28,8 @@
 
 namespace thread {
 
-class work
-{
-public:
-  virtual void execute_task () = 0;       // function to execute
-  virtual void retire ()                  // what happens with work instance when task is executed; default is delete
-  {
-    delete this;
-  }
-  virtual ~work ()                        // virtual destructor
-  {
-  }
-};
+// forward definition
+class executable;
 
 class worker_pool
 {
@@ -50,33 +40,34 @@ public:
     , m_work_queue (work_queue_size)
     , m_threads (new std::thread [m_max_workers])
     , m_thread_dispatcher (m_threads, m_max_workers)
-    , m_open (true)
+    , m_stopped (false)
   {
   }
 
   ~worker_pool ()
   {
-    assert (!m_open);
+    // not safe to destroy running pools
+    assert (m_stopped);
     delete [] m_threads;
   }
 
-  bool try_execute (work * work_arg);
-  void execute (work * work_arg);
-  void close (void);
-  bool is_open (void);
+  bool try_execute (executable * work_arg);
+  void execute (executable * work_arg);
+  void stop (void);
+  bool is_running (void);
 
 private:
-  static void run (worker_pool & pool, std::thread & thread_arg, work * work_arg);
+  static void run (worker_pool & pool, std::thread & thread_arg, executable * work_arg);
 
   inline std::thread* register_worker (void);
   inline void deregister_worker (std::thread & thread_arg);
 
   const std::size_t m_max_workers;
   std::atomic<std::size_t> m_worker_count;
-  lockfree::circular_queue<work *> m_work_queue;
+  lockfree::circular_queue<executable *> m_work_queue;
   std::thread *m_threads;
   resource_shared_pool<std::thread> m_thread_dispatcher;
-  bool m_open;
+  bool m_stopped;
 };
 
 } // namespace thread

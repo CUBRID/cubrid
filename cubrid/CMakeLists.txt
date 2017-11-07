@@ -31,12 +31,19 @@ set(COMPAT_SOURCES
 set(THREAD_SOURCES
   ${THREAD_DIR}/thread.c
   ${THREAD_DIR}/critical_section.c
+  ${THREAD_DIR}/thread_daemon.cpp
+  ${THREAD_DIR}/thread_looper.cpp
   ${THREAD_DIR}/thread_manager.cpp
+  ${THREAD_DIR}/thread_waiter.cpp
   ${THREAD_DIR}/thread_worker_pool.cpp
   )
 set(THREAD_HEADERS
-  ${THREAD_DIR}/thread_worker_pool.hpp
+  ${THREAD_DIR}/thread_daemon.hpp
+  ${THREAD_DIR}/thread_executable.hpp
+  ${THREAD_DIR}/thread_looper.hpp
   ${THREAD_DIR}/thread_manager.hpp
+  ${THREAD_DIR}/thread_waiter.hpp
+  ${THREAD_DIR}/thread_worker_pool.hpp
   )
 
 set(BASE_SOURCES

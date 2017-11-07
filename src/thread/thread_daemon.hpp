@@ -18,43 +18,45 @@
  */
 
 /*
- * test_manager.cpp - implementation for thread manager tests
+ *
  */
 
-#include "test_manager.hpp"
+#ifndef _THREAD_DAEMON_HPP_
+#define _THREAD_DAEMON_HPP_
 
-#include "test_output.hpp"
+#include "thread_looper.hpp"
+#include "thread_waiter.hpp"
 
-#include "thread_executable.hpp"
-#include "thread_manager.hpp"
+#include <thread>
 
-#include <iostream>
-
-namespace test_thread
+namespace thread
 {
 
-class dummy_exec : public thread::executable
+// forward definition
+class executable;
+
+class daemon
 {
-  void execute_task ()
-  {
-    test_common::sync_cout ("dummy_exec\n");
-  }
+  public:
+    daemon (looper & loop_pattern, executable * exec);
+    ~daemon();
+
+    void wakeup (void);
+    void stop (void);
+
+  private:
+
+    static void loop (daemon * daemon_arg, executable * exec);
+
+    void pause (void);
+
+    waiter m_waiter;
+    looper m_looper;
+    std::thread m_thread;
 };
 
-int
-test_manager (void)
-{
-  thread::manager thread_manager;
 
-  thread::worker_pool *dummy_pool = thread_manager.create_worker_pool (1, 1);
-  thread_manager.destroy_worker_pool (dummy_pool);
 
-  thread::daemon *daemon = thread_manager.create_daemon (thread::looper (), new dummy_exec ());
-  thread_manager.destroy_daemon (daemon);
+} // namespace thread
 
-  std::cout << "  test_manager successful" << std::endl;
-
-  return 0;
-}
-
-} // namespace test_thread
+#endif // _THREAD_DAEMON_HPP_
