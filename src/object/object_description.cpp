@@ -60,7 +60,7 @@ object_description::object_description (struct db_object *op)
 	      this->classname = object_print::copy_string ((char *) sm_ch_name ((MOBJ) class_));
 
 	      DB_MAKE_OBJECT (&value, op);
-	      obj_print.describe_data (&value);
+	      printer.describe_data (&value);
 	      db_value_clear (&value);
 	      DB_MAKE_NULL (&value);
 
