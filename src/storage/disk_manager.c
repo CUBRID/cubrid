@@ -46,6 +46,7 @@
 #include "db_date.h"
 #include "bit.h"
 #include "fault_injection.h"
+#include "vacuum.h"
 
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */

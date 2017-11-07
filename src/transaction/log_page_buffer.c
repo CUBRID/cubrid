@@ -94,6 +94,7 @@
 #include "event_log.h"
 #include "thread.h"
 #include "tsc_timer.h"
+#include "vacuum.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
