@@ -90,6 +90,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
 /*
  * Function Group:
@@ -1295,7 +1299,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int cached_num;
   DB_DATA_STATUS data_stat;
   int error = NO_ERROR;
-  int found = 0, r = 0, save;
+  int save;
   bool au_disable_flag = false;
   char *p = NULL;
   size_t name_size;
@@ -1766,7 +1770,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   DB_VALUE start_val, inc_val, max_val, min_val;
   DB_VALUE zero, value, *pval = NULL;
   DB_VALUE cmp_result;
-  int found = 0, r = 0, i;
+  int i;
   DB_VALUE e38;
   char *p, num[DB_MAX_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
@@ -2247,7 +2251,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int cur_val_change, inc_val_change, max_val_change, min_val_change, cyclic_change, cached_num_change;
 
   int error = NO_ERROR;
-  int found = 0, r = 0, save;
+  int save;
   bool au_disable_flag = false;
 
   SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
@@ -2832,7 +2836,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE class_name_val;
   char *name;
   int error = NO_ERROR;
-  int found = 0, r = 0, save;
+  int save;
   bool au_disable_flag = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -6944,13 +6948,10 @@ update_object_tuple (PARSER_CONTEXT * parser, CLIENT_UPDATE_INFO * assigns, int 
 		     const int turn_off_serializable_conflict_check, UPDATE_TYPE update_type, bool should_delete)
 {
   int error = NO_ERROR;
-  DB_OTMPL *otemplate = NULL, *otmpl = NULL;
+  DB_OTMPL *otemplate = NULL;
   int idx = 0, upd_tpl_cnt = 0;
   DB_OBJECT *real_object = NULL, *object = NULL;
   SM_CLASS *smclass = NULL;
-  SM_ATTRIBUTE *att = NULL;
-  char flag_att = 0;
-  int exist_active_triggers = false;
   CLIENT_UPDATE_INFO *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL;
   bool flush_del = false;
@@ -7906,9 +7907,9 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   DB_OTMPL *otemplate = NULL;
-  PT_NODE *spec = NULL, *rhs = NULL, *assignments = NULL;
+  PT_NODE *rhs = NULL, *assignments = NULL;
   PT_ASSIGNMENTS_HELPER ea;
-  int idx = 0, count = 0, assigns_count = 0;
+  int idx = 0, assigns_count = 0;
   int upd_cls_cnt = 0, vals_cnt = 0, multi_assign_cnt = 0;
   CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls = NULL;
@@ -9776,7 +9777,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
-  PT_NODE *hint_arg = NULL, *node = NULL, *spec = NULL;
+  PT_NODE *hint_arg = NULL, *spec = NULL;
   bool has_virt_object = false;
 
   /* delete a "real" class in this database */
@@ -10263,7 +10264,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *savepoint_name = NULL;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
-  int au_save, isvirt = 0;
+  int au_save;
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
   PT_NODE *hint_arg;
@@ -10637,8 +10638,6 @@ static int
 do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
-  int i = 0;
-  int j = 0;
   PT_NODE *val = NULL, *head = NULL, *prev = NULL;
   PT_NODE *value_list = NULL;
 
@@ -10729,8 +10728,6 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (contextp->xasl)
 	{
-	  INSERT_PROC_NODE *insert = &(contextp->xasl->proc.insert);
-
 	  assert (contextp->xasl->dptr_list == NULL);
 
 	  if (error == NO_ERROR)
@@ -10818,9 +10815,6 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   int count = 0;
   QUERY_ID query_id_self = parser->query_id;
   QFILE_LIST_ID *list_id = NULL;
-  int i = 0;
-  int j = 0, k = 0;
-  PT_NODE *odku_assignments = NULL;
 
   XASL_STREAM stream;
 
@@ -10882,8 +10876,6 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (list_id)
     {
-      PT_NODE *cl_name_node = NULL;
-
       count = list_id->tuple_cnt;
       if (count > 0 && (statement->info.insert.odku_assignments != NULL || statement->info.insert.do_replace))
 	{
@@ -11154,7 +11146,6 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
     {
-      PT_NODE *query = NULL, *query_list = NULL;
       if (!(server_preference & INSERT_SELECT))
 	{
 	  goto end;
@@ -11564,7 +11555,6 @@ do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** o
   bool should_verify = false;
   BTREE_SEARCH result;
   SCAN_OPERATION_TYPE op_type = S_UPDATE;
-  int needs_pruning = 0;
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level & 0x02)
@@ -11724,7 +11714,6 @@ do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * 
 {
   int retval = NO_ERROR;
   int ret_code = 0;
-  int flag = 0;
   OID *oids = NULL;
   int oids_count = 0;
 
@@ -11780,7 +11769,6 @@ static int
 do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * spec, PT_NODE * class_specs)
 {
   int retval = 0, error = NO_ERROR;
-  PT_NODE *select = NULL;
   OID *oids = NULL;
   int oids_count = 0, i;
   MOP obj = NULL;
@@ -11897,16 +11885,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   PT_NODE *attr = NULL, *vc = NULL;
   PT_NODE *into = NULL;
   PT_NODE *class_ = NULL;
-  PT_NODE *non_null_attrs = NULL;
   PT_NODE *update = NULL;
   DB_ATTDESC **attr_descs = NULL;
   int i, degree, row_count = 0;
-  int has_uniques = 0;
-  int upd_has_uniques = 0;
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
   PT_NODE *hint_arg;
-  SM_CLASS *smclass = NULL;
   int pruning_type = DB_NOT_PARTITIONED_CLASS;
   PT_NODE *value_clauses = statement->info.insert.value_clauses;
   PT_NODE *value_list = NULL;
@@ -12465,7 +12449,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   DB_OTMPL *otemplate = NULL;
   DB_OBJECT *obj = NULL;
   PT_NODE *attr, *qry, *attrs, *update = NULL;
-  DB_VALUE *vals = NULL, *val = NULL, *ins_val = NULL;
+  DB_VALUE *vals = NULL, *val = NULL;
   int degree, k, cnt, i, flag = 0;
   DB_ATTDESC **attr_descs = NULL;
   ODKU_TUPLE_VALUE_ARG odku_arg;
@@ -13016,11 +13000,9 @@ test_check_option (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 static int
 insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  DB_OBJECT *obj = NULL, *vobj = NULL;
   int error = NO_ERROR;
   int row_count_total = 0;
   PT_NODE *class_ = NULL, *vc = NULL;
-  DB_VALUE *ins_val = NULL;
   int save;
   int has_check_option = 0;
   const char *savepoint_name = NULL;
@@ -13280,10 +13262,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   PT_NODE *class_;
-  int has_check_option = 0;
   PT_NODE *values = NULL;
-  int has_trigger = 0;
-  bool has_default_values_list = false;
   PT_NODE *attr_list;
   PT_NODE *update = NULL;
   int save_au;
@@ -14944,7 +14923,7 @@ check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, PT_NODE * st
   int err, result = NO_ERROR;
   TR_STATE *state;
   const char *savepoint_name = NULL;
-  PT_NODE *node = NULL, *flat = NULL;
+  PT_NODE *flat = NULL;
   DB_OBJECT *class_ = NULL;
 
   /* Prepare a trigger state for any triggers that must be raised in this statement */
@@ -16335,7 +16314,6 @@ pt_append_odku_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
   PT_NODE *insert_spec = NULL;
   PT_NODE *select = NULL, *select_list = NULL, *select_spec = NULL, *spec = NULL;
   PT_NODE *name_node = NULL;
-  int count = 0;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -16442,7 +16420,7 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   EVAL_INSERT_VALUE eval;
   DB_VALUE eval_value;
   PT_NODE *attr_list = NULL, *value_list = NULL, *value_clause = NULL;
-  PT_NODE *temp = NULL, *insert_value = NULL;
+  PT_NODE *temp = NULL;
   bool free_temp = false;
 
   attr_list = insert_statement->info.insert.attr_list;

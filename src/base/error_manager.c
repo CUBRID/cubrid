@@ -88,6 +88,10 @@
 #include "wintcp.h"
 #endif /* WINDOWS */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #if defined(WINDOWS)
 #define LOG_ALERT 0
 static int
@@ -244,6 +248,7 @@ static const char *er_Builtin_msg[] = {
   /* ER_EVENT_HANDLER */
   "er_init: cannot install event handler \"%s\""
 };
+
 static char *er_Cached_msg[sizeof (er_Builtin_msg) / sizeof (const char *)];
 static bool er_Is_cached_msg = false;
 
@@ -263,6 +268,7 @@ static int er_Fmt_msg_fail_count = -ER_LAST_ERROR;
 static int er_Errid_not_initialized = 0;
 #if !defined (SERVER_MODE)
 static ER_MSG ermsg_Buf = { 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0 };
+
 static ER_MSG *er_Msg = NULL;
 static char er_emergency_buf[ER_EMERGENCY_BUF_SIZE];	/* message when all else fails */
 static er_log_handler_t er_Handler = NULL;

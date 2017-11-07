@@ -58,6 +58,10 @@
 #include "show_meta.h"
 #include "db.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define DEFAULT_VAR "."
 
 struct pt_host_vars
@@ -710,7 +714,9 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
   if (node->node_type == PT_FUNCTION)
     {
       function_type = node->info.function.function_type;
-      if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT)
+      if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT || function_type == F_JSON_OBJECT
+	  || function_type == F_JSON_ARRAY || function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE
+	  || function_type == F_JSON_MERGE)
 	{
 	  return true;
 	}
@@ -2498,7 +2504,7 @@ void
 pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** join_part, PT_NODE ** after_cb_filter)
 {
   PT_NODE *current_conj, *current_pred;
-  PT_NODE *next_conj = NULL, *next_pred = NULL;
+  PT_NODE *next_conj = NULL;
 
   for (current_conj = predicates; current_conj != NULL; current_conj = next_conj)
     {
@@ -6697,7 +6703,6 @@ int
 pt_get_select_query_columns (PARSER_CONTEXT * parser, PT_NODE * create_select, DB_QUERY_TYPE ** query_columns)
 {
   PT_NODE *temp_copy = NULL;
-  DB_QUERY_TYPE *temp_qtype = NULL;
   DB_QUERY_TYPE *qtype = NULL;
   int error = NO_ERROR;
 
@@ -7109,8 +7114,6 @@ static PT_NODE *
 pt_make_pred_with_identifiers (PARSER_CONTEXT * parser, PT_OP_TYPE op_type, const char *lhs_identifier,
 			       const char *rhs_identifier)
 {
-  PT_NODE *dot1 = NULL;
-  PT_NODE *dot2 = NULL;
   PT_NODE *pred_rhs = NULL;
   PT_NODE *pred_lhs = NULL;
   PT_NODE *pred = NULL;
@@ -7284,10 +7287,8 @@ pt_make_outer_select_for_show_columns (PARSER_CONTEXT * parser, PT_NODE * inner_
 				       int is_show_full, PT_NODE ** outer_node)
 {
   /* SELECT * from ( SELECT .... ) <select_alias>; */
-  PT_NODE *val_node = NULL;
   PT_NODE *alias_subquery = NULL;
   PT_NODE *from_item = NULL;
-  PT_NODE *val_list = NULL;
   PT_NODE *query = NULL;
   int i, error = NO_ERROR;
 
@@ -7759,7 +7760,6 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
   PT_NODE *where_item1 = NULL;
   PT_NODE *where_item2 = NULL;
   PT_NODE *from_item = NULL;
-  PT_NODE *sel_item = NULL;
   PT_NODE *query = NULL;
   PT_NODE *extra_node = NULL;
   PT_NODE *pred = NULL;
@@ -8032,7 +8032,6 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
       /* IF (mul_count > 0 , 'MUL', '' */
       PT_NODE *pred_rhs = NULL;
       PT_NODE *pred = NULL;
-      PT_NODE *string1_node = NULL;
 
       pred_rhs = pt_make_integer_value (parser, 0);
 
@@ -8274,7 +8273,6 @@ pt_make_dummy_query_check_table (PARSER_CONTEXT * parser, const char *table_name
 {
   PT_NODE *limit_item = NULL;
   PT_NODE *from_item = NULL;
-  PT_NODE *sel_item = NULL;
   PT_NODE *query = NULL;
 
   assert (table_name != NULL);
@@ -9509,7 +9507,6 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   PT_NODE *concat_node = NULL;
   PT_NODE *group_by_item = NULL;
   char user_name[SM_MAX_IDENTIFIER_LENGTH];
-  int i = 0;
 
   assert (original_user_name != NULL);
   assert (strlen (original_user_name) < SM_MAX_IDENTIFIER_LENGTH);
@@ -9773,7 +9770,7 @@ pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, 
 static PT_NODE *
 pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class)
 {
-  PT_NODE *delete_stmt = NULL, *node = NULL;
+  PT_NODE *delete_stmt = NULL;
 
   assert (spec != NULL && spec->node_type == PT_SPEC);
 
@@ -11723,7 +11720,6 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
   TP_DOMAIN *domain = NULL;
   int pad_size = 0, trimmed_length = 0, trimmed_size = 0;
   int char_count = 0;
-  int codeset = LANG_SYS_CODESET, collation = LANG_SYS_COLLATION;
   unsigned char pad[2];
 
   if (dt == NULL || dt->node_type != PT_DATA_TYPE || dt->type_enum != PT_TYPE_ENUMERATION)
@@ -11840,7 +11836,6 @@ bool
 pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
 {
   DB_VALUE limit_val;
-  bool can_use = false;
   DB_BIGINT val = 0;
   int limit_opt_flag = (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED);
 

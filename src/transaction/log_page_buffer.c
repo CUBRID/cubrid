@@ -351,7 +351,6 @@ static int logpb_backup_needed_archive_logs (THREAD_ENTRY * thread_p, FILEIO_BAC
 					     int first_arv_num, int last_arv_num);
 #endif /* SERVER_MODE */
 static bool logpb_remote_ask_user_before_delete_volumes (THREAD_ENTRY * thread_p, const char *volpath);
-static int logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p);
 static int logpb_initialize_flush_info (void);
 static void logpb_finalize_flush_info (void);
 static void logpb_finalize_writer_info (void);
@@ -1362,8 +1361,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
     {
       loghdr->prefix_name[0] = '\0';
     }
-  loghdr->reserved_int_1 = -1;
-  loghdr->reserved_int_2 = -1;
+  loghdr->vacuum_last_blockid = 0;
   loghdr->perm_status = LOG_PSTAT_CLEAR;
 
   for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
@@ -4008,22 +4006,14 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
   bool hold_flush_mutex = false;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
-  LOG_RECORD_HEADER save_record = {
-    {NULL_PAGEID, NULL_OFFSET},	/* prev_tranlsa */
-    {NULL_PAGEID, NULL_OFFSET},	/* back_lsa */
-    {NULL_PAGEID, NULL_OFFSET},	/* forw_lsa */
-    NULL_TRANID,		/* trid */
-    LOG_SMALLER_LOGREC_TYPE	/* type */
-  };				/* Save last record */
-
+  int rv;
+#if defined(SERVER_MODE)
   INT64 flush_start_time = 0;
   INT64 flush_completed_time = 0;
   INT64 all_writer_thr_end_time = 0;
 
-  int rv;
-#if defined(SERVER_MODE)
+  LOGWR_INFO *writer_info = &log_Gl.writer_info;
   LOGWR_ENTRY *entry;
 #endif /* SERVER_MODE */
 
@@ -6555,29 +6545,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   arvhdr->fpageid = log_Gl.hdr.nxarv_pageid;
   last_pageid = log_Gl.append.prev_lsa.pageid - 1;
 
-#if 0
-  /* 
-   * logpb_must_archive_last_log_page can call logpb_archive_active_log again
-   * and then, log_Gl.hdr could be changed and it make trouble. (assert or shutdown)
-   *
-   * so, new behavior of logpb_backup is fixed as don't copy incomplete last page
-   * as the result, this code block is commented.
-   */
-  /* 
-   * When forcing an archive for backup purposes, it is imperative that
-   * every single log record make it into the archive including the
-   * current page.  This often means archiving an incomplete page.
-   * To archive the last page in a way that recovery analysis will
-   * realize it is incomplete, requires a dummy record with no forward
-   * lsa pointer.  It also requires the the next record after that
-   * be appended to a new page (which will happen automatically).
-   */
-  if (logpb_must_archive_last_log_page (thread_p) != NO_ERROR)
-    {
-      goto error;
-    }
-#endif
-
   if (last_pageid < arvhdr->fpageid)
     {
       last_pageid = arvhdr->fpageid;
@@ -6840,7 +6807,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   int first_arv_num_to_delete = -1;
   int last_arv_num_to_delete = -1;
   int min_arv_required_for_vacuum;
-  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID, new_page_id = NULL_PAGEID;
 #if defined(SERVER_MODE)
   LOG_PAGEID min_copied_pageid;
   int min_copied_arv_num;
@@ -6946,6 +6913,11 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
       if (last_arv_num_to_delete >= first_arv_num_to_delete)
 	{
 	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
+
+	  /* Update the last_blockid needed for vacuum. Get the first page_id of the previously logged archive */
+	  new_page_id = log_Gl.append.prev_lsa.pageid;
+	  logpb_update_last_blockid (thread_p, new_page_id);
+
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
 
@@ -7215,9 +7187,13 @@ logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first, int last
   bool append_log_info = false;
   int deleted_count = 0;
 
+  /* Decache any archive remaining in the log_Gl.archive. */
+  logpb_decache_archive_info (thread_p);
+
   for (i = first; i <= last; i++)
     {
       fileio_make_log_archive_name (logarv_name, log_Archive_path, log_Prefix, i);
+
 #if defined(SERVER_MODE)
       if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING) && boot_Server_status == BOOT_SERVER_UP)
 	{
@@ -7481,11 +7457,11 @@ logpb_verify_length (const char *db_fullname, const char *log_path, const char *
 
   if (log_path != NULL)
     {
-      length = strlen (log_path) + strlen (log_prefix) + 2;
+      length = (int) (strlen (log_path) + strlen (log_prefix) + 2);
     }
   else
     {
-      length = strlen (log_prefix) + 1;
+      length = (int) strlen (log_prefix) + 1;
     }
 
   if (length + volmax_suffix > pathname_max)
@@ -8342,6 +8318,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 #if defined(SERVER_MODE)
   int rv;
   time_t wait_checkpoint_begin_time;
+  bool print_backupdb_waiting_reason = false;
 #endif /* SERVER_MODE */
   int error_code = NO_ERROR;
   FILEIO_BACKUP_HEADER *io_bkup_hdr_p;
@@ -8352,7 +8329,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
-  bool print_backupdb_waiting_reason = false;
 
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
 
@@ -9006,7 +8982,7 @@ static int
 logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_t backup_time)
 {
   char ctime_buf1[CTIME_MAX], ctime_buf2[CTIME_MAX];
-  int time_str_len;
+  size_t time_str_len;
 
   if (stop_at < backup_time)
     {
@@ -12138,4 +12114,21 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
   loghdr->last_block_oldest_mvccid = MVCCID_NULL;
   loghdr->last_block_newest_mvccid = MVCCID_NULL;
+}
+
+/*
+ * logpb_update_last_blockid () - Updates the last_blockid needed later for vacuum.
+ * 
+ * return :- void
+ *
+ * thread_p (in) :- Thread context.
+ * page_id (in)  :- The first page id of the block that must updated to.
+ */
+void
+logpb_update_last_blockid (THREAD_ENTRY * thread_p, LOG_PAGEID page_id)
+{
+  VACUUM_LOG_BLOCKID last_blockid;
+
+  last_blockid = vacuum_get_log_blockid (page_id);
+  log_Gl.hdr.vacuum_last_blockid = last_blockid;
 }

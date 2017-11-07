@@ -16,7 +16,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
- 
+
 /*
  * test_debug.hpp - debuggers for unit tests
  */
@@ -24,7 +24,8 @@
 #ifndef _TEST_DEBUG_HPP_
 #define _TEST_DEBUG_HPP_
 
-namespace test_common {
+namespace test_common
+{
 
 // crash on release too
 inline void

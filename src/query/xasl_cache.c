@@ -1106,11 +1106,8 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 static bool
 xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   INT32 cache_flag = 0;
   INT32 new_cache_flag;
-  int error_code = NO_ERROR;
-  int success = 0;
 
   /* Mark for delete. We must successfully set XCACHE_ENTRY_MARK_DELETED flag. */
   do
@@ -1213,7 +1210,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
   char *sql_user_text = NULL;
   char *sql_plan_text = NULL;
   struct timeval time_stored;
-  int sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
+  size_t sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
   char *strbuf = NULL;
 
   assert (xcache_entry != NULL && *xcache_entry == NULL);
@@ -1548,7 +1545,6 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
   LF_HASH_TABLE_ITERATOR iter;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   XASL_CACHE_ENTRY *xcache_entry = NULL;
-  bool can_delete = false;
   int success;
   XASL_ID delete_xids[XCACHE_DELETE_XIDS_SIZE];
   int n_delete_xids = 0;

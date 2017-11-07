@@ -1202,9 +1202,11 @@ connect_srv (unsigned char *ip_addr, int port, char is_retry, SOCKET * ret_sock,
   struct timeval timeout_val;
   fd_set rset, wset, eset;
 #else
-  int error, len;
   int flags;
   struct pollfd po[1] = { {0, 0, 0} };
+#endif
+#if defined (AIX)
+  int error, len;
 #endif
 
   con_retry_count = (is_retry) ? 10 : 0;
@@ -1236,7 +1238,7 @@ connect_retry:
       return CCI_ER_CONNECT;
     }
 #else
-  flags = (sock_fd, F_GETFL);
+  flags = fcntl (sock_fd, F_GETFL);
   fcntl (sock_fd, F_SETFL, flags | O_NONBLOCK);
 #endif
 

@@ -1555,7 +1555,6 @@ int
 csect_check_own (THREAD_ENTRY * thread_p, int cs_index)
 {
   SYNC_CRITICAL_SECTION *csect;
-  int error_code = NO_ERROR;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);

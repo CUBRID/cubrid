@@ -500,20 +500,11 @@ shard_cas_main (void)
   T_NET_BUF net_buf;
   SOCKET proxy_sock_fd = INVALID_SOCKET;
   int err_code;
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  SESSION_ID session_id = DB_EMPTY_SESSION;
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   int one = 1;
-  char cas_info[CAS_INFO_SIZE] = { CAS_INFO_STATUS_INACTIVE,
-    CAS_INFO_RESERVED_DEFAULT,
-    CAS_INFO_RESERVED_DEFAULT,
-    CAS_INFO_RESERVED_DEFAULT
-  };
   FN_RETURN fn_ret = FN_KEEP_CONN;
 
   struct timeval cas_start_time;
 
-  char func_code = 0x01;
   int error;
 
   bool is_first = true;
@@ -673,9 +664,6 @@ conn_retry:
 
     for (;;)
       {
-#if !defined(WINDOWS)
-      retry:
-#endif
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	cas_log_error_handler_begin ();
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
@@ -878,9 +866,6 @@ cas_main (void)
 #endif /* WINDOWS */
     for (;;)
       {
-#if !defined(WINDOWS)
-      retry:
-#endif
 	error_info_clear ();
 	cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 
@@ -1959,6 +1944,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 #endif
 
+  /* Since DB_TYPE_JSON is mapped into CCI_U_TYPE_STRING, legacy drivers are also able to access JSON type. */
+
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
@@ -2189,7 +2176,6 @@ static int
 net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
 {
   int ret_value = 0;
-  int elapsed_sec = 0, elapsed_msec = 0;
   int timeout = 0, remained_timeout = 0;
   bool is_proxy_conn_wait_timeout = false;
 
@@ -2338,8 +2324,9 @@ static int
 net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
 {
   int ret_value = 0;
-  int elapsed_sec = 0, elapsed_msec = 0;
+#if defined(CAS_FOR_MYSQL)
   int timeout = 0, remained_timeout = 0;
+#endif /* CAS_FOR_MYSQL */
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {

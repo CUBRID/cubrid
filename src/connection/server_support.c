@@ -1142,9 +1142,7 @@ static void
 css_process_change_server_ha_mode_request (SOCKET master_fd)
 {
 #if !defined(WINDOWS)
-  int rv;
   HA_SERVER_STATE state;
-  int response;
   THREAD_ENTRY *thread_p;
 
   state = (HA_SERVER_STATE) css_get_master_request (master_fd);
@@ -2371,8 +2369,8 @@ css_pack_server_name (const char *server_name, int *name_length)
 
       sprintf (pid_string, "%d", getpid ());
       *name_length =
-	strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1 +
-	strlen (pid_string) + 1;
+	(int) (strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1 +
+	       strlen (pid_string) + 1);
 
       /* in order to prepend '#' */
       if (!HA_DISABLED ())

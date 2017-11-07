@@ -146,6 +146,7 @@ extern PR_TYPE tp_Datetimetz;
 extern PR_TYPE tp_Datetimeltz;
 extern PR_TYPE tp_Timetz;
 extern PR_TYPE tp_Timeltz;
+extern PR_TYPE tp_Json;
 
 extern PR_TYPE *tp_Type_null;
 extern PR_TYPE *tp_Type_integer;
@@ -180,6 +181,7 @@ extern PR_TYPE *tp_Type_resultset;
 extern PR_TYPE *tp_Type_midxkey;
 extern PR_TYPE *tp_Type_bigint;
 extern PR_TYPE *tp_Type_datetime;
+extern PR_TYPE *tp_Type_json;
 
 extern PR_TYPE *tp_Type_id_map[];
 

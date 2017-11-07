@@ -33,8 +33,6 @@ extern "C"
 {
 #endif
 
-#define bool char
-
 #if defined(WINDOWS) && !defined(__GNUC__)
 #define int32_t __int32
 #define int64_t __int64
@@ -1547,7 +1545,12 @@ extern "C"
 #define ER_BUILDVALUE_IN_REC_CTE		    -1195
 #define ER_CTE_MAX_RECURSION_REACHED		    -1196
 
-#define ER_LAST_ERROR                               -1197
+#define ER_INVALID_JSON                             -1197
+#define ER_NO_JSON_OBJECT_PROVIDED                  -1198
+#define ER_JSON_INVALIDATED_BY_SCHEMA               -1199
+#define ER_JSON_INVALID_PATH                        -1200
+
+#define ER_LAST_ERROR                               -1201
 
 #define DB_TRUE 1
 #define DB_FALSE 0
@@ -2529,9 +2532,10 @@ extern "C"
     DB_TYPE_TIMESTAMPLTZ = 37,
     DB_TYPE_DATETIMETZ = 38,
     DB_TYPE_DATETIMELTZ = 39,
+    DB_TYPE_JSON = 40,
     /* Disabled types */
-    DB_TYPE_TIMETZ = 40,	/* internal use only - RESERVED */
-    DB_TYPE_TIMELTZ = 41,	/* internal use only - RESERVED */
+    DB_TYPE_TIMETZ = 41,	/* internal use only - RESERVED */
+    DB_TYPE_TIMELTZ = 42,	/* internal use only - RESERVED */
     /* end of disabled types */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
     DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
@@ -2824,6 +2828,14 @@ extern "C"
     unsigned short count;	/* count of enumeration elements */
   };
 
+  typedef struct db_json DB_JSON;
+  struct db_json
+  {
+    char *json_body;
+    char *schema_raw;
+    void *document;		/* this void should be changed to JSON_DOC */
+  };
+
 /* A union of all of the possible basic type values.  This is used in the
  * definition of the DB_VALUE which is the fundamental structure used
  * in passing data in and out of the db_ function layer.
@@ -2857,6 +2869,7 @@ extern "C"
     DB_CHAR ch;
     DB_RESULTSET rset;
     DB_ENUM_ELEMENT enumeration;
+    DB_JSON json;
   };
 
 /* This is the primary structure used for passing values in and out of
@@ -3632,6 +3645,7 @@ extern "C"
   extern int db_domain_precision (const DB_DOMAIN * domain);
   extern int db_domain_scale (const DB_DOMAIN * domain);
   extern int db_domain_codeset (const DB_DOMAIN * domain);
+  extern const char *db_domain_raw_json_schema (const DB_DOMAIN * domain);
 
   extern DB_METHOD *db_method_next (DB_METHOD * method);
   extern const char *db_method_name (DB_METHOD * method);

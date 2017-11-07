@@ -46,6 +46,10 @@
 #endif /* !defined (SERVER_MODE) */
 #include "boot_sr.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 typedef struct tz_decode_info TZ_DECODE_INFO;
 struct tz_decode_info
 {
@@ -128,7 +132,6 @@ bool tz_Compare_timestamptz_tz_id = false;
 static int tz_load_library (const char *lib_file, void **handle);
 static int tz_load_data_from_lib (TZ_DATA * tzd, void *lib_handle);
 static bool tz_get_leapsec_support (void);
-static int tz_create_tzid_for_utc_datetime (DB_DATETIME * dt, TZ_DECODE_INFO * tz_info, TZ_ID * tz_id);
 static const TZ_REGION *tz_get_invalid_tz_region (void);
 static DB_DATE tz_get_current_date (void);
 static int tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INFO * tz_info,
@@ -795,7 +798,6 @@ tz_get_session_tz_region (TZ_REGION * tz_region)
 void
 tz_id_to_region (const TZ_ID * tz_id, TZ_REGION * tz_region)
 {
-  int er_status = NO_ERROR;
   TZ_DECODE_INFO tz_info;
 
   tz_decode_tz_id (tz_id, false, &tz_info);
@@ -1075,7 +1077,6 @@ tz_create_session_tzid_for_timestamp (const DB_UTIME * src_ts, TZ_ID * tz_id)
 int
 tz_create_session_tzid_for_time (const DB_TIME * src_time, bool src_is_utc, TZ_ID * tz_id)
 {
-  int er_status = NO_ERROR;
   DB_DATETIME src_dt;
 
   src_dt.date = tz_get_current_date ();
@@ -2493,10 +2494,7 @@ int
 tz_str_to_seconds (const char *str, const char *str_end, int *seconds, const char **str_next, const bool is_offset)
 {
   int err_status = NO_ERROR;
-  int pos = -1;
   int result = 0;
-  int cur_num = 0;
-  int token_count = 1;		/* will be 2 if hh:mm, 3 if hh:mm:ss */
   const char *str_cursor = NULL;
   int hour = 0, min = 0, sec = 0;
   bool is_negative = false;
@@ -2624,9 +2622,7 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, con
   for (curr_ds_id = 0; curr_ds_id < ds_ruleset->count; curr_ds_id++)
     {
       int ds_rule_julian_date;
-      int curr_time_offset = 0;
       full_date_t date_diff;
-      bool rule_matched = false;
 
       assert (curr_ds_id + ds_ruleset->index_start < tzd->ds_rule_count);
       curr_ds_rule = &(tzd->ds_rules[curr_ds_id + ds_ruleset->index_start]);
@@ -4882,14 +4878,12 @@ tz_get_iana_zone_id_by_windows_zone (const char *windows_zone_name)
 int
 tz_resolve_os_timezone (char *timezone, int buf_len)
 {
-  int ret = 0;
-  const TZ_DATA *tz_data;
-  char *env = NULL;
-  int len_iana_zone, iana_zone_id;
-
 #if defined (WINDOWS)
+  const TZ_DATA *tz_data;
+  int len_iana_zone, iana_zone_id;
   char tzname[64];
   size_t tzret;
+
   tz_data = tz_get_data ();
   tzset ();
   _get_tzname (&tzret, tzname, sizeof (tzname), 0);
@@ -4907,6 +4901,9 @@ tz_resolve_os_timezone (char *timezone, int buf_len)
   timezone[len_iana_zone] = '\0';
   return 0;
 #elif defined(AIX)
+  char *env = NULL;
+  int ret = 0;
+
   env = getenv ("TZ");
   if (env == NULL)
     {
@@ -4920,6 +4917,8 @@ tz_resolve_os_timezone (char *timezone, int buf_len)
   ret = tz_get_zone_id_by_name (timezone, strlen (timezone));
   return ret;
 #else
+  int ret = 0;
+
   ret = find_timezone_from_clock (timezone, buf_len);
   if (ret < 0)
     {

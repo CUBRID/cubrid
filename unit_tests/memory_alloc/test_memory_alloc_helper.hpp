@@ -52,17 +52,17 @@ const size_t SIZE_100_M = SIZE_1_M * 100;
 /* thread entry wrapper */
 class custom_thread_entry
 {
-public:
-  custom_thread_entry ();
-  ~custom_thread_entry ();
-  THREAD_ENTRY * get_thread_entry ();
-  void check_resource_leaks (void);
+  public:
+    custom_thread_entry ();
+    ~custom_thread_entry ();
+    THREAD_ENTRY *get_thread_entry ();
+    void check_resource_leaks (void);
 
-private:
-  void start_resource_tracking (void);
+  private:
+    void start_resource_tracking (void);
 
-  THREAD_ENTRY m_thread_entry;
-  int m_rc_track_id;
+    THREAD_ENTRY m_thread_entry;
+    int m_rc_track_id;
 };
 
 /* Mallocator - allocator concept to be used with malloc/free
@@ -70,30 +70,30 @@ private:
 template <typename T>
 class mallocator
 {
-public:
-  T* allocate (size_t size)
-  {
-    return (T *) malloc (size * sizeof (T));
-  }
-  void deallocate (T * pointer, size_t UNUSED (size))
-  {
-    free (pointer);
-  }
-  size_t max_size (void) const
-  {
-    return 0x7FFFFFFF;
-  }
-private:
+  public:
+    T *allocate (size_t size)
+    {
+      return (T *) malloc (size * sizeof (T));
+    }
+    void deallocate (T *pointer, size_t UNUSED (size))
+    {
+      free (pointer);
+    }
+    size_t max_size (void) const
+    {
+      return 0x7FFFFFFF;
+    }
+  private:
 };
 template <class T, class U>
 bool
-operator==(const mallocator<T>&, const mallocator<U>&)
+operator== (const mallocator<T> &, const mallocator<U> &)
 {
   return true;
 }
 template <class T, class U>
 bool
-operator!=(const mallocator<T>&, const mallocator<U>&)
+operator!= (const mallocator<T> &, const mallocator<U> &)
 {
   return false;
 }
@@ -106,26 +106,26 @@ typedef enum test_allocator_type
   MALLOC,
   COUNT
 } test_allocator_type;
-const test_common::string_collection & get_allocator_names (void);
+const test_common::string_collection &get_allocator_names (void);
 
 /* Generic functions to allocate an allocator with thread entry argument. */
 template <typename T>
 void
-init_allocator (custom_thread_entry & cte, std::allocator<T> *& alloc, test_allocator_type & type_out)
+init_allocator (custom_thread_entry &cte, std::allocator<T> *&alloc, test_allocator_type &type_out)
 {
   alloc = new std::allocator<T> ();
   type_out = test_allocator_type::STANDARD;
 }
 template <typename T>
 void
-init_allocator (custom_thread_entry & cte, mallocator<T> *& alloc, test_allocator_type & type_out)
+init_allocator (custom_thread_entry &cte, mallocator<T> *&alloc, test_allocator_type &type_out)
 {
   alloc = new mallocator<T> ();
   type_out = test_allocator_type::MALLOC;
 }
 template <typename T>
 void
-init_allocator (custom_thread_entry & cte, db_private_allocator<T> *& alloc, test_allocator_type & type_out)
+init_allocator (custom_thread_entry &cte, db_private_allocator<T> *&alloc, test_allocator_type &type_out)
 {
   alloc = new db_private_allocator<T> (cte.get_thread_entry ());
   type_out = test_allocator_type::PRIVATE;
@@ -136,11 +136,11 @@ init_allocator (custom_thread_entry & cte, db_private_allocator<T> *& alloc, tes
 /* run test and wrap with formatted text */
 template <typename Func, typename ... Args>
 void
-run_test (int & global_err, Func && f, Args &&... args)
+run_test (int &global_err, Func &&f, Args &&... args)
 {
   std::cout << std::endl;
   std::cout << "    starting test - " << std::endl;;
-  
+
   int err = f (std::forward<Args> (args)...);
   if (err == 0)
     {
@@ -156,7 +156,7 @@ run_test (int & global_err, Func && f, Args &&... args)
 /* run test on multiple thread and wrap with formatted text */
 template <typename Func, typename ... Args>
 void
-run_parallel (Func && f, Args &&... args)
+run_parallel (Func &&f, Args &&... args)
 {
   unsigned int worker_count = std::thread::hardware_concurrency ();
   worker_count = worker_count != 0 ? worker_count : 24;

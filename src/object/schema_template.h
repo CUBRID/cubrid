@@ -75,9 +75,6 @@ extern int smt_reset_attribute_domain (SM_TEMPLATE * template_, const char *name
 extern int smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_attribute, DB_VALUE * value,
 				      DB_DEFAULT_EXPR * default_expr);
 
-static int smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value,
-						 DB_DEFAULT_EXPR * default_expr);
-
 extern int smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			       const char **att_names, const int *asc_desc, int class_attribute,
 			       SM_FOREIGN_KEY_INFO * fk_info, SM_PREDICATE_INFO * filter_index,

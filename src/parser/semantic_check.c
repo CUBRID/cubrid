@@ -62,6 +62,7 @@ typedef struct seman_compatible_info
   PT_TYPE_ENUM type_enum;
   int prec;
   int scale;
+  bool force_cast;
   PT_COLL_INFER coll_infer;
   const PT_NODE *ref_att;	/* column node having current compat info */
 } SEMAN_COMPATIBLE_INFO;
@@ -117,11 +118,13 @@ static PT_NODE *pt_get_common_type_for_union (PARSER_CONTEXT * parser, PT_NODE *
 static PT_NODE *pt_append_statements_on_add_attribute (PARSER_CONTEXT * parser, PT_NODE * statement_list,
 						       PT_NODE * stmt_node, const char *class_name,
 						       const char *attr_name, PT_NODE * attr);
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 static PT_NODE *pt_append_statements_on_change_default (PARSER_CONTEXT * parser, PT_NODE * statement_list,
 							PT_NODE * stmt_node, const char *class_name,
 							const char *attr_name, PT_NODE * value);
 static PT_NODE *pt_append_statements_on_drop_attributes (PARSER_CONTEXT * parser, PT_NODE * statement_list,
 							 const char *class_name_list);
+#endif
 static PT_NODE *pt_values_query_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
 						    SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo);
 static PT_NODE *pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser, PT_NODE * att, PT_NODE * next_att,
@@ -168,7 +171,6 @@ static int pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_
 static int pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node);
 static int pt_value_links_add (PARSER_CONTEXT * parser, PT_NODE * val, PT_NODE * parts, PT_VALUE_LINKS * ptl);
 
-static int pt_check_partition_value_coercible (PT_TYPE_ENUM to, PT_TYPE_ENUM from);
 static int pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type, PT_NODE * data_type,
 				      PT_VALUE_LINKS * ptl, PT_NODE * parts);
 static void pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj);
@@ -402,10 +404,9 @@ pt_values_query_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node, SEM
 				    int num_cinfo)
 {
   PT_NODE *node_list, *result = node;
-  bool need_cast = false;
   int i;
   PT_NODE *attrs, *att;
-  PT_NODE *prev_att, *next_att, *new_att = NULL, *new_dt = NULL;
+  PT_NODE *prev_att, *next_att, *new_att = NULL;
   bool new_cast_added;
   bool need_to_cast;
   PT_NODE_LIST_INFO *cur_node_list_info;
@@ -570,6 +571,7 @@ pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * selec
 		  cinfo[k].type_enum = PT_TYPE_NONE;
 		  cinfo[k].prec = DB_DEFAULT_PRECISION;
 		  cinfo[k].scale = DB_DEFAULT_SCALE;
+		  cinfo[k].force_cast = false;
 		  cinfo[k].coll_infer.coll_id = LANG_SYS_COLLATION;
 		  cinfo[k].coll_infer.codeset = LANG_SYS_CODESET;
 		  cinfo[k].coll_infer.coerc_level = PT_COLLATION_NOT_COERC;
@@ -2297,6 +2299,11 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
 
   *is_cast_allowed = true;
 
+  if (dest_sci->force_cast && dest_sci->type_enum == PT_TYPE_JSON)
+    {
+      return false;
+    }
+
   if (dest_sci->type_enum != src->type_enum)
     {
       return false;
@@ -2525,6 +2532,7 @@ pt_get_compatible_info_from_node (const PT_NODE * att, SEMAN_COMPATIBLE_INFO * c
   cinfo->coll_infer.can_force_cs = false;
   cinfo->prec = cinfo->scale = 0;
   cinfo->ref_att = att;
+  cinfo->force_cast = false;
 
   cinfo->type_enum = att->type_enum;
 
@@ -2805,7 +2813,7 @@ pt_check_union_type_compatibility_of_values_query (PARSER_CONTEXT * parser, PT_N
   SEMAN_COMPATIBLE_INFO *cinfo_arg1 = NULL;
   SEMAN_COMPATIBLE_INFO *cinfo_arg2 = NULL;
   SEMAN_COMPATIBLE_INFO *cinfo_arg3 = NULL;
-  bool need_cast, need_cast_tmp = false;
+  bool need_cast;
   PT_NODE *arg1, *arg2, *tmp;
   bool is_compatible;
 
@@ -4107,7 +4115,6 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
     {
       /* coerce each element of enum to actual attribute codeset */
       PT_NODE *elem = NULL;
-      int er = NO_ERROR;
 
       elem = attr->data_type->info.data_type.enumeration;
       while (elem != NULL)
@@ -4478,7 +4485,6 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC
   PT_NODE *def, *att, *dtyp, *sdtyp;
   DB_OBJECT *cls;
   const char *att_nam, *typ_nam, *styp_nam;
-  PT_NODE *node = NULL, *temp = NULL;
 
   for (def = attr_defs; def != NULL && def->node_type == PT_ATTR_DEF; def = def->next)
     {
@@ -5201,7 +5207,6 @@ static int
 pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
 {
   int cnt = 0, ret;
-  int num_args = 0, err = NO_ERROR;
   PT_NODE *f_arg;
 
   if (func == NULL)
@@ -5218,6 +5223,11 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     {
     case F_INSERT_SUBSTRING:
     case F_ELT:
+    case F_JSON_OBJECT:
+    case F_JSON_ARRAY:
+    case F_JSON_INSERT:
+    case F_JSON_REMOVE:
+    case F_JSON_MERGE:
       break;
     default:
       return 0;			/* unsupported function */
@@ -6298,7 +6308,6 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   PT_NODE *names, *parts, *val, *next_parts;
   PT_ALTER_CODE cmd;
   SM_CLASS *smclass, *subcls;
-  SM_ATTRIBUTE *keyattr = NULL;
   DB_OBJLIST *objs;
   int i, setsize;
   int orig_cnt = 0, name_cnt = 0, parts_cnt = 0, chkflag = 0;
@@ -7903,7 +7912,6 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
   PT_NODE *prev_qry;
   const char *name = NULL;
   int attr_count = 0;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
 
   assert (parser != NULL);
 
@@ -9306,7 +9314,6 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   PT_NODE *t_node;
   PT_NODE *entity, *derived_table;
   PT_ASSIGNMENTS_HELPER ea;
-  PT_NODE *sort_spec = NULL;
   STATEMENT_SET_FOLD fold_as;
   PT_FUNCTION_INFO *func_info_p = NULL;
 
@@ -11079,10 +11086,10 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
     }
   else
     {
-      int p = 0, s = 0;
       SEMAN_COMPATIBLE_INFO sci = {
-	0, PT_TYPE_NONE, 0, 0,
-	{0, INTL_CODESET_NONE, PT_COLLATION_NOT_COERC, false},
+	0, PT_TYPE_NONE, 0, 0, false,
+	{0, INTL_CODESET_NONE, PT_COLLATION_NOT_COERC, false}
+	,
 	NULL
       };
       bool is_cast_allowed = true;
@@ -11092,6 +11099,10 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	{
 	  sci.prec = lhs->data_type->info.data_type.precision;
 	  sci.scale = lhs->data_type->info.data_type.dec_precision;
+	  if (lhs->type_enum == PT_TYPE_JSON && lhs->data_type->info.data_type.json_schema != NULL)
+	    {
+	      sci.force_cast = true;
+	    }
 	}
 
       if (PT_HAS_COLLATION (lhs->type_enum))
@@ -11428,7 +11439,7 @@ static PT_NODE *
 pt_replace_names_in_update_values (PARSER_CONTEXT * parser, PT_NODE * update)
 {
   PT_NODE *attr = NULL, *val = NULL;
-  PT_NODE *node = NULL, *prev = NULL, *save_next = NULL;
+  PT_NODE *node = NULL, *prev = NULL;
 
   if (!prm_get_bool_value (PRM_ID_UPDATE_USE_ATTRIBUTE_REFERENCES))
     {
@@ -12864,7 +12875,6 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
   PT_NODE *v = NULL, *a = NULL, *crt_list = NULL;
   int a_cnt = 0, v_cnt = 0;
   PT_NODE *prev = NULL;
-  PT_NODE_LIST_INFO *values_list = NULL;
   PT_NODE *attr_list = NULL;
   PT_NODE *value_clauses = NULL;
 
@@ -13610,7 +13620,6 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
 static int
 pt_check_auto_increment_table_option (PARSER_CONTEXT * parser, PT_NODE * create)
 {
-  int i = 0;
   PT_NODE *attr = NULL;
   PT_NODE *auto_inc_attr = NULL;
   PT_NODE *start_val = NULL;
@@ -14816,7 +14825,6 @@ pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *
 static PT_NODE *
 pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  bool *is_valid = (bool *) arg;
   PT_FILTER_INDEX_INFO *info = (PT_FILTER_INDEX_INFO *) arg;
   assert (info != NULL);
 
@@ -15118,6 +15126,11 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	  /* the functions above are used in the argument IN (values list) expression */
 	case F_ELT:
 	case F_INSERT_SUBSTRING:
+	case F_JSON_OBJECT:
+	case F_JSON_ARRAY:
+	case F_JSON_INSERT:
+	case F_JSON_REMOVE:
+	case F_JSON_MERGE:
 	  /* valid expression, nothing to do */
 	  break;
 	default:

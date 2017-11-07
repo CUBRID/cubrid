@@ -2187,7 +2187,9 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
   int error = NO_ERROR;
 
   PX_TREE_NODE *px_node;
+#if defined (SERVER_MODE)
   int rv = NO_ERROR;
+#endif /* SERVER_MODE */
 
   assert (sort_param->half_files <= SORT_MAX_HALF_FILES);
 

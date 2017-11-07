@@ -75,6 +75,10 @@
 #include "object_primitive.h"
 #include "tz_support.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
 
@@ -7130,7 +7134,7 @@ sprm_server_change_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  SYSPRM_ASSIGN_VALUE *assignments = NULL, *save_next = NULL;
+  SYSPRM_ASSIGN_VALUE *assignments = NULL;
 
   (void) sysprm_unpack_assign_values (request, &assignments);
 
@@ -8497,7 +8501,7 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
   char *reply = NULL, *ptr = NULL;
   char *data_request = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  int data_size = 0, err = 0, i = 0;
+  int data_size = 0, err = 0;
   char *info = NULL;
   SHA1Hash alias_sha1 = SHA1_HASH_INITIALIZER;
 
@@ -8595,7 +8599,7 @@ ssession_get_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, char
   char *name = NULL, *stmt_info = NULL;
   int info_len = 0;
   char *reply = NULL, *ptr = NULL, *data_reply = NULL;
-  int err = NO_ERROR, reply_size = 0, columns_cnt = 0;
+  int err = NO_ERROR, reply_size = 0;
   XASL_ID xasl_id;
   /* return code + data length */
   OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_XASL_ID_SIZE) a_reply;

@@ -89,7 +89,7 @@ realpath (const char *path, char *resolved_path)
   struct stat stat_buf;
   char *tmp_str = _fullpath (resolved_path, path, _MAX_PATH);
   char tmp_path[_MAX_PATH] = { 0 };
-  int len = 0;
+  size_t len = 0;
 
   if (tmp_str != NULL)
     {
@@ -2220,10 +2220,6 @@ port_open_memstream (char **ptr, size_t * sizeloc)
 void
 port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 {
-  char *buff = NULL;
-  struct stat stat_buf;
-  size_t n;
-
   fflush (fp);
 
   if (fp)
@@ -2231,6 +2227,9 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 #ifdef HAVE_OPEN_MEMSTREAM
       fclose (fp);
 #else
+      char *buff = NULL;
+      struct stat stat_buf;
+
       if (fstat (fileno (fp), &stat_buf) == 0)
 	{
 	  *sizeloc = stat_buf.st_size;
@@ -2238,6 +2237,8 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 	  buff = (char *) malloc (*sizeloc + 1);
 	  if (buff)
 	    {
+	      size_t n;
+
 	      fseek (fp, 0, SEEK_SET);
 	      n = fread (buff, 1, *sizeloc, fp);
 	      buff[n] = '\0';

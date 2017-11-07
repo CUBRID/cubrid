@@ -48,9 +48,14 @@
 #include "locator.h"
 #include "server_interface.h"
 #include "execute_statement.h"
+#include "db_json.hpp"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 /*
  * tf_Allow_fixups
@@ -1466,7 +1471,6 @@ string_disk_size (const char *string)
   DB_VALUE value;
   int str_length = 0;
   int length = 0;
-  int compressed = 0;
 
   if (string)
     {
@@ -1621,7 +1625,6 @@ object_set_size (DB_OBJLIST * list)
   return (size);
 }
 
-
 /*
  * put_object_set - Translates a list objects into the disk represenataion of a
  * sequence of objects
@@ -1674,7 +1677,6 @@ put_object_set (OR_BUF * buf, DB_OBJLIST * list)
   return NO_ERROR;
 }
 
-
 /*
  * get_object_set - Extracts a sequence of objects in a disk representation
  * and converts it into an object list in memory.
@@ -1718,8 +1720,6 @@ get_object_set (OR_BUF * buf, int expected)
 
   return (list);
 }
-
-
 
 /*
  * substructure_set_size - Calculates the disk storage for a set created from
@@ -1765,7 +1765,6 @@ substructure_set_size (DB_LIST * list, LSIZER function)
 
   return (size);
 }
-
 
 /*
  * put_substructure_set - Write the disk representation of a substructure
@@ -1837,7 +1836,6 @@ put_substructure_set (OR_BUF * buf, DB_LIST * list, LWRITER writer, OID * class_
     }
 }
 
-
 /*
  * get_substructure_set - extracts a substructure set on disk and create a
  * list of memory structures.
@@ -1877,7 +1875,6 @@ get_substructure_set (OR_BUF * buf, LREADER reader, int expected)
   return (list);
 }
 
-
 /*
  * install_substructure_set - loads a substructure set from disk into a list
  * of memory structures.
@@ -1906,7 +1903,6 @@ install_substructure_set (OR_BUF * buf, DB_LIST * list, VREADER reader, int expe
 	}
     }
 }
-
 
 /*
  * property_list_size - Calculate the disk storage requirements for a
@@ -2007,7 +2003,6 @@ get_property_list (OR_BUF * buf, int expected_size)
   return (properties);
 }
 
-
 /*
  * domain_size - Calculates the number of bytes required to store a domain
  * list on disk.
@@ -2024,6 +2019,9 @@ domain_size (TP_DOMAIN * domain)
   size += enumeration_size (&DOM_GET_ENUMERATION (domain));
 
   size += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
+
+  size += (domain->json_validator == NULL
+	   ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator)));
 
   return (size);
 }
@@ -2042,6 +2040,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 {
   char *start;
   int offset;
+  DB_VALUE schema_value;
 
   /* safe-guard : domain collation flags should only be used for execution */
   if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
@@ -2053,11 +2052,16 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   /* VARIABLE OFFSET TABLE */
   start = buf->ptr;
   offset = tf_Metaclass_domain.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_domain.mc_n_variable);
+
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
 
   or_put_offset (buf, offset);
   offset += enumeration_size (&DOM_GET_ENUMERATION (domain));
+
+  or_put_offset (buf, offset);
+  offset += (domain->json_validator == NULL
+	     ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator)));
 
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -2075,12 +2079,16 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 
   put_enumeration (buf, &DOM_GET_ENUMERATION (domain));
 
+  if (domain->json_validator)
+    {
+      db_make_string (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
+      (*(tp_String.data_writeval)) (buf, &schema_value);
+    }
   if (start + offset != buf->ptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
     }
 }
-
 
 /*
  * disk_to_domain2 - Create the memory representation for a domain list from
@@ -2128,7 +2136,6 @@ disk_to_domain2 (OR_BUF * buf)
       assert (domain->collation_id == LANG_COLL_ISO_BINARY);
       domain->codeset = INTL_CODESET_ISO88591;
     }
-
   /* 
    * Read the domain class OID without promoting it to a MOP.
    * Could use readval, and extract the OID out of the already swizzled
@@ -2147,22 +2154,47 @@ disk_to_domain2 (OR_BUF * buf)
 	  or_abort (buf);
 	}
     }
-  domain->setdomain =
-    (TP_DOMAIN *) get_substructure_set (buf, (LREADER) disk_to_domain2, vars[ORC_DOMAIN_SETDOMAIN_INDEX].length);
+  domain->setdomain = (TP_DOMAIN *) get_substructure_set (buf, (LREADER) disk_to_domain2,
+							  vars[ORC_DOMAIN_SETDOMAIN_INDEX].length);
   domain->enumeration.collation_id = domain->collation_id;
 
   if (get_enumeration (buf, &DOM_GET_ENUMERATION (domain), vars[ORC_DOMAIN_ENUMERATION_INDEX].length) != NO_ERROR)
     {
       free_var_table (vars);
+      tp_domain_free (domain);
       or_abort (buf);
       return NULL;
+    }
+
+  if (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length > 0)
+    {
+      char *schema_raw;
+      int error_code;
+
+      or_get_json_schema (buf, schema_raw);
+      if (schema_raw == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length + 1);
+	  tp_domain_free (domain);
+	  free_var_table (vars);
+	  return NULL;
+	}
+
+      error_code = db_json_load_validator (schema_raw, domain->json_validator);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  tp_domain_free (domain);
+	  free_var_table (vars);
+	  return NULL;
+	}
     }
 
   free_var_table (vars);
 
   return (domain);
 }
-
 
 /*
  * disk_to_domain - Create the memory representation for a domain list from
@@ -2182,11 +2214,11 @@ disk_to_domain (OR_BUF * buf)
   TP_DOMAIN *domain;
 
   domain = disk_to_domain2 (buf);
+
   if (domain != NULL)
     {
       domain = tp_domain_cache (domain);
     }
-
   return domain;
 }
 
@@ -2237,7 +2269,6 @@ metharg_to_disk (OR_BUF * buf, SM_METHOD_ARGUMENT * arg)
     }
 }
 
-
 /*
  * metharg_size - Calculate the byte size for the disk representation of a
  * method arg.
@@ -2254,7 +2285,6 @@ metharg_size (SM_METHOD_ARGUMENT * arg)
 
   return (size);
 }
-
 
 /*
  * disk_to_metharg - Read the disk represenation of a method argument and
@@ -2301,7 +2331,6 @@ disk_to_metharg (OR_BUF * buf)
 
   return (arg);
 }
-
 
 /*
  * methsig_to_disk - Write the disk representation of a method signature.
@@ -2357,7 +2386,6 @@ methsig_to_disk (OR_BUF * buf, SM_METHOD_SIGNATURE * sig)
   return NO_ERROR;
 }
 
-
 /*
  * methsig_size - Calculate the disk size of a method signature.
  *    return: disk size of signature
@@ -2376,7 +2404,6 @@ methsig_size (SM_METHOD_SIGNATURE * sig)
 
   return (size);
 }
-
 
 /*
  * disk_to_methsig - Read the disk represenation of a method signature and
@@ -2446,7 +2473,6 @@ disk_to_methsig (OR_BUF * buf)
   return (sig);
 }
 
-
 /*
  * method_to_disk - Write the disk representation of a method.
  *    return:
@@ -2504,7 +2530,6 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
   return NO_ERROR;
 }
 
-
 /*
  * method_size - Calculates the disk size of a method.
  *    return: disk size of method
@@ -2522,7 +2547,6 @@ method_size (SM_METHOD * method)
 
   return (size);
 }
-
 
 /*
  * disk_to_method - Reads the disk representation of a method and fills in
@@ -2570,7 +2594,6 @@ disk_to_method (OR_BUF * buf, SM_METHOD * method)
       free_var_table (vars);
     }
 }
-
 
 /*
  * methfile_to_disk - Write the disk representation of a method file.
@@ -2622,7 +2645,6 @@ methfile_to_disk (OR_BUF * buf, SM_METHOD_FILE * file)
   return NO_ERROR;
 }
 
-
 /*
  * methfile_size - Calculate the disk size of a method file.
  *    return: disk size of the method file
@@ -2639,7 +2661,6 @@ methfile_size (SM_METHOD_FILE * file)
 
   return (size);
 }
-
 
 /*
  * disk_to_methfile - Read the disk representation of a method file and
@@ -2692,7 +2713,6 @@ disk_to_methfile (OR_BUF * buf)
     }
   return (file);
 }
-
 
 /*
  * query_spec_to_disk - Write the disk representation of a virtual class
@@ -3211,7 +3231,6 @@ disk_to_resolution (OR_BUF * buf)
   return (res);
 }
 
-
 /*
  * repattribute_to_disk - Writes the disk representation of a representation
  * attribute.
@@ -3254,7 +3273,6 @@ repattribute_to_disk (OR_BUF * buf, SM_REPR_ATTRIBUTE * rat)
   return NO_ERROR;
 }
 
-
 /*
  * repattribute_size - Calculates the disk size for the REPATTRIBUTE.
  *    return: disk size of repattribute
@@ -3271,7 +3289,6 @@ repattribute_size (SM_REPR_ATTRIBUTE * rat)
 
   return (size);
 }
-
 
 /*
  * disk_to_repattribute - Reads the disk representation of a representation
@@ -3332,7 +3349,6 @@ representation_size (SM_REPRESENTATION * rep)
   return (size);
 }
 
-
 /*
  * representation_to_disk - Write the disk representation of an
  * SM_REPRESENTATION.
@@ -3379,7 +3395,6 @@ representation_to_disk (OR_BUF * buf, SM_REPRESENTATION * rep)
 
   return NO_ERROR;
 }
-
 
 /*
  * disk_to_representation - Read the disk representation for an
@@ -3437,7 +3452,6 @@ disk_to_representation (OR_BUF * buf)
   return (rep);
 }
 
-
 /*
  * check_class_structure - maps over the class prior to storage to make sure
  * that everything looks ok.
@@ -3460,7 +3474,6 @@ check_class_structure (SM_CLASS * class_)
 /*  decache_attribute_properties(class); */
   return (ok);
 }
-
 
 /*
  * put_class_varinfo - Writes the variable offset table for a class object.
@@ -3554,7 +3567,6 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
 
   return (offset);
 }
-
 
 /*
  * put_class_attributes - Writes the fixed and variable attributes of a class.
@@ -3653,7 +3665,6 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
   put_substructure_set (buf, (DB_LIST *) class_->partition, (LWRITER) partition_info_to_disk,
 			&tf_Metaclass_partition.mc_classoid, tf_Metaclass_partition.mc_repid);
 }
-
 
 /*
  * class_to_disk - Write the disk representation of a class.
@@ -3871,7 +3882,6 @@ tag_component_namespace (SM_COMPONENT * components, SM_NAME_SPACE name_space)
       c->name_space = name_space;
     }
 }
-
 
 /*
  * disk_to_class - Reads the disk representation of a class and creates the
@@ -4535,7 +4545,6 @@ static int
 tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 {
   SM_ATTRIBUTE *attr = NULL;
-  int errc = NO_ERROR;
   DB_DEFAULT_EXPR *default_expr;
   DB_VALUE default_expr_value;
 

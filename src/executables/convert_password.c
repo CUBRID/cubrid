@@ -41,7 +41,6 @@ static void crypt_seed_old (const char *key);
 int
 main (int argc, char *argv[])
 {
-  float disk_compat_level = 0.0f;
   char *prog_name;
   const char *qp1 = "select [db_user], [password].[password] from [db_user]";
   DB_VALUE user_val, password_val;
@@ -205,7 +204,8 @@ shuffle (int *a, int size, int rstream)
 static void
 crypt_seed_old (const char *key)
 {
-  int i, keylen;
+  int i;
+  size_t keylen;
 
   keylen = strlen (key);
   for (i = 0; i < 4; ++i)
@@ -271,7 +271,7 @@ crypt_decode_caps_old (const char *crypt, unsigned char *decrypt, int maxlen)
       total = 0;
       if (crypt != NULL)
 	{
-	  len = strlen (crypt);
+	  len = (int) strlen (crypt);
 	  if (!len)
 	    decrypt[0] = '\0';
 	  else

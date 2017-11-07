@@ -61,6 +61,10 @@
 
 #include "dbval.h"		/* this must be the last header file included!!! */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #if !defined(INADDR_NONE)
 #define INADDR_NONE 0xffffffff
 #endif /* !INADDR_NONE */
@@ -109,6 +113,7 @@ typedef struct
 } SP_ARGS;
 
 static SOCKET sock_fds[MAX_CALL_COUNT] = { INVALID_SOCKET };
+
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT];
 

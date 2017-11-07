@@ -568,7 +568,6 @@ static int lp_prefetch_log_record (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LO
 static int lp_prefetch_update_or_delete (LA_ITEM * item);
 static int lp_prefetch_insert (LA_ITEM * item);
 static int lp_get_ha_applied_info (bool is_first);
-static void *lp_calc_applier_speed_thread_f (void *arg);
 
 static int la_flush_repl_items (bool immediate);
 
@@ -839,7 +838,6 @@ la_find_archive_num (int *arv_log_num, LOG_PAGEID pageid)
   LOG_ARV_HEADER *log_hdr = NULL;
   LOG_PAGEID fpageid;
   DKNPAGES npages;
-  int arv_log_vdes = NULL_VOLDES;
   char arv_log_path[PATH_MAX];
   int left;
   int right;
@@ -3485,7 +3483,6 @@ la_clear_all_repl_and_commit_list (void)
 static int
 la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa)
 {
-  int error = NO_ERROR;
   LA_APPLY *apply;
   LA_ITEM *item = NULL;
 
@@ -3844,7 +3841,6 @@ char *
 la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo_zip, bool is_overflow, char **rec_type,
 		    char **data, int *length)
 {
-  int temp_length = 0;
   int redo_length = 0;
   int rec_len = 0;
 
@@ -4007,10 +4003,8 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
   LOG_REC_MVCC_REDO *mvcc_redo = NULL;
 
   bool is_undo_zip = false;
-  int rec_len = 0;
   int zip_len = 0;
   int undo_length = 0;
-  int redo_length = 0;
   int temp_length = 0;
   char *undo_data = NULL;
 
@@ -4298,9 +4292,7 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   LA_OVF_PAGE_LIST *ovf_list_head = NULL;
   LA_OVF_PAGE_LIST *ovf_list_tail = NULL;
   LA_OVF_PAGE_LIST *ovf_list_data = NULL;
-  LOG_REC_REDO *redo_log;
   void *log_info;
-  VPID *temp_vpid;
   VPID prev_vpid;
   bool first = true;
   int copyed_len;
@@ -4456,14 +4448,12 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
   int zip_len = 0;
   int temp_length = 0;
   int undo_length = 0;
-  int redo_length = 0;
 
   bool is_undo_zip = false;
   bool is_mvcc_log = false;
 
   char *undo_data = NULL;
   LOG_ZIP *redo_unzip_data = NULL;
-  int rec_len = 0;
 
   bool is_diff = false;
 
@@ -4655,7 +4645,6 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
 {
   LOG_RECORD_HEADER *lrec;
   LOG_PAGE *pg;
-  int length;
   int error = NO_ERROR;
   void *logs = NULL;
 
@@ -4757,7 +4746,7 @@ static int
 la_flush_repl_items (bool immediate)
 {
   int error = NO_ERROR;
-  int la_err_code, server_err_code;
+  int la_err_code;
   WS_REPL_FLUSH_ERR *flush_err;
   MOP class_mop = NULL;
   const char *class_name = "UNKNOWN CLASS";
@@ -4888,7 +4877,6 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
-  DB_TYPE value_type;
   int pruning_type = DB_NOT_PARTITIONED_CLASS;
   int operation = 0;
   OID *class_oid;
@@ -6057,9 +6045,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
   LA_APPLY *apply = NULL;
   int error = NO_ERROR;
   LOG_LSA lsa_apply;
-  LOG_LSA required_lsa;
   LOG_PAGEID final_pageid;
-  int commit_list_count;
   LOG_REC_HA_SERVER_STATE *ha_server_state;
   char buffer[256];
   time_t eot_time;
@@ -6551,7 +6537,7 @@ la_get_mem_size (void)
       vsize = (unsigned long) entry.pi_dvm * (sysconf (_SC_PAGESIZE) / ONE_K);
     }
 #else
-#       error
+#error
 #endif
   return vsize;
 }
@@ -7434,7 +7420,6 @@ lp_init_prefetcher (const char *database_name, const char *log_path)
   char *p = NULL;
   int retry_cnt = 0;
   int error = NO_ERROR;
-  int estimated_page_distance = 0;
 
   la_applier_need_shutdown = false;
 
@@ -8407,7 +8392,6 @@ la_create_repl_filter (void)
   LA_REPL_FILTER *filter;
   FILE *fp;
   DB_OBJECT *class_ = NULL;
-  int i;
 
   filter = &la_Info.repl_filter;
 

@@ -36,6 +36,10 @@
 #include "shard_statement.h"
 #include "shard_shm.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 extern T_SHM_SHARD_KEY *shm_key_p;
 extern T_PROXY_INFO *proxy_info_p;
 
@@ -411,9 +415,7 @@ shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid, unsigned in
 {
   int error;
   int i, num_cas;
-  char *sql_stmt_tp = NULL;
   T_SHARD_STMT *stmt_p = NULL;
-  T_SHARD_STMT *last_hash_stmt_p = NULL;
   T_PROXY_CONTEXT *ctx_p = NULL;
 
   assert ((stmt_type != SHARD_STMT_TYPE_SCHEMA_INFO && sql_stmt != NULL)

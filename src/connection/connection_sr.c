@@ -92,7 +92,7 @@ typedef struct css_wait_queue_entry
   char **buffer;
   int *size;
   int *rc;
-  struct thread_entry *thrd_entry;	/* thread waiting for data */
+  THREAD_ENTRY *thrd_entry;	/* thread waiting for data */
   struct css_wait_queue_entry *next;
   unsigned int key;
 } CSS_WAIT_QUEUE_ENTRY;

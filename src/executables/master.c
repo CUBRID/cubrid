@@ -98,7 +98,6 @@ static int css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set *
 static int css_enroll_master_read_sockets (fd_set * fd_var);
 static int css_enroll_master_write_sockets (fd_set * fd_var);
 static int css_enroll_master_exception_sockets (fd_set * fd_var);
-static void css_select_error (SOCKET_QUEUE_ENTRY ** anchor_p);
 static void css_master_select_error (void);
 static void css_check_master_socket_input (int *count, fd_set * fd_var);
 static void css_check_master_socket_output (void);
@@ -165,7 +164,7 @@ static int
 css_master_timeout (void)
 {
 #if !defined(WINDOWS)
-  int pid, rv;
+  int rv;
   SOCKET_QUEUE_ENTRY *temp;
 #endif
   struct timeval timeout;
@@ -347,7 +346,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_
 #endif
 	  css_add_request_to_socket_queue (datagram_conn, false, server_name, server_fd, READ_WRITE, 0,
 					   &css_Master_socket_anchor);
-	  length = strlen (server_name) + 1;
+	  length = (int) strlen (server_name) + 1;
 	  if (length < server_name_length)
 	    {
 	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
@@ -414,7 +413,7 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
 	  entry->fd = server_fd;
 	  css_free_conn (entry->conn_ptr);
 	  entry->conn_ptr = datagram_conn;
-	  length = strlen (server_name) + 1;
+	  length = (int) strlen (server_name) + 1;
 	  if (length < server_name_length)
 	    {
 	      server_name += length;
@@ -547,7 +546,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	      if (entry != NULL)
 		{
 		  entry->port_id = ntohl (buffer);
-		  length = strlen (server_name) + 1;
+		  length = (int) strlen (server_name) + 1;
 		  /* read server version_string, env_var, pid */
 		  if (length < server_name_length)
 		    {

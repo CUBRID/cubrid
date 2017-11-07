@@ -16,6 +16,8 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
+message("======== cubrid/CMakeLists.txt")
+
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
   ${COMPAT_DIR}/cnvlex.c
@@ -23,6 +25,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
+  ${COMPAT_DIR}/db_json.cpp
   )
 
 set(THREAD_SOURCES
@@ -203,6 +206,10 @@ endif(UNIX)
 
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
+if(UNIX)
+set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
+
 SET_SOURCE_FILES_PROPERTIES(
   ${COMPAT_SOURCES}
   ${THREAD_SOURCES}
@@ -279,11 +286,10 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
-if(UNIX)
-  add_dependencies(cubrid ${EP_TARGETS})
-endif(UNIX)
+add_dependencies(cubrid ${EP_TARGETS})
 
-if (WITH_UNIT_TESTS)
+if(AT_LEAST_ONE_UNIT_TEST)
+  message("    ==== add cubrid static libs for unit tests (WIN only)")
   if (WIN32)
   # in order to avoid adding all the functions used by unit tests in def file, it is more convenient to build a static
   # lib too. more compile time, but less head-ache
@@ -310,8 +316,10 @@ if (WITH_UNIT_TESTS)
     ${EP_INCLUDES}
     )
 
+  add_dependencies(cubrid-win-lib ${EP_TARGETS})
+
   endif (WIN32)
-endif (WITH_UNIT_TESTS)
+endif (AT_LEAST_ONE_UNIT_TEST)
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubrid PRIVATE ${CMAKE_BINARY_DIR})

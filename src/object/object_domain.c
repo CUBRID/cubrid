@@ -45,6 +45,8 @@
 #include "string_opfunc.h"
 #include "tz_support.h"
 #include "chartype.h"
+#include "db_json.hpp"
+
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #include "virtual_object.h"
@@ -57,13 +59,9 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
-#if !defined (SERVER_MODE)
-#define pthread_mutex_init(a, b)
-#define pthread_mutex_destroy(a)
-#define pthread_mutex_lock(b) 0
-#define pthread_mutex_unlock(a)
-static int rv;
-#endif /* !SERVER_MODE */
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 /*
  * used by versant_driver to avoid doing foolish things
@@ -168,7 +166,8 @@ extern unsigned int db_on_server;
   1,            /* is_cached */                        \
   0,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
-  0				/* is_visited */
+  0,		/* is_visited */		       \
+  NULL		/* json_validator */			       \
 
 /* Same as above, but leaves off the prec and scale, and sets the codeset */
 #define DOMAIN_INIT2(codeset, coll)                    \
@@ -184,13 +183,13 @@ extern unsigned int db_on_server;
   1,            /* is_cached */                        \
   1,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
-  0				/* is_visited */
-
-/*
- * Same as DOMAIN_INIT but it sets the is_parameterized flag.
- * Used for things that don't have a precision but which are parameterized in
- * other ways.
- */
+  0,		/* is_visited */		       \
+  NULL		/* json_validator */		       \
+				/*
+				 * Same as DOMAIN_INIT but it sets the is_parameterized flag.
+				 * Used for things that don't have a precision but which are parameterized in
+				 * other ways.
+				 */
 #define DOMAIN_INIT3                                   \
   0,            /* precision */                        \
   0,            /* scale */                            \
@@ -206,7 +205,8 @@ extern unsigned int db_on_server;
   1,            /* is_cached */                        \
   1,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
-  0				/* is_visited */
+  0,		/* is_visited */		       \
+  NULL		/* json_validator */                   \
 
 /* Same as DOMAIN_INIT but set the prec and scale. */
 #define DOMAIN_INIT4(prec, scale)                      \
@@ -224,7 +224,8 @@ extern unsigned int db_on_server;
   1,            /* is_cached */                        \
   0,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
-  0				/* is_visited */
+  0,		/* is_visited */		       \
+  NULL		/* json_validator */		       \
 
 TP_DOMAIN tp_Null_domain = { NULL, NULL, &tp_Null, DOMAIN_INIT };
 TP_DOMAIN tp_Short_domain = { NULL, NULL, &tp_Short, DOMAIN_INIT4 (DB_SHORT_PRECISION, 0) };
@@ -232,6 +233,7 @@ TP_DOMAIN tp_Integer_domain = { NULL, NULL, &tp_Integer, DOMAIN_INIT4 (DB_INTEGE
 TP_DOMAIN tp_Bigint_domain = { NULL, NULL, &tp_Bigint, DOMAIN_INIT4 (DB_BIGINT_PRECISION, 0) };
 TP_DOMAIN tp_Float_domain = { NULL, NULL, &tp_Float, DOMAIN_INIT4 (DB_FLOAT_DECIMAL_PRECISION, 0) };
 TP_DOMAIN tp_Double_domain = { NULL, NULL, &tp_Double, DOMAIN_INIT4 (DB_DOUBLE_DECIMAL_PRECISION, 0) };
+
 TP_DOMAIN tp_Monetary_domain = { NULL, NULL, &tp_Monetary, DOMAIN_INIT4 (DB_MONETARY_DECIMAL_PRECISION, 0) };
 
 TP_DOMAIN tp_String_domain = { NULL, NULL, &tp_String, DB_MAX_VARCHAR_PRECISION, 0,
@@ -267,12 +269,15 @@ TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime, DOMAIN_INIT4 (DB_TIMESTAMP_
 TP_DOMAIN tp_Timestamptz_domain = { NULL, NULL, &tp_Timestamptz, DOMAIN_INIT4 (DB_TIMESTAMPTZ_PRECISION, 0) };
 TP_DOMAIN tp_Timestampltz_domain = { NULL, NULL, &tp_Timestampltz, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
 TP_DOMAIN tp_Date_domain = { NULL, NULL, &tp_Date, DOMAIN_INIT4 (DB_DATE_PRECISION, 0) };
+
 TP_DOMAIN tp_Datetime_domain = { NULL, NULL, &tp_Datetime,
   DOMAIN_INIT4 (DB_DATETIME_PRECISION, DB_DATETIME_DECIMAL_SCALE)
 };
+
 TP_DOMAIN tp_Datetimetz_domain = { NULL, NULL, &tp_Datetimetz,
   DOMAIN_INIT4 (DB_DATETIMETZ_PRECISION, DB_DATETIME_DECIMAL_SCALE)
 };
+
 TP_DOMAIN tp_Datetimeltz_domain = { NULL, NULL, &tp_Datetimeltz,
   DOMAIN_INIT4 (DB_DATETIME_PRECISION, DB_DATETIME_DECIMAL_SCALE)
 };
@@ -284,6 +289,7 @@ TP_DOMAIN tp_Pointer_domain = { NULL, NULL, &tp_Pointer, DOMAIN_INIT };
 TP_DOMAIN tp_Error_domain = { NULL, NULL, &tp_Error, DOMAIN_INIT };
 TP_DOMAIN tp_Vobj_domain = { NULL, NULL, &tp_Vobj, DOMAIN_INIT3 };
 TP_DOMAIN tp_Oid_domain = { NULL, NULL, &tp_Oid, DOMAIN_INIT3 };
+
 TP_DOMAIN tp_Enumeration_domain = { NULL, NULL, &tp_Enumeration, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
@@ -309,6 +315,10 @@ TP_DOMAIN tp_NChar_domain = { NULL, NULL, &tp_NChar, TP_FLOATING_PRECISION_VALUE
 };
 
 TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar, DB_MAX_VARNCHAR_PRECISION, 0,
+  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
+};
+
+TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
@@ -357,6 +367,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Timestampltz_domain,
   &tp_Datetimetz_domain,
   &tp_Datetimeltz_domain,
+  &tp_Json_domain,
   &tp_Timetz_domain,
   &tp_Timeltz_domain,
   &tp_Null_domain,
@@ -941,9 +952,13 @@ tp_domain_free (TP_DOMAIN * dom)
 
   if (dom != NULL && !dom->is_cached)
     {
-
       /* NULL things that might be problems for garbage collection */
       dom->class_mop = NULL;
+
+      if (dom->type->id == DB_TYPE_JSON && dom->json_validator != NULL)
+	{
+	  db_json_delete_validator (dom->json_validator);
+	}
 
       /* 
        * sub-domains are always completely owned by their root domain,
@@ -987,6 +1002,7 @@ domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
   domain->class_mop = NULL;
   domain->self_ref = 0;
   domain->setdomain = NULL;
+  domain->json_validator = NULL;
   DOM_SET_ENUM (domain, NULL, 0);
   OID_SET_NULL (&domain->class_oid);
 
@@ -1086,6 +1102,7 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
       new_dm->precision = precision;
       new_dm->scale = scale;
       new_dm->setdomain = setdomain;
+      new_dm->json_validator = NULL;
 
 #if !defined (NDEBUG)
       if (domain_type == DB_TYPE_MIDXKEY)
@@ -1278,8 +1295,7 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	  new_domain = tp_domain_new (TP_DOMAIN_TYPE (d));
 	  if (new_domain == NULL)
 	    {
-	      tp_domain_free (first);
-	      return NULL;
+	      goto error;
 	    }
 	  else
 	    {
@@ -1293,6 +1309,15 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 	      new_domain->self_ref = d->self_ref;
 	      new_domain->is_parameterized = d->is_parameterized;
 	      new_domain->is_desc = d->is_desc;
+	      new_domain->json_validator = NULL;
+
+	      if (d->type->id == DB_TYPE_JSON)
+		{
+		  if (d->json_validator != NULL)
+		    {
+		      new_domain->json_validator = db_json_copy_validator (d->json_validator);
+		    }
+		}
 
 	      if (d->type->id == DB_TYPE_ENUMERATION)
 		{
@@ -1300,8 +1325,7 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 		  error = tp_domain_copy_enumeration (&DOM_GET_ENUMERATION (new_domain), &DOM_GET_ENUMERATION (d));
 		  if (error != NO_ERROR)
 		    {
-		      tp_domain_free (first);
-		      return NULL;
+		      goto error;
 		    }
 		}
 
@@ -1310,8 +1334,7 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 		  new_domain->setdomain = tp_domain_copy (d->setdomain, true);
 		  if (new_domain->setdomain == NULL)
 		    {
-		      tp_domain_free (first);
-		      return NULL;
+		      goto error;
 		    }
 		}
 
@@ -1329,6 +1352,13 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
     }
 
   return first;
+
+error:
+  for (d = first; d != NULL; d = d->next)
+    {
+      tp_domain_free (CONST_CAST (TP_DOMAIN *, d));
+    }
+  return NULL;
 }
 
 
@@ -1528,6 +1558,10 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
        * same.
        */
       match = 1;
+      break;
+
+    case DB_TYPE_JSON:
+      match = (int) db_json_are_validators_equal (dom1->json_validator, dom2->json_validator);
       break;
 
     case DB_TYPE_VOBJ:
@@ -2068,8 +2102,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	      }
 #else /* #if 1 */
 	    if (domain->setdomain == transient->setdomain)
-	      match = 1;
-
+	      {
+		match = 1;
+	      }
 	    else
 	      {
 		int dsize;
@@ -2184,6 +2219,20 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    domain = domain->next_list;
 	  }
       }
+      break;
+
+    case DB_TYPE_JSON:
+      while (domain)
+	{
+	  match = (int) db_json_are_validators_equal (transient->json_validator, domain->json_validator);
+
+	  if (match)
+	    {
+	      break;
+	    }
+	  *ins_pos = domain;
+	  domain = domain->next_list;
+	}
       break;
 
     case DB_TYPE_VARCHAR:
@@ -2346,7 +2395,8 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	       */
 	      match = ((domain->collation_id == transient->collation_id)
 		       && (transient->precision == 0 || (transient->precision == TP_FLOATING_PRECISION_VALUE)
-			   || domain->precision >= transient->precision) && (domain->is_desc == transient->is_desc)
+			   || domain->precision >= transient->precision)
+		       && (domain->is_desc == transient->is_desc)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
 
@@ -2861,7 +2911,6 @@ TP_DOMAIN *
 tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc)
 {
   TP_DOMAIN *dom = NULL;
-  DB_ENUM_ELEMENT *db_enum1 = NULL, *db_enum2 = NULL;
 
   /* search the list for a domain that matches */
   for (dom = tp_domain_get_list (DB_TYPE_ENUMERATION, NULL); dom != NULL; dom = dom->next_list)
@@ -3309,7 +3358,6 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	   */
 	  domain = tp_domain_resolve_default (value_type);
 	  break;
-
 	case DB_TYPE_NUMERIC:
 	  /* must find one with a matching precision and scale */
 	  if (dbuf == NULL)
@@ -3360,6 +3408,44 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	   * are, match to a built-in
 	   */
 	  domain = tp_domain_resolve_default (value_type);
+	  break;
+
+	case DB_TYPE_JSON:
+	  if (dbuf == NULL)
+	    {
+	      domain = tp_domain_new (value_type);
+	      if (domain == NULL)
+		{
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      domain = dbuf;
+	      domain_init (domain, value_type);
+	    }
+
+	  if (db_get_json_schema (val) != NULL)
+	    {
+	      int error_code;
+
+	      error_code = db_json_load_validator (db_get_json_schema (val), domain->json_validator);
+	      if (error_code != NO_ERROR)
+		{
+		  assert (false);
+		  tp_domain_free (domain);
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      domain->json_validator = NULL;
+	    }
+
+	  if (dbuf == NULL)
+	    {
+	      domain = tp_domain_cache (domain);
+	    }
 	  break;
 
 	  /* 
@@ -6412,7 +6498,6 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  {
 	    DB_DATE date = 0;
-	    int year = 0, month = 0, day = 0;
 
 	    if (tp_atodate (src, &date) != NO_ERROR)
 	      {
@@ -6424,7 +6509,6 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	case DB_TYPE_DATETIME:
 	  {
-	    DB_DATE v_date = 0;
 	    DB_DATETIME *src_dt = NULL;
 
 	    src_dt = DB_GET_DATETIME (src);
@@ -7141,6 +7225,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
   int hour, minute, second, millisecond;
   int year, month, day;
   TZ_ID ses_tz_id;
+  DB_VALUE src_replacement;
+
+  db_make_null (&src_replacement);
 
   err = NO_ERROR;
   status = DOMAIN_COMPATIBLE;
@@ -7180,6 +7267,38 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       return status;
     }
 
+  if (desired_type != original_type && original_type == DB_TYPE_JSON)
+    {
+      /* TODO this is very hackish,
+       * we really need to split this function up
+       */
+      DB_JSON_TYPE json_type = db_json_get_type (DB_GET_JSON_DOCUMENT (src));
+      JSON_DOC *src_doc = DB_GET_JSON_DOCUMENT (src);
+
+      switch (json_type)
+	{
+	case DB_JSON_DOUBLE:
+	  db_make_double (&src_replacement, db_json_get_double_from_document (src_doc));
+	  break;
+	case DB_JSON_INT:
+	  db_make_int (&src_replacement, db_json_get_int_from_document (src_doc));
+	  break;
+	case DB_JSON_STRING:
+	  db_make_string (&src_replacement, db_json_get_string_from_document (src_doc));
+	  src_replacement.need_clear = true;
+	  break;
+	default:
+	  /* do nothing */
+	  break;
+	}
+
+      if (json_type != DB_JSON_ARRAY && json_type != DB_JSON_OBJECT)
+	{
+	  original_type = DB_VALUE_TYPE (&src_replacement);
+	  src = &src_replacement;
+	}
+    }
+
   if (desired_type == original_type)
     {
       /* 
@@ -7214,6 +7333,15 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		{
 		  pr_clone_value ((DB_VALUE *) src, dest);
 		}
+	      return (status);
+	    case DB_TYPE_JSON:
+	      if (desired_domain->json_validator != NULL
+		  && db_json_validate_doc (desired_domain->json_validator, src->data.json.document) != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return DOMAIN_ERROR;
+		}
+	      pr_clone_value ((DB_VALUE *) src, dest);
 	      return (status);
 	    default:
 	      /* pr_is_string_type(desired_type) - NEED MORE CONSIDERATION */
@@ -8650,6 +8778,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 			      &millisecond);
 	  db_make_date (target, month, day, year);
 	  break;
+
 	case DB_TYPE_DATETIMELTZ:
 	case DB_TYPE_DATETIMETZ:
 	  {
@@ -9893,6 +10022,37 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      break;
 	    }
 	  break;
+
+	case DB_TYPE_JSON:
+	  {
+	    const char *json_str;
+	    int len;
+
+	    json_str = db_json_get_raw_json_body_from_document (DB_GET_JSON_DOCUMENT (src));
+
+	    len = strlen (json_str);
+	    target->need_clear = true;
+
+	    err = DB_MAKE_CHAR (target, len, json_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		pr_clear_value (target);
+	      }
+	    else if (DB_IS_NULL (target))
+	      {
+		status = DOMAIN_ERROR;
+		pr_clear_value (target);
+	      }
+	    else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
+		     && (DB_GET_STRING_LENGTH (target) > DB_VALUE_PRECISION (target)))
+	      {
+		status = DOMAIN_OVERFLOW;
+		pr_clear_value (target);
+	      }
+	  }
+	  break;
+
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -10280,11 +10440,75 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	pr_clear_value (&conv_val);
       }
       break;
+    case DB_TYPE_JSON:
+      {
+	char *str = NULL;
+	JSON_DOC *doc = db_json_allocate_doc ();
 
+	switch (original_type)
+	  {
+	  case DB_TYPE_CHAR:
+	  case DB_TYPE_VARCHAR:
+	  case DB_TYPE_NCHAR:
+	  case DB_TYPE_VARNCHAR:
+	    {
+	      unsigned int str_size = DB_GET_STRING_SIZE (src);
+	      int error_code;
+
+	      error_code = db_json_get_json_from_str (DB_GET_STRING (src), doc);
+	      if (error_code != NO_ERROR)
+		{
+		  assert (doc == NULL);
+		  return DOMAIN_ERROR;
+		}
+
+	      if (desired_domain->json_validator
+		  && db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  db_json_delete_doc (doc);
+		  return DOMAIN_ERROR;
+		}
+	      str = db_private_strdup (NULL, DB_GET_STRING (src));
+	      if (str == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
+		  return DOMAIN_ERROR;
+		}
+	    }
+	    break;
+	  case DB_TYPE_INTEGER:
+	    db_json_set_int_to_doc (doc, DB_GET_INT (src));
+	    break;
+	  case DB_TYPE_DOUBLE:
+	    db_json_set_double_to_doc (doc, DB_GET_DOUBLE (src));
+	    break;
+	  case DB_TYPE_NUMERIC:
+	    {
+	      DB_VALUE double_value;
+	      db_value_coerce (src, &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
+	      db_json_set_double_to_doc (doc, DB_GET_DOUBLE (&double_value));
+	      pr_clear_value (&double_value);
+	    }
+	    break;
+	  default:
+	    status = DOMAIN_INCOMPATIBLE;
+	    break;
+	  }
+
+	if (str == NULL)
+	  {
+	    str = db_json_get_raw_json_body_from_document (doc);
+	  }
+	db_make_json (target, str, doc, true);
+      }
+      break;
     default:
       status = DOMAIN_INCOMPATIBLE;
       break;
     }
+
+  pr_clear_value (&src_replacement);
 
   if (err < 0)
     {
@@ -11717,10 +11941,10 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
       target_domain = tp_domain_copy (arg1, false);
     }
   else if ((TP_IS_BIT_TYPE (arg1_type) && TP_IS_BIT_TYPE (arg2_type))
-	   || (TP_IS_CHAR_TYPE (arg1_type) && TP_IS_CHAR_TYPE (arg2_type)) || (TP_IS_DATE_TYPE (arg1_type)
-									       && TP_IS_DATE_TYPE (arg2_type))
-	   || (TP_IS_SET_TYPE (arg1_type) && TP_IS_SET_TYPE (arg2_type)) || (TP_IS_NUMERIC_TYPE (arg1_type)
-									     && TP_IS_NUMERIC_TYPE (arg2_type)))
+	   || (TP_IS_CHAR_TYPE (arg1_type) && TP_IS_CHAR_TYPE (arg2_type))
+	   || (TP_IS_DATE_TYPE (arg1_type) && TP_IS_DATE_TYPE (arg2_type))
+	   || (TP_IS_SET_TYPE (arg1_type) && TP_IS_SET_TYPE (arg2_type))
+	   || (TP_IS_NUMERIC_TYPE (arg1_type) && TP_IS_NUMERIC_TYPE (arg2_type)))
     {
       if (tp_more_general_type (arg1_type, arg2_type) > 0)
 	{
@@ -12005,8 +12229,6 @@ tp_hex_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative
 
   int error = NO_ERROR;
   char *p = NULL;
-  size_t n_digits = 0;
-  DB_BIGINT bigint = 0;
   UINT64 ubi = 0;
   unsigned int tmp_ui = 0;
   bool round = false;
@@ -12129,8 +12351,6 @@ tp_scientific_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_n
 			 DB_DATA_STATUS * data_stat)
 {
   int error = NO_ERROR;
-  double d = 0.0;
-  DB_BIGINT bigint = 0;
   UINT64 ubi = 0;
   bool truncated = false;
   bool round = false;

@@ -2087,7 +2087,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list, DB_
       else
 	{
 	  DB_VALUE *db_val = NULL;
-	  int more_type_info_needed = 0;
+
 	  db_val = pt_value_to_db (parser, current_value);
 	  if (db_val == NULL)
 	    {
@@ -2230,7 +2230,6 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   DB_SESSION *prepared_session = NULL;
   int prepared_statement_ndx = 0;
   PT_NODE *prepared_stmt = NULL;
-  int include_oids = 0;
   const char *const name = statement->info.prepare.name->info.name.original;
   const char *const statement_literal = (char *) statement->info.prepare.statement->info.value.data_value.str->bytes;
   int err = NO_ERROR;
@@ -2586,9 +2585,7 @@ static bool
 db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * statement, int xasl_flag)
 {
   DB_SESSION *session = NULL;
-  PT_NODE *query = NULL, *limit = NULL, *orderby_for = NULL;
-  bool cannot_eval = false;
-  bool use_mro = false;
+  PT_NODE *query = NULL;
   bool do_recompile = false;
   DB_VALUE *save_host_variables = NULL;
   TP_DOMAIN **save_host_var_expected_domains = NULL;
@@ -3565,7 +3562,7 @@ db_validate (DB_OBJECT * vc)
       strcpy (buffer, "select count(*) from ");
       strcat (buffer, db_get_class_name (vc));
       attributes = db_get_attributes (vc);
-      len = strlen (buffer);
+      len = (int) strlen (buffer);
       bufp = buffer;
 
       while (attributes)
@@ -3574,7 +3571,7 @@ db_validate (DB_OBJECT * vc)
 	  if (pred)
 	    {
 	      /* make sure we have enough room in the buffer */
-	      len += (strlen (separator) + strlen (pred));
+	      len += (int) (strlen (separator) + strlen (pred));
 	      if (len >= limit)
 		{
 		  /* increase buffer by BUF_SIZE */
