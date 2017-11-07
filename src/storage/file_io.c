@@ -2519,7 +2519,8 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 #if defined(WINDOWS) && defined(SERVER_MODE)
   pthread_mutex_unlock (io_mutex);
 #endif /* WINDOWS && SERVER_MODE */
-  assert ((current_size % IO_PAGESIZE) == 0);
+  /* safe-guard: current size is rounded to IO_PAGESIZE... unless it crashed during an expand */
+  assert (!LOG_ISRESTARTED () || (current_size % IO_PAGESIZE) == 0);
 
   /* compute new size */
   new_size = ((size_t) size_npages) * IO_PAGESIZE;
