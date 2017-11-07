@@ -2246,7 +2246,15 @@ perfmon_db_flushed_block_volumes (THREAD_ENTRY * thread_p, int num_volumes)
 {
   int offset;
 
-  offset = min (num_volumes, PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT - 1);
+  assert (num_volumes >= 0);
+  if (num_volumes < PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT)
+    {
+      offset = num_volumes;
+    }
+  else
+    {
+      offset = PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT - 1;
+    }
   perfmon_add_stat_at_offset (thread_p, PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES, offset, 1);
 }
 
