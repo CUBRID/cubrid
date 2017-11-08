@@ -87,7 +87,7 @@ private:
   void populate_free_stack ()
   {
     m_free_stack = new T* [m_size];
-    for (int i = 0; i < m_free_stack_size; i++)
+    for (size_t i = 0; i < m_free_stack_size; i++)
       {
         m_free_stack[i] = &m_resources[i];
       }

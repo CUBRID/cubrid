@@ -27,7 +27,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
-
+#include <thread>
 
 #include <cassert>
 
@@ -58,9 +58,9 @@ private:
   };
 
   inline bool check_wake (void);
-  inline void sleep (void);
+  void sleep (void);
   inline void awake (void);
-  inline void run (void);
+  void run (void);
 
   std::mutex m_mutex;
   std::condition_variable m_condvar;

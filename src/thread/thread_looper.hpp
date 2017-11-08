@@ -24,7 +24,9 @@
 #ifndef _THREAD_LOOPER_HPP_
 #define _THREAD_LOOPER_HPP_
 
+#include <array>
 #include <chrono>
+
 #include <cstdint>
 
 namespace thread

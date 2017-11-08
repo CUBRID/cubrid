@@ -24,11 +24,14 @@
 #ifndef _LOCKFREE_CIRCULAR_QUEUE_HPP_
 #define _LOCKFREE_CIRCULAR_QUEUE_HPP_
 
-#include <type_traits>
-#include <climits>
-#include <cstdint>
 #include <atomic>
+#include <thread>
+#include <type_traits>
+
 #include <cassert>
+#include <climits>
+#include <cstddef>
+#include <cstdint>
 
 // activate preprocessor if you need to debug low-level execution of lockfree circular queue
 // note that if you wanna track the execution history of low-level operation of a certain queue, you also need to
@@ -47,7 +50,7 @@ public:
   typedef std::atomic<T> atomic_data_type;
   typedef atomic_cursor_type atomic_flag_type;
 
-  circular_queue (size_t size);
+  circular_queue (std::size_t size);
   ~circular_queue ();
 
   inline bool is_empty () const;              // is query empty?
@@ -71,7 +74,7 @@ private:
   circular_queue ();
   circular_queue (const circular_queue&);
 
-  inline size_t next_pow2 (size_t size);
+  inline std::size_t next_pow2 (std::size_t size);
 
   inline bool test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor);
   inline bool test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor);
@@ -80,8 +83,8 @@ private:
   inline bool test_and_increment_cursor (atomic_cursor_type& cursor, cursor_type crt_value);
 
   inline T load_data (cursor_type consume_cursor);
-  inline void store_data (size_t index, const T& data);
-  inline size_t get_cursor_index (cursor_type cursor);
+  inline void store_data (std::size_t index, const T& data);
+  inline std::size_t get_cursor_index (cursor_type cursor);
 
   inline bool is_blocked (cursor_type cursor);
   inline bool block (cursor_type cursor);
@@ -94,8 +97,8 @@ private:
                                         // produce is completed.
   atomic_cursor_type m_produce_cursor;  // cursor for produce position
   atomic_cursor_type m_consume_cursor;  // cursor for consume position
-  size_t m_capacity;                    // queue capacity
-  size_t m_index_mask;                  // mask used to compute a cursor's index in queue
+  std::size_t m_capacity;                    // queue capacity
+  std::size_t m_index_mask;                  // mask used to compute a cursor's index in queue
 
 #if defined (DEBUG_LFCQ)
 private:
@@ -129,9 +132,9 @@ public:
       m_events[m_cursor].m_consequence.data_value = data;
     }
   private:
-    static const size_t LOCAL_HISTORY_SIZE = 64;
+    static const std::size_t LOCAL_HISTORY_SIZE = 64;
     local_event m_events[LOCAL_HISTORY_SIZE];
-    size_t m_cursor;
+    std::size_t m_cursor;
   };
 
   // clones of produce/consume with additional debug code. caller should keep its history in thread context to be
@@ -197,7 +200,7 @@ typename circular_queue<T>::cursor_type const circular_queue<T>::BLOCK_FLAG =
 
 template<class T>
 inline
-circular_queue<T>::circular_queue (size_t size) :
+circular_queue<T>::circular_queue (std::size_t size) :
   m_produce_cursor (0),
   m_consume_cursor (0)
 {
@@ -369,9 +372,9 @@ circular_queue<T>::is_full () const
 }
 
 template<class T>
-inline size_t circular_queue<T>::next_pow2 (size_t size)
+inline std::size_t circular_queue<T>::next_pow2 (std::size_t size)
 {
-  size_t next_pow = 1;
+  std::size_t next_pow = 1;
   for (--size; size != 0; size /= 2)
     {
       next_pow *= 2;
@@ -406,6 +409,12 @@ inline bool circular_queue<T>::test_and_increment_cursor (atomic_cursor_type & c
 }
 
 template<class T>
+inline std::size_t circular_queue<T>::get_cursor_index (cursor_type cursor)
+{
+  return cursor & m_index_mask;
+}
+
+template<class T>
 inline void circular_queue<T>::store_data (cursor_type cursor, const T & data)
 {
   m_data[get_cursor_index (cursor)].store (data);
@@ -416,12 +425,6 @@ inline T
 circular_queue<T>::load_data (cursor_type consume_cursor)
 {
   return m_data[get_cursor_index (consume_cursor)].load ();
-}
-
-template<class T>
-inline size_t circular_queue<T>::get_cursor_index (cursor_type cursor)
-{
-  return cursor & m_index_mask;
 }
 
 template<class T>

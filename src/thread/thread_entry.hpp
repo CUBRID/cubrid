@@ -163,7 +163,7 @@ public:
 
   int net_request_index;	/* request index of net server functions */
 
-  vacuum_worker *vacuum_worker;	/* Vacuum worker info */
+  struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
 
   /* resource track info */
   thread_resource_track *track;

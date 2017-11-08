@@ -60,7 +60,7 @@ worker_pool::stop (void)
       // already closed
       return;
     }
-  for (int i = 0; i < m_max_workers; i++)
+  for (std::size_t i = 0; i < m_max_workers; i++)
     {
       if (m_threads[i].joinable ())
         {

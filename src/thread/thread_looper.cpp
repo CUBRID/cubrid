@@ -57,7 +57,7 @@ looper::looper (std::array<std::chrono::duration<Rep, Period>, Count> periods)
   , m_period_index (0)
   , m_stop (false)
 {
-  static_assert (Count <= MAX_PERIODS);
+  static_assert (Count <= MAX_PERIODS, "Count template cannot exceed MAX_PERIODS=3");
   m_periods_count = std::min (Count, MAX_PERIODS);
 
   // wait increasing period on timeouts
