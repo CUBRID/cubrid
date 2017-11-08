@@ -605,14 +605,11 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
 
   need_sync = false;
 
-  if (false)			/* TO DO - if !DWB */
+  flushed_page_count = fileio_increase_flushed_page_count (npage);
+  if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
-      flushed_page_count = fileio_increase_flushed_page_count (npage);
-      if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
-	{
-	  need_sync = true;
-	  fileio_Flushed_page_count = 0;
-	}
+      need_sync = true;
+      fileio_Flushed_page_count = 0;
     }
 
   if (need_sync)
