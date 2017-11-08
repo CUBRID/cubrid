@@ -12127,6 +12127,9 @@ logpb_last_complete_blockid (void)
 {
   LOG_PAGEID prev_pageid = log_Gl.append.prev_lsa.pageid;
   VACUUM_LOG_BLOCKID blockid = vacuum_get_log_blockid (prev_pageid);
+
+  if (blockid == VACUUM_NULL_LOG_BLOCKID)
+    return blockid;
   /* the previous block is the one completed */
   return blockid - 1;
 }

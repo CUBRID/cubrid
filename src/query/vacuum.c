@@ -2642,13 +2642,6 @@ restart:
 
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
-  /* Choose starting point */
-  if (vacuum_Data.blockid_job_cursor > vacuum_Data.last_blockid)
-    {
-      assert (vacuum_Data.blockid_job_cursor == (vacuum_Data.last_blockid + 1));
-      /* Early out, no new jobs to generate */
-      return;
-    }
   data_page = vacuum_fix_data_page (thread_p, &vacuum_Data.vpid_job_cursor);
   if (data_page == NULL)
     {
