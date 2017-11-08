@@ -27,6 +27,8 @@
 #include <log_impl.h>
 #include <sys/time.h>
 
+#define strlen(s1) ((int) strlen(s1))
+
 #define NOPS_SNAPSHOT   1000000
 #define NOPS_COMPLPETE  1000000
 #define NOPS_OLDEST     2000000

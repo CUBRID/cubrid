@@ -31,6 +31,8 @@
 #include "lock_free.h"
 #include "vacuum.h"
 
+#define strlen(s1) ((int) strlen(s1))
+
 LOCK_FREE_CIRCULAR_QUEUE *vacuum_Finished_job_queue = NULL;
 
 void *test_circular_queue_consumer (void *param);
