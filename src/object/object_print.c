@@ -253,7 +253,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 	      {//triggers
 		/* fprintf(fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_TRIGGERS)); */
 		fprintf (fp, "Triggers:\n");
-		for (size_t n=cinfo.triggers.size(),i = 0; i<n; +i)
+		for (size_t n=cinfo.triggers.size(),i = 0; i<n; ++i)
 		  {
 		    fprintf (fp, "  %s\n", cinfo.triggers[i]);
 		  }

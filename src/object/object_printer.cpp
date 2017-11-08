@@ -997,8 +997,6 @@ void object_printer::describe_class (struct db_object *class_op)
   /* method files */
   if (class_descr.method_files != NULL)
     {
-      char tmp[PATH_MAX + 2];
-
       m_buf (" FILE ");
       for (line_ptr = class_descr.method_files; *line_ptr != NULL; line_ptr++)
 	{
@@ -1065,7 +1063,6 @@ void object_printer::describe_class (struct db_object *class_op)
 void object_printer::describe_partition_info (const sm_partition &partinfo)
 {
   DB_VALUE ele;
-  char line[SM_MAX_IDENTIFIER_LENGTH + 1], *ptr, *ptr2, *tmp;
   char col_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 
   m_buf ("PARTITION BY ");
@@ -1082,13 +1079,13 @@ void object_printer::describe_partition_info (const sm_partition &partinfo)
       break;
     }
 
-  tmp = (char *) partinfo.expr;
+  char *tmp = (char *) partinfo.expr;
   assert (tmp != NULL);
 
-  ptr = tmp ? strstr (tmp, "SELECT ") : NULL;
+  char *ptr = tmp ? strstr (tmp, "SELECT ") : NULL;
   if (ptr)
     {
-      ptr2 = strstr (ptr + 7, " FROM ");
+      char *ptr2 = strstr (ptr + 7, " FROM ");
       if (ptr2)
 	{
 	  strncpy (col_name, ptr + 7, CAST_STRLEN (ptr2 - (ptr + 7)));
