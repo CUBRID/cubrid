@@ -70,6 +70,7 @@
 #include "xserver_interface.h"
 #include "server_support.h"
 #include "utility.h"
+#include "vacuum.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
