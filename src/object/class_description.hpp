@@ -26,9 +26,7 @@
 
 #include <vector>
 struct db_object;
-class object_printer;
 struct sm_class;
-class string_buffer;
 struct tr_triglist;
 
 /*
@@ -65,14 +63,10 @@ struct class_description
     char *comment;
 
     class_description ();                                   //former obj_print_make_class_help()
-    class_description (const char *name);                   //former obj_print_help_class()
     ~class_description ();                                  //former obj_print_help_free_class()
 
+    bool init(const char *name);                            //former obj_print_help_class()
     bool init (struct db_object *op, type prt_type);
-
-  private:
-    void init_triggers (const sm_class &cls, struct db_object &dbo, string_buffer &sb,
-			object_printer &printer); //former describe_class_triggers()
 
     //ToDo: other special methods: copy&move ctor/assign
 };

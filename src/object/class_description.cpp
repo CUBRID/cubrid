@@ -30,6 +30,61 @@
 #include "schema_manager.h"
 #include "string_buffer.hpp"
 
+namespace
+{
+  void describe_trigger_list (tr_triglist *trig, string_buffer &sb, object_printer &printer, std::vector<char *> &v)
+  {
+    for (TR_TRIGLIST *t = trig; t != NULL; t = t->next)
+      {
+	sb.clear();
+	printer.describe_class_trigger (*t->trigger);
+	v.push_back (object_print::copy_string (sb.get_buffer()));
+      }
+  }
+
+  void init_triggers (const sm_class &cls, struct db_object &dbo, string_buffer &sb, object_printer &printer,
+		      std::vector<char *> &triggers)
+  {
+    SM_ATTRIBUTE *attribute_p;
+    TR_SCHEMA_CACHE *cache;
+    int i;
+
+    cache = cls.triggers;
+    if (cache != NULL && !tr_validate_schema_cache (cache, &dbo))
+      {
+	for (i = 0; i < cache->array_length; i++)
+	  {
+	    describe_trigger_list (cache->triggers[i], sb, printer, triggers);
+	  }
+      }
+
+    for (attribute_p = cls.ordered_attributes; attribute_p != NULL; attribute_p = attribute_p->order_link)
+      {
+	cache = attribute_p->triggers;
+	if (cache != NULL && !tr_validate_schema_cache (cache, &dbo))
+	  {
+	    for (i = 0; i < cache->array_length; i++)
+	      {
+		describe_trigger_list (cache->triggers[i], sb, printer, triggers);
+	      }
+	  }
+      }
+
+    for (attribute_p = cls.class_attributes; attribute_p != NULL;
+	 attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
+      {
+	cache = attribute_p->triggers;
+	if (cache != NULL && !tr_validate_schema_cache (cache, &dbo))
+	  {
+	    for (i = 0; i < cache->array_length; i++)
+	      {
+		describe_trigger_list (cache->triggers[i], sb, printer, triggers);
+	      }
+	  }
+      }
+  }
+} //namespace
+
 //former obj_print_make_class_help()
 class_description::class_description()
   : name (NULL)
@@ -50,11 +105,6 @@ class_description::class_description()
   , partition ()
   , comment (NULL)
 {
-}
-
-class_description::class_description (const char *name)
-{
-  init (sm_find_class (name), CSQL_SCHEMA_COMMAND);
 }
 
 class_description::~class_description()
@@ -100,6 +150,11 @@ class_description::~class_description()
     {
       free (comment);
     }
+}
+
+bool class_description::init (const char *name)
+{
+  return init (sm_find_class (name), CSQL_SCHEMA_COMMAND);
 }
 
 bool class_description::init (struct db_object *op, type prt_type)
@@ -590,7 +645,7 @@ bool class_description::init (struct db_object *op, type prt_type)
 	}
 
       /* these are a bit more complicated */
-      init_triggers (*class_, *op, sb, printer);
+      init_triggers (*class_, *op, sb, printer, triggers);
 
       /*
       *  Process multi-column class constraints (Unique and Indexes).
@@ -691,59 +746,4 @@ bool class_description::init (struct db_object *op, type prt_type)
 
 error_exit:
   return false;
-}
-
-namespace
-{
-  void describe_trigger_list (tr_triglist *trig, string_buffer &sb, object_printer &printer, std::vector<char *> &v)
-  {
-    for (TR_TRIGLIST *t = trig; t != NULL; t = t->next)
-      {
-	sb.clear();
-	printer.describe_class_trigger (*t->trigger);
-	v.push_back (object_print::copy_string (sb.get_buffer()));
-      }
-  }
-}
-
-void class_description::init_triggers (const sm_class &cls, struct db_object &dbo, string_buffer &sb, object_printer &printer)
-{
-  SM_ATTRIBUTE *attribute_p;
-  TR_SCHEMA_CACHE *cache;
-  int i;
-
-  cache = cls.triggers;
-  if (cache != NULL && !tr_validate_schema_cache (cache, &dbo))
-    {
-      for (i = 0; i < cache->array_length; i++)
-	{
-	  describe_trigger_list (cache->triggers[i], sb, printer, triggers);
-	}
-    }
-
-  for (attribute_p = cls.ordered_attributes; attribute_p != NULL; attribute_p = attribute_p->order_link)
-    {
-      cache = attribute_p->triggers;
-      if (cache != NULL && !tr_validate_schema_cache (cache, &dbo))
-	{
-	  for (i = 0; i < cache->array_length; i++)
-	    {
-	      describe_trigger_list (cache->triggers[i], sb, printer, triggers);
-	    }
-	}
-    }
-
-  for (attribute_p = cls.class_attributes; attribute_p != NULL;
-       attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
-    {
-      cache = attribute_p->triggers;
-      if (cache != NULL && !tr_validate_schema_cache (cache, &dbo))
-	{
-	  for (i = 0; i < cache->array_length; i++)
-	    {
-	      describe_trigger_list (cache->triggers[i], sb, printer, triggers);
-	    }
-	}
-    }
-
 }
