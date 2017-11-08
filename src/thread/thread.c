@@ -134,10 +134,6 @@ static DAEMON_THREAD_MONITOR thread_Page_post_flush_thread = DAEMON_THREAD_MONIT
 static DAEMON_THREAD_MONITOR *thread_Vacuum_worker_threads = NULL;
 static int thread_First_vacuum_worker_thread_index = -1;
 
-static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
-static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
-static int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
-
 static void thread_stop_oob_handler_thread ();
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
@@ -381,10 +377,10 @@ thread_initialize_manager (void)
   int i, r;
   int daemon_index;
   int shutdown_sequence;
-  size_t size;
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* not HPUX */
+  size_t size;
 
   assert (NUM_NORMAL_TRANS >= 10);
 
@@ -540,20 +536,8 @@ thread_initialize_manager (void)
   else
     {
       /* destroy mutex and cond */
-      for (i = 1; i < thread_Manager.num_total; i++)
-	{
-	  r = thread_finalize_entry (&thread_Manager.thread_array[i]);
-	  if (r != NO_ERROR)
-	    {
-	      return r;
-	    }
-	}
-      r = thread_finalize_entry (&thread_Manager.thread_array[0]);
-      if (r != NO_ERROR)
-	{
-	  return r;
-	}
-      free_and_init (thread_Manager.thread_array);
+      delete[]thread_Manager.thread_array;
+      thread_Manager.thread_array = NULL;
 
       /* Why are entries initialized twice? */
     }
@@ -562,14 +546,6 @@ thread_initialize_manager (void)
 
   thread_Manager.num_total = (thread_Manager.num_workers + thread_Manager.num_daemons + NUM_SYSTEM_TRANS);
 
-  size = thread_Manager.num_total * sizeof (THREAD_ENTRY);
-  tsd_ptr = thread_Manager.thread_array = (THREAD_ENTRY *) malloc (size);
-  if (tsd_ptr == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
   /* initialize lock-free transaction systems */
   r = lf_initialize_transaction_systems (thread_Manager.num_total);
   if (r != NO_ERROR)
@@ -577,13 +553,10 @@ thread_initialize_manager (void)
       return r;
     }
 
-  /* initialize master thread */
-  r = thread_initialize_entry (tsd_ptr);
-  if (r != NO_ERROR)
-    {
-      return r;
-    }
+  /* allocate threads */
+  thread_Manager.thread_array = new THREAD_ENTRY[thread_Manager.num_total];
 
+  tsd_ptr = &thread_Manager.thread_array[0];
   tsd_ptr->index = 0;
   tsd_ptr->tid = pthread_self ();
   tsd_ptr->emulate_tid = ((pthread_t) 0);
@@ -596,11 +569,6 @@ thread_initialize_manager (void)
    * thread_mgr.thread_array[0] is used for main thread */
   for (i = 1; i < thread_Manager.num_total; i++)
     {
-      r = thread_initialize_entry (&thread_Manager.thread_array[i]);
-      if (r != NO_ERROR)
-	{
-	  return r;
-	}
       thread_Manager.thread_array[i].index = i;
     }
 
@@ -1066,12 +1034,8 @@ thread_final_manager (void)
 {
   int i;
 
-  for (i = 1; i < thread_Manager.num_total; i++)
-    {
-      (void) thread_finalize_entry (&thread_Manager.thread_array[i]);
-    }
-  (void) thread_finalize_entry (&thread_Manager.thread_array[0]);
-  free_and_init (thread_Manager.thread_array);
+  delete[]thread_Manager.thread_array;
+  thread_Manager.thread_array = NULL;
 
   free_and_init (thread_Daemons);
   free_and_init (thread_Vacuum_worker_threads);
@@ -1302,7 +1266,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
  *   return: error code
  *   entry_p(in): thread entry
  */
-static int
+int
 thread_return_transaction_entry (THREAD_ENTRY * entry_p)
 {
   int i, error = NO_ERROR;

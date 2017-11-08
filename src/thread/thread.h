@@ -438,6 +438,8 @@ extern bool thread_is_auto_volume_expansion_thread_available (void);
 #if !defined (NDEBUG)
 extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
 #endif /* !NDEBUG */
+
+extern int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
 #endif /* SERVER_MODE */
 
 #endif /* _THREAD_H_ */

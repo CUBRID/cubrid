@@ -99,14 +99,15 @@ enum THREAD_TYPE
 namespace thread
 {
 
-struct entry
+class entry
 {
-  
+public:
+  entry ();
+  ~entry ();
 
-#if defined(WINDOWS)
-  UINTPTR thread_handle;	/* thread handle */
-#endif				/* WINDOWS */
-  int index;			/* thread entry index */
+  // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
+  // public
+  size_t index;			/* thread entry index */
   THREAD_TYPE type;		/* thread type */
   pthread_t tid;		/* thread id */
   pthread_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
@@ -187,6 +188,10 @@ struct entry
 
   int count_private_allocators;
 #endif
+
+private:
+
+  // TODO: move all members here
 };
 
 } // namespace thread
