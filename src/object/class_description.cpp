@@ -121,6 +121,7 @@ bool class_description::init (struct db_object *op, type prt_type)
   bool has_comment = false;
   int max_name_size = SM_MAX_IDENTIFIER_LENGTH + 50;
   size_t buf_size = 0;
+
   char b[8192] = { 0 };//bSolo: temp hack
   string_buffer sb (sizeof (b), b);
   object_printer printer (sb);
@@ -589,11 +590,7 @@ bool class_description::init (struct db_object *op, type prt_type)
 	}
 
       /* these are a bit more complicated */
-#if 0
-      this->triggers = (char **)printer.describe_class_triggers (*class_, *op);
-#else //bSolo: ToDo
-      //...............................
-#endif
+      init_triggers (*class_, *op, sb, printer);
 
       /*
       *  Process multi-column class constraints (Unique and Indexes).
@@ -709,16 +706,11 @@ namespace
   }
 }
 
-void class_description::init_triggers (const sm_class &cls, struct db_object &dbo)
+void class_description::init_triggers (const sm_class &cls, struct db_object &dbo, string_buffer &sb, object_printer &printer)
 {
   SM_ATTRIBUTE *attribute_p;
   TR_SCHEMA_CACHE *cache;
   int i;
-
-  char b[8192] = { 0 };//bSolo: temp hack
-  string_buffer sb (sizeof (b), b);
-  object_printer printer (sb);
-
 
   cache = cls.triggers;
   if (cache != NULL && !tr_validate_schema_cache (cache, &dbo))
