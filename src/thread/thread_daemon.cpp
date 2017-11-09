@@ -25,7 +25,7 @@
 
 #include "thread_executable.hpp"
 
-namespace thread
+namespace cubthread
 {
 
 daemon::daemon (looper & loop_pattern, executable * exec)
@@ -79,4 +79,4 @@ void daemon::pause (void)
   m_looper.put_to_sleep (m_waiter);
 }
 
-} // namespace thread
+} // namespace cubthread

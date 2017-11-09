@@ -34,7 +34,7 @@
 
 #include <cassert>
 
-namespace thread
+namespace cubthread
 {
 
 manager::manager (std::size_t max_threads, std::size_t starting_index)
@@ -164,4 +164,4 @@ manager::retire_entry (entry & entry_p)
   m_entry_dispatcher->retire (entry_p);
 }
 
-} // namespace thread
+} // namespace cubthread

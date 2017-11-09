@@ -96,7 +96,7 @@ enum THREAD_TYPE
   TT_NONE
 };
 
-namespace thread
+namespace cubthread
 {
 
 class entry
@@ -196,9 +196,9 @@ private:
   bool m_cleared;
 };
 
-} // namespace thread
+} // namespace cubthread
 
 // The whole code uses THREAD_ENTRY... It is ridiculous to change entire code to rename.
-typedef thread::entry THREAD_ENTRY;
+typedef cubthread::entry THREAD_ENTRY;
 
 #endif // _THREAD_ENTRY_HPP_

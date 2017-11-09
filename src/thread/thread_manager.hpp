@@ -30,7 +30,7 @@
 template <typename T>
 class resource_shared_pool;
 
-namespace thread
+namespace cubthread
 {
 
 // forward definition
@@ -78,6 +78,6 @@ private:
   std::size_t m_available_entries_count;
 };
 
-} // namespace thread
+} // namespace cubthread
 
 #endif  // _THREAD_MANAGER_HPP_

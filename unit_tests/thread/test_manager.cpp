@@ -38,7 +38,7 @@
 namespace test_thread
 {
 
-class dummy_exec : public thread::entry_executable
+class dummy_exec : public cubthread::entry_executable
 {
   void execute_task ()
   {
@@ -49,7 +49,7 @@ class dummy_exec : public thread::entry_executable
 
   void retire ()
   {
-    thread::entry_executable::retire ();
+    cubthread::entry_executable::retire ();
     test_common::sync_cout ("dummy_retire\n");
   }
 };
@@ -69,12 +69,12 @@ end (void)
 void
 run (std::size_t max_threads)
 {
-  thread::manager thread_manager (max_threads);
+  cubthread::manager thread_manager (max_threads);
 
-  thread::worker_pool *dummy_pool = thread_manager.create_worker_pool (1, 1);
+  cubthread::worker_pool *dummy_pool = thread_manager.create_worker_pool (1, 1);
   thread_manager.destroy_worker_pool (dummy_pool);
 
-  thread::daemon *daemon = thread_manager.create_daemon (thread::looper (), new dummy_exec ());
+  cubthread::daemon *daemon = thread_manager.create_daemon (cubthread::looper (), new dummy_exec ());
   thread_manager.destroy_daemon (daemon);
 
   std::cout << "  test_manager successful" << std::endl;

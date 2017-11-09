@@ -33,7 +33,7 @@
 
 namespace test_thread {
 
-class dummy_work : public thread::executable
+class dummy_work : public cubthread::executable
 {
 public:
   void execute_task ()
@@ -42,7 +42,7 @@ public:
   }
 };
 
-class start_end_work : public thread::executable
+class start_end_work : public cubthread::executable
 {
 public:
   void
@@ -54,7 +54,7 @@ public:
   }
 };
 
-class inc_work : public thread::executable
+class inc_work : public cubthread::executable
 {
 public:
   void execute_task ()
@@ -73,7 +73,7 @@ std::atomic<size_t> inc_work::m_count = 0;
 int
 test_one_thread_pool (void)
 {
-  thread::worker_pool pool (1, 1);
+  cubthread::worker_pool pool (1, 1);
   pool.execute (new dummy_work ());
   pool.execute (new dummy_work ());
 
@@ -88,7 +88,7 @@ test_one_thread_pool (void)
 int
 test_two_threads_pool (void)
 {
-  thread::worker_pool pool (2, 16);
+  cubthread::worker_pool pool (2, 16);
 
   pool.execute (new start_end_work ());
   pool.execute (new start_end_work ());
@@ -106,7 +106,7 @@ test_stress (void)
 
   nthreads *= 4;
 
-  thread::worker_pool workpool (nthreads, nthreads * 16);
+  cubthread::worker_pool workpool (nthreads, nthreads * 16);
 
   auto start_time = std::chrono::high_resolution_clock::now ();
   for (int i = 0; i < 10000; i++)

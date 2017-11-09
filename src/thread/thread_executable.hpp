@@ -23,7 +23,7 @@
 #include <mutex>
 #include <thread>
 
-namespace thread {
+namespace cubthread {
 
 class executable
 {
@@ -38,6 +38,6 @@ public:
   }
 };
 
-} // namespace thread
+} // namespace cubthread
 
 #endif // _THREAD_EXECUTABLE_HPP_

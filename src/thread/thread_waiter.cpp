@@ -25,7 +25,7 @@
 
 #include <cassert>
 
-namespace thread
+namespace cubthread
 {
 
 waiter::waiter ()
@@ -101,4 +101,4 @@ waiter::wait_inf (void)
   // mutex is automatically unlocked
 }
 
-} // namespace thread
+} // namespace cubthread

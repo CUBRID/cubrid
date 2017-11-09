@@ -29,7 +29,7 @@
 
 #include <thread>
 
-namespace thread
+namespace cubthread
 {
 
 // forward definition
@@ -57,6 +57,6 @@ class daemon
 
 
 
-} // namespace thread
+} // namespace cubthread
 
 #endif // _THREAD_DAEMON_HPP_

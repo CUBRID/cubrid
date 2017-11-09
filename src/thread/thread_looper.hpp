@@ -29,7 +29,7 @@
 
 #include <cstdint>
 
-namespace thread
+namespace cubthread
 {
 
 // forward def
@@ -73,6 +73,6 @@ private:
   bool m_stop;
 };
 
-} // namespace thread
+} // namespace cubthread
 
 #endif // _THREAD_LOOPER_HPP_

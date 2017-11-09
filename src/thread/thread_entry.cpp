@@ -30,7 +30,7 @@
 
 #include <cstring>
 
-namespace thread
+namespace cubthread
 {
 
 entry::entry ()
@@ -202,4 +202,4 @@ entry::clear_resources (void)
   m_cleared = true;
 }
 
-} // namespace thread
+} // namespace cubthread

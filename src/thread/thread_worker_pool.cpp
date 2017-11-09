@@ -21,7 +21,7 @@
 
 #include "thread_executable.hpp"
 
-namespace thread {
+namespace cubthread {
 
 worker_pool::worker_pool (size_t pool_size, size_t work_queue_size)
   : m_max_workers (pool_size)
@@ -131,4 +131,4 @@ worker_pool::deregister_worker (std::thread & thread_arg)
   m_thread_dispatcher.retire (thread_arg);
 }
 
-} // namespace thread
+} // namespace cubthread

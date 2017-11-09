@@ -27,7 +27,7 @@
 
 #include <cassert>
 
-namespace thread
+namespace cubthread
 {
 
 looper::looper ()
@@ -135,4 +135,4 @@ looper::is_stopped (void) const
   return m_stop;
 }
 
-} // namespace thread
+} // namespace cubthread

@@ -26,7 +26,7 @@
 #include <mutex>
 #include <thread>
 
-namespace thread {
+namespace cubthread {
 
 // forward definition
 class executable;
@@ -56,6 +56,6 @@ private:
   bool m_stopped;
 };
 
-} // namespace thread
+} // namespace cubthread
 
 #endif // _THREAD_WORKER_POOL_HPP_

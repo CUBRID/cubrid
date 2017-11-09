@@ -31,7 +31,7 @@
 
 #include <cassert>
 
-namespace thread
+namespace cubthread
 {
 
 class waiter
@@ -67,7 +67,7 @@ private:
   status m_status;
 };
 
-} // namespace thread
+} // namespace cubthread
 
 #endif // _THREAD_WAITER_HPP_
 
@@ -75,7 +75,7 @@ private:
 /* Template implementation                                              */
 /************************************************************************/
 
-namespace thread
+namespace cubthread
 {
 
 template< class Rep, class Period >
@@ -115,4 +115,4 @@ waiter::wait_until (std::chrono::time_point<Clock, Duration>& timeout_time)
   return ret;
 }
 
-} // namespace thread
+} // namespace cubthread
