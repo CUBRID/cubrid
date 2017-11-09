@@ -66,13 +66,11 @@ option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
-# expat library git properties
-set(WITH_LIBEXPAT_GIT_REPOSITORY "https://github.com/libexpat/libexpat.git")
-set(WITH_LIBEXPAT_GIT_TAG "R_2_2_5")
+# expat library sources URL
+set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_2_2_5/expat-2.2.5.tar.bz2")
 
-# jansson library git properties
-set(WITH_LIBJANSSON_GIT_REPOSITORY "https://github.com/akheron/jansson.git")
-set(WITH_LIBJANSSON_GIT_TAG "v2.10")
+# jansson library sources URL
+set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.gz")
 
 # editline library sources URL
 set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
@@ -832,12 +830,7 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBEXPAT_TARGET libexpat)
     externalproject_add(${LIBEXPAT_TARGET}
-      GIT_REPOSITORY    ${WITH_LIBEXPAT_GIT_REPOSITORY}
-      GIT_TAG           ${WITH_LIBEXPAT_GIT_TAG}
-      UPDATE_COMMAND    ""
-      COMMAND           ${CMAKE_COMMAND} -E copy_directory <SOURCE_DIR>/expat <SOURCE_DIR>
-      COMMAND           ${CMAKE_COMMAND} -E make_directory <SOURCE_DIR>/m4
-      COMMAND           ./buildconf.sh
+      URL               ${WITH_LIBEXPAT_URL}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
       BUILD_COMMAND     make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -867,10 +860,7 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBJANSSON_TARGET libjansson)
     externalproject_add(${LIBJANSSON_TARGET}
-      GIT_REPOSITORY    ${WITH_LIBJANSSON_GIT_REPOSITORY}
-      GIT_TAG           ${WITH_LIBJANSSON_GIT_TAG}
-      UPDATE_COMMAND    ""
-      COMMAND           autoreconf -i
+      URL               ${WITH_LIBJANSSON_URL}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
