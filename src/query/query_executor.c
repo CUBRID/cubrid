@@ -69,8 +69,7 @@
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #define GOTO_EXIT_ON_ERROR \
   do \

@@ -49,8 +49,7 @@
 #include "server_interface.h"
 #include "execute_statement.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 /*
  * tf_Allow_fixups

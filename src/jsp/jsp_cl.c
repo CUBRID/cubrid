@@ -58,9 +58,7 @@
 #include "system_parameter.h"
 #include "network_interface_cl.h"
 #include "unicode_support.h"
-
-#include "dbval.h"		/* this must be the last header file included!!! */
-
+#include "dbtype_common.h"
 #if !defined(INADDR_NONE)
 #define INADDR_NONE 0xffffffff
 #endif /* !INADDR_NONE */

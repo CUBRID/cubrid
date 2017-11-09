@@ -42,8 +42,7 @@
 #include "object_primitive.h"
 #include "query_list.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 /* simple macro to calculate minimum bytes to contain given bits */
 #define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)

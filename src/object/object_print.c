@@ -49,8 +49,9 @@
 #include "network_interface_cl.h"
 #include "class_object.h"
 #include "work_space.h"
+
 #endif /* !defined (SERVER_MODE) */
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype_common.h"
 
 #if !defined(SERVER_MODE)
 /*

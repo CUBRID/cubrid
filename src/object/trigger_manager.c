@@ -46,8 +46,7 @@
 #include "locator_cl.h"
 #include "transaction_cl.h"
 
-#include "dbval.h"		/* this must be the last header file included!!! */
-
+#include "dbtype_common.h"
 #define TR_EXECUTION_ENABLED (tr_Execution_enabled == true)
 #define UNIQUE_SAVEPOINT_RENAME_TRIGGER "rENAMEtRIGGER"
 #define UNIQUE_SAVEPOINT_DROP_TRIGGER "dROPtRIGGER"
@@ -3159,7 +3158,7 @@ trigger_table_find (const char *name, DB_OBJECT ** trigger_p)
       if (error == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value) && DB_GET_STRING (&value) != NULL
-	      && COMPARE_TRIGGER_NAMES (DB_PULL_STRING (&value), name) == 0)
+	      && COMPARE_TRIGGER_NAMES (DB_GET_STRING (&value), name) == 0)
 	    {
 	      found = i;
 	    }
@@ -3352,7 +3351,7 @@ trigger_table_drop (const char *name)
       if (error == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value) && DB_GET_STRING (&value) != NULL
-	      && COMPARE_TRIGGER_NAMES (DB_PULL_STRING (&value), name) == 0)
+	      && COMPARE_TRIGGER_NAMES (DB_GET_STRING (&value), name) == 0)
 	    {
 	      found = i;
 	    }

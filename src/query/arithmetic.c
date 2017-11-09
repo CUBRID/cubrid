@@ -43,8 +43,7 @@
 #include "string_opfunc.h"
 #include "db_date.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 static int db_mod_short (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static int db_mod_int (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
@@ -135,7 +134,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	    bool decrement = false;
 
 	    num_str_p = num_str + 1;
-	    numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (value), num_str_p);
+	    numeric_coerce_num_to_dec_str (DB_GET_NUMERIC (value), num_str_p);
 	    num_str_len = strlen (num_str_p);
 
 	    num_str_p += num_str_len - s;
@@ -210,7 +209,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	else
 	  {
 	    /* given numeric number is already of integral type */
-	    DB_MAKE_NUMERIC (result, DB_PULL_NUMERIC (value), p, 0);
+	    DB_MAKE_NUMERIC (result, DB_GET_NUMERIC (value), p, 0);
 	  }
 
 	break;
@@ -3385,7 +3384,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     }
 
   /* translate default fmt */
-  if (type2 == DB_TYPE_CHAR && strcasecmp (DB_PULL_STRING (value2), "default") == 0)
+  if (type2 == DB_TYPE_CHAR && strcasecmp (DB_GET_STRING (value2), "default") == 0)
     {
       if (TP_IS_DATE_TYPE (type1))
 	{
@@ -5082,7 +5081,7 @@ db_crc32_dbval (DB_VALUE * result, DB_VALUE * value)
 
       if (QSTR_IS_ANY_CHAR (type))
 	{
-	  error_status = crypt_crc32 (NULL, DB_PULL_STRING (value), DB_GET_STRING_SIZE (value), &hash_result);
+	  error_status = crypt_crc32 (NULL, DB_GET_STRING (value), DB_GET_STRING_SIZE (value), &hash_result);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto error;

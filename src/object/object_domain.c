@@ -54,8 +54,7 @@
 #include "dbi.h"
 #endif /* !defined (SERVER_MODE) */
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -4801,7 +4800,7 @@ tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
   int status = NO_ERROR;
   int str_len;
 
-  strp = DB_PULL_STRING (src);
+  strp = DB_GET_STRING (src);
   if (strp == NULL)
     {
       return ER_FAILED;

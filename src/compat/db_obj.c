@@ -51,8 +51,7 @@
 #include "view_transform.h"
 #include "network_interface_cl.h"
 #include "transform.h"
-
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype_common.h"
 
 /*
  * OBJECT CREATION/DELETION

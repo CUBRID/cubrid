@@ -55,8 +55,7 @@
 #include "object_template.h"
 #include "db.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #define SET_EXPECTED_DOMAIN(node, dom) \
   do \
@@ -22993,7 +22992,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 	    {
 	      int i;
 	      DB_VALUE *sub_value = NULL;
-	      SETREF *setref = DB_PULL_SET (&(node->info.value.db_value));
+	      SETREF *setref = DB_GET_SET (&(node->info.value.db_value));
 	      int set_size = setobj_size (setref->set);
 
 	      for (i = 0; i < set_size; i++)

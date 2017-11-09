@@ -34,8 +34,7 @@
 #include "porting.h"
 #include "transaction_cl.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 /* max columns to display each data type
  * NOTE: some of these are totally dependent on report-writer's

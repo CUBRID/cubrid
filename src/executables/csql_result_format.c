@@ -34,8 +34,7 @@
 #include "string_opfunc.h"
 #include "unicode_support.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #ifndef UX_CHAR
 #define UX_CHAR wchar_t

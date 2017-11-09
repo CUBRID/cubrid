@@ -69,7 +69,7 @@
 #include "execute_statement.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
-#include "dbval.h"		/* this must be the last header file included */
+#include "dbtype_common.h"
 
 #if defined(SA_MODE)
 extern bool catcls_Enable;
@@ -3848,7 +3848,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
       grantor = NULL;
       if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value))
 	{
-	  grantor = db_pull_object (&value);
+	  grantor = DB_GET_OBJECT (&value);
 	  if (WS_IS_DELETED (grantor))
 	    {
 	      grantor = NULL;
@@ -3866,7 +3866,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 
 	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value))
 	    {
-	      class_ = db_pull_object (&value);
+	      class_ = DB_GET_OBJECT (&value);
 	      if (WS_IS_DELETED (class_))
 		{
 		  class_ = NULL;
@@ -5520,7 +5520,7 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
   db_make_null (returnval);
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
-      classmop = sm_find_class (db_pull_string (class_));
+      classmop = sm_find_class (DB_GET_STRING (class_));
       if (classmop != NULL)
 	{
 	  user = au_get_class_owner (classmop);
@@ -5570,7 +5570,7 @@ au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
 
-      classmop = sm_find_class (db_pull_string (class_));
+      classmop = sm_find_class (DB_GET_STRING (class_));
       if (classmop != NULL)
 	{
 	  error = au_check_authorization (classmop, (DB_AUTH) db_get_int (auth));
@@ -7003,7 +7003,7 @@ au_export_users (FILE * outfp)
 		       * copy password string using malloc
 		       * to be consistent with encrypt_password
 		       */
-		      str = db_pull_string (&value);
+		      str = DB_GET_STRING (&value);
 		      if (IS_ENCODED_DES (str))
 			{
 			  /* strip off the prefix so its readable */

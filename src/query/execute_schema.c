@@ -56,9 +56,7 @@
 #include "view_transform.h"
 #include "xasl_to_stream.h"
 #include "parser_support.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 #define UNIQUE_SAVEPOINT_CREATE_ENTITY "cREATEeNTITY"
@@ -5075,7 +5073,7 @@ do_get_partition_keycol (char *keycol, MOP class_)
       return error;
     }
 
-  keyname_str = DB_PULL_STRING (&keyname);
+  keyname_str = DB_GET_STRING (&keyname);
   strncpy (keycol, keyname_str, DB_MAX_IDENTIFIER_LENGTH);
   error = NO_ERROR;
 

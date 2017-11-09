@@ -53,9 +53,7 @@
 #include "object_template.h"
 #include "server_interface.h"
 #include "view_transform.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 extern unsigned int db_on_server;
 

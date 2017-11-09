@@ -55,8 +55,7 @@
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #define BTREE_HEALTH_CHECK
 
@@ -10440,7 +10439,7 @@ btree_node_size_uncompressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
       assert (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE));
       assert (DB_VALUE_TYPE (&key) == DB_TYPE_MIDXKEY);
 
-      midx_key = DB_PULL_MIDXKEY (&key);
+      midx_key = DB_GET_MIDXKEY (&key);
 
       btree_clear_key_value (&clear_key, &key);
 
@@ -14711,7 +14710,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
        * sequence) of B+tree key domain. */
 
       /* get number of elements of sequence type of the 'src_key' */
-      midxkey = DB_PULL_MIDXKEY (keyp);
+      midxkey = DB_GET_MIDXKEY (keyp);
       ssize = midxkey->ncolumns;
 
       /* count number of elements of sequence type of the B+tree key domain */
@@ -15014,7 +15013,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
        */
       if (DB_VALUE_TYPE (&key_val_range->key1) == DB_TYPE_MIDXKEY)
 	{
-	  midxkey = DB_PULL_MIDXKEY (&key_val_range->key1);
+	  midxkey = DB_GET_MIDXKEY (&key_val_range->key1);
 	  if (midxkey->domain == NULL || LOG_CHECK_LOG_APPLIER (thread_p) || LOG_CHECK_LOG_PREFETCHER (thread_p))
 	    {
 	      /* 
@@ -15031,7 +15030,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 	}
       if (DB_VALUE_TYPE (&key_val_range->key2) == DB_TYPE_MIDXKEY)
 	{
-	  midxkey = DB_PULL_MIDXKEY (&key_val_range->key2);
+	  midxkey = DB_GET_MIDXKEY (&key_val_range->key2);
 	  if (midxkey->domain == NULL || LOG_CHECK_LOG_APPLIER (thread_p) || LOG_CHECK_LOG_PREFETCHER (thread_p))
 	    {
 	      if (midxkey->domain)
@@ -15126,12 +15125,12 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 #if !defined(NDEBUG)
   if (DB_VALUE_TYPE (&key_val_range->key1) == DB_TYPE_MIDXKEY)
     {
-      midxkey = DB_PULL_MIDXKEY (&key_val_range->key1);
+      midxkey = DB_GET_MIDXKEY (&key_val_range->key1);
       assert (midxkey->ncolumns == midxkey->domain->precision);
     }
   if (DB_VALUE_TYPE (&key_val_range->key2) == DB_TYPE_MIDXKEY)
     {
-      midxkey = DB_PULL_MIDXKEY (&key_val_range->key2);
+      midxkey = DB_GET_MIDXKEY (&key_val_range->key2);
       assert (midxkey->ncolumns == midxkey->domain->precision);
     }
 #endif
@@ -15277,12 +15276,12 @@ btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, KEY_VAL_RANG
 #if !defined(NDEBUG)
   if (DB_VALUE_TYPE (&key_val_range->key1) == DB_TYPE_MIDXKEY)
     {
-      midxkey = DB_PULL_MIDXKEY (&key_val_range->key1);
+      midxkey = DB_GET_MIDXKEY (&key_val_range->key1);
       assert (midxkey->ncolumns == midxkey->domain->precision);
     }
   if (DB_VALUE_TYPE (&key_val_range->key2) == DB_TYPE_MIDXKEY)
     {
-      midxkey = DB_PULL_MIDXKEY (&key_val_range->key2);
+      midxkey = DB_GET_MIDXKEY (&key_val_range->key2);
       assert (midxkey->ncolumns == midxkey->domain->precision);
     }
 #endif
@@ -15727,7 +15726,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
       if (need_to_check_null && DB_VALUE_DOMAIN_TYPE (&bts->cur_key) == DB_TYPE_MIDXKEY
 	  && bts->key_range.num_index_term > 0)
 	{
-	  mkey = DB_PULL_MIDXKEY (&(bts->cur_key));
+	  mkey = DB_GET_MIDXKEY (&(bts->cur_key));
 	  /* get the last element from key range elements */
 	  ret = pr_midxkey_get_element_nocopy (mkey, bts->key_range.num_index_term - 1, &ep, NULL, NULL);
 	  if (ret != NO_ERROR)
@@ -18744,7 +18743,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       return ER_FAILED;
     }
 
-  new_mkey = DB_PULL_MIDXKEY (&(bts->cur_key));
+  new_mkey = DB_GET_MIDXKEY (&(bts->cur_key));
   new_key_value = (DB_VALUE *) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (DB_VALUE));
   if (new_key_value == NULL)
     {
@@ -18818,7 +18817,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       last_item = multi_range_opt->top_n_items[multi_range_opt->size - 1];
       assert (last_item != NULL);
 
-      comp_mkey = DB_PULL_MIDXKEY (&(last_item->index_value));
+      comp_mkey = DB_GET_MIDXKEY (&(last_item->index_value));
 
       /* if all keys are equal, the new element is rejected */
       reject_new_elem = true;
@@ -18976,7 +18975,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 	{
 	  /* need to check if the new key is smaller than the first */
 	  comp_item = top_n_items[0];
-	  comp_mkey = DB_PULL_MIDXKEY (&(comp_item->index_value));
+	  comp_mkey = DB_GET_MIDXKEY (&(comp_item->index_value));
 
 	  for (i = 0; i < num_keys; i++)
 	    {
@@ -19015,7 +19014,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
   /* compare new value with the value in the middle of the current range */
   middle = (last + first) / 2;
   comp_item = top_n_items[middle];
-  comp_mkey = DB_PULL_MIDXKEY (&(comp_item->index_value));
+  comp_mkey = DB_GET_MIDXKEY (&(comp_item->index_value));
 
   for (i = 0; i < num_keys; i++)
     {

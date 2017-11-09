@@ -42,9 +42,7 @@
 #include "locator_sr.h"
 #include "object_primitive.h"
 #include "query_opfunc.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

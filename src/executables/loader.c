@@ -66,8 +66,7 @@
 #include "transaction_cl.h"
 #include "locator_cl.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 extern bool No_oid_hint;
 extern "C"

@@ -53,9 +53,7 @@
 #include "jsp_cl.h"
 #include "class_object.h"
 #include "object_print.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #define CLASS_NAME_MAX 80
 
@@ -762,8 +760,8 @@ export_serial (FILE * outfp)
 	}
 
       fprintf (outfp, "call [find_user]('%s') on class [db_user] to [auser];\n",
-	       DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
-      fprintf (outfp, "create serial %s%s%s\n", PRINT_IDENTIFIER (DB_PULL_STRING (&values[SERIAL_NAME])));
+	       DB_GET_STRING (&values[SERIAL_OWNER_NAME]));
+      fprintf (outfp, "create serial %s%s%s\n", PRINT_IDENTIFIER (DB_GET_STRING (&values[SERIAL_NAME])));
       fprintf (outfp, "\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
       fprintf (outfp, "\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
       fprintf (outfp, "\t minvalue %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL], str_buf));
@@ -786,7 +784,7 @@ export_serial (FILE * outfp)
 	}
       fprintf (outfp, ";\n");
       fprintf (outfp, "call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
-	       DB_PULL_STRING (&values[SERIAL_NAME]), DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
+	       DB_GET_STRING (&values[SERIAL_NAME]), DB_GET_STRING (&values[SERIAL_OWNER_NAME]));
 
       db_value_clear (&diff_value);
       db_value_clear (&answer_value);
@@ -1944,7 +1942,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_i
 		}
 
 	      fprintf (output_file, "ALTER SERIAL %s%s%s START WITH %s;\n",
-		       PRINT_IDENTIFIER (DB_PULL_STRING (&sr_name)), start_with);
+		       PRINT_IDENTIFIER (DB_GET_STRING (&sr_name)), start_with);
 
 	      pr_clear_value (&sr_name);
 	    }
@@ -3123,7 +3121,7 @@ emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
 	  continue;
 	}
 
-      fprintf (output_file, "%s%s%s ", PRINT_IDENTIFIER (DB_PULL_STRING (&arg_name_val)));
+      fprintf (output_file, "%s%s%s ", PRINT_IDENTIFIER (DB_GET_STRING (&arg_name_val)));
 
       arg_mode = DB_GET_INT (&arg_mode_val);
       fprintf (output_file, "%s ", arg_mode == SP_MODE_IN ? "IN" : arg_mode == SP_MODE_OUT ? "OUT" : "INOUT");
@@ -3203,7 +3201,7 @@ emit_stored_procedure (void)
       sp_type = DB_GET_INT (&sp_type_val);
       fprintf (output_file, "\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
 
-      fprintf (output_file, " %s%s%s (", PRINT_IDENTIFIER (DB_PULL_STRING (&sp_name_val)));
+      fprintf (output_file, " %s%s%s (", PRINT_IDENTIFIER (DB_GET_STRING (&sp_name_val)));
 
       arg_cnt = DB_GET_INT (&arg_cnt_val);
       arg_set = DB_GET_SET (&args_val);

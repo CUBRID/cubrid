@@ -39,9 +39,7 @@
 #include "btree_load.h"
 #include "dbtype.h"
 #include "object_primitive.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10
@@ -1430,7 +1428,7 @@ or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 		}
 	      else
 		{
-		  prop_name = DB_PULL_STRING (&value);
+		  prop_name = DB_GET_STRING (&value);
 		  if (strcmp (name, prop_name) == 0)
 		    {
 		      if ((i + 1) >= max)
@@ -1486,7 +1484,7 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * in
   index->fk->next = NULL;
   index->fk->fkname = strdup (fkname);
 
-  args = classobj_decompose_property_oid (DB_PULL_STRING (&val), &pageid, &slotid, &volid);
+  args = classobj_decompose_property_oid (DB_GET_STRING (&val), &pageid, &slotid, &volid);
   if (args != 3)
     {
       return;
@@ -1561,7 +1559,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      args = classobj_decompose_property_oid (DB_PULL_STRING (&val), &pageid, &slotid, &volid);
+      args = classobj_decompose_property_oid (DB_GET_STRING (&val), &pageid, &slotid, &volid);
 
       if (args != 3)
 	{
@@ -1579,7 +1577,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      args = classobj_decompose_property_oid (DB_PULL_STRING (&val), &volid, &fileid, &pageid);
+      args = classobj_decompose_property_oid (DB_GET_STRING (&val), &volid, &fileid, &pageid);
 
       if (args != 3)
 	{
@@ -1610,7 +1608,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  free_and_init (fk);
 	  return;
 	}
-      fkname = DB_PULL_STRING (&val);
+      fkname = DB_GET_STRING (&val);
       fk->fkname = strdup (fkname);
 
       if (i == 0)
@@ -1738,12 +1736,12 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  filter_predicate->pred_string = strdup (DB_PULL_STRING (&val1));
+  filter_predicate->pred_string = strdup (DB_GET_STRING (&val1));
   if (filter_predicate->pred_string == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      strlen (DB_PULL_STRING (&val1)) * sizeof (char));
+	      strlen (DB_GET_STRING (&val1)) * sizeof (char));
       goto err;
     }
 
@@ -1945,15 +1943,15 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			      goto next_child;
 			    }
 
-			  if (strcmp (DB_PULL_STRING (&avalue), SM_FILTER_INDEX_ID) == 0)
+			  if (strcmp (DB_GET_STRING (&avalue), SM_FILTER_INDEX_ID) == 0)
 			    {
 			      flag = 0x01;
 			    }
-			  else if (strcmp (DB_PULL_STRING (&avalue), SM_FUNCTION_INDEX_ID) == 0)
+			  else if (strcmp (DB_GET_STRING (&avalue), SM_FUNCTION_INDEX_ID) == 0)
 			    {
 			      flag = 0x02;
 			    }
-			  else if (strcmp (DB_PULL_STRING (&avalue), SM_PREFIX_INDEX_ID) == 0)
+			  else if (strcmp (DB_GET_STRING (&avalue), SM_PREFIX_INDEX_ID) == 0)
 			    {
 			      flag = 0x03;
 			    }
@@ -2149,7 +2147,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       return;
     }
 
-  args = classobj_decompose_property_oid (DB_PULL_STRING (&id_val), &volid, &fileid, &pageid);
+  args = classobj_decompose_property_oid (DB_GET_STRING (&id_val), &volid, &fileid, &pageid);
 
   if (args != 3)
     {
@@ -2257,7 +2255,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 	      error = set_get_element_nocopy (property_vars[i].seq, j, &cons_name_val);
 	      if (error == NO_ERROR)
 		{
-		  cons_name = DB_PULL_STRING (&cons_name_val);
+		  cons_name = DB_GET_STRING (&cons_name_val);
 		}
 
 	      error = set_get_element_nocopy (property_vars[i].seq, j + 1, &ids_val);
@@ -3428,7 +3426,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  goto error_exit;
 	}
 
-      prop_name = DB_PULL_STRING (&value);
+      prop_name = DB_GET_STRING (&value);
       if (prop_name == NULL)
 	{
 	  goto error_exit;
@@ -3460,7 +3458,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	      goto error_exit;
 	    }
 
-	  if (strcmp (constraint_name, DB_PULL_STRING (&uvalue)) != 0)
+	  if (strcmp (constraint_name, DB_GET_STRING (&uvalue)) != 0)
 	    {
 	      continue;
 	    }
@@ -3990,11 +3988,11 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       goto error;
     }
 
-  fi_info->expr_string = strdup (DB_PULL_STRING (&val1));
+  fi_info->expr_string = strdup (DB_GET_STRING (&val1));
   if (fi_info->expr_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      strlen (DB_PULL_STRING (&val1)) * sizeof (char));
+	      strlen (DB_GET_STRING (&val1)) * sizeof (char));
       goto error;
     }
 

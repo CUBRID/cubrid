@@ -48,8 +48,7 @@
 #include "dbi.h"
 #endif /* !defined (SERVER_MODE) */
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
@@ -5595,7 +5594,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	{
 	  DB_OBJECT *obj;
 	  /* what should this do for ISVID mops? */
-	  obj = db_pull_object (src);
+	  obj = DB_GET_OBJECT (src);
 	  db_value_domain_init (dest, DB_TYPE_OID, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  oid = WS_OID (obj);
 	  error = db_make_oid (dest, oid);
@@ -5966,7 +5965,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
    */
   if (DB_VALUE_DOMAIN_TYPE (value1) == DB_TYPE_OID)
     {
-      o1 = DB_PULL_OID (value1);
+      o1 = DB_GET_OID (value1);
     }
   else
     {
@@ -5976,7 +5975,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   if (DB_VALUE_DOMAIN_TYPE (value2) == DB_TYPE_OID)
     {
-      o2 = DB_PULL_OID (value2);
+      o2 = DB_GET_OID (value2);
     }
   else
     {
@@ -6001,11 +6000,11 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
    */
   if (DB_VALUE_DOMAIN_TYPE (value1) == DB_TYPE_OID)
     {
-      o1 = DB_PULL_OID (value1);
+      o1 = DB_GET_OID (value1);
     }
   else
     {
-      mop1 = DB_PULL_OBJECT (value1);
+      mop1 = DB_GET_OBJECT (value1);
       if (WS_ISVID (mop1))
 	{
 	  if (db_is_updatable_object (mop1))
@@ -6042,11 +6041,11 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   if (DB_VALUE_DOMAIN_TYPE (value2) == DB_TYPE_OID)
     {
-      o2 = DB_PULL_OID (value2);
+      o2 = DB_GET_OID (value2);
     }
   else
     {
-      mop2 = DB_PULL_OBJECT (value2);
+      mop2 = DB_GET_OBJECT (value2);
       if (WS_ISVID (mop2))
 	{
 	  if (db_is_updatable_object (mop2))
@@ -9736,8 +9735,8 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   assert (DB_VALUE_TYPE (prefix) == DB_TYPE_MIDXKEY);
   assert (DB_VALUE_TYPE (postfix) == DB_TYPE_MIDXKEY);
 
-  midx_prefix = DB_PULL_MIDXKEY (prefix);
-  midx_postfix = DB_PULL_MIDXKEY (postfix);
+  midx_prefix = DB_GET_MIDXKEY (prefix);
+  midx_postfix = DB_GET_MIDXKEY (postfix);
 
   offset_prefix = pr_midxkey_get_element_offset (midx_prefix, n_prefix);
   offset_postfix = pr_midxkey_get_element_offset (midx_postfix, n_prefix);
@@ -9791,7 +9790,7 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
   DB_MIDXKEY *midx_key;
   int i, start, offset;
 
-  midx_key = DB_PULL_MIDXKEY (key);
+  midx_key = DB_GET_MIDXKEY (key);
 
   start = pr_midxkey_get_element_offset (midx_key, 0);
   offset = pr_midxkey_get_element_offset (midx_key, prefix);
@@ -9827,8 +9826,8 @@ pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
 
   diff_column = 0;		/* init */
 
-  midx_lf_key = DB_PULL_MIDXKEY (key1);
-  midx_uf_key = DB_PULL_MIDXKEY (key2);
+  midx_lf_key = DB_GET_MIDXKEY (key1);
+  midx_uf_key = DB_GET_MIDXKEY (key2);
 
   ret = pr_midxkey_compare (midx_lf_key, midx_uf_key, 0, 1, -1, NULL, &size1, &size2, &diff_column, &dom_is_desc,
 			    &next_dom_is_desc);
@@ -10018,8 +10017,8 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
   assert (db_midxkey2 != (DB_VALUE *) NULL);
   assert (db_result != (DB_VALUE *) NULL);
 
-  midxkey1 = DB_PULL_MIDXKEY (db_midxkey1);
-  midxkey2 = DB_PULL_MIDXKEY (db_midxkey2);
+  midxkey1 = DB_GET_MIDXKEY (db_midxkey1);
+  midxkey2 = DB_GET_MIDXKEY (db_midxkey2);
 
   assert (midxkey1->size != -1);
   assert (midxkey2->size != -1);

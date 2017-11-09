@@ -51,7 +51,8 @@
 #include "critical_section.h"
 #endif
 #include "db_date.h"
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype_common.h"
+
 
 #define BITS_IN_BYTE		8
 #define HEX_IN_BYTE		2

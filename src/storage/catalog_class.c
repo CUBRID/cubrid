@@ -39,8 +39,8 @@
 #include "object_primitive.h"
 #include "query_dump.h"
 #include "db_date.h"
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
+
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
 
@@ -736,7 +736,7 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p, DB_VALUE * oid_val_p)
       return NO_ERROR;
     }
 
-  class_oid_p = DB_PULL_OID (oid_val_p);
+  class_oid_p = DB_GET_OID (oid_val_p);
 
   if (csect_enter_as_reader (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
     {
@@ -2959,14 +2959,14 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
       return NO_ERROR;
     }
 
-  set_p = DB_PULL_SET (&value_p->value);
+  set_p = DB_GET_SET (&value_p->value);
   size = set_size (set_p);
   if (size > 0)
     {
       set_get_element_nocopy (set_p, 0, &element);
       if (DB_VALUE_TYPE (&element) == DB_TYPE_OID)
 	{
-	  oid_p = DB_PULL_OID (&element);
+	  oid_p = DB_GET_OID (&element);
 
 	  scan_code = heap_get_class_oid (thread_p, oid_p, &class_oid);
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -3690,7 +3690,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 		    {
 		      if (DB_VALUE_TYPE (&attr_p[k].value) == DB_TYPE_OID)
 			{
-			  if (OID_EQ (oid_p, DB_PULL_OID (&attr_p[k].value)))
+			  if (OID_EQ (oid_p, DB_GET_OID (&attr_p[k].value)))
 			    {
 			      db_value_put_null (&attr_p[k].value);
 			    }
@@ -3931,7 +3931,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 		    {
 		      if (DB_VALUE_TYPE (&attr_p[k].value) == DB_TYPE_OID)
 			{
-			  if (OID_EQ (oid_p, DB_PULL_OID (&attr_p[k].value)))
+			  if (OID_EQ (oid_p, DB_GET_OID (&attr_p[k].value)))
 			    {
 			      db_value_put_null (&attr_p[k].value);
 			    }
@@ -4680,13 +4680,13 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 	}
       else
 	{
-	  oid_set_p = DB_PULL_SET (&value_p->value);
+	  oid_set_p = DB_GET_SET (&value_p->value);
 	}
     }
 
   if (n_old_subset > 0)
     {
-      old_oid_set_p = DB_PULL_SET (&old_value_p->value);
+      old_oid_set_p = DB_GET_SET (&old_value_p->value);
     }
 
   cls_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
@@ -4721,7 +4721,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 	  goto error;
 	}
 
-      oid_p = DB_PULL_OID (&oid_val);
+      oid_p = DB_GET_OID (&oid_val);
       error = catcls_update_instance (thread_p, &subset_p[i], oid_p, class_oid_p, hfid_p, &scan, force_in_place);
       if (error != NO_ERROR)
 	{
@@ -4755,7 +4755,7 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 	    }
 
 	  /* logical deletion - keep OID in sequence */
-	  oid_p = DB_PULL_OID (&oid_val);
+	  oid_p = DB_GET_OID (&oid_val);
 	  error = catcls_delete_instance (thread_p, oid_p, class_oid_p, hfid_p, &scan);
 	  if (error != NO_ERROR)
 	    {

@@ -47,8 +47,7 @@
 #include "dbtype.h"
 #include "query_dump.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))
 #define INITIAL_OID_STACK_SIZE  1
@@ -2955,7 +2954,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
 	       * aggregate. */
 	      save_need_clear = result_p->need_clear;
 	      qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p), result_p, DB_VALUE_PRECISION (result_p),
-				      DB_PULL_STRING (result_p), DB_GET_STRING_SIZE (result_p) + spare_bytes,
+				      DB_GET_STRING (result_p), DB_GET_STRING_SIZE (result_p) + spare_bytes,
 				      DB_GET_STRING_CODESET (dbval1_p), DB_GET_STRING_COLLATION (dbval1_p));
 	      result_p->need_clear = save_need_clear;
 	    }
@@ -3011,7 +3010,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
 		  {
 		    save_need_clear = result_p->need_clear;
 		    qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p), result_p, DB_VALUE_PRECISION (result_p),
-					    DB_PULL_STRING (result_p), DB_GET_STRING_SIZE (result_p) + spare_bytes,
+					    DB_GET_STRING (result_p), DB_GET_STRING_SIZE (result_p) + spare_bytes,
 					    DB_GET_STRING_CODESET (dbval1_p), DB_GET_STRING_COLLATION (dbval1_p));
 		    result_p->need_clear = save_need_clear;
 		  }
@@ -8756,7 +8755,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
       return ER_FAILED;
     }
 
-  instance_oid_p = DB_PULL_OID (val_p);
+  instance_oid_p = DB_GET_OID (val_p);
   err = heap_get_class_oid (thread_p, instance_oid_p, &class_oid);
   if (err != S_SUCCESS)
     {
@@ -10497,11 +10496,11 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VAL
     }
 
   str_class_name_len = MIN (SM_MAX_IDENTIFIER_LENGTH - 1, DB_GET_STRING_SIZE (db_class_name));
-  strncpy (class_name, DB_PULL_STRING (db_class_name), str_class_name_len);
+  strncpy (class_name, DB_GET_STRING (db_class_name), str_class_name_len);
   class_name[str_class_name_len] = '\0';
 
   str_index_name_len = MIN (SM_MAX_IDENTIFIER_LENGTH - 1, DB_GET_STRING_SIZE (db_index_name));
-  strncpy (index_name, DB_PULL_STRING (db_index_name), str_index_name_len);
+  strncpy (index_name, DB_GET_STRING (db_index_name), str_index_name_len);
   index_name[str_index_name_len] = '\0';
 
   key_pos = DB_GET_INT (db_key_position);

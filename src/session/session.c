@@ -47,8 +47,7 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -1070,7 +1069,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
 	  free_and_init (state_p->plan_string);
 	}
 
-      state_p->plan_string = strdup (DB_PULL_STRING (value));
+      state_p->plan_string = strdup (DB_GET_STRING (value));
     }
 
   current = state_p->session_variables;
@@ -2228,7 +2227,7 @@ session_dump_session (SESSION_STATE * session)
   fprintf (stdout, "SESSION ID = %d\n", session->id);
 
   db_value_coerce (&session->last_insert_id, &v, db_type_to_db_domain (DB_TYPE_VARCHAR));
-  fprintf (stdout, "\tLAST_INSERT_ID = %s\n", DB_PULL_STRING (&v));
+  fprintf (stdout, "\tLAST_INSERT_ID = %s\n", DB_GET_STRING (&v));
   db_value_clear (&v);
 
   fprintf (stdout, "\tROW_COUNT = %d\n", session->row_count);
@@ -2278,7 +2277,7 @@ session_dump_variable (SESSION_VARIABLE * var)
   if (var->value != NULL)
     {
       db_value_coerce (var->value, &v, db_type_to_db_domain (DB_TYPE_VARCHAR));
-      fprintf (stdout, "%s\n", DB_PULL_STRING (&v));
+      fprintf (stdout, "%s\n", DB_GET_STRING (&v));
       db_value_clear (&v);
     }
 }
