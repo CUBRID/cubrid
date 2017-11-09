@@ -51,7 +51,7 @@
 */
 #define XMLCALL
 #endif
-#endif  /* not defined XMLCALL */
+#endif /* not defined XMLCALL */
 
 
 #if !defined(XML_STATIC) && !defined(XMLIMPORT)
@@ -63,7 +63,7 @@
 #endif
 
 #endif
-#endif  /* not defined XML_STATIC */
+#endif /* not defined XML_STATIC */
 
 
 /* If we didn't define it above, define it away: */
@@ -75,41 +75,42 @@
 #define XMLPARSEAPI(type) XMLIMPORT type XMLCALL
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #ifdef XML_UNICODE_WCHAR_T
 #define XML_UNICODE
 #endif
 
-#ifdef XML_UNICODE     /* Information is UTF-16 encoded. */
+#ifdef XML_UNICODE		/* Information is UTF-16 encoded. */
 #ifdef XML_UNICODE_WCHAR_T
-typedef wchar_t XML_Char;
-typedef wchar_t XML_LChar;
+  typedef wchar_t XML_Char;
+  typedef wchar_t XML_LChar;
 #else
-typedef unsigned short XML_Char;
-typedef char XML_LChar;
-#endif /* XML_UNICODE_WCHAR_T */
-#else                  /* Information is UTF-8 encoded. */
-typedef char XML_Char;
-typedef char XML_LChar;
-#endif /* XML_UNICODE */
+  typedef unsigned short XML_Char;
+  typedef char XML_LChar;
+#endif				/* XML_UNICODE_WCHAR_T */
+#else				/* Information is UTF-8 encoded. */
+  typedef char XML_Char;
+  typedef char XML_LChar;
+#endif				/* XML_UNICODE */
 
-#ifdef XML_LARGE_SIZE  /* Use large integers for file/stream positions. */
+#ifdef XML_LARGE_SIZE		/* Use large integers for file/stream positions. */
 #if defined(XML_USE_MSC_EXTENSIONS) && _MSC_VER < 1400
-typedef __int64 XML_Index; 
-typedef unsigned __int64 XML_Size;
+  typedef __int64 XML_Index;
+  typedef unsigned __int64 XML_Size;
 #else
-typedef long long XML_Index;
-typedef unsigned long long XML_Size;
+  typedef long long XML_Index;
+  typedef unsigned long long XML_Size;
 #endif
 #else
-typedef long XML_Index;
-typedef unsigned long XML_Size;
-#endif /* XML_LARGE_SIZE */
+  typedef long XML_Index;
+  typedef unsigned long XML_Size;
+#endif				/* XML_LARGE_SIZE */
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* not Expat_External_INCLUDED */
+#endif				/* not Expat_External_INCLUDED */
