@@ -68,11 +68,11 @@ extern "C"
   int getopt_long (int, char *const *, const char *, const struct option *, int *);
 
 /* On some platforms, this is in libc, but not in a system header */
-  extern int optreset;
-  extern char *optarg;
-  extern int opterr;
+  extern DllImport int optreset;
+  extern DllImport char *optarg;
+  extern DllImport int opterr;
   extern DllImport int optind;
-  extern int optopt;
+  extern DllImport int optopt;
 
 #ifdef __cplusplus
 }
