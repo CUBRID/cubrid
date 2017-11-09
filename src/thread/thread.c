@@ -4047,12 +4047,12 @@ thread_wakeup_auto_volume_expansion_thread (void)
 }
 
 /*
- * thread_dwb_flush_block_with_checksum_thread_is_running () - Check whether flush block thread is running
+ * thread_dwb_flush_block_thread_is_running () - Check whether flush block thread is running
  *
  *   return: true, if flush block is running
  */
 bool
-thread_dwb_flush_block_with_checksum_thread_is_running (void)
+thread_dwb_flush_block_thread_is_running (void)
 {
   return *((volatile bool *) &thread_Dwb_flush_block_thread.is_running);
 }
@@ -4104,7 +4104,7 @@ thread_dwb_flush_block_thread (void *arg_p)
 
       if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
 	{
-	  dwb_flush_block_with_checksum (tsd_ptr);
+	  dwb_flush_next_block (tsd_ptr);
 	}
     }
 
@@ -4115,11 +4115,11 @@ thread_dwb_flush_block_thread (void *arg_p)
 }
 
 /* 
- * thread_wakeup_dwb_flush_block_with_checksum_thread - wakeup the thread that flush DWB block
+ * thread_wakeup_dwb_flush_block_thread - wakeup the thread that flush DWB block
  *   return: nothing
  */
 void
-thread_wakeup_dwb_flush_block_with_checksum_thread (void)
+thread_wakeup_dwb_flush_block_thread (void)
 {
   int rv;
   rv = pthread_mutex_lock (&thread_Dwb_flush_block_thread.lock);
@@ -4131,7 +4131,7 @@ thread_wakeup_dwb_flush_block_with_checksum_thread (void)
 }
 
 /*
- * thread_dwb_flush_block_with_checksum_thread_is_running () - Check whether checksum thread is running
+ * thread_dwb_flush_block_thread_is_running () - Check whether checksum thread is running
  *
  *   return: true, if checksum thread is running
  */
