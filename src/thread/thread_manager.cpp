@@ -23,22 +23,48 @@
 
 #include "thread_manager.hpp"
 
+// same module includes
+#include "thread_daemon.hpp"
+#include "thread_entry.hpp"
+#include "thread_entry_executable.hpp"
+#include "thread_worker_pool.hpp"
+
+// project includes
+#include "resource_shared_pool.hpp"
+
+#include <cassert>
+
 namespace thread
 {
 
-manager::manager ()
-  : m_worker_pools ()
+manager::manager (std::size_t max_threads, std::size_t starting_index)
+  : m_max_threads (max_threads)
+  , m_mutex ()
+  , m_worker_pools ()
+  , m_daemons ()
+  , m_all_entries (NULL)
+  , m_entry_dispatcher (NULL)
+  , m_available_entries_count (max_threads)
 {
+  m_all_entries = new entry [max_threads];
+  for (std::size_t i = 0; i < max_threads; i++)
+    {
+      m_all_entries[i].index = (int) (starting_index + i);
+    }
+  m_entry_dispatcher = new entry_dispatcher (m_all_entries, max_threads);
 }
 
 manager::~manager ()
 {
   // pool container should be empty by now
-  assert (m_worker_pools.empty ());
+  assert (m_available_entries_count == m_max_threads);
 
   // make sure that we stop and free all
   destroy_and_untrack_all_resources (m_worker_pools);
   destroy_and_untrack_all_resources (m_daemons);
+
+  delete m_entry_dispatcher;
+  delete [] m_all_entries;
 }
 
 template<typename Res>
@@ -53,8 +79,39 @@ void manager::destroy_and_untrack_all_resources (std::vector<Res*>& tracker)
     }
 }
 
+template<typename Res, typename ... CtArgs>
+inline Res * manager::create_and_track_resource (std::vector<Res*>& tracker, size_t entries_count, CtArgs &&... args)
+{
+  std::unique_lock<std::mutex> lock (m_mutex);  // safe-guard
+
+  if (m_available_entries_count < entries_count)
+    {
+      return NULL;
+    }
+
+  Res *new_res = new Res (std::forward<CtArgs> (args)...);
+
+  tracker.push_back (new_res);
+
+  return new_res;
+}
+
+worker_pool *
+manager::create_worker_pool (size_t pool_size, size_t work_queue_size)
+{
+  return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size);
+}
+
+daemon *
+manager::create_daemon(looper & looper_arg, entry_executable * exec_p)
+{
+  exec_p->set_manager (this);
+  return create_and_track_resource (m_daemons, 1, looper_arg, exec_p);
+}
+
 template<typename Res>
-inline void manager::destroy_and_untrack_resource (std::vector<Res*>& tracker, Res *& res)
+inline void
+manager::destroy_and_untrack_resource (std::vector<Res*>& tracker, Res *& res)
 {
   std::unique_lock<std::mutex> lock (m_mutex);    // safe-guard
 
@@ -89,20 +146,22 @@ manager::destroy_worker_pool (worker_pool *& worker_pool_arg)
   return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg);
 }
 
-void manager::destroy_daemon (daemon *& daemon_arg)
+void
+manager::destroy_daemon (daemon *& daemon_arg)
 {
   return destroy_and_untrack_resource (m_daemons, daemon_arg);
-  std::unique_lock<std::mutex> lock (m_mutex);    // safe-guard
+}
 
-  assert (daemon_arg != NULL);
+entry *
+manager::claim_entry (void)
+{
+  return m_entry_dispatcher->claim ();
+}
 
-  for (auto daemon_iter = m_daemons.begin (); daemon_iter != m_daemons.end (); ++daemon_iter)
-    {
-      if (*daemon_iter == daemon_arg)
-        {
-          
-        }
-    }
+void
+manager::retire_entry (entry & entry_p)
+{
+  m_entry_dispatcher->retire (entry_p);
 }
 
 } // namespace thread

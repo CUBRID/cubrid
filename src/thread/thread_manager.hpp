@@ -24,78 +24,60 @@
 #ifndef _THREAD_MANAGER_HPP_
 #define _THREAD_MANAGER_HPP_
 
-#include "thread_worker_pool.hpp"
-#include "thread_daemon.hpp"
-
-#include <vector>
 #include <mutex>
+#include <vector>
+
+template <typename T>
+class resource_shared_pool;
 
 namespace thread
 {
 
+// forward definition
+class worker_pool;
+class looper;
+class daemon;
+class entry;
+class entry_executable;
+
 class manager
 {
 public:
-  manager ();
+  // TODO: remove starting_index
+  manager (std::size_t max_threads, std::size_t starting_index = 0);
   ~manager ();
 
-  template <typename ... Args>
-  worker_pool * create_worker_pool (Args &&... args);
+  worker_pool * create_worker_pool (size_t pool_size, size_t work_queue_size);
   void destroy_worker_pool (worker_pool *& worker_pool_arg);
 
-  template <typename Func, typename ... Args>
-  daemon * create_daemon (looper & looper_arg, Func && func, Args &&... args);
+  daemon * create_daemon (looper & looper_arg, entry_executable * exec_p);
   void destroy_daemon (daemon *& daemon_arg);
+
+  entry *claim_entry (void);
+  void retire_entry (entry & entry_p);
 
 private:
 
+  typedef resource_shared_pool<entry> entry_dispatcher;
+
   template <typename Res, typename ... CtArgs>
-  Res * create_and_track_resource (std::vector<Res *> & tracker, CtArgs &&... args);
+  Res * create_and_track_resource (std::vector<Res *> & tracker, size_t entries_count, CtArgs &&... args);
   template <typename Res>
   void destroy_and_untrack_resource (std::vector<Res *> & tracker, Res *& res);
   template <typename Res>
   void destroy_and_untrack_all_resources (std::vector<Res *> & tracker);
 
+  std::size_t m_max_threads;
+
+  std::mutex m_mutex;
   std::vector<worker_pool *> m_worker_pools;
   std::vector<daemon *> m_daemons;
-  std::mutex m_mutex;
+
+  entry *m_all_entries;
+  entry_dispatcher *m_entry_dispatcher;
+  std::size_t m_available_entries_count;
 };
 
 } // namespace thread
 
 #endif  // _THREAD_MANAGER_HPP_
-
-/************************************************************************/
-/* Template implementation                                              */
-/************************************************************************/
-
-namespace thread
-{
-
-template<typename Res, typename ... CtArgs>
-inline Res * manager::create_and_track_resource (std::vector<Res*>& tracker, CtArgs &&... args)
-{
-  std::unique_lock<std::mutex> lock (m_mutex);  // safe-guard
-
-  Res *new_res = new Res (std::forward<CtArgs> (args)...);
-
-  tracker.push_back (new_res);
-
-  return new_res;
-}
-
-template <typename ... Args>
-worker_pool *
-manager::create_worker_pool (Args &&... args)
-{
-  return create_and_track_resource (m_worker_pools, std::forward<Args> (args)...);
-}
-
-template<typename Func, typename ...Args>
-daemon *
-manager::create_daemon(looper & looper_arg, Func && func, Args && ...args)
-{
-  return create_and_track_resource (m_daemons, looper_arg, std::forward<Func> (func), std::forward<Args> (args)...);
-}
-
-} // namespace thread

@@ -93,6 +93,7 @@ entry::entry ()
   , fi_test_array (NULL)
   , count_private_allocators (0)
 #endif /* DEBUG */
+  , m_cleared (false)
 {
   if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
     {
@@ -140,8 +141,18 @@ entry::entry ()
 #endif /* DEBUG */
 }
 
-entry::~entry ()
+entry::~entry (void)
 {
+  clear_resources ();
+}
+
+void
+entry::clear_resources (void)
+{
+  if (m_cleared)
+    {
+      return;
+    }
   for (int i = 0; i < 3; i++)
     {
       if (cnv_adj_buffer[i] != NULL)
@@ -187,6 +198,8 @@ entry::~entry ()
 #if !defined (NDEBUG)
   fi_thread_final (this);
 #endif // DEBUG
+
+  m_cleared = true;
 }
 
 } // namespace thread

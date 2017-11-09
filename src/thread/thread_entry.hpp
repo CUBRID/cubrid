@@ -107,7 +107,7 @@ public:
 
   // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
   // public
-  size_t index;			/* thread entry index */
+  int index;			/* thread entry index */
   THREAD_TYPE type;		/* thread type */
   pthread_t tid;		/* thread id */
   pthread_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
@@ -190,8 +190,10 @@ public:
 #endif
 
 private:
+  void clear_resources (void);
 
-  // TODO: move all members here
+  // TODO: move all members her
+  bool m_cleared;
 };
 
 } // namespace thread

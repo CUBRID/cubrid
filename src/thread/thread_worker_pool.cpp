@@ -23,6 +23,23 @@
 
 namespace thread {
 
+worker_pool::worker_pool (size_t pool_size, size_t work_queue_size)
+  : m_max_workers (pool_size)
+  , m_worker_count (0)
+  , m_work_queue (work_queue_size)
+  , m_threads (new std::thread[m_max_workers])
+  , m_thread_dispatcher (m_threads, m_max_workers)
+  , m_stopped (false)
+{
+}
+
+worker_pool::~worker_pool ()
+{
+  // not safe to destroy running pools
+  assert (m_stopped);
+  delete[] m_threads;
+}
+
 bool
 worker_pool::try_execute (executable * work_arg)
 {

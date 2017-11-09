@@ -25,26 +25,51 @@
 
 #include "test_output.hpp"
 
+#include "thread_entry_executable.hpp"
 #include "thread_executable.hpp"
+#include "thread_looper.hpp"
 #include "thread_manager.hpp"
 
+#include "lock_free.h"
+
 #include <iostream>
+#include <sstream>
 
 namespace test_thread
 {
 
-class dummy_exec : public thread::executable
+class dummy_exec : public thread::entry_executable
 {
   void execute_task ()
   {
-    test_common::sync_cout ("dummy_exec\n");
+    std::stringstream ss;
+    ss << "entry_p: " << get_entry () << std::endl;
+    test_common::sync_cout (ss.str ());
+  }
+
+  void retire ()
+  {
+    thread::entry_executable::retire ();
+    test_common::sync_cout ("dummy_retire\n");
   }
 };
 
-int
-test_manager (void)
+void
+prepare (std::size_t max_threads)
 {
-  thread::manager thread_manager;
+  lf_initialize_transaction_systems ((int) max_threads);
+}
+
+void
+end (void)
+{
+  lf_destroy_transaction_systems ();
+}
+
+void
+run (std::size_t max_threads)
+{
+  thread::manager thread_manager (max_threads);
 
   thread::worker_pool *dummy_pool = thread_manager.create_worker_pool (1, 1);
   thread_manager.destroy_worker_pool (dummy_pool);
@@ -53,6 +78,16 @@ test_manager (void)
   thread_manager.destroy_daemon (daemon);
 
   std::cout << "  test_manager successful" << std::endl;
+}
+
+int
+test_manager (void)
+{
+  const std::size_t MAX_THREADS = 16;
+
+  prepare (MAX_THREADS);
+  run (MAX_THREADS);
+  end ();
 
   return 0;
 }
