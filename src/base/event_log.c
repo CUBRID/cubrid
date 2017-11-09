@@ -389,7 +389,7 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id,
  *   bind_index(in):
  */
 void
-event_log_bind_values (FILE * log_fp, int tran_index, int bind_index)
+event_log_bind_values (THREAD_ENTRY* thread_p, FILE * log_fp, int tran_index, int bind_index)
 {
   LOG_TDES *tdes;
   int i, indent = 2;

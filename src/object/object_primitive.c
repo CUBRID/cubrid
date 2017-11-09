@@ -10410,11 +10410,7 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 char *
 pr_valstring (DB_VALUE * val)
 {
-  int str_size;
   char *str;
-  PR_TYPE *pr_type;
-  DB_TYPE dbval_type;
-
   const char null_str[] = "(null)";
   const char NULL_str[] = "NULL";
 
@@ -10440,8 +10436,8 @@ pr_valstring (DB_VALUE * val)
       return str;
     }
 
-  dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-  pr_type = PR_TYPE_FROM_ID (dbval_type);
+  DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
+  PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
 
   if (pr_type == NULL)
     {
@@ -10453,7 +10449,7 @@ pr_valstring (DB_VALUE * val)
    * how big to make the actual buffer.  Most things are pretty small, so
    * don't worry about this too much.
    */
-  str_size = 32;
+  int str_size = 32;
 
   str = (char *) malloc (str_size);
   if (str == NULL)
