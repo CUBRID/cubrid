@@ -41,8 +41,8 @@
 #include "release_string.h"
 #include "dbtype.h"
 #include "memory_hash.h"
-#include "lzoconf.h"
-#include "lzo1x.h"
+#include "lzo/lzoconf.h"
+#include "lzo/lzo1x.h"
 
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
 

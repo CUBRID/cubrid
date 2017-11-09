@@ -106,7 +106,7 @@ set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo lib
 set(WITH_LIBGPG_ERROR "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: EXTERNAL)")
 set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: EXTERNAL)")
 
-# NCURSES - gcc 4.7+ systems: GIT, Otherwise: SYSTEM
+# NCURSES - gcc 4.7+ systems: EXTERNAL, Otherwise: SYSTEM
 if(UNIX)
   if(CMAKE_COMPILER_IS_GNUCC)
     if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
@@ -124,6 +124,7 @@ message(STATUS "Build with gcrypt library: ${WITH_LIBGCRYPT}")
 message(STATUS "Build with gpg-error library: ${WITH_LIBGPG_ERROR}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
+
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
 if(EXISTS ${CMAKE_SOURCE_DIR}/VERSION)
@@ -932,11 +933,13 @@ if(WITH_LIBEDIT STREQUAL "EXTERNAL")
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
       URL               ${WITH_LIBEDIT_URL}
-      #DEPENDS           libncurses
       CONFIGURE_COMMAND "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
+    if(TARGET ${LIBNCURSES_TARGET})
+      add_dependencies(${LIBEDIT_TARGET} ${LIBNCURSES_TARGET})
+    endif()
     set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a)
     set(LIBEDIT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBEDIT_TARGET})
@@ -952,50 +955,15 @@ list(APPEND EP_LIBS ${LIBEDIT_LIBS})
 list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
 
 # WITH_LIBLZO can have multiple values with different meanings
-# on Linux:
-# * "BUNDLED" - (default) builds lzo library from cubrid/external/lzo-2.03 and
+# * "EXTERNAL" - (default) builds lzo library from URL stored in ${WITH_LIBLZO_URL}
 #               uses the library created by the build
-# * "BUNDLEDsome_name" - (e.g. BUNDLEDlzo-2.10) builds lzo library from 
-#               cubrid/external/some_name and  uses the library created by the build
-# * "" - use lzo library from the system (see cubrid/cmake/FindLZO.cmake)
-# * "/some/path" - use lzo library located in /some/path 
-#               /some/path/include/lzo should contain header files
-#               /some/path/lib should contain the library
-#               (see cubrid/cmake/FindLZO.cmake)
-# * "http://U/R/L/to/lzo.tar.gz" - downloads the library from specified URL and builds it
-# on Windows:
-# * BUNDLED - (default) uses the prebuilt library from cubrid/win/external/
-# * "" - searches for LZO library in some default system locations
-# * "/some/path" - searches for LZO library in the given path
-
-if(WITH_LIBLZO MATCHES "^BUNDLED")
-  string(SUBSTRING "${WITH_LIBLZO}" 7 -1 LZO_PATH)
-  
-  if(LZO_PATH STREQUAL "")
-    set(LZO_PATH "lzo-2.03")
-  endif()
-  
-  if(UNIX)
-    set(LIBLZO_TARGET liblzo)
-    # compile LZO library from cubrid/external/${LZO_PATH}
-    externalproject_add(${LIBLZO_TARGET}
-      SOURCE_DIR        ${CMAKE_CURRENT_SOURCE_DIR}/external/${LZO_PATH}
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
-    set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/lzo)
-    list(APPEND EP_TARGETS ${LIBLZO_TARGET})
-  else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/lzo2.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/lzo2.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/lzo)
-  endif(UNIX)
-elseif(WITH_LIBLZO STREQUAL "EXTERNAL")
+# * "SYSTEM" - use lzo library located in:
+#               ${WITH_EXTERNAL_LIBS_PATH}
+#               ${WITH_LIBLZO_ROOT_PATH}/lib
+#              use lzo headers located in:
+#               ${WITH_EXTERNAL_HEADERS_PATH}
+#               ${WITH_LIBLZO_ROOT_PATH}/include
+if(WITH_LIBLZO STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBLZO_TARGET liblzo)
     #compile LZO library given an internet url to a LZO archive
@@ -1012,22 +980,19 @@ elseif(WITH_LIBLZO STREQUAL "EXTERNAL")
   else(UNIX)
   endif(UNIX)
 else()
-  set(LZO_ROOT ${WITH_LIBLZO})
-  #searches for LZO library within LZO_ROOT path and other system paths (see cubrid/cmake/FindLZO.cmake).
-  #calls cubrid/cmake/FindLZO.cmake
-  find_package(LZO REQUIRED)
-  if(LZO_FOUND)
-    set(LIBLZO_LIBS     ${LZO_LIBRARIES})
-    set(LIBLZO_INCLUDES ${LZO_INCLUDE_DIR})
-  endif()
+  find_library(LIBLZO_LIBS NAMES liblzo2.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBLZO_ROOT_PATH}/lib REQUIRED)
+  find_path(LIBLZO_INCLUDES NAMES lzo/lzoconf.h lzo/lzo1x.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBLZO_ROOT_PATH}/include REQUIRED)
+
+  message(STATUS "Found lzo library: ${LIBLZO_LIBS}")
+  message(STATUS "Found lzo headers: ${LIBLZO_INCLUDES}")
 endif()
 list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
 list(APPEND EP_LIBS ${LIBLZO_LIBS})
 
 if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
   if(UNIX)
-    set(LIBGPGERROR_TARGET libgpg-error)
-    externalproject_add(${LIBGPGERROR_TARGET}
+    set(LIBGPGE_RROR_TARGET libgpg-error)
+    externalproject_add(${LIBGPGE_RROR_TARGET}
       URL               ${WITH_LIBGPG_ERROR_URL}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1035,7 +1000,7 @@ if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
       )
     set(LIBGPG_ERROR_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgpg-error.a)
     set(LIBGPG_ERROR_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBGPGERROR_TARGET})
+    list(APPEND EP_TARGETS ${LIBGPGE_RROR_TARGET})
   endif(UNIX)
 elseif(WITH_LIBGPG_ERROR STREQUAL "SYSTEM")
   find_library(LIBGPG_ERROR_LIBS NAMES libgpg-error.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/lib REQUIRED)
@@ -1049,14 +1014,22 @@ list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
 
 if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
   if(UNIX)
+    if(TARGET ${LIBGPGE_RROR_TARGET})
+      set(WITH_LIBGPG_ERROR_PREFIX "--with-libgpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external")
+    endif()
+
     set(LIBGCRYPT_TARGET libgcrypt)
     externalproject_add(${LIBGCRYPT_TARGET}
       URL               ${WITH_LIBGCRYPT_URL}
-      #DEPENDS           libgpg-error
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --with-libgpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc ${WITH_LIBGPG_ERROR_PREFIX}
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
+
+    if(TARGET ${LIBGPGE_RROR_TARGET})
+      add_dependencies(${LIBGCRYPT_TARGET} ${LIBGPGE_RROR_TARGET})
+    endif()
+
     set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
     set(LIBGCRYPT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBGCRYPT_TARGET})
