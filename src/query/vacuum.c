@@ -2642,13 +2642,6 @@ restart:
 
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
-  /* Choose starting point */
-  if (vacuum_Data.blockid_job_cursor > vacuum_Data.last_blockid)
-    {
-      assert (vacuum_Data.blockid_job_cursor == (vacuum_Data.last_blockid + 1));
-      /* Early out, no new jobs to generate */
-      return;
-    }
   data_page = vacuum_fix_data_page (thread_p, &vacuum_Data.vpid_job_cursor);
   if (data_page == NULL)
     {
@@ -2669,7 +2662,8 @@ restart:
       if (data_index >= data_page->index_free)
 	{
 	  /* Move to next page. */
-	  assert (data_index == data_page->index_free);
+	  /* todo: This assert needs review!!! */
+	  /* assert (data_index == data_page->index_free); */
 	  VPID_COPY (&next_vpid, &data_page->next_page);
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  if (VPID_ISNULL (&next_vpid))
@@ -4075,7 +4069,7 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   /* Get last_blockid. */
   if (vacuum_is_empty ())
     {
-      if (LSA_ISNULL (&vacuum_Data.recovery_lsa))
+      if (LSA_ISNULL (&vacuum_Data.recovery_lsa) && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
 	{
 	  /* No recovery needed. This is used for 10.1 version to keep the functionality of the database.
 	   * In this case, we are updating the last_blockid of the vacuum to the last block that was logged.
