@@ -82,7 +82,7 @@ set(WITH_LIBLZO_URL "http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.t
 set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.27.tar.bz2")
 
 # gcrypt library sources URL
-set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.8.1.tar.bz2")
+set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.5.6.tar.bz2")
 
 # ncurses library git properties
 set(WITH_LIBNCURSES_GIT_REPOSITORY "https://github.com/mirror/ncurses.git")
@@ -1018,14 +1018,10 @@ list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
 
 if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
   if(UNIX)
-    if(TARGET ${LIBGPGE_RROR_TARGET})
-      set(WITH_LIBGPG_ERROR_PREFIX "--with-libgpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external")
-    endif()
-
     set(LIBGCRYPT_TARGET libgcrypt)
     externalproject_add(${LIBGCRYPT_TARGET}
       URL               ${WITH_LIBGCRYPT_URL}
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc ${WITH_LIBGPG_ERROR_PREFIX}
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
