@@ -2384,7 +2384,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
       /* Check whether the volume was removed meanwhile. */
       if (vol_fd != NULL_VOLDES)
 	{
-#if 1				/* TODO - do not delete me */
+#if 1
 	  assert (p_dwb_ordered_slots[i].io_page->prv.pflag_reserve_1 == '\0');
 	  assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_2 == 0);
 	  assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
@@ -2489,7 +2489,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   /* Remove duplicates */
   for (i = 0; i < block->count_wb_pages - 1; i++)
     {
-#if 1				/* TODO - do not delete me */
+#if 1
       assert (p_dwb_ordered_slots[i].io_page->prv.pflag_reserve_1 == '\0');
       assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_2 == 0);
       assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
@@ -2763,7 +2763,7 @@ dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot, FILEIO_PAGE * i
 {
   assert (dwb_slot != NULL && io_page_p != NULL);
 
-#if 1				/* TODO - do not delete me */
+#if 1
   assert (io_page_p->prv.pflag_reserve_1 == '\0');
   assert (io_page_p->prv.p_reserve_2 == 0);
   assert (io_page_p->prv.p_reserve_3 == 0);
@@ -3340,7 +3340,7 @@ end:
  * db_name_p (in): The database name.
  *
  *  Note: This function is called at recovery. The corrupted pages are recovered from double write volume buffer disk.
- *    Then, double write volume buffer disk is recreated according to user specifications. 
+ *    Then, double write volume buffer disk is recreated according to user specifications.
  */
 int
 dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p)
@@ -3402,7 +3402,8 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	{
 	  goto end;
 	}
-      /* Now, flush the volumes has pages in current block. */
+
+      /* Now, flush the volumes having pages in current block. */
       for (i = 0; i < rcv_block->count_to_flush_vdes; i++)
 	{
 	  fileio_synchronize (thread_p, rcv_block->to_flush_vdes[i], NULL);
@@ -3526,8 +3527,7 @@ start:
 	{
 	  if (DWB_GET_PREV_BLOCK (flush_block->block_no)->count_wb_pages != 0)
 	    {
-	      /* TODO - assert_release */
-	      abort ();
+	      assert_release (false);
 	    }
 	}
 
@@ -3619,12 +3619,13 @@ start:
     }
 
   current_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (position_with_flags);
+  /* Save the block version, to detect whether the block was overwritten. */
   block_version = double_Write_Buffer.blocks[current_block_no].version;
   assert (current_block_no < DWB_NUM_TOTAL_BLOCKS);
 
   if (position_with_flags != ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL))
     {
-      /* The position_with_flags modified meanwhile by concurrent threads. */
+      /* The position_with_flags was modified meanwhile by concurrent threads. */
       goto start;
     }
 
@@ -3654,6 +3655,7 @@ start:
 
   if (block_version == double_Write_Buffer.blocks[current_block_no].version)
     {
+      /* Needs block flushing. */
       if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%lld) \n",
@@ -3775,8 +3777,8 @@ start:
  * return   : Error code.
  * thread_p (in): The thread entry.
  * vpid(in): The page identifier.
- * io_page_p(in): In-memory address where the content of the page will be copied.
- * success(in): True, if found and read from DWB.
+ * io_page(out): In-memory address where the content of the page will be copied.
+ * success(out): True, if found and read from DWB.
  */
 int
 dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool * success)

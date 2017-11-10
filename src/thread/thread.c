@@ -4104,7 +4104,10 @@ thread_dwb_flush_block_thread (void *arg_p)
 
       if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
 	{
-	  dwb_flush_next_block (tsd_ptr);
+	  if (dwb_flush_next_block (tsd_ptr) != NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
 	}
     }
 
