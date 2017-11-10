@@ -61,6 +61,8 @@ typedef struct pr_type
   /* print dbvalue to buffer */
 #ifdef __cplusplus
   void (*sptrfunc) (const DB_VALUE * value, string_buffer& sb);
+#else
+  void* sptrfunc;
 #endif
 
   /* initialize memory */
@@ -357,7 +359,7 @@ extern void pr_free_string (char *str);
 #endif
 
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
-extern char *pr_valstring (DB_VALUE *, THREAD_ENTRY* );
+extern char *pr_valstring (THREAD_ENTRY*, DB_VALUE *);
 
 /* area init */
 extern int pr_area_init (void);

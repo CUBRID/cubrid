@@ -11,16 +11,19 @@
 #include "transaction_cl.h"
 #include "work_space.h"
 
-//bSolo ToDo: add init() method
-object_description::object_description (struct db_object *op)
+object_description::object_description ()
   : classname (0)
   , oid (0)
   , attributes (0)
   , shared (0)
 {
+}
+
+bool object_description::init (struct db_object *op)
+{
   if (op == 0)
     {
-      return;
+      return false;
     }
   int error;
   SM_CLASS *class_;
@@ -37,13 +40,13 @@ object_description::object_description (struct db_object *op)
       is_class = locator_is_class (op, DB_FETCH_READ);
       if (is_class < 0)
 	{
-	  return;
+	  return false;
 	}
     }
   if (op == NULL || is_class)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return;
+      return false;
     }
   else
     {
@@ -57,9 +60,9 @@ object_description::object_description (struct db_object *op)
 
 	      this->classname = object_print::copy_string ((char *) sm_ch_name ((MOBJ) class_));
 
-              mem::block mem_block;
-              string_buffer sb (mem_block, mem::default_realloc);
-              db_value_printer printer (sb);
+	      mem::block mem_block;
+	      string_buffer sb (mem_block, mem::default_realloc);
+	      db_value_printer printer (sb);
 
 	      DB_MAKE_OBJECT (&value, op);
 	      printer.describe_data (&value);
@@ -77,7 +80,7 @@ object_description::object_description (struct db_object *op)
 		  if (strs == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-		      return;
+		      return false;
 		    }
 		  i = 0;
 		  for (attribute_p = class_->ordered_attributes; attribute_p != NULL;
@@ -107,6 +110,7 @@ object_description::object_description (struct db_object *op)
 	  (void) ws_pin (op, pin);
 	}
     }
+  return true;
 }
 
 object_description::~object_description()

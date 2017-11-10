@@ -10411,7 +10411,7 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  *    serious formatting for external use.  Use it to get printed DB_VALUE
  *    representations into error messages and the like.
  */
-char *pr_valstring (DB_VALUE * val, THREAD_ENTRY* threade)
+char *pr_valstring (THREAD_ENTRY* threade, DB_VALUE * val)
 {
   mem::block mem_block;
   string_buffer sb(
