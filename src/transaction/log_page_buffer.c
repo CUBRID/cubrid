@@ -94,6 +94,7 @@
 #include "event_log.h"
 #include "thread.h"
 #include "tsc_timer.h"
+#include "vacuum.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -6914,10 +6915,10 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	{
 	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
 
+#if defined (SA_MODE)
 	  /* Update the last_blockid needed for vacuum. Get the first page_id of the previously logged archive */
-	  new_page_id = log_Gl.append.prev_lsa.pageid;
-	  logpb_update_last_blockid (thread_p, new_page_id);
-
+	  log_Gl.hdr.vacuum_last_blockid = logpb_last_complete_blockid ();
+#endif /* SA_MODE */
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
 
@@ -12117,18 +12118,23 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
 }
 
 /*
- * logpb_update_last_blockid () - Updates the last_blockid needed later for vacuum.
- * 
- * return :- void
+ * logpb_last_complete_blockid () - get blockid of last completely logged block
  *
- * thread_p (in) :- Thread context.
- * page_id (in)  :- The first page id of the block that must updated to.
+ * return    : blockid
  */
-void
-logpb_update_last_blockid (THREAD_ENTRY * thread_p, LOG_PAGEID page_id)
+VACUUM_LOG_BLOCKID
+logpb_last_complete_blockid (void)
 {
-  VACUUM_LOG_BLOCKID last_blockid;
+  LOG_PAGEID prev_pageid = log_Gl.append.prev_lsa.pageid;
+  VACUUM_LOG_BLOCKID blockid = vacuum_get_log_blockid (prev_pageid);
 
-  last_blockid = vacuum_get_log_blockid (page_id);
-  log_Gl.hdr.vacuum_last_blockid = last_blockid;
+  if (blockid < 0)
+    {
+      assert (blockid == VACUUM_NULL_LOG_BLOCKID);
+      assert (LSA_ISNULL (&log_Gl.append.prev_lsa));
+      return VACUUM_NULL_LOG_BLOCKID;
+    }
+
+  /* the previous block is the one completed */
+  return blockid - 1;
 }

@@ -29,6 +29,8 @@
 #include <sys/time.h>
 #include <assert.h>
 
+#define strlen(s1) ((int) strlen(s1))
+
 /* wait-free random number array */
 #define RAND_BLOCKS	64
 #define RAND_BLOCK_SIZE	1000000

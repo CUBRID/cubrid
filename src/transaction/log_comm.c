@@ -40,6 +40,9 @@
 #include "misc_string.h"
 #include "intl_support.h"
 #include "log_impl.h"
+#if defined (SERVER_MODE)
+#include "vacuum.h"
+#endif /* SERVER_MODE */
 #if !defined(WINDOWS)
 #if defined(CS_MODE)
 #include "db.h"
