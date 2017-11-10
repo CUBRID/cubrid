@@ -5226,6 +5226,30 @@ log_free_lob_locator (LOB_LOCATOR_ENTRY * entry)
   free_and_init (entry);
 }
 
+#if 0
+static const char *
+lob_state_to_string (LOB_LOCATOR_STATE state)
+{
+  switch (state)
+    {
+    case LOB_TRANSIENT_CREATED:
+      return "LOB_TRANSIENT_CREATED";
+
+    case LOB_TRANSIENT_DELETED:
+      return "LOB_TRANSIENT_DELETED";
+
+    case LOB_PERMANENT_CREATED:
+      return "LOB_PERMANENT_CREATED";
+
+    case LOB_PERMANENT_DELETED:
+      return "LOB_PERMANENT_DELETED";
+
+    default:
+      return "LOB_UNKNOWN";
+    }
+}
+#endif
+
 /*
  * log_clear_lob_locator_list -
  *
@@ -5256,17 +5280,8 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
     {
 #if 0
       er_log_debug (ARG_FILE_LINE, "   locator=%s, state=%s\n, savept_lsa=(%d,%d)", entry->key,
-		    (entry->top->state ==
-		     LOB_TRANSIENT_CREATED) ? "LOB_TRANSIENT_CREATED" : ((entry->top->state ==
-									  LOB_TRANSIENT_DELETED) ?
-									 "LOB_TRANSIENT_DELETED"
-									 : ((entry->top->state ==
-									     LOB_PERMANENT_CREATED) ?
-									    "LOB_PERMANENT_CREATED" : (entry->top->
-												       state ==
-												       LOB_PERMANENT_DELETED)
-									    ? "LOB_PERMANENT_DELETED" : "LOB_UNKNOWN")),
-		    entry->top->savept_lsa.pageid, entry->top->savept_lsa.offset);
+		    lob_state_to_string (entry->top->state), entry->top->savept_lsa.pageid,
+		    entry->top->savept_lsa.offset);
 #endif
       /* setup next link before destroy */
       next = RB_NEXT (lob_rb_root, &tdes->lob_locator_root, entry);
