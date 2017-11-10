@@ -39,9 +39,7 @@
 #define _STRING_BUFFER_HPP_
 
 #include "mem_block.hpp"
-#if defined (LINUX)
-#include <stddef.h> //size_t on Linux
-#endif /* LINUX */
+#include <stddef.h>
 #include <stdio.h>
 #include <functional>
 

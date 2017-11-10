@@ -21,8 +21,9 @@
 #include "authenticate.h"
 #include "class_object.h"
 #include "locator_cl.h"
-#include "msgcat_help.hpp"
+#include "mem.hpp"
 #include "message_catalog.h"
+#include "msgcat_help.hpp"
 #include "object_printer.hpp"
 #include "object_print_util.hpp"
 #include "parse_tree.h"
@@ -160,15 +161,9 @@ bool class_description::init (const char *name)
 bool class_description::init (struct db_object *op, type prt_type)
 {
   mem::block mem_block;
-  string_buffer sb(
-    mem_block,
-    [](mem::block& block, size_t len)
-      {
-        //bSolo: ToDo: what allocator to use here?
-        //a stack allocator would be enough?
-      }
-  );
+  string_buffer sb(mem_block, mem::default_realloc);
   return init(op, prt_type, sb);
+  //bSolo: ToDo: make mem::block self destruct or explicitly call mem::default_dealloc()
 }
 
 bool class_description::init (struct db_object *op, type prt_type, string_buffer& sb)

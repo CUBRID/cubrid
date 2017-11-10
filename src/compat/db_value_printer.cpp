@@ -550,7 +550,7 @@ void db_value_printer::describe_midxkey (const db_midxkey *midxkey, int help_Max
 }
 
 //--------------------------------------------------------------------------------
-void db_value_printer::describe_set (const DB_SET *set, int help_Max_set_elements)
+void db_value_printer::describe_set (const db_collection *set, int help_Max_set_elements)
 {
   DB_VALUE value;
   int size, end, i;

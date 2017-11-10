@@ -35,6 +35,8 @@
 #include "boot_cl.h"
 #include "class_object.h"
 #include "db.h"
+#include "mem.hpp"
+#include "mem_block.hpp"
 #include "object_print.h"
 #include "object_printer.hpp"
 #include "server_interface.h"
@@ -2406,23 +2408,15 @@ db_get_btree_statistics (DB_CONSTRAINT * cons, int *num_leaf_pages, int *num_tot
 int
 db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 {
-  PARSER_CONTEXT *parser;
   DB_TYPE type;
   const char *table_name;
   int error_status = NO_ERROR;
 
   assert (result != (DB_VALUE *) NULL);
-
   if (DB_IS_NULL (name_val))
     {
       PRIM_SET_NULL (result);
       return NO_ERROR;
-    }
-
-  parser = parser_create_parser ();
-  if (parser == NULL)
-    {
-      goto error;
     }
 
   type = DB_VALUE_DOMAIN_TYPE (name_val);
@@ -2444,18 +2438,11 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 	}
 
         mem::block mem_block;
-        string_buffer sb(
-          mem_block,
-          [](mem::block& block, size_t len)
-            {
-              //bSolo: ToDo: what allocator should be used here?
-              //stack_allocator would be good?
-              //or is something from db_make_string_copy() family?
-            }
-        );
+        string_buffer sb(mem_block, mem::default_realloc);
         object_printer printer(sb);
         printer.describe_class(class_op);
         db_make_string_copy (result, mem_block.ptr);
+        mem::default_dealloc(mem_block);
     }
   else
     {
@@ -2463,21 +2450,10 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
       goto error;
     }
 
-  if (parser != NULL)
-    {
-      parser_free_parser (parser);
-    }
-
   return error_status;
 
 error:
   PRIM_SET_NULL (result);
-
-  if (parser != NULL)
-    {
-      parser_free_parser (parser);
-    }
-
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;

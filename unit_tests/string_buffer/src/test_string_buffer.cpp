@@ -20,15 +20,11 @@
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 #include <assert.h>
-#include <chrono>
-
-#if defined (LINUX)
-#include <stddef.h> //size_t on Linux
-#endif /* LINUX */
-
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <chrono>
 
 #define ERR(format, ...) printf ("ERR " format "\n", __VA_ARGS__)
 #define WRN(format, ...) printf ("WRN " format "\n", __VA_ARGS__)

@@ -40,6 +40,8 @@
 #include "chartype.h"
 #include "parser.h"
 #include "parser_message.h"
+#include "mem.hpp"
+#include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "intl_support.h"
 #include "error_manager.h"
@@ -9034,22 +9036,14 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
     }
 
   mem::block mem_block;
-  string_buffer sb(
-    mem_block, 
-    [&parser](mem::block& block, size_t len)
-      {
-        //is this right? is there a function that extends a buffer?
-        PARSER_VARCHAR *vc = (PARSER_VARCHAR *)parser_allocate_string_buffer(parser, len, sizeof(size_t));
-        block.ptr = (char*)pt_get_varchar_bytes(vc);
-        block.dim += len;
-      }
-  );
+  string_buffer sb(mem_block, mem::default_realloc);//ToDo: use parser_alloc() & Co
   object_printer obj_print(sb);
   obj_print.describe_class(class_op);
-#if 0 //old
-  PARSER_VARCHAR *buffer = pt_append_nulstring(parser, NULL, b);
+#if 1 //mem::default_realloc()
+  PARSER_VARCHAR *buffer = pt_append_nulstring(parser, NULL, mem_block.ptr);
+  mem::default_dealloc(mem_block);
   return ((char *) pt_get_varchar_bytes (buffer));
-#else //bSolo: check!!!
+#else //mem::parser_realloc()
   return mem_block.ptr;
 #endif
 }

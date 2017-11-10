@@ -4,12 +4,14 @@
 #include "db_value_printer.hpp"
 #include "dbi.h"
 #include "locator_cl.h"
+#include "mem.hpp"
 #include "object_print_util.hpp"
 #include "schema_manager.h"
 #include "string_buffer.hpp"
 #include "transaction_cl.h"
 #include "work_space.h"
 
+//bSolo ToDo: add init() method
 object_description::object_description (struct db_object *op)
   : classname (0)
   , oid (0)
@@ -29,20 +31,6 @@ object_description::object_description (struct db_object *op)
   int pin;
   size_t buf_size;
   DB_VALUE value;
-
-  mem::block mem_block;
-  string_buffer sb(
-    mem_block,
-    [](mem::block& block, size_t len)
-      {
-        //bSolo: ToDo: what allocator to use here?
-        //looks like only object_print::copy_string() is used (malloc based)
-        //=> use malloc/realloc() directly, is it OK???
-        for(size_t n=block.dim; block.dim < n+len; block.dim*=2); // calc next power of 2
-        block.ptr = (char *) realloc (block.ptr, block.dim);
-      }
-  );
-  db_value_printer printer (sb);
 
   if (op != NULL)
     {
@@ -69,14 +57,17 @@ object_description::object_description (struct db_object *op)
 
 	      this->classname = object_print::copy_string ((char *) sm_ch_name ((MOBJ) class_));
 
+              mem::block mem_block;
+              string_buffer sb (mem_block, mem::default_realloc);
+              db_value_printer printer (sb);
+
 	      DB_MAKE_OBJECT (&value, op);
 	      printer.describe_data (&value);
 	      db_value_clear (&value);
 	      DB_MAKE_NULL (&value);
 
-	      //this->oid = object_print::copy_string (sb.get_buffer());
-              this->oid = mem_block.ptr;//move ownership
-              mem_block = {};
+	      this->oid = mem_block.ptr;//move ownership
+	      mem_block = {};
 
 	      if (class_->ordered_attributes != NULL)
 		{
@@ -92,13 +83,7 @@ object_description::object_description (struct db_object *op)
 		  for (attribute_p = class_->ordered_attributes; attribute_p != NULL;
 		       attribute_p = attribute_p->order_link)
 		    {
-		      /*
-		       * We're starting a new line here, so we don't
-		       * want to append to the old buffer; pass NULL
-		       * to pt_append_nulstring so that we start a new
-		       * string.
-		       */
-		      sb.clear();
+		      sb.clear();// We're starting a new line here, so we don't want to append to the old buffer
 		      sb ("%20s = ", attribute_p->header.name);
 		      if (attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
 			{
@@ -109,9 +94,8 @@ object_description::object_description (struct db_object *op)
 			  db_get (op, attribute_p->header.name, &value);
 			  printer.describe_value (&value);
 			}
-		      //strs[i] = object_print::copy_string (sb.get_buffer());
-                      strs[i] = mem_block.ptr;//move ownership
-                      mem_block = {};
+		      strs[i] = mem_block.ptr;//move ownership
+		      mem_block = {};
 		      i++;
 		    }
 		  strs[i] = NULL;

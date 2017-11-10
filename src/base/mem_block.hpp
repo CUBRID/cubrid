@@ -25,6 +25,8 @@
 #if !defined(_MEM_BLOCK_HPP_)
 #define _MEM_BLOCK_HPP_
 
+#include <stddef.h>
+
 namespace mem
 {
 

@@ -33,9 +33,7 @@
 #ifndef _ALLOCATOR_BLOCK_HPP_
 #define _ALLOCATOR_BLOCK_HPP_
 
-#if defined (LINUX)
-#include <stddef.h> //size_t on Linux
-#endif /* LINUX */
+#include <stddef.h>
 
 namespace allocator
 {

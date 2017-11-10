@@ -26,6 +26,8 @@
 #include "object_print.h"
 #include "config.h"
 #include "db_value_printer.hpp"
+#include "mem.hpp"
+#include "mem_block.hpp"
 
 #include <stdlib.h>
 #include <float.h>
@@ -728,7 +730,7 @@ void help_fprint_value(FILE* fp, const DB_VALUE* value)
     mem_block,
     [](mem::block& block, size_t len)
       {
-        //bSolo: ToDo: what allocator should be used here?
+        //bSolo: ToDo: add thread_entry and use db_private_allocator
       }
   );
   db_value_printer printer(sb);
@@ -756,19 +758,13 @@ void help_fprint_describe_comment(FILE* fp, const char* comment)
 {
 #if !defined (SERVER_MODE)
   mem::block mem_block;
-  string_buffer sb(
-    mem_block,
-    [](mem::block& block, size_t len)
-      {
-        //bSolo: ToDo: what allocator should be used here?
-      }
-  );
+  string_buffer sb(mem_block, mem::default_realloc);
   object_printer printer(sb);
 
   assert (fp != NULL);
   assert (comment != NULL);
   printer.describe_comment(comment);
   fprintf(fp, "%.*s", int(sb.len()), mem_block.ptr);
-  //bSolo: ToDo: free what was allocated above
+  mem::default_dealloc(mem_block);
 #endif /* !defined (SERVER_MODE) */
 }

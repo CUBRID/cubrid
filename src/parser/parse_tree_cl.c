@@ -39,6 +39,8 @@
 #include "parser_message.h"
 #include "misc_string.h"
 #include "csql_grammar_scan.h"
+#include "mem.hpp"
+#include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "language_support.h"
 #include "object_print.h"
@@ -2521,14 +2523,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   unsigned int save_custom = parser->custom_print;
 
   mem::block mem_block;
-  string_buffer sb(
-    mem_block,
-    [](mem::block& block, size_t len)
-      {
-        //bSolo: ToDo: what allocator should be used here?
-        //parser_allocate_string_buffer() and return the buffer directly?
-      }
-  );
+  string_buffer sb(mem_block, mem::default_realloc);//ToDo: use parser_alloca() & Co
   db_value_printer printer(sb);
   if (val == NULL)
     {
@@ -2611,6 +2606,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   /* restore custom print */
   parser->custom_print = save_custom;
   result = pt_append_nulstring(parser, NULL, sb.get_buffer());
+  mem::default_dealloc(mem_block);
   return result;
 }
 

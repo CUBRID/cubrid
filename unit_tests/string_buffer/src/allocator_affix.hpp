@@ -27,10 +27,7 @@
 
 #include "mem_block.hpp"
 #include <new>
-
-#if defined (LINUX)
-#include <stddef.h> //size_t on Linux
-#endif /* LINUX */
+#include <stddef.h>
 
 namespace allocator
 {

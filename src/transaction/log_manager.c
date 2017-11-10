@@ -68,6 +68,7 @@
 #include "connection_support.h"
 #endif /* defined (SA_MODE) */
 #include "db_value_printer.hpp"
+#include "mem.hpp"
 #include "string_buffer.hpp"
 
 #if !defined(SERVER_MODE)
@@ -6414,18 +6415,11 @@ static void log_repl_data_dump(FILE* out_fp, int length, void* data)
   ptr = or_unpack_mem_value(ptr, &value);
 
   mem::block mem_block;
-  string_buffer sb(
-    mem_block,
-    [](mem::block& block, size_t len)
-      {
-        block.ptr = (char*)realloc(block.ptr, block.dim + len);//bSolo: ToDo: db_private_realloc(threade, block.ptr, block.dim + len);???
-        block.dim += len;
-      }
-  );
+  string_buffer sb(mem_block, mem::default_realloc);
   db_value_printer printer(sb);
   printer.describe_value(&value);
   fprintf(out_fp, "C[%s] K[%s]\n", class_name, mem_block.ptr);
-  free(mem_block.ptr);//db_private_free(threade, mem_block.ptr);
+  mem::default_dealloc((mem_block);
   pr_clear_value(&value);
 }
 
