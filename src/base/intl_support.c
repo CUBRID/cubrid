@@ -3619,14 +3619,14 @@ intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq)
       *utf8_seq = (unsigned char) codepoint;
       return 1;
     }
-  if (codepoint <= 0x7ff)
+  else if (codepoint >= 0x80 && codepoint <= 0x7ff)
     {
       /* 2 bytes */
       *utf8_seq++ = (unsigned char) (0xc0 | (codepoint >> 6));
       *utf8_seq = (unsigned char) (0x80 | (codepoint & 0x3f));
       return 2;
     }
-  if (codepoint <= 0xffff)
+  else if ((codepoint >= 0x800 && codepoint <= 0xd7ff) || (codepoint >= 0xe000 && codepoint <= 0xffff))
     {
       /* 3 bytes */
       *utf8_seq++ = (unsigned char) (0xe0 | (codepoint >> 12));
@@ -3634,7 +3634,7 @@ intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq)
       *utf8_seq = (unsigned char) (0x80 | (codepoint & 0x3f));
       return 3;
     }
-  if (codepoint <= 0x10ffff)
+  else
     {
       /* 4 bytes */
       *utf8_seq++ = (unsigned char) (0xf0 | (codepoint >> 18));
@@ -3643,10 +3643,6 @@ intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq)
       *utf8_seq = (unsigned char) (0x80 | (codepoint & 0x3f));
       return 4;
     }
-
-  assert (false);
-  *utf8_seq = '?';
-  return 1;
 }
 
 /*
