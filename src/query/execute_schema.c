@@ -1133,13 +1133,17 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	   * class_attr, since for our purpose we don't need it */
 
 	case PT_FILE_RENAME:
-	  old_name =
-	    (char *) alter->info.alter.alter_clause.rename.old_name->info.file_path.string->info.value.data_value.
-	    str->bytes;
-	  new_name =
-	    (char *) alter->info.alter.alter_clause.rename.new_name->info.file_path.string->info.value.data_value.
-	    str->bytes;
-	  error = dbt_rename_method_file (ctemplate, old_name, new_name);
+	  {
+	    PT_NODE *old_name_node, *new_name_node;
+
+	    old_name_node = alter->info.alter.alter_clause.rename.old_name;
+	    new_name_node = alter->info.alter.alter_clause.rename.new_name;
+
+	    old_name = (char *) old_name_node->info.file_path.string->info.value.data_value.str->bytes;
+	    new_name = (char *) new_name_node->info.file_path.string->info.value.data_value.str->bytes;
+
+	    error = dbt_rename_method_file (ctemplate, old_name, new_name);
+	  }
 	  break;
 
 	default:
@@ -6897,8 +6901,8 @@ get_attr_name (PT_NODE * attribute)
 {
   /* First try the derived name and then the original name. For example: create view a_view as select a av1, a av2, b
    * bv from a_tbl; */
-  return attribute->info.attr_def.attr_name->alias_print ? attribute->info.attr_def.attr_name->
-    alias_print : attribute->info.attr_def.attr_name->info.name.original;
+  return (attribute->info.attr_def.attr_name->alias_print
+	  ? attribute->info.attr_def.attr_name->alias_print : attribute->info.attr_def.attr_name->info.name.original);
 }
 
 /*
