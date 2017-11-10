@@ -794,6 +794,17 @@ include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
 set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=${CMAKE_C_FLAGS} CXXFLAGS=${CMAKE_CXX_FLAGS})
 
+# WITH_LIBREGEX can have multiple values with different meanings
+# on Linux:
+# * "BUNDLED" - (default) builds bundled (from external/libregex38a) regex library and uses the library created by the build
+# * "SYSTEM"   - use regex library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBREGEX_ROOT_PATH}/lib
+#                use regex headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBREGEX_ROOT_PATH}/include
+# on Windows:
+# * "BUNDLED" - (default) uses the prebuilt library from cubrid/win/external
 if(WITH_LIBREGEX STREQUAL "BUNDLED")
   if(UNIX)
     set(LIBREGEX_TARGET libregex)
@@ -828,6 +839,17 @@ endif()
 list(APPEND EP_INCLUDES ${LIBREGEX_INCLUDES})
 list(APPEND EP_LIBS ${LIBREGEX_LIBS})
 
+# WITH_LIBEXPAT can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds expat library from URL stored in ${WITH_LIBEXPAT_URL} uses the library created by the build
+# * "SYSTEM"   - use expat library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBEXPAT_ROOT_PATH}/lib
+#                use expat headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBEXPAT_ROOT_PATH}/include
+# on Windows:
+# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
 if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBEXPAT_TARGET libexpat)
@@ -860,6 +882,17 @@ endif()
 list(APPEND EP_INCLUDES ${LIBEXPAT_INCLUDES})
 list(APPEND EP_LIBS ${LIBEXPAT_LIBS})
 
+# WITH_LIBJANSSON can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds jansson library from URL stored in ${WITH_LIBJANSSON_URL} uses the library created by the build
+# * "SYSTEM"   - use jansson library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBJANSSON_ROOT_PATH}/lib
+#                use jansson headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBJANSSON_ROOT_PATH}/include
+# on Windows:
+# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
 if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBJANSSON_TARGET libjansson)
@@ -894,8 +927,8 @@ list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 
 # WITH_LIBNCURSES can have multiple values with different meanings
 # on Linux:
-# * "SYSTEM"   - (default) uses ncurses installed in the system
-# * "EXTERNAL" - does a git clone and builds it
+# * "EXTERNAL" - (default) builds git ncurses library using ${WITH_LIBNCURSES_GIT_REPOSITORY} repository and uses the library created by the build
+# * "SYSTEM"   - uses ncurses installed in the system (for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html)
 if(UNIX)
   if(WITH_LIBNCURSES STREQUAL "EXTERNAL")
     set(LIBNCURSES_TARGET libncurses)
@@ -910,7 +943,6 @@ if(UNIX)
     set(LIBNCURSES ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libncurses.a)
     set(LIBTINFO ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libtinfo.a)
 
-    # set curses variables, for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html
     set(CURSES_FOUND TRUE)
     set(CURSES_LIBRARIES ${LIBNCURSES};${LIBTINFO})
     set(CURSES_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/include/ncurses)
@@ -924,6 +956,15 @@ if(UNIX)
   endif()
 endif(UNIX)
 
+# WITH_LIBEDIT can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds editline library from URL stored in ${WITH_LIBEDIT_URL} uses the library created by the build
+# * "SYSTEM"   - use editline library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBEDIT_ROOT_PATH}/lib
+#                use editline headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBEDIT_ROOT_PATH}/include
 if(UNIX)
   if(WITH_LIBEDIT STREQUAL "EXTERNAL")
     set(LIBEDIT_TARGET libedit)
@@ -951,14 +992,16 @@ list(APPEND EP_LIBS ${LIBEDIT_LIBS})
 list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
 
 # WITH_LIBLZO can have multiple values with different meanings
-# * "EXTERNAL" - (default) builds lzo library from URL stored in ${WITH_LIBLZO_URL}
-#               uses the library created by the build
-# * "SYSTEM" - use lzo library located in:
-#               ${WITH_EXTERNAL_LIBS_PATH}
-#               ${WITH_LIBLZO_ROOT_PATH}/lib
-#              use lzo headers located in:
-#               ${WITH_EXTERNAL_HEADERS_PATH}
-#               ${WITH_LIBLZO_ROOT_PATH}/include
+# on Linux:
+# * "EXTERNAL" - (default) builds lzo library from URL stored in ${WITH_LIBLZO_URL} uses the library created by the build
+# * "SYSTEM"   - use lzo library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBLZO_ROOT_PATH}/lib
+#                use lzo headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBLZO_ROOT_PATH}/include
+# on Windows:
+# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
 if(WITH_LIBLZO STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBLZO_TARGET liblzo)
@@ -981,7 +1024,7 @@ if(WITH_LIBLZO STREQUAL "EXTERNAL")
     endif(TARGET_PLATFORM_BITS EQUAL 32)
     set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
   endif(UNIX)
-else()
+else(WITH_LIBLZO STREQUAL "SYSTEM")
   if(UNIX)
     find_library(LIBLZO_LIBS NAMES liblzo2.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBLZO_ROOT_PATH}/lib REQUIRED)
     find_path(LIBLZO_INCLUDES NAMES lzo/lzoconf.h lzo/lzo1x.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBLZO_ROOT_PATH}/include REQUIRED)
@@ -993,6 +1036,15 @@ endif()
 list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
 list(APPEND EP_LIBS ${LIBLZO_LIBS})
 
+# WITH_LIBGPG_ERROR can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds gpg-error library from URL stored in ${WITH_LIBGPG_ERROR_URL} uses the library created by the build
+# * "SYSTEM"   - use gpg-error library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBGPG_ERROR_ROOT_PATH}/lib
+#                use gpg-error headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBGPG_ERROR_ROOT_PATH}/include
 if(UNIX)
   if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
     set(LIBGPGE_RROR_TARGET libgpg-error)
@@ -1016,12 +1068,25 @@ endif(UNIX)
 list(APPEND EP_INCLUDES ${LIBGPG_ERROR_INCLUDES})
 list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
 
+# WITH_LIBGCRYPT can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds gcrypt library from URL stored in ${LIBGCRYPT_TARGET} uses the library created by the build
+# * "SYSTEM"   - use gcrypt library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBGCRYPT_ROOT_PATH}/lib
+#                use gcrypt headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBGCRYPT_ROOT_PATH}/include
 if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
   if(UNIX)
+    if(TARGET ${LIBGPGE_RROR_TARGET})
+      set(WITH_LIBGPG_ERROR_PREFIX "--with-gpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external")
+    endif()
+
     set(LIBGCRYPT_TARGET libgcrypt)
     externalproject_add(${LIBGCRYPT_TARGET}
       URL               ${WITH_LIBGCRYPT_URL}
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode ${WITH_LIBGPG_ERROR_PREFIX}
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
