@@ -75,6 +75,8 @@ run (std::size_t max_threads)
   thread_manager.destroy_worker_pool (dummy_pool);
 
   auto *daemon = thread_manager.create_daemon (cubthread::looper (), new dummy_exec ());
+  // give daemon a chance to loop
+  std::this_thread::sleep_for (std::chrono::duration<std::size_t> (1));
   thread_manager.destroy_daemon (daemon);
 
   std::cout << "  test_manager successful" << std::endl;
