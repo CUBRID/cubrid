@@ -3619,7 +3619,7 @@ intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq)
       *utf8_seq = (unsigned char) codepoint;
       return 1;
     }
-  else if (codepoint >= 0x80 && codepoint <= 0x7FF)
+  else if (codepoint >= 0x80 && codepoint <= 0x7ff)
     {
       /* 2 bytes */
       *utf8_seq++ = (unsigned char) (0xc0 | (codepoint >> 6));
