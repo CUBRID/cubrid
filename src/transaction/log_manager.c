@@ -5279,8 +5279,8 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
   for (entry = RB_MIN (lob_rb_root, &tdes->lob_locator_root); entry != NULL; entry = next)
     {
 #if 0
-      er_log_debug (ARG_FILE_LINE, "   locator=%s, state=%s\n, savept_lsa=(%d,%d)", entry->key, lob_state_str (state),
-		    entry->top->savept_lsa.pageid, entry->top->savept_lsa.offset);
+      er_log_debug (ARG_FILE_LINE, "   locator=%s, state=%s\n, savept_lsa=(%d,%d)", entry->key,
+		    lob_state_to_string (state), entry->top->savept_lsa.pageid, entry->top->savept_lsa.offset);
 #endif
       /* setup next link before destroy */
       next = RB_NEXT (lob_rb_root, &tdes->lob_locator_root, entry);
