@@ -2519,10 +2519,17 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   DB_VALUE element;
   int error = NO_ERROR;
   unsigned int save_custom = parser->custom_print;
-  char b[8192] = {0};
-  string_buffer buf(sizeof(b), b);
-  db_value_printer printer(buf);
 
+  mem::block mem_block;
+  string_buffer sb(
+    mem_block,
+    [](mem::block& block, size_t len)
+      {
+        //bSolo: ToDo: what allocator should be used here?
+        //parser_allocate_string_buffer() and return the buffer directly?
+      }
+  );
+  db_value_printer printer(sb);
   if (val == NULL)
     {
       return NULL;
@@ -2530,15 +2537,14 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
 
   /* set custom_print here so describe_data() will know to pad bit strings to full bytes */
   parser->custom_print = parser->custom_print | PT_PAD_BYTE;
-AGAIN:
   switch (DB_VALUE_TYPE (val))
     {
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
-      buf("%s", pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
+      sb("%s", pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
       /* fall thru */
     case DB_TYPE_SEQUENCE:
-      buf("{");
+      sb("{");
 
       size = db_set_size (db_get_set ((DB_VALUE *) val));
       if (size > 0)
@@ -2548,16 +2554,16 @@ AGAIN:
           for (i = 1; i < size; i++)
             {
               error = db_set_get (db_get_set ((DB_VALUE *) val), i, &element);
-              buf(", ");
+              sb(", ");
               printer.describe_value(&element);
             }
         }
-      buf("}");
+      sb("}");
       break;
 
     case DB_TYPE_OBJECT:
       /* no printable representation!, should not get here */
-      buf("NULL");
+      sb("NULL");
       break;
 
     case DB_TYPE_MONETARY:
@@ -2602,14 +2608,9 @@ AGAIN:
       printer.describe_value(val);
       break;
     }
-    if(buf.len() > sizeof(b)){//allocate a bigger buffer (deallocated when parser is cleaned up)
-        char* dynBuf = (char*)parser_allocate_string_buffer(parser, (int)buf.len(), sizeof(char));
-        buf.set_buffer(buf.len()+1, dynBuf);
-        goto AGAIN;
-    }
   /* restore custom print */
   parser->custom_print = save_custom;
-  result = pt_append_nulstring(parser, NULL, buf.get_buffer());
+  result = pt_append_nulstring(parser, NULL, sb.get_buffer());
   return result;
 }
 

@@ -2443,11 +2443,19 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 	  goto error;
 	}
 
-        char buffer[8192] = {0};
-        string_buffer sb(sizeof(buffer), buffer);
-        object_printer obj_print(sb);
-        obj_print.describe_class(class_op);
-        db_make_string_copy (result, sb.get_buffer());
+        mem::block mem_block;
+        string_buffer sb(
+          mem_block,
+          [](mem::block& block, size_t len)
+            {
+              //bSolo: ToDo: what allocator should be used here?
+              //stack_allocator would be good?
+              //or is something from db_make_string_copy() family?
+            }
+        );
+        object_printer printer(sb);
+        printer.describe_class(class_op);
+        db_make_string_copy (result, mem_block.ptr);
     }
   else
     {

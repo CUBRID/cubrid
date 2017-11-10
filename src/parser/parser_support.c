@@ -9033,12 +9033,25 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 		   table_name->info.name.original, pt_show_misc_type (PT_CLASS));
     }
 
-  char b[8192] = {0}; //bSolo: use parser based allocator because this code is not for server
-  string_buffer sb(sizeof(b), b);
+  mem::block mem_block;
+  string_buffer sb(
+    mem_block, 
+    [&parser](mem::block& block, size_t len)
+      {
+        //is this right? is there a function that extends a buffer?
+        PARSER_VARCHAR *vc = (PARSER_VARCHAR *)parser_allocate_string_buffer(parser, len, sizeof(size_t));
+        block.ptr = (char*)pt_get_varchar_bytes(vc);
+        block.dim += len;
+      }
+  );
   object_printer obj_print(sb);
   obj_print.describe_class(class_op);
+#if 0 //old
   PARSER_VARCHAR *buffer = pt_append_nulstring(parser, NULL, b);
   return ((char *) pt_get_varchar_bytes (buffer));
+#else //bSolo: check!!!
+  return mem_block.ptr;
+#endif
 }
 
 /*

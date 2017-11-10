@@ -174,7 +174,7 @@ help_fprint_obj (FILE * fp, MOP obj)
       else
 	{
 	  class_description cinfo;
-	  if (cinfo.init(obj, class_description::CSQL_SCHEMA_COMMAND))
+	  if (cinfo.init (obj, class_description::CSQL_SCHEMA_COMMAND))
 	    {
 	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
 		       cinfo.class_type, cinfo.name);
@@ -723,20 +723,17 @@ help_print_info (const char *command, FILE * fpp)
  */
 void help_fprint_value(FILE* fp, const DB_VALUE* value)
 {
-#if defined(SERVER_MODE)
-    char b[8192] = {0};//bSolo ToDo: use server specific allocator
-#else
-    char b[8192] = {0};//bSolo ToDo: use parser specific allocator
-#endif
-  string_buffer buf(sizeof(b), b);
-  db_value_printer printer(buf);
+  mem::block mem_block;
+  string_buffer sb(
+    mem_block,
+    [](mem::block& block, size_t len)
+      {
+        //bSolo: ToDo: what allocator should be used here?
+      }
+  );
+  db_value_printer printer(sb);
   printer.describe_value(value);
-  if(buf.len() > sizeof(b))//realloc a bigger buffer and try again
-  {
-      buf.clear();
-      printer.describe_value(value);
-  }
-  fprintf (fp, "%.*s", (int)buf.len(), b);
+  fprintf (fp, "%.*s", (int)sb.len(), mem_block.ptr);
 }
 
 /*
@@ -754,8 +751,10 @@ void help_fprint_value(FILE* fp, const DB_VALUE* value)
  *   If the description will fit within the buffer, the number of characters
  *   used is returned, otherwise, -1 is returned.
  */
+#if 1 //bSolo: old
 int help_sprint_value(const DB_VALUE* value, char *buffer, int max_length)
 {
+#if 0
   string_buffer buf(max_length, buffer);
   db_value_printer printer(buf);
   printer.describe_value(value);
@@ -765,7 +764,17 @@ int help_sprint_value(const DB_VALUE* value, char *buffer, int max_length)
       length = -length;
     }
   return length;
+#else
+  return 0;
+#endif
 }
+#else //bSolo: new ... but with compilation problems
+void help_sprint_value(const DB_VALUE* value, string_buffer& sb)
+{
+  db_value_printer printer(sb);
+  printer.describe_value(value);
+}
+#endif
 
 /*
  * help_fprint_describe_comment() - Print description of a comment to a file.
@@ -775,27 +784,20 @@ int help_sprint_value(const DB_VALUE* value, char *buffer, int max_length)
 void help_fprint_describe_comment(FILE* fp, const char* comment)
 {
 #if !defined (SERVER_MODE)
-  char *desc = NULL;
-  char b[8192] = {0};//bSolo: temp hack
-  char* dynBuf = NULL;
-  string_buffer sb(sizeof(b), b);
-  object_printer obj_print(sb);
+  mem::block mem_block;
+  string_buffer sb(
+    mem_block,
+    [](mem::block& block, size_t len)
+      {
+        //bSolo: ToDo: what allocator should be used here?
+      }
+  );
+  object_printer printer(sb);
 
   assert (fp != NULL);
   assert (comment != NULL);
-RETRY:
-  obj_print.describe_comment(comment);
-  if(sizeof(b) < sb.len())
-  {
-      dynBuf = new char[sb.len()+1];//bSolo: use specific allocator
-      sb.set_buffer(sb.len()+1, dynBuf);
-      goto RETRY;
-  }
-  assert(sb.len() > 0);
-  fprintf(fp, "%.*s", int(sb.len()), sb.get_buffer());
-  if(dynBuf)
-  {
-      delete dynBuf;
-  }
+  printer.describe_comment(comment);
+  fprintf(fp, "%.*s", int(sb.len()), mem_block.ptr);
+  //bSolo: ToDo: free what was allocated above
 #endif /* !defined (SERVER_MODE) */
 }

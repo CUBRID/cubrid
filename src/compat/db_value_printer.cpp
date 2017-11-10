@@ -316,13 +316,13 @@ void db_value_printer::describe_data (const db_value *value)
 	  if (pos < end)
 	    {
 	      length = CAST_STRLEN (pos - src + 1);
-	      m_buf (length, src);
+	      m_buf.add_bytes (length, src);
 	      m_buf ("'");
 	    }
 	  /* If not, copy the remaining part of the buffer */
 	  else
 	    {
-	      m_buf (CAST_STRLEN (end - src), src);
+	      m_buf.add_bytes (CAST_STRLEN (end - src), src);
 	    }
 
 	  /* advance src to just beyond the point where we left off */

@@ -275,7 +275,7 @@ csql_help_schema (const char *class_name)
   {
     class_description class_descr;
     
-    if (!class_descr.init(class_name))
+    if (!class_descr.init (class_name))
       {
         csql_Error_code = CSQL_ERR_SQL_ERROR;
         goto error;

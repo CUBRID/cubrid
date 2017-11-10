@@ -159,6 +159,20 @@ bool class_description::init (const char *name)
 
 bool class_description::init (struct db_object *op, type prt_type)
 {
+  mem::block mem_block;
+  string_buffer sb(
+    mem_block,
+    [](mem::block& block, size_t len)
+      {
+        //bSolo: ToDo: what allocator to use here?
+        //a stack allocator would be enough?
+      }
+  );
+  return init(op, prt_type, sb);
+}
+
+bool class_description::init (struct db_object *op, type prt_type, string_buffer& sb)
+{
   this->~class_description();//cleanup before (re)initialize
 
   SM_CLASS *class_;
@@ -176,9 +190,6 @@ bool class_description::init (struct db_object *op, type prt_type)
   bool has_comment = false;
   int max_name_size = SM_MAX_IDENTIFIER_LENGTH + 50;
   size_t buf_size = 0;
-
-  char b[8192] = { 0 };//bSolo: temp hack
-  string_buffer sb (sizeof (b), b);
   object_printer printer (sb);
 
   include_inherited = (prt_type == CSQL_SCHEMA_COMMAND);

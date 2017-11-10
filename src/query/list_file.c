@@ -5494,7 +5494,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 
 	      if (lent->param_values.size > 0)
 		{
-		  s = pr_valstring (&lent->param_values.vals[0]);
+		  s = pr_valstring (&lent->param_values.vals[0], thread_p);
 		}
 
 	      er_log_debug (ARG_FILE_LINE,
@@ -5502,7 +5502,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 			    lent->param_values.size, s ? s : "(null)");
 	      if (s)
 		{
-		  free_and_init (s);
+		  db_private_free(thread_p, s);
 		}
 	    }
 	}
@@ -6115,12 +6115,12 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
     {
       char *s;
 
-      s = ((lent->param_values.size > 0) ? pr_valstring (&lent->param_values.vals[0]) : NULL);
+      s = ((lent->param_values.size > 0) ? pr_valstring (&lent->param_values.vals[0], thread_p) : NULL);
       er_log_debug (ARG_FILE_LINE, "ls_update_list_cache_ent: mht_rem failed for param_values { %d %s ...}\n",
 		    lent->param_values.size, s ? s : "(null)");
       if (s)
 	{
-	  free_and_init (s);
+	  db_private_free (thread_p, s);
 	}
       (void) qfile_delete_list_cache_entry (thread_p, lent, &tran_index);
       lent = NULL;

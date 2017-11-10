@@ -32,7 +32,9 @@
 #include <string.h>
 #include <assert.h>
 
+#include "mem_block.hpp"
 #include "object_primitive.h"
+#include "string_buffer.hpp"
 
 #include "system_parameter.h"
 #include "set_object.h"
@@ -42,6 +44,8 @@
 #include "tz_support.h"
 #include "file_io.h"
 #include "db_json.hpp"
+#include "db_private_allocator.hpp"
+#include "thread.h"
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
@@ -10398,42 +10402,39 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of
  * the pr_type vector for the appropriate type.
- *    return: a freshly-malloc'ed string with a printed rep of "val" in it
+ *    return: a freshly db_private_realloc()'ed string with a printed rep of "val" in it
  *    val(in): some DB_VALUE
  * Note:
- *    The caller is responsible for eventually freeing the memory via free_and_init.
+ *    The caller is responsible for eventually freeing the memory using db_private_free()
  *
  *    This is really just a debugging helper; it probably doesn't do enough
  *    serious formatting for external use.  Use it to get printed DB_VALUE
  *    representations into error messages and the like.
  */
-char *
-pr_valstring (DB_VALUE * val)
+char *pr_valstring (DB_VALUE * val, THREAD_ENTRY* threade)
 {
-  char *str;
-  const char null_str[] = "(null)";
-  const char NULL_str[] = "NULL";
+  mem::block mem_block;
+  string_buffer sb(
+    mem_block,
+    [&threade](mem::block& block, size_t len)
+      {
+        block.ptr = (char*)db_private_realloc(threade, block.ptr, block.dim + len);
+        block.dim += len;
+      }
+  );
 
   if (val == NULL)
     {
       /* space with terminating NULL */
-      str = (char *) malloc (sizeof (null_str) + 1);
-      if (str)
-	{
-	  strcpy (str, null_str);
-	}
-      return str;
+      sb("(null)");
+      return mem_block.ptr;
     }
 
   if (DB_IS_NULL (val))
     {
       /* space with terminating NULL */
-      str = (char *) malloc (sizeof (NULL_str) + 1);
-      if (str)
-	{
-	  strcpy (str, NULL_str);
-	}
-      return str;
+      sb("NULL");
+      return mem_block.ptr;
     }
 
   DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
@@ -10444,47 +10445,9 @@ pr_valstring (DB_VALUE * val)
       return NULL;
     }
 
-  /* 
-   * Guess a size; if we're wrong, we'll learn about it later and be told
-   * how big to make the actual buffer.  Most things are pretty small, so
-   * don't worry about this too much.
-   */
-  int str_size = 32;
-
-  str = (char *) malloc (str_size);
-  if (str == NULL)
-    {
-      return NULL;
-    }
-
-  str_size = (*(pr_type->sptrfunc)) (val, str, str_size);
-  if (str_size < 0)
-    {
-      /* 
-       * We didn't allocate enough slop.  However, the sprintf function
-       * was kind enough to tell us how much room we really needed, so
-       * we can reallocate and try again.
-       */
-      char *old_str;
-      old_str = str;
-      str_size = -str_size;
-      str_size++;		/* for terminating NULL */
-      str = (char *) realloc (str, str_size);
-      if (str == NULL)
-	{
-	  free_and_init (old_str);
-	  return NULL;
-	}
-      if ((*pr_type->sptrfunc) (val, str, str_size) < 0)
-	{
-	  free_and_init (str);
-	  return NULL;
-	}
-
-      str[str_size - 1] = 0;	/* set terminating NULL */
-    }
-
-  return str;
+  //bSolo: ToDo: fix compiler errors when declaring pr_type::sptrfunc(... string_buffer&...)
+  //(*(pr_type->sptrfunc)) (val, sb); //caller should use db_private_free() to deallocate it
+  return mem_block.ptr;
 }
 
 /*

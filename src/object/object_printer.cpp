@@ -267,8 +267,8 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 		  m_buf (", ");
 		}
 	      m_buf ("'");
-	      m_buf (DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (temp_domain, idx)),
-		     DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (temp_domain, idx)));
+	      m_buf.add_bytes (DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (temp_domain, idx)),
+		               DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (temp_domain, idx)));
 	      m_buf ("'");
 	    }
 	  m_buf (")");
@@ -865,8 +865,9 @@ const char *object_printer::describe_trigger_action_time (const tr_trigger &trig
 //--------------------------------------------------------------------------------
 void object_printer::describe_class (struct db_object *class_op)
 {
+  m_buf.clear();
   class_description class_descr;
-  if (!class_descr.init (class_op, class_description::SHOW_CREATE_TABLE))
+  if (!class_descr.init (class_op, class_description::SHOW_CREATE_TABLE, m_buf))
     {
 #if 0 //what do we do in case of error???
       int error = er_errid();

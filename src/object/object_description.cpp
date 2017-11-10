@@ -25,13 +25,23 @@ object_description::object_description (struct db_object *op)
   SM_ATTRIBUTE *attribute_p;
   char *obj;
   int i, count, is_class = 0;
-  object_description *info = NULL;
   char **strs;
   int pin;
   size_t buf_size;
   DB_VALUE value;
-  char b[8192] = {0};
-  string_buffer sb (sizeof (b), b);
+
+  mem::block mem_block;
+  string_buffer sb(
+    mem_block,
+    [](mem::block& block, size_t len)
+      {
+        //bSolo: ToDo: what allocator to use here?
+        //looks like only object_print::copy_string() is used (malloc based)
+        //=> use malloc/realloc() directly, is it OK???
+        for(size_t n=block.dim; block.dim < n+len; block.dim*=2); // calc next power of 2
+        block.ptr = (char *) realloc (block.ptr, block.dim);
+      }
+  );
   db_value_printer printer (sb);
 
   if (op != NULL)
@@ -64,7 +74,9 @@ object_description::object_description (struct db_object *op)
 	      db_value_clear (&value);
 	      DB_MAKE_NULL (&value);
 
-	      this->oid = object_print::copy_string (sb.get_buffer());
+	      //this->oid = object_print::copy_string (sb.get_buffer());
+              this->oid = mem_block.ptr;//move ownership
+              mem_block = {};
 
 	      if (class_->ordered_attributes != NULL)
 		{
@@ -97,11 +109,13 @@ object_description::object_description (struct db_object *op)
 			  db_get (op, attribute_p->header.name, &value);
 			  printer.describe_value (&value);
 			}
-		      strs[i] = object_print::copy_string (sb.get_buffer());
+		      //strs[i] = object_print::copy_string (sb.get_buffer());
+                      strs[i] = mem_block.ptr;//move ownership
+                      mem_block = {};
 		      i++;
 		    }
 		  strs[i] = NULL;
-		  info->attributes = strs;
+		  attributes = strs;//bSolo: ToDo: refactor this->attributes as std::vector<char*>
 		}
 
 	      /* will we ever want to separate these lists ? */

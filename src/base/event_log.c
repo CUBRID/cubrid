@@ -409,12 +409,12 @@ event_log_bind_values (THREAD_ENTRY* thread_p, FILE * log_fp, int tran_index, in
 
   for (i = 0; i < tdes->bind_history[bind_index].size; i++)
     {
-      val_str = pr_valstring (&tdes->bind_history[bind_index].vals[i]);
+      val_str = pr_valstring (&tdes->bind_history[bind_index].vals[i], thread_p);
       fprintf (log_fp, "%*cbind: %s\n", indent, ' ', (val_str == NULL) ? "(null)" : val_str);
 
       if (val_str != NULL)
 	{
-	  free_and_init (val_str);
+	  db_private_free(thread_p, val_str);
 	}
     }
 }

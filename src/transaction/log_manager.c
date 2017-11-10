@@ -6390,7 +6390,7 @@ log_hexa_dump (FILE * out_fp, int length, void *data)
 }
 
 //--------------------------------------------------------------------------------
-static void log_repl_data_dump(FILE* out_fp, int length, void* data) //bSolo: length not used???
+static void log_repl_data_dump(FILE* out_fp, int length, void* data)
 {
   char* ptr = (char*)data;
   char *class_name;
@@ -6398,23 +6398,19 @@ static void log_repl_data_dump(FILE* out_fp, int length, void* data) //bSolo: le
   ptr = or_unpack_string_nocopy(ptr, &class_name);
   ptr = or_unpack_mem_value(ptr, &value);
 
-  char b[8192] = {0};//bSolo: temp hack
-  string_buffer sb(sizeof(b), b);
+  mem::block mem_block;
+  string_buffer sb(
+    mem_block,
+    [](mem::block& block, size_t len)
+      {
+        block.ptr = (char*)realloc(block.ptr, block.dim + len);//bSolo: ToDo: db_private_realloc(threade, block.ptr, block.dim + len);???
+        block.dim += len;
+      }
+  );
   db_value_printer printer(sb);
-  char* dynBuf = NULL;
-
   printer.describe_value(&value);
-  if(sizeof(b) < sb.len())//realloc and repeat
-  {
-    dynBuf = new char[sb.len()+1];//bSolo: use specific allocator
-    sb.set_buffer(sb.len()+1, dynBuf);
-    printer.describe_value(&value);
-  }
-  fprintf(out_fp, "C[%s] K[%s]\n", class_name, sb.get_buffer());
-  if(dynBuf)
-  {
-    delete dynBuf;//bSolo: use specific allocator
-  }
+  fprintf(out_fp, "C[%s] K[%s]\n", class_name, mem_block.ptr);
+  free(mem_block.ptr);//db_private_free(threade, mem_block.ptr);
   pr_clear_value(&value);
 }
 

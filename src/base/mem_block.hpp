@@ -15,26 +15,40 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#include "string_buffer.hpp"
-#include <memory.h>
 
-void string_buffer::add_bytes(size_t len, void *bytes)
-{
-  if (bytes && m_len + len < m_block.dim)
-    {
-      memcpy (m_block.ptr + m_len, bytes, len);
-      m_block.ptr[m_len += len] = 0;
-    }
-  else
-    {
-      m_len += len;
-    }
-}
+/* Memory Block
+ * - groups together memory address and its size
+ * - used to allocate, deallocate and share memory
+ * - could be extended with helper info: allocator, src file&line where allocation was made, ...
+ */
 
-void string_buffer::operator+= (const char ch)
+#if !defined(_MEM_BLOCK_HPP_)
+#define _MEM_BLOCK_HPP_
+
+namespace mem
 {
-    if(m_block.dim < m_len + 2)
-        m_extend(m_block, 1);
-    m_block.ptr[m_len] = ch;
-    m_block.ptr[++m_len] = '\0';
-}
+
+  struct block
+  {
+    size_t dim;
+    char  *ptr;
+
+    block()
+      : dim (0)
+      , ptr (nullptr)
+    {}
+
+    block (size_t dim, void *ptr)
+      : dim (dim)
+      , ptr ((char *)ptr)
+    {}
+
+    bool is_valid ()
+    {
+      return (dim != 0 && ptr != 0);
+    }
+  };
+
+} // namespace mem
+
+#endif // !defined(_MEM_BLOCK_HPP_)

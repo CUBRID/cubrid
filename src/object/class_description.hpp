@@ -27,6 +27,7 @@
 #include <vector>
 struct db_object;
 struct sm_class;
+class string_buffer;
 struct tr_triglist;
 
 /*
@@ -36,6 +37,7 @@ struct tr_triglist;
  *    This structure contains information about a class defined in the database.
  *    This will be built and returned by help_class or help_class_name.
  */
+//all members should be refactored but for the moment is only triggers and partition are...
 struct class_description
 {
     enum type
@@ -59,7 +61,7 @@ struct class_description
     char *object_id;
     std::vector<char *> triggers;
     char **constraints;
-    std::vector<char *> partition; //all members should be refactored but for the moment is only this one
+    std::vector<char *> partition; 
     char *comment;
 
     class_description ();                                   //former obj_print_make_class_help()
@@ -67,6 +69,7 @@ struct class_description
 
     bool init(const char *name);                            //former obj_print_help_class()
     bool init (struct db_object *op, type prt_type);
+    bool init (struct db_object *op, type prt_type, string_buffer& sb);//to be used in object_printer::describe_class()
 
     //ToDo: other special methods: copy&move ctor/assign
 };

@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #include "dbtype.h"
+#include "string_buffer.hpp"
 
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
@@ -60,6 +61,7 @@ extern "C"
 
   void help_fprint_value (FILE * fp, const DB_VALUE * value);
   int  help_sprint_value (const DB_VALUE * value, char *buffer, int max_length);
+  //void help_sprint_value (const DB_VALUE * value, string_buffer& sb);
   void help_fprint_describe_comment (FILE * fp, const char *comment);
 
 #ifdef __cplusplus

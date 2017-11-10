@@ -35,7 +35,7 @@ struct object_description
   char *classname;
   char *oid;
   char **attributes;
-  char **shared;
+  char **shared;    //bSolo: ToDo: looks like not used anywhere, remove it?
 
   object_description (struct db_object *op = 0); //former obj_print_make_obj_help() & help_obj()
   ~object_description();                         //former help_free_obj()

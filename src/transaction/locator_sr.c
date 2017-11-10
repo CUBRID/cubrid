@@ -4119,13 +4119,13 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	    {
 	      char *val_print = NULL;
 
-	      val_print = pr_valstring (key_dbvalue);
+	      val_print = pr_valstring (key_dbvalue, thread_p);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, index->fk->fkname,
 		      (val_print ? val_print : "unknown value"));
 	      error_code = ER_FK_INVALID;
 	      if (val_print)
 		{
-		  free_and_init (val_print);
+		  db_private_free (thread_p, val_print);
 		}
 
 	      if (key_dbvalue == &dbvalue)
@@ -9367,7 +9367,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 		    {
 		      char *key_dmp;
 
-		      key_dmp = pr_valstring (key);
+		      key_dmp = pr_valstring (key, thread_p);
 
 		      if (!OID_ISNULL (class_oid))
 			{
@@ -9386,7 +9386,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 
 		      if (key_dmp)
 			{
-			  free_and_init (key_dmp);
+			  db_private_free (thread_p, key_dmp);
 			}
 
 		      if (classname)
@@ -9817,7 +9817,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 			{
 			  char *key_dmp;
 
-			  key_dmp = pr_valstring (key);
+			  key_dmp = pr_valstring (key, thread_p);
 			  if (!OID_ISNULL (class_oid))
 			    {
 			      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
@@ -9835,7 +9835,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 
 			  if (key_dmp)
 			    {
-			      free_and_init (key_dmp);
+			      db_private_free (thread_p, key_dmp);
 			    }
 
 			  if (classname)
