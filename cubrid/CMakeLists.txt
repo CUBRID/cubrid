@@ -41,6 +41,7 @@ set(THREAD_SOURCES
 set(THREAD_HEADERS
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
+  ${THREAD_DIR}/thread_entry_executable.hpp
   ${THREAD_DIR}/thread_executable.hpp
   ${THREAD_DIR}/thread_looper.hpp
   ${THREAD_DIR}/thread_manager.hpp

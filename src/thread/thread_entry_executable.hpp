@@ -25,7 +25,7 @@
 
 #include <cassert>
 
-namespace thread {
+namespace cubthread {
 
 // forward definition
 class entry;
@@ -89,6 +89,6 @@ private:
   entry *m_entry_p;
 };
 
-} // namespace thread
+} // namespace cubthread
 
 #endif // _THREAD_ENTRY_EXECUTABLE_HPP_
