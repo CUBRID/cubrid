@@ -3643,10 +3643,6 @@ intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq)
       *utf8_seq = (unsigned char) (0x80 | (codepoint & 0x3f));
       return 4;
     }
-
-  assert (false);
-  *utf8_seq = '?';
-  return 1;
 }
 
 /*
