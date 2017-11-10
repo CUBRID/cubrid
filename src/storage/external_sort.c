@@ -3362,17 +3362,18 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		    }
 		  else
 		    {		/* The input section is finished */
+		      int frun;
+
 		      big_index = sort_param->in_half + min;
-		      if (sort_param->
-			  file_contents[big_index].num_pages[sort_param->file_contents[big_index].first_run])
+		      frun = sort_param->file_contents[big_index].first_run;
+
+		      if (sort_param->file_contents[big_index].num_pages[frun])
 			{
 			  /* There are still some pages in the current input run */
 
 			  in_cur_bufaddr[min] = in_sectaddr[min];
 
-			  read_pages =
-			    sort_param->file_contents[big_index].num_pages[sort_param->
-									   file_contents[big_index].first_run];
+			  read_pages = sort_param->file_contents[big_index].num_pages[frun];
 			  if (in_sectsize < read_pages)
 			    {
 			      read_pages = in_sectsize;
@@ -3380,9 +3381,8 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			  in_last_buf[min] = read_pages;
 
-			  error =
-			    sort_read_area (thread_p, &sort_param->temp[big_index], cur_page[big_index], read_pages,
-					    in_cur_bufaddr[min]);
+			  error = sort_read_area (thread_p, &sort_param->temp[big_index], cur_page[big_index],
+						  read_pages, in_cur_bufaddr[min]);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -3392,9 +3392,9 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  cur_page[big_index] += read_pages;
 
 			  in_act_bufno[min] = 0;
-			  sort_param->file_contents[big_index].num_pages[sort_param->
-									 file_contents[big_index].first_run] -=
-			    read_pages;
+
+			  frun = sort_param->file_contents[big_index].first_run;
+			  sort_param->file_contents[big_index].num_pages[frun] -= read_pages;
 			}
 		      else
 			{
@@ -4124,9 +4124,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			  in_cur_bufaddr[min] = in_sectaddr[min];
 
-			  read_pages =
-			    sort_param->file_contents[big_index].num_pages[sort_param->
-									   file_contents[big_index].first_run];
+			  read_pages = sort_param->file_contents[big_index].num_pages[first_run];
 			  if (in_sectsize < read_pages)
 			    {
 			      read_pages = in_sectsize;
