@@ -33,12 +33,12 @@ namespace cubthread
 {
 
 // forward definition
-class executable;
+class task;
 
 class daemon
 {
   public:
-    daemon (looper & loop_pattern, executable * exec);
+    daemon (looper & loop_pattern, task * exec);
     ~daemon();
 
     void wakeup (void);
@@ -46,7 +46,7 @@ class daemon
 
   private:
 
-    static void loop (daemon * daemon_arg, executable * exec);
+    static void loop (daemon * daemon_arg, task * exec);
 
     void pause (void);
 

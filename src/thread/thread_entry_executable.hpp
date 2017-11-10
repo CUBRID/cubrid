@@ -30,63 +30,39 @@ namespace cubthread {
 // forward definition
 class entry;
 
-class entry_executable : public executable
+class entry_task : public contextual_task<entry>
 {
 public:
-  entry_executable ()
-    : m_manager_p (NULL)
-    , m_entry_p (NULL)
+
+  entry_task ()
+    : contextual_task<entry> ()
+    , m_manager_p (NULL)
   {
   }
 
-  ~entry_executable ()
+  // contextual_task implementation for create_context, retire_context
+  entry & create_context (void)
   {
-    assert (m_entry_p == NULL);
+    return *m_manager_p->claim_entry ();
+  }
+  void retire_context (entry & context)
+  {
+    m_manager_p->retire_entry (context);
   }
 
-  //  when extending, you should create the execute_info like this:
-  //  void execute_info ()
-  //    {
-  //      run (get_entry (), ...);
-  //    }
-  //  this should provide the required thread_entry.
-  //
+  // inheritor should implement execute_with_context
 
   void set_manager (manager * manager_p)
   {
     assert (m_manager_p == NULL);
-    assert (m_entry_p == NULL);
     m_manager_p = manager_p;
-  }
-
-  entry * get_entry (void)
-  {
-    assert (m_manager_p != NULL);
-    if (m_entry_p != NULL)
-      {
-        return m_entry_p;
-      }
-    m_entry_p = m_manager_p->claim_entry ();
-    assert (m_entry_p != NULL);
-    return m_entry_p;
-  }
-
-  void retire (void)
-  {
-    if (m_entry_p != NULL)
-      {
-        m_manager_p->retire_entry (*m_entry_p);
-        m_entry_p = NULL;
-      }
-    delete this;
   }
 
 private:
   // disable copy constructor
-  entry_executable (const entry_executable & other);
+  entry_task (const entry_task & other);
 
   manager *m_manager_p;
-  entry *m_entry_p;
 };
 
 } // namespace cubthread

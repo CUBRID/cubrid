@@ -33,20 +33,33 @@
 
 namespace test_thread {
 
-class dummy_work : public cubthread::executable
+typedef cubthread::worker_pool<int> test_worker_pool_type;
+static int Context = 0;
+
+class test_work : public cubthread::contextual_task<int>
+{
+  int & create_context (void)
+  {
+    return Context;
+  }
+  void retire_context (int &)
+  {
+  }
+};
+
+class dummy_work : public test_work
 {
 public:
-  void execute_task ()
+  void execute (int &)
   {
     test_common::sync_cout ("dummy test\n");
   }
 };
 
-class start_end_work : public cubthread::executable
+class start_end_work : public test_work
 {
 public:
-  void
-  execute_task ()
+  void execute (int &)
   {
     test_common::sync_cout ("start\n");
     std::this_thread::sleep_for (std::chrono::duration<int> (1));
@@ -54,10 +67,10 @@ public:
   }
 };
 
-class inc_work : public cubthread::executable
+class inc_work : public test_work
 {
 public:
-  void execute_task ()
+  void execute (int &)
   {
     if (++m_count % 1000 == 0)
       {
@@ -73,7 +86,7 @@ std::atomic<size_t> inc_work::m_count = 0;
 int
 test_one_thread_pool (void)
 {
-  cubthread::worker_pool pool (1, 1);
+  test_worker_pool_type pool (1, 1);
   pool.execute (new dummy_work ());
   pool.execute (new dummy_work ());
 
@@ -88,7 +101,7 @@ test_one_thread_pool (void)
 int
 test_two_threads_pool (void)
 {
-  cubthread::worker_pool pool (2, 16);
+  test_worker_pool_type pool (2, 16);
 
   pool.execute (new start_end_work ());
   pool.execute (new start_end_work ());
@@ -106,7 +119,7 @@ test_stress (void)
 
   nthreads *= 4;
 
-  cubthread::worker_pool workpool (nthreads, nthreads * 16);
+  test_worker_pool_type workpool (nthreads, nthreads * 16);
 
   auto start_time = std::chrono::high_resolution_clock::now ();
   for (int i = 0; i < 10000; i++)

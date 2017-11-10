@@ -25,17 +25,56 @@
 
 namespace cubthread {
 
-class executable
+class task
 {
 public:
-  virtual void execute_task () = 0;       // function to execute
-  virtual void retire ()                  // what happens with executable instance when task is executed; default is delete
+  virtual void execute () = 0;       // function to execute
+  virtual void retire ()                  // what happens with task instance when task is executed; default is delete
   {
     delete this;
   }
-  virtual ~executable ()                        // virtual destructor
+  virtual ~task ()                        // virtual destructor
   {
   }
+};
+
+template <typename Context>
+class contextual_task : public task
+{
+public:
+
+  contextual_task ()
+    : m_own_context (NULL)
+  {
+  }
+
+  // virtual functions to be implemented by inheritors
+  virtual void execute (Context &) = 0;
+  virtual Context & create_context (void) = 0;
+  virtual void retire_context (Context &) = 0;
+
+  // implementation of task's execute function.
+  void execute (void)
+  {
+    execute (*m_own_context);
+  }
+  // implementation of task's retire function.
+  virtual void retire (void)
+  {
+    if (m_own_context != NULL)
+      {
+        retire_context (*m_own_context);
+      }
+  }
+  
+  // create own context
+  void create_own_context (void)
+  {
+    m_own_context = &(create_context ());
+  }
+
+private:
+  Context *m_own_context;
 };
 
 } // namespace cubthread

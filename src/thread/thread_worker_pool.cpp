@@ -21,8 +21,12 @@
 
 #include "thread_executable.hpp"
 
-namespace cubthread {
+#if 0
 
+namespace cubthread
+{
+
+template <typename Context>
 worker_pool::worker_pool (size_t pool_size, size_t work_queue_size)
   : m_max_workers (pool_size)
   , m_worker_count (0)
@@ -33,6 +37,7 @@ worker_pool::worker_pool (size_t pool_size, size_t work_queue_size)
 {
 }
 
+template <typename Context>
 worker_pool::~worker_pool ()
 {
   // not safe to destroy running pools
@@ -40,26 +45,28 @@ worker_pool::~worker_pool ()
   delete[] m_threads;
 }
 
+template <typename Context>
 bool
-worker_pool::try_execute (executable * work_arg)
+worker_pool::try_execute (task_type * work_arg)
 {
   assert (!m_stopped);
   std::thread* thread_p = register_worker ();
   if (thread_p != NULL)
     {
-      *thread_p = std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<executable *> (work_arg));
+      *thread_p = std::thread (worker_pool<Context>::run, std::ref (*this), std::ref (*thread_p), std::forward<task *> (work_arg));
     }
   return false;
 }
 
+template <typename Context>
 void
-worker_pool::execute (executable * work_arg)
+worker_pool::execute (task_type * work_arg)
 {
   assert (!m_stopped);
   std::thread* thread_p = register_worker ();
   if (thread_p != NULL)
     {
-      *thread_p = std::thread (run, std::ref (*this), std::ref (*thread_p), std::forward<executable *> (work_arg));
+      *thread_p = std::thread (worker_pool<Context>::run, std::ref (*this), std::ref (*thread_p), std::forward<task *> (work_arg));
     }
   else if (!m_work_queue.produce (work_arg))
     {
@@ -69,6 +76,7 @@ worker_pool::execute (executable * work_arg)
     }
 }
 
+template <typename Context>
 void
 worker_pool::stop (void)
 {
@@ -87,28 +95,40 @@ worker_pool::stop (void)
   m_stopped = true;
 }
 
+template <typename Context>
 bool
 worker_pool::is_running (void)
 {
   return !m_stopped;
 }
 
+template <typename Context>
 void
-worker_pool::run (worker_pool & pool, std::thread & thread_arg, executable * work_arg)
+worker_pool::run (worker_pool<Context> & pool, std::thread & thread_arg, task_type * work_arg)
 {
+  Context& context = work_arg->create_context ();
+  task_type * prev_work = NULL;
   do
     {
-      work_arg->execute_task ();
-      work_arg->retire ();
+      if (prev_work != NULL)
+        {
+          prev_work->retire ();
+        }
 
-      // loop while there are jobs in queue. there is no point in stopping and restarting another thread
+      work_arg->execute_with_context (context);
+
+      prev_work = work_arg;
     }
-  while (pool.is_running () && pool.m_work_queue.consume (work_arg));
+  while (pool.is_running() && pool.m_work_queue.consume (work_arg));
 
-  // no executable in queue. deregister worker
+  work_arg->retire_context (context);
+  work_arg->retire ();
+
+  // no task in queue. deregister worker
   pool.deregister_worker (thread_arg);
 }
 
+template <typename Context>
 inline std::thread*
 worker_pool::register_worker (void)
 {
@@ -125,6 +145,7 @@ worker_pool::register_worker (void)
   return thread_p;
 }
 
+template <typename Context>
 inline void
 worker_pool::deregister_worker (std::thread & thread_arg)
 {
@@ -132,3 +153,5 @@ worker_pool::deregister_worker (std::thread & thread_arg)
 }
 
 } // namespace cubthread
+
+#endif // 0

@@ -96,16 +96,17 @@ inline Res * manager::create_and_track_resource (std::vector<Res*>& tracker, siz
   return new_res;
 }
 
-worker_pool *
+manager::worker_pool_type *
 manager::create_worker_pool (size_t pool_size, size_t work_queue_size)
 {
   return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size);
 }
 
 daemon *
-manager::create_daemon(looper & looper_arg, entry_executable * exec_p)
+manager::create_daemon(looper & looper_arg, entry_task * exec_p)
 {
   exec_p->set_manager (this);
+  exec_p->create_own_context ();
   return create_and_track_resource (m_daemons, 1, looper_arg, exec_p);
 }
 
@@ -141,7 +142,7 @@ manager::destroy_and_untrack_resource (std::vector<Res*>& tracker, Res *& res)
 }
 
 void
-manager::destroy_worker_pool (worker_pool *& worker_pool_arg)
+manager::destroy_worker_pool (worker_pool_type *& worker_pool_arg)
 {
   return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg);
 }

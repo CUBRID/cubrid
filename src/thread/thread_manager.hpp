@@ -34,23 +34,26 @@ namespace cubthread
 {
 
 // forward definition
+template <typename Context>
 class worker_pool;
 class looper;
 class daemon;
 class entry;
-class entry_executable;
+class entry_task;
 
 class manager
 {
 public:
+  typedef worker_pool<entry> worker_pool_type;
+
   // TODO: remove starting_index
   manager (std::size_t max_threads, std::size_t starting_index = 0);
   ~manager ();
 
-  worker_pool * create_worker_pool (size_t pool_size, size_t work_queue_size);
-  void destroy_worker_pool (worker_pool *& worker_pool_arg);
+  worker_pool_type * create_worker_pool (size_t pool_size, size_t work_queue_size);
+  void destroy_worker_pool (worker_pool_type *& worker_pool_arg);
 
-  daemon * create_daemon (looper & looper_arg, entry_executable * exec_p);
+  daemon * create_daemon (looper & looper_arg, entry_task * exec_p);
   void destroy_daemon (daemon *& daemon_arg);
 
   entry *claim_entry (void);
@@ -70,7 +73,7 @@ private:
   std::size_t m_max_threads;
 
   std::mutex m_mutex;
-  std::vector<worker_pool *> m_worker_pools;
+  std::vector<worker_pool_type *> m_worker_pools;
   std::vector<daemon *> m_daemons;
 
   entry *m_all_entries;
