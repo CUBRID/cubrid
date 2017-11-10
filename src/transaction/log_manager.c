@@ -6419,7 +6419,7 @@ static void log_repl_data_dump(FILE* out_fp, int length, void* data)
   db_value_printer printer(sb);
   printer.describe_value(&value);
   fprintf(out_fp, "C[%s] K[%s]\n", class_name, mem_block.ptr);
-  mem::default_dealloc((mem_block);
+  mem::default_dealloc(mem_block);
   pr_clear_value(&value);
 }
 
