@@ -2349,7 +2349,6 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
   int vol_fd;
   VPID *vpid;
   int error_code = NO_ERROR;
-  DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 oldest_time;
@@ -2461,7 +2460,6 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   int error_code = NO_ERROR;
   DWB_SLOT *p_dwb_ordered_slots = NULL;
   unsigned int i, ordered_slots_length;
-  FILEIO_PAGE *io_page = NULL;
   unsigned int block_checksum_element_position, block_checksum_start_position, element_position;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -3066,10 +3064,13 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 {
   unsigned int count_wb_pages;
   int error_code = NO_ERROR, inserted, retry_flush_iter = 0, retry_flush_max = 5, checksum_threads;
-  DWB_BLOCK *block = NULL, *prev_block = NULL;
-  bool checksum_computed, checksum_computation_started = false;
+  DWB_BLOCK *block = NULL;
+  bool checksum_computed;
   DWB_SLOT *dwb_slot = NULL;
   bool needs_flush;
+#if defined (SERVER_MODE)
+  bool checksum_computation_started;
+#endif
 
   assert ((p_dwb_slot != NULL) && ((io_page_p != NULL) || ((*p_dwb_slot)->io_page != NULL)) && vpid != NULL);
   if (thread_p == NULL)
