@@ -10445,8 +10445,7 @@ char *pr_valstring (DB_VALUE * val, THREAD_ENTRY* threade)
       return NULL;
     }
 
-  //bSolo: ToDo: fix compiler errors when declaring pr_type::sptrfunc(... string_buffer&...)
-  //(*(pr_type->sptrfunc)) (val, sb); //caller should use db_private_free() to deallocate it
+  (*(pr_type->sptrfunc)) (val, sb); //caller should use db_private_free() to deallocate it
   return mem_block.ptr;
 }
 

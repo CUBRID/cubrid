@@ -37,7 +37,10 @@
 #include "work_space.h"
 #endif
 #include "thread.h" //struct thread_entry; //but can't fwd declare THREAD_ENTRY
-//class string_buffer; //bSolo: is this included in a source file compiled with C instead C++???
+
+#ifdef __cplusplus
+class string_buffer;
+#endif
 
 /*
  * PR_TYPE
@@ -56,8 +59,9 @@ typedef struct pr_type
   /* print dbvalue to file */
   void (*fptrfunc) (FILE * fp, const DB_VALUE * value);
   /* print dbvalue to buffer */
-  int (*sptrfunc) (const DB_VALUE * value, char *buffer, int buflen);
-  //void (*sptrfunc) (const DB_VALUE * value, string_buffer& sb);
+#ifdef __cplusplus
+  void (*sptrfunc) (const DB_VALUE * value, string_buffer& sb);
+#endif
 
   /* initialize memory */
   void (*initmem) (void *memptr, struct tp_domain * domain);

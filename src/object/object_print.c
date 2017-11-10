@@ -737,44 +737,15 @@ void help_fprint_value(FILE* fp, const DB_VALUE* value)
 }
 
 /*
- * help_sprint_value() - This places a printed representation of the supplied
- *                       value in a buffer.
- *   return: number of characters in description
+ * help_sprint_value() - This places a printed representation of the supplied value in a buffer.
  *   value(in) : value to describe
- *   buffer(in/out) : buffer to contain description
- *   max_length(in) : maximum chars in buffer
- *
- *  NOTE:
- *   This entire module needs to be much more careful about
- *   overflowing the internal "linebuf" buffer when using long
- *   strings.
- *   If the description will fit within the buffer, the number of characters
- *   used is returned, otherwise, -1 is returned.
+ *   sb(in/out) : auto resizable buffer to contain description
  */
-#if 1 //bSolo: old
-int help_sprint_value(const DB_VALUE* value, char *buffer, int max_length)
-{
-#if 0
-  string_buffer buf(max_length, buffer);
-  db_value_printer printer(buf);
-  printer.describe_value(value);
-  int length = (int)buf.len();
-  if(length > max_length)
-    {
-      length = -length;
-    }
-  return length;
-#else
-  return 0;
-#endif
-}
-#else //bSolo: new ... but with compilation problems
 void help_sprint_value(const DB_VALUE* value, string_buffer& sb)
 {
   db_value_printer printer(sb);
   printer.describe_value(value);
 }
-#endif
 
 /*
  * help_fprint_describe_comment() - Print description of a comment to a file.
