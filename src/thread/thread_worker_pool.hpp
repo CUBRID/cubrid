@@ -46,6 +46,8 @@ public:
   void execute (task_type * work_arg);
   void stop (void);
   bool is_running (void);
+  bool is_busy (void);
+  bool is_full (void);
 
 private:
   static void run (worker_pool<Context> & pool, std::thread & thread_arg, task_type * work_arg);
@@ -157,6 +159,19 @@ bool
 worker_pool<Context>::is_running (void)
 {
   return !m_stopped;
+}
+
+template<typename Context>
+inline bool
+worker_pool<Context>::is_busy (void)
+{
+  return m_worker_count == m_max_workers;
+}
+
+template<typename Context>
+inline bool worker_pool<Context>::is_full (void)
+{
+  return m_work_queue.is_full ();
 }
 
 template <typename Context>

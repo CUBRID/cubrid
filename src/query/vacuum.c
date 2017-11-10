@@ -37,6 +37,7 @@
 #include "dbtype.h"
 #include "util_func.h"
 #include "log_impl.h"
+#include "thread_manager.hpp"
 
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */

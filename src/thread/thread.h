@@ -66,6 +66,17 @@ enum
 
 #include "lock_free.h"
 
+#if defined (__cplusplus) && (defined (SERVER_MODE) || defined (SA_MODE))
+// forward definition for thread manager
+namespace cubthread
+{
+  class manager;
+}
+
+extern
+  cubthread::manager *
+thread_get_new_manager (void);
+#endif /* SERVER_MODE or SA_MODE */
 
 #if !defined(SERVER_MODE)
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) thread_get_current_entry_index()
@@ -424,7 +435,7 @@ extern unsigned __stdcall thread_worker (void *);
 
 /* There is no static mutex initializer - PTHREAD_MUTEX_INITIALIZER - in win32
  * threads. So all mutexes are initialized at the first time it used. This
- * variable is used to syncronize mutex initialization.
+ * variable is used to synchronize mutex initialization.
  */
 extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 #else /* WINDOWS */

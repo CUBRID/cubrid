@@ -25,6 +25,8 @@
 
 #include "test_output.hpp"
 
+// testing server mode
+#define SERVER_MODE
 #include "thread_entry_executable.hpp"
 #include "thread_executable.hpp"
 #include "thread_looper.hpp"

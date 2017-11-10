@@ -23,7 +23,10 @@
 #include <mutex>
 #include <thread>
 
-namespace cubthread {
+#include <cassert>
+
+namespace cubthread
+{
 
 class task
 {
@@ -53,9 +56,13 @@ public:
   virtual Context & create_context (void) = 0;
   virtual void retire_context (Context &) = 0;
 
-  // implementation of task's execute function.
+  // implementation of task's execute function. creates own context
   void execute (void)
   {
+    if (m_own_context == NULL)
+      {
+        create_own_context ();
+      }
     execute (*m_own_context);
   }
   // implementation of task's retire function.
@@ -70,6 +77,7 @@ public:
   // create own context
   void create_own_context (void)
   {
+    assert (m_own_context == NULL);
     m_own_context = &(create_context ());
   }
 

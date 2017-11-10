@@ -20,6 +20,10 @@
 #ifndef _THREAD_ENTRY_EXECUTABLE_HPP_
 #define _THREAD_ENTRY_EXECUTABLE_HPP_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Wrong module
+#endif // not SERVER_MODE and not SA_MODE
+
 #include "thread_executable.hpp"
 #include "thread_manager.hpp"
 

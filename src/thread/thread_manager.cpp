@@ -30,6 +30,7 @@
 #include "thread_worker_pool.hpp"
 
 // project includes
+#include "error_manager.h"
 #include "resource_shared_pool.hpp"
 
 #include <cassert>
@@ -37,27 +38,40 @@
 namespace cubthread
 {
 
+thread_local entry *tl_Entry_p = NULL;
+
 manager::manager (std::size_t max_threads, std::size_t starting_index)
   : m_max_threads (max_threads)
-  , m_mutex ()
+  , m_entries_mutex ()
   , m_worker_pools ()
   , m_daemons ()
   , m_all_entries (NULL)
   , m_entry_dispatcher (NULL)
   , m_available_entries_count (max_threads)
+#if defined (SERVER_MODE)
+  , m_single_thread (false)
+#else // not SERVER_MODE = SA_MODE
+  , m_single_thread (true)
+#endif // not SERVER_MODE = SA_MODE
 {
-  m_all_entries = new entry [max_threads];
-  for (std::size_t i = 0; i < max_threads; i++)
+  if (m_single_thread)
+    {
+      m_max_threads = 1;
+      m_available_entries_count = 1;
+    }
+  m_all_entries = new entry [m_max_threads];
+  for (std::size_t i = 0; i < m_max_threads; i++)
     {
       m_all_entries[i].index = (int) (starting_index + i);
     }
-  m_entry_dispatcher = new entry_dispatcher (m_all_entries, max_threads);
+  m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
 }
 
 manager::~manager ()
 {
   // pool container should be empty by now
   assert (m_available_entries_count == m_max_threads);
+
 
   // make sure that we stop and free all
   destroy_and_untrack_all_resources (m_worker_pools);
@@ -82,7 +96,7 @@ void manager::destroy_and_untrack_all_resources (std::vector<Res*>& tracker)
 template<typename Res, typename ... CtArgs>
 inline Res * manager::create_and_track_resource (std::vector<Res*>& tracker, size_t entries_count, CtArgs &&... args)
 {
-  std::unique_lock<std::mutex> lock (m_mutex);  // safe-guard
+  std::unique_lock<std::mutex> lock (m_entries_mutex);  // safe-guard
 
   if (m_available_entries_count < entries_count)
     {
@@ -106,7 +120,6 @@ daemon *
 manager::create_daemon(looper & looper_arg, entry_task * exec_p)
 {
   exec_p->set_manager (this);
-  exec_p->create_own_context ();
   return create_and_track_resource (m_daemons, 1, looper_arg, exec_p);
 }
 
@@ -114,7 +127,7 @@ template<typename Res>
 inline void
 manager::destroy_and_untrack_resource (std::vector<Res*>& tracker, Res *& res)
 {
-  std::unique_lock<std::mutex> lock (m_mutex);    // safe-guard
+  std::unique_lock<std::mutex> lock (m_entries_mutex);    // safe-guard
 
   if (res == NULL)
     {
@@ -148,6 +161,48 @@ manager::destroy_worker_pool (worker_pool_type *& worker_pool_arg)
 }
 
 void
+manager::push_task (entry & thread_p, worker_pool_type * worker_pool_arg, entry_task * exec_p)
+{
+  if (worker_pool_arg == NULL)
+    {
+      // execute on this thread
+      exec_p->execute (thread_p);
+      exec_p->retire ();
+    }
+  else
+    {
+      exec_p->set_manager (this);
+      worker_pool_arg->execute (exec_p);
+    }
+}
+
+bool
+manager::try_task (entry & thread_p, worker_pool_type * worker_pool_arg, entry_task * exec_p)
+{
+  if (worker_pool_arg == NULL)
+    {
+      return false;
+    }
+  else
+    {
+      exec_p->set_manager (this);
+      return worker_pool_arg->try_execute (exec_p);
+    }
+}
+
+bool
+manager::is_pool_busy (worker_pool_type * worker_pool_arg)
+{
+  return worker_pool_arg == NULL || worker_pool_arg->is_busy ();
+}
+
+bool
+manager::is_pool_full (worker_pool_type * worker_pool_arg)
+{
+  return worker_pool_arg == NULL || worker_pool_arg->is_full ();
+}
+
+void
 manager::destroy_daemon (daemon *& daemon_arg)
 {
   return destroy_and_untrack_resource (m_daemons, daemon_arg);
@@ -156,13 +211,34 @@ manager::destroy_daemon (daemon *& daemon_arg)
 entry *
 manager::claim_entry (void)
 {
-  return m_entry_dispatcher->claim ();
+  assert (!m_single_thread);
+  tl_Entry_p = m_entry_dispatcher->claim ();
+  return tl_Entry_p;
 }
 
 void
 manager::retire_entry (entry & entry_p)
 {
+  assert (!m_single_thread);
+  assert (tl_Entry_p == &entry_p);
+  tl_Entry_p = NULL;
   m_entry_dispatcher->retire (entry_p);
+}
+
+entry &
+manager::get_entry (void)
+{
+  if (m_single_thread)
+    {
+      return m_all_entries[0];
+    }
+  else
+    {
+      // shouldn't be called
+      er_print_callstack (ARG_FILE_LINE, "warning: manager::get_entry is called");
+      // todo
+      return *tl_Entry_p;
+    }
 }
 
 } // namespace cubthread

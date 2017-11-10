@@ -74,19 +74,19 @@ private:
   circular_queue ();
   circular_queue (const circular_queue&);
 
-  inline std::size_t next_pow2 (std::size_t size);
+  inline std::size_t next_pow2 (std::size_t size) const;
 
-  inline bool test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor);
-  inline bool test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor);
+  inline bool test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const;
+  inline bool test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const;
 
   inline cursor_type load_cursor (atomic_cursor_type & cursor);
   inline bool test_and_increment_cursor (atomic_cursor_type& cursor, cursor_type crt_value);
 
-  inline T load_data (cursor_type consume_cursor);
+  inline T load_data (cursor_type consume_cursor) const;
   inline void store_data (std::size_t index, const T& data);
-  inline std::size_t get_cursor_index (cursor_type cursor);
+  inline std::size_t get_cursor_index (cursor_type cursor) const;
 
-  inline bool is_blocked (cursor_type cursor);
+  inline bool is_blocked (cursor_type cursor) const;
   inline bool block (cursor_type cursor);
   inline void unblock (cursor_type cursor);
   inline void init_blocked_cursors (void);
@@ -372,7 +372,7 @@ circular_queue<T>::is_full () const
 }
 
 template<class T>
-inline std::size_t circular_queue<T>::next_pow2 (std::size_t size)
+inline std::size_t circular_queue<T>::next_pow2 (std::size_t size) const
 {
   std::size_t next_pow = 1;
   for (--size; size != 0; size /= 2)
@@ -383,13 +383,13 @@ inline std::size_t circular_queue<T>::next_pow2 (std::size_t size)
 }
 
 template<class T>
-inline bool circular_queue<T>::test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor)
+inline bool circular_queue<T>::test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const
 {
   return produce_cursor >= consume_cursor;
 }
 
 template<class T>
-inline bool circular_queue<T>::test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor)
+inline bool circular_queue<T>::test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const
 {
   return consume_cursor + m_capacity <= produce_cursor;
 }
@@ -409,7 +409,7 @@ inline bool circular_queue<T>::test_and_increment_cursor (atomic_cursor_type & c
 }
 
 template<class T>
-inline std::size_t circular_queue<T>::get_cursor_index (cursor_type cursor)
+inline std::size_t circular_queue<T>::get_cursor_index (cursor_type cursor) const
 {
   return cursor & m_index_mask;
 }
@@ -422,14 +422,14 @@ inline void circular_queue<T>::store_data (cursor_type cursor, const T & data)
 
 template<class T>
 inline T
-circular_queue<T>::load_data (cursor_type consume_cursor)
+circular_queue<T>::load_data (cursor_type consume_cursor) const
 {
   return m_data[get_cursor_index (consume_cursor)].load ();
 }
 
 template<class T>
 inline bool
-circular_queue<T>::is_blocked (cursor_type cursor)
+circular_queue<T>::is_blocked (cursor_type cursor) const
 {
   cursor_type block_val = m_blocked_cursors[get_cursor_index (cursor)].load ();
   return flag<cursor_type>::is_flag_set (block_val, BLOCK_FLAG);
