@@ -3064,12 +3064,12 @@ dwb_set_data_on_next_slot (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, boo
 int
 dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB_SLOT ** p_dwb_slot)
 {
-  unsigned int prev_block_no, count_wb_pages;
-  UINT64 position_with_flags;
+  unsigned int count_wb_pages;
   int error_code = NO_ERROR, inserted, retry_flush_iter = 0, retry_flush_max = 5, checksum_threads;
   DWB_BLOCK *block = NULL, *prev_block = NULL;
   bool checksum_computed, checksum_computation_started = false;
   DWB_SLOT *dwb_slot = NULL;
+  bool needs_flush;
 
   assert ((p_dwb_slot != NULL) && ((io_page_p != NULL) || ((*p_dwb_slot)->io_page != NULL)) && vpid != NULL);
   if (thread_p == NULL)
@@ -3114,45 +3114,13 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
   count_wb_pages = ATOMIC_INC_32 (&block->count_wb_pages, 1);
   assert_release (count_wb_pages <= DWB_BLOCK_NUM_PAGES);
 
-  if (count_wb_pages == DWB_BLOCK_NUM_PAGES)
+  if (count_wb_pages < DWB_BLOCK_NUM_PAGES)
     {
-      prev_block_no = DWB_GET_PREV_BLOCK_NO (block->block_no);
-      /*
-       * Full block. Need to flush the current block. First, check whether the previous block was flushed,
-       * when we advanced the global position.
-       */
-      position_with_flags = ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL);
-      if (DWB_IS_BLOCK_WRITE_STARTED (position_with_flags, prev_block_no))
-	{
-	  prev_block = &double_Write_Buffer.blocks[prev_block_no];
-	  if ((prev_block->version < block->version)
-	      || (prev_block->version == block->version && prev_block->block_no < block->block_no))
-	    {
-	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
-		{
-		  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%lld) \n",
-				 prev_block_no, prev_block->version);
-		}
-
-	      /*
-	       * The previous block was not flushed yet. Needs to wait for it to be flushed. However, do not wait here
-	       * to not introduce delays. Wake ups the checksum thread and flush block thread to flush previous block.
-	       */
-#if defined (SERVER_MODE)
-	      if (thread_is_dwb_checksum_computation_thread_available ())
-		{
-		  /* Wake up checksum thread to compute checksum for previous block. */
-		  thread_wakeup_dwb_checksum_computation_thread ();
-		}
-
-	      if (thread_is_dwb_flush_block_thread_available ())
-		{
-		  /* Wake up flush thread, to flush the previous block. */
-		  thread_wakeup_dwb_flush_block_thread ();
-		}
-#endif
-	    }
-	}
+      needs_flush = false;
+    }
+  else
+    {
+      needs_flush = true;
     }
 
   checksum_threads = prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS);
@@ -3167,7 +3135,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	  thread_wakeup_dwb_checksum_computation_thread ();
 	  if (checksum_threads == 1)
 	    {
-	      if (count_wb_pages < DWB_BLOCK_NUM_PAGES)
+	      if (needs_flush == false)
 		{
 		  return NO_ERROR;
 		}
@@ -3202,6 +3170,17 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
     }
 
 start_flush_block:
+  if (needs_flush == false)
+    {
+      return NO_ERROR;
+    }
+
+  /*
+   * The blocks must be flushed in the order they are filled to have consistent data. The flush block thread knows
+   * how to flush the blocks in the order they are filled. So, we don't care anymore about the flushing order here.
+   * Initially, we waited here if the previous block was not flushed. That approach created delays.
+   */
+
 #if defined (SERVER_MODE)
   /*
    * Wake ups flush block thread to flush the current block. The current block will be flushed after flushing the
