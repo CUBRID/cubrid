@@ -836,25 +836,16 @@ db_value_scale (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
 {
-#define LANG_VARIABLE_CHARSET(x) ((x) != INTL_CODESET_ASCII     && \
-                                  (x) != INTL_CODESET_RAW_BITS  && \
-                                  (x) != INTL_CODESET_RAW_BYTES && \
-                                  (x) != INTL_CODESET_ISO88591)
 
-#if 1				/* try to find regressions of function version. */
   /* 
    *  Remove the comments when decided on implementation.
    */
   int error = NO_ERROR;
-  bool is_char_type;
-  bool is_bit_type;
-#endif
 
 #if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ERROR (value);
 #endif
 
-#if 0				/* try to find regressions of function version. */
   value->data.ch.info.style = MEDIUM_STRING;
   value->data.ch.info.is_max_string = false;
   value->data.ch.info.compressed_need_clear = false;
@@ -871,14 +862,13 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
   value->need_clear = false;
 
   return NO_ERROR;
-#endif
 
   /*  todo: Decide on what implementation do we keep. The old one from dbval.h, 
    *  that is currently active, which does not do any preliminary checks, or the
    *  one from db_macro.c which does extra checks that caused some regressions to
    *  fail.
    */
-#if 1				/* try to find regressions of function version. */
+#if 0
   is_char_type = (value->domain.general_info.type == DB_TYPE_VARCHAR
 		  || value->domain.general_info.type == DB_TYPE_CHAR
 		  || value->domain.general_info.type == DB_TYPE_NCHAR
@@ -887,7 +877,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 
   if (is_char_type || is_bit_type)
     {
-#if 0
+/* #if 0 */
 /* Remove comments up when decided on implementation. */
       if (size <= DB_SMALL_CHAR_BUF_SIZE)
 	{
@@ -897,7 +887,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	  memcpy (value->data.ch.sm.buf, str, size);
 	}
       else
-#endif
+/* #endif */
 /* Remove comments up when decided on implementation. */
       if (size <= DB_MAX_STRING_LENGTH)
 	{
@@ -924,19 +914,15 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	    }
 	  else
 	    {
-#if 0 /* try to reveal other regressions */
 	      /* We need to ensure that we don't exceed the max size for the char value specified in the domain. */
 	      if (value->domain.char_info.length == TP_FLOATING_PRECISION_VALUE || LANG_VARIABLE_CHARSET (codeset))
-		{
-		  value->data.ch.medium.size = size;
-		}
-	      else
-		{
-		  value->data.ch.medium.size = MIN (size, value->domain.char_info.length);
-		}
-#else
-	      value->data.ch.medium.size = size;
-#endif
+			{
+			  value->data.ch.medium.size = size;
+			}
+			  else
+			{
+			  value->data.ch.medium.size = MIN (size, value->domain.char_info.length);
+			}
 	    }
 	  value->data.ch.medium.buf = (char *) str;
 	}
@@ -968,8 +954,6 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
     }
   return error;
 #endif
-
-#undef LANG_VARIABLE_CHARSET
 }
 
 /*
