@@ -359,7 +359,8 @@ STATIC_INLINE void
 dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, int vol_fd)
 __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_slots,
-				   unsigned int ordered_slots_length) __attribute__ ((ALWAYS_INLINE));
+				   unsigned int ordered_slots_length, bool remove_from_hash)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
 				   UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_init_slot (DWB_SLOT * slot) __attribute__ ((ALWAYS_INLINE));
@@ -2337,12 +2338,13 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, 
  * block(in): The block that is written.
  * p_dwb_ordered_slots(in): The slots that gives the pages flush order.
  * ordered_slots_length(in): The ordered slots array length.
+ * remove_from_hash(in): True, if needs to remove entries from hash.
  *
  *  Note: This function fills to_flush_vdes array with the volumes that must be flushed.
  */
 STATIC_INLINE int
 dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_ordered_slots,
-		 unsigned int ordered_slots_length)
+		 unsigned int ordered_slots_length, bool remove_from_hash)
 {
   INT16 volid;
   unsigned int i;
@@ -2375,7 +2377,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 
       if (volid != vpid->volid)
 	{
-	  /* Update the current VPID and get the volume descriptor. */
+	  /* Get the volume descriptor. */
 	  volid = vpid->volid;
 	  vol_fd = fileio_get_volume_descriptor (volid);
 	  dwb_add_volume_to_block_flush_area (thread_p, block, vol_fd);
@@ -2414,18 +2416,21 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
       tsc_getticks (&start_tick);
     }
 
-  for (i = 0; i < block->count_wb_pages; i++)
+  if (remove_from_hash)
     {
-      vpid = &p_dwb_ordered_slots[i].vpid;
-      if (VPID_ISNULL (vpid))
+      for (i = 0; i < block->count_wb_pages; i++)
 	{
-	  continue;
-	}
+	  vpid = &p_dwb_ordered_slots[i].vpid;
+	  if (VPID_ISNULL (vpid))
+	    {
+	      continue;
+	    }
 
-      error_code = dwb_slots_hash_delete (thread_p, &block->slots[p_dwb_ordered_slots[i].position_in_block]);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
+	  error_code = dwb_slots_hash_delete (thread_p, &block->slots[p_dwb_ordered_slots[i].position_in_block]);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
 	}
     }
 
@@ -2535,7 +2540,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
     }
 
   /* Now, write and flush the original location. */
-  error_code = dwb_write_block (thread_p, block, p_dwb_ordered_slots, ordered_slots_length);
+  error_code = dwb_write_block (thread_p, block, p_dwb_ordered_slots, ordered_slots_length, true);
   if (error_code != NO_ERROR)
     {
       goto end;
@@ -3341,15 +3346,21 @@ end:
  *
  *  Note: This function is called at recovery. The corrupted pages are recovered from double write volume buffer disk.
  *    Then, double write volume buffer disk is recreated according to user specifications.
+ *    Currently we use a DWB block in memory to recover corrupted page.
  */
 int
 dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p)
 {
   int error_code = NO_ERROR, read_fd = NULL_VOLDES;
-  unsigned int num_pages, buffer_size, ordered_slots_length, i;
+  unsigned int num_pages, ordered_slots_length, i;
   char *buffer = NULL;
   DWB_BLOCK *rcv_block = NULL;
   DWB_SLOT *p_dwb_ordered_slots = NULL;
+  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  FILEIO_PAGE *iopage;
+  VPID *vpid;
+  int vol_fd;
+  INT16 volid;
 
   assert (double_Write_Buffer.vdes == NULL_VOLDES);
   fileio_make_dwb_name (dwb_Volume_Name, dwb_path_p, db_name_p);
@@ -3364,30 +3375,31 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	}
 
       num_pages = fileio_get_number_of_volume_pages (read_fd, IO_PAGESIZE);
-      buffer_size = num_pages * IO_PAGESIZE;
-
       assert (IS_POWER_OF_2 (num_pages));
-      assert (buffer_size % (DWB_MIN_SIZE) == 0);
+      assert ((num_pages * IO_PAGESIZE) % (DWB_MIN_SIZE) == 0);
 
-      buffer = (char *) malloc (buffer_size * sizeof (char));
-      if (buffer == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size * sizeof (char));
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
-
-      if (fileio_read_pages (thread_p, read_fd, buffer, 0, num_pages, IO_PAGESIZE) == NULL)
-	{
-	  error_code = ER_FAILED;
-	  goto end;
-	}
-
+      /* Create DWB block for recovery purpose. */
       error_code = dwb_create_blocks (thread_p, 1, num_pages, &rcv_block);
       if (error_code != NO_ERROR)
 	{
 	  goto end;
 	}
+
+      /* Read pages in block write area. This means that slot pages are set. */
+      if (fileio_read_pages (thread_p, read_fd, rcv_block->write_buffer, 0, num_pages, IO_PAGESIZE) == NULL)
+	{
+	  error_code = ER_FAILED;
+	  goto end;
+	}
+
+      /* Set slots VPID and LSA from pages. */
+      for (i = 0; i < num_pages; i++)
+	{
+	  iopage = rcv_block->slots[i].io_page;
+	  VPID_SET (&rcv_block->slots[i].vpid, iopage->prv.volid, iopage->prv.pageid);
+	  LSA_COPY (&rcv_block->slots[i].lsa, &iopage->prv.lsa);
+	}
+      rcv_block->count_wb_pages = num_pages;
 
       /* Order slots by VPID, to flush faster. */
       error_code = dwb_block_create_ordered_slots (rcv_block, &p_dwb_ordered_slots, &ordered_slots_length);
@@ -3397,7 +3409,61 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	  goto end;
 	}
 
-      error_code = dwb_write_block (thread_p, rcv_block, p_dwb_ordered_slots, ordered_slots_length);
+      volid = NULL_VOLID;
+      iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+      /* Check whether the data page is corrupted. If true, replaced with the DWB page. */
+      for (i = 0; i < rcv_block->count_wb_pages; i++)
+	{
+	  vpid = &p_dwb_ordered_slots[i].vpid;
+	  if (VPID_ISNULL (vpid))
+	    {
+	      continue;
+	    }
+
+	  assert (!VPID_EQ (vpid, &p_dwb_ordered_slots[i + 1].vpid));
+
+	  if (volid != vpid->volid)
+	    {
+	      /* Update the current VPID and get the volume descriptor. */
+	      volid = vpid->volid;
+	      vol_fd = fileio_get_volume_descriptor (volid);
+	    }
+
+	  /* Read the page from data volume. */
+	  if (fileio_read (thread_p, vol_fd, iopage, vpid->pageid, IO_PAGESIZE) == NULL)
+	    {
+	      /* There was an error in reading the page. */
+	      ASSERT_ERROR ();
+	      error_code = er_errid ();
+	      goto end;
+	    }
+
+	  if (fileio_page_has_valid_checksum (iopage))
+	    {
+	      /* The page in data volume is not corrupted. Do not overwrite its content - reset slot VPID. */
+	      VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
+	      fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
+	      continue;
+	    }
+
+	  /* Corrupted page in data volume. Check DWB. */
+	  if (!fileio_page_has_valid_checksum (p_dwb_ordered_slots[i].io_page))
+	    {
+	      /* The page is corrupted in data volume and DWB. Something wrong happened. */
+	      assert_release (false);
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
+		{
+		  _er_log_debug (ARG_FILE_LINE, "DWB error: Can't recover page = (%d,%d)\n", vpid->volid, vpid->pageid);
+		}
+	      error_code = ER_FAILED;
+	      goto end;
+	    }
+
+	  /* The page content in data volume will be replaced later with the DWB page content. */
+	}
+
+      /* Replace the corrupted pages in data volume with the DWB content, if is the case. */
+      error_code = dwb_write_block (thread_p, rcv_block, p_dwb_ordered_slots, ordered_slots_length, false);
       if (error_code != NO_ERROR)
 	{
 	  goto end;
@@ -3439,11 +3505,6 @@ end:
     {
       dwb_finalize_block (rcv_block);
       free_and_init (rcv_block);
-    }
-
-  if (buffer != NULL)
-    {
-      free_and_init (buffer);
     }
 
   return error_code;
