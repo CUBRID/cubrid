@@ -126,7 +126,7 @@ static int locator_defence_drop_class_name_entry (const void *name, void *ent, v
 static int locator_force_drop_class_name_entry (const void *name, void *ent, void *args);
 static int locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, LOG_LSA * savep_lsa);
 static int locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa);
-static int locator_print_class_name (THREAD_ENTRY *thread_p, FILE * outfp, const void *key, void *ent, void *args);
+static int locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key, void *ent, void *args);
 static int locator_check_class_on_heap (const void *name, void *ent, void *args);
 static SCAN_CODE locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * assign,
 						 OID * class_oid, OID * oid, int chn, LOCK lock_mode,
@@ -1706,7 +1706,7 @@ locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa)
  * Note:Print an entry of the classname memory hash table.
  */
 static int
-locator_print_class_name (THREAD_ENTRY *thread_p, FILE * outfp, const void *key, void *ent, void *args)
+locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key, void *ent, void *args)
 {
   LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) ent;
   int *class_no_p = (int *) args;

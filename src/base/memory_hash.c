@@ -1158,8 +1158,9 @@ mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *a
  *       print this information
  */
 int
-mht_dump (THREAD_ENTRY *thread_p, FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
-	  int (*print_func) (THREAD_ENTRY *thread_p, FILE * fp, const void *key, void *data, void *args), void *func_args)
+mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
+	  int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args),
+	  void *func_args)
 {
   HENTRY_PTR *hvector;		/* Entries of hash table */
   HENTRY_PTR hentry;		/* A hash table entry. linked list */
