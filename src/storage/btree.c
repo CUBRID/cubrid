@@ -4451,7 +4451,7 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
  *   key(in):
  */
 void
-btree_dump_key (FILE * fp, DB_VALUE * key)
+btree_dump_key (THREAD_ENTRY *thread_p, FILE * fp, DB_VALUE * key)
 {
   DB_TYPE key_type = DB_VALUE_DOMAIN_TYPE (key);
   PR_TYPE *pr_type = PR_TYPE_FROM_ID (key_type);
@@ -4462,7 +4462,7 @@ btree_dump_key (FILE * fp, DB_VALUE * key)
     {
 #if 1
       fprintf (fp, " ");
-      (*(pr_type->fptrfunc)) (fp, key);
+      (*(pr_type->fptrfunc)) (thread_p, fp, key);
       fprintf (fp, " ");
 
 #else /* debug routine - DO NOT DELETE ME */
@@ -4556,7 +4556,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, REC
   fprintf (fp, "Key_Len: %d Ovfl_Page: {%d , %d} ", key_len, leaf_record.ovfl.volid, leaf_record.ovfl.pageid);
 
   fprintf (fp, "Key: ");
-  btree_dump_key (fp, &key);
+  btree_dump_key (thread_p, fp, &key);
 
   btree_clear_key_value (&clear_key, &key);
 
@@ -4799,7 +4799,7 @@ btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
     {
       key_len = btree_get_disk_size_of_key (&key);
       fprintf (fp, "Key_Len: %d  Key: ", key_len);
-      btree_dump_key (fp, &key);
+      btree_dump_key (thread_p, fp, &key);
     }
   else
     {

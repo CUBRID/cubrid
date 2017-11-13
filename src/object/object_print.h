@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #include "dbtype.h"
+#include "thread.h"
 
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
@@ -60,7 +61,7 @@ extern "C"
   int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
 #endif				/* !SERVER_MODE */
 
-  void help_fprint_value (FILE * fp, const DB_VALUE * value);
+  void help_fprint_value (THREAD_ENTRY* thread_p, FILE * fp, const DB_VALUE * value);
   void help_sprint_value (const DB_VALUE * value, string_buffer& sb);
   void help_fprint_describe_comment (FILE * fp, const char *comment);
 

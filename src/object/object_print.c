@@ -25,6 +25,7 @@
 
 #include "object_print.h"
 #include "config.h"
+#include "db_private_allocator.hpp"
 #include "db_value_printer.hpp"
 #include "mem.hpp"
 #include "mem_block.hpp"
@@ -725,13 +726,19 @@ help_print_info (const char *command, FILE * fpp)
  *   value(in) : value to print
  */
 void
-help_fprint_value (FILE * fp, const DB_VALUE * value)
+help_fprint_value (THREAD_ENTRY* thread_p, FILE * fp, const DB_VALUE * value)
 {
+  db_private_allocator<char> private_allocator(thread_p);
   mem::block mem_block;
-  string_buffer sb (mem_block,[](mem::block & block, size_t len)
-		    {
-		    //bSolo: ToDo: add thread_entry and use db_private_allocator
-		    }
+  string_buffer sb (
+    mem_block,
+    [&private_allocator](mem::block & block, size_t len)
+      {
+        mem::block b{block.dim + len, private_allocator.allocate(block.dim + len)};
+        memcpy(b.ptr, block.ptr, block.dim);
+        private_allocator.deallocate(block.ptr);
+        block = b;
+      }
   );
   db_value_printer printer (sb);
   printer.describe_value (value);

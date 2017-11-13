@@ -57,7 +57,7 @@ typedef struct pr_type
   int disksize;
   int alignment;
   /* print dbvalue to file */
-  void (*fptrfunc) (FILE * fp, const DB_VALUE * value);
+  void (*fptrfunc) (THREAD_ENTRY *thread_p, FILE *fp, const DB_VALUE *value);
   /* print dbvalue to buffer */
 #ifdef __cplusplus
   void (*sptrfunc) (const DB_VALUE * value, string_buffer & sb);

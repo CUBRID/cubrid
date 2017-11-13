@@ -3495,7 +3495,7 @@ db_value_print (const DB_VALUE * value)
 
   if (value != NULL)
     {
-      help_fprint_value (stdout, value);
+      help_fprint_value (NULL, stdout, value);
     }
 
 }
@@ -3513,7 +3513,7 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
 
   if (fp != NULL && value != NULL)
     {
-      help_fprint_value (fp, value);
+      help_fprint_value (NULL, fp, value);
     }
 
 }
