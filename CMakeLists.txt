@@ -1047,8 +1047,8 @@ list(APPEND EP_LIBS ${LIBLZO_LIBS})
 #                  ${WITH_LIBGPG_ERROR_ROOT_PATH}/include
 if(UNIX)
   if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
-    set(LIBGPGE_RROR_TARGET libgpg-error)
-    externalproject_add(${LIBGPGE_RROR_TARGET}
+    set(LIBGPG_ERROR_TARGET libgpg-error)
+    externalproject_add(${LIBGPG_ERROR_TARGET}
       URL               ${WITH_LIBGPG_ERROR_URL}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1056,7 +1056,7 @@ if(UNIX)
       )
     set(LIBGPG_ERROR_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgpg-error.a)
     set(LIBGPG_ERROR_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBGPGE_RROR_TARGET})
+    list(APPEND EP_TARGETS ${LIBGPG_ERROR_TARGET})
   elseif(WITH_LIBGPG_ERROR STREQUAL "SYSTEM")
     find_library(LIBGPG_ERROR_LIBS NAMES libgpg-error.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/lib REQUIRED)
     find_path(LIBGPG_ERROR_INCLUDES NAMES gpg-error.h gpgrt.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/include REQUIRED)
@@ -1079,7 +1079,7 @@ list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
 #                  ${WITH_LIBGCRYPT_ROOT_PATH}/include
 if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
   if(UNIX)
-    if(TARGET ${LIBGPGE_RROR_TARGET})
+    if(TARGET ${LIBGPG_ERROR_TARGET})
       set(WITH_LIBGPG_ERROR_PREFIX "--with-gpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external")
     endif()
 
@@ -1091,8 +1091,8 @@ if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
 
-    if(TARGET ${LIBGPGE_RROR_TARGET})
-      add_dependencies(${LIBGCRYPT_TARGET} ${LIBGPGE_RROR_TARGET})
+    if(TARGET ${LIBGPG_ERROR_TARGET})
+      add_dependencies(${LIBGCRYPT_TARGET} ${LIBGPG_ERROR_TARGET})
     endif()
 
     set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
