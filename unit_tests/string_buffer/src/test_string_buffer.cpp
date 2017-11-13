@@ -68,14 +68,14 @@ class test_string_buffer
       , m_ref ((char *) calloc (m_dim, 1))
       , m_block ()
       , m_sb (
-          m_block,
-          [](mem::block& block, size_t len)
-            {
-              mem::block b = affix_allocator.allocate(block.dim + len);
-              memcpy(b.ptr, block.ptr, block.dim);
-              affix_allocator.deallocate(block);
-              block = b;
-            }
+		m_block,
+		[] (mem::block& block, size_t len)
+    {
+      mem::block b = affix_allocator.allocate (block.dim + len);
+      memcpy (b.ptr, block.ptr, block.dim);
+      affix_allocator.deallocate (block);
+      block = b;
+    }
       )
     {
     }

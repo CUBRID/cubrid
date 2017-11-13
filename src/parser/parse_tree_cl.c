@@ -2523,8 +2523,8 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   unsigned int save_custom = parser->custom_print;
 
   mem::block mem_block;
-  string_buffer sb(mem_block, mem::default_realloc);//ToDo: use parser_alloca() & Co
-  db_value_printer printer(sb);
+  string_buffer sb (mem_block, mem::default_realloc);	//ToDo: use parser_alloca() & Co
+  db_value_printer printer (sb);
   if (val == NULL)
     {
       return NULL;
@@ -2536,59 +2536,59 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
     {
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
-      sb("%s", pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
+      sb ("%s", pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
       /* fall thru */
     case DB_TYPE_SEQUENCE:
-      sb("{");
+      sb ("{");
 
       size = db_set_size (db_get_set ((DB_VALUE *) val));
       if (size > 0)
-        {
-          error = db_set_get (db_get_set ((DB_VALUE *) val), 0, &element);
-          printer.describe_value(&element);
-          for (i = 1; i < size; i++)
-            {
-              error = db_set_get (db_get_set ((DB_VALUE *) val), i, &element);
-              sb(", ");
-              printer.describe_value(&element);
-            }
-        }
-      sb("}");
+	{
+	  error = db_set_get (db_get_set ((DB_VALUE *) val), 0, &element);
+	  printer.describe_value (&element);
+	  for (i = 1; i < size; i++)
+	    {
+	      error = db_set_get (db_get_set ((DB_VALUE *) val), i, &element);
+	      sb (", ");
+	      printer.describe_value (&element);
+	    }
+	}
+      sb ("}");
       break;
 
     case DB_TYPE_OBJECT:
       /* no printable representation!, should not get here */
-      sb("NULL");
+      sb ("NULL");
       break;
 
     case DB_TYPE_MONETARY:
       /* This is handled explicitly because describe_value will add a currency symbol, and it isn't needed here. */
-      printer.describe_money(DB_GET_MONETARY((DB_VALUE*)val));
+      printer.describe_money (DB_GET_MONETARY ((DB_VALUE *) val));
       break;
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       /* csql & everyone else get X'some_hex_string' */
-      printer.describe_value(val);
+      printer.describe_value (val);
       break;
 
     case DB_TYPE_DATE:
       /* csql & everyone else want DATE'mm/dd/yyyy' */
-      printer.describe_value(val);
+      printer.describe_value (val);
       break;
 
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
       /* csql & everyone else get time 'hh:mi:ss' */
-      printer.describe_value(val);
+      printer.describe_value (val);
       break;
 
     case DB_TYPE_UTIME:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
       /* everyone else gets csql's utime format */
-      printer.describe_value(val);
+      printer.describe_value (val);
 
       break;
 
@@ -2596,17 +2596,17 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
     case DB_TYPE_DATETIMETZ:
     case DB_TYPE_DATETIMELTZ:
       /* everyone else gets csql's utime format */
-      printer.describe_value(val);
+      printer.describe_value (val);
       break;
 
     default:
-      printer.describe_value(val);
+      printer.describe_value (val);
       break;
     }
   /* restore custom print */
   parser->custom_print = save_custom;
-  result = pt_append_nulstring(parser, NULL, sb.get_buffer());
-  mem::default_dealloc(mem_block);
+  result = pt_append_nulstring (parser, NULL, sb.get_buffer ());
+  mem::default_dealloc (mem_block);
   return result;
 }
 
@@ -3929,7 +3929,7 @@ pt_show_binopcode (PT_OP_TYPE n)
     case PT_JSON_SEARCH:
       return "json_search";
     default:
-        return "unknown opcode";
+      return "unknown opcode";
     }
 }
 
@@ -16433,10 +16433,10 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  switch (p->type_enum)
 	    {
 	    case PT_TYPE_FLOAT:
-          sprintf(s, db_value_printer::DECIMAL_FORMAT, DB_FLOAT_DECIMAL_PRECISION, p->info.value.data_value.f);
+	      sprintf (s, db_value_printer::DECIMAL_FORMAT, DB_FLOAT_DECIMAL_PRECISION, p->info.value.data_value.f);
 	      break;
 	    case PT_TYPE_DOUBLE:
-          sprintf(s, db_value_printer::DECIMAL_FORMAT, DB_DOUBLE_DECIMAL_PRECISION, p->info.value.data_value.d);
+	      sprintf (s, db_value_printer::DECIMAL_FORMAT, DB_DOUBLE_DECIMAL_PRECISION, p->info.value.data_value.d);
 	      break;
 	    case PT_TYPE_NUMERIC:
 	      strcpy (s, (const char *) p->info.value.data_value.str->bytes);

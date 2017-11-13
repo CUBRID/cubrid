@@ -18,7 +18,7 @@
 #include "string_buffer.hpp"
 #include <memory.h>
 
-void string_buffer::add_bytes(size_t len, void *bytes)
+void string_buffer::add_bytes (size_t len, void *bytes)
 {
   if (bytes && m_len + len < m_block.dim)
     {
@@ -33,8 +33,10 @@ void string_buffer::add_bytes(size_t len, void *bytes)
 
 void string_buffer::operator+= (const char ch)
 {
-    if(m_block.dim < m_len + 2)
-        m_extend(m_block, 1);
-    m_block.ptr[m_len] = ch;
-    m_block.ptr[++m_len] = '\0';
+  if (m_block.dim < m_len + 2)
+    {
+      m_extend (m_block, 1);
+    }
+  m_block.ptr[m_len] = ch;
+  m_block.ptr[++m_len] = '\0';
 }

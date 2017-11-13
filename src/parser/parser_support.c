@@ -9036,12 +9036,12 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
     }
 
   mem::block mem_block;
-  string_buffer sb(mem_block, mem::default_realloc);//ToDo: use parser_alloc() & Co
-  object_printer obj_print(sb);
-  obj_print.describe_class(class_op);
-#if 1 //mem::default_realloc()
-  PARSER_VARCHAR *buffer = pt_append_nulstring(parser, NULL, mem_block.ptr);
-  mem::default_dealloc(mem_block);
+  string_buffer sb (mem_block, mem::default_realloc);	//ToDo: use parser_alloc() & Co
+  object_printer obj_print (sb);
+  obj_print.describe_class (class_op);
+#if 1				//mem::default_realloc()
+  PARSER_VARCHAR *buffer = pt_append_nulstring (parser, NULL, mem_block.ptr);
+  mem::default_dealloc (mem_block);
   return ((char *) pt_get_varchar_bytes (buffer));
 #else //mem::parser_realloc()
   return mem_block.ptr;
@@ -10227,7 +10227,7 @@ pt_is_operator_logical (PT_OP_TYPE op)
     case PT_SUPERSETEQ:
     case PT_SUPERSET:
     case PT_RANGE:
-        return true;
+      return true;
     default:
       return false;
     }

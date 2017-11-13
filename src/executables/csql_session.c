@@ -274,11 +274,11 @@ csql_help_schema (const char *class_name)
 
   {
     class_description class_descr;
-    
+
     if (!class_descr.init (class_name))
       {
-        csql_Error_code = CSQL_ERR_SQL_ERROR;
-        goto error;
+	csql_Error_code = CSQL_ERR_SQL_ERROR;
+	goto error;
       }
 
     snprintf (class_title, (2 * DB_MAX_IDENTIFIER_LENGTH + 2),
@@ -289,8 +289,8 @@ csql_help_schema (const char *class_name)
 
     if (class_descr.supers != NULL)
       {
-        APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_SUPER_CLASS_HEAD_TEXT));
-        for (line_ptr = class_descr.supers; *line_ptr != NULL; line_ptr++)
+	APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_SUPER_CLASS_HEAD_TEXT));
+	for (line_ptr = class_descr.supers; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
@@ -298,8 +298,8 @@ csql_help_schema (const char *class_name)
 
     if (class_descr.subs != NULL)
       {
-        APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_SUB_CLASS_HEAD_TEXT));
-        for (line_ptr = class_descr.subs; *line_ptr != NULL; line_ptr++)
+	APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_SUB_CLASS_HEAD_TEXT));
+	for (line_ptr = class_descr.subs; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
@@ -308,11 +308,11 @@ csql_help_schema (const char *class_name)
     APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_ATTRIBUTE_HEAD_TEXT));
     if (class_descr.attributes == NULL)
       {
-        APPEND_MORE_LINE (5, msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_NONE_TEXT));
+	APPEND_MORE_LINE (5, msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_NONE_TEXT));
       }
     else
       {
-        for (line_ptr = class_descr.attributes; *line_ptr != NULL; line_ptr++)
+	for (line_ptr = class_descr.attributes; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
@@ -320,9 +320,9 @@ csql_help_schema (const char *class_name)
 
     if (class_descr.class_attributes != NULL)
       {
-        APPEND_HEAD_LINE (msgcat_message
+	APPEND_HEAD_LINE (msgcat_message
 			  (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CLASS_ATTRIBUTE_HEAD_TEXT));
-        for (line_ptr = class_descr.class_attributes; *line_ptr != NULL; line_ptr++)
+	for (line_ptr = class_descr.class_attributes; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
@@ -330,8 +330,8 @@ csql_help_schema (const char *class_name)
 
     if (class_descr.constraints != NULL)
       {
-        APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CONSTRAINT_HEAD_TEXT));
-        for (line_ptr = class_descr.constraints; *line_ptr != NULL; line_ptr++)
+	APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CONSTRAINT_HEAD_TEXT));
+	for (line_ptr = class_descr.constraints; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
@@ -339,14 +339,14 @@ csql_help_schema (const char *class_name)
 
     if (class_descr.object_id != NULL)
       {
-        APPEND_MORE_LINE (0, "");
-        APPEND_MORE_LINE (1, class_descr.object_id);
+	APPEND_MORE_LINE (0, "");
+	APPEND_MORE_LINE (1, class_descr.object_id);
       }
 
     if (class_descr.methods != NULL)
       {
-        APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_METHOD_HEAD_TEXT));
-        for (line_ptr = class_descr.methods; *line_ptr != NULL; line_ptr++)
+	APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_METHOD_HEAD_TEXT));
+	for (line_ptr = class_descr.methods; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
@@ -354,8 +354,8 @@ csql_help_schema (const char *class_name)
 
     if (class_descr.class_methods != NULL)
       {
-        APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CLASS_METHOD_HEAD_TEXT));
-        for (line_ptr = class_descr.class_methods; *line_ptr != NULL; line_ptr++)
+	APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CLASS_METHOD_HEAD_TEXT));
+	for (line_ptr = class_descr.class_methods; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
@@ -363,8 +363,8 @@ csql_help_schema (const char *class_name)
 
     if (class_descr.resolutions != NULL)
       {
-        APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_RESOLUTION_HEAD_TEXT));
-        for (line_ptr = class_descr.resolutions; *line_ptr != NULL; line_ptr++)
+	APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_RESOLUTION_HEAD_TEXT));
+	for (line_ptr = class_descr.resolutions; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
@@ -372,8 +372,8 @@ csql_help_schema (const char *class_name)
 
     if (class_descr.method_files != NULL)
       {
-        APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_METHFILE_HEAD_TEXT));
-        for (line_ptr = class_descr.method_files; *line_ptr != NULL; line_ptr++)
+	APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_METHFILE_HEAD_TEXT));
+	for (line_ptr = class_descr.method_files; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
@@ -381,26 +381,26 @@ csql_help_schema (const char *class_name)
 
     if (class_descr.query_spec != NULL)
       {
-        APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_QUERY_SPEC_HEAD_TEXT));
-        for (line_ptr = class_descr.query_spec; *line_ptr != NULL; line_ptr++)
+	APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_QUERY_SPEC_HEAD_TEXT));
+	for (line_ptr = class_descr.query_spec; *line_ptr != NULL; line_ptr++)
 	  {
 	    APPEND_MORE_LINE (5, *line_ptr);
 	  }
       }
 
-    if (!class_descr.triggers.empty())
+    if (!class_descr.triggers.empty ())
       {
-        APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_HEAD_TEXT));
-        for (auto it : class_descr.triggers)
+	APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_HEAD_TEXT));
+      for (auto it:class_descr.triggers)
 	  {
 	    APPEND_MORE_LINE (5, it);
 	  }
       }
 
-    if (!class_descr.partition.empty())
+    if (!class_descr.partition.empty ())
       {
-        APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_PARTITION_HEAD_TEXT));
-        for(auto it: class_descr.partition)
+	APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_PARTITION_HEAD_TEXT));
+      for (auto it:class_descr.partition)
 	  {
 	    APPEND_MORE_LINE (5, it);
 	  }
@@ -412,7 +412,7 @@ csql_help_schema (const char *class_name)
 
     if (class_name_composed != NULL)
       {
-        free_and_init (class_name_composed);
+	free_and_init (class_name_composed);
       }
   }
   return;
@@ -507,7 +507,7 @@ csql_help_trigger (const char *trigger_name)
 	    }
 	}
 
-      trigger_description help(trigger_name);
+      trigger_description help (trigger_name);
       if (help.name == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;

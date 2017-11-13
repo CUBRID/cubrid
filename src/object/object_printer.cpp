@@ -268,7 +268,7 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 		}
 	      m_buf ("'");
 	      m_buf.add_bytes (DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (temp_domain, idx)),
-		               DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (temp_domain, idx)));
+			       DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (temp_domain, idx)));
 	      m_buf ("'");
 	    }
 	  m_buf (")");

@@ -2437,12 +2437,12 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 	  goto error;
 	}
 
-        mem::block mem_block;
-        string_buffer sb(mem_block, mem::default_realloc);
-        object_printer printer(sb);
-        printer.describe_class(class_op);
-        db_make_string_copy (result, mem_block.ptr);
-        mem::default_dealloc(mem_block);
+      mem::block mem_block;
+      string_buffer sb (mem_block, mem::default_realloc);
+      object_printer printer (sb);
+      printer.describe_class (class_op);
+      db_make_string_copy (result, mem_block.ptr);
+      mem::default_dealloc (mem_block);
     }
   else
     {

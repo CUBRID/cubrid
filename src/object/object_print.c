@@ -735,7 +735,10 @@ help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
 		    mem::block b
 		    {
 		    block.dim + len, private_allocator.allocate (block.dim + len)};
-		    memcpy (b.ptr, block.ptr, block.dim); private_allocator.deallocate (block.ptr); block = b;}
+		    memcpy (b.ptr, block.ptr, block.dim);
+		    private_allocator.deallocate (block.ptr);
+		    block = b;
+		    }
   );
   db_value_printer printer (sb);
   printer.describe_value (value);

@@ -28,29 +28,29 @@
 namespace mem
 {
 
-  inline void default_realloc(mem::block& block, size_t len)
+  inline void default_realloc (mem::block &block, size_t len)
   {
 #if 0 //realloc based
-    if(block.dim == 0)
-    {
-      block.dim = 1;
-    }
+    if (block.dim == 0)
+      {
+	block.dim = 1;
+      }
     for (size_t n=block.dim; block.dim < n+len; block.dim*=2); // calc next power of 2 >= block.dim
     block.ptr = (char *) realloc (block.ptr, block.dim);
 #else //new + memcopy + delete
     size_t dim = block.dim ? block.dim : 1;
-    for(; dim < block.dim+len; dim*=2); // calc next power of 2 >= block.dim
+    for (; dim < block.dim+len; dim*=2); // calc next power of 2 >= block.dim
     mem::block b{dim, new char[dim]};
-    memcpy(b.ptr, block.ptr, block.dim);
+    memcpy (b.ptr, block.ptr, block.dim);
     delete block.ptr;
     block = b;
 #endif
   }
 
-  inline void default_dealloc(mem::block& block)
+  inline void default_dealloc (mem::block &block)
   {
 #if 0 //free based
-    free(block.ptr);
+    free (block.ptr);
     block = {};
 #else //delete based
     delete block.ptr;
