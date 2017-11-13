@@ -1207,6 +1207,7 @@ int g_original_buffer_len;
 %token FUN_JSON_INSERT
 %token FUN_JSON_REMOVE
 %token FUN_JSON_ARRAY_APPEND
+%token FUN_JSON_GET_ALL_PATHS
 %token GENERAL
 %token GET
 %token GLOBAL
@@ -16069,12 +16070,31 @@ reserved_func
 
                     len = parser_count_list (args_list);
 		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY_APPEND, args_list);
-		    if (len < 2)
+		    if (len < 3 || len % 2 != 1)
 		    {
 			PT_ERRORmf (this_parser, args_list,
 				    MSGCAT_SET_PARSER_SEMANTIC,
 				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
 				    "json_array_append");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_GET_ALL_PATHS, args_list);
+		    if (len != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_get_all_paths");
 		    }
 
 		    $$ = node;

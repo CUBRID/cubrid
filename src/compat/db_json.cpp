@@ -134,6 +134,8 @@ static void db_json_merge_two_json_arrays (JSON_DOC &array1, const JSON_DOC *arr
 static void db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2);
 static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 
+static void get_paths_helper (const JSON_VALUE &obj, std::string s, std::vector<std::string> &paths);
+
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
   m_is_loaded (false)
@@ -181,7 +183,7 @@ JSON_VALIDATOR::load ()
   if (m_document.HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-              rapidjson::GetParseError_En (m_document.GetParseError ()), m_document.GetErrorOffset ());
+	      rapidjson::GetParseError_En (m_document.GetParseError ()), m_document.GetErrorOffset ());
       return ER_INVALID_JSON;
     }
 
@@ -252,7 +254,7 @@ JSON_VALIDATOR::validate (const JSON_DOC *doc) const
       m_validator->GetInvalidSchemaPointer ().StringifyUriFragment (sb1);
       m_validator->GetInvalidDocumentPointer ().StringifyUriFragment (sb2);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALIDATED_BY_SCHEMA, 3, sb1.GetString (),
-              m_validator->GetInvalidSchemaKeyword (), sb2.GetString ());
+	      m_validator->GetInvalidSchemaKeyword (), sb2.GetString ());
       error_code = ER_JSON_INVALIDATED_BY_SCHEMA;
     }
 
@@ -274,9 +276,9 @@ JSON_PRIVATE_ALLOCATOR::Malloc (size_t size)
     {
       char *p = (char *) db_private_alloc (NULL, size);
       if (prm_get_bool_value (PRM_ID_JSON_LOG_ALLOCATIONS))
-        {
-          er_print_callstack (ARG_FILE_LINE, "JSON_ALLOC: Traced pointer=%p\n", p);
-        }
+	{
+	  er_print_callstack (ARG_FILE_LINE, "JSON_ALLOC: Traced pointer=%p\n", p);
+	}
       return p;
     }
   else
@@ -383,9 +385,9 @@ db_json_get_length (const JSON_DOC *document)
       int length = 0;
 
       for (JSON_VALUE::ConstMemberIterator itr = document->MemberBegin (); itr != document->MemberEnd (); ++itr)
-        {
-          length++;
-        }
+	{
+	  length++;
+	}
 
       return length;
     }
@@ -412,14 +414,14 @@ db_json_value_get_depth (const JSON_VALUE *doc)
       unsigned int max = 0;
 
       for (JSON_VALUE::ConstValueIterator itr = doc->Begin (); itr != doc->End (); ++itr)
-        {
-          unsigned int depth = db_json_value_get_depth (itr);
+	{
+	  unsigned int depth = db_json_value_get_depth (itr);
 
-          if (depth > max)
-            {
-              max = depth;
-            }
-        }
+	  if (depth > max)
+	    {
+	      max = depth;
+	    }
+	}
 
       return max + 1;
     }
@@ -428,14 +430,14 @@ db_json_value_get_depth (const JSON_VALUE *doc)
       unsigned int max = 0;
 
       for (JSON_VALUE::ConstMemberIterator itr = doc->MemberBegin (); itr != doc->MemberEnd (); ++itr)
-        {
-          unsigned int depth = db_json_value_get_depth (&itr->value);
+	{
+	  unsigned int depth = db_json_value_get_depth (&itr->value);
 
-          if (depth > max)
-            {
-              max = depth;
-            }
-        }
+	  if (depth > max)
+	    {
+	      max = depth;
+	    }
+	}
 
       return max + 1;
     }
@@ -456,7 +458,23 @@ db_json_value_get_depth (const JSON_VALUE *doc)
 int
 db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path, JSON_DOC *&result)
 {
-  JSON_POINTER p (raw_path);
+  int path_conversion_error_code = NO_ERROR;
+  std::string converted_path;
+
+  path_conversion_error_code = db_json_convert_mysqlpath_to_rapidjsonpath ((char *) raw_path,
+			       *document, converted_path);
+
+  if (path_conversion_error_code == ER_JSON_PATH_NO_EFFECT)
+    {
+      return NO_ERROR;
+    }
+  else if (path_conversion_error_code != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, path_conversion_error_code, 0);
+      return path_conversion_error_code;
+    }
+
+  JSON_POINTER p (converted_path.c_str());
   JSON_VALUE *resulting_json;
 
   if (!p.IsValid ())
@@ -634,7 +652,7 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
   int error_code = NO_ERROR;
 
   doc = db_json_allocate_doc ();
-  
+
   if (json_raw == NULL)
     {
       return NO_ERROR;
@@ -643,7 +661,7 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
   if (doc->Parse (json_raw).HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-              rapidjson::GetParseError_En (doc->GetParseError ()), doc->GetErrorOffset ());
+	      rapidjson::GetParseError_En (doc->GetParseError ()), doc->GetErrorOffset ());
       delete doc;
       doc = NULL;
       error_code = ER_INVALID_JSON;
@@ -709,9 +727,9 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
   for (i = raw_path_len-1; i >= 0; i--)
     {
       if (raw_path[i] == '/')
-        {
-          break;
-        }
+	{
+	  break;
+	}
     }
 
   raw_path_parent = (char *) db_private_alloc (NULL, raw_path_len);
@@ -735,23 +753,23 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
   if (resulting_json_parent != NULL)
     {
       if (resulting_json_parent->IsObject ())
-        {
-          p.Set (*doc, val, doc->GetAllocator ());
-        }
+	{
+	  p.Set (*doc, val, doc->GetAllocator ());
+	}
       else if (resulting_json_parent->IsArray ())
-        {
-          resulting_json_parent->PushBack (val, doc->GetAllocator ());
-        }
+	{
+	  resulting_json_parent->PushBack (val, doc->GetAllocator ());
+	}
       else
-        {
-          JSON_VALUE value_aux;
+	{
+	  JSON_VALUE value_aux;
 
-          value_aux.SetArray ();
-          value_aux.PushBack (*resulting_json_parent, doc->GetAllocator ());
-          resulting_json_parent->Swap (value_aux);
+	  value_aux.SetArray ();
+	  value_aux.PushBack (*resulting_json_parent, doc->GetAllocator ());
+	  resulting_json_parent->Swap (value_aux);
 
-          resulting_json_parent->PushBack (val, doc->GetAllocator ());
-        }
+	  resulting_json_parent->PushBack (val, doc->GetAllocator ());
+	}
     }
 
   db_private_free (NULL, raw_path_parent);
@@ -786,34 +804,37 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
   int i, raw_path_len;
   char *raw_path_parent;
 
+  std::string converted_path;
+  //db_json_convert_rapidjsonpath_to_mysqlpath(raw_path, *doc, converted_path);
+
   if (!p.IsValid())
     {
-      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
     }
 
-  resulting_json = p.Get(*doc);
+  resulting_json = p.Get (*doc);
 
   if (resulting_json == NULL)
     {
       return NO_ERROR;
     }
 
-  val.CopyFrom(*value, doc->GetAllocator());
+  val.CopyFrom (*value, doc->GetAllocator());
 
   if (resulting_json->IsArray())
     {
-      resulting_json->PushBack(val, doc->GetAllocator());
+      resulting_json->PushBack (val, doc->GetAllocator());
     }
   else
     {
       JSON_VALUE value;
 
       value.SetArray();
-      value.PushBack(*resulting_json, doc->GetAllocator());
-      resulting_json->Swap(value);
+      value.PushBack (*resulting_json, doc->GetAllocator());
+      resulting_json->Swap (value);
 
-      resulting_json->PushBack(val, doc->GetAllocator());
+      resulting_json->PushBack (val, doc->GetAllocator());
     }
 
   return NO_ERROR;
@@ -876,25 +897,25 @@ db_json_merge_two_json_objects (JSON_DOC &obj1, const JSON_DOC *obj2)
       const char *name = itr->name.GetString ();
 
       if (obj1.HasMember (name))
-        {
-          if (obj1 [name].IsArray ())
-            {
-              obj1 [name].GetArray ().PushBack (itr->value, obj1.GetAllocator ());
-            }
-          else
-            {
-              JSON_VALUE value;
+	{
+	  if (obj1 [name].IsArray ())
+	    {
+	      obj1 [name].GetArray ().PushBack (itr->value, obj1.GetAllocator ());
+	    }
+	  else
+	    {
+	      JSON_VALUE value;
 
-              value.SetArray ();
-              value.PushBack (obj1 [name], obj1.GetAllocator ());
-              obj1 [name].Swap (value);
-              obj1 [name].PushBack (itr->value, obj1.GetAllocator ());
-            }
-        }
+	      value.SetArray ();
+	      value.PushBack (obj1 [name], obj1.GetAllocator ());
+	      obj1 [name].Swap (value);
+	      obj1 [name].PushBack (itr->value, obj1.GetAllocator ());
+	    }
+	}
       else
-        {
-          obj1.AddMember (itr->name, itr->value, obj1.GetAllocator ());
-        }
+	{
+	  obj1.AddMember (itr->name, itr->value, obj1.GetAllocator ());
+	}
     }
 }
 
@@ -974,7 +995,7 @@ db_json_validate_json (const char *json_body)
   if (document.HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-              rapidjson::GetParseError_En (document.GetParseError ()), document.GetErrorOffset ());
+	      rapidjson::GetParseError_En (document.GetParseError ()), document.GetErrorOffset ());
       return ER_INVALID_JSON;
     }
 
@@ -1073,17 +1094,17 @@ db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest)
   if (db_json_get_type (dest) == db_json_get_type (source))
     {
       if (db_json_get_type (dest) == DB_JSON_OBJECT)
-        {
-          db_json_merge_two_json_objects (*dest, source);
-        }
+	{
+	  db_json_merge_two_json_objects (*dest, source);
+	}
       else if (db_json_get_type (dest) == DB_JSON_ARRAY)
-        {
-          db_json_merge_two_json_arrays (*dest, source);
-        }
+	{
+	  db_json_merge_two_json_arrays (*dest, source);
+	}
       else
-        {
-          db_json_merge_two_json_by_array_wrapping (*dest, source);
-        }
+	{
+	  db_json_merge_two_json_by_array_wrapping (*dest, source);
+	}
     }
   else
     {
@@ -1141,7 +1162,7 @@ db_json_get_double_from_value (const JSON_VALUE *doc)
     }
 
   assert (db_json_get_type_of_value (doc) == DB_JSON_DOUBLE
-          || db_json_get_type_of_value (doc) == DB_JSON_INT);
+	  || db_json_get_type_of_value (doc) == DB_JSON_INT);
 
   return db_json_get_type_of_value (doc) == DB_JSON_DOUBLE ? doc->GetDouble () : doc->GetInt ();
 }
@@ -1165,6 +1186,281 @@ db_json_get_string_from_value (const JSON_VALUE *doc, bool copy)
     {
       return doc->GetString ();
     }
+}
+
+int
+db_json_convert_rapidjsonpath_to_mysqlpath (char *raw_path, const JSON_DOC &doc, std::string &converted_path)
+{
+  std::string raw_path_string (raw_path);
+
+  // trim leading spaces
+  raw_path_string.erase (raw_path_string.begin(), std::find_if (raw_path_string.begin(), raw_path_string.end(),
+			 [] (int ch)
+  {
+    return !std::isspace (ch);
+  }));
+  // trim trailing spaces
+  raw_path_string.erase (std::find_if (raw_path_string.rbegin(), raw_path_string.rend(),
+				       [] (int ch)
+  {
+    return !std::isspace (ch);
+  }).base(), raw_path_string.end());
+
+  // path already in mysql path format
+  if (raw_path_string.empty() || raw_path_string[0] == '$')
+    {
+      converted_path = raw_path_string;
+      return NO_ERROR;
+    }
+
+  std::string result = "$";
+  std::string token;
+  unsigned int i, start_index, raw_path_length = raw_path_string.length();
+  std::unordered_map<std::string, std::string> special_chars;
+  special_chars.insert (std::make_pair ("~0", "~"));
+  special_chars.insert (std::make_pair ("~1", "/"));
+  special_chars.insert (std::make_pair ("%20", " "));
+  special_chars.insert (std::make_pair ("%E2%82%AC", "€"));
+
+  for (i = 0; i < raw_path_length; ++i)
+    {
+      JSON_VALUE *resulting_json_parent;
+      JSON_POINTER p (raw_path_string.substr (0, i).c_str());
+
+      if (raw_path_string[i] == '/')
+	{
+	  i++;
+	  bool is_number = false;
+	  bool found_special_char = false;
+	  token.clear();
+
+	  while (i < raw_path_length && raw_path_string[i] != '/')
+	    {
+	      if (raw_path_string[i] >= '0' && raw_path_string[i] <= '9' && !is_number)
+		{
+		  is_number = true;
+		}
+
+	      token += raw_path_string[i++];
+	    }
+
+	  if (!p.IsValid())
+	    {
+	      return ER_JSON_INVALID_PATH;
+	    }
+
+	  resulting_json_parent = (JSON_VALUE *)p.Get (doc);
+
+	  if (resulting_json_parent == NULL)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (!is_number && !resulting_json_parent->IsObject())
+	    {
+	      return ER_JSON_PATH_NO_EFFECT;
+	    }
+
+	  if (is_number && resulting_json_parent->IsArray())
+	    {
+	      result += "[";
+	      result += token;
+	      result += "]";
+	    }
+	  else
+	    {
+	      result += ".\"";
+	      for (auto &pair : special_chars)
+		{
+		  size_t pos = 0;
+		  while ((pos = token.find (pair.first, pos)) != std::string::npos)
+		    {
+		      token.replace (pos, pair.first.length(), pair.second);
+		      pos += pair.second.length();
+		    }
+		}
+	      result += token;
+	      result += "\"";
+	    }
+
+	  i--;
+	}
+    }
+
+  converted_path = result;
+  return NO_ERROR;
+}
+
+int
+db_json_convert_mysqlpath_to_rapidjsonpath (char *raw_path, const JSON_DOC &doc, std::string &converted_path)
+{
+  std::string raw_path_string (raw_path);
+
+  // trim leading spaces
+  raw_path_string.erase (raw_path_string.begin(), std::find_if (raw_path_string.begin(), raw_path_string.end(),
+			 [] (int ch)
+  {
+    return !std::isspace (ch);
+  }));
+  // trim trailing spaces
+  raw_path_string.erase (std::find_if (raw_path_string.rbegin(), raw_path_string.rend(),
+				       [] (int ch)
+  {
+    return !std::isspace (ch);
+  }).base(), raw_path_string.end());
+
+  // path already in rapidjson path format
+  if (raw_path_string.empty() || raw_path_string[0] != '$')
+    {
+      converted_path = raw_path_string;
+      return NO_ERROR;
+    }
+
+  std::string result;
+  unsigned int i, start_index, raw_path_length = raw_path_string.length();
+  bool need_to_check_pointer = false;
+  char delimiter;
+  std::unordered_map<char, std::string> special_chars;
+  special_chars.insert (std::make_pair ('~', "~0"));
+  special_chars.insert (std::make_pair ('/', "~1"));
+  special_chars.insert (std::make_pair (' ', "%20"));
+  special_chars.insert (std::make_pair ('€', "%E2%82%AC"));
+
+  for (i = 1; i < raw_path_length; ++i)
+    {
+      JSON_VALUE *resulting_json_parent;
+      JSON_POINTER p (result.c_str());
+      need_to_check_pointer = false;
+
+      result += "/";
+
+      switch (raw_path_string[i])
+	{
+	case '[':
+	  i++;
+	  delimiter = ']';
+	  need_to_check_pointer = true;
+
+	  while (i < raw_path_length && raw_path_string[i] != ']')
+	    {
+	      result += raw_path_string[i++];
+	    }
+	  break;
+	case '.':
+	  if (raw_path_string[++i] == '\"')
+	    {
+	      i++;
+	      delimiter = '\"';
+	      need_to_check_pointer = true;
+
+	      while (i < raw_path_length && raw_path_string[i] != '\"')
+		{
+		  if (special_chars.find (raw_path_string[i]) != special_chars.end())
+		    {
+		      result += special_chars[raw_path_string[i]];
+		      if (result[0] != '#')
+			{
+			  result = "#" + result;
+			}
+		    }
+		  else
+		    {
+		      result += raw_path_string[i];
+		    }
+
+		  i++;
+		}
+	    }
+	  else
+	    {
+	      if ((raw_path_string[i] >= '0' && raw_path_string[i] <= '9')
+		  || raw_path_string[i] == '[' || i >= raw_path_length)
+		{
+		  return ER_JSON_INVALID_PATH;
+		}
+
+	      while (i < raw_path_length && raw_path_string[i] != '.' && raw_path_string[i] != '[')
+		{
+		  result += raw_path_string[i++];
+		}
+
+	      i--;
+	    }
+	  break;
+
+	default:
+	  return ER_JSON_INVALID_PATH;
+	}
+
+      if (need_to_check_pointer)
+	{
+	  if (i >= raw_path_length || raw_path_string[i] != delimiter || !p.IsValid())
+	    {
+	      return ER_JSON_INVALID_PATH;
+	    }
+
+	  resulting_json_parent = (JSON_VALUE *)p.Get (doc);
+
+	  if (resulting_json_parent == NULL)
+	    {
+	      return NO_ERROR;
+	    }
+	  if ( (delimiter == ']'  && !resulting_json_parent->IsArray())
+	       || (delimiter == '\"' && !resulting_json_parent->IsObject()))
+	    {
+	      return ER_JSON_PATH_NO_EFFECT;
+	    }
+	}
+    }
+
+  converted_path = result;
+  return NO_ERROR;
+}
+
+static void get_paths_helper (const JSON_VALUE &obj, std::string s, std::vector<std::string> &paths)
+{
+  if (obj.IsArray())
+    {
+      int count = 0;
+
+      for (auto &v : obj.GetArray())
+	{
+	  std::stringstream ss;
+	  ss << s << "[" << count++ << "]";
+	  get_paths_helper (v, ss.str(), paths);
+	}
+    }
+  else if (obj.IsObject())
+    {
+      for (auto it = obj.MemberBegin(); it != obj.MemberEnd(); ++it)
+	{
+	  std::stringstream ss;
+	  ss << s << '.' << '"' << it->name.GetString() << '"';
+	  get_paths_helper (it->value, ss.str(), paths);
+	}
+    }
+
+  paths.push_back (s);
+}
+
+int
+db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
+{
+  JSON_POINTER p ("");
+  JSON_VALUE *head = (JSON_VALUE *) p.Get (doc);
+  std::vector<std::string> paths;
+
+  get_paths_helper (*head, "$", paths);
+
+  result_json->SetArray();
+
+  for (auto &s : paths)
+    {
+      JSON_VALUE val;
+      val.SetString (s.c_str(), result_json->GetAllocator());
+      result_json->PushBack (val, result_json->GetAllocator());
+    }
+
+  return NO_ERROR;
 }
 
 bool
@@ -1207,68 +1503,68 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
   if (doc_type == val_type)
     {
       if (doc_type == DB_JSON_STRING)
-        {
-          result = (strcmp (doc->GetString (), value->GetString ()) == 0);
-        }
+	{
+	  result = (strcmp (doc->GetString (), value->GetString ()) == 0);
+	}
       else if (doc_type == DB_JSON_INT)
-        {
-          result = (db_json_get_int_from_value (doc) == db_json_get_int_from_value (value));
-        }
+	{
+	  result = (db_json_get_int_from_value (doc) == db_json_get_int_from_value (value));
+	}
       else if (doc_type == DB_JSON_DOUBLE)
-        {
-          result = (db_json_get_double_from_value (doc) == db_json_get_double_from_value (value));
-        }
+	{
+	  result = (db_json_get_double_from_value (doc) == db_json_get_double_from_value (value));
+	}
       else if (doc_type == DB_JSON_ARRAY)
-        {
-          for (JSON_VALUE::ConstValueIterator itr_val = value->Begin (); itr_val != value->End (); ++itr_val)
-            {
-              bool res;
+	{
+	  for (JSON_VALUE::ConstValueIterator itr_val = value->Begin (); itr_val != value->End (); ++itr_val)
+	    {
+	      bool res;
 
-              result = false;
-              for (JSON_VALUE::ConstValueIterator itr_doc = doc->Begin (); itr_doc != doc->End (); ++itr_doc)
-                {
-                  error_code = db_json_value_is_contained_in_doc_helper (itr_doc, itr_val, res);
-                  if (error_code != NO_ERROR)
-                    {
-                      result = false;
-                      return error_code;
-                    }
-                  result |= res;
-                }
-              if (!result)
-                {
-                  return NO_ERROR;
-                }
-            }
-          result = true;
-        }
+	      result = false;
+	      for (JSON_VALUE::ConstValueIterator itr_doc = doc->Begin (); itr_doc != doc->End (); ++itr_doc)
+		{
+		  error_code = db_json_value_is_contained_in_doc_helper (itr_doc, itr_val, res);
+		  if (error_code != NO_ERROR)
+		    {
+		      result = false;
+		      return error_code;
+		    }
+		  result |= res;
+		}
+	      if (!result)
+		{
+		  return NO_ERROR;
+		}
+	    }
+	  result = true;
+	}
       else if (doc_type == DB_JSON_OBJECT)
-        {
-          JSON_VALUE::ConstMemberIterator itr_val;
+	{
+	  JSON_VALUE::ConstMemberIterator itr_val;
 
-          for (itr_val = value->MemberBegin (); itr_val != value->MemberEnd (); ++itr_val)
-            {
-              if (doc->HasMember (itr_val->name))
-                {
-                  error_code = db_json_value_is_contained_in_doc_helper (& (*doc)[itr_val->name], &itr_val->value,
-                               result);
-                  if (error_code != NO_ERROR)
-                    {
-                      result = false;
-                      return error_code;
-                    }
-                  if (!result)
-                    {
-                      return NO_ERROR;
-                    }
-                }
-            }
-        }
+	  for (itr_val = value->MemberBegin (); itr_val != value->MemberEnd (); ++itr_val)
+	    {
+	      if (doc->HasMember (itr_val->name))
+		{
+		  error_code = db_json_value_is_contained_in_doc_helper (& (*doc)[itr_val->name], &itr_val->value,
+			       result);
+		  if (error_code != NO_ERROR)
+		    {
+		      result = false;
+		      return error_code;
+		    }
+		  if (!result)
+		    {
+		      return NO_ERROR;
+		    }
+		}
+	    }
+	}
       else if (doc_type == DB_JSON_NULL)
-        {
-          result = false;
-          return NO_ERROR;
-        }
+	{
+	  result = false;
+	  return NO_ERROR;
+	}
     }
   else if (db_json_value_has_numeric_type (doc) && db_json_value_has_numeric_type (value))
     {
@@ -1280,27 +1576,27 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
   else
     {
       if (doc_type == DB_JSON_ARRAY)
-        {
-          for (JSON_VALUE::ConstValueIterator itr_doc = doc->Begin (); itr_doc != doc->End (); ++itr_doc)
-            {
-              error_code = db_json_value_is_contained_in_doc_helper (itr_doc, value, result);
-              if (error_code != NO_ERROR)
-                {
-                  result = false;
-                  return error_code;
-                }
-              if (result)
-                {
-                  return NO_ERROR;
-                }
-            }
-          result = false;
-        }
+	{
+	  for (JSON_VALUE::ConstValueIterator itr_doc = doc->Begin (); itr_doc != doc->End (); ++itr_doc)
+	    {
+	      error_code = db_json_value_is_contained_in_doc_helper (itr_doc, value, result);
+	      if (error_code != NO_ERROR)
+		{
+		  result = false;
+		  return error_code;
+		}
+	      if (result)
+		{
+		  return NO_ERROR;
+		}
+	    }
+	  result = false;
+	}
       else
-        {
-          result = false;
-          return NO_ERROR;
-        }
+	{
+	  result = false;
+	  return NO_ERROR;
+	}
     }
 
   return error_code;

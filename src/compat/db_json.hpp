@@ -37,6 +37,12 @@ typedef void JSON_VALIDATOR;
 #if defined (__cplusplus)
 
 #include <functional>
+#include <sstream>
+#include <vector>
+#include <unordered_map>
+#include <algorithm>
+#include <cctype>
+#include <locale>
 #include "thread.h"
 
 /*
@@ -60,7 +66,7 @@ const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
 int db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path,
-                                        JSON_DOC *&result);
+					JSON_DOC *&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
 
@@ -77,10 +83,13 @@ void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 
+int db_json_convert_rapidjsonpath_to_mysqlpath (char *raw_path, const JSON_DOC &doc, std::string &converted_path);
+int db_json_convert_mysqlpath_to_rapidjsonpath (char *raw_path, const JSON_DOC &doc, std::string &converted_path);
 int db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
 int db_json_remove_func (JSON_DOC *doc, char *raw_path);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest);
+int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
 
 int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result);
 const char *db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val);

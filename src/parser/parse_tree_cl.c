@@ -4036,6 +4036,8 @@ pt_show_function (FUNC_TYPE c)
       return "json_array_append";
     case F_JSON_MERGE:
       return "json_merge";
+    case F_JSON_GET_ALL_PATHS:
+      return "json_get_all_paths";
     default:
       return "unknown function";
     }
