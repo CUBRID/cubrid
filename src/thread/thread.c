@@ -554,6 +554,18 @@ thread_initialize_manager (void)
       thread_initialize_sync_object ();
 #endif /* WINDOWS */
 
+      thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
+
+      thread_Manager.num_total = (thread_Manager.num_workers + thread_Manager.num_daemons + NUM_SYSTEM_TRANS);
+
+      /* initialize lock-free transaction systems */
+      r = lf_initialize_transaction_systems (thread_Manager.num_total + thread_New_manager_thread_count);
+      if (r != NO_ERROR)
+        {
+          return r;
+        }
+
+      thread_New_Manager = new cubthread::manager (thread_New_manager_thread_count, thread_Manager.num_total);
     }
   else
     {
@@ -562,17 +574,6 @@ thread_initialize_manager (void)
       thread_Manager.thread_array = NULL;
 
       /* Why are entries initialized twice? */
-    }
-
-  thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
-
-  thread_Manager.num_total = (thread_Manager.num_workers + thread_Manager.num_daemons + NUM_SYSTEM_TRANS);
-
-  /* initialize lock-free transaction systems */
-  r = lf_initialize_transaction_systems (thread_Manager.num_total + thread_New_manager_thread_count);
-  if (r != NO_ERROR)
-    {
-      return r;
     }
 
   /* allocate threads */
@@ -593,8 +594,6 @@ thread_initialize_manager (void)
     {
       thread_Manager.thread_array[i].index = i;
     }
-
-  thread_New_Manager = new cubthread::manager (thread_New_manager_thread_count, thread_Manager.num_total);
 
   thread_Manager.initialized = true;
 
@@ -1167,12 +1166,12 @@ thread_find_entry_by_tran_index_except_me (int tran_index)
 
   for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      thread_p = &thread_Manager.thread_array[i];
       if (thread_p->tran_index == tran_index && thread_p->tid != me)
 	{
 	  return thread_p;
 	}
     }
+  return NULL;
 }
 
 /*
@@ -1910,7 +1909,7 @@ thread_num_worker_threads (void)
 int
 thread_num_total_threads (void)
 {
-  return thread_Manager.num_total + thread_New_Manager->get_max_thread_count ();
+  return thread_Manager.num_total + (int) thread_New_Manager->get_max_thread_count ();
 }
 
 /*
@@ -3946,7 +3945,7 @@ thread_find_next_lockwait_entry (int *thread_index_p)
 	}
       if (thread_p->lockwait != NULL)
 	{			/* found */
-	  *thread_index_p = i;
+	  *thread_index_p = thread_p->index;
 	  return thread_p;
 	}
     }

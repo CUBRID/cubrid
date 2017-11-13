@@ -37,6 +37,9 @@
 #include "dbtype.h"
 #include "util_func.h"
 #include "log_impl.h"
+#include "resource_shared_pool.hpp"
+#include "thread_entry_executable.hpp"
+#include "thread_looper.hpp"
 #include "thread_manager.hpp"
 
 #if defined (SA_MODE)
@@ -425,6 +428,7 @@ int vacuum_Prefetch_log_mode = VACUUM_PREFETCH_LOG_MODE_MASTER;
 
 /* Static array of vacuum workers */
 VACUUM_WORKER vacuum_Workers[VACUUM_MAX_WORKER_COUNT];
+
 #if defined (SA_MODE)
 /* Vacuum worker structure used to execute vacuum jobs in SA_MODE.
  * TODO: Implement vacuum execution for SA_MODE.
@@ -677,6 +681,62 @@ static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
 #define VACUUM_VERIFY_VACUUM_DATA(thread_p)
 #endif /* NDEBUG */
 
+/* *INDENT-OFF* */
+// VACUUM_WORKER resource pool
+resource_shared_pool<VACUUM_WORKER> *vacuum_Workers_context_pool = NULL;
+// master daemon thread
+cubthread::daemon *vacuum_Master_daemon = NULL;
+// worker thread pool
+cubthread::entry_workpool *vacuum_Worker_threads = NULL;
+
+class vacuum_master_task : public cubthread::entry_task
+{
+public:
+  void execute (cubthread::entry & thread_ref) final
+  {
+    vacuum_process_vacuum_data (&thread_ref);
+  }
+};
+
+class vacuum_worker_task : public cubthread::entry_task
+{
+public:
+  void execute (cubthread::entry & thread_ref) override
+  {
+    vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_was_interrupted);
+  }
+
+  cubthread::entry & create_context (void) override
+  {
+    cubthread::entry &context = cubthread::entry_task::create_context ();
+
+    context.vacuum_worker = vacuum_Workers_context_pool->claim ();
+    assert (context.vacuum_worker != NULL);
+
+    return context;
+  }
+
+  void retire_context (cubthread::entry & context) override
+  {
+    if (context.vacuum_worker != NULL)
+      {
+        vacuum_Workers_context_pool->retire (*context.vacuum_worker);
+      }
+    else
+      {
+        assert (false);
+      }
+
+    cubthread::entry_task::retire_context (context);
+  }
+
+private:
+  VACUUM_DATA_ENTRY m_data;
+  BLOCK_LOG_BUFFER m_block_log_buffer;
+  bool m_was_interrupted;
+};
+/* *INDENT-ON* */
+
 /*
  * xvacuum () - Vacuumes database
  *
@@ -895,6 +955,52 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 error:
   vacuum_finalize (thread_p);
   return (error_code == NO_ERROR) ? ER_FAILED : error_code;
+}
+
+int
+vacuum_boot (THREAD_ENTRY * thread_p)
+{
+  int error_code = NO_ERROR;
+
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      /* for debug only */
+      return NO_ERROR;
+    }
+
+  /* first things first... load vacuum data and do some recovery if required */
+  error_code = vacuum_data_load_and_recover (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* load dropped files from disk */
+  error_code = vacuum_load_dropped_files_from_disk (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* create worker pool */
+
+#if defined (SERVER_MODE)
+  /* get thread manager */
+  auto thread_manager = thread_get_new_manager ();
+
+  vacuum_Worker_threads =
+    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
+                                        VACUUM_JOB_QUEUE_CAPACITY);
+  assert (vacuum_Worker_threads != NULL);
+
+  auto interval_time = std::chrono::milliseconds (prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL));
+  vacuum_Master_daemon =
+    thread_manager->create_daemon (cubthread::looper (interval_time), new vacuum_master_task ());
+#endif /* SERVER_MODE */
+
+  return NO_ERROR;
 }
 
 #if defined(SERVER_MODE)

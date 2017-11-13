@@ -45,11 +45,11 @@ public:
   }
 
   // contextual_task implementation for create_context, retire_context
-  entry & create_context (void)
+  entry & create_context (void) override
   {
     return *m_manager_p->claim_entry ();
   }
-  void retire_context (entry & context)
+  void retire_context (entry & context) override
   {
     m_manager_p->retire_entry (context);
   }

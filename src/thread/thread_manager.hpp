@@ -45,22 +45,22 @@ class daemon;
 class entry;
 class entry_task;
 
+typedef worker_pool<entry> entry_workpool;
+
 class manager
 {
 public:
-  typedef worker_pool<entry> worker_pool_type;
-
   // TODO: remove starting_index
   manager (std::size_t max_threads, std::size_t starting_index = 0);
   ~manager ();
 
-  void push_task (entry & thread_p, worker_pool_type * worker_pool_arg, entry_task * exec_p);
-  bool try_task (entry & thread_p, worker_pool_type * worker_pool_arg, entry_task * exec_p);
-  bool is_pool_busy (worker_pool_type * worker_pool_arg);
-  bool is_pool_full (worker_pool_type * worker_pool_arg);
+  void push_task (entry & thread_p, entry_workpool * worker_pool_arg, entry_task * exec_p);
+  bool try_task (entry & thread_p, entry_workpool * worker_pool_arg, entry_task * exec_p);
+  bool is_pool_busy (entry_workpool * worker_pool_arg);
+  bool is_pool_full (entry_workpool * worker_pool_arg);
 
-  worker_pool_type * create_worker_pool (size_t pool_size, size_t work_queue_size);
-  void destroy_worker_pool (worker_pool_type *& worker_pool_arg);
+  entry_workpool * create_worker_pool (size_t pool_size, size_t work_queue_size);
+  void destroy_worker_pool (entry_workpool *& worker_pool_arg);
 
   daemon * create_daemon (looper & looper_arg, entry_task * exec_p);
   void destroy_daemon (daemon *& daemon_arg);
@@ -96,7 +96,7 @@ private:
   std::size_t m_max_threads;
 
   std::mutex m_entries_mutex;
-  std::vector<worker_pool_type *> m_worker_pools;
+  std::vector<entry_workpool *> m_worker_pools;
   std::vector<daemon *> m_daemons;
 
   entry *m_all_entries;

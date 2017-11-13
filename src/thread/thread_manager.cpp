@@ -109,7 +109,7 @@ inline Res * manager::create_and_track_resource (std::vector<Res*>& tracker, siz
   return new_res;
 }
 
-manager::worker_pool_type *
+entry_workpool *
 manager::create_worker_pool (size_t pool_size, size_t work_queue_size)
 {
   return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size);
@@ -154,13 +154,13 @@ manager::destroy_and_untrack_resource (std::vector<Res*>& tracker, Res *& res)
 }
 
 void
-manager::destroy_worker_pool (worker_pool_type *& worker_pool_arg)
+manager::destroy_worker_pool (entry_workpool *& worker_pool_arg)
 {
   return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg);
 }
 
 void
-manager::push_task (entry & thread_p, worker_pool_type * worker_pool_arg, entry_task * exec_p)
+manager::push_task (entry & thread_p, entry_workpool * worker_pool_arg, entry_task * exec_p)
 {
   if (worker_pool_arg == NULL)
     {
@@ -176,7 +176,7 @@ manager::push_task (entry & thread_p, worker_pool_type * worker_pool_arg, entry_
 }
 
 bool
-manager::try_task (entry & thread_p, worker_pool_type * worker_pool_arg, entry_task * exec_p)
+manager::try_task (entry & thread_p, entry_workpool * worker_pool_arg, entry_task * exec_p)
 {
   if (worker_pool_arg == NULL)
     {
@@ -190,13 +190,13 @@ manager::try_task (entry & thread_p, worker_pool_type * worker_pool_arg, entry_t
 }
 
 bool
-manager::is_pool_busy (worker_pool_type * worker_pool_arg)
+manager::is_pool_busy (entry_workpool * worker_pool_arg)
 {
   return worker_pool_arg == NULL || worker_pool_arg->is_busy ();
 }
 
 bool
-manager::is_pool_full (worker_pool_type * worker_pool_arg)
+manager::is_pool_full (entry_workpool * worker_pool_arg)
 {
   return worker_pool_arg == NULL || worker_pool_arg->is_full ();
 }
@@ -263,7 +263,7 @@ manager::get_running_thread_count (void)
     {
       running_count += (*wp_iter)->get_running_count ();
     }
-  for (auto daemon_iter = m_daemons.cbegin (); daemon_iter != m_daemons.cend (); ++m_daemons)
+  for (auto daemon_iter = m_daemons.cbegin (); daemon_iter != m_daemons.cend (); ++daemon_iter)
     {
       ++running_count;
     }

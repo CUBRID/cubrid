@@ -41,28 +41,9 @@
 #include "log_compress.h"
 #endif /* SERVER_MODE */
 
-#if defined (SERVER_MODE)
+#if defined (__cplusplus)
 #include "thread_entry.hpp"
-#else
-// TODO: this is duplicate code from thread_entry.hpp; fix it!
-// for lock-free
-enum
-{
-  THREAD_TS_SPAGE_SAVING = 0,
-  THREAD_TS_OBJ_LOCK_RES,
-  THREAD_TS_OBJ_LOCK_ENT,
-  THREAD_TS_CATALOG,
-  THREAD_TS_SESSIONS,
-  THREAD_TS_FREE_SORT_LIST,
-  THREAD_TS_GLOBAL_UNIQUE_STATS,
-  THREAD_TS_HFID_TABLE,
-  THREAD_TS_XCACHE,
-  THREAD_TS_FPCACHE,
-  THREAD_TS_LAST
-};
-
-#define THREAD_TS_COUNT  THREAD_TS_LAST
-#endif
+#endif /* C++ and (SERVER_MODE or SA_MODE) */
 
 #include "lock_free.h"
 
@@ -76,7 +57,7 @@ namespace cubthread
 extern
   cubthread::manager *
 thread_get_new_manager (void);
-#endif /* SERVER_MODE or SA_MODE */
+#endif /* C++ and (SERVER_MODE or SA_MODE) */
 
 #if !defined(SERVER_MODE)
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) thread_get_current_entry_index()
@@ -105,8 +86,6 @@ extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 #define thread_inc_recursion_depth(thread_p) (thread_Recursion_depth ++)
 #define thread_dec_recursion_depth(thread_p) (thread_Recursion_depth --)
 #define thread_clear_recursion_depth(thread_p) (thread_Recursion_depth = 0)
-
-typedef void THREAD_ENTRY;
 
 typedef void *CSS_THREAD_ARG;
 
