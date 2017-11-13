@@ -74,8 +74,7 @@ manager::~manager ()
 
 
   // make sure that we stop and free all
-  destroy_and_untrack_all_resources (m_worker_pools);
-  destroy_and_untrack_all_resources (m_daemons);
+  check_all_killed ();
 
   delete m_entry_dispatcher;
   delete [] m_all_entries;
@@ -239,6 +238,20 @@ manager::get_entry (void)
       // todo
       return *tl_Entry_p;
     }
+}
+
+std::size_t
+manager::get_max_thread_count (void) const
+{
+  return m_max_threads;
+}
+
+void
+manager::check_all_killed (void)
+{
+  // check all thread resources are killed and freed
+  destroy_and_untrack_all_resources (m_worker_pools);
+  destroy_and_untrack_all_resources (m_daemons);
 }
 
 } // namespace cubthread
