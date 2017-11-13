@@ -1534,8 +1534,6 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_BROKER_INFO *br_info_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
-  T_PROXY_INFO *proxy_info_p = NULL;
-  T_SHARD_USER *user_p = NULL;
   char path_org[BROKER_PATH_MAX] = { 0, };
   char path_new[BROKER_PATH_MAX] = { 0, };
 

@@ -1262,7 +1262,6 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
   REPR_ID repr_id = NULL_REPRID, subcls_repr_id = NULL_REPRID;
   DISK_ATTR *disk_attr_p = NULL, *subcls_attr_p = NULL;
   BTREE_STATS *btree_stats_p = NULL;
-  BTREE_STATS *computed_stats = NULL;
   int n_btrees = 0;
   PARTITION_STATS_ACUMULATOR *mean = NULL, *stddev = NULL;
   OR_CLASSREP *cls_rep = NULL;
@@ -1560,7 +1559,6 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
   for (i = 0; i < partitions_count; i++)
     {
       OID part_dir_oid;
-      bool part_need_unlock = false;
 
       /* clean subclass loaded in previous iteration */
       if (subcls_disk_rep != NULL)

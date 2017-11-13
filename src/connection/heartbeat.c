@@ -279,8 +279,6 @@ hb_thread_master_reader (void *arg)
 static HBP_PROC_REGISTER *
 hb_make_set_hbp_register (int type)
 {
-  int error;
-
   HBP_PROC_REGISTER *hbp_register;
   char *p, *last;
   int argc;
@@ -585,7 +583,6 @@ static CSS_CONN_ENTRY *
 hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
   CSS_CONN_ENTRY *conn;
-  int error = NO_ERROR;
   char *packed_name;
   int name_length = 0;
 
@@ -684,10 +681,10 @@ hb_create_master_reader (void)
 int
 hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
+#if !defined(SERVER_MODE)
   int error;
   static bool is_first = true;
 
-#if !defined(SERVER_MODE)
   if (is_first == false)
     {
       return (NO_ERROR);
@@ -722,8 +719,9 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
 
   is_first = false;
   return (NO_ERROR);
-#endif
+#else
   return (ER_FAILED);
+#endif
 }
 
 

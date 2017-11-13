@@ -1418,7 +1418,6 @@ proxy_socket_io_delete (SOCKET fd)
 int
 proxy_io_set_established_by_ctx (T_PROXY_CONTEXT * ctx_p)
 {
-  int error = 0;
   T_CLIENT_IO *cli_io_p = NULL;
   T_SOCKET_IO *sock_io_p = NULL;
 
@@ -2407,7 +2406,6 @@ proxy_process_cas_message (T_SOCKET_IO * sock_io_p)
 static int
 proxy_socket_io_write_internal (T_SOCKET_IO * sock_io_p)
 {
-  int error;
   int write_len;
   int remain;
   char *p;
@@ -2440,6 +2438,8 @@ proxy_socket_io_write_internal (T_SOCKET_IO * sock_io_p)
   if (write_len < 0)
     {
 #if defined(WINDOWS)
+      int error;
+
       error = WSAGetLastError ();
       if (error == WSAEWOULDBLOCK)
 #else
@@ -3853,7 +3853,6 @@ proxy_io_connect_to_broker (void)
 {
   SOCKET fd;
   int len;
-  int error;
 
   struct sockaddr_un shard_sock_addr;
   char *port_name;
@@ -4758,7 +4757,6 @@ proxy_cas_alloc_anything (int client_id, int shard_id, int cas_id, int ctx_cid, 
 			  T_FUNC_FIND_CAS function)
 {
   int i = 0;
-  int error = 0;
   T_SHARD_IO *shard_io_p = NULL;
   T_CAS_IO *cas_io_p = NULL;
   static int last_shard_id = -1;

@@ -1781,7 +1781,7 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
 {
   OR_BUF buf;
   PR_TYPE *pr_type;
-  int val_size, rc = NO_ERROR;
+  int val_size;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);

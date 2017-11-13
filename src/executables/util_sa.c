@@ -2277,7 +2277,6 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
   char *alphabet_type = NULL;
   LANG_LOCALE_DATA lld;
   void *loclib_handle = NULL;
-  bool is_scan_locales = false;
   LOCALE_FILE *lf = NULL;
   LOCALE_FILE lf_one;
   int dl_settings = 0;
@@ -3900,7 +3899,6 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
   char *tz_gen_mode = NULL;
   TZ_GEN_TYPE tz_gen_type = TZ_GEN_TYPE_NEW;
   int exit_status = EXIT_SUCCESS;
-  bool write_checksum = false;
   char checksum[CHECKSUM_SIZE + 1];
   bool need_db_shutdown = false;
   bool er_inited = false;
@@ -4089,7 +4087,6 @@ dump_tz (UTIL_FUNCTION_ARG * arg)
 {
   long int zone_id = -1;
   UTIL_ARG_MAP *arg_map = NULL;
-  int tz_gen_type = TZ_GEN_TYPE_NEW;
   int err_status = EXIT_SUCCESS;
   char *zone = NULL;
   char *str_next = NULL;

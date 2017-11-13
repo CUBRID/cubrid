@@ -82,6 +82,9 @@
 #include "release_string.h"
 #include "log_impl.h"
 #include "fault_injection.h"
+#if defined (SERVER_MODE)
+#include "vacuum.h"
+#endif /* SERVER_MODE */
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -796,7 +799,6 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec, int *
 #else
   TOKEN_BUCKET *tb = fc_Token_bucket;
   int gen_tokens;
-  int overflow_tokens = 0, overflow_capacity = 0;
   int rv = NO_ERROR;
 
   assert (token_gen != NULL);
@@ -2430,6 +2432,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   return vol_fd;
 }
 
+#if !defined (CS_MODE)
 /*
  * fileio_expand_to () -  Expand a volume to the given number of pages.
  *
@@ -2523,7 +2526,8 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 #if defined(WINDOWS) && defined(SERVER_MODE)
   pthread_mutex_unlock (io_mutex);
 #endif /* WINDOWS && SERVER_MODE */
-  assert ((current_size % IO_PAGESIZE) == 0);
+  /* safe-guard: current size is rounded to IO_PAGESIZE... unless it crashed during an expand */
+  assert (!LOG_ISRESTARTED () || (current_size % IO_PAGESIZE) == 0);
 
   /* compute new size */
   new_size = ((size_t) size_npages) * IO_PAGESIZE;
@@ -2531,9 +2535,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
   if (new_size <= current_size)
     {
       /* this must be recovery. */
-#ifdef SERVER_MODE
       assert (!LOG_ISRESTARTED ());
-#endif /* SERVER_MODE */
       er_log_debug (ARG_FILE_LINE, "skip extending volume %d with current size %zu to new size %zu\n",
 		    vol_id, current_size, new_size);
       return NO_ERROR;
@@ -2610,6 +2612,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 
   return NO_ERROR;
 }
+#endif /* not CS_MODE */
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
@@ -3942,7 +3945,6 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
   off_t offset;
   ssize_t nbytes;
   size_t read_bytes;
-  bool is_retry = true;
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;

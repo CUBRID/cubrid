@@ -1089,7 +1089,6 @@ acldb (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
-  const char *output_file = NULL;
   bool reload;
   int ret_code = EXIT_SUCCESS;
 
@@ -3297,7 +3296,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   bool verbose;
   const char *log_path;
   char log_path_buf[PATH_MAX];
-  char *log_path_base;
   int error = NO_ERROR;
   INT64 pageid = 0;
   int interval;

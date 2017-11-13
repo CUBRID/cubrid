@@ -27,6 +27,7 @@
 #include "lock_free.h"
 #include "query_executor.h"
 #include "stream_to_xasl.h"
+#include "system_parameter.h"
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
@@ -92,8 +93,6 @@ static int fpcache_entry_free (void *entry);
 static int fpcache_entry_init (void *entry);
 static int fpcache_entry_uninit (void *entry);
 static int fpcache_copy_key (void *src, void *dest);
-static int fpcache_compare_key (void *key1, void *key2);
-static unsigned int fpcache_hash_key (void *key, int hash_table_size);
 static void fpcache_cleanup (THREAD_ENTRY * thread_p);
 static BH_CMP_RESULT fpcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ingore_arg);
 

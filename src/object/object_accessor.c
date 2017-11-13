@@ -4407,7 +4407,7 @@ obj_is_instance_of (MOP obj, MOP class_mop)
 int
 obj_lock (MOP op, int for_write)
 {
-  int error = NO_ERROR, is_class = 0;
+  int is_class = 0;
   DB_FETCH_MODE class_purpose;
 
   if (op->is_temp)

@@ -632,7 +632,6 @@ db_add_host_status (char *hostname, int status)
 void
 db_set_host_status (char *hostname, int status)
 {
-  bool found = false;
   DB_HOST_STATUS *host_status;
 
   host_status = db_find_host_status (hostname);

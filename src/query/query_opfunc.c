@@ -83,8 +83,6 @@ static int qdata_add_short_to_timestamptz (DB_VALUE * ts_tz_val_p, short s, DB_V
 static int qdata_add_int_to_timestamptz (DB_VALUE * ts_tz_val_p, int i, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_bigint_to_timestamptz (DB_VALUE * ts_tz_val_p, DB_BIGINT bi, DB_VALUE * result_p,
 					    TP_DOMAIN * domain_p);
-static int qdata_add_int_to_datetime_asymmetry (DB_VALUE * datetime_val_p, int i, DB_DATETIME * datetime,
-						DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_short_to_datetime (DB_VALUE * datetime_val_p, short s, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_int_to_datetime (DB_VALUE * datetime_val_p, int i, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_bigint_to_datetime (DB_VALUE * datetime_val_p, DB_BIGINT bi, DB_VALUE * result_p,
@@ -131,7 +129,6 @@ static int qdata_subtract_utime_to_short_asymmetry (DB_VALUE * utime_val_p, shor
 static int qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p, int i, unsigned int *utime,
 						  DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_subtract_datetime_to_int (DB_DATETIME * dt1, DB_BIGINT i2, DB_VALUE * result_p);
-static int qdata_subtract_datetimetz_to_int (DB_DATETIMETZ * dt_tz1, DB_BIGINT i2, DB_VALUE * result_p);
 static int qdata_subtract_datetime (DB_DATETIME * dt1, DB_DATETIME * dt2, DB_VALUE * result_p);
 static int qdata_subtract_datetime_to_int_asymmetry (DB_VALUE * datetime_val_p, DB_BIGINT i, DB_DATETIME * datetime,
 						     DB_VALUE * result_p, TP_DOMAIN * domain_p);

@@ -1471,7 +1471,6 @@ string_disk_size (const char *string)
   DB_VALUE value;
   int str_length = 0;
   int length = 0;
-  int compressed = 0;
 
   if (string)
     {
@@ -4546,7 +4545,6 @@ static int
 tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 {
   SM_ATTRIBUTE *attr = NULL;
-  int errc = NO_ERROR;
   DB_DEFAULT_EXPR *default_expr;
   DB_VALUE default_expr_value;
 

@@ -7003,7 +7003,7 @@ int
 pt_quick_resolve_names (PARSER_CONTEXT * parser, PT_NODE ** spec_p, PT_NODE ** node_p, SEMANTIC_CHK_INFO * sc_info)
 {
   PT_BIND_NAMES_ARG bind_arg;
-  PT_NODE *spec = NULL, *node = NULL, *parent = NULL;
+  PT_NODE *spec = NULL, *node = NULL;
   int walk = 0;
   SCOPES scopestack;
   PT_EXTRA_SPECS_FRAME spec_frame;
@@ -9157,15 +9157,12 @@ pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_
 static void
 pt_mark_function_index_expression (PARSER_CONTEXT * parser, PT_NODE * expr, PT_BIND_NAMES_ARG * bind_arg)
 {
-  PT_NODE *arg1 = NULL, *arg2 = NULL, *arg3 = NULL;
   SCOPES *scope = NULL;
   PT_NODE *spec = NULL;
-  PT_NODE *attr = NULL;
   MOP cls;
   SM_CLASS_CONSTRAINT *constraints;
   char *expr_str = NULL;
   PT_NODE *flat = NULL;
-  DB_OBJECT *db = NULL;
 
   if (expr->node_type != PT_EXPR)
     {

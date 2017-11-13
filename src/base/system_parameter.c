@@ -5682,8 +5682,6 @@ typedef enum
   PRM_PRINT_DEFAULT_VAL
 } PRM_PRINT_VALUE_MODE;
 
-static void prm_the_file_has_been_loaded (const char *path);
-static int prm_print_value (const SYSPRM_PARAM * prm, char *buf, size_t len);
 static int prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print_mode,
 		      PRM_PRINT_VALUE_MODE print_value_mode);
 static int sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload,
@@ -11289,7 +11287,7 @@ sysprm_session_init_session_parameters (SESSION_PARAM ** session_parameters_ptr,
 {
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   int error_code = NO_ERROR;
-  SESSION_PARAM *session_params = NULL, *prm = NULL;
+  SESSION_PARAM *session_params = NULL;
 
   assert (found_session_parameters != NULL);
   *found_session_parameters = 0;
@@ -11334,9 +11332,6 @@ sysprm_session_init_session_parameters (SESSION_PARAM ** session_parameters_ptr,
 static SYSPRM_ERR
 sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id, SYSPRM_VALUE value)
 {
-  char *end = NULL;
-  SYSPRM_PARAM *prm = &prm_Def[id];
-
   switch (session_parameter->datatype)
     {
     case PRM_INTEGER:

@@ -113,130 +113,57 @@ static pthread_key_t thread_Thread_key;
 #endif /* HPUX */
 
 static THREAD_MANAGER thread_Manager;
-static
-  cubthread::manager *
-  thread_New_Manager;
+/* *INDENT-OFF* */
+static cubthread::manager *thread_New_Manager;
 // TODO: not a constant value
-static const
-  std::size_t
-  thread_New_manager_thread_count = 64;
+static const size_t thread_New_manager_thread_count = 64;
+/* *INDENT-ON* */
 
 /*
  * For special Purpose Threads: deadlock detector, checkpoint daemon
  *    Under the win32-threads system, *_cond variables are an auto-reset event
  */
-static
-  DAEMON_THREAD_MONITOR
-  thread_Deadlock_detect_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Checkpoint_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Purge_archive_logs_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Oob_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-DAEMON_THREAD_MONITOR
-  thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Auto_volume_expansion_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Vacuum_master_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Page_maintenance_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static
-  DAEMON_THREAD_MONITOR
-  thread_Page_post_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Deadlock_detect_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Checkpoint_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Purge_archive_logs_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Oob_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+DAEMON_THREAD_MONITOR thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Auto_volume_expansion_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Vacuum_master_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Page_maintenance_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Page_post_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
-static DAEMON_THREAD_MONITOR *
-  thread_Vacuum_worker_threads = NULL;
-static int
-  thread_First_vacuum_worker_thread_index = -1;
+static DAEMON_THREAD_MONITOR *thread_Vacuum_worker_threads = NULL;
+static int thread_First_vacuum_worker_thread_index = -1;
 
-static void
-thread_stop_oob_handler_thread ();
-static void
-thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
-static void
-thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
-static int
-thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2);
+static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
+static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
+static int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
 
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_deadlock_detect_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_checkpoint_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_purge_archive_logs_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_page_flush_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_flush_control_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_log_flush_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_session_control_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_check_ha_delay_info_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_auto_volume_expansion_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_log_clock_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_vacuum_master_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_vacuum_worker_thread (void *arg_p);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_page_buffer_maintenance_thread (void *);
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
-thread_page_post_flush_thread (void *);
+static void thread_stop_oob_handler_thread ();
+static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
+static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
+static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2);
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_deadlock_detect_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_checkpoint_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_purge_archive_logs_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_flush_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_flush_control_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_flush_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_session_control_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_check_ha_delay_info_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_auto_volume_expansion_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_clock_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_vacuum_master_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_vacuum_worker_thread (void *arg_p);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_buffer_maintenance_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_post_flush_thread (void *);
 
 typedef enum
 {
@@ -262,21 +189,16 @@ typedef enum
   THREAD_DAEMON_VACUUM_WORKER
 } THREAD_DAEMON_TYPE;
 
-typedef struct thread_daemon
-  THREAD_DAEMON;
+typedef struct thread_daemon THREAD_DAEMON;
 struct thread_daemon
 {
-  DAEMON_THREAD_MONITOR *
-    daemon_monitor;
-  THREAD_DAEMON_TYPE
-    type;
-  int
-    shutdown_sequence;
-  THREAD_RET_T (THREAD_CALLING_CONVENTION * daemon_function) (void *);
+  DAEMON_THREAD_MONITOR *daemon_monitor;
+  THREAD_DAEMON_TYPE type;
+  int shutdown_sequence;
+    THREAD_RET_T (THREAD_CALLING_CONVENTION * daemon_function) (void *);
 };
 
-static THREAD_DAEMON *
-  thread_Daemons = NULL;
+static THREAD_DAEMON *thread_Daemons = NULL;
 
 #define THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT	      32767
 #define THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT	      1024
@@ -315,70 +237,47 @@ static THREAD_DAEMON *
     } \
   while (0)
 
-static int
-thread_initialize_sync_object (void);
-static int
-thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex);
-static void
-thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor);
+#if defined(WINDOWS)
+static int thread_initialize_sync_object (void);
+#endif /* WINDOWS */
+static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex);
+static void thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor);
 
-static void
-thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
-static int
-thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, THREAD_RC_METER * prev_meter);
-static int
-thread_rc_track_check (THREAD_ENTRY * thread_p, int id);
-static THREAD_RC_TRACK *
-thread_rc_track_alloc (THREAD_ENTRY * thread_p);
-static void
-thread_rc_track_free (THREAD_ENTRY * thread_p, int id);
-static
-  INT32
-thread_rc_track_amount_helper (THREAD_ENTRY * thread_p, int rc_idx);
-static const char *
-thread_rc_track_rcname (int rc_idx);
-static const char *
-thread_rc_track_mgrname (int mgr_idx);
-static void
-thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp, THREAD_RC_METER * meter);
-static void
-thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp, THREAD_RC_TRACK * track, int depth);
-static int
-thread_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authoriation);
-static
-  INT32
-thread_rc_track_threshold_amount (int rc_idx);
-static
-  bool
-thread_rc_track_is_enabled (THREAD_ENTRY * thread_p);
+static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
+static int thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, THREAD_RC_METER * prev_meter);
+static int thread_rc_track_check (THREAD_ENTRY * thread_p, int id);
+static THREAD_RC_TRACK *thread_rc_track_alloc (THREAD_ENTRY * thread_p);
+static void thread_rc_track_free (THREAD_ENTRY * thread_p, int id);
+static INT32 thread_rc_track_amount_helper (THREAD_ENTRY * thread_p, int rc_idx);
+static const char *thread_rc_track_rcname (int rc_idx);
+static const char *thread_rc_track_mgrname (int mgr_idx);
+static void thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp, THREAD_RC_METER * meter);
+static void thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp, THREAD_RC_TRACK * track, int depth);
+static int thread_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authoriation);
+static INT32 thread_rc_track_threshold_amount (int rc_idx);
+static bool thread_rc_track_is_enabled (THREAD_ENTRY * thread_p);
 
-STATIC_INLINE void
-thread_daemon_wait (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool
-thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void
-thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p,
-		     THREAD_TYPE thread_type) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void
-thread_daemon_stop (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void
-thread_daemon_wakeup (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void
-thread_daemon_try_wakeup (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void
-thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_wait (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p,
+					THREAD_TYPE thread_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_stop (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_wakeup (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_try_wakeup (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
 
 #if !defined(NDEBUG)
-static void
-thread_rc_track_meter_at (THREAD_RC_METER * meter, const char *caller_file, int caller_line, int amount, void *ptr);
-static void
-thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int amount, void *ptr);
-static void
-thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int enter_mode, void *ptr);
+static void thread_rc_track_meter_at (THREAD_RC_METER * meter, const char *caller_file, int caller_line, int amount,
+				      void *ptr);
+static void thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int amount,
+							   void *ptr);
+static void thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int enter_mode,
+						      void *ptr);
 #endif /* !NDEBUG */
 
-extern int
-catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
+extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
 
 /*
  * Thread Specific Data management
@@ -419,8 +318,7 @@ thread_get_thread_entry_info ()
 static int
 thread_initialize_key (void)
 {
-  int
-    r;
+  int r;
 
   r = pthread_key_create (&thread_Thread_key, NULL);
   if (r != 0)
@@ -439,8 +337,7 @@ thread_initialize_key (void)
 int
 thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
 {
-  int
-    r;
+  int r;
 
   r = pthread_setspecific (thread_Thread_key, (void *) entry_p);
   if (r != 0)
@@ -458,8 +355,7 @@ thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
 THREAD_ENTRY *
 thread_get_thread_entry_info (void)
 {
-  void *
-    p;
+  void *p;
 
   p = pthread_getspecific (thread_Thread_key);
 #if defined (SERVER_MODE)
@@ -502,19 +398,13 @@ thread_is_manager_initialized (void)
 int
 thread_initialize_manager (void)
 {
-  int
-    i,
-    r;
-  int
-    daemon_index;
-  int
-    shutdown_sequence;
+  int i, r;
+  int daemon_index;
+  int shutdown_sequence;
+  size_t size;
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* not HPUX */
-  size_t
-    size;
 
   assert (NUM_NORMAL_TRANS >= 10);
 
@@ -723,18 +613,12 @@ thread_initialize_manager (void)
 int
 thread_start_workers (void)
 {
-  int
-    i;
-  int
-    thread_index,
-    r;
-  THREAD_ENTRY *
-    thread_p = NULL;
-  pthread_attr_t
-    thread_attr;
+  int i;
+  int thread_index, r;
+  THREAD_ENTRY *thread_p = NULL;
+  pthread_attr_t thread_attr;
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
-  size_t
-    ts_size;
+  size_t ts_size;
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
 
   assert (thread_Manager.initialized == true);
@@ -869,16 +753,11 @@ thread_start_workers (void)
 int
 thread_stop_active_workers (unsigned short stop_phase)
 {
-  int
-    i;
-  int
-    r;
-  bool
-    repeat_loop;
-  THREAD_ENTRY *
-    thread_p;
-  CSS_CONN_ENTRY *
-    conn_p;
+  int i;
+  int r;
+  bool repeat_loop;
+  THREAD_ENTRY *thread_p;
+  CSS_CONN_ENTRY *conn_p;
 
   assert (thread_Manager.initialized == true);
 
@@ -994,8 +873,7 @@ loop:
 static void
 thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor)
 {
-  int
-    rv;
+  int rv;
 
   rv = pthread_mutex_lock (&daemon_monitor->lock);
   pthread_cond_signal (&daemon_monitor->cond);
@@ -1009,8 +887,7 @@ thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor)
 static void
 thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor)
 {
-  THREAD_ENTRY *
-    thread_p;
+  THREAD_ENTRY *thread_p;
 
   thread_p = &thread_Manager.thread_array[daemon_monitor->thread_index];
   thread_p->shutdown = true;
@@ -1038,9 +915,7 @@ thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor)
 static int
 thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2)
 {
-  THREAD_DAEMON *
-  daemon1, *
-    daemon2;
+  THREAD_DAEMON *daemon1, *daemon2;
 
   daemon1 = (THREAD_DAEMON *) p1;
   daemon2 = (THREAD_DAEMON *) p2;
@@ -1054,8 +929,7 @@ thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2)
 static void
 thread_stop_oob_handler_thread ()
 {
-  THREAD_ENTRY *
-    thread_p;
+  THREAD_ENTRY *thread_p;
 
   thread_p = &thread_Manager.thread_array[thread_Oob_thread.thread_index];
   thread_p->shutdown = true;
@@ -1081,8 +955,7 @@ thread_stop_oob_handler_thread ()
 int
 thread_stop_active_daemons (void)
 {
-  int
-    i;
+  int i;
 
   thread_stop_oob_handler_thread ();
 
@@ -1107,8 +980,7 @@ thread_stop_active_daemons (void)
 int
 thread_stop_vacuum_daemons (void)
 {
-  int
-    i;
+  int i;
 
   /* Stop vacuum workers. */
   for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
@@ -1129,12 +1001,9 @@ thread_stop_vacuum_daemons (void)
 int
 thread_kill_all_workers (void)
 {
-  int
-    i;
-  bool
-    repeat_loop;
-  THREAD_ENTRY *
-    thread_p;
+  int i;
+  bool repeat_loop;
+  THREAD_ENTRY *thread_p;
 
   for (i = 1; i <= thread_Manager.num_workers; i++)
     {
@@ -1227,10 +1096,8 @@ thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor)
 static int
 thread_initialize_entry (THREAD_ENTRY * entry_p)
 {
-  int
-    r;
-  struct timeval
-    t;
+  int r;
+  struct timeval t;
 
   entry_p->index = -1;
   entry_p->tid = ((pthread_t) 0);
@@ -1341,10 +1208,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 static int
 thread_finalize_entry (THREAD_ENTRY * entry_p)
 {
-  int
-    r,
-    i,
-    error = NO_ERROR;
+  int r, i, error = NO_ERROR;
 
   entry_p->index = -1;
   entry_p->tid = ((pthread_t) 0);
@@ -1433,9 +1297,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 int
 thread_return_transaction_entry (THREAD_ENTRY * entry_p)
 {
-  int
-    i,
-    error = NO_ERROR;
+  int i, error = NO_ERROR;
   for (i = 0; i < THREAD_TS_COUNT; i++)
     {
       if (entry_p->tran_entries[i] != 0)
@@ -1458,8 +1320,7 @@ thread_return_transaction_entry (THREAD_ENTRY * entry_p)
 int
 thread_return_all_transactions_entries (void)
 {
-  int
-    error = NO_ERROR, i;
+  int error = NO_ERROR, i;
   for (i = 0; i < thread_Manager.num_total; i++)
     {
       error = thread_return_transaction_entry (&thread_Manager.thread_array[i]);
@@ -1505,12 +1366,9 @@ thread_print_entry_info (THREAD_ENTRY * thread_p)
 THREAD_ENTRY *
 thread_find_entry_by_tran_index_except_me (int tran_index)
 {
-  THREAD_ENTRY *
-    thread_p;
-  int
-    i;
-  pthread_t
-    me = pthread_self ();
+  THREAD_ENTRY *thread_p;
+  int i;
+  pthread_t me = pthread_self ();
 
   for (i = 1; i <= thread_Manager.num_workers; i++)
     {
@@ -1532,10 +1390,8 @@ thread_find_entry_by_tran_index_except_me (int tran_index)
 THREAD_ENTRY *
 thread_find_entry_by_tran_index (int tran_index)
 {
-  THREAD_ENTRY *
-    thread_p;
-  int
-    i;
+  THREAD_ENTRY *thread_p;
+  int i;
 
   for (i = 1; i <= thread_Manager.num_workers; i++)
     {
@@ -1556,13 +1412,12 @@ thread_find_entry_by_tran_index (int tran_index)
 int
 thread_get_current_entry_index (void)
 {
-  THREAD_ENTRY *
-    thread_p;
+  THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
 
-  return (int) thread_p->index;
+  return thread_p->index;
 }
 
 /*
@@ -1572,8 +1427,7 @@ thread_get_current_entry_index (void)
 SESSION_ID
 thread_get_current_session_id (void)
 {
-  THREAD_ENTRY *
-    thread_p;
+  THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -1593,8 +1447,7 @@ thread_get_current_session_id (void)
 int
 thread_get_current_tran_index (void)
 {
-  THREAD_ENTRY *
-    thread_p;
+  THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -1642,8 +1495,7 @@ thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 CSS_CONN_ENTRY *
 thread_get_current_conn_entry (void)
 {
-  THREAD_ENTRY *
-    thread_p;
+  THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -1659,8 +1511,7 @@ thread_get_current_conn_entry (void)
 int
 thread_lock_entry (THREAD_ENTRY * thread_p)
 {
-  int
-    r;
+  int r;
 
   if (thread_p == NULL)
     {
@@ -1688,10 +1539,8 @@ thread_lock_entry (THREAD_ENTRY * thread_p)
 int
 thread_lock_entry_with_tran_index (int tran_index)
 {
-  int
-    r;
-  THREAD_ENTRY *
-    thread_p;
+  int r;
+  THREAD_ENTRY *thread_p;
 
   thread_p = thread_find_entry_by_tran_index (tran_index);
   assert (thread_p != NULL);
@@ -1715,8 +1564,7 @@ thread_lock_entry_with_tran_index (int tran_index)
 int
 thread_unlock_entry (THREAD_ENTRY * thread_p)
 {
-  int
-    r;
+  int r;
 
   if (thread_p == NULL)
     {
@@ -1747,16 +1595,11 @@ thread_unlock_entry (THREAD_ENTRY * thread_p)
 int
 thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, int suspended_reason)
 {
-  int
-    r;
-  int
-    old_status;
+  int r;
+  int old_status;
 
-  TSC_TICKS
-    start_tick,
-    end_tick;
-  TSCTIMEVAL
-    tv_diff;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 
   assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
   old_status = thread_p->status;
@@ -1813,12 +1656,9 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, int suspended_r
 int
 thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, struct timespec *time_p, int suspended_reason)
 {
-  int
-    r;
-  int
-    old_status;
-  int
-    error = NO_ERROR;
+  int r;
+  int old_status;
+  int error = NO_ERROR;
 
   assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
   old_status = thread_p->status;
@@ -1860,12 +1700,9 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, struct 
 int
 thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index, int suspended_reason)
 {
-  THREAD_ENTRY *
-    thread_p;
-  int
-    r;
-  int
-    old_status;
+  THREAD_ENTRY *thread_p;
+  int r;
+  int old_status;
 
   thread_p = thread_find_entry_by_tran_index (tran_index);
   if (thread_p == NULL)
@@ -1912,8 +1749,7 @@ thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index, int susp
 static int
 thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex)
 {
-  int
-    r = NO_ERROR;
+  int r = NO_ERROR;
 
   if (had_mutex == false)
     {
@@ -1957,8 +1793,7 @@ static int
 thread_check_suspend_reason_and_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, int suspend_reason,
 						 bool had_mutex)
 {
-  int
-    r = NO_ERROR;
+  int r = NO_ERROR;
 
   if (had_mutex == false)
     {
@@ -2029,10 +1864,8 @@ thread_wakeup_already_had_mutex (THREAD_ENTRY * thread_p, int resume_reason)
 int
 thread_wakeup_with_tran_index (int tran_index, int resume_reason)
 {
-  THREAD_ENTRY *
-    thread_p;
-  int
-    r = NO_ERROR;
+  THREAD_ENTRY *thread_p;
+  int r = NO_ERROR;
 
   thread_p = thread_find_entry_by_tran_index_except_me (tran_index);
   if (thread_p == NULL)
@@ -2082,12 +1915,9 @@ int
 thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, pthread_mutex_t * mutex_p, int timeout, struct timespec *to,
 				 int suspended_reason)
 {
-  int
-    r;
-  int
-    old_status;
-  int
-    error = NO_ERROR;
+  int r;
+  int old_status;
+  int error = NO_ERROR;
 
   assert (thread_p != NULL);
   old_status = thread_p->status;
@@ -2160,8 +1990,7 @@ thread_sleep (double milliseconds)
 #if defined(WINDOWS)
   Sleep ((int) milliseconds);
 #else /* WINDOWS */
-  struct timeval
-    to;
+  struct timeval to;
 
   to.tv_sec = (int) (milliseconds / 1000);
   to.tv_usec = ((int) (milliseconds * 1000)) % 1000000;
@@ -2179,8 +2008,7 @@ thread_sleep (double milliseconds)
 void
 thread_exit (int exit_id)
 {
-  UINTPTR
-    thread_exit_id = exit_id;
+  UINTPTR thread_exit_id = exit_id;
 
   THREAD_EXIT (thread_exit_id);
 }
@@ -2195,8 +2023,7 @@ thread_exit (int exit_id)
 int
 thread_get_client_id (THREAD_ENTRY * thread_p)
 {
-  CSS_CONN_ENTRY *
-    conn_p;
+  CSS_CONN_ENTRY *conn_p;
 
   if (thread_p == NULL)
     {
@@ -2248,8 +2075,7 @@ thread_get_comm_request_id (THREAD_ENTRY * thread_p)
 void
 thread_set_comm_request_id (unsigned int request_id)
 {
-  THREAD_ENTRY *
-    thread_p;
+  THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -2270,14 +2096,9 @@ thread_set_comm_request_id (unsigned int request_id)
 int
 thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id)
 {
-  int
-    i,
-    n,
-    rv;
-  THREAD_ENTRY *
-    thread_p;
-  CSS_CONN_ENTRY *
-    conn_p;
+  int i, n, rv;
+  THREAD_ENTRY *thread_p;
+  CSS_CONN_ENTRY *conn_p;
 
   for (i = 1, n = 0; i <= thread_Manager.num_workers; i++)
     {
@@ -2322,10 +2143,8 @@ void
 thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *num_free_threads,
 			 int *num_suspended_threads)
 {
-  THREAD_ENTRY *
-    thread_p;
-  int
-    i;
+  THREAD_ENTRY *thread_p;
+  int i;
 
   if (num_total_threads)
     {
@@ -2382,14 +2201,11 @@ thread_num_total_threads (void)
 void
 thread_dump_threads (void)
 {
-  const char *
-    status[] = {
+  const char *status[] = {
     "dead", "free", "run", "wait", "check"
   };
-  THREAD_ENTRY *
-    thread_p;
-  int
-    i;
+  THREAD_ENTRY *thread_p;
+  int i;
 
   for (i = 1; i <= thread_Manager.num_workers; i++)
     {
@@ -2432,8 +2248,7 @@ css_get_private_heap (THREAD_ENTRY * thread_p)
 HL_HEAPID
 css_set_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 {
-  HL_HEAPID
-    old_heap_id = 0;
+  HL_HEAPID old_heap_id = 0;
 
   if (thread_p == NULL)
     {
@@ -2456,8 +2271,7 @@ css_set_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 ADJ_ARRAY *
 css_get_cnv_adj_buffer (int idx)
 {
-  THREAD_ENTRY *
-    thread_p;
+  THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -2474,8 +2288,7 @@ css_get_cnv_adj_buffer (int idx)
 void
 css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
 {
-  THREAD_ENTRY *
-    thread_p;
+  THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -2491,8 +2304,7 @@ css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
 bool
 thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag)
 {
-  bool
-    old_val = false;
+  bool old_val = false;
 
   if (BO_IS_SERVER_RESTARTED ())
     {
@@ -2542,8 +2354,7 @@ thread_get_tran_entry (THREAD_ENTRY * thread_p, int entry_idx)
 bool
 thread_get_sort_stats_active (THREAD_ENTRY * thread_p)
 {
-  bool
-    ret_val = false;
+  bool ret_val = false;
 
   if (BO_IS_SERVER_RESTARTED ())
     {
@@ -2566,8 +2377,7 @@ thread_get_sort_stats_active (THREAD_ENTRY * thread_p)
 bool
 thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
 {
-  bool
-    old_val = true;
+  bool old_val = true;
 
   if (BO_IS_SERVER_RESTARTED ())
     {
@@ -2592,8 +2402,7 @@ thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
 bool
 thread_get_check_interrupt (THREAD_ENTRY * thread_p)
 {
-  bool
-    ret_val = true;
+  bool ret_val = true;
 
   if (BO_IS_SERVER_RESTARTED ())
     {
@@ -2614,24 +2423,17 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
  *   return:
  *   arg_p(in):
  */
-THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_worker (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  CSS_JOB_ENTRY *
-    job_entry_p;
-  CSS_THREAD_FN
-    handler_func;
-  CSS_THREAD_ARG
-    handler_func_arg;
-  int
-    jobq_index;
-  int
-    rv;
+  CSS_JOB_ENTRY *job_entry_p;
+  CSS_THREAD_FN handler_func;
+  CSS_THREAD_ARG handler_func_arg;
+  int jobq_index;
+  int rv;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
@@ -2719,9 +2521,7 @@ thread_worker (void *arg_p)
 static int
 thread_initialize_sync_object (void)
 {
-  int
-    r,
-    i;
+  int r, i;
 
   r = NO_ERROR;
 
@@ -2754,25 +2554,17 @@ thread_initialize_sync_object (void)
  * thread_deadlock_detect_thread() -
  *   return:
  */
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_deadlock_detect_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int
-    rv;
-  THREAD_ENTRY *
-    thread_p;
-  int
-    thrd_index;
-  bool
-    state;
-  int
-    lockwait_count;
+  int rv;
+  THREAD_ENTRY *thread_p;
+  int thrd_index;
+  bool state;
+  int lockwait_count;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finish */
@@ -2861,8 +2653,7 @@ thread_deadlock_detect_thread (void *arg_p)
 void
 thread_wakeup_deadlock_detect_thread (void)
 {
-  int
-    rv;
+  int rv;
 
   rv = pthread_mutex_lock (&thread_Deadlock_detect_thread.lock);
   if (thread_Deadlock_detect_thread.is_running == false)
@@ -2878,27 +2669,19 @@ thread_wakeup_deadlock_detect_thread (void)
  * return     : (THREAD_RET_T) 0.
  * arg_p (in) : Unused.
  */
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_vacuum_master_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr = NULL;
+  THREAD_ENTRY *tsd_ptr = NULL;
 #endif /* !HPUX */
-  struct timeval
-    timeout;
-  struct timespec
-    to = {
+  struct timeval timeout;
+  struct timespec to = {
     0, 0
   };
-  int
-    rv = 0;
-  int
-    wakeup_time_msec;
-  INT64
-    tmp_usec;
+  int rv = 0;
+  int wakeup_time_msec;
+  INT64 tmp_usec;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
@@ -2967,8 +2750,7 @@ thread_vacuum_master_thread (void *arg_p)
 void
 thread_wakeup_vacuum_master_thread (void)
 {
-  int
-    rv;
+  int rv;
 
   rv = pthread_mutex_lock (&thread_Vacuum_master_thread.lock);
   if (thread_Vacuum_master_thread.is_running == false)
@@ -2984,21 +2766,15 @@ thread_wakeup_vacuum_master_thread (void)
  * return     : THREAD_RET_T
  * arg_p (in) : Vacuum thread entry.
  */
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_vacuum_worker_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr = NULL;
+  THREAD_ENTRY *tsd_ptr = NULL;
 #endif /* !HPUX */
-  DAEMON_THREAD_MONITOR *
-    thread_monitor = NULL;
-  int
-    rv = 0;
-  INT32
-    daemon_index = 0;
+  DAEMON_THREAD_MONITOR *thread_monitor = NULL;
+  int rv = 0;
+  INT32 daemon_index = 0;
 
   /* Read vacuum thread entry argument */
   tsd_ptr = (THREAD_ENTRY *) arg_p;
@@ -3065,11 +2841,8 @@ thread_vacuum_worker_thread (void *arg_p)
 void
 thread_wakeup_vacuum_worker_threads (int n_workers)
 {
-  int
-    rv,
-    i;
-  int
-    vacuum_worker_count = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
+  int rv, i;
+  int vacuum_worker_count = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
 
   if (n_workers <= 0)
     {
@@ -3100,23 +2873,17 @@ thread_wakeup_vacuum_worker_threads (int n_workers)
     }
 }
 
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_session_control_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr = NULL;
+  THREAD_ENTRY *tsd_ptr = NULL;
 #endif /* !HPUX */
-  struct timeval
-    timeout;
-  struct timespec
-    to = {
+  struct timeval timeout;
+  struct timespec to = {
     0, 0
   };
-  int
-    rv = 0;
+  int rv = 0;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
@@ -3181,20 +2948,15 @@ thread_wakeup_session_control_thread (void)
  *   arg_p(in):
  */
 
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_checkpoint_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int
-    rv;
+  int rv;
 
-  struct timespec
-    to = {
+  struct timespec to = {
     0, 0
   };
 
@@ -3247,8 +3009,7 @@ thread_checkpoint_thread (void *arg_p)
 void
 thread_wakeup_checkpoint_thread (void)
 {
-  int
-    rv;
+  int rv;
 
   rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
   pthread_cond_signal (&thread_Checkpoint_thread.cond);
@@ -3261,22 +3022,15 @@ thread_wakeup_checkpoint_thread (void)
  *   arg_p(in):
  */
 
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_purge_archive_logs_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int
-    rv;
-  time_t
-    cur_time,
-    last_deleted_time = 0;
-  struct timespec
-    to = {
+  int rv;
+  time_t cur_time, last_deleted_time = 0;
+  struct timespec to = {
     0, 0
   };
 
@@ -3367,8 +3121,7 @@ thread_purge_archive_logs_thread (void *arg_p)
 void
 thread_wakeup_purge_archive_logs_thread (void)
 {
-  int
-    rv;
+  int rv;
 
   rv = pthread_mutex_lock (&thread_Purge_archive_logs_thread.lock);
   pthread_cond_signal (&thread_Purge_archive_logs_thread.cond);
@@ -3383,8 +3136,7 @@ void
 thread_wakeup_oob_handler_thread (void)
 {
 #if !defined(WINDOWS)
-  THREAD_ENTRY *
-    thread_p;
+  THREAD_ENTRY *thread_p;
 
   thread_p = &thread_Manager.thread_array[thread_Oob_thread.thread_index];
   pthread_kill (thread_p->tid, SIGURG);
@@ -3397,46 +3149,25 @@ thread_wakeup_oob_handler_thread (void)
  *   arg_p(in):
  */
 
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_check_ha_delay_info_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  struct timeval
-    cur_time = {
-    0, 0
-  };
+  struct timeval cur_time = { 0, 0 };
+  struct timespec wakeup_time = { 0, 0 };
 
-  struct timespec
-    wakeup_time = {
-    0, 0
-  };
-
-  int
-    rv;
-  INT64
-    tmp_usec;
-  int
-    wakeup_interval = 1000;
+  int rv;
+  INT64 tmp_usec;
+  int wakeup_interval = 1000;
 #if !defined(WINDOWS)
-  time_t
-    log_record_time = 0;
-  int
-    error_code;
-  int
-    delay_limit_in_secs;
-  int
-    acceptable_delay_in_secs;
-  int
-    curr_delay_in_secs;
-  HA_SERVER_STATE
-    server_state;
-  char
-    buffer[LINE_MAX];
+  time_t log_record_time = 0;
+  int error_code;
+  int delay_limit_in_secs;
+  int acceptable_delay_in_secs;
+  int curr_delay_in_secs;
+  HA_SERVER_STATE server_state;
 #endif
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
@@ -3575,23 +3306,16 @@ thread_check_ha_delay_info_thread (void *arg_p)
  *   arg_p(in):
  */
 
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_page_flush_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int
-    wakeup_interval;
-  PERF_UTIME_TRACKER
-    perf_track;
-  bool
-    force_one_run = false;
-  bool
-    stop_iteration = false;
+  int wakeup_interval;
+  PERF_UTIME_TRACKER perf_track;
+  bool force_one_run = false;
+  bool stop_iteration = false;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   thread_daemon_start (&thread_Page_flush_thread, tsd_ptr, TT_DAEMON);
@@ -3673,10 +3397,8 @@ thread_try_wakeup_page_flush_thread (void)
 bool
 thread_is_page_flush_thread_available (void)
 {
-  int
-    rv;
-  bool
-    is_available;
+  int rv;
+  bool is_available;
 
   rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
   is_available = thread_Page_flush_thread.is_available;
@@ -3692,15 +3414,12 @@ thread_is_page_flush_thread_available (void)
  * return     : THREAD_RET_T
  * arg_p (in) : thread entry
  */
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_page_buffer_maintenance_thread (void *arg_p)
 {
 #define THREAD_PGBUF_MAINTENANCE_WAKEUP_MSEC 100
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
@@ -3742,17 +3461,13 @@ thread_wakeup_page_buffer_maintenance_thread (void)
  * return     : THREAD_RET_T
  * arg_p (in) : thread entry
  */
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_page_post_flush_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int
-    count_no_activity = 0;
+  int count_no_activity = 0;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* start */
@@ -3819,48 +3534,22 @@ thread_is_page_post_flush_thread_available (void)
   return thread_Page_post_flush_thread.is_available;
 }
 
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_flush_control_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int
-    rv;
+  int rv;
 
-  struct timespec
-    wakeup_time = {
-    0, 0
-  };
+  struct timespec wakeup_time = { 0, 0 };
 
-  struct timeval
-    begin_tv,
-    end_tv,
-    diff_tv;
-  INT64
-    diff_usec;
-  int
-    wakeup_interval_in_msec = 50;	/* 1 msec */
+  struct timeval begin_tv, end_tv, diff_tv;
+  INT64 diff_usec;
+  int wakeup_interval_in_msec = 50;	/* 1 msec */
 
-  int
-    elapsed_usec = 0;
-  int
-    usec_consumed = 0;
-  int
-    usec_consumed_sum = 0;
-  int
-    token_gen = 0;
-  int
-    token_gen_sum = 0;
-  int
-    token_shared = 0;
-  int
-    token_consumed = 0;
-  int
-    token_consumed_sum = 0;
+  int token_gen = 0;
+  int token_consumed = 0;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
@@ -3885,8 +3574,7 @@ thread_flush_control_thread (void *arg_p)
 
   while (!tsd_ptr->shutdown)
     {
-      INT64
-	tmp_usec;
+      INT64 tmp_usec;
 
       (void) gettimeofday (&begin_tv, NULL);
       er_clear ();
@@ -3940,8 +3628,7 @@ error:
 void
 thread_wakeup_flush_control_thread (void)
 {
-  int
-    rv;
+  int rv;
 
   rv = pthread_mutex_lock (&thread_Flush_control_thread.lock);
   if (!thread_Flush_control_thread.is_running)
@@ -3957,43 +3644,25 @@ thread_wakeup_flush_control_thread (void)
  *   arg(in) : thread entry information
  *
  */
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_log_flush_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int
-    rv,
-    ret;
+  int rv, ret;
 
-  struct timespec
-  LFT_wakeup_time = { 0, 0 };
-  struct timeval
-  wakeup_time = { 0, 0 };
-  struct timeval
-  wait_time = { 0, 0 };
-  struct timeval
-  tmp_timeval = { 0, 0 };
+  struct timespec LFT_wakeup_time = { 0, 0 };
+  struct timeval wakeup_time = { 0, 0 };
+  struct timeval wait_time = { 0, 0 };
+  struct timeval tmp_timeval = { 0, 0 };
 
-  int
-    working_time,
-    remained_time,
-    total_elapsed_time,
-    param_refresh_remained;
-  int
-    gc_interval,
-    wakeup_interval;
-  int
-    param_refresh_interval = 3000;
-  int
-    max_wait_time = 1000;
+  int working_time, remained_time, total_elapsed_time, param_refresh_remained;
+  int gc_interval, wakeup_interval;
+  int param_refresh_interval = 3000;
+  int max_wait_time = 1000;
 
-  LOG_GROUP_COMMIT_INFO *
-    group_commit_info = &log_Gl.group_commit_info;
+  LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finishes */
@@ -4128,8 +3797,7 @@ thread_is_log_flush_thread_available (void)
 INT64
 thread_get_log_clock_msec (void)
 {
-  struct timeval
-    tv;
+  struct timeval tv;
 #if defined(HAVE_ATOMIC_BUILTINS)
 
   if (thread_Log_clock_thread.is_available == true)
@@ -4148,19 +3816,14 @@ thread_get_log_clock_msec (void)
  *   arg(in) : thread entry information
  *
  */
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_log_clock_thread (void *arg_p)
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr = NULL;
+  THREAD_ENTRY *tsd_ptr = NULL;
 #endif /* !HPUX */
-  int
-    rv = 0;
-  struct timeval
-    now;
+  int rv = 0;
+  struct timeval now;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
   assert (sizeof (log_Clock_msec) >= sizeof (now.tv_sec));
@@ -4180,8 +3843,7 @@ thread_log_clock_thread (void *arg_p)
   while (!tsd_ptr->shutdown)
     {
 #if defined(HAVE_ATOMIC_BUILTINS)
-      INT64
-	clock_milli_sec;
+      INT64 clock_milli_sec;
       er_clear ();
 
       /* set time for every 200 ms */
@@ -4190,12 +3852,9 @@ thread_log_clock_thread (void *arg_p)
       ATOMIC_TAS_64 (&log_Clock_msec, clock_milli_sec);
       thread_sleep (200);	/* 200 msec */
 #else /* HAVE_ATOMIC_BUILTINS */
-      int
-	wakeup_interval = 1000;
-      struct timespec
-	wakeup_time;
-      INT64
-	tmp_usec;
+      int wakeup_interval = 1000;
+      struct timespec wakeup_time;
+      INT64 tmp_usec;
 
       er_clear ();
       gettimeofday (&now, NULL);
@@ -4237,23 +3896,17 @@ thread_log_clock_thread (void *arg_p)
  * thread_auto_volume_expansion_thread() -
  *   return:
  */
-static
-  THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_auto_volume_expansion_thread (void *arg_p)
 {
 #define THREAD_AUTO_VOL_WAKEUP_TIME_SEC     60
 #if !defined(HPUX)
-  THREAD_ENTRY *
-    tsd_ptr;
+  THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int
-    rv;
+  int rv;
 
-  struct timeval
-    time_crt;
-  struct timespec
-  to = { 0, 0 };
+  struct timeval time_crt;
+  struct timespec to = { 0, 0 };
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finish */
@@ -4305,10 +3958,8 @@ thread_auto_volume_expansion_thread (void *arg_p)
 bool
 thread_auto_volume_expansion_thread_is_running (void)
 {
-  int
-    rv;
-  bool
-    ret;
+  int rv;
+  bool ret;
 
   rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
   ret = thread_Auto_volume_expansion_thread.is_running;
@@ -4338,8 +3989,7 @@ thread_is_auto_volume_expansion_thread_available (void)
 void
 thread_wakeup_auto_volume_expansion_thread (void)
 {
-  int
-    rv;
+  int rv;
 
   rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
   if (!thread_Auto_volume_expansion_thread.is_running)
@@ -4357,8 +4007,7 @@ thread_wakeup_auto_volume_expansion_thread (void)
 void
 thread_wakeup_check_ha_delay_info_thread (void)
 {
-  int
-    rv;
+  int rv;
 
   rv = pthread_mutex_lock (&thread_Check_ha_delay_info_thread.lock);
   if (!thread_Check_ha_delay_info_thread.is_running)
@@ -4394,22 +4043,14 @@ int
 xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user_p, char *kill_host_p,
 			 int kill_pid)
 {
-  char *
-    slam_progname_p;		/* Client program name for tran */
-  char *
-    slam_user_p;		/* Client user name for tran */
-  char *
-    slam_host_p;		/* Client host for tran */
-  int
-    slam_pid;			/* Client process id for tran */
-  bool
-    signaled = false;
-  int
-    error_code = NO_ERROR;
-  bool
-    killed = false;
-  int
-    i;
+  char *slam_progname_p;	/* Client program name for tran */
+  char *slam_user_p;		/* Client user name for tran */
+  char *slam_host_p;		/* Client host for tran */
+  int slam_pid;			/* Client process id for tran */
+  bool signaled = false;
+  int error_code = NO_ERROR;
+  bool killed = false;
+  int i;
 
   if (kill_tran_index == NULL_TRAN_INDEX || kill_user_p == NULL || kill_host_p == NULL || strcmp (kill_user_p, "") == 0
       || strcmp (kill_host_p, "") == 0)
@@ -4484,16 +4125,10 @@ xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kil
 int
 xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_dba_group_member, bool interrupt_only)
 {
-  int
-    i,
-    error;
-  bool
-    interrupt,
-    has_authorization;
-  bool
-    is_trx_exists;
-  KILLSTMT_TYPE
-    kill_type;
+  int i, error;
+  bool interrupt, has_authorization;
+  bool is_trx_exists;
+  KILLSTMT_TYPE kill_type;
 
   if (!is_dba_group_member)
     {
@@ -4557,10 +4192,8 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is
 THREAD_ENTRY *
 thread_find_first_lockwait_entry (int *thread_index_p)
 {
-  THREAD_ENTRY *
-    thread_p;
-  int
-    i;
+  THREAD_ENTRY *thread_p;
+  int i;
 
   for (i = 1; i <= thread_Manager.num_workers; i++)
     {
@@ -4587,10 +4220,8 @@ thread_find_first_lockwait_entry (int *thread_index_p)
 THREAD_ENTRY *
 thread_find_next_lockwait_entry (int *thread_index_p)
 {
-  THREAD_ENTRY *
-    thread_p;
-  int
-    i;
+  THREAD_ENTRY *thread_p;
+  int i;
 
   for (i = (*thread_index_p + 1); i <= thread_Manager.num_workers; i++)
     {
@@ -4628,10 +4259,8 @@ thread_find_entry_by_index (int thread_index)
 THREAD_ENTRY *
 thread_find_entry_by_tid (pthread_t tid)
 {
-  THREAD_ENTRY *
-    thread_p;
-  int
-    i;
+  THREAD_ENTRY *thread_p;
+  int i;
 
   for (i = 1; i <= thread_Manager.num_workers; i++)
     {
@@ -4654,11 +4283,8 @@ thread_find_entry_by_tid (pthread_t tid)
 int
 thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** thread_array_p)
 {
-  THREAD_ENTRY *
-    thread_p;
-  int
-    i,
-    thread_count;
+  THREAD_ENTRY *thread_p;
+  int i, thread_count;
 
   thread_count = 0;
   for (i = 1; i <= thread_Manager.num_workers; i++)
@@ -4718,8 +4344,7 @@ static int
 thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, THREAD_RC_METER * prev_meter)
 {
 #if !defined(NDEBUG)
-  int
-    i;
+  int i;
 #endif
 
   if (thread_p == NULL)
@@ -4782,17 +4407,10 @@ thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, T
 static int
 thread_rc_track_check (THREAD_ENTRY * thread_p, int id)
 {
-  int
-    i,
-    j;
-  THREAD_RC_TRACK *
-  track, *
-    prev_track;
-  THREAD_RC_METER *
-  meter, *
-    prev_meter;
-  int
-    num_invalid_meter;
+  int i, j;
+  THREAD_RC_TRACK *track, *prev_track;
+  THREAD_RC_METER *meter, *prev_meter;
+  int num_invalid_meter;
 
   if (thread_p == NULL)
     {
@@ -4903,8 +4521,7 @@ thread_rc_track_initialize (THREAD_ENTRY * thread_p)
 void
 thread_rc_track_finalize (THREAD_ENTRY * thread_p)
 {
-  THREAD_RC_TRACK *
-    track;
+  THREAD_RC_TRACK *track;
 
   if (thread_p == NULL)
     {
@@ -4933,8 +4550,7 @@ thread_rc_track_finalize (THREAD_ENTRY * thread_p)
 static const char *
 thread_rc_track_rcname (int rc_idx)
 {
-  const char *
-    name;
+  const char *name;
 
   assert_release (rc_idx >= 0);
   assert_release (rc_idx < RC_LAST);
@@ -4969,8 +4585,7 @@ thread_rc_track_rcname (int rc_idx)
 static const char *
 thread_rc_track_mgrname (int mgr_idx)
 {
-  const char *
-    name;
+  const char *name;
 
   assert_release (mgr_idx >= 0);
   assert_release (mgr_idx < MGR_LAST);
@@ -5007,8 +4622,7 @@ thread_rc_track_mgrname (int mgr_idx)
  * thread_p (in) :
  * rc_idx (in)	 :
  */
-static
-  INT32
+static INT32
 thread_rc_track_threshold_amount (int rc_idx)
 {
   switch (rc_idx)
@@ -5035,17 +4649,12 @@ thread_rc_track_threshold_amount (int rc_idx)
 static THREAD_RC_TRACK *
 thread_rc_track_alloc (THREAD_ENTRY * thread_p)
 {
-  int
-    i,
-    j;
+  int i, j;
 #if !defined(NDEBUG)
-  int
-    max_tracked_res;
-  THREAD_TRACKED_RESOURCE *
-    tracked_res_chunk = NULL, *tracked_res_ptr = NULL;
+  int max_tracked_res;
+  THREAD_TRACKED_RESOURCE *tracked_res_chunk = NULL, *tracked_res_ptr = NULL;
 #endif /* !NDEBUG */
-  THREAD_RC_TRACK *
-    new_track;
+  THREAD_RC_TRACK *new_track;
 
   if (thread_p == NULL)
     {
@@ -5181,8 +4790,7 @@ error:
 static void
 thread_rc_track_free (THREAD_ENTRY * thread_p, int id)
 {
-  THREAD_RC_TRACK *
-    prev_track;
+  THREAD_RC_TRACK *prev_track;
 
   if (thread_p == NULL)
     {
@@ -5221,8 +4829,7 @@ thread_rc_track_free (THREAD_ENTRY * thread_p, int id)
  *   return:
  *   thread_p(in):
  */
-static
-  bool
+static bool
 thread_rc_track_is_enabled (THREAD_ENTRY * thread_p)
 {
   if (thread_p == NULL)
@@ -5271,8 +4878,7 @@ thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p)
 int
 thread_rc_track_enter (THREAD_ENTRY * thread_p)
 {
-  THREAD_RC_TRACK *
-    track;
+  THREAD_RC_TRACK *track;
 
   if (thread_p == NULL)
     {
@@ -5303,8 +4909,7 @@ thread_rc_track_enter (THREAD_ENTRY * thread_p)
 int
 thread_rc_track_exit (THREAD_ENTRY * thread_p, int id)
 {
-  int
-    ret = NO_ERROR;
+  int ret = NO_ERROR;
 
   if (thread_p == NULL)
     {
@@ -5337,18 +4942,13 @@ thread_rc_track_exit (THREAD_ENTRY * thread_p, int id)
  *   return:
  *   thread_p(in):
  */
-static
-  INT32
+static INT32
 thread_rc_track_amount_helper (THREAD_ENTRY * thread_p, int rc_idx)
 {
-  INT32
-    amount;
-  THREAD_RC_TRACK *
-    track;
-  THREAD_RC_METER *
-    meter;
-  int
-    j;
+  INT32 amount;
+  THREAD_RC_TRACK *track;
+  THREAD_RC_METER *meter;
+  int j;
 
   if (thread_p == NULL)
     {
@@ -5408,10 +5008,8 @@ thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p)
 static void
 thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int amount, void *ptr)
 {
-  int
-    cs_idx;
-  int
-    i;
+  int cs_idx;
+  int i;
 
   assert (meter != NULL);
   assert (amount != 0);
@@ -5472,10 +5070,8 @@ thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_R
 static void
 thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int enter_mode, void *ptr)
 {
-  int
-    cs_idx;
-  unsigned char
-    enter_count;
+  int cs_idx;
+  unsigned char enter_count;
 
   assert (meter != NULL);
   assert (ptr != NULL);
@@ -5625,15 +5221,10 @@ void
 thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_name, const int line_no, int amount, void *ptr,
 		       int rc_idx, int mgr_idx)
 {
-  THREAD_RC_TRACK *
-    track;
-  THREAD_RC_METER *
-    meter;
-  int
-    enter_mode = -1;
-  static
-    bool
-    report_track_cs_overflow = false;
+  THREAD_RC_TRACK *track;
+  THREAD_RC_METER *meter;
+  int enter_mode = -1;
+  static bool report_track_cs_overflow = false;
 
   if (thread_p == NULL)
     {
@@ -5747,8 +5338,7 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_name, const int
 	case RC_CS:
 	  /* check Critical Section cycle and keep current hold info */
 	  {
-	    int
-	      cs_idx;
+	    int cs_idx;
 
 	    assert (ptr != NULL);
 
@@ -5826,8 +5416,7 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_name, const int
 static void
 thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp, THREAD_RC_METER * meter)
 {
-  int
-    i;
+  int i;
 
   if (thread_p == NULL)
     {
@@ -5901,12 +5490,8 @@ thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp, THREAD_RC_MET
 static void
 thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp, THREAD_RC_TRACK * track, int depth)
 {
-  int
-    i,
-    j;
-  const char *
-  rcname, *
-    mgrname;
+  int i, j;
+  const char *rcname, *mgrname;
 
   if (thread_p == NULL)
     {
@@ -5953,10 +5538,8 @@ thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp, THREAD_RC_TRACK * t
 static int
 thread_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization)
 {
-  char *
-    tran_client_name;
-  char *
-    current_client_name;
+  char *tran_client_name;
+  char *current_client_name;
 
   assert (has_authorization);
 
@@ -6103,10 +5686,8 @@ thread_resume_status_to_string (int resume_status)
 void
 thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp)
 {
-  THREAD_RC_TRACK *
-    track;
-  int
-    depth;
+  THREAD_RC_TRACK *track;
+  int depth;
 
   if (thread_p == NULL)
     {
@@ -6150,15 +5731,9 @@ thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp)
 static void
 thread_rc_track_meter_at (THREAD_RC_METER * meter, const char *caller_file, int caller_line, int amount, void *ptr)
 {
-  const char *
-    p = NULL;
-  int
-    min,
-    max,
-    mid,
-    mem_size;
-  bool
-    found = false;
+  const char *p = NULL;
+  int min, max, mid, mem_size;
+  bool found = false;
 
   assert_release (meter != NULL);
   assert_release (amount != 0);
@@ -6426,20 +6001,14 @@ thread_daemon_wait (DAEMON_THREAD_MONITOR * daemon)
  * daemon (in)    : daemon thread monitor
  * wait_msec (in) : maximum wait time
  */
-STATIC_INLINE
-  bool
+STATIC_INLINE bool
 thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
 {
-  struct timeval
-    timeval_crt;
-  struct timespec
-    timespec_wakeup;
-  long
-    usec_tmp;
-  const int
-    usec_onesec = 1000 * 1000;	/* nano-seconds in one second */
-  int
-    rv;
+  struct timeval timeval_crt;
+  struct timespec timespec_wakeup;
+  long usec_tmp;
+  const int usec_onesec = 1000 * 1000;	/* nano-seconds in one second */
+  int rv;
 
   gettimeofday (&timeval_crt, NULL);
 
@@ -6580,11 +6149,10 @@ thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon)
 THREAD_ENTRY *
 thread_iterate (THREAD_ENTRY * thread_p)
 {
-  int
-    index = 0;
+  int index = 0;
   if (thread_p != NULL)
     {
-      index = (int) thread_p->index + 1;
+      index = thread_p->index + 1;
     }
   if (index >= thread_Manager.num_total)
     {

@@ -3439,7 +3439,6 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
 {
   PT_NODE *between = NULL;
   PT_NODE *between_and = NULL;
-  PT_NODE *escape_expr = NULL;
   PT_NODE *lower = NULL;
   PT_NODE *upper = NULL;
   PT_NODE *match_col = NULL;
@@ -6419,8 +6418,6 @@ qo_can_generate_single_table_connect_by (PARSER_CONTEXT * parser, PT_NODE * node
   PT_NODE *name = NULL;
   PT_NODE *spec = NULL;
   PT_NODE *select = NULL;
-  DB_OBJECT *mobj = NULL;
-  SM_CLASS *class_ = NULL;
 
   assert (node->node_type == PT_SELECT && node->info.query.q.select.connect_by != NULL);
 

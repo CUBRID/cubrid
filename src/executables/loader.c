@@ -1038,7 +1038,6 @@ ldr_find_class (const char *classname)
   LC_FIND_CLASSNAME find;
   DB_OBJECT *class_ = NULL;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
-  int err = NO_ERROR;
 
   /* Check for internal error */
   if (classname == NULL)

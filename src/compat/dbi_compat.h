@@ -28,6 +28,10 @@
 #ifndef _DBI_COMPAT_H_
 #define _DBI_COMPAT_H_
 
+#ifndef __cplusplus
+#define bool char
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {

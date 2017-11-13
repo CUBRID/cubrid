@@ -1561,9 +1561,8 @@ qdump_print_rlike_eval_term (EVAL_TERM * term_p)
 
   fprintf (foutput, "SOURCE");
   qdump_print_value (et_rlike_p->src);
-  fprintf (foutput,
-	   (et_rlike_p->case_sensitive->value.dbval.data.
-	    i ? "PATTERN (CASE SENSITIVE):" : "PATTERN (CASE INSENSITIVE):"));
+  fprintf (foutput, (et_rlike_p->case_sensitive->value.dbval.data.i
+		     ? "PATTERN (CASE SENSITIVE):" : "PATTERN (CASE INSENSITIVE):"));
 
   if (!qdump_print_value (et_rlike_p->pattern))
     {

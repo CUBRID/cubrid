@@ -349,8 +349,10 @@ static int catalog_drop_representation_item (THREAD_ENTRY * thread_p, OID * clas
 static int catalog_drop (THREAD_ENTRY * thread_p, OID * class_id, REPR_ID repr_id);
 static int catalog_drop_all (THREAD_ENTRY * thread_p, OID * class_id);
 static int catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p, OID * class_id);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p, OID * class_oid, REPR_ID reprid);
 static int catalog_fixup_missing_class_info (THREAD_ENTRY * thread_p, OID * class_oid);
+#endif
 static DISK_ISVALID catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid);
 static void catalog_dump_disk_attribute (DISK_ATTR * atr);
 static void catalog_dump_representation (DISK_REPR * dr);

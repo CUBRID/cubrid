@@ -839,11 +839,8 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 		    {
 		      /* Try to handle simple expressions so we don't choke on things like negative numbers */
 		      if (pt_is_value_node (val->info.expr.arg1)
-			  && (!val->info.expr.arg2 || pt_is_value_node (val->info.expr.arg2)) && (!val->info.expr.arg3
-												  ||
-												  pt_is_value_node
-												  (val->info.expr.
-												   arg3)))
+			  && (!val->info.expr.arg2 || pt_is_value_node (val->info.expr.arg2))
+			  && (!val->info.expr.arg3 || pt_is_value_node (val->info.expr.arg3)))
 			{
 			  pt_evaluate_tree_having_serial (parser, val, &tmp_val, 1);
 			  if (!parser->error_msgs)

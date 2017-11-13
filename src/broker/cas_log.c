@@ -317,7 +317,6 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 
   if (log_fp != NULL)
     {
-      long log_file_size = 0;
       bool abandon = false;
 
       /* 'mode' will be either ALL, ERROR, or TIMEOUT */
@@ -898,9 +897,7 @@ static FILE *
 access_log_open (char *log_file_name)
 {
   FILE *fp;
-  int log_file_len = 0;
   int ret;
-  int tmp_dirlen = 0;
   char *tmp_dirname;
   char *tmp_filename;
 

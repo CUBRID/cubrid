@@ -3799,8 +3799,6 @@ set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec, char chars
 
   if (client_version >= CAS_MAKE_VER (8, 3, 0))
     {
-      DB_VALUE *def = NULL;
-
       class_obj = db_find_class (class_name);
       attr = db_get_attribute (class_obj, col_name);
 
@@ -8613,7 +8611,7 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 {
   DB_OBJECT *pktable_obj, *fktable_obj;
   DB_ATTRIBUTE **fk_attr = NULL, **pk_attr = NULL;
-  DB_CONSTRAINT *fk_const = NULL, *pk = NULL, *pk_const = NULL;
+  DB_CONSTRAINT *fk_const = NULL, *pk = NULL;
   DB_CONSTRAINT *pktable_cons = NULL;
   DB_CONSTRAINT_TYPE type;
   SM_FOREIGN_KEY_INFO *fk_info;

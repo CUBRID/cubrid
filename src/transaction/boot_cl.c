@@ -769,10 +769,10 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   int i, optional_cap;
   char *ha_node_list = NULL;
   bool check_capabilities;
-#endif /* CS_MODE */
-  bool is_db_user_alloced = false;
   bool skip_preferred_hosts = false;
   bool skip_db_info = false;
+#endif /* CS_MODE */
+  bool is_db_user_alloced = false;
 
   assert (client_credential != NULL);
 
@@ -3839,7 +3839,6 @@ boot_add_charsets (MOP class_mop)
 {
   int i;
   int count_collations;
-  int found_coll = 0;
 
   count_collations = lang_collation_count ();
 
