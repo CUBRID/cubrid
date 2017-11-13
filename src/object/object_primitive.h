@@ -36,7 +36,7 @@
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #endif
-#include "thread.h" //struct thread_entry; //but can't fwd declare THREAD_ENTRY
+#include "thread.h"		//can't fwd declare THREAD_ENTRY
 
 #ifdef __cplusplus
 class string_buffer;
@@ -60,9 +60,9 @@ typedef struct pr_type
   void (*fptrfunc) (FILE * fp, const DB_VALUE * value);
   /* print dbvalue to buffer */
 #ifdef __cplusplus
-  void (*sptrfunc) (const DB_VALUE * value, string_buffer& sb);
+  void (*sptrfunc) (const DB_VALUE * value, string_buffer & sb);
 #else
-  void* sptrfunc;
+  void *sptrfunc;
 #endif
 
   /* initialize memory */
@@ -359,7 +359,7 @@ extern void pr_free_string (char *str);
 #endif
 
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
-extern char *pr_valstring (THREAD_ENTRY*, DB_VALUE *);
+extern char *pr_valstring (THREAD_ENTRY *, DB_VALUE *);
 
 /* area init */
 extern int pr_area_init (void);

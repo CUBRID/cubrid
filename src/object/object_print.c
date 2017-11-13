@@ -97,7 +97,8 @@ static char *obj_print_next_token (char *ptr, char *buf);
  *    system so it doesn't really matter.
  */
 
-int help_trigger_names (char ***names_ptr)
+int
+help_trigger_names (char ***names_ptr)
 {
   int error = NO_ERROR;
   DB_OBJLIST *triggers, *t;
@@ -252,10 +253,10 @@ help_fprint_obj (FILE * fp, MOP obj)
 		      fprintf (fp, "  %s\n", cinfo.query_spec[i]);
 		    }
 		}
-	      {//triggers
+	      {			//triggers
 		/* fprintf(fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_TRIGGERS)); */
 		fprintf (fp, "Triggers:\n");
-		for (size_t n=cinfo.triggers.size(),i = 0; i<n; ++i)
+		for (size_t n = cinfo.triggers.size (), i = 0; i < n; ++i)
 		  {
 		    fprintf (fp, "  %s\n", cinfo.triggers[i]);
 		  }
@@ -268,7 +269,7 @@ help_fprint_obj (FILE * fp, MOP obj)
       (void) tr_is_trigger (obj, &status);
       if (status)
 	{
-	  trigger_description tinfo(obj);
+	  trigger_description tinfo (obj);
 	  if (tinfo.name != NULL)
 	    {
 	      fprintf (fp, "Trigger : %s", tinfo.name);
@@ -322,7 +323,7 @@ help_fprint_obj (FILE * fp, MOP obj)
       else
 	{
 	  object_description oinfo;
-          if(!oinfo.init(obj))
+	  if (!oinfo.init (obj))
 	    {
 	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_OBJECT_TITLE),
 		       oinfo.classname);
@@ -662,11 +663,11 @@ help_print_info (const char *command, FILE * fpp)
 	    }
 	}
       else
-        {
-          //help_print_trigger (buffer, fpp);
-          trigger_description td(buffer);
-          td.fprint(fpp);
-        }
+	{
+	  //help_print_trigger (buffer, fpp);
+	  trigger_description td (buffer);
+	  td.fprint (fpp);
+	}
     }
   else if (MATCH_TOKEN (buffer, "deferred"))
     {
@@ -723,19 +724,18 @@ help_print_info (const char *command, FILE * fpp)
  *   fp(in) : FILE stream pointer
  *   value(in) : value to print
  */
-void help_fprint_value(FILE* fp, const DB_VALUE* value)
+void
+help_fprint_value (FILE * fp, const DB_VALUE * value)
 {
   mem::block mem_block;
-  string_buffer sb(
-    mem_block,
-    [](mem::block& block, size_t len)
-      {
-        //bSolo: ToDo: add thread_entry and use db_private_allocator
-      }
+  string_buffer sb (mem_block,[](mem::block & block, size_t len)
+		    {
+		    //bSolo: ToDo: add thread_entry and use db_private_allocator
+		    }
   );
-  db_value_printer printer(sb);
-  printer.describe_value(value);
-  fprintf (fp, "%.*s", (int)sb.len(), mem_block.ptr);
+  db_value_printer printer (sb);
+  printer.describe_value (value);
+  fprintf (fp, "%.*s", (int) sb.len (), mem_block.ptr);
 }
 
 /*
@@ -743,10 +743,11 @@ void help_fprint_value(FILE* fp, const DB_VALUE* value)
  *   value(in) : value to describe
  *   sb(in/out) : auto resizable buffer to contain description
  */
-void help_sprint_value(const DB_VALUE* value, string_buffer& sb)
+void
+help_sprint_value (const DB_VALUE * value, string_buffer & sb)
 {
-  db_value_printer printer(sb);
-  printer.describe_value(value);
+  db_value_printer printer (sb);
+  printer.describe_value (value);
 }
 
 /*
@@ -754,17 +755,18 @@ void help_sprint_value(const DB_VALUE* value, string_buffer& sb)
  *   return: N/A
  *   comment(in) : a comment string to be printed
  */
-void help_fprint_describe_comment(FILE* fp, const char* comment)
+void
+help_fprint_describe_comment (FILE * fp, const char *comment)
 {
 #if !defined (SERVER_MODE)
   mem::block mem_block;
-  string_buffer sb(mem_block, mem::default_realloc);
-  object_printer printer(sb);
+  string_buffer sb (mem_block, mem::default_realloc);
+  object_printer printer (sb);
 
   assert (fp != NULL);
   assert (comment != NULL);
-  printer.describe_comment(comment);
-  fprintf(fp, "%.*s", int(sb.len()), mem_block.ptr);
-  mem::default_dealloc(mem_block);
+  printer.describe_comment (comment);
+  fprintf (fp, "%.*s", int (sb.len ()), mem_block.ptr);
+  mem::default_dealloc (mem_block);
 #endif /* !defined (SERVER_MODE) */
 }

@@ -5502,7 +5502,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 			    lent->param_values.size, s ? s : "(null)");
 	      if (s)
 		{
-		  db_private_free(thread_p, s);
+		  db_private_free (thread_p, s);
 		}
 	    }
 	}

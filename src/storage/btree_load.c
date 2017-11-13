@@ -3955,7 +3955,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 		      (val_print ? val_print : "unknown value"));
 	      ret = ER_FK_INVALID;
-	      db_private_free(thread_p, val_print);
+	      db_private_free (thread_p, val_print);
 	      break;
 	    }
 	  else
@@ -3981,7 +3981,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
-		  db_private_free(thread_p, val_print);
+		  db_private_free (thread_p, val_print);
 		  break;
 		}
 
@@ -4015,7 +4015,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
-		  db_private_free(thread_p, val_print);
+		  db_private_free (thread_p, val_print);
 		  goto end;
 		}
 
@@ -4038,7 +4038,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
-		  db_private_free(thread_p, val_print);
+		  db_private_free (thread_p, val_print);
 		  goto end;
 		}
 	    }

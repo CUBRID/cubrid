@@ -10411,29 +10411,28 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  *    serious formatting for external use.  Use it to get printed DB_VALUE
  *    representations into error messages and the like.
  */
-char *pr_valstring (THREAD_ENTRY* threade, DB_VALUE * val)
+char *
+pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
 {
   mem::block mem_block;
-  string_buffer sb(
-    mem_block,
-    [&threade](mem::block& block, size_t len)
-      {
-        block.ptr = (char*)db_private_realloc(threade, block.ptr, block.dim + len);
-        block.dim += len;
-      }
+  string_buffer sb (mem_block,[&threade] (mem::block & block, size_t len)
+		    {
+		    block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
+		    block.dim += len;
+		    }
   );
 
   if (val == NULL)
     {
       /* space with terminating NULL */
-      sb("(null)");
+      sb ("(null)");
       return mem_block.ptr;
     }
 
   if (DB_IS_NULL (val))
     {
       /* space with terminating NULL */
-      sb("NULL");
+      sb ("NULL");
       return mem_block.ptr;
     }
 
@@ -10445,7 +10444,7 @@ char *pr_valstring (THREAD_ENTRY* threade, DB_VALUE * val)
       return NULL;
     }
 
-  (*(pr_type->sptrfunc)) (val, sb); //caller should use db_private_free() to deallocate it
+  (*(pr_type->sptrfunc)) (val, sb);	//caller should use db_private_free() to deallocate it
   return mem_block.ptr;
 }
 

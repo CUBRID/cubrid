@@ -6405,22 +6405,22 @@ log_hexa_dump (FILE * out_fp, int length, void *data)
   fprintf (out_fp, "\n");
 }
 
-//--------------------------------------------------------------------------------
-static void log_repl_data_dump(FILE* out_fp, int length, void* data)
+static void
+log_repl_data_dump (FILE * out_fp, int length, void *data)
 {
-  char* ptr = (char*)data;
+  char *ptr = (char *) data;
   char *class_name;
   DB_VALUE value;
-  ptr = or_unpack_string_nocopy(ptr, &class_name);
-  ptr = or_unpack_mem_value(ptr, &value);
+  ptr = or_unpack_string_nocopy (ptr, &class_name);
+  ptr = or_unpack_mem_value (ptr, &value);
 
   mem::block mem_block;
-  string_buffer sb(mem_block, mem::default_realloc);
-  db_value_printer printer(sb);
-  printer.describe_value(&value);
-  fprintf(out_fp, "C[%s] K[%s]\n", class_name, mem_block.ptr);
-  mem::default_dealloc(mem_block);
-  pr_clear_value(&value);
+  string_buffer sb (mem_block, mem::default_realloc);
+  db_value_printer printer (sb);
+  printer.describe_value (&value);
+  fprintf (out_fp, "C[%s] K[%s]\n", class_name, mem_block.ptr);
+  mem::default_dealloc (mem_block);
+  pr_clear_value (&value);
 }
 
 static void

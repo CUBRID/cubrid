@@ -49,8 +49,8 @@ struct suffix
 #define N 8192
 
 char stack_buf[sizeof (prefix) + N + sizeof (suffix)]; // working buffer
-allocator::stack stack_allocator(stack_buf, sizeof(stack_buf));
-allocator::affix<allocator::stack, prefix, suffix> affix_allocator(stack_allocator);
+allocator::stack stack_allocator (stack_buf, sizeof (stack_buf));
+allocator::affix<allocator::stack, prefix, suffix> affix_allocator (stack_allocator);
 
 class test_string_buffer
 {
@@ -89,7 +89,7 @@ class test_string_buffer
 	}
     }
 
-    void check_resize(size_t len) //check internal buffer and resize it to fit additional len bytes
+    void check_resize (size_t len) //check internal buffer and resize it to fit additional len bytes
     {
       if (m_dim < m_len + len) // calc next power of 2
 	{
@@ -110,7 +110,7 @@ class test_string_buffer
       m_sb.clear();
     }
 
-    template<typename... Args> void format(const char *file, int line, Args &&... args)
+    template<typename... Args> void format (const char *file, int line, Args &&... args)
     {
       int len = snprintf (nullptr, 0, args...);
       if (len < 0)
@@ -120,8 +120,8 @@ class test_string_buffer
 	}
       else
 	{
-          check_resize(len);
-          len = snprintf (m_ref + m_len, m_dim - m_len, args...);
+	  check_resize (len);
+	  len = snprintf (m_ref + m_len, m_dim - m_len, args...);
 	  m_len += len;
 	}
       m_sb (args...);
@@ -142,9 +142,9 @@ class test_string_buffer
 	}
     }
 
-    void character(const char *file, int line, const char ch)
+    void character (const char *file, int line, const char ch)
     {
-      check_resize(1);
+      check_resize (1);
       m_ref[m_len] = ch;
       m_ref[++m_len] = '\0';
 

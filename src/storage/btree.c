@@ -18265,7 +18265,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
 
   if (keyval)
     {
-      db_private_free(thread_p, keyval);
+      db_private_free (thread_p, keyval);
     }
   if (class_name)
     {
@@ -18403,7 +18403,7 @@ btree_set_unknown_key_error (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * ke
 
   if (err_key != NULL)
     {
-      db_private_free(thread_p, err_key);
+      db_private_free (thread_p, err_key);
     }
 }
 
@@ -21936,7 +21936,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, fk_name, (val_print ? val_print : "unknown value"));
       if (val_print)
 	{
-	  db_private_free(thread_p, val_print);
+	  db_private_free (thread_p, val_print);
 	}
       ret = ER_FK_INVALID;
       goto exit_on_error;
@@ -26010,7 +26010,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   /* Free allocated resources. */
   if (insert_helper.printed_key != NULL)
     {
-      db_private_free(thread_p, insert_helper.printed_key);
+      db_private_free (thread_p, insert_helper.printed_key);
     }
 
 #if defined (SERVER_MODE)
@@ -27676,7 +27676,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 		      (keyval == NULL) ? "(null)" : keyval);
 	      if (keyval != NULL)
 		{
-		  db_private_free(thread_p, keyval);
+		  db_private_free (thread_p, keyval);
 		}
 	      return ER_UNIQUE_VIOLATION_WITHKEY;
 	    }
@@ -27749,7 +27749,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 		      (keyval == NULL) ? "(null)" : keyval);
 	      if (keyval != NULL)
 		{
-		  db_private_free(thread_p, keyval);
+		  db_private_free (thread_p, keyval);
 		}
 	      return ER_UNIQUE_VIOLATION_WITHKEY;
 	    }
@@ -29022,7 +29022,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 				 printed_key != NULL ? printed_key : "unknown", update_record.length);
 		  if (printed_key != NULL)
 		    {
-		      db_private_free(thread_p, printed_key);
+		      db_private_free (thread_p, printed_key);
 		    }
 		}
 	      else
@@ -29120,7 +29120,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 			 printed_key != NULL ? printed_key : "unknown", rv_debug_id, update_record.length);
 	  if (printed_key != NULL)
 	    {
-	      db_private_free(thread_p, printed_key);
+	      db_private_free (thread_p, printed_key);
 	    }
 	}
       else
@@ -29589,7 +29589,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
 
   if (delete_helper.printed_key != NULL)
     {
-      db_private_free(thread_p, delete_helper.printed_key);
+      db_private_free (thread_p, delete_helper.printed_key);
     }
 
   if (buffered_key != NULL)
