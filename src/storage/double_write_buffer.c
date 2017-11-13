@@ -406,7 +406,7 @@ STATIC_INLINE void dwb_finalize_checksum_info (DWB_CHECKSUM_INFO * checksum_info
 STATIC_INLINE bool dwb_needs_speedup_checksum_computation (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_checksum_computed,
 					     bool * checksum_computed) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_create_internal (THREAD_ENTRY * thread_p, const char * dwb_volume_name,
+STATIC_INLINE int dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name,
 				       UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
   __attribute__ ((ALWAYS_INLINE));
@@ -1530,7 +1530,7 @@ dwb_finalize_block (DWB_BLOCK * block)
  *  Note: Is user responsibility to ensure that no other transaction can access DWB structure, during creation.
  */
 STATIC_INLINE int
-dwb_create_internal (THREAD_ENTRY * thread_p, const char * dwb_volume_name, UINT64 * current_position_with_flags)
+dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT64 * current_position_with_flags)
 {
   int error_code = NO_ERROR;
   unsigned double_write_buffer_size, num_blocks = 0;
