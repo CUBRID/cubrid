@@ -293,15 +293,9 @@ extern int thread_kill_all_workers (void);
 extern void thread_final_manager (void);
 extern void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern int thread_lock_entry (THREAD_ENTRY * entry);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int thread_lock_entry_with_tran_index (int tran_index);
-#endif
 extern int thread_unlock_entry (THREAD_ENTRY * p);
 extern int thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * p, int suspended_reason);
 extern int thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * p, struct timespec *t, int suspended_reason);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index, int suspended_reason);
-#endif
 extern int thread_wakeup (THREAD_ENTRY * p, int resume_reason);
 extern int thread_check_suspend_reason_and_wakeup (THREAD_ENTRY * thread_p, int resume_reason, int suspend_reason);
 
@@ -422,10 +416,6 @@ extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
 extern INT64 thread_get_log_clock_msec (void);
 
-extern int thread_get_total_num_of_threads (void);
-extern THREAD_ENTRY *thread_get_entry_from_index (int index);
-extern int thread_get_total_num_of_workers (void);
-
 extern const char *thread_type_to_string (int type);
 extern const char *thread_status_to_string (int status);
 extern const char *thread_resume_status_to_string (int resume_status);
@@ -446,9 +436,7 @@ extern int thread_first_vacuum_worker_thread_index (void);
 
 extern bool thread_is_auto_volume_expansion_thread_available (void);
 
-#if !defined (NDEBUG)
 extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
-#endif /* !NDEBUG */
 
 extern int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
 #endif /* SERVER_MODE */

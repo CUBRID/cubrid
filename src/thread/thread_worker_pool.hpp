@@ -45,9 +45,11 @@ public:
   bool try_execute (task_type * work_arg);
   void execute (task_type * work_arg);
   void stop (void);
-  bool is_running (void);
-  bool is_busy (void);
-  bool is_full (void);
+  bool is_running (void) const;
+  bool is_busy (void) const;
+  bool is_full (void) const;
+
+  std::size_t get_running_count (void) const;
 
 private:
   static void run (worker_pool<Context> & pool, std::thread & thread_arg, task_type * work_arg);
@@ -156,22 +158,29 @@ worker_pool<Context>::stop (void)
 
 template <typename Context>
 bool
-worker_pool<Context>::is_running (void)
+worker_pool<Context>::is_running (void) const
 {
   return !m_stopped;
 }
 
 template<typename Context>
 inline bool
-worker_pool<Context>::is_busy (void)
+worker_pool<Context>::is_busy (void) const
 {
   return m_worker_count == m_max_workers;
 }
 
 template<typename Context>
-inline bool worker_pool<Context>::is_full (void)
+inline bool worker_pool<Context>::is_full (void) const
 {
   return m_work_queue.is_full ();
+}
+
+template<typename Context>
+std::size_t
+worker_pool<Context>::get_running_count (void) const
+{
+  return m_worker_count;
 }
 
 template <typename Context>
@@ -214,6 +223,7 @@ worker_pool<Context>::register_worker (void)
     {
       thread_p->join ();
     }
+  ++m_worker_count;
   return thread_p;
 }
 
@@ -222,6 +232,7 @@ inline void
 worker_pool<Context>::deregister_worker (std::thread & thread_arg)
 {
   m_thread_dispatcher.retire (thread_arg);
+  --m_worker_count;
 }
 
 } // namespace cubthread

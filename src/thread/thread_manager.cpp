@@ -212,6 +212,10 @@ manager::claim_entry (void)
 {
   assert (!m_single_thread);
   tl_Entry_p = m_entry_dispatcher->claim ();
+
+  // for backward compatibility
+  tl_Entry_p->tid = pthread_self ();
+
   return tl_Entry_p;
 }
 
@@ -220,6 +224,10 @@ manager::retire_entry (entry & entry_p)
 {
   assert (!m_single_thread);
   assert (tl_Entry_p == &entry_p);
+
+  // for backward compatibility
+  entry_p.tid = (pthread_t) 0;
+
   tl_Entry_p = NULL;
   m_entry_dispatcher->retire (entry_p);
 }
@@ -244,6 +252,28 @@ std::size_t
 manager::get_max_thread_count (void) const
 {
   return m_max_threads;
+}
+
+std::size_t
+manager::get_running_thread_count (void)
+{
+  std::unique_lock<std::mutex> lock_guard (m_entries_mutex);
+  std::size_t running_count = 0;
+  for (auto wp_iter = m_worker_pools.cbegin (); wp_iter != m_worker_pools.cend (); ++wp_iter)
+    {
+      running_count += (*wp_iter)->get_running_count ();
+    }
+  for (auto daemon_iter = m_daemons.cbegin (); daemon_iter != m_daemons.cend (); ++m_daemons)
+    {
+      ++running_count;
+    }
+  return running_count;
+}
+
+std::size_t
+manager::get_free_thread_count (void)
+{
+  return get_max_thread_count () - get_running_thread_count ();
 }
 
 void

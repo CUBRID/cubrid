@@ -70,6 +70,18 @@ public:
 
   entry & get_entry (void);
 
+  std::size_t get_max_thread_count (void) const;
+  std::size_t get_running_thread_count (void);
+  std::size_t get_free_thread_count (void);
+
+  void check_all_killed (void);
+
+  // todo: remove me
+  entry* get_all_entries (void)
+  {
+    return m_all_entries;
+  }
+
 private:
 
   typedef resource_shared_pool<entry> entry_dispatcher;

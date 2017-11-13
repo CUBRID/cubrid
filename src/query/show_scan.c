@@ -504,16 +504,16 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
 
   *ptr = NULL;
 
-  ctx = showstmt_alloc_array_context (thread_p, thread_get_total_num_of_threads (), num_cols);
+  ctx = showstmt_alloc_array_context (thread_p, thread_num_total_threads (), num_cols);
   if (ctx == NULL)
     {
       error = er_errid ();
       return error;
     }
 
-  for (i = 0; i < thread_get_total_num_of_threads (); i++)
+  for (i = 0; i < thread_num_total_threads (); i++)
     {
-      thrd = thread_get_entry_from_index (i);
+      thrd = thread_find_entry_by_index (i);
 
       vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
       if (vals == NULL)
@@ -528,7 +528,7 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Jobq_index */
-      if (0 < thrd->index && thrd->index <= thread_get_total_num_of_workers ())
+      if (0 < thrd->index && thrd->index <= thread_num_worker_threads ())
 	{
 	  db_make_int (&vals[idx], thrd->index % CSS_NUM_JOB_QUEUE);
 	}
