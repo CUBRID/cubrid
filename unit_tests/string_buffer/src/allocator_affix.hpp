@@ -25,7 +25,7 @@
 #if !defined(_ALLOCATOR_AFFIX_HPP_)
 #define _ALLOCATOR_AFFIX_HPP_
 
-#include "mem_block.hpp"
+#include "mem.hpp"
 #include <new>
 #include <stddef.h>
 
@@ -61,7 +61,7 @@ namespace allocator
 	m_a.deallocate ({m_prefix_len + b.dim + m_suffix_len, b.ptr - m_prefix_len});
       }
 
-      unsigned check (mem::block b)
+      unsigned check (const mem::block& b)
       {
 	Prefix pfx;
 	Suffix sfx;

@@ -60,8 +60,8 @@ bool object_description::init (struct db_object *op)
 
 	      this->classname = object_print::copy_string ((char *) sm_ch_name ((MOBJ) class_));
 
-	      mem::block mem_block;
-	      string_buffer sb (mem_block, mem::default_realloc);
+	      mem::block_ext mem_block;
+	      string_buffer sb (mem_block);
 	      db_value_printer printer (sb);
 
 	      DB_MAKE_OBJECT (&value, op);
@@ -69,8 +69,8 @@ bool object_description::init (struct db_object *op)
 	      db_value_clear (&value);
 	      DB_MAKE_NULL (&value);
 
-	      this->oid = mem_block.ptr;//move ownership
-	      mem_block = {};
+              mem::block b{std::move(mem_block)};//move ownership
+	      this->oid = b.ptr;
 
 	      if (class_->ordered_attributes != NULL)
 		{
@@ -97,8 +97,8 @@ bool object_description::init (struct db_object *op)
 			  db_get (op, attribute_p->header.name, &value);
 			  printer.describe_value (&value);
 			}
-		      strs[i] = mem_block.ptr;//move ownership
-		      mem_block = {};
+                      mem::block b{std::move(mem_block)};//move ownership
+		      strs[i] = b.ptr;
 		      i++;
 		    }
 		  strs[i] = NULL;

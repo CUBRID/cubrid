@@ -87,6 +87,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/stack_dump.c
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/object_representation_sr.c
+  ${BASE_DIR}/mem.cpp
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/dtoa.c
   ${BASE_DIR}/adjustable_array.c

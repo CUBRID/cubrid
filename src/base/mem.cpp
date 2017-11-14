@@ -16,41 +16,4 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/* Memory Block
- * - groups together memory address and its size
- * - used to allocate, deallocate and share memory
- * - could be extended with helper info: allocator, src file&line where allocation was made, ...
- */
-
-#if !defined(_MEM_BLOCK_HPP_)
-#define _MEM_BLOCK_HPP_
-
-#include <stddef.h>
-
-namespace mem
-{
-
-  struct block
-  {
-    size_t dim;
-    char  *ptr;
-
-    block()
-      : dim (0)
-      , ptr (nullptr)
-    {}
-
-    block (size_t dim, void *ptr)
-      : dim (dim)
-      , ptr ((char *)ptr)
-    {}
-
-    bool is_valid ()
-    {
-      return (dim != 0 && ptr != 0);
-    }
-  };
-
-} // namespace mem
-
-#endif // !defined(_MEM_BLOCK_HPP_)
+#include "mem.hpp"

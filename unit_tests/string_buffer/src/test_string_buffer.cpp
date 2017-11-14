@@ -58,7 +58,7 @@ class test_string_buffer
     size_t m_dim;                                      //_ref[_dim]
     size_t m_len;                                      // strlen(_ref)
     char *m_ref;                                       // reference buffer
-    mem::block m_block;
+    mem::block_ext m_block;                             //extensible buffer
     string_buffer m_sb;
 
   public:
@@ -66,17 +66,20 @@ class test_string_buffer
       : m_dim (8192)
       , m_len (0)
       , m_ref ((char *) calloc (m_dim, 1))
-      , m_block ()
-      , m_sb (
-		m_block,
-		[] (mem::block& block, size_t len)
-    {
-      mem::block b = affix_allocator.allocate (block.dim + len);
-      memcpy (b.ptr, block.ptr, block.dim);
-      affix_allocator.deallocate (block);
-      block = b;
-    }
-      )
+      , m_block {
+          [] (mem::block& block, size_t len)
+          {
+            mem::block b = affix_allocator.allocate (block.dim + len);
+            memcpy (b.ptr, block.ptr, block.dim);
+            affix_allocator.deallocate (std::move(block));
+            block = std::move(b);
+          },
+          [](mem::block& block)
+          {
+            affix_allocator.deallocate(std::move(block));
+          }
+        }
+      , m_sb (m_block)
     {
     }
 
@@ -106,7 +109,8 @@ class test_string_buffer
     {
       m_len = 0;
       stack_allocator.~stack ();
-      m_block = affix_allocator.allocate (size);
+      mem::block b = affix_allocator.allocate (size);
+      *(mem::block*)&m_block = std::move(b);
       m_sb.clear();
     }
 

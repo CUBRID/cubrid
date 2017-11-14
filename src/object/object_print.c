@@ -729,17 +729,21 @@ void
 help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
 {
   db_private_allocator < char >private_allocator (thread_p);
-  mem::block mem_block;
-  string_buffer sb (mem_block,[&private_allocator] (mem::block & block, size_t len)
-		    {
-		    mem::block b
-		    {
-		    block.dim + len, private_allocator.allocate (block.dim + len)};
-		    memcpy (b.ptr, block.ptr, block.dim);
-		    private_allocator.deallocate (block.ptr);
-		    block = b;
-		    }
-  );
+  mem::block_ext mem_block{
+    [&private_allocator] (mem::block & block, size_t len)
+    {
+      mem::block b{block.dim + len, private_allocator.allocate (block.dim + len)};
+      memcpy (b.ptr, block.ptr, block.dim);
+      private_allocator.deallocate (block.ptr);
+      block = std::move(b);
+    },
+    [&private_allocator](mem::block& block)
+    {
+      private_allocator.deallocate (block.ptr);
+      block = {};
+    }
+  };
+  string_buffer sb (mem_block);
   db_value_printer printer (sb);
   printer.describe_value (value);
   fprintf (fp, "%.*s", (int) sb.len (), mem_block.ptr);
@@ -766,14 +770,13 @@ void
 help_fprint_describe_comment (FILE * fp, const char *comment)
 {
 #if !defined (SERVER_MODE)
-  mem::block mem_block;
-  string_buffer sb (mem_block, mem::default_realloc);
+  mem::block_ext mem_block;
+  string_buffer sb (mem_block);
   object_printer printer (sb);
 
   assert (fp != NULL);
   assert (comment != NULL);
   printer.describe_comment (comment);
   fprintf (fp, "%.*s", int (sb.len ()), mem_block.ptr);
-  mem::default_dealloc (mem_block);
 #endif /* !defined (SERVER_MODE) */
 }

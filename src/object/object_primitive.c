@@ -32,7 +32,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "mem_block.hpp"
+#include "mem.hpp"
 #include "object_primitive.h"
 #include "string_buffer.hpp"
 
@@ -46,6 +46,7 @@
 #include "db_json.hpp"
 #include "db_private_allocator.hpp"
 #include "thread.h"
+#include <utility>
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
@@ -10414,13 +10415,19 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 char *
 pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
 {
-  mem::block mem_block;
-  string_buffer sb (mem_block,[&threade] (mem::block & block, size_t len)
-		    {
-		    block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
-		    block.dim += len;
-		    }
-  );
+  mem::block_ext mem_block{
+    [&threade] (mem::block & block, size_t len)
+      {
+        block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
+        block.dim += len;
+      },
+    [&threade] (mem::block & block)
+      {
+        db_private_free (threade, block.ptr);
+        block = {};
+      }
+  };
+  string_buffer sb (mem_block);
 
   if (val == NULL)
     {
@@ -10444,8 +10451,9 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
       return NULL;
     }
 
-  (*(pr_type->sptrfunc)) (val, sb);	//caller should use db_private_free() to deallocate it
-  return mem_block.ptr;
+  (*(pr_type->sptrfunc)) (val, sb);
+  mem::block b = std::move(mem_block);//move ownership
+  return b.ptr; //caller should use db_private_free() to deallocate it
 }
 
 /*

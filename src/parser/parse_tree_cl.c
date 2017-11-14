@@ -2522,8 +2522,8 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   int error = NO_ERROR;
   unsigned int save_custom = parser->custom_print;
 
-  mem::block mem_block;
-  string_buffer sb (mem_block, mem::default_realloc);	//ToDo: use parser_alloca() & Co
+  mem::block_ext mem_block; //ToDo: use parser_alloca() & Co
+  string_buffer sb (mem_block);
   db_value_printer printer (sb);
   if (val == NULL)
     {
@@ -2606,7 +2606,6 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   /* restore custom print */
   parser->custom_print = save_custom;
   result = pt_append_nulstring (parser, NULL, sb.get_buffer ());
-  mem::default_dealloc (mem_block);
   return result;
 }
 

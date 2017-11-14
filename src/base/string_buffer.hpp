@@ -38,7 +38,7 @@
 #ifndef _STRING_BUFFER_HPP_
 #define _STRING_BUFFER_HPP_
 
-#include "mem_block.hpp"
+#include "mem.hpp"
 #include <stddef.h>
 #include <stdio.h>
 #include <functional>
@@ -57,10 +57,7 @@ class string_buffer //collect formatted text (printf-like syntax)
     string_buffer(const string_buffer&) = delete;                 //copy ctor
     string_buffer(string_buffer&&) = delete;                      //move ctor
 
-    inline string_buffer(                                         //general ctor
-        mem::block& block,                                      //memory block to (re)use (not own, just use)
-        std::function<void(mem::block& block, size_t len)> ext  //memory block extend functor
-    );
+    inline string_buffer(mem::block_ext& block);                  //general ctor
 
     void operator=(const string_buffer&) = delete;                //copy operator
     void operator=(string_buffer&&) = delete;                     //move operator
@@ -75,16 +72,14 @@ class string_buffer //collect formatted text (printf-like syntax)
     template<typename... Args> inline void operator()(Args&&... args);//add with printf format
 
   private:
-    std::function<void(mem::block& block, size_t len)> m_extend;  //memory block extender functor
-    mem::block& m_block;                                          //memory block (not owned, just used)
+    mem::block_ext& m_block;                                      //memory block (not owned, just used)
     size_t m_len;                                                 //current content length
 };
 
 //implementation for small (inline) methods
 
-string_buffer::string_buffer(mem::block& block, std::function<void(mem::block&, size_t)> ext)
-    : m_extend(ext)
-    , m_block(block)
+string_buffer::string_buffer(mem::block_ext& block)
+    : m_block(block)
     , m_len(0)
 {
   if(m_block.ptr)
@@ -104,7 +99,7 @@ template<typename... Args> void string_buffer::operator() (Args &&... args)
     int len = snprintf(nullptr, 0, std::forward<Args>(args)...);
     if(m_block.dim <= m_len + size_t(len) + 1)
     {
-      m_extend(m_block, m_len + size_t(len) + 1 - m_block.dim);//ask to extend to fit at least additional len chars
+      m_block.extend(m_len + size_t(len) + 1 - m_block.dim);//ask to extend to fit at least additional len chars
     }
     snprintf(m_block.ptr+m_len, m_block.dim-m_len, std::forward<Args>(args)...);
     m_len += len;

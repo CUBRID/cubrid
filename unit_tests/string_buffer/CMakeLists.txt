@@ -5,6 +5,7 @@ INCLUDE_DIRECTORIES(
 )
 
 set(SRC
+    ${BASE_DIR}/mem.cpp
     ${BASE_DIR}/string_buffer.hpp
     ${BASE_DIR}/string_buffer.cpp
     src/allocator_affix.hpp
