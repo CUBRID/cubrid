@@ -112,12 +112,12 @@ namespace mem
    */
   struct block_ext: public block
   {
-      block_ext()                                       //default ctor
+      block_ext()                                         //default ctor
 	: block_ext {default_realloc, default_dealloc}
       {
       }
 
-      block_ext (block_ext &&b)                         //move ctor
+      block_ext (block_ext &&b)                           //move ctor
 	: block {std::move (b)}
 	, m_extend {b.m_extend}
 	, m_dealloc {b.m_dealloc}
@@ -126,7 +126,7 @@ namespace mem
 	b.ptr = nullptr;
       }
 
-      block_ext &operator= (block_ext &&b)              //move assignment
+      block_ext &operator= (block_ext &&b)                //move assignment
       {
 	if (this != &b)
 	  {
@@ -148,7 +148,7 @@ namespace mem
 	, m_dealloc {dealloc}
       {}
 
-      ~block_ext()                                      //dtor
+      ~block_ext()                                        //dtor
       {
 	m_dealloc (*this);
       }
@@ -159,11 +159,11 @@ namespace mem
       }
 
     private:
-      std::function<void (block &b, size_t n)> m_extend; //extend memory block to fit at least additional n bytes
-      std::function<void (block &b)> m_dealloc;         //deallocate memory block
+      std::function<void (block &b, size_t n)> m_extend;  //extend memory block to fit at least additional n bytes
+      std::function<void (block &b)> m_dealloc;           //deallocate memory block
 
-      block_ext (const block_ext &) = delete;           //copy ctor
-      block_ext &operator= (const block_ext &) = delete; //copy assignment
+      block_ext (const block_ext &) = delete;             //copy ctor
+      block_ext &operator= (const block_ext &) = delete;  //copy assignment
   };
 
 } // namespace mem
