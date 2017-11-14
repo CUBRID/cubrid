@@ -25,7 +25,7 @@
 #ifndef _ALLOCATOR_STACK_HPP_
 #define _ALLOCATOR_STACK_HPP_
 
-#include "mem_block.hpp"
+#include "mem.hpp"
 #include <stddef.h>
 
 namespace allocator

@@ -17,7 +17,7 @@
  */
 #include "allocator_affix.hpp"
 #include "allocator_stack.hpp"
-#include "mem_block.hpp"
+#include "mem.hpp"
 #include "string_buffer.hpp"
 #include <assert.h>
 #include <stddef.h>
