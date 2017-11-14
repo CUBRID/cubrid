@@ -40,7 +40,7 @@
 #include "log_impl.h"
 #include "recovery.h"
 #include "storage_common.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #include <time.h>
 

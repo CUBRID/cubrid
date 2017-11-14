@@ -36,7 +36,7 @@
 #include <pthread.h>
 #include <owfs/owfs.h>
 #include <owfs/owfs_errno.h>
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 
 #define ES_OWFS_HASH		(786433)

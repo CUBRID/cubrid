@@ -32,7 +32,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "list_file.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #include "xasl.h"
 
 extern void return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);

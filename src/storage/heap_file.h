@@ -37,7 +37,7 @@
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "storage_common.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) \

@@ -39,7 +39,7 @@
 #include <arpa/inet.h>
 #endif
 
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #include "porting.h"
 #include "error_code.h"
 #include "error_manager.h"

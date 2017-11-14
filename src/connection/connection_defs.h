@@ -36,7 +36,7 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "porting.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #if defined(WINDOWS)
 #include <dos.h>

@@ -32,7 +32,7 @@
 
 #include <assert.h>
 
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #include "heap_file.h"
 #include "dbtype.h"
 #include "boot_sr.h"

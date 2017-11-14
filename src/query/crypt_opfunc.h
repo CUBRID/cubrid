@@ -26,7 +26,7 @@
 
 #ident "$Id$"
 
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 extern int crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key,
 				      int key_len, char **dest_p, int *dest_len_p);

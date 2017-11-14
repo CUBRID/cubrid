@@ -29,7 +29,7 @@
 
 #include "error_manager.h"
 #include "log_comm.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #include <stdio.h>
 

@@ -47,7 +47,7 @@
 #include "perf_monitor.h"
 #include "replication.h"
 #include "storage_common.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 extern int xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
 				    BOOT_DB_PATH_INFO * db_path_info, bool db_overwrite, const char *file_addmore_vols,

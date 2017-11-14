@@ -24,8 +24,8 @@
  *        entries on server module, but are also used on client module
  */
 
-#ifndef _THREAD_COMPAT_H_
-#define _THREAD_COMPAT_H_
+#ifndef _THREAD_COMPAT_HPP_
+#define _THREAD_COMPAT_HPP_
 
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
@@ -51,4 +51,4 @@ typedef void THREAD_ENTRY;
 
 #endif // not SERVER_MODE and not (SA_MODE and C++) = CS_MODE (and others) or not C++
 
-#endif // _THREAD_COMPAT_H_
+#endif // _THREAD_COMPAT_HPP_

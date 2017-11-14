@@ -39,7 +39,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_worker_pool.cpp
   )
 set(THREAD_HEADERS
-  ${THREAD_DIR}/thread_compat.h
+  ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
   ${THREAD_DIR}/thread_entry_executable.hpp

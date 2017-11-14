@@ -32,7 +32,7 @@
 #include "critical_section.h"
 #include "error_manager.h"
 #include "porting.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #include <assert.h>
 #if !defined(WINDOWS)

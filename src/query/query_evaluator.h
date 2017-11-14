@@ -36,7 +36,7 @@
 #include "porting.h"
 #endif /* ! WINDOWS */
 #include "regu_var.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #include <assert.h>
 #if !defined (WINDOWS)

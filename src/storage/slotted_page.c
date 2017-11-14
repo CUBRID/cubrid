@@ -42,7 +42,7 @@
 #include "lock_free.h"
 #include "mvcc.h"
 #if defined(SERVER_MODE)
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 #include "thread.h"

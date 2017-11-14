@@ -34,7 +34,7 @@
 #include "error_manager.h"
 #include "query_list.h"
 #include "storage_common.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #define SORT_PUT_STOP     2
 

@@ -82,7 +82,7 @@
 #if defined (LINUX)
 #include "memory_hash.h"
 #endif /* defined (LINUX) */
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #if defined (WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */

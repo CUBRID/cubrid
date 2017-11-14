@@ -30,7 +30,7 @@
 #include "config.h"
 
 #include "dbtype.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -24,7 +24,7 @@
 #define _TZ_SUPPORT_H_
 
 #include "dbtype.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #include "timezone_lib_common.h"
 
 #define TZLIB_SYMBOL_NAME_SIZE 64

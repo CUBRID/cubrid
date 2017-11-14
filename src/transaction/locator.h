@@ -31,7 +31,7 @@
 #include "object_representation.h"
 #include "oid.h"
 #include "storage_common.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + \
                                     OR_HFID_SIZE + \

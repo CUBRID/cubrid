@@ -39,7 +39,7 @@
 #endif /* !WINDOWS */
 
 #include "porting.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "error_code.h"

@@ -43,7 +43,7 @@
 #include "query_evaluator.h"
 #include "replication.h"
 #include "storage_common.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 enum
 {

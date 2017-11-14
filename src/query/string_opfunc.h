@@ -36,7 +36,7 @@
 #include "numeric_opfunc.h"
 #include "object_domain.h"
 #include "regex38a.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))

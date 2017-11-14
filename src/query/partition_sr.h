@@ -29,7 +29,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "query_opfunc.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #include "xasl.h"
 
 

@@ -38,7 +38,7 @@
 #include "object_domain.h"
 #include "storage_common.h"
 #include "system_parameter.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #include "xasl.h"
 
 #include <stdio.h>

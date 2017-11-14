@@ -36,7 +36,7 @@
 #if defined (SERVER_MODE)
 #include "thread.h"
 #else
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #endif
 #include "tsc_timer.h"
 

@@ -35,7 +35,7 @@
 #include "file_manager.h"
 #include "list_file.h"
 #include "storage_common.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #include "xasl_cache.h"
 
 

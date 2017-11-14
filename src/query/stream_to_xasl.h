@@ -24,7 +24,7 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #include "xasl.h"
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)

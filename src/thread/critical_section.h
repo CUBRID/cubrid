@@ -28,7 +28,7 @@
 #ident "$Id$"
 
 #include "dbtype.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #if !defined(WINDOWS)
 #include <pthread.h>

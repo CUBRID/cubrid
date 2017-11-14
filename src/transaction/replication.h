@@ -37,7 +37,7 @@
 #include "oid.h"
 #include "system_parameter.h"
 #if defined(SERVER_MODE) || defined(SA_MODE)
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #endif /* defined(SERVER_MODE) || defined(SA_MODE) */
 
 typedef enum

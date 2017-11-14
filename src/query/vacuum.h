@@ -34,7 +34,7 @@
 #include "recovery.h"
 #include "storage_common.h"
 #include "system_parameter.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #include <assert.h>
 

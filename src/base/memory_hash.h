@@ -29,7 +29,7 @@
 
 #include "dbtype.h"
 #include "memory_alloc.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #include <stdio.h>
 

@@ -30,7 +30,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "config.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 // TODO: which c-code compiled file reaches this header?
 #ifdef __cplusplus

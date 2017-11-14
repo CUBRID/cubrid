@@ -38,7 +38,7 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 #if defined (SERVER_MODE)
 #include "thread.h"
 #endif // SERVER_MODE

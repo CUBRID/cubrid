@@ -53,7 +53,7 @@
 #include "recovery.h"
 #include "release_string.h"
 #include "storage_common.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #include <assert.h>
 #if defined(SOLARIS)

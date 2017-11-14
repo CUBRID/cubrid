@@ -37,7 +37,7 @@
 #include "log_comm.h"
 #include "oid.h"
 #include "storage_common.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #include <time.h>
 #include <stdio.h>

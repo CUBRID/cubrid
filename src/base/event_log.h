@@ -29,7 +29,7 @@
 
 #include "query_list.h"
 #include "log_impl.h"
-#include "thread_compat.h"
+#include "thread_compat.hpp"
 
 #include <stdio.h>
 
