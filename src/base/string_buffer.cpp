@@ -20,15 +20,13 @@
 
 void string_buffer::add_bytes (size_t len, void *bytes)
 {
-  if (bytes && m_len + len < m_block.dim)
+  if (bytes && m_len + len +1 > m_block.dim)
     {
-      memcpy (m_block.ptr + m_len, bytes, len);
-      m_block.ptr[m_len += len] = 0;
+      m_block.extend (m_len + len + 1 - m_block.dim);
     }
-  else
-    {
-      m_len += len;
-    }
+  memcpy (m_block.ptr + m_len, bytes, len);
+  m_block.ptr[m_len += len] = 0;
+  m_len += len;
 }
 
 void string_buffer::operator+= (const char ch)

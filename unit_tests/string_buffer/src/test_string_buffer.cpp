@@ -66,7 +66,8 @@ class test_string_buffer
       : m_dim (8192)
       , m_len (0)
       , m_ref ((char *) calloc (m_dim, 1))
-      , m_block {
+      , m_block
+        {
           [] (mem::block& block, size_t len)
           {
             mem::block b = affix_allocator.allocate (block.dim + len);
@@ -110,7 +111,7 @@ class test_string_buffer
       m_len = 0;
       stack_allocator.~stack ();
       mem::block b = affix_allocator.allocate (size);
-      *(mem::block*)&m_block = std::move(b);
+      * (mem::block *)&m_block = std::move (b);
       m_sb.clear();
     }
 

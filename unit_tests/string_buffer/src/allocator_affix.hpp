@@ -61,7 +61,7 @@ namespace allocator
 	m_a.deallocate ({m_prefix_len + b.dim + m_suffix_len, b.ptr - m_prefix_len});
       }
 
-      unsigned check (const mem::block& b)
+      unsigned check (const mem::block &b)
       {
 	Prefix pfx;
 	Suffix sfx;

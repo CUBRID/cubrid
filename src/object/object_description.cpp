@@ -69,7 +69,7 @@ bool object_description::init (struct db_object *op)
 	      db_value_clear (&value);
 	      DB_MAKE_NULL (&value);
 
-              mem::block b{std::move(mem_block)};//move ownership
+	      mem::block b{std::move (mem_block)}; //move ownership
 	      this->oid = b.ptr;
 
 	      if (class_->ordered_attributes != NULL)
@@ -97,7 +97,7 @@ bool object_description::init (struct db_object *op)
 			  db_get (op, attribute_p->header.name, &value);
 			  printer.describe_value (&value);
 			}
-                      mem::block b{std::move(mem_block)};//move ownership
+		      mem::block b{std::move (mem_block)}; //move ownership
 		      strs[i] = b.ptr;
 		      i++;
 		    }

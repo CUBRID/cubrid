@@ -53,56 +53,67 @@ class string_buffer //collect formatted text (printf-like syntax)
 {
   public:
     string_buffer() = delete;                                     //default ctor
-    ~string_buffer(){m_len=0;}                                    //dtor
-    string_buffer(const string_buffer&) = delete;                 //copy ctor
-    string_buffer(string_buffer&&) = delete;                      //move ctor
+    ~string_buffer()
+    {
+      m_len=0; //dtor
+    }
+    string_buffer (const string_buffer &) = delete;               //copy ctor
+    string_buffer (string_buffer &&) = delete;                    //move ctor
 
-    inline string_buffer(mem::block_ext& block);                  //general ctor
+    inline string_buffer (mem::block_ext &block);                 //general ctor
 
-    void operator=(const string_buffer&) = delete;                //copy operator
-    void operator=(string_buffer&&) = delete;                     //move operator
+    void operator= (const string_buffer &) = delete;              //copy operator
+    void operator= (string_buffer &&) = delete;                   //move operator
 
-    const char* get_buffer() const {return m_block.ptr;}
+    const char *get_buffer() const
+    {
+      return m_block.ptr;
+    }
     inline void clear();
-    size_t len() const {return m_len;}                            //current content length
-    /*inline*/ void operator+=(const char ch);                    //add a single char
+    size_t len() const
+    {
+      return m_len; //current content length
+    }
+    /*inline*/ void operator+= (const char ch);                   //add a single char
 
-    /*inline*/ void add_bytes(size_t len, void *bytes);           //add "len" bytes (can have '\0' in the middle)
+    /*inline*/ void add_bytes (size_t len, void *bytes);          //add "len" bytes (can have '\0' in the middle)
 
-    template<typename... Args> inline void operator()(Args&&... args);//add with printf format
+    template<typename... Args> inline void operator() (Args &&... args); //add with printf format
 
   private:
-    mem::block_ext& m_block;                                      //memory block (not owned, just used)
+    mem::block_ext &m_block;                                      //memory block (not owned, just used)
     size_t m_len;                                                 //current content length
 };
 
 //implementation for small (inline) methods
 
-string_buffer::string_buffer(mem::block_ext& block)
-    : m_block(block)
-    , m_len(0)
+string_buffer::string_buffer (mem::block_ext &block)
+  : m_block {block}
+  , m_len {0}
 {
-  if(m_block.ptr)
-    m_block.ptr[0] = '\0';
+  if (m_block.ptr)
+    {
+      m_block.ptr[0] = '\0';
+    }
 }
 
 void string_buffer::clear()
 {
-  if(m_block.ptr)
+  if (m_block.ptr)
     {
-      m_block.ptr[m_len=0]='\0';
-  }
+      m_block.ptr[m_len=0] = '\0';
+    }
 }
 
 template<typename... Args> void string_buffer::operator() (Args &&... args)
 {
-    int len = snprintf(nullptr, 0, std::forward<Args>(args)...);
-    if(m_block.dim <= m_len + size_t(len) + 1)
+  int len = snprintf (nullptr, 0, std::forward<Args> (args)...);
+  if (m_block.dim <= m_len + size_t (len) + 1)
     {
-      m_block.extend(m_len + size_t(len) + 1 - m_block.dim);//ask to extend to fit at least additional len chars
+      m_block.extend (m_len + size_t (len) + 1 - m_block.dim); //ask to extend to fit at least additional len chars
     }
-    snprintf(m_block.ptr+m_len, m_block.dim-m_len, std::forward<Args>(args)...);
-    m_len += len;
+  snprintf (m_block.ptr+m_len, m_block.dim-m_len, std::forward<Args> (args)...);
+  m_len += len;
 }
 
 #endif /* _STRING_BUFFER_HPP_ */

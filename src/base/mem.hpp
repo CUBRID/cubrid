@@ -34,47 +34,47 @@ namespace mem
    */
   struct block
   {
-    size_t dim;
-    char  *ptr;
+      size_t dim;
+      char  *ptr;
 
-    block()
-      : dim (0)
-      , ptr (nullptr)
-    {}
+      block()
+	: dim {0}
+	, ptr {nullptr}
+      {}
 
-    block(block&& b)              //move ctor
-      : dim(b.dim)
-      , ptr(b.ptr)
-    {
-      b.dim = 0;
-      b.ptr = nullptr;
-    }
+      block (block &&b)             //move ctor
+	: dim {b.dim}
+	, ptr {b.ptr}
+      {
+	b.dim = 0;
+	b.ptr = nullptr;
+      }
 
-    block& operator=(block&& b)   //move assign
-    {
-      if(this != &b)
-        {
-          dim = b.dim;
-          ptr = b.ptr;
-          b.dim = 0;
-          b.ptr = nullptr;
-        }
-      return *this;
-    }
+      block &operator= (block &&b)  //move assign
+      {
+	if (this != &b)
+	  {
+	    dim = b.dim;
+	    ptr = b.ptr;
+	    b.dim = 0;
+	    b.ptr = nullptr;
+	  }
+	return *this;
+      }
 
-    block (size_t dim, void *ptr)
-      : dim (dim)
-      , ptr ((char *)ptr)
-    {}
+      block (size_t dim, void *ptr)
+	: dim {dim}
+	, ptr { (char *)ptr}
+      {}
 
-    bool is_valid ()
-    {
-      return (dim != 0 && ptr != 0);
-    }
+      bool is_valid ()
+      {
+	return (dim != 0 && ptr != 0);
+      }
 
-  private:
-    block(const block&) = delete;
-    block& operator=(const block&) = delete;
+    private:
+      block (const block &) = delete;
+      block &operator= (const block &) = delete;
   };
 
   inline void default_realloc (block &b, size_t len)
@@ -92,7 +92,7 @@ namespace mem
     mem::block x{dim, new char[dim]};
     memcpy (x.ptr, b.ptr, b.dim);
     delete b.ptr;
-    b = std::move(x);
+    b = std::move (x);
 #endif
   }
 
@@ -112,58 +112,58 @@ namespace mem
    */
   struct block_ext: public block
   {
-    block_ext()                                       //default ctor
-      : block_ext(default_realloc, default_dealloc)
-    {
-    }
-
-    block_ext(block_ext&& b)                          //move ctor
-      : block(std::move(b))
-      , m_extend(b.m_extend)
-      , m_dealloc(b.m_dealloc)
-    {
-      b.dim = 0;
-      b.ptr = nullptr;
-    }
-
-    block_ext& operator=(block_ext&& b)               //move assignment
-    {
-      if(this != &b)
+      block_ext()                                       //default ctor
+	: block_ext {default_realloc, default_dealloc}
       {
-        m_dealloc(*this);
-        dim = b.dim;
-        ptr = b.ptr;
-        m_extend = b.m_extend;
-        m_dealloc = b.m_dealloc;
-        b.dim = 0;
-        b.ptr = NULL;
       }
-      return *this;
-    }
+
+      block_ext (block_ext &&b)                         //move ctor
+	: block {std::move (b)}
+	, m_extend {b.m_extend}
+	, m_dealloc {b.m_dealloc}
+      {
+	b.dim = 0;
+	b.ptr = nullptr;
+      }
+
+      block_ext &operator= (block_ext &&b)              //move assignment
+      {
+	if (this != &b)
+	  {
+	    m_dealloc (*this);
+	    dim = b.dim;
+	    ptr = b.ptr;
+	    m_extend = b.m_extend;
+	    m_dealloc = b.m_dealloc;
+	    b.dim = 0;
+	    b.ptr = NULL;
+	  }
+	return *this;
+      }
 
 
-    block_ext(std::function<void(block& b, size_t n)> extend, std::function<void(block& b)> dealloc) //general ctor
-      : block()
-      , m_extend(extend)
-      , m_dealloc(dealloc)
-    {}
+      block_ext (std::function<void (block &b, size_t n)> extend, std::function<void (block &b)> dealloc) //general ctor
+	: block {}
+	, m_extend {extend}
+	, m_dealloc {dealloc}
+      {}
 
-    ~block_ext()                                      //dtor
-    {
-      m_dealloc(*this);
-    }
+      ~block_ext()                                      //dtor
+      {
+	m_dealloc (*this);
+      }
 
-    void extend(size_t additional_bytes)
-    {
-      m_extend(*this, additional_bytes);
-    }
+      void extend (size_t additional_bytes)
+      {
+	m_extend (*this, additional_bytes);
+      }
 
-  private:
-    std::function<void(block& b, size_t n)> m_extend; //extend memory block to fit at least additional n bytes
-    std::function<void(block& b)> m_dealloc;          //deallocate memory block
+    private:
+      std::function<void (block &b, size_t n)> m_extend; //extend memory block to fit at least additional n bytes
+      std::function<void (block &b)> m_dealloc;         //deallocate memory block
 
-    block_ext(const block_ext&) = delete;             //copy ctor
-    block_ext& operator=(const block_ext&) = delete;  //copy assignment
+      block_ext (const block_ext &) = delete;           //copy ctor
+      block_ext &operator= (const block_ext &) = delete; //copy assignment
   };
 
 } // namespace mem

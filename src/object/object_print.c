@@ -728,7 +728,8 @@ void
 help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
 {
   db_private_allocator < char >private_allocator (thread_p);
-  mem::block_ext mem_block{
+  mem::block_ext mem_block
+  {
     [&private_allocator] (mem::block & block, size_t len)
     {
       mem::block b{block.dim + len, private_allocator.allocate (block.dim + len)};
