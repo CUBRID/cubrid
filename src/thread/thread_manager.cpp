@@ -28,6 +28,7 @@
 #include "thread_entry.hpp"
 #include "thread_entry_executable.hpp"
 #include "thread_worker_pool.hpp"
+#include "thread_compat.hpp"
 
 // project includes
 #include "error_manager.h"
@@ -118,6 +119,7 @@ manager::create_worker_pool (size_t pool_size, size_t work_queue_size)
 daemon *
 manager::create_daemon(looper & looper_arg, entry_task * exec_p)
 {
+  static_assert (!IS_SINGLE_THREAD, "Cannot create daemons in single-thread context");
   exec_p->set_manager (this);
   return create_and_track_resource (m_daemons, 1, looper_arg, exec_p);
 }
