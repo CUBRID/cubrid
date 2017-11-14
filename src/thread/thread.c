@@ -141,8 +141,6 @@ static DAEMON_THREAD_MONITOR thread_Page_post_flush_thread = DAEMON_THREAD_MONIT
 static DAEMON_THREAD_MONITOR *thread_Vacuum_worker_threads = NULL;
 static int thread_First_vacuum_worker_thread_index = -1;
 
-static int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
-
 static void thread_stop_oob_handler_thread ();
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
@@ -561,9 +559,9 @@ thread_initialize_manager (void)
       /* initialize lock-free transaction systems */
       r = lf_initialize_transaction_systems (thread_Manager.num_total + thread_New_manager_thread_count);
       if (r != NO_ERROR)
-        {
-          return r;
-        }
+	{
+	  return r;
+	}
 
       thread_New_Manager = new cubthread::manager (thread_New_manager_thread_count, thread_Manager.num_total);
     }

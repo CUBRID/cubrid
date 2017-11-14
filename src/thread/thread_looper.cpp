@@ -39,36 +39,6 @@ looper::looper ()
   // infinite waits
 }
 
-template<class Rep, class Period>
-looper::looper (std::chrono::duration<Rep, Period>& fixed_period)
-  : m_wait_pattern (wait_pattern::FIXED_PERIODS)
-  , m_periods_count (1)
-  , m_periods ({fixed_period})
-  , m_period_index (0)
-  , m_stop (false)
-{
-  // fixed period waits
-}
-
-template<class Rep, class Period, size_t Count>
-looper::looper (std::array<std::chrono::duration<Rep, Period>, Count> periods)
-  : m_wait_pattern (wait_pattern::INCREASING_PERIODS)
-  , m_periods_count (Count)
-  , m_period_index (0)
-  , m_stop (false)
-{
-  static_assert (Count <= MAX_PERIODS, "Count template cannot exceed MAX_PERIODS=3");
-  m_periods_count = std::min (Count, MAX_PERIODS);
-
-  // wait increasing period on timeouts
-  for (size_t i = 0; i < m_periods_count; i++)
-    {
-      m_periods[i] = periods[i];
-      // check increasing periods
-      assert (i == 0 || m_periods[i - 1] < m_periods[i]);
-    }
-}
-
 looper::looper (looper & other)
   : m_wait_pattern (other.m_wait_pattern)
   , m_periods_count (other.m_periods_count)
