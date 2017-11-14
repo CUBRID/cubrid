@@ -994,9 +994,31 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   auto interval_time = std::chrono::milliseconds (prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL));
   vacuum_Master_daemon = thread_manager->create_daemon (cubthread::looper (interval_time), new vacuum_master_task ());
+
 #endif /* SERVER_MODE */
 
   return NO_ERROR;
+}
+
+void
+vacuum_stop (void)
+{
+  // notify master to stop generating new jobs
+  vacuum_notify_server_shutdown ();
+
+  auto thread_manager = thread_get_new_manager ();
+
+  // stop work pool
+  if (vacuum_Worker_threads != NULL)
+    {
+      thread_manager->destroy_worker_pool (vacuum_Worker_threads);
+    }
+
+  // stop master daemon
+  if (vacuum_Master_daemon != NULL)
+    {
+      thread_manager->destroy_daemon (vacuum_Master_daemon);
+    }
 }
 
 #if defined(SERVER_MODE)
