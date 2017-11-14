@@ -94,6 +94,7 @@
 #include "event_log.h"
 #include "thread.h"
 #include "tsc_timer.h"
+#include "crypt_opfunc.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -412,6 +413,7 @@ static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int logpb_set_page_crc32 (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr) __attribute__ ((ALWAYS_INLINE));
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
  *
@@ -426,6 +428,33 @@ STATIC_INLINE int
 logpb_get_log_buffer_index (LOG_PAGEID log_pageid)
 {
   return log_pageid % log_Pb.num_buffers;
+}
+
+/*
+* logpb_set_page_crc32 - Set log page CRC32.
+* return: error code
+* thread_p (in) : thread entry
+* log_pgptr (in) : log page pointer
+*/
+int
+logpb_set_page_crc32 (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
+{
+  int error_code = NO_ERROR, crc32, saved_crc32;
+  assert (log_pgptr != NULL);
+
+  saved_crc32 = log_pgptr->hdr.crc32;
+  log_pgptr->hdr.crc32 = 0;
+
+  error_code = crypt_crc32 (thread_p, (char *) log_pgptr, LOG_PAGESIZE, &crc32);
+  if (error_code != NO_ERROR)
+    {
+      log_pgptr->hdr.crc32 = saved_crc32;
+      return error_code;
+    }
+
+  log_pgptr->hdr.crc32 = crc32;
+
+  return NO_ERROR;
 }
 
 /*
@@ -1969,7 +1998,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 int
 logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAGEID logical_pageid)
 {
-  int nbytes;
+  int nbytes, error_code;
   LOG_PHY_PAGEID phy_pageid;
 
   assert (log_pgptr != NULL);
@@ -1979,6 +2008,13 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
 	  || (!LOGPB_IS_ARCHIVE_PAGE (logical_pageid) && logical_pageid <= LOGPB_LAST_ACTIVE_PAGE_ID));
 
   logpb_log ("called logpb_write_page_to_disk for logical_pageid = %lld\n", (long long int) logical_pageid);
+
+  /* Set page CRC before writing to disk. */
+  error_code = logpb_set_page_crc32 (thread_p, log_pgptr);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   phy_pageid = logpb_to_physical_pageid (logical_pageid);
   logpb_log ("phy_pageid in logpb_write_page_to_disk is %lld\n", (long long int) phy_pageid);
