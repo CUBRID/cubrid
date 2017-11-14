@@ -42,9 +42,10 @@
 #include "lock_free.h"
 #include "mvcc.h"
 #if defined(SERVER_MODE)
-#include "thread.h"
+#include "thread_compat.h"
 #include "connection_error.h"
 #endif /* SERVER_MODE */
+#include "thread.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

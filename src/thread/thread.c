@@ -1590,30 +1590,6 @@ thread_wakeup_with_tran_index (int tran_index, int resume_reason)
 }
 
 /*
- * thread_waiting_for_function() - wait until func return TRUE.
- *   return: void
- *   func(in) : a pointer to a function that will return a non-zero value when
- *	        the thread should resume execution.
- *   arg(in)  : an integer argument to be passed to func.
- *
- * Note: The thread is blocked for execution until func returns a non-zero
- *       value. Halts exection of the currently running thread.
- */
-void
-thread_waiting_for_function (THREAD_ENTRY * thread_p, CSS_THREAD_FN func, CSS_THREAD_ARG arg)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  while ((*func) (thread_p, arg) == false && thread_p->interrupted != true && thread_p->shutdown != true)
-    {
-      thread_sleep (10);	/* 10 msec */
-    }
-}
-
-/*
  * thread_suspend_with_other_mutex() -
  *   return: 0 if no error, or error code
  *   thread_p(in):

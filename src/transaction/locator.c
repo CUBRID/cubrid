@@ -38,7 +38,10 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
+#include "thread_compat.h"
+#if defined (SERVER_MODE)
 #include "thread.h"
+#endif // SERVER_MODE
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -2147,10 +2150,12 @@ locator_clear_oid_set (THREAD_ENTRY * thread_p, LC_OIDSET * oidset)
       /* map over the classes */
       if (oidset->classes != NULL)
 	{
+#if defined (SERVER_MODE)
 	  if (thread_p == NULL)
 	    {
 	      thread_p = thread_get_thread_entry_info ();
 	    }
+#endif // SERVER_MODE
 
 	  for (class_oidset = oidset->classes, c_next = NULL; class_oidset != NULL; class_oidset = c_next)
 	    {
@@ -2262,10 +2267,12 @@ locator_add_oid_set (THREAD_ENTRY * thread_p, LC_OIDSET * set, HFID * heap, OID 
 	}
     }
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   if (class_oidset_p == NULL)
     {
@@ -2489,10 +2496,12 @@ locator_unpack_oid_set_to_new (THREAD_ENTRY * thread_p, char *buffer)
 
   ptr = buffer;
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   /* we have to unpack and build a new structure, use arrays */
   set = (LC_OIDSET *) db_private_alloc (thread_p, sizeof (LC_OIDSET));

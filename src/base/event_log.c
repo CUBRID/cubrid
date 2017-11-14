@@ -24,28 +24,35 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include <stdio.h>
-#include <assert.h>
-
 #if defined (WINDOWS)
-#include <process.h>
+// TODO: fix lseek
 #include <io.h>
-#else /* WINDOWS */
-#include <sys/time.h>
 #endif /* WINDOWS */
 
 #include "event_log.h"
 
-#include "porting.h"
+
+
+#include "config.h"
+#include "critical_section.h"
 #include "dbtype.h"
 #include "error_manager.h"
-#include "critical_section.h"
 #include "environment_variable.h"
 #include "query_executor.h"
-#include "xasl_cache.h"
 #include "object_primitive.h"
+#include "porting.h"
+#include "system_parameter.h"
+#include "xasl_cache.h"
+
+#include <assert.h>
+
+#if defined (WINDOWS)
+#include <process.h>
+#endif /* WINDOWS */
+#include <stdio.h>
+#if !defined (WINDOWS)
+#include <sys/time.h>
+#endif /* WINDOWS */
 
 #define EVENT_LOG_FILE_DIR "server"
 

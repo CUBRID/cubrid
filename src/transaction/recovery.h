@@ -27,11 +27,11 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-
-#include "log_comm.h"
 #include "error_manager.h"
-#include "thread.h"
+#include "log_comm.h"
+#include "thread_compat.h"
+
+#include <stdio.h>
 
 typedef enum
 {

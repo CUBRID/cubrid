@@ -29,7 +29,6 @@
 
 #include "dbtype.h"
 #include "object_domain.h"
-#include "thread.h"
 #include <vector>
 #include <string>
 

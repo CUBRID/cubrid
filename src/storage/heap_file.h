@@ -32,13 +32,12 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "config.h"
-
-#include "storage_common.h"
-#include "thread.h"
-#include "page_buffer.h"
-#include "perf_monitor.h"
 #include "file_manager.h"
 #include "heap_attrinfo.h"
+#include "page_buffer.h"
+#include "perf_monitor.h"
+#include "storage_common.h"
+#include "thread_compat.h"
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) \

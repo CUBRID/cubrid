@@ -29,20 +29,18 @@
 #ident "$Id$"
 
 #include "config.h"
-
-#include <time.h>
-#include <stdio.h>
-
-#include "error_manager.h"
-#include "oid.h"
-#include "storage_common.h"
-#include "locator.h"
-#include "log_comm.h"
-
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-#include "thread.h"
+#include "error_manager.h"
+#include "locator.h"
+#include "log_comm.h"
+#include "oid.h"
+#include "storage_common.h"
+#include "thread_compat.h"
+
+#include <time.h>
+#include <stdio.h>
 
 enum
 {

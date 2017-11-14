@@ -28,9 +28,9 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype.h"
-#include "thread.h"
 #include "query_list.h"
 #include "query_manager.h"
+#include "thread_compat.h"
 #include "tz_support.h"
 
 extern int session_states_init (THREAD_ENTRY * thread_p);

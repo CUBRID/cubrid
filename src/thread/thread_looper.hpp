@@ -81,19 +81,18 @@ template<class Rep, class Period>
 looper::looper (std::chrono::duration<Rep, Period>& fixed_period)
   : m_wait_pattern (wait_pattern::FIXED_PERIODS)
   , m_periods_count (1)
-  , m_periods ()
+  , m_periods {fixed_period}
   , m_period_index (0)
   , m_stop (false)
 {
   // fixed period waits
-  m_periods[0] = fixed_period;
 }
 
 template<class Rep, class Period, size_t Count>
 looper::looper (std::array<std::chrono::duration<Rep, Period>, Count> periods)
   : m_wait_pattern (wait_pattern::INCREASING_PERIODS)
   , m_periods_count (Count)
-  , m_periods ()
+  , m_periods {}
   , m_period_index (0)
   , m_stop (false)
 {

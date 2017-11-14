@@ -28,15 +28,15 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include <assert.h>
-
 #include "dbtype.h"
-#include "thread.h"
-#include "storage_common.h"
-#include "recovery.h"
-#include "system_parameter.h"
-#include "log_impl.h"
 #include "disk_manager.h"
+#include "log_impl.h"
+#include "recovery.h"
+#include "storage_common.h"
+#include "system_parameter.h"
+#include "thread_compat.h"
+
+#include <assert.h>
 
 /* Vacuum logging function (can only be used when SERVER_MODE is defined).
  */

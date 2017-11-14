@@ -198,7 +198,9 @@ private:
 
 } // namespace cubthread
 
+#ifndef _THREAD_COMPAT_H_
 // The whole code uses THREAD_ENTRY... It is ridiculous to change entire code to rename.
 typedef cubthread::entry THREAD_ENTRY;
+#endif // _THREAD_COMPAT_H_
 
 #endif // _THREAD_ENTRY_HPP_

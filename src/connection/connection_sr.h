@@ -27,18 +27,17 @@
 
 #ident "$Id$"
 
+#include "connection_defs.h"
+#include "connection_support.h"
+#include "critical_section.h"
+#include "error_manager.h"
+#include "porting.h"
+#include "thread_compat.h"
+
 #include <assert.h>
 #if !defined(WINDOWS)
 #include <pthread.h>
 #endif /* not WINDOWS */
-
-#include "porting.h"
-#include "thread.h"
-#include "connection_defs.h"
-#include "connection_support.h"
-#include "error_manager.h"
-#include "critical_section.h"
-#include "thread.h"
 
 #define IP_BYTE_COUNT 5
 
@@ -127,6 +126,9 @@ extern SYNC_RWLOCK css_Rwlock_free_conn_anchor;
   while (0)
 
 extern int css_Num_access_user;
+
+typedef void *CSS_THREAD_ARG;
+typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
 extern int (*css_Connect_handler) (CSS_CONN_ENTRY *);
 extern CSS_THREAD_FN css_Request_handler;

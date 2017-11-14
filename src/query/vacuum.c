@@ -23,28 +23,26 @@
  */
 #include "vacuum.h"
 
-#include "thread.h"
-#include "mvcc.h"
-#include "page_buffer.h"
-#include "heap_file.h"
 #include "boot_sr.h"
-#include "system_parameter.h"
 #include "btree.h"
-#include "log_compress.h"
-#include "overflow_file.h"
-#include "lock_free.h"
-#include "perf_monitor.h"
 #include "dbtype.h"
-#include "util_func.h"
+#include "heap_file.h"
+#include "lock_free.h"
+#include "log_compress.h"
 #include "log_impl.h"
+#include "mvcc.h"
+#include "overflow_file.h"
+#include "page_buffer.h"
+#include "perf_monitor.h"
 #include "resource_shared_pool.hpp"
+#include "thread.h"
 #include "thread_entry_executable.hpp"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
-
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
+#include "util_func.h"
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -991,13 +989,11 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   auto thread_manager = thread_get_new_manager ();
 
   vacuum_Worker_threads =
-    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-                                        VACUUM_JOB_QUEUE_CAPACITY);
+    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), VACUUM_JOB_QUEUE_CAPACITY);
   assert (vacuum_Worker_threads != NULL);
 
   auto interval_time = std::chrono::milliseconds (prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL));
-  vacuum_Master_daemon =
-    thread_manager->create_daemon (cubthread::looper (interval_time), new vacuum_master_task ());
+  vacuum_Master_daemon = thread_manager->create_daemon (cubthread::looper (interval_time), new vacuum_master_task ());
 #endif /* SERVER_MODE */
 
   return NO_ERROR;

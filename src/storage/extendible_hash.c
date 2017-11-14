@@ -51,7 +51,7 @@
 #include "overflow_file.h"
 #include "memory_hash.h"	/* For hash functions */
 #include "db_date.h"
-#include "thread.h"
+#include "thread_compat.h"
 #if defined (SA_MODE)
 #include "transaction_cl.h"
 #endif /* SA_MODE */

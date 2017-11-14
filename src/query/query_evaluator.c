@@ -38,6 +38,7 @@
 #include "xasl.h"
 #include "dbtype.h"
 #include "query_executor.h"
+#include "thread.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

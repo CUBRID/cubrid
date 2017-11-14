@@ -480,10 +480,10 @@ showstmt_array_end_scan (THREAD_ENTRY * thread_p, void **ptr)
  *   arg_cnt(in):
  *   ptr(in/out):
  */
-#if defined(SERVER_MODE)
-extern int
+int
 thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
+#if defined(SERVER_MODE)
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   const int num_cols = 26;
   THREAD_ENTRY *thrd, *next_thrd;
@@ -790,5 +790,7 @@ exit_on_error:
     }
 
   return error;
+#else // not SERVER_MODE
+  return NO_ERROR;
+#endif // not SERVER_MODE
 }
-#endif /* defined(SERVER_MODE) */

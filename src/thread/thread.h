@@ -27,25 +27,28 @@
 
 #ident "$Id$"
 
-#if defined(SERVER_MODE)
-#include <sys/types.h>
-#if !defined(WINDOWS)
-#include <pthread.h>
-#endif /* !WINDOWS */
-
-#include "porting.h"
-#include "error_manager.h"
-#include "adjustable_array.h"
-#include "system_parameter.h"
-#include "dbtype.h"
-#include "log_compress.h"
-#endif /* SERVER_MODE */
-
-#if defined (__cplusplus)
-#include "thread_entry.hpp"
-#endif /* C++ and (SERVER_MODE or SA_MODE) */
+#if (!defined (SERVER_MODE) && !defined (SA_MODE)) || !defined (__cplusplus)
+#error Does not belong in this context; maybe thread_compat.h can be included instead
+#endif // not SERVER_MODE and not SA_MODE or not C++
 
 #include "lock_free.h"
+#include "thread_entry.hpp"
+
+#if defined(SERVER_MODE)
+#include "adjustable_array.h"
+#include "dbtype.h"
+#include "error_manager.h"
+#include "log_compress.h"
+#include "porting.h"
+#include "system_parameter.h"
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE) && !defined (WINDOWS)
+#include <pthread.h>
+#endif // SERVER_MODE and not WINDOWS
+#if defined(SERVER_MODE)
+#include <sys/types.h>
+#endif // SERVER_MODE
 
 #if defined (__cplusplus) && (defined (SERVER_MODE) || defined (SA_MODE))
 // forward definition for thread manager
@@ -87,10 +90,6 @@ extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 #define thread_dec_recursion_depth(thread_p) (thread_Recursion_depth --)
 #define thread_clear_recursion_depth(thread_p) (thread_Recursion_depth = 0)
 
-typedef void *CSS_THREAD_ARG;
-
-typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
-
 #define thread_rc_track_need_to_trace(thread_p) (false)
 #define thread_rc_track_enter(thread_p) (-1)
 #define thread_rc_track_exit(thread_p, idx) (NO_ERROR)
@@ -100,8 +99,6 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
 
 #define thread_get_tran_entry(thread_p, entry_idx)  (&thread_ts_decoy_entries[entry_idx])
-
-#define thread_start_scan (NULL)
 
 #define thread_is_page_flush_thread_available()	(false)
 
@@ -253,10 +250,6 @@ struct daemon_thread_monitor
 #define DAEMON_THREAD_MONITOR_INITIALIZER  \
   {0, false, false, 0, PTHREAD_MUTEX_INITIALIZER,PTHREAD_COND_INITIALIZER}
 
-typedef void *CSS_THREAD_ARG;
-
-typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
-
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 #endif /* not HPUX */
@@ -284,7 +277,6 @@ extern int thread_wakeup_with_tran_index (int tran_index, int resume_reason);
 extern ADJ_ARRAY *css_get_cnv_adj_buffer (int idx);
 extern void css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer);
 extern int thread_is_manager_initialized (void);
-extern void thread_waiting_for_function (THREAD_ENTRY * thread_p, CSS_THREAD_FN func, CSS_THREAD_ARG arg);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void thread_exit (int exit_code);
 #endif

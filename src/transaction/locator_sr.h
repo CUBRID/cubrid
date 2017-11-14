@@ -32,20 +32,18 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "config.h"
-
-#include "error_manager.h"
-#include "oid.h"
-#include "storage_common.h"
-#include "locator.h"
-#include "heap_file.h"
-#include "lock_manager.h"
-#include "extendible_hash.h"
-
 #include "disk_manager.h"
-#include "replication.h"
-#include "thread.h"
+#include "error_manager.h"
+#include "extendible_hash.h"
+#include "heap_file.h"
+#include "locator.h"
+#include "lock_manager.h"
+#include "oid.h"
 #include "partition_sr.h"
 #include "query_evaluator.h"
+#include "replication.h"
+#include "storage_common.h"
+#include "thread_compat.h"
 
 enum
 {

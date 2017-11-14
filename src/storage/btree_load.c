@@ -41,6 +41,7 @@
 #include "partition_sr.h"
 #include "partition.h"
 #include "dbval.h"
+#include "thread.h"
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args

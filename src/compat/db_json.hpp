@@ -37,7 +37,7 @@ typedef void JSON_VALIDATOR;
 #if defined (__cplusplus)
 
 #include <functional>
-#include "thread.h"
+#include "thread_compat.h"
 
 enum DB_JSON_TYPE
 {

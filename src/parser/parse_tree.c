@@ -39,7 +39,6 @@
 #include "memory_alloc.h"
 
 #if defined(SERVER_MODE)
-#include "thread.h"
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 

@@ -39,12 +39,15 @@
 #include <arpa/inet.h>
 #endif
 
-#include "thread.h"
+#include "thread_compat.h"
 #include "porting.h"
 #include "error_code.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "crypt_opfunc.h"
+#if defined (SERVER_MODE)
+#include "thread.h"
+#endif
 
 #define GCRYPT_NO_MPI_MACROS
 #define GCRYPT_NO_DEPRECATED
@@ -167,10 +170,12 @@ str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p
 
   assert (src != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   dest = (char *) db_private_alloc (thread_p, dest_len * sizeof (char));
   if (dest == NULL)
@@ -248,10 +253,12 @@ crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
   assert (src != NULL);
   assert (key != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   *dest_p = NULL;
   *dest_len_p = 0;
@@ -359,10 +366,12 @@ crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
   assert (src != NULL);
   assert (key != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   *dest_p = NULL;
   *dest_len_p = 0;
@@ -480,10 +489,12 @@ crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len, char **des
 
   assert (src != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   *dest_p = NULL;
 
@@ -544,10 +555,12 @@ crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len, int need_h
 
   assert (src != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   *dest_p = NULL;
 
@@ -621,10 +634,12 @@ crypt_crc32 (THREAD_ENTRY * thread_p, const char *src, int src_len, int *dest)
 
   assert (src != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   if (init_gcrypt () != NO_ERROR)
     {
@@ -665,11 +680,6 @@ crypt_generate_random_bytes (THREAD_ENTRY * thread_p, char *dest, int length)
   int error_status = NO_ERROR;
 
   assert (dest != NULL);
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
 
   if (init_gcrypt () != NO_ERROR)
     {

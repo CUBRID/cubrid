@@ -23,8 +23,9 @@
 #ifndef _TZ_SUPPORT_H_
 #define _TZ_SUPPORT_H_
 
+#include "dbtype.h"
+#include "thread_compat.h"
 #include "timezone_lib_common.h"
-#include "thread.h"
 
 #define TZLIB_SYMBOL_NAME_SIZE 64
 #define MAX_LEN_OFFSET 10

@@ -27,11 +27,11 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-
 #include "dbtype.h"
 #include "memory_alloc.h"
-#include "thread.h"
+#include "thread_compat.h"
+
+#include <stdio.h>
 
 
 #define MHT2STR_COLL(id, str, size) \

@@ -32,9 +32,9 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "error_manager.h"
-#include "storage_common.h"
 #include "query_list.h"
-#include "thread.h"
+#include "storage_common.h"
+#include "thread_compat.h"
 
 #define SORT_PUT_STOP     2
 

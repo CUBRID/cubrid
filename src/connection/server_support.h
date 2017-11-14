@@ -29,7 +29,7 @@
 
 #include "connection_defs.h"
 #include "connection_sr.h"
-#include "thread.h"
+#include "thread_compat.h"
 
 #define CSS_NUM_JOB_QUEUE 10	/* # of job queues */
 

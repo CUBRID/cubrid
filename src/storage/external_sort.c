@@ -45,13 +45,11 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-
 #if defined(SERVER_MODE)
 #include "connection_error.h"
-#include "thread.h"
 #include "job_queue.h"
 #endif /* SERVER_MODE */
-
+#include "thread.h"
 #if !defined (SERVER_MODE)
 #include "transaction_cl.h"
 #endif
