@@ -323,7 +323,7 @@ help_fprint_obj (FILE * fp, MOP obj)
       else
 	{
 	  object_description oinfo;
-	  if (!oinfo.init (obj))
+	  if (oinfo.init (obj) == NO_ERROR)
 	    {
 	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_OBJECT_TITLE),
 		       oinfo.classname);

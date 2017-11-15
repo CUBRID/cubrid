@@ -40,7 +40,7 @@ struct object_description
   object_description ();            //former obj_print_make_obj_help()
   ~object_description();            //former help_free_obj()
 
-  bool init (struct db_object *op); //former help_obj()
+  int init (struct db_object *op); //former help_obj()
 };
 
 #endif //!defined(_OBJECT_DESCRIPTION_HPP_)

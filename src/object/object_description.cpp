@@ -19,98 +19,91 @@ object_description::object_description ()
 {
 }
 
-bool object_description::init (struct db_object *op)
+int object_description::init (struct db_object *op)
 {
-  if (op == 0)
+  if (op == nullptr)
     {
-      return false;
+      return ER_OBJ_INVALID_ARGUMENTS;
     }
   int error;
   SM_CLASS *class_;
   SM_ATTRIBUTE *attribute_p;
   char *obj;
-  int i, count, is_class = 0;
+  int i, count;
   char **strs;
   int pin;
   size_t buf_size;
   DB_VALUE value;
 
-  if (op != NULL)
-    {
-      is_class = locator_is_class (op, DB_FETCH_READ);
-      if (is_class < 0)
-	{
-	  return false;
-	}
-    }
-  if (op == NULL || is_class)
+  int is_class = locator_is_class (op, DB_FETCH_READ);
+  if (is_class)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return false;
+      return ER_OBJ_INVALID_ARGUMENTS;
     }
-  else
+
+  error = au_fetch_instance (op, &obj, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
+  if (error != NO_ERROR)
     {
-      error = au_fetch_instance (op, &obj, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
-      if (error == NO_ERROR)
-	{
-	  pin = ws_pin (op, 1);
-	  error = au_fetch_class (ws_class_mop (op), &class_, AU_FETCH_READ, AU_SELECT);
-	  if (error == NO_ERROR)
-	    {
-
-	      this->classname = object_print::copy_string ((char *) sm_ch_name ((MOBJ) class_));
-
-	      mem::block_ext mem_block;
-	      string_buffer sb (mem_block);
-	      db_value_printer printer (sb);
-
-	      DB_MAKE_OBJECT (&value, op);
-	      printer.describe_data (&value);
-	      db_value_clear (&value);
-	      DB_MAKE_NULL (&value);
-
-	      mem::block b{std::move (mem_block)}; //move ownership
-	      this->oid = b.ptr;
-
-	      if (class_->ordered_attributes != NULL)
-		{
-		  count = class_->att_count + class_->shared_count + 1;
-		  buf_size = sizeof (char *) * count;
-		  strs = (char **) malloc (buf_size);
-		  if (strs == NULL)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-		      return false;
-		    }
-		  i = 0;
-		  for (attribute_p = class_->ordered_attributes; attribute_p != NULL;
-		       attribute_p = attribute_p->order_link)
-		    {
-		      sb.clear();// We're starting a new line here, so we don't want to append to the old buffer
-		      sb ("%20s = ", attribute_p->header.name);
-		      if (attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
-			{
-			  printer.describe_value (&attribute_p->default_value.value);
-			}
-		      else
-			{
-			  db_get (op, attribute_p->header.name, &value);
-			  printer.describe_value (&value);
-			}
-		      mem::block b{std::move (mem_block)}; //move ownership
-		      strs[i] = b.ptr;
-		      i++;
-		    }
-		  strs[i] = NULL;
-		  attributes = strs;//bSolo: ToDo: refactor this->attributes as std::vector<char*>
-		}
-
-	      /* will we ever want to separate these lists ? */
-	    }
-	  (void) ws_pin (op, pin);
-	}
+      return error;
     }
-  return true;
+  pin = ws_pin (op, 1);
+  error = au_fetch_class (ws_class_mop (op), &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  this->classname = object_print::copy_string ((char *) sm_ch_name ((MOBJ) class_));
+
+  mem::block_ext mem_block;
+  string_buffer sb (mem_block);
+  db_value_printer printer (sb);
+
+  DB_MAKE_OBJECT (&value, op);
+  printer.describe_data (&value);
+  db_value_clear (&value);
+  DB_MAKE_NULL (&value);
+
+  mem::block b{std::move (mem_block)}; //move ownership
+  this->oid = b.ptr;
+
+  if (class_->ordered_attributes != NULL)
+    {
+      count = class_->att_count + class_->shared_count + 1;
+      buf_size = sizeof (char *) * count;
+      strs = (char **) malloc (buf_size);
+      if (strs == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      i = 0;
+      for (attribute_p = class_->ordered_attributes; attribute_p != NULL;
+	    attribute_p = attribute_p->order_link)
+	{
+	  sb.clear();// We're starting a new line here, so we don't want to append to the old buffer
+	  sb ("%20s = ", attribute_p->header.name);
+	  if (attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
+	    {
+	      printer.describe_value (&attribute_p->default_value.value);
+	    }
+	  else
+	    {
+	      db_get (op, attribute_p->header.name, &value);
+	      printer.describe_value (&value);
+	    }
+	  mem::block b{std::move (mem_block)}; //move ownership
+	  strs[i] = b.ptr;
+	  i++;
+	}
+      strs[i] = NULL;
+      attributes = strs;//bSolo: ToDo: refactor this->attributes as std::vector<char*>
+    }
+
+  /* will we ever want to separate these lists ? */
+  (void) ws_pin (op, pin);
+
+  return NO_ERROR;
 }
 
 object_description::~object_description()
