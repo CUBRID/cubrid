@@ -59,7 +59,7 @@ typedef struct pr_type
   int disksize;
   int alignment;
   /* print dbvalue to file */
-#if defined (SERVER_MODE) || defined (SA_MODE)
+#if 1 //defined (SERVER_MODE) || defined (SA_MODE)
   void (*fptrfunc) (struct thread_entry * thread_p, FILE * fp, const DB_VALUE * value);
 #else
   void *fptrfunc;
