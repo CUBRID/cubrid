@@ -1198,7 +1198,7 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_
 	    }
 
           sb.clear();
-          printer.describe_value(&values[i])
+          printer.describe_value(&values[i]);
 	  buffer = pt_append_varchar (parser, buffer, mem_block.ptr);
 	}
 
