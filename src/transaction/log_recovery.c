@@ -2361,8 +2361,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   LOG_INFO_CHKPT_TRANS *chkpt_trans;
   time_t last_at_time = -1;
   char time_val[CTIME_MAX];
-  bool may_need_synch_checkpoint_2pc = false;
-  bool may_use_checkpoint = false;
+  bool may_need_synch_checkpoint_2pc = false, may_use_checkpoint = false,
+    is_log_page_corrupted = false, found_end_of_log = false;
   int tran_index;
   TRANID tran_id;
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -2437,6 +2437,24 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
 	      return;
 	    }
+	}
+
+      if (logpb_page_is_corrupted (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+	  return;
+	}
+
+      if (is_log_page_corrupted)
+	{
+	  /* Found corrupted log page. Recovery will be done up to the last log record on previous log page. */
+
+	  if (found_end_of_log == false)
+	    {
+	      /* Simulate end of log */
+	      LOG_RESET_APPEND_LSA (&log_lsa);
+	    }
+	  break;
 	}
 
       /* Check all log records in this phase */
@@ -2558,6 +2576,11 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		default:
 		  break;
 		}
+	    }
+
+	  if (log_rtype == LOG_END_OF_LOG)
+	    {
+	      found_end_of_log = true;
 	    }
 
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &checkpoint_lsa, &prev_lsa,
