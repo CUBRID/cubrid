@@ -17109,7 +17109,10 @@ PR_TYPE *tp_Type_json = &tp_Json;
 static void
 mr_initmem_json (void *mem, TP_DOMAIN * domain)
 {
-  *(DB_JSON **) mem = NULL;
+  DB_JSON **json_mem;
+
+  json_mem = (DB_JSON **) mem;
+  *json_mem = NULL;
 }
 
 static int
@@ -17340,7 +17343,8 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 
   if (cur != NULL)
     {
-      db_private_free_and_init (NULL, cur);
+      mr_freemem_json (memptr);
+      db_private_free (NULL, cur);
     }
 
   _new = (DB_JSON *) db_private_alloc (NULL, sizeof (DB_JSON));
@@ -17369,12 +17373,18 @@ mr_freemem_json (void *memptr)
       cur = *(DB_JSON **) memptr;
       if (cur != NULL)
 	{
-	  db_private_free_and_init (NULL, cur->json_body);
+	  if (cur->json_body != NULL)
+	    {
+	      db_private_free_and_init (NULL, cur->json_body);
+	    }
 	  if (cur->schema_raw != NULL)
 	    {
 	      db_private_free (NULL, const_cast < char *>(cur->schema_raw));
 	    }
-	  db_json_delete_doc (cur->document);
+	  if (cur->document != NULL)
+	    {
+	      db_json_delete_doc (cur->document);
+	    }
 	}
     }
 }
@@ -17433,7 +17443,7 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
 
   if (!disk)
     {
-      return sizeof (DB_JSON);
+      return tp_Json.size;
     }
 
   db_make_string (&json_body, value->data.json.json_body);
