@@ -632,6 +632,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DWB_SIZE "double_write_buffer_size"
 #define PRM_NAME_DWB_BLOCKS "double_write_buffer_blocks"
 #define PRM_NAME_ENABLE_DWB_FLUSH_THREAD "double_write_buffer_enable_flush_thread"
+#define PRM_NAME_ENABLE_LOG_PAGE_CHECKSUM "enable_log_page_checksum"
 #define PRM_NAME_DWB_CHECKSUM_THREADS "double_write_buffer_checksum_threads"
 #define PRM_NAME_DWB_ENABLE_LOG "double_write_buffer_enable_log"
 
@@ -2145,6 +2146,10 @@ static unsigned int prm_dwb_checksum_threads_flag = 0;
 static unsigned int prm_dwb_checksum_threads_default = 2;
 static unsigned int prm_dwb_checksum_threads_upper = 2;
 static unsigned int prm_dwb_checksum_threads_lower = 0;
+
+bool PRM_ENABLE_LOG_PAGE_CHECKSUM = true;
+static bool prm_enable_log_page_checksum_default = true;
+static unsigned int prm_enable_log_page_checksum_flag = 0;
 
 bool PRM_ENABLE_DWB_LOG = false;
 static bool prm_enable_dwb_log_default = false;
@@ -5449,6 +5454,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_DWB_CHECKSUM_THREADS,
    (void *) &prm_dwb_checksum_threads_upper,
    (void *) &prm_dwb_checksum_threads_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_LOG_PAGE_CHECKSUM,
+   PRM_NAME_ENABLE_LOG_PAGE_CHECKSUM,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_enable_log_page_checksum_flag,
+   (void *) &prm_enable_log_page_checksum_default,
+   (void *) &PRM_ENABLE_LOG_PAGE_CHECKSUM,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

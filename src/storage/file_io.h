@@ -70,8 +70,6 @@
 #define PEEK           true	/* Peek volume label pointer */
 #define ALLOC_COPY  false	/* alloc and copy volume label */
 
-#define FILEIO_CHECKSUM_SIZE		 32
-
 /* If the last character of path string is PATH_SEPARATOR, don't append PATH_SEPARATOR */
 #define FILEIO_PATH_SEPARATOR(path) \
   (path[strlen(path) - 1] == PATH_SEPARATOR ? "" : STR_PATH_SEPARATOR)
@@ -170,7 +168,7 @@ struct fileio_page_reserved
   INT16 volid;			/* Volume identifier where the page reside */
   unsigned char ptype;		/* Page type */
   unsigned char pflag_reserve_1;	/* unused - Reserved field */
-  char checksum[FILEIO_CHECKSUM_SIZE];	/* Page checksum */
+  INT32 checksum;		/* Page checksum - currently CRC32 is used. */
   INT32 p_reserve_2;		/* unused - Reserved field */
   INT64 p_reserve_3;		/* unused - Reserved field */
 };
@@ -548,8 +546,7 @@ extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_list_find (FILEIO_RESTORE_
 extern void fileio_page_bitmap_list_add (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
 					 FILEIO_RESTORE_PAGE_BITMAP * page_bitmap);
 extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
-extern void fileio_compute_page_checksum (FILEIO_PAGE * io_page, char *checksum);
-extern int fileio_set_page_checksum (FILEIO_PAGE * io_page);
-extern bool fileio_page_has_valid_checksum (FILEIO_PAGE * io_page);
+extern int fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page);
+extern int fileio_page_is_corrupted (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted);
 
 #endif /* _FILE_IO_H_ */

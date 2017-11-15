@@ -1257,7 +1257,7 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
       tsc_getticks (&start_tick);
     }
 
-  error_code = fileio_set_page_checksum (slot->io_page);
+  error_code = fileio_set_page_checksum (thread_p, slot->io_page);
   if (error_code != NO_ERROR)
     {
       assert (false);
@@ -3116,6 +3116,9 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	}
     }
 
+  /* Reset checksum. */
+  dwb_slot->io_page->prv.checksum = 0;
+
   block = &double_Write_Buffer.blocks[dwb_slot->block_no];
   count_wb_pages = ATOMIC_INC_32 (&block->count_wb_pages, 1);
   assert_release (count_wb_pages <= DWB_BLOCK_NUM_PAGES);
@@ -3360,6 +3363,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
   VPID *vpid;
   int vol_fd;
   INT16 volid;
+  bool is_page_corrupted;
 
   assert (double_Write_Buffer.vdes == NULL_VOLDES);
   fileio_make_dwb_name (dwb_Volume_Name, dwb_path_p, db_name_p);
@@ -3437,7 +3441,14 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	      goto end;
 	    }
 
-	  if (fileio_page_has_valid_checksum (iopage))
+	  error_code = fileio_page_is_corrupted (thread_p, iopage, &is_page_corrupted);
+	  if (error_code != NO_ERROR)
+	    {
+	      /* Error in checksum computation. */
+	      goto end;
+	    }
+
+	  if (!is_page_corrupted)
 	    {
 	      /* The page in data volume is not corrupted. Do not overwrite its content - reset slot VPID. */
 	      VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
@@ -3446,7 +3457,14 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	    }
 
 	  /* Corrupted page in data volume. Check DWB. */
-	  if (!fileio_page_has_valid_checksum (p_dwb_ordered_slots[i].io_page))
+	  error_code = fileio_page_is_corrupted (thread_p, p_dwb_ordered_slots[i].io_page, &is_page_corrupted);
+	  if (error_code != NO_ERROR)
+	    {
+	      /* Error in checksum computation. */
+	      goto end;
+	    }
+
+	  if (is_page_corrupted)
 	    {
 	      /* The page is corrupted in data volume and DWB. Something wrong happened. */
 	      assert_release (false);

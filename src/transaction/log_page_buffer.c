@@ -413,7 +413,8 @@ static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int logpb_set_page_crc32 (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
+  __attribute__ ((ALWAYS_INLINE));
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
  *
@@ -431,29 +432,28 @@ logpb_get_log_buffer_index (LOG_PAGEID log_pageid)
 }
 
 /*
-* logpb_set_page_crc32 - Set log page CRC32.
+* logpb_set_page_checksum - Set log page checksum.
 * return: error code
 * thread_p (in) : thread entry
 * log_pgptr (in) : log page pointer
+*   Note: Currently CRC32 is used as checksum.
 */
 int
-logpb_set_page_crc32 (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
+logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 {
-  int error_code = NO_ERROR, crc32, saved_crc32;
+  int error_code = NO_ERROR, checksum_crc32, saved_checksum_crc32;
   assert (log_pgptr != NULL);
 
-  saved_crc32 = log_pgptr->hdr.crc32;
-  log_pgptr->hdr.crc32 = 0;
-
-  error_code = crypt_crc32 (thread_p, (char *) log_pgptr, LOG_PAGESIZE, &crc32);
+  saved_checksum_crc32 = log_pgptr->hdr.checksum;
+  log_pgptr->hdr.checksum = 0;
+  error_code = crypt_crc32 (thread_p, (char *) log_pgptr, LOG_PAGESIZE, &checksum_crc32);
   if (error_code != NO_ERROR)
     {
-      log_pgptr->hdr.crc32 = saved_crc32;
+      log_pgptr->hdr.checksum = saved_checksum_crc32;
       return error_code;
     }
 
-  log_pgptr->hdr.crc32 = crc32;
-
+  log_pgptr->hdr.checksum = checksum_crc32;
   return NO_ERROR;
 }
 
@@ -2010,10 +2010,17 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   logpb_log ("called logpb_write_page_to_disk for logical_pageid = %lld\n", (long long int) logical_pageid);
 
   /* Set page CRC before writing to disk. */
-  error_code = logpb_set_page_crc32 (thread_p, log_pgptr);
-  if (error_code != NO_ERROR)
+  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
     {
-      return error_code;
+      error_code = logpb_set_page_checksum (thread_p, log_pgptr);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  else
+    {
+      log_pgptr->hdr.checksum = 0;
     }
 
   phy_pageid = logpb_to_physical_pageid (logical_pageid);

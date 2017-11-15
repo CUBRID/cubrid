@@ -82,6 +82,7 @@
 #include "connection_error.h"
 #include "release_string.h"
 #include "log_impl.h"
+#include "crypt_opfunc.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -557,6 +558,7 @@ static int fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p);
 static void fileio_page_bitmap_set (FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int page_id);
 static bool fileio_page_bitmap_is_set (FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int page_id);
 static void fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_bitmap);
+static int fileio_page_has_valid_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * has_valid_checksum);
 
 static int
 fileio_increase_flushed_page_count (int npages)
@@ -11613,73 +11615,87 @@ fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_
 }
 
 /* 
- * fileio_compute_checksum - compute page checksum
- *   return: nothing
- *   io_page(in): page
- *   checksum(out): computed checksum
- */
-void
-fileio_compute_page_checksum (FILEIO_PAGE * io_page, char *checksum)
-{
-  assert (checksum != NULL);
-
-  memset (checksum, 0, sizeof (checksum));
-  md5_buffer ((char *) io_page, IO_PAGESIZE, checksum);
-  md5_hash_to_hex (checksum, checksum);
-}
-
-/* 
- * fileio_compute_checksum - compute page checksum
+ * fileio_compute_checksum - Set page checksum.
  *   return: error code
+ *   thread_p(in): thread entry
  *   io_page(in): page
  */
 int
-fileio_set_page_checksum (FILEIO_PAGE * io_page)
+fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page)
 {
-  char *checksum;
+  int checksum_crc32, saved_checksum_crc32, error_code = NO_ERROR;
   assert (io_page != NULL);
+  assert (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0);
 
-  checksum = (char *) malloc (sizeof (char) * (FILEIO_CHECKSUM_SIZE + 1));
-  if (checksum == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (char) * (FILEIO_CHECKSUM_SIZE + 1));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
+  saved_checksum_crc32 = io_page->prv.checksum;
   /* Reset checksum to not affect the new computation. */
-  memset (io_page->prv.checksum, 0, sizeof (io_page->prv.checksum));
-  fileio_compute_page_checksum (io_page, checksum);
-  memcpy (io_page->prv.checksum, checksum, FILEIO_CHECKSUM_SIZE);
-  free (checksum);
-
+  io_page->prv.checksum = 0;
+  error_code = crypt_crc32 (thread_p, (char *) io_page, IO_PAGESIZE, &checksum_crc32);
+  if (error_code != NO_ERROR)
+    {
+      io_page->prv.checksum = saved_checksum_crc32;
+      return error_code;
+    }
+  io_page->prv.checksum = checksum_crc32;
   return NO_ERROR;
 }
 
-/* 
- * fileio_page_has_valid_checksum - check page consistency
- *   return: true, if has valid checksum
- *   io_page(in): the page 
- */
-bool
-fileio_page_has_valid_checksum (FILEIO_PAGE * io_page)
+/*
+* fileio_page_has_valid_checksum - Check whether the page checksum is valid.
+*   return: error code
+*   thread_p(in): thread entry
+*   io_page(in): the page
+*   has_valid_checksum(out): true, if has valid checksum.
+*/
+static int
+fileio_page_has_valid_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * has_valid_checksum)
 {
-  char saved_checksum[FILEIO_CHECKSUM_SIZE + 1], checksum[FILEIO_CHECKSUM_SIZE + 1];
-  assert (io_page != NULL);
+  int checksum_crc32, saved_checksum_crc32, error_code = NO_ERROR;
+  assert (io_page != NULL && has_valid_checksum != NULL);
 
   /* Save the old page checksum. */
-  memcpy (saved_checksum, io_page->prv.checksum, FILEIO_CHECKSUM_SIZE);
-  /* Reset checksum to not affect the new computation. */
-  memset (io_page->prv.checksum, 0, sizeof (io_page->prv.checksum));
-  /* Compute the page checksum. */
-  fileio_compute_page_checksum (io_page, checksum);
-  /* Restore the saved checksum */
-  memcpy (io_page->prv.checksum, saved_checksum, FILEIO_CHECKSUM_SIZE);
-
-  if (memcmp (checksum, io_page->prv.checksum, FILEIO_CHECKSUM_SIZE) == 0)
+  saved_checksum_crc32 = io_page->prv.checksum;
+  /* Resets checksum to not affect the new computation. */
+  io_page->prv.checksum = 0;
+  /* Computes the page checksum. */
+  error_code = crypt_crc32 (thread_p, (char *) io_page, IO_PAGESIZE, &checksum_crc32);
+  /* Restores the saved checksum */
+  io_page->prv.checksum = saved_checksum_crc32;
+  if (error_code == NO_ERROR)
     {
-      return true;
+      *has_valid_checksum = checksum_crc32 == io_page->prv.checksum;
     }
 
-  return false;
+  return error_code;
+}
+
+/*
+* fileio_page_is_corrupted - Check whether the page is corrupted.
+*   return: error code
+*   thread_p(in): thread entry
+*   io_page(in): the page
+*   is_page_corrupted(out): true, if the page is corrupted.
+*/
+int
+fileio_page_is_corrupted (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted)
+{
+  int error_code;
+  bool has_valid_checksum;
+
+  assert (io_page != NULL && is_page_corrupted != NULL);
+
+  if (io_page->prv.checksum == 0)
+    {
+      /* The checksum was disabled. */
+      *is_page_corrupted = false;
+      return NO_ERROR;
+    }
+
+  error_code = fileio_page_has_valid_checksum (thread_p, io_page, &has_valid_checksum);
+  if (error_code == NO_ERROR)
+    {
+      *is_page_corrupted = !has_valid_checksum;
+    }
+
+  return error_code;
 }

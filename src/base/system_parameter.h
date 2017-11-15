@@ -409,6 +409,7 @@ enum param_id
   PRM_ID_DWB_BLOCKS,
   PRM_ID_ENABLE_DWB_FLUSH_THREAD,
   PRM_ID_DWB_CHECKSUM_THREADS,
+  PRM_ID_ENABLE_LOG_PAGE_CHECKSUM,
   PRM_ID_DWB_ENABLE_LOG,
 
   /* change PRM_LAST_ID when adding new system parameters */

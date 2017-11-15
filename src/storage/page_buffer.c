@@ -10480,6 +10480,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 {
   int consistent = PGBUF_CONTENT_GOOD;
   FILEIO_PAGE *malloc_io_pgptr;
+  bool is_page_corrupted;
 
   /* the caller is holding bufptr->mutex */
   if (memcmp (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard)) != 0)
@@ -10524,7 +10525,15 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 	    }
 	}
 
-      consistent = fileio_page_has_valid_checksum (malloc_io_pgptr);
+      if (consistent != PGBUF_CONTENT_GOOD)
+	{
+	  if ((fileio_page_is_corrupted (thread_get_thread_entry_info (), malloc_io_pgptr, &is_page_corrupted) !=
+	       NO_ERROR) || is_page_corrupted)
+	    {
+	      consistent = PGBUF_CONTENT_BAD;
+	    }
+	}
+
       free_and_init (malloc_io_pgptr);
     }
   else

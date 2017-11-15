@@ -116,7 +116,7 @@ struct log_hdrpage
 				 * log because of such bad page, we could salvage the log starting at the offset
 				 * address, that is, at the next log record */
   short dummy1;			/* Dummy field for 8byte align */
-  int crc32;			/* CRC32, used to check log page consistency. */
+  int checksum;			/* checksum - currently CRC32 is used to check log page consistency. */
 };
 
 /* WARNING:
