@@ -296,19 +296,19 @@ extern void dir_repath (char *path, size_t path_len);
 #if defined(SHARD_VERBOSE_DEBUG)
 #if defined (WINDOWS)
 #define SHARD_ERR(f, ...) do { \
-fprintf(stdout, "[%-35s:%05d] <ERR> "f, __FILE__, __LINE__, _VA_ARGS_); \
+fprintf(stdout, "[%-35s:%05d] <ERR> " f, __FILE__, __LINE__, _VA_ARGS_); \
 } while (0);
 
 #define SHARD_INF(f, ...)	do { \
-fprintf(stdout, "[%-35s:%05d] <INF> "f, __FILE__, __LINE__, _VA_ARGS_); \
+fprintf(stdout, "[%-35s:%05d] <INF> " f, __FILE__, __LINE__, _VA_ARGS_); \
 } while (0);
 #else /* WINDOWS */
 #define SHARD_ERR(f, a...) do { \
-fprintf(stdout, "[%-35s:%05d] <ERR> "f, __FILE__, __LINE__, ##a); \
+fprintf(stdout, "[%-35s:%05d] <ERR> " f, __FILE__, __LINE__, ##a); \
 } while (0);
 
 #define SHARD_INF(f, a...)	do { \
-fprintf(stdout, "[%-35s:%05d] <INF> "f, __FILE__, __LINE__, ##a); \
+fprintf(stdout, "[%-35s:%05d] <INF> " f, __FILE__, __LINE__, ##a); \
 } while (0);
 #endif /* !WINDOWS */
 #else /* SHARD_VERBOSE_DEBUG */
