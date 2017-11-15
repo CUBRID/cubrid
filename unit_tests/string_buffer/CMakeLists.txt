@@ -8,7 +8,6 @@ set(SRC
     ${BASE_DIR}/string_buffer.hpp
     ${BASE_DIR}/string_buffer.cpp
     src/allocator_affix.hpp
-    src/allocator_block.hpp
     src/allocator_stack.hpp
     src/test_string_buffer.cpp
 )

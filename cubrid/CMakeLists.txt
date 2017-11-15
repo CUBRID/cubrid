@@ -83,6 +83,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/db_private_allocator.hpp
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/string_buffer.hpp
   )
 
 set(EXECUTABLE_SOURCES
