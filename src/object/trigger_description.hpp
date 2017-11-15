@@ -49,9 +49,10 @@ struct trigger_description
   const char *comment;
 
   trigger_description ();                         //former obj_print_make_trigger_help()
-  trigger_description (const char *name);         //former help_trigger_name()
-  trigger_description (struct db_object *trobj);  //former help_trigger()
   ~trigger_description ();                        //former help_free_trigger()
+
+  int init (const char *name);                    //former help_trigger_name()
+  int init (struct db_object *trobj);             //former help_trigger()
 
   void fprint (FILE *file);
 };

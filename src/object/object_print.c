@@ -269,8 +269,8 @@ help_fprint_obj (FILE * fp, MOP obj)
       (void) tr_is_trigger (obj, &status);
       if (status)
 	{
-	  trigger_description tinfo (obj);
-	  if (tinfo.name != NULL)
+	  trigger_description tinfo;
+	  if (tinfo.init(obj) == NO_ERROR)
 	    {
 	      fprintf (fp, "Trigger : %s", tinfo.name);
 	      if (tinfo.status)
@@ -665,8 +665,11 @@ help_print_info (const char *command, FILE * fpp)
       else
 	{
 	  //help_print_trigger (buffer, fpp);
-	  trigger_description td (buffer);
-	  td.fprint (fpp);
+	  trigger_description td;
+          if(td.init(buffer) == NO_ERROR)
+            {
+	      td.fprint (fpp);
+            }
 	}
     }
   else if (MATCH_TOKEN (buffer, "deferred"))

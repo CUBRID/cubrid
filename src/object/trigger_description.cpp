@@ -26,13 +26,12 @@ trigger_description::trigger_description()
 {
 }
 
-trigger_description::trigger_description (const char *name)
-  : trigger_description (tr_find_trigger (name))
+int trigger_description::init (const char *name)
 {
+  return init (tr_find_trigger (name));
 }
 
-trigger_description::trigger_description (struct db_object *trobj)
-  : trigger_description()
+int trigger_description::init (struct db_object *trobj)
 {
   char *condition = NULL, *action = NULL, *classname;
   TR_TRIGGER *trigger;
@@ -40,17 +39,19 @@ trigger_description::trigger_description (struct db_object *trobj)
   trigger = tr_map_trigger (trobj, 1);
   if (trigger == NULL)
     {
-      return;
+      return ER_FAILED;
     }
 
   /* even though we have the trigger, use these to get the expressions translated into a simple string */
   if (db_trigger_condition (trobj, &condition) != NO_ERROR)
     {
-      goto exit_on_error;
+      ws_free_string (condition);
+      return ER_FAILED;
     }
   if (db_trigger_action (trobj, &action) != NO_ERROR)
     {
-      goto exit_on_error;
+      ws_free_string (action);
+      return ER_FAILED;
     }
 
   /* copy these */
@@ -111,15 +112,7 @@ trigger_description::trigger_description (struct db_object *trobj)
       this->full_event = object_print::copy_string ((char *) this->event);
     }
 
-exit_on_error:
-  if (condition != NULL)
-    {
-      ws_free_string (condition);
-    }
-  if (action != NULL)
-    {
-      ws_free_string (action);
-    }
+  return NO_ERROR;
 }
 
 trigger_description::~trigger_description ()

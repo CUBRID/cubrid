@@ -507,8 +507,8 @@ csql_help_trigger (const char *trigger_name)
 	    }
 	}
 
-      trigger_description help (trigger_name);
-      if (help.name == NULL)
+      trigger_description help;
+      if (help.init (trigger_name) != NO_ERROR)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  goto error;
