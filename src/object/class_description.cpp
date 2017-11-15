@@ -138,7 +138,6 @@ class_description::~class_description()
   for (auto it: triggers)
     {
       free (it);
-      *it = NULL;
     }
   triggers.clear();
   object_print::free_strarray (constraints);
