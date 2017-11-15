@@ -79,32 +79,18 @@ namespace mem
 
   inline void default_realloc (block &b, size_t len)
   {
-#if 0 //realloc based
-    if (b.dim == 0)
-      {
-	b.dim = 1;
-      }
-    for (size_t n=b.dim; b.dim < n+len; b.dim*=2); // calc next power of 2 >= b.dim
-    b.ptr = (char *) realloc (b.ptr, b.dim);
-#else //new + memcopy + delete
     size_t dim = b.dim ? b.dim : 1;
     for (; dim < b.dim+len; dim*=2); // calc next power of 2 >= b.dim
-    mem::block x{dim, new char[dim]};
+    block x{dim, new char[dim]};
     memcpy (x.ptr, b.ptr, b.dim);
     delete b.ptr;
     b = std::move (x);
-#endif
   }
 
-  inline void default_dealloc (mem::block &block)
+  inline void default_dealloc (block &b)
   {
-#if 0 //free based
-    free (block.ptr);
-    block = {};
-#else //delete based
-    delete block.ptr;
-    block = {};
-#endif
+    delete b.ptr;
+    b = {};
   }
 
   /* Memory Block - Extendable
