@@ -33,11 +33,13 @@ class db_value_printer
 {
   private:
     string_buffer &m_buf;
+    bool m_padding;
   public:
     static constexpr char DECIMAL_FORMAT[] = "%#.*g";
 
-    db_value_printer (string_buffer &buf)
+    db_value_printer (string_buffer &buf, bool padding=false)
       : m_buf (buf)
+      , m_padding(padding)
     {}
 
     void describe_money (const db_monetary *value); //former describe_money(parser...)

@@ -288,12 +288,12 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_NUMERIC:
-      m_buf ("%s", numeric_db_value_print ((DB_VALUE *)value, line)); //bsolo: fix const!
+      m_buf ("%s", numeric_db_value_print (value, line));
       break;
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      _describe_bit_string (m_buf, value, false/*parser->custom_print & PT_PAD_BYTE*/); //bSolo: what should I use here???
+      _describe_bit_string (m_buf, value, m_padding);
       break;
 
     case DB_TYPE_CHAR:

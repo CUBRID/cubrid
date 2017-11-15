@@ -2268,7 +2268,7 @@ _op_get_value_string (DB_VALUE * value)
   DB_TIMETZ *timetz_v;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
 
-  extern char *numeric_db_value_print (DB_VALUE *, char *str_buf);
+  extern char *numeric_db_value_print (const DB_VALUE *, char *str_buf);
   extern int db_get_string_length (const DB_VALUE * value);
   extern int db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string, int max_size);
 

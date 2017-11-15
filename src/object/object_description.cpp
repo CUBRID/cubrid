@@ -113,7 +113,7 @@ int object_description::init (struct db_object *op)
 	  i++;
 	}
       strs[i] = NULL;
-      attributes = strs;//bSolo: ToDo: refactor this->attributes as std::vector<char*>
+      attributes = strs;//ToDo: refactor this->attributes as std::vector<char*>
     }
 
   /* will we ever want to separate these lists ? */
