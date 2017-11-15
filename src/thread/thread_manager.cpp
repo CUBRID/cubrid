@@ -247,7 +247,8 @@ namespace cubthread
 #if defined (SERVER_MODE)
     return worker_pool_arg == NULL || worker_pool_arg->is_full ();
 #else // not SERVER_MODE = SA_MODE
-    return true;
+    // on SA_MODE can always push more tasks
+    return false;
 #endif // not SERVER_MODE = SA_MODE
   }
 
