@@ -36,7 +36,9 @@
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #endif
-#include "thread.h"		//can't fwd declare THREAD_ENTRY
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "thread.h"		//can't fwd declare THREAD_ENTRY because it is a typedef
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 #ifdef __cplusplus
 class string_buffer;
@@ -57,7 +59,11 @@ typedef struct pr_type
   int disksize;
   int alignment;
   /* print dbvalue to file */
+#if defined (SERVER_MODE) || defined (SA_MODE)
   void (*fptrfunc) (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value);
+#else
+  void *fptrfunc;
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
   /* print dbvalue to buffer */
 #ifdef __cplusplus
   void (*sptrfunc) (const DB_VALUE * value, string_buffer & sb);
@@ -358,8 +364,10 @@ extern char *pr_copy_string (const char *str);
 extern void pr_free_string (char *str);
 #endif
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
 extern char *pr_valstring (THREAD_ENTRY *, DB_VALUE *);
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /* area init */
 extern int pr_area_init (void);

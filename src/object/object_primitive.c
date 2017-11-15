@@ -10400,6 +10400,7 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  */
 
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of
  * the pr_type vector for the appropriate type.
@@ -10456,6 +10457,7 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
   mem::block b = std::move (mem_block); //move ownership
   return b.ptr;			//caller should use db_private_free() to deallocate it
 }
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /*
  * pr_complete_enum_value - Sets both index and string of a enum value in case
