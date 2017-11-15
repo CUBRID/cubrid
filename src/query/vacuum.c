@@ -986,7 +986,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
 #if defined (SERVER_MODE)
   /* get thread manager */
-  auto thread_manager = thread_get_new_manager ();
+  auto thread_manager = cubthread::get_manager ();
 
   vacuum_Worker_threads =
     thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), VACUUM_JOB_QUEUE_CAPACITY);
@@ -1006,7 +1006,7 @@ vacuum_stop (void)
   // notify master to stop generating new jobs
   vacuum_notify_server_shutdown ();
 
-  auto thread_manager = thread_get_new_manager ();
+  auto thread_manager = cubthread::get_manager ();
 
   // stop work pool
   if (vacuum_Worker_threads != NULL)
@@ -5052,6 +5052,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
   VACUUM_DATA_ENTRY *save_page_free_data = NULL;
   VACUUM_LOG_BLOCKID next_blockid;
   PAGE_TYPE ptype = PAGE_VACUUM_DATA;
+  bool was_vacuum_data_empty = false;
 
   int error_code = NO_ERROR;
 

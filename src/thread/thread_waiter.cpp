@@ -63,7 +63,7 @@ waiter::check_wake (void)
 }
 
 void
-waiter::sleep (void)
+waiter::goto_sleep (void)
 {
   assert (m_status == RUNNING);
   m_status = SLEEPING;
@@ -91,7 +91,7 @@ void
 waiter::wait_inf (void)
 {
   std::unique_lock<std::mutex> lock (m_mutex);    /* mutex is also locked */
-  sleep ();
+  goto_sleep ();
 
   // wait
   m_condvar.wait (lock, [this] { return m_status == AWAKENING; });

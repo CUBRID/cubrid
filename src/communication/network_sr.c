@@ -56,6 +56,7 @@
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
+#include "thread_manager.hpp"
 
 enum net_req_act
 {
@@ -1292,7 +1293,8 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
-  if (thread_initialize_manager () != NO_ERROR)
+
+  if (cubthread::initialize () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");
       status = -1;
@@ -1361,7 +1363,7 @@ net_server_start (const char *server_name)
       status = 2;
     }
 
-  thread_final_manager ();
+  cubthread::finalize ();
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();
 

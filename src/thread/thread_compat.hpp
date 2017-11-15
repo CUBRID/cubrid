@@ -55,12 +55,4 @@ typedef void THREAD_ENTRY;
 typedef void THREAD_ENTRY;
 #endif // not SERVER_MODE and not SA_MODE
 
-#if defined (SERVER_MODE)
-const bool IS_SINGLE_THREAD = true;
-#elif defined (SA_MODE)
-const bool IS_SINGLE_THREAD = false;
-#else // not SERVER_MODE and not SA_MODE
-// should not use IS_SINGLE_THREAD
-#endif // not SERVER_MODE and not SA_MODE
-
 #endif // _THREAD_COMPAT_HPP_

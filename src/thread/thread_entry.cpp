@@ -23,7 +23,9 @@
 
 #include "thread_entry.hpp"
 
+#include "adjustable_array.h"
 #include "fault_injection.h"
+#include "log_compress.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "thread.h"
@@ -124,6 +126,7 @@ entry::entry ()
 
   std::memset (&event_stats, 0, sizeof (event_stats));
 
+#if defined (SERVER_MODE)
   /* lock-free transaction entries */
   tran_entries[THREAD_TS_SPAGE_SAVING] = lf_tran_request_entry (&spage_saving_Ts);
   tran_entries[THREAD_TS_OBJ_LOCK_RES] = lf_tran_request_entry (&obj_lock_res_Ts);
@@ -135,6 +138,7 @@ entry::entry ()
   tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);
   tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
   tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
+#endif // SERVER_MODE
 
 #if !defined (NDEBUG)
   fi_thread_init (this);
@@ -186,14 +190,18 @@ entry::clear_resources (void)
       free (log_data_ptr);
     }
 
+#if defined (SERVER_MODE)
   thread_rc_track_finalize (this);
+#endif // SERVER_MODE
 
   db_destroy_private_heap (this, private_heap_id);
 
+#if defined (SERVER_MODE)
   if (thread_return_transaction_entry (this) != NO_ERROR)
     {
       assert (false);
     }
+#endif // SERVER_MODE
 
 #if !defined (NDEBUG)
   fi_thread_final (this);

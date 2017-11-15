@@ -69,6 +69,7 @@
 #include "filter_pred_cache.h"
 #include "slotted_page.h"
 #include "thread.h"
+#include "thread_manager.hpp"
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
@@ -2217,7 +2218,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* reinitialize thread mgr to reflect # of active requests */
-  if (thread_initialize_manager () != NO_ERROR)
+  if (cubthread::initialize () != NO_ERROR)
     {
       error_code = ER_FAILED;
       goto error;

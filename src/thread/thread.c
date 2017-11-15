@@ -299,7 +299,7 @@ thread_get_thread_entry_info ()
 #endif
   if (tsd_ptr == NULL)
     {
-      return &thread_New_Manager->get_entry ();
+      return cubthread::get_manager ()->get_entry ();
     }
   else
     {
@@ -357,7 +357,7 @@ thread_get_thread_entry_info (void)
 #if defined (SERVER_MODE)
   if (p == NULL)
     {
-      p = &thread_New_Manager->get_entry ();
+      p = (void *) &(cubthread::get_manager ()->get_entry ());
     }
   assert (p != NULL);
 #endif
@@ -392,7 +392,7 @@ thread_is_manager_initialized (void)
  *       might be needed later.
  */
 int
-thread_initialize_manager (void)
+thread_initialize_manager (size_t & total_thread_count)
 {
   int i, r;
   int daemon_index;
@@ -562,8 +562,6 @@ thread_initialize_manager (void)
 	{
 	  return r;
 	}
-
-      thread_New_Manager = new cubthread::manager (thread_New_manager_thread_count, thread_Manager.num_total);
     }
   else
     {
@@ -594,6 +592,8 @@ thread_initialize_manager (void)
     }
 
   thread_Manager.initialized = true;
+
+  total_thread_count = thread_Manager.num_total;
 
   return NO_ERROR;
 }
@@ -1056,8 +1056,6 @@ thread_final_manager (void)
   /* *INDENT-OFF* */
   delete [] thread_Manager.thread_array;
   thread_Manager.thread_array = NULL;
-
-  delete thread_New_Manager;
   /* *INDENT-ON* */
 
   free_and_init (thread_Daemons);
@@ -1883,7 +1881,7 @@ thread_num_worker_threads (void)
 int
 thread_num_total_threads (void)
 {
-  return thread_Manager.num_total + (int) thread_New_Manager->get_max_thread_count ();
+  return thread_Manager.num_total + (int) cubthread::get_max_thread_count ();
 }
 
 /*
@@ -3941,7 +3939,7 @@ thread_find_entry_by_index (int thread_index)
     }
   else
     {
-      return &(thread_New_Manager->get_all_entries ()[thread_index - thread_Manager.num_total]);
+      return &(cubthread::get_manager ()->get_all_entries ()[thread_index - thread_Manager.num_total]);
     }
 }
 

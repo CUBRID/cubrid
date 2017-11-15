@@ -50,17 +50,36 @@
 #include <sys/types.h>
 #endif // SERVER_MODE
 
-#if defined (__cplusplus) && (defined (SERVER_MODE) || defined (SA_MODE))
-// forward definition for thread manager
-namespace cubthread
+enum
 {
-  class manager;
-}
+  TS_DEAD = 0, TS_FREE, TS_RUN, TS_WAIT, TS_CHECK
+};
 
-extern
-  cubthread::manager *
-thread_get_new_manager (void);
-#endif /* C++ and (SERVER_MODE or SA_MODE) */
+enum
+{ THREAD_RESUME_NONE = 0,
+  THREAD_RESUME_DUE_TO_INTERRUPT = 1,
+  THREAD_RESUME_DUE_TO_SHUTDOWN = 2,
+  THREAD_PGBUF_SUSPENDED = 3,
+  THREAD_PGBUF_RESUMED = 4,
+  THREAD_JOB_QUEUE_SUSPENDED = 5,
+  THREAD_JOB_QUEUE_RESUMED = 6,
+  THREAD_CSECT_READER_SUSPENDED = 7,
+  THREAD_CSECT_READER_RESUMED = 8,
+  THREAD_CSECT_WRITER_SUSPENDED = 9,
+  THREAD_CSECT_WRITER_RESUMED = 10,
+  THREAD_CSECT_PROMOTER_SUSPENDED = 11,
+  THREAD_CSECT_PROMOTER_RESUMED = 12,
+  THREAD_CSS_QUEUE_SUSPENDED = 13,
+  THREAD_CSS_QUEUE_RESUMED = 14,
+  THREAD_HEAP_CLSREPR_SUSPENDED = 15,
+  THREAD_HEAP_CLSREPR_RESUMED = 16,
+  THREAD_LOCK_SUSPENDED = 17,
+  THREAD_LOCK_RESUMED = 18,
+  THREAD_LOGWR_SUSPENDED = 19,
+  THREAD_LOGWR_RESUMED = 20,
+  THREAD_ALLOC_BCB_SUSPENDED = 21,
+  THREAD_ALLOC_BCB_RESUMED = 22,
+};
 
 #if !defined(SERVER_MODE)
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) thread_get_current_entry_index()
@@ -110,34 +129,6 @@ extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 #if defined(HPUX)
 #define thread_set_thread_entry_info(entry)
 #endif /* HPUX */
-
-enum
-{ TS_DEAD = 0, TS_FREE, TS_RUN, TS_WAIT, TS_CHECK };
-enum
-{ THREAD_RESUME_NONE = 0,
-  THREAD_RESUME_DUE_TO_INTERRUPT = 1,
-  THREAD_RESUME_DUE_TO_SHUTDOWN = 2,
-  THREAD_PGBUF_SUSPENDED = 3,
-  THREAD_PGBUF_RESUMED = 4,
-  THREAD_JOB_QUEUE_SUSPENDED = 5,
-  THREAD_JOB_QUEUE_RESUMED = 6,
-  THREAD_CSECT_READER_SUSPENDED = 7,
-  THREAD_CSECT_READER_RESUMED = 8,
-  THREAD_CSECT_WRITER_SUSPENDED = 9,
-  THREAD_CSECT_WRITER_RESUMED = 10,
-  THREAD_CSECT_PROMOTER_SUSPENDED = 11,
-  THREAD_CSECT_PROMOTER_RESUMED = 12,
-  THREAD_CSS_QUEUE_SUSPENDED = 13,
-  THREAD_CSS_QUEUE_RESUMED = 14,
-  THREAD_HEAP_CLSREPR_SUSPENDED = 15,
-  THREAD_HEAP_CLSREPR_RESUMED = 16,
-  THREAD_LOCK_SUSPENDED = 17,
-  THREAD_LOCK_RESUMED = 18,
-  THREAD_LOGWR_SUSPENDED = 19,
-  THREAD_LOGWR_RESUMED = 20,
-  THREAD_ALLOC_BCB_SUSPENDED = 21,
-  THREAD_ALLOC_BCB_RESUMED = 22,
-};
 
 enum
 { THREAD_STOP_WORKERS_EXCEPT_LOGWR, THREAD_STOP_LOGWR };
@@ -256,7 +247,7 @@ extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 
 extern THREAD_ENTRY *thread_get_thread_entry_info (void);
 
-extern int thread_initialize_manager (void);
+extern int thread_initialize_manager (size_t & total_thread_count);
 extern int thread_start_workers (void);
 extern int thread_stop_active_workers (unsigned short stop_phase);
 extern int thread_stop_active_daemons (void);

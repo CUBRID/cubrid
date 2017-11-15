@@ -210,11 +210,13 @@ set(JSP_SOURCES
   )
 
 set(THREAD_SOURCES
+  ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_manager.cpp
   )
 set(THREAD_HEADERS
-  ${THREAD_DIR}/thread_manager.hpp
+  ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_entry.hpp
+  ${THREAD_DIR}/thread_manager.hpp
   )
 
 set(TRANSACTION_SOURCES

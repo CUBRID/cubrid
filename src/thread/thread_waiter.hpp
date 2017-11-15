@@ -58,7 +58,7 @@ private:
   };
 
   inline bool check_wake (void);
-  void sleep (void);
+  void goto_sleep (void);
   inline void awake (void);
   void run (void);
 
@@ -90,7 +90,7 @@ waiter::wait_for (std::chrono::duration<Rep, Period>& delta)
     }
 
   std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
-  sleep ();
+  goto_sleep ();
 
   bool ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
 
@@ -105,7 +105,7 @@ bool
 waiter::wait_until (std::chrono::time_point<Clock, Duration>& timeout_time)
 {
   std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
-  sleep ();
+  goto_sleep ();
 
   bool ret = m_condvar.wait_until (lock, timeout_time, check_wake);
 
