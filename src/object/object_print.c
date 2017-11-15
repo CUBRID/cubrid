@@ -177,7 +177,7 @@ help_fprint_obj (FILE * fp, MOP obj)
       else
 	{
 	  class_description cinfo;
-	  if (cinfo.init (obj, class_description::CSQL_SCHEMA_COMMAND))
+	  if (cinfo.init (obj, class_description::CSQL_SCHEMA_COMMAND) == NO_ERROR)
 	    {
 	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
 		       cinfo.class_type, cinfo.name);

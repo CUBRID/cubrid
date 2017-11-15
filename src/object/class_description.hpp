@@ -67,9 +67,9 @@ struct class_description
   class_description ();                                   //former obj_print_make_class_help()
   ~class_description ();                                  //former obj_print_help_free_class()
 
-  bool init (const char *name);                           //former obj_print_help_class()
-  bool init (struct db_object *op, type prt_type);
-  bool init (struct db_object *op, type prt_type, string_buffer &sb);//to be used in object_printer::describe_class()
+  int init (const char *name);                           //former obj_print_help_class()
+  int init (struct db_object *op, type prt_type);
+  int init (struct db_object *op, type prt_type, string_buffer &sb);//to be used in object_printer::describe_class()
 
   //ToDo: other special methods: copy&move ctor/assign
 };

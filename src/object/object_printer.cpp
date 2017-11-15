@@ -867,7 +867,7 @@ void object_printer::describe_class (struct db_object *class_op)
 {
   m_buf.clear();
   class_description class_descr;
-  if (!class_descr.init (class_op, class_description::SHOW_CREATE_TABLE, m_buf))
+  if (class_descr.init (class_op, class_description::SHOW_CREATE_TABLE, m_buf) != NO_ERROR)
     {
 #if 0 //what do we do in case of error???
       int error = er_errid();

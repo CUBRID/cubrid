@@ -153,19 +153,19 @@ class_description::~class_description()
     }
 }
 
-bool class_description::init (const char *name)
+int class_description::init (const char *name)
 {
   return init (sm_find_class (name), CSQL_SCHEMA_COMMAND);
 }
 
-bool class_description::init (struct db_object *op, type prt_type)
+int class_description::init (struct db_object *op, type prt_type)
 {
   mem::block_ext mem_block;
   string_buffer sb (mem_block);
   return init (op, prt_type, sb);
 }
 
-bool class_description::init (struct db_object *op, type prt_type, string_buffer &sb)
+int class_description::init (struct db_object *op, type prt_type, string_buffer &sb)
 {
   this->~class_description();//cleanup before (re)initialize
 
@@ -191,12 +191,12 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
   is_class = locator_is_class (op, DB_FETCH_READ);
   if (is_class < 0)
     {
-      goto error_exit;
+      return ER_FAILED;
     }
   if (!is_class || locator_is_root (op))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      goto error_exit;
+      return ER_FAILED;
     }
 
   else if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
@@ -211,7 +211,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
       /* make sure all the information is up to date */
       if (sm_clean_class (op, class_) != NO_ERROR)
 	{
-	  goto error_exit;
+	  return ER_FAILED;
 	}
 
 
@@ -283,7 +283,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
       this->collation = object_print::copy_string (lang_get_collation_name (class_->collation_id));
       if (this->collation == 0)
 	{
-	  goto error_exit;
+	  return ER_FAILED;
 	}
 
       if (has_comment && prt_type != CSQL_SCHEMA_COMMAND)
@@ -295,7 +295,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	  this->comment = object_print::copy_string (class_->comment);
 	  if (this->comment == 0)
 	    {
-	      goto error_exit;
+	      return ER_FAILED;
 	    }
 	}
 
@@ -307,7 +307,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	  if (strs == 0)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-	      goto error_exit;
+	      return ER_FAILED;
 	    }
 	  i = 0;
 	  for (super = class_->inheritance; super != 0; super = super->next)
@@ -317,7 +317,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	      if (kludge == 0)
 		{
 		  assert (er_errid() != NO_ERROR);
-		  goto error_exit;
+		  return ER_FAILED;
 		}
 
 	      if (prt_type == CSQL_SCHEMA_COMMAND)
@@ -345,7 +345,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	  if (strs == 0)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-	      goto error_exit;
+	      return ER_FAILED;
 	    }
 	  i = 0;
 	  for (user = class_->users; user != 0; user = user->next)
@@ -355,7 +355,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	      if (kludge == 0)
 		{
 		  assert (er_errid() != NO_ERROR);
-		  goto error_exit;
+		  return ER_FAILED;
 		}
 
 	      if (prt_type == CSQL_SCHEMA_COMMAND)
@@ -402,7 +402,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	      if (strs == 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-		  goto error_exit;
+		  return ER_FAILED;
 		}
 
 	      i = 0;
@@ -414,7 +414,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 		      printer.describe_attribute (*op, *a, (a->class_mop != op), prt_type, force_print_att_coll);
 		      if (sb.len() == 0)
 			{
-			  goto error_exit;
+			  return ER_FAILED;
 			}
 		      strs[i] = object_print::copy_string (sb.get_buffer());
 		      i++;
@@ -451,7 +451,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	      if (strs == 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-		  goto error_exit;
+		  return ER_FAILED;
 		}
 
 	      i = 0;
@@ -463,7 +463,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 		      printer.describe_attribute (*op, *a, (a->class_mop != op), prt_type, force_print_att_coll);
 		      if (sb.len() == 0)
 			{
-			  goto error_exit;
+			  return ER_FAILED;
 			}
 		      strs[i] = object_print::copy_string (sb.get_buffer());
 		      i++;
@@ -500,7 +500,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	      if (strs == 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-		  goto error_exit;
+		  return ER_FAILED;
 		}
 	      i = 0;
 	      for (m = class_->methods; m != 0; m = (SM_METHOD *)m->header.next)
@@ -544,7 +544,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	      if (strs == 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-		  goto error_exit;
+		  return ER_FAILED;
 		}
 	      i = 0;
 	      for (m = class_->class_methods; m != 0; m = (SM_METHOD *)m->header.next)
@@ -570,7 +570,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	  if (strs == 0)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-	      goto error_exit;
+	      return ER_FAILED;
 	    }
 	  i = 0;
 
@@ -611,7 +611,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	      if (strs == 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-		  goto error_exit;
+		  return ER_FAILED;
 		}
 	      i = 0;
 	      for (SM_METHOD_FILE *f = class_->method_files; f != 0; f = f->next)
@@ -637,7 +637,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	  if (strs == 0)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-	      goto error_exit;
+	      return ER_FAILED;
 	    }
 	  i = 0;
 	  for (p = class_->query_spec; p != 0; p = p->next)
@@ -685,7 +685,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	      if (strs == 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-		  goto error_exit;
+		  return ER_FAILED;
 		}
 
 	      i = 0;
@@ -702,7 +702,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 			  if (strs[i] == 0)
 			    {
 			      this->constraints = strs;
-			      goto error_exit;
+			      return ER_FAILED;
 			    }
 			  i++;
 			}
@@ -734,7 +734,7 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 		{
 		  if (au_fetch_class (user->op, &subclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
 		    {
-		      goto error_exit;
+		      return ER_FAILED;
 		    }
 		  if (subclass->partition)
 		    {
@@ -747,8 +747,5 @@ bool class_description::init (struct db_object *op, type prt_type, string_buffer
 	}
     }
 
-  return true;
-
-error_exit:
-  return false;
+  return NO_ERROR;
 }
