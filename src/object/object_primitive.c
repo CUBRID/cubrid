@@ -10414,7 +10414,7 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  *    representations into error messages and the like.
  */
 char *
-pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
+pr_valstring (thread_entry * threade, DB_VALUE * val)
 {
   mem::block_ext mem_block
   {

@@ -728,7 +728,7 @@ help_print_info (const char *command, FILE * fpp)
  *   value(in) : value to print
  */
 void
-help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
+help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
 {
   db_private_allocator < char >private_allocator (thread_p);
   mem::block_ext mem_block

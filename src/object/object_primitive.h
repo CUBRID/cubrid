@@ -37,7 +37,7 @@
 #include "work_space.h"
 #endif
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "thread.h"		//can't fwd declare THREAD_ENTRY because it is a typedef
+struct thread_entry;
 #endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 #ifdef __cplusplus
@@ -60,7 +60,7 @@ typedef struct pr_type
   int alignment;
   /* print dbvalue to file */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  void (*fptrfunc) (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value);
+  void (*fptrfunc) (struct thread_entry * thread_p, FILE * fp, const DB_VALUE * value);
 #else
   void *fptrfunc;
 #endif //defined (SERVER_MODE) || defined (SA_MODE)
@@ -366,7 +366,8 @@ extern void pr_free_string (char *str);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
-extern char *pr_valstring (THREAD_ENTRY *, DB_VALUE *);
+//extern char *pr_valstring (THREAD_ENTRY *, DB_VALUE *);
+extern char *pr_valstring (struct thread_entry *, DB_VALUE *);
 #endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /* area init */

@@ -34,6 +34,7 @@
 #endif /* !SERVER_MODE */
 
 class string_buffer;
+struct thread_entry;
 
 #ifdef __cplusplus
 extern "C"
@@ -61,7 +62,7 @@ extern "C"
   int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
 #endif				/* !SERVER_MODE */
 
-  void help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value);
+  void help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value);
   void help_sprint_value (const DB_VALUE * value, string_buffer & sb);
   void help_fprint_describe_comment (FILE * fp, const char *comment);
 
