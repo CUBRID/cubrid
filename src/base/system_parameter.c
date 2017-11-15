@@ -633,7 +633,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CTE_MAX_RECURSIONS "cte_max_recursions"
 
-#define PRM_NAME_JSON_SHOW_CALLSTACK "json_show_callstack"
+#define PRM_NAME_JSON_SHOW_CALLSTACK "log_json_allocations"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"

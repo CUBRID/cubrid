@@ -271,7 +271,7 @@ JSON_PRIVATE_ALLOCATOR::Malloc (size_t size)
       char *p = (char *) db_private_alloc (NULL, size);
       if (prm_get_bool_value (PRM_ID_JSON_SHOW_CALLSTACK))
         {
-          er_print_callstack (ARG_FILE_LINE, "Traced pointer=%p\n", p);
+          er_print_callstack (ARG_FILE_LINE, "JSON_ALLOC: Traced pointer=%p\n", p);
         }
       return p;
     }
