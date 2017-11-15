@@ -27,7 +27,7 @@
 #include "config.h"
 #include "db_private_allocator.hpp"
 #include "db_value_printer.hpp"
-#include "mem.hpp"
+#include "mem_block.hpp"
 
 #include <stdlib.h>
 #include <float.h>

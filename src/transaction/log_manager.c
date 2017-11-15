@@ -68,7 +68,7 @@
 #include "connection_support.h"
 #endif /* defined (SA_MODE) */
 #include "db_value_printer.hpp"
-#include "mem.hpp"
+#include "mem_block.hpp"
 #include "string_buffer.hpp"
 
 #if !defined(SERVER_MODE)

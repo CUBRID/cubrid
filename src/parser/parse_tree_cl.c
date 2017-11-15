@@ -39,7 +39,7 @@
 #include "parser_message.h"
 #include "misc_string.h"
 #include "csql_grammar_scan.h"
-#include "mem.hpp"
+#include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "language_support.h"
 #include "object_print.h"

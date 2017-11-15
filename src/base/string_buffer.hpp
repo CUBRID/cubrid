@@ -38,7 +38,7 @@
 #ifndef _STRING_BUFFER_HPP_
 #define _STRING_BUFFER_HPP_
 
-#include "mem.hpp"
+#include "mem_block.hpp"
 #include <stddef.h>
 #include <stdio.h>
 #include <functional>

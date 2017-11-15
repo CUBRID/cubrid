@@ -78,7 +78,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/md5.c
-  ${BASE_DIR}/mem.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
   ${BASE_DIR}/message_catalog.c

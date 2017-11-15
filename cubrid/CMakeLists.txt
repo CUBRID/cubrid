@@ -57,7 +57,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/md5.c
-  ${BASE_DIR}/mem.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
   ${BASE_DIR}/message_catalog.c
@@ -83,6 +82,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/contiguous_memory_buffer.hpp
   ${BASE_DIR}/db_private_allocator.hpp
   ${BASE_DIR}/extensible_array.hpp
+  ${BASE_DIR}/mem_block.hpp
   )
 
 set(EXECUTABLE_SOURCES

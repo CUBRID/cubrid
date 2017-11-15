@@ -32,7 +32,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "mem.hpp"
+#include "mem_block.hpp"
 #include "object_primitive.h"
 #include "string_buffer.hpp"
 

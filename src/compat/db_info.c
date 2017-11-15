@@ -35,7 +35,7 @@
 #include "boot_cl.h"
 #include "class_object.h"
 #include "db.h"
-#include "mem.hpp"
+#include "mem_block.hpp"
 #include "object_print.h"
 #include "object_printer.hpp"
 #include "server_interface.h"

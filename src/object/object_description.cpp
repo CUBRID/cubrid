@@ -4,7 +4,7 @@
 #include "db_value_printer.hpp"
 #include "dbi.h"
 #include "locator_cl.h"
-#include "mem.hpp"
+#include "mem_block.hpp"
 #include "object_print_util.hpp"
 #include "schema_manager.h"
 #include "string_buffer.hpp"

@@ -25,7 +25,7 @@
 #if !defined(_ALLOCATOR_AFFIX_HPP_)
 #define _ALLOCATOR_AFFIX_HPP_
 
-#include "mem.hpp"
+#include "mem_block.hpp"
 #include <new>
 #include <stddef.h>
 

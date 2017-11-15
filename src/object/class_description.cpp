@@ -21,7 +21,7 @@
 #include "authenticate.h"
 #include "class_object.h"
 #include "locator_cl.h"
-#include "mem.hpp"
+#include "mem_block.hpp"
 #include "message_catalog.h"
 #include "msgcat_help.hpp"
 #include "object_printer.hpp"
