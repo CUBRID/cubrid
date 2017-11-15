@@ -88,7 +88,7 @@ class string_buffer //collect formatted text (printf-like syntax)
 //implementation for small (inline) methods
 
 string_buffer::string_buffer (mem::block_ext &block)
-  : m_block {block}
+  : m_block (block)
   , m_len {0}
 {
   if (m_block.ptr)
