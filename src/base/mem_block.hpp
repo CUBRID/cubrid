@@ -29,6 +29,7 @@ namespace mem
 {
   /* Memory Block
    * - groups together memory address and its size
+   * - doesn't own the memory, just points to it
    * - used to allocate, deallocate and share memory
    * - could be extended with helper info: allocator, src file&line where allocation was made, ...
    */
@@ -72,6 +73,14 @@ namespace mem
 	return (dim != 0 && ptr != 0);
       }
 
+      char* move_ptr()                                    //NOT RECOMMENDED! use move semantics: std::move()
+      {
+        char* p = ptr;
+        dim = 0;
+        ptr = 0;
+        return p;
+      }
+
     private:
       block (const block &) = delete;
       block &operator= (const block &) = delete;
@@ -95,6 +104,13 @@ namespace mem
 
   /* Memory Block - Extendable
    * - able to extend/reallocate to accomodate additional bytes
+   * - owns the memory by default and it will free the memory in destructor unless it is moved:
+   *    {
+   *        mem::block_ext block{some_realloc, some_dealloc};//some_realloc/dealloc = functions, functors or lambdas
+   *        //...
+   *        //move it or it will be deallocated; simple copy => compiler error because it is not designed to be copied
+   *        mem::block b = std::move(block);
+   *    }
    */
   struct block_ext: public block
   {
@@ -126,7 +142,6 @@ namespace mem
 	  }
 	return *this;
       }
-
 
       block_ext (std::function<void (block &b, size_t n)> extend, std::function<void (block &b)> dealloc) //general ctor
 	: block {}

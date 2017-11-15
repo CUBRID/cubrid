@@ -10454,8 +10454,7 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
     }
 
   (*(pr_type->sptrfunc)) (val, sb);
-  mem::block b = std::move (mem_block); //move ownership
-  return b.ptr;			//caller should use db_private_free() to deallocate it
+  return mem_block.move_ptr(); //caller should use db_private_free() to deallocate it
 }
 #endif //defined (SERVER_MODE) || defined (SA_MODE)
 
