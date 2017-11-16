@@ -193,7 +193,7 @@ int sl_print_pk (string_buffer sb, SM_CLASS * sm_class, DB_VALUE * key)
     {
       pk_att = pk_cons->attributes[0];
       sb("\"%s\"=", pk_att->header.name);
-      db_object_printer printer(sb);
+      db_value_printer printer(sb);
       printer.describe_value (key);
     }
   return NO_ERROR;
