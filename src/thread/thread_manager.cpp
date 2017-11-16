@@ -59,7 +59,7 @@ namespace cubthread
     m_all_entries = new entry [m_max_threads];
     for (std::size_t i = 0; i < m_max_threads; i++)
       {
-        m_all_entries[i].index = (int) (starting_index + i);
+	m_all_entries[i].index = (int) (starting_index + i);
       }
     m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
   }
@@ -77,21 +77,21 @@ namespace cubthread
   }
 
   template<typename Res>
-  void manager::destroy_and_untrack_all_resources (std::vector<Res*>& tracker)
+  void manager::destroy_and_untrack_all_resources (std::vector<Res *> &tracker)
   {
     assert (tracker.empty ());
 
 #if defined (SERVER_MODE)
     for (auto iter = tracker.begin (); iter != tracker.end (); iter = tracker.erase (iter))
       {
-        (*iter)->stop ();
-        delete *iter;
+	(*iter)->stop ();
+	delete *iter;
       }
 #endif // SERVER_MODE
   }
 
   template<typename Res, typename ... CtArgs>
-  inline Res * manager::create_and_track_resource (std::vector<Res*>& tracker, size_t entries_count, CtArgs &&... args)
+  inline Res *manager::create_and_track_resource (std::vector<Res *> &tracker, size_t entries_count, CtArgs &&... args)
   {
     check_not_single_thread ();
 
@@ -99,7 +99,7 @@ namespace cubthread
 
     if (m_available_entries_count < entries_count)
       {
-        return NULL;
+	return NULL;
       }
 
     Res *new_res = new Res (std::forward<CtArgs> (args)...);
@@ -115,11 +115,11 @@ namespace cubthread
 #if defined (SERVER_MODE)
     if (is_single_thread ())
       {
-        return NULL;
+	return NULL;
       }
     else
       {
-        return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size);
+	return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size);
       }
 #else // not SERVER_MODE = SA_MODE
     return NULL;
@@ -127,18 +127,18 @@ namespace cubthread
   }
 
   daemon *
-  manager::create_daemon(looper & looper_arg, entry_task * exec_p)
+  manager::create_daemon (const looper &looper_arg, entry_task *exec_p)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
       {
-        assert (false);
-        return NULL;
+	assert (false);
+	return NULL;
       }
     else
       {
-        exec_p->set_manager (this);
-        return create_and_track_resource (m_daemons, 1, looper_arg, exec_p);
+	exec_p->set_manager (this);
+	return create_and_track_resource (m_daemons, 1, looper_arg, exec_p);
       }
 #else // not SERVER_MODE = SA_MODE
     assert (false);
@@ -148,37 +148,37 @@ namespace cubthread
 
   template<typename Res>
   inline void
-  manager::destroy_and_untrack_resource (std::vector<Res*>& tracker, Res *& res)
+  manager::destroy_and_untrack_resource (std::vector<Res *> &tracker, Res *&res)
   {
     std::unique_lock<std::mutex> lock (m_entries_mutex);    // safe-guard
 
     if (res == NULL)
       {
-        return;
+	return;
       }
     check_not_single_thread ();
 
     for (auto iter = tracker.begin (); iter != tracker.end (); ++iter)
       {
-        if (res == *iter)
-          {
-            // remove resource from tracker
-            (void) tracker.erase (iter);
+	if (res == *iter)
+	  {
+	    // remove resource from tracker
+	    (void) tracker.erase (iter);
 
-            // stop resource and delete
-            res->stop ();
-            delete res;
-            res = NULL;
+	    // stop resource and delete
+	    res->stop ();
+	    delete res;
+	    res = NULL;
 
-            return;
-          }
+	    return;
+	  }
       }
     // resource not found
     assert (false);
   }
 
   void
-  manager::destroy_worker_pool (entry_workpool *& worker_pool_arg)
+  manager::destroy_worker_pool (entry_workpool *&worker_pool_arg)
   {
 #if defined (SERVER_MODE)
     return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg);
@@ -188,51 +188,51 @@ namespace cubthread
   }
 
   void
-  manager::push_task (entry & thread_p, entry_workpool * worker_pool_arg, entry_task * exec_p)
+  manager::push_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p)
   {
     if (worker_pool_arg == NULL)
       {
-        // execute on this thread
-        exec_p->execute (thread_p);
-        exec_p->retire ();
+	// execute on this thread
+	exec_p->execute (thread_p);
+	exec_p->retire ();
       }
     else
       {
 #if defined (SERVER_MODE)
-        check_not_single_thread ();
-        exec_p->set_manager (this);
-        worker_pool_arg->execute (exec_p);
+	check_not_single_thread ();
+	exec_p->set_manager (this);
+	worker_pool_arg->execute (exec_p);
 #else // not SERVER_MODE = SA_MODE
-        assert (false);
-        // execute on this thread
-        exec_p->execute (thread_p);
-        exec_p->retire ();
+	assert (false);
+	// execute on this thread
+	exec_p->execute (thread_p);
+	exec_p->retire ();
 #endif // not SERVER_MODE = SA_MODE
       }
   }
 
   bool
-  manager::try_task (entry & thread_p, entry_workpool * worker_pool_arg, entry_task * exec_p)
+  manager::try_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p)
   {
     if (worker_pool_arg == NULL)
       {
-        return false;
+	return false;
       }
     else
       {
 #if defined (SERVER_MODE)
-        check_not_single_thread ();
-        exec_p->set_manager (this);
-        return worker_pool_arg->try_execute (exec_p);
+	check_not_single_thread ();
+	exec_p->set_manager (this);
+	return worker_pool_arg->try_execute (exec_p);
 #else // not SERVER_MODE = SA_MODE
-        assert (false);
-        return false;
+	assert (false);
+	return false;
 #endif // not SERVER_MODE = SA_MODE
       }
   }
 
   bool
-  manager::is_pool_busy (entry_workpool * worker_pool_arg)
+  manager::is_pool_busy (entry_workpool *worker_pool_arg)
   {
 #if defined (SERVER_MODE)
     return worker_pool_arg == NULL || worker_pool_arg->is_busy ();
@@ -242,7 +242,7 @@ namespace cubthread
   }
 
   bool
-  manager::is_pool_full (entry_workpool * worker_pool_arg)
+  manager::is_pool_full (entry_workpool *worker_pool_arg)
   {
 #if defined (SERVER_MODE)
     return worker_pool_arg == NULL || worker_pool_arg->is_full ();
@@ -253,7 +253,7 @@ namespace cubthread
   }
 
   void
-  manager::destroy_daemon (daemon *& daemon_arg)
+  manager::destroy_daemon (daemon *&daemon_arg)
   {
 #if defined (SERVER_MODE)
     return destroy_and_untrack_resource (m_daemons, daemon_arg);
@@ -275,7 +275,7 @@ namespace cubthread
   }
 
   void
-  manager::retire_entry (entry & entry_p)
+  manager::retire_entry (entry &entry_p)
   {
     check_not_single_thread ();
     assert (tl_Entry_p == &entry_p);
@@ -310,11 +310,11 @@ namespace cubthread
     std::size_t running_count = 0;
     for (auto wp_iter = m_worker_pools.cbegin (); wp_iter != m_worker_pools.cend (); ++wp_iter)
       {
-        running_count += (*wp_iter)->get_running_count ();
+	running_count += (*wp_iter)->get_running_count ();
       }
     for (auto daemon_iter = m_daemons.cbegin (); daemon_iter != m_daemons.cend (); ++daemon_iter)
       {
-        ++running_count;
+	++running_count;
       }
     return running_count;
 #else // not SERVER_MODE = SA_MODE
@@ -340,14 +340,14 @@ namespace cubthread
   // Global thread interface
   //////////////////////////////////////////////////////////////////////////
 
-  #if defined (SERVER_MODE)
+#if defined (SERVER_MODE)
   const bool Is_single_thread = false;
 #else // not SERVER_MODE = SA_MODE
   const bool Is_single_thread = true;
 #endif // not SERVER_MODE = SA_MODE
 
-  static manager* Manager = NULL;
-  static entry* Main_entry_p = NULL;
+  static manager *Manager = NULL;
+  static entry *Main_entry_p = NULL;
 
   // TODO: a configurable value
   static const size_t MAX_THREADS = Is_single_thread ? 1 : 128;
@@ -361,19 +361,19 @@ namespace cubthread
 #if defined (SERVER_MODE)
     if (!Is_single_thread)
       {
-        error_code = thread_initialize_manager (starting_index);
-        if (error_code != NO_ERROR)
-          {
-            ASSERT_ERROR ();
-            return error_code;
-          }
+	error_code = thread_initialize_manager (starting_index);
+	if (error_code != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return error_code;
+	  }
       }
 #endif // SERVER_MODE
     Manager = new manager (MAX_THREADS, starting_index);
 
     if (Is_single_thread)
       {
-        Main_entry_p = Manager->claim_entry ();
+	Main_entry_p = Manager->claim_entry ();
       }
     return NO_ERROR;
   }
@@ -384,13 +384,13 @@ namespace cubthread
     assert ((Main_entry_p != NULL) == Is_single_thread);
     if (Main_entry_p != NULL)
       {
-        Manager->retire_entry (*Main_entry_p);
+	Manager->retire_entry (*Main_entry_p);
       }
     delete Manager;
 #if defined (SERVER_MODE)
     if (!Is_single_thread)
       {
-        thread_final_manager ();
+	thread_final_manager ();
       }
 #endif // SERVER_MODE
   }
