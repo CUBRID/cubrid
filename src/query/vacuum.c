@@ -37,6 +37,9 @@
 #include "resource_shared_pool.hpp"
 #include "thread.h"
 #include "thread_entry_executable.hpp"
+#if defined (SERVER_MODE)
+#include "thread_daemon.hpp"
+#endif /* SERVER_MODE */
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #if defined (SA_MODE)
