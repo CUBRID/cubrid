@@ -4943,6 +4943,9 @@ la_apply_update_log (LA_ITEM * item)
   DB_OTMPL *inst_tp = NULL;
   char sql_log_err[LINE_MAX];
 
+  mem::block_ext mem_block; //bSolo: ToDo: what allocator to use here?
+  string_buffer sb(mem_block);
+
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
     {
@@ -4997,8 +5000,6 @@ la_apply_update_log (LA_ITEM * item)
 
   error = la_repl_add_object (class_obj, item, recdes);
 
-  mem::block_ext mem_block; //bSolo: ToDo: what allocator to use here?
-  string_buffer sb(mem_block);
   /* 
    * regardless of the success or failure of obj_repl_update_object,
    * we should write sql log.
@@ -5127,6 +5128,9 @@ la_apply_insert_log (LA_ITEM * item)
   DB_OTMPL *inst_tp = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
 
+  mem::block_ext mem_block; //bSolo: ToDo: what allocator to use here?
+  string_buffer sb(mem_block);
+
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
     {
@@ -5180,9 +5184,6 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   error = la_repl_add_object (class_obj, item, recdes);
-
-  mem::block_ext mem_block; //bSolo: ToDo: what allocator to use here?
-  string_buffer sb(mem_block);
 
   if (la_enable_sql_logging == true)
     {
