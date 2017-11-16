@@ -212,16 +212,12 @@ void sl_print_insert_att_names (string_buffer& sb, OBJ_TEMPASSIGN ** assignments
 
 void sl_print_insert_att_values (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
-  PARSER_VARCHAR *buffer = NULL;
-  PARSER_VARCHAR *value = NULL;
-  int i;
   db_value_printer printer(sb);
-
   if(num_assignments > 0)
     {
-      printer.describe_value (assignments[i]->variable);
+      printer.describe_value (assignments[0]->variable);
     }
-  for (i = 0; i < num_assignments; i++)
+  for (int i = 1; i < num_assignments; i++)
     {
       sb += ',';
       printer.describe_value (assignments[i]->variable);
@@ -474,7 +470,7 @@ int sl_write_sql (string_buffer& query, string_buffer* select)
   strftime (time_buf, sizeof (time_buf), "%Y-%m-%d %H:%M:%S", localtime (&curr_time));
 
   /* -- datetime | sql_id | is_ddl | select length | query length */
-  fprintf (log_fp, "-- %s | %u | %d | %zu\n", time_buf, ++sl_Info.last_inserted_sql_id,
+  fprintf (log_fp, "-- %s | %u | %zu | %zu\n", time_buf, ++sl_Info.last_inserted_sql_id,
 	   (select == NULL) ? 0 : select->len(), query.len());
 
   /* print select for verifying data consistency */
