@@ -113,11 +113,6 @@ static pthread_key_t thread_Thread_key;
 #endif /* HPUX */
 
 static THREAD_MANAGER thread_Manager;
-/* *INDENT-OFF* */
-static cubthread::manager *thread_New_Manager;
-// TODO: not a constant value
-static const size_t thread_New_manager_thread_count = 64;
-/* *INDENT-ON* */
 
 /*
  * For special Purpose Threads: deadlock detector, checkpoint daemon
@@ -557,7 +552,7 @@ thread_initialize_manager (size_t & total_thread_count)
       thread_Manager.num_total = (thread_Manager.num_workers + thread_Manager.num_daemons + NUM_SYSTEM_TRANS);
 
       /* initialize lock-free transaction systems */
-      r = lf_initialize_transaction_systems (thread_Manager.num_total + thread_New_manager_thread_count);
+      r = lf_initialize_transaction_systems (thread_Manager.num_total + cubthread::get_max_thread_count ());
       if (r != NO_ERROR)
 	{
 	  return r;
@@ -5849,11 +5844,3 @@ thread_iterate (THREAD_ENTRY * thread_p)
     }
   return thread_find_entry_by_index (index);
 }
-
-/* *INDENT-OFF* */
-cubthread::manager *
-thread_get_new_manager (void)
-{
-  return thread_New_Manager;
-}
-/* *INDENT-ON* */

@@ -407,7 +407,7 @@ namespace cubthread
   std::size_t
   get_max_thread_count (void)
   {
-    return Manager->get_max_thread_count ();
+    return MAX_THREADS;
   }
 
   bool
