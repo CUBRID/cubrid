@@ -437,10 +437,6 @@ VACUUM_WORKER vacuum_Workers[VACUUM_MAX_WORKER_COUNT];
 VACUUM_WORKER *vacuum_Worker_sa_mode;
 #endif
 
-/* Number of worker threads that have a worker structure assigned. */
-INT32 vacuum_Assigned_workers_count = 0;
-INT32 vacuum_Running_workers_count = 0;
-
 /* VACUUM_HEAP_HELPER -
  * Structure used by vacuum heap functions.
  */
@@ -806,13 +802,9 @@ xvacuum (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-  assert (vacuum_Assigned_workers_count <= 1);
-  VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, &vacuum_Workers[0], dummy_save_type);
-  if (vacuum_Assigned_workers_count == 0)
-    {
-      /* Assign worker and allocate required resources. */
-      vacuum_worker_allocate_resources (thread_p, &vacuum_Workers[0]);
-    }
+  /* Assign worker and allocate required resources. */
+  vacuum_worker_allocate_resources (thread_p, &vacuum_Workers[0]);
+  thread_p->vacuum_worker = &vacuum_Workers[0];
 
   /* Process vacuum data and run vacuum . */
   vacuum_process_vacuum_data (thread_p);
@@ -3419,6 +3411,10 @@ end:
 static int
 vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker)
 {
+#if defined (SERVER_MODE)
+  long long unsigned size_worker_prefetch_log_buffer;
+#endif /* SERVER_MODE */
+
   /* Initialize worker state */
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
 
@@ -3960,7 +3956,7 @@ vacuum_get_worker_min_dropped_files_version (void)
   int i;
   INT32 min_version = -1;
 
-  for (i = 0; i < vacuum_Assigned_workers_count; i++)
+  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
     {
       /* Update minimum version if worker is active and its seen version is smaller than current minimum version (or if 
        * minimum version is not initialized). */
@@ -4395,7 +4391,7 @@ vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
 {
   int i;
 
-  for (i = 0; i < vacuum_Assigned_workers_count; i++)
+  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
     {
       if (vacuum_Workers[i].state != VACUUM_WORKER_STATE_INACTIVE)
 	{
