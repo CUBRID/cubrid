@@ -409,7 +409,7 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
     {
       mem::block_ext mb_param; //bSolo: ToDo: what allocator to use?
       string_buffer sb_param(mb_param);
-      set_param("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_START, ha_sys_prm); //set param
+      sb_param("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_START, ha_sys_prm); //set param
       rc = sysprm_make_default_values (ha_sys_prm, default_ha_prm, sizeof (default_ha_prm));
       if (rc != PRM_ERR_NO_ERROR)
 	{
