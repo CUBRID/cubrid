@@ -73,12 +73,12 @@ namespace mem
 	return (dim != 0 && ptr != 0);
       }
 
-      char* move_ptr()                                    //NOT RECOMMENDED! use move semantics: std::move()
+      char *move_ptr()                                    //NOT RECOMMENDED! use move semantics: std::move()
       {
-        char* p = ptr;
-        dim = 0;
-        ptr = 0;
-        return p;
+	char *p = ptr;
+	dim = 0;
+	ptr = 0;
+	return p;
       }
 
     private:

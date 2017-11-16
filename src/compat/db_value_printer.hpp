@@ -39,7 +39,7 @@ class db_value_printer
 
     db_value_printer (string_buffer &buf, bool padding=false)
       : m_buf (buf)
-      , m_padding(padding)
+      , m_padding (padding)
     {}
 
     void describe_money (const db_monetary *value); //former describe_money(parser...)

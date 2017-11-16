@@ -96,7 +96,7 @@ int object_description::init (struct db_object *op)
 	}
       i = 0;
       for (attribute_p = class_->ordered_attributes; attribute_p != NULL;
-	    attribute_p = attribute_p->order_link)
+	   attribute_p = attribute_p->order_link)
 	{
 	  sb.clear();// We're starting a new line here, so we don't want to append to the old buffer
 	  sb ("%20s = ", attribute_p->header.name);
