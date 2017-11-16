@@ -672,7 +672,6 @@ db_private_strdup (void *thrd, const char *s)
 
   len = (int) strlen (s);
   cp = (char *) db_private_alloc (thrd, len + 1);
-  er_print_callstack (ARG_FILE_LINE, "Strdup pointer=%p\n", cp);
 
   if (cp != NULL)
     {

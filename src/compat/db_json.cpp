@@ -267,9 +267,7 @@ JSON_PRIVATE_ALLOCATOR::Malloc (size_t size)
 {
   if (size)			//  behavior of malloc(0) is implementation defined.
     {
-      char *p = (char *) db_private_alloc (NULL, size);
-      er_print_callstack (ARG_FILE_LINE, "Poijnter=%p\n", p);
-      return p;
+      return db_private_alloc (NULL, size);
     }
   else
     {
