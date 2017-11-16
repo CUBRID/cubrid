@@ -2217,13 +2217,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* reinitialize thread mgr to reflect # of active requests */
-  if (cubthread::initialize () != NO_ERROR)
-    {
-      error_code = ER_FAILED;
-      goto error;
-    }
-
   /* note that thread entry was re-initialized */
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -2260,7 +2253,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   /* Initialize tsc-timer */
   tsc_init ();
+#endif /* !SERVER_MODE */
 
+  /* reinitialize thread mgr to reflect # of active requests */
+  if (cubthread::initialize () != NO_ERROR)
+    {
+      error_code = ER_FAILED;
+      goto error;
+    }
+#if defined (SERVER_MODE)
 #if defined(DIAG_DEVEL)
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
@@ -2752,6 +2753,10 @@ error:
   er_stack_push ();
   boot_server_all_finalize (thread_p, ER_THREAD_FINAL, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
   er_stack_pop ();
+
+#if defined (SA_MODE)
+  cubthread::finalize ();
+#endif /* SA_MODE */
 
   return error_code;
 }

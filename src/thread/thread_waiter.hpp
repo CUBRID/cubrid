@@ -31,41 +31,48 @@
 
 #include <cassert>
 
+// cubthread::waiter
+//
+//  description:
+//    usable to suspend thread and wait for a time or for wakeup request
+//
+//  how to use:
+
 namespace cubthread
 {
 
-class waiter
-{
-public:
-  waiter ();
-  ~waiter();
-
-  void wakeup (void);
-
-  void wait_inf (void);
-  template< class Rep, class Period >
-  bool wait_for (std::chrono::duration<Rep, Period>& delta);
-  template< class Clock, class Duration >
-  bool wait_until (std::chrono::time_point<Clock, Duration>& timeout_time);
-
-private:
-
-  enum status
+  class waiter
   {
-    RUNNING,
-    SLEEPING,
-    AWAKENING,
+    public:
+      waiter ();
+      ~waiter();
+
+      void wakeup (void);
+
+      void wait_inf (void);
+      template< class Rep, class Period >
+      bool wait_for (std::chrono::duration<Rep, Period> &delta);
+      template< class Clock, class Duration >
+      bool wait_until (std::chrono::time_point<Clock, Duration> &timeout_time);
+
+    private:
+
+      enum status
+      {
+	RUNNING,
+	SLEEPING,
+	AWAKENING,
+      };
+
+      inline bool check_wake (void);
+      void goto_sleep (void);
+      inline void awake (void);
+      void run (void);
+
+      std::mutex m_mutex;
+      std::condition_variable m_condvar;
+      status m_status;
   };
-
-  inline bool check_wake (void);
-  void goto_sleep (void);
-  inline void awake (void);
-  void run (void);
-
-  std::mutex m_mutex;
-  std::condition_variable m_condvar;
-  status m_status;
-};
 
 } // namespace cubthread
 
@@ -78,41 +85,41 @@ private:
 namespace cubthread
 {
 
-template< class Rep, class Period >
-bool
-waiter::wait_for (std::chrono::duration<Rep, Period>& delta)
-{
-  if (delta == std::chrono::duration<Rep, Period> (0))
-    {
-      // no wait, just yield
-      std::this_thread::yield ();
-      return true;
-    }
+  template< class Rep, class Period >
+  bool
+  waiter::wait_for (std::chrono::duration<Rep, Period> &delta)
+  {
+    if (delta == std::chrono::duration<Rep, Period> (0))
+      {
+	// no wait, just yield
+	std::this_thread::yield ();
+	return true;
+      }
 
-  std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
-  goto_sleep ();
+    std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
+    goto_sleep ();
 
-  bool ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
+    bool ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
 
-  run ();
+    run ();
 
-  // mutex is automatically unlocked
-  return ret;
-}
+    // mutex is automatically unlocked
+    return ret;
+  }
 
-template<class Clock, class Duration>
-bool
-waiter::wait_until (std::chrono::time_point<Clock, Duration>& timeout_time)
-{
-  std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
-  goto_sleep ();
+  template<class Clock, class Duration>
+  bool
+  waiter::wait_until (std::chrono::time_point<Clock, Duration> &timeout_time)
+  {
+    std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
+    goto_sleep ();
 
-  bool ret = m_condvar.wait_until (lock, timeout_time, check_wake);
+    bool ret = m_condvar.wait_until (lock, timeout_time, check_wake);
 
-  run ();
+    run ();
 
-  // mutex is automatically unlocked
-  return ret;
-}
+    // mutex is automatically unlocked
+    return ret;
+  }
 
 } // namespace cubthread
