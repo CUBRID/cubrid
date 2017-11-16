@@ -10443,7 +10443,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     case DB_TYPE_JSON:
       {
 	char *str = NULL;
-	JSON_DOC *doc = db_json_allocate_doc ();
+	JSON_DOC *doc = NULL;
 
 	switch (original_type)
 	  {
@@ -10478,13 +10478,16 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	    break;
 	  case DB_TYPE_INTEGER:
+	    doc = db_json_allocate_doc ();
 	    db_json_set_int_to_doc (doc, DB_GET_INT (src));
 	    break;
 	  case DB_TYPE_DOUBLE:
+	    doc = db_json_allocate_doc ();
 	    db_json_set_double_to_doc (doc, DB_GET_DOUBLE (src));
 	    break;
 	  case DB_TYPE_NUMERIC:
 	    {
+	      doc = db_json_allocate_doc ();
 	      DB_VALUE double_value;
 	      db_value_coerce (src, &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
 	      db_json_set_double_to_doc (doc, DB_GET_DOUBLE (&double_value));

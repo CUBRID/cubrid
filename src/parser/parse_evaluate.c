@@ -962,6 +962,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
       if (val)
 	{
 	  (void) db_value_clone (val, db_values);
+	  db_values->need_clear = true;
 	}
       break;
 
