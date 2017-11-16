@@ -28,77 +28,78 @@
 namespace cubthread
 {
 
-waiter::waiter ()
-  : m_mutex ()
-  , m_condvar ()
-  , m_status (RUNNING)
-{
-}
+  waiter::waiter ()
+    : m_mutex ()
+    , m_condvar ()
+    , m_status (RUNNING)
+  {
+  }
 
-waiter::~waiter ()
-{
-}
+  waiter::~waiter ()
+  {
+  }
 
-void
-waiter::wakeup (void)
-{
-  // early out if not sleeping
-  if (m_status != SLEEPING)
-    {
-      /* not sleeping */
-      return;
-    }
+  void
+  waiter::wakeup (void)
+  {
+    // early out if not sleeping
+    if (m_status != SLEEPING)
+      {
+	/* not sleeping */
+	return;
+      }
 
-  std::unique_lock<std::mutex> lock (m_mutex);
-  awake ();
-  // unlock before notifying to avoid blocking the thread on mutex
-  lock.unlock ();
-  m_condvar.notify_one ();
-}
+    std::unique_lock<std::mutex> lock (m_mutex);
+    if (m_status != SLEEPING)
+      {
+	return;
+      }
 
-bool
-waiter::check_wake (void)
-{
-  return m_status == AWAKENING;
-}
+    awake ();
+    // unlock before notifying to avoid blocking the thread on mutex
+    lock.unlock ();
+    m_condvar.notify_one ();
+  }
 
-void
-waiter::goto_sleep (void)
-{
-  assert (m_status == RUNNING);
-  m_status = SLEEPING;
-}
+  bool
+  waiter::check_wake (void)
+  {
+    return m_status == AWAKENING;
+  }
 
-void
-waiter::awake (void)
-{
-  if (m_status != SLEEPING)
-    {
-      // somebody else woke it
-      return;
-    }
-  m_status = AWAKENING;
-}
+  void
+  waiter::goto_sleep (void)
+  {
+    assert (m_status == RUNNING);
+    m_status = SLEEPING;
+  }
 
-void
-waiter::run (void)
-{
-  assert (m_status == AWAKENING);
-  m_status = RUNNING;
-}
+  void
+  waiter::awake (void)
+  {
+    assert (m_status == SLEEPING);
+    m_status = AWAKENING;
+  }
 
-void
-waiter::wait_inf (void)
-{
-  std::unique_lock<std::mutex> lock (m_mutex);    /* mutex is also locked */
-  goto_sleep ();
+  void
+  waiter::run (void)
+  {
+    assert (m_status == AWAKENING || m_status == SLEEPING);
+    m_status = RUNNING;
+  }
 
-  // wait
-  m_condvar.wait (lock, [this] { return m_status == AWAKENING; });
+  void
+  waiter::wait_inf (void)
+  {
+    std::unique_lock<std::mutex> lock (m_mutex);    /* mutex is also locked */
+    goto_sleep ();
 
-  run ();
+    // wait
+    m_condvar.wait (lock, [this] { return m_status == AWAKENING; });
 
-  // mutex is automatically unlocked
-}
+    run ();
+
+    // mutex is automatically unlocked
+  }
 
 } // namespace cubthread
