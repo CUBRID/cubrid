@@ -466,7 +466,7 @@ static int la_delete_ha_apply_info (void);
 
 static bool la_ignore_on_error (int errid);
 static bool la_retry_on_error (int errid);
-static int la_help_sprint_object (MOP mop, char *buffer, int max_length);
+//static int la_help_sprint_object (MOP mop, char *buffer, int max_length); //unused?
 
 static int la_init_recdes_pool (int page_size, int num_recdes);
 static RECDES *la_assign_recdes_from_pool (void);
@@ -2284,8 +2284,8 @@ la_retry_on_error (int errid)
   return false;
 }
 
-static int
-la_help_sprint_object (MOP mop, char *buffer, int max_length)
+#if 0 // unused?
+static int la_help_sprint_object (MOP mop, char *buffer, int max_length)
 {
   int error = NO_ERROR;
   int i;
@@ -2380,6 +2380,7 @@ la_help_sprint_object (MOP mop, char *buffer, int max_length)
 end:
   return (p - buffer);
 }
+#endif
 
 /*
  * la_clear_recdes_pool() - free allocated memory in recdes pool
