@@ -348,7 +348,6 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   else
     {
       /* db_serial */
-
       DB_VALUE *cur_value = sl_find_att_value ("current_val", inst_tp->assignments, inst_tp->nassigns);
       DB_VALUE *incr_value = sl_find_att_value ("increment_val", inst_tp->assignments, inst_tp->nassigns);
       if (cur_value == NULL || incr_value == NULL)
@@ -361,12 +360,12 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 	{
 	  return ER_FAILED;
 	}
-      sb("ALTER SERIAL [");
+      sb1("ALTER SERIAL [");
 
-      /*serial_name = */sl_print_att_value (sb, "name", inst_tp->assignments, inst_tp->nassigns);
+      /*serial_name = */sl_print_att_value (sb1, "name", inst_tp->assignments, inst_tp->nassigns);
       //trim_single_quote (serial_name);//bSolo: ToDo
 
-      sb("] START WITH %s;", numeric_db_value_print (&next_value, str_next_value));
+      sb1("] START WITH %s;", numeric_db_value_print (&next_value, str_next_value));
     }
 
   return sl_write_sql (sb1, sb2);
