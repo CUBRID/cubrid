@@ -703,6 +703,8 @@ public:
 
     context.type = TT_VACUUM_MASTER;
     context.tran_index = 0;
+    // vacuum workers cannot be interrupted
+    context.check_interrupt = false;
 
     return context;
   }

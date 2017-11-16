@@ -286,6 +286,7 @@ namespace cubthread
 
     // todo: here we should do more operations to clear thread entry before being reused
     entry_p.tran_index = -1;
+    entry_p.check_interrupt = true;
 
     tl_Entry_p = NULL;
     m_entry_dispatcher->retire (entry_p);
