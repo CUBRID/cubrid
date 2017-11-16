@@ -66,7 +66,7 @@ static FILE *catalog_fp;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
 
-int sl_write_sql (string_buffer& query, string_buffer& select);
+int sl_write_sql (string_buffer& query, string_buffer* select);
 void sl_print_insert_att_names (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 void sl_print_insert_att_values (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 int sl_print_pk (string_buffer& sb, SM_CLASS * sm_class, DB_VALUE * key);
@@ -308,7 +308,7 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
     }
   sb2(";");
 
-  if (sl_write_sql (sb1, sb2) != NO_ERROR)
+  if (sl_write_sql (sb1, &sb2) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -368,7 +368,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
       sb1("] START WITH %s;", numeric_db_value_print (&next_value, str_next_value));
     }
 
-  return sl_write_sql (sb1, sb2);
+  return sl_write_sql (sb1, &sb2);
 }
 
 int sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
@@ -391,7 +391,7 @@ int sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
     }
   sb2(";");
 
-  return sl_write_sql (sb1, sb2);
+  return sl_write_sql (sb1, &sb2);
 }
 
 int
@@ -402,7 +402,7 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
   SYSPRM_ERR rc;
 
   mem::block_ext mb1; //bSolo: ToDo: what allocator to use here?
-  string_buffer sb(mb1)
+  string_buffer sb(mb1);
   sb("%s;", stmt_text);
 
   if (ha_sys_prm != NULL)
@@ -455,7 +455,7 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
   return NO_ERROR;
 }
 
-int sl_write_sql (string_buffer& query, string_buffer& select)
+int sl_write_sql (string_buffer& query, string_buffer* select)
 {
   time_t curr_time;
   char time_buf[20];
@@ -473,17 +473,16 @@ int sl_write_sql (string_buffer& query, string_buffer& select)
   curr_time = time (NULL);
   strftime (time_buf, sizeof (time_buf), "%Y-%m-%d %H:%M:%S", localtime (&curr_time));
 
-
   /* -- datetime | sql_id | is_ddl | select length | query length */
   fprintf (log_fp, "-- %s | %u | %d | %zu\n", time_buf, ++sl_Info.last_inserted_sql_id,
-	   (select.get_buffer() == NULL) ? 0 : select.len(), query.len());
+	   (select == NULL) ? 0 : select->len(), query.len());
 
   /* print select for verifying data consistency */
-  if (select.get_buffer() != NULL)
+  if (select != NULL)
     {
       /* -- select_length select * from tbl_name */
       fprintf (log_fp, "-- ");
-      fwrite (select.get_buffer(), sizeof (char), select.len(), log_fp);
+      fwrite (select->get_buffer(), sizeof (char), select->len(), log_fp);
       fputc ('\n', log_fp);
     }
 
