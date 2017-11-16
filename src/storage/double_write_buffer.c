@@ -3441,7 +3441,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	      goto end;
 	    }
 
-	  error_code = fileio_page_is_corrupted (thread_p, iopage, &is_page_corrupted);
+	  error_code = fileio_page_check_corruption (thread_p, iopage, &is_page_corrupted);
 	  if (error_code != NO_ERROR)
 	    {
 	      /* Error in checksum computation. */
@@ -3457,7 +3457,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	    }
 
 	  /* Corrupted page in data volume. Check DWB. */
-	  error_code = fileio_page_is_corrupted (thread_p, p_dwb_ordered_slots[i].io_page, &is_page_corrupted);
+	  error_code = fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i].io_page, &is_page_corrupted);
 	  if (error_code != NO_ERROR)
 	    {
 	      /* Error in checksum computation. */

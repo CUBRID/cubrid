@@ -2390,7 +2390,7 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
-extern int logpb_page_is_corrupted (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted);
+extern int logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted);
 
 /************************************************************************/
 /* Inline functions:                                                    */

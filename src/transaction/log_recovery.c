@@ -2439,7 +2439,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	}
 
-      if (logpb_page_is_corrupted (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
+      if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
 	  return;

@@ -11689,14 +11689,14 @@ fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page)
 }
 
 /*
-* fileio_page_is_corrupted - Check whether the page is corrupted.
+* fileio_page_check_corruption - Check whether the page is corrupted.
 *   return: error code
 *   thread_p(in): thread entry
 *   io_page(in): the page
 *   is_page_corrupted(out): true, if the page is corrupted.
 */
 int
-fileio_page_is_corrupted (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted)
+fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted)
 {
   int error_code;
   bool has_valid_checksum;

@@ -1944,6 +1944,13 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 	}
       else
 	{
+#if !defined(NDEBUG)
+	  {
+	    bool is_log_page_corrupted;
+	    assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
+		    && (is_log_page_corrupted == false));
+	  }
+#endif
 	  if (log_pgptr->hdr.logical_pageid != pageid)
 	    {
 	      if (log_pgptr->hdr.logical_pageid == pageid + LOGPB_ACTIVE_NPAGES)
@@ -12250,14 +12257,14 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
 }
 
 /*
-* fileio_page_is_corrupted - Check whether the page is corrupted.
+* logpb_page_check_corruption - Check whether the log page is corrupted.
 *   return: error code
 *   thread_p(in): thread entry
 *   log_pgptr(in): the log page
 *   is_page_corrupted(out): true, if the log page is corrupted.
 */
 int
-logpb_page_is_corrupted (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted)
+logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted)
 {
   int error_code;
   bool has_valid_checksum;
