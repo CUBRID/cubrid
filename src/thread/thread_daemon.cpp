@@ -28,55 +28,55 @@
 namespace cubthread
 {
 
-daemon::daemon (looper & loop_pattern, task * exec)
-  : m_waiter ()
-  , m_looper (loop_pattern)
-  , m_thread (daemon::loop, this, exec)
-{
-}
+  daemon::daemon (const looper &loop_pattern, task *exec)
+    : m_waiter ()
+    , m_looper (loop_pattern)
+    , m_thread (daemon::loop, this, exec)
+  {
+  }
 
-daemon::~daemon ()
-{
-  // thread must be stopped
-  stop ();
-}
+  daemon::~daemon ()
+  {
+    // thread must be stopped
+    stop ();
+  }
 
-void
-daemon::wakeup (void)
-{
-  m_waiter.wakeup ();
-}
+  void
+  daemon::wakeup (void)
+  {
+    m_waiter.wakeup ();
+  }
 
-void
-daemon::stop (void)
-{
-  if (m_looper.is_stopped ())
-    {
-      // already stopped
-      return;
-    }
-  // first signal stop
-  m_looper.stop ();
-  // make sure thread will wakeup
-  wakeup ();
-  // then wait for thread to finish
-  m_thread.join ();
-}
+  void
+  daemon::stop (void)
+  {
+    if (m_looper.is_stopped ())
+      {
+	// already stopped
+	return;
+      }
+    // first signal stop
+    m_looper.stop ();
+    // make sure thread will wakeup
+    wakeup ();
+    // then wait for thread to finish
+    m_thread.join ();
+  }
 
-void
-daemon::loop (daemon * daemon_arg, task * exec)
-{
-  while (!daemon_arg->m_looper.is_stopped ())
-    {
-      exec->execute ();
-      daemon_arg->pause ();
-    }
-  exec->retire ();
-}
+  void
+  daemon::loop (daemon *daemon_arg, task *exec)
+  {
+    while (!daemon_arg->m_looper.is_stopped ())
+      {
+	exec->execute ();
+	daemon_arg->pause ();
+      }
+    exec->retire ();
+  }
 
-void daemon::pause (void)
-{
-  m_looper.put_to_sleep (m_waiter);
-}
+  void daemon::pause (void)
+  {
+    m_looper.put_to_sleep (m_waiter);
+  }
 
 } // namespace cubthread

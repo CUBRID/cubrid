@@ -2651,17 +2651,17 @@ vacuum_master_start (THREAD_ENTRY * thread_p)
 
 static void
 vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, const BLOCK_LOG_BUFFER & log_buffer,
-                  bool is_partial_block = false)
+		  bool is_partial_block = false)
 {
   cubthread::get_manager ()->push_task (*thread_p, vacuum_Worker_threads,
-                                        new vacuum_worker_task (data_entry, log_buffer, is_partial_block));
+					new vacuum_worker_task (data_entry, log_buffer, is_partial_block));
 }
 
 static bool
 vacuum_check_finished_queue (void)
 {
 #if defined (SERVER_MODE)
-  return lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2;
+  return lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= (int) vacuum_Finished_job_queue->capacity / 2;
 #else // not SERVER_MODE = SA_MODE
   return lf_circular_queue_is_full (vacuum_Finished_job_queue);
 #endif // not SERVER_MODE = SA_MODE
@@ -2671,7 +2671,7 @@ static bool
 vacuum_check_data_buffer (void)
 {
 #if defined (SERVER_MODE)
-  return lf_circular_queue_approx_size (vacuum_Block_data_buffer) >= vacuum_Block_data_buffer->capacity / 2;
+  return lf_circular_queue_approx_size (vacuum_Block_data_buffer) >= (int) vacuum_Block_data_buffer->capacity / 2;
 #else // not SERVER_MODE = SA_MODE
   return false;
 #endif // not SERVER_MODE = SA_MODE
@@ -2762,7 +2762,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
       vacuum_Data.blockid_job_cursor = VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.first_page->data[0].blockid);
     }
 
-  VACUUM_INIT_PREFETCH_BLOCK (&log_buffer); // init
+  VACUUM_INIT_PREFETCH_BLOCK (&log_buffer);	// init
 
   /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
   /* Stand-alone mode will restart if finished job queue is full. */
@@ -2868,7 +2868,7 @@ restart:
 	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid)
 		  || VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid));
 #else // not SERVER_MODE = SA_MODE
-          assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid));
+	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid));
 #endif // not SERVER_MODE = SA_MODE
 	  /* Continue to other blocks. */
 	  data_index++;
@@ -2885,8 +2885,8 @@ restart:
 	{
 	  assert_release (false);
 	  vacuum_er_log_error (VACUUM_ER_LOG_MASTER,
-				"Error %d while master tried to prefetch log pages for block %lld.",
-				er_errid (), (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
+			       "Error %d while master tried to prefetch log pages for block %lld.",
+			       er_errid (), (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  break;
 	}
@@ -2915,18 +2915,18 @@ restart:
 #if defined (SA_MODE)
       // need to check for interrupts
       if (logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
-        {
+	{
 	  /* wrap up all executed jobs and stop */
 	  vacuum_data_mark_finished (thread_p);
 	  return;
-        }
+	}
 #endif // SA_MODE
 
       if (vacuum_check_data_buffer () && vacuum_check_finished_queue ())
-        {
-          vacuum_unfix_data_page (thread_p, data_page);
-          goto restart;
-        }
+	{
+	  vacuum_unfix_data_page (thread_p, data_page);
+	  goto restart;
+	}
 
       /* Increment block index. */
       data_index++;

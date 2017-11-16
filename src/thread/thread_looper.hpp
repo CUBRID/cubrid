@@ -27,86 +27,87 @@
 #include <array>
 #include <chrono>
 
+#include <cassert>
 #include <cstdint>
 
 namespace cubthread
 {
 
 // forward def
-class waiter;
+  class waiter;
 
-class looper
-{
-public:
-
-  // constructors
-  looper ();
-  template<class Rep, class Period>
-  looper (std::chrono::duration<Rep, Period>& fixed_period);
-  template<class Rep, class Period, size_t Count>
-  looper (std::array<std::chrono::duration<Rep, Period>, Count> periods);
-  looper (looper & other);
-
-  void put_to_sleep (waiter & waiter_arg);
-  void reset (void);
-  void stop (void);
-  bool is_stopped (void) const;
-
-private:
-  
-  // definitions
-  typedef std::chrono::duration<std::uint64_t, std::nano> delta_time;
-  enum class wait_pattern
+  class looper
   {
-    FIXED_PERIODS,                // fixed periods
-    INCREASING_PERIODS,           // increasing periods with each timeout
-    INFINITE_WAITS,               // always infinite waits
+    public:
+
+      // constructors
+      looper ();
+      template<class Rep, class Period>
+      looper (const std::chrono::duration<Rep, Period> &fixed_period);
+      template<class Rep, class Period, size_t Count>
+      looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods);
+      looper (const looper &other);
+
+      void put_to_sleep (waiter &waiter_arg);
+      void reset (void);
+      void stop (void);
+      bool is_stopped (void) const;
+
+    private:
+
+      // definitions
+      typedef std::chrono::duration<std::uint64_t, std::nano> delta_time;
+      enum class wait_pattern
+      {
+	FIXED_PERIODS,                // fixed periods
+	INCREASING_PERIODS,           // increasing periods with each timeout
+	INFINITE_WAITS,               // always infinite waits
+      };
+
+      static const size_t MAX_PERIODS = 3;
+
+      wait_pattern m_wait_pattern;
+      std::size_t m_periods_count;
+      delta_time m_periods[MAX_PERIODS];
+
+      std::size_t m_period_index;
+      bool m_stop;
   };
 
-  static const size_t MAX_PERIODS = 3;
+  /************************************************************************/
+  /* Template implementation                                              */
+  /************************************************************************/
 
-  wait_pattern m_wait_pattern;
-  std::size_t m_periods_count;
-  delta_time m_periods[MAX_PERIODS];
-  
-  std::size_t m_period_index;
-  bool m_stop;
-};
+  template<class Rep, class Period>
+  looper::looper (const std::chrono::duration<Rep, Period> &fixed_period)
+    : m_wait_pattern (wait_pattern::FIXED_PERIODS)
+    , m_periods_count (1)
+    , m_periods {fixed_period}
+    , m_period_index (0)
+    , m_stop (false)
+  {
+    // fixed period waits
+  }
 
-/************************************************************************/
-/* Template implementation                                              */
-/************************************************************************/
+  template<class Rep, class Period, size_t Count>
+  looper::looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods)
+    : m_wait_pattern (wait_pattern::INCREASING_PERIODS)
+    , m_periods_count (Count)
+    , m_periods {}
+    , m_period_index (0)
+    , m_stop (false)
+  {
+    static_assert (Count <= MAX_PERIODS, "Count template cannot exceed MAX_PERIODS=3");
+    m_periods_count = std::min (Count, MAX_PERIODS);
 
-template<class Rep, class Period>
-looper::looper (std::chrono::duration<Rep, Period>& fixed_period)
-  : m_wait_pattern (wait_pattern::FIXED_PERIODS)
-  , m_periods_count (1)
-  , m_periods {fixed_period}
-  , m_period_index (0)
-  , m_stop (false)
-{
-  // fixed period waits
-}
-
-template<class Rep, class Period, size_t Count>
-looper::looper (std::array<std::chrono::duration<Rep, Period>, Count> periods)
-  : m_wait_pattern (wait_pattern::INCREASING_PERIODS)
-  , m_periods_count (Count)
-  , m_periods {}
-  , m_period_index (0)
-  , m_stop (false)
-{
-  static_assert (Count <= MAX_PERIODS, "Count template cannot exceed MAX_PERIODS=3");
-  m_periods_count = std::min (Count, MAX_PERIODS);
-
-  // wait increasing period on timeouts
-  for (size_t i = 0; i < m_periods_count; i++)
-    {
-      m_periods[i] = periods[i];
-      // check increasing periods
-      assert (i == 0 || m_periods[i - 1] < m_periods[i]);
-    }
-}
+    // wait increasing period on timeouts
+    for (size_t i = 0; i < m_periods_count; i++)
+      {
+	m_periods[i] = periods[i];
+	// check increasing periods
+	assert (i == 0 || m_periods[i - 1] < m_periods[i]);
+      }
+  }
 
 } // namespace cubthread
 

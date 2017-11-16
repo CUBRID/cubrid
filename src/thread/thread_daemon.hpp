@@ -33,27 +33,27 @@ namespace cubthread
 {
 
 // forward definition
-class task;
+  class task;
 
-class daemon
-{
-  public:
-    daemon (looper & loop_pattern, task * exec);
-    ~daemon();
+  class daemon
+  {
+    public:
+      daemon (const looper &loop_pattern, task *exec);
+      ~daemon();
 
-    void wakeup (void);
-    void stop (void);
+      void wakeup (void);
+      void stop (void);
 
-  private:
+    private:
 
-    static void loop (daemon * daemon_arg, task * exec);
+      static void loop (daemon *daemon_arg, task *exec);
 
-    void pause (void);
+      void pause (void);
 
-    waiter m_waiter;
-    looper m_looper;
-    std::thread m_thread;
-};
+      waiter m_waiter;
+      looper m_looper;
+      std::thread m_thread;
+  };
 
 
 

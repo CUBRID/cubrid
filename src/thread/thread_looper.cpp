@@ -30,79 +30,79 @@
 namespace cubthread
 {
 
-looper::looper ()
-  : m_wait_pattern (wait_pattern::INFINITE_WAITS)
-  , m_periods_count (0)
-  , m_period_index (0)
-  , m_stop (false)
-{
-  // infinite waits
-}
+  looper::looper ()
+    : m_wait_pattern (wait_pattern::INFINITE_WAITS)
+    , m_periods_count (0)
+    , m_period_index (0)
+    , m_stop (false)
+  {
+    // infinite waits
+  }
 
-looper::looper (looper & other)
-  : m_wait_pattern (other.m_wait_pattern)
-  , m_periods_count (other.m_periods_count)
-  , m_periods ()
-  , m_period_index (0)
-  , m_stop (false)
-{
-  *this->m_periods = *other.m_periods;
-}
+  looper::looper (const looper &other)
+    : m_wait_pattern (other.m_wait_pattern)
+    , m_periods_count (other.m_periods_count)
+    , m_periods ()
+    , m_period_index (0)
+    , m_stop (false)
+  {
+    *this->m_periods = *other.m_periods;
+  }
 
-void
-looper::put_to_sleep (waiter & waiter_arg)
-{
-  bool timeout = false;
+  void
+  looper::put_to_sleep (waiter &waiter_arg)
+  {
+    bool timeout = false;
 
-  if (is_stopped ())
-    {
-      // stopped; don't put to sleep
-      return;
-    }
+    if (is_stopped ())
+      {
+	// stopped; don't put to sleep
+	return;
+      }
 
-  if (m_period_index >= m_periods_count)
-    {
-      assert (m_period_index == m_periods_count);
-      waiter_arg.wait_inf ();
-    }
-  else
-    {
-      timeout = waiter_arg.wait_for (m_periods[m_period_index]);
-    }
-  if (m_wait_pattern == wait_pattern::FIXED_PERIODS || m_wait_pattern == wait_pattern::INFINITE_WAITS)
-    {
-      assert (m_period_index == 0);
-      return;
-    }
-  if (timeout)
-    {
-      /* increment */
-      ++m_period_index;
-    }
-  else
-    {
-      /* reset */
-      m_period_index = 0;
-    }
-}
+    if (m_period_index >= m_periods_count)
+      {
+	assert (m_period_index == m_periods_count);
+	waiter_arg.wait_inf ();
+      }
+    else
+      {
+	timeout = waiter_arg.wait_for (m_periods[m_period_index]);
+      }
+    if (m_wait_pattern == wait_pattern::FIXED_PERIODS || m_wait_pattern == wait_pattern::INFINITE_WAITS)
+      {
+	assert (m_period_index == 0);
+	return;
+      }
+    if (timeout)
+      {
+	/* increment */
+	++m_period_index;
+      }
+    else
+      {
+	/* reset */
+	m_period_index = 0;
+      }
+  }
 
-void
-looper::reset (void)
-{
-  assert (m_wait_pattern == wait_pattern::INCREASING_PERIODS);
-  m_period_index = 0;
-}
+  void
+  looper::reset (void)
+  {
+    assert (m_wait_pattern == wait_pattern::INCREASING_PERIODS);
+    m_period_index = 0;
+  }
 
-void
-looper::stop (void)
-{
-  m_stop = true;
-}
+  void
+  looper::stop (void)
+  {
+    m_stop = true;
+  }
 
-bool
-looper::is_stopped (void) const
-{
-  return m_stop;
-}
+  bool
+  looper::is_stopped (void) const
+  {
+    return m_stop;
+  }
 
 } // namespace cubthread
