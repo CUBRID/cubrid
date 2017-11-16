@@ -284,6 +284,9 @@ namespace cubthread
     // for backward compatibility
     entry_p.tid = (pthread_t) 0;
 
+    // todo: here we should do more operations to clear thread entry before being reused
+    entry_p.tran_index = -1;
+
     tl_Entry_p = NULL;
     m_entry_dispatcher->retire (entry_p);
   }

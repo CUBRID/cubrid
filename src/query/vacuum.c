@@ -702,6 +702,7 @@ public:
     assert (context.vacuum_worker != NULL);
 
     context.type = TT_VACUUM_MASTER;
+    context.tran_index = 0;
 
     return context;
   }
