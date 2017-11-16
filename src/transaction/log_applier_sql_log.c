@@ -266,7 +266,7 @@ DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments
 
 void sl_print_att_value (string_buffer& sb, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
-  DB_VALUE *val = sl_find_att_value (parser, att_name, assignments, num_assignments);
+  DB_VALUE *val = sl_find_att_value (att_name, assignments, num_assignments);
   if (val != NULL)
     {
       db_value_printer printer(sb);
