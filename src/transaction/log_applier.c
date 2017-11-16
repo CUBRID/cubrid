@@ -56,6 +56,8 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
+#include "mem_block.hpp"
+#include "string_buffer.hpp"
 
 #if defined(AIX)
 #include <procinfo.h>
