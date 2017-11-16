@@ -405,10 +405,10 @@ enum param_id
 
   PRM_ID_CTE_MAX_RECURSIONS,
 
-  PRM_ID_JSON_SHOW_CALLSTACK,
+  PRM_ID_JSON_LOG_ALLOCATIONS,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_JSON_SHOW_CALLSTACK
+  PRM_LAST_ID = PRM_ID_JSON_LOG_ALLOCATIONS
 };
 typedef enum param_id PARAM_ID;
 
