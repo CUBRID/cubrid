@@ -367,7 +367,12 @@ namespace cubthread
 	  }
       }
 #endif // SERVER_MODE
-    Manager = new manager (MAX_THREADS, starting_index);
+
+    // SERVER_MODE calls this twice. Until I understand why, we must check Manager is not allocated twice
+    if (Manager == NULL)
+      {
+	Manager = new manager (MAX_THREADS, starting_index);
+      }
 
     if (Is_single_thread)
       {
