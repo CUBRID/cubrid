@@ -269,6 +269,9 @@ namespace cubthread
 
     // for backward compatibility
     tl_Entry_p->tid = pthread_self ();
+    tl_Entry_p->type = TT_WORKER;
+
+    // TODO: daemon type
 
     return tl_Entry_p;
   }

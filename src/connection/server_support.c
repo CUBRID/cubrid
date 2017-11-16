@@ -1931,8 +1931,7 @@ shutdown:
   thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* stop vacuum threads. */
-  vacuum_notify_server_shutdown ();
-  thread_stop_vacuum_daemons ();
+  vacuum_stop ();
 
   /* we should flush all append pages before stop log writer */
   thread_p = thread_get_thread_entry_info ();

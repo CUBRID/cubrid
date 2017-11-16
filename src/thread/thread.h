@@ -251,7 +251,6 @@ extern int thread_initialize_manager (size_t & total_thread_count);
 extern int thread_start_workers (void);
 extern int thread_stop_active_workers (unsigned short stop_phase);
 extern int thread_stop_active_daemons (void);
-extern int thread_stop_vacuum_daemons (void);
 extern int thread_kill_all_workers (void);
 extern void thread_final_manager (void);
 extern void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
@@ -315,8 +314,6 @@ extern void thread_wakeup_checkpoint_thread (void);
 extern void thread_wakeup_purge_archive_logs_thread (void);
 extern void thread_wakeup_oob_handler_thread (void);
 extern void thread_wakeup_auto_volume_expansion_thread (void);
-extern void thread_wakeup_vacuum_master_thread (void);
-extern void thread_wakeup_vacuum_worker_threads (int n_workers);
 
 /* is available functions */
 extern bool thread_is_page_flush_thread_available (void);
@@ -393,8 +390,6 @@ extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 #else /* WINDOWS */
 extern void *thread_worker (void *);
 #endif /* !WINDOWS */
-
-extern int thread_first_vacuum_worker_thread_index (void);
 
 extern bool thread_is_auto_volume_expansion_thread_available (void);
 

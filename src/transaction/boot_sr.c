@@ -2433,21 +2433,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
+  // after recovery we can boot vacuum
+  error_code = vacuum_boot (thread_p);
+  if (error_code != NO_ERROR)
     {
-      /* load and recovery vacuum data and dropped files */
-      error_code = vacuum_data_load_and_recover (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
-      error_code = vacuum_load_dropped_files_from_disk (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
+      ASSERT_ERROR ();
+      goto error;
     }
 
 

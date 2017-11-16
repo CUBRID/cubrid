@@ -694,6 +694,33 @@ public:
   {
     vacuum_process_vacuum_data (&thread_ref);
   }
+
+  cubthread::entry & create_context (void) override
+  {
+    cubthread::entry &context = cubthread::entry_task::create_context ();
+
+    context.vacuum_worker = &vacuum_Master;
+    assert (context.vacuum_worker != NULL);
+
+    context.type = TT_VACUUM_MASTER;
+
+    return context;
+  }
+
+  void retire_context (cubthread::entry & context) override
+  {
+    if (context.vacuum_worker != NULL)
+      {
+        assert (context.vacuum_worker == &vacuum_Master);
+        context.vacuum_worker = NULL;
+      }
+    else
+      {
+        assert (false);
+      }
+
+    cubthread::entry_task::retire_context (context);
+  }
 };
 
 class vacuum_worker_task : public cubthread::entry_task
@@ -718,6 +745,8 @@ public:
 
     context.vacuum_worker = vacuum_Workers_context_pool->claim ();
     assert (context.vacuum_worker != NULL);
+
+    context.type = TT_VACUUM_WORKER;
 
     return context;
   }
@@ -3687,7 +3716,7 @@ vacuum_start_new_job (THREAD_ENTRY * thread_p)
 
   /* No jobs in queue */
   /* Wakeup master to process finished jobs and generate new ones (if there are any to generate). */
-  thread_wakeup_vacuum_master_thread ();
+  vacuum_Master_daemon->wakeup ();
 }
 #endif /* SERVER_MODE */
 
@@ -3770,7 +3799,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   if ((UINT64) lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2)
     {
       /* Wakeup master to process finished jobs. */
-      thread_wakeup_vacuum_master_thread ();
+      vacuum_Master_daemon->wakeup ();
     }
 #endif /* SERVER_MODE */
 }
