@@ -84,6 +84,7 @@ void db_json_merge_two_json_by_array_wrapping (JSON_DOC *j1, const JSON_DOC *j2)
 
 int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result);
 const char *db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val);
+char *db_json_get_copy_of_schema_from_validator (JSON_VALIDATOR *val);
 int db_json_validate_json (const char *json_body);
 
 int db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR *&validator);

@@ -21859,6 +21859,7 @@ pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
       if (dt->info.data_type.json_schema)
 	{
 	  value->data.json.schema_raw = db_private_strdup (NULL, (const char *) dt->info.data_type.json_schema->bytes);
+	  value->need_clear = true;
 	}
       else
 	{

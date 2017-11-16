@@ -267,7 +267,9 @@ JSON_PRIVATE_ALLOCATOR::Malloc (size_t size)
 {
   if (size)			//  behavior of malloc(0) is implementation defined.
     {
-      return db_private_alloc (NULL, size);
+      char *p = (char *) db_private_alloc (NULL, size);
+      er_print_callstack (ARG_FILE_LINE, "Poijnter=%p\n", p);
+      return p;
     }
   else
     {
@@ -880,6 +882,12 @@ const char *
 db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val)
 {
   return val == NULL ? NULL : val->get_schema_raw ();
+}
+
+char *
+db_json_get_copy_of_schema_from_validator (JSON_VALIDATOR *val)
+{
+  return (char *) db_private_strdup (NULL, db_json_get_schema_raw_from_validator (val)); 
 }
 
 int

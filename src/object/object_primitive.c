@@ -2051,6 +2051,12 @@ pr_clear_value (DB_VALUE * value)
 	  if (value->data.json.document != NULL)
 	    {
 	      db_json_delete_doc (value->data.json.document);
+	      value->data.json.document = NULL;
+	    }
+	  if (value->data.json.schema_raw != NULL)
+	    {
+	      db_private_free (NULL, const_cast < char *>(value->data.json.schema_raw));
+	      value->data.json.schema_raw = NULL;
 	    }
 	}
       break;
@@ -17079,7 +17085,7 @@ error:
 }
 
 PR_TYPE tp_Json = {
-  "json", DB_TYPE_JSON, 1, sizeof (DB_JSON *), 0,
+  "json", DB_TYPE_JSON, 1, sizeof (DB_JSON), 0,
   4,
   help_fprint_value,
   help_sprint_value,
@@ -17109,10 +17115,14 @@ PR_TYPE *tp_Type_json = &tp_Json;
 static void
 mr_initmem_json (void *mem, TP_DOMAIN * domain)
 {
-  DB_JSON **json_mem;
+  DB_JSON *json = (DB_JSON *) mem;
 
-  json_mem = (DB_JSON **) mem;
-  *json_mem = NULL;
+  if (json != NULL)
+    {
+      json->document = NULL;
+      json->json_body = NULL;
+      json->schema_raw = NULL;
+    }
 }
 
 static int
@@ -17123,20 +17133,17 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
   char *raw_schema_body = NULL;
   JSON_DOC *doc_copy = NULL;
 
-  DB_JSON **mem, *cur, *_new;
+  DB_JSON *json;
 
-  mem = (DB_JSON **) memptr;
-  cur = *mem;
+  json = (DB_JSON *) memptr;
 
-  if (value == NULL || DB_GET_JSON_RAW_BODY (value) == NULL || DB_GET_JSON_DOCUMENT (value) == NULL)
+  if (json != NULL)
     {
-      if (cur != NULL)
-	{
-	  db_private_free_and_init (NULL, cur);
-	  mr_initmem_json (memptr, domain);
-	}
+      mr_freemem_json (memptr);
+      mr_initmem_json (memptr, domain);
     }
-  else
+
+  if (value != NULL && (DB_GET_JSON_RAW_BODY (value) != NULL) && (DB_GET_JSON_DOCUMENT (value) != NULL))
     {
       raw_json_body = (char *) db_private_strdup (NULL, DB_GET_JSON_RAW_BODY (value));
       if (raw_json_body == NULL)
@@ -17157,17 +17164,9 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
       doc_copy = db_json_get_copy_of_doc (DB_GET_JSON_DOCUMENT (value));
 
-      if (cur != NULL)
-	{
-	  db_private_free_and_init (NULL, cur);
-	}
-
-      _new = (DB_JSON *) db_private_alloc (NULL, sizeof (DB_JSON));
-      _new->schema_raw = raw_schema_body;
-      _new->json_body = raw_json_body;
-      _new->document = doc_copy;
-
-      *mem = _new;
+      json->schema_raw = raw_schema_body;
+      json->json_body = raw_json_body;
+      json->document = doc_copy;
     }
   return error;
 }
@@ -17175,17 +17174,17 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 static int
 mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
-  int error = NO_ERROR, json_raw_body_length, json_schema_length, error2;
+  int error = NO_ERROR;
   char *json_raw_body = NULL;
   const char *json_schema = NULL;
-  DB_JSON **mem, *cur;
+  DB_JSON *json;
   JSON_DOC *new_doc = NULL;
 
-  mem = (DB_JSON **) memptr;
-  cur = *mem;
+  json = (DB_JSON *) memptr;
 
-  if (cur == NULL)
+  if (json == NULL)
     {
+      DB_MAKE_NULL (value);
       db_value_domain_init (value, DB_TYPE_JSON, domain->precision, 0);
       value->need_clear = false;
       return NO_ERROR;
@@ -17194,22 +17193,22 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     {
       if (!copy)
 	{
-	  json_raw_body = cur->json_body;
+	  json_raw_body = json->json_body;
 	}
       else
 	{
-	  json_raw_body = (char *) db_private_strdup (NULL, cur->json_body);
+	  json_raw_body = (char *) db_private_strdup (NULL, json->json_body);
 	}
 
-      if (cur->schema_raw != NULL)
+      if (json->schema_raw != NULL)
 	{
 	  if (!copy)
 	    {
-	      json_schema = cur->schema_raw;
+	      json_schema = json->schema_raw;
 	    }
 	  else
 	    {
-	      json_schema = (char *) db_private_strdup (NULL, cur->schema_raw);
+	      json_schema = (char *) db_private_strdup (NULL, json->schema_raw);
 	    }
 	}
       else
@@ -17218,17 +17217,9 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	}
     }
 
-  new_doc = db_json_get_copy_of_doc (cur->document);
+  new_doc = db_json_get_copy_of_doc (json->document);
   db_make_json (value, json_raw_body, new_doc, true);
-
-  if (json_schema != NULL)
-    {
-      db_get_json_schema (value) = json_schema;
-    }
-  else
-    {
-      db_get_json_schema (value) = db_json_get_schema_raw_from_validator (domain->json_validator);
-    }
+  db_get_json_schema (value) = json_schema;
 
   return error;
 }
@@ -17237,7 +17228,7 @@ static int
 mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 {
   int len = 0;
-  DB_JSON **mem, *cur;
+  DB_JSON *json;
 
   if (!disk)
     {
@@ -17247,13 +17238,14 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
     {
       if (memptr != NULL)
 	{
-	  mem = (DB_JSON **) memptr;
-	  cur = *mem;
-
-	  if (cur != NULL)
+	  json = (DB_JSON *) memptr;
+	  if (json->json_body == NULL)
 	    {
-	      return strlen (cur->json_body) + 1 + (cur->schema_raw != NULL ? (strlen (cur->schema_raw) + 1) : 1);
+	      assert (json->document == NULL);
+	      return 0;
 	    }
+
+	  return (strlen (json->json_body) + 1) + (json->schema_raw != NULL ? (strlen (json->schema_raw) + 1) : 1);
 	}
     }
 
@@ -17264,40 +17256,33 @@ static void
 mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
   DB_VALUE json_body, schema_raw;
-  char *json_body_str, *schema_str;
-  DB_JSON **mem, *cur;
-  int json_body_length, schema_length;
+  char *json_body_str;
+  const char *schema_str;
+  DB_JSON *json;
 
-  mem = (DB_JSON **) memptr;
-  cur = *mem;
+  json = (DB_JSON *) memptr;
 
-  if (memptr == NULL || cur == NULL)
+  if (json == NULL)
     {
       return;
     }
 
-  json_body_str = (char *) db_private_strdup (NULL, cur->json_body);
+  db_make_string (&json_body, json->json_body);
 
-  db_make_string (&json_body, json_body_str);
-  json_body.need_clear = true;
-
-  if (cur->schema_raw != NULL)
+  if (json->schema_raw != NULL)
     {
-      schema_str = (char *) db_private_strdup (NULL, cur->schema_raw);
+      schema_str = json->schema_raw;
     }
   else
     {
-      schema_str = (char *) db_private_strdup (NULL, "");
+      schema_str = "";
     }
 
   db_make_string (&schema_raw, schema_str);
-  schema_raw.need_clear = true;
 
   (*(tp_String.data_writeval)) (buf, &json_body);
   (*(tp_String.data_writeval)) (buf, &schema_raw);
 
-  pr_clear_value (&json_body);
-  pr_clear_value (&schema_raw);
 }
 
 static void
@@ -17306,10 +17291,12 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
   int json_body_length, schema_length;
   DB_VALUE json_body, schema_raw;
   char *json_body_str = NULL, *schema_str = NULL;
-  DB_JSON **mem, *cur, *_new;
+  DB_JSON *json;
   int rc;
 
-  if (memptr == NULL)
+  json = (DB_JSON *) memptr;
+
+  if (json == NULL)
     {
       if (size)
 	{
@@ -17317,9 +17304,6 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 	}
       return;
     }
-
-  mem = (DB_JSON **) memptr;
-  cur = *mem;
 
   (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, false, NULL, 0);
   (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, false, NULL, 0);
@@ -17341,21 +17325,13 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       schema_str = DB_PULL_STRING (&schema_raw);
     }
 
-  if (cur != NULL)
-    {
-      mr_freemem_json (memptr);
-      db_private_free (NULL, cur);
-    }
-
-  _new = (DB_JSON *) db_private_alloc (NULL, sizeof (DB_JSON));
-  _new->json_body = (char *) db_private_strdup (NULL, json_body_str);
+  json->json_body = (char *) db_private_strdup (NULL, json_body_str);
   if (schema_str != NULL)
     {
-      _new->schema_raw = (char *) db_private_strdup (NULL, schema_str);
+      json->schema_raw = (char *) db_private_strdup (NULL, schema_str);
     }
 
-  rc = db_json_get_json_from_str (json_body_str, _new->document);
-  *mem = _new;
+  rc = db_json_get_json_from_str (json_body_str, json->document);
   assert (rc == NO_ERROR);
 
 exit:
@@ -17368,23 +17344,23 @@ mr_freemem_json (void *memptr)
 {
   DB_JSON *cur;
 
-  if (memptr != NULL)
+  cur = (DB_JSON *) memptr;
+
+  if (cur != NULL)
     {
-      cur = *(DB_JSON **) memptr;
-      if (cur != NULL)
+      if (cur->json_body != NULL)
 	{
-	  if (cur->json_body != NULL)
-	    {
-	      db_private_free_and_init (NULL, cur->json_body);
-	    }
-	  if (cur->schema_raw != NULL)
-	    {
-	      db_private_free (NULL, const_cast < char *>(cur->schema_raw));
-	    }
-	  if (cur->document != NULL)
-	    {
-	      db_json_delete_doc (cur->document);
-	    }
+	  db_private_free_and_init (NULL, cur->json_body);
+	}
+      if (cur->schema_raw != NULL)
+	{
+	  db_private_free (NULL, const_cast < char *>(cur->schema_raw));
+	  cur->schema_raw = NULL;
+	}
+      if (cur->document != NULL)
+	{
+	  db_json_delete_doc (cur->document);
+	  cur->document = NULL;
 	}
     }
 }
@@ -17546,7 +17522,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 
   if (DB_GET_STRING_SIZE (&schema_raw) > 0)
     {
-      value->data.json.schema_raw = db_private_strdup (NULL, DB_PULL_STRING (&schema_raw));
+      value->data.json.schema_raw = (char *) db_private_strdup (NULL, DB_PULL_STRING (&schema_raw));
     }
   else
     {
