@@ -19,6 +19,8 @@
 extern unsigned int db_on_server;
 #endif
 
+const char db_value_printer::DECIMAL_FORMAT[] = "%#.*g";
+
 namespace
 {
   //--------------------------------------------------------------------------------

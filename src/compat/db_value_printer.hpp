@@ -35,7 +35,7 @@ class db_value_printer
     string_buffer &m_buf;
     bool m_padding;
   public:
-    static constexpr char DECIMAL_FORMAT[] = "%#.*g";
+    static const char DECIMAL_FORMAT[];
 
     db_value_printer (string_buffer &buf, bool padding=false)
       : m_buf (buf)
