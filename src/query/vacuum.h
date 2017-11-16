@@ -152,6 +152,8 @@ struct vacuum_worker
 #if defined (SERVER_MODE)
   char *prefetch_log_buffer;	/* buffer for prefetching log pages */
 #endif				/* SERVER_MODE */
+
+  bool allocated_resources;
 };
 
 #define VACUUM_MAX_WORKER_COUNT	  50
@@ -284,10 +286,6 @@ extern int vacuum_boot (THREAD_ENTRY * thread_p);
 extern void vacuum_stop (void);
 extern int xvacuum (THREAD_ENTRY * thread_p);
 extern MVCCID vacuum_get_global_oldest_active_mvccid (void);
-#if defined (SERVER_MODE)
-extern void vacuum_master_start (THREAD_ENTRY * thread_p);
-extern void vacuum_start_new_job (THREAD_ENTRY * thread_p);
-#endif /* SERVER_MODE */
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
 extern int vacuum_data_load_and_recover (THREAD_ENTRY * thread_p);
