@@ -1024,6 +1024,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
       return error_code;
     }
 
+  vacuum_Workers_context_pool = new resource_shared_pool < VACUUM_WORKER > (vacuum_Workers, VACUUM_MAX_WORKER_COUNT);
+
   /* create worker pool */
 
 #if defined (SERVER_MODE)
@@ -1061,6 +1063,8 @@ vacuum_stop (void)
     {
       thread_manager->destroy_daemon (vacuum_Master_daemon);
     }
+
+  delete vacuum_Workers_context_pool;
 }
 
 #if defined(SERVER_MODE)
