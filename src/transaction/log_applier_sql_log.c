@@ -80,7 +80,6 @@ static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
 static int sl_read_catalog (void);
 static int sl_write_catalog (void);
-static void trim_single_quote (PARSER_VARCHAR * name);
 static int create_dir (const char *new_dir);
 
 
@@ -365,8 +364,14 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 	}
       sb1 ("ALTER SERIAL [");
 
-      /*serial_name = */ sl_print_att_value (sb1, "name", inst_tp->assignments, inst_tp->nassigns);
-      //trim_single_quote (serial_name);//bSolo: ToDo
+      sl_print_att_value (sb2, "name", inst_tp->assignments, inst_tp->nassigns);	//serial_name
+      if (sb2.len () > 1 && mb2.ptr[0] == '\'' && mb2.ptr[sb2.len () - 1] == '\'')
+	|			// trim_single_quote (serial_name);
+	{
+	  mb2.ptr[sb2.len () - 1] = '\0';
+	  sb1 ("%s", mb2.ptr + 1);
+	}
+      sb2.clear ();
 
       sb1 ("] START WITH %s;", numeric_db_value_print (&next_value, str_next_value));
     }
@@ -559,21 +564,6 @@ sl_open_next_file (FILE * old_fp)
     }
 
   return new_fp;
-}
-
-
-static void
-trim_single_quote (PARSER_VARCHAR * name)
-{
-  if (name->length == 0 || name->bytes[0] != '\'' || name->bytes[name->length - 1] != '\'')
-    {
-      return;
-    }
-
-  memmove (name->bytes, name->bytes + 1, name->length - 1);
-  name->length = name->length - 2;
-
-  return;
 }
 
 static int
