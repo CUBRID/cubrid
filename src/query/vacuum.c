@@ -686,6 +686,18 @@ cubthread::daemon *vacuum_Master_daemon = NULL;
 // worker thread pool
 cubthread::entry_workpool *vacuum_Worker_threads = NULL;
 
+void
+vacuum_init_thread_context (cubthread::entry & context, THREAD_TYPE type, VACUUM_WORKER * worker)
+{
+  assert (worker != NULL);
+
+  context.type = type;
+  context.vacuum_worker = worker;
+  context.tran_index = 0;
+  context.check_interrupt = false;
+  context.status = TS_RUN;
+}
+
 class vacuum_master_task : public cubthread::entry_task
 {
 public:
@@ -698,13 +710,7 @@ public:
   {
     cubthread::entry &context = cubthread::entry_task::create_context ();
 
-    context.vacuum_worker = &vacuum_Master;
-    assert (context.vacuum_worker != NULL);
-
-    context.type = TT_VACUUM_MASTER;
-    context.tran_index = 0;
-    // vacuum master cannot be interrupted
-    context.check_interrupt = false;
+    vacuum_init_thread_context (context, TT_VACUUM_MASTER, &vacuum_Master);
 
     return context;
   }
@@ -745,19 +751,12 @@ public:
   {
     cubthread::entry &context = cubthread::entry_task::create_context ();
 
-    context.vacuum_worker = vacuum_Workers_context_pool->claim ();
-    assert (context.vacuum_worker != NULL);
+    vacuum_init_thread_context (context, TT_VACUUM_WORKER, vacuum_Workers_context_pool->claim ());
 
     if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
       {
         assert (false);
       }
-
-    context.type = TT_VACUUM_WORKER;
-    context.tran_index = 0;
-
-    // vacuum master cannot be interrupted
-    context.check_interrupt = false;
 
     return context;
   }
