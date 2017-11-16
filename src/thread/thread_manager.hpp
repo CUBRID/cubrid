@@ -105,7 +105,7 @@ namespace cubthread
   };
 
   // TODO: gradually move functionality from thread.h here
-  int initialize (void);
+  int initialize (entry **my_entry);
   void finalize (void);
   manager *get_manager (void);
   std::size_t get_max_thread_count (void);

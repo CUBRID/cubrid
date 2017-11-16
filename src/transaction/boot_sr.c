@@ -2255,12 +2255,19 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
+#if defined (SERVER_MODE)
   /* reinitialize thread mgr to reflect # of active requests */
-  if (cubthread::initialize () != NO_ERROR)
+  assert (thread_p != NULL);
+  if (cubthread::initialize (NULL) != NO_ERROR)
+#else
+  assert (thread_p == NULL);
+  if (cubthread::initialize (&thread_p) != NO_ERROR)
+#endif
     {
       error_code = ER_FAILED;
       goto error;
     }
+
 #if defined (SERVER_MODE)
 #if defined(DIAG_DEVEL)
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);

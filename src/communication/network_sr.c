@@ -1294,7 +1294,7 @@ net_server_start (const char *server_name)
       goto end;
     }
 
-  if (cubthread::initialize () != NO_ERROR)
+  if (cubthread::initialize (NULL) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");
       status = -1;

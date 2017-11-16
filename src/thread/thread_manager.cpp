@@ -353,7 +353,7 @@ namespace cubthread
   static const size_t MAX_THREADS = Is_single_thread ? 1 : 128;
 
   int
-  initialize (void)
+  initialize (entry **my_entry)
   {
     std::size_t starting_index = 0;
     int error_code = NO_ERROR;
@@ -374,6 +374,10 @@ namespace cubthread
     if (Is_single_thread)
       {
 	Main_entry_p = Manager->claim_entry ();
+	if (my_entry != NULL)
+	  {
+	    *my_entry = Main_entry_p;
+	  }
       }
     return NO_ERROR;
   }
