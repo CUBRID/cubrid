@@ -72,7 +72,7 @@ void sl_print_insert_att_values (string_buffer& sb, OBJ_TEMPASSIGN ** assignment
 int sl_print_pk (string_buffer& sb, SM_CLASS * sm_class, DB_VALUE * key);
 void sl_print_midxkey (string_buffer& sb, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey);
 void sl_print_update_att_set (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, int num_assignments);
-void sl_print_att_value (string_buffer, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+void sl_print_att_value (string_buffer& sb, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 
 
