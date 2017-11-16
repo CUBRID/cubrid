@@ -3465,13 +3465,6 @@ vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worke
     }
 
 #if defined (SERVER_MODE)
-  /* Save worker to thread entry */
-  thread_p->vacuum_worker = worker;
-
-  vacuum_er_log (VACUUM_ER_LOG_WORKER,
-		 "Assigned vacuum_worker %p, index %d to thread %p, index %d.",
-		 worker, save_assigned_workers_count, thread_p, thread_p->index);
-
   if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_WORKERS && worker->prefetch_log_buffer == NULL)
     {
       size_worker_prefetch_log_buffer =
