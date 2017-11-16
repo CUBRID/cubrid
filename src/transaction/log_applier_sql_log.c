@@ -365,8 +365,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
       sb1 ("ALTER SERIAL [");
 
       sl_print_att_value (sb2, "name", inst_tp->assignments, inst_tp->nassigns);	//serial_name
-      if (sb2.len () > 1 && mb2.ptr[0] == '\'' && mb2.ptr[sb2.len () - 1] == '\'')
-	|			// trim_single_quote (serial_name);
+      if (sb2.len () > 1 && mb2.ptr[0] == '\'' && mb2.ptr[sb2.len () - 1] == '\'')	// trim_single_quote (serial_name);
 	{
 	  mb2.ptr[sb2.len () - 1] = '\0';
 	  sb1 ("%s", mb2.ptr + 1);
