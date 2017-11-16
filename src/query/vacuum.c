@@ -703,7 +703,7 @@ public:
 
     context.type = TT_VACUUM_MASTER;
     context.tran_index = 0;
-    // vacuum workers cannot be interrupted
+    // vacuum master cannot be interrupted
     context.check_interrupt = false;
 
     return context;
@@ -754,6 +754,10 @@ public:
       }
 
     context.type = TT_VACUUM_WORKER;
+    context.tran_index = 0;
+
+    // vacuum master cannot be interrupted
+    context.check_interrupt = false;
 
     return context;
   }
