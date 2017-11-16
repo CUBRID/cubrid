@@ -173,7 +173,7 @@ sl_init (const char *db_name, const char *repl_log_path)
   return NO_ERROR;
 }
 
-int sl_print_pk (string_buffer sb, SM_CLASS * sm_class, DB_VALUE * key)
+int sl_print_pk (string_buffer& sb, SM_CLASS * sm_class, DB_VALUE * key)
 {
   DB_MIDXKEY *midxkey;
   SM_ATTRIBUTE *pk_att;
@@ -293,15 +293,14 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
   mem::block_ext mb1; //bSolo: ToDo: what allocator to use?
   string_buffer sb1(mb1);
-  mem::block_ext mb2;//bSolo: ToDo: what allocator to use?
-  string_buffer sb2(mb2);
-
   sb1("INSERT INTO [%s](", sm_ch_name ((MOBJ) (inst_tp->class_)));
   sl_print_insert_att_names (sb1, inst_tp->assignments, inst_tp->nassigns);
   sb1(") VALUES (");
   sl_print_insert_att_values (sb1, inst_tp->assignments, inst_tp->nassigns);
   sb1(");");
 
+  mem::block_ext mb2;//bSolo: ToDo: what allocator to use?
+  string_buffer sb2(mb2);
   sb2("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) (inst_tp->class_)));
   if(sl_print_pk (sb2, inst_tp->class_, key) != NO_ERROR)
     {
