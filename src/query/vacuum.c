@@ -2691,25 +2691,18 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   int data_index;
   VACUUM_DATA_ENTRY *entry = NULL;
   MVCCID local_oldest_active_mvccid;
-#if defined (SERVER_MODE)
-  VACUUM_JOB_ENTRY vacuum_job_entry;
-  int n_wakeup_workers;
-  int n_available_workers;
-  int n_jobs;
-  UINT64 vacuum_block_data_buffer_aprox_size;
-  UINT64 vacuum_finished_jobs_queue_aprox_size;
-#else	/* !SERVER_MODE */		   /* SA_MODE */
+  BLOCK_LOG_BUFFER log_buffer;
+  VACUUM_DATA_PAGE *data_page = NULL;
+  VPID next_vpid;
+  PERF_UTIME_TRACKER perf_tracker;
+
+#if defined (SA_MODE)
   VACUUM_DATA_ENTRY vacuum_data_entry;
   bool save_check_interrupt;
   bool dummy_continue_check_interrupt;
 #endif /* SA_MODE */
-  BLOCK_LOG_BUFFER log_buffer;
 
-  VACUUM_DATA_PAGE *data_page = NULL;
-  VPID next_vpid;
   int error_code = NO_ERROR;
-
-  PERF_UTIME_TRACKER perf_tracker;
 
 #if defined (SA_MODE)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_START, 0);
@@ -2982,7 +2975,7 @@ restart:
 
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 
-      vacuum_push_task (*thread_p, vacuum_data_entry, log_buffer, true);
+      vacuum_push_task (thread_p, vacuum_data_entry, log_buffer, true);
 
       PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
       (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
@@ -7002,7 +6995,6 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
 }
 #endif /* !NDEBUG */
 
-#if defined(SERVER_MODE)
 /*
  * vacuum_log_prefetch_vacuum_block () - Pre-fetches from log page buffer or from disk, (almost) all log pages
  *					 required by a vacuum block
