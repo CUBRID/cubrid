@@ -265,7 +265,6 @@ namespace cubthread
   entry *
   manager::claim_entry (void)
   {
-    check_not_single_thread ();
     tl_Entry_p = m_entry_dispatcher->claim ();
 
     // for backward compatibility
@@ -277,7 +276,6 @@ namespace cubthread
   void
   manager::retire_entry (entry &entry_p)
   {
-    check_not_single_thread ();
     assert (tl_Entry_p == &entry_p);
 
     // for backward compatibility
