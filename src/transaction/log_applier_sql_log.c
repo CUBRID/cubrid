@@ -302,12 +302,12 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   sl_print_insert_att_values (sb1, inst_tp->assignments, inst_tp->nassigns);
   sb1(");");
 
-  sb("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) (inst_tp->class_)));
+  sb2("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) (inst_tp->class_)));
   if(sl_print_pk (sb2, inst_tp->class_, key) != NO_ERROR)
     {
       return ER_FAILED;
     }
-  sb(";");
+  sb2(";");
 
   if (sl_write_sql (sb1, sb2) != NO_ERROR)
     {
