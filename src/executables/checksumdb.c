@@ -1164,8 +1164,8 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_
   col_cnt = pk_col_cnt;
 
   mem::block_ext mem_block;
-  string_buffer sb(mem_block);
-  db_value_printer printer(sb);
+  string_buffer sb (mem_block);
+  db_value_printer printer (sb);
   while (col_cnt > 0)
     {
       if (col_cnt < pk_col_cnt)
@@ -1197,8 +1197,8 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_
 	      buffer = pt_append_nulstring (parser, buffer, "=");
 	    }
 
-          sb.clear();
-          printer.describe_value(&values[i]);
+	  sb.clear ();
+	  printer.describe_value (&values[i]);
 	  buffer = pt_append_nulstring (parser, buffer, mem_block.ptr);
 	}
 
