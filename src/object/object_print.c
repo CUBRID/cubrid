@@ -270,7 +270,7 @@ help_fprint_obj (FILE * fp, MOP obj)
       if (status)
 	{
 	  trigger_description tinfo;
-	  if (tinfo.init(obj) == NO_ERROR)
+	  if (tinfo.init (obj) == NO_ERROR)
 	    {
 	      fprintf (fp, "Trigger : %s", tinfo.name);
 	      if (tinfo.status)
@@ -666,10 +666,10 @@ help_print_info (const char *command, FILE * fpp)
 	{
 	  //help_print_trigger (buffer, fpp);
 	  trigger_description td;
-          if(td.init(buffer) == NO_ERROR)
-            {
+	  if (td.init (buffer) == NO_ERROR)
+	    {
 	      td.fprint (fpp);
-            }
+	    }
 	}
     }
   else if (MATCH_TOKEN (buffer, "deferred"))
@@ -735,15 +735,18 @@ help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
   {
     [&private_allocator] (mem::block & block, size_t len)
     {
-      mem::block b{block.dim + len, private_allocator.allocate (block.dim + len)};
+      mem::block b
+      {
+      block.dim + len, private_allocator.allocate (block.dim + len)};
       memcpy (b.ptr, block.ptr, block.dim);
       private_allocator.deallocate (block.ptr);
-      block = std::move(b);
-    },
-    [&private_allocator](mem::block& block)
+      block = std::move (b);
+    },[&private_allocator] (mem::block & block)
     {
       private_allocator.deallocate (block.ptr);
-      block = {};
+      block =
+      {
+      };
     }
   };
   string_buffer sb (mem_block);

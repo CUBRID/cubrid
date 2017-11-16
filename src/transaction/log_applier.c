@@ -4658,8 +4658,8 @@ la_flush_repl_items (bool immediate)
   char pkey_str[256];
   char buf[LINE_MAX];
 
-  mem::block_ext mem_block; //bSolo: ToDo: what allocator to use here?
-  string_buffer sb(mem_block);
+  mem::block_ext mem_block;	//bSolo: ToDo: what allocator to use here?
+  string_buffer sb (mem_block);
 
   if (la_Info.num_unflushed == 0)
     {
@@ -4691,9 +4691,9 @@ la_flush_repl_items (bool immediate)
 		  server_err_msg = flush_err->error_msg;
 		}
 
-              sb.clear();
-              help_sprint_value (&flush_err->pkey_value, sb);
-              snprintf(pkey_str, sizeof(pkey_str)-1, sb.get_buffer());
+	      sb.clear ();
+	      help_sprint_value (&flush_err->pkey_value, sb);
+	      snprintf (pkey_str, sizeof (pkey_str) - 1, sb.get_buffer ());
 
 	      if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
 		{
@@ -4855,8 +4855,8 @@ la_apply_delete_log (LA_ITEM * item)
   char buf[256];
   char sql_log_err[LINE_MAX];
 
-  mem::block_ext mem_block; //bSolo: ToDo: what allocator to use here?
-  string_buffer sb(mem_block);
+  mem::block_ext mem_block;	//bSolo: ToDo: what allocator to use here?
+  string_buffer sb (mem_block);
 
   int error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -4880,10 +4880,10 @@ la_apply_delete_log (LA_ITEM * item)
 	{
 	  if (sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item)) != NO_ERROR)
 	    {
-              sb.clear();
+	      sb.clear ();
 	      help_sprint_value (&item->key, sb);
 	      snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s",
-			item->class_name, sb.get_buffer());
+			item->class_name, sb.get_buffer ());
 
 	      er_stack_push ();
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
@@ -4901,15 +4901,15 @@ la_apply_delete_log (LA_ITEM * item)
 
   if (error != NO_ERROR)
     {
-      sb.clear();
+      sb.clear ();
       help_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_delete : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer());
+		    item->class_name, sb.get_buffer ());
 #endif
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_DELETE, 4, item->class_name, sb.get_buffer(), error,
-	      "internal client error.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_DELETE, 4, item->class_name, sb.get_buffer (),
+	      error, "internal client error.");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -4943,8 +4943,8 @@ la_apply_update_log (LA_ITEM * item)
   DB_OTMPL *inst_tp = NULL;
   char sql_log_err[LINE_MAX];
 
-  mem::block_ext mem_block; //bSolo: ToDo: what allocator to use here?
-  string_buffer sb(mem_block);
+  mem::block_ext mem_block;	//bSolo: ToDo: what allocator to use here?
+  string_buffer sb (mem_block);
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5051,10 +5051,10 @@ la_apply_update_log (LA_ITEM * item)
 
       if (sql_logging_failed == true)
 	{
-          sb.clear();
+	  sb.clear ();
 	  help_sprint_value (la_get_item_pk_value (item), sb);
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
-		    sb.get_buffer());
+		    sb.get_buffer ());
 
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
@@ -5065,15 +5065,15 @@ la_apply_update_log (LA_ITEM * item)
 end:
   if (error != NO_ERROR)
     {
-      sb.clear();
+      sb.clear ();
       help_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_update : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer());
+		    item->class_name, sb.get_buffer ());
 #endif
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_UPDATE, 4, item->class_name, sb.get_buffer(), error,
-	      "internal client error.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_UPDATE, 4, item->class_name, sb.get_buffer (),
+	      error, "internal client error.");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -5128,8 +5128,8 @@ la_apply_insert_log (LA_ITEM * item)
   DB_OTMPL *inst_tp = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
 
-  mem::block_ext mem_block; //bSolo: ToDo: what allocator to use here?
-  string_buffer sb(mem_block);
+  mem::block_ext mem_block;	//bSolo: ToDo: what allocator to use here?
+  string_buffer sb (mem_block);
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5235,10 +5235,10 @@ la_apply_insert_log (LA_ITEM * item)
 
       if (sql_logging_failed == true)
 	{
-          sb.clear();
+	  sb.clear ();
 	  help_sprint_value (la_get_item_pk_value (item), sb);
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
-		    sb.get_buffer());
+		    sb.get_buffer ());
 
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
@@ -5249,15 +5249,15 @@ la_apply_insert_log (LA_ITEM * item)
 end:
   if (error != NO_ERROR)
     {
-      sb.clear();
+      sb.clear ();
       help_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_insert : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer());
+		    item->class_name, sb.get_buffer ());
 #endif
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_INSERT, 4, item->class_name, sb.get_buffer(), error,
-	      "internal client error.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_INSERT, 4, item->class_name, sb.get_buffer (),
+	      error, "internal client error.");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -5645,8 +5645,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
   error = la_lock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, la_Info.log_path);
   assert_release (error == NO_ERROR);
 
-  mem::block_ext mem_block; //bSolo: ToDo: what allocator to use here?
-  string_buffer sb(mem_block);
+  mem::block_ext mem_block;	//bSolo: ToDo: what allocator to use here?
+  string_buffer sb (mem_block);
 
   item = apply->head;
   while (item)
@@ -5716,9 +5716,9 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	      assert (er_errid () != NO_ERROR);
 	      errid = er_errid ();
 
-              sb.clear();
+	      sb.clear ();
 	      help_sprint_value (la_get_item_pk_value (item), sb);
-	      sprintf (error_string, "[%s,%s] %s", item->class_name, sb.get_buffer(), db_error_string (1));
+	      sprintf (error_string, "[%s,%s] %s", item->class_name, sb.get_buffer (), db_error_string (1));
 	      er_log_debug (ARG_FILE_LINE, "Internal system failure: %s", error_string);
 
 	      if (errid == ER_NET_CANT_CONNECT_SERVER || errid == ER_OBJ_NO_CONNECT)

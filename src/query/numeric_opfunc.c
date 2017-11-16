@@ -3852,7 +3852,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
     }
 
   /* Retrieve raw decimal string */
-  numeric_coerce_num_to_dec_str ((DB_PULL_NUMERIC ((DB_VALUE*)val)), temp);
+  numeric_coerce_num_to_dec_str ((DB_PULL_NUMERIC ((DB_VALUE *) val)), temp);
 
   /* Remove the extra padded zeroes and add the decimal point */
   nbuf = 0;

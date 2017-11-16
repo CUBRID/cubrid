@@ -10419,15 +10419,16 @@ pr_valstring (thread_entry * threade, DB_VALUE * val)
   mem::block_ext mem_block
   {
     [&threade] (mem::block & block, size_t len)
+    {
+      block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
+      block.dim += len;
+    },[&threade] (mem::block & block)
+    {
+      db_private_free (threade, block.ptr);
+      block =
       {
-        block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
-        block.dim += len;
-      },
-    [&threade] (mem::block & block)
-      {
-        db_private_free (threade, block.ptr);
-        block = {};
-      }
+      };
+    }
   };
   string_buffer sb (mem_block);
 
@@ -10454,7 +10455,7 @@ pr_valstring (thread_entry * threade, DB_VALUE * val)
     }
 
   (*(pr_type->sptrfunc)) (val, sb);
-  return mem_block.move_ptr(); //caller should use db_private_free() to deallocate it
+  return mem_block.move_ptr ();	//caller should use db_private_free() to deallocate it
 }
 #endif //defined (SERVER_MODE) || defined (SA_MODE)
 

@@ -2522,15 +2522,18 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   unsigned int save_custom = parser->custom_print;
   mem::block_ext mem_block
   {
-    [&parser](mem::block &block, size_t len)
+    [&parser] (mem::block & block, size_t len)
+    {
+      size_t dim = block.dim ? block.dim : 1;
+      for (; dim < block.dim + len; dim *= 2);	//calc next power of 2 >= b.dim
+      mem::block b
       {
-        size_t dim = block.dim ? block.dim : 1;
-        for (; dim < block.dim+len; dim*=2); //calc next power of 2 >= b.dim
-        mem::block b{dim, (char*)parser_alloc (parser, block.dim + len)};
-        memcpy (b.ptr, block.ptr, block.dim);
-        block = std::move (b);
-      },
-    [](mem::block &block){} //no need to deallocate for parser_context
+      dim, (char *) parser_alloc (parser, block.dim + len)};
+      memcpy (b.ptr, block.ptr, block.dim);
+      block = std::move (b);
+    },[](mem::block & block)
+    {
+    }				//no need to deallocate for parser_context
   };
   string_buffer sb (mem_block);
   db_value_printer printer (sb);

@@ -9036,20 +9036,23 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 
   mem::block_ext mem_block
   {
-    [&parser](mem::block &block, size_t len)
+    [&parser] (mem::block & block, size_t len)
+    {
+      size_t dim = block.dim ? block.dim : 1;
+      for (; dim < block.dim + len; dim *= 2);	//calc next power of 2 >= b.dim
+      mem::block b
       {
-        size_t dim = block.dim ? block.dim : 1;
-        for (; dim < block.dim+len; dim*=2); //calc next power of 2 >= b.dim
-        mem::block b{dim, (char*)parser_alloc (parser, block.dim + len)};
-        memcpy (b.ptr, block.ptr, block.dim);
-        block = std::move (b);
-      },
-    [](mem::block &block){} //no need to deallocate for parser_context
+      dim, (char *) parser_alloc (parser, block.dim + len)};
+      memcpy (b.ptr, block.ptr, block.dim);
+      block = std::move (b);
+    },[](mem::block & block)
+    {
+    }				//no need to deallocate for parser_context
   };
-  string_buffer sb (mem_block);	
+  string_buffer sb (mem_block);
   object_printer obj_print (sb);
   obj_print.describe_class (class_op);
-  return mem_block.move_ptr();
+  return mem_block.move_ptr ();
 }
 
 /*

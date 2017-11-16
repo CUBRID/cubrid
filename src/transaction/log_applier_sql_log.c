@@ -66,13 +66,13 @@ static FILE *catalog_fp;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
 
-int sl_write_sql (string_buffer& query, string_buffer* select);
-void sl_print_insert_att_names (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, int num_assignments);
-void sl_print_insert_att_values (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, int num_assignments);
-int sl_print_pk (string_buffer& sb, SM_CLASS * sm_class, DB_VALUE * key);
-void sl_print_midxkey (string_buffer& sb, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey);
-void sl_print_update_att_set (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, int num_assignments);
-void sl_print_att_value (string_buffer& sb, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+int sl_write_sql (string_buffer & query, string_buffer * select);
+void sl_print_insert_att_names (string_buffer & sb, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+void sl_print_insert_att_values (string_buffer & sb, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+int sl_print_pk (string_buffer & sb, SM_CLASS * sm_class, DB_VALUE * key);
+void sl_print_midxkey (string_buffer & sb, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey);
+void sl_print_update_att_set (string_buffer & sb, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+void sl_print_att_value (string_buffer & sb, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 
 
@@ -173,7 +173,8 @@ sl_init (const char *db_name, const char *repl_log_path)
   return NO_ERROR;
 }
 
-int sl_print_pk (string_buffer& sb, SM_CLASS * sm_class, DB_VALUE * key)
+int
+sl_print_pk (string_buffer & sb, SM_CLASS * sm_class, DB_VALUE * key)
 {
   DB_MIDXKEY *midxkey;
   SM_ATTRIBUTE *pk_att;
@@ -191,29 +192,31 @@ int sl_print_pk (string_buffer& sb, SM_CLASS * sm_class, DB_VALUE * key)
   else
     {
       pk_att = pk_cons->attributes[0];
-      sb("\"%s\"=", pk_att->header.name);
-      db_value_printer printer(sb);
+      sb ("\"%s\"=", pk_att->header.name);
+      db_value_printer printer (sb);
       printer.describe_value (key);
     }
   return NO_ERROR;
 }
 
-void sl_print_insert_att_names (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+void
+sl_print_insert_att_names (string_buffer & sb, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
-  if(num_assignments > 0)
+  if (num_assignments > 0)
     {
-      sb("\"%s\"", assignments[0]->att->header.name);
+      sb ("\"%s\"", assignments[0]->att->header.name);
     }
   for (int i = 1; i < num_assignments; i++)
     {
-      sb(", \"%s\"", assignments[i]->att->header.name);
+      sb (", \"%s\"", assignments[i]->att->header.name);
     }
 }
 
-void sl_print_insert_att_values (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+void
+sl_print_insert_att_values (string_buffer & sb, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
-  db_value_printer printer(sb);
-  if(num_assignments > 0)
+  db_value_printer printer (sb);
+  if (num_assignments > 0)
     {
       printer.describe_value (assignments[0]->variable);
     }
@@ -229,7 +232,8 @@ void sl_print_insert_att_values (string_buffer& sb, OBJ_TEMPASSIGN ** assignment
  *   *      print midxkey in the following format.
  *    *      key1=value1 AND key2=value2 AND ...
  *     */
-void sl_print_midxkey (string_buffer& sb, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey)
+void
+sl_print_midxkey (string_buffer & sb, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey)
 {
   int prev_i_index = 0;
   char *prev_i_ptr = NULL;
@@ -239,16 +243,17 @@ void sl_print_midxkey (string_buffer& sb, SM_ATTRIBUTE ** attributes, const DB_M
     {
       if (i > 0)
 	{
-	  sb(" AND ");
+	  sb (" AND ");
 	}
       pr_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index, &prev_i_ptr);
-      sb("\"%s\"=", attributes[i]->header.name);
-      db_value_printer printer(sb);
+      sb ("\"%s\"=", attributes[i]->header.name);
+      db_value_printer printer (sb);
       printer.describe_value (&value);
     }
 }
 
-DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+DB_VALUE *
+sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
   for (int i = 0; i < num_assignments; i++)
     {
@@ -260,26 +265,28 @@ DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments
   return NULL;
 }
 
-void sl_print_att_value (string_buffer& sb, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+void
+sl_print_att_value (string_buffer & sb, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
   DB_VALUE *val = sl_find_att_value (att_name, assignments, num_assignments);
   if (val != NULL)
     {
-      db_value_printer printer(sb);
+      db_value_printer printer (sb);
       printer.describe_value (val);
     }
 }
 
-void sl_print_update_att_set (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+void
+sl_print_update_att_set (string_buffer & sb, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
-  db_value_printer printer(sb);
+  db_value_printer printer (sb);
   for (int i = 0; i < num_assignments; i++)
     {
-      sb("\"%s\"=", assignments[i]->att->header.name);
+      sb ("\"%s\"=", assignments[i]->att->header.name);
       printer.describe_value (assignments[i]->variable);
       if (i != num_assignments - 1)
 	{
-	  sb(", ");
+	  sb (", ");
 	}
     }
 }
@@ -287,22 +294,22 @@ void sl_print_update_att_set (string_buffer& sb, OBJ_TEMPASSIGN ** assignments, 
 int
 sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
-  mem::block_ext mb1; //bSolo: ToDo: what allocator to use?
-  string_buffer sb1(mb1);
-  sb1("INSERT INTO [%s](", sm_ch_name ((MOBJ) (inst_tp->class_)));
+  mem::block_ext mb1;		//bSolo: ToDo: what allocator to use?
+  string_buffer sb1 (mb1);
+  sb1 ("INSERT INTO [%s](", sm_ch_name ((MOBJ) (inst_tp->class_)));
   sl_print_insert_att_names (sb1, inst_tp->assignments, inst_tp->nassigns);
-  sb1(") VALUES (");
+  sb1 (") VALUES (");
   sl_print_insert_att_values (sb1, inst_tp->assignments, inst_tp->nassigns);
-  sb1(");");
+  sb1 (");");
 
-  mem::block_ext mb2;//bSolo: ToDo: what allocator to use?
-  string_buffer sb2(mb2);
-  sb2("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) (inst_tp->class_)));
-  if(sl_print_pk (sb2, inst_tp->class_, key) != NO_ERROR)
+  mem::block_ext mb2;		//bSolo: ToDo: what allocator to use?
+  string_buffer sb2 (mb2);
+  sb2 ("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) (inst_tp->class_)));
+  if (sl_print_pk (sb2, inst_tp->class_, key) != NO_ERROR)
     {
       return ER_FAILED;
     }
-  sb2(";");
+  sb2 (";");
 
   if (sl_write_sql (sb1, &sb2) != NO_ERROR)
     {
@@ -314,10 +321,10 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 int
 sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
-  mem::block_ext mb1; //bSolo: ToDo: what allocator to use?
-  string_buffer sb1(mb1);
-  mem::block_ext mb2; //bSolo: ToDo: what allocator to use?
-  string_buffer sb2(mb2);
+  mem::block_ext mb1;		//bSolo: ToDo: what allocator to use?
+  string_buffer sb1 (mb1);
+  mem::block_ext mb2;		//bSolo: ToDo: what allocator to use?
+  string_buffer sb2 (mb2);
 
   char str_next_value[NUMERIC_MAX_STRING_SIZE];
   int result;
@@ -325,21 +332,21 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial") != 0)
     {
       /* ordinary tables */
-      sb1("UPDATE [%s] SET ", sm_ch_name ((MOBJ) (inst_tp->class_)));
+      sb1 ("UPDATE [%s] SET ", sm_ch_name ((MOBJ) (inst_tp->class_)));
       sl_print_update_att_set (sb1, inst_tp->assignments, inst_tp->nassigns);
-      sb1(" WHERE ");
-      if(sl_print_pk (sb1, inst_tp->class_, key) != NO_ERROR)
-        {
+      sb1 (" WHERE ");
+      if (sl_print_pk (sb1, inst_tp->class_, key) != NO_ERROR)
+	{
 	  return ER_FAILED;
-        }
-      sb1(";");
+	}
+      sb1 (";");
 
-      sb2("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) (inst_tp->class_)));
-      if(sl_print_pk (sb2, inst_tp->class_, key) != NO_ERROR)
-        {
+      sb2 ("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) (inst_tp->class_)));
+      if (sl_print_pk (sb2, inst_tp->class_, key) != NO_ERROR)
+	{
 	  return ER_FAILED;
-        }
-      sb2(";");
+	}
+      sb2 (";");
     }
   else
     {
@@ -356,36 +363,37 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 	{
 	  return ER_FAILED;
 	}
-      sb1("ALTER SERIAL [");
+      sb1 ("ALTER SERIAL [");
 
-      /*serial_name = */sl_print_att_value (sb1, "name", inst_tp->assignments, inst_tp->nassigns);
+      /*serial_name = */ sl_print_att_value (sb1, "name", inst_tp->assignments, inst_tp->nassigns);
       //trim_single_quote (serial_name);//bSolo: ToDo
 
-      sb1("] START WITH %s;", numeric_db_value_print (&next_value, str_next_value));
+      sb1 ("] START WITH %s;", numeric_db_value_print (&next_value, str_next_value));
     }
 
   return sl_write_sql (sb1, &sb2);
 }
 
-int sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
+int
+sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 {
-  mem::block_ext mb1; //bSolo: ToDo: what allocator to use?
-  string_buffer sb1(mb1);
-  sb1("DELETE FROM [%s] WHERE ", class_name);
+  mem::block_ext mb1;		//bSolo: ToDo: what allocator to use?
+  string_buffer sb1 (mb1);
+  sb1 ("DELETE FROM [%s] WHERE ", class_name);
   if (sl_print_pk (sb1, (SM_CLASS *) mclass, key) != NO_ERROR)
     {
       return ER_FAILED;
     }
-  sb1(";");
+  sb1 (";");
 
-  mem::block_ext mb2; //bSolo: ToDo: what allocator to use?
-  string_buffer sb2(mb2);
-  sb2("SELECT * FROM [%s] WHERE ", class_name);
+  mem::block_ext mb2;		//bSolo: ToDo: what allocator to use?
+  string_buffer sb2 (mb2);
+  sb2 ("SELECT * FROM [%s] WHERE ", class_name);
   if (sl_print_pk (sb2, (SM_CLASS *) mclass, key) != NO_ERROR)
     {
       return ER_FAILED;
     }
-  sb2(";");
+  sb2 (";");
 
   return sl_write_sql (sb1, &sb2);
 }
@@ -397,15 +405,15 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
   char default_ha_prm[LINE_MAX];
   SYSPRM_ERR rc;
 
-  mem::block_ext mb1; //bSolo: ToDo: what allocator to use here?
-  string_buffer sb(mb1);
-  sb("%s;", stmt_text);
+  mem::block_ext mb1;		//bSolo: ToDo: what allocator to use here?
+  string_buffer sb (mb1);
+  sb ("%s;", stmt_text);
 
   if (ha_sys_prm != NULL)
     {
-      mem::block_ext mb_param; //bSolo: ToDo: what allocator to use?
-      string_buffer sb_param(mb_param);
-      sb_param("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_START, ha_sys_prm); //set param
+      mem::block_ext mb_param;	//bSolo: ToDo: what allocator to use?
+      string_buffer sb_param (mb_param);
+      sb_param ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_START, ha_sys_prm);	//set param
       rc = sysprm_make_default_values (ha_sys_prm, default_ha_prm, sizeof (default_ha_prm));
       if (rc != PRM_ERR_NO_ERROR)
 	{
@@ -415,8 +423,8 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
 	{
 	  return ER_FAILED;
 	}
-      sb_param.clear();
-      sb_param("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_END, default_ha_prm); //restore param
+      sb_param.clear ();
+      sb_param ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_END, default_ha_prm);	//restore param
       if (sl_write_sql (sb, NULL) != NO_ERROR)
 	{
 	  sl_write_sql (sb_param, NULL);
@@ -439,8 +447,8 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
     {
       if (db_user != NULL && strlen (db_user) > 0)
 	{
-          sb.clear();
-	  sb("GRANT ALL PRIVILEGES ON %s TO %s;", class_name, db_user);
+	  sb.clear ();
+	  sb ("GRANT ALL PRIVILEGES ON %s TO %s;", class_name, db_user);
 	  if (sl_write_sql (sb, NULL) != NO_ERROR)
 	    {
 	      return ER_FAILED;
@@ -451,12 +459,13 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
   return NO_ERROR;
 }
 
-int sl_write_sql (string_buffer& query, string_buffer* select)
+int
+sl_write_sql (string_buffer & query, string_buffer * select)
 {
   time_t curr_time;
   char time_buf[20];
 
-  assert (query.get_buffer() != NULL);
+  assert (query.get_buffer () != NULL);
 
   if (log_fp == NULL)
     {
@@ -471,19 +480,19 @@ int sl_write_sql (string_buffer& query, string_buffer* select)
 
   /* -- datetime | sql_id | is_ddl | select length | query length */
   fprintf (log_fp, "-- %s | %u | %zu | %zu\n", time_buf, ++sl_Info.last_inserted_sql_id,
-	   (select == NULL) ? 0 : select->len(), query.len());
+	   (select == NULL) ? 0 : select->len (), query.len ());
 
   /* print select for verifying data consistency */
   if (select != NULL)
     {
       /* -- select_length select * from tbl_name */
       fprintf (log_fp, "-- ");
-      fwrite (select->get_buffer(), sizeof (char), select->len(), log_fp);
+      fwrite (select->get_buffer (), sizeof (char), select->len (), log_fp);
       fputc ('\n', log_fp);
     }
 
   /* print SQL query */
-  fwrite (query.get_buffer(), sizeof (char), query.len(), log_fp);
+  fwrite (query.get_buffer (), sizeof (char), query.len (), log_fp);
   fputc ('\n', log_fp);
 
   fflush (log_fp);
