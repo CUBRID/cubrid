@@ -294,7 +294,7 @@ sl_print_update_att_set (string_buffer & sb, OBJ_TEMPASSIGN ** assignments, int 
 int
 sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
-  mem::block_ext mb1;		//bSolo: ToDo: what allocator to use?
+  mem::block_ext mb1;
   string_buffer sb1 (mb1);
   sb1 ("INSERT INTO [%s](", sm_ch_name ((MOBJ) (inst_tp->class_)));
   sl_print_insert_att_names (sb1, inst_tp->assignments, inst_tp->nassigns);
@@ -302,7 +302,7 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   sl_print_insert_att_values (sb1, inst_tp->assignments, inst_tp->nassigns);
   sb1 (");");
 
-  mem::block_ext mb2;		//bSolo: ToDo: what allocator to use?
+  mem::block_ext mb2;
   string_buffer sb2 (mb2);
   sb2 ("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) (inst_tp->class_)));
   if (sl_print_pk (sb2, inst_tp->class_, key) != NO_ERROR)
@@ -321,9 +321,9 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 int
 sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
-  mem::block_ext mb1;		//bSolo: ToDo: what allocator to use?
+  mem::block_ext mb1;
   string_buffer sb1 (mb1);
-  mem::block_ext mb2;		//bSolo: ToDo: what allocator to use?
+  mem::block_ext mb2;
   string_buffer sb2 (mb2);
 
   char str_next_value[NUMERIC_MAX_STRING_SIZE];
@@ -377,7 +377,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 int
 sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 {
-  mem::block_ext mb1;		//bSolo: ToDo: what allocator to use?
+  mem::block_ext mb1;
   string_buffer sb1 (mb1);
   sb1 ("DELETE FROM [%s] WHERE ", class_name);
   if (sl_print_pk (sb1, (SM_CLASS *) mclass, key) != NO_ERROR)
@@ -386,7 +386,7 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
     }
   sb1 (";");
 
-  mem::block_ext mb2;		//bSolo: ToDo: what allocator to use?
+  mem::block_ext mb2;
   string_buffer sb2 (mb2);
   sb2 ("SELECT * FROM [%s] WHERE ", class_name);
   if (sl_print_pk (sb2, (SM_CLASS *) mclass, key) != NO_ERROR)
@@ -405,13 +405,13 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
   char default_ha_prm[LINE_MAX];
   SYSPRM_ERR rc;
 
-  mem::block_ext mb1;		//bSolo: ToDo: what allocator to use here?
+  mem::block_ext mb1;
   string_buffer sb (mb1);
   sb ("%s;", stmt_text);
 
   if (ha_sys_prm != NULL)
     {
-      mem::block_ext mb_param;	//bSolo: ToDo: what allocator to use?
+      mem::block_ext mb_param;
       string_buffer sb_param (mb_param);
       sb_param ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_START, ha_sys_prm);	//set param
       rc = sysprm_make_default_values (ha_sys_prm, default_ha_prm, sizeof (default_ha_prm));
