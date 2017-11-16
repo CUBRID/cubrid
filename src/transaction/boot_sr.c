@@ -2255,6 +2255,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
+  // TODO: remove the ridiculous double initialization
 #if defined (SERVER_MODE)
   /* reinitialize thread mgr to reflect # of active requests */
   assert (thread_p != NULL);
@@ -2267,6 +2268,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = ER_FAILED;
       goto error;
     }
+
+#if defined (SERVER_MODE)
+  // make sure we have the right thread_p
+  thread_p = thread_get_thread_entry_info ();
+#endif // SERVER_MODE
 
 #if defined (SERVER_MODE)
 #if defined(DIAG_DEVEL)

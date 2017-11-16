@@ -560,9 +560,11 @@ thread_initialize_manager (size_t & total_thread_count)
     }
   else
     {
+      /* *INDENT-OFF* */
       /* destroy mutex and cond */
-      delete[]thread_Manager.thread_array;
+      delete [] thread_Manager.thread_array;
       thread_Manager.thread_array = NULL;
+      /* *INDENT-ON* */
 
       /* Why are entries initialized twice? */
     }
