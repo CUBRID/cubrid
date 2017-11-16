@@ -292,7 +292,8 @@ namespace cubthread
   manager::get_entry (void)
   {
     // shouldn't be called
-    er_print_callstack (ARG_FILE_LINE, "warning: manager::get_entry is called");
+    // todo: add thread_p to error manager; or something
+    // er_print_callstack (ARG_FILE_LINE, "warning: manager::get_entry is called");
     // todo
     return *tl_Entry_p;
   }
