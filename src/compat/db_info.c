@@ -26,33 +26,33 @@
 
 #include "config.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <ctype.h>
-#include <assert.h>
-
+#include "authenticate.h"
 #include "boot_cl.h"
 #include "class_object.h"
 #include "db.h"
-#include "mem_block.hpp"
-#include "object_print.h"
-#include "object_printer.hpp"
-#include "server_interface.h"
-#include "string_buffer.hpp"
-#include "locator_cl.h"
-#include "object_accessor.h"
-#include "schema_manager.h"
-#include "schema_template.h"
-#include "storage_common.h"
-#include "system_parameter.h"
-#include "set_object.h"
-#include "virtual_object.h"
-#include "parser.h"
-#include "authenticate.h"
-#include "network_interface_cl.h"
 #include "dbdef.h"
 #include "dbtype.h"
+#include "locator_cl.h"
+#include "mem_block.hpp"
+#include "network_interface_cl.h"
+#include "object_accessor.h"
+#include "object_print.h"
+#include "object_printer.hpp"
+#include "parser.h"
+#include "schema_manager.h"
+#include "schema_template.h"
+#include "server_interface.h"
+#include "set_object.h"
+#include "storage_common.h"
+#include "string_buffer.hpp"
+#include "system_parameter.h"
+#include "virtual_object.h"
+
+#include <assert.h>
+#include <ctype.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 /*
  *  CLASS LOCATION
