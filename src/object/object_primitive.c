@@ -17148,7 +17148,7 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       raw_json_body = (char *) db_private_strdup (NULL, DB_GET_JSON_RAW_BODY (value));
       if (raw_json_body == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
+	  ASSERT_ERROR ();
 	  return er_errid ();
 	}
       if (DB_GET_JSON_SCHEMA (value) != NULL)
@@ -17156,7 +17156,7 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	  raw_schema_body = (char *) db_private_strdup (NULL, DB_GET_JSON_SCHEMA (value));
 	  if (raw_schema_body == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
+	      ASSERT_ERROR ();
 	      db_private_free (NULL, raw_json_body);
 	      return er_errid ();
 	    }
