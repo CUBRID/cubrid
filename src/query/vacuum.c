@@ -1047,7 +1047,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 }
 
 void
-vacuum_stop (void)
+vacuum_stop (THREAD_ENTRY * thread_p)
 {
   // notify master to stop generating new jobs
   vacuum_notify_server_shutdown ();
@@ -1067,6 +1067,9 @@ vacuum_stop (void)
     }
 
   delete vacuum_Workers_context_pool;
+
+  // free all resources
+  vacuum_finalize (thread_p);
 }
 
 #if defined(SERVER_MODE)
