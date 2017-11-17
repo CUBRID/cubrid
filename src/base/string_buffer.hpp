@@ -68,9 +68,9 @@ class string_buffer //collect formatted text (printf-like syntax)
     {
       return m_len; //current content length
     }
-    /*inline*/ void operator+= (const char ch);                   //add a single char
+    inline void operator+= (const char ch);                       //add a single char
 
-    /*inline*/ void add_bytes (size_t len, void *bytes);          //add "len" bytes (can have '\0' in the middle)
+    void add_bytes (size_t len, void *bytes);                     //add "len" bytes (can have '\0' in the middle)
 
     template<typename... Args> inline void operator() (Args &&... args); //add with printf format
 
@@ -97,6 +97,16 @@ void string_buffer::clear()
     {
       m_block.ptr[m_len=0] = '\0';
     }
+}
+
+void string_buffer::operator+= (const char ch)
+{
+  if (m_block.dim < m_len + 2)
+    {
+      m_block.extend (1);
+    }
+  m_block.ptr[m_len] = ch;
+  m_block.ptr[++m_len] = '\0';
 }
 
 template<typename... Args> void string_buffer::operator() (Args &&... args)

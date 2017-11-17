@@ -28,13 +28,3 @@ void string_buffer::add_bytes (size_t len, void *bytes)
   m_block.ptr[m_len += len] = 0;
   m_len += len;
 }
-
-void string_buffer::operator+= (const char ch)
-{
-  if (m_block.dim < m_len + 2)
-    {
-      m_block.extend (1);
-    }
-  m_block.ptr[m_len] = ch;
-  m_block.ptr[++m_len] = '\0';
-}
