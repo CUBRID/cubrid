@@ -18241,7 +18241,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
       assert (pos_in_ref_list < reference_out_list->valptr_cnt);
 
       /* goto position */
-      for (ref_regu = reference_regu_list, ref_index = 0; ref_regu != NULL, ref_index < pos_in_ref_list;
+      for (ref_regu = reference_regu_list, ref_index = 0; ref_regu != NULL && ref_index < pos_in_ref_list;
 	   ref_regu = ref_regu->next, ref_index++)
 	{
 	  ;
@@ -18408,7 +18408,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
 
       /* update key domains */
       group_regu = buildlist->g_hk_sort_regu_list;
-      for (i = 0; i < buildlist->g_hkey_size, group_regu != NULL; i++, group_regu = group_regu->next)
+      for (i = 0; i < buildlist->g_hkey_size && group_regu != NULL; i++, group_regu = group_regu->next)
 	{
 	  if (TP_DOMAIN_TYPE (context->key_domains[i]) == DB_TYPE_VARIABLE
 	      || TP_DOMAIN_COLLATION_FLAG (context->key_domains[i]) != TP_DOMAIN_COLL_NORMAL)

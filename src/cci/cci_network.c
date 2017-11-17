@@ -1235,7 +1235,7 @@ connect_retry:
       return CCI_ER_CONNECT;
     }
 #else
-  flags = (sock_fd, F_GETFL);
+  flags = fcntl (sock_fd, F_GETFL);
   fcntl (sock_fd, F_SETFL, flags | O_NONBLOCK);
 #endif
 
