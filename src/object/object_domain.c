@@ -10025,30 +10025,21 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	case DB_TYPE_JSON:
 	  {
-	    const char *json_str;
+	    char *json_str;
 	    int len;
 
 	    json_str = db_json_get_raw_json_body_from_document (DB_GET_JSON_DOCUMENT (src));
-
 	    len = strlen (json_str);
-	    target->need_clear = true;
 
-	    err = DB_MAKE_CHAR (target, len, json_str, len, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	    if (err != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		pr_clear_value (target);
-	      }
-	    else if (DB_IS_NULL (target))
-	      {
-		status = DOMAIN_ERROR;
-		pr_clear_value (target);
-	      }
-	    else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
-		     && (DB_GET_STRING_LENGTH (target) > DB_VALUE_PRECISION (target)))
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE && db_value_precision (target) < len)
 	      {
 		status = DOMAIN_OVERFLOW;
-		pr_clear_value (target);
+		db_private_free_and_init (NULL, json_str);
+	      }
+	    else
+	      {
+		make_desired_string_db_value (desired_type, desired_domain, json_str, target, &status, &data_stat);
+		target->need_clear = true;
 	      }
 	  }
 	  break;

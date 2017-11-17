@@ -223,7 +223,7 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	  ustr_upper (temp_buffer);
 	  if (temp_domain->json_validator != NULL)
 	    {
-	      m_buf ("%s(%s)", temp_buffer, db_json_get_schema_raw_from_validator (temp_domain->json_validator));
+	      m_buf ("%s(\'%s\')", temp_buffer, db_json_get_schema_raw_from_validator (temp_domain->json_validator));
 	    }
 	  else
 	    {
