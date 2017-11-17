@@ -97,7 +97,7 @@ trim_single_quote (char *str, size_t len)
 int
 sl_print_select (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
 {
-  select_strbuf ("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ)sm_class));
+  strbuf ("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ)sm_class));
   if (sl_print_pk (strbuf, sm_class, key) != NO_ERROR)
     {
       return ER_FAILED;
