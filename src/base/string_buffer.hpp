@@ -43,12 +43,6 @@
 #include <stdio.h>
 #include <functional>
 
-#if 0 //!!! snprintf() != _sprintf_p() when buffer capacity is exceeded !!! (disabled until further testing)
-#ifdef _WIN32
-#define snprintf _sprintf_p // snprintf() on Windows doesn't support positional parms
-#endif
-#endif
-
 class string_buffer //collect formatted text (printf-like syntax)
 {
   public:

@@ -24,7 +24,7 @@ const char db_value_printer::DECIMAL_FORMAT[] = "%#.*g";
 namespace
 {
   //--------------------------------------------------------------------------------
-  string_buffer &_describe_bit_string (string_buffer &buf, const db_value *value,
+  string_buffer &describe_bit_string (string_buffer &buf, const db_value *value,
 				       bool pad_byte) //DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
   {
     unsigned char *bstring;
@@ -60,7 +60,7 @@ namespace
   }
 
   //--------------------------------------------------------------------------------
-  string_buffer &_describe_real (string_buffer &buf, double value, int precision)
+  string_buffer &describe_real (string_buffer &buf, double value, int precision)
   {
     char tbuf[24];
     snprintf (tbuf, sizeof (tbuf), db_value_printer::DECIMAL_FORMAT, precision, value);
@@ -282,11 +282,11 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_FLOAT:
-      _describe_real (m_buf, db_get_float (value), DB_FLOAT_DECIMAL_PRECISION);
+      describe_real (m_buf, db_get_float (value), DB_FLOAT_DECIMAL_PRECISION);
       break;
 
     case DB_TYPE_DOUBLE:
-      _describe_real (m_buf, db_get_double (value), DB_DOUBLE_DECIMAL_PRECISION);
+      describe_real (m_buf, db_get_double (value), DB_DOUBLE_DECIMAL_PRECISION);
       break;
 
     case DB_TYPE_NUMERIC:
@@ -295,7 +295,7 @@ void db_value_printer::describe_data (const db_value *value)
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      _describe_bit_string (m_buf, value, m_padding);
+      describe_bit_string (m_buf, value, m_padding);
       break;
 
     case DB_TYPE_CHAR:

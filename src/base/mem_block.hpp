@@ -19,8 +19,8 @@
 /* Memory Management Functionality
  */
 
-#if !defined(_MEM_HPP_)
-#define _MEM_HPP_
+#if !defined(_MEM_BLOCK_HPP_)
+#define _MEM_BLOCK_HPP_
 
 #include <memory.h>
 #include <functional>
@@ -169,4 +169,4 @@ namespace mem
 
 } // namespace mem
 
-#endif // !defined(_MEM_HPP_)
+#endif // !defined(_MEM_BLOCK_HPP_)
