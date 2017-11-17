@@ -2957,7 +2957,7 @@ restart:
       vacuum_Data.blockid_job_cursor++;
     }
 
-  assert (data_page == NULL);
+  vacuum_unfix_data_page (thread_p, data_page);
 #if !defined (NDEBUG)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
