@@ -4973,6 +4973,8 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
   page_free_data = data_page->data + data_page->index_free;
   save_page_free_data = page_free_data;
 
+  was_vacuum_data_empty = vacuum_is_empty ();
+
   while (lf_circular_queue_consume (vacuum_Block_data_buffer, &consumed_data))
     {
       assert (vacuum_Data.last_blockid < consumed_data.blockid);
@@ -5104,6 +5106,11 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	  page_free_data++;
 	  data_page->index_free++;
 	}
+    }
+
+  if (was_vacuum_data_empty)
+    {
+      vacuum_update_keep_from_log_pageid (thread_p);
     }
 
   assert (data_page == vacuum_Data.last_page);

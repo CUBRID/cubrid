@@ -22423,8 +22423,8 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	  db_make_string (&db_name, name);
 	  pr_clone_value (&db_name, result);
 	  db_make_string (&schema, db_json_get_schema_raw_from_validator (validator));
-	  db_make_string (&bracket1, "(");
-	  db_make_string (&bracket2, ")");
+	  db_make_string (&bracket1, "(\'");
+	  db_make_string (&bracket2, "\')");
 
 	  if (db_string_concatenate (result, &bracket1, result, &data_stat) != NO_ERROR
 	      || (data_stat != DATA_STATUS_OK)
