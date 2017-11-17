@@ -462,7 +462,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	  if (temp_domain->json_validator != NULL)
 	    {
 	      buffer = pt_append_nulstring (parser, buffer, temp_buffer);
-	      sprintf (temp_buffer, "(%s)", db_json_get_schema_raw_from_validator (temp_domain->json_validator));
+	      sprintf (temp_buffer, "(\'%s\')", db_json_get_schema_raw_from_validator (temp_domain->json_validator));
 	      buffer = pt_append_nulstring (parser, buffer, temp_buffer);
 	    }
 	  else
