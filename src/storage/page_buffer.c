@@ -9838,7 +9838,10 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   else
     {
       /* if page was changed, the change was not logged. this is a rare case, but can happen. */
-      er_log_debug (ARG_FILE_LINE, "flushing page %d|%d to disk without logging.\n", VPID_AS_ARGS (&bufptr->vpid));
+      if (!pgbuf_is_temporary_volume (bufptr->vpid.volid))
+	{
+	  er_log_debug (ARG_FILE_LINE, "flushing page %d|%d to disk without logging.\n", VPID_AS_ARGS (&bufptr->vpid));
+	}
     }
 
   /* Record number of writes in statistics */

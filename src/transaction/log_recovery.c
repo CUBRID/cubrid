@@ -697,6 +697,9 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       log_Gl.hdr.has_logging_been_skipped = false;
     }
 
+  er_log_debug (ARG_FILE_LINE, "RECOVERY: start with %lld|%d and stop at %lld", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa),
+		stopat != NULL ? *stopat : -1);
+
   /* Find the starting LSA for the analysis phase */
 
   LSA_COPY (&rcv_lsa, &log_Gl.hdr.chkpt_lsa);
