@@ -729,6 +729,13 @@ public:
 
     cubthread::entry_task::retire_context (context);
   }
+
+  void retire (void) override
+  {
+    vacuum_finalize (get_own_context ());
+
+    cubthread::entry_task::retire ();
+  }
 };
 
 class vacuum_worker_task : public cubthread::entry_task
@@ -1068,8 +1075,7 @@ vacuum_stop (THREAD_ENTRY * thread_p)
 
   delete vacuum_Workers_context_pool;
 
-  // free all resources
-  vacuum_finalize (thread_p);
+  // all resources should be freed
 }
 
 #if defined(SERVER_MODE)

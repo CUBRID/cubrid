@@ -81,6 +81,11 @@ public:
     m_own_context = &(create_context ());
   }
 
+  Context *get_own_context (void)
+  {
+    return m_own_context;
+  }
+
 private:
   Context *m_own_context;
 };
