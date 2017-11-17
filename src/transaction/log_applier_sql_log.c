@@ -362,7 +362,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 	{
 	  return ER_FAILED;
 	}
-      return sl_write_sql (update, &select_strbuf);
+      return sl_write_sql (update_strbuf, &select_strbuf);
     }
   else
     {
