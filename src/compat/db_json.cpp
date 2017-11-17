@@ -882,12 +882,6 @@ db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val)
   return val == NULL ? NULL : val->get_schema_raw ();
 }
 
-char *
-db_json_get_copy_of_schema_from_validator (JSON_VALIDATOR *val)
-{
-  return (char *) db_private_strdup (NULL, db_json_get_schema_raw_from_validator (val)); 
-}
-
 int
 db_json_validate_json (const char *json_body)
 {

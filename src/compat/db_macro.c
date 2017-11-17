@@ -6867,3 +6867,35 @@ db_get_json_document (const DB_VALUE * value)
 
   return value->data.json.document;
 }
+
+int
+db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
+{
+  CHECK_1ARG_NULL (src);
+
+  char *raw_json_body = NULL, *raw_schema_body = NULL;
+  JSON_DOC *doc_copy = NULL;
+
+  raw_json_body = (char *) db_private_strdup (NULL, src->json_body);
+  if (raw_json_body == NULL && src->json_body != NULL)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+
+  raw_schema_body = (char *) db_private_strdup (NULL, src->schema_raw);
+  if (raw_schema_body == NULL && src->schema_raw != NULL)
+    {
+      ASSERT_ERROR ();
+      db_private_free (NULL, raw_json_body);
+      return er_errid ();
+    }
+
+  doc_copy = db_json_get_copy_of_doc (src->document);
+
+  dst->schema_raw = raw_schema_body;
+  dst->json_body = raw_json_body;
+  dst->document = doc_copy;
+
+  return NO_ERROR;
+}

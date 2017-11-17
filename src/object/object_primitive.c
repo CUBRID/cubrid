@@ -17129,11 +17129,7 @@ static int
 mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  char *raw_json_body = NULL;
-  char *raw_schema_body = NULL;
-  JSON_DOC *doc_copy = NULL;
-
-  DB_JSON *json;
+  DB_JSON *json, copy;
 
   json = (DB_JSON *) memptr;
 
@@ -17142,32 +17138,23 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       mr_freemem_json (memptr);
       mr_initmem_json (memptr, domain);
     }
+  else
+    {
+      assert (false);
+    }
 
   if (value != NULL && (DB_GET_JSON_RAW_BODY (value) != NULL) && (DB_GET_JSON_DOCUMENT (value) != NULL))
     {
-      raw_json_body = (char *) db_private_strdup (NULL, DB_GET_JSON_RAW_BODY (value));
-      if (raw_json_body == NULL)
+      error = db_get_deep_copy_of_json (&value->data.json, &copy);
+      if (error != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
-	  return er_errid ();
+	  return error;
 	}
-      if (DB_GET_JSON_SCHEMA (value) != NULL)
-	{
-	  raw_schema_body = (char *) db_private_strdup (NULL, DB_GET_JSON_SCHEMA (value));
-	  if (raw_schema_body == NULL)
-	    {
-	      ASSERT_ERROR ();
-	      db_private_free (NULL, raw_json_body);
-	      return er_errid ();
-	    }
-	}
-
-      doc_copy = db_json_get_copy_of_doc (DB_GET_JSON_DOCUMENT (value));
-
-      json->schema_raw = raw_schema_body;
-      json->json_body = raw_json_body;
-      json->document = doc_copy;
+      json->schema_raw = copy.schema_raw;
+      json->json_body = copy.json_body;
+      json->document = copy.document;
     }
+
   return error;
 }
 
@@ -17177,7 +17164,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
   int error = NO_ERROR;
   char *json_raw_body = NULL;
   const char *json_schema = NULL;
-  DB_JSON *json;
+  DB_JSON *json, json_copy;
   JSON_DOC *new_doc = NULL;
 
   json = (DB_JSON *) memptr;
@@ -17194,30 +17181,22 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       if (!copy)
 	{
 	  json_raw_body = json->json_body;
+	  json_schema = json->schema_raw;
+	  new_doc = json->document;
 	}
       else
 	{
-	  json_raw_body = (char *) db_private_strdup (NULL, json->json_body);
-	}
-
-      if (json->schema_raw != NULL)
-	{
-	  if (!copy)
+	  error = db_get_deep_copy_of_json (json, &json_copy);
+	  if (error != NO_ERROR)
 	    {
-	      json_schema = json->schema_raw;
+	      return error;
 	    }
-	  else
-	    {
-	      json_schema = (char *) db_private_strdup (NULL, json->schema_raw);
-	    }
-	}
-      else
-	{
-	  json_schema = NULL;
+	  json_raw_body = json_copy.json_body;
+	  json_schema = json_copy.schema_raw;
+	  new_doc = json_copy.document;
 	}
     }
 
-  new_doc = db_json_get_copy_of_doc (json->document);
   db_make_json (value, json_raw_body, new_doc, true);
   db_get_json_schema (value) = json_schema;
 
