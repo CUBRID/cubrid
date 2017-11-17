@@ -51,6 +51,7 @@
 #include "heap_file.h"
 #include "bit.h"
 #include "util_func.h"
+#include "vacuum.h"
 
 #include "critical_section.h"
 #if defined(SERVER_MODE)

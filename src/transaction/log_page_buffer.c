@@ -94,6 +94,7 @@
 #include "event_log.h"
 #include "thread.h"
 #include "tsc_timer.h"
+#include "vacuum.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -1362,8 +1363,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
     {
       loghdr->prefix_name[0] = '\0';
     }
-  loghdr->reserved_int_1 = -1;
-  loghdr->reserved_int_2 = -1;
+  loghdr->vacuum_last_blockid = 0;
   loghdr->perm_status = LOG_PSTAT_CLEAR;
 
   for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
@@ -6840,7 +6840,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   int first_arv_num_to_delete = -1;
   int last_arv_num_to_delete = -1;
   int min_arv_required_for_vacuum;
-  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID, new_page_id = NULL_PAGEID;
 #if defined(SERVER_MODE)
   LOG_PAGEID min_copied_pageid;
   int min_copied_arv_num;
@@ -6853,6 +6853,15 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   if (log_max_archives == INT_MAX)
     {
       return 0;			/* none is deleted */
+    }
+
+  if (!vacuum_is_safe_to_remove_archives ())
+    {
+      /* we don't know yet what is the first log page required by vacuum so it is not safe to remove log archives.
+         unfortunately, to update the oldest vacuum data log pageid can be done only after loading vacuum data from
+         disk, which in turn can only happen after recovery. this will block any log archive removal until vacuum
+         is loaded. */
+      return 0;
     }
 
   /* Get first log pageid needed for vacuum before locking LOG_CS. */
@@ -6937,6 +6946,11 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
       if (last_arv_num_to_delete >= first_arv_num_to_delete)
 	{
 	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
+
+#if defined (SA_MODE)
+	  /* Update the last_blockid needed for vacuum. Get the first page_id of the previously logged archive */
+	  log_Gl.hdr.vacuum_last_blockid = logpb_last_complete_blockid ();
+#endif /* SA_MODE */
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
 
@@ -6947,6 +6961,12 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   if (last_arv_num_to_delete >= 0 && last_arv_num_to_delete >= first_arv_num_to_delete)
     {
+      /* this is too problematic not to log in server error log too! */
+      _er_log_debug (ARG_FILE_LINE, "Purge archives starting with %d and up until %d; "
+		     "vacuum_first_pageid = %d, last_arv_num_for_syscrashes = %d",
+		     first_arv_num_to_delete, last_arv_num_to_delete, vacuum_first_pageid,
+		     log_Gl.hdr.last_arv_num_for_syscrashes);
+
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED);
       if (catmsg == NULL)
 	{
@@ -7200,9 +7220,13 @@ logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first, int last
   bool append_log_info = false;
   int deleted_count = 0;
 
+  /* Decache any archive remaining in the log_Gl.archive. */
+  logpb_decache_archive_info (thread_p);
+
   for (i = first; i <= last; i++)
     {
       fileio_make_log_archive_name (logarv_name, log_Archive_path, log_Prefix, i);
+
 #if defined(SERVER_MODE)
       if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING) && boot_Server_status == BOOT_SERVER_UP)
 	{
@@ -12130,4 +12154,26 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
   loghdr->last_block_oldest_mvccid = MVCCID_NULL;
   loghdr->last_block_newest_mvccid = MVCCID_NULL;
+}
+
+/*
+ * logpb_last_complete_blockid () - get blockid of last completely logged block
+ *
+ * return    : blockid
+ */
+VACUUM_LOG_BLOCKID
+logpb_last_complete_blockid (void)
+{
+  LOG_PAGEID prev_pageid = log_Gl.append.prev_lsa.pageid;
+  VACUUM_LOG_BLOCKID blockid = vacuum_get_log_blockid (prev_pageid);
+
+  if (blockid < 0)
+    {
+      assert (blockid == VACUUM_NULL_LOG_BLOCKID);
+      assert (LSA_ISNULL (&log_Gl.append.prev_lsa));
+      return VACUUM_NULL_LOG_BLOCKID;
+    }
+
+  /* the previous block is the one completed */
+  return blockid - 1;
 }

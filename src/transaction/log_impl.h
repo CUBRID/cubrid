@@ -954,8 +954,7 @@ struct log_header
   LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2 */
   char prefix_name[MAXLOGNAME];	/* Log prefix name */
   bool has_logging_been_skipped;	/* Has logging been skipped ? */
-  int reserved_int_1;		/* for backward compatibility - previously used for lowest_arv_num_for_backup */
-  int reserved_int_2;		/* for backward compatibility - previously used for highest_arv_num_for_backup */
+  VACUUM_LOG_BLOCKID vacuum_last_blockid;	/* Last processed blockid needed for vacuum. */
   int perm_status;		/* Reserved for future expansion and permanent status indicators, e.g. to mark
 				 * RESTORE_IN_PROGRESS */
   LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
@@ -1013,7 +1012,7 @@ struct log_header
      {'0'},                                      \
      /* has_logging_been_skipped */              \
      false,                                      \
-     0, 0, 0,                                    \
+     0, 0,                                       \
      /* bkinfo */                                \
      {{0, 0, 0, 0, 0}},                          \
      0, 0,                                       \
@@ -1072,7 +1071,7 @@ struct log_header
      {'0'},                                      \
      /* has_logging_been_skipped */              \
      false,                                      \
-     0, 0, 0,                                    \
+     0, 0,                                       \
      /* bkinfo */                                \
      {{0, 0, 0, 0, 0}},                          \
      0, 0,                                       \
@@ -2341,6 +2340,8 @@ extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
+
+extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
 
 /************************************************************************/
 /* Inline functions:                                                    */
