@@ -72,7 +72,8 @@ void sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assig
 int sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key);
 void sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey);
 void sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
-void sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+void sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN ** assignments,
+			 int num_assignments);
 DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 
 
@@ -82,7 +83,8 @@ static int sl_read_catalog (void);
 static int sl_write_catalog (void);
 static int create_dir (const char *new_dir);
 
-char* trim_single_quote(char* str, size_t len)
+char *
+trim_single_quote (char *str, size_t len)
 {
   if (len < 2 || str[0] != '\'' || str[len - 1] != '\'')
     {
@@ -92,7 +94,8 @@ char* trim_single_quote(char* str, size_t len)
   return str + 1;
 }
 
-int sl_print_select(string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
+int
+sl_print_select (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
 {
   select_strbuf ("SELECT * FROM [%s] WHERE ", sm_ch_name (sm_class));
   if (sl_print_pk (strbuf, sm_class, key) != NO_ERROR)
@@ -323,7 +326,7 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 
   mem::block_ext select_memblock;
   string_buffer select_strbuf (select_memblock);
-  if(sl_print_select(select_strbuf, inst_tp->class_, key) != NO_ERROR)
+  if (sl_print_select (select_strbuf, inst_tp->class_, key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -355,10 +358,10 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 
       mem::block_ext select_memblock;
       string_buffer select_strbuf (select_memblock);
-      if(sl_print_select(select_strbuf, inst_tp->class_, key) != NO_ERROR)
-        {
-          return ER_FAILED;
-        }
+      if (sl_print_select (select_strbuf, inst_tp->class_, key) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
       return sl_write_sql (update, &select_strbuf);
     }
   else
@@ -379,12 +382,13 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
       mem::block_ext serial_name_mb;
       string_buffer serial_name_strbuf (serial_name_mb);
       sl_print_att_value (serial_name_strbuf, "name", inst_tp->assignments, inst_tp->nassigns);
-      char* serial_name = trim_single_quote(serial_name_mb.ptr, serial_name_strbuf.len());
+      char *serial_name = trim_single_quote (serial_name_mb.ptr, serial_name_strbuf.len ());
 
       mem::block_ext alter_mb;
       string_buffer alter_strbuf (alter_mb);
       char str_next_value[NUMERIC_MAX_STRING_SIZE];
-      alter_strbuf ("ALTER SERIAL [%s] START WITH %s;", serial_name, numeric_db_value_print (&next_value, str_next_value));
+      alter_strbuf ("ALTER SERIAL [%s] START WITH %s;", serial_name,
+		    numeric_db_value_print (&next_value, str_next_value));
       return sl_write_sql (alter_strbuf, NULL);
     }
 }
@@ -403,7 +407,7 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 
   mem::block_ext mb2;
   string_buffer select_strbuf (mb2);
-  if(sl_print_select(select_strbuf, (SM_CLASS *) mclass, key) != NO_ERROR)
+  if (sl_print_select (select_strbuf, (SM_CLASS *) mclass, key) != NO_ERROR)
     {
       return ER_FAILED;
     }
