@@ -1008,7 +1008,7 @@ logwr_flush_bgarv_header_page (void)
 
   phy_pageid = logwr_to_physical_pageid (log_pgptr->hdr.logical_pageid);
 
-  if (fileio_write (NULL, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, false) == NULL
+  if (fileio_write (NULL, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, true) == NULL
       || fileio_synchronize (NULL, bg_arv_info->vdes, logwr_Gl.bg_archive_name) == NULL_VOLDES)
     {
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
@@ -1061,7 +1061,7 @@ logwr_flush_header_page (void)
   phy_pageid = logwr_to_physical_pageid (logical_pageid);
 
   /* logwr_Gl.append_vdes is only changed while starting or finishing or recovering server. So, log cs is not needed. */
-  if (fileio_write (NULL, logwr_Gl.append_vdes, logwr_Gl.loghdr_pgptr, phy_pageid, LOG_PAGESIZE, false) == NULL
+  if (fileio_write (NULL, logwr_Gl.append_vdes, logwr_Gl.loghdr_pgptr, phy_pageid, LOG_PAGESIZE, true) == NULL
       || fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name) == NULL_VOLDES)
     {
 
@@ -1192,7 +1192,7 @@ logwr_archive_active_log (void)
 	}
     }
 
-  if (fileio_write (NULL, vdes, malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE, false) == NULL)
+  if (fileio_write (NULL, vdes, malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE, true) == NULL)
     {
       /* Error archiving header page into archive */
       error_code = ER_LOG_WRITE;

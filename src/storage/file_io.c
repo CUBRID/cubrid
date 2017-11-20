@@ -1881,7 +1881,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
 	}
 #endif
 
-      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, false) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, true) == NULL)
 	{
 	  return NULL;
 	}
@@ -2375,7 +2375,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 
       /* initialize at least two pages, the header page and the last page. in case of is_sweep_clean == true, every
        * page of the volume will be written. */
-      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, 0, page_size, false) == NULL)
+      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, 0, page_size, true) == NULL)
 	{
 	  fileio_dismount (thread_p, vol_fd);
 	  fileio_unformat (thread_p, vol_label_p);
@@ -2395,7 +2395,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 	   && !fileio_initialize_pages (vol_fd, malloc_io_page_p, npages, page_size, kbytes_to_be_written_per_sec))
 	  || (is_sweep_clean == false && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size, false)))
 #else /* HPUX */
-      if (!((fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size, false) == malloc_io_page_p)
+      if (!((fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size, true) == malloc_io_page_p)
 	    && (is_sweep_clean == false
 		|| fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, 0, npages, page_size,
 					    kbytes_to_be_written_per_sec) == malloc_io_page_p)))
@@ -2543,7 +2543,7 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_
   if (voltype == DB_TEMPORARY_VOLTYPE)
     {
       /* Write the last page */
-      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE, false) != malloc_io_page_p)
+      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE, true) != malloc_io_page_p)
 	{
 	  npages_toadd = -1;
 	}
@@ -2777,7 +2777,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	  else
 	    {
 	      LSA_SET_NULL (&malloc_io_page_p->prv.lsa);
-	      if (fileio_write (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE, false) == NULL)
+	      if (fileio_write (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE, true) == NULL)
 		{
 		  goto error;
 		}
@@ -2832,7 +2832,7 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
       if (fileio_read (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE) != NULL)
 	{
 	  LSA_COPY (&malloc_io_page_p->prv.lsa, reset_lsa_p);
-	  if (fileio_write (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE, false) == NULL)
+	  if (fileio_write (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE, true) == NULL)
 	    {
 	      success = ER_FAILED;
 	      break;
@@ -4233,7 +4233,7 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
 
   for (i = 0; i < npages; i++)
     {
-      if (fileio_write (thread_p, vol_fd, io_page_array[i], start_page_id + i, page_size, false) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_array[i], start_page_id + i, page_size, true) == NULL)
 	{
 	  return NULL;
 	}
@@ -10291,7 +10291,7 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
   if (page_bitmap == NULL)
     {
       /* don't care about ht for this volume */
-      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, false) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, true) == NULL)
 	{
 	  return NULL;
 	}
@@ -10305,7 +10305,7 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
 
       if (!is_set)
 	{
-	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, false) == NULL)
+	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, true) == NULL)
 	    {
 	      return NULL;
 	    }
