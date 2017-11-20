@@ -35,6 +35,14 @@ extern "C"
 {
 #endif
 
+#if defined (__cplusplus)
+  class JSON_DOC;
+  class JSON_VALIDATOR;
+#else
+  typedef void JSON_DOC;
+  typedef void JSON_VALIDATOR;
+#endif
+
 #if !defined(SERVER_MODE) || defined(NDEBUG)
 #define NO_SERVER_OR_DEBUG_MODE
 #endif
@@ -887,6 +895,8 @@ extern "C"
 
 #define DB_GET_COMPRESSED_SIZE(value) db_get_compressed_size(value)
 
+#define DB_GET_JSON_DOCUMENT(value) db_get_json_document(value)
+
 #define DB_GET_SEQ DB_GET_SEQUENCE
 
 #define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
@@ -981,9 +991,10 @@ extern "C"
     DB_TYPE_TIMESTAMPLTZ = 37,
     DB_TYPE_DATETIMETZ = 38,
     DB_TYPE_DATETIMELTZ = 39,
+    DB_TYPE_JSON = 40,
     /* Disabled types */
-    DB_TYPE_TIMETZ = 40,	/* internal use only - RESERVED */
-    DB_TYPE_TIMELTZ = 41,	/* internal use only - RESERVED */
+    DB_TYPE_TIMETZ = 41,	/* internal use only - RESERVED */
+    DB_TYPE_TIMELTZ = 42,	/* internal use only - RESERVED */
     /* end of disabled types */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
     DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
@@ -1318,6 +1329,14 @@ extern "C"
     unsigned short count;	/* count of enumeration elements */
   };
 
+  typedef struct db_json DB_JSON;
+  struct db_json
+  {
+    char *json_body;
+    const char *schema_raw;
+    JSON_DOC *document;
+  };
+
 /* A union of all of the possible basic type values.  This is used in the
  * definition of the DB_VALUE which is the fundamental structure used
  * in passing data in and out of the db_ function layer.
@@ -1351,6 +1370,7 @@ extern "C"
     DB_CHAR ch;
     DB_RESULTSET rset;
     DB_ENUM_ELEMENT enumeration;
+    DB_JSON json;
   };
 
 /* This is the primary structure used for passing values in and out of
@@ -1907,6 +1927,7 @@ extern "C"
   extern DB_TYPE db_value_type (const DB_VALUE * value);
   extern int db_value_precision (const DB_VALUE * value);
   extern int db_value_scale (const DB_VALUE * value);
+  extern JSON_DOC *db_get_json_document (const DB_VALUE * value);
 
   extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
 			      const int size);
@@ -1961,15 +1982,18 @@ extern "C"
 
   extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
   extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
+
+
+  extern int db_get_compressed_size (DB_VALUE * value);
+  extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
+					int compressed_size, bool compressed_need_clear);
+
 #endif
 
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */
 
-extern int db_get_compressed_size (DB_VALUE * value);
-extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
-				      int compressed_size, bool compressed_need_clear);
 
 extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
@@ -2041,5 +2065,23 @@ extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
 #define DB_GET_BIT_PRECISION(v) \
     ((v)->domain.char_info.length)
+
+/* From merge */
+#define DB_GET_JSON_SCHEMA(v) \
+      ((v)->data.json.schema_raw)
+#define DB_GET_JSON_RAW_BODY(v) \
+      ((v)->data.json.json_body)
+
+#define db_get_json_schema(v) DB_GET_JSON_SCHEMA(v)
+#define db_get_json_raw_body(v) DB_GET_JSON_RAW_BODY(v)
+
+#define db_make_json(v, j, d, cl) \
+    ((v)->domain.general_info.type = DB_TYPE_JSON, \
+     (v)->data.json.json_body = (j), \
+     (v)->data.json.document = (d), \
+     (v)->domain.general_info.is_null = 0, \
+     (v)->need_clear = (cl), \
+     (v)->data.json.schema_raw = NULL, \
+     NO_ERROR)
 
 #endif /* dbtype_common.h */

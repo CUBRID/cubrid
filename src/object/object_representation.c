@@ -8730,7 +8730,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
     }
   else
     {
-      schema = db_private_strdup (NULL, DB_PULL_STRING (&schema_value));
+      schema = db_private_strdup (NULL, DB_GET_STRING (&schema_value));
     }
 
   pr_clear_value (&schema_value);

@@ -821,6 +821,16 @@ db_value_scale (const DB_VALUE * value)
     }
 }
 
+DB_MACRO_INLINE JSON_DOC *
+db_get_json_document (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+
+  assert (value->domain.general_info.type == DB_TYPE_JSON);
+
+  return value->data.json.document;
+}
+
 /***********************************************************/
 /* db_make family of functions. */
 

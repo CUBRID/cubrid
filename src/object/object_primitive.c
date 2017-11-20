@@ -17287,9 +17287,9 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
     }
   else
     {
-      json_obj->json_body = db_private_strdup (NULL, DB_PULL_STRING (&json_body));
+      json_obj->json_body = db_private_strdup (NULL, DB_GET_STRING (&json_body));
 
-      rc = db_json_get_json_from_str (DB_PULL_STRING (&json_body), json_obj->document);
+      rc = db_json_get_json_from_str (DB_GET_STRING (&json_body), json_obj->document);
       if (rc != NO_ERROR)
 	{
 	  assert (false);
@@ -17298,7 +17298,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 
   if (DB_GET_STRING_SIZE (&schema_raw) > 0)
     {
-      json_obj->schema_raw = db_private_strdup (NULL, DB_PULL_STRING (&schema_raw));
+      json_obj->schema_raw = db_private_strdup (NULL, DB_GET_STRING (&schema_raw));
     }
   else
     {
@@ -17470,7 +17470,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   else
     {
       JSON_DOC *doc = NULL;
-      const char *json_raw = DB_PULL_STRING (&json_body);
+      const char *json_raw = DB_GET_STRING (&json_body);
 
       rc = db_json_get_json_from_str (json_raw, doc);
       if (rc != NO_ERROR)
@@ -17483,7 +17483,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 
   if (DB_GET_STRING_SIZE (&schema_raw) > 0)
     {
-      value->data.json.schema_raw = db_private_strdup (NULL, DB_PULL_STRING (&schema_raw));
+      value->data.json.schema_raw = db_private_strdup (NULL, DB_GET_STRING (&schema_raw));
     }
   else
     {
