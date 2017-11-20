@@ -28,62 +28,67 @@
 namespace cubthread
 {
 
-class task
-{
-public:
-  virtual void execute () = 0;       // function to execute
-  virtual void retire ()                  // what happens with task instance when task is executed; default is delete
+  class task
   {
-    delete this;
-  }
-  virtual ~task ()                        // virtual destructor
-  {
-  }
-};
-
-template <typename Context>
-class contextual_task : public task
-{
-public:
-
-  contextual_task ()
-    : m_own_context (NULL)
-  {
-  }
-
-  // virtual functions to be implemented by inheritors
-  virtual void execute (Context &) = 0;
-  virtual Context & create_context (void) = 0;
-  virtual void retire_context (Context &) = 0;
-
-  // implementation of task's execute function. creates own context
-  void execute (void)
-  {
-    if (m_own_context == NULL)
+    public:
+      virtual void execute () = 0;       // function to execute
+      virtual void retire ()                  // what happens with task instance when task is executed; default is delete
       {
-        create_own_context ();
+	delete this;
       }
-    execute (*m_own_context);
-  }
-  // implementation of task's retire function.
-  virtual void retire (void)
-  {
-    if (m_own_context != NULL)
+      virtual ~task ()                        // virtual destructor
       {
-        retire_context (*m_own_context);
       }
-  }
-  
-  // create own context
-  void create_own_context (void)
-  {
-    assert (m_own_context == NULL);
-    m_own_context = &(create_context ());
-  }
+  };
 
-private:
-  Context *m_own_context;
-};
+  template <typename Context>
+  class contextual_task : public task
+  {
+    public:
+
+      contextual_task ()
+	: m_own_context (NULL)
+      {
+      }
+
+      // virtual functions to be implemented by inheritors
+      virtual void execute (Context &) = 0;
+      virtual Context &create_context (void) = 0;
+      virtual void retire_context (Context &) = 0;
+
+      // implementation of task's execute function. creates own context
+      void execute (void)
+      {
+	if (m_own_context == NULL)
+	  {
+	    create_own_context ();
+	  }
+	execute (*m_own_context);
+      }
+      // implementation of task's retire function.
+      virtual void retire (void)
+      {
+	if (m_own_context != NULL)
+	  {
+	    retire_context (*m_own_context);
+	  }
+      }
+
+      // create own context
+      void create_own_context (void)
+      {
+	assert (m_own_context == NULL);
+	m_own_context = & (create_context ());
+      }
+
+      Context *get_own_context (void)
+      {
+	return m_own_context;
+      }
+
+    private:
+      Context *m_own_context;
+  };
 
 } // namespace cubthread
 

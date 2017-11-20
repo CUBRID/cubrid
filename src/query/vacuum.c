@@ -729,6 +729,13 @@ public:
 
     cubthread::entry_task::retire_context (context);
   }
+
+  void retire (void) override
+  {
+    vacuum_finalize (get_own_context ());
+
+    cubthread::entry_task::retire ();
+  }
 };
 
 class vacuum_worker_task : public cubthread::entry_task
@@ -1047,7 +1054,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 }
 
 void
-vacuum_stop (void)
+vacuum_stop (THREAD_ENTRY * thread_p)
 {
   // notify master to stop generating new jobs
   vacuum_notify_server_shutdown ();
@@ -1067,6 +1074,8 @@ vacuum_stop (void)
     }
 
   delete vacuum_Workers_context_pool;
+
+  // all resources should be freed
 }
 
 #if defined(SERVER_MODE)
@@ -2948,7 +2957,10 @@ restart:
       vacuum_Data.blockid_job_cursor++;
     }
 
-  assert (data_page == NULL);
+  if (data_page != NULL)
+    {
+      vacuum_unfix_data_page (thread_p, data_page);
+    }
 #if !defined (NDEBUG)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
