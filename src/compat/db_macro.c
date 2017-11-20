@@ -6871,7 +6871,8 @@ db_get_json_document (const DB_VALUE * value)
 int
 db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
 {
-  CHECK_1ARG_NULL (src);
+  CHECK_2ARGS_NULL (src, dst);
+  assert (dst->document == NULL && dst->json_body == NULL && dst->schema_raw == NULL);
 
   char *raw_json_body = NULL, *raw_schema_body = NULL;
   JSON_DOC *doc_copy = NULL;
@@ -6898,4 +6899,11 @@ db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
   dst->document = doc_copy;
 
   return NO_ERROR;
+}
+
+void
+db_init_db_json_pointers (DB_JSON * val)
+{
+  CHECK_1ARG_NULL (val);
+  val->schema_raw = val->document = val->json_body = NULL;
 }

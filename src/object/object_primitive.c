@@ -17123,20 +17123,23 @@ mr_initmem_json (void *mem, TP_DOMAIN * domain)
       json->json_body = NULL;
       json->schema_raw = NULL;
     }
+  else
+    {
+      assert (false);
+    }
 }
 
 static int
 mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  DB_JSON *json, copy;
+  DB_JSON *json;
 
   json = (DB_JSON *) memptr;
 
   if (json != NULL)
     {
       mr_freemem_json (memptr);
-      mr_initmem_json (memptr, domain);
     }
   else
     {
@@ -17145,14 +17148,11 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
   if (value != NULL && (DB_GET_JSON_RAW_BODY (value) != NULL) && (DB_GET_JSON_DOCUMENT (value) != NULL))
     {
-      error = db_get_deep_copy_of_json (&value->data.json, &copy);
+      error = db_get_deep_copy_of_json (&value->data.json, json);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
-      json->schema_raw = copy.schema_raw;
-      json->json_body = copy.json_body;
-      json->document = copy.document;
     }
 
   return error;
@@ -17176,28 +17176,27 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       value->need_clear = false;
       return NO_ERROR;
     }
+
+  if (!copy)
+    {
+      json_raw_body = json->json_body;
+      json_schema = json->schema_raw;
+      new_doc = json->document;
+    }
   else
     {
-      if (!copy)
+      db_init_db_json_pointers (&json_copy);
+      error = db_get_deep_copy_of_json (json, &json_copy);
+      if (error != NO_ERROR)
 	{
-	  json_raw_body = json->json_body;
-	  json_schema = json->schema_raw;
-	  new_doc = json->document;
+	  return error;
 	}
-      else
-	{
-	  error = db_get_deep_copy_of_json (json, &json_copy);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	  json_raw_body = json_copy.json_body;
-	  json_schema = json_copy.schema_raw;
-	  new_doc = json_copy.document;
-	}
+      json_raw_body = json_copy.json_body;
+      json_schema = json_copy.schema_raw;
+      new_doc = json_copy.document;
     }
 
-  db_make_json (value, json_raw_body, new_doc, true);
+  db_make_json (value, json_raw_body, new_doc, copy);
   db_get_json_schema (value) = json_schema;
 
   return error;
@@ -17304,10 +17303,10 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       schema_str = DB_PULL_STRING (&schema_raw);
     }
 
-  json->json_body = (char *) db_private_strdup (NULL, json_body_str);
+  json->json_body = db_private_strdup (NULL, json_body_str);
   if (schema_str != NULL)
     {
-      json->schema_raw = (char *) db_private_strdup (NULL, schema_str);
+      json->schema_raw = db_private_strdup (NULL, schema_str);
     }
 
   rc = db_json_get_json_from_str (json_body_str, json->document);
@@ -17501,7 +17500,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 
   if (DB_GET_STRING_SIZE (&schema_raw) > 0)
     {
-      value->data.json.schema_raw = (char *) db_private_strdup (NULL, DB_PULL_STRING (&schema_raw));
+      value->data.json.schema_raw = db_private_strdup (NULL, DB_PULL_STRING (&schema_raw));
     }
   else
     {
