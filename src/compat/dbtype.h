@@ -1308,7 +1308,8 @@ extern "C"
   extern int db_get_enum_codeset (const DB_VALUE * value);
   extern int db_get_enum_collation (const DB_VALUE * value);
   extern JSON_DOC *db_get_json_document (const DB_VALUE * value);
-
+  extern int db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst);
+  extern int db_init_db_json_pointers (DB_JSON * val);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

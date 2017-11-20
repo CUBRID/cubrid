@@ -891,7 +891,7 @@ db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result)
 const char *
 db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val)
 {
-  return val->get_schema_raw ();
+  return val == NULL ? NULL : val->get_schema_raw ();
 }
 
 int
@@ -1238,6 +1238,10 @@ void db_json_set_int_to_doc (JSON_DOC *doc, int i)
 
 bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2)
 {
+  if (doc1 == NULL || doc2 == NULL)
+    {
+      return false;
+    }
   return *doc1 == *doc2;
 }
 
