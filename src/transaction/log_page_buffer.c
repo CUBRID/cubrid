@@ -2693,7 +2693,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   assert_release (bg_arv_info->current_page_id >= bg_arv_info->last_sync_pageid);
   if ((bg_arv_info->current_page_id - bg_arv_info->last_sync_pageid) > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
-      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive);
+      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive, false);
       bg_arv_info->last_sync_pageid = bg_arv_info->current_page_id;
     }
 }
@@ -4565,7 +4565,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0
 	  || (log_Stat.total_sync_count % prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
-	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
+	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, false) == NULL_VOLDES)
 	    {
 	      error_code = ER_FAILED;
 	      goto error;
@@ -6799,7 +6799,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
        * Make sure that the whole log archive is in physical storage at this
        * moment
        */
-      if (fileio_synchronize (thread_p, vdes, arv_name) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p, vdes, arv_name, false) == NULL_VOLDES)
 	{
 	  goto error;
 	}
@@ -9935,7 +9935,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_vol
       return error_code;
     }
 
-  if (fileio_synchronize (thread_p, from_vdes, fileio_get_volume_label (from_vdes, PEEK)) != from_vdes)
+  if (fileio_synchronize (thread_p, from_vdes, fileio_get_volume_label (from_vdes, PEEK), false) != from_vdes)
     {
       return ER_FAILED;
     }
@@ -10272,7 +10272,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 		  fileio_dismount (thread_p, to_vdes);
 		  goto error;
 		}
-	      if (fileio_synchronize (thread_p, to_vdes, to_volname) != to_vdes)
+	      if (fileio_synchronize (thread_p, to_vdes, to_volname, false) != to_vdes)
 		{
 		  fileio_dismount (thread_p, to_vdes);
 		  error_code = ER_FAILED;
@@ -10719,8 +10719,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	{
 	  goto error;
 	}
-      if (fileio_synchronize (thread_p, fileio_get_volume_descriptor (volid), fileio_get_volume_label (volid, PEEK)) ==
-	  NULL_VOLDES)
+      if (fileio_synchronize
+	  (thread_p, fileio_get_volume_descriptor (volid), fileio_get_volume_label (volid, PEEK), true) == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
 	  goto error;

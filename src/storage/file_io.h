@@ -420,7 +420,7 @@ extern void *fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_p
 				 size_t page_size, bool skip_flush);
 extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes, void **arrayof_io_pgptr, PAGEID start_pageid,
 			    DKNPAGES npages, size_t page_size);
-extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel);
+extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, bool check_sync_dwb);
 extern int fileio_synchronize_all (THREAD_ENTRY * thread_p, bool include_log);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *fileio_read_user_area (THREAD_ENTRY * thread_p, int vdes, PAGEID pageid, off_t start_offset, size_t nbytes,
@@ -434,6 +434,7 @@ extern char *fileio_get_volume_label (VOLID volid, bool is_peek);
 extern char *fileio_get_volume_label_by_fd (int vol_fd, bool is_peek);
 extern VOLID fileio_find_volume_id_with_label (THREAD_ENTRY * thread_p, const char *vlabel);
 extern bool fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid);
+extern bool fileio_is_permanent_volume (THREAD_ENTRY * thread_p, VOLID volid);
 extern VOLID fileio_find_next_perm_volume (THREAD_ENTRY * thread_p, VOLID volid);
 extern VOLID fileio_find_previous_perm_volume (THREAD_ENTRY * thread_p, VOLID volid);
 extern VOLID fileio_find_previous_temp_volume (THREAD_ENTRY * thread_p, VOLID volid);

@@ -702,7 +702,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   /* Flush all pages that were formatted. This is not needed, but it is done for security reasons to identify the volume
    * in case of a system crash. Note that the identification may not be possible during media crashes */
   (void) pgbuf_flush_all (thread_p, volid);
-  (void) fileio_synchronize (thread_p, vdes, vol_fullname);
+  (void) fileio_synchronize (thread_p, vdes, vol_fullname, true);
 
   /* todo: temporary is not logged because code should avoid it. this complicated system that uses page buffer should
    * not be necessary. with the exception of file manager and disk manager, who already manage to skip logging on
