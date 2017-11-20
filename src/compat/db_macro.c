@@ -6871,20 +6871,20 @@ db_get_json_document (const DB_VALUE * value)
 int
 db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
 {
-  CHECK_2ARGS_NULL (src, dst);
+  CHECK_2ARGS_ERROR (src, dst);
   assert (dst->document == NULL && dst->json_body == NULL && dst->schema_raw == NULL);
 
   char *raw_json_body = NULL, *raw_schema_body = NULL;
   JSON_DOC *doc_copy = NULL;
 
-  raw_json_body = (char *) db_private_strdup (NULL, src->json_body);
+  raw_json_body = db_private_strdup (NULL, src->json_body);
   if (raw_json_body == NULL && src->json_body != NULL)
     {
       ASSERT_ERROR ();
       return er_errid ();
     }
 
-  raw_schema_body = (char *) db_private_strdup (NULL, src->schema_raw);
+  raw_schema_body = db_private_strdup (NULL, src->schema_raw);
   if (raw_schema_body == NULL && src->schema_raw != NULL)
     {
       ASSERT_ERROR ();
@@ -6901,9 +6901,14 @@ db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
   return NO_ERROR;
 }
 
-void
+int
 db_init_db_json_pointers (DB_JSON * val)
 {
-  CHECK_1ARG_NULL (val);
-  val->schema_raw = val->document = val->json_body = NULL;
+  CHECK_1ARG_ERROR (val);
+
+  val->schema_raw = NULL;
+  val->document = NULL;
+  val->json_body = NULL;
+
+  return NO_ERROR;
 }

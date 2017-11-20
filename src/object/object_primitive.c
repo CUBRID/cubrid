@@ -17185,7 +17185,11 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
   else
     {
-      db_init_db_json_pointers (&json_copy);
+      error = db_init_db_json_pointers (&json_copy);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
       error = db_get_deep_copy_of_json (json, &json_copy);
       if (error != NO_ERROR)
 	{
