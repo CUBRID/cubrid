@@ -1983,7 +1983,6 @@ extern "C"
   extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
   extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
 
-
   extern int db_get_compressed_size (DB_VALUE * value);
   extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 					int compressed_size, bool compressed_need_clear);
