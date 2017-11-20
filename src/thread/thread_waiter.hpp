@@ -37,6 +37,17 @@
 //    usable to suspend thread and wait for a time or for wakeup request
 //
 //  how to use:
+//
+//    // Thread 1
+//    // this thread wants to wait indefinitely
+//    waiter_shared_variable->wait_inf ();
+//
+//    // Thread 2
+//    // wake Thread 1
+//    waiter_shared_variable->wakeup ();
+//
+//    // similarly, first thread can wait with timeout using wait_for or wait_until functions
+//
 
 namespace cubthread
 {
@@ -47,31 +58,31 @@ namespace cubthread
       waiter ();
       ~waiter();
 
-      void wakeup (void);
+      void wakeup (void);                                             // wakeup waiter thread
 
-      void wait_inf (void);
+      void wait_inf (void);                                           // wait until wakeup
       template< class Rep, class Period >
-      bool wait_for (std::chrono::duration<Rep, Period> &delta);
+      bool wait_for (std::chrono::duration<Rep, Period> &delta);      // wait for period of time or until wakeup
       template< class Clock, class Duration >
-      bool wait_until (std::chrono::time_point<Clock, Duration> &timeout_time);
+      bool wait_until (std::chrono::time_point<Clock, Duration> &timeout_time); // wait until time or until wakeup
 
     private:
 
-      enum status
+      enum status       // waiter status
       {
 	RUNNING,
 	SLEEPING,
 	AWAKENING,
       };
 
-      inline bool check_wake (void);
+      inline bool check_wake (void);      // check wake condition; used to avoid spurious wakeups
       void goto_sleep (void);
       inline void awake (void);
       void run (void);
 
-      std::mutex m_mutex;
-      std::condition_variable m_condvar;
-      status m_status;
+      std::mutex m_mutex;                 // mutex used to synchronize waiter states
+      std::condition_variable m_condvar;  // condition variable used to wait/wakeup
+      status m_status;                    // current status
   };
 
 } // namespace cubthread

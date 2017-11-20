@@ -18,7 +18,7 @@
  */
 
 /*
- *
+ * thread_looper - interface for thread looping patterns
  */
 
 #ifndef _THREAD_LOOPER_HPP_
@@ -30,10 +30,43 @@
 #include <cassert>
 #include <cstdint>
 
+// cubthread::looper
+//
+// description
+//    used for loops that require pausing.
+//    defines the wait pattern between each loop iteration
+//    should be used together with a waiter
+//
+// how to use
+//
+//    // define a loop pattern and then loop and put waiter to sleep on each iteration
+//
+//    // example using increasing wait patterns
+//
+//    // declare period type for this example
+//    typedef std::chrono::duration<std::uint64, std::chrono::milliseconds milli_period_type;
+//    // declare increasing waiting periods
+//    // wait first for 1 millisecond, then for 100, then for 1000, then infinite
+//    std::array<milli_period_type, THREE> periods = {{ 1, 100, 1000 }};
+//    // create looper
+//    looper_shared_variable = new loop_pattern (periods);
+//
+//    // declare waiter
+//    while (!looper.is_stopped ())
+//      {
+//        // do work
+//
+//        // now sleep until timeout or wakeup
+//        looper.put_to_sleep (waiter);
+//        // thread woke up
+//      }
+//    // loop is stopped calling looper_shared_variable->stop ();
+//
+
 namespace cubthread
 {
 
-// forward def
+  // forward def
   class waiter;
 
   class looper
@@ -41,16 +74,34 @@ namespace cubthread
     public:
 
       // constructors
+
+      // default looping pattern; always wait until wakeup on each loop
       looper ();
+
+      // loop and wait for a fixed period of time
       template<class Rep, class Period>
       looper (const std::chrono::duration<Rep, Period> &fixed_period);
+
+      // loop and wait for increasing periods of time
+      //
+      // the sleep time is increased according to periods for each sleep that times out
+      // sleep timer is reset when sleep doesn't time out
       template<class Rep, class Period, size_t Count>
       looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods);
+
+      // copy other loop pattern
       looper (const looper &other);
 
+      // put waiter to sleep according to loop pattern
       void put_to_sleep (waiter &waiter_arg);
+
+      // reset looper; only useful for increasing period pattern
       void reset (void);
+
+      // stop looping; no waits after this
       void stop (void);
+
+      // is looper stopped
       bool is_stopped (void) const;
 
     private:
@@ -64,14 +115,14 @@ namespace cubthread
 	INFINITE_WAITS,               // always infinite waits
       };
 
-      static const size_t MAX_PERIODS = 3;
+      static const size_t MAX_PERIODS = 3; // for increasing period pattern
 
-      wait_pattern m_wait_pattern;
-      std::size_t m_periods_count;
-      delta_time m_periods[MAX_PERIODS];
+      wait_pattern m_wait_pattern;          // wait pattern type
+      std::size_t m_periods_count;          // the period count
+      delta_time m_periods[MAX_PERIODS];    // period array
 
-      std::size_t m_period_index;
-      bool m_stop;
+      std::size_t m_period_index;           // current period index
+      bool m_stop;                          // when true, loop is stopped; no waits
   };
 
   /************************************************************************/
