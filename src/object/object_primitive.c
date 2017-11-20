@@ -17220,6 +17220,10 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
     {
       if (memptr != NULL)
 	{
+	  char *temp_string = NULL;
+	  unsigned int json_body_length = 0, schema_raw_length = 0;
+	  unsigned int mem_json_body_length = 0, mem_schema_raw_length = 0;
+
 	  json = (DB_JSON *) memptr;
 	  if (json->json_body == NULL)
 	    {
@@ -17227,7 +17231,31 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      return 0;
 	    }
 
-	  return (strlen (json->json_body) + 1) + (json->schema_raw != NULL ? (strlen (json->schema_raw) + 1) : 1);
+	  json_body_length = strlen (json->json_body);
+	  if (json->schema_raw != NULL)
+	    {
+	      schema_raw_length = strlen (json->schema_raw);
+	    }
+
+	  temp_string = (char *) db_private_alloc (NULL, json_body_length + 1 + sizeof (int));
+	  *(int *) temp_string = json_body_length;
+	  memcpy (temp_string + sizeof (int), json->json_body, json_body_length);
+	  temp_string[json_body_length + sizeof (int)] = '\0';
+
+	  mem_json_body_length = mr_data_lengthmem_string (&temp_string, domain, 1);
+	  db_private_free (NULL, temp_string);
+
+	  if (json->schema_raw != NULL)
+	    {
+	      temp_string = (char *) db_private_alloc (NULL, schema_raw_length + 1 + sizeof (int));
+	      *(int *) temp_string = schema_raw_length;
+	      memcpy (temp_string + sizeof (int), json->schema_raw, schema_raw_length);
+	      temp_string[schema_raw_length + sizeof (int)] = '\0';
+
+	      mem_schema_raw_length = mr_data_lengthmem_string (&temp_string, domain, 1);
+	      db_private_free (NULL, temp_string);
+	    }
+	  return mem_schema_raw_length + mem_json_body_length;
 	}
     }
 
