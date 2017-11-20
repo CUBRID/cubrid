@@ -46,6 +46,8 @@
 #include "db_date.h"
 #include "dbtype.h"
 #include "query_dump.h"
+#include "db_json.hpp"
+#include "arithmetic.h"
 
 #include "dbtype_common.h"
 
@@ -80,8 +82,6 @@ static int qdata_add_short_to_timestamptz (DB_VALUE * ts_tz_val_p, short s, DB_V
 static int qdata_add_int_to_timestamptz (DB_VALUE * ts_tz_val_p, int i, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_bigint_to_timestamptz (DB_VALUE * ts_tz_val_p, DB_BIGINT bi, DB_VALUE * result_p,
 					    TP_DOMAIN * domain_p);
-static int qdata_add_int_to_datetime_asymmetry (DB_VALUE * datetime_val_p, int i, DB_DATETIME * datetime,
-						DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_short_to_datetime (DB_VALUE * datetime_val_p, short s, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_int_to_datetime (DB_VALUE * datetime_val_p, int i, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_bigint_to_datetime (DB_VALUE * datetime_val_p, DB_BIGINT bi, DB_VALUE * result_p,
@@ -128,7 +128,6 @@ static int qdata_subtract_utime_to_short_asymmetry (DB_VALUE * utime_val_p, shor
 static int qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p, int i, unsigned int *utime,
 						  DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_subtract_datetime_to_int (DB_DATETIME * dt1, DB_BIGINT i2, DB_VALUE * result_p);
-static int qdata_subtract_datetimetz_to_int (DB_DATETIMETZ * dt_tz1, DB_BIGINT i2, DB_VALUE * result_p);
 static int qdata_subtract_datetime (DB_DATETIME * dt1, DB_DATETIME * dt2, DB_VALUE * result_p);
 static int qdata_subtract_datetime_to_int_asymmetry (DB_VALUE * datetime_val_p, DB_BIGINT i, DB_DATETIME * datetime,
 						     DB_VALUE * result_p, TP_DOMAIN * domain_p);
@@ -215,6 +214,25 @@ static int qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TY
 
 static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		      QFILE_TUPLE tuple);
+
+static int
+qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple);
+
+static int
+qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		  QFILE_TUPLE tuple);
+static int
+qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple);
+
+static int
+qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple);
+
+static int
+qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		  QFILE_TUPLE tuple);
 
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *, int, DB_VALUE **) =
 {
@@ -563,7 +581,6 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
   int value_size;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
   DB_TYPE dbval_type;
-  HL_HEAPID save_heapid = 0;
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
@@ -2574,7 +2591,6 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
   TP_DOMAIN *cast_dom1 = NULL;
   TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
-  bool reverse_operands = false;
 
   if (domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL)
     {
@@ -6494,6 +6510,64 @@ qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VAL
   return NO_ERROR;
 }
 
+int
+qdata_json_contains_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * dbval3_p, DB_VALUE * result_p,
+			   TP_DOMAIN * domain_p)
+{
+  int error_code = db_json_contains_dbval (dbval1_p, dbval2_p, dbval3_p, result_p);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return qdata_coerce_result_to_domain (result_p, domain_p);
+}
+
+int
+qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  int error_code = db_json_type_dbval (dbval1_p, result_p);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return qdata_coerce_result_to_domain (result_p, domain_p);
+}
+
+int
+qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  int error_code = db_json_valid_dbval (dbval1_p, result_p);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return qdata_coerce_result_to_domain (result_p, domain_p);
+}
+
+int
+qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  return db_json_length_dbval (dbval1_p, dbval2_p, result_p);
+}
+
+int
+qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  return db_json_depth_dbval (dbval1_p, result_p);
+}
+
+int
+qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
+{
+  return db_json_extract_dbval (json, path, json_res);
+}
+
 /*
  * qdata_strcat_dbval () -
  *   return:
@@ -6944,7 +7018,6 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 				      AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
 				      TP_DOMAIN * func_domain, DB_VALUE * value)
 {
-  TP_DOMAIN *double_domain = NULL;
   DB_VALUE squared;
   bool copy_operator = false;
   int coll_id;
@@ -7572,9 +7645,7 @@ int
 qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, HFID * root_hfid, BTID * root_btid,
 				    HIERARCHY_AGGREGATE_HELPER * helper)
 {
-  bool is_btree_stats_needed = false;
   int error = NO_ERROR, i, cmp = DB_EQ, cur_cnt = 0;
-  HFID *hfidp = NULL;
   DB_VALUE result;
   if (!agg_p->flag_agg_optimize)
     {
@@ -8821,8 +8892,24 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
 
     case F_INSERT_SUBSTRING:
       return qdata_insert_substring_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_ELT:
       return qdata_elt (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_OBJECT:
+      return qdata_json_object (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_ARRAY:
+      return qdata_json_array (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_INSERT:
+      return qdata_json_insert (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_REMOVE:
+      return qdata_json_remove (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_MERGE:
+      return qdata_json_merge (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -9240,7 +9327,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
   XASL_NODE *xasl, *xptr;
   int length, i;
   char *result_path = NULL, *path_tmp = NULL;
-  int len_result_path, len_tmp = 0, len;
+  int len_result_path;
+  size_t len_tmp = 0, len;
   char *sep = NULL;
   DB_VALUE *arg_dbval_p = NULL;
   DB_VALUE **save_values = NULL;
@@ -9302,7 +9390,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
     }
 
   /* character */
-  i = strlen (DB_GET_STRING_SAFE (value_char));
+  i = (int) strlen (DB_GET_STRING_SAFE (value_char));
   sep = (char *) db_private_alloc (thread_p, sizeof (char) * (i + 1));
   if (sep == NULL)
     {
@@ -10311,11 +10399,8 @@ qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functi
 {
   DB_VALUE *args[NUM_F_INSERT_SUBSTRING_ARGS];
   REGU_VARIABLE *regu_array[NUM_F_INSERT_SUBSTRING_ARGS];
-  DB_VALUE *result_p = function_p->value;
-  REGU_VARIABLE_LIST operand = function_p->operand;
   int i, error_status = NO_ERROR;
   int num_regu = 0;
-
 
   /* initialize the argument array */
   for (i = 0; i < NUM_F_INSERT_SUBSTRING_ARGS; i++)
@@ -10448,6 +10533,274 @@ fast_exit:
   return error_status;
 
 error_exit:
+  return error_status;
+}
+
+static int
+qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple)
+{
+  DB_VALUE *key, *value;
+  REGU_VARIABLE_LIST operand;
+  int error_status = NO_ERROR;
+  int no_args = 0, index = 0;
+  DB_VALUE **args;
+
+  /* should sync with fetch_peek_dbval () */
+
+  assert (function_p != NULL);
+  assert (function_p->value != NULL);
+  assert (function_p->operand != NULL);
+
+  operand = function_p->operand;
+
+  while (operand != NULL)
+    {
+      no_args++;
+      operand = operand->next;
+    }
+
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
+
+  operand = function_p->operand;
+  while (operand != NULL)
+    {
+      error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &key);
+      if (error_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      error_status = fetch_peek_dbval (thread_p, &operand->next->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+      if (error_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      args[index++] = key;
+      args[index++] = value;
+
+      operand = operand->next->next;
+    }
+
+  assert (index == no_args);
+
+  error_status = db_json_object (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  db_private_free (thread_p, args);
+  return error_status;
+}
+
+static int
+qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		  QFILE_TUPLE tuple)
+{
+  DB_VALUE *value;
+  REGU_VARIABLE_LIST operand;
+  int error_status = NO_ERROR;
+  int no_args = 0, index = 0;
+  DB_VALUE **args;
+
+  /* should sync with fetch_peek_dbval () */
+
+  assert (function_p != NULL);
+  assert (function_p->value != NULL);
+  assert (function_p->operand != NULL);
+
+  operand = function_p->operand;
+
+  while (operand != NULL)
+    {
+      no_args++;
+      operand = operand->next;
+    }
+
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
+
+  operand = function_p->operand;
+  while (operand != NULL)
+    {
+      error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+      if (error_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+      args[index++] = value;
+
+      operand = operand->next;
+    }
+
+  assert (index == no_args);
+
+  error_status = db_json_array (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  db_private_free (thread_p, args);
+  return error_status;
+}
+
+static int
+qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple)
+{
+  DB_VALUE *value;
+  REGU_VARIABLE_LIST operand;
+  int error_status = NO_ERROR;
+  int no_args = 0, index = 0;
+  DB_VALUE **args;
+
+  /* should sync with fetch_peek_dbval () */
+
+  assert (function_p != NULL);
+  assert (function_p->value != NULL);
+  assert (function_p->operand != NULL);
+
+  operand = function_p->operand;
+
+  while (operand != NULL)
+    {
+      no_args++;
+      operand = operand->next;
+    }
+
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
+
+  operand = function_p->operand;
+  while (operand != NULL)
+    {
+      error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+      if (error_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+      args[index++] = value;
+
+      operand = operand->next;
+    }
+
+  assert (index == no_args);
+
+  error_status = db_json_insert (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  db_private_free (thread_p, args);
+  return error_status;
+}
+
+static int
+qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple)
+{
+  DB_VALUE *value;
+  REGU_VARIABLE_LIST operand;
+  int error_status = NO_ERROR;
+  int no_args = 0, index = 0;
+  DB_VALUE **args;
+
+  /* should sync with fetch_peek_dbval () */
+
+  assert (function_p != NULL);
+  assert (function_p->value != NULL);
+  assert (function_p->operand != NULL);
+
+  operand = function_p->operand;
+
+  while (operand != NULL)
+    {
+      no_args++;
+      operand = operand->next;
+    }
+
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
+
+  operand = function_p->operand;
+  while (operand != NULL)
+    {
+      error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+      if (error_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+      args[index++] = value;
+
+      operand = operand->next;
+    }
+
+  assert (index == no_args);
+
+  error_status = db_json_remove (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  db_private_free (thread_p, args);
+  return error_status;
+}
+
+static int
+qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		  QFILE_TUPLE tuple)
+{
+  DB_VALUE *value;
+  REGU_VARIABLE_LIST operand;
+  int error_status = NO_ERROR;
+  int no_args = 0, index = 0;
+  DB_VALUE **args;
+
+  /* should sync with fetch_peek_dbval () */
+
+  assert (function_p != NULL);
+  assert (function_p->value != NULL);
+  assert (function_p->operand != NULL);
+
+  operand = function_p->operand;
+
+  while (operand != NULL)
+    {
+      no_args++;
+      operand = operand->next;
+    }
+
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
+
+  operand = function_p->operand;
+  while (operand != NULL)
+    {
+      error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+      if (error_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+      args[index++] = value;
+
+      operand = operand->next;
+    }
+
+  assert (index == no_args);
+
+  error_status = db_json_merge (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  db_private_free (thread_p, args);
   return error_status;
 }
 

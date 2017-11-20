@@ -1050,6 +1050,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	{
 	  assert_release (false);
 	}
+      assert (thread_p->count_private_allocators == 0);
 #endif
 
       /* defence code: let other threads continue. */

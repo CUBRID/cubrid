@@ -265,19 +265,19 @@ or_pack_query_format (char *buf, const DB_QUERY_TYPE * columns, const int count)
       /* column type */
       ptr = or_pack_int (ptr, (int) column->col_type);
       /* column name */
-      len = (column->name == NULL) ? 0 : strlen (column->name);
+      len = (column->name == NULL) ? 0 : (int) strlen (column->name);
       ptr = or_pack_string_with_length (ptr, column->name, len);
 
       /* attribute name */
-      len = (column->attr_name == NULL) ? 0 : strlen (column->attr_name);
+      len = (column->attr_name == NULL) ? 0 : (int) strlen (column->attr_name);
       ptr = or_pack_string_with_length (ptr, column->attr_name, len);
 
       /* spec name */
-      len = (column->spec_name == NULL) ? 0 : strlen (column->spec_name);
+      len = (column->spec_name == NULL) ? 0 : (int) strlen (column->spec_name);
       ptr = or_pack_string_with_length (ptr, column->spec_name, len);
 
       /* user specified column name */
-      len = (column->original_name == NULL) ? 0 : strlen (column->original_name);
+      len = (column->original_name == NULL) ? 0 : (int) strlen (column->original_name);
       ptr = or_pack_string_with_length (ptr, column->original_name, len);
       /* column data type */
       ptr = or_pack_int (ptr, column->db_type);
@@ -537,7 +537,7 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 int
 db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 {
-  int param_cnt = 0, len = 0, i = 0;
+  int i = 0;
   char *ptr = NULL;
 
   assert (info != NULL);
@@ -1079,11 +1079,8 @@ db_dump_query_result (DB_QUERY_RESULT * r)
 
   fprintf (stdout, "\nQuery Result Structure: \n");
   fprintf (stdout, "Type: %s \n",
-	   (r->type == T_SELECT) ? "T_SELECT" : (r->type == T_CALL) ? "T_CALL" : (r->type ==
-										  T_OBJFETCH) ? "T_OBJFETCH" : (r->
-														type ==
-														T_GET) ?
-	   "T_GET" : "T_UNKNOWN");
+	   (r->type == T_SELECT) ? "T_SELECT" : (r->type == T_CALL) ? "T_CALL"
+	   : (r->type == T_OBJFETCH) ? "T_OBJFETCH" : (r->type == T_GET) ? "T_GET" : "T_UNKNOWN");
   fprintf (stdout, "Status: %s \n",
 	   (r->status == T_OPEN) ? "T_OPEN" : (r->status == T_CLOSED) ? "T_CLOSED" : "T_UNKNOWN");
   fprintf (stdout, "Column Count: %d \n", r->col_cnt);

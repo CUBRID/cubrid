@@ -47,6 +47,11 @@
 #include "db_elo.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "db_json.hpp"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #include "db_macro.i"
 
@@ -333,6 +338,12 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
 
+    case DB_TYPE_JSON:
+      value->data.json.json_body = NULL;
+      value->data.json.document = NULL;
+      value->data.json.schema_raw = NULL;
+      break;
+
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -535,6 +546,11 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       db_make_enumeration (value, 0, NULL, 0, codeset, collation_id);
       break;
       /* case DB_TYPE_TABLE: internal use only */
+    case DB_TYPE_JSON:
+      value->domain.general_info.is_null = 1;
+      value->need_clear = false;
+      value->data.json.json_body = NULL;
+      break;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);
@@ -706,13 +722,16 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       else
 	{
 	  db_make_enumeration (value, enumeration->count,
-			       enumeration->elements[enumeration->count -
-						     1].str_val.medium.buf,
-			       enumeration->elements[enumeration->count -
-						     1].str_val.medium.size, (unsigned char) codeset, collation_id);
+			       enumeration->elements[enumeration->count - 1].str_val.medium.buf,
+			       enumeration->elements[enumeration->count - 1].str_val.medium.size,
+			       (unsigned char) codeset, collation_id);
 	}
       break;
       /* case DB_TYPE_TABLE: internal use only */
+    case DB_TYPE_JSON:
+      value->domain.general_info.is_null = 1;
+      value->data.json.json_body = NULL;
+      value->need_clear = false;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);
@@ -1766,6 +1785,7 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_CLOB:
     case DB_TYPE_ENUMERATION:
     case DB_TYPE_ELO:
+    case DB_TYPE_JSON:
       result = tp_domain_resolve_default (type);
       break;
     case DB_TYPE_SUB:
@@ -4130,6 +4150,17 @@ db_domain_collation_id (const DB_DOMAIN * domain)
   return (collation_id);
 }
 
+const char *
+db_domain_raw_json_schema (const DB_DOMAIN * domain)
+{
+  if (domain == NULL || domain->json_validator == NULL)
+    {
+      return NULL;
+    }
+
+  return db_json_get_schema_raw_from_validator (domain->json_validator);
+}
+
 /*
  * db_string_put_cs_and_collation() - Set the charset and collation.
  * return	   : error code
@@ -4948,53 +4979,6 @@ db_set_connect_status (int status)
 }
 
 /*
- *  db_set_compressed_string()	    :- Sets the compressed string, its size and its need for clear in the DB_VALUE
- *
- *  value(in/out)		    :- The DB_VALUE
- *  compressed_string(in)	    :-
- *  compressed_size(in)		    :-
- *  compressed_need_clear(in)	    :-
- */
-void
-db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size, bool compressed_need_clear)
-{
-  DB_TYPE type;
-
-  if (value == NULL || DB_IS_NULL (value))
-    {
-      return;
-    }
-  type = DB_VALUE_DOMAIN_TYPE (value);
-
-  /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
-
-  value->data.ch.medium.compressed_buf = compressed_string;
-  value->data.ch.medium.compressed_size = compressed_size;
-  value->data.ch.info.compressed_need_clear = compressed_need_clear;
-
-  return;
-}
-
-int
-db_get_compressed_size (DB_VALUE * value)
-{
-  DB_TYPE type;
-
-  if (value == NULL || DB_IS_NULL (value))
-    {
-      return 0;
-    }
-
-  type = DB_VALUE_DOMAIN_TYPE (value);
-
-  /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
-
-  return value->data.ch.medium.compressed_size;
-}
-
-/*
  * db_default_expression_string() - 
  * return : string opcode of default expression
  * default_expr_type(in):
@@ -5031,4 +5015,14 @@ db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
     default:
       return NULL;
     }
+}
+
+JSON_DOC *
+db_get_json_document (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+
+  assert (value->domain.general_info.type == DB_TYPE_JSON);
+
+  return value->data.json.document;
 }

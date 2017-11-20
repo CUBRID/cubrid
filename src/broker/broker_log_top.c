@@ -32,16 +32,12 @@
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #ifdef MT_MODE
 #include <pthread.h>
 #endif
 
+#include "cubrid_getopt.h"
 #include "cas_common.h"
 #include "cas_query_info.h"
 #include "broker_log_time.h"
@@ -49,6 +45,10 @@
 #include "log_top_string.h"
 #include "broker_log_top.h"
 #include "broker_log_util.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define MAX_SRV_HANDLE		3000
 #define CLIENT_MSG_BUF_SIZE	1024

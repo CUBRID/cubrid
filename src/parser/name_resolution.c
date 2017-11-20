@@ -47,6 +47,7 @@
 #include "show_meta.h"
 #include "network_interface_cl.h"
 #include "locator_cl.h"
+#include "db_json.hpp"
 
 #include "dbtype_common.h"
 
@@ -3933,6 +3934,25 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
   t = pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
   switch (t)
     {
+    case PT_TYPE_JSON:
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
+	{
+	  return NULL;
+	}
+      result->type_enum = t;
+      if (domain->json_validator != NULL)
+	{
+	  result->info.data_type.json_schema =
+	    pt_append_bytes (parser, NULL, db_json_get_schema_raw_from_validator (domain->json_validator),
+			     (int) strlen (db_json_get_schema_raw_from_validator (domain->json_validator)));
+	}
+      else
+	{
+	  result->info.data_type.json_schema = NULL;
+	}
+      break;
+
     case PT_TYPE_NUMERIC:
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
@@ -3940,7 +3960,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
     case PT_TYPE_VARCHAR:
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
-      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
 	{
 	  return NULL;
 	}
@@ -3956,7 +3977,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 
     case PT_TYPE_OBJECT:
       /* get the object */
-      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
 	{
 	  return NULL;
 	}
@@ -4037,7 +4059,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	DB_ENUM_ELEMENT *db_enum = NULL;
 	int idx;
 
-	if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+	result = parser_new_node (parser, PT_DATA_TYPE);
+	if (result == NULL)
 	  {
 	    return NULL;
 	  }
@@ -4064,7 +4087,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       break;
 
     default:
-      if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
+      result = parser_new_node (parser, PT_DATA_TYPE);
+      if (result == NULL)
 	{
 	  return NULL;
 	}
@@ -4383,6 +4407,7 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * at
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_ENUMERATION:
+    case PT_TYPE_JSON:
       attr->data_type = pt_domain_to_data_type (parser, dom);
       break;
     default:
@@ -6977,7 +7002,7 @@ int
 pt_quick_resolve_names (PARSER_CONTEXT * parser, PT_NODE ** spec_p, PT_NODE ** node_p, SEMANTIC_CHK_INFO * sc_info)
 {
   PT_BIND_NAMES_ARG bind_arg;
-  PT_NODE *spec = NULL, *node = NULL, *parent = NULL;
+  PT_NODE *spec = NULL, *node = NULL;
   int walk = 0;
   SCOPES scopestack;
   PT_EXTRA_SPECS_FRAME spec_frame;
@@ -9131,15 +9156,12 @@ pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_
 static void
 pt_mark_function_index_expression (PARSER_CONTEXT * parser, PT_NODE * expr, PT_BIND_NAMES_ARG * bind_arg)
 {
-  PT_NODE *arg1 = NULL, *arg2 = NULL, *arg3 = NULL;
   SCOPES *scope = NULL;
   PT_NODE *spec = NULL;
-  PT_NODE *attr = NULL;
   MOP cls;
   SM_CLASS_CONSTRAINT *constraints;
   char *expr_str = NULL;
   PT_NODE *flat = NULL;
-  DB_OBJECT *db = NULL;
 
   if (expr->node_type != PT_EXPR)
     {

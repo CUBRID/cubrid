@@ -98,11 +98,6 @@ up-to-date.  Many thanks.
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -117,6 +112,7 @@ typedef int int32_t;
 #endif /* WINDOWS */
 
 #include "porting.h"
+#include "cubrid_getopt.h"
 
 #ifndef NL_SETMAX
 #define NL_SETMAX 255
@@ -469,8 +465,9 @@ static char *
 getmsg (int fd, char *cptr, char quote)
 {
   static char *msg = NULL;
-  static int msglen = 0;
-  int clen, i;
+  static size_t msglen = 0;
+  size_t clen;
+  int i;
   char *tptr;
 
   if (quote && *cptr == quote)
@@ -853,7 +850,7 @@ MCWriteCat (int fd)
 {
   int nsets;			/* number of sets */
   int nmsgs;			/* number of msgs */
-  int string_size;		/* total size of string pool */
+  size_t string_size;		/* total size of string pool */
   int msgcat_size;		/* total size of message catalog */
   void *msgcat;			/* message catalog data */
   struct _nls_cat_hdr *cat_hdr;
@@ -889,8 +886,8 @@ MCWriteCat (int fd)
 
   /* determine size and then allocate buffer for constructing external message catalog representation */
   msgcat_size =
-    sizeof (struct _nls_cat_hdr) + (nsets * sizeof (struct _nls_set_hdr)) + (nmsgs * sizeof (struct _nls_msg_hdr)) +
-    string_size;
+    (int) (sizeof (struct _nls_cat_hdr) + (nsets * sizeof (struct _nls_set_hdr)) +
+	   (nmsgs * sizeof (struct _nls_msg_hdr)) + string_size);
 
   msgcat = xmalloc (msgcat_size);
   if (msgcat == NULL)
@@ -923,7 +920,7 @@ MCWriteCat (int fd)
       nmsgs = 0;
       for (msg = set->msghead.lh_first; msg != NULL; msg = msg->entries.le_next)
 	{
-	  int msg_len = strlen (msg->str) + 1;
+	  int msg_len = (int) strlen (msg->str) + 1;
 
 	  msg_hdr->__msgno = htonl (msg->msgId);
 	  msg_hdr->__msglen = htonl (msg_len);

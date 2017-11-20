@@ -1374,7 +1374,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
     {
       char *str_val = NULL;
-      int len;
+      size_t len;
 
       if (DB_VALUE_TYPE (&default_expr) == DB_TYPE_SEQUENCE)
 	{
@@ -1684,6 +1684,23 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   error =
     catcls_get_subset (thread_p, buf_p, vars[ORC_DOMAIN_SETDOMAIN_INDEX].length, &attrs[8],
 		       catcls_get_or_value_from_domain);
+
+  if (vars[ORC_DOMAIN_SCHEMA_JSON_OFFSET].length > 0)
+    {
+      char *schema_str;
+      error = or_get_json_schema (buf_p, schema_str);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
+      db_make_string (&attrs[9].value, schema_str);
+      attrs[9].value.need_clear = true;
+    }
+  else
+    {
+      DB_MAKE_NULL (&attrs[9].value);
+    }
+
   if (error != NO_ERROR)
     {
       goto error;
@@ -4542,7 +4559,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 	  else if (heap_value->attrid == lang_att_id)
 	    {
 	      char *lang_str = NULL;
-	      int lang_str_len;
+	      size_t lang_str_len;
 
 	      if (DB_IS_NULL (&heap_value->dbvalue))
 		{
@@ -4569,7 +4586,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 	  else if (heap_value->attrid == timezone_id)
 	    {
 	      char *checksum = NULL;
-	      int checksum_len;
+	      size_t checksum_len;
 
 	      if (DB_IS_NULL (&heap_value->dbvalue))
 		{
@@ -5005,13 +5022,13 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 	  else if (heap_value->attrid == coll_name_att_id)
 	    {
 	      char *lang_str = NULL;
-	      int lang_str_len;
+	      size_t lang_str_len;
 
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue)) == DB_TYPE_STRING);
 
 	      lang_str = DB_GET_STRING (&heap_value->dbvalue);
 	      lang_str_len = (lang_str != NULL) ? strlen (lang_str) : 0;
-	      lang_str_len = MIN (lang_str_len, (int) sizeof (curr_coll->coll_name));
+	      lang_str_len = MIN (lang_str_len, sizeof (curr_coll->coll_name));
 
 	      strncpy (curr_coll->coll_name, lang_str, lang_str_len);
 	      curr_coll->coll_name[lang_str_len] = '\0';
@@ -5025,7 +5042,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 	  else if (heap_value->attrid == checksum_att_id)
 	    {
 	      char *checksum_str = NULL;
-	      int str_len;
+	      size_t str_len;
 
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue)) == DB_TYPE_STRING);
 

@@ -16,7 +16,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-message(WARNING "Flex loader outputs: ${FLEX_loader_lexer_OUTPUTS}")
+message(STATUS "Flex loader outputs: ${FLEX_loader_lexer_OUTPUTS}")
 
 set(EXECUTABLE_SOURCES
   ${BISON_loader_grammar_OUTPUTS}
@@ -56,6 +56,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_temp.c
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
+  ${COMPAT_DIR}/db_json.cpp
   )
 
 set(BASE_SOURCES
@@ -95,7 +96,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/variable_string.c
-  ${BASE_DIR}/getopt_long.c
+  ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/perf.c
@@ -277,6 +278,9 @@ set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
+if(UNIX)
+set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql.c
@@ -398,9 +402,7 @@ endif(UNIX)
 
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 
-if(UNIX)
-  add_dependencies(cubridsa ${EP_TARGETS})
-endif(UNIX)
+add_dependencies(cubridsa ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})

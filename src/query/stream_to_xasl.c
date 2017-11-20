@@ -1804,8 +1804,6 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
   int offset;
   int tmp;
-  REGUVAL_LIST_SPEC_TYPE *rlist_spec_type = NULL;
-
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   /* initialize query_in_progress flag */
@@ -3495,7 +3493,6 @@ stx_restore_update_class_info_array (THREAD_ENTRY * thread_p, char *ptr, int num
 {
   int idx;
   UPDDEL_CLASS_INFO *classes = NULL;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   classes = (UPDDEL_CLASS_INFO *) stx_alloc_struct (thread_p, sizeof (*classes) * num_classes);
   if (classes == NULL)
@@ -3571,7 +3568,6 @@ stx_restore_update_assignment_array (THREAD_ENTRY * thread_p, char *ptr, int num
 {
   int idx;
   UPDATE_ASSIGNMENT *assigns = NULL;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   assigns = (UPDATE_ASSIGNMENT *) stx_alloc_struct (thread_p, sizeof (*assigns) * num_assigns);
   if (assigns == NULL)
@@ -6056,6 +6052,9 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
+
+  assert (offset != 0);		/* head should exist */
+
   analytic_eval->head = stx_restore_analytic_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
   if (analytic_eval->head == NULL)
     {
@@ -6429,7 +6428,6 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
   int i, count, tmp;
   REGU_VALUE_ITEM *list_node;
   REGU_VARIABLE *regu;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && regu_value_list != NULL);
 

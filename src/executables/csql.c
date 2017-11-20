@@ -67,6 +67,10 @@
 #include "file_io.h"		/* needed for _wyield() */
 #endif /* WINDOWS */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* input type specification for csql_execute_statements() */
 enum
 {
@@ -189,7 +193,6 @@ static int initialize_csql_column_width_info_list ();
 static int get_column_name_argument (char **column_name, char **val_str, char *argument);
 static void csql_pipe_handler (int sig_no);
 static void display_buffer (void);
-static void csql_execute_rcfile (CSQL_ARGUMENT * csql_arg);
 static void start_csql (CSQL_ARGUMENT * csql_arg);
 static void csql_read_file (const char *file_name);
 static void csql_write_file (const char *file_name, int append_flag);
@@ -458,9 +461,6 @@ display_buffer (void)
 static void
 start_csql (CSQL_ARGUMENT * csql_arg)
 {
-#if !defined(WINDOWS)
-  int i;
-#endif /* !WINDOWS */
   unsigned char line_buf[LINE_BUFFER_SIZE];
   unsigned char utf8_line_buf[INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE];
   char *line_read = NULL;

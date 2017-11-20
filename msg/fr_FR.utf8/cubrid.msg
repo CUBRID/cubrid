@@ -1263,7 +1263,11 @@ $ LOADDB
 1194 Impossible de vérifier le fichier %1$d|%2$d car le verrou sur la classe %3$d|%4$d|%5$d n'est pas immédiatement accordé.
 1195 La partie récursive d'un CTE ne doit pas contenir de fonctions agrégées sans clause GROUP BY.
 1196 Récursions maximales %1$d atteint l'exécution de CTE.
-1197 Dernière erreur
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Dernière erreur
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
 2 Aucun message d'erreur disponible.

@@ -976,6 +976,12 @@ void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
 		int ismedia_crash, BO_RESTART_ARG * r_args)
 {
+  er_log_debug (ARG_FILE_LINE, "LOG INITIALIZE\n" "\tdb_fullname = %s \n" "\tlogpath = %s \n"
+		"\tprefix_logname = %s \n" "\tismedia_crash = %d \n",
+		db_fullname != NULL ? db_fullname : "(UNKNOWN)",
+		logpath != NULL ? logpath : "(UNKNOWN)",
+		prefix_logname != NULL ? prefix_logname : "(UNKNOWN)", ismedia_crash);
+
   (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash, r_args, false);
 
   log_No_logging = prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
@@ -1292,7 +1298,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
 	{
-	  if (LSA_GT (&log_Gl.hdr.append_lsa, &log_Gl.hdr.eof_lsa))
+	  if (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && LSA_GT (&log_Gl.hdr.append_lsa, &log_Gl.hdr.eof_lsa))
 	    {
 	      /* We cannot believe in append_lsa for this case. It points to an unflushed log page. Since we are
 	       * going to skip recovery for emergency startup, just replace it with eof_lsa. */
@@ -1375,7 +1381,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
-      int vdes = NULL_VOLDES;
       BACKGROUND_ARCHIVING_INFO *bg_arv_info;
 
       bg_arv_info = &log_Gl.bg_archive_info;
@@ -2118,7 +2123,6 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
-  int i = 0;
   int error_code = NO_ERROR;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
@@ -2193,6 +2197,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL);
   if (node == NULL)
     {
+      assert (false);
       return;
     }
 
@@ -3326,7 +3331,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       return NULL;
     }
 
-  length = strlen (savept_name) + 1;
+  length = (int) strlen (savept_name) + 1;
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_SAVEPOINT, RV_NOT_DEFINED, NULL, length, (char *) savept_name, 0,
@@ -3827,8 +3832,6 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
     }
   else
     {
-      LOG_PRIOR_NODE *node = NULL;
-
       /* we are here because either system operation is not empty, or this is the end of a logical system operation.
        * we don't actually allow empty logical system operation because it might hide a logic flaw. however, there are
        * unusual cases when a logical operation does not really require logging (see RVPGBUF_FLUSH_PAGE). if you create
@@ -4033,7 +4036,6 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
     }
   else
     {
-      LOG_PRIOR_NODE *node = NULL;
       TRAN_STATE save_state;
 
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
@@ -5039,7 +5041,7 @@ xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_
   LOB_LOCATOR_ENTRY *entry;
   LOB_SAVEPOINT_ENTRY *savept;
   char *key;
-  int key_len;
+  size_t key_len;
 
   assert (log_is_valid_locator (locator));
 
@@ -5224,6 +5226,30 @@ log_free_lob_locator (LOB_LOCATOR_ENTRY * entry)
   free_and_init (entry);
 }
 
+#if 0
+static const char *
+lob_state_to_string (LOB_LOCATOR_STATE state)
+{
+  switch (state)
+    {
+    case LOB_TRANSIENT_CREATED:
+      return "LOB_TRANSIENT_CREATED";
+
+    case LOB_TRANSIENT_DELETED:
+      return "LOB_TRANSIENT_DELETED";
+
+    case LOB_PERMANENT_CREATED:
+      return "LOB_PERMANENT_CREATED";
+
+    case LOB_PERMANENT_DELETED:
+      return "LOB_PERMANENT_DELETED";
+
+    default:
+      return "LOB_UNKNOWN";
+    }
+}
+#endif
+
 /*
  * log_clear_lob_locator_list -
  *
@@ -5254,17 +5280,8 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
     {
 #if 0
       er_log_debug (ARG_FILE_LINE, "   locator=%s, state=%s\n, savept_lsa=(%d,%d)", entry->key,
-		    (entry->top->state ==
-		     LOB_TRANSIENT_CREATED) ? "LOB_TRANSIENT_CREATED" : ((entry->top->state ==
-									  LOB_TRANSIENT_DELETED) ?
-									 "LOB_TRANSIENT_DELETED"
-									 : ((entry->top->state ==
-									     LOB_PERMANENT_CREATED) ?
-									    "LOB_PERMANENT_CREATED" : (entry->
-												       top->state ==
-												       LOB_PERMANENT_DELETED)
-									    ? "LOB_PERMANENT_DELETED" : "LOB_UNKNOWN")),
-		    entry->top->savept_lsa.pageid, entry->top->savept_lsa.offset);
+		    lob_state_to_string (entry->top->state), entry->top->savept_lsa.pageid,
+		    entry->top->savept_lsa.offset);
 #endif
       /* setup next link before destroy */
       next = RB_NEXT (lob_rb_root, &tdes->lob_locator_root, entry);
@@ -7361,7 +7378,6 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   LOG_CS_ENTER (thread_p);
 
   xlogtb_dump_trantable (thread_p, out_fp);
-  logpb_dump (thread_p, out_fp);
   logpb_flush_pages_direct (thread_p);
   logpb_flush_header (thread_p);
 
@@ -8727,7 +8743,6 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 {
   LOG_LSA ref_lsa;		/* The address of a postpone record */
   LOG_REC_REDO redo;		/* A redo log record */
-  int rcv_length = 0;
   char *rcv_data = NULL;
   char *area = NULL;
 
@@ -9363,7 +9378,6 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 				  void **ptr)
 {
   int error = NO_ERROR;
-  int idx_val = 0;
   const char *path;
   int fd = -1;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
@@ -9722,7 +9736,7 @@ int
 log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				   void **ptr)
 {
-  int idx = 0, error = NO_ERROR;
+  int error = NO_ERROR;
   const char *path;
   int fd;
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];

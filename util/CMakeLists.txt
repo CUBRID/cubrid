@@ -35,16 +35,15 @@ if(WIN32)
   set_target_properties(cubridesql PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libesql/libesql.def\"")
   target_link_libraries(cubridesql LINK_PRIVATE cubridcs)
 endif(WIN32)
-if(UNIX)
-  add_dependencies(cubridesql ${EP_TARGETS})
-endif(UNIX)
+
+add_dependencies(cubridesql ${EP_TARGETS})
 add_dependencies(cubridesql cubridcs)
 
 set(CSQL_SOURCES
   ${EXECUTABLES_DIR}/csql_launcher.c
   ${EXECUTABLES_DIR}/util_support.c
   ${BASE_DIR}/porting.c
-  ${BASE_DIR}/getopt_long.c
+  ${BASE_DIR}/cubrid_getopt_long.c
   )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -127,9 +126,9 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE CXX
   )
 if(WIN32)
-  list(APPEND CUBRID_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND CUBRID_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   SET_SOURCE_FILES_PROPERTIES(
-    ${BASE_DIR}/getopt_long.c
+    ${BASE_DIR}/cubrid_getopt_long.c
     PROPERTIES LANGUAGE CXX
   )
   list(APPEND CUBRID_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
@@ -202,7 +201,7 @@ endif(UNIX)
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c
   ${EXECUTABLES_DIR}/util_support.c
-  ${BASE_DIR}/getopt_long.c
+  ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/porting.c
   )
   
@@ -220,8 +219,8 @@ endif(WIN32)
 add_executable(cub_admin ${CUB_ADMIN_SOURCES})
 target_include_directories(cub_admin PRIVATE ${EP_INCLUDES})
 target_link_libraries(cub_admin LINK_PRIVATE ${CMAKE_DL_LIBS})
+add_dependencies(cub_admin ${EP_TARGETS})
 if(UNIX)
-  add_dependencies(cub_admin ${EP_TARGETS})
 else(UNIX)
   target_link_libraries(cub_admin LINK_PRIVATE ws2_32)
 endif(UNIX)
@@ -271,7 +270,7 @@ set(GENCAT_SOURCES
   ${EXECUTABLES_DIR}/gencat.c
   )
 if(WIN32)
-  list(APPEND GENCAT_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND GENCAT_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND GENCAT_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(gencat ${GENCAT_SOURCES})

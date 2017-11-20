@@ -16,6 +16,8 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
+message("======== cubrid/CMakeLists.txt")
+
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
   ${COMPAT_DIR}/cnvlex.c
@@ -23,6 +25,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
+  ${COMPAT_DIR}/db_json.cpp
   )
 
 set(THREAD_SOURCES
@@ -72,6 +75,11 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
+  )
+set (BASE_HEADERS
+  ${BASE_DIR}/contiguous_memory_buffer.hpp
+  ${BASE_DIR}/db_private_allocator.hpp
+  ${BASE_DIR}/extensible_array.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -185,18 +193,22 @@ set(SESSION_SOURCES
   )
 
 if(UNIX)
-  list(APPEND BASE_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/variable_string.c)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
 else(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/wintcp.c)
-  list(APPEND BASE_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/rand.c)
 endif(UNIX)
 
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
+
+if(UNIX)
+set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${COMPAT_SOURCES}
@@ -223,7 +235,7 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE C
   )
 
-add_library(cubrid SHARED
+set (CUBRID_LIB_SOURCES
   ${COMPAT_SOURCES}
   ${THREAD_SOURCES}
   ${BASE_SOURCES}
@@ -240,6 +252,14 @@ add_library(cubrid SHARED
   ${EXECUTABLE_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  )
+set (CUBRID_LIB_HEADERS
+  ${BASE_HEADERS}
+  )
+
+add_library(cubrid SHARED
+  ${CUBRID_LIB_SOURCES}
+  ${CUBRID_LIB_HEADERS}
   )
 set_target_properties(cubrid PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 if(WIN32)
@@ -266,9 +286,40 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
-if(UNIX)
-  add_dependencies(cubrid ${EP_TARGETS})
-endif(UNIX)
+add_dependencies(cubrid ${EP_TARGETS})
+
+if(AT_LEAST_ONE_UNIT_TEST)
+  message("    ==== add cubrid static libs for unit tests (WIN only)")
+  if (WIN32)
+  # in order to avoid adding all the functions used by unit tests in def file, it is more convenient to build a static
+  # lib too. more compile time, but less head-ache
+  # todo - is there any nicer way of doing this??
+  add_library (cubrid-win-lib STATIC
+    ${CUBRID_LIB_SOURCES}
+    ${CUBRID_LIB_HEADERS}
+    )
+
+  target_compile_definitions(cubrid-win-lib PRIVATE 
+    SERVER_MODE
+    ${COMMON_DEFS}
+    )
+
+  target_link_libraries(cubrid-win-lib PRIVATE
+    ws2_32
+    ${JVM_LIBS}
+    ${EP_LIBS}
+    )
+
+  target_include_directories(cubrid-win-lib PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/heaplayers/util
+    ${JAVA_INC}
+    ${EP_INCLUDES}
+    )
+
+  add_dependencies(cubrid-win-lib ${EP_TARGETS})
+
+  endif (WIN32)
+endif (AT_LEAST_ONE_UNIT_TEST)
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubrid PRIVATE ${CMAKE_BINARY_DIR})

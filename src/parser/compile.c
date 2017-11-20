@@ -431,7 +431,6 @@ PT_NODE *
 pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_CLASS_LOCKS lcks;
-  int error = NO_ERROR;
   PT_NODE *node = NULL;
   LOCK lock_rr_tran = NULL_LOCK;
   LC_FIND_CLASSNAME find_result;
@@ -732,7 +731,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
     }
 
   /* need to lowercase the class name so that the lock manager can find it. */
-  len = strlen (spec->info.spec.entity_name->info.name.original);
+  len = (int) strlen (spec->info.spec.entity_name->info.name.original);
   /* parser->lcks_classes[n] will be freed at parser_free_parser() */
   lcks->classes[lcks->num_classes] = (char *) calloc (1, len + 1);
   if (lcks->classes[lcks->num_classes] == NULL)
@@ -1147,8 +1146,6 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
   if (statement != NULL && statement->info.scope.stmt->info.trigger_action.expression != NULL
       && statement->info.scope.stmt->info.trigger_action.expression->node_type == PT_DELETE)
     {
-      PT_NODE *node = NULL, *prev = NULL;
-
       if (pt_split_delete_stmt (parser, statement->info.scope.stmt->info.trigger_action.expression) != NO_ERROR)
 	{
 	  return NULL;

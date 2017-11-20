@@ -135,10 +135,8 @@ STATIC_INLINE bool
 mvcc_is_active_id (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  MVCC_INFO *curr_mvcc_info = NULL, *elem = NULL;
+  MVCC_INFO *curr_mvcc_info = NULL;
   MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
-  MVCC_INFO *mvccinfo = NULL;
-  int try_count = 0;
   UINT64 *p_area;
   int local_bit_area_length;
   MVCCID position, local_bit_area_start_mvccid;

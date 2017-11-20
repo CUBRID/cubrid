@@ -179,7 +179,6 @@ static void ws_print_oid (OID * oid);
 #if defined (CUBRID_DEBUG)
 static int ws_describe_mop (MOP mop, void *args);
 #endif
-static void ws_flush_properties (MOP op);
 static int ws_check_hash_link (int slot);
 static void ws_insert_mop_on_hash_link (MOP mop, int slot);
 static void ws_insert_mop_on_hash_link_with_position (MOP mop, int slot, MOP prev);
@@ -2021,7 +2020,6 @@ ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args)
   MOP op, op2, next, prev;
   DB_OBJLIST *l;
   int status = WS_MAP_CONTINUE;
-  int num_ws_continue_on_error = 0;
 
   if (class_op == sm_Root_class_mop)
     {

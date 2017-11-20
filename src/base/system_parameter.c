@@ -86,6 +86,10 @@
 
 #include "fault_injection.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 
 #define ER_LOG_FILE_DIR	"server"
 #if !defined (CS_MODE)
@@ -628,6 +632,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PB_MONITOR_LOCKS "pgbuf_monitor_locks"
 
 #define PRM_NAME_CTE_MAX_RECURSIONS "cte_max_recursions"
+
+#define PRM_NAME_JSON_LOG_ALLOCATIONS "json_log_allocations"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2117,6 +2123,10 @@ static int prm_cte_max_recursions_default = 2000;
 static int prm_cte_max_recursions_upper = 1000000;
 static int prm_cte_max_recursions_lower = 2;
 static unsigned int prm_cte_max_recursions_flag = 0;
+
+bool PRM_JSON_LOG_ALLOCATIONS = false;
+static bool prm_json_log_allocations_default = false;
+static unsigned int prm_json_log_allocations_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5372,6 +5382,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_cte_max_recursions_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JSON_LOG_ALLOCATIONS,
+   PRM_NAME_JSON_LOG_ALLOCATIONS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_json_log_allocations_flag,
+   (void *) &prm_json_log_allocations_default,
+   (void *) &PRM_JSON_LOG_ALLOCATIONS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
 
@@ -5678,8 +5699,6 @@ typedef enum
   PRM_PRINT_DEFAULT_VAL
 } PRM_PRINT_VALUE_MODE;
 
-static void prm_the_file_has_been_loaded (const char *path);
-static int prm_print_value (const SYSPRM_PARAM * prm, char *buf, size_t len);
 static int prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print_mode,
 		      PRM_PRINT_VALUE_MODE print_value_mode);
 static int sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload,
@@ -11285,7 +11304,7 @@ sysprm_session_init_session_parameters (SESSION_PARAM ** session_parameters_ptr,
 {
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   int error_code = NO_ERROR;
-  SESSION_PARAM *session_params = NULL, *prm = NULL;
+  SESSION_PARAM *session_params = NULL;
 
   assert (found_session_parameters != NULL);
   *found_session_parameters = 0;
@@ -11330,9 +11349,6 @@ sysprm_session_init_session_parameters (SESSION_PARAM ** session_parameters_ptr,
 static SYSPRM_ERR
 sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id, SYSPRM_VALUE value)
 {
-  char *end = NULL;
-  SYSPRM_PARAM *prm = &prm_Def[id];
-
   switch (session_parameter->datatype)
     {
     case PRM_INTEGER:

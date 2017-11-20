@@ -142,7 +142,7 @@ static const char *type_str_tbl[] = {
   "TIMESTAMPLTZ",		/* CCI_U_TYPE_TIMESTAMPLTZ */
   "DATETIMETZ",			/* CCI_U_TYPE_DATETIMETZ */
   "DATETIMELTZ",		/* CCI_U_TYPE_DATETIMELTZ */
-  "TIMETZ"			/* CCI_U_TYPE_TIMETZ */
+  "TIMETZ",			/* CCI_U_TYPE_TIMETZ */
 };
 
 FN_RETURN
@@ -610,7 +610,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s srv_h_id %d ", exec_func_name, srv_h_id);
   if (srv_handle->sql_stmt != NULL)
     {
-      cas_log_write_query_string (srv_handle->sql_stmt, strlen (srv_handle->sql_stmt));
+      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
@@ -696,7 +696,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      exec_func_name, srv_h_id);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      cas_slow_log_write_query_string (srv_handle->sql_stmt, strlen (srv_handle->sql_stmt));
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
 	      bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
 			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
 	    }
@@ -1335,7 +1335,7 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
       net_buf_cp_int (net_buf, err_code, NULL);
       if (cmd == CCI_OID_CLASS_NAME)
 	{
-	  net_buf_cp_str (net_buf, res_msg, strlen (res_msg) + 1);
+	  net_buf_cp_str (net_buf, res_msg, (int) strlen (res_msg) + 1);
 	}
     }
 
@@ -1690,7 +1690,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 		      (argc - arg_index) / 2);
   if (srv_handle->sql_stmt != NULL)
     {
-      cas_log_write_query_string (srv_handle->sql_stmt, strlen (srv_handle->sql_stmt));
+      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
 #ifndef LIBCAS_FOR_JSP
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
@@ -1734,7 +1734,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 			      "execute_array srv_h_id %d %d ", srv_h_id, (argc - 2) / 2);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      cas_slow_log_write_query_string (srv_handle->sql_stmt, strlen (srv_handle->sql_stmt));
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
 	      bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle),
 			      true);
 	    }

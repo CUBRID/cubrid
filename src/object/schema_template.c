@@ -77,6 +77,8 @@ static int smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAIN
 					   SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
 					   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
 					   const char *comment);
+static int smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value,
+						 DB_DEFAULT_EXPR * default_expr);
 static int smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constraint_name,
 					      SM_ATTRIBUTE_FLAG constraint);
 static int smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_ATTRIBUTE ** atts,
@@ -99,7 +101,6 @@ static int smt_change_attribute (SM_TEMPLATE * template_, const char *name, cons
 				 SM_ATTRIBUTE ** found_att);
 static int smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att, const bool change_first,
 					     const char *change_after_attribute);
-static int smt_change_attribute_default (SM_ATTRIBUTE * att, DB_VALUE * proposed_value);
 static int smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att, DB_DOMAIN * new_domain);
 
 
@@ -2881,9 +2882,7 @@ change_constraint_comment (SM_TEMPLATE * ctemplate, const char *index_name, cons
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *sm_constraint = NULL;
   SM_CLASS_CONSTRAINT *sm_cons = NULL;
-  SM_CLASS_CONSTRAINT *existing_con = NULL;
   const char *property_type = NULL;
-  char *norm_new_name = NULL;
 
   error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &sm_cons);
   if (error != NO_ERROR)
@@ -4441,7 +4440,6 @@ smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att, 
 				  const char *change_after_attribute)
 {
   int error_code = NO_ERROR;
-  SM_ATTRIBUTE *crt_att = NULL;
 
   /* we must change the position : either to first or after another element */
   assert ((change_first && change_after_attribute == NULL) || (!change_first && change_after_attribute != NULL));

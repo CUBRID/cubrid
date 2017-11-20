@@ -5242,7 +5242,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   char *classname;		/* Name of the class */
   int num_holders, num_blocked_holders, num_waiters;
   char time_val[CTIME_MAX];
-  int time_str_len;
+  size_t time_str_len;
   OID *oid_rr = NULL;
   HEAP_SCANCACHE scan_cache;
   OID real_class_oid;

@@ -59,6 +59,7 @@
 #cmakedefine HAVE_UNISTD_H 1
 
 #cmakedefine STDC_HEADERS 1
+#cmakedefine NOMINMAX 1
 
 
 #cmakedefine HAVE_BYTE_T 1

@@ -263,7 +263,7 @@ grow_ptr_vec (PTR_VEC * vec)
   int new_max_elems;
   void **new_elems;
 
-  new_max_elems = vec->max_elems + vec->chunk_size;
+  new_max_elems = (int) (vec->max_elems + vec->chunk_size);
   if (vec->elems == vec->inline_elems)
     {
       new_elems = (void **) pp_malloc (sizeof (vec->elems[0]) * new_max_elems);
@@ -380,7 +380,7 @@ pp_strdup (const char *str)
       return NULL;
     }
   /* includes the null terminator of 'str' */
-  n = strlen (str) + 1;
+  n = (int) strlen (str) + 1;
   tmp = (char *) pp_malloc (n);
   memcpy (tmp, str, n);
   return tmp;

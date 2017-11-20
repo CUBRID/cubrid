@@ -42,4 +42,8 @@ extern SHOWSTMT_ARRAY_CONTEXT *showstmt_alloc_array_context (THREAD_ENTRY * thre
 extern void showstmt_free_array_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx);
 extern DB_VALUE *showstmt_alloc_tuple_in_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx);
 
+#if defined(SERVER_MODE)
+extern int thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ctx);
+#endif
+
 #endif /* _SHOW_SCAN_H_ */

@@ -25,7 +25,10 @@
 #include <time.h>
 #include <sys/types.h>
 
+#ifndef __cplusplus
 #define bool char
+#endif
+
 
 #if defined(WINDOWS) && !defined(__GNUC__)
 #define int32_t __int32
@@ -117,6 +120,8 @@ extern "C"
 #define SQLX_CMD_ALTER_STORED_PROCEDURE_OWNER   CUBRID_STMT_ALTER_STORED_PROCEDURE
 #define SQLX_MAX_CMD_TYPE   CUBRID_MAX_STMT_TYPE
 
+    DB_TYPE_TIMETZ = 40,	/* internal use only - RESERVED */
+    DB_TYPE_TIMELTZ = 41,	/* internal use only - RESERVED */
   enum tz_region_type
   {
     TZ_REGION_OFFSET = 0,
@@ -538,6 +543,7 @@ extern "C"
   extern int db_domain_precision (const DB_DOMAIN * domain);
   extern int db_domain_scale (const DB_DOMAIN * domain);
   extern int db_domain_codeset (const DB_DOMAIN * domain);
+  extern const char *db_domain_raw_json_schema (const DB_DOMAIN * domain);
 
   extern DB_METHOD *db_method_next (DB_METHOD * method);
   extern const char *db_method_name (DB_METHOD * method);

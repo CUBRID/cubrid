@@ -113,8 +113,6 @@ typedef enum
   SORT_LIST_ANALYTIC_WINDOW
 } SORT_LIST_MODE;
 
-static int pt_Hostvar_sno = 1;
-
 typedef struct set_numbering_node_etc_info
 {
   DB_VALUE **instnum_valp;
@@ -616,7 +614,6 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
     {
       /* handle special case of query without joins */
       PT_NODE *save_where, *save_from;
-      PT_SELECT_INFO *select_info = &select_node->info.query.q.select;
 
       save_where = select_node->info.query.q.select.where;
       select_node->info.query.q.select.where = select_node->info.query.q.select.connect_by;
@@ -2987,7 +2984,7 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	    {
 	      /* flush all partitions */
 	      DB_OBJLIST *user = NULL;
-	      SM_CLASS *subclass = NULL;
+
 	      for (user = smcls->users; user != NULL; user = user->next)
 		{
 		  if (WS_ISDIRTY (user->op) || ws_has_dirty_objects (user->op, &isvirt))
@@ -3188,7 +3185,7 @@ pt_is_single_tuple (PARSER_CONTEXT * parser, PT_NODE * select_node)
 static PT_NODE *
 pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
-  PT_NODE **last, *temp1, *temp2, *chk_parent = NULL;
+  PT_NODE **last, *temp1, *temp2;
   PT_FLAT_SPEC_INFO info;
 
   if (spec)
@@ -3546,7 +3543,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   VAL_LIST *value_list;
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
-  int *attr_offsets = NULL;
   PT_NODE *pointer = NULL;
   PT_NODE *pt_val = NULL;
   PT_NODE *percentile = NULL;
@@ -6140,6 +6136,13 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_ELT:
 	  result_type = pt_node_to_db_type (function);
 	  break;
+	case F_JSON_OBJECT:
+	case F_JSON_ARRAY:
+	case F_JSON_INSERT:
+	case F_JSON_REMOVE:
+	case F_JSON_MERGE:
+	  result_type = pt_node_to_db_type (function);
+	  break;
 	default:
 	  PT_ERRORf (parser, function, "Internal error in generate(%d)", __LINE__);
 	}
@@ -6543,6 +6546,7 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
     case PT_TYPE_MONETARY:
     case PT_TYPE_BLOB:
     case PT_TYPE_CLOB:
+    case PT_TYPE_JSON:
       dt->data_type = NULL;
       break;
 
@@ -6722,9 +6726,8 @@ static PT_NODE *
 pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser, PT_NODE * where_key_part, PT_NODE * where_part,
 				  QO_XASL_INDEX_INFO * index_pred)
 {
-  PT_NODE *ipl_where_part = NULL, *where_part_save = NULL;
+  PT_NODE *ipl_where_part = NULL;
   PT_NODE *diff_part;
-  PT_NODE *ipl_where_term = NULL;
   PT_NODE *ipl_if_part, *ipl_instnum_part;
   int i;
   PT_NODE *save_next = NULL;
@@ -6802,7 +6805,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
   PT_NODE *data_type = NULL;
   PT_NODE *save_node = NULL, *save_next = NULL;
   REGU_VARIABLE *r1 = NULL, *r2 = NULL, *r3 = NULL;
-  PT_NODE *empty_str = NULL;
 
   if (node == NULL)
     {
@@ -6897,6 +6899,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	    case PT_EXPR:
 	      if (node->info.expr.op == PT_FUNCTION_HOLDER)
 		{
+		  //TODO FIND WHY NEXT WASN'T RESTORED
+		  node->next = save_next;
 		  regu = pt_function_to_regu (parser, node->info.expr.arg1);
 		  return regu;
 		}
@@ -6965,10 +6969,15 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_WEEKF || node->info.expr.op == PT_MAKEDATE
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
-		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ)
+		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ
+		  || node->info.expr.op == PT_JSON_TYPE
+		  || node->info.expr.op == PT_JSON_EXTRACT || node->info.expr.op == PT_JSON_VALID
+		  || node->info.expr.op == PT_JSON_LENGTH || node->info.expr.op == PT_JSON_DEPTH
+		  || node->info.expr.op == PT_JSON_SEARCH)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
-		  if (node->info.expr.op == PT_CONCAT && node->info.expr.arg2 == NULL)
+		  if ((node->info.expr.op == PT_CONCAT || node->info.expr.op == PT_JSON_LENGTH)
+		      && node->info.expr.arg2 == NULL)
 		    {
 		      r2 = NULL;
 		    }
@@ -7018,7 +7027,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		  if (node->info.expr.op == PT_DATE_FORMAT || node->info.expr.op == PT_STR_TO_DATE
 		      || node->info.expr.op == PT_TIME_FORMAT || node->info.expr.op == PT_FORMAT
-		      || node->info.expr.op == PT_INDEX_PREFIX)
+		      || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_JSON_SEARCH)
 		    {
 		      r3 = pt_to_regu_variable (parser, node->info.expr.arg3, unbox);
 		    }
@@ -7211,7 +7220,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_CONCAT_WS || node->info.expr.op == PT_FIELD
 		       || node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_MID
 		       || node->info.expr.op == PT_SUBSTRING_INDEX || node->info.expr.op == PT_MAKETIME
-		       || node->info.expr.op == PT_INDEX_CARDINALITY || node->info.expr.op == PT_NEW_TIME)
+		       || node->info.expr.op == PT_INDEX_CARDINALITY || node->info.expr.op == PT_NEW_TIME
+		       || node->info.expr.op == PT_JSON_CONTAINS)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if (node->info.expr.arg2 == NULL && node->info.expr.op == PT_CONCAT_WS)
@@ -7224,7 +7234,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    }
 
 		  if (node->info.expr.arg3 == NULL
-		      && (node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_SUBSTRING))
+		      && (node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_SUBSTRING
+			  || node->info.expr.op == PT_JSON_CONTAINS))
 		    {
 		      r3 = NULL;
 		    }
@@ -7436,6 +7447,27 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_CONCAT, domain);
 		  break;
 
+		case PT_JSON_CONTAINS:
+		  regu = pt_make_regu_arith (r1, r2, r3, T_JSON_CONTAINS, domain);
+		  break;
+		case PT_JSON_TYPE:
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_TYPE, domain);
+		  break;
+		case PT_JSON_EXTRACT:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_JSON_EXTRACT, domain);
+		  break;
+		case PT_JSON_VALID:
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_VALID, domain);
+		  break;
+		case PT_JSON_LENGTH:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_JSON_LENGTH, domain);
+		  break;
+		case PT_JSON_DEPTH:
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_DEPTH, domain);
+		  break;
+		case PT_JSON_SEARCH:
+		  regu = pt_make_regu_arith (r1, r2, r3, T_JSON_SEARCH, domain);
+		  break;
 		case PT_CONCAT_WS:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_CONCAT_WS, domain);
 		  break;
@@ -8269,7 +8301,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    DB_VALUE dbval;
 		    PT_NODE *serial_obj_node_p = NULL;
 		    PT_NODE *cached_num_node_p = NULL;
-		    const char *serial_name = NULL;
 		    int cached_num;
 		    OPERATOR_TYPE op;
 
@@ -10863,7 +10894,7 @@ pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser, QO_INDEX_ENTRY * 
   spec = head->entity_spec;
   class_name = (char *) spec->info.spec.range_var->info.name.original;
 
-  query_str_len = strlen (func_index->expr_str) + strlen (class_name) + 7 /* strlen("SELECT ") */  +
+  query_str_len = (int) strlen (func_index->expr_str) + (int) strlen (class_name) + 7 /* strlen("SELECT ") */  +
     6 /* strlen(" FROM ") */  +
     2 /* [] */  +
     1 /* terminating null */ ;
@@ -11371,7 +11402,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
   REGU_VARIABLE_LIST regu_attributes_key;
   HEAP_CACHE_ATTRINFO *cache_key = NULL;
   PT_NODE *key_attrs = NULL;
-  PT_NODE *where_range_part = NULL;
   int *key_offsets = NULL;
   PRED_EXPR *where = NULL, *where_range = NULL;
   REGU_VARIABLE_LIST regu_attributes_pred, regu_attributes_rest;
@@ -14366,28 +14396,32 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
     {
       if (meta->level >= meta->children[0]->level && meta->level >= meta->children[1]->level)
 	{
-	  ANALYTIC_KEY_METADOMAIN *first, *second;
+	  if (eval == NULL)
+	    {
+	      eval = regu_analytic_eval_alloc ();
+	      if (eval == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "regu alloc");
+		  return NULL;
+		}
 
-	  if (meta->children[0]->level >= meta->children[1]->level)
-	    {
-	      first = meta->children[0];
-	      second = meta->children[1];
-	    }
-	  else
-	    {
-	      first = meta->children[1];
-	      second = meta->children[0];
+	      eval->sort_list = pt_sort_list_from_metadomain (parser, meta, sort_list_index, info->select_list);
+	      if (meta->key_size > 0 && eval->sort_list == NULL)
+		{
+		  /* error was already set */
+		  return NULL;
+		}
 	    }
 
 	  /* this is the case of a perfect match where both children can be evaluated together */
-	  eval = pt_build_analytic_eval_list (parser, first, eval, sort_list_index, info);
+	  eval = pt_build_analytic_eval_list (parser, meta->children[0], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
 	      return NULL;
 	    }
 
-	  eval = pt_build_analytic_eval_list (parser, second, eval, sort_list_index, info);
+	  eval = pt_build_analytic_eval_list (parser, meta->children[1], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
@@ -14509,20 +14543,157 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 }
 
 /*
+ * pt_initialize_analytic_info () - initialize analytic_info
+ *   parser(in): 
+ *   analytic_info(out): 
+ *   select_node(in): 
+ *   select_node_ex(in): 
+ *   buidlist(in): 
+ */
+static int
+pt_initialize_analytic_info (PARSER_CONTEXT * parser, ANALYTIC_INFO * analytic_info, PT_NODE * select_node,
+			     PT_NODE * select_list_ex, BUILDLIST_PROC_NODE * buildlist)
+{
+  PT_NODE *node;
+  int idx;
+  QPROC_DB_VALUE_LIST vallist_p;
+
+  assert (analytic_info != NULL);
+
+  analytic_info->head_list = NULL;
+  analytic_info->sort_lists = NULL;
+  analytic_info->select_node = select_node;
+  analytic_info->select_list = select_list_ex;
+  analytic_info->val_list = buildlist->a_val_list;
+
+  for (node = select_list_ex, vallist_p = buildlist->a_val_list->valp, idx = 0; node;
+       node = node->next, vallist_p = vallist_p->next, idx++)
+    {
+      assert (vallist_p != NULL);
+
+      if (PT_IS_ANALYTIC_NODE (node))
+	{
+	  /* process analytic node */
+	  if (pt_to_analytic_node (parser, node, analytic_info) == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* register vallist dbval for further use */
+	  analytic_info->head_list->out_value = vallist_p->val;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_is_analytic_eval_list_valid () - check the generated eval list
+ *   eval_list(in): 
+ *
+ * NOTE: This function checks the generated list whether it includes an invalid node.
+ * This is just a quick fix and should be removed when we fix pt_optimize_analytic_list.
+ */
+static bool
+pt_is_analytic_eval_list_valid (ANALYTIC_EVAL_TYPE * eval_list)
+{
+  ANALYTIC_EVAL_TYPE *p;
+
+  assert (eval_list != NULL);
+
+  for (p = eval_list; p != NULL; p = p->next)
+    {
+      if (p->head == NULL)
+	{
+	  /* This is badly generated. We give up optimization for this invalid case. */
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * pt_generate_simple_analytic_eval_type () - generate simple when optimization fails 
+ *   info(in/out): analytic info
+ *
+ * NOTE: This function generates one evaluation structure for an analytic function.
+ */
+static ANALYTIC_EVAL_TYPE *
+pt_generate_simple_analytic_eval_type (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
+{
+  ANALYTIC_EVAL_TYPE *ret = NULL;
+  ANALYTIC_TYPE *func_p, *save_next;
+  PT_NODE *sort_list;
+
+  /* build one eval group for each analytic function */
+  func_p = info->head_list;
+  sort_list = info->sort_lists;
+  while (func_p)
+    {
+      ANALYTIC_EVAL_TYPE *newa = regu_analytic_eval_alloc ();
+
+      /* new eval structure */
+      if (newa == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "regu alloc");
+	  return NULL;
+	}
+      else if (ret == NULL)
+	{
+	  ret = newa;
+	}
+      else
+	{
+	  newa->next = ret;
+	  ret = newa;
+	}
+
+      /* set up sort list */
+      if (sort_list->info.pointer.node != NULL)
+	{
+	  ret->sort_list =
+	    pt_to_sort_list (parser, sort_list->info.pointer.node, info->select_list, SORT_LIST_ANALYTIC_WINDOW);
+	  if (ret->sort_list == NULL)
+	    {
+	      /* error has already been set */
+	      return NULL;
+	    }
+	}
+      else
+	{
+	  ret->sort_list = NULL;
+	}
+
+      /* one function */
+      ret->head = func_p;
+
+      /* unlink and advance */
+      save_next = func_p->next;
+      func_p->next = NULL;
+      func_p = save_next;
+      sort_list = sort_list->next;
+    }
+
+  return ret;
+}
+
+/*
  * pt_optimize_analytic_list () - optimize analytic exectution
  *   info(in/out): analytic info
+ *   no_optimization(out): 
  *
  * NOTE: This function groups together the evaluation of analytic functions
  * that share the same window.
  */
 static ANALYTIC_EVAL_TYPE *
-pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
+pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool * no_optimization)
 {
   ANALYTIC_EVAL_TYPE *ret = NULL;
-  ANALYTIC_TYPE *func_p, *save_next;
+  ANALYTIC_TYPE *func_p;
   PT_NODE *sort_list;
   bool found;
-  int group_id = 0, i, j, level = 0;
+  int i, j, level = 0;
 
   /* sort list index */
   PT_NODE *sc_index[ANALYTIC_OPT_MAX_SORT_LIST_COLUMNS];
@@ -14534,14 +14705,17 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 
   assert (info != NULL);
 
+  *no_optimization = false;
+
   /* find unique sort columns and index them; build analytic meta structures */
-  for (func_p = info->head_list, sort_list = info->sort_lists; func_p != NULL, sort_list != NULL;
+  for (func_p = info->head_list, sort_list = info->sort_lists; func_p != NULL && sort_list != NULL;
        func_p = func_p->next, sort_list = sort_list->next, af_count++)
     {
       if (!pt_analytic_to_metadomain (func_p, sort_list->info.pointer.node, &af_meta[af_count], sc_index, &sc_count))
 	{
 	  /* sort spec index overflow, we'll do it the old fashioned way */
-	  goto fallback;
+	  *no_optimization = true;
+	  return NULL;
 	}
 
       /* first level is maximum key size */
@@ -14567,7 +14741,8 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 
 		      if (af_count >= ANALYTIC_OPT_MAX_FUNCTIONS)
 			{
-			  goto fallback;
+			  *no_optimization = true;
+			  return NULL;
 			}
 
 		      /* demote and register children */
@@ -14598,7 +14773,6 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	}
     }
   while (found);
-
 
   /* build initial compatibility graph */
   pt_metadomain_build_comp_graph (af_meta, af_count, level);
@@ -14746,60 +14920,19 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
 	}
     }
 
-  return ret;
-
-fallback:
-  /* build one eval group for each analytic function */
-  func_p = info->head_list;
-  sort_list = info->sort_lists;
-  while (func_p)
+  /*
+   * FIXME: This is a quick fix. Remove this when we fix pt_build_analytic_eval_list ().
+   */
+  if (!pt_is_analytic_eval_list_valid (ret))
     {
-      ANALYTIC_EVAL_TYPE *newa = regu_analytic_eval_alloc ();
-
-      /* new eval structure */
-      if (newa == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "regu alloc");
-	  return NULL;
-	}
-      else if (ret == NULL)
-	{
-	  ret = newa;
-	}
-      else
-	{
-	  newa->next = ret;
-	  ret = newa;
-	}
-
-      /* set up sort list */
-      if (sort_list->info.pointer.node != NULL)
-	{
-	  ret->sort_list =
-	    pt_to_sort_list (parser, sort_list->info.pointer.node, info->select_list, SORT_LIST_ANALYTIC_WINDOW);
-	  if (ret->sort_list == NULL)
-	    {
-	      /* error has already been set */
-	      return NULL;
-	    }
-	}
-      else
-	{
-	  ret->sort_list = NULL;
-	}
-
-      /* one function */
-      ret->head = func_p;
-
-      /* unlink and advance */
-      save_next = func_p->next;
-      func_p->next = NULL;
-      func_p = save_next;
-      sort_list = sort_list->next;
+      /* give up optimization for the case */
+      *no_optimization = true;
+      return NULL;
     }
 
   return ret;
 }
+
 
 /*
  * pt_to_buildlist_proc () - Translate a PT_SELECT node to
@@ -14826,7 +14959,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   BUILDLIST_PROC_NODE *buildlist;
   int i;
   REGU_VARIABLE_LIST regu_var_p;
-  QPROC_DB_VALUE_LIST vallist_p;
 
   assert (parser != NULL);
 
@@ -15118,9 +15250,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  /* the select list will be altered a lot in the following code block, make sure you understand what's
 	   * happening before making adjustments */
 
-	  ANALYTIC_INFO analytic_info;
+	  ANALYTIC_INFO analytic_info, analytic_info_clone;
 	  PT_NODE *select_list_ex = NULL, *select_list_final = NULL, *node;
 	  int idx, final_idx, final_count, *sort_adjust = NULL;
+	  bool no_optimization_done = false;
 
 	  /* prepare sort adjustment array */
 	  final_idx = 0;
@@ -15236,28 +15369,21 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* generate analytic nodes */
-	  analytic_info.head_list = NULL;
-	  analytic_info.sort_lists = NULL;
-	  analytic_info.select_node = select_node;
-	  analytic_info.select_list = select_list_ex;
-	  analytic_info.val_list = buildlist->a_val_list;
-
-	  for (node = select_list_ex, vallist_p = buildlist->a_val_list->valp, idx = 0; node;
-	       node = node->next, vallist_p = vallist_p->next, idx++)
+	  if (pt_initialize_analytic_info (parser, &analytic_info, select_node, select_list_ex, buildlist) != NO_ERROR)
 	    {
-	      assert (vallist_p);
+	      goto analytic_exit_on_error;
+	    }
 
-	      if (PT_IS_ANALYTIC_NODE (node))
-		{
-		  /* process analytic node */
-		  if (pt_to_analytic_node (parser, node, &analytic_info) == NULL)
-		    {
-		      goto analytic_exit_on_error;
-		    }
-
-		  /* register vallist dbval for further use */
-		  analytic_info.head_list->out_value = vallist_p->val;
-		}
+	  /* FIXME 
+	   *
+	   * The cloned list will be used when optimization of analytic functions fails.
+	   * Cloning is not necessary for oridinary cases, however I just want to make the lists are same.
+	   * It will be removed when we fix pt_build_analytic_eval_list ().
+	   */
+	  if (pt_initialize_analytic_info (parser, &analytic_info_clone, select_node, select_list_ex, buildlist) !=
+	      NO_ERROR)
+	    {
+	      goto analytic_exit_on_error;
 	    }
 
 	  /* generate regu list (identity fetching from temp tuple) */
@@ -15303,7 +15429,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* optimize analytic function list */
-	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info);
+	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info, &no_optimization_done);
+
+	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
+	  if (no_optimization_done == true)
+	    {
+	      /* generate one per analytic function */
+	      xasl->proc.buildlist.a_eval_list = pt_generate_simple_analytic_eval_type (parser, &analytic_info_clone);
+	    }
+
 	  if (xasl->proc.buildlist.a_eval_list == NULL && analytic_info.head_list != NULL)
 	    {
 	      /* input functions were provided but optimizer messed up */
@@ -18436,7 +18570,7 @@ static int
 pt_mvcc_set_spec_assign_reev_extra_indexes (PARSER_CONTEXT * parser, PT_NODE * spec_assign, PT_NODE * spec_list,
 					    PT_NODE * assign_list, int *indexes, int indexes_alloc_size)
 {
-  PT_NODE *nodes_list = NULL, *spec = NULL, *node = NULL;
+  PT_NODE *nodes_list = NULL, *spec = NULL;
   PT_NODE *real_refs = NULL;
   PT_ASSIGNMENTS_HELPER ah;
   int idx, count = 0;
@@ -18686,7 +18820,6 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 	  for (spec = statement->info.query.q.select.from; spec; spec = spec->next)
 	    {
 	      PT_NODE *name = NULL, *val = NULL, *last_val = NULL;
-	      PT_NODE *join_spec = NULL;
 
 	      if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
 		{
@@ -19165,7 +19298,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (xasl != NULL)
     {
-      PT_NODE *node, *flat = NULL;
+      PT_NODE *node;
 
       delete_ = &xasl->proc.delete_;
 
@@ -21721,6 +21854,16 @@ pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
       value->domain.numeric_info.precision = dt->info.data_type.precision;
       value->domain.numeric_info.scale = dt->info.data_type.dec_precision;
       break;
+    case DB_TYPE_JSON:
+      if (dt->info.data_type.json_schema)
+	{
+	  value->data.json.schema_raw = db_private_strdup (NULL, (const char *) dt->info.data_type.json_schema->bytes);
+	}
+      else
+	{
+	  value->data.json.schema_raw = NULL;
+	}
+      break;
 
     default:
       ;				/* Do nothing. This suppresses compiler's warnings. */
@@ -23779,7 +23922,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
 		  PT_NODE ** non_null_ins_attrs, PT_NODE * default_expr_attrs)
 {
   XASL_NODE *xasl, *xptr;
-  XASL_NODE *update_xasl = NULL, *insert_xasl = NULL, *delete_xasl = NULL;
+  XASL_NODE *update_xasl = NULL, *insert_xasl = NULL;
   OID *oid = NULL;
   int error = NO_ERROR;
   bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);

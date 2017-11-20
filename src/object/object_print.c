@@ -32,6 +32,7 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "db_json.hpp"
 #include "object_print.h"
 
 #include "error_manager.h"
@@ -52,6 +53,10 @@
 
 #endif /* !defined (SERVER_MODE) */
 #include "dbtype_common.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #if !defined(SERVER_MODE)
 /*
@@ -164,8 +169,6 @@ static const char **obj_print_describe_class_triggers (PARSER_CONTEXT * parser, 
 static CLASS_HELP *obj_print_make_class_help (void);
 static TRIGGER_HELP *obj_print_make_trigger_help (void);
 static OBJ_HELP *obj_print_make_obj_help (void);
-static char **obj_print_read_section (FILE * fp);
-static COMMAND_HELP *obj_print_load_help_file (FILE * fp, const char *keyword);
 static char *obj_print_next_token (char *ptr, char *buf);
 
 
@@ -454,6 +457,21 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);
 	  break;
 
+	case DB_TYPE_JSON:
+	  strcpy (temp_buffer, temp_domain->type->name);
+	  ustr_upper (temp_buffer);
+	  if (temp_domain->json_validator != NULL)
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, temp_buffer);
+	      sprintf (temp_buffer, "(\'%s\')", db_json_get_schema_raw_from_validator (temp_domain->json_validator));
+	      buffer = pt_append_nulstring (parser, buffer, temp_buffer);
+	    }
+	  else
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, temp_buffer);
+	    }
+	  break;
+
 	case DB_TYPE_NUMERIC:
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  ustr_upper (temp_buffer);
@@ -485,6 +503,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 		}
 	    }
 	  break;
+
 	case DB_TYPE_ENUMERATION:
 	  has_collation = 1;
 	  strcpy (temp_buffer, temp_domain->type->name);
@@ -506,6 +525,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	    }
 	  buffer = pt_append_nulstring (parser, buffer, ")");
 	  break;
+
 	default:
 	  break;
 	}
@@ -1708,7 +1728,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
   SM_QUERY_SPEC *p;
   CLASS_HELP *info = NULL;
   DB_OBJLIST *super, *user;
-  int count, i, is_cubrid = 0;
+  int count, i;
   char **strs;
   const char *kludge;
   PARSER_VARCHAR *buffer;
@@ -3869,7 +3889,10 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	    {
 	      buffer = pt_append_nulstring (parser, buffer, "NULL");
 	    }
+	  break;
 
+	case DB_TYPE_JSON:
+	  buffer = pt_append_nulstring (parser, buffer, value->data.json.json_body);
 	  break;
 
 	case DB_TYPE_MIDXKEY:
@@ -3918,6 +3941,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	  (void) db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
+
 	case DB_TYPE_TIMELTZ:
 	  (void) db_timeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
@@ -3937,6 +3961,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	  (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
+
 	case DB_TYPE_TIMESTAMPLTZ:
 	  (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
@@ -3956,6 +3981,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	  (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
+
 	case DB_TYPE_DATETIMELTZ:
 	  (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
@@ -4095,6 +4121,12 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB
 
 	case DB_TYPE_DATE:
 	  buffer = pt_append_nulstring (parser, buffer, "date '");
+	  buffer = describe_data (parser, buffer, value);
+	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
+	case DB_TYPE_JSON:
+	  buffer = pt_append_nulstring (parser, buffer, "json '");
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;

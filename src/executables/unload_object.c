@@ -1896,7 +1896,7 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 
       /* trim left */
       trimmed_buf = ltrim (buffer);
-      len_clsname = strlen (trimmed_buf);
+      len_clsname = (int) strlen (trimmed_buf);
 
       /* get rid of \n at end of line */
       if (len_clsname > 0 && trimmed_buf[len_clsname - 1] == '\n')

@@ -41,10 +41,18 @@
 #include "byte_order.h"
 #include "object_primitive.h"
 
+#if defined (__cplusplus)
+#include <cmath>
+#endif
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #include "dbtype_common.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 /* the multipler of long NUMERIC, internal used */
 #define DB_LONG_NUMERIC_MULTIPLIER 2
@@ -76,18 +84,6 @@ static unsigned char powers_of_10[TWICE_NUM_MAX_PREC + 1][DB_NUMERIC_BUF_SIZE];
 static bool initialized_10 = false;
 #endif
 
-static double numeric_Upper_limit[10] = {
-  (double) DB_INT32_MAX,
-  (double) DB_INT32_MAX / 1e1,
-  (double) DB_INT32_MAX / 1e2,
-  (double) DB_INT32_MAX / 1e3,
-  (double) DB_INT32_MAX / 1e4,
-  (double) DB_INT32_MAX / 1e5,
-  (double) DB_INT32_MAX / 1e6,
-  (double) DB_INT32_MAX / 1e7,
-  (double) DB_INT32_MAX / 1e8,
-  (double) DB_INT32_MAX / 1e9
-};
 static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
@@ -2564,8 +2560,6 @@ numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *adouble)
 static int
 numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale)
 {
-
-
   double scaled_double;
   int scaled_int, estimated_precision;
   scaled_double = (adouble * numeric_Pow_of_10[dst_scale]) + (adouble < 0.0 ? -0.5 : 0.5);
@@ -2831,7 +2825,7 @@ get_fp_value_type (double d)
       return FP_VALUE_TYPE_NUMBER;
     }
 #else
-  switch (fpclassify (d))
+  switch (std::fpclassify (d))
     {
     case FP_INFINITE:
       return FP_VALUE_TYPE_INFINITE;

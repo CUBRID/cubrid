@@ -147,7 +147,7 @@ csql_get_session_cmd_no (const char *input)
       return S_CMD_XRUN;
     }
 
-  input_cmd_length = strlen (input);
+  input_cmd_length = (int) strlen (input);
   num_matches = 0;
   matched_index = -1;
   for (i = 0; i < (int) DIM (csql_Session_cmd_table); i++)
@@ -156,7 +156,7 @@ csql_get_session_cmd_no (const char *input)
 	{
 	  int ses_cmd_length;
 
-	  ses_cmd_length = strlen (csql_Session_cmd_table[i].text);
+	  ses_cmd_length = (int) strlen (csql_Session_cmd_table[i].text);
 	  if (ses_cmd_length == input_cmd_length)
 	    {
 	      return (csql_Session_cmd_table[i].cmd_no);
@@ -230,7 +230,7 @@ csql_help_schema (const char *class_name)
     }
 
   /* class name may be in Unicode decomposed form, in DB we store only composed form */
-  class_name_size = strlen (class_name);
+  class_name_size = (int) strlen (class_name);
   if (LANG_SYS_CODESET == INTL_CODESET_UTF8
       && unicode_string_need_compose (class_name, class_name_size, &composed_size, lang_get_generic_unicode_norm ()))
     {
@@ -486,7 +486,7 @@ csql_help_trigger (const char *trigger_name)
       int trigger_name_size, composed_size;
       /* trigger name is given */
       /* trigger name may be in Unicode decomposed form, in DB we store only composed form */
-      trigger_name_size = strlen (trigger_name);
+      trigger_name_size = (int) strlen (trigger_name);
       if (LANG_SYS_CODESET == INTL_CODESET_UTF8
 	  && unicode_string_need_compose (trigger_name, trigger_name_size, &composed_size,
 					  lang_get_generic_unicode_norm ()))

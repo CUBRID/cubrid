@@ -932,7 +932,6 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
   QUERY_ID query_id_self = parser->query_id;
   MOP serial_mop;
   DB_IDENTIFIER *serial_oid_p;
-  const char *serial_name = NULL;
   int cached_num;
   int r = 0;
   int error_code;

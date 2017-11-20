@@ -990,6 +990,7 @@ enum
 {
   ORC_DOMAIN_SETDOMAIN_INDEX = 0,
   ORC_DOMAIN_ENUMERATION_INDEX = 1,
+  ORC_DOMAIN_SCHEMA_JSON_OFFSET = 2,
 
   /* add a new one above */
 
@@ -1120,6 +1121,9 @@ struct db_reference
   int attribute;
 };
 
+#if defined (__cplusplus)
+class JSON_VALIDATOR;
+#endif
 /*
  * OR_TYPE_SIZE
  *    Returns the byte size of the disk representation of a particular
@@ -1376,7 +1380,8 @@ extern int or_put_date (OR_BUF * buf, DB_DATE * date);
 extern int or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval);
 extern int or_put_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz);
 extern int or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary);
-extern int or_put_string (OR_BUF * buf, char *string);
+extern int or_put_string_aligned (OR_BUF * buf, char *string);
+extern int or_put_string_aligned_with_length (OR_BUF * buf, char *str);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_put_binary (OR_BUF * buf, DB_BINARY * binary);
 #endif
@@ -1486,7 +1491,6 @@ extern int or_packed_enumeration_size (const DB_ENUMERATION * e);
 extern int or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * e);
 extern int or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * e);
 extern int or_header_size (char *ptr);
-
 extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
 extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
@@ -1494,8 +1498,10 @@ extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 extern char *or_pack_sha1 (char *ptr, const SHA1Hash * sha1);
 extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
 
+STATIC_INLINE int or_get_string_size_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 /* Get the compressed and the decompressed lengths of a string stored in buffer */
-extern int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size);
+STATIC_INLINE int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
+  __attribute__ ((ALWAYS_INLINE));
 
 extern int or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files);
 extern char *or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols,
@@ -1506,5 +1512,95 @@ extern char *or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** 
 extern int classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, int *pageid);
 extern void classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr);
 extern int classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
+#if defined (__cplusplus)
+extern int or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator));
+extern int or_put_json_validator (OR_BUF * buf, JSON_VALIDATOR * validator);
+extern int or_get_json_schema (OR_BUF * buf, REFPTR (char, schema));
+extern int or_put_json_schema (OR_BUF * buf, const char *schema);
+#endif
 
+/* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
+#define OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
+
+/*
+ * or_get_string_size_byte - read string size byte value from or buffer
+ *    return: byte value read
+ *    buf(in/out): or buffer
+ *    error(out): NO_ERROR or error code
+ *
+ * NOTE that it is really same as or_get_byte function. It is duplicated to inline the function for performance.
+ */
+STATIC_INLINE int
+or_get_string_size_byte (OR_BUF * buf, int *error)
+{
+  int size_prefix;
+
+  if ((buf->ptr + OR_BYTE_SIZE) > buf->endptr)
+    {
+      *error = or_underflow (buf);
+      size_prefix = 0;
+    }
+  else
+    {
+      size_prefix = OR_GET_BYTE (buf->ptr);
+      buf->ptr += OR_BYTE_SIZE;
+      *error = NO_ERROR;
+    }
+  return size_prefix;
+}
+
+/* or_get_varchar_compression_lengths() - Function to get the compressed length and the uncompressed length of 
+ *					  a compressed string.
+ * 
+ * return                 : NO_ERROR or error_code.
+ * buf(in)                : The buffer where the string is stored.
+ * compressed_size(out)   : The compressed size of the string. Set to 0 if the string was not compressed.
+ * decompressed_size(out) : The uncompressed size of the string.
+ */
+STATIC_INLINE int
+or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
+{
+  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR, net_charlen = 0;
+  int size_prefix = 0;
+
+  /* Check if the string is compressed */
+  size_prefix = or_get_string_size_byte (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      assert (size_prefix == 0);
+      return rc;
+    }
+
+  if (size_prefix == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+    {
+      /* String was compressed */
+      /* Get the compressed size */
+      rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      compressed_length = OR_GET_INT ((char *) &net_charlen);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      *compressed_size = compressed_length;
+
+      net_charlen = 0;
+
+      /* Get the decompressed size */
+      rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      decompressed_length = OR_GET_INT ((char *) &net_charlen);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      *decompressed_size = decompressed_length;
+    }
+  else
+    {
+      /* String was not compressed so we set compressed_size to 0 to know that no compression happened. */
+      *compressed_size = 0;
+      *decompressed_size = size_prefix;
+    }
+
+  return rc;
+}
 #endif /* _OBJECT_REPRESENTATION_H_ */

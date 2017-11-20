@@ -1,5 +1,8 @@
+image:
+  - Visual Studio 2017
+
 environment:
-  CMAKE_GENERATOR: "Visual Studio 14 2015 Win64"
+  CMAKE_GENERATOR: "Visual Studio 15 2017 Win64"
   BUILD_TYPE: RelWithDebInfo
 
 matrix:

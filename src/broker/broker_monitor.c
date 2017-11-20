@@ -29,8 +29,6 @@
 #include <inttypes.h>
 #endif
 
-#include "config.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -38,11 +36,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <assert.h>
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -65,6 +58,7 @@
 #include <sys/time.h>
 #endif
 
+#include "cubrid_getopt.h"
 #include "porting.h"
 #include "cas_common.h"
 #include "broker_config.h"
@@ -79,6 +73,10 @@
 #include "shard_shm.h"
 #include "shard_metadata.h"
 #include "util_func.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define		DEFAULT_CHECK_PERIOD		300	/* seconds */
 #define		MAX_APPL_NUM		100
@@ -96,7 +94,7 @@
 #define         UNUSABLE_DATABASES_FLAG_MASK 0x20
 
 #if defined(WINDOWS) && !defined(PRId64)
-# define PRId64 "lld"
+#define PRId64 "lld"
 #endif
 
 typedef enum
@@ -897,7 +895,9 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
 #if !defined (WINDOWS)
   int psize;
 #endif
+#if defined (GET_PSINFO) || defined (WINDOWS)
   char buf[256];
+#endif
   int shard_flag = shm_appl->shard_flag;
 
   if (shm_appl->shard_flag == ON)
@@ -2359,7 +2359,6 @@ free_and_error:
 static int
 client_monitor (void)
 {
-  T_SHM_APPL_SERVER *shm_appl = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_CLIENT_INFO *client_info_p = NULL;

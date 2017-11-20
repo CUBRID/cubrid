@@ -813,7 +813,8 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
 {
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *classes = NULL;
-  int has_indexes, total;
+  int has_indexes;
+  size_t total;
   DB_OBJLIST *vclass_list_has_using_index = NULL;
   int err_count = 0;
 
@@ -824,7 +825,7 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
 
   total = strlen (output_dirname) + strlen (output_prefix) + strlen (SCHEMA_SUFFIX) + 8;
 
-  if ((size_t) total > sizeof (output_filename))
+  if (total > sizeof (output_filename))
     {
       return 1;
     }
@@ -903,7 +904,7 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
    */
   total = strlen (output_dirname) + strlen (output_prefix) + strlen (TRIGGER_SUFFIX) + 8;
 
-  if ((size_t) total > sizeof (output_filename))
+  if (total > sizeof (output_filename))
     {
       if (vclass_list_has_using_index != NULL)
 	{
@@ -997,7 +998,7 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes, DB_OBJLIST * vclass_list_ha
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *cl;
   FILE *fp;
-  int total;
+  size_t total;
 
   if (output_dirname == NULL)
     {
@@ -1006,7 +1007,7 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes, DB_OBJLIST * vclass_list_ha
 
   total = strlen (output_dirname) + strlen (output_prefix) + strlen (INDEX_SUFFIX) + 8;
 
-  if ((size_t) total > sizeof (output_filename))
+  if (total > sizeof (output_filename))
     {
       return 1;
     }
@@ -2698,8 +2699,9 @@ emit_domain_def (DB_DOMAIN * domains)
   DB_DOMAIN *domain;
   DB_OBJECT *class_;
   int precision;
-  const char *name;
   int has_collation;
+  const char *name;
+  const char *json_schema;
 
   for (domain = domains; domain != NULL; domain = db_domain_next (domain))
     {
@@ -2777,6 +2779,14 @@ emit_domain_def (DB_DOMAIN * domains)
 	      fprintf (output_file, "(");
 	      emit_domain_def (db_domain_set (domain));
 	      fprintf (output_file, ")");
+	      break;
+
+	    case DB_TYPE_JSON:
+	      json_schema = db_domain_raw_json_schema (domain);
+	      if (json_schema != NULL)
+		{
+		  fprintf (output_file, "('%s')", json_schema);
+		}
 	      break;
 
 	    default:
@@ -3010,7 +3020,6 @@ emit_partition_info (MOP clsobj)
   const char *name;
   SM_CLASS *class_, *subclass;
   DB_OBJLIST *user;
-  char *pexpr_str = NULL;
 
   if (clsobj == NULL)
     {

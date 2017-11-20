@@ -2177,7 +2177,7 @@ ehash_compose_record (DB_TYPE key_type, void *key_p, OID * value_p, RECDES * rec
 
   if (key_type == DB_TYPE_STRING)
     {
-      key_size = strlen ((char *) key_p) + 1;	/* Plus one is for \0 */
+      key_size = (short) strlen ((char *) key_p) + 1;	/* Plus one is for \0 */
 
       /* max length of class name is 255 */
       assert (key_size <= 256);
@@ -4155,7 +4155,7 @@ ehash_hash_string_type (char *key_p, char *original_key_p)
   char *p = NULL;
   char *new_key_p = NULL;
 
-  length = strlen (key_p);
+  length = (int) strlen (key_p);
 
   if (length > 0)
     {
@@ -5416,7 +5416,9 @@ ehash_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 {
   EHID ehid;
   char *record_p = (char *) recv_p->data;
+#if defined (ENABLE_UNUSED_FUNCTION)
   short record_type = recv_p->offset;
+#endif
 
   record_p = ehash_read_ehid_from_record (record_p, &ehid);
   record_p += sizeof (OID);
@@ -5509,8 +5511,10 @@ ehash_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   EHID ehid;
   OID oid;
   char *record_p = (char *) recv_p->data;
-  short record_type = recv_p->offset;
   int error = NO_ERROR;
+#if defined (ENABLE_UNUSED_FUNCTION)
+  short record_type = recv_p->offset;
+#endif
 
   record_p = ehash_read_ehid_from_record (record_p, &ehid);
   record_p = ehash_read_oid_from_record (record_p, &oid);

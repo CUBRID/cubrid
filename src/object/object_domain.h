@@ -33,6 +33,10 @@
 #include "error_manager.h"
 #include "area_alloc.h"
 
+#if defined (__cplusplus)
+class JSON_VALIDATOR;
+#endif
+
 #define DOM_GET_ENUMERATION(dom) \
     ((dom)->enumeration)
 #define DOM_GET_ENUM_ELEMENTS(dom) \
@@ -105,6 +109,8 @@ typedef struct tp_domain
 
   /* run-time flag used during domain comparison */
   unsigned is_visited:1;
+
+  JSON_VALIDATOR *json_validator;	/* schema validator if type is json */
 } TP_DOMAIN;
 
 /*
@@ -167,6 +173,7 @@ extern TP_DOMAIN tp_Bit_domain;
 extern TP_DOMAIN tp_VarBit_domain;
 extern TP_DOMAIN tp_Midxkey_domain;
 extern TP_DOMAIN tp_Enumeration_domain;
+extern TP_DOMAIN tp_Json_domain;
 
 /*
  * TP_DOMAIN_STATUS

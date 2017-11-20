@@ -32,13 +32,9 @@
 #else /* WINDOWS */
 #include <unistd.h>
 #endif /* !WINDOWS */
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 #include <assert.h>
 
+#include "cubrid_getopt.h"
 #include "cas_common.h"
 #include "cas_cci.h"
 #include "broker_log_util.h"
@@ -474,7 +470,7 @@ get_query_stmt_from_plan (int req)
       goto error;
     }
 
-  rewrite_sql_len = strlen (sql_stmt);
+  rewrite_sql_len = (int) strlen (sql_stmt);
 
   result_sql = (char *) malloc (rewrite_sql_len);
   if (result_sql)
@@ -976,7 +972,7 @@ update_diff_time_statistics (double diff_time)
 static int
 print_temp_result (char *sql_log, T_SQL_INFO * info)
 {
-  int bind_len;
+  size_t bind_len;
   int line_len = 0;
   char *rewrite_sql = info->rewrite_sql;
   char *bind_str = info->bind_str;

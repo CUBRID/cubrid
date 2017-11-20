@@ -73,9 +73,6 @@
     _er_log_debug (ARG_FILE_LINE, "VACUUM WARNING " LOG_THREAD_TRAN_MSG ": " msg "\n", \
                    LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
 
-typedef INT64 VACUUM_LOG_BLOCKID;
-#define VACUUM_NULL_LOG_BLOCKID -1
-
 #define VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE true
 #define VACUUM_LOG_ADD_DROPPED_FILE_UNDO false
 
@@ -343,4 +340,5 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
 
+extern void vacuum_log_last_blockid (THREAD_ENTRY * thread_p);
 #endif /* _VACUUM_H_ */

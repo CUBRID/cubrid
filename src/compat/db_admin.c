@@ -631,7 +631,6 @@ db_add_host_status (char *hostname, int status)
 void
 db_set_host_status (char *hostname, int status)
 {
-  bool found = false;
   DB_HOST_STATUS *host_status;
 
   host_status = db_find_host_status (hostname);
@@ -1932,7 +1931,7 @@ db_get_user_and_host_name (void)
       return NULL;
     }
 
-  len = strlen (hostname) + strlen (username) + 2;
+  len = (int) strlen (hostname) + (int) strlen (username) + 2;
   user = (char *) db_private_alloc (NULL, len);
   if (!user)
     {

@@ -230,15 +230,15 @@ static THREAD_DAEMON *thread_Daemons = NULL;
     } \
   while (0)
 
+#if defined(WINDOWS)
 static int thread_initialize_sync_object (void);
+#endif /* WINDOWS */
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex);
 static void thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor);
 
 static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
 static int thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, THREAD_RC_METER * prev_meter);
 static int thread_rc_track_check (THREAD_ENTRY * thread_p, int id);
-static void thread_rc_track_initialize (THREAD_ENTRY * thread_p);
-static void thread_rc_track_finalize (THREAD_ENTRY * thread_p);
 static THREAD_RC_TRACK *thread_rc_track_alloc (THREAD_ENTRY * thread_p);
 static void thread_rc_track_free (THREAD_ENTRY * thread_p, int id);
 static INT32 thread_rc_track_amount_helper (THREAD_ENTRY * thread_p, int rc_idx);
@@ -249,9 +249,6 @@ static void thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp, THREAD_
 static int thread_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authoriation);
 static INT32 thread_rc_track_threshold_amount (int rc_idx);
 static bool thread_rc_track_is_enabled (THREAD_ENTRY * thread_p);
-static const char *thread_type_to_string (int type);
-static const char *thread_status_to_string (int status);
-static const char *thread_resume_status_to_string (int resume_status);
 
 STATIC_INLINE void thread_daemon_wait (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
@@ -1205,6 +1202,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 
 #if !defined(NDEBUG)
   entry_p->fi_test_array = NULL;
+  entry_p->count_private_allocators = 0;
 
   fi_thread_init (entry_p);
 #endif
@@ -3167,13 +3165,8 @@ thread_check_ha_delay_info_thread (void *arg_p)
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  struct timeval cur_time = {
-    0, 0
-  };
-
-  struct timespec wakeup_time = {
-    0, 0
-  };
+  struct timeval cur_time = { 0, 0 };
+  struct timespec wakeup_time = { 0, 0 };
 
   int rv;
   INT64 tmp_usec;
@@ -3185,7 +3178,6 @@ thread_check_ha_delay_info_thread (void *arg_p)
   int acceptable_delay_in_secs;
   int curr_delay_in_secs;
   HA_SERVER_STATE server_state;
-  char buffer[LINE_MAX];
 #endif
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
@@ -3560,22 +3552,14 @@ thread_flush_control_thread (void *arg_p)
 #endif /* !HPUX */
   int rv;
 
-  struct timespec wakeup_time = {
-    0, 0
-  };
+  struct timespec wakeup_time = { 0, 0 };
 
   struct timeval begin_tv, end_tv, diff_tv;
   INT64 diff_usec;
   int wakeup_interval_in_msec = 50;	/* 1 msec */
 
-  int elapsed_usec = 0;
-  int usec_consumed = 0;
-  int usec_consumed_sum = 0;
   int token_gen = 0;
-  int token_gen_sum = 0;
-  int token_shared = 0;
   int token_consumed = 0;
-  int token_consumed_sum = 0;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
@@ -4521,7 +4505,7 @@ thread_rc_track_clear_all (THREAD_ENTRY * thread_p)
  *   return:
  *   thread_p(in):
  */
-static void
+void
 thread_rc_track_initialize (THREAD_ENTRY * thread_p)
 {
   if (thread_p == NULL)
@@ -4544,7 +4528,7 @@ thread_rc_track_initialize (THREAD_ENTRY * thread_p)
  *   return:
  *   thread_p(in):
  */
-static void
+void
 thread_rc_track_finalize (THREAD_ENTRY * thread_p)
 {
   THREAD_RC_TRACK *track;
@@ -5599,7 +5583,7 @@ thread_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_au
  *   return:
  *   type(in): thread type
  */
-static const char *
+const char *
 thread_type_to_string (int type)
 {
   switch (type)
@@ -5628,7 +5612,7 @@ thread_type_to_string (int type)
  *   return:
  *   type(in): thread type
  */
-static const char *
+const char *
 thread_status_to_string (int status)
 {
   switch (status)
@@ -5653,7 +5637,7 @@ thread_status_to_string (int status)
  *   return:
  *   type(in): thread type
  */
-static const char *
+const char *
 thread_resume_status_to_string (int resume_status)
 {
   switch (resume_status)
@@ -5996,327 +5980,6 @@ thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
   thread_p->xasl_recursion_depth = 0;
 }
 
-/*
- * thread_start_scan () -  start scan function for show threads
- *   return: NO_ERROR, or ER_code
- *
- *   thread_p(in): 
- *   type (in):
- *   arg_values(in):
- *   arg_cnt(in):
- *   ptr(in/out):
- */
-extern int
-thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
-{
-  SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
-  const int num_cols = 26;
-  THREAD_ENTRY *thrd, *next_thrd;
-  int i, idx, error = NO_ERROR;
-  DB_VALUE *vals = NULL;
-  int ival;
-  INT64 i64val;
-  CSS_CONN_ENTRY *conn_entry = NULL;
-  char buf[1024];
-  int buf_len;
-  void *area;
-  HL_HEAPID private_heap_id;
-  void *query_entry;
-  LK_ENTRY *lockwait;
-  time_t stime;
-  int msecs;
-  DB_DATETIME time_val;
-
-  *ptr = NULL;
-
-  ctx = showstmt_alloc_array_context (thread_p, thread_Manager.num_total, num_cols);
-  if (ctx == NULL)
-    {
-      error = er_errid ();
-      return error;
-    }
-
-  for (i = 0; i < thread_Manager.num_total; i++)
-    {
-      thrd = &thread_Manager.thread_array[i];
-
-      vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
-      if (vals == NULL)
-	{
-	  error = er_errid ();
-	  goto exit_on_error;
-	}
-
-      idx = 0;
-      /* Index */
-      db_make_int (&vals[idx], thrd->index);
-      idx++;
-
-      /* Jobq_index */
-      if (0 < thrd->index && thrd->index <= thread_Manager.num_workers)
-	{
-	  db_make_int (&vals[idx], thrd->index % CSS_NUM_JOB_QUEUE);
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Thread_id */
-      db_make_bigint (&vals[idx], (DB_BIGINT) thrd->tid);
-      idx++;
-
-      /* Tran_index */
-      ival = thrd->tran_index;
-      if (ival >= 0)
-	{
-	  db_make_int (&vals[idx], ival);
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Type */
-      db_make_string (&vals[idx], thread_type_to_string (thrd->type));
-      idx++;
-
-      /* Status */
-      db_make_string (&vals[idx], thread_status_to_string (thrd->status));
-      idx++;
-
-      /* Resume_status */
-      db_make_string (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
-      idx++;
-
-      /* Net_request */
-      ival = thrd->net_request_index;
-      if (ival != -1)
-	{
-	  db_make_string (&vals[idx], net_server_request_name (ival));
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Conn_client_id */
-      ival = thrd->client_id;
-      if (ival != -1)
-	{
-	  db_make_int (&vals[idx], ival);
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Conn_request_id */
-      ival = thrd->rid;
-      if (ival != 0)
-	{
-	  db_make_int (&vals[idx], ival);
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Conn_index */
-      conn_entry = thrd->conn_entry;
-      if (conn_entry != NULL)
-	{
-	  db_make_int (&vals[idx], conn_entry->idx);
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Last_error_code */
-      ival = er_errid ();
-      db_make_int (&vals[idx], ival);
-      idx++;
-
-      /* Last_error_msg */
-      if (ival != NO_ERROR)
-	{
-	  buf_len = 1024;
-	  area = er_get_area_error (buf, &buf_len);
-	  ((char *) (area))[255] = '\0';	/* truncate msg */
-	  error = db_make_string_copy (&vals[idx], (const char *) area);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Private_heap_id */
-      private_heap_id = thrd->private_heap_id;
-      if (private_heap_id != 0)
-	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) private_heap_id);
-	  error = db_make_string_copy (&vals[idx], buf);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Query_entry */
-      query_entry = thrd->query_entry;
-      if (query_entry != NULL)
-	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) query_entry);
-	  error = db_make_string_copy (&vals[idx], buf);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Interrupted */
-      db_make_int (&vals[idx], thrd->interrupted);
-      idx++;
-
-      /* Shutdown */
-      db_make_int (&vals[idx], thrd->shutdown);
-      idx++;
-
-      /* Check_interrupt */
-      db_make_int (&vals[idx], thrd->check_interrupt);
-      idx++;
-
-      /* Wait_for_latch_promote */
-      db_make_int (&vals[idx], thrd->wait_for_latch_promote);
-      idx++;
-
-      lockwait = (LK_ENTRY *) thrd->lockwait;
-      if (lockwait != NULL)
-	{
-	  /* lockwait_blocked_mode */
-	  strncpy (buf, LOCK_TO_LOCKMODE_STRING (lockwait->blocked_mode), sizeof (buf));
-	  buf[sizeof (buf) - 1] = '\0';
-	  trim (buf);
-	  error = db_make_string_copy (&vals[idx], buf);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	  idx++;
-
-	  /* Lockwait_start_time */
-	  i64val = thrd->lockwait_stime;
-	  stime = (time_t) (i64val / 1000LL);
-	  msecs = i64val % 1000;
-	  db_localdatetime_msec (&stime, msecs, &time_val);
-	  error = db_make_datetime (&vals[idx], &time_val);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	  idx++;
-
-	  /* Lockwait_msecs */
-	  db_make_int (&vals[idx], thrd->lockwait_msecs);
-	  idx++;
-
-	  /* Lockwait_state */
-	  db_make_string (&vals[idx], lock_wait_state_to_string (thrd->lockwait_state));
-	  idx++;
-	}
-      else
-	{
-	  /* lockwait_blocked_mode */
-	  db_make_null (&vals[idx]);
-	  idx++;
-
-	  /* Lockwait_start_time */
-	  db_make_null (&vals[idx]);
-	  idx++;
-
-	  /* Lockwait_msecs */
-	  db_make_null (&vals[idx]);
-	  idx++;
-
-	  /* Lockwait_state */
-	  db_make_null (&vals[idx]);
-	  idx++;
-	}
-
-      /* Next_wait_thread_index */
-      next_thrd = thrd->next_wait_thrd;
-      if (next_thrd != NULL)
-	{
-	  db_make_int (&vals[idx], next_thrd->index);
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Next_tran_wait_thread_index */
-      next_thrd = thrd->tran_next_wait;
-      if (next_thrd != NULL)
-	{
-	  db_make_int (&vals[idx], next_thrd->index);
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      /* Next_worker_thread_index */
-      next_thrd = thrd->worker_thrd_list;
-      if (next_thrd != NULL)
-	{
-	  db_make_int (&vals[idx], next_thrd->index);
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
-      idx++;
-
-      assert (idx == num_cols);
-    }
-
-  *ptr = ctx;
-  return NO_ERROR;
-
-exit_on_error:
-
-  if (ctx != NULL)
-    {
-      showstmt_free_array_context (thread_p, ctx);
-    }
-
-  return error;
-}
-
 #if defined(SERVER_MODE)
 int
 thread_first_vacuum_worker_thread_index (void)
@@ -6509,3 +6172,21 @@ thread_iterate (THREAD_ENTRY * thread_p)
   return thread_Manager.thread_array + index;
 }
 #endif /* !NDEBUG */
+
+int
+thread_get_total_num_of_threads (void)
+{
+  return thread_Manager.num_total;
+}
+
+THREAD_ENTRY *
+thread_get_entry_from_index (int index)
+{
+  return &thread_Manager.thread_array[index];
+}
+
+int
+thread_get_total_num_of_workers (void)
+{
+  return thread_Manager.num_workers;
+}

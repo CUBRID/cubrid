@@ -15,8 +15,23 @@
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
+message("======== CMakeLists.txt")
 
 cmake_minimum_required(VERSION 2.8)
+
+function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
+  get_cmake_property(vars VARIABLES)
+  foreach(var ${vars})
+    if(var MATCHES "^(UNIT_TESTS|UNIT_TEST_.*)$")
+      if(${${var}} STREQUAL "ON")
+        set(${res} 1 PARENT_SCOPE)  #at least one unit test was requested
+      endif()
+    endif()
+  endforeach()
+endfunction(with_unit_tests)
+
+with_unit_tests(AT_LEAST_ONE_UNIT_TEST)
+message("    ==== with_unit_tests() = ${AT_LEAST_ONE_UNIT_TEST}")
 
 #also searches for modules onto cubrid/cmake
 # add other Find[LIBRARY].cmake scripts in cubrid/cmake
@@ -48,6 +63,7 @@ option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
+option(UNIT_TESTS "Unit tests" OFF)
 
 # options for external libraries (BUNDLED or path)
 
@@ -60,6 +76,17 @@ set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editlin
 set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: BUNDLED)")
 set(WITH_LIBGPGERROR  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: BUNDLED)")
 set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: BUNDLED)")
+
+# NCURSES - gcc 4.7+ systems: GIT, Otherwise: SYSTEM
+if(UNIX)
+  if(CMAKE_COMPILER_IS_GNUCC)
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
+      set(WITH_LIBNCURSES   "GIT" CACHE STRING "Build with ncurses library (default: GIT)")
+    else(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
+      set(WITH_LIBNCURSES   "SYSTEM" CACHE STRING "Build with ncurses library (default: SYSTEM)")
+    endif(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
+  endif(CMAKE_COMPILER_IS_GNUCC)
+endif(UNIX)
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -142,12 +169,16 @@ if(UNIX)
       message(FATAL_ERROR "4.3.4 or higher version is required. (ref. https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185)")
     endif(ENABLE_32BIT AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.3.4)
     
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
+      message(SEND_ERROR "Cannot compile with gcc version ${CMAKE_CXX_COMPILER_VERSION}. Require at least 4.4.7.")
+    endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
+
     set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer")
-    set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer -std=c++0x")
+    set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
+    set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
 
     # set has-style
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both")
@@ -230,7 +261,7 @@ else(BISON_FOUND)
 endif(BISON_FOUND)
 
 include(FindFLEX)
-find_package(FLEX)
+find_package(FLEX 2.5.34 REQUIRED)
 
 if(USE_BISON_NEWDIRECTIVE)
   # replace old bison directives with new ones
@@ -319,7 +350,7 @@ find_package(Java 1.5 COMPONENTS Development)
 
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
-  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage"
+  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++0x"
     CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE)
   set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage"
     CACHE STRING "Flags used by the c compiler during coverage build." FORCE)
@@ -336,7 +367,7 @@ if(CMAKE_BUILD_TYPE MATCHES "Coverage")
 endif(CMAKE_BUILD_TYPE MATCHES "Coverage")
 
 if(CMAKE_BUILD_TYPE MATCHES "Profile")
-  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg"
+  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg -std=c++0x"
     CACHE STRING "Flags used by the c++ compiler during profile build." FORCE)
   set(CMAKE_C_FLAGS_PROFILE "-g -pg"
     CACHE STRING "Flags used by the c compiler during profile build." FORCE)
@@ -409,6 +440,10 @@ check_function_exists(getopt_long HAVE_GETOPT_LONG)
 check_function_exists(open_memstream HAVE_OPEN_MEMSTREAM)
 check_function_exists(strdup HAVE_STRDUP)
 check_function_exists(strlcpy HAVE_STRLCPY)
+
+if(WIN32)
+  set(NOMINMAX 1)
+endif(WIN32)
 
 include(CheckIncludeFile)
 check_include_file(err.h HAVE_ERR_H)
@@ -530,8 +565,6 @@ if(GCRYPT_LIBRARIES)
 endif(GCRYPT_LIBRARIES)
 
 if(UNIX)
-  include(FindCurses)
-  find_package(Curses REQUIRED)
   include(FindThreads)
 endif(UNIX)
 
@@ -545,7 +578,8 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter")
+
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
   endif(SIZEOF_OFF64_T)
@@ -589,7 +623,6 @@ endif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 
 # common definitions
 set(COMMON_DEFS SYSV MAXPATHLEN=1024 -D_REENTRANT)
-
 
 # For systemtap options
 if(ENABLE_SYSTEMTAP)
@@ -805,12 +838,44 @@ endif(WITH_LIBJANSSON STREQUAL "BUNDLED")
 list(APPEND EP_INCLUDES ${LIBJANSSON_INCLUDES})
 list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 
+# WITH_LIBNCURSES can have multiple values with different meanings
+# on Linux:
+# * "SYSTEM" - (default) uses ncurses installed in the system
+# * "GIT"    - does a git clone and builds it
+if(UNIX)
+  if(WITH_LIBNCURSES STREQUAL "GIT")
+    set(LIBNCURSES_TARGET libncurses)
+    externalproject_add(${LIBNCURSES_TARGET}
+      GIT_REPOSITORY    https://github.com/mirror/ncurses.git
+      GIT_TAG           v6.0
+      UPDATE_COMMAND    ""
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} "CFLAGS=${CFLAGS} -fPIC" "CXXFLAGS=${CXXFLAGS} -fPIC" --with-normal --without-debug --without-ada --with-cxx-binding --with-termlib=tinfo --with-ticlib=tic
+      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      )
+    set(LIBNCURSES ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libncurses.a)
+    set(LIBTINFO ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libtinfo.a)
+
+    # set curses variables, for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html
+    set(CURSES_FOUND TRUE)
+    set(CURSES_LIBRARIES ${LIBNCURSES};${LIBTINFO})
+    set(CURSES_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/include/ncurses)
+    set(CURSES_HAVE_CURSES_H ${CURSES_INCLUDE_DIR}/curses.h)
+    set(CURSES_HAVE_NCURSES_H ${CURSES_INCLUDE_DIR}/ncurses.h)
+
+    list(APPEND EP_TARGETS ${LIBNCURSES_TARGET})
+  elseif(WITH_LIBNCURSES STREQUAL "SYSTEM")
+    include(FindCurses)
+    find_package(Curses REQUIRED)
+  endif()
+endif(UNIX)
+
 if(WITH_LIBEDIT STREQUAL "BUNDLED")
   if(UNIX)
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libedit-20120601-3.0
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-widec
+      URL http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
@@ -955,6 +1020,25 @@ if(WIN32)
   list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
 
+# rapidjson
+ExternalProject_Add(rapidjson
+
+  # tried URL but archive gets downloaded every time. URL_MD5 may help
+  GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git"
+  GIT_TAG "v1.1.0"
+
+  # don't install
+  INSTALL_COMMAND ""
+
+  # don't build test, doc and examples
+  CMAKE_CACHE_ARGS -DRAPIDJSON_BUILD_TESTS:string=off
+                   -DRAPIDJSON_BUILD_DOC:string=off
+                   -DRAPIDJSON_BUILD_EXAMPLES:string=off
+)
+# add to include directories
+include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
+# add to external project targets
+list(APPEND EP_TARGETS rapidjson)
 
 # include subdirectories
 add_subdirectory(cas)
@@ -972,6 +1056,9 @@ add_subdirectory(contrib)
 add_subdirectory(tools)
 add_subdirectory(locales)
 add_subdirectory(timezones)
+if(AT_LEAST_ONE_UNIT_TEST)
+  add_subdirectory(unit_tests)
+endif()
 
 if(WITH_JDBC)
   find_program(ANT ant PATHS $ENV{ANT_HOME} ENV PATH)
@@ -1103,6 +1190,8 @@ if(WIN32)
       set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86.msm)
     elseif(MSVC10)
       set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x86.msm)
+    elseif(MSVC_VERSION GREATER_EQUAL 1910)
+      set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x86.msm)
     else()
       message(WARNING "Cannot generate MSI installer with unsupported compiler version")
     endif()
@@ -1114,6 +1203,8 @@ if(WIN32)
       set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86_x64.msm)
     elseif(MSVC10)
       set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x64.msm)
+    elseif(MSVC_VERSION GREATER_EQUAL 1910) # ref. https://cmake.org/cmake/help/v3.9/variable/MSVC_VERSION.html
+      set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x64.msm)
     else()
       message(WARNING "Cannot generate MSI installer with unsupported compiler version")
     endif()

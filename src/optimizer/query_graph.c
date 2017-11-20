@@ -731,7 +731,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
   env->nterms = 0;
   env->neqclasses = 0;
 
-  QO_INFINITY = infinity ();
+  QO_INFINITY = UTIL_infinity ();
 
   return env;
 
@@ -3256,6 +3256,11 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
   switch (fcode)
     {
     case F_ELT:
+    case F_JSON_OBJECT:
+    case F_JSON_ARRAY:
+    case F_JSON_REMOVE:
+    case F_JSON_MERGE:
+    case F_JSON_INSERT:
       return RANK_EXPR_LIGHT;
     case F_INSERT_SUBSTRING:
       return RANK_EXPR_MEDIUM;
@@ -4546,7 +4551,7 @@ qo_free_index (QO_ENV * env, QO_INDEX * indexp)
 	    {
 	      free_and_init (entryp->seg_equal_terms);
 	    }
-	  if (env, entryp->seg_other_terms)
+	  if (entryp->seg_other_terms)
 	    {
 	      free_and_init (entryp->seg_other_terms);
 	    }
@@ -6498,7 +6503,6 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
   int i, iseg;
   bool matched;
   int count_matched_index_attributes = 0;
-  int k = 0;
 
   /* working set; indexed segments */
   bitset_init (&working, env);
@@ -6592,7 +6596,7 @@ static bool
 qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 {
   int i, j, seg_idx;
-  QO_SEGMENT *seg, *fi_seg = NULL;
+  QO_SEGMENT *seg;
   bool found;
   QO_CLASS_INFO *class_infop = NULL;
   QO_NODE *seg_nodep = NULL;
@@ -7279,7 +7283,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		      temp_name = consp->attributes[0]->header.name;
 		      if (temp_name)
 			{
-			  int len = strlen (temp_name) + 1;
+			  size_t len = strlen (temp_name) + 1;
 			  index_entryp->statistics_attribute_name = (char *) malloc (sizeof (char) * len);
 			  if (index_entryp->statistics_attribute_name == NULL)
 			    {
@@ -9079,8 +9083,6 @@ qo_is_filter_index (QO_INDEX_ENTRY * ent)
 void
 qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt)
 {
-  bool is_prefix_index = false;
-
   assert (collation_opt != NULL);
 
   collation_opt->allow_index_opt = true;

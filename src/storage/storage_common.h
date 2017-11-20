@@ -51,7 +51,7 @@ enum
 
 #define COMPOSE_FULL_NAME(buf, buf_size, path, name) \
   do { \
-    int len = strlen(path); \
+    size_t len = strlen(path); \
     if (len > 0 && path[len - 1] != PATH_SEPARATOR) { \
       snprintf(buf, buf_size - 1, "%s%c%s", path, PATH_SEPARATOR, name); \
     } else { \
@@ -1030,7 +1030,14 @@ typedef enum
   T_CURRENT_TIMESTAMP,
   T_CURRENT_DATE,
   T_CURRENT_TIME,
-  T_CONV_TZ
+  T_CONV_TZ,
+  T_JSON_CONTAINS,
+  T_JSON_TYPE,
+  T_JSON_EXTRACT,
+  T_JSON_VALID,
+  T_JSON_LENGTH,
+  T_JSON_DEPTH,
+  T_JSON_SEARCH,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef enum
@@ -1065,7 +1072,8 @@ typedef enum
 
   /* "normal" functions, arguments are values */
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
-  F_INSERT_SUBSTRING, F_ELT,
+  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE,
+  F_JSON_INSERT, F_JSON_REMOVE,
 
   /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
   PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,

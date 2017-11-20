@@ -1385,8 +1385,6 @@ static void btree_record_object_set_mvcc_flags (char *data, short mvcc_flags);
 static void btree_record_object_clear_mvcc_flags (char *rec_data, short mvcc_flags);
 static INLINE short btree_record_object_get_mvcc_flags (char *data) __attribute__ ((ALWAYS_INLINE));
 static INLINE bool btree_record_object_is_flagged (char *data, short mvcc_flag) __attribute__ ((ALWAYS_INLINE));
-static void btree_leaf_rebuild_mvccids_in_record (RECDES * recp, int offset, int mvcc_old_oid_mvcc_flags, int oid_size,
-						  MVCC_REC_HEADER * p_mvcc_rec_header);
 static void btree_leaf_record_handle_first_overflow (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid_int,
 						     char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 static int btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * rec, int offset,
@@ -2513,7 +2511,6 @@ btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, REC
 				   int *num_visible)
 {
   int mvcc_flags = 0, rec_oid_cnt = 0, length = 0;
-  bool have_mvcc_fixed_size = false;
   MVCC_REC_HEADER mvcc_rec_header;
   BTREE_MVCC_INFO mvcc_info;
   OR_BUF buf;
@@ -2616,7 +2613,7 @@ static int
 btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * rec, int after_key_offset,
 			   BTREE_NODE_TYPE node_type)
 {
-  int rec_oid_cnt, vpid_size = 0;
+  int rec_oid_cnt;
   short mvcc_flag;
   OR_BUF buf;
   int fixed_object_size;
@@ -2683,7 +2680,6 @@ btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT
 				char **rv_redo_data_ptr)
 {
   short old_rec_flag = 0, new_rec_flag = 0, mvcc_flags = 0;
-  char *src = NULL, *desc = NULL;
   int old_object_size, new_object_size;
   bool new_has_insid = false, new_has_delid = false;
   bool new_has_class_oid = false;
@@ -3791,7 +3787,6 @@ static int
 btree_start_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_OBJECT_INFO * object_info,
 			   VPID * first_overflow_vpid, VPID * near_vpid, VPID * new_vpid, PAGE_PTR * new_page_ptr)
 {
-  int ret = NO_ERROR;
   RECDES rec;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   BTREE_OVERFLOW_HEADER ovf_header_info;
@@ -3923,7 +3918,6 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
   VPID key_vpid;
   OR_BUF buf;
   int error_code = NO_ERROR;
-  short rec_type = 0;
 
   assert (node_type == BTREE_LEAF_NODE || node_type == BTREE_NON_LEAF_NODE);
   assert (key_type == BTREE_NORMAL_KEY || key_type == BTREE_OVERFLOW_KEY);
@@ -6018,7 +6012,7 @@ xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid)
 int
 btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt, int *null_cnt, int *key_cnt)
 {
-  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL, *part_stats = NULL;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
 
   unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
   if (unique_stats == NULL)
@@ -6363,7 +6357,6 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
   if (mvcc_snapshot != NULL)
     {
-      BTREE_SEARCH result = BTREE_KEY_NOTFOUND;
       int max_visible_oids = 1;
       int num_visible_oids = 0;
 
@@ -9615,7 +9608,6 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 {
   int left_cnt, right_cnt;
   RECDES peek_rec;
-  NON_LEAF_REC nleaf_pnt = { {NULL_PAGEID, NULL_VOLID}, 0 };
   int i, j;
   char *recset_data;		/* for recovery purposes */
   int recset_length;		/* for recovery purposes */
@@ -10753,11 +10745,9 @@ static int
 btree_key_append_object_to_overflow (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR ovfl_page,
 				     BTREE_OBJECT_INFO * object_info, BTREE_INSERT_HELPER * insert_helper)
 {
-  int ret = NO_ERROR;
   RECDES ovfl_rec;
   char ovfl_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   LOG_DATA_ADDR addr;
-  OID *oid = NULL;
 
   LOG_LSA prev_lsa;
 
@@ -12260,7 +12250,6 @@ btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
   RECDES peek_rec;
   int diff_column;
   int key_cnt;
-  bool dom_is_desc = false, next_dom_is_desc = false;
 
   DB_VALUE lf_key, uf_key;
   bool lf_clear_key = false, uf_clear_key = false;
@@ -12418,7 +12407,6 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr
   DB_VALUE key;
   bool clear_key = false;
   int offset, new_offset, key_len, new_key_len;
-  int key_type = BTREE_NORMAL_KEY;
   LEAF_REC leaf_pnt;
   int error = NO_ERROR;
 
@@ -13944,7 +13932,6 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
   VPID root_vpid;
   PAGE_PTR root = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
-  char *redo_data = NULL;
   int ret = NO_ERROR;
   LOG_LSA *page_lsa = NULL;
 
@@ -17374,9 +17361,6 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p, char *datap, int data
   PAGE_PTR root = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
   int key_size = -1;
-  DB_TYPE key_type = DB_TYPE_UNKNOWN;
-  char *start = datap;
-  DISK_ISVALID valid = DISK_ERROR;
   int error_code = NO_ERROR;
 
   assert (mvcc_info != NULL);
@@ -18306,7 +18290,6 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
 int
 btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_desc)
 {
-  DISK_ISVALID valid = DISK_ERROR;
   VPID r_vpid;			/* root page identifier */
   PAGE_PTR r_pgptr = NULL;	/* root page pointer */
   BTID_INT btid_int;
@@ -18721,7 +18704,6 @@ static int
 btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, MULTI_RANGE_OPT * multi_range_opt,
 				     OID * p_new_oid, bool * key_added)
 {
-  int compare_id = 0;
   DB_MIDXKEY *new_mkey = NULL;
   DB_VALUE *new_key_value = NULL;
   int error = NO_ERROR, i = 0;
@@ -19160,7 +19142,6 @@ exit_on_end:
 static int
 btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid, char *btname)
 {
-  DISK_ISVALID valid = DISK_ERROR;
   VPID vpid;
   PAGE_PTR pgptr = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
@@ -19355,10 +19336,6 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
   int key_cnt;
   BTREE_NODE_HEADER *header = NULL;
   BTREE_NODE_TYPE node_type;
-
-  bool clear_key = false;
-  int key_type = BTREE_NORMAL_KEY;
-
   bool check_interrupt = false;
 
   assert_release (btid_int != NULL);
@@ -20550,7 +20527,6 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   int idx_in_cache = -1;
   int selected_index = 0;
   int i, index_idx, oid_idx;
-  char columns[256] = { 0 };
   OR_INDEX *index_p = NULL;
 
   ctx = (SHOW_INDEX_SCAN_CTX *) ptr;
@@ -20878,7 +20854,6 @@ static BTREE_SEARCH
 btree_key_find_first_visible_row (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * rec, int offset,
 				  BTREE_NODE_TYPE node_type, OID * oid, OID * class_oid, int max_oids)
 {
-  PAGE_PTR pgptr = NULL, forward_pgptr = NULL;
   MVCC_REC_HEADER mvcc_rec_header;
   BTREE_MVCC_INFO mvcc_info;
   OR_BUF buf;
@@ -24050,7 +24025,6 @@ static int
 btree_range_scan_count_oids_leaf_and_one_ovf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   int leaf_oids_count = 0;
-  int error_code = NO_ERROR;
 
   /* Count leaf objects. */
   leaf_oids_count =
@@ -24178,7 +24152,6 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   int error_code = NO_ERROR;
   BTREE_SEARCH_KEY_HELPER search_key = BTREE_SEARCH_KEY_HELPER_INITIALIZER;
-  BTREE_NODE_HEADER *node_header = NULL;
   bool found = false;
 
   assert (bts->force_restart_from_root || !VPID_ISNULL (&bts->C_vpid));
@@ -25000,15 +24973,12 @@ exit_on_error:
 int
 btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
-  /* Helper used to process record and find visible object. */
-  BTREE_REC_SATISFIES_SNAPSHOT_HELPER rec_process_helper = BTREE_REC_SATISFIES_SNAPSHOT_HELPER_INITIALIZER;
   int error_code = NO_ERROR;	/* Returned error code. */
   int oid_count;		/* Total number of objects of this key. Overflow OID's are also considered. For unique
 				 * indexes, only one object is considered (we know for sure there can not be more than
 				 * one visible). */
   int total_oid_count;		/* Total count of key OID's considering OID's already read and all OID's of current
 				 * key. */
-  int remaining_oid_count = 0;	/* The number of object still to be processed. */
   bool stop = false;		/* Set to true when processing record should stop. */
   VPID overflow_vpid = VPID_INITIALIZER;	/* Overflow VPID. */
   PAGE_PTR overflow_page = NULL;	/* Current overflow page. */
@@ -25668,7 +25638,6 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   MVCC_SATISFIES_DELETE_RESULT satisfy_delete;
   MVCC_REC_HEADER mvcc_header_for_check_delete;
   int lock_result;
-  int error_code = NO_ERROR;
 
   /* Assert expected arguments. */
   assert (bts != NULL);
@@ -25782,6 +25751,8 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   lock_result = lock_object (thread_p, oid, class_oid, find_fk_obj->lock_mode, LK_UNCOND_LOCK);
   if (lock_result != LK_GRANTED)
     {
+      int error_code = NO_ERROR;
+
       /* Lock failed. */
       error_code = er_errid ();
       if (error_code == NO_ERROR)
@@ -25852,7 +25823,6 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oi
 	      BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
-  int error_code = NO_ERROR;
 
   /* Assert expected arguments. */
   assert (oid != NULL);
@@ -27518,7 +27488,6 @@ btree_key_insert_does_leaf_need_split (THREAD_ENTRY * thread_p, BTID_INT * btid_
 				       BTREE_INSERT_HELPER * insert_helper, BTREE_SEARCH_KEY_HELPER * search_key)
 {
   int max_new_data_size = 0;
-  BTREE_NODE_HEADER *node_header = NULL;
 
   /* Assert expected arguments. */
   assert (btid_int != NULL);
@@ -27567,13 +27536,11 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
   bool dummy_clear_key;		/* Dummy */
   /* Used by btree_key_find_and_lock_unique. */
   BTREE_FIND_UNIQUE_HELPER find_unique_helper = BTREE_FIND_UNIQUE_HELPER_INITIALIZER;
-  RECINS_STRUCT recins = RECINS_STRUCT_INITIALIZER;	/* Redo recovery structure. */
   MVCC_SNAPSHOT mvcc_snapshot_dirty;	/* Dirty snapshot used to count visible objects for multi-update. */
   bool is_key_record_read = false;	/* Set to true when key record is read (btree_read_record function was called). */
   int max_visible_oids = 1;	/* Used to check visible OID's for REPEATABLE READ isolation. */
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;	/* Used to check visibility for REPEATABLE READ isolation. */
   int num_visible = 0;		/* Used to count number of visible objects. */
-  int rv_redo_data_length = 0;
 
 #if defined (SERVER_MODE)
   LOG_LSA saved_leaf_lsa;	/* Save page LSA before locking the first object in record. If LSA is changed, it is no 
@@ -31046,7 +31013,6 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, BTID_INT * b
 					   OID * last_class_oid, BTREE_MVCC_INFO * last_mvcc_info,
 					   int offset_to_last_object)
 {
-  int error_code = NO_ERROR;	/* Error code. */
   char rv_undo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
   char *rv_undo_data = PTR_ALIGN (rv_undo_data_buffer, BTREE_MAX_ALIGN);
   char *rv_undo_data_ptr = NULL;
@@ -31720,8 +31686,6 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
   bool dummy_clear_key = false;	/* Dummy. */
   PGSLOTID slotid;		/* Slot ID of record being updated. It is either search_key->slotid if record is from
 				 * leaf or 1 if record is from overflow. */
-  /* MVCCID_ALL_VISIBLE */
-  MVCCID all_visible_mvccid = MVCCID_ALL_VISIBLE;
   BTREE_NODE_TYPE node_type;	/* Page of found object node type. */
   LOG_DATA_ADDR addr;		/* Address for recovery. */
 
@@ -32411,9 +32375,6 @@ btree_overflow_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_i
 				      PAGE_PTR overflow_page, RECDES * overflow_record, int *offset_to_replaced_object,
 				      BTREE_OBJECT_INFO * replacing_object)
 {
-  /* Size of overflow object (it is fixed). */
-  int object_fixed_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
-
   /* Redo recovery data. */
   LOG_DATA_ADDR overflow_addr;
   char rv_redo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];

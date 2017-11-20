@@ -2684,7 +2684,6 @@ INTL_CODESET
 lang_get_client_charset (void)
 {
   INTL_CODESET charset = LANG_SYS_CODESET;
-  int coll_id = LANG_SYS_COLLATION;
   char *coll_name = prm_get_string_value (PRM_ID_INTL_COLLATION);
 
   if (coll_name != NULL)
@@ -5718,7 +5717,6 @@ lang_next_coll_byte (const LANG_COLLATION * lang_coll, const unsigned char *seq,
   unsigned int cp_alpha_char, cp_next_alpha_char;
   const int alpha_cnt = lang_coll->coll.w_count;
   const unsigned int *next_alpha_char = lang_coll->coll.next_cp;
-  unsigned char *dummy = NULL;
 
   assert (seq != NULL);
   assert (next_seq != NULL);
@@ -5898,8 +5896,6 @@ lang_initloc_tr_utf8 (LANG_LOCALE_DATA * ld)
     0xdc			/* capital letter U with diaeresis */
   };
 
-  const unsigned int special_prev_upper_cp[] = { 'C', 'G', 'I', 'O', 'S', 'U' };
-
   const unsigned int special_lower_cp[] = {
     0xe7,			/* small c with cedilla */
     0x11f,			/* small letter g with breve */
@@ -5908,8 +5904,6 @@ lang_initloc_tr_utf8 (LANG_LOCALE_DATA * ld)
     0x15f,			/* small letter s with cedilla */
     0xfc			/* small letter u with diaeresis */
   };
-
-  const unsigned int special_prev_lower_cp[] = { 'c', 'g', 'h', 'o', 's', 'u' };
 
   assert (ld != NULL);
 

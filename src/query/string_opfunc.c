@@ -51,11 +51,18 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "db_elo.h"
+#include <vector>
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
 #endif /* !defined (SERVER_MODE) */
+#include "db_json.hpp"
+
 #include "dbtype_common.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define BYTE_SIZE               (8)
 #define QSTR_VALUE_PRECISION(value)                                       \
@@ -2051,7 +2058,6 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
   QSTR_CATEGORY src_categ, delim_categ;
   int error_status = NO_ERROR, count_i = 0;
   DB_TYPE src_type, delim_type;
-  unsigned char *buf = NULL;
   DB_VALUE empty_string1, empty_string2;
   INTL_CODESET src_cs, delim_cs;
   int src_coll, delim_coll;
@@ -2987,7 +2993,6 @@ db_string_elt (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return NO_ERROR;
     }
 
-
   if (DB_IS_NULL (arg[0]))
     {
       DB_MAKE_NULL (result);
@@ -3006,6 +3011,7 @@ db_string_elt (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       index = DB_GET_SMALLINT (arg[0]);
       break;
     default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
       return ER_QSTR_INVALID_DATA_TYPE;
     }
 
@@ -3017,6 +3023,313 @@ db_string_elt (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
     {
       DB_MAKE_NULL (result);
     }
+
+  return NO_ERROR;
+}
+
+int
+db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i;
+  JSON_DOC *new_doc;
+  char *str;
+
+  if (num_args <= 0)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  new_doc = db_json_allocate_doc ();
+
+  assert (num_args % 2 == 0);
+
+  for (i = 0; i < num_args; i += 2)
+    {
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+	{
+	case DB_TYPE_CHAR:
+	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_PULL_STRING (arg[i + 1]));
+	  break;
+	case DB_TYPE_INTEGER:
+	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_GET_INT (arg[i + 1]));
+	  break;
+	case DB_TYPE_DOUBLE:
+	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_GET_DOUBLE (arg[i + 1]));
+	  break;
+	case DB_TYPE_NUMERIC:
+	  {
+	    DB_VALUE double_value;
+
+	    db_value_coerce (arg[i + 1], &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
+	    db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_GET_DOUBLE (&double_value));
+	    pr_clear_value (&double_value);
+	  }
+	  break;
+	case DB_TYPE_JSON:
+	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), arg[i + 1]->data.json.document);
+	  break;
+	case DB_TYPE_NULL:
+	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), (JSON_DOC *) NULL);
+	  break;
+	default:
+	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+    }
+
+  str = db_json_get_raw_json_body_from_document (new_doc);
+  db_make_json (result, str, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  JSON_DOC *new_doc;
+  char *str;
+
+  if (num_args <= 0)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  new_doc = db_json_allocate_doc ();
+
+  for (int i = 0; i < num_args; i++)
+    {
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i]))
+	{
+	case DB_TYPE_CHAR:
+	  db_json_add_element_to_array (new_doc, DB_PULL_STRING (arg[i]));
+	  break;
+	case DB_TYPE_INTEGER:
+	  db_json_add_element_to_array (new_doc, DB_GET_INT (arg[i]));
+	  break;
+	case DB_TYPE_DOUBLE:
+	  db_json_add_element_to_array (new_doc, DB_GET_DOUBLE (arg[i]));
+	  break;
+	case DB_TYPE_NUMERIC:
+	  {
+	    DB_VALUE double_value;
+
+	    db_value_coerce (arg[i], &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
+	    db_json_add_element_to_array (new_doc, DB_GET_DOUBLE (&double_value));
+	    pr_clear_value (&double_value);
+	  }
+	  break;
+	case DB_TYPE_JSON:
+	  db_json_add_element_to_array (new_doc, arg[i]->data.json.document);
+	  break;
+	case DB_TYPE_NULL:
+	  db_json_add_element_to_array (new_doc, (JSON_DOC *) NULL);
+	  break;
+	default:
+	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+    }
+
+  str = db_json_get_raw_json_body_from_document (new_doc);
+  db_make_json (result, str, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  char *str;
+
+  if (num_args < 3)
+    {
+      return DB_MAKE_NULL (result);
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return DB_MAKE_NULL (result);
+    }
+
+  switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
+    {
+    case DB_TYPE_CHAR:
+      error_code = db_json_get_json_from_str (DB_PULL_STRING (arg[0]), new_doc);
+      if (error_code != NO_ERROR)
+	{
+	  assert (new_doc == NULL);
+	  return error_code;
+	}
+      break;
+
+    case DB_TYPE_JSON:
+      new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
+      break;
+
+      /* TODO - confirm DB_TYPE_NULL */
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+	}
+
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+	{
+	case DB_TYPE_CHAR:
+	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
+							db_json_insert_func, new_doc, DB_PULL_STRING (arg[i]));
+	  break;
+
+	case DB_TYPE_JSON:
+	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, DB_PULL_STRING (arg[i]));
+	  break;
+	case DB_TYPE_NULL:
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+	default:
+	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  str = db_json_get_raw_json_body_from_document (new_doc);
+  db_make_json (result, str, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i, error_code;
+  JSON_DOC *new_doc = NULL;
+  char *str;
+
+  if (num_args < 2)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return DB_MAKE_NULL (result);
+    }
+
+  switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
+    {
+    case DB_TYPE_CHAR:
+      error_code = db_json_get_json_from_str (DB_PULL_STRING (arg[0]), new_doc);
+      if (error_code != NO_ERROR)
+	{
+	  assert (new_doc == NULL);
+	  return error_code;
+	}
+      break;
+
+    case DB_TYPE_JSON:
+      new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
+      break;
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  for (i = 1; i < num_args; i++)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+	}
+
+      error_code = db_json_remove_func (new_doc, DB_PULL_STRING (arg[i]));
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  str = db_json_get_raw_json_body_from_document (new_doc);
+  db_make_json (result, str, new_doc, true);
+
+  return NO_ERROR;
+}
+
+/*
+ * db_json_merge ()
+ * this function merges two by two json
+ * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ * result (out): the merge result
+ * arg (in): the arguments for the merge function
+ * num_args (in)
+ */
+
+int
+db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i;
+  char *str;
+  int error_code;
+  JSON_DOC *accumulator;
+
+  if (num_args < 2)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  accumulator = db_json_allocate_doc ();
+
+  for (i = 0; i < num_args; i++)
+    {
+      switch (DB_VALUE_TYPE (arg[i]))
+	{
+	case DB_TYPE_JSON:
+	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator);
+	  break;
+	case DB_TYPE_CHAR:
+	  error_code = db_json_convert_string_and_call (DB_GET_STRING (arg[i]), db_json_merge_func, accumulator);
+	  break;
+	case DB_TYPE_NULL:
+	  db_json_delete_doc (accumulator);
+	  return DB_MAKE_NULL (result);
+	default:
+	  db_json_delete_doc (accumulator);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  db_json_delete_doc (accumulator);
+	  return error_code;
+	}
+    }
+
+  str = db_json_get_raw_json_body_from_document (accumulator);
+  db_make_json (result, str, accumulator, true);
 
   return NO_ERROR;
 }
@@ -4611,7 +4924,6 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 
   unsigned char *tar_ptr, *end_tar;
   unsigned char *expr_ptr, *end_expr;
-  int substrlen = 0;
   bool escape_is_match_one = ((escape != NULL) && *escape == LIKE_WILDCARD_MATCH_ONE);
   bool escape_is_match_many = ((escape != NULL) && *escape == LIKE_WILDCARD_MATCH_MANY);
   unsigned char pad_char[2];
@@ -4631,7 +4943,6 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 
   while (1)
     {
-      int char_size = 1;
       int dummy = 1;
 
       if (status == IN_CHECK)
@@ -5221,9 +5532,6 @@ db_string_translate (const DB_VALUE * src_string, const DB_VALUE * from_string, 
 		     DB_VALUE * transed_string)
 {
   int error_status = NO_ERROR;
-  int from_string_is_null = false;
-  int to_string_is_null = false;
-
   unsigned char *result_ptr = NULL;
   int result_length = 0, result_size = 0;
   DB_TYPE result_type = DB_TYPE_NULL;
@@ -9690,8 +9998,6 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
   DB_TYPE type = DB_TYPE_UNKNOWN;
   int error_status = NO_ERROR;
   time_t ts = 0;
-  int month = 0, day = 0, year = 0;
-  int second = 0, minute = 0, hour = 0, ms = 0;
 
   if (DB_IS_NULL (src_date))
     {
@@ -11433,7 +11739,7 @@ db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2, DB_VAL
 {
   int error_status = NO_ERROR;
   int year, month, day, hour, minute, second, millisecond;
-  int y = 0, m = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
+  int h = 0, mi = 0, s = 0, ms = 0;
   DB_BIGINT amount = 0;
   double amount_d = 0;
   DB_TYPE type;
@@ -16174,7 +16480,6 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
   else
     {
       INTL_CODESET frmt_codeset;
-      int retval = NO_ERROR;
       char tzr[TZR_SIZE + 1], tzd[TZ_DS_STRING_SIZE + 1];
       int tzh, tzm;
       int ntzr = 0, ntzd = 0;
@@ -18264,7 +18569,6 @@ scientific_to_decimal_string (const INTL_LANG lang, char *src_string, char **sci
   int i;
   int tmp_digit;
   const char fraction_symbol = lang_digit_fractional_symbol (lang);
-  const char digit_grouping_symbol = lang_digit_grouping_symbol (lang);
 
   while (char_isspace (*ptr))
     {
@@ -23310,8 +23614,7 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value, const TP_DOMA
   DB_TYPE type;
   char *res_s;
   int hour = 0, min = 0, sec = 0, milisec = 0;
-  int size, error_status = NO_ERROR;
-  bool alloc_ok = true;
+  int size;
 
   if (DB_IS_NULL (datetime_value))
     {
@@ -24433,8 +24736,6 @@ db_get_datetime_from_dbvalue (const DB_VALUE * src_date, int *year, int *month, 
 			      int *second, int *millisecond, const char **endp)
 {
   DB_TYPE arg_type = DB_TYPE_UNKNOWN;
-  DB_DATETIME datetime = { 0, 0 };
-  int error_status = NO_ERROR;
 
   if (DB_IS_NULL (src_date))
     {
@@ -25956,7 +26257,7 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
   char *str = NULL, *hexval = NULL;
-  int str_size = 0, hexval_len = 0, i = 0, err = 0, error_code = NO_ERROR;
+  int str_size = 0, hexval_len = 0, i = 0, error_code = NO_ERROR;
 
   /* check parameters for NULL values */
   if (param == NULL || result == NULL)
@@ -26764,7 +27065,6 @@ init_builtin_calendar_names (LANG_LOCALE_DATA * lld)
 int
 db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP_DOMAIN * enum_domain)
 {
-  int error = NO_ERROR;
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
   if (src == NULL || result == NULL || enum_domain == NULL)
@@ -26937,7 +27237,6 @@ db_inet_ntoa (DB_VALUE * result_ip_string, const DB_VALUE * number)
   DB_BIGINT ip_number = 0;
   char ip_string[16] = { '\0' };
   char ip_seg_string[4] = { '\0' };
-  const int ip_string_cnt = 16;
   const int ip_seg_string_cnt = 4;
   const DB_BIGINT ipmax = (DB_BIGINT) 256 * 256 * 256 * 256;
   const unsigned int ipv4_mask[] = { 0xFF000000, 0xFF0000, 0xFF00, 0xFF };
@@ -27894,7 +28193,6 @@ db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
   char *timezone;
   int len_timezone, error = NO_ERROR;
   DB_DATETIME *datetime = NULL;
-  DB_TIME *time = NULL;
 
   /* 
    *  Assert that DB_VALUE structures have been allocated.

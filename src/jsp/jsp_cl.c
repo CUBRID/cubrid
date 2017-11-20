@@ -59,6 +59,10 @@
 #include "network_interface_cl.h"
 #include "unicode_support.h"
 #include "dbtype_common.h"
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #if !defined(INADDR_NONE)
 #define INADDR_NONE 0xffffffff
 #endif /* !INADDR_NONE */

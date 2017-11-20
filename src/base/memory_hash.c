@@ -2137,7 +2137,7 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	      len = db_get_string_size (val);
 	      if (len < 0)
 		{
-		  len = strlen (ptr);
+		  len = (int) strlen (ptr);
 		}
 
 	      i = len;
