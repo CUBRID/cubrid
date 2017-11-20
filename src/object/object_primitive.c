@@ -17235,8 +17235,14 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	  if (json->schema_raw != NULL)
 	    {
 	      db_make_string (&schema_raw_value, json->schema_raw);
-	      schema_raw_length = mr_data_lengthval_string (&schema_raw_value, 1);
 	    }
+	  else
+	    {
+	      db_make_string (&schema_raw_value, "");
+	    }
+
+	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, 1);
+
 	  return json_body_length + schema_raw_length;
 	}
     }
