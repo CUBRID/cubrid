@@ -87,8 +87,6 @@
 #include "wintcp.h"
 #endif /* WINDOWS */
 
-
-
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */

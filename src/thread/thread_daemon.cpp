@@ -33,6 +33,7 @@ namespace cubthread
     , m_looper (loop_pattern)
     , m_thread (daemon::loop, this, exec)
   {
+    // starts a thread to execute daemon::loop
   }
 
   daemon::~daemon ()
@@ -50,11 +51,14 @@ namespace cubthread
   void
   daemon::stop (void)
   {
+    // note: this must not be called concurrently
+
     if (m_looper.is_stopped ())
       {
 	// already stopped
 	return;
       }
+
     // first signal stop
     m_looper.stop ();
     // make sure thread will wakeup
@@ -66,11 +70,17 @@ namespace cubthread
   void
   daemon::loop (daemon *daemon_arg, task *exec)
   {
+    // loop until stopped
     while (!daemon_arg->m_looper.is_stopped ())
       {
+        // execute task
 	exec->execute ();
+
+        // take a break
 	daemon_arg->pause ();
       }
+
+    // retire task
     exec->retire ();
   }
 
