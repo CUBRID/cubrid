@@ -1387,16 +1387,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #if !defined(WINDOWS)
       if (csql_Is_interactive)
 	{
-	  /* rewind history */
-	  int i;
+	  HISTORY_STATE *hist_state = history_get_history_state ();
 
-	  while (next_history ())
+	  for (int i = 0; i < hist_state->length; i++)
 	    {
-	      ;
-	    }
-
-	  for (i = 0, hist_entry = current_history (); hist_entry; hist_entry = previous_history (), i++)
-	    {
+	      hist_entry = history_get (i + 1);
 	      fprintf (csql_Output_fp, "----< %d >----\n", i + 1);
 	      fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
 	    }
