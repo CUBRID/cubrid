@@ -17470,6 +17470,9 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
       return rc;
     }
 
+  pr_clear_value (&json_body);
+  pr_clear_value (&schema_raw);
+
   return NO_ERROR;
 }
 
