@@ -1387,13 +1387,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #if !defined(WINDOWS)
       if (csql_Is_interactive)
 	{
-	  HISTORY_STATE *hist_state = history_get_history_state ();
-
-	  for (int i = 0; i < hist_state->length; i++)
+	  for (int i = 0; i < history_length; i++)
 	    {
 	      hist_entry = history_get (i + 1);
-	      fprintf (csql_Output_fp, "----< %d >----\n", i + 1);
-	      fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
+	      if (hist_entry != NULL && hist_entry->line != NULL)
+		{
+		  fprintf (csql_Output_fp, "----< %d >----\n", i + 1);
+		  fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
+		}
 	    }
 	}
 #else
