@@ -18,7 +18,7 @@
  */
 
 /*
- *
+ * thread_daemon - interface for daemon threads
  */
 
 #include "thread_daemon.hpp"
