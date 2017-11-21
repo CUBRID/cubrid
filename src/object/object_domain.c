@@ -7284,8 +7284,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_int (&src_replacement, db_json_get_int_from_document (src_doc));
 	  break;
 	case DB_JSON_STRING:
-	  db_make_string (&src_replacement, db_json_get_string_from_document (src_doc));
-	  src_replacement.need_clear = true;
+	  {
+	    char *json_string_copy = NULL;
+
+	    json_string_copy = db_json_get_string_from_document (src_doc);
+	    db_make_string (&src_replacement, json_string_copy);
+	    src_replacement.need_clear = true;
+	  }
 	  break;
 	default:
 	  /* do nothing */
@@ -10463,6 +10468,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      str = db_private_strdup (NULL, DB_GET_STRING (src));
 	      if (str == NULL)
 		{
+		  db_json_delete_doc (doc);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
 		  return DOMAIN_ERROR;
 		}
@@ -10491,11 +10497,25 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    break;
 	  }
 
-	if (str == NULL)
+	if (status == DOMAIN_COMPATIBLE)
 	  {
-	    str = db_json_get_raw_json_body_from_document (doc);
+	    if (str == NULL)
+	      {
+		str = db_json_get_raw_json_body_from_document (doc);
+	      }
+	    db_make_json (target, str, doc, true);
 	  }
-	db_make_json (target, str, doc, true);
+	else
+	  {
+	    if (str != NULL)
+	      {
+		db_private_free_and_init (NULL, str);
+	      }
+	    if (doc != NULL)
+	      {
+		db_json_delete_doc (doc);
+	      }
+	  }
       }
       break;
     default:

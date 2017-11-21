@@ -14176,8 +14176,6 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	    }
 	  rc = pr_write_compressed_string_to_buffer (buf, string, size, src_size, align);
 	}
-
-
     }
 
   return rc;
@@ -17280,6 +17278,9 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 
   (*(tp_String.data_writeval)) (buf, &json_body);
   (*(tp_String.data_writeval)) (buf, &schema_raw);
+
+  pr_clear_value (&json_body);
+  pr_clear_value (&schema_raw);
 }
 
 static void
@@ -17442,7 +17443,7 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
 static int
 mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 {
-  int rc;
+  int rc = NO_ERROR;
   DB_VALUE json_body, schema_raw;
 
   assert (value->data.json.json_body != NULL);
@@ -17460,16 +17461,20 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
   rc = (*(tp_String.data_writeval)) (buf, &json_body);
   if (rc != NO_ERROR)
     {
-      return rc;
+      goto exit;
     }
 
   rc = (*(tp_String.data_writeval)) (buf, &schema_raw);
   if (rc != NO_ERROR)
     {
-      return rc;
+      goto exit;
     }
 
-  return NO_ERROR;
+exit:
+  pr_clear_value (&json_body);
+  pr_clear_value (&schema_raw);
+
+  return rc;
 }
 
 static int

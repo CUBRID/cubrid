@@ -6947,8 +6947,11 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
 
 #if defined (SA_MODE)
-	  /* Update the last_blockid needed for vacuum. Get the first page_id of the previously logged archive */
-	  log_Gl.hdr.vacuum_last_blockid = logpb_last_complete_blockid ();
+	  if (LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
+	    {
+	      /* Update the last_blockid needed for vacuum. Get the first page_id of the previously logged archive */
+	      log_Gl.hdr.vacuum_last_blockid = logpb_last_complete_blockid ();
+	    }
 #endif /* SA_MODE */
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
