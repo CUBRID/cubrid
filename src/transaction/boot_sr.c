@@ -5953,7 +5953,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
   /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
    * during restart. that may not be possible during media crash though. */
   heap_flush (thread_p, boot_Db_parm_oid);
-  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL);	/* label? */
+  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, true);	/* label? */
 
 exit:
   return error_code;

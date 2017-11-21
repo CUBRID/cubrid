@@ -2571,7 +2571,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
       error_code = ER_FAILED;
       goto end;
     }
-  if (fileio_synchronize (thread_p, double_Write_Buffer.vdes, dwb_Volume_name) != double_Write_Buffer.vdes)
+  if (fileio_synchronize (thread_p, double_Write_Buffer.vdes, dwb_Volume_name, false) != double_Write_Buffer.vdes)
     {
       /* Something wrong happened. */
       error_code = ER_FAILED;
@@ -2588,7 +2588,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   /* Now, flush only the volumes having pages in current block. */
   for (i = 0; i < block->count_to_flush_vdes; i++)
     {
-      fileio_synchronize (thread_p, block->to_flush_vdes[i], NULL);
+      fileio_synchronize (thread_p, block->to_flush_vdes[i], NULL, false);
     }
 
   if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_FLUSHED_BLOCK_VOLUMES))
@@ -3532,7 +3532,11 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
       /* Now, flush the volumes having pages in current block. */
       for (i = 0; i < rcv_block->count_to_flush_vdes; i++)
 	{
-	  fileio_synchronize (thread_p, rcv_block->to_flush_vdes[i], NULL);
+	  if (fileio_synchronize (thread_p, rcv_block->to_flush_vdes[i], NULL, false) == NULL_VOLDES)
+	    {
+	      error_code = ER_FAILED;
+	      goto end;
+	    }
 	}
       rcv_block->count_to_flush_vdes = 0;
 
@@ -3795,7 +3799,6 @@ start:
 	  /* Wake up flush thread. */
 	  thread_wakeup_dwb_flush_block_thread ();
 	}
-#endif
 
       /* Not flushed yet. Wait for current block flush. */
       error_code = dwb_wait_for_block_completion (thread_p, current_block_no);
@@ -3815,6 +3818,7 @@ start:
 
 	  return error_code;
 	}
+#endif
     }
 
   *all_sync = true;

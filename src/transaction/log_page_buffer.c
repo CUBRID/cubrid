@@ -2084,7 +2084,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   logpb_log ("phy_pageid in logpb_write_page_to_disk is %lld\n", (long long int) phy_pageid);
 
   /* log_Gl.append.vdes is only changed while starting or finishing or recovering server. So, log cs is not needed. */
-  if (fileio_write (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, false) == NULL)
+  if (fileio_write (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, true) == NULL)
     {
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
 	{
@@ -2679,7 +2679,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 
       phy_pageid = (LOG_PHY_PAGEID) (pageid - bg_arv_info->start_page_id + 1);
       assert_release (phy_pageid > 0);
-      if (fileio_write (thread_p, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, false) == NULL)
+      if (fileio_write (thread_p, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, true) == NULL)
 	{
 	  fileio_dismount (thread_p, bg_arv_info->vdes);
 	  bg_arv_info->vdes = NULL_VOLDES;
@@ -2693,7 +2693,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   assert_release (bg_arv_info->current_page_id >= bg_arv_info->last_sync_pageid);
   if ((bg_arv_info->current_page_id - bg_arv_info->last_sync_pageid) > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
-      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive);
+      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive, false);
       bg_arv_info->last_sync_pageid = bg_arv_info->current_page_id;
     }
 }
@@ -4565,7 +4565,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0
 	  || (log_Stat.total_sync_count % prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
-	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
+	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, false) == NULL_VOLDES)
 	    {
 	      error_code = ER_FAILED;
 	      goto error;
@@ -6734,7 +6734,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 
   er_log_debug (ARG_FILE_LINE, "logpb_archive_active_log, arvhdr->fpageid = %lld\n", arvhdr->fpageid);
 
-  if (fileio_write (thread_p, vdes, malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE, false) == NULL)
+  if (fileio_write (thread_p, vdes, malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE, true) == NULL)
     {
       /* Error archiving header page into archive */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, 0LL, 0LL, arv_name);
@@ -6768,8 +6768,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE,
-			      false) == NULL)
+      if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE, true) == NULL)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, pageid, ar_phy_pageid, arv_name);
 	  goto error;
@@ -6800,7 +6799,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
        * Make sure that the whole log archive is in physical storage at this
        * moment
        */
-      if (fileio_synchronize (thread_p, vdes, arv_name) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p, vdes, arv_name, false) == NULL_VOLDES)
 	{
 	  goto error;
 	}
@@ -9936,7 +9935,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_vol
       return error_code;
     }
 
-  if (fileio_synchronize (thread_p, from_vdes, fileio_get_volume_label (from_vdes, PEEK)) != from_vdes)
+  if (fileio_synchronize (thread_p, from_vdes, fileio_get_volume_label (from_vdes, PEEK), false) != from_vdes)
     {
       return ER_FAILED;
     }
@@ -10141,7 +10140,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   log_Gl.hdr.eof_lsa.pageid = to_malloc_log_pgptr->hdr.logical_pageid;
   log_Gl.hdr.eof_lsa.offset = 0;
 
-  if (fileio_write (thread_p, to_vdes, to_malloc_log_pgptr, phy_pageid, LOG_PAGESIZE, false) == NULL)
+  if (fileio_write (thread_p, to_vdes, to_malloc_log_pgptr, phy_pageid, LOG_PAGESIZE, true) == NULL)
     {
       error_code = ER_FAILED;
       fileio_dismount (thread_p, to_vdes);
@@ -10174,7 +10173,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 
   /* Now write the log header */
   phy_pageid = logpb_to_physical_pageid (to_malloc_log_pgptr->hdr.logical_pageid);
-  if (fileio_write (thread_p, to_vdes, to_malloc_log_pgptr, phy_pageid, LOG_PAGESIZE, false) == NULL)
+  if (fileio_write (thread_p, to_vdes, to_malloc_log_pgptr, phy_pageid, LOG_PAGESIZE, true) == NULL)
     {
       error_code = ER_FAILED;
       fileio_dismount (thread_p, to_vdes);
@@ -10273,7 +10272,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 		  fileio_dismount (thread_p, to_vdes);
 		  goto error;
 		}
-	      if (fileio_synchronize (thread_p, to_vdes, to_volname) != to_vdes)
+	      if (fileio_synchronize (thread_p, to_vdes, to_volname, false) != to_vdes)
 		{
 		  fileio_dismount (thread_p, to_vdes);
 		  error_code = ER_FAILED;
@@ -10720,8 +10719,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	{
 	  goto error;
 	}
-      if (fileio_synchronize (thread_p, fileio_get_volume_descriptor (volid), fileio_get_volume_label (volid, PEEK)) ==
-	  NULL_VOLDES)
+      if (fileio_synchronize
+	  (thread_p, fileio_get_volume_descriptor (volid), fileio_get_volume_label (volid, PEEK), true) == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -11616,7 +11615,7 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr, phy_pageid, num_pages, LOG_PAGESIZE, false) == NULL)
+      if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr, phy_pageid, num_pages, LOG_PAGESIZE, true) == NULL)
 	{
 	  error_code = ER_LOG_WRITE;
 	  goto error;

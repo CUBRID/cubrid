@@ -95,6 +95,7 @@
 #endif /* SERVER_MODE */
 
 #if !defined (CS_MODE)
+#include "double_write_buffer.h"
 #include "page_buffer.h"
 #include "xserver_interface.h"
 #endif /* !defined (CS_MODE) */
@@ -1881,7 +1882,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
 	}
 #endif
 
-      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, false) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, true) == NULL)
 	{
 	  return NULL;
 	}
@@ -2375,7 +2376,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 
       /* initialize at least two pages, the header page and the last page. in case of is_sweep_clean == true, every
        * page of the volume will be written. */
-      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, 0, page_size, false) == NULL)
+      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, 0, page_size, true) == NULL)
 	{
 	  fileio_dismount (thread_p, vol_fd);
 	  fileio_unformat (thread_p, vol_label_p);
@@ -2395,7 +2396,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 	   && !fileio_initialize_pages (vol_fd, malloc_io_page_p, npages, page_size, kbytes_to_be_written_per_sec))
 	  || (is_sweep_clean == false && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size, false)))
 #else /* HPUX */
-      if (!((fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size, false) == malloc_io_page_p)
+      if (!((fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size, true) == malloc_io_page_p)
 	    && (is_sweep_clean == false
 		|| fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, 0, npages, page_size,
 					    kbytes_to_be_written_per_sec) == malloc_io_page_p)))
@@ -2543,7 +2544,7 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_
   if (voltype == DB_TEMPORARY_VOLTYPE)
     {
       /* Write the last page */
-      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE, false) != malloc_io_page_p)
+      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE, true) != malloc_io_page_p)
 	{
 	  npages_toadd = -1;
 	}
@@ -2777,7 +2778,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	  else
 	    {
 	      LSA_SET_NULL (&malloc_io_page_p->prv.lsa);
-	      if (fileio_write (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE, false) == NULL)
+	      if (fileio_write (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE, true) == NULL)
 		{
 		  goto error;
 		}
@@ -2785,7 +2786,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	}
     }
 
-  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p) != to_vol_desc)
+  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p, false) != to_vol_desc)
     {
       goto error;
     }
@@ -2832,7 +2833,7 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
       if (fileio_read (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE) != NULL)
 	{
 	  LSA_COPY (&malloc_io_page_p->prv.lsa, reset_lsa_p);
-	  if (fileio_write (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE, false) == NULL)
+	  if (fileio_write (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE, true) == NULL)
 	    {
 	      success = ER_FAILED;
 	      break;
@@ -2846,7 +2847,7 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
     }
   free_and_init (malloc_io_page_p);
 
-  if (fileio_synchronize (thread_p, vol_fd, vlabel) != vol_fd)
+  if (fileio_synchronize (thread_p, vol_fd, vlabel, false) != vol_fd)
     {
       success = ER_FAILED;
     }
@@ -3021,7 +3022,7 @@ fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
    */
   vlabel = fileio_get_volume_label_by_fd (vol_fd, PEEK);
 
-  (void) fileio_synchronize (thread_p, vol_fd, vlabel);
+  (void) fileio_synchronize (thread_p, vol_fd, vlabel, true);
 
 #if !defined(WINDOWS)
   lockf_type = fileio_get_lockf_type (vol_fd);
@@ -3223,7 +3224,7 @@ fileio_dismount_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p
 {
   if (vol_info_p->vdes != NULL_VOLDES)
     {
-      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel);
+      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, true);
 
 #if !defined(WINDOWS)
       if (vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -3264,7 +3265,7 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
     {
       if (sys_vol_info_p->vdes != NULL_VOLDES)
 	{
-	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel);
+	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, true);
 
 #if !defined(WINDOWS)
 	  if (sys_vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -4233,7 +4234,7 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
 
   for (i = 0; i < npages; i++)
     {
-      if (fileio_write (thread_p, vol_fd, io_page_array[i], start_page_id + i, page_size, false) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_array[i], start_page_id + i, page_size, true) == NULL)
 	{
 	  return NULL;
 	}
@@ -4247,9 +4248,10 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
  *   return: vdes or NULL_VOLDES
  *   vol_fd(in): Volume descriptor
  *   vlabel(in): Volume label
+ *   check_sync_dwb(in): True, if needs sync dwb
  */
 int
-fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
+fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, bool check_sync_dwb)
 {
   int ret;
 #if defined (EnableThreadMonitoring)
@@ -4264,6 +4266,9 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 #if defined(USE_AIO)
   struct aiocb cb;
 #endif /* USE_AIO */
+#if !defined (CS_MODE)
+  bool all_sync;
+#endif
 
   if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) > 0)
     {
@@ -4290,6 +4295,19 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
       tsc_getticks (&start_tick);
+    }
+#endif
+
+#if !defined (CS_MODE)
+  if (check_sync_dwb)
+    {
+      if (fileio_is_permanent_volume (thread_p, vol_fd))
+	{
+	  if (dwb_flush_force (thread_p, &all_sync) != NO_ERROR)
+	    {
+	      return NULL_VOLDES;
+	    }
+	}
     }
 #endif
 
@@ -4382,7 +4400,7 @@ fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLUME_INF
 	  return false;
 	}
 
-      fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel);
+      fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, false);
     }
 
   return found;
@@ -4416,7 +4434,7 @@ fileio_synchronize_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_inf
 	  return false;
 	}
 
-      fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel);
+      fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, false);
     }
 
   return found;
@@ -4434,6 +4452,9 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
   APPLY_ARG arg = { 0 };
 #if defined (SERVER_MODE) || defined (SA_MODE)
   PERF_UTIME_TRACKER time_track;
+#if !defined (CS_MODE)
+  bool all_sync;
+#endif
 
   PERF_UTIME_TRACKER_START (thread_p, &time_track);
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
@@ -4444,14 +4465,24 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
 
   if (is_include)
     {
+      /* Flush logs. */
       (void) fileio_traverse_system_volume (thread_p, fileio_synchronize_sys_volume, &arg);
     }
 
-  (void) fileio_traverse_permanent_volume (thread_p, fileio_synchronize_volume, &arg);
+#if !defined (CS_MODE)
+  /* Flush DWB */
+  success = dwb_flush_force (thread_p, &all_sync);
+#endif
 
-  if (er_errid () == ER_IO_SYNC)
+  if (success == NO_ERROR)
     {
-      success = ER_FAILED;
+      /* Flush volume data. */
+      (void) fileio_traverse_permanent_volume (thread_p, fileio_synchronize_volume, &arg);
+
+      if (er_errid () == ER_IO_SYNC)
+	{
+	  success = ER_FAILED;
+	}
     }
 
   er_stack_pop ();
@@ -6156,6 +6187,35 @@ fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
   return false;
 }
 
+/*
+* fileio_is_permanent_volume () - Check whether is permanent volume.
+*   return: I/O volume descriptor
+*   volid(in): Volume to check.
+*/
+bool
+fileio_is_permanent_volume (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  FILEIO_VOLUME_INFO *vol_info_p;
+  APPLY_ARG arg = { 0 };
+
+  if (volid == NULL_VOLID)
+    {
+      return false;
+    }
+
+  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (false);
+
+  arg.vol_id = volid;
+  vol_info_p = fileio_traverse_permanent_volume (thread_p, fileio_is_volume_id_equal, &arg);
+  if (vol_info_p)
+    {
+      assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);
+      return true;
+    }
+
+  return false;
+}
+
 VOLID
 fileio_find_next_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
 {
@@ -7165,7 +7225,7 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 	  return NULL;
 	}
 
-      if (fileio_synchronize (thread_p, session_p->bkup.vdes, session_p->bkup.name) != session_p->bkup.vdes)
+      if (fileio_synchronize (thread_p, session_p->bkup.vdes, session_p->bkup.name, false) != session_p->bkup.vdes)
 	{
 	  return NULL;
 	}
@@ -10290,7 +10350,7 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
   if (page_bitmap == NULL)
     {
       /* don't care about ht for this volume */
-      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, false) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, true) == NULL)
 	{
 	  return NULL;
 	}
@@ -10304,7 +10364,7 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
 
       if (!is_set)
 	{
-	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, false) == NULL)
+	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, true) == NULL)
 	    {
 	      return NULL;
 	    }
