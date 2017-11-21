@@ -65,9 +65,6 @@ namespace cubthread
       daemon *create_daemon (const looper &looper_arg, entry_task *exec_p);
       void destroy_daemon (daemon *&daemon_arg);
 
-      entry *claim_entry (void);
-      void retire_entry (entry &entry_p);
-
       entry &get_entry (void);
 
       std::size_t get_max_thread_count (void) const;
@@ -84,7 +81,14 @@ namespace cubthread
 
     private:
 
+      friend class entry_task;
+      friend int initialize (entry **my_entry);
+      friend void finalize (void);
+
       typedef resource_shared_pool<entry> entry_dispatcher;
+
+      entry *claim_entry (void);
+      void retire_entry (entry &entry_p);
 
       template <typename Res, typename ... CtArgs>
       Res *create_and_track_resource (std::vector<Res *> &tracker, size_t entries_count, CtArgs &&... args);

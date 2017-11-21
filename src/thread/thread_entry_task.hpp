@@ -24,50 +24,51 @@
 #error Wrong module
 #endif // not SERVER_MODE and not SA_MODE
 
-#include "thread_executable.hpp"
+#include "thread_task.hpp"
 #include "thread_manager.hpp"
 
 #include <cassert>
 
-namespace cubthread {
+namespace cubthread
+{
 
 // forward definition
-class entry;
+  class entry;
 
-class entry_task : public contextual_task<entry>
-{
-public:
-
-  entry_task ()
-    : contextual_task<entry> ()
-    , m_manager_p (NULL)
+  class entry_task : public contextual_task<entry>
   {
-  }
+    public:
 
-  // contextual_task implementation for create_context, retire_context
-  entry & create_context (void) override
-  {
-    return *m_manager_p->claim_entry ();
-  }
-  void retire_context (entry & context) override
-  {
-    m_manager_p->retire_entry (context);
-  }
+      entry_task ()
+	: contextual_task<entry> ()
+	, m_manager_p (NULL)
+      {
+      }
 
-  // inheritor should implement execute_with_context
+      // contextual_task implementation for create_context, retire_context
+      entry &create_context (void) override
+      {
+	return *m_manager_p->claim_entry ();
+      }
+      void retire_context (entry &context) override
+      {
+	m_manager_p->retire_entry (context);
+      }
 
-  void set_manager (manager * manager_p)
-  {
-    assert (m_manager_p == NULL);
-    m_manager_p = manager_p;
-  }
+      // inheritor should implement execute_with_context
 
-private:
-  // disable copy constructor
-  entry_task (const entry_task & other);
+      void set_manager (manager *manager_p)
+      {
+	assert (m_manager_p == NULL);
+	m_manager_p = manager_p;
+      }
 
-  manager *m_manager_p;
-};
+    private:
+      // disable copy constructor
+      entry_task (const entry_task &other);
+
+      manager *m_manager_p;
+  };
 
 } // namespace cubthread
 

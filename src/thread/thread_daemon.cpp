@@ -23,7 +23,7 @@
 
 #include "thread_daemon.hpp"
 
-#include "thread_executable.hpp"
+#include "thread_task.hpp"
 
 namespace cubthread
 {
@@ -73,10 +73,10 @@ namespace cubthread
     // loop until stopped
     while (!daemon_arg->m_looper.is_stopped ())
       {
-        // execute task
+	// execute task
 	exec->execute ();
 
-        // take a break
+	// take a break
 	daemon_arg->pause ();
       }
 

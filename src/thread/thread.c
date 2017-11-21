@@ -509,7 +509,7 @@ thread_initialize_manager (size_t & total_thread_count)
       thread_Manager.num_total = (thread_Manager.num_workers + thread_Manager.num_daemons + NUM_SYSTEM_TRANS);
 
       /* initialize lock-free transaction systems */
-      r = lf_initialize_transaction_systems (thread_Manager.num_total + cubthread::get_max_thread_count ());
+      r = lf_initialize_transaction_systems (thread_Manager.num_total + (int) cubthread::get_max_thread_count ());
       if (r != NO_ERROR)
 	{
 	  return r;

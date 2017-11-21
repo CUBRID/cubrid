@@ -31,7 +31,7 @@
 #include "thread_daemon.hpp"
 #endif // SERVER_MODE
 #include "thread_entry.hpp"
-#include "thread_entry_executable.hpp"
+#include "thread_entry_task.hpp"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
 #endif // SERVER_MODE

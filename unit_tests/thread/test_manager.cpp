@@ -27,8 +27,8 @@
 
 // testing server mode
 #define SERVER_MODE
-#include "thread_entry_executable.hpp"
-#include "thread_executable.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_task.hpp"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 
@@ -40,60 +40,60 @@
 namespace test_thread
 {
 
-class dummy_exec : public cubthread::entry_task
-{
-  void execute (cubthread::entry & context)
+  class dummy_exec : public cubthread::entry_task
   {
-    std::stringstream ss;
-    ss << "entry_p: " << &context << std::endl;
-    test_common::sync_cout (ss.str ());
+      void execute (cubthread::entry &context)
+      {
+	std::stringstream ss;
+	ss << "entry_p: " << &context << std::endl;
+	test_common::sync_cout (ss.str ());
+      }
+
+      void retire ()
+      {
+	cubthread::entry_task::retire ();
+	test_common::sync_cout ("dummy_retire\n");
+      }
+  };
+
+  void
+  prepare (std::size_t max_threads)
+  {
+    lf_initialize_transaction_systems ((int) max_threads);
   }
 
-  void retire ()
+  void
+  end (void)
   {
-    cubthread::entry_task::retire ();
-    test_common::sync_cout ("dummy_retire\n");
+    lf_destroy_transaction_systems ();
   }
-};
 
-void
-prepare (std::size_t max_threads)
-{
-  lf_initialize_transaction_systems ((int) max_threads);
-}
+  void
+  run (std::size_t max_threads)
+  {
+    cubthread::manager thread_manager (max_threads);
 
-void
-end (void)
-{
-  lf_destroy_transaction_systems ();
-}
+    auto *dummy_pool = thread_manager.create_worker_pool (1, 1);
+    thread_manager.destroy_worker_pool (dummy_pool);
 
-void
-run (std::size_t max_threads)
-{
-  cubthread::manager thread_manager (max_threads);
+    auto *daemon = thread_manager.create_daemon (cubthread::looper (), new dummy_exec ());
+    // give daemon a chance to loop
+    std::this_thread::sleep_for (std::chrono::duration<std::size_t> (1));
+    thread_manager.destroy_daemon (daemon);
 
-  auto *dummy_pool = thread_manager.create_worker_pool (1, 1);
-  thread_manager.destroy_worker_pool (dummy_pool);
+    std::cout << "  test_manager successful" << std::endl;
+  }
 
-  auto *daemon = thread_manager.create_daemon (cubthread::looper (), new dummy_exec ());
-  // give daemon a chance to loop
-  std::this_thread::sleep_for (std::chrono::duration<std::size_t> (1));
-  thread_manager.destroy_daemon (daemon);
+  int
+  test_manager (void)
+  {
+    const std::size_t MAX_THREADS = 16;
 
-  std::cout << "  test_manager successful" << std::endl;
-}
+    prepare (MAX_THREADS);
+    run (MAX_THREADS);
+    end ();
 
-int
-test_manager (void)
-{
-  const std::size_t MAX_THREADS = 16;
-
-  prepare (MAX_THREADS);
-  run (MAX_THREADS);
-  end ();
-
-  return 0;
-}
+    return 0;
+  }
 
 } // namespace test_thread
