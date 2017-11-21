@@ -5715,7 +5715,6 @@ void
 fileio_make_dwb_name (char *dwb_name_p, const char *dwb_path_p, const char *db_name_p)
 {
   sprintf (dwb_name_p, "%s%s%s%s", dwb_path_p, FILEIO_PATH_SEPARATOR (dwb_path_p), db_name_p, FILEIO_SUFFIX_DWB);
-
 }
 
 

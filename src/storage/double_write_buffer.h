@@ -18,12 +18,12 @@ struct double_write_slot
 };
 
 /* double write buffer interface */
-extern bool dwb_is_created ();
+extern bool dwb_is_created (void);
 extern int dwb_create (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p);
 extern int dwb_recreate (THREAD_ENTRY * thread_p);
 extern int dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p);
 extern int dwb_destroy (THREAD_ENTRY * thread_p);
-extern char *dwb_get_volume_name ();
+extern char *dwb_get_volume_name (void);
 extern int dwb_flush_next_block (THREAD_ENTRY * thread_p);
 extern int dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync);
 extern int dwb_compute_checksums (THREAD_ENTRY * thread_p);
