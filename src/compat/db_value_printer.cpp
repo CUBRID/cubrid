@@ -1,4 +1,5 @@
 #include "db_value_printer.hpp"
+
 #include "db_date.h"
 #include "dbtype.h"
 #include "dbval.h"
@@ -13,8 +14,10 @@
 #include "virtual_object.h"
 #endif
 #include "work_space.h"
+
 #include <assert.h>
 #include <float.h>
+
 #if defined(SA_MODE)
 extern unsigned int db_on_server;
 #endif

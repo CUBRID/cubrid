@@ -18,6 +18,7 @@
  */
 
 #include "trigger_description.hpp"
+
 #include "dbi.h"
 #include "object_printer.hpp"
 #include "object_print_util.hpp"

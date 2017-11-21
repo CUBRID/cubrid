@@ -18,6 +18,7 @@
  */
 
 #include "class_description.hpp"
+
 #include "authenticate.h"
 #include "class_object.h"
 #include "locator_cl.h"
