@@ -7201,11 +7201,8 @@ check_applied_info_end:
       *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
       *copied_append_lsa = la_Info.act_log.log_hdr->append_lsa;
 
-#if 0
-      /* fixme(rem) */
       printf ("\n *** Copied Active Info. *** \n");
       la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
-#endif /*  0 */
     }
 
   if (check_copied_info && (page_num > 1))
@@ -7253,9 +7250,7 @@ check_applied_info_end:
 
 	  if (LA_LOG_IS_IN_ARCHIVE (page_num))
 	    {
-#if 0
 	      la_print_log_arv_header (database_name, la_Info.arv_log.log_hdr, verbose);
-#endif
 	    }
 	  printf ("Log page %lld (phy: %lld pageid: %lld, offset %d)\n", (long long int) page_num,
 		  (long long int) la_log_phypageid (page_num), (long long int) logpage->hdr.logical_pageid,
