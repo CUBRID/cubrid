@@ -17443,7 +17443,7 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
 static int
 mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 {
-  int rc;
+  int rc = NO_ERROR;
   DB_VALUE json_body, schema_raw;
 
   assert (value->data.json.json_body != NULL);
@@ -17461,19 +17461,20 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
   rc = (*(tp_String.data_writeval)) (buf, &json_body);
   if (rc != NO_ERROR)
     {
-      return rc;
+      goto exit;
     }
 
   rc = (*(tp_String.data_writeval)) (buf, &schema_raw);
   if (rc != NO_ERROR)
     {
-      return rc;
+      goto exit;
     }
 
+exit:
   pr_clear_value (&json_body);
   pr_clear_value (&schema_raw);
 
-  return NO_ERROR;
+  return rc;
 }
 
 static int
