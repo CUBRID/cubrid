@@ -89,7 +89,7 @@ namespace mem
   inline void default_realloc (block &b, size_t len)
   {
     size_t dim = b.dim ? b.dim : 1;
-    for (; dim < b.dim+len; dim*=2); // calc next power of 2 >= b.dim
+    for (; dim < b.dim + len; dim *= 2); // calc next power of 2 >= b.dim
     block x{dim, new char[dim]};
     memcpy (x.ptr, b.ptr, b.dim);
     delete b.ptr;
