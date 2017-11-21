@@ -66,16 +66,15 @@ static FILE *catalog_fp;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
 
-int sl_write_sql (string_buffer & query, string_buffer * select);
-void sl_print_insert_att_names (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
-void sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
-int sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key);
-void sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey);
-void sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
-void sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN ** assignments,
+static int sl_write_sql (string_buffer & query, string_buffer * select);
+static void sl_print_insert_att_names (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+static void sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+static int sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key);
+static void sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey);
+static void sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+static void sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN ** assignments,
 			 int num_assignments);
 DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
-
 
 static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
@@ -83,7 +82,7 @@ static int sl_read_catalog (void);
 static int sl_write_catalog (void);
 static int create_dir (const char *new_dir);
 
-char *
+static char *
 trim_single_quote (char *str, size_t len)
 {
   if (len < 2 || str[0] != '\'' || str[len - 1] != '\'')
@@ -94,7 +93,7 @@ trim_single_quote (char *str, size_t len)
   return str + 1;
 }
 
-int
+static int
 sl_print_select (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
 {
   strbuf ("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) sm_class));
