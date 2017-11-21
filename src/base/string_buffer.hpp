@@ -117,7 +117,7 @@ template<typename... Args> void string_buffer::operator() (Args &&... args)
     {
       m_block.extend (m_len + size_t (len) + 1 - m_block.dim); //ask to extend to fit at least additional len chars
     }
-  snprintf (m_block.ptr+m_len, m_block.dim-m_len, std::forward<Args> (args)...);
+  snprintf (m_block.ptr + m_len, m_block.dim - m_len, std::forward<Args> (args)...);
   m_len += len;
 }
 
