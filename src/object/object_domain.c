@@ -7284,8 +7284,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_int (&src_replacement, db_json_get_int_from_document (src_doc));
 	  break;
 	case DB_JSON_STRING:
-	  db_make_string (&src_replacement, db_json_get_string_from_document (src_doc));
-	  src_replacement.need_clear = true;
+	  {
+	    char *json_string_copy = NULL;
+
+	    json_string_copy = db_json_get_string_from_document (src_doc);
+	    db_make_string (&src_replacement, json_string_copy);
+	    src_replacement.need_clear = true;
+	  }
 	  break;
 	default:
 	  /* do nothing */
