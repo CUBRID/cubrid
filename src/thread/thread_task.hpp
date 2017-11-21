@@ -17,8 +17,8 @@
  *
  */
 
-#ifndef _THREAD_EXECUTABLE_HPP_
-#define _THREAD_EXECUTABLE_HPP_
+#ifndef _THREAD_TASK_HPP_
+#define _THREAD_TASK_HPP_
 
 #include <mutex>
 #include <thread>
@@ -28,6 +28,17 @@
 namespace cubthread
 {
 
+  // cubthread::task
+  //
+  //  description:
+  //    abstract class for thread tasks; it has two virtual methods: execute and retire
+  //
+  //  how to use:
+  //    extend task
+  //    override execute to define task execution
+  //    [optional] override retire to manage task object when no longer required; it is deleted by default
+  //    provide tasks to daemon threads; see thread_daemon.hpp
+  //
   class task
   {
     public:
@@ -41,6 +52,52 @@ namespace cubthread
       }
   };
 
+  // cubthread::contextual_task
+  //
+  //  description:
+  //    extension of task class that can handle thread context
+  //    the context can be shared by multiple tasks
+  //
+  //  templates:
+  //    Context - thread context
+  //
+  //  how to use:
+  //     1. specialize contextual_task with Context
+  //        e.g. in CUBRID we have entry_task which uses entry as context; see thread_entry_task.hpp
+  //
+  //     2. extend specialized contextual_task and override virtual functions
+  //        override execute (Context &) to define task execution
+  //        [optional] override create_context and retire_context; as a recommendation, always call create_context from
+  //        parent class before doing your own context initialization; also call parent retire_context at the end of
+  //        own retire_context.
+  //        [optional] override retire function
+  //
+  //     3. execute multiple tasks using same context:
+  //          custom_context & context_ref;
+  //          custom_task * task_p;
+  //
+  //          task_p = first_task ();
+  //          context_ref = task_p->create_context ();
+  //
+  //          do
+  //            {
+  //              if (task_p != first_task ())
+  //                {
+  //                  task_p->retire ();
+  //                }
+  //              task_p->execute (context_ref);
+  //            }
+  //          while (task_p != last_task ());
+  //
+  //          task_p->retire_context ();
+  //          task_p->retire ();
+  //
+  //        see thread_worker_pool.hpp implementation for contextual_task.
+  //
+  //  todo:
+  //    find a better design for claiming/retiring context; I wanted to make them static, but static and virtual don't
+  //    go together.
+  //
   template <typename Context>
   class contextual_task : public task
   {
@@ -92,4 +149,4 @@ namespace cubthread
 
 } // namespace cubthread
 
-#endif // _THREAD_EXECUTABLE_HPP_
+#endif // _THREAD_TASK_HPP_

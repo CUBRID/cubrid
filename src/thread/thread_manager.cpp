@@ -216,7 +216,9 @@ namespace cubthread
   {
     if (worker_pool_arg == NULL)
       {
-	return false;
+	// execute on this thread
+	exec_p->execute (thread_p);
+	exec_p->retire ();
       }
     else
       {
@@ -237,7 +239,7 @@ namespace cubthread
 #if defined (SERVER_MODE)
     return worker_pool_arg == NULL || worker_pool_arg->is_busy ();
 #else // not SERVER_MODE = SA_MODE
-    return true;
+    return false;
 #endif // not SERVER_MODE = SA_MODE
   }
 

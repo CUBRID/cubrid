@@ -17,8 +17,8 @@
  *
  */
 
-#ifndef _THREAD_ENTRY_EXECUTABLE_HPP_
-#define _THREAD_ENTRY_EXECUTABLE_HPP_
+#ifndef _THREAD_ENTRY_TASK_HPP_
+#define _THREAD_ENTRY_TASK_HPP_
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Wrong module
@@ -32,9 +32,26 @@
 namespace cubthread
 {
 
-// forward definition
+  // forward definition
   class entry;
 
+  // cubthread::entry_task
+  //
+  //  description:
+  //    entry_task class a specialization of contextual_task using entry as Context; see thread_task.hpp
+  //    class is friend of cubthread::manager and cannot be used directly with cubthread::daemon or
+  //      cubthread::worker_pool
+  //
+  //  how to use:
+  //     1. extend entry_task and override virtual functions
+  //        override execute (entry &) function to define execution
+  //        [optional] override create_context, retire_context and retire functions (see thread_task.hpp)
+  //
+  //     2. provide custom task to manager and either:
+  //     2.1. create a daemon to loop and execute task repeatedly
+  //     2.2. pass it to a worker pool to be executed once
+  //        see thread_manager.hpp, thread_daemon.hpp and thread_worker_pool.hpp for more details
+  //
   class entry_task : public contextual_task<entry>
   {
     public:
@@ -72,4 +89,4 @@ namespace cubthread
 
 } // namespace cubthread
 
-#endif // _THREAD_ENTRY_EXECUTABLE_HPP_
+#endif // _THREAD_ENTRY_TASK_HPP_
