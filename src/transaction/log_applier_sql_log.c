@@ -73,7 +73,7 @@ static int sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * 
 static void sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey);
 static void sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 static void sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN ** assignments,
-			 int num_assignments);
+				int num_assignments);
 DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 
 static FILE *sl_open_next_file (FILE * old_fp);
@@ -422,8 +422,8 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
   SYSPRM_ERR rc;
 
   mem::block_ext memblock;
-  string_buffer strbuf (memblock);
-  strbuf ("%s;", stmt_text);
+  string_buffer statement_strbuf (memblock);
+  statement_strbuf ("%s;", stmt_text);
 
   if (ha_sys_prm != NULL)
     {
@@ -433,28 +433,28 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
 	  return sysprm_set_error (rc, ha_sys_prm);
 	}
 
-      mem::block_ext statement_mblock;
-      string_buffer statement_strbuf (statement_mblock);
-      statement_strbuf ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_START, ha_sys_prm);	//set param
-      if (sl_write_sql (statement_strbuf, NULL) != NO_ERROR)
+      mem::block_ext setprm_mblock;
+      string_buffer setprm_strbuf (setprm_mblock);
+      setprm_strbuf ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_START, ha_sys_prm);	//set param
+      if (sl_write_sql (setprm_strbuf, NULL) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
-      if (sl_write_sql (strbuf, NULL) != NO_ERROR)
+      if (sl_write_sql (statement_strbuf, NULL) != NO_ERROR)
 	{
-	  sl_write_sql (statement_strbuf, NULL);
+	  sl_write_sql (setprm_strbuf, NULL);
 	  return ER_FAILED;
 	}
-      statement_strbuf.clear ();
-      statement_strbuf ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_END, default_ha_prm);	//restore param
-      if (sl_write_sql (statement_strbuf, NULL) != NO_ERROR)
+      setprm_strbuf.clear ();
+      setprm_strbuf ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_END, default_ha_prm);	//restore param
+      if (sl_write_sql (setprm_strbuf, NULL) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
     }
   else
     {
-      if (sl_write_sql (strbuf, NULL) != NO_ERROR)
+      if (sl_write_sql (statement_strbuf, NULL) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -464,9 +464,9 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
     {
       if (db_user != NULL && strlen (db_user) > 0)
 	{
-	  strbuf.clear ();
-	  strbuf ("GRANT ALL PRIVILEGES ON %s TO %s;", class_name, db_user);
-	  if (sl_write_sql (strbuf, NULL) != NO_ERROR)
+	  statement_strbuf.clear ();
+	  statement_strbuf ("GRANT ALL PRIVILEGES ON %s TO %s;", class_name, db_user);
+	  if (sl_write_sql (statement_strbuf, NULL) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
