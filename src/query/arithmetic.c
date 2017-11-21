@@ -44,8 +44,7 @@
 #include "db_date.h"
 #include "db_json.hpp"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -140,7 +139,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	    bool decrement = false;
 
 	    num_str_p = num_str + 1;
-	    numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (value), num_str_p);
+	    numeric_coerce_num_to_dec_str (DB_GET_NUMERIC (value), num_str_p);
 	    num_str_len = strlen (num_str_p);
 
 	    num_str_p += num_str_len - s;
@@ -215,7 +214,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	else
 	  {
 	    /* given numeric number is already of integral type */
-	    DB_MAKE_NUMERIC (result, DB_PULL_NUMERIC (value), p, 0);
+	    DB_MAKE_NUMERIC (result, DB_GET_NUMERIC (value), p, 0);
 	  }
 
 	break;
@@ -3390,7 +3389,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     }
 
   /* translate default fmt */
-  if (type2 == DB_TYPE_CHAR && strcasecmp (DB_PULL_STRING (value2), "default") == 0)
+  if (type2 == DB_TYPE_CHAR && strcasecmp (DB_GET_STRING (value2), "default") == 0)
     {
       if (TP_IS_DATE_TYPE (type1))
 	{
@@ -5087,7 +5086,7 @@ db_crc32_dbval (DB_VALUE * result, DB_VALUE * value)
 
       if (QSTR_IS_ANY_CHAR (type))
 	{
-	  error_status = crypt_crc32 (NULL, DB_PULL_STRING (value), DB_GET_STRING_SIZE (value), &hash_result);
+	  error_status = crypt_crc32 (NULL, DB_GET_STRING (value), DB_GET_STRING_SIZE (value), &hash_result);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto error;
@@ -5194,7 +5193,7 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
       type = db_json_get_type_as_str (DB_GET_JSON_DOCUMENT (json));
       length = strlen (type);
 
-      return DB_MAKE_CHAR (type_res, length, type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+      return DB_MAKE_CHAR (type_res, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
     }
 }
 
@@ -5207,7 +5206,7 @@ db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res)
     }
   else
     {
-      bool valid = db_json_is_valid (DB_PULL_STRING (json));
+      bool valid = db_json_is_valid (DB_GET_STRING (json));
 
       return DB_MAKE_INT (type_res, (int) valid);
     }
@@ -5292,7 +5291,7 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
     }
 
   this_doc = DB_GET_JSON_DOCUMENT (json);
-  raw_path = DB_PULL_STRING (path);
+  raw_path = DB_GET_STRING (path);
 
   error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
   if (error_code != NO_ERROR)

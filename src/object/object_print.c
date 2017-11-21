@@ -50,8 +50,9 @@
 #include "network_interface_cl.h"
 #include "class_object.h"
 #include "work_space.h"
+
 #endif /* !defined (SERVER_MODE) */
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype_common.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4103,7 +4104,7 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB
 	      /* print enumerations as strings */
 	      if (tp_enumeration_to_varchar (value, &varchar_val) == NO_ERROR)
 		{
-		  codeset = DB_GET_ENUM_CODESET (value);
+		  codeset = (INTL_CODESET) DB_GET_ENUM_CODESET (value);
 		  if (codeset != LANG_SYS_CODESET)
 		    {
 		      buffer = pt_append_nulstring (parser, buffer, lang_charset_introducer (codeset));

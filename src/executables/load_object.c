@@ -59,8 +59,7 @@
 #include "porting.h"
 #endif
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #define MIGRATION_CHUNK 4096
 static char migration_buffer[MIGRATION_CHUNK];
@@ -1510,7 +1509,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       /* fall through */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      ptr = DB_PULL_STRING (value);
+      ptr = DB_GET_STRING (value);
 
       len = db_get_string_size (value);
       if (len < 0)

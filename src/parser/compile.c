@@ -40,9 +40,7 @@
 #include "network_interface_cl.h"
 #include "execute_statement.h"
 #include "transaction_cl.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 typedef struct trigger_exec_info TRIGGER_EXEC_INFO;
 struct trigger_exec_info

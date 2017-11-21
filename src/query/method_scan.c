@@ -43,8 +43,7 @@
 #include "xasl_support.h"
 #endif /* defined (SA_MODE) */
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;

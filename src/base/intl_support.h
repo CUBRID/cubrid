@@ -151,23 +151,6 @@ enum intl_zone
 };
 typedef enum intl_zone INTL_ZONE;
 
-enum intl_codeset
-{
-  INTL_CODESET_ERROR = -2,
-  INTL_CODESET_NONE = -1,
-  INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
-  INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
-  INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
-  INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
-  INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
-  INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
-
-  INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
-
-  INTL_CODESET_LAST = INTL_CODESET_UTF8
-};
-typedef enum intl_codeset INTL_CODESET;
-
 enum currency_check_mode
 {
   CURRENCY_CHECK_MODE_NONE = 0,
@@ -211,8 +194,6 @@ extern "C"
 
   extern int intl_convert_charset (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset,
 				   unsigned char *dest, INTL_CODESET dest_codeset, int *unconverted);
-  extern int intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
-  extern int intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern int intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset,
 					int *byte_count);

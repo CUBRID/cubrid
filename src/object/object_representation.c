@@ -43,8 +43,7 @@
 #include "query_list.h"
 #include "db_json.hpp"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -8731,7 +8730,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
     }
   else
     {
-      schema = db_private_strdup (NULL, DB_PULL_STRING (&schema_value));
+      schema = db_private_strdup (NULL, DB_GET_STRING (&schema_value));
     }
 
   pr_clear_value (&schema_value);

@@ -56,8 +56,7 @@
 #include "dbi.h"
 #endif /* !defined (SERVER_MODE) */
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4887,7 +4886,7 @@ tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
   int status = NO_ERROR;
   int str_len;
 
-  strp = DB_PULL_STRING (src);
+  strp = DB_GET_STRING (src);
   if (strp == NULL)
     {
       return ER_FAILED;
@@ -5776,19 +5775,19 @@ make_desired_string_db_value (DB_TYPE desired_type, const TP_DOMAIN * desired_do
   switch (desired_type)
     {
     case DB_TYPE_CHAR:
-      db_make_char (&temp, desired_domain->precision, new_string, strlen (new_string),
+      db_make_char (&temp, desired_domain->precision, (const DB_C_CHAR) new_string, strlen (new_string),
 		    TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_NCHAR:
-      db_make_nchar (&temp, desired_domain->precision, new_string, strlen (new_string),
+      db_make_nchar (&temp, desired_domain->precision, (const DB_C_NCHAR) new_string, strlen (new_string),
 		     TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARCHAR:
-      db_make_varchar (&temp, desired_domain->precision, new_string, strlen (new_string),
+      db_make_varchar (&temp, desired_domain->precision, (const DB_C_CHAR) new_string, strlen (new_string),
 		       TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARNCHAR:
-      db_make_varnchar (&temp, desired_domain->precision, new_string, strlen (new_string),
+      db_make_varnchar (&temp, desired_domain->precision, (const DB_C_NCHAR) new_string, strlen (new_string),
 			TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     default:			/* Can't get here.  This just quiets the compiler */

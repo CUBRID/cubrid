@@ -50,8 +50,7 @@
 #include "dbi.h"
 #endif /* !defined (SERVER_MODE) */
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2145,9 +2144,10 @@ pr_clear_value (DB_VALUE * value)
     case DB_TYPE_ENUMERATION:
       if (value->need_clear)
 	{
-	  if (DB_GET_ENUM_STRING (value) != NULL)
+	  char *temp = DB_GET_ENUM_STRING (value);
+	  if (temp != NULL)
 	    {
-	      db_private_free_and_init (NULL, DB_GET_ENUM_STRING (value));
+	      db_private_free_and_init (NULL, temp);
 	    }
 	}
       db_make_enumeration (value, 0, NULL, 0, DB_GET_ENUM_CODESET (value), DB_GET_ENUM_COLLATION (value));
@@ -5634,7 +5634,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	{
 	  DB_OBJECT *obj;
 	  /* what should this do for ISVID mops? */
-	  obj = db_pull_object (src);
+	  obj = DB_GET_OBJECT (src);
 	  db_value_domain_init (dest, DB_TYPE_OID, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  oid = WS_OID (obj);
 	  error = db_make_oid (dest, oid);
@@ -6005,7 +6005,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
    */
   if (DB_VALUE_DOMAIN_TYPE (value1) == DB_TYPE_OID)
     {
-      o1 = DB_PULL_OID (value1);
+      o1 = DB_GET_OID (value1);
     }
   else
     {
@@ -6015,7 +6015,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   if (DB_VALUE_DOMAIN_TYPE (value2) == DB_TYPE_OID)
     {
-      o2 = DB_PULL_OID (value2);
+      o2 = DB_GET_OID (value2);
     }
   else
     {
@@ -6040,11 +6040,11 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
    */
   if (DB_VALUE_DOMAIN_TYPE (value1) == DB_TYPE_OID)
     {
-      o1 = DB_PULL_OID (value1);
+      o1 = DB_GET_OID (value1);
     }
   else
     {
-      mop1 = DB_PULL_OBJECT (value1);
+      mop1 = DB_GET_OBJECT (value1);
       if (WS_ISVID (mop1))
 	{
 	  if (db_is_updatable_object (mop1))
@@ -6081,11 +6081,11 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   if (DB_VALUE_DOMAIN_TYPE (value2) == DB_TYPE_OID)
     {
-      o2 = DB_PULL_OID (value2);
+      o2 = DB_GET_OID (value2);
     }
   else
     {
-      mop2 = DB_PULL_OBJECT (value2);
+      mop2 = DB_GET_OBJECT (value2);
       if (WS_ISVID (mop2))
 	{
 	  if (db_is_updatable_object (mop2))
@@ -9775,8 +9775,8 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   assert (DB_VALUE_TYPE (prefix) == DB_TYPE_MIDXKEY);
   assert (DB_VALUE_TYPE (postfix) == DB_TYPE_MIDXKEY);
 
-  midx_prefix = DB_PULL_MIDXKEY (prefix);
-  midx_postfix = DB_PULL_MIDXKEY (postfix);
+  midx_prefix = DB_GET_MIDXKEY (prefix);
+  midx_postfix = DB_GET_MIDXKEY (postfix);
 
   offset_prefix = pr_midxkey_get_element_offset (midx_prefix, n_prefix);
   offset_postfix = pr_midxkey_get_element_offset (midx_postfix, n_prefix);
@@ -9830,7 +9830,7 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
   DB_MIDXKEY *midx_key;
   int i, start, offset;
 
-  midx_key = DB_PULL_MIDXKEY (key);
+  midx_key = DB_GET_MIDXKEY (key);
 
   start = pr_midxkey_get_element_offset (midx_key, 0);
   offset = pr_midxkey_get_element_offset (midx_key, prefix);
@@ -9866,8 +9866,8 @@ pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
 
   diff_column = 0;		/* init */
 
-  midx_lf_key = DB_PULL_MIDXKEY (key1);
-  midx_uf_key = DB_PULL_MIDXKEY (key2);
+  midx_lf_key = DB_GET_MIDXKEY (key1);
+  midx_uf_key = DB_GET_MIDXKEY (key2);
 
   ret = pr_midxkey_compare (midx_lf_key, midx_uf_key, 0, 1, -1, NULL, &size1, &size2, &diff_column, &dom_is_desc,
 			    &next_dom_is_desc);
@@ -10057,8 +10057,8 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
   assert (db_midxkey2 != (DB_VALUE *) NULL);
   assert (db_result != (DB_VALUE *) NULL);
 
-  midxkey1 = DB_PULL_MIDXKEY (db_midxkey1);
-  midxkey2 = DB_PULL_MIDXKEY (db_midxkey2);
+  midxkey1 = DB_GET_MIDXKEY (db_midxkey1);
+  midxkey2 = DB_GET_MIDXKEY (db_midxkey2);
 
   assert (midxkey1->size != -1);
   assert (midxkey2->size != -1);
@@ -17287,9 +17287,9 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
     }
   else
     {
-      json_obj->json_body = db_private_strdup (NULL, DB_PULL_STRING (&json_body));
+      json_obj->json_body = db_private_strdup (NULL, DB_GET_STRING (&json_body));
 
-      rc = db_json_get_json_from_str (DB_PULL_STRING (&json_body), json_obj->document);
+      rc = db_json_get_json_from_str (DB_GET_STRING (&json_body), json_obj->document);
       if (rc != NO_ERROR)
 	{
 	  assert (false);
@@ -17298,7 +17298,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 
   if (DB_GET_STRING_SIZE (&schema_raw) > 0)
     {
-      json_obj->schema_raw = db_private_strdup (NULL, DB_PULL_STRING (&schema_raw));
+      json_obj->schema_raw = db_private_strdup (NULL, DB_GET_STRING (&schema_raw));
     }
   else
     {
@@ -17470,7 +17470,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   else
     {
       JSON_DOC *doc = NULL;
-      const char *json_raw = DB_PULL_STRING (&json_body);
+      const char *json_raw = DB_GET_STRING (&json_body);
 
       rc = db_json_get_json_from_str (json_raw, doc);
       if (rc != NO_ERROR)
@@ -17483,7 +17483,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 
   if (DB_GET_STRING_SIZE (&schema_raw) > 0)
     {
-      value->data.json.schema_raw = db_private_strdup (NULL, DB_PULL_STRING (&schema_raw));
+      value->data.json.schema_raw = db_private_strdup (NULL, DB_GET_STRING (&schema_raw));
     }
   else
     {

@@ -48,8 +48,7 @@
 #if defined(WINDOWS)
 #include "misc_string.h"
 #endif
-
-#include "dbval.h"		/* this must be the last header file included */
+#include "dbtype_common.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2818,7 +2817,7 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
 	  att = NULL;
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_STRING && DB_GET_STRING (&att_val) != NULL)
 	    {
-	      att = classobj_find_attribute (class_, DB_PULL_STRING (&att_val), 0);
+	      att = classobj_find_attribute (class_, DB_GET_STRING (&att_val), 0);
 	    }
 	  else if (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER)
 	    {
@@ -3824,15 +3823,15 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 				  goto structure_error;
 				}
 
-			      if (strcmp (DB_PULL_STRING (&avalue), SM_FILTER_INDEX_ID) == 0)
+			      if (strcmp (DB_GET_STRING (&avalue), SM_FILTER_INDEX_ID) == 0)
 				{
 				  flag = 0x01;
 				}
-			      else if (strcmp (DB_PULL_STRING (&avalue), SM_FUNCTION_INDEX_ID) == 0)
+			      else if (strcmp (DB_GET_STRING (&avalue), SM_FUNCTION_INDEX_ID) == 0)
 				{
 				  flag = 0x02;
 				}
-			      else if (strcmp (DB_PULL_STRING (&avalue), SM_PREFIX_INDEX_ID) == 0)
+			      else if (strcmp (DB_GET_STRING (&avalue), SM_PREFIX_INDEX_ID) == 0)
 				{
 				  flag = 0x03;
 				}
@@ -8715,7 +8714,7 @@ classobj_check_function_constraint_info (DB_SEQ * constraint_seq, bool * has_fun
 		  goto structure_error;
 		}
 
-	      if (strcmp (DB_PULL_STRING (&avalue), SM_FUNCTION_INDEX_ID) == 0)
+	      if (strcmp (DB_GET_STRING (&avalue), SM_FUNCTION_INDEX_ID) == 0)
 		{
 		  *has_function_constraint = true;
 		  pr_clear_value (&avalue);

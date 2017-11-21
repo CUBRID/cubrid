@@ -40,9 +40,7 @@
 #include "object_print.h"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 /* TODO */
 #if !defined (SERVER_MODE)

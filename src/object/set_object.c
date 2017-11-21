@@ -30,6 +30,9 @@
 #include <stdio.h>
 #include <assert.h>
 
+
+#include "dbtype_common.h"
+
 #include "set_object.h"
 #include "error_manager.h"
 #include "object_primitive.h"
@@ -44,9 +47,6 @@
 #include "parser.h"
 #else /* !SERVER_MODE */
 #endif
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
 
 
 /* If this is the server stub out ws_pin.

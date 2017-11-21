@@ -58,9 +58,7 @@
 #include "system_parameter.h"
 #include "network_interface_cl.h"
 #include "unicode_support.h"
-
-#include "dbval.h"		/* this must be the last header file included!!! */
-
+#include "dbtype_common.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */

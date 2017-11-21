@@ -56,8 +56,7 @@
 #include "view_transform.h"
 #include "network_interface_cl.h"
 
-/* Include this last; it redefines some macros! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 /*
  * OBJ_MAX_ARGS

@@ -85,7 +85,7 @@
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-#include "dbval.h"
+#include "dbtype_common.h"
 #include "db_date.h"
 #include "show_scan.h"
 

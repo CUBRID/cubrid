@@ -43,9 +43,7 @@
 #include "show_meta.h"
 #include "partition.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
-
+#include "dbtype_common.h"
 #define PT_CHAIN_LENGTH 10
 
 typedef enum

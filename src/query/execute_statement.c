@@ -86,9 +86,7 @@
 #include "xasl_to_stream.h"
 #include "query_cl.h"
 #include "parser_support.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4343,7 +4341,7 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  error = make_cst_item_value (obj, DB_PULL_STRING (&db_val), ret_val);
+  error = make_cst_item_value (obj, DB_GET_STRING (&db_val), ret_val);
   pr_clear_value (&db_val);
   if (error != NO_ERROR)
     {
@@ -4866,7 +4864,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  cost = DB_PULL_STRING (&val2);
+	  cost = DB_GET_STRING (&val2);
 	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, (int) cost[0]);
 	  break;
 	default:

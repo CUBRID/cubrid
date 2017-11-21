@@ -48,9 +48,7 @@
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3852,7 +3850,7 @@ numeric_db_value_print (DB_VALUE * val, char *buf)
     }
 
   /* Retrieve raw decimal string */
-  numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (val), temp);
+  numeric_coerce_num_to_dec_str (DB_GET_NUMERIC (val), temp);
 
   /* Remove the extra padded zeroes and add the decimal point */
   nbuf = 0;
@@ -3912,7 +3910,7 @@ numeric_db_value_is_zero (const DB_VALUE * arg)
     }
   else
     {
-      return (numeric_is_zero ((DB_C_NUMERIC) DB_PULL_NUMERIC (arg)));
+      return (numeric_is_zero ((DB_C_NUMERIC) DB_GET_NUMERIC (arg)));
     }
 }
 
@@ -3933,7 +3931,7 @@ numeric_db_value_increase (DB_VALUE * arg)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  numeric_increase ((DB_C_NUMERIC) DB_PULL_NUMERIC (arg));
+  numeric_increase ((DB_C_NUMERIC) DB_GET_NUMERIC (arg));
 
   return NO_ERROR;
 }

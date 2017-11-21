@@ -118,8 +118,6 @@
 #define OBJ_CLEAR_BOUND_BIT(obj, element) \
   OR_CLEAR_BOUND_BIT(OBJ_GET_BOUND_BITS(obj), element)
 
-extern char *obj_Method_error_msg;
-
 /*
  *
  *       		    OBJECT ACCESS FUNCTIONS

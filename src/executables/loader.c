@@ -67,8 +67,7 @@
 #include "locator_cl.h"
 #include "db_json.hpp"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2522,7 +2521,8 @@ static int
 ldr_nstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
 
-  DB_MAKE_VARNCHAR (val, TP_FLOATING_PRECISION_VALUE, str, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  DB_MAKE_VARNCHAR (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), len, LANG_SYS_CODESET,
+		    LANG_SYS_COLLATION);
   return NO_ERROR;
 }
 

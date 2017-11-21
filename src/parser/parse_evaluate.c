@@ -47,9 +47,7 @@
 #include "network_interface_cl.h"
 #include "xasl_support.h"
 #include "transform.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype_common.h"
 
 /* associates labels with DB_VALUES */
 static MHT_TABLE *pt_Label_table = NULL;
