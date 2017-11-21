@@ -14176,8 +14176,6 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	    }
 	  rc = pr_write_compressed_string_to_buffer (buf, string, size, src_size, align);
 	}
-
-
     }
 
   return rc;
@@ -17281,6 +17279,8 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
   (*(tp_String.data_writeval)) (buf, &json_body);
   (*(tp_String.data_writeval)) (buf, &schema_raw);
 
+  pr_clear_value (&json_body);
+  pr_clear_value (&schema_raw);
 }
 
 static void

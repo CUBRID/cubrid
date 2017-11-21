@@ -8743,7 +8743,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
 int
 or_put_json_schema (OR_BUF * buf, const char *schema)
 {
-  int rc;
+  int rc = NO_ERROR;
   DB_VALUE schema_raw;
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -8760,9 +8760,10 @@ or_put_json_schema (OR_BUF * buf, const char *schema)
   rc = (*(tp_String.data_writeval)) (buf, &schema_raw);
   if (rc != NO_ERROR)
     {
-      return rc;
+      goto exit;
     }
 
+exit:
   pr_clear_value (&schema_raw);
-  return NO_ERROR;
+  return rc;
 }
