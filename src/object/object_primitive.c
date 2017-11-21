@@ -17280,7 +17280,6 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 
   (*(tp_String.data_writeval)) (buf, &json_body);
   (*(tp_String.data_writeval)) (buf, &schema_raw);
-
 }
 
 static void
@@ -17551,6 +17550,7 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 
   first_uncomp_length = OR_GET_BYTE (first);
   second_uncomp_length = OR_GET_BYTE (second);
+
   if (first_uncomp_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
       && second_uncomp_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
@@ -17581,11 +17581,12 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
       goto cleanup;
     }
 
-  res = strcmp (first_json_body, second_json_body) == 0 ? DB_EQ : DB_UNK;
+  res = (strcmp (first_json_body, second_json_body) == 0 ? DB_EQ : DB_UNK);
 
 cleanup:
   db_private_free (NULL, first_json_body);
   db_private_free (NULL, second_json_body);
+
   return res;
 }
 

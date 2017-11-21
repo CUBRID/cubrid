@@ -6871,11 +6871,12 @@ db_get_json_document (const DB_VALUE * value)
 int
 db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
 {
-  CHECK_2ARGS_ERROR (src, dst);
-  assert (dst->document == NULL && dst->json_body == NULL && dst->schema_raw == NULL);
-
   char *raw_json_body = NULL, *raw_schema_body = NULL;
   JSON_DOC *doc_copy = NULL;
+
+  CHECK_2ARGS_ERROR (src, dst);
+
+  assert (dst->document == NULL && dst->json_body == NULL && dst->schema_raw == NULL);
 
   raw_json_body = db_private_strdup (NULL, src->json_body);
   if (raw_json_body == NULL && src->json_body != NULL)
