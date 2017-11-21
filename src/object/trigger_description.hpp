@@ -25,6 +25,7 @@
 #endif //defined(SERVER_MODE)
 
 #include <stdio.h>
+
 struct db_object;
 
 /*

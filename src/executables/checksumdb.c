@@ -50,7 +50,6 @@
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 
-
 #define CHKSUM_DEFAULT_LIST_SIZE	10
 #define CHKSUM_MIN_CHUNK_SIZE		100
 #define CHKSUM_DEFAULT_TABLE_NAME	"db_ha_checksum"

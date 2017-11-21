@@ -25,6 +25,7 @@
 #endif //defined(SERVER_MODE)
 
 #include <vector>
+
 struct db_object;
 struct sm_class;
 class string_buffer;
