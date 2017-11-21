@@ -70,14 +70,14 @@ namespace mem
 
       bool is_valid ()
       {
-	return (dim != 0 && ptr != 0);
+	return (dim != 0 && ptr != nullptr);
       }
 
       char *move_ptr()                                    //NOT RECOMMENDED! use move semantics: std::move()
       {
 	char *p = ptr;
 	dim = 0;
-	ptr = 0;
+	ptr = nullptr;
 	return p;
       }
 
@@ -138,7 +138,7 @@ namespace mem
 	    m_extend = b.m_extend;
 	    m_dealloc = b.m_dealloc;
 	    b.dim = 0;
-	    b.ptr = NULL;
+	    b.ptr = nullptr;
 	  }
 	return *this;
       }

@@ -25,7 +25,7 @@ namespace
 {
   //--------------------------------------------------------------------------------
   string_buffer &describe_bit_string (string_buffer &buf, const db_value *value,
-				       bool pad_byte) //DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
+				      bool pad_byte) //DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
   {
     unsigned char *bstring;
     int nibble_length, nibbles, count;

@@ -110,19 +110,19 @@ class_description::class_description()
 
 class_description::~class_description()
 {
-  if (name != 0)
+  if (name != nullptr)
     {
       free (name);
     }
-  if (class_type != 0)
+  if (class_type != nullptr)
     {
       free (class_type);
     }
-  if (object_id != 0)
+  if (object_id != nullptr)
     {
       free (object_id);
     }
-  if (collation != 0)
+  if (collation != nullptr)
     {
       free (collation);
     }
@@ -146,7 +146,7 @@ class_description::~class_description()
       free (it);
     }
   partition.clear();
-  if (comment != 0)
+  if (comment != nullptr)
     {
       free (comment);
     }
@@ -200,7 +200,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 
   else if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
-      if (class_->comment != 0 && class_->comment[0] != '\0')
+      if (class_->comment != nullptr && class_->comment[0] != '\0')
 	{
 	  has_comment = true;
 	  max_name_size = SM_MAX_IDENTIFIER_LENGTH + SM_MAX_CLASS_COMMENT_LENGTH + 50;
@@ -280,7 +280,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	}
 
       this->collation = object_print::copy_string (lang_get_collation_name (class_->collation_id));
-      if (this->collation == 0)
+      if (this->collation == nullptr)
 	{
 	  return ER_FAILED;
 	}
@@ -292,28 +292,28 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  * comment is copied to this->comment anyway
 	  */
 	  this->comment = object_print::copy_string (class_->comment);
-	  if (this->comment == 0)
+	  if (this->comment == nullptr)
 	    {
 	      return ER_FAILED;
 	    }
 	}
 
-      if (class_->inheritance != 0)
+      if (class_->inheritance != nullptr)
 	{
 	  count = ws_list_length ((DB_LIST *)class_->inheritance);
 	  buf_size = sizeof (char *) * (count + 1);
 	  strs = (char **)malloc (buf_size);
-	  if (strs == 0)
+	  if (strs == nullptr)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      return ER_FAILED;
 	    }
 	  i = 0;
-	  for (super = class_->inheritance; super != 0; super = super->next)
+	  for (super = class_->inheritance; super != nullptr; super = super->next)
 	    {
 	      /* kludge for const vs. non-const warnings */
 	      kludge = sm_get_ch_name (super->op);
-	      if (kludge == 0)
+	      if (kludge == nullptr)
 		{
 		  assert (er_errid() != NO_ERROR);
 		  return ER_FAILED;
@@ -336,22 +336,22 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  this->supers = strs;
 	}
 
-      if (class_->users != 0)
+      if (class_->users != nullptr)
 	{
 	  count = ws_list_length ((DB_LIST *)class_->users);
 	  buf_size = sizeof (char *) * (count + 1);
 	  strs = (char **)malloc (buf_size);
-	  if (strs == 0)
+	  if (strs == nullptr)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      return ER_FAILED;
 	    }
 	  i = 0;
-	  for (user = class_->users; user != 0; user = user->next)
+	  for (user = class_->users; user != nullptr; user = user->next)
 	    {
 	      /* kludge for const vs. non-const warnings */
 	      kludge = sm_get_ch_name (user->op);
-	      if (kludge == 0)
+	      if (kludge == nullptr)
 		{
 		  assert (er_errid() != NO_ERROR);
 		  return ER_FAILED;
@@ -375,7 +375,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  this->subs = strs;
 	}
 
-      if (class_->attributes != 0 || class_->shared != 0)
+      if (class_->attributes != nullptr || class_->shared != nullptr)
 	{
 	  if (include_inherited)
 	    {
@@ -385,7 +385,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      count = 0;
 	      /* find the number own by itself */
-	      for (a = class_->ordered_attributes; a != 0; a = a->order_link)
+	      for (a = class_->ordered_attributes; a != nullptr; a = a->order_link)
 		{
 		  if (a->class_mop == op)
 		    {
@@ -398,14 +398,14 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      buf_size = sizeof (char *) * (count + 1);
 	      strs = (char **)malloc (buf_size);
-	      if (strs == 0)
+	      if (strs == nullptr)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  return ER_FAILED;
 		}
 
 	      i = 0;
-	      for (a = class_->ordered_attributes; a != 0; a = a->order_link)
+	      for (a = class_->ordered_attributes; a != nullptr; a = a->order_link)
 		{
 		  if (include_inherited || (!include_inherited && a->class_mop == op))
 		    {
@@ -424,7 +424,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    }
 	}
 
-      if (class_->class_attributes != 0)
+      if (class_->class_attributes != nullptr)
 	{
 	  if (include_inherited)
 	    {
@@ -434,7 +434,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      count = 0;
 	      /* find the number own by itself */
-	      for (a = class_->class_attributes; a != 0; a = (SM_ATTRIBUTE *)a->header.next)
+	      for (a = class_->class_attributes; a != nullptr; a = (SM_ATTRIBUTE *)a->header.next)
 		{
 		  if (a->class_mop == op)
 		    {
@@ -447,14 +447,14 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      buf_size = sizeof (char *) * (count + 1);
 	      strs = (char **)malloc (buf_size);
-	      if (strs == 0)
+	      if (strs == nullptr)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  return ER_FAILED;
 		}
 
 	      i = 0;
-	      for (a = class_->class_attributes; a != 0; a = (SM_ATTRIBUTE *)a->header.next)
+	      for (a = class_->class_attributes; a != nullptr; a = (SM_ATTRIBUTE *)a->header.next)
 		{
 		  if (include_inherited || (!include_inherited && a->class_mop == op))
 		    {
@@ -473,7 +473,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    }
 	}
 
-      if (class_->methods != 0)
+      if (class_->methods != nullptr)
 	{
 	  if (include_inherited)
 	    {
@@ -483,7 +483,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      count = 0;
 	      /* find the number own by itself */
-	      for (m = class_->methods; m != 0; m = (SM_METHOD *)m->header.next)
+	      for (m = class_->methods; m != nullptr; m = (SM_METHOD *)m->header.next)
 		{
 		  if (m->class_mop == op)
 		    {
@@ -496,13 +496,13 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      buf_size = sizeof (char *) * (count + 1);
 	      strs = (char **)malloc (buf_size);
-	      if (strs == 0)
+	      if (strs == nullptr)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  return ER_FAILED;
 		}
 	      i = 0;
-	      for (m = class_->methods; m != 0; m = (SM_METHOD *)m->header.next)
+	      for (m = class_->methods; m != nullptr; m = (SM_METHOD *)m->header.next)
 		{
 		  if (include_inherited || (!include_inherited && m->class_mop == op))
 		    {
@@ -517,7 +517,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    }
 	}
 
-      if (class_->class_methods != 0)
+      if (class_->class_methods != nullptr)
 	{
 	  if (include_inherited)
 	    {
@@ -527,7 +527,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      count = 0;
 	      /* find the number own by itself */
-	      for (m = class_->class_methods; m != 0; m = (SM_METHOD *)m->header.next)
+	      for (m = class_->class_methods; m != nullptr; m = (SM_METHOD *)m->header.next)
 		{
 		  if (m->class_mop == op)
 		    {
@@ -540,13 +540,13 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      buf_size = sizeof (char *) * (count + 1);
 	      strs = (char **)malloc (buf_size);
-	      if (strs == 0)
+	      if (strs == nullptr)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  return ER_FAILED;
 		}
 	      i = 0;
-	      for (m = class_->class_methods; m != 0; m = (SM_METHOD *)m->header.next)
+	      for (m = class_->class_methods; m != nullptr; m = (SM_METHOD *)m->header.next)
 		{
 		  if (include_inherited || (!include_inherited && m->class_mop == op))
 		    {
@@ -561,19 +561,19 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    }
 	}
 
-      if (class_->resolutions != 0)
+      if (class_->resolutions != nullptr)
 	{
 	  count = ws_list_length ((DB_LIST *)class_->resolutions);
 	  buf_size = sizeof (char *) * (count + 1);
 	  strs = (char **)malloc (buf_size);
-	  if (strs == 0)
+	  if (strs == nullptr)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      return ER_FAILED;
 	    }
 	  i = 0;
 
-	  for (SM_RESOLUTION *r = class_->resolutions; r != 0; r = r->next)
+	  for (SM_RESOLUTION *r = class_->resolutions; r != nullptr; r = r->next)
 	    {
 	      sb.clear();
 	      printer.describe_resolution (*r, prt_type);
@@ -584,7 +584,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  this->resolutions = strs;
 	}
 
-      if (class_->method_files != 0)
+      if (class_->method_files != nullptr)
 	{
 	  if (include_inherited)
 	    {
@@ -594,7 +594,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      count = 0;
 	      /* find the number own by itself */
-	      for (SM_METHOD_FILE *f = class_->method_files; f != 0; f = f->next)
+	      for (SM_METHOD_FILE *f = class_->method_files; f != nullptr; f = f->next)
 		{
 		  if (f->class_mop == op)
 		    {
@@ -607,13 +607,13 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      buf_size = sizeof (char *) * (count + 1);
 	      strs = (char **)malloc (buf_size);
-	      if (strs == 0)
+	      if (strs == nullptr)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  return ER_FAILED;
 		}
 	      i = 0;
-	      for (SM_METHOD_FILE *f = class_->method_files; f != 0; f = f->next)
+	      for (SM_METHOD_FILE *f = class_->method_files; f != nullptr; f = f->next)
 		{
 		  if (include_inherited || (!include_inherited && f->class_mop == op))
 		    {
@@ -628,18 +628,18 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    }
 	}
 
-      if (class_->query_spec != 0)
+      if (class_->query_spec != nullptr)
 	{
 	  count = ws_list_length ((DB_LIST *)class_->query_spec);
 	  buf_size = sizeof (char *) * (count + 1);
 	  strs = (char **)malloc (buf_size);
-	  if (strs == 0)
+	  if (strs == nullptr)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      return ER_FAILED;
 	    }
 	  i = 0;
-	  for (p = class_->query_spec; p != 0; p = p->next)
+	  for (p = class_->query_spec; p != nullptr; p = p->next)
 	    {
 	      strs[i] = object_print::copy_string ((char *)p->specification);
 	      i++;
@@ -657,7 +657,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
       *  the attributes.
       */
       this->constraints = 0;	/* initialize */
-      if (class_->constraints != 0)
+      if (class_->constraints != nullptr)
 	{
 	  SM_CLASS_CONSTRAINT *c;
 
@@ -670,7 +670,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 		  * itself and belong to the parent table. But show create table will only print the constraints which
 		  * belong to the table itself. */
 		  if (include_inherited
-		      || (!include_inherited && c->attributes[0] != 0 && c->attributes[0]->class_mop == op))
+		      || (!include_inherited && c->attributes[0] != nullptr && c->attributes[0]->class_mop == op))
 		    {
 		      count++;
 		    }
@@ -681,7 +681,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      buf_size = sizeof (char *) * (count + 1);
 	      strs = (char **)malloc (buf_size);
-	      if (strs == 0)
+	      if (strs == nullptr)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  return ER_FAILED;
@@ -693,12 +693,12 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 		  if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
 		    {
 		      if (include_inherited
-			  || (!include_inherited && c->attributes[0] != 0 && c->attributes[0]->class_mop == op))
+			  || (!include_inherited && c->attributes[0] != nullptr && c->attributes[0]->class_mop == op))
 			{
 			  sb.clear();
 			  printer.describe_constraint (*class_, *c, prt_type);
 			  strs[i] = object_print::copy_string (sb.get_buffer());
-			  if (strs[i] == 0)
+			  if (strs[i] == nullptr)
 			    {
 			      this->constraints = strs;
 			      return ER_FAILED;
@@ -713,7 +713,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	}
 
       //partition
-      if (class_->partition != 0 && class_->partition->pname == 0)
+      if (class_->partition != nullptr && class_->partition->pname == nullptr)
 	{
 	  sb.clear();
 	  printer.describe_partition_info (*class_->partition);
@@ -729,7 +729,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    }
 	  if (is_print_partition)
 	    {
-	      for (user = class_->users; user != 0; user = user->next)
+	      for (user = class_->users; user != nullptr; user = user->next)
 		{
 		  if (au_fetch_class (user->op, &subclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
 		    {
