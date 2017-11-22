@@ -62,11 +62,12 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
       return this->ptr;
     }
 
-    void clear(){
+    void clear()
+    {
       if (ptr)
-        {
-          ptr[m_len=0] = '\0';
-        }
+	{
+	  ptr[m_len=0] = '\0';
+	}
     }
 
     size_t len() const

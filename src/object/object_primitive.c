@@ -10435,14 +10435,14 @@ pr_valstring (thread_entry * threade, DB_VALUE * val)
     {
       /* space with terminating NULL */
       sb ("(null)");
-      return (char*)sb.get_buffer();
+      return (char *) sb.get_buffer ();
     }
 
   if (DB_IS_NULL (val))
     {
       /* space with terminating NULL */
       sb ("NULL");
-      return (char*)sb.get_buffer();
+      return (char *) sb.get_buffer ();
     }
 
   DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);

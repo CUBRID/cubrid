@@ -2526,7 +2526,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
     {
       size_t dim = block.dim ? block.dim : 1;
       for (; dim < block.dim + len; dim *= 2);	//calc next power of 2 >= b.dim
-      mem::block b
+        mem::block b
       {
       dim, (char *) parser_alloc (parser, block.dim + len)};
       memcpy (b.ptr, block.ptr, block.dim);

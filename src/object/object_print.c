@@ -751,7 +751,7 @@ help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
   };
   db_value_printer printer (sb);
   printer.describe_value (value);
-  fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer());
+  fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());
 }
 
 /*
@@ -781,6 +781,6 @@ help_fprint_describe_comment (FILE * fp, const char *comment)
   assert (fp != NULL);
   assert (comment != NULL);
   printer.describe_comment (comment);
-  fprintf (fp, "%.*s", int (sb.len ()), sb.get_buffer());
+  fprintf (fp, "%.*s", int (sb.len ()), sb.get_buffer ());
 #endif /* !defined (SERVER_MODE) */
 }

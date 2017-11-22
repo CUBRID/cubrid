@@ -6417,7 +6417,7 @@ log_repl_data_dump (FILE * out_fp, int length, void *data)
   string_buffer sb;
   db_value_printer printer (sb);
   printer.describe_value (&value);
-  fprintf (out_fp, "C[%s] K[%s]\n", class_name, sb.get_buffer());
+  fprintf (out_fp, "C[%s] K[%s]\n", class_name, sb.get_buffer ());
   pr_clear_value (&value);
 }
 
