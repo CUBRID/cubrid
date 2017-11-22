@@ -7285,9 +7285,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_JSON_STRING:
 	  {
-	    char *json_string_copy = NULL;
+	    const char *json_string_copy = NULL;
 
-	    json_string_copy = db_json_get_string_from_document (src_doc);
+	    json_string_copy = db_json_get_string_from_document (src_doc, true);
 	    db_make_string (&src_replacement, json_string_copy);
 	    src_replacement.need_clear = true;
 	  }
@@ -11322,13 +11322,21 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		  result = (*(pr_type->cmpval)) (v1, v2, do_coercion, total_order, NULL, common_coll);
 		}
 
-	      if (result == DB_UNK)
+	      if (result == DB_UNK || result == DB_NE)
 		{
 		  /* safe guard */
 		  if (pr_type->id == DB_TYPE_MIDXKEY)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MR_NULL_DOMAIN, 0);
 		      assert (false);
+		    }
+		  if (pr_type->id == DB_TYPE_JSON)
+		    {
+		      if (can_compare != NULL)
+			{
+			  /* types are incomparable (JSON_ARRAY vs JSON_OBJECT for example) */
+			  *can_compare = false;
+			}
 		    }
 		}
 	    }

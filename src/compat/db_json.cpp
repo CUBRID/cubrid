@@ -128,7 +128,7 @@ static DB_JSON_TYPE db_json_get_type_of_value (const JSON_VALUE *val);
 static bool db_json_value_has_numeric_type (const JSON_VALUE *doc);
 static int db_json_get_int_from_value (const JSON_VALUE *val);
 static double db_json_get_double_from_value (const JSON_VALUE *doc);
-static char *db_json_get_string_from_value (const JSON_VALUE *doc);
+const char* db_json_get_string_from_value(const JSON_VALUE* doc, bool copy);
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -1033,10 +1033,10 @@ db_json_get_double_from_document (const JSON_DOC *doc)
   return db_json_get_double_from_value (doc);
 }
 
-char *
-db_json_get_string_from_document (const JSON_DOC *doc)
+const char *
+db_json_get_string_from_document (const JSON_DOC *doc, bool copy)
 {
-  return db_json_get_string_from_value (doc);
+  return db_json_get_string_from_value (doc, copy);
 }
 
 int
@@ -1068,8 +1068,8 @@ db_json_get_double_from_value (const JSON_VALUE *doc)
   return db_json_get_type_of_value (doc) == DB_JSON_DOUBLE ? doc->GetDouble () : doc->GetInt ();
 }
 
-char *
-db_json_get_string_from_value (const JSON_VALUE *doc)
+const char *
+db_json_get_string_from_value (const JSON_VALUE *doc, bool copy)
 {
   if (doc == NULL)
     {
@@ -1079,7 +1079,14 @@ db_json_get_string_from_value (const JSON_VALUE *doc)
 
   assert (db_json_get_type_of_value (doc) == DB_JSON_STRING);
 
-  return db_private_strdup (NULL, doc->GetString ());
+  if (copy)
+    {
+      return db_private_strdup (NULL, doc->GetString ());
+    }
+  else
+    {
+      return doc->GetString ();
+    }
 }
 
 bool
@@ -1243,6 +1250,16 @@ bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2)
       return false;
     }
   return *doc1 == *doc2;
+}
+
+bool db_json_doc_has_numeric_type (const JSON_DOC *doc) {
+  return db_json_value_has_numeric_type (doc);
+}
+
+bool db_json_doc_is_uncomparable (const JSON_DOC *doc) {
+  DB_JSON_TYPE type = db_json_get_type (doc);
+
+  return (type == DB_JSON_ARRAY || type == DB_JSON_OBJECT);
 }
 
 /* end of C functions */

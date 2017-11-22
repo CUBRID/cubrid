@@ -17547,6 +17547,8 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   int second_uncomp_length, second_comp_length;
   int strc, rc;
   char *first_json_body, *second_json_body;
+  DB_VALUE json1, json2;
+  JSON_DOC *doc1 = NULL, *doc2 = NULL;
 
   DB_VALUE_COMPARE_RESULT res = DB_UNK;
 
@@ -17562,35 +17564,46 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
       first += OR_BYTE_SIZE;
       second += OR_BYTE_SIZE;
 
-      return (strcmp (first, second) == 0) ? DB_EQ : DB_UNK;
+      first_json_body = db_private_strdup (NULL, first);
+      second_json_body = db_private_strdup (NULL, second);
     }
-
-  or_init (&first_buf, first, 0);
-  or_init (&second_buf, second, 0);
-
-  or_get_varchar_compression_lengths (&first_buf, &first_comp_length, &first_uncomp_length);
-  or_get_varchar_compression_lengths (&second_buf, &second_comp_length, &second_uncomp_length);
-
-  first_json_body = (char *) db_private_alloc (NULL, first_uncomp_length + 1);
-  second_json_body = (char *) db_private_alloc (NULL, second_uncomp_length + 1);
-
-  rc = pr_get_compressed_data_from_buffer (&first_buf, first_json_body, first_comp_length, first_uncomp_length);
-  if (rc != NO_ERROR)
+  else
     {
-      goto cleanup;
+      or_init (&first_buf, first, 0);
+      or_init (&second_buf, second, 0);
+
+      or_get_varchar_compression_lengths (&first_buf, &first_comp_length, &first_uncomp_length);
+      or_get_varchar_compression_lengths (&second_buf, &second_comp_length, &second_uncomp_length);
+
+      first_json_body = (char *) db_private_alloc (NULL, first_uncomp_length + 1);
+      second_json_body = (char *) db_private_alloc (NULL, second_uncomp_length + 1);
+
+      rc = pr_get_compressed_data_from_buffer (&first_buf, first_json_body, first_comp_length, first_uncomp_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      rc = pr_get_compressed_data_from_buffer (&second_buf, second_json_body, second_comp_length, second_uncomp_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
     }
 
-  rc = pr_get_compressed_data_from_buffer (&second_buf, second_json_body, second_comp_length, second_uncomp_length);
-  if (rc != NO_ERROR)
-    {
-      goto cleanup;
-    }
+  rc = db_json_get_json_from_str (first_json_body, doc1);
+  assert (rc == NO_ERROR && doc1 != NULL);
+  rc = db_json_get_json_from_str (second_json_body, doc2);
+  assert (rc == NO_ERROR && doc2 != NULL);
 
-  res = (strcmp (first_json_body, second_json_body) == 0 ? DB_EQ : DB_UNK);
+  db_make_json (&json1, first_json_body, doc1, true);
+  db_make_json (&json2, second_json_body, doc2, true);
+
+  res = mr_cmpval_json (&json1, &json2, 0, 0, 0, 0);
 
 cleanup:
-  db_private_free (NULL, first_json_body);
-  db_private_free (NULL, second_json_body);
+  pr_clear_value (&json1);
+  pr_clear_value (&json2);
 
   return res;
 }
@@ -17598,7 +17611,18 @@ cleanup:
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  bool res = db_json_are_docs_equal (DB_GET_JSON_DOCUMENT (value1), DB_GET_JSON_DOCUMENT (value2));
+  JSON_DOC *doc1 = NULL, *doc2 = NULL;
+  doc1 = DB_GET_JSON_DOCUMENT (value1);
+  doc2 = DB_GET_JSON_DOCUMENT (value2);
+  DB_JSON_TYPE type1 = db_json_get_type (doc1);
+  DB_JSON_TYPE type2 = db_json_get_type (doc2);
+  bool res = db_json_are_docs_equal (doc1, doc2);
+
+  if (type1 == DB_JSON_UNKNOWN || type2 == DB_JSON_UNKNOWN)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_COMPARE_TYPES, 1, "Unknown JSON type");
+      return DB_UNK;
+    }
 
   if (res)
     {
@@ -17606,6 +17630,44 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
     }
   else
     {
+      if (db_json_doc_is_uncomparable (doc1) || db_json_doc_is_uncomparable (doc2))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_UNCOMPARABLE_TYPES, 2, db_json_get_type_as_str (doc1),
+		  db_json_get_type_as_str (doc2));
+	  return DB_NE;
+	}
+
+      if (db_json_doc_has_numeric_type (doc1) && db_json_doc_has_numeric_type (doc2))
+	{
+	  return db_json_get_double_from_document (doc1) < db_json_get_double_from_document (doc2) ? DB_LT : DB_GT;
+	}
+
+      if (type1 == type2)
+	{
+	  if (type1 == DB_JSON_STRING)
+	    {
+	      const char *string1, *string2;
+
+	      string1 = db_json_get_string_from_document (doc1, false);
+	      string2 = db_json_get_string_from_document (doc2, false);
+	      return strcmp (string1, string2) < 0 ? DB_LT : DB_GT;
+	    }
+	  else if (type1 == DB_JSON_NULL)
+	    {
+	      return DB_EQ;
+	    }
+	}
+      else
+	{
+	  /* types are different but they both are comparable,
+	   * we rely on type precedence
+	   */
+	  return type1 > type2 ? DB_GT : DB_LT;
+	}
+
+      /* don't know what to do with the sent types */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_UNCOMPARABLE_TYPES, 2, db_json_get_type_as_str (doc1),
+	      db_json_get_type_as_str (doc2));
       return DB_UNK;
     }
 }

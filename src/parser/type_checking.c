@@ -17547,6 +17547,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  pr_clone_value ((DB_VALUE *) arg2, result);
 	}
+      else if (cmp_result == DB_NE || cmp_result == DB_UNK)
+	{
+	  ASSERT_ERROR ();
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
       else
 	{
 	  assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
@@ -17572,6 +17578,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       else if (cmp_result == DB_LT)
 	{
 	  pr_clone_value ((DB_VALUE *) arg2, result);
+	}
+      else if (cmp_result == DB_NE || cmp_result == DB_UNK)
+	{
+	  ASSERT_ERROR ();
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
       else
 	{
