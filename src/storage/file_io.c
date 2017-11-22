@@ -5819,6 +5819,12 @@ fileio_cache (VOLID vol_id, const char *vol_label_p, int vol_fd, FILEIO_LOCKF_TY
     }
   else
     {
+      if (vol_id == LOG_DBDWB_VOLID)
+	{
+	  /* Do not cache DWB. */
+	  return vol_fd;
+	}
+
       /* system volume */
       rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
       if (fileio_Sys_vol_info_header.anchor.vdes != NULL_VOLDES)
