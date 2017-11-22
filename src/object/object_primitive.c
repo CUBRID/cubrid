@@ -17252,7 +17252,6 @@ static void
 mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
   DB_VALUE json_body, schema_raw;
-  char *json_body_str;
   const char *schema_str;
   DB_JSON *json;
 
@@ -17282,7 +17281,6 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
   pr_clear_value (&json_body);
   pr_clear_value (&schema_raw);
 }
-
 static void
 mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
@@ -17315,13 +17313,12 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
     }
   else
     {
-      json_obj->json_body = db_private_strdup (NULL, DB_GET_STRING (&json_body));
-      rc = db_json_get_json_from_str (DB_GET_STRING (&json_body), json_obj->document);
+      json_body_str = DB_GET_STRING (&json_body);
     }
 
   if (schema_length > 0)
     {
-      json_obj->schema_raw = db_private_strdup (NULL, DB_GET_STRING (&schema_raw));
+      schema_str = DB_GET_STRING (&schema_raw);
     }
 
   json->json_body = db_private_strdup (NULL, json_body_str);
@@ -17546,7 +17543,7 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   OR_BUF first_buf, second_buf;
   int first_uncomp_length, first_comp_length;
   int second_uncomp_length, second_comp_length;
-  int strc, rc;
+  int rc;
   char *first_json_body, *second_json_body;
 
   DB_VALUE_COMPARE_RESULT res = DB_UNK;
