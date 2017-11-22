@@ -147,6 +147,13 @@ extern "C"
 
   /******************************************/
   /* From dbdef.h */
+
+  /* TODO: there is almost nothing left of current dbdef.h, and the remaining parts don't really belong to dbdef.h, but
+   *       rather to other server/client common threads, like storage_common.h;
+   *       then we can move all this back to dbdef, include dbdef in dbtype_common and add dbdef to the list of exposed
+   *       headers.
+   */
+
 #define TRAN_ASYNC_WS_BIT                        0x10	/* 1 0000 */
 #define TRAN_ISO_LVL_BITS                        0x0F	/* 0 1111 */
 
