@@ -5601,7 +5601,7 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
 	{
 	  /* keep block of log_Gl.hdr.mvcc_op_log_lsa */
 	  keep_from_blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
-	  VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
+	  vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
 	}
     }
   else
