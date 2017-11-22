@@ -55,6 +55,11 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_virt.c
   ${COMPAT_DIR}/db_json.cpp
   )
+  
+set (COMPAT_HEADERS  
+  ${COMPAT_DIR}/dbtype_common.h
+  ${COMPAT_DIR}/db_macro.i
+  )
 
 set(BASE_SOURCES
   ${BASE_DIR}/adjustable_array.c
@@ -315,6 +320,7 @@ add_library(cubridcs SHARED
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
+  ${COMPAT_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
