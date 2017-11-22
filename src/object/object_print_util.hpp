@@ -14,17 +14,23 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
  */
-#include "string_buffer.hpp"
-#include <memory.h>
 
-void string_buffer::add_bytes (size_t len, void *bytes)
+/* Utility structures and functions extracted from object_print
+*/
+
+#if !defined(_OBJECT_PRINT_UTIL_HPP_)
+#define _OBJECT_PRINT_UTIL_HPP_
+
+#if defined(SERVER_MODE)
+#error Does not belong to server module
+#endif //defined(SERVER_MODE)
+
+namespace object_print
 {
-  if (bytes && m_len + len +1 > m_block.dim)
-    {
-      m_block.extend (m_len + len + 1 - m_block.dim);
-    }
-  memcpy (m_block.ptr + m_len, bytes, len);
-  m_block.ptr[m_len += len] = 0;
-  m_len += len;
+  void free_strarray (char **strs);                   //former obj_print_free_strarray()
+  char *copy_string (const char *source);             //former obj_print_copy_string()
 }
+
+#endif //!defined(_OBJECT_PRINT_UTIL_HPP_)

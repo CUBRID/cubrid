@@ -6543,7 +6543,6 @@ const char *
 tr_time_as_string (DB_TRIGGER_TIME time)
 {
   const char *string;
-
   switch (time)
     {
     case TR_TIME_BEFORE:
