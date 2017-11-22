@@ -112,7 +112,7 @@ template <typename Fn, typename... Args>
 inline int
 db_json_convert_string_and_call (const char *json_raw, Fn &&func, Args &&... args)
 {
-  JSON_DOC *doc;
+  JSON_DOC *doc = NULL;
   int error_code;
 
   error_code = db_json_get_json_from_str (json_raw, doc);
@@ -121,7 +121,9 @@ db_json_convert_string_and_call (const char *json_raw, Fn &&func, Args &&... arg
       return error_code;
     }
 
-  return func (doc, std::forward<Args> (args)...);
+  error_code = func (doc, std::forward<Args> (args)...);
+  db_json_delete_doc (doc);
+  return error_code;
 }
 
 #endif /* defined (__cplusplus) */
