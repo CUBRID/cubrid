@@ -376,7 +376,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 	}
       string_buffer serial_name_strbuf;
       sl_print_att_value (serial_name_strbuf, "name", inst_tp->assignments, inst_tp->nassigns);
-      char *serial_name = trim_single_quote (serial_name_mb.ptr, serial_name_strbuf.len ());
+      char *serial_name = trim_single_quote (serial_name_strbuf.get_buffer (), serial_name_strbuf.len ());
 
       string_buffer alter_strbuf;
       char str_next_value[NUMERIC_MAX_STRING_SIZE];
