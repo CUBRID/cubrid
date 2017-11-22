@@ -4470,7 +4470,7 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
     }
 
 #if !defined (CS_MODE)
-  /* Flush DWB */
+  /* Flush DWB before volume data. */
   success = dwb_flush_force (thread_p, &all_sync);
 #endif
 
