@@ -1888,6 +1888,9 @@ extern "C"
   extern DB_DOMAIN *db_type_to_db_domain (DB_TYPE type);
   extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 
+  extern int db_get_deep_copy_of_json(const DB_JSON * src, DB_JSON * dst);
+  extern int db_init_db_json_pointers(DB_JSON * val);
+
 #ifndef SERVER_MODE
   extern int db_get_int (const DB_VALUE * value);
   extern DB_C_SHORT db_get_short (const DB_VALUE * value);

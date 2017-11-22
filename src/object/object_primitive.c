@@ -17315,13 +17315,13 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
     }
   else
     {
-      json_obj->json_body = db_private_strdup (NULL, DB_PULL_STRING (&json_body));
-      rc = db_json_get_json_from_str (DB_PULL_STRING (&json_body), json_obj->document);
+      json_obj->json_body = db_private_strdup (NULL, DB_GET_STRING (&json_body));
+      rc = db_json_get_json_from_str (DB_GET_STRING (&json_body), json_obj->document);
     }
 
   if (schema_length > 0)
     {
-      json_obj->schema_raw = db_private_strdup (NULL, DB_PULL_STRING (&schema_raw));
+      json_obj->schema_raw = db_private_strdup (NULL, DB_GET_STRING (&schema_raw));
     }
 
   json->json_body = db_private_strdup (NULL, json_body_str);
