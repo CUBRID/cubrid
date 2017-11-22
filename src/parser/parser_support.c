@@ -9034,7 +9034,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 		   table_name->info.name.original, pt_show_misc_type (PT_CLASS));
     }
 
-  mem::block_ext mem_block
+  string_buffer sb
   {
     [&parser] (mem::block & block, size_t len)
     {
@@ -9049,10 +9049,9 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
     {
     }				//no need to deallocate for parser_context
   };
-  string_buffer sb (mem_block);
   object_printer obj_print (sb);
   obj_print.describe_class (class_op);
-  return mem_block.move_ptr ();
+  return sb.move_ptr ();
 }
 
 /*

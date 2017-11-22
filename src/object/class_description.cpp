@@ -160,8 +160,7 @@ int class_description::init (const char *name)
 
 int class_description::init (struct db_object *op, type prt_type)
 {
-  mem::block_ext mem_block;
-  string_buffer sb (mem_block);
+  string_buffer sb;
   return init (op, prt_type, sb);
 }
 

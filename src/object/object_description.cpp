@@ -73,8 +73,7 @@ int object_description::init (struct db_object *op)
     }
   this->classname = object_print::copy_string ((char *) sm_ch_name ((MOBJ) class_));
 
-  mem::block_ext mem_block;
-  string_buffer sb (mem_block);
+  string_buffer sb;
   db_value_printer printer (sb);
 
   DB_MAKE_OBJECT (&value, op);
@@ -82,7 +81,7 @@ int object_description::init (struct db_object *op)
   db_value_clear (&value);
   DB_MAKE_NULL (&value);
 
-  this->oid = mem_block.move_ptr();
+  this->oid = sb.move_ptr();
 
   if (class_->ordered_attributes != NULL)
     {
@@ -109,7 +108,7 @@ int object_description::init (struct db_object *op)
 	      db_get (op, attribute_p->header.name, &value);
 	      printer.describe_value (&value);
 	    }
-	  strs[i] = mem_block.move_ptr();
+	  strs[i] = sb.move_ptr();
 	  i++;
 	}
       strs[i] = NULL;

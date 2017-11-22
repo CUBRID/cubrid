@@ -6414,11 +6414,10 @@ log_repl_data_dump (FILE * out_fp, int length, void *data)
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_mem_value (ptr, &value);
 
-  mem::block_ext mem_block;
-  string_buffer sb (mem_block);
+  string_buffer sb;
   db_value_printer printer (sb);
   printer.describe_value (&value);
-  fprintf (out_fp, "C[%s] K[%s]\n", class_name, mem_block.ptr);
+  fprintf (out_fp, "C[%s] K[%s]\n", class_name, sb.get_buffer());
   pr_clear_value (&value);
 }
 
