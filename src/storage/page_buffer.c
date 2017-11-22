@@ -6011,7 +6011,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
        * performance. */
       if (pgbuf_bcb_should_be_moved_to_bottom_lru (bufptr))
 	{
-	  assert (!pgbuf_is_exist_blocked_reader_writer (bufptr));
 	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
 	}
       else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
