@@ -13232,7 +13232,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    found_supported = 0;
 	    for (i = 0; i < len; i++)
 	      {
-		if (arg->type_enum == current_types[i])
+		if (arg->type_enum == current_types[i] || PT_IS_STRING_TYPE (arg->type_enum))
 		  {
 		    found_supported = 1;
 		    break;
@@ -13276,7 +13276,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    found_supported_type = 0;
 	    for (i = 0; i < len; i++)
 	      {
-		if (supported_types[i] == arg->type_enum)
+		if ((supported_types[i] == arg->type_enum) || PT_IS_STRING_TYPE (arg->type_enum))
 		  {
 		    found_supported_type = 1;
 		    break;
@@ -13317,7 +13317,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    found_supported_type = 0;
 	    for (i = 0; i < len; i++)
 	      {
-		if (supported_types[i] == arg->type_enum)
+		if (supported_types[i] == arg->type_enum || PT_IS_STRING_TYPE (arg->type_enum))
 		  {
 		    found_supported_type = 1;
 		    break;
@@ -13361,7 +13361,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	for (i = 0; i < supported_json_types_len; i++)
 	  {
-	    if (arg->type_enum == supported_json_types[i])
+	    if (arg->type_enum == supported_json_types[i] || PT_IS_STRING_TYPE (arg->type_enum))
 	      {
 		found_supported = 1;
 		break;
@@ -13392,7 +13392,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    found_supported = 0;
 	    for (i = 0; i < len; i++)
 	      {
-		if (arg->type_enum == current_types[i])
+		if (arg->type_enum == current_types[i] || PT_IS_STRING_TYPE (arg->type_enum))
 		  {
 		    found_supported = 1;
 		    break;
@@ -13428,7 +13428,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	for (i = 0; i < supported_json_types_len; i++)
 	  {
-	    if (arg->type_enum == supported_json_types[i])
+	    if (arg->type_enum == supported_json_types[i] || PT_IS_STRING_TYPE (arg->type_enum))
 	      {
 		found_supported = 1;
 		break;
@@ -13449,7 +13449,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    found_supported = 0;
 	    for (i = 0; i < supported_path_types_len; i++)
 	      {
-		if (arg->type_enum == supported_path_types[i])
+		if (arg->type_enum == supported_path_types[i] || PT_IS_STRING_TYPE (arg->type_enum))
 		  {
 		    found_supported = 1;
 		    break;
