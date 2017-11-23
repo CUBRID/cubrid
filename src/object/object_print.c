@@ -463,16 +463,11 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	    ustr_upper (type_name_copy);
 	    if (temp_domain->json_validator != NULL)
 	      {
-		const char *raw_schema = db_json_get_schema_raw_from_validator (temp_domain->json_validator);
-		int len;
-
-		buffer = pt_append_nulstring (parser, buffer, type_name_copy);
-		db_private_free (NULL, type_name_copy);
-		len = strlen (raw_schema) + 4;	/* ('raw_schema')\0 */
-		type_name_copy = (char *) db_private_alloc (NULL, len + 1);
-		snprintf (type_name_copy, len + 1, "(\'%s\')", raw_schema);
-		type_name_copy[len] = '\0';
-		buffer = pt_append_nulstring (parser, buffer, type_name_copy);
+		buffer = pt_append_nulstring (parser, buffer, "(\'");
+		buffer =
+		  pt_append_nulstring (parser, buffer,
+				       db_json_get_schema_raw_from_validator (temp_domain->json_validator));
+		buffer = pt_append_nulstring (parser, buffer, "\')");
 	      }
 	    else
 	      {
