@@ -16707,9 +16707,9 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 
       break;
     case PT_TYPE_JSON:
-      q = pt_append_nulstring (parser, q, "cast (\'");
-      q = pt_append_nulstring (parser, q, p->info.value.db_value.data.json.json_body);
-      q = pt_append_nulstring (parser, q, "\' as json)");
+      q = pt_append_nulstring (parser, q, "json \'");
+      q = pt_append_nulstring (parser, q, (char *) p->info.value.data_value.str->bytes);
+      q = pt_append_nulstring (parser, q, "\'");
       break;
     default:
       q = pt_append_nulstring (parser, q, "-- Unknown value type --");
