@@ -1524,7 +1524,7 @@ gpg_error_t gpgrt_b64dec_finish (gpgrt_b64state_t state);
 
 /* *INDENT-ON* */
 
-#endif	/* GPGRT_H */
+#endif /* GPGRT_H */
 #endif /* GPG_ERROR_H */
 /*
 Local Variables:
