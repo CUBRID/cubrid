@@ -13205,39 +13205,23 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_OBJECT:
       {
-	PT_TYPE_ENUM supported_key_types[] = { PT_TYPE_CHAR, PT_TYPE_MAYBE };
-	PT_TYPE_ENUM supported_value_types[] =
-	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
-	unsigned int len, i, found_supported = 0;
-	int supported_value_types_len = sizeof (supported_value_types) / sizeof (supported_value_types[0]);
-	int supported_key_types_len = sizeof (supported_key_types) / sizeof (supported_key_types[0]);
+	bool found_supported = false;
 
 	PT_NODE *arg = arg_list;
-	PT_TYPE_ENUM *current_types = supported_value_types;
 	unsigned int index = 0;
 
 	while (arg)
 	  {
 	    if (index % 2 == 0)
 	      {
-		current_types = supported_key_types;
-		len = supported_key_types_len;
+		found_supported = (PT_IS_STRING_TYPE (arg->type_enum) || arg->type_enum == PT_TYPE_MAYBE);
 	      }
 	    else
 	      {
-		current_types = supported_value_types;
-		len = supported_value_types_len;
+		found_supported = pt_is_json_value_type (arg->type_enum);
 	      }
-	    found_supported = 0;
-	    for (i = 0; i < len; i++)
-	      {
-		if (arg->type_enum == current_types[i] || PT_IS_STRING_TYPE (arg->type_enum))
-		  {
-		    found_supported = 1;
-		    break;
-		  }
-	      }
+
 	    if (!found_supported)
 	      {
 		unsupported_type = arg->type_enum;
@@ -13263,25 +13247,15 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_ARRAY:
       {
-	PT_TYPE_ENUM supported_types[] =
-	  { PT_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_DOUBLE, PT_TYPE_JSON, PT_TYPE_NUMERIC, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
-	int len = sizeof (supported_types) / sizeof (supported_types[0]);
-	int i, found_supported_type = 0;
+	bool found_supported_type;
 
 	PT_NODE *arg = arg_list;
 
 	while (arg)
 	  {
-	    found_supported_type = 0;
-	    for (i = 0; i < len; i++)
-	      {
-		if ((supported_types[i] == arg->type_enum) || PT_IS_STRING_TYPE (arg->type_enum))
-		  {
-		    found_supported_type = 1;
-		    break;
-		  }
-	      }
+	    found_supported_type = pt_is_json_value_type (arg->type_enum);
+
 	    if (!found_supported_type)
 	      {
 		unsupported_type = arg->type_enum;
@@ -13305,24 +13279,15 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_MERGE:
       {
-	PT_TYPE_ENUM supported_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
-	int len = sizeof (supported_types) / sizeof (supported_types[0]);
-	int i, found_supported_type = 0;
+	bool found_supported_type;
 
 	PT_NODE *arg = arg_list;
 
 	while (arg)
 	  {
-	    found_supported_type = 0;
-	    for (i = 0; i < len; i++)
-	      {
-		if (supported_types[i] == arg->type_enum || PT_IS_STRING_TYPE (arg->type_enum))
-		  {
-		    found_supported_type = 1;
-		    break;
-		  }
-	      }
+	    found_supported_type = pt_is_json_doc_type (arg->type_enum);
+
 	    if (!found_supported_type)
 	      {
 		unsupported_type = arg->type_enum;
@@ -13346,28 +13311,12 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_INSERT:
       {
-	PT_TYPE_ENUM supported_json_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
-	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_NULL, PT_TYPE_MAYBE };
-	PT_TYPE_ENUM supported_val_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
-	unsigned int len, i, found_supported = 0;
-	unsigned int supported_json_types_len = sizeof (supported_json_types) / sizeof (supported_json_types[0]);
-	unsigned int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
-	unsigned int supported_val_types_len = sizeof (supported_val_types) / sizeof (supported_val_types[0]);
 	unsigned int index = 0;
-
+	bool found_supported = false;
 	PT_NODE *arg = arg_list;
-	const PT_TYPE_ENUM *current_types = supported_val_types;
 
-	for (i = 0; i < supported_json_types_len; i++)
-	  {
-	    if (arg->type_enum == supported_json_types[i] || PT_IS_STRING_TYPE (arg->type_enum))
-	      {
-		found_supported = 1;
-		break;
-	      }
-	  }
-
+	found_supported = pt_is_json_doc_type (arg->type_enum);
 	if (!found_supported)
 	  {
 	    arg_type = PT_TYPE_NONE;
@@ -13381,23 +13330,14 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    if (index % 2 == 0)
 	      {
-		current_types = supported_path_types;
-		len = supported_path_types_len;
+		found_supported = (PT_IS_STRING_TYPE (arg->type_enum) || arg->type_enum == PT_TYPE_MAYBE
+				   || arg->type_enum == PT_TYPE_NULL);
 	      }
 	    else
 	      {
-		current_types = supported_val_types;
-		len = supported_val_types_len;
+		found_supported = pt_is_json_doc_type (arg->type_enum);
 	      }
-	    found_supported = 0;
-	    for (i = 0; i < len; i++)
-	      {
-		if (arg->type_enum == current_types[i] || PT_IS_STRING_TYPE (arg->type_enum))
-		  {
-		    found_supported = 1;
-		    break;
-		  }
-	      }
+
 	    if (!found_supported)
 	      {
 		unsupported_type = arg->type_enum;
@@ -13418,22 +13358,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_REMOVE:
       {
-	PT_TYPE_ENUM supported_json_types[] = { PT_TYPE_CHAR, PT_TYPE_JSON, PT_TYPE_NULL, PT_TYPE_MAYBE };
-	PT_TYPE_ENUM supported_path_types[] = { PT_TYPE_CHAR, PT_TYPE_NULL, PT_TYPE_MAYBE };
 	PT_TYPE_ENUM unsupported_type;
-	unsigned int i, found_supported = 0;
-	unsigned int supported_json_types_len = sizeof (supported_json_types) / sizeof (supported_json_types[0]);
-	unsigned int supported_path_types_len = sizeof (supported_path_types) / sizeof (supported_path_types[0]);
+	bool found_supported = false;
 	PT_NODE *arg = arg_list;
 
-	for (i = 0; i < supported_json_types_len; i++)
-	  {
-	    if (arg->type_enum == supported_json_types[i] || PT_IS_STRING_TYPE (arg->type_enum))
-	      {
-		found_supported = 1;
-		break;
-	      }
-	  }
+	found_supported = pt_is_json_doc_type (arg->type_enum);
 
 	if (!found_supported)
 	  {
@@ -13446,15 +13375,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	arg = arg->next;
 	while (arg)
 	  {
-	    found_supported = 0;
-	    for (i = 0; i < supported_path_types_len; i++)
-	      {
-		if (arg->type_enum == supported_path_types[i] || PT_IS_STRING_TYPE (arg->type_enum))
-		  {
-		    found_supported = 1;
-		    break;
-		  }
-	      }
+	    found_supported = (PT_IS_STRING_TYPE (arg->type_enum) || arg->type_enum == PT_TYPE_MAYBE
+			       || arg->type_enum == PT_TYPE_NULL);
+
 	    if (!found_supported)
 	      {
 		unsupported_type = arg->type_enum;

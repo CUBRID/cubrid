@@ -3715,6 +3715,8 @@ extern "C"
 {
 #endif
   void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+  bool pt_is_json_value_type (PT_TYPE_ENUM type);
+  bool pt_is_json_doc_type (PT_TYPE_ENUM type);
 #ifdef __cplusplus
 }
 #endif

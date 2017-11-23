@@ -1402,3 +1402,29 @@ pt_count_assignments (PARSER_CONTEXT * parser, PT_NODE * assignments)
 
   return cnt;
 }
+
+bool
+pt_is_json_value_type (PT_TYPE_ENUM type)
+{
+  if (type == PT_TYPE_MAYBE || type == PT_TYPE_NULL)
+    {
+      return true;
+    }
+
+  DB_TYPE converted_type = pt_type_enum_to_db (type);
+
+  return db_is_json_value_type (converted_type);
+}
+
+bool
+pt_is_json_doc_type (PT_TYPE_ENUM type)
+{
+  if (type == PT_TYPE_MAYBE || type == PT_TYPE_NULL)
+    {
+      return true;
+    }
+
+  DB_TYPE converted_type = pt_type_enum_to_db (type);
+
+  return db_is_json_doc_type (converted_type);
+}
