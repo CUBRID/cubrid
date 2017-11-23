@@ -1569,6 +1569,9 @@ extern "C"
   /********************************************************/
   /* From db.h */
 
+  /* TODO: are next macro's required to be here? They did not belong to dbi_compat.h and maybe we can avoid exposing
+   * them to API. Side-effect - remove include error_code.h */
+
   /* Argument checking macros */
 #define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
   do {                                                                         \
