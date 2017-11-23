@@ -35,6 +35,8 @@
 
 #define TRAN_DEFAULT_ISOLATION_LEVEL()	(TRAN_DEFAULT_ISOLATION)
 
+/* UNUSED PART --> */
+
 typedef UINT64 CI_CONNECTION;
 typedef UINT64 CI_STATEMENT;
 typedef UINT64 CI_PARAMETER_METADATA;
@@ -227,5 +229,7 @@ extern int ci_collection_get_elem_domain_info (CI_COLLECTION coll, long pos, CI_
 					       int *scale);
 extern int ci_collection_get (CI_COLLECTION coll, long pos, CI_TYPE type, void *addr, size_t len, size_t * outlen,
 			      bool * isnull);
+
+/* UNUSED PART <-- */
 
 #endif /* _CUBRID_API_H_ */

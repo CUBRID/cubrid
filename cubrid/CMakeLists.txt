@@ -81,6 +81,10 @@ set (BASE_HEADERS
   ${BASE_DIR}/db_private_allocator.hpp
   ${BASE_DIR}/extensible_array.hpp
   )
+set (COMPAT_HEADERS  
+  ${COMPAT_DIR}/dbtype_common.h
+  ${COMPAT_DIR}/db_macro.i
+  )
 
 set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_common.c
@@ -255,6 +259,7 @@ set (CUBRID_LIB_SOURCES
   )
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
+  ${COMPAT_HEADERS}
   )
 
 add_library(cubrid SHARED

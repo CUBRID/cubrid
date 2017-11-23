@@ -30,6 +30,8 @@
 
 #include "cubrid_api.h"
 
+/* TODO: find a better place for these stuff. This file has no clear purpose */
+
 #define SERVER_SESSION_KEY_SIZE			8
 
 typedef struct dbdef_vol_ext_info DBDEF_VOL_EXT_INFO;

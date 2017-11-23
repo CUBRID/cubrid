@@ -58,6 +58,10 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_virt.c
   ${COMPAT_DIR}/db_json.cpp
   )
+set (COMPAT_HEADERS  
+  ${COMPAT_DIR}/dbtype_common.h
+  ${COMPAT_DIR}/db_macro.i
+  )
 
 set(BASE_SOURCES
   ${BASE_DIR}/bit.c
@@ -365,6 +369,7 @@ add_library(cubridsa SHARED
   ${ES_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  ${COMPAT_HEADERS}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

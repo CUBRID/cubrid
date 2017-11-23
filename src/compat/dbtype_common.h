@@ -147,6 +147,13 @@ extern "C"
 
   /******************************************/
   /* From dbdef.h */
+
+  /* TODO: there is almost nothing left of current dbdef.h, and the remaining parts don't really belong to dbdef.h, but
+   *       rather to other server/client common headers, like storage_common.h;
+   *       then we can move all this back to dbdef, include dbdef in dbtype_common and add dbdef to the list of exposed
+   *       headers.
+   */
+
 #define TRAN_ASYNC_WS_BIT                        0x10	/* 1 0000 */
 #define TRAN_ISO_LVL_BITS                        0x0F	/* 0 1111 */
 
@@ -1887,6 +1894,9 @@ extern "C"
 
   extern DB_DOMAIN *db_type_to_db_domain (DB_TYPE type);
   extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
+
+  extern int db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst);
+  extern int db_init_db_json_pointers (DB_JSON * val);
 
 #ifndef SERVER_MODE
   extern int db_get_int (const DB_VALUE * value);

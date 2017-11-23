@@ -824,7 +824,9 @@ db_value_scale (const DB_VALUE * value)
 DB_MACRO_INLINE JSON_DOC *
 db_get_json_document (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
 
   assert (value->domain.general_info.type == DB_TYPE_JSON);
 

@@ -1566,9 +1566,11 @@ put_string (OR_BUF * buf, const char *string)
     {
       str_length = 0;
     }
+
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
   (*(tp_VarNChar.data_writeval)) (buf, &value);
+  pr_clear_value (&value);
 }
 
 /*
@@ -1956,7 +1958,6 @@ put_property_list (OR_BUF * buf, DB_SEQ * properties)
     }
 }
 
-
 /*
  * get_property_list - This reads a property list from disk.
  *    return: a new property list
@@ -2084,6 +2085,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
     {
       db_make_string (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
       (*(tp_String.data_writeval)) (buf, &schema_value);
+      pr_clear_value (&schema_value);
     }
   if (start + offset != buf->ptr)
     {

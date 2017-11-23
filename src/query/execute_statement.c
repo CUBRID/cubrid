@@ -16616,6 +16616,7 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	    }
 	  prev = result;
 	}
+      pr_clear_value (&eval_value);
     }
   return NO_ERROR;
 
@@ -16629,6 +16630,7 @@ end_error:
     {
       return er_errid ();
     }
+  pr_clear_value (&eval_value);
   return ER_FAILED;
 }
 
