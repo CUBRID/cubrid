@@ -1783,7 +1783,7 @@ db_make_string (DB_VALUE * value, const char *str)
     {
       if (str)
 	{
-	  size = strlen (str);
+	  size = (int) strlen (str);
 	}
       else
 	{
