@@ -3697,6 +3697,7 @@ start:
  * return   : Error code.
  * thread_p (in): The thread entry.
  * all_sync (out): True, if everything synchronized.
+ *  Note: TO DO - optimize this function - force existing data, do not fills with null pages 
  */
 int
 dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)

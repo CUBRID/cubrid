@@ -4248,12 +4248,13 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
  *   return: vdes or NULL_VOLDES
  *   vol_fd(in): Volume descriptor
  *   vlabel(in): Volume label
- *   check_sync_dwb(in): True, if needs sync dwb
+ *   sync_dwb(in): True, if needs sync dwb
  */
 int
-fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, bool check_sync_dwb)
+fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, bool sync_dwb)
 {
-  int ret;
+  int ret = NO_ERROR;
+  bool all_sync = false;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
@@ -4266,9 +4267,6 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, boo
 #if defined(USE_AIO)
   struct aiocb cb;
 #endif /* USE_AIO */
-#if !defined (CS_MODE)
-  bool all_sync;
-#endif
 
   if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) > 0)
     {
@@ -4299,25 +4297,25 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, boo
 #endif
 
 #if !defined (CS_MODE)
-  if (check_sync_dwb)
+  if (sync_dwb)
     {
       if (fileio_is_permanent_volume (thread_p, vol_fd))
 	{
-	  if (dwb_flush_force (thread_p, &all_sync) != NO_ERROR)
-	    {
-	      return NULL_VOLDES;
-	    }
+	  ret = dwb_flush_force (thread_p, &all_sync);
 	}
     }
 #endif
 
+  if (ret == NO_ERROR && all_sync == false)
+    {
 #if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
-  bzero (&cb, sizeof (cb));
-  cb.aio_fildes = vol_fd;
-  ret = aio_fsync (O_SYNC, &cb);
+      bzero (&cb, sizeof (cb));
+      cb.aio_fildes = vol_fd;
+      ret = aio_fsync (O_SYNC, &cb);
 #else /* USE_AIO */
-  ret = fsync (vol_fd);
+      ret = fsync (vol_fd);
 #endif /* USE_AIO */
+    }
 
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
@@ -4449,12 +4447,10 @@ int
 fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
 {
   int success = NO_ERROR;
+  bool all_sync = false;
   APPLY_ARG arg = { 0 };
 #if defined (SERVER_MODE) || defined (SA_MODE)
   PERF_UTIME_TRACKER time_track;
-#if !defined (CS_MODE)
-  bool all_sync;
-#endif
 
   PERF_UTIME_TRACKER_START (thread_p, &time_track);
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
@@ -4474,7 +4470,8 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
   success = dwb_flush_force (thread_p, &all_sync);
 #endif
 
-  if (success == NO_ERROR)
+  /* Check whether the volumes were flushed. */
+  if (success == NO_ERROR && all_sync == false)
     {
       /* Flush volume data. */
       (void) fileio_traverse_permanent_volume (thread_p, fileio_synchronize_volume, &arg);
