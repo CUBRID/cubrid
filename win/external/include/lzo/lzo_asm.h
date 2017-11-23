@@ -34,7 +34,8 @@
 #endif
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 
@@ -55,57 +56,33 @@ extern "C" {
 //
 ************************************************************************/
 
-LZO_EXTERN(int) lzo1c_decompress_asm
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
-LZO_EXTERN(int) lzo1c_decompress_asm_safe
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
+  LZO_EXTERN (int) lzo1c_decompress_asm
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1c_decompress_asm_safe
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
 
-LZO_EXTERN(int) lzo1f_decompress_asm_fast
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
-LZO_EXTERN(int) lzo1f_decompress_asm_fast_safe
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1f_decompress_asm_fast
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1f_decompress_asm_fast_safe
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
 
-LZO_EXTERN(int) lzo1x_decompress_asm
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
-LZO_EXTERN(int) lzo1x_decompress_asm_safe
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
-LZO_EXTERN(int) lzo1x_decompress_asm_fast
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
-LZO_EXTERN(int) lzo1x_decompress_asm_fast_safe
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1x_decompress_asm
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1x_decompress_asm_safe
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1x_decompress_asm_fast
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1x_decompress_asm_fast_safe
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
 
-LZO_EXTERN(int) lzo1y_decompress_asm
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
-LZO_EXTERN(int) lzo1y_decompress_asm_safe
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
-LZO_EXTERN(int) lzo1y_decompress_asm_fast
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
-LZO_EXTERN(int) lzo1y_decompress_asm_fast_safe
-                                (const lzo_bytep src, lzo_uint  src_len,
-                                       lzo_bytep dst, lzo_uintp dst_len,
-                                       lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1y_decompress_asm
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1y_decompress_asm_safe
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1y_decompress_asm_fast
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
+    LZO_EXTERN (int) lzo1y_decompress_asm_fast_safe
+    (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
 
 
 /***********************************************************************
@@ -114,27 +91,23 @@ LZO_EXTERN(int) lzo1y_decompress_asm_fast_safe
 
 #if 0
 
-LZO_EXTERN(lzo_uint32_t)
-lzo_crc32_asm(lzo_uint32_t c, const lzo_bytep buf, lzo_uint len,
-              const lzo_uint32_tp tab);
+    LZO_EXTERN (lzo_uint32_t)
+    lzo_crc32_asm (lzo_uint32_t c, const lzo_bytep buf, lzo_uint len, const lzo_uint32_tp tab);
 
-LZO_EXTERN(lzo_uint32_t)
-lzo_crc32_asm_small(lzo_uint32_t c, const lzo_bytep buf, lzo_uint len);
+    LZO_EXTERN (lzo_uint32_t) lzo_crc32_asm_small (lzo_uint32_t c, const lzo_bytep buf, lzo_uint len);
 
-LZO_EXTERN(int)
-lzo_cpuid_asm(lzo_uint32_tp /* lzo_uint32_t info[16] */ );
+    LZO_EXTERN (int) lzo_cpuid_asm (lzo_uint32_tp /* lzo_uint32_t info[16] */ );
 
-LZO_EXTERN(lzo_uint32_t)
-lzo_rdtsc_asm(lzo_uint32_tp /* lzo_uint32_t ticks[2] */ );
+    LZO_EXTERN (lzo_uint32_t) lzo_rdtsc_asm (lzo_uint32_tp /* lzo_uint32_t ticks[2] */ );
 
 #endif
 
 
 #ifdef __cplusplus
-} /* extern "C" */
+}				/* extern "C" */
 #endif
 
-#endif /* already included */
+#endif				/* already included */
 
 
 /* vim:set ts=4 sw=4 et: */

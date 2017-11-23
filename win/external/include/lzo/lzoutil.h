@@ -34,7 +34,8 @@
 #endif
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 
@@ -53,10 +54,10 @@ extern "C" {
 
 
 #ifdef __cplusplus
-} /* extern "C" */
+}				/* extern "C" */
 #endif
 
-#endif /* already included */
+#endif				/* already included */
 
 
 /* vim:set ts=4 sw=4 et: */

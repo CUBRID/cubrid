@@ -34,7 +34,8 @@
 #endif
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 
@@ -50,16 +51,14 @@ extern "C" {
 
 
 /* decompression */
-LZO_EXTERN(int)
-lzo1z_decompress        ( const lzo_bytep src, lzo_uint  src_len,
-                                lzo_bytep dst, lzo_uintp dst_len,
-                                lzo_voidp wrkmem /* NOT USED */ );
+  LZO_EXTERN (int)
+    lzo1z_decompress (const lzo_bytep src, lzo_uint src_len,
+		      lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem /* NOT USED */ );
 
 /* safe decompression with overrun testing */
-LZO_EXTERN(int)
-lzo1z_decompress_safe   ( const lzo_bytep src, lzo_uint  src_len,
-                                lzo_bytep dst, lzo_uintp dst_len,
-                                lzo_voidp wrkmem /* NOT USED */ );
+    LZO_EXTERN (int)
+    lzo1z_decompress_safe (const lzo_bytep src, lzo_uint src_len,
+			   lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem /* NOT USED */ );
 
 
 /***********************************************************************
@@ -68,42 +67,36 @@ lzo1z_decompress_safe   ( const lzo_bytep src, lzo_uint  src_len,
 
 #define LZO1Z_999_MEM_COMPRESS  ((lzo_uint32_t) (14 * 16384L * sizeof(short)))
 
-LZO_EXTERN(int)
-lzo1z_999_compress      ( const lzo_bytep src, lzo_uint  src_len,
-                                lzo_bytep dst, lzo_uintp dst_len,
-                                lzo_voidp wrkmem );
+    LZO_EXTERN (int)
+    lzo1z_999_compress (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
 
 
 /***********************************************************************
 //
 ************************************************************************/
 
-LZO_EXTERN(int)
-lzo1z_999_compress_dict     ( const lzo_bytep src, lzo_uint  src_len,
-                                    lzo_bytep dst, lzo_uintp dst_len,
-                                    lzo_voidp wrkmem,
-                              const lzo_bytep dict, lzo_uint dict_len );
+    LZO_EXTERN (int)
+    lzo1z_999_compress_dict (const lzo_bytep src, lzo_uint src_len,
+			     lzo_bytep dst, lzo_uintp dst_len,
+			     lzo_voidp wrkmem, const lzo_bytep dict, lzo_uint dict_len);
 
-LZO_EXTERN(int)
-lzo1z_999_compress_level    ( const lzo_bytep src, lzo_uint  src_len,
-                                    lzo_bytep dst, lzo_uintp dst_len,
-                                    lzo_voidp wrkmem,
-                              const lzo_bytep dict, lzo_uint dict_len,
-                                    lzo_callback_p cb,
-                                    int compression_level );
+    LZO_EXTERN (int)
+    lzo1z_999_compress_level (const lzo_bytep src, lzo_uint src_len,
+			      lzo_bytep dst, lzo_uintp dst_len,
+			      lzo_voidp wrkmem,
+			      const lzo_bytep dict, lzo_uint dict_len, lzo_callback_p cb, int compression_level);
 
-LZO_EXTERN(int)
-lzo1z_decompress_dict_safe ( const lzo_bytep src, lzo_uint  src_len,
-                                   lzo_bytep dst, lzo_uintp dst_len,
-                                   lzo_voidp wrkmem /* NOT USED */,
-                             const lzo_bytep dict, lzo_uint dict_len );
+    LZO_EXTERN (int)
+    lzo1z_decompress_dict_safe (const lzo_bytep src, lzo_uint src_len,
+				lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem /* NOT USED */ ,
+				const lzo_bytep dict, lzo_uint dict_len);
 
 
 #ifdef __cplusplus
-} /* extern "C" */
+}				/* extern "C" */
 #endif
 
-#endif /* already included */
+#endif				/* already included */
 
 
 /* vim:set ts=4 sw=4 et: */

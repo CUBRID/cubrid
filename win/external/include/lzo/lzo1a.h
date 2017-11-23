@@ -34,7 +34,8 @@
 #endif
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 
@@ -50,15 +51,12 @@ extern "C" {
 #define LZO1A_MEM_DECOMPRESS    (0)
 
 
-LZO_EXTERN(int)
-lzo1a_compress          ( const lzo_bytep src, lzo_uint  src_len,
-                                lzo_bytep dst, lzo_uintp dst_len,
-                                lzo_voidp wrkmem );
+  LZO_EXTERN (int)
+    lzo1a_compress (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
 
-LZO_EXTERN(int)
-lzo1a_decompress        ( const lzo_bytep src, lzo_uint  src_len,
-                                lzo_bytep dst, lzo_uintp dst_len,
-                                lzo_voidp wrkmem /* NOT USED */ );
+    LZO_EXTERN (int)
+    lzo1a_decompress (const lzo_bytep src, lzo_uint src_len,
+		      lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem /* NOT USED */ );
 
 
 /***********************************************************************
@@ -67,18 +65,16 @@ lzo1a_decompress        ( const lzo_bytep src, lzo_uint  src_len,
 
 #define LZO1A_99_MEM_COMPRESS   ((lzo_uint32_t) (65536L * lzo_sizeof_dict_t))
 
-LZO_EXTERN(int)
-lzo1a_99_compress       ( const lzo_bytep src, lzo_uint  src_len,
-                                lzo_bytep dst, lzo_uintp dst_len,
-                                lzo_voidp wrkmem );
+    LZO_EXTERN (int)
+    lzo1a_99_compress (const lzo_bytep src, lzo_uint src_len, lzo_bytep dst, lzo_uintp dst_len, lzo_voidp wrkmem);
 
 
 
 #ifdef __cplusplus
-} /* extern "C" */
+}				/* extern "C" */
 #endif
 
-#endif /* already included */
+#endif				/* already included */
 
 
 /* vim:set ts=4 sw=4 et: */

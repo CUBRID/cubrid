@@ -29,6 +29,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+/* *INDENT-OFF* */
+
 /* The version string of this header. */
 #define GPG_ERROR_VERSION "1.27"
 #define GPGRT_VERSION     "1.27"
@@ -1519,8 +1521,11 @@ gpg_error_t gpgrt_b64dec_finish (gpgrt_b64state_t state);
 #ifdef __cplusplus
 }
 #endif
-#endif	/* GPGRT_H */
-#endif	/* GPG_ERROR_H */
+
+/* *INDENT-ON* */
+
+/*#endif	/* GPGRT_H */
+#endif /* GPG_ERROR_H */
 /*
 Local Variables:
 buffer-read-only: t
