@@ -1363,6 +1363,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
     {
       loghdr->prefix_name[0] = '\0';
     }
+  loghdr->dummy_byte_1 = false;
   logpb_hdr_set_vacuum_last_blockid (0);
   loghdr->perm_status = LOG_PSTAT_CLEAR;
 

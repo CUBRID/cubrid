@@ -954,6 +954,7 @@ struct log_header
   LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2 */
   char prefix_name[MAXLOGNAME];	/* Log prefix name */
   bool has_logging_been_skipped;	/* Has logging been skipped ? */
+  bool dummy_byte_1;
   char vacuum_last_blockid_buf[sizeof (VACUUM_LOG_BLOCKID)];	/* Last processed blockid needed for vacuum. */
   /* hack for 10.1 p 1 compatibility */
   int perm_status;		/* Reserved for future expansion and permanent status indicators, e.g. to mark
