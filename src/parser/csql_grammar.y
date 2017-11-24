@@ -533,6 +533,8 @@ static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
 				       const PT_TYPE_ENUM type,
 				       const char *str);
+static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
+				       const char *str);
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
 				       const int codeset_id,
@@ -925,6 +927,7 @@ int g_original_buffer_len;
 %type <node> unsigned_real
 %type <node> monetary_literal
 %type <node> date_or_time_literal
+%type <node> json_literal
 %type <node> partition_clause
 %type <node> partition_def_list
 %type <node> partition_def
@@ -20091,6 +20094,12 @@ literal_w_o_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| json_literal
+		{{
+			
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
 	;
 
 boolean
@@ -22692,7 +22701,16 @@ date_or_time_literal
 
 		DBG_PRINT}}
 	;
-
+	
+json_literal
+        : JSON CHAR_STRING
+                {{
+                	PT_NODE *val;
+			val = pt_create_json_value (this_parser, $2);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)	
+                
+                DBG_PRINT}};
 create_as_clause
 	: opt_replace AS csql_query
 		{{
@@ -26018,6 +26036,24 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 	  node = cast_expr;
 	  PT_SET_NODE_COLL_MODIFIER (cast_expr, lang_coll->coll.coll_id);
 	}
+    }
+
+  return node;
+}
+
+static PT_NODE *
+pt_create_json_value (PARSER_CONTEXT *parser, const char *str)
+{
+  PT_NODE *node = NULL;
+
+  node = parser_new_node (parser, PT_VALUE);
+
+  if (node)
+    {
+      node->type_enum = PT_TYPE_JSON;
+
+      node->info.value.data_value.str = pt_append_bytes (parser, NULL, str, strlen (str));
+      PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
     }
 
   return node;
