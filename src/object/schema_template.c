@@ -957,11 +957,11 @@ smt_quit (SM_TEMPLATE * template_)
 int
 smt_add_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,
 				  DB_VALUE * default_value, const SM_NAME_SPACE name_space, const bool add_first,
-				  const char *add_after_attribute, DB_DEFAULT_EXPR * default_expr)
+				  const char *add_after_attribute, DB_DEFAULT_EXPR * default_expr, const char *comment)
 {
   int error = NO_ERROR;
 
-  error = smt_add_attribute_any (def, name, domain_string, domain, name_space, add_first, add_after_attribute);
+  error = smt_add_attribute_any (def, name, domain_string, domain, name_space, add_first, add_after_attribute, comment);
   if (error == NO_ERROR && default_value != NULL)
     {
       error =
@@ -981,13 +981,15 @@ smt_add_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *
  *   default_value(in):
  *   name_space(in): attribute name_space (class, instance, or shared)
  *   default_expr(in): default expression
+ *   comment(in): attribute comment
  */
 int
 smt_add_attribute_w_dflt (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,
-			  DB_VALUE * default_value, const SM_NAME_SPACE name_space, DB_DEFAULT_EXPR * default_expr)
+			  DB_VALUE * default_value, const SM_NAME_SPACE name_space, DB_DEFAULT_EXPR * default_expr,
+			  const char *comment)
 {
   return smt_add_attribute_w_dflt_w_order (def, name, domain_string, domain, default_value, name_space, false, NULL,
-					   default_expr);
+					   default_expr, comment);
 }
 
 /*
@@ -1011,7 +1013,8 @@ smt_add_attribute_w_dflt (DB_CTMPL * def, const char *name, const char *domain_s
 
 int
 smt_add_attribute_any (SM_TEMPLATE * template_, const char *name, const char *domain_string, DB_DOMAIN * domain,
-		       const SM_NAME_SPACE name_space, const bool add_first, const char *add_after_attribute)
+		       const SM_NAME_SPACE name_space, const bool add_first, const char *add_after_attribute,
+		       const char *comment)
 {
   int error_code = NO_ERROR;
   SM_ATTRIBUTE *att = NULL;
@@ -1092,6 +1095,7 @@ smt_add_attribute_any (SM_TEMPLATE * template_, const char *name, const char *do
       error_code = er_errid ();
       goto error_exit;
     }
+  att->comment = ws_copy_string (comment);
 
   /* Flag this attribute as new so that we can initialize the original_value properly.  Make sure this isn't saved on
    * disk ! */
@@ -1189,7 +1193,7 @@ error_exit:
 int
 smt_add_attribute (SM_TEMPLATE * template_, const char *name, const char *domain_string, DB_DOMAIN * domain)
 {
-  return (smt_add_attribute_any (template_, name, domain_string, domain, ID_ATTRIBUTE, false, NULL));
+  return (smt_add_attribute_any (template_, name, domain_string, domain, ID_ATTRIBUTE, false, NULL, NULL));
 }
 
 /*
