@@ -362,7 +362,6 @@ extern void pr_free_string (char *str);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
-//extern char *pr_valstring (THREAD_ENTRY *, DB_VALUE *);
 extern char *pr_valstring (struct thread_entry *, DB_VALUE *);
 #endif //defined (SERVER_MODE) || defined (SA_MODE)
 

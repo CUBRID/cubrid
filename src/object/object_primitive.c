@@ -10420,7 +10420,7 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 char *
 pr_valstring (thread_entry * threade, DB_VALUE * val)
 {
-  mem::block_ext mem_block
+  string_buffer sb
   {
     [&threade] (mem::block & block, size_t len)
     {
@@ -10434,20 +10434,19 @@ pr_valstring (thread_entry * threade, DB_VALUE * val)
       };
     }
   };
-  string_buffer sb (mem_block);
 
   if (val == NULL)
     {
       /* space with terminating NULL */
       sb ("(null)");
-      return mem_block.ptr;
+      return (char *) sb.get_buffer ();
     }
 
   if (DB_IS_NULL (val))
     {
       /* space with terminating NULL */
       sb ("NULL");
-      return mem_block.ptr;
+      return (char *) sb.get_buffer ();
     }
 
   DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
@@ -10459,7 +10458,7 @@ pr_valstring (thread_entry * threade, DB_VALUE * val)
     }
 
   (*(pr_type->sptrfunc)) (val, sb);
-  return mem_block.move_ptr ();	//caller should use db_private_free() to deallocate it
+  return sb.move_ptr ();	//caller should use db_private_free() to deallocate it
 }
 #endif //defined (SERVER_MODE) || defined (SA_MODE)
 

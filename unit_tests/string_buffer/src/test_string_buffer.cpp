@@ -58,7 +58,6 @@ class test_string_buffer
     size_t m_dim;                                      //_ref[_dim]
     size_t m_len;                                      // strlen(_ref)
     char *m_ref;                                       // reference buffer
-    mem::block_ext m_block;                             //extensible buffer
     string_buffer m_sb;
 
   public:
@@ -66,7 +65,7 @@ class test_string_buffer
       : m_dim (8192)
       , m_len (0)
       , m_ref ((char *) calloc (m_dim, 1))
-      , m_block
+      , m_sb
         {
           [] (mem::block& block, size_t len)
           {
@@ -80,7 +79,6 @@ class test_string_buffer
             affix_allocator.deallocate(std::move(block));
           }
         }
-      , m_sb (m_block)
     {
     }
 
@@ -110,8 +108,6 @@ class test_string_buffer
     {
       m_len = 0;
       stack_allocator.~stack ();
-      mem::block b = affix_allocator.allocate (size);
-      * (mem::block *)&m_block = std::move (b);
       m_sb.clear();
     }
 
@@ -120,7 +116,7 @@ class test_string_buffer
       int len = snprintf (nullptr, 0, args...);
       if (len < 0)
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) snprintf()=%d", file, line, m_block.dim, len);
+	  ERR ("[%s(%d)] StrBuf() snprintf()=%d", file, line, len);
 	  return;
 	}
       else
@@ -132,17 +128,17 @@ class test_string_buffer
       m_sb (args...);
       if (m_sb.len () != m_len)//check length
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) len()=%zu expect %zu", file, line, m_block.dim, m_sb.len (), m_len);
+	  ERR ("[%s(%d)] StrBuf() len()=%zu expect %zu", file, line, m_sb.len (), m_len);
 	  return;
 	}
-      if (strcmp (m_block.ptr, m_ref))//check content
+      if (strcmp (m_sb.get_buffer(), m_ref))//check content
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect{\"%s\"}", file, line, m_block.dim, m_block.ptr, m_ref);
+	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect{\"%s\"}", file, line, m_sb.get_buffer(), m_ref);
 	  return;
 	}
-      if (affix_allocator.check (m_block))//check overflow
+      if (affix_allocator.check (m_sb))//check overflow
 	{
-	  ERR ("[%s(%d)] StrBuf(buf[%zu]) memory corruption", file, line, m_block.dim);
+	  ERR ("[%s(%d)] StrBuf() memory corruption", file, line);
 	  return;
 	}
     }
@@ -156,17 +152,17 @@ class test_string_buffer
       m_sb += ch;
       if (m_sb.len () != m_len)//check length
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) len()=%zu expect %zu", file, line, m_block.dim, m_sb.len (), m_len);
+	  ERR ("[%s(%d)] StrBuf() len()=%zu expect %zu", file, line, m_sb.len (), m_len);
 	  return;
 	}
-      if (strcmp (m_block.ptr, m_ref) != 0)//check content
+      if (strcmp (m_sb.get_buffer(), m_ref) != 0)//check content
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect {\"%s\"}", file, line, m_block.dim, m_block.ptr, m_ref);
+	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect {\"%s\"}", file, line, m_sb.get_buffer(), m_ref);
 	  return;
 	}
-      if (affix_allocator.check (m_block))
+      if (affix_allocator.check (m_sb))
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) memory corruption", file, line, m_block.dim);
+	  ERR ("[%s(%d)] StrBuf() memory corruption", file, line);
 	}
     }
 };
@@ -230,7 +226,7 @@ int main (int argc, char **argv)
 #if !defined (_MSC_VER) || (_MSC_VER >= 1700)
   if (flags & FL_TIME)
     {
-      printf ("%.9lf ms\n", std::chrono::duration<double, std::milli> (t1 - t0).count ());
+      printf ("%.9lf ms (iterations: %d)\n", std::chrono::duration<double, std::milli> (t1 - t0).count (), N);
     }
 #endif
 

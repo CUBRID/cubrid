@@ -731,7 +731,7 @@ void
 help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
 {
   db_private_allocator < char >private_allocator (thread_p);
-  mem::block_ext mem_block
+  string_buffer sb
   {
     [&private_allocator] (mem::block & block, size_t len)
     {
@@ -749,10 +749,9 @@ help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
       };
     }
   };
-  string_buffer sb (mem_block);
   db_value_printer printer (sb);
   printer.describe_value (value);
-  fprintf (fp, "%.*s", (int) sb.len (), mem_block.ptr);
+  fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());
 }
 
 /*
@@ -776,13 +775,12 @@ void
 help_fprint_describe_comment (FILE * fp, const char *comment)
 {
 #if !defined (SERVER_MODE)
-  mem::block_ext mem_block;
-  string_buffer sb (mem_block);
+  string_buffer sb;
   object_printer printer (sb);
 
   assert (fp != NULL);
   assert (comment != NULL);
   printer.describe_comment (comment);
-  fprintf (fp, "%.*s", int (sb.len ()), mem_block.ptr);
+  fprintf (fp, "%.*s", int (sb.len ()), sb.get_buffer ());
 #endif /* !defined (SERVER_MODE) */
 }

@@ -4658,8 +4658,7 @@ la_flush_repl_items (bool immediate)
   char pkey_str[256];
   char buf[LINE_MAX];
 
-  mem::block_ext mem_block;
-  string_buffer sb (mem_block);
+  string_buffer sb;
 
   if (la_Info.num_unflushed == 0)
     {
@@ -4855,8 +4854,7 @@ la_apply_delete_log (LA_ITEM * item)
   char buf[256];
   char sql_log_err[LINE_MAX];
 
-  mem::block_ext mem_block;
-  string_buffer sb (mem_block);
+  string_buffer sb;
 
   int error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -4943,8 +4941,7 @@ la_apply_update_log (LA_ITEM * item)
   DB_OTMPL *inst_tp = NULL;
   char sql_log_err[LINE_MAX];
 
-  mem::block_ext mem_block;
-  string_buffer sb (mem_block);
+  string_buffer sb;
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5128,8 +5125,7 @@ la_apply_insert_log (LA_ITEM * item)
   DB_OTMPL *inst_tp = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
 
-  mem::block_ext mem_block;
-  string_buffer sb (mem_block);
+  string_buffer sb;
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5645,8 +5641,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
   error = la_lock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, la_Info.log_path);
   assert_release (error == NO_ERROR);
 
-  mem::block_ext mem_block;
-  string_buffer sb (mem_block);
+  string_buffer sb;
 
   item = apply->head;
   while (item)

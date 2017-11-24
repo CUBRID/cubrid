@@ -315,16 +315,14 @@ sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, 
 int
 sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
-  mem::block_ext insert_memblock;
-  string_buffer insert_strbuf (insert_memblock);
+  string_buffer insert_strbuf;
   insert_strbuf ("INSERT INTO [%s](", sm_ch_name ((MOBJ) (inst_tp->class_)));
   sl_print_insert_att_names (insert_strbuf, inst_tp->assignments, inst_tp->nassigns);
   insert_strbuf (") VALUES (");
   sl_print_insert_att_values (insert_strbuf, inst_tp->assignments, inst_tp->nassigns);
   insert_strbuf (");");
 
-  mem::block_ext select_memblock;
-  string_buffer select_strbuf (select_memblock);
+  string_buffer select_strbuf;
   if (sl_print_select (select_strbuf, inst_tp->class_, key) != NO_ERROR)
     {
       return ER_FAILED;
@@ -344,8 +342,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial") != 0)
     {
       /* ordinary tables */
-      mem::block_ext update_mb;
-      string_buffer update_strbuf (update_mb);
+      string_buffer update_strbuf;
       update_strbuf ("UPDATE [%s] SET ", sm_ch_name ((MOBJ) (inst_tp->class_)));
       sl_print_update_att_set (update_strbuf, inst_tp->assignments, inst_tp->nassigns);
       update_strbuf (" WHERE ");
@@ -355,8 +352,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 	}
       update_strbuf (";");
 
-      mem::block_ext select_memblock;
-      string_buffer select_strbuf (select_memblock);
+      string_buffer select_strbuf;
       if (sl_print_select (select_strbuf, inst_tp->class_, key) != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -378,13 +374,11 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 	{
 	  return ER_FAILED;
 	}
-      mem::block_ext serial_name_mb;
-      string_buffer serial_name_strbuf (serial_name_mb);
+      string_buffer serial_name_strbuf;
       sl_print_att_value (serial_name_strbuf, "name", inst_tp->assignments, inst_tp->nassigns);
-      char *serial_name = trim_single_quote (serial_name_mb.ptr, serial_name_strbuf.len ());
+      char *serial_name = trim_single_quote ((char *) serial_name_strbuf.get_buffer (), serial_name_strbuf.len ());
 
-      mem::block_ext alter_mb;
-      string_buffer alter_strbuf (alter_mb);
+      string_buffer alter_strbuf;
       char str_next_value[NUMERIC_MAX_STRING_SIZE];
       alter_strbuf ("ALTER SERIAL [%s] START WITH %s;", serial_name,
 		    numeric_db_value_print (&next_value, str_next_value));
@@ -395,8 +389,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 int
 sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 {
-  mem::block_ext mb1;
-  string_buffer delete_strbuf (mb1);
+  string_buffer delete_strbuf;
   delete_strbuf ("DELETE FROM [%s] WHERE ", class_name);
   if (sl_print_pk (delete_strbuf, (SM_CLASS *) mclass, key) != NO_ERROR)
     {
@@ -404,8 +397,7 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
     }
   delete_strbuf (";");
 
-  mem::block_ext mb2;
-  string_buffer select_strbuf (mb2);
+  string_buffer select_strbuf;
   if (sl_print_select (select_strbuf, (SM_CLASS *) mclass, key) != NO_ERROR)
     {
       return ER_FAILED;
@@ -421,8 +413,7 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
   char default_ha_prm[LINE_MAX];
   SYSPRM_ERR rc;
 
-  mem::block_ext memblock;
-  string_buffer statement_strbuf (memblock);
+  string_buffer statement_strbuf;
   statement_strbuf ("%s;", stmt_text);
 
   if (ha_sys_prm != NULL)
@@ -433,8 +424,7 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
 	  return sysprm_set_error (rc, ha_sys_prm);
 	}
 
-      mem::block_ext setprm_mblock;
-      string_buffer setprm_strbuf (setprm_mblock);
+      string_buffer setprm_strbuf;
       setprm_strbuf ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_START, ha_sys_prm);	//set param
       if (sl_write_sql (setprm_strbuf, NULL) != NO_ERROR)
 	{

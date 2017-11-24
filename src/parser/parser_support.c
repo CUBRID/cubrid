@@ -9034,13 +9034,13 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 		   table_name->info.name.original, pt_show_misc_type (PT_CLASS));
     }
 
-  mem::block_ext mem_block
+  string_buffer sb
   {
     [&parser] (mem::block & block, size_t len)
     {
       size_t dim = block.dim ? block.dim : 1;
       for (; dim < block.dim + len; dim *= 2);	//calc next power of 2 >= b.dim
-      mem::block b
+        mem::block b
       {
       dim, (char *) parser_alloc (parser, block.dim + len)};
       memcpy (b.ptr, block.ptr, block.dim);
@@ -9049,10 +9049,9 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
     {
     }				//no need to deallocate for parser_context
   };
-  string_buffer sb (mem_block);
   object_printer obj_print (sb);
   obj_print.describe_class (class_op);
-  return mem_block.move_ptr ();
+  return sb.move_ptr ();
 }
 
 /*
