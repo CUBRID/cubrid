@@ -1363,7 +1363,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
     {
       loghdr->prefix_name[0] = '\0';
     }
-  loghdr->vacuum_last_blockid = 0;
+  logpb_hdr_set_vacuum_last_blockid (0);
   loghdr->perm_status = LOG_PSTAT_CLEAR;
 
   for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
@@ -6982,7 +6982,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	  if (LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
 	    {
 	      /* Update the last_blockid needed for vacuum. Get the first page_id of the previously logged archive */
-	      log_Gl.hdr.vacuum_last_blockid = logpb_last_complete_blockid ();
+	      logpb_hdr_set_vacuum_last_blockid (logpb_last_complete_blockid ());
 	    }
 #endif /* SA_MODE */
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
@@ -12097,4 +12097,18 @@ logpb_last_complete_blockid (void)
 
   /* the previous block is the one completed */
   return blockid - 1;
+}
+
+VACUUM_LOG_BLOCKID
+logpb_hdr_get_vacuum_last_blockid (void)
+{
+  VACUUM_LOG_BLOCKID temp;
+  memcpy (&temp, log_Gl.hdr.vacuum_last_blockid_buf, sizeof (VACUUM_LOG_BLOCKID));
+  return temp;
+}
+
+void
+logpb_hdr_set_vacuum_last_blockid (VACUUM_LOG_BLOCKID blockid)
+{
+  memcpy (log_Gl.hdr.vacuum_last_blockid_buf, &blockid, sizeof (VACUUM_LOG_BLOCKID));
 }
