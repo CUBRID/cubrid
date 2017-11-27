@@ -7032,7 +7032,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 
   error =
     smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space, add_first,
-				      add_after_attr, &default_expr);
+				      add_after_attr, &default_expr, NULL);
 
   db_value_clear (&stack_value);
 
@@ -7160,8 +7160,8 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	}
     }
 
-  error =
-    smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value, ID_ATTRIBUTE, default_expr);
+  error = smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value, ID_ATTRIBUTE,
+				    default_expr, NULL);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -8739,6 +8739,14 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (!reuse_oid && (source_class->flags & SM_CLASSFLAG_REUSE_OID))
 	    {
 	      reuse_oid = true;
+	    }
+	  if (source_class->comment)
+	    {
+	      error = sm_set_class_comment (class_obj, source_class->comment);
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
 	    }
 	}
       if (locator_create_heap_if_needed (class_obj, reuse_oid) == NULL)
