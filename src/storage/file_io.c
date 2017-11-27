@@ -2573,12 +2573,12 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
   (void) fileio_initialize_res (thread_p, &(io_page_p->prv));
 
   start_pageid = (PAGEID) (current_size / IO_PAGESIZE);
-  last_pageid = (PAGEID) (new_size / IO_PAGESIZE);
+  last_pageid = ((PAGEID) (new_size / IO_PAGESIZE) - 1);
 
   if (voltype == DB_TEMPORARY_VOLTYPE)
     {
       /* Write the last page */
-      if (fileio_write (thread_p, vol_fd, io_page_p, last_pageid - 1, IO_PAGESIZE) != io_page_p)
+      if (fileio_write (thread_p, vol_fd, io_page_p, last_pageid, IO_PAGESIZE) != io_page_p)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	}
@@ -2588,7 +2588,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
       /* support generic volume only */
       assert_release (voltype == DB_PERMANENT_VOLTYPE);
 
-      if (fileio_initialize_pages (thread_p, vol_fd, io_page_p, start_pageid, last_pageid - start_pageid,
+      if (fileio_initialize_pages (thread_p, vol_fd, io_page_p, start_pageid, last_pageid - start_pageid + 1,
 				   IO_PAGESIZE, -1) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
