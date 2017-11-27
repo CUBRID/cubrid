@@ -954,7 +954,9 @@ struct log_header
   LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2 */
   char prefix_name[MAXLOGNAME];	/* Log prefix name */
   bool has_logging_been_skipped;	/* Has logging been skipped ? */
-  VACUUM_LOG_BLOCKID vacuum_last_blockid;	/* Last processed blockid needed for vacuum. */
+  bool dummy_byte_1;
+  char vacuum_last_blockid_buf[sizeof (VACUUM_LOG_BLOCKID)];	/* Last processed blockid needed for vacuum. */
+  /* hack for 10.1 p 1 compatibility */
   int perm_status;		/* Reserved for future expansion and permanent status indicators, e.g. to mark
 				 * RESTORE_IN_PROGRESS */
   LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
@@ -2342,6 +2344,8 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
+extern VACUUM_LOG_BLOCKID logpb_hdr_get_vacuum_last_blockid (void);
+extern void logpb_hdr_set_vacuum_last_blockid (VACUUM_LOG_BLOCKID blockid);
 
 /************************************************************************/
 /* Inline functions:                                                    */

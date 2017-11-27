@@ -4081,7 +4081,8 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	   * in the log_Gl header. After a long session in SA_MODE, the vacuum_Data.last_page->data->blockid will
 	   * be outdated. Instead, SA_MODE updates log_Gl.hdr.vacuum_last_blockid before removing old archives.
 	   */
-	  vacuum_Data.last_blockid = MAX (log_Gl.hdr.vacuum_last_blockid, vacuum_Data.last_page->data->blockid);
+	  VACUUM_LOG_BLOCKID hdr_last_blockid = logpb_hdr_get_vacuum_last_blockid ();
+	  vacuum_Data.last_blockid = MAX (hdr_last_blockid, vacuum_Data.last_page->data->blockid);
 	}
     }
   else
