@@ -35,8 +35,11 @@
 #define DB_MACRO_INLINE __forceinline static
 #endif
 #else
+#include "dbtype_api.h"
 #define DB_MACRO_INLINE
 #endif
+
+
 
 /*
  * db_get_int() -
@@ -716,7 +719,9 @@ db_get_enum_collation (const DB_VALUE * value)
 DB_MACRO_INLINE OID *
 db_get_oid (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL(value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_OID);
 
   return (OID *) (&value->data.oid);

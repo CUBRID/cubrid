@@ -53,7 +53,8 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-#include "db_macro.i"
+#include "dbtype.h"
+//#include "db_macro.i"
 
 #define DB_NUMBER_ZERO	    0
 

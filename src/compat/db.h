@@ -31,7 +31,6 @@
 
 #include <stdio.h>
 #include "error_manager.h"
-#include "dbtype.h"
 #include "dbdef.h"
 #include "intl_support.h"
 #include "db_date.h"
@@ -44,6 +43,7 @@
 #include "parser.h"
 #endif
 #include "log_comm.h"
+#include "dbtype_common.h"
 
 /* GLOBAL STATE */
 #define DB_CONNECTION_STATUS_NOT_CONNECTED      0
@@ -163,7 +163,75 @@ extern char db_Program_name[];
     error = NO_ERROR;                                                        \
   }
 #endif /* !SA_MODE */
-#endif /* CHECK_MODIFICATION_NO_RETURN */
+#endif	/* CHECK_MODIFICATION_NO_RETURN */				   /********************************************************/
+  /* Argument checking macros from db.h */
+#define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
+  do {                                                                         \
+    if((obj) == NULL) {                                                        \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_2ARGS_RETURN_EXPR(obj1, obj2, expr)                              \
+  do {                                                                         \
+    if((obj1) == NULL || (obj2) == NULL) {                                     \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, expr)                        \
+  do {                                                                         \
+    if((obj1) == NULL || (obj2) == NULL || (obj3) == NULL) {                   \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_1ARG_NULL(obj)        \
+  CHECK_1ARG_RETURN_EXPR(obj, NULL)
+
+#define CHECK_2ARGS_NULL(obj1, obj2)    \
+  CHECK_2ARGS_RETURN_EXPR(obj1,obj2,NULL)
+
+#define CHECK_3ARGS_NULL(obj1, obj2, obj3) \
+  CHECK_3ARGS_RETURN_EXPR(obj1,obj2,obj3,NULL)
+
+#define CHECK_1ARG_FALSE(obj)  \
+  CHECK_1ARG_RETURN_EXPR(obj,false)
+
+#define CHECK_1ARG_TRUE(obj)   \
+  CHECK_1ARG_RETURN_EXPR(obj, true)
+
+#define CHECK_1ARG_ERROR(obj)  \
+  CHECK_1ARG_RETURN_EXPR(obj,ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_ERROR_WITH_TYPE(obj, TYPE)  \
+  CHECK_1ARG_RETURN_EXPR(obj,(TYPE)ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_MINUSONE(obj) \
+  CHECK_1ARG_RETURN_EXPR(obj,-1)
+
+#define CHECK_2ARGS_ERROR(obj1, obj2)   \
+  CHECK_2ARGS_RETURN_EXPR(obj1, obj2, ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_3ARGS_ERROR(obj1, obj2, obj3) \
+  CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_ZERO(obj)     \
+  CHECK_1ARG_RETURN_EXPR(obj, 0)
+
+#define CHECK_1ARG_ZERO_WITH_TYPE(obj1, RETURN_TYPE)     \
+  CHECK_1ARG_RETURN_EXPR(obj1, (RETURN_TYPE) 0)
+
+#define CHECK_2ARGS_ZERO(obj1, obj2)    \
+  CHECK_2ARGS_RETURN_EXPR(obj1,obj2, 0)
+
+#define CHECK_1ARG_UNKNOWN(obj1)        \
+  CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
+
+  /********************************************************/
 
 extern int db_init (const char *program, int print_version, const char *dbname, const char *db_path,
 		    const char *vol_path, const char *log_path, const char *lob_path, const char *host_name,

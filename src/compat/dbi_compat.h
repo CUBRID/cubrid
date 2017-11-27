@@ -21,6 +21,10 @@
  * dbi.h - Definitions and function prototypes for the CUBRID Application Program Interface (API).
  */
 
+
+#ifndef _DBI_COMPAT_H_
+#define _DBI_COMPAT_H_
+
 #include <stdio.h>
 #include <time.h>
 #include <sys/types.h>
@@ -38,9 +42,6 @@
 #endif /* WINDOWS && !__GNUC__ */
 
 #include "dbtype_common.h"
-
-#ifndef _DBI_COMPAT_H_
-#define _DBI_COMPAT_H_
 
 #ifdef __cplusplus
 extern "C"
