@@ -853,12 +853,6 @@ db_get_json_document (const DB_VALUE * value)
 DB_MACRO_INLINE int
 db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
 {
-
-  /* 
-   *  Remove the comments when decided on implementation.
-   */
-  int error = NO_ERROR;
-
 #if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ERROR (value);
 #endif
@@ -872,105 +866,12 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
   value->data.ch.medium.compressed_buf = NULL;
   value->data.ch.medium.compressed_size = 0;
   value->domain.general_info.is_null = ((void *) str != NULL) ? 0 : 1;
-  value->domain.general_info.is_null = (size == 0
-					&& prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)) ? 1 :
-    DB_IS_NULL (value);
+  value->domain.general_info.is_null = ((size == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+					? 1 : DB_IS_NULL (value));
   value->domain.char_info.collation_id = collation_id;
   value->need_clear = false;
 
   return NO_ERROR;
-
-  /*  todo: Decide on what implementation do we keep. The old one from dbval.h, 
-   *  that is currently active, which does not do any preliminary checks, or the
-   *  one from db_macro.c which does extra checks that caused some regressions to
-   *  fail.
-   */
-#if 0
-  is_char_type = (value->domain.general_info.type == DB_TYPE_VARCHAR
-		  || value->domain.general_info.type == DB_TYPE_CHAR
-		  || value->domain.general_info.type == DB_TYPE_NCHAR
-		  || value->domain.general_info.type == DB_TYPE_VARNCHAR);
-  is_bit_type = (value->domain.general_info.type == DB_TYPE_BIT || value->domain.general_info.type == DB_TYPE_VARBIT);
-
-  if (is_char_type || is_bit_type)
-    {
-/* #if 0 */
-/* Remove comments up when decided on implementation. */
-      if (size <= DB_SMALL_CHAR_BUF_SIZE)
-	{
-	  value->data.ch.info.style = SMALL_STRING;
-	  value->data.ch.sm.codeset = codeset;
-	  value->data.ch.sm.size = size;
-	  memcpy (value->data.ch.sm.buf, str, size);
-	}
-      else
-/* #endif */
-/* Remove comments up when decided on implementation. */
-      if (size <= DB_MAX_STRING_LENGTH)
-	{
-	  value->data.ch.info.style = MEDIUM_STRING;
-	  value->data.ch.info.codeset = codeset;
-	  value->domain.char_info.collation_id = collation_id;
-	  value->data.ch.info.is_max_string = false;
-	  value->data.ch.info.compressed_need_clear = false;
-	  value->data.ch.medium.compressed_buf = NULL;
-	  value->data.ch.medium.compressed_size = 0;
-	  /* 
-	   * If size is set to the default, and the type is any
-	   * kind of character string, assume the string is NULL
-	   * terminated.
-	   */
-	  if (size == DB_DEFAULT_STRING_LENGTH && (is_char_type || is_bit_type))
-	    {
-	      value->data.ch.medium.size = str ? strlen (str) : 0;
-	    }
-	  else if (size < 0)
-	    {
-	      error = ER_QSTR_BAD_LENGTH;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_BAD_LENGTH, 1, size);
-	    }
-	  else
-	    {
-	      /* We need to ensure that we don't exceed the max size for the char value specified in the domain. */
-	      if (value->domain.char_info.length == TP_FLOATING_PRECISION_VALUE || LANG_VARIABLE_CHARSET (codeset))
-			{
-			  value->data.ch.medium.size = size;
-			}
-			  else
-			{
-			  value->data.ch.medium.size = MIN (size, value->domain.char_info.length);
-			}
-	    }
-	  value->data.ch.medium.buf = (char *) str;
-	}
-      else
-	{
-	  /* case LARGE_STRING: Currently Not Implemented */
-	}
-
-      if (str)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  value->domain.general_info.is_null = 1;
-	}
-
-      if (size == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
-	{
-	  value->domain.general_info.is_null = 1;
-	}
-
-      value->need_clear = false;
-    }
-  else
-    {
-      error = ER_QPROC_INVALID_DATATYPE;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-    }
-  return error;
-#endif
 }
 
 /*
@@ -2039,21 +1940,21 @@ db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
 }
 
 DB_MACRO_INLINE int
-db_get_compressed_size(DB_VALUE * value)
+db_get_compressed_size (DB_VALUE * value)
 {
-	DB_TYPE type;
+  DB_TYPE type;
 
-	if (value == NULL || DB_IS_NULL(value))
-	{
-		return 0;
-	}
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return 0;
+    }
 
-	type = DB_VALUE_DOMAIN_TYPE(value);
+  type = DB_VALUE_DOMAIN_TYPE (value);
 
-	/* Preliminary check */
-	assert(type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
 
-	return value->data.ch.medium.compressed_size;
+  return value->data.ch.medium.compressed_size;
 }
 
 /*
@@ -2065,24 +1966,24 @@ db_get_compressed_size(DB_VALUE * value)
 *  compressed_need_clear(in) :
 */
 DB_MACRO_INLINE void
-db_set_compressed_string(DB_VALUE * value, char *compressed_string, int compressed_size, bool compressed_need_clear)
+db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size, bool compressed_need_clear)
 {
-	DB_TYPE type;
+  DB_TYPE type;
 
-	if (value == NULL || DB_IS_NULL(value))
-	{
-		return;
-	}
-	type = DB_VALUE_DOMAIN_TYPE(value);
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return;
+    }
+  type = DB_VALUE_DOMAIN_TYPE (value);
 
-	/* Preliminary check */
-	assert(type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
 
-	value->data.ch.medium.compressed_buf = compressed_string;
-	value->data.ch.medium.compressed_size = compressed_size;
-	value->data.ch.info.compressed_need_clear = compressed_need_clear;
+  value->data.ch.medium.compressed_buf = compressed_string;
+  value->data.ch.medium.compressed_size = compressed_size;
+  value->data.ch.info.compressed_need_clear = compressed_need_clear;
 
-	return;
+  return;
 }
 
 #endif /* _DB_MACRO_I_ */

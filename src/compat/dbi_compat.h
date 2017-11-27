@@ -42,14 +42,11 @@
 #endif /* WINDOWS && !__GNUC__ */
 
 #include "dbtype_common.h"
+#include "error_code.h"
 
 #ifdef __cplusplus
 extern "C"
 {
-#endif
-
-#ifdef NO_ERROR
-#undef NO_ERROR
 #endif
 
 #define DB_TRUE 1
