@@ -3052,6 +3052,9 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_PULL_STRING (arg[i + 1]));
 	  break;
 	case DB_TYPE_INTEGER:
@@ -3107,6 +3110,9 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_DOMAIN_TYPE (arg[i]))
 	{
 	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
 	  db_json_add_element_to_array (new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 	case DB_TYPE_INTEGER:
@@ -3163,6 +3169,9 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
     {
     case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
       error_code = db_json_get_json_from_str (DB_PULL_STRING (arg[0]), new_doc);
       if (error_code != NO_ERROR)
 	{
@@ -3193,6 +3202,9 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
 							db_json_insert_func, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
@@ -3243,6 +3255,9 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
     {
     case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
       error_code = db_json_get_json_from_str (DB_PULL_STRING (arg[0]), new_doc);
       if (error_code != NO_ERROR)
 	{
@@ -3313,6 +3328,9 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator);
 	  break;
 	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (DB_GET_STRING (arg[i]), db_json_merge_func, accumulator);
 	  break;
 	case DB_TYPE_NULL:
