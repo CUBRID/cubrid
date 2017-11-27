@@ -7160,9 +7160,8 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	}
     }
 
-  error =
-    smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value, ID_ATTRIBUTE, default_expr,
-			      NULL);
+  error = smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value, ID_ATTRIBUTE,
+				    default_expr, NULL);
   if (error != NO_ERROR)
     {
       goto error_exit;
