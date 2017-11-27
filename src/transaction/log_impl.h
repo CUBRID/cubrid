@@ -1014,7 +1014,12 @@ struct log_header
      {'0'},                                      \
      /* has_logging_been_skipped */              \
      false,                                      \
-     0, 0,                                       \
+     /* dummy_byte_1 */                          \
+     false,                                      \
+     /* vacuum_last_blockid_buf */               \
+     {'0'},                                      \
+     /* perm_status */                           \
+     0,                                          \
      /* bkinfo */                                \
      {{0, 0, 0, 0, 0}},                          \
      0, 0,                                       \
@@ -1073,7 +1078,12 @@ struct log_header
      {'0'},                                      \
      /* has_logging_been_skipped */              \
      false,                                      \
-     0, 0,                                       \
+     /* dummy_byte_1 */                          \
+     false,                                      \
+     /* vacuum_last_blockid_buf */               \
+     {'0'},                                      \
+     /* perm_status */                           \
+     0,                                          \
      /* bkinfo */                                \
      {{0, 0, 0, 0, 0}},                          \
      0, 0,                                       \
