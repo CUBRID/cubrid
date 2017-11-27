@@ -3425,8 +3425,9 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	      domain_init (domain, value_type);
 	    }
 
-	  if (db_get_json_schema (val) != NULL)
+	  if (db_get_json_schema (val) != NULL && strlen (db_get_json_schema (val)) > 0)
 	    {
+              /* TODO figure why strlen > 0 is required */
 	      int error_code;
 
 	      error_code = db_json_load_validator (db_get_json_schema (val), domain->json_validator);

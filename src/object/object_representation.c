@@ -8729,13 +8729,13 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
-  rc = (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, false, NULL, 0);
+  rc = (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, true, NULL, 0);
   if (rc != NO_ERROR)
     {
       return rc;
     }
 
-  if (DB_GET_STRING_SIZE (&schema_value) == 0)
+  if (DB_IS_NULL (&schema_value))
     {
       schema = NULL;
     }
@@ -8758,7 +8758,7 @@ or_put_json_schema (OR_BUF * buf, const char *schema)
 
   if (schema == NULL)
     {
-      db_make_string (&schema_raw, "");
+      DB_MAKE_NULL (&schema_raw);
     }
   else
     {
