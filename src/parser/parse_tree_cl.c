@@ -16707,6 +16707,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 
       break;
     case PT_TYPE_JSON:
+      assert (p->info.value.data_value.str != NULL);
       q = pt_append_nulstring (parser, q, "json \'");
       q = pt_append_nulstring (parser, q, (char *) p->info.value.data_value.str->bytes);
       q = pt_append_nulstring (parser, q, "\'");
