@@ -41,8 +41,6 @@
 #include "trigger_description.hpp"
 #include "db.h"
 
-#include <iterator>
-
 /* for short usage of `csql_append_more_line()' and error check */
 #define	APPEND_MORE_LINE(indent, line)	\
 		do { \
@@ -392,7 +390,7 @@ csql_help_schema (const char *class_name)
     {
       APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_HEAD_TEXT));
     //for (auto it:class_descr.triggers) //gcc 4.4.7 doesn't know about it
-      for (auto it = cbegin(class_descr.triggers); it != cend(class_descr.triggers); ++it)
+      for (auto it = class_descr.triggers.cbegin(); it != class_descr.triggers.cend(); ++it)
 	{
 	  APPEND_MORE_LINE (5, *it);
 	}
@@ -402,7 +400,7 @@ csql_help_schema (const char *class_name)
     {
       APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_PARTITION_HEAD_TEXT));
     //for (auto it:class_descr.partition) //gcc 4.4.7 doesn't know about it
-      for (auto it = cbegin(class_descr.partition); it != cend(class_descr.partition); ++it)
+      for (auto it = class_descr.partition.cbegin(); it != class_descr.partition.cend(); ++it)
 	{
 	  APPEND_MORE_LINE (5, *it);
 	}
