@@ -17634,7 +17634,7 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_UNCOMPARABLE_TYPES, 2, db_json_get_type_as_str (doc1),
 		  db_json_get_type_as_str (doc2));
-	  return DB_NE;
+	  return DB_UNK;
 	}
 
       if (db_json_doc_has_numeric_type (doc1) && db_json_doc_has_numeric_type (doc2))
