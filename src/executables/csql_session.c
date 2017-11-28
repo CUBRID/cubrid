@@ -390,7 +390,7 @@ csql_help_schema (const char *class_name)
     {
       APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_HEAD_TEXT));
     //for (auto it:class_descr.triggers) //gcc 4.4.7 doesn't know about it
-      for (auto it = class_descr.triggers.cbegin(); it != class_descr.triggers.cend(); ++it)
+      for (auto it = class_descr.triggers.begin(); it != class_descr.triggers.end(); ++it)
 	{
 	  APPEND_MORE_LINE (5, *it);
 	}
@@ -400,7 +400,7 @@ csql_help_schema (const char *class_name)
     {
       APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_PARTITION_HEAD_TEXT));
     //for (auto it:class_descr.partition) //gcc 4.4.7 doesn't know about it
-      for (auto it = class_descr.partition.cbegin(); it != class_descr.partition.cend(); ++it)
+      for (auto it = class_descr.partition.begin(); it != class_descr.partition.end(); ++it)
 	{
 	  APPEND_MORE_LINE (5, *it);
 	}
