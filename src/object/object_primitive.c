@@ -10427,6 +10427,7 @@ class temp_mem_manager //temporary until get rid of gcc 4.4.7
   private:
     thread_entry *m_thr_ctx;
 };
+
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of
  * the pr_type vector for the appropriate type.

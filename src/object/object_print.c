@@ -720,6 +720,31 @@ help_print_info (const char *command, FILE * fpp)
 
 #endif /* defined (SERVER_MODE) */
 
+class temp_mem_manager //temporary until get rid of gcc 4.4.7
+{
+  public:
+    temp_mem_manager(db_private_allocator<char> &allocator)
+      : m_allocator{allocator}
+    {}
+
+    void extend(mem::block &block, size_t len)
+    {
+      mem::block b{block.dim + len, m_allocator.allocate (block.dim + len)};
+      memcpy (b.ptr, block.ptr, block.dim);
+      m_allocator.deallocate (block.ptr);
+      block = std::move (b);
+    }
+
+    void dealloc(mem::block & block)
+    {
+      m_allocator.deallocate (block.ptr);
+      block = {};
+    }
+
+  private:
+    db_private_allocator<char> &m_allocator;
+};
+
 /*
  * help_fprint_value() -  Prints a description of the contents of a DB_VALUE
  *                        to the file
@@ -731,24 +756,29 @@ void
 help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
 {
   db_private_allocator < char >private_allocator (thread_p);
+#if 0
   string_buffer sb
   {
     [&private_allocator] (mem::block & block, size_t len)
     {
-      mem::block b
-      {
-      block.dim + len, private_allocator.allocate (block.dim + len)};
+      mem::block b{block.dim + len, private_allocator.allocate (block.dim + len)};
       memcpy (b.ptr, block.ptr, block.dim);
       private_allocator.deallocate (block.ptr);
       block = std::move (b);
-    },[&private_allocator] (mem::block & block)
+    }
+    ,
+    [&private_allocator] (mem::block & block)
     {
       private_allocator.deallocate (block.ptr);
-      block =
-      {
-      };
+      block = {};
     }
   };
+#else
+  temp_mem_manager mem_manager(private_allocator);
+  std::function<void(mem::block &block, size_t len)> extend = std::bind(&temp_mem_manager::extend, &mem_manager, std::placeholders::_1, std::placeholders::_2);
+  std::function<void(mem::block &block)> dealloc = std::bind(&temp_mem_manager::dealloc, &mem_manager, std::placeholders::_1);
+  string_buffer sb{extend, dealloc};
+#endif
   db_value_printer printer (sb);
   printer.describe_value (value);
   fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());

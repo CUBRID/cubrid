@@ -9021,7 +9021,6 @@ class temp_mem_manager //temporary until get rid of gcc 4.4.7
     PARSER_CONTEXT *m_parser_ctx;
 };
 
-
 /*
  * pt_help_show_create_table() help to generate create table string.
  * return string of create table.

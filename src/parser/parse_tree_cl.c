@@ -2506,6 +2506,31 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
   return q;
 }
 
+class temp_mem_manager //temporary until get rid of gcc 4.4.7
+{
+  public:
+    temp_mem_manager(PARSER_CONTEXT* parser_ctx)
+      : m_parser_ctx{parser_ctx}
+    {}
+
+    void extend(mem::block &block, size_t len)
+    {
+      size_t dim = block.dim ? block.dim : 1;
+      for (; dim < block.dim + len; dim *= 2);	//calc next power of 2 >= b.dim
+      mem::block b{dim, (char *) parser_alloc (m_parser_ctx, block.dim + len)};
+      memcpy (b.ptr, block.ptr, block.dim);
+      block = std::move (b);
+    }
+
+    void dealloc(mem::block & block)
+    {
+      //block = {};
+    }
+
+  private:
+    PARSER_CONTEXT *m_parser_ctx;
+};
+
 /*
  * pt_print_db_value () -
  *   return: const sql string customized
@@ -2520,6 +2545,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   DB_VALUE element;
   int error = NO_ERROR;
   unsigned int save_custom = parser->custom_print;
+#if 0
   string_buffer sb
   {
     [&parser] (mem::block & block, size_t len)
@@ -2535,6 +2561,12 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
     {
     }				//no need to deallocate for parser_context
   };
+#else
+  temp_mem_manager mem_manager(parser);
+  std::function<void(mem::block &block, size_t len)> extend = std::bind(&temp_mem_manager::extend, &mem_manager, std::placeholders::_1, std::placeholders::_2);
+  std::function<void(mem::block &block)> dealloc = std::bind(&temp_mem_manager::dealloc, &mem_manager, std::placeholders::_1);
+  string_buffer sb{extend, dealloc};
+#endif
   db_value_printer printer (sb);
   if (val == NULL)
     {
