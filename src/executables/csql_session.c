@@ -389,18 +389,20 @@ csql_help_schema (const char *class_name)
   if (!class_descr.triggers.empty ())
     {
       APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_HEAD_TEXT));
-    for (auto it:class_descr.triggers)
+    //for (auto it:class_descr.triggers) //gcc 4.4.7 doesn't know about it
+      for (auto it = cbegin(class_descr.triggers); it != cend(class_descr.triggers); ++it)
 	{
-	  APPEND_MORE_LINE (5, it);
+	  APPEND_MORE_LINE (5, *it);
 	}
     }
 
   if (!class_descr.partition.empty ())
     {
       APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_PARTITION_HEAD_TEXT));
-    for (auto it:class_descr.partition)
+    //for (auto it:class_descr.partition) //gcc 4.4.7 doesn't know about it
+      for (auto it = cbegin(class_descr.partition); it != cend(class_descr.partition); ++it)
 	{
-	  APPEND_MORE_LINE (5, it);
+	  APPEND_MORE_LINE (5, *it);
 	}
     }
 
