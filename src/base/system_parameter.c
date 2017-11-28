@@ -633,6 +633,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CTE_MAX_RECURSIONS "cte_max_recursions"
 
+#define PRM_NAME_JSON_LOG_ALLOCATIONS "json_log_allocations"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2121,6 +2123,10 @@ static int prm_cte_max_recursions_default = 2000;
 static int prm_cte_max_recursions_upper = 1000000;
 static int prm_cte_max_recursions_lower = 2;
 static unsigned int prm_cte_max_recursions_flag = 0;
+
+bool PRM_JSON_LOG_ALLOCATIONS = false;
+static bool prm_json_log_allocations_default = false;
+static unsigned int prm_json_log_allocations_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5374,6 +5380,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_CTE_MAX_RECURSIONS,
    (void *) &prm_cte_max_recursions_upper,
    (void *) &prm_cte_max_recursions_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JSON_LOG_ALLOCATIONS,
+   PRM_NAME_JSON_LOG_ALLOCATIONS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_json_log_allocations_flag,
+   (void *) &prm_json_log_allocations_default,
+   (void *) &PRM_JSON_LOG_ALLOCATIONS,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

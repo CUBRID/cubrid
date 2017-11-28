@@ -3044,11 +3044,6 @@ typedef DB_TIMESTAMPTZ PT_TIMESTAMPTZ;
 typedef long PT_DATE;
 typedef DB_DATETIME PT_DATETIME;
 typedef DB_DATETIMETZ PT_DATETIMETZ;
-typedef struct
-{
-  char *json_body;
-  JSON_DOC *document;
-} PT_JSON;
 
 /* enum currency types */
 typedef enum pt_currency_types
@@ -3114,7 +3109,6 @@ union pt_data_value
   PT_MONETARY money;
   PT_NODE *set;			/* constant sets */
   DB_ELO elo;			/* ??? */
-  PT_JSON json;
   int b;
   PT_ENUM_ELEMENT enumeration;
 };
@@ -3715,6 +3709,10 @@ extern "C"
 {
 #endif
   void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+  bool pt_is_json_value_type (PT_TYPE_ENUM type);
+  bool pt_is_json_doc_type (PT_TYPE_ENUM type);
+  bool pt_is_json_object_name (PT_TYPE_ENUM type);
+  bool pt_is_json_path (PT_TYPE_ENUM type);
 #ifdef __cplusplus
 }
 #endif
