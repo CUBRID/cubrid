@@ -3285,6 +3285,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       error_code = db_json_remove_func (new_doc, DB_PULL_STRING (arg[i]));
       if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  db_json_delete_doc (new_doc);
 	  return error_code;
 	}
