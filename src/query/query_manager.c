@@ -37,10 +37,10 @@
 #include "session.h"
 #include "filter_pred_cache.h"
 #include "md5.h"
-
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+#include "thread.h"
 
 #if !defined (SERVER_MODE)
 

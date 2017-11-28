@@ -1930,13 +1930,12 @@ shutdown:
   /* stop threads */
   thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
-  /* stop vacuum threads. */
-  vacuum_notify_server_shutdown ();
-  thread_stop_vacuum_daemons ();
-
   /* we should flush all append pages before stop log writer */
   thread_p = thread_get_thread_entry_info ();
   assert_release (thread_p != NULL);
+
+  /* stop vacuum threads. */
+  vacuum_stop (thread_p);
 
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);

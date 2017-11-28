@@ -23,24 +23,29 @@
  */
 #include "vacuum.h"
 
-#include "thread.h"
-#include "mvcc.h"
-#include "page_buffer.h"
-#include "heap_file.h"
 #include "boot_sr.h"
-#include "system_parameter.h"
 #include "btree.h"
-#include "log_compress.h"
-#include "overflow_file.h"
-#include "lock_free.h"
-#include "perf_monitor.h"
 #include "dbtype.h"
-#include "util_func.h"
+#include "heap_file.h"
+#include "lock_free.h"
+#include "log_compress.h"
 #include "log_impl.h"
-
+#include "mvcc.h"
+#include "overflow_file.h"
+#include "page_buffer.h"
+#include "perf_monitor.h"
+#include "resource_shared_pool.hpp"
+#include "thread.h"
+#include "thread_entry_task.hpp"
+#if defined (SERVER_MODE)
+#include "thread_daemon.hpp"
+#endif /* SERVER_MODE */
+#include "thread_looper.hpp"
+#include "thread_manager.hpp"
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
+#include "util_func.h"
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -424,16 +429,13 @@ int vacuum_Prefetch_log_mode = VACUUM_PREFETCH_LOG_MODE_MASTER;
 
 /* Static array of vacuum workers */
 VACUUM_WORKER vacuum_Workers[VACUUM_MAX_WORKER_COUNT];
+
 #if defined (SA_MODE)
 /* Vacuum worker structure used to execute vacuum jobs in SA_MODE.
  * TODO: Implement vacuum execution for SA_MODE.
  */
 VACUUM_WORKER *vacuum_Worker_sa_mode;
 #endif
-
-/* Number of worker threads that have a worker structure assigned. */
-INT32 vacuum_Assigned_workers_count = 0;
-INT32 vacuum_Running_workers_count = 0;
 
 /* VACUUM_HEAP_HELPER -
  * Structure used by vacuum heap functions.
@@ -624,7 +626,7 @@ static int vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * w
 static void vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * block_data,
 					  bool is_vacuum_complete);
 static bool vacuum_is_work_in_progress (THREAD_ENTRY * thread_p);
-static int vacuum_assign_worker (THREAD_ENTRY * thread_p);
+static int vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker);
 static void vacuum_finalize_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker_info);
 
 static int vacuum_compare_heap_object (const void *a, const void *b);
@@ -645,9 +647,9 @@ static void vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR
 
 #if defined (SERVER_MODE)
 static int vacuum_init_master_prefetch (THREAD_ENTRY * thread_p);
-static int vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * entry,
-					     BLOCK_LOG_BUFFER * block_log_buffer);
 #endif /* SERVER_MODE */
+static int vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * entry,
+					     BLOCK_LOG_BUFFER * block_log_buffer, int prefetch_mode);
 static int vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_BUFFER * block_log_buffer,
 				 LOG_PAGE * log_page);
 
@@ -676,6 +678,119 @@ static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
 #define VACUUM_VERIFY_VACUUM_DATA(thread_p)
 #endif /* NDEBUG */
 
+/* *INDENT-OFF* */
+// VACUUM_WORKER resource pool
+resource_shared_pool<VACUUM_WORKER> *vacuum_Workers_context_pool = NULL;
+// master daemon thread
+cubthread::daemon *vacuum_Master_daemon = NULL;
+// worker thread pool
+cubthread::entry_workpool *vacuum_Worker_threads = NULL;
+
+void
+vacuum_init_thread_context (cubthread::entry & context, THREAD_TYPE type, VACUUM_WORKER * worker)
+{
+  assert (worker != NULL);
+
+  context.type = type;
+  context.vacuum_worker = worker;
+  context.tran_index = 0;
+  context.check_interrupt = false;
+  context.status = TS_RUN;
+}
+
+class vacuum_master_task : public cubthread::entry_task
+{
+public:
+  void execute (cubthread::entry & thread_ref) final
+  {
+    vacuum_process_vacuum_data (&thread_ref);
+  }
+
+  cubthread::entry & create_context (void) override
+  {
+    cubthread::entry &context = cubthread::entry_task::create_context ();
+
+    vacuum_init_thread_context (context, TT_VACUUM_MASTER, &vacuum_Master);
+
+    return context;
+  }
+
+  void retire_context (cubthread::entry & context) override
+  {
+    if (context.vacuum_worker != NULL)
+      {
+        assert (context.vacuum_worker == &vacuum_Master);
+        context.vacuum_worker = NULL;
+      }
+    else
+      {
+        assert (false);
+      }
+
+    cubthread::entry_task::retire_context (context);
+  }
+
+  void retire (void) override
+  {
+    vacuum_finalize (get_own_context ());
+
+    cubthread::entry_task::retire ();
+  }
+};
+
+class vacuum_worker_task : public cubthread::entry_task
+{
+public:
+  vacuum_worker_task (const VACUUM_DATA_ENTRY & entry_ref, const BLOCK_LOG_BUFFER & log_buffer_ref,
+                      bool is_partial_block)
+    : m_data (entry_ref)
+    , m_block_log_buffer (log_buffer_ref)
+    , m_partial_block (is_partial_block)
+  {
+  }
+
+  void execute (cubthread::entry & thread_ref) override
+  {
+    vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_partial_block);
+  }
+
+  cubthread::entry & create_context (void) override
+  {
+    cubthread::entry &context = cubthread::entry_task::create_context ();
+
+    vacuum_init_thread_context (context, TT_VACUUM_WORKER, vacuum_Workers_context_pool->claim ());
+
+    if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
+      {
+        assert (false);
+      }
+
+    return context;
+  }
+
+  void retire_context (cubthread::entry & context) override
+  {
+    if (context.vacuum_worker != NULL)
+      {
+        vacuum_Workers_context_pool->retire (*context.vacuum_worker);
+      }
+    else
+      {
+        assert (false);
+      }
+
+    cubthread::entry_task::retire_context (context);
+  }
+
+private:
+  vacuum_worker_task ();
+
+  VACUUM_DATA_ENTRY m_data;
+  BLOCK_LOG_BUFFER m_block_log_buffer;
+  bool m_partial_block;
+};
+/* *INDENT-ON* */
+
 /*
  * xvacuum () - Vacuumes database
  *
@@ -700,13 +815,9 @@ xvacuum (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-  assert (vacuum_Assigned_workers_count <= 1);
-  VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, &vacuum_Workers[0], dummy_save_type);
-  if (vacuum_Assigned_workers_count == 0)
-    {
-      /* Assign worker and allocate required resources. */
-      vacuum_assign_worker (thread_p);
-    }
+  /* Assign worker and allocate required resources. */
+  vacuum_worker_allocate_resources (thread_p, &vacuum_Workers[0]);
+  thread_p->vacuum_worker = &vacuum_Workers[0];
 
   /* Process vacuum data and run vacuum . */
   vacuum_process_vacuum_data (thread_p);
@@ -834,10 +945,8 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
   vacuum_Master.postpone_redo_data_ptr = NULL;
   vacuum_Master.postpone_redo_data_buffer = NULL;
   vacuum_Master.postpone_cached_entries_count = 0;
+  vacuum_Master.allocated_resources = false;
 
-  /* Initialize worker counters */
-  vacuum_Assigned_workers_count = 0;
-  vacuum_Running_workers_count = 0;
   /* Initialize workers */
   for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
     {
@@ -856,6 +965,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].postpone_redo_data_ptr = NULL;
       vacuum_Workers[i].postpone_redo_data_buffer = NULL;
       vacuum_Workers[i].postpone_cached_entries_count = 0;
+      vacuum_Workers[i].allocated_resources = false;
     }
 
   vacuum_Master.postpone_redo_data_buffer = (char *) malloc (IO_PAGESIZE);
@@ -894,6 +1004,78 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 error:
   vacuum_finalize (thread_p);
   return (error_code == NO_ERROR) ? ER_FAILED : error_code;
+}
+
+int
+vacuum_boot (THREAD_ENTRY * thread_p)
+{
+  int error_code = NO_ERROR;
+
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      /* for debug only */
+      return NO_ERROR;
+    }
+
+  /* first things first... load vacuum data and do some recovery if required */
+  error_code = vacuum_data_load_and_recover (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* load dropped files from disk */
+  error_code = vacuum_load_dropped_files_from_disk (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  vacuum_Workers_context_pool = new resource_shared_pool < VACUUM_WORKER > (vacuum_Workers, VACUUM_MAX_WORKER_COUNT);
+
+  /* create worker pool */
+
+#if defined (SERVER_MODE)
+  /* get thread manager */
+  auto thread_manager = cubthread::get_manager ();
+
+  vacuum_Worker_threads =
+    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), VACUUM_JOB_QUEUE_CAPACITY);
+  assert (vacuum_Worker_threads != NULL);
+
+  auto interval_time = std::chrono::milliseconds (prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL));
+  vacuum_Master_daemon = thread_manager->create_daemon (cubthread::looper (interval_time), new vacuum_master_task ());
+
+#endif /* SERVER_MODE */
+
+  return NO_ERROR;
+}
+
+void
+vacuum_stop (THREAD_ENTRY * thread_p)
+{
+  // notify master to stop generating new jobs
+  vacuum_notify_server_shutdown ();
+
+  auto thread_manager = cubthread::get_manager ();
+
+  // stop work pool
+  if (vacuum_Worker_threads != NULL)
+    {
+      thread_manager->destroy_worker_pool (vacuum_Worker_threads);
+    }
+
+  // stop master daemon
+  if (vacuum_Master_daemon != NULL)
+    {
+      thread_manager->destroy_daemon (vacuum_Master_daemon);
+    }
+
+  delete vacuum_Workers_context_pool;
+
+  // all resources should be freed
 }
 
 #if defined(SERVER_MODE)
@@ -2491,28 +2673,33 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
   perfmon_add_stat (thread_p, PSTAT_VAC_NUM_TO_VACUUM_LOG_PAGES, vacuum_Data.log_block_npages);
 }
 
-#if defined (SERVER_MODE)
-/*
- * vacuum_master_start () - Base function for auto vacuum routine. It will process vacuum data and assign vacuum jobs
- *			    to workers. Each job will process a block of log data and vacuum records from b-trees and
- *			    heap files.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- */
-void
-vacuum_master_start (THREAD_ENTRY * thread_p)
+static void
+vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, const BLOCK_LOG_BUFFER & log_buffer,
+		  bool is_partial_block = false)
 {
-  if (thread_p->vacuum_worker == NULL)
-    {
-      /* Set master "worker" structure to thread entry. */
-      thread_p->vacuum_worker = &vacuum_Master;
-    }
-
-  /* Start a new vacuum iteration that processes log to create vacuum jobs */
-  vacuum_process_vacuum_data (thread_p);
+  cubthread::get_manager ()->push_task (*thread_p, vacuum_Worker_threads,
+					new vacuum_worker_task (data_entry, log_buffer, is_partial_block));
 }
-#endif /* SERVER_MODE */
+
+static bool
+vacuum_check_finished_queue (void)
+{
+#if defined (SERVER_MODE)
+  return lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= (int) vacuum_Finished_job_queue->capacity / 2;
+#else // not SERVER_MODE = SA_MODE
+  return lf_circular_queue_is_full (vacuum_Finished_job_queue);
+#endif // not SERVER_MODE = SA_MODE
+}
+
+static bool
+vacuum_check_data_buffer (void)
+{
+#if defined (SERVER_MODE)
+  return lf_circular_queue_approx_size (vacuum_Block_data_buffer) >= (int) vacuum_Block_data_buffer->capacity / 2;
+#else // not SERVER_MODE = SA_MODE
+  return false;
+#endif // not SERVER_MODE = SA_MODE
+}
 
 /*
  * vacuum_process_vacuum_data () - Start a new vacuum iteration that processes
@@ -2528,24 +2715,18 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   int data_index;
   VACUUM_DATA_ENTRY *entry = NULL;
   MVCCID local_oldest_active_mvccid;
-#if defined (SERVER_MODE)
-  VACUUM_JOB_ENTRY vacuum_job_entry;
-  int n_wakeup_workers;
-  int n_available_workers;
-  int n_jobs;
-  UINT64 vacuum_block_data_buffer_aprox_size;
-  UINT64 vacuum_finished_jobs_queue_aprox_size;
-#else	/* !SERVER_MODE */		   /* SA_MODE */
+  BLOCK_LOG_BUFFER log_buffer;
+  VACUUM_DATA_PAGE *data_page = NULL;
+  VPID next_vpid;
+  PERF_UTIME_TRACKER perf_tracker;
+
+#if defined (SA_MODE)
   VACUUM_DATA_ENTRY vacuum_data_entry;
   bool save_check_interrupt;
   bool dummy_continue_check_interrupt;
 #endif /* SA_MODE */
 
-  VACUUM_DATA_PAGE *data_page = NULL;
-  VPID next_vpid;
   int error_code = NO_ERROR;
-
-  PERF_UTIME_TRACKER perf_tracker;
 
 #if defined (SA_MODE)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_START, 0);
@@ -2605,6 +2786,8 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
       vacuum_Data.blockid_job_cursor = VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.first_page->data[0].blockid);
     }
 
+  VACUUM_INIT_PREFETCH_BLOCK (&log_buffer);	// init
+
   /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
   /* Stand-alone mode will restart if finished job queue is full. */
 restart:
@@ -2632,10 +2815,8 @@ restart:
 
 #if defined (SERVER_MODE)
   /* How many jobs can we generate? */
-  n_jobs = VACUUM_JOB_QUEUE_CAPACITY - lf_circular_queue_approx_size (vacuum_Job_queue);
-  if (n_jobs <= 0)
+  if (cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
     {
-      /* No jobs can be generated. Stop this iteration. */
       return;
     }
 #endif /* SERVER_MODE */
@@ -2656,7 +2837,7 @@ restart:
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs in page %d|%d from index %d.",
 		 vacuum_Data.vpid_job_cursor.volid, vacuum_Data.vpid_job_cursor.pageid, data_index);
 
-  while (true)
+  while (!cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
     {
       assert (data_index >= 0);
       if (data_index >= data_page->index_free)
@@ -2682,23 +2863,7 @@ restart:
 	}
       entry = data_page->data + data_index;
 
-#if defined (SA_MODE)
-      if (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid))
-	{
-	  /* Already vacuumed. */
-	  data_index++;
-	  vacuum_Data.blockid_job_cursor++;
-	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
-			 "Job for %lld was already executed. Skip.",
-			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
-	  continue;
-	}
-      else
-	{
-	  /* Must be available, cannot be in-progress. */
-	  assert (VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid));
-	}
-#else	/* !SA_MODE */	       /* SERVER_MODE */
+#if defined (SERVER_MODE)
       if (!MVCC_ID_PRECEDES (entry->newest_mvccid, vacuum_Global_oldest_active_mvccid)
 	  || (entry->start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid))
 	{
@@ -2719,10 +2884,16 @@ restart:
 	  /* todo: remember this as starting point for next iteration of generating jobs */
 	  break;
 	}
+#endif // SERVER_MODE
+
       if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
 	{
+#if defined (SERVER_MODE)
 	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid)
 		  || VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid));
+#else // not SERVER_MODE = SA_MODE
+	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid));
+#endif // not SERVER_MODE = SA_MODE
 	  /* Continue to other blocks. */
 	  data_index++;
 	  vacuum_Data.blockid_job_cursor++;
@@ -2733,56 +2904,19 @@ restart:
 	  continue;
 	}
 
-      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry->blockid);
-      vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
-      vacuum_job_entry.vacuum_data_entry = *entry;
-
-      if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
+      error_code = vacuum_log_prefetch_vacuum_block (thread_p, entry, &log_buffer, VACUUM_PREFETCH_LOG_MODE_MASTER);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = vacuum_log_prefetch_vacuum_block (thread_p, entry, &vacuum_job_entry.block_log_buffer);
-	  if (error_code != NO_ERROR)
-	    {
-	      assert_release (false);
-	      vacuum_er_log_error (VACUUM_ER_LOG_MASTER,
-				   "Error %d while master tried to prefetch log pages for block %lld.",
-				   er_errid (), (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
-	      vacuum_unfix_data_page (thread_p, data_page);
-	      break;
-	    }
-	}
-      else
-	{
-	  VACUUM_INIT_PREFETCH_BLOCK (&vacuum_job_entry.block_log_buffer);
-	}
-
-      if (!lf_circular_queue_produce (vacuum_Job_queue, &vacuum_job_entry))
-	{
-	  /* Queue is full, abort creating new jobs. */
-	  vacuum_er_log_warning (VACUUM_ER_LOG_MASTER, "%s", "Could not push new job.");
-	  VACUUM_BLOCK_STATUS_SET_AVAILABLE (entry->blockid);
-
-	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
-			 "Could not produce job for blockid = %lld. Set it as available.",
-			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
-
+	  assert_release (false);
+	  vacuum_er_log_error (VACUUM_ER_LOG_MASTER,
+			       "Error %d while master tried to prefetch log pages for block %lld.",
+			       er_errid (), (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  break;
 	}
-      else
-	{
-	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
-			 "Generated new job with blockid %lld, flags = %lld",
-			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
-			 (long long int) VACUUM_BLOCKID_GET_FLAGS (entry->blockid));
-	  if (n_jobs-- == 0)
-	    {
-	      /* Stop generating other jobs. */
-	      vacuum_unfix_data_page (thread_p, data_page);
-	      break;
-	    }
-	}
-#endif /* SERVER_MODE */
 
+      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry->blockid);
+      vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
       if (!VACUUM_BLOCK_IS_INTERRUPTED (entry->blockid))
 	{
 	  /* Log that a new job is starting. After recovery, the system will then know this job was partially executed. 
@@ -2794,74 +2928,44 @@ restart:
 	}
 
 #if defined (SA_MODE)
-      /* Run job now. */
+      // job will be executed immediately
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
+#endif // SA_MODE
+      vacuum_push_task (thread_p, *entry, log_buffer);
+#if defined (SA_MODE)
+      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+#endif // SA_MODE
 
-      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry->blockid);
-      vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
-      vacuum_data_entry = *entry;
-      error_code = vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
-      if (error_code == ER_INTERRUPTED || logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
+#if defined (SA_MODE)
+      // need to check for interrupts
+      if (logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
 	{
 	  /* wrap up all executed jobs and stop */
 	  vacuum_data_mark_finished (thread_p);
 	  return;
 	}
-      assert (error_code == NO_ERROR);
+#endif // SA_MODE
 
-      er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum finished block %lld.\n",
-		    (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_data_entry.blockid));
-
-      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
-
-      if (lf_circular_queue_is_full (vacuum_Finished_job_queue))
-	{
-	  /* Consume vacuum_Finished_job_queue */
-	  vacuum_unfix_data_page (thread_p, data_page);
-	  goto restart;
-	}
-#else	/* !SA_MODE */	       /* SERVER_MODE */
-      /* If vacuum lagged behind and this loop generated a lot of jobs, the log block buffer used by active workers
-       * can fill up. We cannot allow that.
-       */
-      vacuum_block_data_buffer_aprox_size = lf_circular_queue_approx_size (vacuum_Block_data_buffer);
-      if (vacuum_block_data_buffer_aprox_size > vacuum_Block_data_buffer->capacity / 2)
+      if (vacuum_check_data_buffer () && vacuum_check_finished_queue ())
 	{
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  goto restart;
 	}
-      /* Another buffer that is used by vacuum workers to communicate with master is the finished job queue.
-       * We cannot allow this to fill either.
-       */
-      vacuum_finished_jobs_queue_aprox_size = lf_circular_queue_approx_size (vacuum_Finished_job_queue);
-      if (vacuum_finished_jobs_queue_aprox_size >= vacuum_Finished_job_queue->capacity / 2)
-	{
-	  vacuum_unfix_data_page (thread_p, data_page);
-	  goto restart;
-	}
-#endif /* SERVER_MODE */
 
       /* Increment block index. */
       data_index++;
       vacuum_Data.blockid_job_cursor++;
     }
 
-  assert (data_page == NULL);
+  if (data_page != NULL)
+    {
+      vacuum_unfix_data_page (thread_p, data_page);
+    }
 #if !defined (NDEBUG)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
 
-#if defined (SERVER_MODE)
-  /* Wakeup threads to start working on current threads. Try not to wake up more workers than necessary. */
-  n_jobs = (int) lf_circular_queue_approx_size (vacuum_Job_queue);
-  n_available_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) - vacuum_Running_workers_count;
-  n_wakeup_workers = MIN (n_jobs, n_available_workers);
-  if (n_wakeup_workers > 0)
-    {
-      /* Wakeup more workers */
-      thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
-    }
-#else	/* !SERVER_MODE */		   /* SA_MODE */
+#if defined (SA_MODE)
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
   assert (lf_circular_queue_is_empty (vacuum_Block_data_buffer));
@@ -2874,13 +2978,12 @@ restart:
   assert (vacuum_Data.first_page->index_unvacuumed == 0);
   assert (vacuum_Data.first_page->index_free == 0);
 
-  /* We don't want to interrupt next operation. */
-  save_check_interrupt = thread_set_check_interrupt (thread_p, false);
-
   /* Can we generate another block on information cached in log header? */
   if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) > vacuum_Data.last_blockid)
     {
       /* Execute vacuum based on the block not generated yet. */
+      /* We don't want to interrupt next operation. */
+      save_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
       /* Create vacuum data entry for the job. */
       vacuum_data_entry.blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
@@ -2899,13 +3002,11 @@ restart:
 
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 
-      /* Execute vacuum. */
-      (void) vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, true);
+      vacuum_push_task (thread_p, vacuum_data_entry, log_buffer, true);
 
       PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+      (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
     }
-
-  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 
   /* All vacuum complete. */
   vacuum_Data.oldest_unvacuumed_mvccid = log_Gl.hdr.mvcc_next_id;
@@ -3038,16 +3139,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 		 "vacuum_process_log_block (): " VACUUM_LOG_DATA_ENTRY_MSG ("block"),
 		 VACUUM_LOG_DATA_ENTRY_AS_ARGS (data));
 
-#if defined (SERVER_MODE)
-  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_WORKERS)
+  error_code = vacuum_log_prefetch_vacuum_block (thread_p, data, block_log_buffer, VACUUM_PREFETCH_LOG_MODE_WORKERS);
+  if (error_code != NO_ERROR)
     {
-      error_code = vacuum_log_prefetch_vacuum_block (thread_p, data, block_log_buffer);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
+      return error_code;
     }
-#endif /* SERVER_MODE */
 
   /* Initialize stored heap objects. */
   worker->n_heap_objects = 0;
@@ -3323,7 +3419,7 @@ end:
 }
 
 /*
- * vacuum_assign_worker () - Assign a vacuum worker to current thread.
+ * vacuum_worker_allocate_resources () - Assign a vacuum worker to current thread.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -3331,41 +3427,26 @@ end:
  * NOTE: This is protected by vacuum data lock.
  */
 static int
-vacuum_assign_worker (THREAD_ENTRY * thread_p)
+vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker)
 {
-  /* Get first unassigned worker */
-  VACUUM_WORKER *worker = NULL;
-  INT32 save_assigned_workers_count;
 #if defined (SERVER_MODE)
   long long unsigned size_worker_prefetch_log_buffer;
 #endif /* SERVER_MODE */
 
-#if defined (SERVER_MODE)
-  assert (thread_p->vacuum_worker == NULL);
-  assert (thread_p->type == TT_VACUUM_WORKER);
-  assert (vacuum_Assigned_workers_count < VACUUM_MAX_WORKER_COUNT);
-#endif /* SERVER_MODE */
-
-  /* Assign a worker. Multiple threads can do this simultaneously so we need to assigned the worker using system
-   * operation.
-   */
-  do
-    {
-      save_assigned_workers_count = VOLATILE_ACCESS (vacuum_Assigned_workers_count, INT32);
-    }
-  while (!ATOMIC_CAS_32 (&vacuum_Assigned_workers_count, save_assigned_workers_count, save_assigned_workers_count + 1));
-
-  worker = &vacuum_Workers[save_assigned_workers_count];
-
   /* Initialize worker state */
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
+
+  if (worker->allocated_resources)
+    {
+      return NO_ERROR;
+    }
 
   /* Allocate log_zip */
   worker->log_zip_p = log_zip_alloc (IO_PAGESIZE, false);
   if (worker->log_zip_p == NULL)
     {
       vacuum_er_log_error (VACUUM_ER_LOG_WORKER, "%s", "Could not allocate log zip.");
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_assign_worker");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_worker_allocate_resources");
       return ER_FAILED;
     }
 
@@ -3375,7 +3456,7 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   if (worker->heap_objects == NULL)
     {
       vacuum_er_log_error (VACUUM_ER_LOG_WORKER, "%s", "Could not allocate files and objects buffer.");
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_assign_worker");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_worker_allocate_resources");
       goto error;
     }
 
@@ -3384,7 +3465,7 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   if (worker->undo_data_buffer == NULL)
     {
       vacuum_er_log_error (VACUUM_ER_LOG_WORKER, "%s", "Could not allocate undo data buffer.");
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_assign_worker");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_worker_allocate_resources");
       goto error;
     }
   worker->undo_data_buffer_capacity = IO_PAGESIZE;
@@ -3393,18 +3474,11 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   if (worker->postpone_redo_data_buffer == NULL)
     {
       vacuum_er_log_error (VACUUM_ER_LOG_WORKER, "%s", "Could not allocate postpone_redo_data_buffer.");
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_assign_worker");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_worker_allocate_resources");
       goto error;
     }
 
 #if defined (SERVER_MODE)
-  /* Save worker to thread entry */
-  thread_p->vacuum_worker = worker;
-
-  vacuum_er_log (VACUUM_ER_LOG_WORKER,
-		 "Assigned vacuum_worker %p, index %d to thread %p, index %d.",
-		 worker, save_assigned_workers_count, thread_p, thread_p->index);
-
   if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_WORKERS && worker->prefetch_log_buffer == NULL)
     {
       size_worker_prefetch_log_buffer =
@@ -3414,7 +3488,7 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
       if (worker->prefetch_log_buffer == NULL)
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_WORKER, "%s", "Could not allocate prefetch buffer.");
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_assign_worker");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_worker_allocate_resources");
 	  goto error;
 	}
     }
@@ -3422,6 +3496,8 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
 
   /* Safe guard - it is assumed that transaction descriptor is already initialized. */
   assert (worker->tdes != NULL);
+
+  worker->allocated_resources = true;
 
   return NO_ERROR;
 
@@ -3566,62 +3642,6 @@ vacuum_set_worker_sa_mode (VACUUM_WORKER * worker)
 }
 #endif
 
-#if defined (SERVER_MODE)
-/*
- * vacuum_start_new_job () - Start a vacuum job which process one block of log data.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * blockid (in)	 : Block of log data identifier.
- */
-void
-vacuum_start_new_job (THREAD_ENTRY * thread_p)
-{
-  VACUUM_DATA_ENTRY *entry = NULL;
-  VACUUM_WORKER *worker_info = NULL;
-  VACUUM_JOB_ENTRY vacuum_job_entry;
-
-  assert (thread_p->type == TT_VACUUM_WORKER);
-
-  worker_info = VACUUM_GET_VACUUM_WORKER (thread_p);
-  if (worker_info == NULL)
-    {
-      /* Assign the tread a vacuum worker. */
-      if (vacuum_assign_worker (thread_p) != NO_ERROR)
-	{
-	  assert_release (false);
-	  return;
-	}
-      /* Check assignment was successful. */
-      assert (VACUUM_GET_VACUUM_WORKER (thread_p) != NULL);
-    }
-
-  /* Increment running workers */
-  ATOMIC_INC_32 (&vacuum_Running_workers_count, 1);
-
-  /* Loop as long as job queue is not empty */
-  while (!vacuum_Data.shutdown_requested && lf_circular_queue_consume (vacuum_Job_queue, &vacuum_job_entry))
-    {
-      /* Execute vacuum job */
-      /* entry is only a copy for vacuum data */
-      entry = &vacuum_job_entry.vacuum_data_entry;
-
-      /* Safe guard */
-      assert (VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid));
-
-      /* Run vacuum */
-      (void) vacuum_process_log_block (thread_p, entry, &vacuum_job_entry.block_log_buffer, false);
-    }
-
-  /* Decrement running workers */
-  ATOMIC_INC_32 (&vacuum_Running_workers_count, -1);
-
-  /* No jobs in queue */
-  /* Wakeup master to process finished jobs and generate new ones (if there are any to generate). */
-  thread_wakeup_vacuum_master_thread ();
-}
-#endif /* SERVER_MODE */
-
 /*
  * vacuum_finished_block_vacuum () - Called when vacuuming a block is stopped.
  *
@@ -3701,7 +3721,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   if ((UINT64) lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2)
     {
       /* Wakeup master to process finished jobs. */
-      thread_wakeup_vacuum_master_thread ();
+      vacuum_Master_daemon->wakeup ();
     }
 #endif /* SERVER_MODE */
 }
@@ -3954,7 +3974,7 @@ vacuum_get_worker_min_dropped_files_version (void)
   int i;
   INT32 min_version = -1;
 
-  for (i = 0; i < vacuum_Assigned_workers_count; i++)
+  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
     {
       /* Update minimum version if worker is active and its seen version is smaller than current minimum version (or if 
        * minimum version is not initialized). */
@@ -4389,7 +4409,7 @@ vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
 {
   int i;
 
-  for (i = 0; i < vacuum_Assigned_workers_count; i++)
+  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
     {
       if (vacuum_Workers[i].state != VACUUM_WORKER_STATE_INACTIVE)
 	{
@@ -6943,7 +6963,6 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
 }
 #endif /* !NDEBUG */
 
-#if defined(SERVER_MODE)
 /*
  * vacuum_log_prefetch_vacuum_block () - Pre-fetches from log page buffer or from disk, (almost) all log pages
  *					 required by a vacuum block
@@ -6959,8 +6978,9 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
  */
 static int
 vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * entry,
-				  BLOCK_LOG_BUFFER * block_log_buffer)
+				  BLOCK_LOG_BUFFER * block_log_buffer, int prefetch_mode)
 {
+#if defined (SERVER_MODE)
   int i;
   char *buffer_block_start_ptr;
   char *log_page;
@@ -6973,6 +6993,12 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
 
   assert (entry != NULL);
   assert (block_log_buffer != NULL);
+
+  if (vacuum_Prefetch_log_mode != prefetch_mode)
+    {
+      // don't pre-fetch here
+      return NO_ERROR;
+    }
 
   if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
     {
@@ -7024,8 +7050,12 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
 
 end:
   return error;
+#else // not SERVER_MODE = SA_MODE
+  // no prefetch
+  return NO_ERROR;
+#endif // not SERVER_MODE = SA_MODE
 }
-#endif /* SERVER_MODE */
+
 
 /*
  * vacuum_copy_log_page () - Loads a log page to be processed by vacuum from vacuum block buffer or log page buffer or

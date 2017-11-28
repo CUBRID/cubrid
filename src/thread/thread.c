@@ -68,7 +68,6 @@
 #include "log_compress.h"
 #include "perf_monitor.h"
 #include "session.h"
-#include "vacuum.h"
 #include "show_scan.h"
 #include "network.h"
 #include "db_date.h"
@@ -77,6 +76,7 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+#include "vacuum.h"
 
 #if defined(WINDOWS)
 #include "heartbeat.h"
@@ -85,6 +85,8 @@
 #include "tsc_timer.h"
 
 #include "fault_injection.h"
+
+#include "thread_manager.hpp"
 
 #if defined(HPUX)
 #define thread_initialize_key()
@@ -127,16 +129,8 @@ DAEMON_THREAD_MONITOR thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZE
 static DAEMON_THREAD_MONITOR thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Auto_volume_expansion_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR thread_Vacuum_master_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_maintenance_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_post_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-
-static DAEMON_THREAD_MONITOR *thread_Vacuum_worker_threads = NULL;
-static int thread_First_vacuum_worker_thread_index = -1;
-
-static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
-static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
-static int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
 
 static void thread_stop_oob_handler_thread ();
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
@@ -153,8 +147,6 @@ static THREAD_RET_T THREAD_CALLING_CONVENTION thread_session_control_thread (voi
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_check_ha_delay_info_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_auto_volume_expansion_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_clock_thread (void *);
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_vacuum_master_thread (void *);
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_vacuum_worker_thread (void *arg_p);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_buffer_maintenance_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_post_flush_thread (void *);
 
@@ -175,11 +167,7 @@ typedef enum
   THREAD_DAEMON_PAGE_MAINTENANCE,
   THREAD_DAEMON_PAGE_POST_FLUSH,
 
-  THREAD_DAEMON_NUM_SINGLE_THREADS,
-
-  /* Add daemon types that are not single-threaded or that are not always needed */
-  THREAD_DAEMON_VACUUM_MASTER,
-  THREAD_DAEMON_VACUUM_WORKER
+  THREAD_DAEMON_NUM_SINGLE_THREADS
 } THREAD_DAEMON_TYPE;
 
 typedef struct thread_daemon THREAD_DAEMON;
@@ -294,7 +282,14 @@ thread_get_thread_entry_info ()
 #if defined (SERVER_MODE)
   assert (tsd_ptr != NULL);
 #endif
-  return tsd_ptr;
+  if (tsd_ptr == NULL)
+    {
+      return cubthread::get_manager ()->get_entry ();
+    }
+  else
+    {
+      return tsd_ptr;
+    }
 }
 #else /* HPUX */
 /*
@@ -345,6 +340,10 @@ thread_get_thread_entry_info (void)
 
   p = pthread_getspecific (thread_Thread_key);
 #if defined (SERVER_MODE)
+  if (p == NULL)
+    {
+      p = (void *) &(cubthread::get_manager ()->get_entry ());
+    }
   assert (p != NULL);
 #endif
   return (THREAD_ENTRY *) p;
@@ -378,7 +377,7 @@ thread_is_manager_initialized (void)
  *       might be needed later.
  */
 int
-thread_initialize_manager (void)
+thread_initialize_manager (size_t & total_thread_count)
 {
   int i, r;
   int daemon_index;
@@ -398,26 +397,8 @@ thread_initialize_manager (void)
 	  return r;
 	}
 
-      /* Initialize vacuum workers */
-
-      /* Allocate memory for vacuum worker thread monitors */
-      size = VACUUM_MAX_WORKER_COUNT * sizeof (DAEMON_THREAD_MONITOR);
-      thread_Vacuum_worker_threads = (DAEMON_THREAD_MONITOR *) malloc (size);
-      if (thread_Vacuum_worker_threads == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      /* Initialize thread monitors */
-      for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
-	{
-	  thread_initialize_daemon_monitor (&thread_Vacuum_worker_threads[i]);
-	}
-
       /* Initialize daemons */
       thread_Manager.num_daemons = THREAD_DAEMON_NUM_SINGLE_THREADS;
-      /* Vacuum master thread and vacuum workers must be added */
-      thread_Manager.num_daemons += VACUUM_MAX_WORKER_COUNT + 1;
       size = thread_Manager.num_daemons * sizeof (THREAD_DAEMON);
       thread_Daemons = (THREAD_DAEMON *) malloc (size);
       if (thread_Daemons == NULL)
@@ -478,21 +459,6 @@ thread_initialize_manager (void)
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
       thread_Daemons[daemon_index++].daemon_function = thread_log_clock_thread;
 
-      /* Initialize vacuum worker daemons */
-      for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++, daemon_index++)
-	{
-	  thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_WORKER;
-	  thread_Daemons[daemon_index].daemon_monitor = &thread_Vacuum_worker_threads[i];
-	  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-	  thread_Daemons[daemon_index].daemon_function = thread_vacuum_worker_thread;
-	}
-
-      /* Initialize vacuum master daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_MASTER;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Vacuum_master_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = thread_vacuum_master_thread;
-
       /* Leave these three daemons at the end. These are to be shutdown latest */
       /* Initialize page buffer maintenance daemon */
       thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_MAINTENANCE;
@@ -538,54 +504,32 @@ thread_initialize_manager (void)
       thread_initialize_sync_object ();
 #endif /* WINDOWS */
 
-    }
-  else
-    {
-      /* destroy mutex and cond */
-      for (i = 1; i < thread_Manager.num_total; i++)
-	{
-	  r = thread_finalize_entry (&thread_Manager.thread_array[i]);
-	  if (r != NO_ERROR)
-	    {
-	      return r;
-	    }
-	}
-      r = thread_finalize_entry (&thread_Manager.thread_array[0]);
+      thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
+
+      thread_Manager.num_total = (thread_Manager.num_workers + thread_Manager.num_daemons + NUM_SYSTEM_TRANS);
+
+      /* initialize lock-free transaction systems */
+      r = lf_initialize_transaction_systems (thread_Manager.num_total + (int) cubthread::get_max_thread_count ());
       if (r != NO_ERROR)
 	{
 	  return r;
 	}
-      free_and_init (thread_Manager.thread_array);
+    }
+  else
+    {
+      /* *INDENT-OFF* */
+      /* destroy mutex and cond */
+      delete [] thread_Manager.thread_array;
+      thread_Manager.thread_array = NULL;
+      /* *INDENT-ON* */
 
       /* Why are entries initialized twice? */
     }
 
-  thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
+  /* allocate threads */
+  thread_Manager.thread_array = new THREAD_ENTRY[thread_Manager.num_total];
 
-  thread_Manager.num_total = (thread_Manager.num_workers + thread_Manager.num_daemons + NUM_SYSTEM_TRANS);
-
-  size = thread_Manager.num_total * sizeof (THREAD_ENTRY);
-  tsd_ptr = thread_Manager.thread_array = (THREAD_ENTRY *) malloc (size);
-  if (tsd_ptr == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  /* initialize lock-free transaction systems */
-  r = lf_initialize_transaction_systems (thread_Manager.num_total);
-  if (r != NO_ERROR)
-    {
-      return r;
-    }
-
-  /* initialize master thread */
-  r = thread_initialize_entry (tsd_ptr);
-  if (r != NO_ERROR)
-    {
-      return r;
-    }
-
+  tsd_ptr = &thread_Manager.thread_array[0];
   tsd_ptr->index = 0;
   tsd_ptr->tid = pthread_self ();
   tsd_ptr->emulate_tid = ((pthread_t) 0);
@@ -598,15 +542,12 @@ thread_initialize_manager (void)
    * thread_mgr.thread_array[0] is used for main thread */
   for (i = 1; i < thread_Manager.num_total; i++)
     {
-      r = thread_initialize_entry (&thread_Manager.thread_array[i]);
-      if (r != NO_ERROR)
-	{
-	  return r;
-	}
       thread_Manager.thread_array[i].index = i;
     }
 
   thread_Manager.initialized = true;
+
+  total_thread_count = thread_Manager.num_total;
 
   return NO_ERROR;
 }
@@ -709,13 +650,6 @@ thread_start_workers (void)
     {
       thread_Daemons[i].daemon_monitor->thread_index = thread_index;
       thread_p = &thread_Manager.thread_array[thread_index];
-
-      if (thread_Daemons[i].type == THREAD_DAEMON_VACUUM_WORKER && thread_First_vacuum_worker_thread_index < 0)
-	{
-	  /* Save the thread index of the first vacuum worker. It will be needed to identify the daemon for each vacuum 
-	   * worker based on thread index when the threads are started. */
-	  thread_First_vacuum_worker_thread_index = thread_index;
-	}
 
       r = pthread_mutex_lock (&thread_p->th_entry_lock);
       if (r != 0)
@@ -978,31 +912,6 @@ thread_stop_active_daemons (void)
 }
 
 /*
- * thread_stop_vacuum_daemons () - Stop all vacuum threads (master and
- *				   workers). Vacuum threads are stopped
- *				   earlier than other daemon threads to stop
- *				   adding more logging data.
- *
- * return : NO_ERROR
- */
-int
-thread_stop_vacuum_daemons (void)
-{
-  int i;
-
-  /* Stop vacuum workers. */
-  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
-    {
-      thread_stop_daemon (&thread_Vacuum_worker_threads[i]);
-    }
-
-  /* Stop vacuum master. */
-  thread_stop_daemon (&thread_Vacuum_master_thread);
-
-  return NO_ERROR;
-}
-
-/*
  * thread_kill_all_workers() - Signal all worker threads to exit.
  *   return: 0 if no error, or error code
  */
@@ -1066,17 +975,12 @@ loop:
 void
 thread_final_manager (void)
 {
-  int i;
-
-  for (i = 1; i < thread_Manager.num_total; i++)
-    {
-      (void) thread_finalize_entry (&thread_Manager.thread_array[i]);
-    }
-  (void) thread_finalize_entry (&thread_Manager.thread_array[0]);
-  free_and_init (thread_Manager.thread_array);
+  /* *INDENT-OFF* */
+  delete [] thread_Manager.thread_array;
+  thread_Manager.thread_array = NULL;
+  /* *INDENT-ON* */
 
   free_and_init (thread_Daemons);
-  free_and_init (thread_Vacuum_worker_threads);
 
   lf_destroy_transaction_systems ();
 
@@ -1099,212 +1003,11 @@ thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor)
 }
 
 /*
- * thread_initialize_entry() - Initialize thread entry
- *   return: void
- *   entry_ptr(in): thread entry to initialize
- */
-static int
-thread_initialize_entry (THREAD_ENTRY * entry_p)
-{
-  int r;
-  struct timeval t;
-
-  entry_p->index = -1;
-  entry_p->tid = ((pthread_t) 0);
-  entry_p->emulate_tid = ((pthread_t) 0);
-  entry_p->client_id = -1;
-  entry_p->tran_index = -1;
-  entry_p->private_lru_index = -1;
-  entry_p->net_request_index = -1;
-  r = pthread_mutex_init (&entry_p->tran_index_lock, NULL);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
-      return ER_CSS_PTHREAD_MUTEX_INIT;
-    }
-
-  entry_p->rid = 0;
-  entry_p->status = TS_DEAD;
-  entry_p->interrupted = false;
-  entry_p->shutdown = false;
-  entry_p->cnv_adj_buffer[0] = NULL;
-  entry_p->cnv_adj_buffer[1] = NULL;
-  entry_p->cnv_adj_buffer[2] = NULL;
-  entry_p->conn_entry = NULL;
-  entry_p->worker_thrd_list = NULL;
-  gettimeofday (&t, NULL);
-  entry_p->rand_seed = (unsigned int) t.tv_usec;
-  srand48_r ((long) t.tv_usec, &entry_p->rand_buf);
-
-  r = pthread_mutex_init (&entry_p->th_entry_lock, NULL);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
-      return ER_CSS_PTHREAD_MUTEX_INIT;
-    }
-
-  r = pthread_cond_init (&entry_p->wakeup_cond, NULL);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_INIT, 0);
-      return ER_CSS_PTHREAD_COND_INIT;
-    }
-
-  entry_p->resume_status = THREAD_RESUME_NONE;
-  entry_p->er_Msg = NULL;
-  entry_p->victim_request_fail = false;
-  entry_p->next_wait_thrd = NULL;
-  entry_p->wait_for_latch_promote = false;
-
-  entry_p->lockwait = NULL;
-  entry_p->lockwait_state = -1;
-  entry_p->query_entry = NULL;
-  entry_p->tran_next_wait = NULL;
-
-  entry_p->check_interrupt = true;
-  entry_p->type = TT_WORKER;	/* init */
-
-  entry_p->private_heap_id = db_create_private_heap ();
-
-  if (entry_p->private_heap_id == 0)
-    {
-      return ER_CSS_ALLOC;
-    }
-
-  entry_p->log_zip_undo = NULL;
-  entry_p->log_zip_redo = NULL;
-  entry_p->log_data_length = 0;
-  entry_p->log_data_ptr = NULL;
-
-  (void) thread_rc_track_initialize (entry_p);
-  thread_clear_recursion_depth (entry_p);
-
-  entry_p->sort_stats_active = false;
-
-  memset (&(entry_p->event_stats), 0, sizeof (EVENT_STAT));
-
-  entry_p->on_trace = false;
-  entry_p->clear_trace = false;
-
-  /* transaction entries */
-  entry_p->tran_entries[THREAD_TS_SPAGE_SAVING] = lf_tran_request_entry (&spage_saving_Ts);
-  entry_p->tran_entries[THREAD_TS_OBJ_LOCK_RES] = lf_tran_request_entry (&obj_lock_res_Ts);
-  entry_p->tran_entries[THREAD_TS_OBJ_LOCK_ENT] = lf_tran_request_entry (&obj_lock_ent_Ts);
-  entry_p->tran_entries[THREAD_TS_CATALOG] = lf_tran_request_entry (&catalog_Ts);
-  entry_p->tran_entries[THREAD_TS_SESSIONS] = lf_tran_request_entry (&sessions_Ts);
-  entry_p->tran_entries[THREAD_TS_FREE_SORT_LIST] = lf_tran_request_entry (&free_sort_list_Ts);
-  entry_p->tran_entries[THREAD_TS_GLOBAL_UNIQUE_STATS] = lf_tran_request_entry (&global_unique_stats_Ts);
-  entry_p->tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);
-  entry_p->tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
-  entry_p->tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
-
-  entry_p->vacuum_worker = NULL;
-
-#if !defined(NDEBUG)
-  entry_p->fi_test_array = NULL;
-  entry_p->count_private_allocators = 0;
-
-  fi_thread_init (entry_p);
-#endif
-
-  return NO_ERROR;
-}
-
-/*
- * thread_finalize_entry() -
- *   return:
- *   entry_p(in):
- */
-static int
-thread_finalize_entry (THREAD_ENTRY * entry_p)
-{
-  int r, i, error = NO_ERROR;
-
-  entry_p->index = -1;
-  entry_p->tid = ((pthread_t) 0);
-  entry_p->emulate_tid = ((pthread_t) 0);
-  entry_p->client_id = -1;
-  entry_p->tran_index = -1;
-  entry_p->net_request_index = -1;
-  entry_p->rid = 0;
-  entry_p->status = TS_DEAD;
-  entry_p->interrupted = false;
-  entry_p->shutdown = false;
-
-  for (i = 0; i < 3; i++)
-    {
-      if (entry_p->cnv_adj_buffer[i] != NULL)
-	{
-	  adj_ar_free (entry_p->cnv_adj_buffer[i]);
-	  entry_p->cnv_adj_buffer[i] = NULL;
-	}
-    }
-
-  entry_p->conn_entry = NULL;
-
-  r = pthread_mutex_destroy (&entry_p->tran_index_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
-      error = ER_CSS_PTHREAD_MUTEX_DESTROY;
-    }
-  r = pthread_mutex_destroy (&entry_p->th_entry_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
-      error = ER_CSS_PTHREAD_MUTEX_DESTROY;
-    }
-  r = pthread_cond_destroy (&entry_p->wakeup_cond);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_DESTROY, 0);
-      error = ER_CSS_PTHREAD_COND_DESTROY;
-    }
-  entry_p->resume_status = THREAD_RESUME_NONE;
-
-  entry_p->check_interrupt = true;
-
-  if (entry_p->log_zip_undo)
-    {
-      log_zip_free ((LOG_ZIP *) entry_p->log_zip_undo);
-      entry_p->log_zip_undo = NULL;
-    }
-  if (entry_p->log_zip_redo)
-    {
-      log_zip_free ((LOG_ZIP *) entry_p->log_zip_redo);
-      entry_p->log_zip_redo = NULL;
-    }
-  if (entry_p->log_data_ptr)
-    {
-      free_and_init (entry_p->log_data_ptr);
-      entry_p->log_data_length = 0;
-    }
-
-  /* Vacuum worker resources are released by vacuum */
-  entry_p->vacuum_worker = NULL;
-
-  (void) thread_rc_track_finalize (entry_p);
-
-  db_destroy_private_heap (entry_p, entry_p->private_heap_id);
-
-#if !defined(NDEBUG)
-  fi_thread_final (entry_p);
-#endif
-
-  /* transaction entries */
-  if (thread_return_transaction_entry (entry_p) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  return error;
-}
-
-/*
  * thread_return_transaction_entry() - return previously requested entries
  *   return: error code
  *   entry_p(in): thread entry
  */
-static int
+int
 thread_return_transaction_entry (THREAD_ENTRY * entry_p)
 {
   int i, error = NO_ERROR;
@@ -1376,19 +1079,15 @@ thread_print_entry_info (THREAD_ENTRY * thread_p)
 THREAD_ENTRY *
 thread_find_entry_by_tran_index_except_me (int tran_index)
 {
-  THREAD_ENTRY *thread_p;
-  int i;
   pthread_t me = pthread_self ();
 
-  for (i = 1; i <= thread_Manager.num_workers; i++)
+  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      thread_p = &thread_Manager.thread_array[i];
       if (thread_p->tran_index == tran_index && thread_p->tid != me)
 	{
 	  return thread_p;
 	}
     }
-
   return NULL;
 }
 
@@ -1400,18 +1099,14 @@ thread_find_entry_by_tran_index_except_me (int tran_index)
 THREAD_ENTRY *
 thread_find_entry_by_tran_index (int tran_index)
 {
-  THREAD_ENTRY *thread_p;
-  int i;
-
-  for (i = 1; i <= thread_Manager.num_workers; i++)
+  // todo: is this safe? afaik, we could have multiple threads for same transaction
+  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      thread_p = &thread_Manager.thread_array[i];
       if (thread_p->tran_index == tran_index)
 	{
 	  return thread_p;
 	}
     }
-
   return NULL;
 }
 
@@ -1539,32 +1234,6 @@ thread_lock_entry (THREAD_ENTRY * thread_p)
 
   return r;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * thread_lock_entry_with_tran_index() -
- *   return:
- *   tran_index(in):
- */
-int
-thread_lock_entry_with_tran_index (int tran_index)
-{
-  int r;
-  THREAD_ENTRY *thread_p;
-
-  thread_p = thread_find_entry_by_tran_index (tran_index);
-  assert (thread_p != NULL);
-
-  r = pthread_mutex_lock (&thread_p->th_entry_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-      return ER_CSS_PTHREAD_MUTEX_LOCK;
-    }
-
-  return r;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * thread_unlock_entry() -
@@ -1700,55 +1369,6 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, struct 
 
   return error;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * thread_suspend_wakeup_and_unlock_entry_with_tran_index() -
- *   return: 0 if no error, or error code
- *   tran_index(in):
- */
-int
-thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index, int suspended_reason)
-{
-  THREAD_ENTRY *thread_p;
-  int r;
-  int old_status;
-
-  thread_p = thread_find_entry_by_tran_index (tran_index);
-  if (thread_p == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /* 
-   * this function must be called by current thread
-   * also, the lock must have already been acquired before.
-   */
-  assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
-  old_status = thread_p->status;
-  thread_p->status = TS_WAIT;
-
-  thread_p->resume_status = suspended_reason;
-
-  r = pthread_cond_wait (&thread_p->wakeup_cond, &thread_p->th_entry_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_WAIT, 0);
-      return ER_CSS_PTHREAD_COND_WAIT;
-    }
-
-  thread_p->status = old_status;
-
-  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
-      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
-    }
-
-  return NO_ERROR;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * thread_wakeup_internal () -
@@ -1886,30 +1506,6 @@ thread_wakeup_with_tran_index (int tran_index, int resume_reason)
   r = thread_wakeup (thread_p, resume_reason);
 
   return r;
-}
-
-/*
- * thread_waiting_for_function() - wait until func return TRUE.
- *   return: void
- *   func(in) : a pointer to a function that will return a non-zero value when
- *	        the thread should resume execution.
- *   arg(in)  : an integer argument to be passed to func.
- *
- * Note: The thread is blocked for execution until func returns a non-zero
- *       value. Halts exection of the currently running thread.
- */
-void
-thread_waiting_for_function (THREAD_ENTRY * thread_p, CSS_THREAD_FN func, CSS_THREAD_ARG arg)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  while ((*func) (thread_p, arg) == false && thread_p->interrupted != true && thread_p->shutdown != true)
-    {
-      thread_sleep (10);	/* 10 msec */
-    }
 }
 
 /*
@@ -2094,6 +1690,28 @@ thread_set_comm_request_id (unsigned int request_id)
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
+bool
+thread_belongs_to (THREAD_ENTRY * thread_p, int tran_index, int client_id)
+{
+  CSS_CONN_ENTRY *conn_p;
+  (void) pthread_mutex_lock (&thread_p->tran_index_lock);
+  if (thread_p->tid != pthread_self () && thread_p->status != TS_DEAD && thread_p->status != TS_FREE
+      && thread_p->status != TS_CHECK)
+    {
+      conn_p = thread_p->conn_entry;
+      if (tran_index == NULL_TRAN_INDEX && (conn_p != NULL && conn_p->client_id == client_id))
+	{
+	  return true;
+	}
+      else if (tran_index == thread_p->tran_index && (conn_p == NULL || conn_p->client_id == client_id))
+	{
+	  return true;
+	}
+    }
+  pthread_mutex_unlock (&thread_p->tran_index_lock);
+  return false;
+}
+
 /*
  * thread_has_threads() - check if any thread is processing job of transaction
  *                          tran_index
@@ -2106,32 +1724,18 @@ thread_set_comm_request_id (unsigned int request_id)
 int
 thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id)
 {
-  int i, n, rv;
-  THREAD_ENTRY *thread_p;
-  CSS_CONN_ENTRY *conn_p;
+  int n = 0;
 
-  for (i = 1, n = 0; i <= thread_Manager.num_workers; i++)
+  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      thread_p = &thread_Manager.thread_array[i];
       if (thread_p == caller)
 	{
 	  continue;
 	}
-      rv = pthread_mutex_lock (&thread_p->tran_index_lock);
-      if (thread_p->tid != pthread_self () && thread_p->status != TS_DEAD && thread_p->status != TS_FREE
-	  && thread_p->status != TS_CHECK)
+      if (thread_belongs_to (thread_p, tran_index, client_id))
 	{
-	  conn_p = thread_p->conn_entry;
-	  if (tran_index == NULL_TRAN_INDEX && (conn_p != NULL && conn_p->client_id == client_id))
-	    {
-	      n++;
-	    }
-	  else if (tran_index == thread_p->tran_index && (conn_p == NULL || conn_p->client_id == client_id))
-	    {
-	      n++;
-	    }
+	  n++;
 	}
-      pthread_mutex_unlock (&thread_p->tran_index_lock);
     }
 
   return n;
@@ -2158,11 +1762,11 @@ thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *n
 
   if (num_total_threads)
     {
-      *num_total_threads = thread_Manager.num_total;
+      *num_total_threads = thread_num_total_threads ();
     }
   if (num_worker_threads)
     {
-      *num_worker_threads = thread_Manager.num_workers;
+      *num_worker_threads = thread_num_worker_threads ();
     }
   if (num_free_threads)
     {
@@ -2198,7 +1802,7 @@ thread_num_worker_threads (void)
 int
 thread_num_total_threads (void)
 {
-  return thread_Manager.num_total;
+  return thread_Manager.num_total + (int) cubthread::get_max_thread_count ();
 }
 
 /*
@@ -2537,11 +2141,6 @@ thread_initialize_sync_object (void)
 
   for (i = 0; i < thread_Manager.num_daemons; i++)
     {
-      if (thread_Daemons[i].type == THREAD_DAEMON_VACUUM_WORKER)
-	{
-	  /* Already initialized */
-	  continue;
-	}
       r = pthread_cond_init (&thread_Daemons[i].daemon_monitor->cond, NULL);
       if (r != 0)
 	{
@@ -2671,216 +2270,6 @@ thread_wakeup_deadlock_detect_thread (void)
       pthread_cond_signal (&thread_Deadlock_detect_thread.cond);
     }
   pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
-}
-
-/*
- * thread_vacuum_master_thread () - Starts an auto vacuum thread.
- *
- * return     : (THREAD_RET_T) 0.
- * arg_p (in) : Unused.
- */
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_vacuum_master_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr = NULL;
-#endif /* !HPUX */
-  struct timeval timeout;
-  struct timespec to = {
-    0, 0
-  };
-  int rv = 0;
-  int wakeup_time_msec;
-  INT64 tmp_usec;
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_VACUUM_MASTER;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  thread_Vacuum_master_thread.is_available = true;
-  /* vacuum master cannot be interrupted */
-  tsd_ptr->check_interrupt = false;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
-  while (!tsd_ptr->shutdown)
-    {
-      er_clear ();
-
-      gettimeofday (&timeout, NULL);
-      wakeup_time_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
-      to.tv_sec = timeout.tv_sec + (wakeup_time_msec / 1000LL);
-      tmp_usec = timeout.tv_usec + (wakeup_time_msec % 1000LL) * 1000LL;
-      if (tmp_usec >= 1000000)
-	{
-	  to.tv_sec += 1;
-	  tmp_usec -= 1000000;
-	}
-      to.tv_nsec = ((int) tmp_usec) * 1000;
-
-      rv = pthread_mutex_lock (&thread_Vacuum_master_thread.lock);
-      thread_Vacuum_master_thread.is_running = false;
-      pthread_cond_timedwait (&thread_Vacuum_master_thread.cond, &thread_Vacuum_master_thread.lock, &to);
-
-      if (tsd_ptr->shutdown)
-	{
-	  pthread_mutex_unlock (&thread_Vacuum_master_thread.lock);
-	  break;
-	}
-
-      thread_Vacuum_master_thread.is_running = true;
-      pthread_mutex_unlock (&thread_Vacuum_master_thread.lock);
-
-      vacuum_master_start (tsd_ptr);
-    }
-
-  /* Finalize vacuum. */
-  vacuum_finalize (tsd_ptr);
-
-  rv = pthread_mutex_lock (&thread_Vacuum_master_thread.lock);
-  thread_Vacuum_master_thread.is_available = false;
-  pthread_mutex_unlock (&thread_Vacuum_master_thread.lock);
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-
-  return (THREAD_RET_T) 0;
-}
-
-/*
- * thread_wakeup_vacuum_master_thread () - Wakes the vacuum master thread.
- *
- * return    : Void.
- */
-void
-thread_wakeup_vacuum_master_thread (void)
-{
-  int rv;
-
-  rv = pthread_mutex_lock (&thread_Vacuum_master_thread.lock);
-  if (thread_Vacuum_master_thread.is_running == false)
-    {
-      pthread_cond_signal (&thread_Vacuum_master_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Vacuum_master_thread.lock);
-}
-
-/*
- * thread_vacuum_worker_thread () - Vacuum worker thread.
- *
- * return     : THREAD_RET_T
- * arg_p (in) : Vacuum thread entry.
- */
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_vacuum_worker_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr = NULL;
-#endif /* !HPUX */
-  DAEMON_THREAD_MONITOR *thread_monitor = NULL;
-  int rv = 0;
-  INT32 daemon_index = 0;
-
-  /* Read vacuum thread entry argument */
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_VACUUM_WORKER;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  /* vacuum workers cannot be interrupted */
-  tsd_ptr->check_interrupt = false;
-
-  /* Assign one vacuum worker daemon monitor to current thread based on thread index. The workers in thread array must
-   * be in the same order as their daemons. */
-  daemon_index = tsd_ptr->index - thread_First_vacuum_worker_thread_index;
-  assert (daemon_index >= 0 && daemon_index < VACUUM_MAX_WORKER_COUNT);
-  thread_monitor = &thread_Vacuum_worker_threads[daemon_index];
-  thread_monitor->is_available = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-  tsd_ptr->private_lru_index = pgbuf_assign_private_lru (tsd_ptr, true, daemon_index);
-
-  while (!tsd_ptr->shutdown)
-    {
-      er_clear ();
-
-      rv = pthread_mutex_lock (&thread_monitor->lock);
-      thread_monitor->is_running = false;
-      pthread_cond_wait (&thread_monitor->cond, &thread_monitor->lock);
-
-      if (tsd_ptr->shutdown)
-	{
-	  pthread_mutex_unlock (&thread_monitor->lock);
-	  break;
-	}
-
-      thread_monitor->is_running = true;
-      pthread_mutex_unlock (&thread_monitor->lock);
-
-      vacuum_start_new_job (tsd_ptr);
-    }
-
-  pgbuf_release_private_lru (tsd_ptr, tsd_ptr->private_lru_index);
-
-  rv = pthread_mutex_lock (&thread_monitor->lock);
-  thread_monitor->is_available = false;
-  pthread_mutex_unlock (&thread_monitor->lock);
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-
-  return (THREAD_RET_T) 0;
-}
-
-/*
- * thread_wakeup_vacuum_worker_threads () - Wakeup vacuum workers to start
- *					    execution jobs.
- *
- * return	  : True if an available worker was found, false otherwise.
- * n_workers (in) : Number of required workers.
- */
-void
-thread_wakeup_vacuum_worker_threads (int n_workers)
-{
-  int rv, i;
-  int vacuum_worker_count = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
-
-  if (n_workers <= 0)
-    {
-      /* No available worker or no workers required */
-      return;
-    }
-
-  for (i = 0; i < vacuum_worker_count; i++)
-    {
-      rv = pthread_mutex_lock (&thread_Vacuum_worker_threads[i].lock);
-      if (!thread_Vacuum_worker_threads[i].is_running)
-	{
-	  pthread_cond_signal (&thread_Vacuum_worker_threads[i].cond);
-	  pthread_mutex_unlock (&thread_Vacuum_worker_threads[i].lock);
-
-	  /* Decrement the required number of workers */
-	  if (--n_workers == 0)
-	    {
-	      /* Stop */
-	      return;
-	    }
-	}
-      else
-	{
-	  /* Unlock thread lock */
-	  pthread_mutex_unlock (&thread_Vacuum_worker_threads[i].lock);
-	}
-    }
 }
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION
@@ -4202,23 +3591,18 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is
 THREAD_ENTRY *
 thread_find_first_lockwait_entry (int *thread_index_p)
 {
-  THREAD_ENTRY *thread_p;
-  int i;
-
-  for (i = 1; i <= thread_Manager.num_workers; i++)
+  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      thread_p = &(thread_Manager.thread_array[i]);
       if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
 	{
 	  continue;
 	}
       if (thread_p->lockwait != NULL)
 	{			/* found */
-	  *thread_index_p = i;
+	  *thread_index_p = thread_p->index;
 	  return thread_p;
 	}
     }
-
   return (THREAD_ENTRY *) NULL;
 }
 
@@ -4230,23 +3614,19 @@ thread_find_first_lockwait_entry (int *thread_index_p)
 THREAD_ENTRY *
 thread_find_next_lockwait_entry (int *thread_index_p)
 {
-  THREAD_ENTRY *thread_p;
-  int i;
-
-  for (i = (*thread_index_p + 1); i <= thread_Manager.num_workers; i++)
+  for (THREAD_ENTRY * thread_p = thread_find_entry_by_index (*thread_index_p);
+       thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      thread_p = &(thread_Manager.thread_array[i]);
       if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
 	{
 	  continue;
 	}
       if (thread_p->lockwait != NULL)
 	{			/* found */
-	  *thread_index_p = i;
+	  *thread_index_p = thread_p->index;
 	  return thread_p;
 	}
     }
-
   return (THREAD_ENTRY *) NULL;
 }
 
@@ -4258,7 +3638,15 @@ thread_find_next_lockwait_entry (int *thread_index_p)
 THREAD_ENTRY *
 thread_find_entry_by_index (int thread_index)
 {
-  return (&thread_Manager.thread_array[thread_index]);
+  assert (thread_index >= 0 && thread_index < thread_num_total_threads ());
+  if (thread_index < thread_Manager.num_total)
+    {
+      return (&thread_Manager.thread_array[thread_index]);
+    }
+  else
+    {
+      return &(cubthread::get_manager ()->get_all_entries ()[thread_index - thread_Manager.num_total]);
+    }
 }
 
 /*
@@ -4269,12 +3657,8 @@ thread_find_entry_by_index (int thread_index)
 THREAD_ENTRY *
 thread_find_entry_by_tid (pthread_t tid)
 {
-  THREAD_ENTRY *thread_p;
-  int i;
-
-  for (i = 1; i <= thread_Manager.num_workers; i++)
+  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      thread_p = &thread_Manager.thread_array[i];
       if (thread_p->tid == tid)
 	{
 	  return thread_p;
@@ -4314,6 +3698,7 @@ thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** thread_array_p)
 	    }
 	}
     }
+  /* TODO: transfer to new manager */
 
   return thread_count;
 }
@@ -5980,14 +5365,6 @@ thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
   thread_p->xasl_recursion_depth = 0;
 }
 
-#if defined(SERVER_MODE)
-int
-thread_first_vacuum_worker_thread_index (void)
-{
-  return thread_First_vacuum_worker_thread_index;
-}
-#endif
-
 /*
  * thread_daemon_wait () - wait until woken
  *
@@ -6149,7 +5526,6 @@ thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon)
   pthread_mutex_unlock (&daemon->lock);
 }
 
-#if !defined (NDEBUG)
 /*
  * thread_iterate () - thread iterator
  *
@@ -6164,29 +5540,10 @@ thread_iterate (THREAD_ENTRY * thread_p)
     {
       index = thread_p->index + 1;
     }
-  if (index >= thread_Manager.num_total)
+  if (index >= thread_num_total_threads ())
     {
-      assert (index == thread_Manager.num_total);
+      assert (index == thread_num_total_threads ());
       return NULL;
     }
-  return thread_Manager.thread_array + index;
-}
-#endif /* !NDEBUG */
-
-int
-thread_get_total_num_of_threads (void)
-{
-  return thread_Manager.num_total;
-}
-
-THREAD_ENTRY *
-thread_get_entry_from_index (int index)
-{
-  return &thread_Manager.thread_array[index];
-}
-
-int
-thread_get_total_num_of_workers (void)
-{
-  return thread_Manager.num_workers;
+  return thread_find_entry_by_index (index);
 }

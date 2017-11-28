@@ -27,18 +27,18 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-#ifdef SERVER_MODE
-#include <errno.h>
-#if !defined(WINDOWS)
-#include <pthread.h>
-#endif /* not WINDOWS */
-
-#include "thread.h"
-#include "error_manager.h"
+#if defined (SERVER_MODE)
 #include "connection_defs.h"
-#include "thread.h"
+#include "error_manager.h"
 #endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+#include <errno.h>
+#endif // SERVER_MODE
+#if defined (SERVER_MODE) && !defined(WINDOWS)
+#include <pthread.h>
+#endif // SERVER_MODE and not WINDOWS
+#include <stdio.h>
 
 /* TODO: ER_CSS_NOERROR -> NO_ERROR */
 #define ER_CSS_NOERROR  0

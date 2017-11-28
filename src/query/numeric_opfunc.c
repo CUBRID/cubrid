@@ -45,10 +45,6 @@
 #include <cmath>
 #endif
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "thread.h"
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-
 /* this must be the last header file included!!! */
 #include "dbval.h"
 

@@ -68,7 +68,8 @@
 #include "tz_support.h"
 #include "filter_pred_cache.h"
 #include "slotted_page.h"
-
+#include "thread.h"
+#include "thread_manager.hpp"
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
@@ -2216,13 +2217,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* reinitialize thread mgr to reflect # of active requests */
-  if (thread_initialize_manager () != NO_ERROR)
-    {
-      error_code = ER_FAILED;
-      goto error;
-    }
-
   /* note that thread entry was re-initialized */
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -2259,7 +2253,28 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   /* Initialize tsc-timer */
   tsc_init ();
+#endif /* !SERVER_MODE */
 
+  // TODO: remove the ridiculous double initialization
+#if defined (SERVER_MODE)
+  /* reinitialize thread mgr to reflect # of active requests */
+  assert (thread_p != NULL);
+  if (cubthread::initialize (NULL) != NO_ERROR)
+#else
+  assert (thread_p == NULL);
+  if (cubthread::initialize (&thread_p) != NO_ERROR)
+#endif
+    {
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+#if defined (SERVER_MODE)
+  // make sure we have the right thread_p
+  thread_p = thread_get_thread_entry_info ();
+#endif // SERVER_MODE
+
+#if defined (SERVER_MODE)
 #if defined(DIAG_DEVEL)
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
@@ -2418,21 +2433,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
+  // after recovery we can boot vacuum
+  error_code = vacuum_boot (thread_p);
+  if (error_code != NO_ERROR)
     {
-      /* load and recovery vacuum data and dropped files */
-      error_code = vacuum_data_load_and_recover (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
-      error_code = vacuum_load_dropped_files_from_disk (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
+      ASSERT_ERROR ();
+      goto error;
     }
 
 
@@ -2751,6 +2757,10 @@ error:
   er_stack_push ();
   boot_server_all_finalize (thread_p, ER_THREAD_FINAL, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
   er_stack_pop ();
+
+#if defined (SA_MODE)
+  cubthread::finalize ();
+#endif /* SA_MODE */
 
   return error_code;
 }
@@ -3637,7 +3647,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
        * may still refers the area manager.
        */
       thread_return_all_transactions_entries ();
-      lf_destroy_transaction_systems ();
+      // lf_destroy_transaction_systems ();
 #endif
       es_final ();
       tp_final ();

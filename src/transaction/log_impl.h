@@ -28,31 +28,38 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include <signal.h>
-#include <assert.h>
-
-#include "storage_common.h"
-#include "log_comm.h"
-#include "porting.h"
 #include "boot.h"
-#include "release_string.h"
-#include "file_io.h"
-#include "rb_tree.h"
+#include "config.h"
 #include "connection_globals.h"
-#include "recovery.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "critical_section.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "es.h"
-#include "mvcc.h"
-#include "critical_section.h"
-#include "thread.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "file_io.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "lock_free.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "lock_manager.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "log_comm.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "mvcc.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "porting.h"
+#include "rb_tree.h"
+#include "recovery.h"
+#include "release_string.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
+#include <assert.h>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
+#include <signal.h>
 
 /************************************************************************/
 /* Section shared with client... TODO: remove any code accessing log    */
@@ -2293,7 +2300,7 @@ extern char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
-STATIC_INLINE int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
@@ -2391,35 +2398,6 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
-
-/************************************************************************/
-/* Inline functions:                                                    */
-/************************************************************************/
-
-/*
- * logtb_find_current_wait_msecs - find waiting times for current transaction
- *
- * return : wait_msecs...
- *
- * Note: Find the waiting time for the current transaction.
- */
-STATIC_INLINE int
-logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
-    {
-      return tdes->wait_msecs;
-    }
-  else
-    {
-      return 0;
-    }
-}
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

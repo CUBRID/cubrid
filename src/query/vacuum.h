@@ -28,15 +28,15 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include <assert.h>
-
 #include "dbtype.h"
-#include "thread.h"
-#include "storage_common.h"
-#include "recovery.h"
-#include "system_parameter.h"
-#include "log_impl.h"
 #include "disk_manager.h"
+#include "log_impl.h"
+#include "recovery.h"
+#include "storage_common.h"
+#include "system_parameter.h"
+#include "thread_compat.hpp"
+
+#include <assert.h>
 
 /* Vacuum logging function (can only be used when SERVER_MODE is defined).
  */
@@ -152,6 +152,8 @@ struct vacuum_worker
 #if defined (SERVER_MODE)
   char *prefetch_log_buffer;	/* buffer for prefetching log pages */
 #endif				/* SERVER_MODE */
+
+  bool allocated_resources;
 };
 
 #define VACUUM_MAX_WORKER_COUNT	  50
@@ -280,12 +282,10 @@ extern void vacuum_set_worker_sa_mode (VACUUM_WORKER * worker);
 extern int vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * vacuum_data_vfid,
 			      VFID * dropped_files_vfid);
 extern void vacuum_finalize (THREAD_ENTRY * thread_p);
+extern int vacuum_boot (THREAD_ENTRY * thread_p);
+extern void vacuum_stop (THREAD_ENTRY * thread_p);
 extern int xvacuum (THREAD_ENTRY * thread_p);
 extern MVCCID vacuum_get_global_oldest_active_mvccid (void);
-#if defined (SERVER_MODE)
-extern void vacuum_master_start (THREAD_ENTRY * thread_p);
-extern void vacuum_start_new_job (THREAD_ENTRY * thread_p);
-#endif /* SERVER_MODE */
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
 extern int vacuum_data_load_and_recover (THREAD_ENTRY * thread_p);

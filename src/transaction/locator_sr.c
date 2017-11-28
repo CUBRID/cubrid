@@ -51,7 +51,7 @@
 #include "fetch.h"
 #include "query_executor.h"
 #include "xasl_cache.h"
-
+#include "thread.h"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
