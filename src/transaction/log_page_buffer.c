@@ -1945,11 +1945,12 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
       else
 	{
 #if !defined(NDEBUG)
-	  {
-	    bool is_log_page_corrupted;
-	    assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
-		    && (is_log_page_corrupted == false));
-	  }
+	  if (boot_Server_status == BOOT_SERVER_UP || log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID)
+	    {
+	      bool is_log_page_corrupted;
+	      assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
+		      && (is_log_page_corrupted == false));
+	    }
 #endif
 	  if (log_pgptr->hdr.logical_pageid != pageid)
 	    {
