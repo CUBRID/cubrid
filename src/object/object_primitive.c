@@ -17317,6 +17317,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 
   if (json_body_length <= 0)
     {
+      assert (false);
       goto exit;
     }
   else
@@ -17530,6 +17531,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   rc = db_json_get_json_from_str (json_raw, doc);
   if (rc != NO_ERROR)
     {
+      assert (false);
       goto exit;
     }
   json_raw_copy = db_private_strdup (NULL, json_raw);
