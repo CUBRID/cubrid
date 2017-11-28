@@ -440,9 +440,10 @@ extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_ex
 extern int db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst);
 extern int db_init_db_json_pointers (DB_JSON * val);
 
-#ifdef SERVER_MODE
-   /* Use the inlined version of the functions. */
-
+#if !defined(SERVER_MODE)
+#include "dbtype_api.h"
+#else
+/* Use the inline version of the functions. */
 static inline int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 static inline DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 static inline DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -553,11 +554,7 @@ static inline int db_get_compressed_size (DB_VALUE * value) __attribute__ ((ALWA
 static inline void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 					     int compressed_size, bool compressed_need_clear)
   __attribute__ ((ALWAYS_INLINE));
+
 #include "db_macro.i"
-#else
-#include "dbtype_api.h"
 #endif
-
-
-
 #endif /* _DBTYPE_H_ */

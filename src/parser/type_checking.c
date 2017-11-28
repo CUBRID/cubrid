@@ -55,7 +55,7 @@
 #include "object_template.h"
 #include "db.h"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define SET_EXPECTED_DOMAIN(node, dom) \
   do \

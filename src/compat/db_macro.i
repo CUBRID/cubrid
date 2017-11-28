@@ -22,11 +22,7 @@
  *
  */
 
-#pragma once
-
-#ident "$Id$"
-#ifndef _DB_MACRO_I_
-#define _DB_MACRO_I_
+#include "dbtype_common.h"
 
 #ifdef SERVER_MODE
 #if defined (__cplusplus) || defined (__GNUC__)
@@ -39,8 +35,6 @@
 #define DB_MACRO_INLINE
 #endif
 
-
-
 /*
  * db_get_int() -
  * return :
@@ -50,7 +44,7 @@ DB_MACRO_INLINE int
 db_get_int (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
+  CHECK_1ARG_ZERO(value);
 #endif
   assert (value->domain.general_info.type == DB_TYPE_INTEGER);
 
@@ -99,7 +93,7 @@ db_get_string (const DB_VALUE * value)
 {
   char *str = NULL;
 #if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
+  CHECK_1ARG_NULL(value);
 #endif
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
@@ -661,7 +655,7 @@ DB_MACRO_INLINE int
 db_get_string_codeset (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
+  CHECK_1ARG_ZERO_WITH_TYPE(value, INTL_CODESET);
 #endif
 
   return (int) value->data.ch.info.codeset;
@@ -736,7 +730,7 @@ DB_MACRO_INLINE DB_TYPE
 db_value_type (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_UNKNOWN (value);
+  CHECK_1ARG_UNKNOWN(value);
 #endif
   if (value->domain.general_info.is_null)
     {
@@ -854,7 +848,7 @@ DB_MACRO_INLINE int
 db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
+  CHECK_1ARG_ERROR(value);
 #endif
 
   value->data.ch.info.style = MEDIUM_STRING;
@@ -1875,7 +1869,7 @@ db_make_collection (DB_VALUE * value, DB_COLLECTION * col)
  * return:
  * value(out):
  * type(in):
- * elo(in):
+ * elo(in):`
  */
 DB_MACRO_INLINE int
 db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo)
@@ -1985,5 +1979,3 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
 
   return;
 }
-
-#endif /* _DB_MACRO_I_ */
