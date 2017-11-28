@@ -1205,6 +1205,9 @@ int g_original_buffer_len;
 %token FUN_JSON_OBJECT
 %token FUN_JSON_MERGE
 %token FUN_JSON_INSERT
+%token FUN_JSON_REPLACE
+%token FUN_JSON_SET
+%token FUN_JSON_KEYS
 %token FUN_JSON_REMOVE
 %token FUN_JSON_ARRAY_APPEND
 %token FUN_JSON_GET_ALL_PATHS
@@ -16038,6 +16041,63 @@ reserved_func
 				    MSGCAT_SET_PARSER_SEMANTIC,
 				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
 				    "json_insert");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_REPLACE '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_REPLACE, args_list);
+		    if (len < 3 || len % 2 != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_replace");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_SET '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_SET, args_list);
+		    if (len < 3 || len % 2 != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_set");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_KEYS '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_KEYS, args_list);
+		    if (len > 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_keys");
 		    }
 
 		    $$ = node;

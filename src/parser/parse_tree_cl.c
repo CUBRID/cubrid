@@ -4030,6 +4030,12 @@ pt_show_function (FUNC_TYPE c)
       return "json_array";
     case F_JSON_INSERT:
       return "json_insert";
+    case F_JSON_REPLACE:
+      return "json_replace";
+    case F_JSON_SET:
+      return "json_set";
+    case F_JSON_KEYS:
+      return "json_keys";
     case F_JSON_REMOVE:
       return "json_remove";
     case F_JSON_ARRAY_APPEND:

@@ -5226,6 +5226,9 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     case F_JSON_OBJECT:
     case F_JSON_ARRAY:
     case F_JSON_INSERT:
+    case F_JSON_REPLACE:
+    case F_JSON_SET:
+    case F_JSON_KEYS:
     case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
     case F_JSON_MERGE:
@@ -15127,6 +15130,9 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:
+	case F_JSON_REPLACE:
+	case F_JSON_SET:
+	case F_JSON_KEYS:
 	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_MERGE:
