@@ -10405,6 +10405,28 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+class temp_mem_manager //temporary until get rid of gcc 4.4.7
+{
+  public:
+    temp_mem_manager(thread_entry* thr_ctx)
+      : m_thr_ctx{thr_ctx}
+    {}
+
+    void extend(mem::block &block, size_t len)
+    {
+      block.ptr = (char *) db_private_realloc (m_thr_ctx, block.ptr, block.dim + len);
+      block.dim += len;
+    }
+
+    void dealloc(mem::block & block)
+    {
+      db_private_free (m_thr_ctx, block.ptr);
+      block = {};
+    }
+
+  private:
+    thread_entry *m_thr_ctx;
+};
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of
  * the pr_type vector for the appropriate type.
@@ -10420,20 +10442,26 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 char *
 pr_valstring (thread_entry * threade, DB_VALUE * val)
 {
+#if 0 //temporary until get rid of gcc 4.4.7
   string_buffer sb
   {
     [&threade] (mem::block & block, size_t len)
     {
       block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
       block.dim += len;
-    },[&threade] (mem::block & block)
+    },
+    [&threade] (mem::block & block)
     {
       db_private_free (threade, block.ptr);
-      block =
-      {
-      };
+      block = {};
     }
   };
+#else
+  temp_mem_manager mem_manager(threade);
+  std::function<void(mem::block &block, size_t len)> extend = std::bind(&temp_mem_manager::extend, &mem_manager, std::placeholders::_1, std::placeholders::_2);
+  std::function<void(mem::block &block)> dealloc = std::bind(&temp_mem_manager::dealloc, &mem_manager, std::placeholders::_1);
+  string_buffer sb{extend, dealloc};
+#endif
 
   if (val == NULL)
     {
