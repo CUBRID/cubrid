@@ -17311,7 +17311,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 
   (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, false, NULL, 0);
   (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, false, NULL, 0);
-  
+
   json_body_length = DB_GET_STRING_SIZE (&json_body);
   schema_length = DB_GET_STRING_SIZE (&schema_raw);
 
@@ -17522,7 +17522,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
     {
       goto exit;
     }
-    
+
   assert (!DB_IS_NULL (&json_body));
 
   json_raw = DB_PULL_STRING (&json_body);
