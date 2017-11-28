@@ -2060,11 +2060,11 @@ pr_clear_value (DB_VALUE * value)
 	    }
 	}
       else
-        {
-          value->data.json.json_body = NULL;
-          value->data.json.document = NULL;
-          value->data.json.schema_raw = NULL;
-        }
+	{
+	  value->data.json.json_body = NULL;
+	  value->data.json.document = NULL;
+	  value->data.json.schema_raw = NULL;
+	}
       break;
 
     case DB_TYPE_OBJECT:
