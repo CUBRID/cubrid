@@ -39,7 +39,7 @@ object_description::object_description ()
 
 int object_description::init (struct db_object *op)
 {
-  if (op == nullptr)
+  if (op == NULL)
     {
       return ER_OBJ_INVALID_ARGUMENTS;
     }

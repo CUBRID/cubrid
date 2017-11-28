@@ -104,7 +104,7 @@ void string_buffer::operator+= (const char ch)
 
 template<typename... Args> void string_buffer::operator() (Args &&... args)
 {
-  int len = snprintf (nullptr, 0, std::forward<Args> (args)...);
+  int len = snprintf (NULL, 0, std::forward<Args> (args)...);
   if (dim <= m_len + size_t (len) + 1)
     {
       extend (m_len + size_t (len) + 1 - dim); //ask to extend to fit at least additional len chars

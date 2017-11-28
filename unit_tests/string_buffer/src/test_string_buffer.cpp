@@ -113,7 +113,7 @@ class test_string_buffer
 
     template<typename... Args> void format (const char *file, int line, Args &&... args)
     {
-      int len = snprintf (nullptr, 0, args...);
+      int len = snprintf (NULL, 0, args...);
       if (len < 0)
 	{
 	  ERR ("[%s(%d)] StrBuf() snprintf()=%d", file, line, len);

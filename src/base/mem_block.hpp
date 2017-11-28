@@ -40,7 +40,7 @@ namespace mem
 
       block()
 	: dim {0}
-	, ptr {nullptr}
+	, ptr {NULL}
       {}
 
       block (block &&b)             //move ctor
@@ -48,7 +48,7 @@ namespace mem
 	, ptr {b.ptr}
       {
 	b.dim = 0;
-	b.ptr = nullptr;
+	b.ptr = NULL;
       }
 
       block &operator= (block &&b)  //move assign
@@ -58,7 +58,7 @@ namespace mem
 	    dim = b.dim;
 	    ptr = b.ptr;
 	    b.dim = 0;
-	    b.ptr = nullptr;
+	    b.ptr = NULL;
 	  }
 	return *this;
       }
@@ -70,14 +70,14 @@ namespace mem
 
       bool is_valid ()
       {
-	return (dim != 0 && ptr != nullptr);
+	return (dim != 0 && ptr != NULL);
       }
 
       char *move_ptr()                                    //NOT RECOMMENDED! use move semantics: std::move()
       {
 	char *p = ptr;
 	dim = 0;
-	ptr = nullptr;
+	ptr = NULL;
 	return p;
       }
 
@@ -125,7 +125,7 @@ namespace mem
 	, m_dealloc {b.m_dealloc}
       {
 	b.dim = 0;
-	b.ptr = nullptr;
+	b.ptr = NULL;
       }
 
       block_ext &operator= (block_ext &&b)                //move assignment
@@ -138,7 +138,7 @@ namespace mem
 	    m_extend = b.m_extend;
 	    m_dealloc = b.m_dealloc;
 	    b.dim = 0;
-	    b.ptr = nullptr;
+	    b.ptr = NULL;
 	  }
 	return *this;
       }
