@@ -115,7 +115,10 @@ namespace mem
   struct block_ext: public block
   {
       block_ext()                                         //default ctor
-	: block_ext {default_realloc, default_dealloc}
+	//: block_ext {default_realloc, default_dealloc} //doesn't work on gcc 4.4.7
+	: block {}
+	, m_extend {default_realloc}
+	, m_dealloc {default_dealloc}
       {
       }
 
