@@ -3174,14 +3174,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
     case T_LEAST:
       {
-        int error;
-        TP_DOMAIN *target_domain;
-        
+	int error;
+	TP_DOMAIN *target_domain;
+
 	error = db_least_or_greatest (peek_left, peek_right, arithptr->value, true);
-        if (error != NO_ERROR)
-          {
-            goto error;
-          }
+	if (error != NO_ERROR)
+	  {
+	    goto error;
+	  }
 
 	target_domain = regu_var->domain;
 	if (target_domain == NULL)
@@ -3206,13 +3206,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_GREATEST:
       {
 	int error;
-        TP_DOMAIN *target_domain;
-        
+	TP_DOMAIN *target_domain;
+
 	error = db_least_or_greatest (peek_left, peek_right, arithptr->value, false);
-        if (error != NO_ERROR)
-          {
-            goto error;
-          }
+	if (error != NO_ERROR)
+	  {
+	    goto error;
+	  }
 
 	target_domain = regu_var->domain;
 	if (target_domain == NULL)

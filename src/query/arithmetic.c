@@ -5349,7 +5349,7 @@ db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool 
     {
       assert (can_compare == false);
       ASSERT_ERROR ();
-      error_code = er_errid();
+      error_code = er_errid ();
     }
   else
     {

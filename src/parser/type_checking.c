@@ -17544,7 +17544,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
 	}
-      
+
       if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
 	{
 	  PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
@@ -17555,13 +17555,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       return 1;
 
     case PT_GREATEST:
-     error = db_least_or_greatest (arg1, arg2, result, false);
+      error = db_least_or_greatest (arg1, arg2, result, false);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
 	}
-      
+
       if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
 	{
 	  PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
