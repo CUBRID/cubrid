@@ -74,7 +74,7 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
-#include "dbtype_common.h"
+#include "dbtype.h"
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 

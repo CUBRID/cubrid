@@ -39,7 +39,7 @@
 #include "object_primitive.h"
 #include "query_dump.h"
 #include "db_date.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 
 #define IS_SUBSET(value)        (value).sub.count >= 0

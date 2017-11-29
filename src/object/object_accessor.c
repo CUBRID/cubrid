@@ -56,7 +56,7 @@
 #include "view_transform.h"
 #include "network_interface_cl.h"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 /*
  * OBJ_MAX_ARGS

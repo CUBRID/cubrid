@@ -37,7 +37,7 @@
 
 #include "porting.h"
 #include "dbdef.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "sha1.h"
 
 /* NULL_CHN is a special value for an unspecified cache coherency number.

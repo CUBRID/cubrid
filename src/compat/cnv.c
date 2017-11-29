@@ -51,7 +51,7 @@
 #include "critical_section.h"
 #endif
 #include "db_date.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)

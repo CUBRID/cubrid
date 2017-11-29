@@ -56,7 +56,7 @@
 #include "view_transform.h"
 #include "xasl_to_stream.h"
 #include "parser_support.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

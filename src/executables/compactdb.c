@@ -51,7 +51,7 @@
 #include "authenticate.h"
 #include "transaction_cl.h"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 static int class_objects = 0;
 static int total_objects = 0;

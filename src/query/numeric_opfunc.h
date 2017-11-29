@@ -31,7 +31,7 @@
 #include "config.h"
 
 #include "intl_support.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "error_manager.h"
 
 typedef enum

@@ -64,7 +64,7 @@
 #include "execute_schema.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define MARK_CLASS_REQUESTED(cl_no) \
   (class_requested[cl_no / 8] |= 1 << cl_no % 8)

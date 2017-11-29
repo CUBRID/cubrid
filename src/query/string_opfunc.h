@@ -32,7 +32,7 @@
 #include "config.h"
 
 #include "intl_support.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "numeric_opfunc.h"
 #include "regex38a.h"
 #include "language_support.h"

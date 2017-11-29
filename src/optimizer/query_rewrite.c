@@ -37,7 +37,7 @@
 #include "view_transform.h"
 #include "parser.h"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define DB_MAX_LITERAL_PRECISION 255
 

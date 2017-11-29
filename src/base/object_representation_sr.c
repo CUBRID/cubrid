@@ -39,7 +39,7 @@
 #include "btree_load.h"
 #include "dbtype.h"
 #include "object_primitive.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10

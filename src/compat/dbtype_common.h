@@ -29,6 +29,7 @@
 #define _DBTYPE_COMMON_H_
 
 #include "error_code.h"
+#include "system.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -695,6 +696,45 @@ extern "C"
 
 /* Defines the state of a value not being yet prompted for a compression process. */
 #define DB_NOT_YET_COMPRESSED 0
+
+#define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
+#define DB_INT16_MAX   0x7FFF
+#define DB_UINT16_MAX  0xFFFFU
+#define DB_INT32_MIN   (-(DB_INT32_MAX)-1)
+#define DB_INT32_MAX   0x7FFFFFFF
+#define DB_UINT32_MIN  0
+#define DB_UINT32_MAX  0xFFFFFFFFU
+#if (__WORDSIZE == 64) || defined(_WIN64)
+#define DB_BIGINT_MAX  9223372036854775807L
+#define DB_BIGINT_MIN  (-DB_BIGINT_MAX - 1L)
+#else				/* (__WORDSIZE == 64) || defined(_WIN64) */
+#define DB_BIGINT_MAX  9223372036854775807LL
+#define DB_BIGINT_MIN  (-DB_BIGINT_MAX - 1LL)
+#endif				/* (__WORDSIZE == 64) || defined(_WIN64) */
+#define DB_ENUM_ELEMENTS_MAX  512
+/* special ENUM index for PT_TO_ENUMERATION_VALUE function */
+#define DB_ENUM_OVERFLOW_VAL  0xFFFF
+
+/* DB_DATE_MIN and DB_DATE_MAX are calculated by julian_encode function
+   with arguments (1,1,1) and (12,31,9999) respectively. */
+#define DB_DATE_ZERO       DB_UINT32_MIN	/* 0 means zero date */
+#define DB_DATE_MIN        1721424
+#define DB_DATE_MAX        5373484
+
+#define DB_TIME_MIN        DB_UINT32_MIN
+#define DB_TIME_MAX        DB_UINT32_MAX
+
+#define DB_UTIME_ZERO      DB_DATE_ZERO	/* 0 means zero date */
+#define DB_UTIME_MIN       (DB_UTIME_ZERO + 1)
+#define DB_UTIME_MAX       DB_UINT32_MAX
+
+#define NULL_DEFAULT_EXPRESSION_OPERATOR (-1)
+
+#define DB_IS_DATETIME_DEFAULT_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \
+    (v) == DB_DEFAULT_CURRENTTIME || (v) == DB_DEFAULT_CURRENTDATE || \
+    (v) == DB_DEFAULT_SYSDATETIME || (v) == DB_DEFAULT_SYSTIMESTAMP || \
+    (v) == DB_DEFAULT_UNIX_TIMESTAMP || (v) == DB_DEFAULT_CURRENTDATETIME || \
+    (v) == DB_DEFAULT_CURRENTTIMESTAMP || (v) == DB_DEFAULT_SYSTIME)
 
 /* This defines the basic type identifier constants.  These are used in
    the domain specifications of attributes and method arguments and

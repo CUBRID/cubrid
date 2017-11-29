@@ -30,7 +30,7 @@
 #include "stream_to_xasl.h"
 #include "query_executor.h"
 #include "object_primitive.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 typedef enum match_status
 {

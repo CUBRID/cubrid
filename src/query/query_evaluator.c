@@ -38,7 +38,7 @@
 #include "xasl.h"
 #include "dbtype.h"
 #include "query_executor.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 

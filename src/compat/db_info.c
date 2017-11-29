@@ -48,6 +48,7 @@
 #include "parser.h"
 #include "authenticate.h"
 #include "network_interface_cl.h"
+#include "dbtype.h"
 
 /*
  *  CLASS LOCATION

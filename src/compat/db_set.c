@@ -36,7 +36,7 @@
 #include "set_object.h"
 #include "error_manager.h"
 #include "db.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define ERROR_SET(error, code) \
   do {                     \

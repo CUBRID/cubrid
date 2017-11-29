@@ -47,7 +47,7 @@
 #include <wchar.h>
 #endif
 
-#include "dbtype.h"
+#include "dbtype_common.h"
 
 #ifndef MB_LEN_MAX
 #define MB_LEN_MAX            1

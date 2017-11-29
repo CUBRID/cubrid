@@ -27,7 +27,7 @@
 #endif /* defined (SERVER_MODE) */
 
 #include "memory_alloc.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "dbdef.h"
 #include "class_object.h"
 

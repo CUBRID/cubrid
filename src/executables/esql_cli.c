@@ -51,7 +51,7 @@
 #include "esql_gadget.h"
 #include "environment_variable.h"
 #include "authenticate.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define UCI_OPT_UNSAFE_NULL     0x0001
 

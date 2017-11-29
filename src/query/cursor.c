@@ -42,7 +42,7 @@
 #include "parser_support.h"
 #include "virtual_object.h"
 #include "network_interface_cl.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define CURSOR_BUFFER_SIZE              DB_PAGESIZE
 #define CURSOR_BUFFER_AREA_SIZE         IO_MAX_PAGE_SIZE

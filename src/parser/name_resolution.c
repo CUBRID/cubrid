@@ -49,7 +49,7 @@
 #include "locator_cl.h"
 #include "db_json.hpp"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 extern "C"
 {

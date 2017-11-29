@@ -34,6 +34,7 @@
 #include "stream_to_xasl.h"
 
 #include "error_manager.h"
+#include "dbtype.h"
 
 /* memory alignment unit - to align stored XASL tree nodes */
 #define	ALIGN_UNIT	sizeof(double)

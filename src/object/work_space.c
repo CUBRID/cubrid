@@ -53,7 +53,7 @@
 #include "object_template.h"
 #include "server_interface.h"
 #include "view_transform.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 extern unsigned int db_on_server;
 

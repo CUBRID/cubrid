@@ -51,7 +51,7 @@
 #include "view_transform.h"
 #include "network_interface_cl.h"
 #include "transform.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 /*
  * OBJECT CREATION/DELETION

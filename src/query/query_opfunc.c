@@ -49,7 +49,7 @@
 #include "db_json.hpp"
 #include "arithmetic.h"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))
 #define INITIAL_OID_STACK_SIZE  1

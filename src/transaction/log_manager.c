@@ -68,6 +68,8 @@
 #include "connection_support.h"
 #endif /* defined (SA_MODE) */
 
+#include "dbtype.h"
+
 #if !defined(SERVER_MODE)
 
 #define pthread_mutex_init(a, b)

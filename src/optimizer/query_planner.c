@@ -49,7 +49,7 @@
 #include "schema_manager.h"
 #include "network_interface_cl.h"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"

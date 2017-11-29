@@ -62,7 +62,7 @@
 #include "wintcp.h"
 #endif /* WINDOWS */
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 

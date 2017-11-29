@@ -48,7 +48,7 @@
 #include "authenticate.h"
 #include "db.h"
 #endif /* !defined (SERVER_MODE) */
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 static INTL_LANG lang_Lang_id = INTL_LANG_ENGLISH;
 static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;

@@ -39,7 +39,7 @@
 #include "porting.h"
 #include "storage_common.h"
 #include "release_string.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "memory_hash.h"
 #include "lzoconf.h"
 #include "lzo1x.h"

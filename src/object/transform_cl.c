@@ -50,7 +50,7 @@
 #include "execute_statement.h"
 #include "db_json.hpp"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

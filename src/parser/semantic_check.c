@@ -43,7 +43,7 @@
 #include "show_meta.h"
 #include "partition.h"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
 
 typedef enum

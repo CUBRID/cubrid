@@ -60,7 +60,7 @@
 #include "execute_statement.h"
 #include "network_interface_cl.h"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define OBJ_INTERNAL_SAVEPOINT_NAME "*template-unique*"
 

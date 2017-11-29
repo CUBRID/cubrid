@@ -40,7 +40,7 @@
 #include "object_print.h"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 /* TODO */
 #if !defined (SERVER_MODE)

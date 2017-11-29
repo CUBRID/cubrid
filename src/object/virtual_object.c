@@ -37,7 +37,7 @@
 #include "view_transform.h"
 #include "transaction_cl.h"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define ENCODED_LEN(siz) (2*(siz))
 #define MAX_STRING_OID_LENGTH 4096

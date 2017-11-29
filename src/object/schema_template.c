@@ -51,6 +51,8 @@
 #include "misc_string.h"
 #endif
 
+#include "dbtype.h"
+
 #define DOWNCASE_NAME(a, b) \
   do { \
     sm_downcase_name(a, b, SM_MAX_IDENTIFIER_LENGTH); \

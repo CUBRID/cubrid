@@ -63,6 +63,7 @@
 
 #include "porting.h"
 #include "server_support.h"
+#include "dbtype.h"
 
 typedef SCAN_CODE (*NEXT_SCAN_FUNC) (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 				     void *ctx);

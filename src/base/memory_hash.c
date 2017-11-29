@@ -57,7 +57,7 @@
 #include "intl_support.h"
 #include "log_impl.h"
 #include "object_primitive.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #if __WORDSIZE == 32
 #define GET_PTR_FOR_HASH(key) ((unsigned int)(key))

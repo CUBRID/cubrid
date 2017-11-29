@@ -53,7 +53,7 @@
 #include "jsp_cl.h"
 #include "class_object.h"
 #include "object_print.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define CLASS_NAME_MAX 80
 

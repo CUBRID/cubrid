@@ -71,7 +71,7 @@
 
 #include "db_json.hpp"
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define GOTO_EXIT_ON_ERROR \
   do \

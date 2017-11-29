@@ -43,6 +43,8 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 
+#include "dbtype.h"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */

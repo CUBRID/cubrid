@@ -25,7 +25,7 @@
 #define _LOCK_FREE_H_
 
 #include "porting.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 
 /*
  * Some common hash, copy and compare functions

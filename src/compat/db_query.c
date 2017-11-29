@@ -42,7 +42,7 @@
 #include "system_parameter.h"
 #include "xasl_generation.h"
 #include "network_interface_cl.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define DB_OID_INCLUDED(r)      ((r)->oid_included == true)
 #define DB_INVALID_INDEX(i,cnt) ((i) < 0 || (i) >= (cnt))

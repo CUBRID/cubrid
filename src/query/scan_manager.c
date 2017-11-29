@@ -42,7 +42,7 @@
 #include "locator_sr.h"
 #include "object_primitive.h"
 #include "query_opfunc.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

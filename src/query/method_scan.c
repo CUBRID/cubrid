@@ -43,7 +43,7 @@
 #include "xasl_support.h"
 #endif /* defined (SA_MODE) */
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;

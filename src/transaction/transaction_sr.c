@@ -37,6 +37,8 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 
+#include "dbtype.h"
+
 /*
  * xtran_server_commit - Commit the current transaction
  *

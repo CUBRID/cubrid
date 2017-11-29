@@ -62,7 +62,7 @@
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;

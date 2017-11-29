@@ -55,7 +55,7 @@
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #define BTREE_HEALTH_CHECK
 

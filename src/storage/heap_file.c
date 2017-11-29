@@ -63,7 +63,7 @@
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

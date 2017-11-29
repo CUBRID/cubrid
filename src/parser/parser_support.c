@@ -57,6 +57,7 @@
 #include "object_print.h"
 #include "show_meta.h"
 #include "db.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

@@ -31,7 +31,7 @@
 #include <assert.h>
 
 
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #include "set_object.h"
 #include "error_manager.h"

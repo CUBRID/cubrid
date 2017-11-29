@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "object_domain.h"
 #include "thread.h"
 #include <vector>

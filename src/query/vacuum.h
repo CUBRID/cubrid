@@ -30,7 +30,7 @@
 
 #include <assert.h>
 
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "thread.h"
 #include "storage_common.h"
 #include "recovery.h"

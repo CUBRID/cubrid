@@ -74,6 +74,7 @@
 #include "vacuum.h"
 #include "object_primitive.h"
 #include "tz_support.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

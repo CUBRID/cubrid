@@ -52,7 +52,7 @@
 #include "work_space.h"
 
 #endif /* !defined (SERVER_MODE) */
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

@@ -40,7 +40,7 @@
 #include "network_interface_cl.h"
 #include "execute_statement.h"
 #include "transaction_cl.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 
 typedef struct trigger_exec_info TRIGGER_EXEC_INFO;
 struct trigger_exec_info
