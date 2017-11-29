@@ -1311,6 +1311,9 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (loghdr != NULL);
 
+  /* to also initialize padding bytes */
+  memset (loghdr, 0, sizeof (LOG_HEADER));
+
   strncpy (loghdr->magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH);
 
   if (db_creation != NULL)
