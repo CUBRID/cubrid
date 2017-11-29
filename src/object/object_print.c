@@ -725,7 +725,7 @@ class temp_mem_manager //bSolo: temporary until evolve above gcc 4.4.7
 {
   public:
     temp_mem_manager(db_private_allocator<char>& allocator)
-      : m_allocator{allocator}
+      : m_allocator(allocator)
     {}
 
     void extend(mem::block& block, size_t len)
@@ -743,7 +743,7 @@ class temp_mem_manager //bSolo: temporary until evolve above gcc 4.4.7
     }
 
   private:
-    db_private_allocator<char> &m_allocator;
+    db_private_allocator<char>& m_allocator;
 };
 /* *INDENT-ON* */
 
