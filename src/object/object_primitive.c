@@ -17599,7 +17599,7 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   db_make_json (&json1, first_json_body, doc1, true);
   db_make_json (&json2, second_json_body, doc2, true);
 
-  res = mr_cmpval_json (&json1, &json2, 0, 0, 0, 0);
+  res = mr_cmpval_json (&json1, &json2, do_coercion, total_order, 0, 0);
 
 cleanup:
   pr_clear_value (&json1);
@@ -17616,58 +17616,54 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   doc2 = DB_GET_JSON_DOCUMENT (value2);
   DB_JSON_TYPE type1 = db_json_get_type (doc1);
   DB_JSON_TYPE type2 = db_json_get_type (doc2);
-  bool res = db_json_are_docs_equal (doc1, doc2);
+  DB_VALUE scalar_value1, scalar_value2;
+  DB_VALUE_COMPARE_RESULT cmp_result;
+  bool can_compare;
 
-  if (type1 == DB_JSON_UNKNOWN || type2 == DB_JSON_UNKNOWN)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_COMPARE_TYPES, 1, "Unknown JSON type");
-      return DB_UNK;
-    }
+  /* db_json_get_type shouldn't return DB_JSON_UNKNOWN, this means a bug */
+  assert (type1 != DB_JSON_UNKNOWN && type2 != DB_JSON_UNKNOWN);
 
-  if (res)
+  DB_MAKE_NULL (&scalar_value1);
+  DB_MAKE_NULL (&scalar_value2);
+
+  if (db_json_doc_is_uncomparable (doc1) || db_json_doc_is_uncomparable (doc2))
     {
-      return DB_EQ;
-    }
-  else
-    {
-      if (db_json_doc_is_uncomparable (doc1) || db_json_doc_is_uncomparable (doc2))
+      if (!total_order)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_UNCOMPARABLE_TYPES, 2, db_json_get_type_as_str (doc1),
 		  db_json_get_type_as_str (doc2));
 	  return DB_UNK;
 	}
-
-      if (db_json_doc_has_numeric_type (doc1) && db_json_doc_has_numeric_type (doc2))
+      else
 	{
-	  return db_json_get_double_from_document (doc1) < db_json_get_double_from_document (doc2) ? DB_LT : DB_GT;
+	  /* force string comp */
+
+	  DB_MAKE_STRING (&scalar_value1, db_json_get_raw_json_body_from_document (doc1));
+	  DB_MAKE_STRING (&scalar_value2, db_json_get_raw_json_body_from_document (doc2));
+	  scalar_value1.need_clear = true;
+	  scalar_value2.need_clear = true;
 	}
-
-      if (type1 == type2)
+    }
+  else
+    {
+      if (type1 == type2 || total_order)
 	{
-	  if (type1 == DB_JSON_STRING)
-	    {
-	      const char *string1, *string2;
-
-	      string1 = db_json_get_string_from_document (doc1, false);
-	      string2 = db_json_get_string_from_document (doc2, false);
-	      return strcmp (string1, string2) < 0 ? DB_LT : DB_GT;
-	    }
-	  else if (type1 == DB_JSON_NULL)
-	    {
-	      return DB_EQ;
-	    }
+	  db_convert_json_into_scalar (value1, &scalar_value1);
+	  db_convert_json_into_scalar (value2, &scalar_value2);
 	}
       else
 	{
-	  /* types are different but they both are comparable,
-	   * we rely on type precedence
-	   */
-	  return type1 > type2 ? DB_GT : DB_LT;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_UNCOMPARABLE_TYPES, 2, db_json_get_type_as_str (doc1),
+		  db_json_get_type_as_str (doc2));
+	  return DB_UNK;
 	}
-
-      /* don't know what to do with the sent types */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_UNCOMPARABLE_TYPES, 2, db_json_get_type_as_str (doc1),
-	      db_json_get_type_as_str (doc2));
-      return DB_UNK;
     }
+
+  cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, &can_compare);
+
+  assert (can_compare == true);
+
+  pr_clear_value (&scalar_value1);
+  pr_clear_value (&scalar_value2);
+  return cmp_result;
 }
