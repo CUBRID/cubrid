@@ -10405,7 +10405,7 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-class temp_mem_manager //temporary until get rid of gcc 4.4.7
+class temp_mem_manager //bSolo: temporary until evolve above gcc 4.4.7
 {
   public:
     temp_mem_manager(thread_entry* thr_ctx)
@@ -10443,26 +10443,28 @@ class temp_mem_manager //temporary until get rid of gcc 4.4.7
 char *
 pr_valstring (thread_entry * threade, DB_VALUE * val)
 {
-#if 0 //temporary until get rid of gcc 4.4.7
-  string_buffer sb
-  {
-    [&threade] (mem::block & block, size_t len)
+/* *INDENT-OFF* */
+#if 0 //bSolo: temporary until evolve above gcc 4.4.7
+  string_buffer sb{
+    [&threade] (mem::block& block, size_t len)
     {
-      block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
+      block.ptr = (char*) db_private_realloc (threade, block.ptr, block.dim + len);
       block.dim += len;
     },
-    [&threade] (mem::block & block)
+    [&threade] (mem::block& block)
     {
       db_private_free (threade, block.ptr);
       block = {};
     }
   };
 #else
-  temp_mem_manager mem_manager(threade);
-  std::function<void(mem::block &block, size_t len)> extend = std::bind(&temp_mem_manager::extend, &mem_manager, std::placeholders::_1, std::placeholders::_2);
-  std::function<void(mem::block &block)> dealloc = std::bind(&temp_mem_manager::dealloc, &mem_manager, std::placeholders::_1);
-  string_buffer sb{extend, dealloc};
+  temp_mem_manager mem_manager{threade};
+  string_buffer sb{
+    std::bind(&temp_mem_manager::extend, &mem_manager, std::placeholders::_1, std::placeholders::_2),
+    std::bind(&temp_mem_manager::dealloc, &mem_manager, std::placeholders::_1)
+  };
 #endif
+/* *INDENT-ON* */
 
   if (val == NULL)
     {

@@ -136,16 +136,30 @@ class_description::~class_description()
   object_print::free_strarray (resolutions);
   object_print::free_strarray (method_files);
   object_print::free_strarray (query_spec);
+#if 0 //bSolo: temporary until evolve above gcc 4.4.7
   for (auto it: triggers)
     {
       free (it);
     }
+#else
+  for(auto it=triggers.begin(); it != triggers.end(); ++it)
+    {
+      free (*it);
+    }
+#endif
   triggers.clear();
   object_print::free_strarray (constraints);
+#if 0 //bSolo: temporary until evolve above gcc 4.4.7
   for (auto it: partition)
     {
       free (it);
     }
+#else
+  for(auto it=partition.begin(); it != partition.end(); ++it)
+    {
+      free (*it);
+    }
+#endif
   partition.clear();
   if (comment != NULL)
     {
