@@ -69,6 +69,7 @@
 #endif
 #include "critical_section.h"
 #include "page_buffer.h"
+#include "double_write_buffer.h"
 #include "file_io.h"
 #include "disk_manager.h"
 #include "error_manager.h"
@@ -10056,6 +10057,9 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       /* Names are too long */
       return error_code;
     }
+
+  /* Do not use DWB at copy DB. In case of crash the data may be recreated from log. */
+  dwb_destroy (thread_p);
 
   /* 
    * Create the DATABASE VOLUME INFORMATION file

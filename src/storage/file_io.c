@@ -2778,7 +2778,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	  else
 	    {
 	      LSA_SET_NULL (&malloc_io_page_p->prv.lsa);
-	      if (fileio_write (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE, true) == NULL)
+	      if (fileio_write (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE, false) == NULL)
 		{
 		  goto error;
 		}

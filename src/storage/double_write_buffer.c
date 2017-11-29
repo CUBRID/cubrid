@@ -3252,7 +3252,8 @@ start_flush_block:
 	  goto retry;
 	}
     }
-#endif
+#endif /* SERVER_MODE */
+
   /* Flush all pages from current block */
   error_code = dwb_flush_block (thread_p, block, NULL);
   if (error_code != NO_ERROR)
@@ -3615,7 +3616,14 @@ end:
 char *
 dwb_get_volume_name (void)
 {
-  return dwb_Volume_name;
+  if (dwb_is_created ())
+    {
+      return dwb_Volume_name;
+    }
+  else
+    {
+      return NULL;
+    }
 }
 
 /*
@@ -3664,7 +3672,7 @@ start:
 	    {
 #if defined(SERVER_MODE)
 	      thread_sleep (10);
-#endif
+#endif /* SERVER_MODE */
 	      retry_flush_iter++;
 	      goto start_flush_block;
 	    }
@@ -3819,7 +3827,7 @@ start:
 
 	  return error_code;
 	}
-#endif
+#endif /* SERVER_MODE */
     }
 
   *all_sync = true;
@@ -3880,7 +3888,7 @@ start:
 	      thread_wakeup_dwb_flush_block_thread ();
 	    }
 	}
-#endif
+#endif /* SERVER_MODE */
 
       if (block_slots_checksums_computed)
 	{
