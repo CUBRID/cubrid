@@ -10405,6 +10405,7 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+/* *INDENT-OFF* */
 class temp_mem_manager //bSolo: temporary until evolve above gcc 4.4.7
 {
   public:
@@ -10412,13 +10413,13 @@ class temp_mem_manager //bSolo: temporary until evolve above gcc 4.4.7
       : m_thr_ctx{thr_ctx}
     {}
 
-    void extend(mem::block &block, size_t len)
+    void extend(mem::block& block, size_t len)
     {
       block.ptr = (char *) db_private_realloc (m_thr_ctx, block.ptr, block.dim + len);
       block.dim += len;
     }
 
-    void dealloc(mem::block & block)
+    void dealloc(mem::block& block)
     {
       db_private_free (m_thr_ctx, block.ptr);
       block = {};
@@ -10427,6 +10428,7 @@ class temp_mem_manager //bSolo: temporary until evolve above gcc 4.4.7
   private:
     thread_entry *m_thr_ctx;
 };
+/* *INDENT-ON* */
 
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of

@@ -389,21 +389,37 @@ csql_help_schema (const char *class_name)
   if (!class_descr.triggers.empty ())
     {
       APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_HEAD_TEXT));
-    //for (auto it:class_descr.triggers) //gcc 4.4.7 doesn't know about it
-      for (auto it = class_descr.triggers.begin(); it != class_descr.triggers.end(); ++it)
+#if 0				//bSolo: temporary until evolve above gcc 4.4.7
+/* *INDENT-OFF* */
+      for (auto it : class_descr.triggers)
+/* *INDENT-ON* */
+      {
+	APPEND_MORE_LINE (5, it);
+      }
+#else
+      for (auto it = class_descr.triggers.begin (); it != class_descr.triggers.end (); ++it)
 	{
 	  APPEND_MORE_LINE (5, *it);
 	}
+#endif
     }
 
   if (!class_descr.partition.empty ())
     {
       APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_PARTITION_HEAD_TEXT));
-    //for (auto it:class_descr.partition) //gcc 4.4.7 doesn't know about it
-      for (auto it = class_descr.partition.begin(); it != class_descr.partition.end(); ++it)
+#if 0				//bSolo: temporary until evolve above gcc 4.4.7
+/* *INDENT-OFF* */
+      for (auto it : class_descr.partition)
+/* *INDENT-ON* */
+      {
+	APPEND_MORE_LINE (5, it);
+      }
+#else
+      for (auto it = class_descr.partition.begin (); it != class_descr.partition.end (); ++it)
 	{
 	  APPEND_MORE_LINE (5, *it);
 	}
+#endif
     }
 
   csql_display_more_lines (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_SCHEMA_TITLE_TEXT));
