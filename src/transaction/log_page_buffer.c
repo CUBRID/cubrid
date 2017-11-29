@@ -1516,6 +1516,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_flush_header");
 	  return;
 	}
+      memset (log_Gl.loghdr_pgptr, 0, LOG_PAGESIZE);
     }
 
   log_hdr = (LOG_HEADER *) (log_Gl.loghdr_pgptr->area);
