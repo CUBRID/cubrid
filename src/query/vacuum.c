@@ -711,9 +711,6 @@ xvacuum (THREAD_ENTRY * thread_p)
   /* Process vacuum data and run vacuum . */
   vacuum_process_vacuum_data (thread_p);
 
-  /* remove archives that have been prevented from being removed up until now. */
-  logpb_remove_archive_logs_exceed_limit (thread_p, 0);
-
   VACUUM_RESTORE_THREAD (thread_p, dummy_save_type);
 
   return NO_ERROR;
@@ -5591,8 +5588,18 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
 
   if (vacuum_is_empty ())
     {
-      keep_from_blockid = VACUUM_NULL_LOG_BLOCKID;
-      vacuum_Data.keep_from_log_pageid = NULL_PAGEID;
+      if (LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
+	{
+	  /* safe to remove all archives */
+	  keep_from_blockid = VACUUM_NULL_LOG_BLOCKID;
+	  vacuum_Data.keep_from_log_pageid = NULL_PAGEID;
+	}
+      else
+	{
+	  /* keep block of log_Gl.hdr.mvcc_op_log_lsa */
+	  keep_from_blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
+	  vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
+	}
     }
   else
     {
@@ -5608,7 +5615,6 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
     {
       /* remove archives that have been blocked up to this point. */
       vacuum_Data.is_archive_removal_safe = true;
-      logpb_remove_archive_logs_exceed_limit (thread_p, 0);
     }
 }
 
