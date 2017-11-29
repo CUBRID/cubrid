@@ -52,6 +52,22 @@ char stack_buf[sizeof (prefix) + N + sizeof (suffix)]; // working buffer
 allocator::stack stack_allocator (stack_buf, sizeof (stack_buf));
 allocator::affix<allocator::stack, prefix, suffix> affix_allocator (stack_allocator);
 
+#if 1 //bSolo: temporary until evolve above gcc 4.4.7
+void temp_extend (mem::block& block, size_t len)
+{
+  mem::block b = affix_allocator.allocate (block.dim + len);
+  memcpy (b.ptr, block.ptr, block.dim);
+  affix_allocator.deallocate (std::move(block));
+  block = std::move(b);
+}
+
+void temp_dealloc (mem::block& block)
+{
+  affix_allocator.deallocate(std::move(block));
+}
+#endif
+
+
 class test_string_buffer
 {
   private:
@@ -65,8 +81,8 @@ class test_string_buffer
       : m_dim (8192)
       , m_len (0)
       , m_ref ((char *) calloc (m_dim, 1))
-      , m_sb
-        {
+#if 0 //bSolo: temporary until evolve above gcc 4.4.7
+      , m_sb{
           [] (mem::block& block, size_t len)
           {
             mem::block b = affix_allocator.allocate (block.dim + len);
@@ -79,6 +95,9 @@ class test_string_buffer
             affix_allocator.deallocate(std::move(block));
           }
         }
+#else
+      , m_sb{&temp_extend, &temp_dealloc}
+#endif
     {
     }
 
