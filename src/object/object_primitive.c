@@ -17608,6 +17608,12 @@ cleanup:
   return res;
 }
 
+/* when total_order is true,
+ * we force to string uncomparable types.
+ * this is because "order by" uses total_order=true
+ * and we don't want to fail. The standard says that
+ * only scalar and nulls are comparable.
+ */
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
@@ -17650,22 +17656,16 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
     }
   else
     {
-      if (type1 == type2 || total_order)
-	{
-	  db_convert_json_into_scalar (value1, &scalar_value1);
-	  db_convert_json_into_scalar (value2, &scalar_value2);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_UNCOMPARABLE_TYPES, 2, db_json_get_type_as_str (doc1),
-		  db_json_get_type_as_str (doc2));
-	  return DB_UNK;
-	}
+      /* This is not according to standard, in SQL/JSON standard
+       * different types should not be compared, but rather throw
+       * an error. We chose to also compare different scalar types
+       * even when total_order is false.
+       */
+      db_convert_json_into_scalar (value1, &scalar_value1);
+      db_convert_json_into_scalar (value2, &scalar_value2);
     }
 
-  cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, &can_compare);
-
-  assert (can_compare == true);
+  cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
 
   pr_clear_value (&scalar_value1);
   pr_clear_value (&scalar_value2);

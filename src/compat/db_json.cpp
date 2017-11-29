@@ -341,6 +341,10 @@ db_json_get_type_as_str (const JSON_DOC *document)
     {
       return "STRING";
     }
+  else if (document->IsNull ())
+    {
+      return "JSON_NULL";
+    }
   else
     {
       /* we shouldn't get here */
