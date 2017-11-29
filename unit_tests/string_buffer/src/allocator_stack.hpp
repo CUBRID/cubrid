@@ -88,7 +88,7 @@ namespace allocator
       {
 	return size_t (m_stop - m_start);
       }
-
+#if 0 //bSolo: unused for now and creates problems on gcc 4.4.7
       mem::block realloc (mem::block b, size_t size) //fit additional size bytes; extend block if possible
       {
 	if (b.ptr + b.dim == m_start && b.ptr + b.dim + size <= m_stop) //last allocated block & enough space to extend
@@ -99,6 +99,7 @@ namespace allocator
 	  }
 	return {0, 0};
       }
+#endif
   };
 } // namespace allocator
 
