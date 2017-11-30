@@ -1,6 +1,9 @@
 #!/usr/bin/make -f
 
 include debian/rules.defs
+CPPFLAGS="-U_FORTIFY_SOURCE"
+CFLAGS="-U_FORTIFY_SOURCE"
+CXXFLAGS="-U_FORTIFY_SOURCE"
 
 %:
 	dh $@ 
