@@ -1311,6 +1311,9 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (loghdr != NULL);
 
+  /* to also initialize padding bytes */
+  memset (loghdr, 0, sizeof (LOG_HEADER));
+
   strncpy (loghdr->magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH);
 
   if (db_creation != NULL)
@@ -1513,6 +1516,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_flush_header");
 	  return;
 	}
+      memset (log_Gl.loghdr_pgptr, 0, LOG_PAGESIZE);
     }
 
   log_hdr = (LOG_HEADER *) (log_Gl.loghdr_pgptr->area);
