@@ -157,7 +157,7 @@ function build_clean ()
     fi
 
     if [ $build_dir -ef $source_dir ]; then
-      [ -f "$build_dir/Makefile" ] && make -C $build_dir clean
+      [ -f "$build_dir/Makefile" ] && cmake --build $build_dir --target clean
     else
       print_info "All files in $build_dir is removing"
       rm -rf $build_dir/*
@@ -225,7 +225,7 @@ function build_configure ()
   else
     configure_dir="$source_dir"
   fi
-  (cd $build_dir && cmake $configure_prefix $configure_options $source_dir)
+  cmake -E chdir $build_dir cmake $configure_prefix $configure_options $source_dir
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Configuring failed"
 }
 
@@ -234,7 +234,8 @@ function build_compile ()
 {
   # make
   print_check "Building"
-  (cd $build_dir && make -j)
+  # Add '-j' into MAKEFLAGS environment variable to specify the number of compile jobs to run simultaneously 
+  cmake --build $build_dir
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Building failed"
 }
 
@@ -243,7 +244,7 @@ function build_install ()
 {
   # make install
   print_check "Installing"
-  (cd $build_dir && make install)
+  cmake --build $build_dir --target install
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Installation failed"
 }
 

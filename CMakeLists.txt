@@ -890,7 +890,7 @@ endif(WITH_LIBEDIT STREQUAL "BUNDLED")
 
 # WITH_LIBLZO can have multiple values with different meanings
 # on Linux:
-# * "BUNDLED" - (default) builds lzo library from cubrid/external/lzo-2.03 and
+# * "BUNDLED" - (default) builds lzo library from cubrid/external/lzo-2.10 and
 #               uses the library created by the build
 # * "BUNDLEDsome_name" - (e.g. BUNDLEDlzo-2.10) builds lzo library from 
 #               cubrid/external/some_name and  uses the library created by the build
@@ -909,7 +909,7 @@ if(WITH_LIBLZO MATCHES "^BUNDLED")
   string(SUBSTRING "${WITH_LIBLZO}" 7 -1 LZO_PATH)
   
   if(LZO_PATH STREQUAL "")
-    set(LZO_PATH "lzo-2.03")
+    set(LZO_PATH "lzo-2.10")
   endif()
   
   if(UNIX)
