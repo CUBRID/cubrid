@@ -28,8 +28,10 @@
 #include "thread_task.hpp"
 #include "thread_worker_pool.hpp"
 
-#include <iostream>
+#if defined (NO_GCC_44)
+#include <atomic>
 #include <chrono>
+#include <iostream>
 
 namespace test_thread
 {
@@ -144,3 +146,16 @@ namespace test_thread
   }
 
 } // namespace test_thread
+
+#else // GCC 4.4
+
+namespace test_thread
+{
+  int
+  test_worker_pool (void)
+  {
+    return 0;
+  }
+} // namespace test_thread
+
+#endif // GCC 4.4

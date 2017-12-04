@@ -23,6 +23,9 @@
 #include "lockfree_circular_queue.hpp"
 #include "resource_shared_pool.hpp"
 
+#if defined (NO_GCC_44)
+#include <atomic>
+#endif // no GCC 4.4
 #include <mutex>
 #include <thread>
 
@@ -75,72 +78,76 @@ namespace cubthread
   //
   //  todo:
   //    [Optional] Specialize worker_pool with thread context.
-  //    
+  //
   //    [Optional] Define a way to stop worker pool, but to finish executing everything it has in queue.
   //
   template <typename Context>
   class worker_pool
   {
-  public:
-    typedef contextual_task<Context> task_type;
+    public:
+      typedef contextual_task<Context> task_type;
 
-    worker_pool (std::size_t pool_size, std::size_t work_queue_size);
-    ~worker_pool ();
+      worker_pool (std::size_t pool_size, std::size_t work_queue_size);
+      ~worker_pool ();
 
-    // try to execute task; executes only if there is an available thread; otherwise returns false
-    bool try_execute (task_type * work_arg);
+      // try to execute task; executes only if there is an available thread; otherwise returns false
+      bool try_execute (task_type *work_arg);
 
-    // execute task; execution is guaranteed, even if job queue is full. debug will crash though
-    void execute (task_type * work_arg);
+      // execute task; execution is guaranteed, even if job queue is full. debug will crash though
+      void execute (task_type *work_arg);
 
-    // stop worker pool; stop all running threads and join
-    // note: do not call concurrently
-    void stop (void);
+      // stop worker pool; stop all running threads and join
+      // note: do not call concurrently
+      void stop (void);
 
-    // is_running = is not stopped; when created, a worker pool starts running
-    bool is_running (void) const;
+      // is_running = is not stopped; when created, a worker pool starts running
+      bool is_running (void) const;
 
-    // is_busy = is no thread available for a new task
-    bool is_busy (void) const;
+      // is_busy = is no thread available for a new task
+      bool is_busy (void) const;
 
-    // is_full = work queue is full
-    bool is_full (void) const;
+      // is_full = work queue is full
+      bool is_full (void) const;
 
-    // get number of threads currently running
-    // note: this count may change after call
-    std::size_t get_running_count (void) const;
+      // get number of threads currently running
+      // note: this count may change after call
+      std::size_t get_running_count (void) const;
 
-  private:
+    private:
 
-    // function executed by worker; executes first task and then continues with any task it finds in queue
-    static void run (worker_pool<Context> & pool, std::thread & thread_arg, task_type * work_arg);
+      // function executed by worker; executes first task and then continues with any task it finds in queue
+      static void run (worker_pool<Context> &pool, std::thread &thread_arg, task_type *work_arg);
 
-    // push task to immediate execution
-    inline void push_execute (std::thread & thread_arg, task_type * work_arg);
+      // push task to immediate execution
+      inline void push_execute (std::thread &thread_arg, task_type *work_arg);
 
-    // register a new worker; return NULL if no worker is available
-    inline std::thread* register_worker (void);
+      // register a new worker; return NULL if no worker is available
+      inline std::thread *register_worker (void);
 
-    // deregister worker when it stops running
-    inline void deregister_worker (std::thread & thread_arg);
+      // deregister worker when it stops running
+      inline void deregister_worker (std::thread &thread_arg);
 
-    // maximum number of concurrent workers
-    const std::size_t m_max_workers;
+      // maximum number of concurrent workers
+      const std::size_t m_max_workers;
 
-    // current worker count
-    std::atomic<std::size_t> m_worker_count;
+#if defined (NO_GCC_44)
+      // current worker count
+      std::atomic<std::size_t> m_worker_count;
+#else
+      volatile std::size_t m_worker_count;
+#endif
 
-    // work queue to store tasks that cannot be immediately executed
-    lockfree::circular_queue<task_type *> m_work_queue;
+      // work queue to store tasks that cannot be immediately executed
+      lockfree::circular_queue<task_type *> m_work_queue;
 
-    // thread objects
-    std::thread *m_threads;
+      // thread objects
+      std::thread *m_threads;
 
-    // thread "dispatcher" - a pool of threads
-    resource_shared_pool<std::thread> m_thread_dispatcher;
+      // thread "dispatcher" - a pool of threads
+      resource_shared_pool<std::thread> m_thread_dispatcher;
 
-    // set to true when stopped
-    bool m_stopped;
+      // set to true when stopped
+      bool m_stopped;
   };
 
 } // namespace cubthread
@@ -176,43 +183,43 @@ namespace cubthread
 
   template <typename Context>
   bool
-  worker_pool<Context>::try_execute (task_type * work_arg)
+  worker_pool<Context>::try_execute (task_type *work_arg)
   {
     assert (!m_stopped);
-    std::thread* thread_p = register_worker ();
+    std::thread *thread_p = register_worker ();
     if (thread_p != NULL)
       {
-        push_execute (*thread_p, work_arg);
+	push_execute (*thread_p, work_arg);
       }
     return false;
   }
 
   template <typename Context>
   void
-  worker_pool<Context>::execute (task_type * work_arg)
+  worker_pool<Context>::execute (task_type *work_arg)
   {
     assert (!m_stopped);
-    std::thread* thread_p = register_worker ();
+    std::thread *thread_p = register_worker ();
     if (thread_p != NULL)
       {
-        push_execute (*thread_p, work_arg);
+	push_execute (*thread_p, work_arg);
       }
     else if (!m_work_queue.produce (work_arg))
       {
-        // failed to produce... this is really unfortunate (and unwanted)
-        assert (false);
-        m_work_queue.force_produce (work_arg);
+	// failed to produce... this is really unfortunate (and unwanted)
+	assert (false);
+	m_work_queue.force_produce (work_arg);
       }
   }
 
   template <typename Context>
   void
-  worker_pool<Context>::push_execute (std::thread & thread_arg, task_type * work_arg)
+  worker_pool<Context>::push_execute (std::thread &thread_arg, task_type *work_arg)
   {
     thread_arg = std::thread (worker_pool<Context>::run,
-                              std::ref (*this),
-                              std::ref (thread_arg),
-                              std::forward<task_type *> (work_arg));
+			      std::ref (*this),
+			      std::ref (thread_arg),
+			      std::forward<task_type *> (work_arg));
   }
 
   template <typename Context>
@@ -221,15 +228,15 @@ namespace cubthread
   {
     if (m_stopped)
       {
-        // already stopped
-        return;
+	// already stopped
+	return;
       }
     for (std::size_t i = 0; i < m_max_workers; i++)
       {
-        if (m_threads[i].joinable ())
-          {
-            m_threads[i].join ();
-          }
+	if (m_threads[i].joinable ())
+	  {
+	    m_threads[i].join ();
+	  }
       }
     m_stopped = true;
   }
@@ -263,28 +270,28 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::run (worker_pool<Context> & pool, std::thread & thread_arg, task_type * work_arg)
+  worker_pool<Context>::run (worker_pool<Context> &pool, std::thread &thread_arg, task_type *work_arg)
   {
     // create context for task execution
-    Context& context = work_arg->create_context ();
-    task_type * prev_work = NULL;
+    Context &context = work_arg->create_context ();
+    task_type *prev_work = NULL;
 
     // loop as long as pool is running and there are tasks in queue
     do
       {
-        // retire previous task, if any
-        if (prev_work != NULL)
-          {
-            prev_work->retire ();
-          }
+	// retire previous task, if any
+	if (prev_work != NULL)
+	  {
+	    prev_work->retire ();
+	  }
 
-        // execute current task
-        work_arg->execute (context);
+	// execute current task
+	work_arg->execute (context);
 
-        // current task becomes previous
-        prev_work = work_arg;
+	// current task becomes previous
+	prev_work = work_arg;
 
-        // consume another task
+	// consume another task
       }
     while (pool.is_running() && pool.m_work_queue.consume (work_arg));
 
@@ -297,7 +304,7 @@ namespace cubthread
   }
 
   template <typename Context>
-  inline std::thread*
+  inline std::thread *
   worker_pool<Context>::register_worker (void)
   {
     std::thread *thread_p;
@@ -306,26 +313,34 @@ namespace cubthread
     thread_p = m_thread_dispatcher.claim ();
     if (thread_p == NULL)
       {
-        // no threads available
-        return NULL;
+	// no threads available
+	return NULL;
       }
 
     // if thread was already used, we must join it before reusing
     if (thread_p->joinable ())
       {
-        thread_p->join ();
+	thread_p->join ();
       }
 
+#if defined (NO_GCC_44)
     ++m_worker_count;
+#else
+    (void) ATOMIC_INC (&m_worker_count, 1);
+#endif
     return thread_p;
   }
 
   template <typename Context>
   inline void
-  worker_pool<Context>::deregister_worker (std::thread & thread_arg)
+  worker_pool<Context>::deregister_worker (std::thread &thread_arg)
   {
     m_thread_dispatcher.retire (thread_arg);
+#if defined (NO_GCC_44)
     --m_worker_count;
+#else
+    (void) ATOMIC_INC (&m_worker_count, -1);
+#endif
   }
 
 } // namespace cubthread

@@ -24,7 +24,9 @@
 #ifndef _LOCKFREE_CIRCULAR_QUEUE_HPP_
 #define _LOCKFREE_CIRCULAR_QUEUE_HPP_
 
+#if defined (NO_GCC_44)
 #include <atomic>
+#endif
 #include <thread>
 #include <type_traits>
 
@@ -39,550 +41,596 @@
 //
 // #define DEBUG_LFCQ
 
-namespace lockfree {
-
-template <class T>
-class circular_queue
+namespace lockfree
 {
-public:
-  typedef std::uint64_t cursor_type;
-  typedef std::atomic<cursor_type> atomic_cursor_type;
-  typedef std::atomic<T> atomic_data_type;
-  typedef atomic_cursor_type atomic_flag_type;
 
-  circular_queue (std::size_t size);
-  ~circular_queue ();
+  template <class T>
+  class circular_queue
+  {
+    public:
+      typedef std::uint64_t cursor_type;
+#if defined (NO_GCC_44)
+      typedef std::atomic<cursor_type> atomic_cursor_type;
+      typedef std::atomic<T> atomic_data_type;
+#else
+      typedef volatile cursor_type atomic_cursor_type;
+      typedef volatile T atomic_data_type;
+#endif
+      typedef atomic_cursor_type atomic_flag_type;
 
-  inline bool is_empty () const;              // is query empty?
-  inline bool is_full () const;               // is query full?
+      circular_queue (std::size_t size);
+      ~circular_queue ();
 
-  inline bool consume (T & element);              // consume one element from queue; returns false on fail
-  inline bool produce (const T & element);        // produce an element to queue; returns false on fail
-  inline void force_produce (const T & element);  // force produce (loop until successful)
-  // note:
-  //
-  //    above functions are cloned by debug counterparts which track a history of executed low-level operations.
-  //    they were not cloned initially, but the code became unreadable with all the #ifdef DEBUG_LFCQ/#endif
-  //    preprocessor directives.
-  //    therefore, if you update the code for any of these functions, please make sure the debug counterparts are
-  //    updated too.
+      inline bool is_empty () const;              // is query empty?
+      inline bool is_full () const;               // is query full?
 
-private:
-  static const cursor_type BLOCK_FLAG;
+      inline bool consume (T &element);               // consume one element from queue; returns false on fail
+      inline bool produce (const T &element);         // produce an element to queue; returns false on fail
+      inline void force_produce (const T &element);   // force produce (loop until successful)
+      // note:
+      //
+      //    above functions are cloned by debug counterparts which track a history of executed low-level operations.
+      //    they were not cloned initially, but the code became unreadable with all the #ifdef DEBUG_LFCQ/#endif
+      //    preprocessor directives.
+      //    therefore, if you update the code for any of these functions, please make sure the debug counterparts are
+      //    updated too.
 
-  // block default and copy constructors
-  circular_queue ();
-  circular_queue (const circular_queue&);
+    private:
+      static const cursor_type BLOCK_FLAG;
 
-  inline std::size_t next_pow2 (std::size_t size) const;
+      // block default and copy constructors
+      circular_queue ();
+      circular_queue (const circular_queue &);
 
-  inline bool test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const;
-  inline bool test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const;
+      inline std::size_t next_pow2 (std::size_t size) const;
 
-  inline cursor_type load_cursor (atomic_cursor_type & cursor);
-  inline bool test_and_increment_cursor (atomic_cursor_type& cursor, cursor_type crt_value);
+      inline bool test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const;
+      inline bool test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const;
 
-  inline T load_data (cursor_type consume_cursor) const;
-  inline void store_data (std::size_t index, const T& data);
-  inline std::size_t get_cursor_index (cursor_type cursor) const;
+      inline cursor_type load_cursor (atomic_cursor_type &cursor);
+      inline bool test_and_increment_cursor (atomic_cursor_type &cursor, cursor_type crt_value);
 
-  inline bool is_blocked (cursor_type cursor) const;
-  inline bool block (cursor_type cursor);
-  inline void unblock (cursor_type cursor);
-  inline void init_blocked_cursors (void);
+      inline T load_data (cursor_type consume_cursor) const;
+      inline void store_data (std::size_t index, const T &data);
+      inline std::size_t get_cursor_index (cursor_type cursor) const;
 
-  atomic_data_type *m_data;   // data storage. access is atomic
-  atomic_flag_type *m_blocked_cursors;  // is_blocked flag; when producing new data, there is a time window between
-                                        // cursor increment and until data is copied. block flag will tell when
-                                        // produce is completed.
-  atomic_cursor_type m_produce_cursor;  // cursor for produce position
-  atomic_cursor_type m_consume_cursor;  // cursor for consume position
-  std::size_t m_capacity;                    // queue capacity
-  std::size_t m_index_mask;                  // mask used to compute a cursor's index in queue
+      inline bool is_blocked (cursor_type cursor) const;
+      inline bool block (cursor_type cursor);
+      inline void unblock (cursor_type cursor);
+      inline void init_blocked_cursors (void);
+
+      atomic_data_type *m_data;   // data storage. access is atomic
+      atomic_flag_type *m_blocked_cursors;  // is_blocked flag; when producing new data, there is a time window between
+      // cursor increment and until data is copied. block flag will tell when
+      // produce is completed.
+      atomic_cursor_type m_produce_cursor;  // cursor for produce position
+      atomic_cursor_type m_consume_cursor;  // cursor for consume position
+      std::size_t m_capacity;                    // queue capacity
+      std::size_t m_index_mask;                  // mask used to compute a cursor's index in queue
 
 #if defined (DEBUG_LFCQ)
-private:
-  enum class local_action;
-  struct local_event;
+    private:
+      enum class local_action;
+      struct local_event;
 
-public:
-  class local_history
-  {
-  public:
-    local_history ()
-      : m_cursor (0)
-    {
-    }
+    public:
+      class local_history
+      {
+	public:
+	  local_history ()
+	    : m_cursor (0)
+	  {
+	  }
 
-    inline void register_event (local_action action)
-    {
-      m_cursor = (m_cursor + 1) % LOCAL_HISTORY_SIZE;
-      m_events[m_cursor].action = action;
-    }
+	  inline void register_event (local_action action)
+	  {
+	    m_cursor = (m_cursor + 1) % LOCAL_HISTORY_SIZE;
+	    m_events[m_cursor].action = action;
+	  }
 
-    inline void register_event (local_action action, cursor_type cursor)
-    {
-      register_event (action);
-      m_events[m_cursor].m_consequence.cursor_value = cursor;
-    }
+	  inline void register_event (local_action action, cursor_type cursor)
+	  {
+	    register_event (action);
+	    m_events[m_cursor].m_consequence.cursor_value = cursor;
+	  }
 
-    inline void register_event (local_action action, T data)
-    {
-      register_event (action);
-      m_events[m_cursor].m_consequence.data_value = data;
-    }
-  private:
-    static const std::size_t LOCAL_HISTORY_SIZE = 64;
-    local_event m_events[LOCAL_HISTORY_SIZE];
-    std::size_t m_cursor;
-  };
+	  inline void register_event (local_action action, T data)
+	  {
+	    register_event (action);
+	    m_events[m_cursor].m_consequence.data_value = data;
+	  }
+	private:
+	  static const std::size_t LOCAL_HISTORY_SIZE = 64;
+	  local_event m_events[LOCAL_HISTORY_SIZE];
+	  std::size_t m_cursor;
+      };
 
-  // clones of produce/consume with additional debug code. caller should keep its history in thread context to be
-  // inspected on demand
-  inline bool consume_debug (T& element, local_history & my_history);
-  inline bool produce_debug (const T& element, local_history & my_history);
-  inline bool force_produce_debug (const T& element, local_history & my_history);
+      // clones of produce/consume with additional debug code. caller should keep its history in thread context to be
+      // inspected on demand
+      inline bool consume_debug (T &element, local_history &my_history);
+      inline bool produce_debug (const T &element, local_history &my_history);
+      inline bool force_produce_debug (const T &element, local_history &my_history);
 
-private:
+    private:
 
-  enum class local_action
-  {
-    NO_ACTION,
-    LOOP_PRODUCE,
-    LOOP_CONSUME,
-    LOAD_PRODUCE_CURSOR,
-    LOAD_CONSUME_CURSOR,
-    INCREMENT_PRODUCE_CURSOR,
-    INCREMENT_CONSUME_CURSOR,
-    NOT_INCREMENT_PRODUCE_CURSOR,
-    NOT_INCREMENT_CONSUME_CURSOR,
-    BLOCKED_CURSOR,
-    NOT_BLOCKED_CURSOR,
-    UNBLOCKED_CURSOR,
-    LOADED_DATA,
-    STORED_DATA,
-    QUEUE_FULL,
-    QUEUE_EMPTY
-  };
-  struct local_event
-  {
-    local_action action;
-    union consequence
-    {
-      consequence () : cursor_value (0) {}
+      enum class local_action
+      {
+	NO_ACTION,
+	LOOP_PRODUCE,
+	LOOP_CONSUME,
+	LOAD_PRODUCE_CURSOR,
+	LOAD_CONSUME_CURSOR,
+	INCREMENT_PRODUCE_CURSOR,
+	INCREMENT_CONSUME_CURSOR,
+	NOT_INCREMENT_PRODUCE_CURSOR,
+	NOT_INCREMENT_CONSUME_CURSOR,
+	BLOCKED_CURSOR,
+	NOT_BLOCKED_CURSOR,
+	UNBLOCKED_CURSOR,
+	LOADED_DATA,
+	STORED_DATA,
+	QUEUE_FULL,
+	QUEUE_EMPTY
+      };
+      struct local_event
+      {
+	local_action action;
+	union consequence
+	{
+	  consequence () : cursor_value (0) {}
 
-      cursor_type cursor_value;
-      T data_value;
-    } m_consequence;
+	  cursor_type cursor_value;
+	  T data_value;
+	} m_consequence;
 
-    local_event ()
-      : action (local_action::NO_ACTION)
-      , m_consequence ()
-    {
-    }
-  };
-  static local_history m_shared_dummy_history;
+	local_event ()
+	  : action (local_action::NO_ACTION)
+	  , m_consequence ()
+	{
+	}
+      };
+      static local_history m_shared_dummy_history;
 #endif // DEBUG_LFCQ
-};
+  };
 
 } // namespace lockfree
 
-#endif // !_LOCKFREE_CIRCULAR_QUEUE_HPP_
-
 #include "base_flag.hpp"
+#if !defined (NO_GCC_44)
+#include "porting.h"
+#endif
 
-namespace lockfree {
-
-template<class T>
-typename circular_queue<T>::cursor_type const circular_queue<T>::BLOCK_FLAG =
-  ((cursor_type) 1) << ((sizeof (cursor_type) * CHAR_BIT) - 1);         // 0x8000...
-  
-
-template<class T>
-inline
-circular_queue<T>::circular_queue (std::size_t size) :
-  m_produce_cursor (0),
-  m_consume_cursor (0)
+namespace lockfree
 {
-  m_capacity = next_pow2 (size);
-  m_index_mask = m_capacity - 1;
-  assert ((m_capacity & m_index_mask) == 0);
 
-  m_data = new atomic_data_type[m_capacity];
-  init_blocked_cursors ();
-}
+  template<class T>
+  typename circular_queue<T>::cursor_type const circular_queue<T>::BLOCK_FLAG =
+	  ((cursor_type) 1) << ((sizeof (cursor_type) * CHAR_BIT) - 1);         // 0x8000...
 
-template<class T>
-inline
-circular_queue<T>::~circular_queue ()
-{
-  delete [] m_data;
-  delete [] m_blocked_cursors;
-}
+  template<class T>
+  inline
+  circular_queue<T>::circular_queue (std::size_t size) :
+    m_produce_cursor (0),
+    m_consume_cursor (0)
+  {
+    m_capacity = next_pow2 (size);
+    m_index_mask = m_capacity - 1;
+    assert ((m_capacity & m_index_mask) == 0);
 
-template<class T>
-inline bool
-circular_queue<T>::produce (const T & element)
-{
-  cursor_type cc;
-  cursor_type pc;
-  bool did_block;
+    m_data = new atomic_data_type[m_capacity];
+    init_blocked_cursors ();
+  }
 
-  // how this works:
-  //
-  // in systems where concurrent producing is possible, we need to avoid synchronize them. in this lock-free circular
-  // queue, that translates to each thread saving its data in a data array unique slot.
-  //
-  //  current way of doing the synchronization is having a block flag for each slot in the array. when a produced wants
-  //  to push its data, it must first successfully block the slot to avoid racing others to write in the slot.
-  //
-  //  the produce algorithm is a loop where:
-  //  1. early out if queue is full.
-  //  2. get current produce cursor, then try block its slot, then try to increment cursor (compare & swap);
-  //     incrementing is executed regardless of blocking success. that's because if block fails, then someone else
-  //     blocked this slot. everyone who failed should advance to next, and incrementing cursor as fast as possible
-  //     helps.
-  //  3. if block was successful, then store data to the blocked slot and unlock for next generation.
-  //
-  //  the loop can be broken in two ways:
-  //  1. the queue is full and push fails
-  //  2. the producer successfully blocks a cursor
-  //
-  // NOTE: I have an implementation issue I don't know how to fix without a significant overhead. When the queue is
-  //       very stressed (many threads produce/consume very often), the system may preempt a thread while it has a slot
-  //       blocked and may keep it preempted for a very long time (long enough to produce and consume an entire
-  //       generation). I'd like to any blocking of any kind.
-  //       One possible direction is to separate data storage (and slot index) from cursor. When one wants to produce
-  //       an element, it first reserves a slot in storage, adds his data, and then saves slot index/cursor in what is
-  //       now m_blocked_cursors using CAS operation. if this succeeds, produced data is immediately available for
-  //       consumption. any preemption would not block the queue (just delay when the produce is happening).
-  //
-  //       however, finding a way to dispatch slots to producers safely and without a sensible overhead is not quite
-  //       straightforward.
-  //
+  template<class T>
+  inline
+  circular_queue<T>::~circular_queue ()
+  {
+    delete [] m_data;
+    delete [] m_blocked_cursors;
+  }
 
-  while (true)
-    {
-      pc = load_cursor (m_produce_cursor);
-      cc = load_cursor (m_consume_cursor);
+  template<class T>
+  inline bool
+  circular_queue<T>::produce (const T &element)
+  {
+    cursor_type cc;
+    cursor_type pc;
+    bool did_block;
 
-      if (test_full_cursors (pc, cc))
-        {
-          /* cannot produce */
-          return false;
-        }
+    // how this works:
+    //
+    // in systems where concurrent producing is possible, we need to avoid synchronize them. in this lock-free circular
+    // queue, that translates to each thread saving its data in a data array unique slot.
+    //
+    //  current way of doing the synchronization is having a block flag for each slot in the array. when a produced wants
+    //  to push its data, it must first successfully block the slot to avoid racing others to write in the slot.
+    //
+    //  the produce algorithm is a loop where:
+    //  1. early out if queue is full.
+    //  2. get current produce cursor, then try block its slot, then try to increment cursor (compare & swap);
+    //     incrementing is executed regardless of blocking success. that's because if block fails, then someone else
+    //     blocked this slot. everyone who failed should advance to next, and incrementing cursor as fast as possible
+    //     helps.
+    //  3. if block was successful, then store data to the blocked slot and unlock for next generation.
+    //
+    //  the loop can be broken in two ways:
+    //  1. the queue is full and push fails
+    //  2. the producer successfully blocks a cursor
+    //
+    // NOTE: I have an implementation issue I don't know how to fix without a significant overhead. When the queue is
+    //       very stressed (many threads produce/consume very often), the system may preempt a thread while it has a slot
+    //       blocked and may keep it preempted for a very long time (long enough to produce and consume an entire
+    //       generation). I'd like to any blocking of any kind.
+    //       One possible direction is to separate data storage (and slot index) from cursor. When one wants to produce
+    //       an element, it first reserves a slot in storage, adds his data, and then saves slot index/cursor in what is
+    //       now m_blocked_cursors using CAS operation. if this succeeds, produced data is immediately available for
+    //       consumption. any preemption would not block the queue (just delay when the produce is happening).
+    //
+    //       however, finding a way to dispatch slots to producers safely and without a sensible overhead is not quite
+    //       straightforward.
+    //
 
-      // first block position
-      did_block = block (pc);
+    while (true)
+      {
+	pc = load_cursor (m_produce_cursor);
+	cc = load_cursor (m_consume_cursor);
 
-      // make sure cursor is incremented whether I blocked it or not
-      if (test_and_increment_cursor (m_produce_cursor, pc))
-        {
-          // do nothing
-        }
-      if (did_block)
-        {
-          /* I blocked it, it is mine. I can write my data. */
-          store_data (pc, element);
+	if (test_full_cursors (pc, cc))
+	  {
+	    /* cannot produce */
+	    return false;
+	  }
 
-          unblock (pc);
-          return true;
-        }
-    }
-}
+	// first block position
+	did_block = block (pc);
 
-template<class T>
-inline void
-circular_queue<T>::force_produce (const T & element)
-{
-  while (!produce (element))
-    {
-      std::this_thread::yield ();
-    }
-}
+	// make sure cursor is incremented whether I blocked it or not
+	if (test_and_increment_cursor (m_produce_cursor, pc))
+	  {
+	    // do nothing
+	  }
+	if (did_block)
+	  {
+	    /* I blocked it, it is mine. I can write my data. */
+	    store_data (pc, element);
 
-template<class T>
-inline bool
-circular_queue<T>::consume (T & element)
-{
-  cursor_type cc;
-  cursor_type pc;
+	    unblock (pc);
+	    return true;
+	  }
+      }
+  }
 
-  // how consume works:
-  //
-  // condition: every produced entry must be consumed once and only once.
-  //
-  // to make sure this condition is met and consume is possible concurrently and without locks, a consume cursor is
-  // used. the entry at a certain cursor is consumed only by the thread who successfully increments the cursor by one
-  // (using compare and swap, not atomic increment). the "consumed" entry is read before the cursor update, therefore
-  // the slot is freed for further produce operations immediately after the update
-  //
-  // unlike producers, a consumer cannot block the queue if it is preempted during execution
-  //
+  template<class T>
+  inline void
+  circular_queue<T>::force_produce (const T &element)
+  {
+    while (!produce (element))
+      {
+#if defined (NO_GCC_44)
+	std::this_thread::yield ();
+#endif // NO_GCC_44
+      }
+  }
 
-  while (true)
-    {
-      cc = load_cursor (m_consume_cursor);
-      pc = load_cursor (m_produce_cursor);
-      
-      if (pc <= cc)
-        {
-          /* empty */
-          return false;
-        }
+  template<class T>
+  inline bool
+  circular_queue<T>::consume (T &element)
+  {
+    cursor_type cc;
+    cursor_type pc;
 
-      if (is_blocked (cc))
-        {
-          // first element is not yet produced. this means we can consider the queue still empty
-          return false;
-        }
+    // how consume works:
+    //
+    // condition: every produced entry must be consumed once and only once.
+    //
+    // to make sure this condition is met and consume is possible concurrently and without locks, a consume cursor is
+    // used. the entry at a certain cursor is consumed only by the thread who successfully increments the cursor by one
+    // (using compare and swap, not atomic increment). the "consumed" entry is read before the cursor update, therefore
+    // the slot is freed for further produce operations immediately after the update
+    //
+    // unlike producers, a consumer cannot block the queue if it is preempted during execution
+    //
 
-      // copy element first. however, the consume is not actually happening until cursor is successfully incremented.
-      element = load_data (cc);
+    while (true)
+      {
+	cc = load_cursor (m_consume_cursor);
+	pc = load_cursor (m_produce_cursor);
 
-      if (test_and_increment_cursor (m_consume_cursor, cc))
-        {
-          // consume is complete
+	if (pc <= cc)
+	  {
+	    /* empty */
+	    return false;
+	  }
 
-          /* break loop */
-          break;
-        }
-      else
-        {
-          // consume unsuccessful
-        }
-    }
+	if (is_blocked (cc))
+	  {
+	    // first element is not yet produced. this means we can consider the queue still empty
+	    return false;
+	  }
 
-  // consume successful
-  return true;
-}
+	// copy element first. however, the consume is not actually happening until cursor is successfully incremented.
+	element = load_data (cc);
 
-template<class T>
-inline bool
-circular_queue<T>::is_empty () const
-{
-  return test_empty_cursors (m_produce_cursor, m_consume_cursor);
-}
+	if (test_and_increment_cursor (m_consume_cursor, cc))
+	  {
+	    // consume is complete
 
-template<class T>
-inline bool
-circular_queue<T>::is_full () const
-{
-  return test_full_cursors (m_produce_cursor, m_consume_cursor);
-}
+	    /* break loop */
+	    break;
+	  }
+	else
+	  {
+	    // consume unsuccessful
+	  }
+      }
 
-template<class T>
-inline std::size_t circular_queue<T>::next_pow2 (std::size_t size) const
-{
-  std::size_t next_pow = 1;
-  for (--size; size != 0; size /= 2)
-    {
-      next_pow *= 2;
-    }
-  return next_pow;
-}
+    // consume successful
+    return true;
+  }
 
-template<class T>
-inline bool circular_queue<T>::test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const
-{
-  return produce_cursor >= consume_cursor;
-}
+  template<class T>
+  inline bool
+  circular_queue<T>::is_empty () const
+  {
+    return test_empty_cursors (m_produce_cursor, m_consume_cursor);
+  }
 
-template<class T>
-inline bool circular_queue<T>::test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const
-{
-  return consume_cursor + m_capacity <= produce_cursor;
-}
+  template<class T>
+  inline bool
+  circular_queue<T>::is_full () const
+  {
+    return test_full_cursors (m_produce_cursor, m_consume_cursor);
+  }
 
-template<class T>
-inline typename circular_queue<T>::cursor_type
-circular_queue<T>::load_cursor (atomic_cursor_type & cursor)
-{
-  return cursor.load ();
-}
+  template<class T>
+  inline std::size_t circular_queue<T>::next_pow2 (std::size_t size) const
+  {
+    std::size_t next_pow = 1;
+    for (--size; size != 0; size /= 2)
+      {
+	next_pow *= 2;
+      }
+    return next_pow;
+  }
 
-template<class T>
-inline bool circular_queue<T>::test_and_increment_cursor (atomic_cursor_type & cursor, cursor_type crt_value)
-{
-  // can weak be used here? I tested, no performance difference from using one or the other
-  return cursor.compare_exchange_strong (crt_value, crt_value + 1);
-}
+  template<class T>
+  inline bool circular_queue<T>::test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const
+  {
+    return produce_cursor >= consume_cursor;
+  }
 
-template<class T>
-inline std::size_t circular_queue<T>::get_cursor_index (cursor_type cursor) const
-{
-  return cursor & m_index_mask;
-}
+  template<class T>
+  inline bool circular_queue<T>::test_full_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const
+  {
+    return consume_cursor + m_capacity <= produce_cursor;
+  }
 
-template<class T>
-inline void circular_queue<T>::store_data (cursor_type cursor, const T & data)
-{
-  m_data[get_cursor_index (cursor)].store (data);
-}
+  template<class T>
+  inline typename circular_queue<T>::cursor_type
+  circular_queue<T>::load_cursor (atomic_cursor_type &cursor)
+  {
+#if defined (NO_GCC_44)
+    return cursor.load ();
+#else
+    return ATOMIC_LOAD (&cursor);
+#endif
+  }
 
-template<class T>
-inline T
-circular_queue<T>::load_data (cursor_type consume_cursor) const
-{
-  return m_data[get_cursor_index (consume_cursor)].load ();
-}
+  template<class T>
+  inline bool
+  circular_queue<T>::test_and_increment_cursor (atomic_cursor_type &cursor, cursor_type crt_value)
+  {
+#if defined (NO_GCC_44)
+    // can weak be used here? I tested, no performance difference from using one or the other
+    return cursor.compare_exchange_strong (crt_value, crt_value + 1);
+#else
+    return ATOMIC_CAS (&cursor, crt_value, crt_value + 1);
+#endif
+  }
 
-template<class T>
-inline bool
-circular_queue<T>::is_blocked (cursor_type cursor) const
-{
-  cursor_type block_val = m_blocked_cursors[get_cursor_index (cursor)].load ();
-  return flag<cursor_type>::is_flag_set (block_val, BLOCK_FLAG);
-}
+  template<class T>
+  inline std::size_t
+  circular_queue<T>::get_cursor_index (cursor_type cursor) const
+  {
+    return cursor & m_index_mask;
+  }
 
-template<class T>
-inline bool
-circular_queue<T>::block (cursor_type cursor)
-{
-  cursor_type block_val = flag<cursor_type> (cursor).set (BLOCK_FLAG).get_flags ();
-  // can weak be used here?
-  return m_blocked_cursors[get_cursor_index (cursor)].compare_exchange_strong (cursor, block_val);
-}
+  template<class T>
+  inline void
+  circular_queue<T>::store_data (cursor_type cursor, const T &data)
+  {
+#if defined (NO_GCC_44)
+    m_data[get_cursor_index (cursor)].store (data);
+#else
+    ATOMIC_STORE (&m_data[get_cursor_index (cursor)], data);
+#endif
+  }
 
-template<class T>
-inline void
-circular_queue<T>::unblock (cursor_type cursor)
-{
-  atomic_flag_type& ref_blocked_cursor = m_blocked_cursors[get_cursor_index (cursor)];
-  flag<cursor_type> blocked_cursor_value = ref_blocked_cursor.load ();
+  template<class T>
+  inline T
+  circular_queue<T>::load_data (cursor_type consume_cursor) const
+  {
+#if defined (NO_GCC_44)
+    return m_data[get_cursor_index (consume_cursor)].load ();
+#else
+    return ATOMIC_LOAD (&m_data[get_cursor_index (consume_cursor)]);
+#endif
+  }
 
-  assert (blocked_cursor_value.is_set (BLOCK_FLAG));
-  cursor_type nextgen_cursor = blocked_cursor_value.clear (BLOCK_FLAG).get_flags () + m_capacity;
+  template<class T>
+  inline bool
+  circular_queue<T>::is_blocked (cursor_type cursor) const
+  {
+#if defined (NO_GCC_44)
+    cursor_type block_val = m_blocked_cursors[get_cursor_index (cursor)].load ();
+#else
+    cursor_type block_val = ATOMIC_LOAD (&m_blocked_cursors[get_cursor_index (cursor)]);
+#endif
+    return flag<cursor_type>::is_flag_set (block_val, BLOCK_FLAG);
+  }
 
-  ref_blocked_cursor.store (nextgen_cursor);
-}
+  template<class T>
+  inline bool
+  circular_queue<T>::block (cursor_type cursor)
+  {
+    cursor_type block_val = flag<cursor_type> (cursor).set (BLOCK_FLAG).get_flags ();
+#if defined (NO_GCC_44)
+    // can weak be used here?
+    return m_blocked_cursors[get_cursor_index (cursor)].compare_exchange_strong (cursor, block_val);
+#else
+    return ATOMIC_CAS (&m_blocked_cursors[get_cursor_index (cursor)], cursor, block_val);
+#endif
+  }
 
-template<class T>
-inline void
-circular_queue<T>::init_blocked_cursors (void)
-{
-  m_blocked_cursors = new atomic_flag_type [m_capacity];
-  for (cursor_type cursor = 0; cursor < m_capacity; cursor++)
-    {
-      // set expected cursor values in first generation (matches index)
-      m_blocked_cursors[cursor] = cursor;
-    }
-}
+  template<class T>
+  inline void
+  circular_queue<T>::unblock (cursor_type cursor)
+  {
+    atomic_flag_type &ref_blocked_cursor = m_blocked_cursors[get_cursor_index (cursor)];
+#if defined (NO_GCC_44)
+    flag<cursor_type> blocked_cursor_value = ref_blocked_cursor.load ();
+#else
+    flag<cursor_type> blocked_cursor_value = ATOMIC_LOAD (&ref_blocked_cursor);
+#endif
+
+    assert (blocked_cursor_value.is_set (BLOCK_FLAG));
+    cursor_type nextgen_cursor = blocked_cursor_value.clear (BLOCK_FLAG).get_flags () + m_capacity;
+
+#if defined (NO_GCC_44)
+    ref_blocked_cursor.store (nextgen_cursor);
+#else
+    ATOMIC_STORE (&ref_blocked_cursor, nextgen_cursor);
+#endif
+  }
+
+  template<class T>
+  inline void
+  circular_queue<T>::init_blocked_cursors (void)
+  {
+    m_blocked_cursors = new atomic_flag_type [m_capacity];
+    for (cursor_type cursor = 0; cursor < m_capacity; cursor++)
+      {
+	// set expected cursor values in first generation (matches index)
+	m_blocked_cursors[cursor] = cursor;
+      }
+  }
 
 #if defined (DEBUG_LFCQ)
-template<class T>
-inline bool
-circular_queue<T>::produce_debug (const T & element, local_history & my_history)
-{
-  cursor_type cc;
-  cursor_type pc;
-  bool did_block;
+  template<class T>
+  inline bool
+  circular_queue<T>::produce_debug (const T &element, local_history &my_history)
+  {
+    cursor_type cc;
+    cursor_type pc;
+    bool did_block;
 
-  while (true)
-    {
-      my_history.register_event (local_action::LOOP_PRODUCE);
+    while (true)
+      {
+	my_history.register_event (local_action::LOOP_PRODUCE);
 
-      pc = load_cursor (m_produce_cursor);
-      my_history.register_event (local_action::LOAD_PRODUCE_CURSOR, pc);
+	pc = load_cursor (m_produce_cursor);
+	my_history.register_event (local_action::LOAD_PRODUCE_CURSOR, pc);
 
-      cc = load_cursor (m_consume_cursor);
-      my_history.register_event (local_action::LOAD_CONSUME_CURSOR, cc);
+	cc = load_cursor (m_consume_cursor);
+	my_history.register_event (local_action::LOAD_CONSUME_CURSOR, cc);
 
-      if (test_full_cursors (pc, cc))
-        {
-          /* cannot produce */
-          my_history.register_event (local_action::QUEUE_FULL);
-          return false;
-        }
+	if (test_full_cursors (pc, cc))
+	  {
+	    /* cannot produce */
+	    my_history.register_event (local_action::QUEUE_FULL);
+	    return false;
+	  }
 
-      // first block position
-      did_block = block (pc);
-      my_history.register_event (did_block ? local_action::BLOCKED_CURSOR : local_action::NOT_BLOCKED_CURSOR, pc);
+	// first block position
+	did_block = block (pc);
+	my_history.register_event (did_block ? local_action::BLOCKED_CURSOR : local_action::NOT_BLOCKED_CURSOR, pc);
 
-      // make sure cursor is incremented whether I blocked it or not
-      if (test_and_increment_cursor (m_produce_cursor, pc))
-        {
-          // do nothing
-          my_history.register_event (local_action::INCREMENT_PRODUCE_CURSOR, pc);
-        }
-      else
-        {
-          my_history.register_event (local_action::NOT_INCREMENT_PRODUCE_CURSOR, pc);
-        }
-      if (did_block)
-        {
-          /* I blocked it, it is mine. I can write my data. */
-          store_data (pc, element);
-          my_history.register_event (local_action::STORED_DATA, element);
+	// make sure cursor is incremented whether I blocked it or not
+	if (test_and_increment_cursor (m_produce_cursor, pc))
+	  {
+	    // do nothing
+	    my_history.register_event (local_action::INCREMENT_PRODUCE_CURSOR, pc);
+	  }
+	else
+	  {
+	    my_history.register_event (local_action::NOT_INCREMENT_PRODUCE_CURSOR, pc);
+	  }
+	if (did_block)
+	  {
+	    /* I blocked it, it is mine. I can write my data. */
+	    store_data (pc, element);
+	    my_history.register_event (local_action::STORED_DATA, element);
 
-          unblock (pc);
-          my_history.register_event (local_action::UNBLOCKED_CURSOR, pc);
-          return true;
-        }
-    }
-}
+	    unblock (pc);
+	    my_history.register_event (local_action::UNBLOCKED_CURSOR, pc);
+	    return true;
+	  }
+      }
+  }
 
-template<class T>
-inline bool circular_queue<T>::force_produce_debug (const T& element, local_history & my_history)
-{
-  while (!produce_debug (element, my_history))
-    {
-      std::this_thread::yield ();
-    }
-}
+  template<class T>
+  inline bool circular_queue<T>::force_produce_debug (const T &element, local_history &my_history)
+  {
+    while (!produce_debug (element, my_history))
+      {
+	std::this_thread::yield ();
+      }
+  }
 
-template<class T>
-inline bool circular_queue<T>::consume_debug (T & element, local_history & my_history)
-{
-  cursor_type cc;
-  cursor_type pc;
+  template<class T>
+  inline bool circular_queue<T>::consume_debug (T &element, local_history &my_history)
+  {
+    cursor_type cc;
+    cursor_type pc;
 
-  while (true)
-    {
-      my_history.register_event (local_action::LOOP_CONSUME);
+    while (true)
+      {
+	my_history.register_event (local_action::LOOP_CONSUME);
 
-      cc = load_cursor (m_consume_cursor);
-      my_history.register_event (local_action::LOAD_CONSUME_CURSOR, cc);
+	cc = load_cursor (m_consume_cursor);
+	my_history.register_event (local_action::LOAD_CONSUME_CURSOR, cc);
 
-      pc = load_cursor (m_produce_cursor);
-      my_history.register_event (local_action::LOAD_PRODUCE_CURSOR, pc);
+	pc = load_cursor (m_produce_cursor);
+	my_history.register_event (local_action::LOAD_PRODUCE_CURSOR, pc);
 
-      if (pc <= cc)
-        {
-          /* empty */
-          my_history.register_event (local_action::QUEUE_EMPTY);
-          return false;
-        }
+	if (pc <= cc)
+	  {
+	    /* empty */
+	    my_history.register_event (local_action::QUEUE_EMPTY);
+	    return false;
+	  }
 
-      if (is_blocked (cc))
-        {
-          // first element is not yet produced. this means we can consider the queue still empty
-          my_history.register_event (local_action::QUEUE_EMPTY);
-          return false;
-        }
+	if (is_blocked (cc))
+	  {
+	    // first element is not yet produced. this means we can consider the queue still empty
+	    my_history.register_event (local_action::QUEUE_EMPTY);
+	    return false;
+	  }
 
-      // copy element first. however, the consume is not actually happening until cursor is successfully incremented.
-      element = load_data (cc);
-      my_history.register_event (local_action::LOADED_DATA, element);
+	// copy element first. however, the consume is not actually happening until cursor is successfully incremented.
+	element = load_data (cc);
+	my_history.register_event (local_action::LOADED_DATA, element);
 
-      if (test_and_increment_cursor (m_consume_cursor, cc))
-        {
-          // consume is complete
-          my_history.register_event (local_action::INCREMENT_CONSUME_CURSOR, cc);
+	if (test_and_increment_cursor (m_consume_cursor, cc))
+	  {
+	    // consume is complete
+	    my_history.register_event (local_action::INCREMENT_CONSUME_CURSOR, cc);
 
-          /* break loop */
-          break;
-        }
-      else
-        {
-          // consume unsuccessful
-          my_history.register_event (local_action::NOT_INCREMENT_CONSUME_CURSOR, cc);
-        }
-    }
+	    /* break loop */
+	    break;
+	  }
+	else
+	  {
+	    // consume unsuccessful
+	    my_history.register_event (local_action::NOT_INCREMENT_CONSUME_CURSOR, cc);
+	  }
+      }
 
-  // consume successful
-  return true;
-}
+    // consume successful
+    return true;
+  }
 #endif // DEBUG_LFCQ
 
 }  // namespace lockfree
+
+#endif // !_LOCKFREE_CIRCULAR_QUEUE_HPP_

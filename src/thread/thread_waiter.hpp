@@ -109,13 +109,17 @@ namespace cubthread
 	// no wait, just yield
 	std::this_thread::yield ();
 #endif // not GCC 4.4
-	return false;   // automatically times out
+	return true;
       }
 
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
-    bool ret = m_condvar.wait_for (lock, delta, check_wake);
+#if defined (NO_GCC_44)
+    bool ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
+#else // NO_GCC_44
+    bool ret = (m_condvar.wait_for (lock, delta) != std::cv_status::timeout);
+#endif // MP_GCC_44
 
     run ();
 
@@ -130,7 +134,11 @@ namespace cubthread
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
-    bool ret = m_condvar.wait_until (lock, timeout_time, check_wake);
+#if defined (NO_GCC_44)
+    bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
+#else // GCC 4.4
+    bool ret = (m_condvar.wait_until (lock, timeout_time) != std::cv_status::timeout);
+#endif // GCC 4.4
 
     run ();
 
