@@ -2175,7 +2175,6 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	    char *json_body = NULL, *whole_string;
 	    const char *schema;
 	    json_body = DB_GET_JSON_RAW_BODY (val);
-	    schema = DB_GET_JSON_SCHEMA (val);
 
 	    if (json_body == NULL)
 	      {
@@ -2183,21 +2182,11 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	      }
 	    else
 	      {
-		unsigned int total_len, json_len = 0, schema_len = 0;
+		unsigned int json_len = 0;
 
 		json_len = strlen (json_body);
-		schema_len = (schema != NULL) ? strlen (schema) : 0;
 
-		total_len = json_len + schema_len + 1;
-
-		whole_string = (char *) db_private_alloc (NULL, total_len);
-		strcpy (whole_string, json_body);
-		if (schema != NULL)
-		  {
-		    strcat (whole_string, schema);
-		  }
-
-		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) whole_string, total_len - 1);
+		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, json_len);
 		hashcode %= ht_size;
 
 		db_private_free (NULL, whole_string);
