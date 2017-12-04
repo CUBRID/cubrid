@@ -7230,17 +7230,14 @@ pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
       return NULL;
     }
 
-  for (attrd = attrds, att1 = attrs1, att2 = attrs2; attrd != NULL;
-       attrd = attrd->next, att1 = att1->next, att2 = att2->next)
+  for (attrd = attrds, att1 = attrs1, att2 = attrs2;
+       attrd != NULL && att1 != NULL && att2 != NULL; attrd = attrd->next, att1 = att1->next, att2 = att2->next)
     {
       /* bypass any class_attribute in the vclass attribute defs */
       if (attrd->info.attr_def.attr_type == PT_META_ATTR)
 	{
 	  continue;
 	}
-
-      assert (att1 != NULL);
-      assert (att2 != NULL);
 
       /* we have a vclass attribute def context, so do union vclass compatibility checks where applicable */
       if (attrd->type_enum != PT_TYPE_OBJECT)
@@ -7268,8 +7265,7 @@ pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	}
     }
 
-  assert (att1 == NULL);
-  assert (att2 == NULL);
+  assert (attrd == NULL && att1 == NULL && att2 == NULL);
 
   return qry;
 }
@@ -7415,12 +7411,6 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
       return NULL;
     }
 
-  qry = pt_check_vclass_union_spec (parser, qry, attrs);
-  if (pt_has_error (parser) || qry == NULL)
-    {
-      return NULL;
-    }
-
   /* count(attrs) == count(query spec columns) */
   columns = pt_get_select_list (parser, qry);
   col_count = pt_length_of_select_list (columns, EXCLUDE_HIDDEN_COLUMNS);
@@ -7428,6 +7418,12 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
   if (attr_count != col_count)
     {
       PT_ERRORmf2 (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_CNT_NE_COL_CNT, attr_count, col_count);
+      return NULL;
+    }
+
+  qry = pt_check_vclass_union_spec (parser, qry, attrs);
+  if (pt_has_error (parser) || qry == NULL)
+    {
       return NULL;
     }
 
