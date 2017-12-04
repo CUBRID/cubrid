@@ -45,7 +45,7 @@
 namespace cubthread
 {
 
-#if defined (NO_GCC_44)
+#if defined (NO_GCC_44) || defined (WINDOWS)
   thread_local entry *tl_Entry_p = NULL;
 #else // GCC 4.4
   __thread entry *tl_Entry_p = NULL;
@@ -223,7 +223,7 @@ namespace cubthread
 	// execute on this thread
 	exec_p->execute (thread_p);
 	exec_p->retire ();
-        return true;
+	return true;
       }
     else
       {
