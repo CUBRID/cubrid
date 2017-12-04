@@ -1940,6 +1940,10 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
 	  goto exit;
 	}
     }
+
+  assert (strlen (temp_rule->ds_ruleset_name) < TZ_DS_RULESET_NAME_SIZE &&
+	  strlen (temp_rule->format) < TZ_MAX_FORMAT_SIZE);
+
   strcpy (temp_rule->ds_ruleset_name, rules);
   strcpy (temp_rule->format, format);
 
