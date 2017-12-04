@@ -654,7 +654,9 @@ static int vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
 				 LOG_PAGE * log_page);
 
 static int vacuum_compare_dropped_files (const void *a, const void *b);
+#if defined (SERVER_MODE)
 static int vacuum_compare_dropped_files_version (INT32 version_a, INT32 version_b);
+#endif // SERVER_MODE
 static int vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid);
 static int vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p);
 static int vacuum_find_dropped_file (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID * vfid, MVCCID mvccid);
@@ -701,12 +703,12 @@ vacuum_init_thread_context (cubthread::entry & context, THREAD_TYPE type, VACUUM
 class vacuum_master_task : public cubthread::entry_task
 {
 public:
-  void execute (cubthread::entry & thread_ref) final
+  void execute (cubthread::entry & thread_ref) // NO_GCC_44: final
   {
     vacuum_process_vacuum_data (&thread_ref);
   }
 
-  cubthread::entry & create_context (void) override
+  cubthread::entry & create_context (void) // NO_GCC_44: override
   {
     cubthread::entry &context = cubthread::entry_task::create_context ();
 
@@ -715,7 +717,7 @@ public:
     return context;
   }
 
-  void retire_context (cubthread::entry & context) override
+  void retire_context (cubthread::entry & context) // NO_GCC_44: override
   {
     if (context.vacuum_worker != NULL)
       {
@@ -730,7 +732,7 @@ public:
     cubthread::entry_task::retire_context (context);
   }
 
-  void retire (void) override
+  void retire (void) // NO_GCC_44: override
   {
     vacuum_finalize (get_own_context ());
 
@@ -749,12 +751,12 @@ public:
   {
   }
 
-  void execute (cubthread::entry & thread_ref) override
+  void execute (cubthread::entry & thread_ref) // NO_GCC_44: override
   {
     vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_partial_block);
   }
 
-  cubthread::entry & create_context (void) override
+  cubthread::entry & create_context (void) // NO_GCC_44: override
   {
     cubthread::entry &context = cubthread::entry_task::create_context ();
 
@@ -768,7 +770,7 @@ public:
     return context;
   }
 
-  void retire_context (cubthread::entry & context) override
+  void retire_context (cubthread::entry & context) // NO_GCC_44: override
   {
     if (context.vacuum_worker != NULL)
       {
@@ -1148,9 +1150,7 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
       return;
     }
 
-#if defined(SERVER_MODE)
   assert (!vacuum_is_work_in_progress (thread_p));
-#endif
 
   /* Make sure all finished job queues are consumed. */
   if (vacuum_Finished_job_queue != NULL)
@@ -3962,6 +3962,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
 /*
  * vacuum_get_worker_min_dropped_files_version () - Get current minimum dropped files version seen by active
  *						    vacuum workers.
@@ -3988,6 +3989,7 @@ vacuum_get_worker_min_dropped_files_version (void)
     }
   return min_version;
 }
+#endif // SERVER_MODE
 
 /*
  * vacuum_compare_blockids () - Comparator function for blockid's stored in vacuum data. The comparator knows to
@@ -4407,6 +4409,7 @@ vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p, VFID * dropped_fi
 static bool
 vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
 {
+#if defined (SERVER_MODE)
   int i;
 
   for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
@@ -4419,6 +4422,9 @@ vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
 
   /* No running jobs, return false */
   return false;
+#else // not SERVER_MODE = SA_MODE
+  return false;
+#endif // not SERVER_MODE = SA_MODE
 }
 
 /*
@@ -6789,6 +6795,7 @@ vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfid)
     }
 }
 
+#if defined (SERVER_MODE)
 /*
  * vacuum_compare_dropped_files_version () - Compare two versions ID's of dropped files. Take into consideration that
  *					     versions can overflow max value of INT32.
@@ -6852,6 +6859,7 @@ vacuum_compare_dropped_files_version (INT32 version_a, INT32 version_b)
   /* We shouldn't be here */
   assert (false);
 }
+#endif // SERVER_MODE
 
 #if !defined (NDEBUG)
 /*

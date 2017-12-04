@@ -102,15 +102,21 @@ namespace cubthread
   {
     if (delta == std::chrono::duration<Rep, Period> (0))
       {
+#if defined (NO_GCC_44)
 	// no wait, just yield
 	std::this_thread::yield ();
+#endif // not GCC 4.4
 	return true;
       }
 
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
+#if defined (NO_GCC_44)
     bool ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
+#else // NO_GCC_44
+    bool ret = m_condvar.wait_for (lock, delta);
+#endif // MP_GCC_44
 
     run ();
 
