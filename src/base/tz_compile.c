@@ -1940,6 +1940,9 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
 	  goto exit;
 	}
     }
+
+  assert (strlen (rules) < TZ_DS_RULESET_NAME_SIZE && strlen (format) < TZ_MAX_FORMAT_SIZE);
+
   strcpy (temp_rule->ds_ruleset_name, rules);
   strcpy (temp_rule->format, format);
 
@@ -4814,7 +4817,8 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
   int max_len2, temp_len2;
   int max_len3;
 
-  printf ("\n COUNTRY MAX NAME LEN: ");
+  printf ("\n");
+  printf (" COUNTRY MAX NAME LEN: ");
   max_len = 0;
   for (i = 0; i < tzd_raw->country_count; i++)
     {
@@ -4824,9 +4828,9 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	  max_len = temp_len;
 	}
     }
-  printf ("%d", max_len);
+  printf ("%d\n", max_len);
 
-  printf ("\n DS RULES & RULESETS\n ");
+  printf (" DS RULES & RULESETS\n");
   max_len = 0;
   max_len2 = 0;
   for (i = 0; i < tzd_raw->ruleset_count; i++)
@@ -4850,9 +4854,9 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	}
     }
   printf ("   DS RULESET MAX NAME LEN: %d\n", max_len);
-  printf ("   DS RULE MAX LETTER_ABBREV LEN: %d\n", max_len2);
+  printf ("   DS RULE MAX LETTER_ABBREV LEN: %d\n\n", max_len2);
 
-  printf ("\n TIMEZONE\n ");
+  printf (" TIMEZONE\n");
   max_len = 0;
   max_len2 = 0;
   max_len3 = 0;
@@ -4882,9 +4886,9 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
     }
   printf ("   MAX NAME LEN: %d", max_len);
   printf ("   MAX comments LEN: %d", max_len2);
-  printf ("   MAX coordinates LEN: %d", max_len3);
+  printf ("   MAX coordinates LEN: %d\n", max_len3);
 
-  printf ("\n TZ_NAMES (timezone names and aliases) MAX NAME LEN: ");
+  printf (" TZ_NAMES (timezone names and aliases) MAX NAME LEN: ");
   max_len = 0;
   for (i = 0; i < tzd->name_count; i++)
     {
@@ -4894,9 +4898,9 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	  max_len = temp_len;
 	}
     }
-  printf ("%d", max_len);
+  printf ("%d\n", max_len);
 
-  printf ("\n TZ_RW_LINKS : \n");
+  printf (" TZ_RW_LINKS : \n");
   max_len = 0;
   max_len2 = 0;
   for (i = 0; i < tzd_raw->link_count; i++)
@@ -4913,10 +4917,10 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	}
     }
   printf ("   MAX NAME LEN: %d", max_len);
-  printf ("   MAX ALIAS LEN: %d", max_len2);
+  printf ("   MAX ALIAS LEN: %d\n", max_len2);
 
 
-  printf ("\n TZ_RAW_OFFSET_RULES : \n");
+  printf (" TZ_RAW_OFFSET_RULES : \n");
   max_len = 0;
   max_len2 = 0;
   for (i = 0; i < tzd_raw->zone_count; i++)
@@ -4939,32 +4943,7 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	}
     }
   printf ("   MAX rules LEN: %d", max_len);
-  printf ("   MAX format LEN: %d", max_len2);
-
-  printf ("\n TZ_RAW_DS_RULES & RULESETS: \n");
-  max_len = 0;
-  max_len2 = 0;
-  for (i = 0; i < tzd_raw->ruleset_count; i++)
-    {
-      TZ_RAW_ZONE_INFO *zone = &(tzd_raw->zones[i]);
-      for (j = 0; j < zone->offset_rule_count; j++)
-	{
-	  TZ_RAW_OFFSET_RULE *offrule = &(zone->offset_rules[j]);
-
-	  temp_len = strlen (offrule->ds_ruleset_name);
-	  if (temp_len > max_len)
-	    {
-	      max_len = temp_len;
-	    }
-	  temp_len = strlen (offrule->format);
-	  if (temp_len > max_len2)
-	    {
-	      max_len2 = temp_len;
-	    }
-	}
-    }
-  printf ("   MAX rules LEN: %d", max_len);
-  printf ("   MAX format LEN: %d", max_len2);
+  printf ("   MAX format LEN: %d\n", max_len2);
 }
 
 #if defined(WINDOWS)
