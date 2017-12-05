@@ -11330,14 +11330,6 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MR_NULL_DOMAIN, 0);
 		      assert (false);
 		    }
-		  if (pr_type->id == DB_TYPE_JSON)
-		    {
-		      if (can_compare != NULL)
-			{
-			  /* types are incomparable (JSON_ARRAY vs JSON_OBJECT for example) */
-			  *can_compare = false;
-			}
-		    }
 		}
 	    }
 	  else

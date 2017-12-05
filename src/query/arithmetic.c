@@ -5347,15 +5347,14 @@ db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool 
     }
   else if (cmp_result == DB_UNK)
     {
-      assert (can_compare == false);
-      ASSERT_ERROR ();
-      error_code = er_errid ();
-    }
-  else
-    {
       assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
       db_make_null (result);
       return NO_ERROR;
+    }
+  else
+    {
+      assert (false);
+      return ER_FAILED;
     }
 
   return error_code;
