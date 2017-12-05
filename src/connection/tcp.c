@@ -334,7 +334,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
    * If it is, use Unix domain socket rather than TCP for the performance
    */
   memcpy ((void *) &in_addr, (void *) &tcp_saddr.sin_addr, sizeof (in_addr));
-  if (in_addr == inet_addr ("127.0.0.1"))
+  if (in_addr != inet_addr ("127.0.0.1"))
     {
       memset ((void *) &unix_saddr, 0, sizeof (unix_saddr));
       unix_saddr.sun_family = AF_UNIX;
