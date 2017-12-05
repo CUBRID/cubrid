@@ -23,6 +23,7 @@
 
 #ident "$Id$"
 
+#include "system.h"
 #include "dbi.h"
 #include "db.h"
 #include "config.h"

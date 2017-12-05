@@ -22,6 +22,7 @@
  */
 
 #include <stdio.h>
+#include "system.h"
 #include "db.h"
 #include "dbtype.h"
 
