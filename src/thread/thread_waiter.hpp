@@ -118,7 +118,11 @@ namespace cubthread
 #if defined (NO_GCC_44)
     bool ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
 #else // NO_GCC_44
+#if __cplusplus < 201103L
+    bool ret = m_condvar.wait_for (lock, delta);
+#else
     bool ret = (m_condvar.wait_for (lock, delta) != std::cv_status::timeout);
+#endif
 #endif // MP_GCC_44
 
     run ();
@@ -137,7 +141,11 @@ namespace cubthread
 #if defined (NO_GCC_44)
     bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
 #else // GCC 4.4
+#if __cplusplus < 201103L
+    bool ret = m_condvar.wait_until (lock, timeout_time);
+#else
     bool ret = (m_condvar.wait_until (lock, timeout_time) != std::cv_status::timeout);
+#endif
 #endif // GCC 4.4
 
     run ();

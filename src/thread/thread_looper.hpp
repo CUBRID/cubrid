@@ -133,11 +133,18 @@ namespace cubthread
   looper::looper (const std::chrono::duration<Rep, Period> &fixed_period)
     : m_wait_pattern (wait_pattern::FIXED_PERIODS)
     , m_periods_count (1)
+#if defined (NO_GCC_44)
     , m_periods {fixed_period}
+#else
+    , m_periods ()
+#endif
     , m_period_index (0)
     , m_stop (false)
   {
     // fixed period waits
+#if !defined (NO_GCC_44)
+    m_periods[0] = fixed_period;
+#endif
   }
 
   template<class Rep, class Period, size_t Count>
