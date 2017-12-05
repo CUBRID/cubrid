@@ -46,6 +46,7 @@
 #include "environment_variable.h"
 #include "network_interface_cl.h"
 #include "locator_cl.h"
+#include "dbtype.h"
 
 #define CHKSUM_DEFAULT_LIST_SIZE	10
 #define CHKSUM_MIN_CHUNK_SIZE		100
