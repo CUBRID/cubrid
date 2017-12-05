@@ -63,14 +63,12 @@ enum hb_proc_type
   HB_PTYPE_SERVER = 0,
   HB_PTYPE_COPYLOGDB = 1,
   HB_PTYPE_APPLYLOGDB = 2,
-  HB_PTYPE_PREFETCHLOGDB = 3,
   HB_PTYPE_MAX
 };
 typedef enum hb_proc_type HB_PROC_TYPE;
 #define HB_PTYPE_SERVER_STR             "HA-server"
 #define HB_PTYPE_COPYLOGDB_STR          "HA-copylogdb"
 #define HB_PTYPE_APPLYLOGDB_STR         "HA-applylogdb"
-#define HB_PTYPE_PREFETCHLOGDB_STR      "HA-prefetchlogdb"
 #define HB_PTYPE_STR_SZ                 (16)
 
 #if !defined(WINDOWS)

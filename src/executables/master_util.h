@@ -103,6 +103,5 @@ extern bool css_Master_er_log_enabled;
 #define IS_MASTER_CONN_NAME_HA_SERVER(name)     (*((char *)name) == '#')
 #define IS_MASTER_CONN_NAME_HA_COPYLOG(name)    (*((char *)name) == '$')
 #define IS_MASTER_CONN_NAME_HA_APPLYLOG(name)   (*((char *)name) == '%')
-#define IS_MASTER_CONN_NAME_HA_PREFETCHLOG(name) (*((char *)name) == '_')
 
 #endif /* _MASTER_UTIL_H_ */

@@ -1002,15 +1002,6 @@ extern int logtb_collect_local_clients (int **local_client_pids);
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
 #endif /* !SERVER_MODE */
 
-/* special action for log prefetcher */
-#if defined (SERVER_MODE)
-#define LOG_CHECK_LOG_PREFETCHER(thread_p) \
-  (thread_p != NULL \
-   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_PREFETCHER)
-#else
-#define LOG_CHECK_LOG_PREFETCHER(thread_p) (0)
-#endif /* !SERVER_MODE */
-
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_
 extern int db_Disable_modifications;
