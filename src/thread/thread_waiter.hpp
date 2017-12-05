@@ -118,7 +118,7 @@ namespace cubthread
 #if defined (NO_GCC_44)
     bool ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
 #else // NO_GCC_44
-#if __cplusplus < 201103L
+#if !defined (WINDOWS) && __cplusplus < 201103L
     bool ret = m_condvar.wait_for (lock, delta);
 #else
     bool ret = (m_condvar.wait_for (lock, delta) != std::cv_status::timeout);
