@@ -17628,20 +17628,45 @@ cleanup:
  * this is because "order by" uses total_order=true
  * and we don't want to fail. The standard says that
  * only scalar and nulls are comparable.
+ * 
+ * we only return DB_UNK when either one is null and
+ * total_order is false
  */
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   JSON_DOC *doc1 = NULL, *doc2 = NULL;
-  doc1 = DB_GET_JSON_DOCUMENT (value1);
-  doc2 = DB_GET_JSON_DOCUMENT (value2);
-  DB_JSON_TYPE type1 = db_json_get_type (doc1);
-  DB_JSON_TYPE type2 = db_json_get_type (doc2);
+  DB_JSON_TYPE type1 = DB_JSON_UNKNOWN;
+  DB_JSON_TYPE type2 = DB_JSON_UNKNOWN;
   DB_VALUE scalar_value1, scalar_value2;
   DB_VALUE_COMPARE_RESULT cmp_result;
-  bool can_compare;
+  bool can_compare, is_value1_null = true, is_value2_null = true;
 
-  /* db_json_get_type shouldn't return DB_JSON_UNKNOWN, this means a bug */
+  doc1 = DB_GET_JSON_DOCUMENT (value1);
+  doc2 = DB_GET_JSON_DOCUMENT (value2);
+
+  /* if it reaches the third "or", that means that value1 is null.
+   * the same with value2
+   */
+
+  if (DB_IS_NULL (value1) || ((type1 = db_json_get_type (doc1)) == DB_JSON_NULL) ||
+      (is_value1_null = false) || DB_IS_NULL (value2) ||
+      ((type2 = db_json_get_type (doc2)) == DB_JSON_NULL) || (is_value2_null = false))
+    {
+      if (!total_order)
+	{
+	  return DB_UNK;
+	}
+
+      if (is_value1_null && is_value2_null)
+	{
+	  return DB_EQ;
+	}
+
+      return is_value1_null ? DB_LT : DB_GT;
+    }
+
+  /* db_json_get_type shouldn't return DB_JSON_UNKNOWN, this represents a bug */
   assert (type1 != DB_JSON_UNKNOWN && type2 != DB_JSON_UNKNOWN);
 
   DB_MAKE_NULL (&scalar_value1);
@@ -17649,25 +17674,16 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
   if (db_json_doc_is_uncomparable (doc1) || db_json_doc_is_uncomparable (doc2))
     {
-      if (!total_order)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_UNCOMPARABLE_TYPES, 2, db_json_get_type_as_str (doc1),
-		  db_json_get_type_as_str (doc2));
-	  return DB_UNK;
-	}
-      else
-	{
-	  /* force string comp */
-          char *str1 = NULL, *str2 = NULL;
-          
-          str1 = db_json_get_raw_json_body_from_document (doc1);
-          str2 = db_json_get_raw_json_body_from_document (doc2);
+      /* force string comp */
+      char *str1 = NULL, *str2 = NULL;
 
-	  DB_MAKE_STRING (&scalar_value1, str1);
-	  DB_MAKE_STRING (&scalar_value2, str2);
-	  scalar_value1.need_clear = true;
-	  scalar_value2.need_clear = true;
-	}
+      str1 = db_json_get_raw_json_body_from_document (doc1);
+      str2 = db_json_get_raw_json_body_from_document (doc2);
+
+      DB_MAKE_STRING (&scalar_value1, str1);
+      DB_MAKE_STRING (&scalar_value2, str2);
+      scalar_value1.need_clear = true;
+      scalar_value2.need_clear = true;
     }
   else
     {
