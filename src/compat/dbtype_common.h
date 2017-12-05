@@ -29,10 +29,17 @@
 #define _DBTYPE_COMMON_H_
 
 #include "error_code.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"
 {
+#endif
+
+#ifdef __cplusplus
+  typedef bool need_clear_type;
+#else
+  typedef char need_clear_type;
 #endif
 
 #if defined (__GNUC__) && defined (NDEBUG)
@@ -1171,7 +1178,7 @@ extern "C"
   {
     DB_DOMAIN_INFO domain;
     DB_DATA data;
-    bool need_clear;
+    need_clear_type need_clear;
   };
 
 /* This is used to chain DB_VALUEs into a list. */
@@ -1432,7 +1439,7 @@ extern "C"
     int attribute;
     int ref_count;
     int disk_size;
-    bool need_clear;
+    need_clear_type need_clear;
   };
   /********************************************************/
   /* From set_object.h */
