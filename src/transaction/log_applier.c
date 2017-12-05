@@ -53,6 +53,7 @@
 #include "schema_manager.h"
 #include "log_applier_sql_log.h"
 #include "util_func.h"
+#include "dbtype.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif

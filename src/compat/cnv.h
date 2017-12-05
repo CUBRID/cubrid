@@ -27,6 +27,7 @@
 
 #ident "$Id$"
 
+
 #include "dbtype_common.h"
 #include "condition_handler.h"
 

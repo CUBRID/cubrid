@@ -31,6 +31,7 @@
 #include <sys/resource.h>
 #endif /* !WINDDOWS */
 
+#include "system.h"
 #include "session.h"
 
 #include "jansson.h"
@@ -47,7 +48,7 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 
-#include "dbtype.h"
+
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

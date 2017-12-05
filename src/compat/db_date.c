@@ -28,6 +28,7 @@
 #include <math.h>
 #include <time.h>
 
+#include "system.h"
 #include "db_date.h"
 
 #include <assert.h>

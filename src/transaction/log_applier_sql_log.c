@@ -41,6 +41,7 @@
 #include "set_object.h"
 #include "cci_applier.h"
 #include "schema_manager.h"
+#include "dbtype.h"
 
 #define SL_LOG_FILE_MAX_SIZE   \
   (prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_SIZE_IN_MB) * 1024 * 1024)
