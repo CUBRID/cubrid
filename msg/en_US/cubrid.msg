@@ -1267,9 +1267,7 @@ $ LOADDB
 1198 A json object must be provided
 1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
 1200 Invalid JSON path
-1201 Uncomparable JSON types (%1$s with %2$s)
-1202 Cannot compare types. Reason: %1$s
-1203 Last Error
+1201 Last Error
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
 2 No error message available.

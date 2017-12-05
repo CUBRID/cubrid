@@ -1543,11 +1543,8 @@
 #define ER_NO_JSON_OBJECT_PROVIDED                  -1198
 #define ER_JSON_INVALIDATED_BY_SCHEMA               -1199
 #define ER_JSON_INVALID_PATH                        -1200
-#define ER_JSON_UNCOMPARABLE_TYPES                  -1201
 
-#define ER_CANNOT_COMPARE_TYPES                     -1202
-
-#define ER_LAST_ERROR                               -1203
+#define ER_LAST_ERROR                               -1201
 
 /*
  * CAUTION!
