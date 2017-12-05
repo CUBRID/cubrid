@@ -122,7 +122,8 @@ function build_initialize ()
   if [ "x$extra_version" != "x" ]; then
     serial_number=$(echo $extra_version | cut -d - -f 1)
   elif [ -d $source_dir/.git ]; then
-    serial_number=$(cd $source_dir && git rev-list --count HEAD)
+    serial_number=$(cd $source_dir && git rev-list --count HEAD 2> /dev/null)
+    [ $? -ne 0 ] && serial_number=$(cd $source_dir && git log --oneline | wc -l)
     hash_tag=$(cd $source_dir && git rev-parse --short HEAD)
     extra_version="$serial_number-$hash_tag"
   else
