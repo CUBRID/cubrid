@@ -57,6 +57,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
   ${COMPAT_DIR}/db_json.cpp
+  ${COMPAT_DIR}/dbtype_api.c
   )
 set (COMPAT_HEADERS  
   ${COMPAT_DIR}/dbtype_common.h

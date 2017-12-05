@@ -24,16 +24,19 @@
 
 #include "dbtype_common.h"
 
-#ifdef SERVER_MODE
+//#ifdef SERVER_MODE
+#if !defined (_DBTYPE_API_H_)
 #if defined (__cplusplus) || defined (__GNUC__)
 #define DB_MACRO_INLINE static inline
 #elif _MSC_VER >= 1000
 #define DB_MACRO_INLINE __forceinline static
 #endif
 #else
-#include "dbtype_api.h"
+//#include "dbtype_api.h"
 #define DB_MACRO_INLINE
 #endif
+
+#include <assert.h>
 
 /*
  * db_get_int() -
