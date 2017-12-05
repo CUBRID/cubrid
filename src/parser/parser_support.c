@@ -8996,33 +8996,6 @@ error:
   return NULL;
 }
 
-/* *INDENT-OFF* */
-class temp_mem_manager //bSolo: temporary until evolve above gcc 4.4.7
-{
-  public:
-    temp_mem_manager(PARSER_CONTEXT* parser_ctx)
-      : m_parser_ctx{parser_ctx}
-    {}
-
-    void extend(mem::block& block, size_t len)
-    {
-      size_t dim = block.dim ? block.dim : 1;
-      for (; dim < block.dim + len; dim *= 2);	//calc next power of 2 >= b.dim
-      mem::block b{dim, (char *) parser_alloc (m_parser_ctx, block.dim + len)};
-      memcpy (b.ptr, block.ptr, block.dim);
-      block = std::move (b);
-    }
-
-    void dealloc(mem::block& block)
-    {
-      //block = {};
-    }
-
-  private:
-    PARSER_CONTEXT *m_parser_ctx;
-};
-/* *INDENT-ON* */
-
 /*
  * pt_help_show_create_table() help to generate create table string.
  * return string of create table.
@@ -9061,7 +9034,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 		   table_name->info.name.original, pt_show_misc_type (PT_CLASS));
     }
 /* *INDENT-OFF* */
-#if 0 //bSolo: temporary until evolve above gcc 4.4.7
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb{
     [&parser] (mem::block& block, size_t len)
     {
@@ -9074,11 +9047,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
     [](mem::block& block){} //no need to deallocate for parser_context
   };
 #else
-  temp_mem_manager mem_manager{parser};
-  string_buffer sb{
-    std::bind(&temp_mem_manager::extend, &mem_manager, std::placeholders::_1, std::placeholders::_2), 
-    std::bind(&temp_mem_manager::dealloc, &mem_manager, std::placeholders::_1)
-  };
+  string_buffer sb;
 #endif
 /* *INDENT-ON* */
 

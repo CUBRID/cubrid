@@ -720,33 +720,6 @@ help_print_info (const char *command, FILE * fpp)
 
 #endif /* defined (SERVER_MODE) */
 
-/* *INDENT-OFF* */
-class temp_mem_manager //bSolo: temporary until evolve above gcc 4.4.7
-{
-  public:
-    temp_mem_manager(db_private_allocator<char>& allocator)
-      : m_allocator(allocator)
-    {}
-
-    void extend(mem::block& block, size_t len)
-    {
-      mem::block b{block.dim + len, m_allocator.allocate (block.dim + len)};
-      memcpy (b.ptr, block.ptr, block.dim);
-      m_allocator.deallocate (block.ptr);
-      block = std::move (b);
-    }
-
-    void dealloc(mem::block& block)
-    {
-      m_allocator.deallocate (block.ptr);
-      block = {};
-    }
-
-  private:
-    db_private_allocator<char>& m_allocator;
-};
-/* *INDENT-ON* */
-
 /*
  * help_fprint_value() -  Prints a description of the contents of a DB_VALUE
  *                        to the file
@@ -759,7 +732,7 @@ help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
 {
 /* *INDENT-OFF* */
   db_private_allocator<char> private_allocator{thread_p};
-#if 0 //bSolo: temporary until evolve above gcc 4.4.7
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb{
     [&private_allocator] (mem::block& block, size_t len)
     {
@@ -775,11 +748,7 @@ help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
     }
   };
 #else
-  temp_mem_manager mem_manager{private_allocator};
-  string_buffer sb{
-    std::bind(&temp_mem_manager::extend, &mem_manager, std::placeholders::_1, std::placeholders::_2),
-    std::bind(&temp_mem_manager::dealloc, &mem_manager, std::placeholders::_1)
-  };
+  string_buffer sb{&mem::private_realloc, &mem::private_dealloc};
 #endif
 /* *INDENT-ON* */
   db_value_printer printer (sb);

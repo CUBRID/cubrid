@@ -172,4 +172,23 @@ namespace mem
 
 } // namespace mem
 
+#if !defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+#include "memory_alloc.h"
+
+namespace mem
+{
+  inline void private_realloc (block &b, size_t len)
+  {
+    b.ptr = (char*) db_private_realloc (NULL, b.ptr, b.dim + len);
+    b.dim += len;
+  }
+
+  inline void private_dealloc (block &b)
+  {
+    db_private_free (NULL, b.ptr);
+    b = {};
+  }
+} // namespace mem
+#endif
+
 #endif // !defined(_MEM_BLOCK_HPP_)

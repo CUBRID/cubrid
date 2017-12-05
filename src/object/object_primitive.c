@@ -10405,31 +10405,6 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-/* *INDENT-OFF* */
-class temp_mem_manager //bSolo: temporary until evolve above gcc 4.4.7
-{
-  public:
-    temp_mem_manager(thread_entry* thr_ctx)
-      : m_thr_ctx{thr_ctx}
-    {}
-
-    void extend(mem::block& block, size_t len)
-    {
-      block.ptr = (char *) db_private_realloc (m_thr_ctx, block.ptr, block.dim + len);
-      block.dim += len;
-    }
-
-    void dealloc(mem::block& block)
-    {
-      db_private_free (m_thr_ctx, block.ptr);
-      block = {};
-    }
-
-  private:
-    thread_entry *m_thr_ctx;
-};
-/* *INDENT-ON* */
-
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of
  * the pr_type vector for the appropriate type.
@@ -10446,7 +10421,7 @@ char *
 pr_valstring (thread_entry * threade, DB_VALUE * val)
 {
 /* *INDENT-OFF* */
-#if 0 //bSolo: temporary until evolve above gcc 4.4.7
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb{
     [&threade] (mem::block& block, size_t len)
     {
@@ -10460,11 +10435,7 @@ pr_valstring (thread_entry * threade, DB_VALUE * val)
     }
   };
 #else
-  temp_mem_manager mem_manager{threade};
-  string_buffer sb{
-    std::bind(&temp_mem_manager::extend, &mem_manager, std::placeholders::_1, std::placeholders::_2),
-    std::bind(&temp_mem_manager::dealloc, &mem_manager, std::placeholders::_1)
-  };
+  string_buffer sb{&mem::private_realloc, &mem::private_dealloc};
 #endif
 /* *INDENT-ON* */
 
