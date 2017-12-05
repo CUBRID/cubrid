@@ -2172,8 +2172,8 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  break;
 	case DB_TYPE_JSON:
 	  {
-	    char *json_body = NULL, *whole_string;
-	    const char *schema;
+	    char *json_body = NULL;
+
 	    json_body = DB_GET_JSON_RAW_BODY (val);
 
 	    if (json_body == NULL)
@@ -2182,14 +2182,10 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	      }
 	    else
 	      {
-		unsigned int json_len = 0;
+		len = (int) strlen (json_body);
 
-		json_len = strlen (json_body);
-
-		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, json_len);
+		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, len);
 		hashcode %= ht_size;
-
-		db_private_free (NULL, whole_string);
 	      }
 	  }
 	  break;
