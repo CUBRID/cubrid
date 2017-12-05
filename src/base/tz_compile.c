@@ -4944,31 +4944,6 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
     }
   printf ("   MAX rules LEN: %d", max_len);
   printf ("   MAX format LEN: %d\n", max_len2);
-
-  printf (" TZ_RAW_DS_RULES & RULESETS: \n");
-  max_len = 0;
-  max_len2 = 0;
-  for (i = 0; i < tzd_raw->ruleset_count; i++)
-    {
-      TZ_RAW_ZONE_INFO *zone = &(tzd_raw->zones[i]);
-      for (j = 0; j < zone->offset_rule_count; j++)
-	{
-	  TZ_RAW_OFFSET_RULE *offrule = &(zone->offset_rules[j]);
-
-	  temp_len = strlen (offrule->ds_ruleset_name);
-	  if (temp_len > max_len)
-	    {
-	      max_len = temp_len;
-	    }
-	  temp_len = strlen (offrule->format);
-	  if (temp_len > max_len2)
-	    {
-	      max_len2 = temp_len;
-	    }
-	}
-    }
-  printf ("   MAX rules LEN: %d", max_len);
-  printf ("   MAX format LEN: %d\n", max_len2);
 }
 
 #if defined(WINDOWS)
