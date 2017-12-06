@@ -43,7 +43,13 @@
 class string_buffer: public mem::block_ext //collect formatted text (printf-like syntax)
 {
   public:
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
     string_buffer() = default;                                    //default ctor
+#else
+    string_buffer()
+      : m_len(0)
+    {}
+#endif
 
     ~string_buffer()
     {
