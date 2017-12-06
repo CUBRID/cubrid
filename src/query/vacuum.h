@@ -244,7 +244,6 @@ vacuum_get_worker_tdes (THREAD_ENTRY * thread_p)
       thread_p = thread_get_thread_entry_info ();
     }
 #endif // SA_MODE
-  assert (vacuum_is_thread_vacuum_worker (thread_p));
   return vacuum_get_vacuum_worker (thread_p)->tdes;
 }
 
