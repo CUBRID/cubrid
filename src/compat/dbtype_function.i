@@ -18,7 +18,7 @@
  */
 
 /*
- * db_macro.i - API/inlined functions related to db_make and db_get
+ * dbtype_function.i - API/inlined functions related to db_make and db_get
  *
  */
 

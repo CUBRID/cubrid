@@ -17,6 +17,6 @@
 *
 */
 
-#include "dbtype_api.h"
+#include "dbtype_function.h"
 #include "dbtype.h"
-#include "db_macro.i"
+#include "dbtype_function.i"

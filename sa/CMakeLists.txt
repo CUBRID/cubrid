@@ -57,11 +57,11 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
   ${COMPAT_DIR}/db_json.cpp
-  ${COMPAT_DIR}/dbtype_api.c
+  ${COMPAT_DIR}/dbtype_function.c
   )
 set (COMPAT_HEADERS  
   ${COMPAT_DIR}/dbtype_def.h
-  ${COMPAT_DIR}/db_macro.i
+  ${COMPAT_DIR}/dbtype_function.i
   )
 
 set(BASE_SOURCES

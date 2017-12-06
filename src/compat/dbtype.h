@@ -513,6 +513,6 @@ static inline void db_set_compressed_string (DB_VALUE * value, char *compressed_
 					     int compressed_size, bool compressed_need_clear)
   __attribute__ ((ALWAYS_INLINE));
 
-#include "db_macro.i"
+#include "dbtype_function.i"
 #endif // not _DBTYPE_API_H_
 #endif /* _DBTYPE_H_ */

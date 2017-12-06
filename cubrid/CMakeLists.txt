@@ -83,7 +83,7 @@ set (BASE_HEADERS
   )
 set (COMPAT_HEADERS  
   ${COMPAT_DIR}/dbtype_def.h
-  ${COMPAT_DIR}/db_macro.i
+  ${COMPAT_DIR}/dbtype_function.i
   )
 
 set(EXECUTABLE_SOURCES
