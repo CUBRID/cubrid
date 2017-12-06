@@ -45,7 +45,11 @@
 namespace cubthread
 {
 
+#if defined (NO_GCC_44) || defined (WINDOWS)
   thread_local entry *tl_Entry_p = NULL;
+#else // GCC 4.4
+  __thread entry *tl_Entry_p = NULL;
+#endif // GCC 4.4
 
   manager::manager (std::size_t max_threads, std::size_t starting_index)
     : m_max_threads (max_threads)
@@ -219,6 +223,7 @@ namespace cubthread
 	// execute on this thread
 	exec_p->execute (thread_p);
 	exec_p->retire ();
+	return true;
       }
     else
       {
@@ -367,9 +372,9 @@ namespace cubthread
   initialize (entry **my_entry)
   {
     std::size_t starting_index = 0;
-    int error_code = NO_ERROR;
 
 #if defined (SERVER_MODE)
+    int error_code = NO_ERROR;
     if (!Is_single_thread)
       {
 	error_code = thread_initialize_manager (starting_index);

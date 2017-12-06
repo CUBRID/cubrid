@@ -836,7 +836,7 @@ template <typename T, typename V> inline T ATOMIC_INC_64 (volatile T *ptr, V amo
 {
   static_assert (sizeof (T) == sizeof (UINT64), "Not 64bit");
 #if defined (_WIN64)
-  return InterlockedExchangeAdd64 (reinterpret_cast <volatile INT64 *>(ptr), amount) + amount;
+  return (T) InterlockedExchangeAdd64 (reinterpret_cast <volatile INT64 *>(ptr), amount) + amount;
 #elif defined(WINDOWS)
   return win32_exchange_add64 (reinterpret_cast <volatile UINT64 *>(ptr), amount) + amount;
 #else
@@ -860,7 +860,7 @@ template <typename T, typename V> inline T ATOMIC_TAS_64 (volatile T *ptr, V amo
 {
   static_assert (sizeof (T) == sizeof (UINT64), "Not 64bit");
 #if defined (_WIN64)
-  return InterlockedExchange64 (reinterpret_cast <volatile INT64 *>(ptr), amount);
+  return (T) InterlockedExchange64 (reinterpret_cast <volatile INT64 *>(ptr), (__int64) amount);
 #elif defined(WINDOWS)
   return win32_exchange64 (reinterpret_cast <volatile UINT64 *>(ptr), amount);
 #else

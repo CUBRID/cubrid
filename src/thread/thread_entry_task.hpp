@@ -63,11 +63,11 @@ namespace cubthread
       }
 
       // contextual_task implementation for create_context, retire_context
-      entry &create_context (void) override
+      entry &create_context (void) // NO_GCC_44: override
       {
 	return *m_manager_p->claim_entry ();
       }
-      void retire_context (entry &context) override
+      void retire_context (entry &context) // NO_GCC_44: override
       {
 	m_manager_p->retire_entry (context);
       }

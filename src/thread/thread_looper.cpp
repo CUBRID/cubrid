@@ -67,7 +67,7 @@ namespace cubthread
       }
     else
       {
-	timeout = waiter_arg.wait_for (m_periods[m_period_index]);
+	timeout = !waiter_arg.wait_for (m_periods[m_period_index]);
       }
     if (m_wait_pattern == wait_pattern::FIXED_PERIODS || m_wait_pattern == wait_pattern::INFINITE_WAITS)
       {
