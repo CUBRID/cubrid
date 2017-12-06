@@ -793,9 +793,10 @@ extern int logtb_collect_local_clients (int **local_client_pids);
 /* TODO: Vacuum workers never hold CSECT_LOG lock. Investigate any possible
  *	 unwanted consequences.
  * NOTE: It is considered that a vacuum worker holds a "shared" lock.
+ * TODO: remove vacuum code from LOG_CS_OWN
  */
 #define LOG_CS_OWN(thread_p) \
-  (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p) \
+  (vacuum_is_process_log_for_vacuum (thread_p) \
    || csect_check_own (thread_p, CSECT_LOG) >= 1)
 #define LOG_CS_OWN_WRITE_MODE(thread_p) \
   (csect_check_own (thread_p, CSECT_LOG) == 1)
@@ -2077,8 +2078,8 @@ extern char log_Name_removed_archive[];
 #define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
 #define LOG_THREAD_TRAN_ARGS(thread_p) \
   THREAD_GET_CURRENT_ENTRY_INDEX (thread_p), \
-  VACUUM_IS_THREAD_VACUUM (thread_p) && (thread_p)->vacuum_worker != NULL ? \
-  VACUUM_GET_WORKER_TDES (thread_p)->trid : LOG_FIND_CURRENT_TDES (thread_p)->trid
+  vacuum_is_thread_vacuum (thread_p) && vacuum_get_vacuum_worker (thread_p) != NULL ? \
+  vacuum_get_worker_tdes (thread_p)->trid : LOG_FIND_CURRENT_TDES (thread_p)->trid
 #endif /* SERVER_MODE */
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);

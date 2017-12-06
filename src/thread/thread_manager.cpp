@@ -197,6 +197,22 @@ namespace cubthread
     if (worker_pool_arg == NULL)
       {
 	// execute on this thread
+
+	// todo: think more about this case;
+	// take the example of vacuum. the server mode expected logic is:
+	// 1. claim thread entry (one is obtained from pool)
+	// 2. adjust thread entry for vacuum work (set worker context, no interrupt, so on)
+	// 3. execute job(s)
+	// 4. retire vacuum context
+	// 5. retire thread entry (returned to pool)
+	//
+	// it would be great if we could use a similar pattern on no work pool.
+	// 1. claim thread entry (use this thread)
+	// 2. adjust thread entry
+	// 3. execute job(s)
+	// 4. retire vacuum context
+	// 5. retire thread entry => restore previous state (e.g. check interrupt)
+
 	exec_p->execute (thread_p);
 	exec_p->retire ();
       }

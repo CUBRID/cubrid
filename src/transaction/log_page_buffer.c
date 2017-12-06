@@ -1560,11 +1560,6 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
 
   logpb_log ("called logpb_fetch_page with pageid = %lld\n", (long long int) req_lsa->pageid);
 
-  if (access_mode != LOG_CS_SAFE_READER && VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
-    {
-      access_mode = LOG_CS_SAFE_READER;
-    }
-
   LSA_COPY (&append_lsa, &log_Gl.hdr.append_lsa);
   LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
 

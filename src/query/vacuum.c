@@ -430,13 +430,6 @@ int vacuum_Prefetch_log_mode = VACUUM_PREFETCH_LOG_MODE_MASTER;
 /* Static array of vacuum workers */
 VACUUM_WORKER vacuum_Workers[VACUUM_MAX_WORKER_COUNT];
 
-#if defined (SA_MODE)
-/* Vacuum worker structure used to execute vacuum jobs in SA_MODE.
- * TODO: Implement vacuum execution for SA_MODE.
- */
-VACUUM_WORKER *vacuum_Worker_sa_mode;
-#endif
-
 /* VACUUM_HEAP_HELPER -
  * Structure used by vacuum heap functions.
  */
@@ -804,14 +797,12 @@ private:
 int
 xvacuum (THREAD_ENTRY * thread_p)
 {
-#if !defined (SERVER_MODE)
-  int dummy_save_type = 0;
-#endif /* !SERVER_MODE */
-
 #if defined(SERVER_MODE)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_CS_NOT_AVAILABLE, 0);
   return ER_VACUUM_CS_NOT_AVAILABLE;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
+  THREAD_TYPE save_type = thread_p->type;
+
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) || vacuum_Data.is_vacuum_complete)
     {
       return NO_ERROR;
@@ -827,7 +818,7 @@ xvacuum (THREAD_ENTRY * thread_p)
   /* remove archives that have been prevented from being removed up until now. */
   logpb_remove_archive_logs_exceed_limit (thread_p, 0);
 
-  VACUUM_RESTORE_THREAD (thread_p, dummy_save_type);
+  vacuum_restore_thread (thread_p, save_type);
 
   return NO_ERROR;
 #endif /* SA_MODE */
@@ -3077,7 +3068,7 @@ static int
 vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLOCK_LOG_BUFFER * block_log_buffer,
 			  bool sa_mode_partial_block)
 {
-  VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
+  VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
   LOG_LSA log_lsa;
   LOG_LSA rcv_lsa;
   LOG_PAGEID first_block_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
@@ -3616,31 +3607,6 @@ vacuum_rv_finish_worker_recovery (THREAD_ENTRY * thread_p, TRANID trid)
   /* Reset vacuum worker transaction descriptor */
   vacuum_Workers[worker_index].tdes->state = TRAN_ACTIVE;
 }
-
-#if defined (SA_MODE)
-/*
- * vacuum_get_worker_sa_mode () - Get vacuum worker for stand-alone mode.
- *
- * return    : Vacuum worker for stand-alone mode.
- */
-VACUUM_WORKER *
-vacuum_get_worker_sa_mode (void)
-{
-  return vacuum_Worker_sa_mode;
-}
-
-/*
- * vacuum_set_worker_sa_mode () - Set vacuum worker for stand-alone mode.
- *
- * return      : Void.
- * worker (in) : Vacuum worker.
- */
-void
-vacuum_set_worker_sa_mode (VACUUM_WORKER * worker)
-{
-  vacuum_Worker_sa_mode = worker;
-}
-#endif
 
 /*
  * vacuum_finished_block_vacuum () - Called when vacuuming a block is stopped.
@@ -6983,7 +6949,7 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
   char *buffer_block_start_ptr;
   char *log_page;
   LOG_PAGEID start_log_pageid, log_pageid;
-  VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
+  VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
   int error = NO_ERROR;
   LOG_LSA req_lsa;
 
@@ -7072,7 +7038,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_
 #if defined (SERVER_MODE)
   char *buffer_block_start_ptr;
   char *buffer_page_start_ptr;
-  VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
+  VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
 #endif /* SERVER_MODE */
   int error = NO_ERROR;
 
@@ -7419,7 +7385,7 @@ void
 vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p, char *data_header, char *rcv_data, int rcv_data_length)
 {
 #if defined (SERVER_MODE)
-  VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
+  VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
   VACUUM_CACHE_POSTPONE_ENTRY *new_entry = NULL;
   int total_data_size = 0;
 
@@ -7503,7 +7469,7 @@ void
 vacuum_cache_log_postpone_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
 #if defined (SERVER_MODE)
-  VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
+  VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
   VACUUM_CACHE_POSTPONE_ENTRY *new_entry = NULL;
 
   assert (lsa != NULL && !LSA_ISNULL (lsa));
@@ -7536,7 +7502,7 @@ bool
 vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p, LOG_LSA * start_postpone_lsa)
 {
 #if defined (SERVER_MODE)
-  VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
+  VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
   VACUUM_CACHE_POSTPONE_ENTRY *entry = NULL;
   LOG_REC_REDO *redo = NULL;
   char *rcv_data = NULL;
@@ -7820,4 +7786,40 @@ vacuum_log_last_blockid (THREAD_ENTRY * thread_p)
 		 pgbuf_get_vpid_ptr ((PAGE_PTR) (data_page))->pageid,
 		 vacuum_Data.first_page == vacuum_Data.last_page ?
 		 "This is also first page." : "This is different from first page.");
+}
+
+/*
+ * vacuum_convert_thread_to_worker - convert this thread to a vacuum worker
+ *
+ * thread_p (in)   : thread entry
+ * worker (in)     : vacuum worker context
+ * save_type (out) : save previous thread type
+ */
+void
+vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, THREAD_TYPE & save_type)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  save_type = thread_p->type;
+  thread_p->type = TT_VACUUM_WORKER;
+  thread_p->vacuum_worker = worker;
+}
+
+/*
+ * vacuum_restore_thread - restore thread previously converted to a vacuum worker
+ *
+ * thread_p (in)  : thread entry
+ * save_type (in) : saved type of thread entry
+ */
+void
+vacuum_restore_thread (THREAD_ENTRY * thread_p, THREAD_TYPE save_type)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  thread_p->type = save_type;
+  thread_p->vacuum_worker = NULL;
 }
