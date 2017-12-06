@@ -5345,16 +5345,15 @@ db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool 
 	  pr_clone_value (arg2, result);
 	}
     }
-  else if (cmp_result == DB_UNK)
+  else if (cmp_result == DB_UNK && can_compare == false)
+    {
+      return ER_FAILED;
+    }
+  else
     {
       assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
       db_make_null (result);
       return NO_ERROR;
-    }
-  else
-    {
-      assert (false);
-      return ER_FAILED;
     }
 
   return error_code;

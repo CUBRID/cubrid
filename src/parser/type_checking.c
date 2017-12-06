@@ -17462,6 +17462,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       error = db_least_or_greatest (arg1, arg2, result, true);
       if (error != NO_ERROR)
 	{
+          ASSERT_ERROR();
 	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
 	}
@@ -17479,6 +17480,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       error = db_least_or_greatest (arg1, arg2, result, false);
       if (error != NO_ERROR)
 	{
+          ASSERT_ERROR();
 	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
 	}
