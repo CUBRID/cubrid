@@ -7285,7 +7285,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_JSON_STRING:
 	  {
-	    const char *json_string_copy = NULL;
+	    char *json_string_copy = NULL;
 
 	    json_string_copy = db_json_copy_string_from_document (src_doc);
 	    db_make_string (&src_replacement, json_string_copy);
