@@ -801,7 +801,7 @@ xvacuum (THREAD_ENTRY * thread_p)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_CS_NOT_AVAILABLE, 0);
   return ER_VACUUM_CS_NOT_AVAILABLE;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
-  THREAD_TYPE save_type = thread_p->type;
+  THREAD_TYPE save_type = THREAD_TYPE::TT_NONE;
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) || vacuum_Data.is_vacuum_complete)
     {
@@ -810,7 +810,7 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   /* Assign worker and allocate required resources. */
   vacuum_worker_allocate_resources (thread_p, &vacuum_Workers[0]);
-  thread_p->vacuum_worker = &vacuum_Workers[0];
+  vacuum_convert_thread_to_worker (thread_p, &vacuum_Workers[0], save_type);
 
   /* Process vacuum data and run vacuum . */
   vacuum_process_vacuum_data (thread_p);
