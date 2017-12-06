@@ -29,7 +29,7 @@
 
 #include <time.h>
 
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 #include "tz_support.h"
 
 #define db_utime_to_string db_timestamp_to_string

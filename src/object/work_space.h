@@ -34,7 +34,7 @@
 #include "dbdef.h"
 #include "quick_fit.h"
 #include "locator.h"
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 
 /*
  * VID_INFO

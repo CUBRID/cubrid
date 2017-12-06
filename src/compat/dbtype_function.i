@@ -18,13 +18,12 @@
  */
 
 /*
- * db_macro.i - API/inlined functions related to db_make and db_get
+ * dbtype_function.i - API/inlined functions related to db_make and db_get
  *
  */
 
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 
-//#ifdef SERVER_MODE
 #if !defined (_DBTYPE_API_H_)
 #if defined (__cplusplus) || defined (__GNUC__)
 #define DB_MACRO_INLINE static inline
@@ -32,7 +31,6 @@
 #define DB_MACRO_INLINE __forceinline static
 #endif
 #else
-//#include "dbtype_api.h"
 #define DB_MACRO_INLINE
 #endif
 

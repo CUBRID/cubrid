@@ -24,7 +24,7 @@
 #ifndef _DBTYPE_API_H_
 #define _DBTYPE_API_H_
 
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 
 extern int db_get_int (const DB_VALUE * value);
 extern DB_C_SHORT db_get_short (const DB_VALUE * value);
@@ -67,7 +67,7 @@ extern int db_value_scale (const DB_VALUE * value);
 extern JSON_DOC *db_get_json_document (const DB_VALUE * value);
 
 extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
-                            const int size);
+			    const int size);
 
 extern int db_make_null (DB_VALUE * value);
 extern int db_make_int (DB_VALUE * value, const int num);
@@ -92,17 +92,17 @@ extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
 extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
 extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
 extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
-                           const int bit_str_bit_size);
+			   const int bit_str_bit_size);
 extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
-                         const int codeset, const int collation_id);
+			 const int codeset, const int collation_id);
 extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
-                            const int char_str_byte_size, const int codeset, const int collation_id);
+			    const int char_str_byte_size, const int codeset, const int collation_id);
 extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
-                          const int nchar_str_byte_size, const int codeset, const int collation_id);
+			  const int nchar_str_byte_size, const int codeset, const int collation_id);
 extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
-                             const int nchar_str_byte_size, const int codeset, const int collation_id);
+			     const int nchar_str_byte_size, const int codeset, const int collation_id);
 extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
-                                unsigned char codeset, const int collation_id);
+				unsigned char codeset, const int collation_id);
 extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
 extern int db_make_string (DB_VALUE * value, const char *str);
@@ -122,6 +122,6 @@ extern int db_make_date (DB_VALUE * value, const int month, const int day, const
 
 extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
-                                      int compressed_size, bool compressed_need_clear);
+				      int compressed_size, bool compressed_need_clear);
 
-#endif             /* _DBTYPE_API_H_ */
+#endif /* _DBTYPE_API_H_ */

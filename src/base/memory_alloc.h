@@ -40,7 +40,7 @@
 #endif
 
 #include "thread.h"
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 
 /* Ceiling of positive division */
 #define CEIL_PTVDIV(dividend, divisor) \

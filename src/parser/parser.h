@@ -30,7 +30,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include "system.h"
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 #include "dbdef.h"
 #include "parse_tree.h"
 

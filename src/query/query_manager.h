@@ -33,7 +33,7 @@
 
 #include "storage_common.h"
 #include "list_file.h"
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 #include "thread.h"
 #include "xasl_cache.h"
 #include "file_manager.h"

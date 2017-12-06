@@ -27,7 +27,7 @@
 #include "config.h"
 #include <stdlib.h>
 #include "error_code.h"
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 
 #define IS_VALID_ISOLATION_LEVEL(isolation_level) \
     (TRAN_MINVALUE_ISOLATION <= (isolation_level) \

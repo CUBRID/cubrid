@@ -41,9 +41,9 @@
 #define u_int64_t unsigned __int64
 #endif /* WINDOWS && !__GNUC__ */
 
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 #include "error_code.h"
-#include "dbtype_api.h"
+#include "dbtype_function.h"
 
 #ifdef __cplusplus
 extern "C"

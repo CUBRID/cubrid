@@ -32,7 +32,7 @@
 #endif /* !WINDOWS */
 
 #include "thread.h"
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error critical_section.h belongs to server or stand-alone modules.
