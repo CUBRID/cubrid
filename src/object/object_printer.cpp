@@ -1026,7 +1026,7 @@ void object_printer::describe_class (struct db_object *class_op)
   /* partition */
   if (!class_descr.partition.empty())
     {
-      m_buf (" %s", *class_descr.partition[0]);
+      m_buf (" %s", class_descr.partition[0]);
       size_t len = class_descr.partition.size();
       if (len > 1)
 	{
