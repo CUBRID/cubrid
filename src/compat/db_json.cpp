@@ -676,7 +676,14 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
       return NO_ERROR;
     }
 
-  val.CopyFrom (*value, doc->GetAllocator ());
+  if (value != NULL)
+    {
+      val.CopyFrom (*value, doc->GetAllocator ());
+    }
+  else
+    {
+      val.SetNull ();
+    }
 
   raw_path_len = strlen (raw_path);
   for (i = raw_path_len-1; i >= 0; i--)
@@ -717,11 +724,11 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
 	}
       else
 	{
-	  JSON_VALUE value;
+	  JSON_VALUE value_aux;
 
-	  value.SetArray ();
-	  value.PushBack (*resulting_json_parent, doc->GetAllocator ());
-	  resulting_json_parent->Swap (value);
+	  value_aux.SetArray ();
+	  value_aux.PushBack (*resulting_json_parent, doc->GetAllocator ());
+	  resulting_json_parent->Swap (value_aux);
 
 	  resulting_json_parent->PushBack (val, doc->GetAllocator ());
 	}
@@ -917,8 +924,11 @@ JSON_DOC *db_json_allocate_doc ()
 
 void db_json_delete_doc (JSON_DOC *&doc)
 {
-  delete doc;
-  doc = NULL;
+  if (doc != NULL)
+    {
+      delete doc;
+      doc = NULL;
+    }
 }
 
 int
@@ -990,10 +1000,20 @@ db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2)
  */
 
 int
-db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest)
+db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest)
 {
-  if (db_json_get_type (dest) == DB_JSON_NULL)
+  JSON_DOC *source_aux = NULL;
+
+  if (source == NULL)
     {
+      source_aux = db_json_allocate_doc ();
+      db_json_make_document_null (source_aux);
+      source = source_aux;
+    }
+
+  if (dest == NULL)
+    {
+      dest = db_json_allocate_doc ();
       db_json_copy_doc (dest, source);
       return NO_ERROR;
     }
@@ -1018,6 +1038,10 @@ db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest)
       db_json_merge_two_json_by_array_wrapping (dest, source);
     }
 
+  if (source_aux != NULL)
+    {
+      db_json_delete_doc (source_aux);
+    }
   return NO_ERROR;
 }
 
@@ -1243,6 +1267,12 @@ bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2)
       return false;
     }
   return *doc1 == *doc2;
+}
+
+void
+db_json_make_document_null (JSON_DOC *doc)
+{
+  doc->SetNull ();
 }
 
 /* end of C functions */
