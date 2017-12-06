@@ -6926,8 +6926,13 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
     {
     case DB_JSON_STRING:
       {
-	const char *str = db_json_get_string_from_document (doc, false);
-	DB_MAKE_STRING (dest, str);
+	const char *str = db_json_get_string_from_document (doc);
+	int error_code = DB_MAKE_STRING (dest, str);
+	if (error_code != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return error_code;
+	  }
 	break;
       }
     case DB_JSON_INT:

@@ -7287,7 +7287,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  {
 	    const char *json_string_copy = NULL;
 
-	    json_string_copy = db_json_get_string_from_document (src_doc, true);
+	    json_string_copy = db_json_copy_string_from_document (src_doc);
 	    db_make_string (&src_replacement, json_string_copy);
 	    src_replacement.need_clear = true;
 	  }
@@ -11322,7 +11322,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		  result = (*(pr_type->cmpval)) (v1, v2, do_coercion, total_order, NULL, common_coll);
 		}
 
-	      if (result == DB_UNK || result == DB_NE)
+	      if (result == DB_UNK)
 		{
 		  /* safe guard */
 		  if (pr_type->id == DB_TYPE_MIDXKEY)

@@ -17570,40 +17570,25 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   first = (char *) mem1;
   second = (char *) mem2;
 
-  first_uncomp_length = OR_GET_BYTE (first);
-  second_uncomp_length = OR_GET_BYTE (second);
+  or_init (&first_buf, first, 0);
+  or_init (&second_buf, second, 0);
 
-  if (first_uncomp_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
-      && second_uncomp_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  or_get_varchar_compression_lengths (&first_buf, &first_comp_length, &first_uncomp_length);
+  or_get_varchar_compression_lengths (&second_buf, &second_comp_length, &second_uncomp_length);
+
+  first_json_body = (char *) db_private_alloc (NULL, first_uncomp_length + 1);
+  second_json_body = (char *) db_private_alloc (NULL, second_uncomp_length + 1);
+
+  rc = pr_get_compressed_data_from_buffer (&first_buf, first_json_body, first_comp_length, first_uncomp_length);
+  if (rc != NO_ERROR)
     {
-      first += OR_BYTE_SIZE;
-      second += OR_BYTE_SIZE;
-
-      first_json_body = db_private_strdup (NULL, first);
-      second_json_body = db_private_strdup (NULL, second);
+      goto cleanup;
     }
-  else
+
+  rc = pr_get_compressed_data_from_buffer (&second_buf, second_json_body, second_comp_length, second_uncomp_length);
+  if (rc != NO_ERROR)
     {
-      or_init (&first_buf, first, 0);
-      or_init (&second_buf, second, 0);
-
-      or_get_varchar_compression_lengths (&first_buf, &first_comp_length, &first_uncomp_length);
-      or_get_varchar_compression_lengths (&second_buf, &second_comp_length, &second_uncomp_length);
-
-      first_json_body = (char *) db_private_alloc (NULL, first_uncomp_length + 1);
-      second_json_body = (char *) db_private_alloc (NULL, second_uncomp_length + 1);
-
-      rc = pr_get_compressed_data_from_buffer (&first_buf, first_json_body, first_comp_length, first_uncomp_length);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      rc = pr_get_compressed_data_from_buffer (&second_buf, second_json_body, second_comp_length, second_uncomp_length);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
+      goto cleanup;
     }
 
   rc = db_json_get_json_from_str (first_json_body, doc1);
@@ -17641,17 +17626,15 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   DB_VALUE scalar_value1, scalar_value2;
   DB_VALUE_COMPARE_RESULT cmp_result;
   bool can_compare, is_value1_null = true, is_value2_null = true;
+  int error_code;
 
   doc1 = DB_GET_JSON_DOCUMENT (value1);
   doc2 = DB_GET_JSON_DOCUMENT (value2);
 
-  /* if it reaches the third "or", that means that value1 is null.
-   * the same with value2
-   */
+  is_value1_null = DB_IS_NULL (value1) || ((type1 = db_json_get_type (doc1)) == DB_JSON_NULL);
+  is_value2_null = DB_IS_NULL (value2) || ((type2 = db_json_get_type (doc2)) == DB_JSON_NULL);
 
-  if (DB_IS_NULL (value1) || ((type1 = db_json_get_type (doc1)) == DB_JSON_NULL) ||
-      (is_value1_null = false) || DB_IS_NULL (value2) ||
-      ((type2 = db_json_get_type (doc2)) == DB_JSON_NULL) || (is_value2_null = false))
+  if (is_value1_null || is_value2_null)
     {
       if (!total_order)
 	{
@@ -17692,8 +17675,24 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
        * an error. We chose to also compare different scalar types
        * even when total_order is false.
        */
-      db_convert_json_into_scalar (value1, &scalar_value1);
-      db_convert_json_into_scalar (value2, &scalar_value2);
+      error_code = db_convert_json_into_scalar (value1, &scalar_value1);
+      if (error_code != NO_ERROR)
+	{
+	  /* this shouldn't happen */
+	  assert (false);
+	  pr_clear_value (&scalar_value1);
+	  return DB_UNK;
+	}
+
+      error_code = db_convert_json_into_scalar (value2, &scalar_value2);
+      if (error_code != NO_ERROR)
+	{
+	  /* this shouldn't happen */
+	  assert (false);
+	  pr_clear_value (&scalar_value1);
+	  pr_clear_value (&scalar_value2);
+	  return DB_UNK;
+	}
     }
 
   cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
