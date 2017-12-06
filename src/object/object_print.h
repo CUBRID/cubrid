@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"

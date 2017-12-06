@@ -22,9 +22,8 @@
  *
  */
 
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 
-//#ifdef SERVER_MODE
 #if !defined (_DBTYPE_API_H_)
 #if defined (__cplusplus) || defined (__GNUC__)
 #define DB_MACRO_INLINE static inline
@@ -32,7 +31,6 @@
 #define DB_MACRO_INLINE __forceinline static
 #endif
 #else
-//#include "dbtype_api.h"
 #define DB_MACRO_INLINE
 #endif
 

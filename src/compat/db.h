@@ -43,7 +43,7 @@
 #include "parser.h"
 #endif
 #include "log_comm.h"
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 
 /* GLOBAL STATE */
 #define DB_CONNECTION_STATUS_NOT_CONNECTED      0
@@ -163,7 +163,7 @@ extern char db_Program_name[];
     error = NO_ERROR;                                                        \
   }
 #endif /* !SA_MODE */
-#endif	/* CHECK_MODIFICATION_NO_RETURN */				   /********************************************************/
+#endif	/* CHECK_MODIFICATION_NO_RETURN */								   /********************************************************/
   /* Argument checking macros from db.h */
 #define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
   do {                                                                         \

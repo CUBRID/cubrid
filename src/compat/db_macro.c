@@ -54,9 +54,6 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #include "dbtype.h"
-//#if !defined (SERVER_MODE)
-//#include "db_macro.i"
-//#endif
 
 #define DB_NUMBER_ZERO	    0
 

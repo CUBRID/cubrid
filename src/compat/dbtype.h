@@ -36,7 +36,7 @@
 #include "error_manager.h"
 
 #include "system.h"
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
@@ -401,9 +401,6 @@ extern int db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst);
 extern int db_init_db_json_pointers (DB_JSON * val);
 
 #if !defined (_DBTYPE_API_H_)
-//#if !defined(SERVER_MODE)
-//#include "dbtype_api.h"
-//#else
 /* Use the inline version of the functions. */
 static inline int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 static inline DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -517,6 +514,5 @@ static inline void db_set_compressed_string (DB_VALUE * value, char *compressed_
   __attribute__ ((ALWAYS_INLINE));
 
 #include "db_macro.i"
-//#endif
 #endif // not _DBTYPE_API_H_
 #endif /* _DBTYPE_H_ */

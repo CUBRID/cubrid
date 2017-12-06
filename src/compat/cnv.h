@@ -28,7 +28,7 @@
 #ident "$Id$"
 
 
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 #include "condition_handler.h"
 
 extern const char *db_string_value (const char *string, int str_size, const char *format, DB_VALUE * value);

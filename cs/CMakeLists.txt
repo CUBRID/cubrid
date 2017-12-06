@@ -58,7 +58,7 @@ set(COMPAT_SOURCES
   )
   
 set (COMPAT_HEADERS  
-  ${COMPAT_DIR}/dbtype_common.h
+  ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/db_macro.i
   )
 

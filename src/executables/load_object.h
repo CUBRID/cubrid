@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 #include "class_object.h"
 
 #define CHECK_PRINT_ERROR(print_fnc)            \

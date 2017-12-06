@@ -82,7 +82,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/extensible_array.hpp
   )
 set (COMPAT_HEADERS  
-  ${COMPAT_DIR}/dbtype_common.h
+  ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/db_macro.i
   )
 
@@ -342,7 +342,7 @@ install(FILES
   RENAME dbi.h
   )
 install(FILES
-  ${COMPAT_DIR}/dbtype_common.h
+  ${COMPAT_DIR}/dbtype_def.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
   )
 install(FILES

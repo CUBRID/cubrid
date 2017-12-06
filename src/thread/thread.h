@@ -37,7 +37,7 @@
 #include "error_manager.h"
 #include "adjustable_array.h"
 #include "system_parameter.h"
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 #include "log_compress.h"
 #endif /* SERVER_MODE */
 

@@ -33,7 +33,7 @@
 #include "storage_common.h"
 
 #if defined (SERVER_MODE)
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 #include "connection_defs.h"
 #endif /* SERVER_MODE */
 

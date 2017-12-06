@@ -60,7 +60,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/dbtype_api.c
   )
 set (COMPAT_HEADERS  
-  ${COMPAT_DIR}/dbtype_common.h
+  ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/db_macro.i
   )
 

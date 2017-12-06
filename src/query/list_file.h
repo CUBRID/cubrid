@@ -35,7 +35,7 @@
 
 #include <stdio.h>
 
-#include "dbtype_common.h"
+#include "dbtype_def.h"
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "external_sort.h"
