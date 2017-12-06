@@ -84,6 +84,7 @@ set (BASE_HEADERS
 set (COMPAT_HEADERS  
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.i
+  ${COMPAT_DIR}/dbtype_function.h
   )
 
 set(EXECUTABLE_SOURCES
@@ -343,6 +344,7 @@ install(FILES
   )
 install(FILES
   ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/dbtype_function.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
   )
 install(FILES
