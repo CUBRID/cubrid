@@ -884,6 +884,7 @@ void object_printer::describe_class (struct db_object *class_op)
 #endif
       return;
     }
+  m_buf.clear();
 
   char **line_ptr;
   /* class name */

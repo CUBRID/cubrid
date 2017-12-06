@@ -47,7 +47,8 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
     string_buffer() = default;                                    //default ctor
 #else
     string_buffer()
-      : m_len(0)
+      : mem::block_ext()
+      , m_len(0)
     {}
 #endif
 
