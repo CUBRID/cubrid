@@ -26,5 +26,4 @@ void string_buffer::add_bytes (size_t len, void *bytes)
     }
   memcpy (ptr + m_len, bytes, len);
   ptr[m_len += len] = 0;
-  m_len += len;
 }

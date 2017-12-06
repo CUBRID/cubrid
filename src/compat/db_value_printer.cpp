@@ -107,9 +107,9 @@ void db_value_printer::describe_value (const db_value *value)
 	    {
 	      m_buf ("%s", lang_charset_introducer (codeset));
 	    }
-	  m_buf ("'");
+	  m_buf += '\'';
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 
 	case DB_TYPE_ENUMERATION:
