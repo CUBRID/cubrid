@@ -200,7 +200,7 @@ db_add_attribute_internal (MOP class_, const char *name, const char *domain, DB_
     }
   else
     {
-      error = smt_add_attribute_any (def, name, domain, (DB_DOMAIN *) 0, name_space, false, NULL);
+      error = smt_add_attribute_any (def, name, domain, (DB_DOMAIN *) 0, name_space, false, NULL, NULL);
       if (error)
 	{
 	  smt_quit (def);

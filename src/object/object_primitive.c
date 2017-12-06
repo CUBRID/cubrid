@@ -2059,6 +2059,12 @@ pr_clear_value (DB_VALUE * value)
 	      value->data.json.schema_raw = NULL;
 	    }
 	}
+      else
+	{
+	  value->data.json.json_body = NULL;
+	  value->data.json.document = NULL;
+	  value->data.json.schema_raw = NULL;
+	}
       break;
 
     case DB_TYPE_OBJECT:
@@ -17084,7 +17090,7 @@ error:
 
 PR_TYPE tp_Json = {
   "json", DB_TYPE_JSON, 1, sizeof (DB_JSON), 0,
-  4,
+  1,
   help_fprint_value,
   help_sprint_value,
   mr_initmem_json,
@@ -17252,7 +17258,6 @@ static void
 mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
   DB_VALUE json_body, schema_raw;
-  char *json_body_str;
   const char *schema_str;
   DB_JSON *json;
 
@@ -17263,18 +17268,17 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
       return;
     }
 
+  /* json body can be null, but it is treated by writeval */
   db_make_string (&json_body, json->json_body);
 
   if (json->schema_raw != NULL)
     {
-      schema_str = json->schema_raw;
+      db_make_string (&schema_raw, json->schema_raw);
     }
   else
     {
-      schema_str = "";
+      db_make_string (&schema_raw, "");
     }
-
-  db_make_string (&schema_raw, schema_str);
 
   (*(tp_String.data_writeval)) (buf, &json_body);
   (*(tp_String.data_writeval)) (buf, &schema_raw);
@@ -17292,6 +17296,8 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
   DB_JSON *json;
   int rc;
 
+  DB_MAKE_NULL (&json_body);
+  DB_MAKE_NULL (&schema_raw);
   json = (DB_JSON *) memptr;
 
   if (json == NULL)
@@ -17311,6 +17317,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 
   if (json_body_length <= 0)
     {
+      assert (false);
       goto exit;
     }
   else
@@ -17324,10 +17331,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
     }
 
   json->json_body = db_private_strdup (NULL, json_body_str);
-  if (schema_str != NULL)
-    {
-      json->schema_raw = db_private_strdup (NULL, schema_str);
-    }
+  json->schema_raw = db_private_strdup (NULL, schema_str);
 
   rc = db_json_get_json_from_str (json_body_str, json->document);
   assert (rc == NO_ERROR);
@@ -17420,8 +17424,14 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
       return tp_Json.size;
     }
 
-  db_make_string (&json_body, value->data.json.json_body);
-
+  if (value->data.json.json_body != NULL)
+    {
+      db_make_string (&json_body, value->data.json.json_body);
+    }
+  else
+    {
+      return 0;
+    }
   if (value->data.json.schema_raw != NULL)
     {
       db_make_string (&schema_raw, value->data.json.schema_raw);
@@ -17446,9 +17456,14 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
   int rc = NO_ERROR;
   DB_VALUE json_body, schema_raw;
 
-  assert (value->data.json.json_body != NULL);
+  if (value->data.json.json_body == NULL || DB_IS_NULL (value))
+    {
+      assert (false);
+      return ER_FAILED;
+    }
 
   db_make_string (&json_body, value->data.json.json_body);
+
   if (value->data.json.schema_raw != NULL)
     {
       db_make_string (&schema_raw, value->data.json.schema_raw);
@@ -17483,10 +17498,19 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 {
   int rc = NO_ERROR;
   DB_VALUE json_body, schema_raw;
+  JSON_DOC *doc = NULL;
+  const char *json_raw = NULL;
+  char *json_raw_copy = NULL;
 
   DB_MAKE_NULL (value);
   DB_MAKE_NULL (&json_body);
   DB_MAKE_NULL (&schema_raw);
+
+  if (size == 0)
+    {
+      /* early out, means json is NULL */
+      return NO_ERROR;
+    }
 
   rc = (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, false, NULL, 0);
   if (rc != NO_ERROR)
@@ -17500,27 +17524,18 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
       goto exit;
     }
 
-  if (DB_GET_STRING_SIZE (&json_body) == 0)
-    {
-      value->data.json.json_body = NULL;
-      value->data.json.document = NULL;
-      value->data.json.schema_raw = NULL;
+  assert (!DB_IS_NULL (&json_body));
 
+  json_raw = DB_PULL_STRING (&json_body);
+
+  rc = db_json_get_json_from_str (json_raw, doc);
+  if (rc != NO_ERROR)
+    {
+      assert (false);
       goto exit;
     }
-  else
-    {
-      JSON_DOC *doc = NULL;
-      const char *json_raw = DB_PULL_STRING (&json_body);
-
-      rc = db_json_get_json_from_str (json_raw, doc);
-      if (rc != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      db_make_json (value, db_private_strdup (NULL, json_raw), doc, true);
-    }
+  json_raw_copy = db_private_strdup (NULL, json_raw);
+  db_make_json (value, json_raw_copy, doc, true);
 
   if (DB_GET_STRING_SIZE (&schema_raw) > 0)
     {

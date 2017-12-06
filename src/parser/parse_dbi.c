@@ -638,6 +638,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       else
 	{
 	  result->data_type->type_enum = result->type_enum;
+	  result->info.value.data_value.str =
+	    pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, DB_GET_JSON_RAW_BODY (val));
 	  if (db_get_json_schema (val) != NULL)
 	    {
 	      /* check valid schema */
@@ -3493,6 +3495,13 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       db_value->domain.general_info.type = DB_TYPE_JSON;
       db_value->domain.general_info.is_null = 0;
       db_value->data.json.json_body = db_private_strdup (NULL, (const char *) value->info.value.data_value.str->bytes);
+      if (db_json_get_json_from_str (db_value->data.json.json_body, db_value->data.json.document) != NO_ERROR)
+	{
+	  db_private_free (NULL, db_value->data.json.json_body);
+	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_INVALID_JSON,
+		      value->info.value.data_value.str->bytes);
+	  return (DB_VALUE *) NULL;
+	}
 
       value->info.value.db_value_is_in_workspace = false;
       db_value->need_clear = true;

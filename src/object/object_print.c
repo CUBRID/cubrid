@@ -457,18 +457,21 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	  break;
 
 	case DB_TYPE_JSON:
-	  strcpy (temp_buffer, temp_domain->type->name);
-	  ustr_upper (temp_buffer);
-	  if (temp_domain->json_validator != NULL)
-	    {
-	      buffer = pt_append_nulstring (parser, buffer, temp_buffer);
-	      sprintf (temp_buffer, "(\'%s\')", db_json_get_schema_raw_from_validator (temp_domain->json_validator));
-	      buffer = pt_append_nulstring (parser, buffer, temp_buffer);
-	    }
-	  else
-	    {
-	      buffer = pt_append_nulstring (parser, buffer, temp_buffer);
-	    }
+	  {
+	    char *type_name_copy = db_private_strdup (NULL, temp_domain->type->name);
+
+	    ustr_upper (type_name_copy);
+	    buffer = pt_append_nulstring (parser, buffer, type_name_copy);
+	    if (temp_domain->json_validator != NULL)
+	      {
+		buffer = pt_append_nulstring (parser, buffer, "(\'");
+		buffer =
+		  pt_append_nulstring (parser, buffer,
+				       db_json_get_schema_raw_from_validator (temp_domain->json_validator));
+		buffer = pt_append_nulstring (parser, buffer, "\')");
+	      }
+	    db_private_free (NULL, type_name_copy);
+	  }
 	  break;
 
 	case DB_TYPE_NUMERIC:
