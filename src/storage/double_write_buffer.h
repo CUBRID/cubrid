@@ -27,6 +27,7 @@ extern char *dwb_get_volume_name (void);
 extern int dwb_flush_next_block (THREAD_ENTRY * thread_p);
 extern int dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync);
 extern int dwb_compute_checksums (THREAD_ENTRY * thread_p);
+extern int dwb_flush_block_helper (THREAD_ENTRY * thread_p);
 extern int dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool * success);
 extern int dwb_set_data_on_next_slot (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, bool can_wait,
 				      DWB_SLOT ** p_dwb_slot);

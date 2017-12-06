@@ -480,6 +480,8 @@ extern bool thread_is_dwb_checksum_computation_thread_available (void);
 /* is running functions */
 extern bool thread_auto_volume_expansion_thread_is_running (void);
 extern bool thread_dwb_flush_block_thread_is_running (void);
+extern bool thread_dwb_flush_block_helper_thread_is_running (void);
+extern bool thread_is_dwb_flush_block_helper_thread_available (void);
 extern bool thread_dwb_checksum_computation_thread_is_running (void);
 
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
