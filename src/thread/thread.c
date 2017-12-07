@@ -88,11 +88,6 @@
 
 #include "thread_manager.hpp"
 
-#if defined(HPUX)
-#define thread_initialize_key()
-#endif /* HPUX */
-
-
 /* Thread Manager structure */
 typedef struct thread_manager THREAD_MANAGER;
 struct thread_manager
@@ -296,7 +291,7 @@ thread_get_thread_entry_info ()
  * thread_initialize_key() - allocates a key for TSD
  *   return: 0 if no error, or error code
  */
-static int
+int
 thread_initialize_key (void)
 {
   int r;
@@ -389,12 +384,6 @@ thread_initialize_manager (size_t & total_thread_count)
 
   assert (NUM_NORMAL_TRANS >= 10);
   assert (thread_Manager.initialized == false);
-
-  r = thread_initialize_key ();
-  if (r != NO_ERROR)
-    {
-      return r;
-    }
 
   /* Initialize daemons */
   thread_Manager.num_daemons = THREAD_DAEMON_NUM_SINGLE_THREADS;
