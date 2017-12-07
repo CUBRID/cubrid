@@ -39,6 +39,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
 elseif(WIN32)
   set_target_properties(cmstat PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cmstat/cmstat.def\"")
   target_link_libraries(cmstat LINK_PRIVATE ws2_32 psapi cubridcs)
+  if(TARGET_PLATFORM_BITS EQUAL 32)
+    target_compile_definitions(cmstat PRIVATE _USE_32BIT_TIME_T)
+  endif(TARGET_PLATFORM_BITS EQUAL 32)
 endif()
 
 
@@ -58,6 +61,9 @@ target_link_libraries(cmdep LINK_PRIVATE cubridcs)
 if(WIN32)
   set_target_properties(cmdep PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cmdep/cmdep.def\"")
   target_link_libraries(cmdep LINK_PRIVATE ws2_32)
+  if(TARGET_PLATFORM_BITS EQUAL 32)
+    target_compile_definitions(cmdep PRIVATE _USE_32BIT_TIME_T)
+  endif(TARGET_PLATFORM_BITS EQUAL 32)
 endif()
 
 
