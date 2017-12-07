@@ -754,8 +754,10 @@ public:
 
   void execute (cubthread::entry & thread_ref) // NO_GCC_44: override
   {
+#if defined (SERVER_MODE)
     // safe-guard - check interrupt is always false
     assert (!thread_ref.check_interrupt);
+#endif // SERVER_MODE
     vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_partial_block);
   }
 
