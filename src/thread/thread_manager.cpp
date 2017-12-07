@@ -105,6 +105,7 @@ namespace cubthread
       {
 	return NULL;
       }
+    m_available_entries_count -= entries_count;
 
     Res *new_res = new Res (std::forward<CtArgs> (args)...);
 

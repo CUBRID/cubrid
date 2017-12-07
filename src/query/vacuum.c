@@ -700,6 +700,11 @@ class vacuum_master_task : public cubthread::entry_task
 public:
   void execute (cubthread::entry & thread_ref) // NO_GCC_44: final
   {
+    if (!BO_IS_SERVER_RESTARTED ())
+      {
+        // wait for boot to finish
+        return;
+      }
     vacuum_process_vacuum_data (&thread_ref);
   }
 
@@ -748,6 +753,8 @@ public:
 
   void execute (cubthread::entry & thread_ref) // NO_GCC_44: override
   {
+    // safe-guard - check interrupt is always false
+    assert (!thread_ref.check_interrupt);
     vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_partial_block);
   }
 

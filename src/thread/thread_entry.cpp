@@ -69,7 +69,7 @@ namespace cubthread
     , victim_request_fail (false)
     , interrupted (false)
     , shutdown (false)
-    , check_interrupt (false)
+    , check_interrupt (true)
     , wait_for_latch_promote (false)
     , next_wait_thrd (NULL)
     , lockwait (NULL)
