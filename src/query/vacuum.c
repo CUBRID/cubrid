@@ -591,6 +591,8 @@ struct vacuum_dropped_files_rcv_data
   OID class_oid;
 };
 
+bool vacuum_Is_booted = false;
+
 /* Logging */
 #define VACUUM_LOG_DATA_ENTRY_MSG(name) \
   "name = {blockid = %lld, flags = %lld, start_lsa = %lld|%d, oldest_mvccid=%llu, newest_mvccid=%llu }"
@@ -1001,6 +1003,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
 
+  assert (!vacuum_Is_booted);	// only boot once
+
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       /* for debug only */
@@ -1040,12 +1044,20 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
 #endif /* SERVER_MODE */
 
+  vacuum_Is_booted = true;
+
   return NO_ERROR;
 }
 
 void
 vacuum_stop (THREAD_ENTRY * thread_p)
 {
+  if (!vacuum_Is_booted)
+    {
+      // not booted
+      return;
+    }
+
   // notify master to stop generating new jobs
   vacuum_notify_server_shutdown ();
 
@@ -1064,8 +1076,11 @@ vacuum_stop (THREAD_ENTRY * thread_p)
     }
 
   delete vacuum_Workers_context_pool;
+  vacuum_Workers_context_pool = NULL;
 
   // all resources should be freed
+
+  vacuum_Is_booted = false;
 }
 
 #if defined(SERVER_MODE)

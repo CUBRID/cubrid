@@ -2441,7 +2441,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-
   /* 
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
