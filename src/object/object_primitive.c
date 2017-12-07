@@ -17560,7 +17560,7 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   OR_BUF first_buf, second_buf;
   int first_uncomp_length, first_comp_length;
   int second_uncomp_length, second_comp_length;
-  int strc, rc;
+  int rc;
   char *first_json_body, *second_json_body;
   DB_VALUE json1, json2;
   JSON_DOC *doc1 = NULL, *doc2 = NULL;
@@ -17600,10 +17600,14 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   db_make_json (&json2, second_json_body, doc2, true);
 
   res = mr_cmpval_json (&json1, &json2, do_coercion, total_order, 0, 0);
-
-cleanup:
   pr_clear_value (&json1);
   pr_clear_value (&json2);
+
+  return res;
+
+cleanup:
+  db_private_free (NULL, first_json_body);
+  db_private_free (NULL, second_json_body);
 
   return res;
 }
@@ -17625,7 +17629,7 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   DB_JSON_TYPE type2 = DB_JSON_UNKNOWN;
   DB_VALUE scalar_value1, scalar_value2;
   DB_VALUE_COMPARE_RESULT cmp_result;
-  bool can_compare, is_value1_null = true, is_value2_null = true;
+  bool is_value1_null = true, is_value2_null = true;
   int error_code;
 
   doc1 = DB_GET_JSON_DOCUMENT (value1);

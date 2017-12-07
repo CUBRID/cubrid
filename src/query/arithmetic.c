@@ -5323,7 +5323,11 @@ db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool 
 
   cmp_result = tp_value_compare_with_error (arg1, arg2, 1, 0, &can_compare);
 
-  if (cmp_result == DB_EQ || cmp_result == DB_GT)
+  if (cmp_result == DB_EQ)
+    {
+      pr_clone_value (arg1, result);
+    }
+  else if (cmp_result == DB_GT)
     {
       if (least)
 	{
