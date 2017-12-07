@@ -6732,7 +6732,7 @@ classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute, co
   error =
     smt_add_attribute_w_dflt (ctemplate, attribute->header.name, NULL, attribute->domain,
 			      &attribute->default_value.value, attribute->header.name_space,
-			      &attribute->default_value.default_expr);
+			      &attribute->default_value.default_expr, attribute->comment);
   if (error != NO_ERROR)
     {
       return error;

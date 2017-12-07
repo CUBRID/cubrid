@@ -711,9 +711,6 @@ xvacuum (THREAD_ENTRY * thread_p)
   /* Process vacuum data and run vacuum . */
   vacuum_process_vacuum_data (thread_p);
 
-  /* remove archives that have been prevented from being removed up until now. */
-  logpb_remove_archive_logs_exceed_limit (thread_p, 0);
-
   VACUUM_RESTORE_THREAD (thread_p, dummy_save_type);
 
   return NO_ERROR;
@@ -5618,7 +5615,6 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
     {
       /* remove archives that have been blocked up to this point. */
       vacuum_Data.is_archive_removal_safe = true;
-      logpb_remove_archive_logs_exceed_limit (thread_p, 0);
     }
 }
 

@@ -638,6 +638,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       else
 	{
 	  result->data_type->type_enum = result->type_enum;
+	  result->info.value.data_value.str =
+	    pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, DB_GET_JSON_RAW_BODY (val));
 	  if (db_get_json_schema (val) != NULL)
 	    {
 	      /* check valid schema */

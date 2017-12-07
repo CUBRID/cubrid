@@ -1320,6 +1320,8 @@ STATIC_INLINE int db_get_compressed_size (DB_VALUE * value) __attribute__ ((ALWA
 STATIC_INLINE void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 					     int compressed_size, bool compressed_need_clear)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool db_is_json_value_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool db_is_json_doc_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
 
 int
 db_get_compressed_size (DB_VALUE * value)
@@ -1366,6 +1368,42 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
   value->data.ch.info.compressed_need_clear = compressed_need_clear;
 
   return;
+}
+
+STATIC_INLINE bool
+db_is_json_value_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NULL:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_JSON:
+    case DB_TYPE_NUMERIC:
+      return true;
+    default:
+      return false;
+    }
+}
+
+STATIC_INLINE bool
+db_is_json_doc_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_JSON:
+      return true;
+    default:
+      return false;
+    }
 }
 
 #endif /* _DBTYPE_H_ */
