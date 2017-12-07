@@ -1060,18 +1060,6 @@ geçerli seçenekler:\n\
       --sort-key=COLUMN_NUMBER Sıralanacak sütun numarası\n\
       --reverse                Sıralama sonucu ters\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 Sunucu HA için yapılandırılmamıştır.\n
-23 Prefetch özelliği devre dısı bırakılmıştır.\n
-58 HA özellik bu platformda desteklenmiyor.\n
-59 prefetchlogdb bağımsız modunda çalişmamaktadır.\n
-60 \
-prefetchlogdb: Sunucudan günlük sayfalarını okuyun.\n\
-kullanım: %1$s prefetchlogdb [SEÇENEK] database-name\n\
-\n\
-Geçerli seçenekler:\n\
-  -L, --log-path=PATH         kopyalan günlük hacımler için dizin yolu.\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Geçersiz nesil modu verilir.\n
 60 Geçersiz veya bozuk girdi klasörü.\n

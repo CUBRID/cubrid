@@ -1442,7 +1442,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   volatile int conn_status;
   int css_peer_alive_timeout, poll_timeout;
   int max_num_loop, num_loop;
-  int prefetchlogdb_max_thread_count = 0;
   SOCKET fd;
   struct pollfd po[1] = { {0, 0, 0} };
 
@@ -1456,8 +1455,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   thread_p->type = TT_SERVER;	/* server thread */
-
-  prefetchlogdb_max_thread_count = prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT);
 
   css_peer_alive_timeout = 5000;
   poll_timeout = 100;
@@ -1565,19 +1562,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	      /* if new command request has arrived, make new job and add it to job queue */
 	      if (type == COMMAND_TYPE)
 		{
-		  do
-		    {
-		      if (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER && (prefetchlogdb_max_thread_count > 0)
-			  && (conn->prefetcher_thread_count >= prefetchlogdb_max_thread_count))
-			{
-			  thread_sleep (10);	/* 10 msec */
-			  continue;
-			}
-
-		      break;
-		    }
-		  while (thread_p->shutdown == false && conn->stop_talk == false);
-
 		  job = css_make_job_entry (conn, css_Request_handler, (CSS_THREAD_ARG) conn, -1);
 		  if (job)
 		    {
