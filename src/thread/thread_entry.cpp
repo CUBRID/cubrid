@@ -130,6 +130,31 @@ namespace cubthread
 
     std::memset (&event_stats, 0, sizeof (event_stats));
 
+    /* lock-free transaction entries */
+    tran_entries[THREAD_TS_SPAGE_SAVING] = NULL;
+    tran_entries[THREAD_TS_OBJ_LOCK_RES] = NULL;
+    tran_entries[THREAD_TS_OBJ_LOCK_ENT] = NULL;
+    tran_entries[THREAD_TS_CATALOG] = NULL;
+    tran_entries[THREAD_TS_SESSIONS] = NULL;
+    tran_entries[THREAD_TS_FREE_SORT_LIST] = NULL;
+    tran_entries[THREAD_TS_GLOBAL_UNIQUE_STATS] = NULL;
+    tran_entries[THREAD_TS_HFID_TABLE] = NULL;
+    tran_entries[THREAD_TS_XCACHE] = NULL;
+    tran_entries[THREAD_TS_FPCACHE] = NULL;
+
+#if !defined (NDEBUG)
+    fi_thread_init (this);
+#endif /* DEBUG */
+  }
+
+  entry::~entry (void)
+  {
+    clear_resources ();
+  }
+
+  void
+  entry::request_lock_free_transactions (void)
+  {
 #if defined (SERVER_MODE)
     /* lock-free transaction entries */
     tran_entries[THREAD_TS_SPAGE_SAVING] = lf_tran_request_entry (&spage_saving_Ts);
@@ -143,15 +168,6 @@ namespace cubthread
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
 #endif // SERVER_MODE
-
-#if !defined (NDEBUG)
-    fi_thread_init (this);
-#endif /* DEBUG */
-  }
-
-  entry::~entry (void)
-  {
-    clear_resources ();
   }
 
   void

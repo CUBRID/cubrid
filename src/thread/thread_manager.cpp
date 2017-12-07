@@ -24,9 +24,7 @@
 #include "thread_manager.hpp"
 
 // same module includes
-#if defined (SERVER_MODE)
 #include "thread.h"
-#endif // SERVER_MODE
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
 #endif // SERVER_MODE
@@ -51,7 +49,7 @@ namespace cubthread
   __thread entry *tl_Entry_p = NULL;
 #endif // GCC 4.4
 
-  manager::manager (std::size_t max_threads, std::size_t starting_index)
+  manager::manager (std::size_t max_threads)
     : m_max_threads (max_threads)
     , m_entries_mutex ()
     , m_worker_pools ()
@@ -60,12 +58,11 @@ namespace cubthread
     , m_entry_dispatcher (NULL)
     , m_available_entries_count (max_threads)
   {
-    m_all_entries = new entry [m_max_threads];
-    for (std::size_t i = 0; i < m_max_threads; i++)
+    if (m_max_threads > 0)
       {
-	m_all_entries[i].index = (int) (starting_index + i);
+	m_all_entries = new entry[m_max_threads];
+	m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
       }
-    m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
   }
 
   manager::~manager ()
@@ -383,58 +380,81 @@ namespace cubthread
   static entry *Main_entry_p = NULL;
 
   // TODO: a configurable value
-  static const size_t MAX_THREADS = Is_single_thread ? 1 : 128;
+  static const size_t MAX_THREADS = Is_single_thread ? 0 : 128;
 
-  int
-  initialize (entry **my_entry)
+  void
+  initialize (entry *&my_entry)
   {
     std::size_t starting_index = 0;
-
-#if defined (SERVER_MODE)
-    int error_code = NO_ERROR;
-    if (!Is_single_thread)
-      {
-	error_code = thread_initialize_manager (starting_index);
-	if (error_code != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return error_code;
-	  }
-      }
-#endif // SERVER_MODE
 
     // SERVER_MODE calls this twice. Until I understand why, we must check Manager is not allocated twice
     if (Manager == NULL)
       {
-	Manager = new manager (MAX_THREADS, starting_index);
+	Manager = new manager (MAX_THREADS);
       }
 
-    if (Is_single_thread)
-      {
-	Main_entry_p = Manager->claim_entry ();
-	if (my_entry != NULL)
-	  {
-	    *my_entry = Main_entry_p;
-	  }
-      }
-    return NO_ERROR;
+    // init main entry
+    Main_entry_p = new entry ();
+    Main_entry_p->index = 0;
+    Main_entry_p->tid = pthread_self ();
+    Main_entry_p->emulate_tid = ((pthread_t) 0);
+    Main_entry_p->status = TS_RUN;
+    Main_entry_p->resume_status = THREAD_RESUME_NONE;
+    Main_entry_p->tran_index = 0;	/* system transaction */
+#if defined (SERVER_MODE)
+    thread_set_thread_entry_info (Main_entry_p);
+#endif // SERVER_MODE
+
+    tl_Entry_p = Main_entry_p;
+
+    my_entry = Main_entry_p;
   }
 
   void
   finalize (void)
   {
-    assert ((Main_entry_p != NULL) == Is_single_thread);
-    if (Main_entry_p != NULL)
-      {
-	Manager->retire_entry (*Main_entry_p);
-      }
+    delete Main_entry_p;
+    Main_entry_p = NULL;
+
     delete Manager;
+    Manager = NULL;
+
 #if defined (SERVER_MODE)
-    if (!Is_single_thread)
-      {
-	thread_final_manager ();
-      }
+    thread_final_manager ();
 #endif // SERVER_MODE
+  }
+
+  int
+  initialize_thread_entries (void)
+  {
+    int error_code = NO_ERROR;
+#if defined (SERVER_MODE)
+    size_t old_manager_thread_count = 0;
+
+    error_code = thread_initialize_manager (old_manager_thread_count);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return error_code;
+      }
+
+    // set indices
+    entry *entries = Manager->get_all_entries ();
+    for (std::size_t idx = 0; idx < Manager->get_max_thread_count (); idx++)
+      {
+	entries[idx].index = (int) (idx + old_manager_thread_count + 1);
+	entries[idx].request_lock_free_transactions ();
+      }
+
+#endif // SERVER_MODE
+    return error_code;
+  }
+
+  entry *
+  get_main_entry (void)
+  {
+    assert (Main_entry_p != NULL);
+    return Main_entry_p;
   }
 
   manager *
@@ -447,7 +467,8 @@ namespace cubthread
   std::size_t
   get_max_thread_count (void)
   {
-    return MAX_THREADS;
+    // MAX_THREADS + system thread
+    return MAX_THREADS + 1;
   }
 
   bool

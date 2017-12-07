@@ -93,7 +93,7 @@ namespace cubthread
   {
     public:
       // TODO: remove starting_index
-      manager (std::size_t max_threads, std::size_t starting_index = 0);
+      manager (std::size_t max_threads);
       ~manager ();
 
       //////////////////////////////////////////////////////////////////////////
@@ -165,7 +165,7 @@ namespace cubthread
 
       // define friend classes/functions to access claim_entry/retire_entry functions
       friend class entry_task;
-      friend int initialize (entry **my_entry);
+      friend void initialize (entry *&my_entry);
       friend void finalize (void);
 
       // private type aliases
@@ -210,10 +210,14 @@ namespace cubthread
   // TODO: gradually move functionality from thread.h here
 
   // initialize thread manager; note this creates a singleton cubthread::manager instance
-  int initialize (entry **my_entry);
+  void initialize (entry *&my_entry);
 
   // finalize thread manager
   void finalize (void);
+
+  // backward compatibility initialization
+  int initialize_thread_entries (void);
+  entry *get_main_entry (void);
 
   // get thread manager
   manager *get_manager (void);
