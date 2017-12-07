@@ -2441,7 +2441,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-
   /* 
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
@@ -2745,6 +2744,7 @@ error:
   session_states_finalize (thread_p);
   logtb_finalize_global_unique_stats_table (thread_p);
 
+  vacuum_stop (thread_p);
   log_final (thread_p);
   fpcache_finalize (thread_p);
   qfile_finalize_list_cache (thread_p);
