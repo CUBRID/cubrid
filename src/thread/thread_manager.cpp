@@ -444,6 +444,8 @@ namespace cubthread
 	return error_code;
       }
 
+    Main_entry_p->request_lock_free_transactions ();
+
     // set indices
     entry *entries = Manager->get_all_entries ();
     for (std::size_t idx = 0; idx < Manager->get_max_thread_count (); idx++)
