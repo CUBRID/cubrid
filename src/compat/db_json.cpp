@@ -656,7 +656,14 @@ db_json_get_copy_of_doc (const JSON_DOC *doc)
 void
 db_json_copy_doc (JSON_DOC *dest, const JSON_DOC *src)
 {
-  dest->CopyFrom (*src, dest->GetAllocator ());
+  if (db_json_get_type (src) != DB_JSON_NULL)
+    {
+      dest->CopyFrom (*src, dest->GetAllocator ());
+    }
+  else
+    {
+      dest->SetNull ();
+    }
 }
 
 int
@@ -728,11 +735,11 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
         }
       else
         {
-	  JSON_VALUE value_aux;
+          JSON_VALUE value_aux;
 
-	  value_aux.SetArray ();
-	  value_aux.PushBack (*resulting_json_parent, doc->GetAllocator ());
-	  resulting_json_parent->Swap (value_aux);
+          value_aux.SetArray ();
+          value_aux.PushBack (*resulting_json_parent, doc->GetAllocator ());
+          resulting_json_parent->Swap (value_aux);
 
           resulting_json_parent->PushBack (val, doc->GetAllocator ());
         }
@@ -860,10 +867,6 @@ db_json_merge_two_json_arrays (JSON_DOC *array1, const JSON_DOC *array2)
 void
 db_json_merge_two_json_by_array_wrapping (JSON_DOC *j1, const JSON_DOC *j2)
 {
-  JSON_DOC *j2_copy = db_json_allocate_doc ();
-
-  j2_copy->CopyFrom (*j2, j2_copy->GetAllocator ());
-
   if (db_json_get_type (j1) != DB_JSON_ARRAY)
     {
       JSON_VALUE value;
@@ -876,14 +879,21 @@ db_json_merge_two_json_by_array_wrapping (JSON_DOC *j1, const JSON_DOC *j2)
   if (db_json_get_type (j2) != DB_JSON_ARRAY)
     {
       JSON_VALUE value;
+      JSON_DOC *j2_copy = db_json_allocate_doc ();
+
+      db_json_copy_doc (j2_copy, j2);
 
       value.SetArray ();
       value.PushBack (*j2_copy, j1->GetAllocator ());
       ((JSON_VALUE *)j2_copy)->Swap (value);
-    }
 
-  db_json_merge_two_json_arrays (j1, j2_copy);
-  db_json_delete_doc (j2_copy);
+      db_json_merge_two_json_arrays (j1, j2_copy);
+      db_json_delete_doc (j2_copy);
+    }
+  else
+    {
+      db_json_merge_two_json_arrays (j1, j2);
+    }
 }
 
 int
@@ -928,11 +938,8 @@ JSON_DOC *db_json_allocate_doc ()
 
 void db_json_delete_doc (JSON_DOC *&doc)
 {
-  if (doc != NULL)
-    {
-      delete doc;
-      doc = NULL;
-    }
+  delete doc;
+  doc = NULL;
 }
 
 int
@@ -1006,15 +1013,6 @@ db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2)
 int
 db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest)
 {
-  JSON_DOC *source_aux = NULL;
-
-  if (source == NULL)
-    {
-      source_aux = db_json_allocate_doc ();
-      db_json_make_document_null (source_aux);
-      source = source_aux;
-    }
-
   if (dest == NULL)
     {
       dest = db_json_allocate_doc ();
@@ -1042,10 +1040,6 @@ db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest)
       db_json_merge_two_json_by_array_wrapping (dest, source);
     }
 
-  if (source_aux != NULL)
-    {
-      db_json_delete_doc (source_aux);
-    }
   return NO_ERROR;
 }
 
