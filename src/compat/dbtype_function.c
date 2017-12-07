@@ -17,6 +17,9 @@
 *
 */
 
+#include <stdio.h>
+
+#include "system_parameter.h"
 #include "dbtype_function.h"
-#include "dbtype.h"
+#include "error_manager.h"
 #include "dbtype_function.i"
