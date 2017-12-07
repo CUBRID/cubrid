@@ -50,6 +50,10 @@
 #include <sys/types.h>
 #endif // SERVER_MODE
 
+#if defined (SA_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info ();
+#endif // SA_MODE
+
 enum
 {
   TS_DEAD = 0, TS_FREE, TS_RUN, TS_WAIT, TS_CHECK
@@ -87,6 +91,16 @@ enum
 extern int thread_Recursion_depth;
 
 extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
+
+/* *INDENT-OFF* */
+STATIC_INLINE THREAD_ENTRY *thread_get_thread_entry_info (void) __attribute__ ((ALWAYS_INLINE));
+THREAD_ENTRY *
+thread_get_thread_entry_info (void)
+{
+  THREAD_ENTRY& te = cubthread::get_manager ()->get_entry ();
+  return &te;
+}
+/* *INDENT-ON* */
 
 #define thread_get_thread_entry_info()  (NULL)
 #define thread_num_worker_threads()  (1)

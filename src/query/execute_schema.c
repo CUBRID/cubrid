@@ -12646,6 +12646,7 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
   static const char *empty_dt_tz = "DATETIMETZ '01/01/0001 00:00 +00:00'";
   static const char *empty_dt_ltz = "DATETIMELTZ '01/01/0001 00:00 +00:00'";
   static const char *empty_timetz = "TIMETZ '00:00 +00:00'";
+  static const char *empty_json = "null";
 
   /* TODO : use db_value_domain_default instead, but make sure that db_value_domain_default is not using NULL DB_VALUE
    * as default for any type */
@@ -12718,6 +12719,8 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
     case PT_TYPE_CLOB:
     case PT_TYPE_ELO:
       return NULL;
+    case PT_TYPE_JSON:
+      return empty_json;
 
     default:
       return NULL;

@@ -3049,6 +3049,12 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 0; i < num_args; i += 2)
     {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_OBJECT_NAME_IS_NULL, 0);
+	  return ER_JSON_OBJECT_NAME_IS_NULL;
+	}
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
@@ -3285,6 +3291,8 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       error_code = db_json_remove_func (new_doc, DB_PULL_STRING (arg[i]));
       if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
 	  return error_code;
 	}
     }

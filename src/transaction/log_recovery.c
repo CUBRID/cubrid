@@ -155,7 +155,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
   bool is_zip = false;
   int error_code = NO_ERROR;
-  int save_thread_type = 0;
+  THREAD_TYPE save_thread_type = THREAD_TYPE::TT_NONE;
 
   if (thread_p == NULL)
     {
@@ -166,7 +166,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
       /* Convert thread to a vacuum worker. */
-      VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, vacuum_rv_get_worker_by_trid (thread_p, tdes->trid), save_thread_type);
+      vacuum_convert_thread_to_worker (thread_p, vacuum_rv_get_worker_by_trid (thread_p, tdes->trid), save_thread_type);
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
 		     "Log undo (%lld, %d), rcvindex=%d for tdes: tdes->trid=%d.",
@@ -403,7 +403,7 @@ end:
   /* Convert thread back to system transaction. */
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE) save_thread_type);
+      vacuum_restore_thread (thread_p, (THREAD_TYPE) save_thread_type);
     }
   else
     {
@@ -4013,7 +4013,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 {
   int i;
   int save_tran_index;
-  int save_thread_type = 0;
+  THREAD_TYPE save_thread_type = THREAD_TYPE::TT_NONE;
   TRANID trid;
   LOG_TDES *tdes = NULL;	/* Transaction descriptor */
   VACUUM_WORKER *worker = NULL;
@@ -4043,7 +4043,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 	  /* Nothing to do */
 	  continue;
 	}
-      VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, worker, save_thread_type);
+      vacuum_convert_thread_to_worker (thread_p, worker, save_thread_type);
       tdes = worker->tdes;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
@@ -4053,7 +4053,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       log_recovery_finish_postpone (thread_p, tdes);
 
       /* Restore thread */
-      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE) save_thread_type);
+      vacuum_restore_thread (thread_p, save_thread_type);
     }
 }
 
@@ -4068,7 +4068,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 {
   int i;
   int save_tran_index;
-  int save_thread_type = 0;
+  THREAD_TYPE save_thread_type = THREAD_TYPE::TT_NONE;
   TRANID trid;
   LOG_TDES *tdes = NULL;	/* Transaction descriptor */
   VACUUM_WORKER *worker = NULL;
@@ -4098,7 +4098,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 	  /* Nothing to do */
 	  continue;
 	}
-      VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, worker, save_thread_type);
+      vacuum_convert_thread_to_worker (thread_p, worker, save_thread_type);
       tdes = worker->tdes;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
@@ -4109,7 +4109,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
       worker->state = VACUUM_WORKER_STATE_RECOVERY;
 
       /* Restore thread */
-      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE) save_thread_type);
+      vacuum_restore_thread (thread_p, save_thread_type);
     }
 }
 

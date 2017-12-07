@@ -1694,6 +1694,8 @@ bool
 thread_belongs_to (THREAD_ENTRY * thread_p, int tran_index, int client_id)
 {
   CSS_CONN_ENTRY *conn_p;
+  bool does_belong = false;
+
   (void) pthread_mutex_lock (&thread_p->tran_index_lock);
   if (thread_p->tid != pthread_self () && thread_p->status != TS_DEAD && thread_p->status != TS_FREE
       && thread_p->status != TS_CHECK)
@@ -1701,15 +1703,15 @@ thread_belongs_to (THREAD_ENTRY * thread_p, int tran_index, int client_id)
       conn_p = thread_p->conn_entry;
       if (tran_index == NULL_TRAN_INDEX && (conn_p != NULL && conn_p->client_id == client_id))
 	{
-	  return true;
+	  does_belong = true;
 	}
       else if (tran_index == thread_p->tran_index && (conn_p == NULL || conn_p->client_id == client_id))
 	{
-	  return true;
+	  does_belong = true;
 	}
     }
   pthread_mutex_unlock (&thread_p->tran_index_lock);
-  return false;
+  return does_belong;
 }
 
 /*
