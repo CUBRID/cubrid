@@ -17459,20 +17459,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_LEAST:
-      cmp_result = tp_value_compare (arg1, arg2, 1, 0);
-      if (cmp_result == DB_EQ || cmp_result == DB_LT)
+      error = db_least_or_greatest (arg1, arg2, result, true);
+      if (error != NO_ERROR)
 	{
-	  pr_clone_value ((DB_VALUE *) arg1, result);
-	}
-      else if (cmp_result == DB_GT)
-	{
-	  pr_clone_value ((DB_VALUE *) arg2, result);
-	}
-      else
-	{
-	  assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
-	  db_make_null (result);
-	  return 1;
+	  ASSERT_ERROR ();
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
 
       if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
@@ -17485,20 +17477,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       return 1;
 
     case PT_GREATEST:
-      cmp_result = tp_value_compare (arg1, arg2, 1, 0);
-      if (cmp_result == DB_EQ || cmp_result == DB_GT)
+      error = db_least_or_greatest (arg1, arg2, result, false);
+      if (error != NO_ERROR)
 	{
-	  pr_clone_value ((DB_VALUE *) arg1, result);
-	}
-      else if (cmp_result == DB_LT)
-	{
-	  pr_clone_value ((DB_VALUE *) arg2, result);
-	}
-      else
-	{
-	  assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
-	  db_make_null (result);
-	  return 1;
+	  ASSERT_ERROR ();
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
 
       if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
