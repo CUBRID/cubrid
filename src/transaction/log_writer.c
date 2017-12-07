@@ -736,7 +736,7 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 	}
 
       if (fileio_write_pages (NULL, bg_arv_info->vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE,
-			      false) == NULL)
+			      true) == NULL)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, pageid, ar_phy_pageid,
 		  logwr_Gl.bg_archive_name);
@@ -1244,7 +1244,7 @@ logwr_archive_active_log (void)
 	    }
 	}
 
-      if (fileio_write_pages (NULL, vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE, false) == NULL)
+      if (fileio_write_pages (NULL, vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE, true) == NULL)
 	{
 	  error_code = ER_LOG_WRITE;
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, pageid, ar_phy_pageid, archive_name);

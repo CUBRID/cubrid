@@ -2679,6 +2679,9 @@ retry:
 	}
     }
 
+#if defined (SERVER_MODE)
+  assert (block->count_wb_pages == DWB_BLOCK_NUM_PAGES);
+#endif
   ATOMIC_TAS_32 (&block->count_wb_pages, 0);
   ATOMIC_INC_64 (&block->version, 1ULL);
 
@@ -3834,7 +3837,8 @@ start:
 
   /*
    * Add NULL pages to force block flushing. In this way, preserve also block flush order. This means that all
-   * blocks are flushed - the entire DWB.
+   * blocks are flushed - the entire DWB. I prefer this way than setting block size to DWB_BLOCK_NUM_PAGES. In this
+   * way, the concurrent transactions can acquire slots in current block.
    */
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
   memset (iopage, 0, IO_MAX_PAGE_SIZE);

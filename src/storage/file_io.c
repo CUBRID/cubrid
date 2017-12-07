@@ -609,11 +609,15 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
 
   need_sync = false;
 
-  flushed_page_count = fileio_increase_flushed_page_count (npage);
-  if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
+  /* If DWB is used synchronize is done by DWB flush thread. */
+  if (!dwb_is_created ())
     {
-      need_sync = true;
-      fileio_Flushed_page_count = 0;
+      flushed_page_count = fileio_increase_flushed_page_count (npage);
+      if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
+	{
+	  need_sync = true;
+	  fileio_Flushed_page_count = 0;
+	}
     }
 
   if (need_sync)
@@ -4296,16 +4300,15 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, boo
     }
 #endif
 
-  /* TO DO - temporary disabled flush force */
-//#if !defined (CS_MODE)
-//  if (sync_dwb)
-//    {
-//      if (fileio_is_permanent_volume (thread_p, vol_fd))
-//      {
-//        ret = dwb_flush_force (thread_p, &all_sync);
-//      }
-//    }
-//#endif
+#if !defined (CS_MODE)
+  if (sync_dwb)
+    {
+      if (fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
+	{
+	  ret = dwb_flush_force (thread_p, &all_sync);
+	}
+    }
+#endif
 
   if (ret == NO_ERROR && all_sync == false)
     {
@@ -4466,11 +4469,10 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
       (void) fileio_traverse_system_volume (thread_p, fileio_synchronize_sys_volume, &arg);
     }
 
-  /* TO DO - temporary disabled flush force */
-//#if !defined (CS_MODE)
-//  /* Flush DWB before volume data. */
-//  success = dwb_flush_force (thread_p, &all_sync);
-//#endif
+#if !defined (CS_MODE)
+  /* Flush DWB before volume data. */
+  success = dwb_flush_force (thread_p, &all_sync);
+#endif
 
   /* Check whether the volumes were flushed. */
   if (success == NO_ERROR && all_sync == false)
@@ -6193,28 +6195,27 @@ fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
 }
 
 /*
-* fileio_is_permanent_volume () - Check whether is permanent volume.
+* fileio_is_permanent_volume_descriptor () - Check whether is permanent volume descriptor.
 *   return: I/O volume descriptor
-*   volid(in): Volume to check.
+*   vol_fd(in): Volume descriptor to check.
 */
 bool
-fileio_is_permanent_volume (THREAD_ENTRY * thread_p, VOLID volid)
+fileio_is_permanent_volume_descriptor (THREAD_ENTRY * thread_p, int vol_fd)
 {
   FILEIO_VOLUME_INFO *vol_info_p;
   APPLY_ARG arg = { 0 };
 
-  if (volid == NULL_VOLID)
+  if (vol_fd == NULL_VOLDES)
     {
       return false;
     }
 
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (false);
 
-  arg.vol_id = volid;
-  vol_info_p = fileio_traverse_permanent_volume (thread_p, fileio_is_volume_id_equal, &arg);
+  arg.vdes = vol_fd;
+  vol_info_p = fileio_traverse_permanent_volume (thread_p, fileio_is_volume_descriptor_equal, &arg);
   if (vol_info_p)
     {
-      assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);
       return true;
     }
 
