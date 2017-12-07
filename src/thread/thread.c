@@ -279,7 +279,7 @@ thread_get_thread_entry_info ()
 #endif
   if (tsd_ptr == NULL)
     {
-      return cubthread::get_manager ()->get_entry ();
+      return &cubthread::get_manager ()->get_entry ();
     }
   else
     {
@@ -505,15 +505,6 @@ thread_initialize_manager (size_t & total_thread_count)
 
   /* allocate threads */
   thread_Manager.thread_array = new THREAD_ENTRY[thread_Manager.num_total];
-
-  tsd_ptr = &thread_Manager.thread_array[0];
-  tsd_ptr->index = 0;
-  tsd_ptr->tid = pthread_self ();
-  tsd_ptr->emulate_tid = ((pthread_t) 0);
-  tsd_ptr->status = TS_RUN;
-  tsd_ptr->resume_status = THREAD_RESUME_NONE;
-  tsd_ptr->tran_index = 0;	/* system transaction */
-  thread_set_thread_entry_info (tsd_ptr);
 
   /* init worker/deadlock-detection/checkpoint daemon/audit-flush oob-handler thread/page flush thread/log flush thread
    * thread_mgr.thread_array[0] is used for main thread */
