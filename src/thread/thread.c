@@ -3616,13 +3616,13 @@ thread_find_entry_by_index (int thread_index)
     {
       return cubthread::get_main_entry ();
     }
-  if (thread_index < thread_Manager.num_total)
+  else if (thread_index <= thread_Manager.num_total)
     {
-      return (&thread_Manager.thread_array[thread_index]);
+      return (&thread_Manager.thread_array[thread_index - 1]);
     }
   else
     {
-      return &(cubthread::get_manager ()->get_all_entries ()[thread_index - thread_Manager.num_total]);
+      return &(cubthread::get_manager ()->get_all_entries ()[thread_index - thread_Manager.num_total - 1]);
     }
 }
 
