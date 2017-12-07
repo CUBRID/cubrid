@@ -2745,6 +2745,7 @@ error:
   session_states_finalize (thread_p);
   logtb_finalize_global_unique_stats_table (thread_p);
 
+  vacuum_stop (thread_p);
   log_final (thread_p);
   fpcache_finalize (thread_p);
   qfile_finalize_list_cache (thread_p);
