@@ -665,6 +665,7 @@ static bool is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER *
 static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_header, int btree_node_type);
 
 static bool vacuum_is_empty (void);
+static void vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, THREAD_TYPE & save_type);
 
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
@@ -818,8 +819,7 @@ xvacuum (THREAD_ENTRY * thread_p)
     }
 
   /* Assign worker and allocate required resources. */
-  vacuum_worker_allocate_resources (thread_p, &vacuum_Workers[0]);
-  vacuum_convert_thread_to_worker (thread_p, &vacuum_Workers[0], save_type);
+  vacuum_convert_thread_to_master (thread_p, save_type);
 
   /* Process vacuum data and run vacuum . */
   vacuum_process_vacuum_data (thread_p);
@@ -2687,8 +2687,20 @@ static void
 vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, const BLOCK_LOG_BUFFER & log_buffer,
 		  bool is_partial_block = false)
 {
+#if defined (SA_MODE)
+  // we need a smarter thread manager that can do this automatically
+  VACUUM_WORKER *worker_p = vacuum_Workers_context_pool->claim ();
+  THREAD_TYPE save_type = THREAD_TYPE::TT_NONE;
+  vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
+  assert (save_type == THREAD_TYPE::TT_VACUUM_MASTER);
+#endif // SA_MODE
   cubthread::get_manager ()->push_task (*thread_p, vacuum_Worker_threads,
 					new vacuum_worker_task (data_entry, log_buffer, is_partial_block));
+#if defined (SA_MODE)
+  vacuum_convert_thread_to_master (thread_p, save_type);
+  assert (save_type == THREAD_TYPE::TT_VACUUM_WORKER);
+  vacuum_Workers_context_pool->retire (*worker_p);
+#endif // SA_MODE
 }
 
 static bool
@@ -7817,6 +7829,24 @@ vacuum_log_last_blockid (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * vacuum_convert_thread_to_master () - convert thread to vacuum master
+ *
+ * thread_p (in)   : thread entry
+ * save_type (out) : thread entry old type
+ */
+static void
+vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, THREAD_TYPE & save_type)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  save_type = thread_p->type;
+  thread_p->type = TT_VACUUM_MASTER;
+  thread_p->vacuum_worker = &vacuum_Master;
+}
+
+/*
  * vacuum_convert_thread_to_worker - convert this thread to a vacuum worker
  *
  * thread_p (in)   : thread entry
@@ -7833,6 +7863,10 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
   save_type = thread_p->type;
   thread_p->type = TT_VACUUM_WORKER;
   thread_p->vacuum_worker = worker;
+  if (vacuum_worker_allocate_resources (thread_p, thread_p->vacuum_worker) != NULL)
+    {
+      assert_release (false);
+    }
 }
 
 /*
