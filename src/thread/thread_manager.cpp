@@ -150,14 +150,9 @@ namespace cubthread
 
   template<typename Res>
   inline void
-  manager::destroy_and_untrack_resource (std::vector<Res *> &tracker, Res *&res)
+  manager::destroy_and_untrack_resource (std::vector<Res *> &tracker, Res *&res, std::size_t entries_count)
   {
     std::unique_lock<std::mutex> lock (m_entries_mutex);    // safe-guard
-
-    if (res == NULL)
-      {
-	return;
-      }
     check_not_single_thread ();
 
     for (auto iter = tracker.begin (); iter != tracker.end (); ++iter)
@@ -172,6 +167,9 @@ namespace cubthread
 	    delete res;
 	    res = NULL;
 
+	    // update available entries
+	    m_available_entries_count += entries_count;
+
 	    return;
 	  }
       }
@@ -183,7 +181,11 @@ namespace cubthread
   manager::destroy_worker_pool (entry_workpool *&worker_pool_arg)
   {
 #if defined (SERVER_MODE)
-    return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg);
+    if (worker_pool_arg == NULL)
+      {
+	return;
+      }
+    return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg, worker_pool_arg->get_max_count ());
 #else // not SERVER_MODE = SA_MODE
     assert (worker_pool_arg == NULL);
 #endif // not SERVER_MODE = SA_MODE
@@ -277,7 +279,11 @@ namespace cubthread
   manager::destroy_daemon (daemon *&daemon_arg)
   {
 #if defined (SERVER_MODE)
-    return destroy_and_untrack_resource (m_daemons, daemon_arg);
+    if (daemon_arg == NULL)
+      {
+	return;
+      }
+    return destroy_and_untrack_resource (m_daemons, daemon_arg, 1);
 #else // not SERVER_MODE = SA_MODE
     assert (daemon_arg == NULL);
 #endif // not SERVER_MODE = SA_MODE

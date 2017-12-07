@@ -179,7 +179,7 @@ namespace cubthread
       template <typename Res, typename ... CtArgs>
       Res *create_and_track_resource (std::vector<Res *> &tracker, size_t entries_count, CtArgs &&... args);
       template <typename Res>
-      void destroy_and_untrack_resource (std::vector<Res *> &tracker, Res *&res);
+      void destroy_and_untrack_resource (std::vector<Res *> &tracker, Res *&res, std::size_t entries_count);
       template <typename Res>
       void destroy_and_untrack_all_resources (std::vector<Res *> &tracker);
 
