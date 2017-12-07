@@ -1062,18 +1062,6 @@ valid options:\n\
       --sort-key=COLUMN_NUMBER column number to be sorted\n\
       --reverse                reverse the sort result\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 The server was not configured for HA.\n
-23 Prefetch feature is disabled.\n
-58 HA feature is not supported in this platform.\n
-59 prefetchlogdb cannot run as standalone mode.\n
-60 \
-prefetchlogdb: Prefetch log pages from the server.\n\
-usage: %1$s prefetchlogdb [OPTION] database-name\n\
-\n\
-valid options:\n\
-  -L, --log-path=PATH         directory PATH for copied log volumes\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Invalid generation mode supplied.\n
 60 Invalid or corrupt input folder.\n

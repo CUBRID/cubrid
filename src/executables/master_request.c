@@ -239,7 +239,7 @@ css_process_server_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name
 	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+	  && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  count++;
 	}
@@ -296,7 +296,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name != NULL
 	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+	  && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  required_size = 0;
 
@@ -579,8 +579,7 @@ css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id, ch
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       if ((temp->name != NULL) && (strcmp (temp->name, server_name) == 0) && !IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  css_send_command_to_server (temp, SERVER_SHUTDOWN_IMMEDIATE);
 
@@ -718,8 +717,7 @@ css_process_shutdown (char *time_buffer)
       /* do not send shutdown command to master and connector, only to servers: cause connector crash */
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name
 	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  css_process_start_shutdown (temp, timeout * 60, buffer);
 
@@ -768,8 +766,7 @@ css_process_stop_shutdown (void)
       /* do not send shutdown command to master and connector, only to servers: cause connector crash */
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name
 	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  css_send_command_to_server (temp, SERVER_STOP_SHUTDOWN);
 	}

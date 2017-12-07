@@ -1070,18 +1070,6 @@ options valides:\n\
       --sort-key=COLUMN_NUMBER numéro de colonne à trier\n\
       --reverse                inverser le résultat du tri\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 Le serveur n'a pas été configuré pour HA.\n
-23 Fonction précharger est désactivé.\n
-58 Fonction HA n'est pas pris en charge dans cette plate-forme.\n
-59 prefetchlogdb ne peut pas fonctionner en mode autonome.\n
-60 \
-prefetchlogdb: Précharger les pages du journal du serveur.\n\
-usage: %1$s prefetchlogdb [OPTION] nom-de-base-de-données\n\
-\n\
-options valides:\n\
-  -L, --log-path=PATH         répertoire PATH pour les volumes de journaux copiés\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Mode de génération non valide indiqué.\n
 60 Dossier d'entrée non valide ou corrompu.\n

@@ -47,7 +47,6 @@ enum boot_client_type
   BOOT_CLIENT_RO_BROKER_REPLICA_ONLY = 12,
   BOOT_CLIENT_SO_BROKER_REPLICA_ONLY = 13,
   BOOT_CLIENT_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
-  BOOT_CLIENT_LOG_PREFETCHER = 15
 };
 typedef enum boot_client_type BOOT_CLIENT_TYPE;
 
@@ -74,8 +73,7 @@ typedef enum boot_client_type BOOT_CLIENT_TYPE;
 
 #define BOOT_LOG_REPLICATOR_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_LOG_COPIER \
-         || (client_type) == BOOT_CLIENT_LOG_APPLIER \
-         || (client_type) == BOOT_CLIENT_LOG_PREFETCHER)
+         || (client_type) == BOOT_CLIENT_LOG_APPLIER)
 
 #define BOOT_CSQL_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_CSQL \
