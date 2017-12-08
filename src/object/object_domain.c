@@ -10451,10 +10451,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      unsigned int str_size = DB_GET_STRING_SIZE (src);
 	      int error_code;
 
-	      error_code = db_json_get_json_from_str (DB_GET_STRING (src), doc);
+	      assert (str_size >= 0);	/* if this isn't correct, we cannot rely on strlen */
+
+	      str = db_private_alloc (NULL, str_size + 1);
+	      if (str == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
+		  return DOMAIN_ERROR;
+		}
+	      memcpy (str, DB_GET_STRING (src), str_size);
+	      str[str_size] = '\0';
+
+	      error_code = db_json_get_json_from_str (str, doc);
 	      if (error_code != NO_ERROR)
 		{
 		  assert (doc == NULL);
+		  db_private_free (NULL, str);
 		  return DOMAIN_ERROR;
 		}
 
@@ -10463,13 +10475,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		{
 		  ASSERT_ERROR ();
 		  db_json_delete_doc (doc);
-		  return DOMAIN_ERROR;
-		}
-	      str = db_private_strdup (NULL, DB_GET_STRING (src));
-	      if (str == NULL)
-		{
-		  db_json_delete_doc (doc);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
+		  db_private_free (NULL, str);
 		  return DOMAIN_ERROR;
 		}
 	    }

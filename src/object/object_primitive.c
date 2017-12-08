@@ -17234,7 +17234,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      return 0;
 	    }
 	  db_make_string (&json_body_value, json->json_body);
-	  json_body_length = mr_data_lengthval_string (&json_body_value, 1);
+	  json_body_length = mr_data_lengthval_string (&json_body_value, disk);
 
 	  if (json->schema_raw != NULL)
 	    {
@@ -17245,7 +17245,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      db_make_string (&schema_raw_value, "");
 	    }
 
-	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, 1);
+	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, disk);
 
 	  return json_body_length + schema_raw_length;
 	}
