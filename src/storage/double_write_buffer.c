@@ -304,7 +304,7 @@ struct double_write_buffer
   unsigned int num_block_pages;	/* The number of pages in a block - power of 2. */
   unsigned int log2_num_block_pages;	/* Logarithm from block number of pages. */
   unsigned int blocks_flush_counter;	/* The blocks flush counter. */
-  unsigned int next_block_to_flush;	/* Next block to flush */
+  volatile unsigned int next_block_to_flush;	/* Next block to flush */
 
   DWB_CHECKSUM_INFO *checksum_info;	/* The checksum info. */
 
@@ -3782,13 +3782,14 @@ start:
 int
 dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
 {
-  UINT64 position_with_flags, blocks_status, block_version;
-  unsigned int current_block_no = DWB_NUM_TOTAL_BLOCKS;
+  UINT64 position_with_flags, blocks_status, current_block_version;
+  unsigned int current_block_no = DWB_NUM_TOTAL_BLOCKS, flush_block_no;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
   int error_code = NO_ERROR;
   DWB_SLOT *dwb_slot = NULL;
+  DWB_BLOCK *flush_block = NULL;
 
   assert (all_sync != NULL);
 
@@ -3826,7 +3827,7 @@ start:
 
   current_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (position_with_flags);
   /* Save the block version, to detect whether the block was overwritten. */
-  block_version = double_Write_Buffer.blocks[current_block_no].version;
+  current_block_version = double_Write_Buffer.blocks[current_block_no].version;
   assert (current_block_no < DWB_NUM_TOTAL_BLOCKS);
 
   if (position_with_flags != ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL))
@@ -3835,16 +3836,61 @@ start:
       goto start;
     }
 
+  /* Check whether the previous blocks were flushed */
+check_flushed_blocks:
+  flush_block_no = double_Write_Buffer.next_block_to_flush;
+  flush_block = &double_Write_Buffer.blocks[flush_block_no];
+  if (current_block_no != flush_block_no)
+    {
+      if ((flush_block->version < current_block_version)
+	  || (flush_block->version == current_block_version && flush_block_no < current_block_no))
+	{
+	  /* Check again whether flushing advanced. */
+	  if (flush_block_no != double_Write_Buffer.next_block_to_flush)
+	    {
+	      goto check_flushed_blocks;
+	    }
+	  error_code = dwb_wait_for_block_completion (thread_p, flush_block_no);
+	  if (error_code != NO_ERROR)
+	    {
+	      if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
+		{
+		  /* timeout, try again */
+		  goto start;
+		}
+
+	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
+		{
+		  _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %lld \n",
+				 error_code, flush_block_no, flush_block->version);
+		}
+
+	      return error_code;
+	    }
+
+	  goto check_flushed_blocks;
+	}
+    }
+
+  /* Check whether the block was flushed. */
+  if ((flush_block->version > current_block_version)
+      || (flush_block->version == current_block_version && flush_block_no > current_block_no))
+    {
+      /* Nothing to do. Everything flushed. */
+      return NO_ERROR;
+    }
+
+  assert (flush_block->version == current_block_version && flush_block_no == current_block_no);
+
   /*
    * Add NULL pages to force block flushing. In this way, preserve also block flush order. This means that all
-   * blocks are flushed - the entire DWB. I prefer this way than setting block size to DWB_BLOCK_NUM_PAGES. In this
-   * way, the concurrent transactions can acquire slots in current block.
+   * blocks are flushed - the entire DWB.
    */
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
   memset (iopage, 0, IO_MAX_PAGE_SIZE);
   fileio_initialize_res (thread_p, &(iopage->prv));
   while ((double_Write_Buffer.blocks[current_block_no].count_wb_pages != DWB_BLOCK_NUM_PAGES)
-	 && (block_version == double_Write_Buffer.blocks[current_block_no].version))
+	 && (current_block_version == double_Write_Buffer.blocks[current_block_no].version))
     {
       /* The block is not full yet. Add more null pages. */
       dwb_slot = NULL;
@@ -3860,7 +3906,7 @@ start:
 	}
     }
 
-  if (block_version == double_Write_Buffer.blocks[current_block_no].version)
+  if (current_block_version == double_Write_Buffer.blocks[current_block_no].version)
     {
       /* Needs block flushing. */
       if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
