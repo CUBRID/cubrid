@@ -219,7 +219,7 @@ namespace cubthread
 #if !defined (NDEBUG)
     for (int i = 0; i < THREAD_TS_COUNT; i++)
       {
-	assert (entry_p->tran_entries[i] == NULL);
+	assert (tran_entries[i] == NULL);
       }
 #endif // DEBUG
 
