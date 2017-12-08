@@ -3204,7 +3204,6 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       break;
     case DB_TYPE_NULL:
       new_doc = db_json_allocate_doc ();
-      db_json_make_document_null (new_doc);
       break;
 
     default:
@@ -3292,7 +3291,6 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       break;
     case DB_TYPE_NULL:
       new_doc = db_json_allocate_doc ();
-      db_json_make_document_null (new_doc);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
