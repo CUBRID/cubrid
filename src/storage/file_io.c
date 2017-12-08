@@ -4300,15 +4300,15 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, boo
     }
 #endif
 
-#if !defined (CS_MODE)
-  if (sync_dwb)
-    {
-      if (fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
-	{
-	  ret = dwb_flush_force (thread_p, &all_sync);
-	}
-    }
-#endif
+//#if !defined (CS_MODE)
+//  if (sync_dwb)
+//    {
+//      if (fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
+//	{
+//	  ret = dwb_flush_force (thread_p, &all_sync);
+//	}
+//    }
+//#endif
 
   if (ret == NO_ERROR && all_sync == false)
     {
