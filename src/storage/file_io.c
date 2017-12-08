@@ -609,15 +609,11 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
 
   need_sync = false;
 
-  /* If DWB is used synchronize is done by DWB flush thread. */
-  if (!dwb_is_created ())
+  flushed_page_count = fileio_increase_flushed_page_count (npage);
+  if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
-      flushed_page_count = fileio_increase_flushed_page_count (npage);
-      if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
-	{
-	  need_sync = true;
-	  fileio_Flushed_page_count = 0;
-	}
+      need_sync = true;
+      fileio_Flushed_page_count = 0;
     }
 
   if (need_sync)
@@ -4300,15 +4296,15 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, boo
     }
 #endif
 
-//#if !defined (CS_MODE)
-//  if (sync_dwb)
-//    {
-//      if (fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
-//	{
-//	  ret = dwb_flush_force (thread_p, &all_sync);
-//	}
-//    }
-//#endif
+#if !defined (CS_MODE)
+  if (sync_dwb)
+    {
+      if (fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
+	{
+	  ret = dwb_flush_force (thread_p, &all_sync);
+	}
+    }
+#endif
 
   if (ret == NO_ERROR && all_sync == false)
     {
@@ -4469,10 +4465,10 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
       (void) fileio_traverse_system_volume (thread_p, fileio_synchronize_sys_volume, &arg);
     }
 
-//#if !defined (CS_MODE)
-//  /* Flush DWB before volume data. */
-//  success = dwb_flush_force (thread_p, &all_sync);
-//#endif
+#if !defined (CS_MODE)
+  /* Flush DWB before volume data. */
+  success = dwb_flush_force (thread_p, &all_sync);
+#endif
 
   /* Check whether the volumes were flushed. */
   if (success == NO_ERROR && all_sync == false)
