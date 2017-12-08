@@ -216,12 +216,12 @@ namespace cubthread
 
     db_destroy_private_heap (this, private_heap_id);
 
-#if defined (SERVER_MODE)
-    if (thread_return_transaction_entry (this) != NO_ERROR)
+#if !defined (NDEBUG)
+    for (int i = 0; i < THREAD_TS_COUNT; i++)
       {
-	assert (false);
+	assert (entry_p->tran_entries[i] == NULL);
       }
-#endif // SERVER_MODE
+#endif // DEBUG
 
 #if !defined (NDEBUG)
     fi_thread_final (this);

@@ -3640,7 +3640,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
        * may still refers the area manager.
        */
       thread_return_all_transactions_entries ();
-      // lf_destroy_transaction_systems ();
+      lf_destroy_transaction_systems ();
 #endif
       es_final ();
       tp_final ();

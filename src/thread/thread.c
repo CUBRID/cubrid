@@ -989,7 +989,7 @@ thread_return_transaction_entry (THREAD_ENTRY * entry_p)
 	    {
 	      break;
 	    }
-	  entry_p->tran_entries[i] = 0;
+	  entry_p->tran_entries[i] = NULL;
 	}
     }
   return error;
