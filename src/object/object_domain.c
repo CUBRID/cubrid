@@ -10449,18 +10449,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  case DB_TYPE_VARNCHAR:
 	    {
 	      unsigned int str_size = DB_GET_STRING_SIZE (src);
+	      const char *original_str = DB_GET_STRING (src);
 	      int error_code;
 
 	      assert (str_size >= 0);	/* if this isn't correct, we cannot rely on strlen */
 
-	      str = db_private_alloc (NULL, str_size + 1);
-	      if (str == NULL)
+	      if (original_str != NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
-		  return DOMAIN_ERROR;
+		  str = (char *) db_private_alloc (NULL, str_size + 1);
+		  if (str == NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
+		      return DOMAIN_ERROR;
+		    }
+		  memcpy (str, original_str, str_size);
+		  str[str_size] = '\0';
 		}
-	      memcpy (str, DB_GET_STRING (src), str_size);
-	      str[str_size] = '\0';
 
 	      error_code = db_json_get_json_from_str (str, doc);
 	      if (error_code != NO_ERROR)

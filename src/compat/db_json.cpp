@@ -630,6 +630,11 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
   int error_code = NO_ERROR;
 
   doc = db_json_allocate_doc ();
+  
+  if (json_raw == NULL)
+    {
+      return NO_ERROR;
+    }
 
   if (doc->Parse (json_raw).HasParseError ())
     {
