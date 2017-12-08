@@ -587,7 +587,7 @@ thread_start_workers (void)
 #endif /* WINDOWS */
 
   /* start worker thread */
-  for (thread_index = 1; thread_index <= thread_Manager.num_workers; thread_index++)
+  for (thread_index = 0; thread_index < thread_Manager.num_workers; thread_index++)
     {
       thread_p = &thread_Manager.thread_array[thread_index];
 
@@ -678,7 +678,7 @@ thread_stop_active_workers (unsigned short stop_phase)
     }
 
 loop:
-  for (i = 1; i <= thread_Manager.num_workers; i++)
+  for (i = 0; i < thread_Manager.num_workers; i++)
     {
       thread_p = &thread_Manager.thread_array[i];
 
@@ -735,7 +735,7 @@ loop:
   /* css_broadcast_shutdown_thread(); */
 
   repeat_loop = false;
-  for (i = 1; i <= thread_Manager.num_workers; i++)
+  for (i = 0; i < thread_Manager.num_workers; i++)
     {
       thread_p = &thread_Manager.thread_array[i];
 
@@ -891,7 +891,7 @@ thread_kill_all_workers (void)
   bool repeat_loop;
   THREAD_ENTRY *thread_p;
 
-  for (i = 1; i <= thread_Manager.num_workers; i++)
+  for (i = 0; i < thread_Manager.num_workers; i++)
     {
       thread_p = &thread_Manager.thread_array[i];
       thread_p->interrupted = true;
@@ -904,7 +904,7 @@ loop:
   css_broadcast_shutdown_thread ();
 
   repeat_loop = false;
-  for (i = 1; i <= thread_Manager.num_workers; i++)
+  for (i = 0; i < thread_Manager.num_workers; i++)
     {
       thread_p = &thread_Manager.thread_array[i];
       if (thread_p->status != TS_DEAD)
@@ -1003,11 +1003,13 @@ int
 thread_return_all_transactions_entries (void)
 {
   int error = NO_ERROR, i;
-  for (i = 0; i < thread_Manager.num_total; i++)
+
+  for (THREAD_ENTRY * entry_iter = thread_iterate (NULL); entry_iter != NULL; entry_iter = thread_iterate (entry_iter))
     {
-      error = thread_return_transaction_entry (&thread_Manager.thread_array[i]);
+      error = thread_return_transaction_entry (entry_iter);
       if (error != NO_ERROR)
 	{
+	  assert (false);
 	  break;
 	}
     }
@@ -1749,7 +1751,7 @@ thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *n
     }
   if (num_free_threads || num_suspended_threads)
     {
-      for (i = 1; i <= thread_Manager.num_workers; i++)
+      for (i = 0; i < thread_Manager.num_workers; i++)
 	{
 	  thread_p = &thread_Manager.thread_array[i];
 	  if (num_free_threads && thread_p->status == TS_FREE)
@@ -1792,10 +1794,8 @@ thread_dump_threads (void)
   THREAD_ENTRY *thread_p;
   int i;
 
-  for (i = 1; i <= thread_Manager.num_workers; i++)
+  for (thread_p = thread_iterate (cubthread::get_main_entry ()); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      thread_p = &thread_Manager.thread_array[i];
-
       fprintf (stderr, "thread %d(tid(%lld),client_id(%d),tran_index(%d),rid(%d),status(%s),interrupt(%d))\n",
 	       thread_p->index, (long long) thread_p->tid, thread_p->client_id, thread_p->tran_index, thread_p->rid,
 	       status[thread_p->status], thread_p->interrupted);
@@ -3658,7 +3658,7 @@ thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** thread_array_p)
   int i, thread_count;
 
   thread_count = 0;
-  for (i = 1; i <= thread_Manager.num_workers; i++)
+  for (i = 0; i < thread_Manager.num_workers; i++)
     {
       thread_p = &(thread_Manager.thread_array[i]);
       if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
