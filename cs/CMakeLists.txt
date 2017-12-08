@@ -55,10 +55,12 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_virt.c
   ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/dbtype_function.c
+  
   )
   
 set (COMPAT_HEADERS  
   ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/dbtype_function.i
   )
 

@@ -26,6 +26,11 @@
 
 #include "dbtype_def.h"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 #define db_set db_collection
@@ -484,5 +489,9 @@ extern int db_make_date (DB_VALUE * value, const int month, const int day, const
 extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _DBTYPE_API_H_ */
