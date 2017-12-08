@@ -410,6 +410,12 @@ extern bool thread_is_auto_volume_expansion_thread_available (void);
 extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
 
 extern int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
+
+#if defined(HPUX)
+#define thread_initialize_key()
+#else
+extern int thread_initialize_key (void);
+#endif /* HPUX */
 #endif /* SERVER_MODE */
 
 #endif /* _THREAD_H_ */

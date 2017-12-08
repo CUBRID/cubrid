@@ -129,6 +129,10 @@ namespace cubthread
       entry ();
       ~entry ();
 
+      // public functions
+
+      void request_lock_free_transactions (void);   // todo: lock-free refactoring
+
       // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
       // public
       int index;			/* thread entry index */

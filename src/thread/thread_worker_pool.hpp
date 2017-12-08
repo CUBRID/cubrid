@@ -112,6 +112,7 @@ namespace cubthread
       // get number of threads currently running
       // note: this count may change after call
       std::size_t get_running_count (void) const;
+      std::size_t get_max_count (void) const;
 
     private:
 
@@ -266,6 +267,13 @@ namespace cubthread
   worker_pool<Context>::get_running_count (void) const
   {
     return m_worker_count;
+  }
+
+  template<typename Context>
+  inline std::size_t
+  worker_pool<Context>::get_max_count (void) const
+  {
+    return m_max_workers;
   }
 
   template <typename Context>
