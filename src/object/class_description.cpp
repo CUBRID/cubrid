@@ -169,17 +169,26 @@ class_description::~class_description()
 
 int class_description::init (const char *name)
 {
-  return init (sm_find_class (name), CSQL_SCHEMA_COMMAND);
+  db_object *op = sm_find_class (name);
+  if (op == NULL)
+    {
+      int error_code = NO_ERROR;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  return init (op, CSQL_SCHEMA_COMMAND);
 }
 
 int class_description::init (struct db_object *op, type prt_type)
 {
+  assert (op != NULL);
   string_buffer sb;
   return init (op, prt_type, sb);
 }
 
 int class_description::init (struct db_object *op, type prt_type, string_buffer &sb)
 {
+  assert (op != NULL);
   this->~class_description();//cleanup before (re)initialize
 
   SM_CLASS *class_;
