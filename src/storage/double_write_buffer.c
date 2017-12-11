@@ -3790,6 +3790,7 @@ dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
   int error_code = NO_ERROR;
   DWB_SLOT *dwb_slot = NULL;
   DWB_BLOCK *flush_block = NULL;
+  unsigned int num_total_blocks, diff_num_blocks;
 
   assert (all_sync != NULL);
 
@@ -3828,7 +3829,8 @@ start:
   current_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (position_with_flags);
   /* Save the block version, to detect whether the block was overwritten. */
   current_block_version = double_Write_Buffer.blocks[current_block_no].version;
-  assert (current_block_no < DWB_NUM_TOTAL_BLOCKS);
+  num_total_blocks = DWB_NUM_TOTAL_BLOCKS;
+  assert (current_block_no < num_total_blocks);
 
   if (position_with_flags != ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL))
     {
@@ -3840,16 +3842,55 @@ start:
 check_flushed_blocks:
   flush_block_no = double_Write_Buffer.next_block_to_flush;
   flush_block = &double_Write_Buffer.blocks[flush_block_no];
+
+#if defined (SERVER_MODE)
+
+  /* Check whether the block was flushed. */
+  if ((flush_block->version > current_block_version)
+      || (flush_block->version == current_block_version && flush_block_no > current_block_no))
+    {
+      /* Nothing to do. Everything flushed. */
+      return NO_ERROR;
+    }
+
   if (current_block_no != flush_block_no)
     {
-      if ((flush_block->version < current_block_version)
-	  || (flush_block->version == current_block_version && flush_block_no < current_block_no))
+      if (current_block_no > flush_block_no)
 	{
+	  diff_num_blocks = current_block_no - flush_block_no + 1;
+	}
+      else
+	{
+	  diff_num_blocks = current_block_no + 1 + num_total_blocks - flush_block_no;
+	}
+
+      assert (num_total_blocks >= 1 && diff_num_blocks <= num_total_blocks);
+
+      if (diff_num_blocks < num_total_blocks)
+	{
+	  /* Since there are empty blocks, add null pages to current block to force the flush. */
+	}
+      else
+	{
+	  if (thread_is_dwb_checksum_computation_thread_available ())
+	    {
+	      /* Wake up checksum thread to compute checksum. */
+	      thread_wakeup_dwb_checksum_computation_thread ();
+	    }
+
+	  if (thread_is_dwb_flush_block_thread_available ())
+	    {
+	      /* Wake up flush thread. */
+	      thread_wakeup_dwb_flush_block_thread ();
+	    }
+
 	  /* Check again whether flushing advanced. */
 	  if (flush_block_no != double_Write_Buffer.next_block_to_flush)
 	    {
 	      goto check_flushed_blocks;
 	    }
+
+	  /* Too many blocks, wait for flush block threads. */
 	  error_code = dwb_wait_for_block_completion (thread_p, flush_block_no);
 	  if (error_code != NO_ERROR)
 	    {
@@ -3871,16 +3912,7 @@ check_flushed_blocks:
 	  goto check_flushed_blocks;
 	}
     }
-
-  /* Check whether the block was flushed. */
-  if ((flush_block->version > current_block_version)
-      || (flush_block->version == current_block_version && flush_block_no > current_block_no))
-    {
-      /* Nothing to do. Everything flushed. */
-      return NO_ERROR;
-    }
-
-  assert (flush_block->version == current_block_version && flush_block_no == current_block_no);
+#endif
 
   /*
    * Add NULL pages to force block flushing. In this way, preserve also block flush order. This means that all
