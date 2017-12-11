@@ -7285,11 +7285,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_JSON_STRING:
 	  {
-	    char *json_string_copy = NULL;
+	    const char *json_string = NULL;
 
-	    json_string_copy = db_json_copy_string_from_document (src_doc);
-	    db_make_string (&src_replacement, json_string_copy);
-	    src_replacement.need_clear = true;
+	    json_string = db_json_get_string_from_document (src_doc);
+	    db_make_string (&src_replacement, json_string);
 	  }
 	  break;
 	default:
@@ -10522,8 +10521,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       status = DOMAIN_INCOMPATIBLE;
       break;
     }
-
-  pr_clear_value (&src_replacement);
 
   if (err < 0)
     {
