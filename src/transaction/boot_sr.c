@@ -4439,6 +4439,15 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 
       er_clear ();
     }
+
+  cubthread::initialize (thread_p);
+  error_code = cubthread::initialize_thread_entries ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
   error_code = perfmon_initialize (1);	/* 1 transaction for SA_MDOE */
   if (error_code != NO_ERROR)
     {
