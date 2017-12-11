@@ -1818,6 +1818,14 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   boot_Init_server_is_canceled = (_setjmp (boot_Init_server_jmpbuf) != 0);
 #endif
 
+  cubthread::initialize (thread_p);
+  error_code = cubthread::initialize_thread_entries ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+
   if (!boot_Init_server_is_canceled)
     {
       tran_index =

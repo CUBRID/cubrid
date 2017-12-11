@@ -393,11 +393,7 @@ namespace cubthread
   {
     std::size_t starting_index = 0;
 
-    // SERVER_MODE calls this twice. Until I understand why, we must check Manager is not allocated twice
-    if (Manager == NULL)
-      {
-	Manager = new manager (MAX_THREADS);
-      }
+    assert (my_entry == NULL);
 
 #if defined (SERVER_MODE)
     thread_initialize_key ();
@@ -419,6 +415,8 @@ namespace cubthread
     tl_Entry_p = Main_entry_p;
 
     my_entry = Main_entry_p;
+
+    assert (my_entry == thread_get_thread_entry_info ());
   }
 
   void
@@ -441,6 +439,11 @@ namespace cubthread
     int error_code = NO_ERROR;
 #if defined (SERVER_MODE)
     size_t old_manager_thread_count = 0;
+
+    if (Manager == NULL)
+      {
+	Manager = new manager (MAX_THREADS);
+      }
 
     error_code = thread_initialize_manager (old_manager_thread_count);
     if (error_code != NO_ERROR)
