@@ -395,6 +395,11 @@ namespace cubthread
 
     assert (my_entry == NULL);
 
+    if (Manager == NULL)
+      {
+	Manager = new manager (MAX_THREADS);
+      }
+
 #if defined (SERVER_MODE)
     thread_initialize_key ();
 #endif
@@ -439,11 +444,6 @@ namespace cubthread
     int error_code = NO_ERROR;
 #if defined (SERVER_MODE)
     size_t old_manager_thread_count = 0;
-
-    if (Manager == NULL)
-      {
-	Manager = new manager (MAX_THREADS);
-      }
 
     error_code = thread_initialize_manager (old_manager_thread_count);
     if (error_code != NO_ERROR)
