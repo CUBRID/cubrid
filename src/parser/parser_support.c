@@ -9053,6 +9053,20 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 
   object_printer obj_print (sb);
   obj_print.describe_class (class_op);
+  if(sb.len() == 0)
+    {
+      int error = er_errid();
+      assert (error != NO_ERROR);
+      if (error == ER_AU_SELECT_FAILURE)
+	{
+	  PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
+		       db_get_class_name (class_op));
+	}
+      else
+	{
+	  PT_ERRORc (parser, table_name, er_msg());
+	}
+    }
   return sb.move_ptr ();
 }
 
