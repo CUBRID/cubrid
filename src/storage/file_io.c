@@ -1833,6 +1833,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
 			 size_t page_size, int kbytes_to_be_written_per_sec)
 {
   PAGEID page_id;
+  bool skip_flush = false;
 #if defined (SERVER_MODE)
   int count_of_page_for_a_sleep = 10;
   INT64 allowed_millis_for_a_sleep = 0;	/* time which is time for writing unit of page and sleeping in a sleep */
@@ -1860,6 +1861,10 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
     }
 #endif
 
+#if !defined (CS_MODE)
+  skip_flush = dwb_is_created ();
+#endif
+
   for (page_id = start_pageid; page_id < npages + start_pageid; page_id++)
     {
 #if !defined(CS_MODE)
@@ -1881,7 +1886,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
 	}
 #endif
 
-      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, true) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, skip_flush) == NULL)
 	{
 	  return NULL;
 	}
@@ -2283,7 +2288,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 #if !defined(WINDOWS)
   struct stat buf;
 #endif
-  bool is_raw_device = false;
+  bool is_raw_device = false, skip_flush = false;
 
   /* Check for bad number of pages...and overflow */
   if (npages <= 0)
@@ -2375,7 +2380,11 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 
       /* initialize at least two pages, the header page and the last page. in case of is_sweep_clean == true, every
        * page of the volume will be written. */
-      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, 0, page_size, true) == NULL)
+#if !defined (CS_MODE)
+      skip_flush = dwb_is_created ();
+#endif
+
+      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, 0, page_size, skip_flush) == NULL)
 	{
 	  fileio_dismount (thread_p, vol_fd);
 	  fileio_unformat (thread_p, vol_label_p);
@@ -2393,9 +2402,9 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 #if defined(HPUX)
       if ((is_sweep_clean == true
 	   && !fileio_initialize_pages (vol_fd, malloc_io_page_p, npages, page_size, kbytes_to_be_written_per_sec))
-	  || (is_sweep_clean == false && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size, false)))
+	  || (is_sweep_clean == false && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size, skip_flush)))
 #else /* HPUX */
-      if (!((fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size, true) == malloc_io_page_p)
+      if (!((fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size, skip_flush) == malloc_io_page_p)
 	    && (is_sweep_clean == false
 		|| fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, 0, npages, page_size,
 					    kbytes_to_be_written_per_sec) == malloc_io_page_p)))
@@ -2458,6 +2467,7 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_
   off_t start_offset, last_offset;
   DKNPAGES max_npages;
   DKNPAGES start_pageid, last_pageid;
+  bool skip_flush = false;
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
   pthread_mutex_t *io_mutex;
@@ -2542,8 +2552,12 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_
 
   if (voltype == DB_TEMPORARY_VOLTYPE)
     {
+#if !defined (CS_MODE)
+      skip_flush = dwb_is_created ();
+#endif
+
       /* Write the last page */
-      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE, true) != malloc_io_page_p)
+      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE, skip_flush) != malloc_io_page_p)
 	{
 	  npages_toadd = -1;
 	}
@@ -2819,6 +2833,7 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
   PAGEID page_id;
   FILEIO_PAGE *malloc_io_page_p;
   int success = NO_ERROR;
+  bool skip_flush = false;
 
   malloc_io_page_p = (FILEIO_PAGE *) malloc (IO_PAGESIZE);
   if (malloc_io_page_p == NULL)
@@ -2827,12 +2842,16 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
       return ER_FAILED;
     }
 
+#if !defined (CS_MODE)
+  skip_flush = dwb_is_created ();
+#endif
+
   for (page_id = 0; page_id < npages; page_id++)
     {
       if (fileio_read (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE) != NULL)
 	{
 	  LSA_COPY (&malloc_io_page_p->prv.lsa, reset_lsa_p);
-	  if (fileio_write (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE, true) == NULL)
+	  if (fileio_write (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE, skip_flush) == NULL)
 	    {
 	      success = ER_FAILED;
 	      break;
@@ -4191,8 +4210,8 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
       er_log_debug (ARG_FILE_LINE, "fileio_write_pages: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
 #endif
-  
-  fileio_compensate_flush (thread_p, vol_fd, num_pages, skip_flush);  
+
+  fileio_compensate_flush (thread_p, vol_fd, num_pages, skip_flush);
 
   perfmon_add_stat (thread_p, PSTAT_FILE_NUM_IOWRITES, num_pages);
   return io_pages_p;
@@ -4223,10 +4242,15 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
 	       size_t page_size)
 {
   int i;
+  bool skip_flush = false;
+
+#if !defined (CS_MODE)
+  skip_flush = dwb_is_created ();
+#endif
 
   for (i = 0; i < npages; i++)
     {
-      if (fileio_write (thread_p, vol_fd, io_page_array[i], start_page_id + i, page_size, true) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_array[i], start_page_id + i, page_size, skip_flush) == NULL)
 	{
 	  return NULL;
 	}
@@ -10341,12 +10365,16 @@ static void *
 fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int vol_fd, void *io_page_p,
 		      VOLID vol_id, PAGEID page_id, FILEIO_BACKUP_LEVEL level)
 {
-  bool is_set;
+  bool is_set, skip_flush = false;
+
+#if !defined (CS_MODE)
+  skip_flush = dwb_is_created ();
+#endif
 
   if (page_bitmap == NULL)
     {
       /* don't care about ht for this volume */
-      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, true) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, skip_flush) == NULL)
 	{
 	  return NULL;
 	}
@@ -10360,7 +10388,7 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
 
       if (!is_set)
 	{
-	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, true) == NULL)
+	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, skip_flush) == NULL)
 	    {
 	      return NULL;
 	    }
