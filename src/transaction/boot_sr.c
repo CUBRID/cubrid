@@ -1818,6 +1818,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   boot_Init_server_is_canceled = (_setjmp (boot_Init_server_jmpbuf) != 0);
 #endif
 
+  /* *INDENT-OFF* */
   cubthread::initialize (thread_p);
   error_code = cubthread::initialize_thread_entries ();
   if (error_code != NO_ERROR)
@@ -1825,6 +1826,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       ASSERT_ERROR ();
       goto exit_on_error;
     }
+  /* *INDENT-ON* */
 
   if (!boot_Init_server_is_canceled)
     {
@@ -2263,6 +2265,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
+  /* *INDENT-OFF* */
 #if defined (SA_MODE)
   // thread_manager was not initialized
   assert (thread_p == NULL);
@@ -2274,6 +2277,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+  /* *INDENT-ON* */
 
 #if defined (SERVER_MODE)
 #if defined(DIAG_DEVEL)
@@ -4440,6 +4444,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
       er_clear ();
     }
 
+  /* *INDENT-OFF* */
   cubthread::initialize (thread_p);
   error_code = cubthread::initialize_thread_entries ();
   if (error_code != NO_ERROR)
@@ -4447,6 +4452,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
       ASSERT_ERROR ();
       return error_code;
     }
+  /* *INDENT-ON* */
 
   error_code = perfmon_initialize (1);	/* 1 transaction for SA_MDOE */
   if (error_code != NO_ERROR)
@@ -5093,6 +5099,16 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
       error_code = ER_BO_UNKNOWN_DATABASE;
       goto error_exit;
     }
+
+  /* *INDENT-OFF* */
+  cubthread::initialize (thread_p);
+  error_code = cubthread::initialize_thread_entries ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error_exit;
+    }
+  /* *INDENT-ON* */
 
   /* 
    * Compose the full name of the database and find location of logs
