@@ -56,7 +56,10 @@ namespace
 	  }
 	else
 	  {
-	    buf ("%1x", bstring[count]);
+	    //use only the 1st hex digit
+	    char tmp[3] = {0};
+	    sprintf (tmp, "%1x", bstring[count]);
+	    buf += tmp[0];
 	  }
       }
     return buf;
