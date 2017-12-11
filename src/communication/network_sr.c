@@ -1254,7 +1254,7 @@ net_server_start (const char *server_name)
   char *packed_name;
   int r, status = 0;
   CHECK_ARGS check_coll_and_timezone = { true, true };
-  THREAD_ENTRY *thread_p;
+  THREAD_ENTRY *thread_p = NULL;
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
