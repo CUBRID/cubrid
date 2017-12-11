@@ -53,8 +53,6 @@
 
 #define json_int_t int64_t
 #define json_strtoint strtoll
-#define JSON_INTEGER_FORMAT "I64d"
-
 
 /* If locale.h and localeconv() are available, define to 1, otherwise to 0. */
 #define JSON_HAVE_LOCALECONV 1

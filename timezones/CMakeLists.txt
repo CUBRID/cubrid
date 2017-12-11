@@ -40,9 +40,12 @@ else(UNIX)
   add_custom_command(
     OUTPUT tzlib/timezones.c
     COMMAND ${CMAKE_COMMAND} -E make_directory tzlib
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:cubridsa> $<TARGET_FILE_DIR:cub_admin>
-    COMMAND set CUBRID=${CMAKE_BINARY_DIR}
-    COMMAND $<TARGET_FILE:cub_admin> gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
+    COMMENT "run custom command:"
+    COMMENT "cub_admin gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new"
+    COMMAND cub_admin gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
+    #COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:cubridsa> $<TARGET_FILE_DIR:cub_admin>
+    #COMMAND set CUBRID=${CMAKE_BINARY_DIR}
+    #COMMAND $<TARGET_FILE:cub_admin> gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
     DEPENDS gen_msgs_en_US
     )
 endif(UNIX)

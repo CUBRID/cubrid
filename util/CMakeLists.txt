@@ -224,6 +224,7 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cub_admin LINK_PRIVATE ws2_32)
 endif(UNIX)
+target_link_libraries(cub_admin PRIVATE cubridsa)
 
 set(CUBRID_ESQL_SOURCES
   ${BISON_esql_grammar_OUTPUTS}
