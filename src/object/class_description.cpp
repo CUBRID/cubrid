@@ -212,9 +212,10 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
       return ER_FAILED;
     }
 
-  if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+  int err = au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT);
+  if (err != NO_ERROR)
     {
-      return ER_FAILED;
+      return err;
     }
   if (class_->comment != NULL && class_->comment[0] != '\0')
     {
