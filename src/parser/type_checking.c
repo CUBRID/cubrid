@@ -12978,6 +12978,30 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
   return precision;
 }
 
+bool pt_check_json_object_arg_list(parser_node* arg_list_head)
+{
+  bool is_valid = false;
+  for(int index=0; arg_list_head; arg_list_head=arg_list_head->next, ++index)
+    {
+      if (index % 2 == 0) //key
+	{
+	  is_valid = pt_is_json_object_name (arg_list_head->type_enum);
+	}
+      else //value
+	{
+	  is_valid = pt_is_json_value_type (arg_list_head->type_enum);
+          if(!is_valid) //try to cast
+            {
+            }
+	}
+      if (!is_valid)
+	{
+	  break;
+	}
+    }
+  return is_valid;
+}
+
 /*
  * pt_eval_function_type () -
  *   return: returns a node of the same type.
