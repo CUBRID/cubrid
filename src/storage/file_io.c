@@ -550,7 +550,7 @@ static FILEIO_TYPE fileio_write_backup_volume (THREAD_ENTRY * thread_p, FILEIO_B
 static FILEIO_NODE *fileio_append_queue (FILEIO_QUEUE * qp, FILEIO_NODE * node);
 #endif /* SERVER_MODE */
 
-static void fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage);
+static void fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage, bool skip_flush);
 static int fileio_increase_flushed_page_count (int npages);
 static int fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken);
 static int fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb);
@@ -580,7 +580,7 @@ fileio_increase_flushed_page_count (int npages)
 }
 
 static void
-fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
+fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage, bool skip_flush)
 {
 #if !defined(SERVER_MODE)
   return;
@@ -610,7 +610,7 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
   need_sync = false;
 
   flushed_page_count = fileio_increase_flushed_page_count (npage);
-  if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
+  if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH) && skip_flush == false)
     {
       need_sync = true;
       fileio_Flushed_page_count = 0;
@@ -622,7 +622,6 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
     }
 #endif /* SERVER_MODE */
 }
-
 
 /*
  * fileio_flush_control_initialize():
@@ -3888,11 +3887,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
     }
 #endif
 
-  if (skip_flush == false)
-    {
-      fileio_compensate_flush (thread_p, vol_fd, 1);
-    }
-
+  fileio_compensate_flush (thread_p, vol_fd, 1, skip_flush);
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOWRITES);
   return io_page_p;
 }
@@ -4196,11 +4191,8 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
       er_log_debug (ARG_FILE_LINE, "fileio_write_pages: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
 #endif
-
-  if (skip_flush == false)
-    {
-      fileio_compensate_flush (thread_p, vol_fd, num_pages);
-    }
+  
+  fileio_compensate_flush (thread_p, vol_fd, num_pages, skip_flush);  
 
   perfmon_add_stat (thread_p, PSTAT_FILE_NUM_IOWRITES, num_pages);
   return io_pages_p;
