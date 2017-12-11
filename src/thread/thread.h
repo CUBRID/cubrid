@@ -102,7 +102,6 @@ thread_get_thread_entry_info (void)
 }
 /* *INDENT-ON* */
 
-#define thread_get_thread_entry_info()  (NULL)
 #define thread_num_worker_threads()  (1)
 #define thread_num_total_threads()   (1)
 #define thread_get_current_entry_index() (0)
