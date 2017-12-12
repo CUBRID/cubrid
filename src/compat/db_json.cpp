@@ -1056,13 +1056,19 @@ db_json_get_string_from_document (const JSON_DOC *doc)
 const char *
 db_json_get_bool_as_str_from_document (const JSON_DOC *doc)
 {
-  return const_cast <char *> (db_json_get_bool_as_str_from_value (doc, true));
+  return db_json_get_bool_as_str_from_value (doc, false);
 }
 
 char *
 db_json_copy_string_from_document (const JSON_DOC *doc)
 {
   return const_cast <char *> (db_json_get_string_from_value (doc, true));
+}
+
+char *
+db_json_copy_bool_as_str_from_document (const JSON_DOC *doc)
+{
+  return const_cast <char *> (db_json_get_bool_as_str_from_value (doc, true));
 }
 
 int

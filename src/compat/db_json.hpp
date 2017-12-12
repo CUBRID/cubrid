@@ -105,7 +105,7 @@ int db_json_get_int_from_document (const JSON_DOC *doc);
 double db_json_get_double_from_document (const JSON_DOC *doc);
 const char *db_json_get_string_from_document (const JSON_DOC *doc);
 const char *db_json_get_bool_as_str_from_document (const JSON_DOC *doc);
-char *db_json_get_bool_as_str_from_document_with_copy (const JSON_DOC *doc);
+char *db_json_copy_bool_as_str_from_document (const JSON_DOC *doc);
 char *db_json_copy_string_from_document (const JSON_DOC *doc);
 
 void db_json_set_string_to_doc (JSON_DOC *doc, const char *str);
