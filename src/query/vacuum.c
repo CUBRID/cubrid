@@ -4972,6 +4972,18 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
+  if (lf_circular_queue_is_empty (vacuum_Block_data_buffer))
+    {
+      /* empty */
+      return NO_ERROR;
+    }
+
+  if (vacuum_Data.last_page == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
   /* Save oldest MVCCID of block cached in log_Gl.hdr to be used by vacuum_update_oldest_unvacuumed_mvccid.
    * See description for vacuum_Save_log_hdr_oldest_mvccid.
    */
