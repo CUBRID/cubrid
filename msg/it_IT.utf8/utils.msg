@@ -1060,18 +1060,6 @@ opzioni valide:\n\
       --sort-key=COLUMN_NUMBER numero di colonna da ordinare\n\
       --reverse                invertire l'ordinamento\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 Il server non è stato configurato per HA.\n
-23 Funzione Prefetch è disabilitata.\n
-58 Funzione HA feature non è supportato su questa piattaforma.\n
-59 prefetchlogdb non è possibile eseguire come modalità standalone.\n
-60 \
-prefetchlogdb: Prelettura pagine di log dal server.\n\
-uso: %1$s prefetchlogdb [OPZIONE] nome-database\n\
-\n\
-opzioni valide:\n\
-  -L, --log-path=PATH         cartella PATH per volumi di registrazione copiati\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Modalità generazione non valido.\n
 60 Cartella di input non valido o danneggiato.\n

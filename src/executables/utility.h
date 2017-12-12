@@ -83,7 +83,6 @@ typedef enum
   MSGCAT_UTIL_SET_DUMPLOCALE = 47,
   MSGCAT_UTIL_SET_SYNCCOLLDB = 48,
   MSGCAT_UTIL_SET_TRANLIST = 49,
-  MSGCAT_UTIL_SET_PREFETCHLOGDB = 50,	/* currently, unused */
   MSGCAT_UTIL_SET_GEN_TZ = 51,
   MSGCAT_UTIL_SET_DUMP_TZ = 52,
   MSGCAT_UTIL_SET_RESTORESLAVE = 53,
@@ -626,16 +625,6 @@ typedef enum
   SYNCCOLLDB_MSG_USAGE = 60
 } MSGCAT_SYNCCOLLDB_MSG;
 
-/* Message id in the set MSGCAT_UTIL_SET_PREFETCHLOGDB */
-typedef enum
-{
-  PREFETCHLOGDB_MSG_NOT_HA_MODE = 22,
-  PREFETCHLOGDB_MSG_FEATURE_DISABLE = 23,
-  PREFETCHLOGDB_MSG_HA_NOT_SUPPORT = 58,
-  PREFETCHLOGDB_MSG_NOT_IN_STANDALONE = 59,
-  PREFETCHLOGDB_MSG_USAGE = 60
-} MSGCAT_PREFETCHLOGDB_MSG;
-
 /* Message id in the set MSGCAT_UTIL_SET_GEN_TZ */
 typedef enum
 {
@@ -731,7 +720,6 @@ typedef enum
   DUMPLOCALE,
   SYNCCOLLDB,
   TRANLIST,
-  PREFETCHLOGDB,		/* currently, unused */
   GEN_TZ,
   DUMP_TZ,
   RESTORESLAVE,
@@ -825,7 +813,6 @@ typedef struct _ha_config
 #define UTIL_CUBRID             "cubrid" UTIL_EXE_EXT
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
-#define UTIL_PREFETCHLOGDB      "prefetchlogdb" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -852,7 +839,6 @@ typedef struct _ha_config
 #define PRINT_CMD_ACL           "acl"
 #define PRINT_CMD_COPYLOGDB     "copylogdb"
 #define PRINT_CMD_APPLYLOGDB    "applylogdb"
-#define PRINT_CMD_PREFETCHLOGDB "prefetchlogdb"
 #define PRINT_CMD_GETID         "getid"
 #define PRINT_CMD_TEST          "test"
 #define PRINT_CMD_REPLICATION	"replication"
@@ -934,7 +920,6 @@ typedef struct _ha_config
 #define UTIL_OPTION_GENERATE_LOCALE		"genlocale"
 #define UTIL_OPTION_DUMP_LOCALE			"dumplocale"
 #define UTIL_OPTION_SYNCCOLLDB			"synccolldb"
-#define UTIL_OPTION_PREFETCHLOGDB		"prefetchlogdb"
 #define UTIL_OPTION_GEN_TZ			"gen_tz"
 #define UTIL_OPTION_DUMP_TZ			"dump_tz"
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
@@ -1513,10 +1498,6 @@ typedef struct _ha_config
 #define VERSION_S                               20000
 #define VERSION_L                               "version"
 
-/* prepatchlogdb option list */
-#define PREFETCH_LOG_PATH_S                      'L'
-#define PREFETCH_LOG_PATH_L                      "log-path"
-
 /* restoreslave option list */
 #define RESTORESLAVE_SOURCE_STATE_S                  's'
 #define RESTORESLAVE_SOURCE_STATE_L                  "source-state"
@@ -1687,7 +1668,6 @@ extern "C"
   extern int gen_tz (UTIL_FUNCTION_ARG * arg_map);
   extern int dump_tz (UTIL_FUNCTION_ARG * arg_map);
   extern int synccoll_force (void);
-  extern int prefetchlogdb (UTIL_FUNCTION_ARG * arg_map);
   extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
   extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);

@@ -169,7 +169,6 @@ css_get_required_conn_num_for_ha (void)
   char *ha_node_list_p = NULL;
   char *ha_replica_list_p = NULL;
   int curr_ha_mode;
-  unsigned int prefetcher_max_thread_count = 0;
 
 #if defined (SA_MODE)
   curr_ha_mode = util_get_ha_mode_for_sa_utils ();
@@ -182,24 +181,21 @@ css_get_required_conn_num_for_ha (void)
       return 0;
     }
 
-  /* server must prepare that the prefetchlogdb util is executed. */
-  prefetcher_max_thread_count = prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT);
-
   ha_node_list_p = prm_get_string_value (PRM_ID_HA_NODE_LIST);
   num_of_nodes = util_get_num_of_ha_nodes (ha_node_list_p);
 
   if (HA_GET_MODE () == HA_MODE_REPLICA)
     {
-      /* one applylogdb and prefetchlogdb for each node */
-      return num_of_nodes * 2 + prefetcher_max_thread_count;
+      /* one applylogdb for each node */
+      return num_of_nodes * 2;
     }
 
   ha_replica_list_p = prm_get_string_value (PRM_ID_HA_REPLICA_LIST);
   /* one copylogdb for each replica */
   required_conn_num = util_get_num_of_ha_nodes (ha_replica_list_p);
 
-  /* applylogdb, prefetchlogdb and copylogdb for each node */
-  required_conn_num += (num_of_nodes - 1) * 3 + prefetcher_max_thread_count;
+  /* applylogdb and copylogdb for each node */
+  required_conn_num += (num_of_nodes - 1) * 3;
 
   return required_conn_num;
 }

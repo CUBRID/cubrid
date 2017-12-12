@@ -6913,3 +6913,47 @@ db_init_db_json_pointers (DB_JSON * val)
 
   return NO_ERROR;
 }
+
+int
+db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
+{
+  CHECK_2ARGS_ERROR (src, dest);
+  JSON_DOC *doc = DB_GET_JSON_DOCUMENT (src);
+
+  assert (doc != NULL);
+
+  switch (db_json_get_type (doc))
+    {
+    case DB_JSON_STRING:
+      {
+	const char *str = db_json_get_string_from_document (doc);
+	int error_code = DB_MAKE_STRING (dest, str);
+	if (error_code != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return error_code;
+	  }
+	break;
+      }
+    case DB_JSON_INT:
+      {
+	int val = db_json_get_int_from_document (doc);
+	DB_MAKE_INTEGER (dest, val);
+	break;
+      }
+    case DB_JSON_DOUBLE:
+      {
+	double val = db_json_get_double_from_document (doc);
+	DB_MAKE_DOUBLE (dest, val);
+	break;
+      }
+    case DB_JSON_NULL:
+      DB_MAKE_NULL (dest);
+      break;
+    default:
+      assert (false);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}

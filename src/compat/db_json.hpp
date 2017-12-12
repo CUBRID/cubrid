@@ -39,15 +39,19 @@ typedef void JSON_VALIDATOR;
 #include <functional>
 #include "thread.h"
 
+/*
+ * these also double as type precedence
+ * INT and DOUBLE actually have the same precedence
+*/
 enum DB_JSON_TYPE
 {
   DB_JSON_NULL = 0,
-  DB_JSON_STRING,
-  DB_JSON_DOUBLE,
+  DB_JSON_UNKNOWN,
   DB_JSON_INT,
+  DB_JSON_DOUBLE,
+  DB_JSON_STRING,
   DB_JSON_OBJECT,
   DB_JSON_ARRAY,
-  DB_JSON_UNKNOWN,
 };
 
 /* C functions */
@@ -56,7 +60,7 @@ const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
 int db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path,
-					JSON_DOC *&result);
+                                        JSON_DOC *&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
 
@@ -98,7 +102,8 @@ DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 
 int db_json_get_int_from_document (const JSON_DOC *doc);
 double db_json_get_double_from_document (const JSON_DOC *doc);
-char *db_json_get_string_from_document (const JSON_DOC *doc);
+const char *db_json_get_string_from_document (const JSON_DOC *doc);
+char *db_json_copy_string_from_document (const JSON_DOC *doc);
 
 void db_json_set_string_to_doc (JSON_DOC *doc, const char *str);
 void db_json_set_double_to_doc (JSON_DOC *doc, double d);
@@ -106,6 +111,9 @@ void db_json_set_int_to_doc (JSON_DOC *doc, int i);
 
 int db_json_value_is_contained_in_doc (const JSON_DOC *doc, const JSON_DOC *value, bool &result);
 bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2);
+
+bool db_json_doc_has_numeric_type (const JSON_DOC *doc);
+bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 /* end of C functions */
 
 template <typename Fn, typename... Args>

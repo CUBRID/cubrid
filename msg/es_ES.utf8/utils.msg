@@ -1060,18 +1060,6 @@ opciones validas:\n\
       --sort-key=COLUMN_NUMBER numero de la columna de ordenacion \n\
       --reverse                invierte el resultado de la clasificacion\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 El servidor no ha sido configurado para HA.\n
-23 Caracteristica prefetch es inhabilitada.\n
-58 Caracteristica HA no soportada en esta plataforma.\n
-59 prefetchlogdb no se puede ejecutar en modo independiente.\n
-60 \
-prefetchlogdb: Pre-extraer paginas de registro del servidor.\n\
-uso: %1$s prefetchlogdb [OPTION] database-name\n\
-\n\
-opciones validas:\n\
-  -L, --log-path=PATH         directorio PATH para volumenes de registro copiados\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Modo invalido de generacion suministrado.\n
 60 Carpeta de entradas invalida o corrupta.\n
