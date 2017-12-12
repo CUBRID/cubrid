@@ -9053,9 +9053,9 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 
   object_printer obj_print (sb);
   obj_print.describe_class (class_op);
-  if(sb.len() == 0)
+  if (sb.len () == 0)
     {
-      int error = er_errid();
+      int error = er_errid ();
       assert (error != NO_ERROR);
       if (error == ER_AU_SELECT_FAILURE)
 	{
@@ -9064,7 +9064,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	}
       else
 	{
-	  PT_ERRORc (parser, table_name, er_msg());
+	  PT_ERRORc (parser, table_name, er_msg ());
 	}
     }
   return sb.move_ptr ();
