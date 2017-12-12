@@ -17419,6 +17419,9 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
   unsigned int json_body_length;
   unsigned int raw_schema_length;
 
+  db_make_null (&json_body);
+  db_make_null (&schema_raw);
+
   if (!disk)
     {
       return tp_Json.size;
@@ -17456,10 +17459,33 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
   int rc = NO_ERROR;
   DB_VALUE json_body, schema_raw;
 
+  db_make_null (&json_body);
+  db_make_null (&schema_raw);
+
   if (value->data.json.json_body == NULL || DB_IS_NULL (value))
     {
       assert (false);
       return ER_FAILED;
+    }
+
+  if (buf->error_abort)
+    {
+      int estimated_length = mr_data_lengthval_json (value, true);
+
+      /* in case of string compression, buffer will hold
+       * 0xFF int int as first bytes, so we need to take them
+       * in consideration
+       */
+      estimated_length += sizeof (char) + sizeof (int) * 2;
+
+      if (estimated_length > buf->endptr - buf->ptr)
+	{
+	  /* this will make string_data_writeval jump because
+	   * of buffer overflow, leaking memory in the process,
+	   * we need to take care of it here
+	   */
+	  or_overflow (buf);
+	}
     }
 
   db_make_string (&json_body, value->data.json.json_body);
@@ -17484,6 +17510,7 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
     {
       goto exit;
     }
+
 
 exit:
   pr_clear_value (&json_body);
