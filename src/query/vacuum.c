@@ -666,6 +666,7 @@ static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEAD
 
 static bool vacuum_is_empty (void);
 static void vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, THREAD_TYPE & save_type);
+static void vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, THREAD_TYPE & save_type);
 
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
@@ -712,6 +713,10 @@ public:
   cubthread::entry & create_context (void) // NO_GCC_44: override
   {
     cubthread::entry &context = cubthread::entry_task::create_context ();
+
+    // set vacuum master in execute state
+    assert (vacuum_Master.state == VACUUM_WORKER_STATE_RECOVERY || vacuum_Master.state == VACUUM_WORKER_STATE_EXECUTE);
+    vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;
 
     vacuum_init_thread_context (context, TT_VACUUM_MASTER, &vacuum_Master);
 
@@ -7855,7 +7860,7 @@ vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, THREAD_TYPE & save_typ
  * worker (in)     : vacuum worker context
  * save_type (out) : save previous thread type
  */
-void
+static void
 vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, THREAD_TYPE & save_type)
 {
   if (thread_p == NULL)
@@ -7868,6 +7873,26 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
   if (vacuum_worker_allocate_resources (thread_p, thread_p->vacuum_worker) != NULL)
     {
       assert_release (false);
+    }
+}
+
+/*
+ * vacuum_convert_thread_to_vacuum () - convert this thread to a vacuum master or worker
+ *
+ * thread_p (in)   : thread entry
+ * trid (in)       : transaction ID
+ * save_type (out) : save previous thread type
+ */
+void
+vacuum_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD_TYPE & save_type)
+{
+  if (trid == LOG_VACUUM_MASTER_TRANID)
+    {
+      vacuum_convert_thread_to_master (thread_p, save_type);
+    }
+  else
+    {
+      vacuum_convert_thread_to_worker (thread_p, vacuum_rv_get_worker_by_trid (thread_p, trid), save_type);
     }
 }
 

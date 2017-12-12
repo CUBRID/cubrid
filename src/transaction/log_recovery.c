@@ -166,7 +166,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
       /* Convert thread to a vacuum worker. */
-      vacuum_convert_thread_to_worker (thread_p, vacuum_rv_get_worker_by_trid (thread_p, tdes->trid), save_thread_type);
+      vacuum_convert_thread_to_vacuum (thread_p, tdes->trid, save_thread_type);
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
 		     "Log undo (%lld, %d), rcvindex=%d for tdes: tdes->trid=%d.",
@@ -4043,7 +4043,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 	  /* Nothing to do */
 	  continue;
 	}
-      vacuum_convert_thread_to_worker (thread_p, worker, save_thread_type);
+      vacuum_convert_thread_to_vacuum (thread_p, trid, save_thread_type);
       tdes = worker->tdes;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
@@ -4098,7 +4098,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 	  /* Nothing to do */
 	  continue;
 	}
-      vacuum_convert_thread_to_worker (thread_p, worker, save_thread_type);
+      vacuum_convert_thread_to_vacuum (thread_p, trid, save_thread_type);
       tdes = worker->tdes;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
