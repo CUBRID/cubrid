@@ -17472,12 +17472,6 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
     {
       int estimated_length = mr_data_lengthval_json (value, true);
 
-      /* in case of string compression, buffer will hold
-       * 0xFF int int as first bytes, so we need to take them
-       * in consideration
-       */
-      estimated_length += sizeof (char) + sizeof (int) * 2;
-
       if (estimated_length > buf->endptr - buf->ptr)
 	{
 	  /* this will make string_data_writeval jump because
