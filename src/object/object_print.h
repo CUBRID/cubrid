@@ -57,6 +57,10 @@ extern "C"
 /* Class/Instance printing */
   void help_fprint_obj (FILE * fp, MOP obj);
 
+/* Class name help */
+  extern char **help_class_names (const char *qualifier);
+  extern void help_free_class_names (char **names);
+
 /* Misc help */
   void help_print_info (const char *command, FILE * fpp);
   int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
