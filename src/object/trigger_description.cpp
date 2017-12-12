@@ -48,11 +48,17 @@ trigger_description::trigger_description()
 
 int trigger_description::init (const char *name)
 {
-  return init (tr_find_trigger (name));
+  struct db_object *trobj = tr_find_trigger (name);
+  if (trobj == NULL)
+    {
+      return ER_FAILED;
+    }
+  return init (trobj);
 }
 
 int trigger_description::init (struct db_object *trobj)
 {
+  assert (trobj != NULL);
   char *condition = NULL, *action = NULL, *classname;
   TR_TRIGGER *trigger;
 
