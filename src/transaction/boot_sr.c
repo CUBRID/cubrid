@@ -1700,6 +1700,16 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       log_npages = 10;
     }
 
+  /* *INDENT-OFF* */
+  cubthread::initialize (thread_p);
+  error_code = cubthread::initialize_thread_entries ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+  /* *INDENT-ON* */
+
   /* 
    * get the database directory information in write mode.
    */
@@ -1817,16 +1827,6 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 #if !defined(WINDOWS)
   boot_Init_server_is_canceled = (_setjmp (boot_Init_server_jmpbuf) != 0);
 #endif
-
-  /* *INDENT-OFF* */
-  cubthread::initialize (thread_p);
-  error_code = cubthread::initialize_thread_entries ();
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  /* *INDENT-ON* */
 
   if (!boot_Init_server_is_canceled)
     {
