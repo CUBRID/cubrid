@@ -119,10 +119,6 @@ extern int xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * oid,
 
 extern int xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 				       int n_attrs, int *attr_ids, OID * pk_cls_oid, BTID * pk_btid, char *fk_name);
-extern int xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes,
-					  bool update_last_reprid);
-extern int xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid,
-						    DB_VALUE * key_value);
 extern LOG_LSA *xrepl_log_get_append_lsa (void);
 extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 

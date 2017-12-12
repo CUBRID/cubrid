@@ -1059,18 +1059,6 @@ tranlist: アクティブトランザクション情報をダンプします。\
       --sort-key=COLUMN_NUMBER ソートされるカラム番号\n\
       --reverse                ソート結果を逆にする。\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 サーバは、HA用に設定されていませんでした。\n
-23 プリフェッチ機能が無効になっています。\n
-58 HA機能は、このプラットフォームでサポートされていません。\n
-59 prefetchlogdbはスタンドアロンモードで実行できません。\n
-60 \
-prefetchlogdb: サーバーからのログページをプリフェッチします。\n\
-使い方: %1$s prefetchlogdb [オプション] データベース名\n\
-\n\
-オプション:\n\
-  -L, --log-path=PATH         コピーされたログボリュームのディレクトリパス\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 無効な生成モードを供給しました。\n
 60 無効または破損した入力フォルダ。\n

@@ -5313,3 +5313,52 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
 
   return NO_ERROR;
 }
+
+int
+db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least)
+{
+  int error_code = NO_ERROR;
+  bool can_compare = false;
+  DB_VALUE_COMPARE_RESULT cmp_result = DB_UNK;
+
+  cmp_result = tp_value_compare_with_error (arg1, arg2, 1, 0, &can_compare);
+
+  if (cmp_result == DB_EQ)
+    {
+      pr_clone_value (arg1, result);
+    }
+  else if (cmp_result == DB_GT)
+    {
+      if (least)
+	{
+	  pr_clone_value (arg2, result);
+	}
+      else
+	{
+	  pr_clone_value (arg1, result);
+	}
+    }
+  else if (cmp_result == DB_LT)
+    {
+      if (least)
+	{
+	  pr_clone_value (arg1, result);
+	}
+      else
+	{
+	  pr_clone_value (arg2, result);
+	}
+    }
+  else if (cmp_result == DB_UNK && can_compare == false)
+    {
+      return ER_FAILED;
+    }
+  else
+    {
+      assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  return error_code;
+}
