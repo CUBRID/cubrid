@@ -17300,17 +17300,24 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
   DB_MAKE_NULL (&schema_raw);
   json = (DB_JSON *) memptr;
 
-  if (size <= 0)
-    {
-      return;
-    }
-
   if (json == NULL)
     {
       if (size)
 	{
 	  or_advance (buf, size);
 	}
+      return;
+    }
+
+  if (size < 0)
+    {
+      assert (false);
+      return;
+    }
+
+  if (size == 0)
+    {
+      mr_initmem_json (memptr, domain);
       return;
     }
 
