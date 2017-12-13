@@ -2619,7 +2619,7 @@ retry:
       /* Be sure that the previous block was written on disk, before writing the the current block. */
       if (thread_is_dwb_flush_block_helper_thread_available ())
 	{
-	  thread_sleep (10);
+	  thread_sleep (1);
 	  goto retry;
 	}
       else
