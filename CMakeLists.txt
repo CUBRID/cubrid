@@ -15,7 +15,7 @@
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
-message("======== CMakeLists.txt")
+message(STATUS "======== CMakeLists.txt")
 
 cmake_minimum_required(VERSION 2.8)
 
@@ -48,6 +48,14 @@ project(CUBRID)
 #list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS "c")
 #list(REMOVE_ITEM CMAKE_C_SOURCE_FILE_EXTENSIONS "c")
 
+if(UNIX)
+  message(STATUS "  OS = UNIX")
+elseif(WIN32)
+  message(STATUS "  OS = WIN32")
+else()
+  message(FATAL_ERROR "OS not supported")
+endif()
+
 # options
 if(UNIX)
   set(ENABLE_SYSTEMTAP_DEFAULT ON)
@@ -55,6 +63,38 @@ if(UNIX)
 else(UNIX)
   set(ENABLE_SYSTEMTAP_DEFAULT OFF)
 endif(UNIX)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "  CMAKE_RUNTIME_OUTPUT_DIRECTORY=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+
+if(WIN32)
+  set(WINDOWS_BASE_DIR ${CMAKE_SOURCE_DIR}/win)
+  set(WINDOWS_EXTERNAL_DIR ${WINDOWS_BASE_DIR}/external)
+  set(WINDOWS_EXTERNAL_LIB_DIR ${WINDOWS_EXTERNAL_DIR}/lib64)
+  set(WINDOWS_EXTERNAL_INCLUDE_DIR ${WINDOWS_EXTERNAL_DIR}/include)
+  if(CMAKE_BUILD_TYPE MATCHES "Debug")
+    set(WINDOWS_EXTERNAL_DLL_DIR ${WINDOWS_EXTERNAL_DIR}/dll_debug)
+  else()
+    set(WINDOWS_EXTERNAL_DLL_DIR ${WINDOWS_EXTERNAL_DIR}/dll)
+  endif()
+endif(WIN32)
+
+macro(_EXPAND_EXTERNAL_DEPENDENCY depender prefix_dependee)
+  message(STATUS "${depender} depends on external project ${prefix_dependee}")
+  target_include_directories(${depender} PRIVATE ${${prefix_dependee}_INCLUDES})
+  target_link_libraries(${depender} PRIVATE ${${prefix_dependee}_LIBS})
+  if (EXISTS ${${prefix_dependee}_TARGET})
+    add_dependencies(${depender} ${${prefix_dependee}_TARGET})
+  else(TARGET ${${prefix_dependee}_TARGET})
+    message(STATUS "target ${${prefix_dependee}_TARGET} doesn't exist")
+  endif(EXISTS ${${prefix_dependee}_TARGET})
+endmacro(_EXPAND_EXTERNAL_DEPENDENCY)
+
+function(target_external_dependencies depender)
+  foreach (arg IN LISTS ARGN)
+    _EXPAND_EXTERNAL_DEPENDENCY(${depender} ${arg})
+  endforeach()
+endfunction(target_external_dependencies)
 
 # FIXME: linux 32bit build mode not working now
 option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
@@ -242,7 +282,7 @@ endif(UNIX)
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(TARGET_PLATFORM_BITS 64)
 else()
-  set(TARGET_PLATFORM_BITS 32)
+  message(FATAL_ERROR "Target platform 32bit is no longer supported")
 endif()
 
 # FIXME: remove unused checking rule
@@ -806,8 +846,8 @@ set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINAR
 # on Windows:
 # * "BUNDLED" - (default) uses the prebuilt library from cubrid/win/external
 if(WITH_LIBREGEX STREQUAL "BUNDLED")
+  set(LIBREGEX_TARGET libregex)
   if(UNIX)
-    set(LIBREGEX_TARGET libregex)
     externalproject_add(${LIBREGEX_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libregex38a
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
@@ -820,11 +860,7 @@ if(WITH_LIBREGEX STREQUAL "BUNDLED")
     set(LIBREGEX_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libregex38a.a)
     set(LIBREGEX_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/libregex38a)
   else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/libregex38a.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libregex38a.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
+    set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libregex38a.lib)
     set(LIBREGEX_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
   endif(UNIX)
 elseif(WITH_LIBREGEX STREQUAL "SYSTEM")
@@ -834,6 +870,8 @@ elseif(WITH_LIBREGEX STREQUAL "SYSTEM")
 
     message(STATUS "Found regex library: ${LIBREGEX_LIBS}")
     message(STATUS "Found regex headers: ${LIBREGEX_INCLUDES}")
+  else(UNIX)
+    message(FATAL_ERROR "WITH_LIBREGEX=SYSTEM is not supported on current OS")
   endif(UNIX)
 endif()
 list(APPEND EP_INCLUDES ${LIBREGEX_INCLUDES})
@@ -851,8 +889,9 @@ list(APPEND EP_LIBS ${LIBREGEX_LIBS})
 # on Windows:
 # * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
 if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
+  set(LIBEXPAT_TARGET libexpat)
+  list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
   if(UNIX)
-    set(LIBEXPAT_TARGET libexpat)
     externalproject_add(${LIBEXPAT_TARGET}
       URL               ${WITH_LIBEXPAT_URL}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
@@ -861,14 +900,13 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       )
     set(LIBEXPAT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a)
     set(LIBEXPAT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/expat)
-    list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
-  else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBEXPAT_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/libexpat.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBEXPAT_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libexpat.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBEXPAT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
+  elseif(WIN32)
+    set(LIBEXPAT_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/libexpat.lib)
+    set(LIBEXPAT_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR})
+    add_custom_target(${LIBEXPAT_TARGET}
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DLL_DIR}/libexpat64.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libexpat.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${WINDOWS_EXTERNAL_DLL_DIR}/libexpat64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libexpat.dll
+    )
   endif(UNIX)
 elseif(WITH_LIBEXPAT STREQUAL "SYSTEM")
   if(UNIX)
@@ -894,8 +932,9 @@ list(APPEND EP_LIBS ${LIBEXPAT_LIBS})
 # on Windows:
 # * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
 if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
+  set(LIBJANSSON_TARGET libjansson)
+  list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
   if(UNIX)
-    set(LIBJANSSON_TARGET libjansson)
     externalproject_add(${LIBJANSSON_TARGET}
       URL               ${WITH_LIBJANSSON_URL}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
@@ -904,14 +943,14 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
       )
     set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
     set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
-    list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
   else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBJANSSON_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/jansson.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBJANSSON_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/jansson64.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBJANSSON_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
+    # WIN32
+    set(LIBJANSSON_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/jansson64.lib)
+    set(LIBJANSSON_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR})
+    add_custom_target(${LIBJANSSON_TARGET}
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson.dll
+    )
   endif(UNIX)
 elseif(WITH_LIBJANSSON STREQUAL "SYSTEM")
   if(UNIX)
@@ -1003,8 +1042,8 @@ list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
 # on Windows:
 # * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
 if(WITH_LIBLZO STREQUAL "EXTERNAL")
+  set(LIBLZO_TARGET liblzo)
   if(UNIX)
-    set(LIBLZO_TARGET liblzo)
     #compile LZO library given an internet url to a LZO archive
     #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
     externalproject_add(${LIBLZO_TARGET}
@@ -1017,11 +1056,7 @@ if(WITH_LIBLZO STREQUAL "EXTERNAL")
     set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBLZO_TARGET})
   else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/lzo2.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/lzo2.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
+    set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/lzo2.lib)
     set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
   endif(UNIX)
 else(WITH_LIBLZO STREQUAL "SYSTEM")
@@ -1078,12 +1113,12 @@ list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
 #                  ${WITH_EXTERNAL_HEADERS_PATH}
 #                  ${WITH_LIBGCRYPT_ROOT_PATH}/include
 if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
+  set(LIBGCRYPT_TARGET libgcrypt)
+  list(APPEND EP_TARGETS ${LIBGCRYPT_TARGET})
   if(UNIX)
     if(TARGET ${LIBGPG_ERROR_TARGET})
       set(WITH_LIBGPG_ERROR_PREFIX "--with-gpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external")
     endif()
-
-    set(LIBGCRYPT_TARGET libgcrypt)
     externalproject_add(${LIBGCRYPT_TARGET}
       URL               ${WITH_LIBGCRYPT_URL}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode ${WITH_LIBGPG_ERROR_PREFIX}
@@ -1097,14 +1132,15 @@ if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
 
     set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
     set(LIBGCRYPT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBGCRYPT_TARGET})
   else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBGCRYPT_LIBS ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/libgcrypt.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBGCRYPT_LIBS ${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgcrypt.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
+    set(LIBGCRYPT_LIBS ${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgcrypt.lib)
     set(LIBGCRYPT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
+    add_custom_target(libgcrypt
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DIR}/dll/x64/libgpg-error-0.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libgpg-error-0.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${WINDOWS_EXTERNAL_DIR}/dll/x64/libgpg-error-0.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libgpg-error-0.dll
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DIR}/dll/x64/libgcrypt.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libgcrypt.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${WINDOWS_EXTERNAL_DIR}/dll/x64/libgcrypt.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libgcrypt.dll
+    )
   endif(UNIX)
 elseif(WITH_LIBGCRYPT STREQUAL "SYSTEM")
   if(UNIX)

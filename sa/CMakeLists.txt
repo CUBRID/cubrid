@@ -392,17 +392,36 @@ if(WIN32)
   target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
-target_include_directories(cubridsa PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES})
+target_external_dependencies(cubridsa
+  LIBEXPAT
+  LIBJANSSON
+  LIBGCRYPT
+  LIBLZO
+  LIBEXPAT
+  LIBREGEX
+  )
+target_include_directories(cubridsa PRIVATE
+  ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
+  ${JAVA_INC}
+  ${LIBJANSSON_INCLUDES}
+  ${LIBGCRYPT_INCLUDES}
+  ${LIBLZO_INCLUDES}
+  #${LIBEXPAT_INCLUDES}
+  )
+target_link_libraries(cubridsa PRIVATE
+    cas
+    ${LIBJANSSON_LIBS}
+    ${LIBGCRYPT_LIBS}
+    ${LIBLZO_LIBS}
+    #${LIBEXPAT_LIBS}
+  )
 if(UNIX)
-  target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
+  # find out what this means:
+  # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
-else(UNIX)
-  target_link_libraries(cubridsa LINK_PRIVATE cas ${EP_LIBS})
 endif(UNIX)
-
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-
-add_dependencies(cubridsa ${EP_TARGETS})
+#add_dependencies(cubridsa ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})

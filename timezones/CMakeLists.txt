@@ -34,9 +34,10 @@ add_executable(gen_timezone
   )
 
 target_link_libraries (gen_timezone PRIVATE cubridsa)
+target_compile_definitions (gen_timezone PRIVATE SA_MODE)
 
 # run executable
-message (STATUS ".... run gen_timezone")
+message (STATUS ".... generate timezone command")
 add_custom_command(
   OUTPUT tzlib/timezones.c
   COMMENT "generating tzlib/timezones.c from ${CMAKE_CURRENT_SOURCE_DIR}/tzdata"
@@ -44,7 +45,7 @@ add_custom_command(
   COMMAND gen_timezone ${CMAKE_CURRENT_SOURCE_DIR}/tzdata
 )
 
-#create library
+# create library
 message (STATUS ".... cubrid_timezones lib")
 add_library(cubrid_timezones SHARED tzlib/timezones.c)
 set_target_properties(cubrid_timezones PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")

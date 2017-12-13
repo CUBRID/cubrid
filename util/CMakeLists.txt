@@ -65,7 +65,8 @@ endif(UNIX)
 if(UNIX)
   add_dependencies(csql ${EP_TARGETS})
 endif(UNIX)
-
+target_link_libraries(csql PRIVATE cubridsa)
+#target_link_libraries(csql PRIVATE cubridcs)
 
 set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master.c
