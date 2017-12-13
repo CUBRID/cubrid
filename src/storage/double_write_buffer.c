@@ -4016,7 +4016,7 @@ check_flushed_blocks:
 int
 dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 {
-  unsigned int i;
+  unsigned int i, iter;
   int num_pages, num_pages2;
   DWB_BLOCK *block;
 
@@ -4025,11 +4025,12 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
     {
       for (i = 0; i < block->count_flush_volumes_info; i++)
 	{
+          iter = 1;
 	  do
 	    {
 	      num_pages = ATOMIC_INC_32 (&block->flush_volumes_info[i].num_pages, 0);
 	      /* TODO - use parameter */
-	      if (num_pages < 100)
+	      if ((num_pages < 100) || (iter > 1)
 		{
 		  /* Not enough pages, do not flush yet. */
 		  break;
@@ -4046,6 +4047,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 		  /* Flushed by DWB block flusher. */
 		  assert (num_pages2 == 0);
 		}
+              iter++;
 	    }
 	  while (true);
 	}
