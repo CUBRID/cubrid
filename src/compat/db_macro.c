@@ -6373,7 +6373,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  buffer_p = valcnv_append_string (buffer_p, numeric_db_value_print ((DB_VALUE *) value_p, line));
+	  buffer_p = valcnv_append_string (buffer_p, numeric_db_value_print (value_p, line));
 	  break;
 
 	case DB_TYPE_BIT:

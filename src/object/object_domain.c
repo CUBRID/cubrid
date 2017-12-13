@@ -9793,7 +9793,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    char *new_string;
 	    int max_size;
 
-	    numeric_db_value_print ((DB_VALUE *) src, str_buf);
+	    numeric_db_value_print (src, str_buf);
 
 	    max_size = strlen (str_buf) + 1;
 	    new_string = (char *) db_private_alloc (NULL, max_size);
