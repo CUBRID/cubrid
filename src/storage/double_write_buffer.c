@@ -1985,7 +1985,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
       struct timespec to;
 
       pthread_mutex_unlock (&dwb_block->mutex);
-      to.tv_sec = (int) time (NULL) + 20;
+      to.tv_sec = (int) time (NULL) + 10;
       to.tv_nsec = 0;
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
