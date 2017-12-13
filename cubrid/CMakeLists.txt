@@ -26,6 +26,16 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_json.cpp
+  ${COMPAT_DIR}/dbtype_function.c
+  )
+
+set(COMPAT_HEADERS
+  ${COMPAT_DIR}/dbtype_function.h
+  ${COMPAT_DIR}/dbtype_function.i
+  )
+
+set(COMPAT_SOURCES_C
+  ${COMPAT_DIR}/dbtype_function.c
   )
 
 set(THREAD_SOURCES
@@ -237,6 +247,7 @@ SET_SOURCE_FILES_PROPERTIES(
 
 SET_SOURCE_FILES_PROPERTIES(
   ${BASE_DIR}/md5.c
+  ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
 
@@ -257,6 +268,7 @@ set (CUBRID_LIB_SOURCES
   ${EXECUTABLE_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  ${COMPAT_SOURCES_C}
   )
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}

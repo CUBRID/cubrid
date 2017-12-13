@@ -1980,3 +1980,39 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
 
   return;
 }
+
+/*
+* db_value_is_null() -
+* return :
+* value(in) :
+*/
+DB_MACRO_INLINE bool
+db_value_is_null(const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_TRUE(value);
+#endif
+
+  if (value == NULL)
+    return true;
+
+  return (value->domain.general_info.is_null != 0);
+}
+
+/*
+* db_value_domain_type() - get the type of value's domain.
+* return     : DB_TYPE of value's domain
+* value(in)  : Pointer to a DB_VALUE
+*/
+DB_MACRO_INLINE DB_TYPE
+db_value_domain_type(const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_UNKNOWN(value);
+#endif
+  if (value == NULL)
+    return DB_TYPE_UNKNOWN;
+
+  return (DB_TYPE)value->domain.general_info.type;
+
+}

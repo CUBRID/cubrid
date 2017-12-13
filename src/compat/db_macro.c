@@ -1142,27 +1142,6 @@ db_string_truncate (DB_VALUE * value, const int precision)
 }
 
 /*
- * db_value_domain_type() - get the type of value's domain.
- * return     : DB_TYPE of value's domain
- * value(in)  : Pointer to a DB_VALUE
- */
-DB_TYPE
-db_value_domain_type (const DB_VALUE * value)
-{
-  DB_TYPE db_type;
-
-  CHECK_1ARG_UNKNOWN (value);
-
-  db_type = (DB_TYPE) value->domain.general_info.type;
-
-#if 0				/* TODO */
-  assert (DB_IS_NULL (value) || (DB_TYPE_FIRST < db_type && db_type <= DB_TYPE_LAST));
-#endif
-
-  return db_type;
-}
-
-/*
  * db_value_type_is_collection() -
  * return :
  * value(in) :
@@ -1179,19 +1158,6 @@ db_value_type_is_collection (const DB_VALUE * value)
   is_collection = (TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ);
 
   return is_collection;
-}
-
-/*
- * db_value_is_null() -
- * return :
- * value(in) :
- */
-bool
-db_value_is_null (const DB_VALUE * value)
-{
-  CHECK_1ARG_TRUE (value);
-
-  return (value->domain.general_info.is_null != 0);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

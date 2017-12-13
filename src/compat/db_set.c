@@ -31,8 +31,6 @@
 #include <ctype.h>
 #include <string.h>
 
-#include "dbtype.h"
-
 #include "set_object.h"
 #include "error_manager.h"
 #include "db.h"

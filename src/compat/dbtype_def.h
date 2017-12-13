@@ -1479,15 +1479,10 @@ extern "C"
    */
   typedef SETOBJ COL;
 
-#ifdef __cplusplus
-}
-#endif				/* __cplusplus */
+  extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
+  extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 
-
-extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
-extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
-
-extern int valcnv_convert_value_to_string (DB_VALUE * value);
+  extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
 /* Macros from dbval.h */
 
@@ -1573,4 +1568,8 @@ extern int valcnv_convert_value_to_string (DB_VALUE * value);
      (v)->data.json.schema_raw = NULL, \
      NO_ERROR)
 
-#endif /* dbtype_common.h */
+#ifdef __cplusplus
+}
+#endif				/* __cplusplus */
+
+#endif				/* dbtype_common.h */
