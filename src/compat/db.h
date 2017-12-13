@@ -263,10 +263,6 @@ extern int db_error_code_test (void);
 
 extern const char *db_error_string_test (int level);
 
-#if !defined(_DBTYPE_H_)
-extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time);
-extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date);
-#endif
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *db_value_eh_key (DB_VALUE * value);
 extern int db_value_put_db_data (DB_VALUE * value, const DB_DATA * data);

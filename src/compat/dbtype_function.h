@@ -26,11 +26,6 @@
 
 #include "dbtype_def.h"
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 #define db_set db_collection
@@ -255,6 +250,11 @@ extern "C"
 	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
 
 #define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 extern DB_TYPE setobj_type (COL * set);
   /********************************************************/
@@ -492,6 +492,6 @@ extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 
 #ifdef __cplusplus
 }
-#endif
+#endif /* C++ */
 
 #endif /* _DBTYPE_API_H_ */

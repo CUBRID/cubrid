@@ -16,7 +16,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
-
+ 
 
 /*
  * broker_shm.h -
@@ -24,7 +24,7 @@
 
 #ifndef _BROKER_SHM_H_
 #define _BROKER_SHM_H_
-
+ 
 #ident "$Id$"
 
 #include <sys/types.h>

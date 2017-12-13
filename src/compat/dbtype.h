@@ -28,7 +28,7 @@
 #define _DBTYPE_H_
 
 #ident "$Id$"
-
+ 
 #include "config.h"
 
 #include "system_parameter.h"
@@ -37,7 +37,6 @@
 
 #include "system.h"
 #include "dbtype_def.h"
-
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
@@ -264,6 +263,11 @@
 
 #define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 extern DB_TYPE setobj_type (COL * set);
   /********************************************************/
   /* From elo.h */
@@ -400,7 +404,6 @@ extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_ex
 extern int db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst);
 extern int db_init_db_json_pointers (DB_JSON * val);
 
-#if !defined (_DBTYPE_API_H_)
 /* Use the inline version of the functions. */
 static inline int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 static inline DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -513,6 +516,10 @@ static inline void db_set_compressed_string (DB_VALUE * value, char *compressed_
 					     int compressed_size, bool compressed_need_clear)
   __attribute__ ((ALWAYS_INLINE));
 
+#ifdef __cplusplus
+}
+#endif
+
 #include "dbtype_function.i"
-#endif // not _DBTYPE_API_H_
+
 #endif /* _DBTYPE_H_ */
