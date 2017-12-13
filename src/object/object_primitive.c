@@ -17258,7 +17258,6 @@ static void
 mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
   DB_VALUE json_body, schema_raw;
-  const char *schema_str;
   DB_JSON *json;
 
   json = (DB_JSON *) memptr;
@@ -17546,7 +17545,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 
   assert (!DB_IS_NULL (&json_body));
 
-  json_raw = DB_PULL_STRING (&json_body);
+  json_raw = DB_GET_STRING (&json_body);
 
   rc = db_json_get_json_from_str (json_raw, doc);
   if (rc != NO_ERROR)

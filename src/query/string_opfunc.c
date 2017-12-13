@@ -3055,7 +3055,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
       if (DB_IS_NULL (arg[i + 1]))
 	{
-	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), (JSON_DOC *) NULL);
+	  db_json_add_member_to_object (new_doc, DB_GET_STRING (arg[i]), (JSON_DOC *) NULL);
 	  continue;
 	}
 
@@ -3230,7 +3230,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, DB_GET_STRING (arg[i]));
 	  break;
 	case DB_TYPE_NULL:
-	  error_code = db_json_insert_func ((JSON_DOC *) NULL, new_doc, DB_PULL_STRING (arg[i]));
+	  error_code = db_json_insert_func ((JSON_DOC *) NULL, new_doc, DB_GET_STRING (arg[i]));
 	  break;
 	default:
 	  db_json_delete_doc (new_doc);

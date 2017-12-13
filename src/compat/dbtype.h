@@ -401,6 +401,7 @@ extern "C"
 
   extern int db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst);
   extern int db_init_db_json_pointers (DB_JSON * val);
+  extern int db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest);
 
 /* Use the inline version of the functions. */
   static inline int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -518,6 +519,9 @@ extern "C"
 
   static inline bool db_value_is_null (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
   static inline DB_TYPE db_value_domain_type (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+
+  static inline bool db_is_json_value_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
+  static inline bool db_is_json_doc_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
 
 #include "dbtype_function.i"
 #ifdef __cplusplus
