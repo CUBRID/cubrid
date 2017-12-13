@@ -1959,6 +1959,25 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
 
   thread_lock_entry (thread_p);
 
+  /* Check again after acquiring mutexes. */
+  if (!DWB_IS_BLOCK_WRITE_STARTED (ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL), block_no))
+    {
+      thread_unlock_entry (thread_p);
+      pthread_mutex_unlock (&dwb_block->mutex);
+      if (is_perf_tracking)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+	  if (oldest_time > 0)
+	    {
+	      perfmon_add_stat (thread_p, PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS, oldest_time);
+	    }
+	}
+
+      return NO_ERROR;
+    }
+
   double_write_queue_entry = dwb_block_add_wait_queue_entry (&dwb_block->wait_queue, thread_p);
   if (double_write_queue_entry)
     {
@@ -2037,8 +2056,10 @@ dwb_signal_waiting_thread (void *data)
   if (wait_thread_p)
     {
       thread_lock_entry (wait_thread_p);
-      assert (wait_thread_p->resume_status == THREAD_DWB_QUEUE_SUSPENDED);
-      thread_wakeup_already_had_mutex (wait_thread_p, THREAD_DWB_QUEUE_RESUMED);
+      if (wait_thread_p->resume_status == THREAD_DWB_QUEUE_SUSPENDED)
+	{
+	  thread_wakeup_already_had_mutex (wait_thread_p, THREAD_DWB_QUEUE_RESUMED);
+	}
       thread_unlock_entry (wait_thread_p);
     }
 #endif /* SERVER_MODE */
