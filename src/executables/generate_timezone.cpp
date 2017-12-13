@@ -45,7 +45,7 @@ main (int argc, char ** argv)
       return EXIT_FAILURE;
     }
 
-  const char *input_path = *argv;
+  const char *input_path = argv[1];
   char checksum_str[TZ_CHECKSUM_SIZE + 1];
 
   std::memset (checksum_str, 0, sizeof (checksum_str));
