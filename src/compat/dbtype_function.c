@@ -19,7 +19,10 @@
 
 #include <stdio.h>
 
+#define API_ACTIVE_CHECKS
+
 #include "system_parameter.h"
+#include "db.h"
 #include "dbtype_function.h"
 #include "error_manager.h"
 #include "dbtype_function.i"
