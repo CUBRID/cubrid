@@ -129,6 +129,10 @@ static bool db_json_value_has_numeric_type (const JSON_VALUE *doc);
 static int db_json_get_int_from_value (const JSON_VALUE *val);
 static double db_json_get_double_from_value (const JSON_VALUE *doc);
 static const char *db_json_get_string_from_value (const JSON_VALUE *doc, bool copy);
+static void db_json_merge_two_json_objects (JSON_DOC &obj1, const JSON_DOC *obj2);
+static void db_json_merge_two_json_arrays (JSON_DOC &array1, const JSON_DOC *array2);
+static void db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2);
+static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
