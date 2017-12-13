@@ -2170,7 +2170,25 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	case DB_TYPE_ENUMERATION:
 	  hashcode = mht_get_shiftmult32 (val->data.enumeration.short_val, ht_size);
 	  break;
+	case DB_TYPE_JSON:
+	  {
+	    char *json_body = NULL;
 
+	    json_body = DB_GET_JSON_RAW_BODY (val);
+
+	    if (json_body == NULL)
+	      {
+		hashcode = 0;
+	      }
+	    else
+	      {
+		len = (int) strlen (json_body);
+
+		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, len);
+		hashcode %= ht_size;
+	      }
+	  }
+	  break;
 	default:		/* impossible */
 	  /* 
 	   * TODO this is actually possible. See the QA scenario:

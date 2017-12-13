@@ -1311,6 +1311,9 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (loghdr != NULL);
 
+  /* to also initialize padding bytes */
+  memset (loghdr, 0, sizeof (LOG_HEADER));
+
   strncpy (loghdr->magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH);
 
   if (db_creation != NULL)
@@ -1513,6 +1516,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_flush_header");
 	  return;
 	}
+      memset (log_Gl.loghdr_pgptr, 0, LOG_PAGESIZE);
     }
 
   log_hdr = (LOG_HEADER *) (log_Gl.loghdr_pgptr->area);
@@ -3857,6 +3861,13 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_append_next_record");
     }
 
+  /* forcing flush in the middle of log record append is a complicated business. try to avoid it if possible. */
+  if (log_Gl.flush_info.num_toflush + 1 >= log_Gl.flush_info.max_toflush)	/* flush will be forced on next page */
+    {
+      /* flush early to avoid complicated case */
+      logpb_flush_all_append_pages (thread_p);
+    }
+
   logpb_start_append (thread_p, &node->log_header);
 
   if (node->data_header != NULL)
@@ -4484,6 +4495,13 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
       ++flush_page_count;
+
+      /* we need to also sync again */
+      if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
+	{
+	  error_code = ER_FAILED;
+	  goto error;
+	}
 
       /* now we can set the nxio_lsa to append_lsa */
       logpb_set_nxio_lsa (&log_Gl.hdr.append_lsa);
