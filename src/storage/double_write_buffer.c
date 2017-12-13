@@ -4030,7 +4030,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 	    {
 	      num_pages = ATOMIC_INC_32 (&block->flush_volumes_info[i].num_pages, 0);
 	      /* TODO - use parameter */
-	      if ((num_pages < 100) || (iter > 1)
+	      if ((num_pages < 100) && (iter == 0))
 		{
 		  /* Not enough pages, do not flush yet. */
 		  break;
