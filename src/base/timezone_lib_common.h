@@ -31,6 +31,7 @@
 #define TZ_GENERIC_NAME_SIZE	  40
 #define TZ_MAX_FORMAT_SIZE	  10
 #define TZ_WINDOWS_ZONE_NAME_SIZE 70
+#define TZ_CHECKSUM_SIZE          32
 
 /*
  * The defines below are types of the data representation for the "ON" column
@@ -228,7 +229,7 @@ struct tz_data
   /* 
    * 32 digits for the md5 checksum
    */
-  char checksum[32 + 1];
+  char checksum[TZ_CHECKSUM_SIZE + 1];
 };
 
 #endif /* _TIMEZONE_LIB_COMMON_H_ */

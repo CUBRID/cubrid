@@ -22,6 +22,7 @@
  */
 
 #include "error_manager.h"
+#include "tz_compile.h"
 
 #include <iostream>
 
@@ -34,15 +35,29 @@ usage (void)
 int
 main (int argc, char ** argv)
 {
-  er_init (NULL, ER_NEVER_EXIT);
+  er_init (NULL, er_exit_ask::ER_NEVER_EXIT);
 
   // check args
   if (argc != 1)
     {
       usage ();
-      er_final (ER_ALL_FINAL);
+      er_final (er_final_code::ER_ALL_FINAL);
       return EXIT_FAILURE;
     }
 
-  char *input_path = *argv;
+  const char *input_path = *argv;
+  char checksum_str[TZ_CHECKSUM_SIZE + 1];
+
+  std::memset (checksum_str, 0, sizeof (checksum_str));
+  if (timezone_compile_data (input_path, TZ_GEN_TYPE_NEW, NULL, checksum_str) != NO_ERROR)
+    {
+      assert (false);
+      er_final (er_final_code::ER_ALL_FINAL);
+      return EXIT_FAILURE;
+    }
+  else
+    {
+      er_final (er_final_code::ER_ALL_FINAL);
+      return EXIT_SUCCESS;
+    }
 }

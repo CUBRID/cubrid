@@ -3893,13 +3893,12 @@ error_exit:
 int
 gen_tz (UTIL_FUNCTION_ARG * arg)
 {
-#define CHECKSUM_SIZE 32
   UTIL_ARG_MAP *arg_map = NULL;
   char *input_path = NULL;
   char *tz_gen_mode = NULL;
   TZ_GEN_TYPE tz_gen_type = TZ_GEN_TYPE_NEW;
   int exit_status = EXIT_SUCCESS;
-  char checksum[CHECKSUM_SIZE + 1];
+  char checksum[TZ_CHECKSUM_SIZE + 1];
   bool need_db_shutdown = false;
   bool er_inited = false;
   DB_INFO *dir = NULL;
@@ -4074,7 +4073,6 @@ print_gen_tz_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GEN_TZ, GEN_TZ_MSG_USAGE),
 	   basename (arg->argv0), basename (arg->argv0));
   return EXIT_FAILURE;
-#undef CHECKSUM_SIZE
 }
 
 /*
