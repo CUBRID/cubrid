@@ -1060,18 +1060,6 @@ tranlist: 输出活动事务信息.\n\
       --sort-key=COLUMN_NUMBER 列序号将被排序\n\
       --reverse                反转排序结果\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 服务器没有配置成 HA 模式.\n
-23 预取功能已经被禁用.\n
-58 HA 功能不支持此平台.\n
-59 prefetchlogdb 不能作为 standalone 模式运行.\n
-60 \
-prefetchlogdb: 从服务器中预取日志页.\n\
-用法: %1$s prefetchlogdb [选项] 数据库名\n\
-\n\
-可用选项:\n\
-  -L, --log-path=PATH         指定拷贝日志卷的路径为 PATH\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 提供的生成模式无效.\n
 60 无效的或损坏的输入文件夹.\n

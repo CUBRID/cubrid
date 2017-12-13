@@ -21,13 +21,12 @@
  * dbi.h - Definitions and function prototypes for the CUBRID Application Program Interface (API).
  */
 
-
-#ifndef _DBI_COMPAT_H_
-#define _DBI_COMPAT_H_
-
 #include <stdio.h>
 #include <time.h>
 #include <sys/types.h>
+
+#ifndef _DBI_COMPAT_H_
+#define _DBI_COMPAT_H_
 
 #ifndef __cplusplus
 #define bool char

@@ -39,15 +39,19 @@ typedef void JSON_VALIDATOR;
 #include <functional>
 #include "thread.h"
 
+/*
+ * these also double as type precedence
+ * INT and DOUBLE actually have the same precedence
+*/
 enum DB_JSON_TYPE
 {
   DB_JSON_NULL = 0,
-  DB_JSON_STRING,
-  DB_JSON_DOUBLE,
+  DB_JSON_UNKNOWN,
   DB_JSON_INT,
+  DB_JSON_DOUBLE,
+  DB_JSON_STRING,
   DB_JSON_OBJECT,
   DB_JSON_ARRAY,
-  DB_JSON_UNKNOWN,
 };
 
 /* C functions */
@@ -56,7 +60,7 @@ const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
 int db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path,
-					JSON_DOC *&result);
+                                        JSON_DOC *&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
 
@@ -70,17 +74,12 @@ void db_json_add_element_to_array (JSON_DOC *doc, int value);
 void db_json_add_element_to_array (JSON_DOC *doc, double value);
 void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 
-int db_json_get_json_from_str(const char *json_raw, JSON_DOC *&doc);
-JSON_DOC *db_json_get_copy_of_doc(const JSON_DOC *doc);
-void db_json_copy_doc (JSON_DOC *dest, const JSON_DOC *src);
+int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc);
+JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 
 int db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
 int db_json_remove_func (JSON_DOC *doc, char *raw_path);
-int db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest);
-
-void db_json_merge_two_json_objects (JSON_DOC *obj1, const JSON_DOC *obj2);
-void db_json_merge_two_json_arrays (JSON_DOC *array1, const JSON_DOC *array2);
-void db_json_merge_two_json_by_array_wrapping (JSON_DOC *j1, const JSON_DOC *j2);
+int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest);
 
 int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result);
 const char *db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val);
@@ -98,7 +97,8 @@ DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 
 int db_json_get_int_from_document (const JSON_DOC *doc);
 double db_json_get_double_from_document (const JSON_DOC *doc);
-char *db_json_get_string_from_document (const JSON_DOC *doc);
+const char *db_json_get_string_from_document (const JSON_DOC *doc);
+char *db_json_copy_string_from_document (const JSON_DOC *doc);
 
 void db_json_set_string_to_doc (JSON_DOC *doc, const char *str);
 void db_json_set_double_to_doc (JSON_DOC *doc, double d);
@@ -106,6 +106,9 @@ void db_json_set_int_to_doc (JSON_DOC *doc, int i);
 
 int db_json_value_is_contained_in_doc (const JSON_DOC *doc, const JSON_DOC *value, bool &result);
 bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2);
+void db_json_make_document_null (JSON_DOC *doc);
+bool db_json_doc_has_numeric_type (const JSON_DOC *doc);
+bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 /* end of C functions */
 
 template <typename Fn, typename... Args>

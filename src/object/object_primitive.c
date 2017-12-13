@@ -2058,6 +2058,12 @@ pr_clear_value (DB_VALUE * value)
 	      value->data.json.schema_raw = NULL;
 	    }
 	}
+      else
+	{
+	  value->data.json.json_body = NULL;
+	  value->data.json.document = NULL;
+	  value->data.json.schema_raw = NULL;
+	}
       break;
 
     case DB_TYPE_OBJECT:
@@ -17084,7 +17090,7 @@ error:
 
 PR_TYPE tp_Json = {
   "json", DB_TYPE_JSON, 1, sizeof (DB_JSON), 0,
-  4,
+  1,
   help_fprint_value,
   help_sprint_value,
   mr_initmem_json,
@@ -17228,7 +17234,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      return 0;
 	    }
 	  db_make_string (&json_body_value, json->json_body);
-	  json_body_length = mr_data_lengthval_string (&json_body_value, 1);
+	  json_body_length = mr_data_lengthval_string (&json_body_value, disk);
 
 	  if (json->schema_raw != NULL)
 	    {
@@ -17239,7 +17245,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      db_make_string (&schema_raw_value, "");
 	    }
 
-	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, 1);
+	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, disk);
 
 	  return json_body_length + schema_raw_length;
 	}
@@ -17262,18 +17268,17 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
       return;
     }
 
+  /* json body can be null, but it is treated by writeval */
   db_make_string (&json_body, json->json_body);
 
   if (json->schema_raw != NULL)
     {
-      schema_str = json->schema_raw;
+      db_make_string (&schema_raw, json->schema_raw);
     }
   else
     {
-      schema_str = "";
+      db_make_string (&schema_raw, "");
     }
-
-  db_make_string (&schema_raw, schema_str);
 
   (*(tp_String.data_writeval)) (buf, &json_body);
   (*(tp_String.data_writeval)) (buf, &schema_raw);
@@ -17290,6 +17295,8 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
   DB_JSON *json;
   int rc;
 
+  DB_MAKE_NULL (&json_body);
+  DB_MAKE_NULL (&schema_raw);
   json = (DB_JSON *) memptr;
 
   if (json == NULL)
@@ -17309,6 +17316,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 
   if (json_body_length <= 0)
     {
+      assert (false);
       goto exit;
     }
   else
@@ -17322,10 +17330,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
     }
 
   json->json_body = db_private_strdup (NULL, json_body_str);
-  if (schema_str != NULL)
-    {
-      json->schema_raw = db_private_strdup (NULL, schema_str);
-    }
+  json->schema_raw = db_private_strdup (NULL, schema_str);
 
   rc = db_json_get_json_from_str (json_body_str, json->document);
   assert (rc == NO_ERROR);
@@ -17413,13 +17418,22 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
   unsigned int json_body_length;
   unsigned int raw_schema_length;
 
+  db_make_null (&json_body);
+  db_make_null (&schema_raw);
+
   if (!disk)
     {
       return tp_Json.size;
     }
 
-  db_make_string (&json_body, value->data.json.json_body);
-
+  if (value->data.json.json_body != NULL)
+    {
+      db_make_string (&json_body, value->data.json.json_body);
+    }
+  else
+    {
+      return 0;
+    }
   if (value->data.json.schema_raw != NULL)
     {
       db_make_string (&schema_raw, value->data.json.schema_raw);
@@ -17444,9 +17458,31 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
   int rc = NO_ERROR;
   DB_VALUE json_body, schema_raw;
 
-  assert (value->data.json.json_body != NULL);
+  db_make_null (&json_body);
+  db_make_null (&schema_raw);
+
+  if (value->data.json.json_body == NULL || DB_IS_NULL (value))
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (buf->error_abort)
+    {
+      int estimated_length = mr_data_lengthval_json (value, true);
+
+      if ((ptrdiff_t) estimated_length > ((ptrdiff_t) (buf->endptr - buf->ptr)))
+	{
+	  /* this will make string_data_writeval jump because
+	   * of buffer overflow, leaking memory in the process,
+	   * we need to take care of it here
+	   */
+	  or_overflow (buf);
+	}
+    }
 
   db_make_string (&json_body, value->data.json.json_body);
+
   if (value->data.json.schema_raw != NULL)
     {
       db_make_string (&schema_raw, value->data.json.schema_raw);
@@ -17468,6 +17504,7 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
       goto exit;
     }
 
+
 exit:
   pr_clear_value (&json_body);
   pr_clear_value (&schema_raw);
@@ -17481,10 +17518,19 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 {
   int rc = NO_ERROR;
   DB_VALUE json_body, schema_raw;
+  JSON_DOC *doc = NULL;
+  const char *json_raw = NULL;
+  char *json_raw_copy = NULL;
 
   DB_MAKE_NULL (value);
   DB_MAKE_NULL (&json_body);
   DB_MAKE_NULL (&schema_raw);
+
+  if (size == 0)
+    {
+      /* early out, means json is NULL */
+      return NO_ERROR;
+    }
 
   rc = (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, false, NULL, 0);
   if (rc != NO_ERROR)
@@ -17498,27 +17544,18 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
       goto exit;
     }
 
-  if (DB_GET_STRING_SIZE (&json_body) == 0)
-    {
-      value->data.json.json_body = NULL;
-      value->data.json.document = NULL;
-      value->data.json.schema_raw = NULL;
+  assert (!DB_IS_NULL (&json_body));
 
+  json_raw = DB_PULL_STRING (&json_body);
+
+  rc = db_json_get_json_from_str (json_raw, doc);
+  if (rc != NO_ERROR)
+    {
+      assert (false);
       goto exit;
     }
-  else
-    {
-      JSON_DOC *doc = NULL;
-      const char *json_raw = DB_GET_STRING (&json_body);
-
-      rc = db_json_get_json_from_str (json_raw, doc);
-      if (rc != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      db_make_json (value, db_private_strdup (NULL, json_raw), doc, true);
-    }
+  json_raw_copy = db_private_strdup (NULL, json_raw);
+  db_make_json (value, json_raw_copy, doc, true);
 
   if (DB_GET_STRING_SIZE (&schema_raw) > 0)
     {
@@ -17545,23 +17582,13 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   int second_uncomp_length, second_comp_length;
   int rc;
   char *first_json_body, *second_json_body;
+  DB_VALUE json1, json2;
+  JSON_DOC *doc1 = NULL, *doc2 = NULL;
 
   DB_VALUE_COMPARE_RESULT res = DB_UNK;
 
   first = (char *) mem1;
   second = (char *) mem2;
-
-  first_uncomp_length = OR_GET_BYTE (first);
-  second_uncomp_length = OR_GET_BYTE (second);
-
-  if (first_uncomp_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
-      && second_uncomp_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
-    {
-      first += OR_BYTE_SIZE;
-      second += OR_BYTE_SIZE;
-
-      return (strcmp (first, second) == 0) ? DB_EQ : DB_UNK;
-    }
 
   or_init (&first_buf, first, 0);
   or_init (&second_buf, second, 0);
@@ -17584,7 +17611,19 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
       goto cleanup;
     }
 
-  res = (strcmp (first_json_body, second_json_body) == 0 ? DB_EQ : DB_UNK);
+  rc = db_json_get_json_from_str (first_json_body, doc1);
+  assert (rc == NO_ERROR && doc1 != NULL);
+  rc = db_json_get_json_from_str (second_json_body, doc2);
+  assert (rc == NO_ERROR && doc2 != NULL);
+
+  db_make_json (&json1, first_json_body, doc1, true);
+  db_make_json (&json2, second_json_body, doc2, true);
+
+  res = mr_cmpval_json (&json1, &json2, do_coercion, total_order, 0, 0);
+  pr_clear_value (&json1);
+  pr_clear_value (&json2);
+
+  return res;
 
 cleanup:
   db_private_free (NULL, first_json_body);
@@ -17593,17 +17632,96 @@ cleanup:
   return res;
 }
 
+/* when total_order is true,
+ * we force to string uncomparable types.
+ * this is because "order by" uses total_order=true
+ * and we don't want to fail. The standard says that
+ * only scalar and nulls are comparable.
+ * 
+ * we only return DB_UNK when either one is null and
+ * total_order is false
+ */
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  bool res = db_json_are_docs_equal (DB_GET_JSON_DOCUMENT (value1), DB_GET_JSON_DOCUMENT (value2));
+  JSON_DOC *doc1 = NULL, *doc2 = NULL;
+  DB_JSON_TYPE type1 = DB_JSON_UNKNOWN;
+  DB_JSON_TYPE type2 = DB_JSON_UNKNOWN;
+  DB_VALUE scalar_value1, scalar_value2;
+  DB_VALUE_COMPARE_RESULT cmp_result;
+  bool is_value1_null = true, is_value2_null = true;
+  int error_code;
 
-  if (res)
+  doc1 = DB_GET_JSON_DOCUMENT (value1);
+  doc2 = DB_GET_JSON_DOCUMENT (value2);
+
+  is_value1_null = DB_IS_NULL (value1) || ((type1 = db_json_get_type (doc1)) == DB_JSON_NULL);
+  is_value2_null = DB_IS_NULL (value2) || ((type2 = db_json_get_type (doc2)) == DB_JSON_NULL);
+
+  if (is_value1_null || is_value2_null)
     {
-      return DB_EQ;
+      if (!total_order)
+	{
+	  return DB_UNK;
+	}
+
+      if (is_value1_null && is_value2_null)
+	{
+	  return DB_EQ;
+	}
+
+      return is_value1_null ? DB_LT : DB_GT;
+    }
+
+  /* db_json_get_type shouldn't return DB_JSON_UNKNOWN, this represents a bug */
+  assert (type1 != DB_JSON_UNKNOWN && type2 != DB_JSON_UNKNOWN);
+
+  DB_MAKE_NULL (&scalar_value1);
+  DB_MAKE_NULL (&scalar_value2);
+
+  if (db_json_doc_is_uncomparable (doc1) || db_json_doc_is_uncomparable (doc2))
+    {
+      /* force string comp */
+      char *str1 = NULL, *str2 = NULL;
+
+      str1 = db_json_get_raw_json_body_from_document (doc1);
+      str2 = db_json_get_raw_json_body_from_document (doc2);
+
+      DB_MAKE_STRING (&scalar_value1, str1);
+      DB_MAKE_STRING (&scalar_value2, str2);
+      scalar_value1.need_clear = true;
+      scalar_value2.need_clear = true;
     }
   else
     {
-      return DB_UNK;
+      /* This is not according to standard, in SQL/JSON standard
+       * different types should not be compared, but rather throw
+       * an error. We chose to also compare different scalar types
+       * even when total_order is false.
+       */
+      error_code = db_convert_json_into_scalar (value1, &scalar_value1);
+      if (error_code != NO_ERROR)
+	{
+	  /* this shouldn't happen */
+	  assert (false);
+	  pr_clear_value (&scalar_value1);
+	  return DB_UNK;
+	}
+
+      error_code = db_convert_json_into_scalar (value2, &scalar_value2);
+      if (error_code != NO_ERROR)
+	{
+	  /* this shouldn't happen */
+	  assert (false);
+	  pr_clear_value (&scalar_value1);
+	  pr_clear_value (&scalar_value2);
+	  return DB_UNK;
+	}
     }
+
+  cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+
+  pr_clear_value (&scalar_value1);
+  pr_clear_value (&scalar_value2);
+  return cmp_result;
 }
