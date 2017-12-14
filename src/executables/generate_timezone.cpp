@@ -29,7 +29,9 @@
 void
 usage (void)
 {
-  std::cerr << "requires one argument for input path" << std::endl;
+  std::cerr << "gen_timezones incorrect usages; requires two arguments:" << std::endl;
+  std::cerr << "\t1. path to input tzdata file" << std::endl;
+  std::cerr << "\t2. path to output timezones.c file" << std::endl;
 }
 
 int
@@ -38,18 +40,20 @@ main (int argc, char ** argv)
   er_init (NULL, er_exit_ask::ER_NEVER_EXIT);
 
   // check args
-  if (argc != 1)
+  if (argc != 3)
     {
       usage ();
       er_final (er_final_code::ER_ALL_FINAL);
       return EXIT_FAILURE;
     }
 
-  const char *input_path = argv[1];
+  const char *tzdata_input_path = argv[1];
+  const char *timezones_dot_c_output_path = argv[2];
   char checksum_str[TZ_CHECKSUM_SIZE + 1];
 
   std::memset (checksum_str, 0, sizeof (checksum_str));
-  if (timezone_compile_data (input_path, TZ_GEN_TYPE_NEW, NULL, checksum_str) != NO_ERROR)
+  if (timezone_compile_data (tzdata_input_path, TZ_GEN_TYPE_NEW, NULL, timezones_dot_c_output_path, checksum_str)
+      != NO_ERROR)
     {
       assert (false);
       er_final (er_final_code::ER_ALL_FINAL);

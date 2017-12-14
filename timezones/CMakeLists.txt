@@ -42,8 +42,9 @@ add_custom_command(
   OUTPUT tzlib/timezones.c
   COMMENT "generating tzlib/timezones.c from ${CMAKE_CURRENT_SOURCE_DIR}/tzdata"
   COMMAND ${CMAKE_COMMAND} -E make_directory tzlib
-  COMMAND gen_timezone ${CMAKE_CURRENT_SOURCE_DIR}/tzdata
+  COMMAND gen_timezone ${CMAKE_CURRENT_SOURCE_DIR}/tzdata tzlib/timezones.c
 )
+set_source_files_properties(tzlib/timezones.c PROPERTIES GENERATED true)
 
 # create library
 message (STATUS ".... cubrid_timezones lib")
@@ -52,6 +53,7 @@ set_target_properties(cubrid_timezones PROPERTIES SOVERSION "${CUBRID_MAJOR_VERS
 if(WIN32)
   set_target_properties(cubrid_timezones PROPERTIES OUTPUT_NAME libcubrid_timezones)
 endif(WIN32)
+add_dependencies(cubrid_timezones gen_timezone)
 
 install(TARGETS cubrid_timezones
   RUNTIME DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
