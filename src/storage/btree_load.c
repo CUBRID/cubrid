@@ -3729,7 +3729,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   INDX_SCAN_ID pk_isid;
   BTREE_SCAN pk_bt_scan;
   INT16 fk_slot_id = -1;
-  bool found = false, pk_has_visible = false;
+  bool found = false, pk_has_visible = false, fk_has_visible = false;
   char *val_print = NULL;
   bool is_fk_scan_desc = false;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
@@ -3773,6 +3773,12 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   /* Primary key index search prepare */
   ret = btree_prepare_bts (thread_p, &pk_bt_scan, sort_args->fk_refcls_pk_btid, &pk_isid, NULL, NULL, NULL, NULL,
 			   NULL, false, NULL);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -3836,6 +3842,18 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  break;
+	}
+
+      /* Check if the foreign key has any items visible. If not, early out. */
+      ret = btree_has_any_visible (thread_p, sort_args->btid, curr_fk_pageptr, &mvcc_snapshot_dirty, &fk_has_visible);
+      if (ret != NO_ERROR)
+	{
+	  break;
+	}
+
+      if (!fk_has_visible)
+	{
 	  break;
 	}
 
