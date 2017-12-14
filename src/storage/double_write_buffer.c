@@ -1985,7 +1985,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
       struct timespec to;
 
       pthread_mutex_unlock (&dwb_block->mutex);
-      to.tv_sec = (int) time (NULL) + 10;
+      to.tv_sec = (int) time (NULL) + 1000;
       to.tv_nsec = 0;
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
@@ -4016,7 +4016,7 @@ check_flushed_blocks:
 int
 dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 {
-  unsigned int i, iter;
+  unsigned int i;
   int num_pages, num_pages2;
   DWB_BLOCK *block;
 
@@ -4025,12 +4025,11 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
     {
       for (i = 0; i < block->count_flush_volumes_info; i++)
 	{
-          iter = 1;
 	  do
 	    {
 	      num_pages = ATOMIC_INC_32 (&block->flush_volumes_info[i].num_pages, 0);
 	      /* TODO - use parameter */
-	      if ((num_pages < 100) && (iter == 0))
+	      if (num_pages < 100)
 		{
 		  /* Not enough pages, do not flush yet. */
 		  break;
@@ -4047,7 +4046,6 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 		  /* Flushed by DWB block flusher. */
 		  assert (num_pages2 == 0);
 		}
-              iter++;
 	    }
 	  while (true);
 	}
