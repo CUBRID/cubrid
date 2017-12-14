@@ -4037,6 +4037,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 	      num_pages2 = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
 	      if (num_pages2 >= num_pages)
 		{
+		  /* The volume pages already flushed into double write buffer volume. */
 		  (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, false);
 		}
 	      else
