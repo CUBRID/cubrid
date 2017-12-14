@@ -17309,6 +17309,18 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       return;
     }
 
+  if (size < 0)
+    {
+      assert (false);
+      return;
+    }
+
+  if (size == 0)
+    {
+      mr_initmem_json (memptr, domain);
+      return;
+    }
+
   (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, false, NULL, 0);
   (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, false, NULL, 0);
 
