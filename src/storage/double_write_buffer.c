@@ -1985,7 +1985,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
       struct timespec to;
 
       pthread_mutex_unlock (&dwb_block->mutex);
-      to.tv_sec = (int) time (NULL) + 1000;
+      to.tv_sec = (int) time (NULL) + 50;
       to.tv_nsec = 0;
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
@@ -2479,10 +2479,9 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  assert (current_flush_volume_info != NULL);
 	  ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 1);
 	  count_writes++;
-	  /* TODO - use parameter */
-	  if (count_writes >= 200
-	      /*&& prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) == 0
-	         && thread_is_dwb_checksum_computation_thread_available () */ )
+
+	  if ((count_writes >= prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
+	      && (thread_is_dwb_flush_block_helper_thread_available ()))
 	    {
 	      if (double_Write_Buffer.helper_flush_block == NULL)
 		{
@@ -4028,8 +4027,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 	  do
 	    {
 	      num_pages = ATOMIC_INC_32 (&block->flush_volumes_info[i].num_pages, 0);
-	      /* TODO - use parameter */
-	      if (num_pages < 100)
+	      if (num_pages < (prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH) / 2))
 		{
 		  /* Not enough pages, do not flush yet. */
 		  break;

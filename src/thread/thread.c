@@ -4150,7 +4150,6 @@ thread_dwb_flush_block_thread (void *arg_p)
 bool
 thread_dwb_flush_block_helper_thread_is_running (void)
 {
-
   return *((volatile bool *) &thread_Dwb_flush_block_helper_thread.is_running);
 }
 
