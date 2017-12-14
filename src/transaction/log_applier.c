@@ -6502,7 +6502,7 @@ la_get_mem_size (void)
       vsize = (unsigned long) entry.pi_dvm * (sysconf (_SC_PAGESIZE) / ONE_K);
     }
 #else
-#       error
+#error
 #endif
   return vsize;
 }

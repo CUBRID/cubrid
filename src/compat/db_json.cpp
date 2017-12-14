@@ -131,6 +131,10 @@ static double db_json_get_double_from_value (const JSON_VALUE *doc);
 static const char *db_json_get_string_from_value (const JSON_VALUE *doc, bool copy);
 static const char *db_json_get_bool_as_str_from_value (const JSON_VALUE *doc, bool copy);
 STATIC_INLINE const char *const db_json_bool_to_string (bool b);
+static void db_json_merge_two_json_objects (JSON_DOC &obj1, const JSON_DOC *obj2);
+static void db_json_merge_two_json_arrays (JSON_DOC &array1, const JSON_DOC *array2);
+static void db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2);
+static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -637,6 +641,11 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
 
   doc = db_json_allocate_doc ();
 
+  if (json_raw == NULL)
+    {
+      return NO_ERROR;
+    }
+
   if (doc->Parse (json_raw).HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
@@ -660,9 +669,16 @@ db_json_get_copy_of_doc (const JSON_DOC *doc)
 }
 
 void
-db_json_copy_doc (JSON_DOC *dest, const JSON_DOC *src)
+db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src)
 {
-  dest->CopyFrom (*src, dest->GetAllocator ());
+  if (db_json_get_type (src) != DB_JSON_NULL)
+    {
+      dest.CopyFrom (*src, dest.GetAllocator ());
+    }
+  else
+    {
+      dest.SetNull ();
+    }
 }
 
 int
@@ -686,7 +702,14 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
       return NO_ERROR;
     }
 
-  val.CopyFrom (*value, doc->GetAllocator ());
+  if (value != NULL)
+    {
+      val.CopyFrom (*value, doc->GetAllocator ());
+    }
+  else
+    {
+      val.SetNull ();
+    }
 
   raw_path_len = strlen (raw_path);
   for (i = raw_path_len-1; i >= 0; i--)
@@ -727,11 +750,11 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
 	}
       else
 	{
-	  JSON_VALUE value;
+	  JSON_VALUE value_aux;
 
-	  value.SetArray ();
-	  value.PushBack (*resulting_json_parent, doc->GetAllocator ());
-	  resulting_json_parent->Swap (value);
+	  value_aux.SetArray ();
+	  value_aux.PushBack (*resulting_json_parent, doc->GetAllocator ());
+	  resulting_json_parent->Swap (value_aux);
 
 	  resulting_json_parent->PushBack (val, doc->GetAllocator ());
 	}
@@ -808,85 +831,88 @@ db_json_get_type_of_value (const JSON_VALUE *val)
 }
 
 void
-db_json_merge_two_json_objects (JSON_DOC *obj1, const JSON_DOC *obj2)
+db_json_merge_two_json_objects (JSON_DOC &obj1, const JSON_DOC *obj2)
 {
   JSON_VALUE obj2_copy;
 
-  assert (db_json_get_type (obj1) == DB_JSON_OBJECT);
+  assert (db_json_get_type (&obj1) == DB_JSON_OBJECT);
   assert (db_json_get_type (obj2) == DB_JSON_OBJECT);
 
-  obj2_copy.CopyFrom (*obj2, obj1->GetAllocator ());
+  obj2_copy.CopyFrom (*obj2, obj1.GetAllocator ());
 
   for (JSON_VALUE::MemberIterator itr = obj2_copy.MemberBegin (); itr != obj2_copy.MemberEnd (); ++itr)
     {
       const char *name = itr->name.GetString ();
 
-      if (obj1->HasMember (name))
+      if (obj1.HasMember (name))
 	{
-	  if ((*obj1) [name].IsArray ())
+	  if (obj1 [name].IsArray ())
 	    {
-	      (*obj1) [name].GetArray ().PushBack (itr->value, obj1->GetAllocator ());
+	      obj1 [name].GetArray ().PushBack (itr->value, obj1.GetAllocator ());
 	    }
 	  else
 	    {
 	      JSON_VALUE value;
 
 	      value.SetArray ();
-	      value.PushBack ((*obj1) [name], obj1->GetAllocator ());
-	      (*obj1) [name].Swap (value);
-	      (*obj1) [name].PushBack (itr->value, obj1->GetAllocator ());
+	      value.PushBack (obj1 [name], obj1.GetAllocator ());
+	      obj1 [name].Swap (value);
+	      obj1 [name].PushBack (itr->value, obj1.GetAllocator ());
 	    }
 	}
       else
 	{
-	  obj1->AddMember (itr->name, itr->value, obj1->GetAllocator ());
+	  obj1.AddMember (itr->name, itr->value, obj1.GetAllocator ());
 	}
     }
 }
 
 void
-db_json_merge_two_json_arrays (JSON_DOC *array1, const JSON_DOC *array2)
+db_json_merge_two_json_arrays (JSON_DOC &array1, const JSON_DOC *array2)
 {
   JSON_VALUE obj2_copy;
 
-  assert (db_json_get_type (array1) == DB_JSON_ARRAY);
+  assert (db_json_get_type (&array1) == DB_JSON_ARRAY);
   assert (db_json_get_type (array2) == DB_JSON_ARRAY);
 
-  obj2_copy.CopyFrom (*array2, array1->GetAllocator ());
+  obj2_copy.CopyFrom (*array2, array1.GetAllocator ());
 
   for (JSON_VALUE::ValueIterator itr = obj2_copy.Begin (); itr != obj2_copy.End (); ++itr)
     {
-      array1->PushBack (*itr, array1->GetAllocator ());
+      array1.PushBack (*itr, array1.GetAllocator ());
     }
 }
 
 void
-db_json_merge_two_json_by_array_wrapping (JSON_DOC *j1, const JSON_DOC *j2)
+db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2)
 {
-  JSON_DOC *j2_copy = db_json_allocate_doc ();
-
-  j2_copy->CopyFrom (*j2, j2_copy->GetAllocator ());
-
-  if (db_json_get_type (j1) != DB_JSON_ARRAY)
+  if (db_json_get_type (&j1) != DB_JSON_ARRAY)
     {
       JSON_VALUE value;
 
       value.SetArray ();
-      value.PushBack (*j1, j1->GetAllocator ());
-      ((JSON_VALUE *)j1)->Swap (value);
+      value.PushBack (j1, j1.GetAllocator ());
+      ((JSON_VALUE *) &j1)->Swap (value);
     }
 
   if (db_json_get_type (j2) != DB_JSON_ARRAY)
     {
       JSON_VALUE value;
+      JSON_DOC *j2_copy = db_json_allocate_doc ();
+
+      db_json_copy_doc (*j2_copy, j2);
 
       value.SetArray ();
-      value.PushBack (*j2_copy, j1->GetAllocator ());
+      value.PushBack (*j2_copy, j1.GetAllocator ());
       ((JSON_VALUE *)j2_copy)->Swap (value);
-    }
 
-  db_json_merge_two_json_arrays (j1, j2_copy);
-  db_json_delete_doc (j2_copy);
+      db_json_merge_two_json_arrays (j1, j2_copy);
+      db_json_delete_doc (j2_copy);
+    }
+  else
+    {
+      db_json_merge_two_json_arrays (j1, j2);
+    }
 }
 
 int
@@ -1004,11 +1030,12 @@ db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2)
  */
 
 int
-db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest)
+db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest)
 {
-  if (db_json_get_type (dest) == DB_JSON_NULL)
+  if (dest == NULL)
     {
-      db_json_copy_doc (dest, source);
+      dest = db_json_allocate_doc ();
+      db_json_copy_doc (*dest, source);
       return NO_ERROR;
     }
 
@@ -1016,20 +1043,20 @@ db_json_merge_func (const JSON_DOC *source, JSON_DOC *dest)
     {
       if (db_json_get_type (dest) == DB_JSON_OBJECT)
 	{
-	  db_json_merge_two_json_objects (dest, source);
+	  db_json_merge_two_json_objects (*dest, source);
 	}
       else if (db_json_get_type (dest) == DB_JSON_ARRAY)
 	{
-	  db_json_merge_two_json_arrays (dest, source);
+	  db_json_merge_two_json_arrays (*dest, source);
 	}
       else
 	{
-	  db_json_merge_two_json_by_array_wrapping (dest, source);
+	  db_json_merge_two_json_by_array_wrapping (*dest, source);
 	}
     }
   else
     {
-      db_json_merge_two_json_by_array_wrapping (dest, source);
+      db_json_merge_two_json_by_array_wrapping (*dest, source);
     }
 
   return NO_ERROR;
@@ -1309,6 +1336,12 @@ bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2)
       return false;
     }
   return *doc1 == *doc2;
+}
+
+void
+db_json_make_document_null (JSON_DOC *doc)
+{
+  doc->SetNull ();
 }
 
 bool db_json_doc_has_numeric_type (const JSON_DOC *doc)
