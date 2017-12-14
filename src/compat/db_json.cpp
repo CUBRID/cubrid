@@ -1292,7 +1292,10 @@ bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2)
 void
 db_json_make_document_null (JSON_DOC *doc)
 {
-  doc->SetNull ();
+  if (doc != NULL)
+    {
+      doc->SetNull ();
+    }
 }
 
 bool db_json_doc_has_numeric_type (const JSON_DOC *doc)
