@@ -159,7 +159,7 @@ JSON_VALIDATOR::~JSON_VALIDATOR (void)
 
   if (m_schema_raw != NULL)
     {
-      delete[] m_schema_raw;
+      free (m_schema_raw);
       m_schema_raw = NULL;
     }
 }
