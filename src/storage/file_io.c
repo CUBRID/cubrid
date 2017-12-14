@@ -4486,11 +4486,10 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
       (void) fileio_traverse_system_volume (thread_p, fileio_synchronize_sys_volume, &arg);
     }
 
-  /* TO DO - temporary disabled flush force */
-//#if !defined (CS_MODE)
-//  /* Flush DWB before volume data. */
-//  success = dwb_flush_force (thread_p, &all_sync);
-//#endif
+#if !defined (CS_MODE)
+  /* Flush DWB before volume data. */
+  success = dwb_flush_force (thread_p, &all_sync);
+#endif
 
   /* Check whether the volumes were flushed. */
   if (success == NO_ERROR && all_sync == false)
