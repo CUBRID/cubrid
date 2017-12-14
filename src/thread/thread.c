@@ -4082,6 +4082,22 @@ thread_is_dwb_flush_block_thread_available (void)
 }
 
 /*
+* thread_wakeup_dwb_flush_block_thread - wakeup the thread that flush DWB block
+*   return: nothing
+*/
+void
+thread_wakeup_dwb_flush_block_thread (void)
+{
+  int rv;
+  rv = pthread_mutex_lock (&thread_Dwb_flush_block_thread.lock);
+  if (thread_Dwb_flush_block_thread.is_running == false)
+    {
+      pthread_cond_signal (&thread_Dwb_flush_block_thread.cond);
+    }
+  pthread_mutex_unlock (&thread_Dwb_flush_block_thread.lock);
+}
+
+/*
  * thread_dwb_flush_block_thread () - flush block thread function
  *   return:
  */
@@ -4126,22 +4142,6 @@ thread_dwb_flush_block_thread (void *arg_p)
 #undef THREAD_DWB_FLUSH_BLOCK_WAKEUP_TIME_MSEC
 }
 
-/* 
- * thread_wakeup_dwb_flush_block_thread - wakeup the thread that flush DWB block
- *   return: nothing
- */
-void
-thread_wakeup_dwb_flush_block_thread (void)
-{
-  int rv;
-  rv = pthread_mutex_lock (&thread_Dwb_flush_block_thread.lock);
-  if (thread_Dwb_flush_block_thread.is_running == false)
-    {
-      pthread_cond_signal (&thread_Dwb_flush_block_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Dwb_flush_block_thread.lock);
-}
-
 /*
 * thread_dwb_flush_block_helper_thread_is_running () - Check whether flush block helper thread is running
 *
@@ -4167,6 +4167,22 @@ thread_is_dwb_flush_block_helper_thread_available (void)
     }
 
   return thread_Dwb_flush_block_helper_thread.is_available;
+}
+
+/*
+* thread_wakeup_dwb_flush_helper_block_thread - wakeup the flush helper thread that flush DWB block
+*   return: nothing
+*/
+void
+thread_wakeup_dwb_flush_helper_block_thread (void)
+{
+  int rv;
+  rv = pthread_mutex_lock (&thread_Dwb_flush_block_helper_thread.lock);
+  if (thread_Dwb_flush_block_helper_thread.is_running == false)
+    {
+      pthread_cond_signal (&thread_Dwb_flush_block_helper_thread.cond);
+    }
+  pthread_mutex_unlock (&thread_Dwb_flush_block_helper_thread.lock);
 }
 
 /*

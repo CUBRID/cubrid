@@ -467,6 +467,7 @@ extern void thread_wakeup_auto_volume_expansion_thread (void);
 extern void thread_wakeup_vacuum_master_thread (void);
 extern void thread_wakeup_vacuum_worker_threads (int n_workers);
 extern void thread_wakeup_dwb_flush_block_thread (void);
+extern void thread_wakeup_dwb_flush_helper_block_thread (void);
 extern void thread_wakeup_dwb_checksum_computation_thread (void);
 
 /* is available functions */

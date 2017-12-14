@@ -2481,15 +2481,15 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  count_writes++;
 	  /* TODO - use parameter */
 	  if (count_writes >= 200
-	      && prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) == 0
-	      && thread_is_dwb_checksum_computation_thread_available ())
+	      /*&& prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) == 0
+	         && thread_is_dwb_checksum_computation_thread_available () */ )
 	    {
 	      if (double_Write_Buffer.helper_flush_block == NULL)
 		{
 		  double_Write_Buffer.helper_flush_block = block;
 		}
 
-	      thread_wakeup_dwb_checksum_computation_thread ();
+	      thread_wakeup_dwb_flush_helper_block_thread ();
 	      count_writes = 0;
 	    }
 #endif
