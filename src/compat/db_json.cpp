@@ -130,7 +130,7 @@ static int db_json_get_int_from_value (const JSON_VALUE *val);
 static double db_json_get_double_from_value (const JSON_VALUE *doc);
 static const char *db_json_get_string_from_value (const JSON_VALUE *doc, bool copy);
 static const char *db_json_get_bool_as_str_from_value (const JSON_VALUE *doc, bool copy);
-static inline const char *const bool_to_string (bool b);
+STATIC_INLINE const char *const db_json_bool_to_string (bool b);
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -1121,7 +1121,8 @@ db_json_get_string_from_value (const JSON_VALUE *doc, bool copy)
     }
 }
 
-inline const char *const bool_to_string (bool b)
+STATIC_INLINE const char *const
+db_json_bool_to_string (bool b)
 {
   return b ? "true" : "false";
 }
@@ -1139,11 +1140,11 @@ db_json_get_bool_as_str_from_value (const JSON_VALUE *doc, bool copy)
 
   if (copy)
     {
-      return db_private_strdup (NULL, bool_to_string (doc->GetBool()));
+      return db_private_strdup (NULL, db_json_bool_to_string (doc->GetBool()));
     }
   else
     {
-      return bool_to_string (doc->GetBool());
+      return db_json_bool_to_string (doc->GetBool());
     }
 }
 
