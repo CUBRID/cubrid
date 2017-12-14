@@ -395,7 +395,7 @@ extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname, cons
 			  DKNPAGES npages, bool sweep_clean, bool dolock, bool dosync, size_t page_size,
 			  int kbytes_to_be_written_per_sec, bool reuse_file);
 extern DKNPAGES fileio_expand (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npages_toadd, DB_VOLTYPE voltype);
-extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, void *io_pgptr, DKNPAGES start_pageid,
+extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, FILEIO_PAGE * io_pgptr, DKNPAGES start_pageid,
 				      DKNPAGES npages, size_t page_size, int kbytes_to_be_written_per_sec);
 extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE_RESERVED * prv_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -412,6 +412,8 @@ extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname, const
 extern void fileio_dismount (THREAD_ENTRY * thread_p, int vdes);
 extern void fileio_dismount_all (THREAD_ENTRY * thread_p);
 extern void *fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size);
+extern void *fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
+					 size_t page_size);
 extern void *fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size,
 			   bool skip_flush);
 extern void *fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID page_id, int num_pages,
