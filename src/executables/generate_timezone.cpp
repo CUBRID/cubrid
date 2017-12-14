@@ -24,6 +24,7 @@
 #include "error_manager.h"
 #include "tz_compile.h"
 
+#include <cstring>
 #include <iostream>
 
 void

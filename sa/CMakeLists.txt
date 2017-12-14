@@ -392,28 +392,27 @@ if(WIN32)
   target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
+if(UNIX)
+target_external_dependencies(cubridsa
+  LIBNCURSES
+  )
+endif(UNIX)
 target_external_dependencies(cubridsa
   LIBEXPAT
   LIBJANSSON
+  LIBGPG_ERROR
   LIBGCRYPT
   LIBLZO
   LIBEXPAT
   LIBREGEX
+  LIBEDIT
   )
 target_include_directories(cubridsa PRIVATE
   ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
   ${JAVA_INC}
-  ${LIBJANSSON_INCLUDES}
-  ${LIBGCRYPT_INCLUDES}
-  ${LIBLZO_INCLUDES}
-  #${LIBEXPAT_INCLUDES}
   )
 target_link_libraries(cubridsa PRIVATE
     cas
-    ${LIBJANSSON_LIBS}
-    ${LIBGCRYPT_LIBS}
-    ${LIBLZO_LIBS}
-    #${LIBEXPAT_LIBS}
   )
 if(UNIX)
   # find out what this means:
