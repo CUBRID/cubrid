@@ -1004,6 +1004,11 @@ thread_return_all_transactions_entries (void)
 {
   int error = NO_ERROR, i;
 
+  if (!thread_Manager.initialized)
+    {
+      return NO_ERROR;
+    }
+
   for (THREAD_ENTRY * entry_iter = thread_iterate (NULL); entry_iter != NULL; entry_iter = thread_iterate (entry_iter))
     {
       error = thread_return_transaction_entry (entry_iter);
@@ -5513,6 +5518,13 @@ THREAD_ENTRY *
 thread_iterate (THREAD_ENTRY * thread_p)
 {
   int index = 0;
+
+  if (!thread_Manager.initialized)
+    {
+      assert (false);
+      return NULL;
+    }
+
   if (thread_p != NULL)
     {
       index = thread_p->index + 1;
