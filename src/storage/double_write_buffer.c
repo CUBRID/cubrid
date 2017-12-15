@@ -1985,7 +1985,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
       struct timespec to;
 
       pthread_mutex_unlock (&dwb_block->mutex);
-      to.tv_sec = (int) time (NULL) + 1000;
+      to.tv_sec = (int) time (NULL) + 20;
       to.tv_nsec = 0;
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
@@ -3796,122 +3796,39 @@ start:
  *
  * return   : Error code.
  * thread_p (in): The thread entry.
- * all_sync (out): True, if everything synchronized.
- *  Note: TO DO - optimize this function - force existing data, do not fills with null pages 
+ * all_sync (out): True, if everything synchronized. 
  */
 int
 dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
 {
-  UINT64 position_with_flags, blocks_status, current_block_version;
-  unsigned int current_block_no = DWB_NUM_TOTAL_BLOCKS, flush_block_no;
+  UINT64 intial_position_with_flags, current_position_with_flags, prev_position_with_flags, intial_block_version,
+    current_block_version;
+  unsigned int intial_block_no, current_block_no = DWB_NUM_TOTAL_BLOCKS, flush_block_no;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  FILEIO_PAGE *iopage;
+  FILEIO_PAGE *iopage = NULL;
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
   int error_code = NO_ERROR;
   DWB_SLOT *dwb_slot = NULL;
-  DWB_BLOCK *flush_block = NULL;
-  unsigned int num_total_blocks, diff_num_blocks;
+  unsigned int count_added_pages = 0, max_pages_to_add = 0, initial_num_pages = 0;
 
   assert (all_sync != NULL);
 
   *all_sync = false;
 start:
-  position_with_flags = ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL);
+  intial_position_with_flags = ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL);
 
-  if (!DWB_IS_CREATED (position_with_flags))
+  if (DWB_NOT_CREATED_OR_MODIFYING (intial_position_with_flags))
     {
-      /* Nothing to do. Everything flushed. */
-      return NO_ERROR;
-    }
-
-  if (DWB_IS_MODIFYING_STRUCTURE (position_with_flags))
-    {
-      /* DWB structure change started, needs to wait for flush. */
-      error_code = dwb_wait_for_strucure_modification (thread_p);
-      if (error_code != NO_ERROR)
+      if (!DWB_IS_CREATED (intial_position_with_flags))
 	{
-	  if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
-	    {
-	      /* timeout, try again */
-	      goto start;
-	    }
-	  return error_code;
-	}
-    }
-
-  blocks_status = DWB_GET_BLOCK_STATUS (position_with_flags);
-  if (blocks_status == 0)
-    {
-      /* Nothing to do. Everything flushed. */
-      return NO_ERROR;
-    }
-
-  current_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (position_with_flags);
-  /* Save the block version, to detect whether the block was overwritten. */
-  current_block_version = double_Write_Buffer.blocks[current_block_no].version;
-  num_total_blocks = DWB_NUM_TOTAL_BLOCKS;
-  assert (current_block_no < num_total_blocks);
-
-  if (position_with_flags != ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL))
-    {
-      /* The position_with_flags was modified meanwhile by concurrent threads. */
-      goto start;
-    }
-
-  /* Check whether the previous blocks were flushed */
-check_flushed_blocks:
-  flush_block_no = double_Write_Buffer.next_block_to_flush;
-  flush_block = &double_Write_Buffer.blocks[flush_block_no];
-
-#if defined (SERVER_MODE)
-
-  /* Check whether the block was flushed. */
-  if ((flush_block->version > current_block_version)
-      || (flush_block->version == current_block_version && flush_block_no > current_block_no))
-    {
-      /* Nothing to do. Everything flushed. */
-      return NO_ERROR;
-    }
-
-  if (current_block_no != flush_block_no)
-    {
-      if (current_block_no > flush_block_no)
-	{
-	  diff_num_blocks = current_block_no - flush_block_no + 1;
-	}
-      else
-	{
-	  diff_num_blocks = current_block_no + 1 + num_total_blocks - flush_block_no;
+	  /* Nothing to do. Everything flushed. */
+	  goto end;
 	}
 
-      assert (num_total_blocks >= 1 && diff_num_blocks <= num_total_blocks);
-
-      if (diff_num_blocks < num_total_blocks)
+      if (DWB_IS_MODIFYING_STRUCTURE (intial_position_with_flags))
 	{
-	  /* Since there are empty blocks, add null pages to current block to force the flush. */
-	}
-      else
-	{
-	  if (thread_is_dwb_checksum_computation_thread_available ())
-	    {
-	      /* Wake up checksum thread to compute checksum. */
-	      thread_wakeup_dwb_checksum_computation_thread ();
-	    }
-
-	  if (thread_is_dwb_flush_block_thread_available ())
-	    {
-	      /* Wake up flush thread. */
-	      thread_wakeup_dwb_flush_block_thread ();
-	    }
-
-	  /* Check again whether flushing advanced. */
-	  if (flush_block_no != double_Write_Buffer.next_block_to_flush)
-	    {
-	      goto check_flushed_blocks;
-	    }
-
-	  /* Too many blocks, wait for flush block threads. */
-	  error_code = dwb_wait_for_block_completion (thread_p, flush_block_no);
+	  /* DWB structure change started, needs to wait for flush. */
+	  error_code = dwb_wait_for_strucure_modification (thread_p);
 	  if (error_code != NO_ERROR)
 	    {
 	      if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
@@ -3919,32 +3836,111 @@ check_flushed_blocks:
 		  /* timeout, try again */
 		  goto start;
 		}
-
-	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
-		{
-		  _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %lld \n",
-				 error_code, flush_block_no, flush_block->version);
-		}
-
 	      return error_code;
 	    }
-
-	  goto check_flushed_blocks;
 	}
     }
-#endif
 
-  /*
-   * Add NULL pages to force block flushing. In this way, preserve also block flush order. This means that all
-   * blocks are flushed - the entire DWB.
-   */
+  if (DWB_GET_BLOCK_STATUS (intial_position_with_flags) == 0)
+    {
+      /* Nothing to do. Everything flushed. */
+      goto end;
+    }
+
+  intial_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (intial_position_with_flags);
+  while (!DWB_IS_BLOCK_WRITE_STARTED (intial_position_with_flags, intial_block_no))
+    {
+      /* Nothing to flush in this block, go to the previous block. */
+      intial_block_no = DWB_GET_PREV_BLOCK_NO (intial_block_no);
+    }
+
+  /* Save the block version and number of pages, to detect whether the block was written on disk. */
+  intial_block_version = double_Write_Buffer.blocks[intial_block_no].version;
+  initial_num_pages = double_Write_Buffer.blocks[intial_block_no].count_wb_pages;
+  if (intial_position_with_flags != ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL))
+    {
+      /* The position_with_flags was modified meanwhile by concurrent threads. */
+      goto start;
+    }
+  prev_position_with_flags = intial_position_with_flags;
+
+  max_pages_to_add = DWB_BLOCK_NUM_PAGES - initial_num_pages;
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
   memset (iopage, 0, IO_MAX_PAGE_SIZE);
   fileio_initialize_res (thread_p, &(iopage->prv));
-  while ((double_Write_Buffer.blocks[current_block_no].count_wb_pages != DWB_BLOCK_NUM_PAGES)
-	 && (current_block_version == double_Write_Buffer.blocks[current_block_no].version))
+
+  /* Check whether the initial block was flushed */
+check_flushed_blocks:
+  flush_block_no = double_Write_Buffer.next_block_to_flush;
+  if (double_Write_Buffer.blocks_flush_counter > 0 && flush_block_no == intial_block_no)
     {
-      /* The block is not full yet. Add more null pages. */
+      /* The intial block is currently flushing, wait for it. */
+      error_code = dwb_wait_for_block_completion (thread_p, intial_block_no);
+      if (error_code != NO_ERROR)
+	{
+	  if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
+	    {
+	      /* timeout, try again */
+	      goto check_flushed_blocks;
+	    }
+
+	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %lld \n",
+			     error_code, flush_block_no, double_Write_Buffer.blocks[flush_block_no].version);
+	    }
+
+	  return error_code;
+	}
+
+      goto check_flushed_blocks;
+    }
+
+  /* Read again the current position and check whether initial block was flushed. */
+  current_position_with_flags = ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL);
+  if (DWB_NOT_CREATED_OR_MODIFYING (current_position_with_flags))
+    {
+      if (!DWB_IS_CREATED (current_position_with_flags))
+	{
+	  /* Nothing to do. Everything flushed. */
+	  goto end;
+	}
+
+      if (DWB_IS_MODIFYING_STRUCTURE (current_position_with_flags))
+	{
+	  /* DWB structure change started, needs to wait for flush. */
+	  error_code = dwb_wait_for_strucure_modification (thread_p);
+	  if (error_code != NO_ERROR)
+	    {
+	      if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
+		{
+		  /* timeout, try again */
+		  goto check_flushed_blocks;
+		}
+	      return error_code;
+	    }
+	}
+    }
+
+  if (!DWB_IS_BLOCK_WRITE_STARTED (current_position_with_flags, intial_block_no))
+    {
+      /* Nothing to do. Everything flushed. */
+      goto end;
+    }
+
+  /* Check whether intial block content was overwritten. */
+  current_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (current_position_with_flags);
+  current_block_version = double_Write_Buffer.blocks[current_block_no].version;
+  if ((current_block_no == intial_block_no) && (current_block_version != intial_block_version))
+    {
+      assert (current_block_version > intial_block_version);
+      /* Nothing to do. Everything flushed. */
+      goto end;
+    }
+
+  if (current_position_with_flags == prev_position_with_flags && count_added_pages < max_pages_to_add)
+    {
+      /* The system didn't advanced, add null pages to force flush block. */
       dwb_slot = NULL;
       error_code = dwb_add_page (thread_p, iopage, &null_vpid, &dwb_slot);
       if (error_code != NO_ERROR)
@@ -3954,53 +3950,15 @@ check_flushed_blocks:
       else if (dwb_slot == NULL)
 	{
 	  /* DWB disabled meanwhile, everything flushed. */
-	  return NO_ERROR;
+	  goto end;
 	}
+      count_added_pages++;
     }
 
-  if (current_block_version == double_Write_Buffer.blocks[current_block_no].version)
-    {
-      /* Needs block flushing. */
-      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "Waits for flushing block=%d having version=%lld) \n",
-			 current_block_no, double_Write_Buffer.blocks[current_block_no].version);
-	}
+  prev_position_with_flags = current_position_with_flags;
+  goto check_flushed_blocks;
 
-#if defined (SERVER_MODE)
-      if (thread_is_dwb_checksum_computation_thread_available ())
-	{
-	  /* Wake up checksum thread to compute checksum. */
-	  thread_wakeup_dwb_checksum_computation_thread ();
-	}
-
-      if (thread_is_dwb_flush_block_thread_available ())
-	{
-	  /* Wake up flush thread. */
-	  thread_wakeup_dwb_flush_block_thread ();
-	}
-
-      /* Not flushed yet. Wait for current block flush. */
-      error_code = dwb_wait_for_block_completion (thread_p, current_block_no);
-      if (error_code != NO_ERROR)
-	{
-	  if (error_code == ER_CSS_PTHREAD_COND_TIMEDOUT)
-	    {
-	      /* timeout, try again */
-	      goto start;
-	    }
-
-	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
-	    {
-	      _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %lld \n",
-			     error_code, current_block_no, double_Write_Buffer.blocks[current_block_no].version);
-	    }
-
-	  return error_code;
-	}
-#endif /* SERVER_MODE */
-    }
-
+end:
   *all_sync = true;
 
   return NO_ERROR;
