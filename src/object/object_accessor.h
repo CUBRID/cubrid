@@ -185,8 +185,6 @@ extern MOP obj_repl_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMO
 
 extern MOP obj_desc_find_unique (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value, AU_FETCHMODE fetchmode);
 
-extern int obj_prefetch_repl_update_or_delete_object (MOP classop, DB_VALUE * key_value);
-
 /* Internal support for specific modules */
 
 /* called by Workspace */
