@@ -24,7 +24,7 @@
 
 #include "dbtype_def.h"
 
-#if !defined (_DBTYPE_API_H_)
+#if !defined (_DBTYPE_FUNCTION_H_)
 #if defined (__cplusplus) || defined (__GNUC__)
 #define DB_MACRO_INLINE static inline
 #elif _MSC_VER >= 1000
