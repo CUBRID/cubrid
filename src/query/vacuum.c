@@ -4972,6 +4972,13 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
+  /* Save oldest MVCCID of block cached in log_Gl.hdr to be used by vacuum_update_oldest_unvacuumed_mvccid.
+   * See description for vacuum_Save_log_hdr_oldest_mvccid.
+   */
+  vacuum_Save_log_hdr_oldest_mvccid =
+    LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa) ?
+    vacuum_Global_oldest_active_mvccid : ATOMIC_INC_64 (&log_Gl.hdr.last_block_oldest_mvccid, 0);
+
   if (lf_circular_queue_is_empty (vacuum_Block_data_buffer))
     {
       /* empty */
@@ -4983,13 +4990,6 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
       assert_release (false);
       return ER_FAILED;
     }
-
-  /* Save oldest MVCCID of block cached in log_Gl.hdr to be used by vacuum_update_oldest_unvacuumed_mvccid.
-   * See description for vacuum_Save_log_hdr_oldest_mvccid.
-   */
-  vacuum_Save_log_hdr_oldest_mvccid =
-    LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa) ?
-    vacuum_Global_oldest_active_mvccid : ATOMIC_INC_64 (&log_Gl.hdr.last_block_oldest_mvccid, 0);
 
   data_page = vacuum_Data.last_page;
   page_free_data = data_page->data + data_page->index_free;
