@@ -45,7 +45,7 @@ DB_MACRO_INLINE int
 db_get_int (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
-  CHECK_1ARG_ZERO(value);
+  CHECK_1ARG_ZERO (value);
 #endif
   assert (value->domain.general_info.type == DB_TYPE_INTEGER);
 
@@ -94,7 +94,7 @@ db_get_string (const DB_VALUE * value)
 {
   char *str = NULL;
 #if defined(API_ACTIVE_CHECKS)
-  CHECK_1ARG_NULL(value);
+  CHECK_1ARG_NULL (value);
 #endif
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
@@ -656,7 +656,7 @@ DB_MACRO_INLINE int
 db_get_string_codeset (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
-  CHECK_1ARG_ZERO_WITH_TYPE(value, INTL_CODESET);
+  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
 #endif
 
   return (int) value->data.ch.info.codeset;
@@ -715,7 +715,7 @@ DB_MACRO_INLINE OID *
 db_get_oid (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
-  CHECK_1ARG_NULL(value);
+  CHECK_1ARG_NULL (value);
 #endif
   assert (value->domain.general_info.type == DB_TYPE_OID);
 
@@ -731,7 +731,7 @@ DB_MACRO_INLINE DB_TYPE
 db_value_type (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
-  CHECK_1ARG_UNKNOWN(value);
+  CHECK_1ARG_UNKNOWN (value);
 #endif
   if (value->domain.general_info.is_null)
     {
@@ -849,7 +849,7 @@ DB_MACRO_INLINE int
 db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
 {
 #if defined(API_ACTIVE_CHECKS)
-  CHECK_1ARG_ERROR(value);
+  CHECK_1ARG_ERROR (value);
 #endif
 
   value->data.ch.info.style = MEDIUM_STRING;
@@ -1987,10 +1987,10 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
 * value(in) :
 */
 DB_MACRO_INLINE bool
-db_value_is_null(const DB_VALUE * value)
+db_value_is_null (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
-  CHECK_1ARG_TRUE(value);
+  CHECK_1ARG_TRUE (value);
 #endif
 
   if (value == NULL)
@@ -2005,50 +2005,50 @@ db_value_is_null(const DB_VALUE * value)
 * value(in)  : Pointer to a DB_VALUE
 */
 DB_MACRO_INLINE DB_TYPE
-db_value_domain_type(const DB_VALUE * value)
+db_value_domain_type (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
-  CHECK_1ARG_UNKNOWN(value);
+  CHECK_1ARG_UNKNOWN (value);
 #endif
   if (value == NULL)
     return DB_TYPE_UNKNOWN;
 
-  return (DB_TYPE)value->domain.general_info.type;
+  return (DB_TYPE) value->domain.general_info.type;
 
 }
 
 DB_MACRO_INLINE bool
-db_is_json_value_type(DB_TYPE type)
+db_is_json_value_type (DB_TYPE type)
 {
   switch (type)
-  {
-  case DB_TYPE_CHAR:
-  case DB_TYPE_VARNCHAR:
-  case DB_TYPE_NCHAR:
-  case DB_TYPE_VARCHAR:
-  case DB_TYPE_NULL:
-  case DB_TYPE_INTEGER:
-  case DB_TYPE_DOUBLE:
-  case DB_TYPE_JSON:
-  case DB_TYPE_NUMERIC:
-    return true;
-  default:
-    return false;
-  }
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NULL:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_JSON:
+    case DB_TYPE_NUMERIC:
+      return true;
+    default:
+      return false;
+    }
 }
 
 DB_MACRO_INLINE bool
-db_is_json_doc_type(DB_TYPE type)
+db_is_json_doc_type (DB_TYPE type)
 {
   switch (type)
-  {
-  case DB_TYPE_CHAR:
-  case DB_TYPE_VARNCHAR:
-  case DB_TYPE_NCHAR:
-  case DB_TYPE_VARCHAR:
-  case DB_TYPE_JSON:
-    return true;
-  default:
-    return false;
-  }
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_JSON:
+      return true;
+    default:
+      return false;
+    }
 }
