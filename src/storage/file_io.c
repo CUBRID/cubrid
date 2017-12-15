@@ -550,7 +550,7 @@ static FILEIO_TYPE fileio_write_backup_volume (THREAD_ENTRY * thread_p, FILEIO_B
 static FILEIO_NODE *fileio_append_queue (FILEIO_QUEUE * qp, FILEIO_NODE * node);
 #endif /* SERVER_MODE */
 
-static void fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage, bool skip_flush);
+static void fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage);
 static int fileio_increase_flushed_page_count (int npages);
 static int fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken);
 static int fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb);
@@ -580,7 +580,7 @@ fileio_increase_flushed_page_count (int npages)
 }
 
 static void
-fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage, bool skip_flush)
+fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
 {
 #if !defined(SERVER_MODE)
   return;
@@ -610,7 +610,7 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage, bool skip_f
   need_sync = false;
 
   flushed_page_count = fileio_increase_flushed_page_count (npage);
-  if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH) && skip_flush == false)
+  if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
       need_sync = true;
       fileio_Flushed_page_count = 0;
@@ -3768,6 +3768,7 @@ void *
 fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
 			    size_t page_size)
 {
+  bool skip_flush = false;
 #if !defined (CS_MODE)
   DWB_SLOT *p_dwb_slot = NULL;
   VPID vpid;
@@ -3776,7 +3777,8 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
   int error_code;
 
   assert (vol_fd != NULL_VOLDES);
-  if (dwb_is_created ())
+  skip_flush = dwb_is_created ();
+  if (skip_flush)
     {
       FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (false);
 
@@ -3805,7 +3807,7 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
     }
 #endif
 
-  return fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, false);
+  return fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, skip_flush);
 }
 
 
@@ -3950,8 +3952,13 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
     }
 #endif
 
-  fileio_compensate_flush (thread_p, vol_fd, 1, skip_flush);
+  if (skip_flush == false)
+    {
+      fileio_compensate_flush (thread_p, vol_fd, 1);
+    }
+
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOWRITES);
+
   return io_page_p;
 }
 
@@ -4255,7 +4262,10 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
     }
 #endif
 
-  fileio_compensate_flush (thread_p, vol_fd, num_pages, skip_flush);
+  if (skip_flush == false)
+    {
+      fileio_compensate_flush (thread_p, vol_fd, num_pages);
+    }
 
   perfmon_add_stat (thread_p, PSTAT_FILE_NUM_IOWRITES, num_pages);
   return io_pages_p;

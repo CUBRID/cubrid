@@ -9790,6 +9790,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   bool was_dirty = false, uses_dwb;
   DWB_SLOT *dwb_slot = NULL;
   LOG_LSA lsa;
+  bool skip_flush;
 
   PGBUF_BCB_CHECK_OWN (bufptr);
 
@@ -9841,7 +9842,8 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
 
   was_dirty = pgbuf_bcb_mark_is_flushing (thread_p, bufptr);
 
-  uses_dwb = dwb_is_created () && !pgbuf_is_temporary_volume (bufptr->vpid.volid);
+  skip_flush = dwb_is_created ();
+  uses_dwb = skip_flush && !pgbuf_is_temporary_volume (bufptr->vpid.volid);
 start_copy_page:
   if (uses_dwb)
     {
@@ -9911,7 +9913,7 @@ copy_unflushed_lsa:
 	}
     }
   else if (fileio_write (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid,
-			 IO_PAGESIZE, false) == NULL)
+			 IO_PAGESIZE, skip_flush) == NULL)
     {
       error = ER_FAILED;
     }
