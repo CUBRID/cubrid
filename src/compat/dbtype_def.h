@@ -19,14 +19,14 @@
 
 
 /*
- * dbtype_common.h - Definitions related to the memory representations of database
+ * dbtype_def.h - Definitions related to the memory representations of database
  * attribute values. This is an application interface file. It should contain
  * only definitions available to CUBRID customer applications. It will be exposed
  * as part of the dbi_compat.h file.
  */
 
-#ifndef _DBTYPE_COMMON_H_
-#define _DBTYPE_COMMON_H_
+#ifndef _DBTYPE_DEF_H_
+#define _DBTYPE_DEF_H_
 
 #include "error_code.h"
 #include <stdint.h>
@@ -1572,4 +1572,4 @@ extern "C"
 }
 #endif				/* __cplusplus */
 
-#endif				/* dbtype_common.h */
+#endif				/* _DBTYPE_DEF_H_ */
