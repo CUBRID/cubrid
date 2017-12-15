@@ -6949,7 +6949,7 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
       }
     case DB_JSON_BOOL:
       {
-	const char *str = db_json_get_bool_as_str_from_document (doc);
+	char *str = db_json_get_bool_as_str_from_document (doc);
 	int error_code = DB_MAKE_STRING (dest, str);
 	if (error_code != NO_ERROR)
 	  {

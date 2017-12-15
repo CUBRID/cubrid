@@ -128,9 +128,10 @@ static DB_JSON_TYPE db_json_get_type_of_value (const JSON_VALUE *val);
 static bool db_json_value_has_numeric_type (const JSON_VALUE *doc);
 static int db_json_get_int_from_value (const JSON_VALUE *val);
 static double db_json_get_double_from_value (const JSON_VALUE *doc);
-static const char *db_json_get_string_from_value (const JSON_VALUE *doc, bool copy);
-static const char *db_json_get_bool_as_str_from_value (const JSON_VALUE *doc, bool copy);
-STATIC_INLINE const char *const db_json_bool_to_string (bool b);
+static const char *db_json_get_string_from_value (const JSON_VALUE *doc);
+static char *db_json_copy_string_from_value (const JSON_VALUE *doc);
+static char *db_json_get_bool_as_str_from_value (const JSON_VALUE *doc);
+STATIC_INLINE char *db_json_bool_to_string (bool b);
 static void db_json_merge_two_json_objects (JSON_DOC &obj1, const JSON_DOC *obj2);
 static void db_json_merge_two_json_arrays (JSON_DOC &array1, const JSON_DOC *array2);
 static void db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2);
@@ -1077,25 +1078,19 @@ db_json_get_double_from_document (const JSON_DOC *doc)
 const char *
 db_json_get_string_from_document (const JSON_DOC *doc)
 {
-  return db_json_get_string_from_value (doc, false);
+  return db_json_get_string_from_value (doc);
 }
 
-const char *
+char *
 db_json_get_bool_as_str_from_document (const JSON_DOC *doc)
 {
-  return db_json_get_bool_as_str_from_value (doc, false);
+  return db_json_get_bool_as_str_from_value (doc);
 }
 
 char *
 db_json_copy_string_from_document (const JSON_DOC *doc)
 {
-  return const_cast <char *> (db_json_get_string_from_value (doc, true));
-}
-
-char *
-db_json_copy_bool_as_str_from_document (const JSON_DOC *doc)
-{
-  return const_cast <char *> (db_json_get_bool_as_str_from_value (doc, true));
+  return db_json_copy_string_from_value (doc);
 }
 
 int
@@ -1128,7 +1123,7 @@ db_json_get_double_from_value (const JSON_VALUE *doc)
 }
 
 const char *
-db_json_get_string_from_value (const JSON_VALUE *doc, bool copy)
+db_json_get_string_from_value (const JSON_VALUE *doc)
 {
   if (doc == NULL)
     {
@@ -1138,24 +1133,30 @@ db_json_get_string_from_value (const JSON_VALUE *doc, bool copy)
 
   assert (db_json_get_type_of_value (doc) == DB_JSON_STRING);
 
-  if (copy)
-    {
-      return db_private_strdup (NULL, doc->GetString ());
-    }
-  else
-    {
-      return doc->GetString ();
-    }
+  return doc->GetString();
 }
 
-STATIC_INLINE const char *const
+char *
+db_json_copy_string_from_value (const JSON_VALUE *doc)
+{
+  if (doc == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  assert (db_json_get_type_of_value (doc) == DB_JSON_STRING);
+  return db_private_strdup (NULL, doc->GetString());
+}
+
+STATIC_INLINE char *
 db_json_bool_to_string (bool b)
 {
-  return b ? "true" : "false";
+  return b ? db_private_strdup (NULL, "true") : db_private_strdup (NULL, "false");
 }
 
-const char *
-db_json_get_bool_as_str_from_value (const JSON_VALUE *doc, bool copy)
+char *
+db_json_get_bool_as_str_from_value (const JSON_VALUE *doc)
 {
   if (doc == NULL)
     {
@@ -1164,15 +1165,7 @@ db_json_get_bool_as_str_from_value (const JSON_VALUE *doc, bool copy)
     }
 
   assert (db_json_get_type_of_value (doc) == DB_JSON_BOOL);
-
-  if (copy)
-    {
-      return db_private_strdup (NULL, db_json_bool_to_string (doc->GetBool()));
-    }
-  else
-    {
-      return db_json_bool_to_string (doc->GetBool());
-    }
+  return db_json_bool_to_string (doc->GetBool());
 }
 
 bool
