@@ -770,10 +770,7 @@ public:
   {
     cubthread::entry &context = cubthread::entry_task::create_context ();
 
-    VACUUM_WORKER *worker = vacuum_Workers_context_pool->claim ();
-    assert (worker != NULL);
-    worker->state = VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE;
-    vacuum_init_thread_context (context, TT_VACUUM_WORKER, worker);
+    vacuum_init_thread_context (context, TT_VACUUM_WORKER, vacuum_Workers_context_pool->claim ());
 
     if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
       {
@@ -787,7 +784,9 @@ public:
   {
     if (context.vacuum_worker != NULL)
       {
+        context.vacuum_worker->state = VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE;
         vacuum_Workers_context_pool->retire (*context.vacuum_worker);
+        context.vacuum_worker = NULL;
       }
     else
       {
