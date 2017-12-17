@@ -378,6 +378,6 @@ extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT
 
 extern void vacuum_log_last_blockid (THREAD_ENTRY * thread_p);
 
-extern void vacuum_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD_TYPE & save_type);
+extern void vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD_TYPE & save_type);
 extern void vacuum_restore_thread (THREAD_ENTRY * thread_p, THREAD_TYPE save_type);
 #endif /* _VACUUM_H_ */

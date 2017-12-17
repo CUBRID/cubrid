@@ -770,7 +770,10 @@ public:
   {
     cubthread::entry &context = cubthread::entry_task::create_context ();
 
-    vacuum_init_thread_context (context, TT_VACUUM_WORKER, vacuum_Workers_context_pool->claim ());
+    VACUUM_WORKER *worker = vacuum_Workers_context_pool->claim ();
+    assert (worker != NULL);
+    worker->state = VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE;
+    vacuum_init_thread_context (context, TT_VACUUM_WORKER, worker);
 
     if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
       {
@@ -3462,8 +3465,8 @@ vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worke
   long long unsigned size_worker_prefetch_log_buffer;
 #endif /* SERVER_MODE */
 
-  /* Initialize worker state */
-  worker->state = VACUUM_WORKER_STATE_INACTIVE;
+  assert (worker->state == VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE
+	  || worker->state == VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_RECOVERY);
 
   if (worker->allocated_resources)
     {
@@ -7896,7 +7899,7 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
  * save_type (out) : save previous thread type
  */
 void
-vacuum_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD_TYPE & save_type)
+vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD_TYPE & save_type)
 {
   if (trid == LOG_VACUUM_MASTER_TRANID)
     {
@@ -7904,6 +7907,9 @@ vacuum_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD_TY
     }
   else
     {
+      // safe-guard: state is expected to be in-recovery
+      assert (vacuum_rv_get_worker_by_trid (thread_p, trid)->state
+	      == VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_RECOVERY);
       vacuum_convert_thread_to_worker (thread_p, vacuum_rv_get_worker_by_trid (thread_p, trid), save_type);
     }
 }
