@@ -4045,8 +4045,13 @@ start:
   start_block = double_Write_Buffer.next_block_to_flush;
   if (ATOMIC_INC_32 (&double_Write_Buffer.blocks_flush_counter, 0) > 0)
     {
-      /* The block is flushed, do not compute checksums again. */
-      return NO_ERROR;
+      if (start_block != double_Write_Buffer.next_block_to_flush)
+	{
+	  /* Try again, next_block_to_flush has changed. */
+	  goto start;
+	}
+
+      start_block = DWB_GET_NEXT_BLOCK_NO (start_block);
     }
 
   if (!dwb_block_has_all_checksums_computed (start_block))
