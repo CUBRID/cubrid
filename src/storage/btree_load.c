@@ -3838,22 +3838,11 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   while (true)
     {
       ret = btree_advance_to_next_slot_and_fix_page (thread_p, sort_args->btid, &vpid, &curr_fk_pageptr, &fk_slot_id,
-						     &fk_key, is_fk_scan_desc, &fk_node_key_cnt, &fk_node_header, NULL);
+						     &fk_key, is_fk_scan_desc, &fk_node_key_cnt, &fk_node_header,
+                                                     &mvcc_snapshot_dirty);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  break;
-	}
-
-      /* Check if the foreign key has any items visible. If not, early out. */
-      ret = btree_has_any_visible (thread_p, sort_args->btid, curr_fk_pageptr, &mvcc_snapshot_dirty, &fk_has_visible);
-      if (ret != NO_ERROR)
-	{
-	  break;
-	}
-
-      if (!fk_has_visible)
-	{
 	  break;
 	}
 
