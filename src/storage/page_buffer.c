@@ -9882,9 +9882,6 @@ copy_unflushed_lsa:
       er_log_debug (ARG_FILE_LINE, "flushing page %d|%d to disk without logging.\n", VPID_AS_ARGS (&bufptr->vpid));
     }
 
-  /* Record number of writes in statistics */
-  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
-
 #if defined(ENABLE_SYSTEMTAP)
   query_id = qmgr_get_current_query_id (thread_p);
   if (query_id != NULL_QUERY_ID)
@@ -9912,10 +9909,15 @@ copy_unflushed_lsa:
 	    }
 	}
     }
-  else if (fileio_write (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid,
-			 IO_PAGESIZE, skip_flush) == NULL)
+  else
     {
-      error = ER_FAILED;
+      /* Record number of writes in statistics */
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
+      if (fileio_write (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid,
+			IO_PAGESIZE, skip_flush) == NULL)
+	{
+	  error = ER_FAILED;
+	}
     }
 
 #if defined(ENABLE_SYSTEMTAP)

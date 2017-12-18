@@ -2489,11 +2489,15 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 		}
 
 	      thread_wakeup_dwb_flush_helper_block_thread ();
+	      /* Add statistics. */
+	      perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
 	      count_writes = 0;
 	    }
 #endif
 	}
     }
+  /* Add statistics. */
+  perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
 
   /* Remove the corresponding entries from hash. */
   is_perf_tracking = perfmon_is_perf_tracking ();
@@ -2648,6 +2652,8 @@ retry:
       error_code = ER_FAILED;
       goto end;
     }
+  /* Increment statistics after writing in double write volume. */
+  perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, block->count_wb_pages);
 
   if (fileio_synchronize (thread_p, double_Write_Buffer.vdes, dwb_Volume_name, false) != double_Write_Buffer.vdes)
     {
