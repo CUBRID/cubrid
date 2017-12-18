@@ -2877,6 +2877,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       /* Shutdown the system with the system transaction */
       logtb_set_to_system_tran_index (thread_p);
       log_abort_all_active_transaction (thread_p);
+      vacuum_stop (thread_p);
 
       /* before removing temp vols */
       (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
