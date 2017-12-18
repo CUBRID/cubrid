@@ -3779,12 +3779,6 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       goto end;
     }
 
-  if (ret != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto end;
-    }
-
   /* Set the order. */
   is_fk_scan_desc = (sort_args->key_type->is_desc != pk_bt_scan.btid_int.key_type->is_desc);
 
