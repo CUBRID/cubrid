@@ -18,11 +18,11 @@
  */
 
 /*
- *  dbtype_api.h - Holds declarations for API functions.
+ *  dbtype_function.h - Holds declarations for API functions.
  */
 
-#ifndef _DBTYPE_API_H_
-#define _DBTYPE_API_H_
+#ifndef _DBTYPE_FUNCTION_H_
+#define _DBTYPE_FUNCTION_H_
 
 #include "dbtype_def.h"
 
@@ -498,4 +498,4 @@ extern "C"
 }
 #endif				/* C++ */
 
-#endif				/* _DBTYPE_API_H_ */
+#endif				/* _DBTYPE_FUNCTION_H_ */
