@@ -183,7 +183,7 @@ static int btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTI
 static int btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args_local,
 				const SORT_ARGS * sort_args_local);
 static int btree_is_slot_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
-				  MVCC_SNAPSHOT * mvcc_snapshot, int slot_id, bool * has_visible);
+				  MVCC_SNAPSHOT * mvcc_snapshot, int slot_id, bool * is_slot_visible);
 
 /*
  * btree_get_node_header () -
