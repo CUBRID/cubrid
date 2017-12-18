@@ -4255,7 +4255,7 @@ thread_is_dwb_checksum_computation_thread_available (void)
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_dwb_checksum_computation_thread (void *arg_p)
 {
-#define THREAD_DWB_CHECKSUM_COMPUTATION_WAKEUP_TIME_MSEC 20
+#define THREAD_DWB_CHECKSUM_COMPUTATION_WAKEUP_TIME_MSEC 1
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
