@@ -4033,10 +4033,16 @@ start:
   position_with_flags = ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL);
   if (!DWB_IS_CREATED (position_with_flags) || DWB_IS_MODIFYING_STRUCTURE (position_with_flags))
     {
-      return true;
+      return NO_ERROR;
     }
 
   start_block = double_Write_Buffer.next_block_to_flush;
+  if (ATOMIC_INC_32 (&double_Write_Buffer.blocks_flush_counter, 0) > 0)
+    {
+      /* The block is flushed, do not compute checksums again. */
+      return NO_ERROR;
+    }
+
   if (!dwb_block_has_all_checksums_computed (start_block))
     {
       /* Compute only for the block that must be flushed first, to avoid delays. */
