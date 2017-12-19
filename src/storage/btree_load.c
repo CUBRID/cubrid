@@ -182,8 +182,8 @@ static int btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTI
 						    int *key_cnt, BTREE_NODE_HEADER ** header, MVCC_SNAPSHOT * mvcc);
 static int btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args_local,
 				const SORT_ARGS * sort_args_local);
-static int btree_has_any_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
-				  MVCC_SNAPSHOT * mvcc_snapshot, bool * has_visible);
+static int btree_is_slot_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
+				  MVCC_SNAPSHOT * mvcc_snapshot, int slot_id, bool * is_slot_visible);
 
 /*
  * btree_get_node_header () -
@@ -3729,7 +3729,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   INDX_SCAN_ID pk_isid;
   BTREE_SCAN pk_bt_scan;
   INT16 fk_slot_id = -1;
-  bool found = false, pk_has_visible = false;
+  bool found = false, pk_has_slot_visible = false, fk_has_visible = false;
   char *val_print = NULL;
   bool is_fk_scan_desc = false;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
@@ -3832,7 +3832,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   while (true)
     {
       ret = btree_advance_to_next_slot_and_fix_page (thread_p, sort_args->btid, &vpid, &curr_fk_pageptr, &fk_slot_id,
-						     &fk_key, is_fk_scan_desc, &fk_node_key_cnt, &fk_node_header, NULL);
+						     &fk_key, is_fk_scan_desc, &fk_node_key_cnt, &fk_node_header,
+						     &mvcc_snapshot_dirty);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3967,14 +3968,14 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		}
 
 	      /* Make sure there is at least one visible object. */
-	      ret = btree_has_any_visible (thread_p, &pk_bt_scan.btid_int, pk_bt_scan.C_page, &mvcc_snapshot_dirty,
-					   &pk_has_visible);
+	      ret = btree_is_slot_visible (thread_p, &pk_bt_scan.btid_int, pk_bt_scan.C_page, &mvcc_snapshot_dirty,
+					   pk_bt_scan.slot_id, &pk_has_slot_visible);
 	      if (ret != NO_ERROR)
 		{
 		  break;
 		}
 
-	      if (!pk_has_visible)
+	      if (!pk_has_slot_visible)
 		{
 		  /* No visible object in current page, but the key was located here. Should not happen often. */
 		  val_print = pr_valstring (&fk_key);
@@ -4181,7 +4182,7 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
   VPID next_vpid;
   PAGE_PTR page = *pg_ptr;
   BTREE_NODE_HEADER *local_header = *header;
-  bool has_visible = false;
+  bool is_slot_visible = false;
   PAGE_PTR old_page = NULL;
 
   /* Clear current key, if any. */
@@ -4265,19 +4266,19 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
 
       if (mvcc != NULL)
 	{
-	  ret = btree_has_any_visible (thread_p, btid, page, mvcc, &has_visible);
+	  ret = btree_is_slot_visible (thread_p, btid, page, mvcc, *slot_id, &is_slot_visible);
 	  if (ret != NO_ERROR)
 	    {
 	      return ret;
 	    }
 
-	  if (!has_visible)
+	  if (!is_slot_visible)
 	    {
 	      continue;
 	    }
 	}
 
-      /* We have visible items. Fall through and get the key. */
+      /* The slot is visible. Fall through and get the key. */
       break;
     }
 
@@ -4293,19 +4294,20 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
 }
 
 /*
- *  btree_has_any_visible(): States if the page has any visible oids.
+ *  btree_is_slot_visible(): States if current slot is visible or not.
  *
  *  thread_p(in): Thread entry.
  *  btid(in): B-tree info.
  *  pg_ptr(in):	Page pointer.
  *  mvcc_snapshot(in): The MVCC snapshot.
- *  has_visible(out): True or False
+ *  slot_id(in) : Slot id to be looked for.
+ *  is_visible(out): True or False
  *
  *  return: error code if any error occurs.
  */
 static int
-btree_has_any_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, MVCC_SNAPSHOT * mvcc_snapshot,
-		       bool * has_visible)
+btree_is_slot_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, MVCC_SNAPSHOT * mvcc_snapshot,
+		       int slot_id, bool * is_visible)
 {
   RECDES record;
   LEAF_REC leaf;
@@ -4314,17 +4316,17 @@ btree_has_any_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr
   int ret = NO_ERROR;
   bool dummy_clear_key;
 
-  *has_visible = false;
+  *is_visible = false;
 
   if (mvcc_snapshot == NULL)
     {
       /* Early out. */
-      *has_visible = true;
+      *is_visible = true;
       return ret;
     }
 
   /* Get the record. */
-  if (spage_get_record (thread_p, pg_ptr, 1, &record, PEEK) != S_SUCCESS)
+  if (spage_get_record (thread_p, pg_ptr, slot_id, &record, PEEK) != S_SUCCESS)
     {
       assert_release (false);
       ret = ER_FAILED;
@@ -4350,7 +4352,7 @@ btree_has_any_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr
 
   if (num_visible > 0)
     {
-      *has_visible = true;
+      *is_visible = true;
     }
 
   return ret;
