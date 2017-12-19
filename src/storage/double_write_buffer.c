@@ -3999,10 +3999,10 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   bool found;
   int iter = 0;
 
+start:
   block = double_Write_Buffer.helper_flush_block;
   if (block != NULL)
     {
-    start:
       found = false;
       for (i = 0; i < block->count_flush_volumes_info; i++)
 	{
@@ -4031,6 +4031,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 		{
 		  /* Flushed by DWB block flusher. */
 		  assert (num_pages2 == 0);
+		  break;
 		}
 	    }
 	  while (true);
