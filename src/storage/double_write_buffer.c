@@ -2561,6 +2561,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   UINT64 oldest_time;
   bool is_perf_tracking = false;
   int num_pages;
+  bool update_flush_block_helper_stat;
 
   assert (block != NULL && block->count_wb_pages > 0 && dwb_is_created ());
 
@@ -2616,9 +2617,11 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
     }
 
 #if defined (SERVER_MODE)
+  update_flush_block_helper_stat = false;
 retry:
   if (double_Write_Buffer.helper_flush_block != NULL)
     {
+      update_flush_block_helper_stat = is_perf_tracking;
       /* Be sure that the previous block was written on disk, before writing the the current block. */
       if (thread_is_dwb_flush_block_helper_thread_available ())
 	{
@@ -2639,6 +2642,17 @@ retry:
 		}
 	    }
 	  double_Write_Buffer.helper_flush_block = NULL;
+	}
+    }
+
+  if (update_flush_block_helper_stat)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (oldest_time > 0)
+	{
+	  perfmon_add_stat (thread_p, PSTAT_DWB_WAIT_FLUSH_BLOCK_HELPER_TIME_COUNTERS, oldest_time);
 	}
     }
 #endif
