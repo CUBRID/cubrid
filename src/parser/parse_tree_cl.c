@@ -2520,6 +2520,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   DB_VALUE element;
   int error = NO_ERROR;
   unsigned int save_custom = parser->custom_print;
+
 /* *INDENT-OFF* */
 #if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb{
@@ -2537,6 +2538,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   string_buffer sb;
 #endif
 /* *INDENT-ON* */
+
   db_value_printer printer (sb);
   if (val == NULL)
     {
@@ -2602,7 +2604,6 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
     case DB_TYPE_TIMESTAMPLTZ:
       /* everyone else gets csql's utime format */
       printer.describe_value (val);
-
       break;
 
     case DB_TYPE_DATETIME:
@@ -2616,6 +2617,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       printer.describe_value (val);
       break;
     }
+
   /* restore custom print */
   parser->custom_print = save_custom;
   result = pt_append_nulstring (parser, NULL, sb.get_buffer ());

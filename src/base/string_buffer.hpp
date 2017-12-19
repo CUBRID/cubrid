@@ -44,17 +44,17 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
 {
   public:
 #if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
-    string_buffer() = default;                                    //default ctor
+    string_buffer () = default;                                    //default ctor
 #else
-    string_buffer()
-      : mem::block_ext()
-      , m_len(0)
+    string_buffer ()
+      : mem::block_ext ()
+      , m_len (0)
     {}
 #endif
 
-    ~string_buffer()
+    ~string_buffer ()
     {
-      m_len=0; //dtor
+      m_len = 0; //dtor
     }
 
     string_buffer (std::function<void (block &b, size_t n)> extend, std::function<void (block &b)> dealloc)
@@ -65,20 +65,21 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
 
     using mem::block_ext::move_ptr;
 
-    const char *get_buffer() const
+    const char *get_buffer () const
     {
       return this->ptr;
     }
 
-    void clear()
+    void clear ()
     {
       if (ptr)
 	{
-	  ptr[m_len=0] = '\0';
+	  m_len = 0;
+	  ptr[m_len] = '\0';
 	}
     }
 
-    size_t len() const
+    size_t len () const
     {
       return m_len; //current content length
     }
@@ -113,11 +114,14 @@ void string_buffer::operator+= (const char ch)
 template<typename... Args> void string_buffer::operator() (Args &&... args)
 {
   int len = snprintf (NULL, 0, std::forward<Args> (args)...);
-  assert(len >= 0);
+
+  assert (len >= 0);
+
   if (dim <= m_len + size_t (len) + 1)
     {
       extend (m_len + size_t (len) + 1 - dim); //ask to extend to fit at least additional len chars
     }
+
   snprintf (ptr + m_len, dim - m_len, std::forward<Args> (args)...);
   m_len += len;
 }

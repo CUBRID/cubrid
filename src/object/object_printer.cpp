@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
+
 #include "object_printer.hpp"
 #include "class_description.hpp"
 #include "class_object.h"
@@ -16,15 +35,19 @@
 #include "string_buffer.hpp"
 #include "trigger_manager.h"
 #include "work_space.h"
+
 #include <assert.h>
 
 //--------------------------------------------------------------------------------
 void object_printer::describe_comment (const char *comment)
 {
   db_value comment_value;
+
   assert (comment != NULL);
+
   DB_MAKE_NULL (&comment_value);
   DB_MAKE_STRING (&comment_value, comment);
+
   m_buf ("COMMENT ");
   if (comment != NULL && comment[0] != '\0')
     {
@@ -35,6 +58,7 @@ void object_printer::describe_comment (const char *comment)
     {
       m_buf ("''");
     }
+
   pr_clear_value (&comment_value);
 }
 
@@ -88,11 +112,13 @@ void object_printer::describe_partition_parts (const sm_partition &parts, class_
       m_buf (")");
       break;
     }
+
   if (parts.comment != NULL && parts.comment[0] != '\0')
     {
       m_buf (" ");
       describe_comment (parts.comment);
     }
+
   pr_clear_value (&ele);
 }
 
@@ -230,6 +256,7 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	      m_buf (temp_buffer);
 	    }
 	  break;
+
 	case DB_TYPE_NUMERIC:
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  m_buf ("%s(%d,%d)", ustr_upper (temp_buffer), temp_domain->precision, temp_domain->scale);
@@ -255,6 +282,7 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 		}
 	    }
 	  break;
+
 	case DB_TYPE_ENUMERATION:
 	  has_collation = 1;
 	  strcpy (temp_buffer, temp_domain->type->name);
@@ -273,6 +301,7 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	    }
 	  m_buf (")");
 	  break;
+
 	default:
 	  break;
 	}
@@ -332,6 +361,7 @@ void object_printer::describe_method (const struct db_object &op, const sm_metho
 
   /* assume for the moment that there can only be one signature, simplifies the output */
   describe_identifier (method.header.name, prt_type);
+
   signature_p = method.signatures;
   if (signature_p == NULL)
     {
@@ -354,6 +384,7 @@ void object_printer::describe_method (const struct db_object &op, const sm_metho
 	  describe_identifier (signature_p->function_name, prt_type);
 	}
     }
+
   /* add the inheritance source */
   if (method.class_mop != NULL && method.class_mop != &op)
     {
@@ -381,7 +412,9 @@ void object_printer::describe_signature (const sm_method_signature &signature, c
 
   for (i = 1; i <= signature.num_args; i++)
     {
-      for (argument_p = signature.args; argument_p!=NULL && argument_p->index!=i; argument_p=argument_p->next);
+      for (argument_p = signature.args; argument_p != NULL && argument_p->index != i; argument_p=argument_p->next)
+	;
+
       if (argument_p != NULL)
 	{
 	  describe_argument (*argument_p, prt_type);
@@ -390,6 +423,7 @@ void object_printer::describe_signature (const sm_method_signature &signature, c
 	{
 	  m_buf ("??");
 	}
+
       if (i < signature.num_args)
 	{
 	  m_buf (", ");
@@ -445,12 +479,15 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
       if (attribute.flags & SM_ATTFLAG_AUTO_INCREMENT)
 	{
 	  m_buf (" AUTO_INCREMENT ");
+
 	  assert (is_inherited || attribute.auto_increment != NULL);
+
 	  if (prt_type == class_description::SHOW_CREATE_TABLE)
 	    {
 	      DB_VALUE min_val, inc_val;
 	      char buff[DB_MAX_NUMERIC_PRECISION * 2 + 4];
 	      int offset;
+
 	      assert (attribute.auto_increment != NULL);
 
 	      DB_MAKE_NULL (&min_val);
@@ -467,8 +504,8 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 		  return;
 		}
 
-	      offset =
-		      snprintf (buff, DB_MAX_NUMERIC_PRECISION + 3, "(%s, ", numeric_db_value_print (&min_val, str_buf));
+	      offset = snprintf (buff, DB_MAX_NUMERIC_PRECISION + 3, "(%s, ",
+				 numeric_db_value_print (&min_val, str_buf));
 	      snprintf (buff + offset, DB_MAX_NUMERIC_PRECISION + 1, "%s)", numeric_db_value_print (&inc_val, str_buf));
 	      m_buf (buff);
 
@@ -476,6 +513,7 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	      pr_clear_value (&inc_val);
 	    }
 	}
+
       if (!DB_IS_NULL (&attribute.default_value.value)
 	  || attribute.default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	{
@@ -522,6 +560,7 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
     {
       m_buf (" NOT NULL");
     }
+
   if (attribute.class_mop != NULL && attribute.class_mop != &cls)
     {
       m_buf (" /* from ");
@@ -581,7 +620,8 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  m_buf ("CONSTRAINT ");
 	  break;
 	}
-      m_buf ("%s ON %s (", constraint.name, sm_ch_name ((MOBJ)&cls));
+
+      m_buf ("%s ON %s (", constraint.name, sm_ch_name ((MOBJ) (&cls)));
       asc_desc = NULL;		/* init */
       if (!SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint.type))
 	{
@@ -618,6 +658,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  assert (false);
 	  break;
 	}
+
       m_buf (" (");
       asc_desc = constraint.asc_desc;
     }
@@ -639,6 +680,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  n_attrs++;
 	}
     }
+
   for (attribute_p = constraint.attributes; k < n_attrs; attribute_p++)
     {
       if (constraint.func_index_info && k == constraint.func_index_info->col_id)
@@ -684,6 +726,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	}
       k++;
     }
+
   m_buf (")");
 
   if (constraint.filter_predicate && constraint.filter_predicate->pred_string)
@@ -704,7 +747,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	}
 
       m_buf (" REFERENCES ");
-      describe_identifier (sm_ch_name ((MOBJ)ref_cls), prt_type);
+      describe_identifier (sm_ch_name ((MOBJ) ref_cls), prt_type);
 
       if (prt_type == class_description::SHOW_CREATE_TABLE)
 	{
@@ -713,6 +756,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	      if (c->type == SM_CONSTRAINT_PRIMARY_KEY && c->attributes != NULL)
 		{
 		  m_buf (" (");
+
 		  for (k = 0; k < n_attrs; k++)
 		    {
 		      if (c->attributes[k] != NULL)
@@ -724,6 +768,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 			    }
 			}
 		    }
+
 		  m_buf (")");
 		  break;
 		}
@@ -736,6 +781,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	{
 	  m_buf (",");
 	}
+
       m_buf (" ON UPDATE %s", classobj_describe_foreign_key_action (constraint.fk_info->update_action));
     }
 
@@ -768,9 +814,13 @@ void object_printer::describe_resolution (const sm_resolution &resolution, class
 	  m_buf ("inherit ");
 	}
     }
+
   describe_identifier (resolution.name, prt_type);
+
   m_buf (" of ");
+
   describe_identifier (sm_get_ch_name (resolution.class_mop), prt_type);
+
   if (resolution.alias != NULL)
     {
       m_buf (" as ");
@@ -789,6 +839,7 @@ void object_printer::describe_resolution (const sm_resolution &resolution, class
 void object_printer::describe_method_file (const struct db_object &obj, const sm_method_file &file)
 {
   m_buf ("%s", file.name);
+
   if (file.class_mop != NULL && file.class_mop != &obj)
     {
       m_buf (" (from %s)", sm_get_ch_name (file.class_mop));
@@ -808,10 +859,12 @@ void object_printer::describe_method_file (const struct db_object &obj, const sm
 void object_printer::describe_class_trigger (const tr_trigger &trigger)
 {
   m_buf ("%s : %s %s ", trigger.name, describe_trigger_condition_time (trigger), tr_event_as_string (trigger.event));
+
   if (trigger.attribute != NULL)
     {
       m_buf ("OF %s", trigger.attribute);
     }
+
   if (trigger.comment != NULL && trigger.comment[0] != '\0')
     {
       m_buf (" ");
@@ -828,6 +881,7 @@ void object_printer::describe_class_trigger (const tr_trigger &trigger)
 const char *object_printer::describe_trigger_condition_time (const tr_trigger &trigger)
 {
   DB_TRIGGER_TIME time = TR_TIME_NULL;
+
   if (trigger.condition != NULL)
     {
       time = trigger.condition->time;
@@ -836,6 +890,7 @@ const char *object_printer::describe_trigger_condition_time (const tr_trigger &t
     {
       time = trigger.action->time;
     }
+
   return (tr_time_as_string (time));
 }
 
@@ -848,10 +903,12 @@ const char *object_printer::describe_trigger_condition_time (const tr_trigger &t
 const char *object_printer::describe_trigger_action_time (const tr_trigger &trigger)
 {
   DB_TRIGGER_TIME time = TR_TIME_NULL;
+
   if (trigger.action != NULL)
     {
       time = trigger.action->time;
     }
+
   return (tr_time_as_string (time));
 }
 
@@ -866,7 +923,9 @@ const char *object_printer::describe_trigger_action_time (const tr_trigger &trig
 void object_printer::describe_class (struct db_object *class_op)
 {
   m_buf.clear();
+
   class_description class_descr;
+
   if (class_descr.init (class_op, class_description::SHOW_CREATE_TABLE, m_buf) != NO_ERROR)
     {
 #if 0 //what do we do in case of error???
@@ -884,9 +943,11 @@ void object_printer::describe_class (struct db_object *class_op)
 #endif
       return;
     }
+
   m_buf.clear();
 
   char **line_ptr;
+
   /* class name */
   m_buf ("CREATE TABLE %s", class_descr.name);
 
@@ -894,6 +955,7 @@ void object_printer::describe_class (struct db_object *class_op)
   if (class_descr.supers != NULL)
     {
       m_buf (" UNDER ");
+
       for (line_ptr = class_descr.supers; *line_ptr != NULL; line_ptr++)
 	{
 	  if (line_ptr != class_descr.supers)
@@ -908,6 +970,7 @@ void object_printer::describe_class (struct db_object *class_op)
   if (class_descr.class_attributes != NULL)
     {
       m_buf (" CLASS ATTRIBUTE (");
+
       for (line_ptr = class_descr.class_attributes; *line_ptr != NULL; line_ptr++)
 	{
 	  if (line_ptr != class_descr.class_attributes)
@@ -916,6 +979,7 @@ void object_printer::describe_class (struct db_object *class_op)
 	    }
 	  m_buf ("%s", *line_ptr);
 	}
+
       m_buf (")");
     }
 
@@ -923,6 +987,7 @@ void object_printer::describe_class (struct db_object *class_op)
   if (class_descr.attributes != NULL || class_descr.constraints != NULL)
     {
       m_buf (" (");
+
       if (class_descr.attributes != NULL)
 	{
 	  for (line_ptr = class_descr.attributes; *line_ptr != NULL; line_ptr++)
@@ -934,6 +999,7 @@ void object_printer::describe_class (struct db_object *class_op)
 	      m_buf ("%s", *line_ptr);
 	    }
 	}
+
       if (class_descr.constraints != NULL)
 	{
 	  for (line_ptr = class_descr.constraints; *line_ptr != NULL; line_ptr++)
@@ -945,6 +1011,7 @@ void object_printer::describe_class (struct db_object *class_op)
 	      m_buf ("%s", *line_ptr);
 	    }
 	}
+
       m_buf (")");
     }
 
@@ -952,6 +1019,7 @@ void object_printer::describe_class (struct db_object *class_op)
   if (sm_is_reuse_oid_class (class_op))
     {
       m_buf (" REUSE_OID");
+
       if (class_descr.collation != NULL)
 	{
 	  m_buf (",");
@@ -972,6 +1040,7 @@ void object_printer::describe_class (struct db_object *class_op)
   if (class_descr.methods != NULL || class_descr.class_methods != NULL)
     {
       m_buf (" METHOD ");
+
       if (class_descr.methods != NULL)
 	{
 	  for (line_ptr = class_descr.methods; *line_ptr != NULL; line_ptr++)
@@ -983,6 +1052,7 @@ void object_printer::describe_class (struct db_object *class_op)
 	      m_buf ("%s", *line_ptr);
 	    }
 	}
+
       if (class_descr.class_methods != NULL)
 	{
 	  for (line_ptr = class_descr.class_methods; *line_ptr != NULL; line_ptr++)
@@ -1000,6 +1070,7 @@ void object_printer::describe_class (struct db_object *class_op)
   if (class_descr.method_files != NULL)
     {
       m_buf (" FILE ");
+
       for (line_ptr = class_descr.method_files; *line_ptr != NULL; line_ptr++)
 	{
 	  if (line_ptr != class_descr.method_files)
@@ -1014,6 +1085,7 @@ void object_printer::describe_class (struct db_object *class_op)
   if (class_descr.resolutions != NULL)
     {
       m_buf (" INHERIT ");
+
       for (line_ptr = class_descr.resolutions; *line_ptr != NULL; line_ptr++)
 	{
 	  if (line_ptr != class_descr.resolutions)
@@ -1025,10 +1097,12 @@ void object_printer::describe_class (struct db_object *class_op)
     }
 
   /* partition */
-  if (!class_descr.partition.empty())
+  if (!class_descr.partition.empty ())
     {
       m_buf (" %s", class_descr.partition[0]);
+
       size_t len = class_descr.partition.size();
+
       if (len > 1)
 	{
 	  m_buf (" (%s", class_descr.partition[1]);
@@ -1048,7 +1122,9 @@ void object_printer::describe_class (struct db_object *class_op)
       DB_MAKE_STRING (&comment_value, class_descr.comment);
 
       m_buf (" COMMENT=");
+
       db_value_printer printer (m_buf);
+
       printer.describe_value (&comment_value);
       pr_clear_value (&comment_value);
     }
@@ -1068,6 +1144,7 @@ void object_printer::describe_partition_info (const sm_partition &partinfo)
   char col_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 
   m_buf ("PARTITION BY ");
+
   switch (partinfo.partition_type)
     {
     case PT_PARTITION_HASH:
@@ -1085,6 +1162,7 @@ void object_printer::describe_partition_info (const sm_partition &partinfo)
   assert (tmp != NULL);
 
   char *ptr = tmp ? strstr (tmp, "SELECT ") : NULL;
+
   if (ptr)
     {
       char *ptr2 = strstr (ptr + 7, " FROM ");

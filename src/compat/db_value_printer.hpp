@@ -20,7 +20,7 @@
  * common things (server & client) extracted from object_print
  */
 
-#if !defined(_DB_VALUE_PRINTER_HPP_)
+#ifndef _DB_VALUE_PRINTER_HPP_
 #define _DB_VALUE_PRINTER_HPP_
 
 struct db_collection;

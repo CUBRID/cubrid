@@ -19,7 +19,7 @@
 /* Memory Management Functionality
  */
 
-#if !defined(_MEM_BLOCK_HPP_)
+#ifndef _MEM_BLOCK_HPP_
 #define _MEM_BLOCK_HPP_
 
 #include <memory.h>
@@ -27,7 +27,8 @@
 
 namespace mem
 {
-  /* Memory Block
+  /*
+   * Memory Block
    * - groups together memory address and its size
    * - doesn't own the memory, just points to it
    * - used to allocate, deallocate and share memory
@@ -73,11 +74,13 @@ namespace mem
 	return (dim != 0 && ptr != NULL);
       }
 
-      char *move_ptr()                                    //NOT RECOMMENDED! use move semantics: std::move()
+      char *move_ptr ()                                    //NOT RECOMMENDED! use move semantics: std::move()
       {
 	char *p = ptr;
+
 	dim = 0;
 	ptr = NULL;
+
 	return p;
       }
 
@@ -89,10 +92,16 @@ namespace mem
   inline void default_realloc (block &b, size_t len)
   {
     size_t dim = b.dim ? b.dim : 1;
-    for (; dim < b.dim + len; dim *= 2); // calc next power of 2 >= b.dim
+
+    // calc next power of 2 >= b.dim
+    for (; dim < b.dim + len; dim *= 2)
+      ;
+
     block x{dim, new char[dim]};
     memcpy (x.ptr, b.ptr, b.dim);
+
     delete b.ptr;
+
     b = std::move (x);
   }
 
@@ -114,8 +123,8 @@ namespace mem
    */
   struct block_ext: public block
   {
-      block_ext()                                         //default ctor
-	//: block_ext {default_realloc, default_dealloc} //doesn't work on gcc 4.4.7
+      block_ext ()                                         //default ctor
+      //: block_ext {default_realloc, default_dealloc} //doesn't work on gcc 4.4.7
 	: block {}
 	, m_extend {default_realloc}
 	, m_dealloc {default_dealloc}
@@ -143,6 +152,7 @@ namespace mem
 	    b.dim = 0;
 	    b.ptr = NULL;
 	  }
+
 	return *this;
       }
 
@@ -152,7 +162,7 @@ namespace mem
 	, m_dealloc {dealloc}
       {}
 
-      ~block_ext()                                        //dtor
+      ~block_ext ()                                        //dtor
       {
 	m_dealloc (*this);
       }
@@ -179,7 +189,7 @@ namespace mem
 {
   inline void private_realloc (block &b, size_t len)
   {
-    b.ptr = (char*) db_private_realloc (NULL, b.ptr, b.dim + len);
+    b.ptr = (char *) db_private_realloc (NULL, b.ptr, b.dim + len);
     b.dim += len;
   }
 
@@ -191,4 +201,4 @@ namespace mem
 } // namespace mem
 #endif
 
-#endif // !defined(_MEM_BLOCK_HPP_)
+#endif // _MEM_BLOCK_HPP_

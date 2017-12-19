@@ -74,7 +74,7 @@ static void sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes
 static void sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 static void sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN ** assignments,
 				int num_assignments);
-DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+static DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 
 static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
@@ -97,16 +97,19 @@ static int
 sl_print_select (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
 {
   strbuf ("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) sm_class));
+
   if (sl_print_pk (strbuf, sm_class, key) != NO_ERROR)
     {
       return ER_FAILED;
     }
+
   strbuf (";");
+
   return NO_ERROR;
 }
 
 static int
-sl_write_catalog ()
+sl_write_catalog (void)
 {
   if (catalog_fp == NULL)
     {
@@ -121,6 +124,7 @@ sl_write_catalog ()
       er_log_debug (ARG_FILE_LINE, "Cannot open SQL catalog file: %s", strerror (errno));
       return ER_FAILED;
     }
+
   fseek (catalog_fp, 0, SEEK_SET);
   fprintf (catalog_fp, CATALOG_FORMAT, sl_Info.curr_file_id, sl_Info.last_inserted_sql_id);
 
@@ -131,7 +135,7 @@ sl_write_catalog ()
 }
 
 static int
-sl_read_catalog ()
+sl_read_catalog (void)
 {
   FILE *catalog_fp;
   char info[LINE_MAX];
@@ -194,12 +198,13 @@ sl_init (const char *db_name, const char *repl_log_path)
   return NO_ERROR;
 }
 
-int
+static int
 sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
 {
   DB_MIDXKEY *midxkey;
   SM_ATTRIBUTE *pk_att;
   SM_CLASS_CONSTRAINT *pk_cons = classobj_find_class_primary_key (sm_class);
+
   if (pk_cons == NULL || pk_cons->attributes == NULL || pk_cons->attributes[0] == NULL)
     {
       return ER_FAILED;
@@ -217,10 +222,11 @@ sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
       db_value_printer printer (strbuf);
       printer.describe_value (key);
     }
+
   return NO_ERROR;
 }
 
-void
+static void
 sl_print_insert_att_names (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
   if (num_assignments > 0)
@@ -233,14 +239,16 @@ sl_print_insert_att_names (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments
     }
 }
 
-void
+static void
 sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
   db_value_printer printer (strbuf);
+
   if (num_assignments > 0)
     {
       printer.describe_value (assignments[0]->variable);
     }
+
   for (int i = 1; i < num_assignments; i++)
     {
       strbuf += ',';
@@ -249,11 +257,10 @@ sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignment
 }
 
 /*
- *  * sl_print_sql_midxkey -
- *   *      print midxkey in the following format.
- *    *      key1=value1 AND key2=value2 AND ...
- *     */
-void
+ * sl_print_sql_midxkey - print midxkey in the following format.
+ *    key1=value1 AND key2=value2 AND ...
+ */
+static void
 sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey)
 {
   int prev_i_index = 0;
@@ -266,14 +273,16 @@ sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_M
 	{
 	  strbuf (" AND ");
 	}
+
       pr_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index, &prev_i_ptr);
       strbuf ("\"%s\"=", attributes[i]->header.name);
       db_value_printer printer (strbuf);
+
       printer.describe_value (&value);
     }
 }
 
-DB_VALUE *
+static DB_VALUE *
 sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
   for (int i = 0; i < num_assignments; i++)
@@ -283,13 +292,15 @@ sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_
 	  return assignments[i]->variable;
 	}
     }
+
   return NULL;
 }
 
-void
+static void
 sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
   DB_VALUE *val = sl_find_att_value (att_name, assignments, num_assignments);
+
   if (val != NULL)
     {
       db_value_printer printer (strbuf);
@@ -297,10 +308,11 @@ sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN
     }
 }
 
-void
+static void
 sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
   db_value_printer printer (strbuf);
+
   for (int i = 0; i < num_assignments; i++)
     {
       strbuf ("\"%s\"=", assignments[i]->att->header.name);
@@ -316,6 +328,7 @@ int
 sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
   string_buffer insert_strbuf;
+
   insert_strbuf ("INSERT INTO [%s](", sm_ch_name ((MOBJ) (inst_tp->class_)));
   sl_print_insert_att_names (insert_strbuf, inst_tp->assignments, inst_tp->nassigns);
   insert_strbuf (") VALUES (");
@@ -323,14 +336,17 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   insert_strbuf (");");
 
   string_buffer select_strbuf;
+
   if (sl_print_select (select_strbuf, inst_tp->class_, key) != NO_ERROR)
     {
       return ER_FAILED;
     }
+
   if (sl_write_sql (insert_strbuf, &select_strbuf) != NO_ERROR)
     {
       return ER_FAILED;
     }
+
   return NO_ERROR;
 }
 
@@ -343,6 +359,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
     {
       /* ordinary tables */
       string_buffer update_strbuf;
+
       update_strbuf ("UPDATE [%s] SET ", sm_ch_name ((MOBJ) (inst_tp->class_)));
       sl_print_update_att_set (update_strbuf, inst_tp->assignments, inst_tp->nassigns);
       update_strbuf (" WHERE ");
@@ -353,10 +370,12 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
       update_strbuf (";");
 
       string_buffer select_strbuf;
+
       if (sl_print_select (select_strbuf, inst_tp->class_, key) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
+
       return sl_write_sql (update_strbuf, &select_strbuf);
     }
   else
@@ -364,24 +383,31 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
       /* db_serial */
       DB_VALUE *cur_value = sl_find_att_value ("current_val", inst_tp->assignments, inst_tp->nassigns);
       DB_VALUE *incr_value = sl_find_att_value ("increment_val", inst_tp->assignments, inst_tp->nassigns);
+
       if (cur_value == NULL || incr_value == NULL)
 	{
 	  return ER_FAILED;
 	}
+
       DB_VALUE next_value;
+
       result = numeric_db_value_add (cur_value, incr_value, &next_value);
       if (result != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
+
       string_buffer serial_name_strbuf;
+
       sl_print_att_value (serial_name_strbuf, "name", inst_tp->assignments, inst_tp->nassigns);
       char *serial_name = trim_single_quote ((char *) serial_name_strbuf.get_buffer (), serial_name_strbuf.len ());
 
       string_buffer alter_strbuf;
       char str_next_value[NUMERIC_MAX_STRING_SIZE];
+
       alter_strbuf ("ALTER SERIAL [%s] START WITH %s;", serial_name,
 		    numeric_db_value_print (&next_value, str_next_value));
+
       return sl_write_sql (alter_strbuf, NULL);
     }
 }
@@ -390,6 +416,7 @@ int
 sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 {
   string_buffer delete_strbuf;
+
   delete_strbuf ("DELETE FROM [%s] WHERE ", class_name);
   if (sl_print_pk (delete_strbuf, (SM_CLASS *) mclass, key) != NO_ERROR)
     {
@@ -398,6 +425,7 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
   delete_strbuf (";");
 
   string_buffer select_strbuf;
+
   if (sl_print_select (select_strbuf, (SM_CLASS *) mclass, key) != NO_ERROR)
     {
       return ER_FAILED;
@@ -425,6 +453,7 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
 	}
 
       string_buffer setprm_strbuf;
+
       setprm_strbuf ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_START, ha_sys_prm);	//set param
       if (sl_write_sql (setprm_strbuf, NULL) != NO_ERROR)
 	{
@@ -435,6 +464,7 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
 	  sl_write_sql (setprm_strbuf, NULL);
 	  return ER_FAILED;
 	}
+
       setprm_strbuf.clear ();
       setprm_strbuf ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_END, default_ha_prm);	//restore param
       if (sl_write_sql (setprm_strbuf, NULL) != NO_ERROR)
@@ -466,7 +496,7 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
   return NO_ERROR;
 }
 
-int
+static int
 sl_write_sql (string_buffer & query, string_buffer * select)
 {
   time_t curr_time;
@@ -516,7 +546,7 @@ sl_write_sql (string_buffer & query, string_buffer * select)
 }
 
 static FILE *
-sl_log_open ()
+sl_log_open (void)
 {
   char cur_sql_log_path[PATH_MAX];
   FILE *fp;

@@ -10428,10 +10428,10 @@ pr_valstring (thread_entry * threade, DB_VALUE * val)
 {
 /* *INDENT-OFF* */
 #if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
-  string_buffer sb{
+  string_buffer sb {
     [&threade] (mem::block& block, size_t len)
     {
-      block.ptr = (char*) db_private_realloc (threade, block.ptr, block.dim + len);
+      block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
       block.dim += len;
     },
     [&threade] (mem::block& block)

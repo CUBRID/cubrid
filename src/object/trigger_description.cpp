@@ -49,16 +49,19 @@ trigger_description::trigger_description()
 int trigger_description::init (const char *name)
 {
   struct db_object *trobj = tr_find_trigger (name);
+
   if (trobj == NULL)
     {
       return ER_FAILED;
     }
+
   return init (trobj);
 }
 
 int trigger_description::init (struct db_object *trobj)
 {
   assert (trobj != NULL);
+
   char *condition = NULL, *action = NULL, *classname;
   TR_TRIGGER *trigger;
 
@@ -104,6 +107,7 @@ int trigger_description::init (struct db_object *trobj)
   if (trigger->priority != 0.0)
     {
       char temp_buffer[64];
+
       sprintf (temp_buffer, "%f", trigger->priority);
       this->priority = object_print::copy_string (temp_buffer);
     }
@@ -121,7 +125,9 @@ int trigger_description::init (struct db_object *trobj)
 	}
 
       /* format the full event specification so csql can display it without being dependent on syntax */
+
       char buffer[ (SM_MAX_IDENTIFIER_LENGTH * 2) + 32];
+
       if (this->attribute != NULL)
 	{
 	  sprintf (buffer, "%s ON %s(%s)", this->event, this->class_name, this->attribute);
@@ -130,6 +136,7 @@ int trigger_description::init (struct db_object *trobj)
 	{
 	  sprintf (buffer, "%s ON %s", this->event, this->class_name);
 	}
+
       this->full_event = object_print::copy_string (buffer);
     }
   else
@@ -151,7 +158,7 @@ trigger_description::~trigger_description ()
   free (priority);
   if (comment)
     {
-      free ((void *)comment);
+      free ((void *) comment);
     }
 
   /* these were returned by the trigger manager and must be freed with db_string_free() */

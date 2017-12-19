@@ -318,8 +318,8 @@ csql_help_schema (const char *class_name)
 
   if (class_descr.class_attributes != NULL)
     {
-      APPEND_HEAD_LINE (msgcat_message
-			(MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CLASS_ATTRIBUTE_HEAD_TEXT));
+      APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
+					CSQL_HELP_CLASS_ATTRIBUTE_HEAD_TEXT));
       for (line_ptr = class_descr.class_attributes; *line_ptr != NULL; line_ptr++)
 	{
 	  APPEND_MORE_LINE (5, *line_ptr);
@@ -543,19 +543,19 @@ csql_help_trigger (const char *trigger_name)
 
       if (help.condition != NULL)
 	{
-	  APPEND_HEAD_LINE (msgcat_message
-			    (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_CONDITION_TIME_TEXT));
+	  APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
+					    CSQL_HELP_TRIGGER_CONDITION_TIME_TEXT));
 	  APPEND_MORE_LINE (5, help.condition_time);
 
-	  APPEND_HEAD_LINE (msgcat_message
-			    (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_CONDITION_TEXT));
+	  APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
+					    CSQL_HELP_TRIGGER_CONDITION_TEXT));
 	  APPEND_MORE_LINE (5, help.condition);
 	}
 
       if (help.action != NULL)
 	{
-	  APPEND_HEAD_LINE (msgcat_message
-			    (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_ACTION_TIME_TEXT));
+	  APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
+					    CSQL_HELP_TRIGGER_ACTION_TIME_TEXT));
 	  APPEND_MORE_LINE (5, help.action_time);
 
 	  APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_ACTION_TEXT));
@@ -564,8 +564,8 @@ csql_help_trigger (const char *trigger_name)
 
       if (help.priority != NULL)
 	{
-	  APPEND_HEAD_LINE (msgcat_message
-			    (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_PRIORITY_TEXT));
+	  APPEND_HEAD_LINE (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
+					    CSQL_HELP_TRIGGER_PRIORITY_TEXT));
 	  APPEND_MORE_LINE (5, help.priority);
 	}
 
@@ -575,8 +575,8 @@ csql_help_trigger (const char *trigger_name)
 	  APPEND_MORE_LINE (5, help.comment);
 	}
 
-      csql_display_more_lines (msgcat_message
-			       (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_TRIGGER_TITLE_TEXT));
+      csql_display_more_lines (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
+					       CSQL_HELP_TRIGGER_TITLE_TEXT));
     }
 
   if (all_triggers != NULL)

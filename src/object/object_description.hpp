@@ -21,7 +21,7 @@
  * extracted from object_print and improved with constructor & destructor
  */
 
-#if !defined(_OBJECT_DESCRIPTION_HPP_)
+#ifndef _OBJECT_DESCRIPTION_HPP_
 #define _OBJECT_DESCRIPTION_HPP_
 
 #if defined(SERVER_MODE)
@@ -38,9 +38,9 @@ struct object_description
   char **shared;                    //ToDo: looks like not used anywhere, remove it?
 
   object_description ();            //former obj_print_make_obj_help()
-  ~object_description();            //former help_free_obj()
+  ~object_description ();           //former help_free_obj()
 
   int init (struct db_object *op); //former help_obj()
 };
 
-#endif //!defined(_OBJECT_DESCRIPTION_HPP_)
+#endif // _OBJECT_DESCRIPTION_HPP_

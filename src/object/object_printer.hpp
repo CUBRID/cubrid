@@ -20,7 +20,7 @@
 /* parser specific, object_print related code
 */
 
-#if !defined(_OBJECT_PRINTER_HPP_)
+#ifndef _OBJECT_PRINTER_HPP_
 #define _OBJECT_PRINTER_HPP_
 
 #if defined(SERVER_MODE)
@@ -28,6 +28,7 @@
 #endif //defined(SERVER_MODE)
 
 #include "class_description.hpp"
+
 struct db_object;
 struct sm_attribute;
 struct sm_class;
@@ -42,6 +43,7 @@ struct tp_domain;
 struct tr_triglist;
 struct tr_trigger;
 class string_buffer;
+
 namespace object_print
 {
   struct strlist;
@@ -80,4 +82,4 @@ class object_printer
   protected:
 };
 
-#endif //!defined(_OBJECT_PRINTER_HPP_)
+#endif // _OBJECT_PRINTER_HPP_

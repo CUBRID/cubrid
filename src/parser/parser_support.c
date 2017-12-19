@@ -9028,18 +9028,23 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	}
       return NULL;
     }
-  if (!is_class)
+  else if (!is_class)
     {
       PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A,
 		   table_name->info.name.original, pt_show_misc_type (PT_CLASS));
     }
+
 /* *INDENT-OFF* */
 #if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb{
     [&parser] (mem::block& block, size_t len)
     {
       size_t dim = block.dim ? block.dim : 1;
-      for (; dim < block.dim + len; dim *= 2);	//calc next power of 2 >= b.dim
+
+      // calc next power of 2 >= b.dim
+      for (; dim < block.dim + len; dim *= 2)
+	;
+
       mem::block b{dim, (char*) parser_alloc (parser, block.dim + len)};
       memcpy (b.ptr, block.ptr, block.dim);
       block = std::move (b);
@@ -9053,10 +9058,13 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 
   object_printer obj_print (sb);
   obj_print.describe_class (class_op);
+
   if (sb.len () == 0)
     {
       int error = er_errid ();
+
       assert (error != NO_ERROR);
+
       if (error == ER_AU_SELECT_FAILURE)
 	{
 	  PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
@@ -9067,6 +9075,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	  PT_ERRORc (parser, table_name, er_msg ());
 	}
     }
+
   return sb.move_ptr ();
 }
 

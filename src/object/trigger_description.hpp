@@ -17,7 +17,7 @@
  *
  */
 
-#if !defined(_TRIGGER_DESCRIPTION_HPP_)
+#ifndef _TRIGGER_DESCRIPTION_HPP_
 #define _TRIGGER_DESCRIPTION_HPP_
 
 #if defined(SERVER_MODE)
@@ -58,4 +58,4 @@ struct trigger_description
   void fprint (FILE *file);
 };
 
-#endif //!defined(_TRIGGER_DESCRIPTION_HPP_)
+#endif // _TRIGGER_DESCRIPTION_HPP_

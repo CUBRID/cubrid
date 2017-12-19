@@ -42,10 +42,12 @@ void object_print::free_strarray (char **strs)
     {
       return;
     }
+
   for (i = 0; strs[i] != NULL; i++)
     {
       free_and_init (strs[i]);
     }
+
   free_and_init (strs);
 }
 
@@ -66,5 +68,6 @@ char *object_print::copy_string (const char *source)
 	  strcpy (new_str, source);
 	}
     }
+
   return new_str;
 }

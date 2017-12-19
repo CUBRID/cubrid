@@ -20,7 +20,7 @@
 /* Utility structures and functions extracted from object_print
 */
 
-#if !defined(_OBJECT_PRINT_UTIL_HPP_)
+#ifndef _OBJECT_PRINT_UTIL_HPP_
 #define _OBJECT_PRINT_UTIL_HPP_
 
 #if defined(SERVER_MODE)
@@ -33,4 +33,4 @@ namespace object_print
   char *copy_string (const char *source);             //former obj_print_copy_string()
 }
 
-#endif //!defined(_OBJECT_PRINT_UTIL_HPP_)
+#endif // _OBJECT_PRINT_UTIL_HPP_

@@ -117,6 +117,7 @@ help_trigger_names (char ***names_ptr)
       if (count)
 	{
 	  buf_size = sizeof (char *) * (count + 1);
+
 	  names = (char **) malloc (buf_size);
 	  if (names == NULL)
 	    {
@@ -143,6 +144,7 @@ help_trigger_names (char ***names_ptr)
 	  db_objlist_free (triggers);
 	}
     }
+
   *names_ptr = names;
   return error;
 }
@@ -164,11 +166,12 @@ help_fprint_obj (FILE * fp, MOP obj)
   int i, status;
 
   status = locator_is_class (obj, DB_FETCH_READ);
+
   if (status < 0)
     {
       return;
     }
-  if (status > 0)
+  else if (status > 0)
     {
       if (locator_is_root (obj))
 	{
@@ -181,6 +184,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 	    {
 	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
 		       cinfo.class_type, cinfo.name);
+
 	      if (cinfo.supers != NULL)
 		{
 		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUPER_CLASSES));
@@ -268,9 +272,11 @@ help_fprint_obj (FILE * fp, MOP obj)
   else
     {
       (void) tr_is_trigger (obj, &status);
+
       if (status)
 	{
 	  trigger_description tinfo;
+
 	  if (tinfo.init (obj) == NO_ERROR)
 	    {
 	      fprintf (fp, "Trigger : %s", tinfo.name);
@@ -324,6 +330,7 @@ help_fprint_obj (FILE * fp, MOP obj)
       else
 	{
 	  object_description oinfo;
+
 	  if (oinfo.init (obj) == NO_ERROR)
 	    {
 	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_OBJECT_TITLE),
@@ -427,6 +434,7 @@ help_class_names (const char *qualifier)
 	  names[outcount] = NULL;
 	}
     }
+
   if (mops != NULL)
     {
       db_objlist_free (mops);
@@ -541,6 +549,7 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
 	    }
 	}
     }
+
   return total;
 }
 
@@ -583,11 +592,11 @@ obj_print_next_token (char *ptr, char *buffer)
   char *p;
 
   p = ptr;
-  while (char_isspace ((DB_C_INT) * p) && *p != '\0')
+  while (char_isspace ((DB_C_INT) (*p)) && *p != '\0')
     {
       p++;
     }
-  while (!char_isspace ((DB_C_INT) * p) && *p != '\0')
+  while (!char_isspace ((DB_C_INT) (*p)) && *p != '\0')
     {
       *buffer = *p;
       buffer++;
@@ -733,6 +742,7 @@ help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
 {
 /* *INDENT-OFF* */
   db_private_allocator<char> private_allocator{thread_p};
+
 #if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb{
     [&private_allocator] (mem::block& block, size_t len)
@@ -752,6 +762,7 @@ help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
   string_buffer sb{&mem::private_realloc, &mem::private_dealloc};
 #endif
 /* *INDENT-ON* */
+
   db_value_printer printer (sb);
   printer.describe_value (value);
   fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());
@@ -783,6 +794,7 @@ help_fprint_describe_comment (FILE * fp, const char *comment)
 
   assert (fp != NULL);
   assert (comment != NULL);
+
   printer.describe_comment (comment);
   fprintf (fp, "%.*s", int (sb.len ()), sb.get_buffer ());
 #endif /* !defined (SERVER_MODE) */

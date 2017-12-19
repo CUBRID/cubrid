@@ -35,7 +35,7 @@ namespace
 
     assert (value != NULL);
 
-    bstring = (unsigned char *)db_get_string (value);
+    bstring = (unsigned char *) db_get_string (value);
     if (bstring == NULL)
       {
 	return buf;
@@ -62,6 +62,7 @@ namespace
 	    buf += tmp[0];
 	  }
       }
+
     return buf;
   }
 
@@ -69,12 +70,14 @@ namespace
   string_buffer &describe_real (string_buffer &buf, double value, int precision)
   {
     char tbuf[24];
+
     snprintf (tbuf, sizeof (tbuf), db_value_printer::DECIMAL_FORMAT, precision, value);
     if (strstr (tbuf, "Inf"))
       {
-	snprintf (tbuf, sizeof (tbuf), db_value_printer::DECIMAL_FORMAT, precision, (value>0 ? FLT_MAX : -FLT_MAX));
+	snprintf (tbuf, sizeof (tbuf), db_value_printer::DECIMAL_FORMAT, precision, (value > 0 ? FLT_MAX : -FLT_MAX));
       }
     buf (tbuf);
+
     return buf;
   }
 }//namespace
@@ -83,6 +86,7 @@ namespace
 void db_value_printer::describe_money (const db_monetary *value)
 {
   assert (value != NULL);
+
   m_buf ("%s%.2f", intl_get_money_esc_ISO_symbol (value->type), value->amount);
   if (strstr (m_buf.get_buffer(), "Inf"))
     {
@@ -94,6 +98,7 @@ void db_value_printer::describe_money (const db_monetary *value)
 void db_value_printer::describe_value (const db_value *value)
 {
   INTL_CODESET codeset = INTL_CODESET_NONE;
+
   if (DB_IS_NULL (value))
     {
       m_buf ("NULL");
@@ -144,6 +149,7 @@ void db_value_printer::describe_value (const db_value *value)
 	  else
 	    {
 	      DB_VALUE varchar_val;
+
 	      /* print enumerations as strings */
 	      if (tp_enumeration_to_varchar (value, &varchar_val) == NO_ERROR)
 		{
@@ -272,7 +278,7 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_BIGINT:
-      m_buf ("%lld", (long long)db_get_bigint (value));
+      m_buf ("%lld", (long long) db_get_bigint (value));
       break;
 
     case DB_TYPE_POINTER:
@@ -280,11 +286,11 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_SHORT:
-      m_buf ("%d", (int)db_get_short (value));
+      m_buf ("%d", (int) db_get_short (value));
       break;
 
     case DB_TYPE_ERROR:
-      m_buf ("%d", (int)db_get_error (value));
+      m_buf ("%d", (int) db_get_error (value));
       break;
 
     case DB_TYPE_FLOAT:
@@ -359,10 +365,10 @@ void db_value_printer::describe_data (const db_value *value)
 #endif //#if defined(SERVER_MODE)
       break;
     /* If we are on the server, fall thru to the oid case The value is probably nonsense, but that is safe to do.
-        * This case should simply not occur. */
+     * This case should simply not occur. */
 
     case DB_TYPE_OID:
-      oid = (OID *)db_get_oid (value);
+      oid = (OID *) db_get_oid (value);
       if (oid == NULL)
 	{
 	  break;
@@ -424,55 +430,57 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
       /*
-          * This constant is necessary to fake out the db_?_to_string()
-          * routines that are expecting a buffer length.  Since we assume
-          * that our buffer is big enough in this code, just pass something
-          * that ought to work for every case.
-          */
+       * This constant is necessary to fake out the db_?_to_string()
+       * routines that are expecting a buffer length.  Since we assume
+       * that our buffer is big enough in this code, just pass something
+       * that ought to work for every case.
+       */
 #define TOO_BIG_TO_MATTER       1024
 
     case DB_TYPE_TIME:
-      (void)db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
+      (void) db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
       m_buf (line);
       break;
     case DB_TYPE_TIMELTZ:
-      (void)db_timeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
+      (void) db_timeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
       m_buf (line);
       break;
 
     case DB_TYPE_TIMETZ:
     {
       DB_TIMETZ *time_tz;
+
       time_tz = DB_GET_TIMETZ (value);
-      (void)db_timetz_to_string (line, TOO_BIG_TO_MATTER, &time_tz->time, &time_tz->tz_id);
+      (void) db_timetz_to_string (line, TOO_BIG_TO_MATTER, &time_tz->time, &time_tz->tz_id);
       m_buf (line);
     }
     break;
 
     case DB_TYPE_UTIME:
-      (void)db_utime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
+      (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
       m_buf (line);
       break;
     case DB_TYPE_TIMESTAMPLTZ:
-      (void)db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
+      (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
       m_buf (line);
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
     {
       DB_TIMESTAMPTZ *ts_tz;
+
       ts_tz = DB_GET_TIMESTAMPTZ (value);
-      (void)db_timestamptz_to_string (line, TOO_BIG_TO_MATTER, & (ts_tz->timestamp), & (ts_tz->tz_id));
+      (void) db_timestamptz_to_string (line, TOO_BIG_TO_MATTER, & (ts_tz->timestamp), & (ts_tz->tz_id));
       m_buf (line);
     }
     break;
 
     case DB_TYPE_DATETIME:
-      (void)db_datetime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
+      (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
       m_buf (line);
       break;
     case DB_TYPE_DATETIMELTZ:
-      (void)db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
+      (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
       m_buf (line);
       break;
 
@@ -481,13 +489,13 @@ void db_value_printer::describe_data (const db_value *value)
       DB_DATETIMETZ *dt_tz;
 
       dt_tz = DB_GET_DATETIMETZ (value);
-      (void)db_datetimetz_to_string (line, TOO_BIG_TO_MATTER, & (dt_tz->datetime), & (dt_tz->tz_id));
+      (void) db_datetimetz_to_string (line, TOO_BIG_TO_MATTER, & (dt_tz->datetime), & (dt_tz->tz_id));
       m_buf (line);
     }
     break;
 
     case DB_TYPE_DATE:
-      (void)db_date_to_string (line, TOO_BIG_TO_MATTER, db_get_date (value));
+      (void) db_date_to_string (line, TOO_BIG_TO_MATTER, db_get_date (value));
       m_buf (line);
       break;
 

@@ -17,7 +17,7 @@
  *
  */
 
-#if !defined(_MSGCAT_HELP_HPP_)
+#ifndef _MSGCAT_HELP_HPP_
 #define _MSGCAT_HELP_HPP_
 
 #if defined(SERVER_MODE)
@@ -51,4 +51,4 @@
 #define MSGCAT_HELP_LDB_VCLASS_HEADER   (19)
 #define MSGCAT_HELP_GENERAL_TXT         (20)
 
-#endif //!defined(_MSGCAT_HELP_HPP_)
+#endif // _MSGCAT_HELP_HPP_

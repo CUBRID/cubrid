@@ -2424,7 +2424,7 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
       table_name = db_get_string (name_val);
       assert (table_name != NULL);
 
-      struct db_object *class_op = sm_find_class (table_name);
+      MOP class_op = sm_find_class (table_name);
       if (class_op == NULL)
 	{
 	  goto error;

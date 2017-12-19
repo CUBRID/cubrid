@@ -43,6 +43,7 @@ int object_description::init (struct db_object *op)
     {
       return ER_OBJ_INVALID_ARGUMENTS;
     }
+
   int error;
   SM_CLASS *class_;
   SM_ATTRIBUTE *attribute_p;
@@ -65,6 +66,7 @@ int object_description::init (struct db_object *op)
     {
       return error;
     }
+
   pin = ws_pin (op, 1);
   error = au_fetch_class (ws_class_mop (op), &class_, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
@@ -81,23 +83,25 @@ int object_description::init (struct db_object *op)
   db_value_clear (&value);
   DB_MAKE_NULL (&value);
 
-  this->oid = sb.move_ptr();
+  this->oid = sb.move_ptr ();
 
   if (class_->ordered_attributes != NULL)
     {
       count = class_->att_count + class_->shared_count + 1;
       buf_size = sizeof (char *) * count;
+
       strs = (char **) malloc (buf_size);
       if (strs == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+
       i = 0;
       for (attribute_p = class_->ordered_attributes; attribute_p != NULL;
 	   attribute_p = attribute_p->order_link)
 	{
-	  sb.clear();// We're starting a new line here, so we don't want to append to the old buffer
+	  sb.clear ();// We're starting a new line here, so we don't want to append to the old buffer
 	  sb ("%20s = ", attribute_p->header.name);
 	  if (attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
 	    {
@@ -108,9 +112,10 @@ int object_description::init (struct db_object *op)
 	      db_get (op, attribute_p->header.name, &value);
 	      printer.describe_value (&value);
 	    }
-	  strs[i] = sb.move_ptr();
+	  strs[i] = sb.move_ptr ();
 	  i++;
 	}
+
       strs[i] = NULL;
       attributes = strs;//ToDo: refactor this->attributes as std::vector<char*>
     }
@@ -121,7 +126,7 @@ int object_description::init (struct db_object *op)
   return NO_ERROR;
 }
 
-object_description::~object_description()
+object_description::~object_description ()
 {
   free (classname);
   free (oid);

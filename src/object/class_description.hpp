@@ -17,7 +17,7 @@
  *
  */
 
-#if !defined(_CLASS_DESCRIPTION_HPP_)
+#ifndef _CLASS_DESCRIPTION_HPP_
 #define _CLASS_DESCRIPTION_HPP_
 
 #if defined(SERVER_MODE)
@@ -75,4 +75,4 @@ struct class_description
   //ToDo: other special methods: copy&move ctor/assign
 };
 
-#endif //!defined(_CLASS_DESCRIPTION_HPP_)
+#endif // _CLASS_DESCRIPTION_HPP_
