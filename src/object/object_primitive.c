@@ -17205,7 +17205,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      return 0;
 	    }
 	  db_make_string (&json_body_value, json->json_body);
-	  json_body_length = mr_data_lengthval_string (&json_body_value, 1);
+	  json_body_length = mr_data_lengthval_string (&json_body_value, disk);
 
 	  if (json->schema_raw != NULL)
 	    {
@@ -17216,7 +17216,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      db_make_string (&schema_raw_value, "");
 	    }
 
-	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, 1);
+	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, disk);
 
 	  return json_body_length + schema_raw_length;
 	}
@@ -17277,6 +17277,18 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 	{
 	  or_advance (buf, size);
 	}
+      return;
+    }
+
+  if (size < 0)
+    {
+      assert (false);
+      return;
+    }
+
+  if (size == 0)
+    {
+      mr_initmem_json (memptr, domain);
       return;
     }
 
@@ -17390,6 +17402,9 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
   unsigned int json_body_length;
   unsigned int raw_schema_length;
 
+  db_make_null (&json_body);
+  db_make_null (&schema_raw);
+
   if (!disk)
     {
       return tp_Json.size;
@@ -17427,10 +17442,27 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
   int rc = NO_ERROR;
   DB_VALUE json_body, schema_raw;
 
+  db_make_null (&json_body);
+  db_make_null (&schema_raw);
+
   if (value->data.json.json_body == NULL || DB_IS_NULL (value))
     {
       assert (false);
       return ER_FAILED;
+    }
+
+  if (buf->error_abort)
+    {
+      int estimated_length = mr_data_lengthval_json (value, true);
+
+      if ((ptrdiff_t) estimated_length > ((ptrdiff_t) (buf->endptr - buf->ptr)))
+	{
+	  /* this will make string_data_writeval jump because
+	   * of buffer overflow, leaking memory in the process,
+	   * we need to take care of it here
+	   */
+	  or_overflow (buf);
+	}
     }
 
   db_make_string (&json_body, value->data.json.json_body);
@@ -17455,6 +17487,7 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
     {
       goto exit;
     }
+
 
 exit:
   pr_clear_value (&json_body);
