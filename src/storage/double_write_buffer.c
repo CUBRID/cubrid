@@ -3982,10 +3982,14 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   unsigned int i;
   int num_pages, num_pages2;
   DWB_BLOCK *block;
+  bool found;
+  int iter = 0;
 
   block = double_Write_Buffer.helper_flush_block;
   if (block != NULL)
     {
+    start:
+      found = false;
       for (i = 0; i < block->count_flush_volumes_info; i++)
 	{
 	  do
@@ -3993,8 +3997,12 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 	      num_pages = ATOMIC_INC_32 (&block->flush_volumes_info[i].num_pages, 0);
 	      if (num_pages < (prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH) / 2))
 		{
-		  /* Not enough pages, do not flush yet. */
-		  break;
+		  /* In first iteration, flush volumes that have many pages. */
+		  if ((num_pages == 0) || (iter == 0))
+		    {
+		      /* Not enough pages, do not flush yet. */
+		      break;
+		    }
 		}
 
 	      /* Reset the number of pages in volume. */
@@ -4003,6 +4011,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 		{
 		  /* The volume pages already flushed into double write buffer volume. */
 		  (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, false);
+		  found = true;
 		}
 	      else
 		{
@@ -4011,6 +4020,13 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 		}
 	    }
 	  while (true);
+	}
+
+      iter++;
+      if (found)
+	{
+	  /* Try again. */
+	  goto start;
 	}
 
       /* Be sure that the helper flush block was not changed by other thread. */
