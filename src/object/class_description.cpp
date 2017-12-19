@@ -88,7 +88,7 @@ namespace
 } //namespace
 
 //former obj_print_make_class_help()
-class_description::class_description()
+class_description::class_description ()
   : name (NULL)
   , class_type (NULL)
   , collation (NULL)
@@ -102,14 +102,14 @@ class_description::class_description()
   , method_files (NULL)
   , query_spec (NULL)
   , object_id (NULL)
-  , triggers()
+  , triggers ()
   , constraints (NULL)
   , partition ()
   , comment (NULL)
 {
 }
 
-class_description::~class_description()
+class_description::~class_description ()
 {
   if (name != NULL)
     {
@@ -142,12 +142,12 @@ class_description::~class_description()
       free (it);
     }
 #else
-  for (auto it=triggers.begin(); it != triggers.end(); ++it)
+  for (auto it=triggers.begin (); it != triggers.end (); ++it)
     {
       free (*it);
     }
 #endif
-  triggers.clear();
+  triggers.clear ();
   object_print::free_strarray (constraints);
 #if 0 //bSolo: temporary until evolve above gcc 4.4.7
   for (auto it: partition)
@@ -155,12 +155,12 @@ class_description::~class_description()
       free (it);
     }
 #else
-  for (auto it=partition.begin(); it != partition.end(); ++it)
+  for (auto it=partition.begin (); it != partition.end (); ++it)
     {
       free (*it);
     }
 #endif
-  partition.clear();
+  partition.clear ();
   if (comment != NULL)
     {
       free (comment);
@@ -191,7 +191,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
   assert (op != NULL);
 
   // cleanup before (re)initialize
-  this->~class_description();
+  this->~class_description ();
 
   SM_CLASS *class_;
   SM_ATTRIBUTE *a;
@@ -285,7 +285,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
        * For the case prt_type == OBJ_PRINT_SHOW_CREATE_TABLE
        * this->name is set to the exact class name
        */
-      sb.clear();
+      sb.clear ();
       sb ("[%s]", sm_ch_name ((MOBJ) class_));
       this->name = object_print::copy_string (sb.get_buffer ());
     }
@@ -344,7 +344,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  kludge = sm_get_ch_name (super->op);
 	  if (kludge == NULL)
 	    {
-	      assert (er_errid() != NO_ERROR);
+	      assert (er_errid () != NO_ERROR);
 	      return ER_FAILED;
 	    }
 
@@ -355,7 +355,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  else
 	    {
 	      /* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
-	      sb.clear();
+	      sb.clear ();
 	      sb ("[%s]", kludge);
 	      strs[i] = object_print::copy_string (sb.get_buffer ());
 	    }
@@ -396,7 +396,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  else
 	    {
 	      /* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
-	      sb.clear();
+	      sb.clear ();
 	      sb ("[%s]", kludge);
 	      strs[i] = object_print::copy_string (sb.get_buffer ());
 	    }
@@ -533,7 +533,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	{
 	  buf_size = sizeof (char *) * (count + 1);
 
-	  strs = (char **)malloc (buf_size);
+	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
@@ -580,7 +580,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	{
 	  buf_size = sizeof (char *) * (count + 1);
 
-	  strs = (char **)malloc (buf_size);
+	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
@@ -609,7 +609,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
       count = ws_list_length ((DB_LIST *) class_->resolutions);
       buf_size = sizeof (char *) * (count + 1);
 
-      strs = (char **)malloc (buf_size);
+      strs = (char **) malloc (buf_size);
       if (strs == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
@@ -619,9 +619,9 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
       i = 0;
       for (SM_RESOLUTION *r = class_->resolutions; r != NULL; r = r->next)
 	{
-	  sb.clear();
+	  sb.clear ();
 	  printer.describe_resolution (*r, prt_type);
-	  strs[i] = object_print::copy_string (sb.get_buffer());
+	  strs[i] = object_print::copy_string (sb.get_buffer ());
 	  i++;
 	}
 

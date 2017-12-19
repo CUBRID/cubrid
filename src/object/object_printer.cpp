@@ -922,7 +922,7 @@ const char *object_printer::describe_trigger_action_time (const tr_trigger &trig
 //--------------------------------------------------------------------------------
 void object_printer::describe_class (struct db_object *class_op)
 {
-  m_buf.clear();
+  m_buf.clear ();
 
   class_description class_descr;
 
@@ -944,7 +944,7 @@ void object_printer::describe_class (struct db_object *class_op)
       return;
     }
 
-  m_buf.clear();
+  m_buf.clear ();
 
   char **line_ptr;
 
@@ -1101,7 +1101,7 @@ void object_printer::describe_class (struct db_object *class_op)
     {
       m_buf (" %s", class_descr.partition[0]);
 
-      size_t len = class_descr.partition.size();
+      size_t len = class_descr.partition.size ();
 
       if (len > 1)
 	{

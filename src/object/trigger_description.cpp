@@ -30,7 +30,7 @@
 #define STRFREE_W(string)                               \
   if (string != NULL) db_string_free((char *) (string))
 
-trigger_description::trigger_description()
+trigger_description::trigger_description ()
   : name (0)
   , event (0)
   , class_name (0)

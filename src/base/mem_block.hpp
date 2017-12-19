@@ -39,7 +39,7 @@ namespace mem
       size_t dim;
       char  *ptr;
 
-      block()
+      block ()
 	: dim {0}
 	, ptr {NULL}
       {}

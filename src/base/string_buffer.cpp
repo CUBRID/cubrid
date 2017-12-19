@@ -20,10 +20,11 @@
 
 void string_buffer::add_bytes (size_t len, void *bytes)
 {
-  if (bytes && m_len + len +1 > dim)
+  if (bytes && m_len + len + 1 > dim)
     {
       extend (m_len + len + 1 - dim);
     }
   memcpy (ptr + m_len, bytes, len);
-  ptr[m_len += len] = 0;
+  m_len += len;
+  ptr[m_len] = 0;
 }
