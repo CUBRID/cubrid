@@ -1980,8 +1980,6 @@ thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
       thread_p->check_interrupt = flag;
     }
 
-  assert (old_val == false || !VACUUM_IS_THREAD_VACUUM (thread_p));
-
   return old_val;
 }
 
