@@ -251,6 +251,7 @@ struct flush_volume_info
 {
   int vdes;			/* The volume descriptor. */
   int num_pages;		/* The number of pages to flush in volume. */
+  volatile bool all_pages_written;	/* True, if all pages written. */
 };
 
 /* DWB block. */
@@ -2387,6 +2388,7 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, 
       flush_new_volume_info = &block->flush_volumes_info[block->count_flush_volumes_info];
       flush_new_volume_info->vdes = vol_fd;
       flush_new_volume_info->num_pages = 0;
+      flush_new_volume_info->all_pages_written = false;
 
       ATOMIC_INC_32 (&block->count_flush_volumes_info, 1);
       assert (block->count_flush_volumes_info < block->max_to_flush_vdes);
@@ -2445,6 +2447,12 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
       if (volid != vpid->volid)
 	{
 	  /* Get the volume descriptor. */
+	  if (current_flush_volume_info)
+	    {
+	      assert_release (current_flush_volume_info->vdes == vol_fd);
+	      current_flush_volume_info->all_pages_written = true;
+	    }
+
 	  volid = vpid->volid;
 	  vol_fd = fileio_get_volume_descriptor (volid);
 	  dwb_add_volume_to_block_flush_area (thread_p, block, vol_fd, &current_flush_volume_info);
@@ -3997,7 +4005,6 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   int num_pages, num_pages2;
   DWB_BLOCK *block;
   bool found;
-  int iter = 0;
 
 start:
   block = double_Write_Buffer.helper_flush_block;
@@ -4009,14 +4016,16 @@ start:
 	  do
 	    {
 	      num_pages = ATOMIC_INC_32 (&block->flush_volumes_info[i].num_pages, 0);
-	      if (num_pages < (prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH) / 2))
+	      if (num_pages == 0)
 		{
-		  /* In first iteration, flush volumes that have many pages. */
-		  if ((num_pages == 0) || (iter == 0))
-		    {
-		      /* Not enough pages, do not flush yet. */
-		      break;
-		    }
+		  /* This volume is already flushed. */
+		  break;
+		}
+
+	      if ((num_pages < (prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH) / 2))
+		  && (block->flush_volumes_info[i].all_pages_written == false))
+		{
+		  break;
 		}
 
 	      /* Reset the number of pages in volume. */
@@ -4037,7 +4046,6 @@ start:
 	  while (true);
 	}
 
-      iter++;
       if (found)
 	{
 	  /* Try again. */
