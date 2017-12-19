@@ -1735,8 +1735,7 @@ void
 thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *num_free_threads,
 			 int *num_suspended_threads)
 {
-  THREAD_ENTRY *thread_p;
-  int i;
+  THREAD_ENTRY *thread_p = NULL;
 
   if (num_total_threads)
     {
@@ -1756,9 +1755,8 @@ thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *n
     }
   if (num_free_threads || num_suspended_threads)
     {
-      for (i = 0; i < thread_Manager.num_workers; i++)
+      for (thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
 	{
-	  thread_p = &thread_Manager.thread_array[i];
 	  if (num_free_threads && thread_p->status == TS_FREE)
 	    {
 	      (*num_free_threads)++;
@@ -3590,7 +3588,14 @@ thread_find_first_lockwait_entry (int *thread_index_p)
 THREAD_ENTRY *
 thread_find_next_lockwait_entry (int *thread_index_p)
 {
-  for (THREAD_ENTRY * thread_p = thread_find_entry_by_index (*thread_index_p);
+  int start_index = (*thread_index_p) + 1;
+  if (start_index == thread_num_total_threads ())
+    {
+      // no other threads
+      return NULL;
+    }
+  // iterate threads
+  for (THREAD_ENTRY * thread_p = thread_find_entry_by_index (start_index);
        thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
       if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
@@ -3658,12 +3663,11 @@ int
 thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** thread_array_p)
 {
   THREAD_ENTRY *thread_p;
-  int i, thread_count;
+  int thread_count;
 
   thread_count = 0;
-  for (i = 0; i < thread_Manager.num_workers; i++)
+  for (thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      thread_p = &(thread_Manager.thread_array[i]);
       if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
 	{
 	  continue;
@@ -3674,6 +3678,7 @@ thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** thread_array_p)
 	  thread_count++;
 	  if (thread_count >= 10)
 	    {
+	      assert (false);
 	      break;
 	    }
 	}

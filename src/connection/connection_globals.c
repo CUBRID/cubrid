@@ -81,6 +81,7 @@ CSS_CONN_RULE_INFO css_Conn_rules[] = {
    css_get_ha_client_max_conn,
    CR_RESERVED_FIRST, 0, 0}
 };
+
 const int css_Conn_rules_size = DIM (css_Conn_rules);
 
 /*
