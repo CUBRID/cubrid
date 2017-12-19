@@ -1806,7 +1806,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
   else
     {
 #ifdef HAVE_GETHOSTBYNAME_R
-# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+#if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
       struct hostent *hp, hent;
       int herr;
       char buf[1024];
@@ -1817,7 +1817,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+#elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
       int herr;
       char buf[1024];
@@ -1828,7 +1828,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+#elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
       struct hostent_data ht_data;
 
@@ -1838,9 +1838,9 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
-# else
-#   error "HAVE_GETHOSTBYNAME_R"
-# endif
+#else
+#error "HAVE_GETHOSTBYNAME_R"
+#endif
 #else /* HAVE_GETHOSTBYNAME_R */
       struct hostent *hp;
       int r;
