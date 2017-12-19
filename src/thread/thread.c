@@ -3588,7 +3588,14 @@ thread_find_first_lockwait_entry (int *thread_index_p)
 THREAD_ENTRY *
 thread_find_next_lockwait_entry (int *thread_index_p)
 {
-  for (THREAD_ENTRY * thread_p = thread_find_entry_by_index (*thread_index_p);
+  int start_index = (*thread_index_p) + 1;
+  if (start_index == thread_num_total_threads ())
+    {
+      // no other threads
+      return NULL;
+    }
+  // iterate threads
+  for (THREAD_ENTRY * thread_p = thread_find_entry_by_index (start_index);
        thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
       if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
