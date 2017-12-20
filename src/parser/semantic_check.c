@@ -15103,6 +15103,13 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	  }
 	  break;
 
+	case PT_FUNCTION_HOLDER:
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_FILTER_INDEX,
+		      pt_show_function (node->info.expr.arg1->info.function.function_type));
+	  info->is_valid_expr = false;
+	  break;
+
 	default:
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_FILTER_INDEX, pt_show_binopcode (node->info.expr.op));

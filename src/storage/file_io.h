@@ -456,8 +456,8 @@ extern void fileio_make_volume_ext_given_name (char *volext_fullname, const char
 extern void fileio_make_volume_temp_name (char *voltmp_fullname, const char *tmp_path, const char *tmp_name,
 					  VOLID volid);
 extern void fileio_make_log_active_name (char *logactive_name, const char *log_path, const char *dbname);
-extern void fileio_make_log_active_temp_name (char *logactive_tmpname, FILEIO_BACKUP_LEVEL level,
-					      const char *active_name);
+extern void fileio_make_temp_log_files_from_backup (char *temp_log_name, VOLID volid, FILEIO_BACKUP_LEVEL level,
+						    const char *base_log_name);
 extern void fileio_make_log_archive_name (char *logarchive_name, const char *log_path, const char *dbname, int arvnum);
 extern void fileio_make_removed_log_archive_name (char *logarchive_name, const char *log_path, const char *dbname);
 extern void fileio_make_log_archive_temp_name (char *log_archive_temp_name_p, const char *log_path_p,

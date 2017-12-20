@@ -33,11 +33,13 @@
 #include <assert.h>
 #include <math.h>
 
+#include "db_value_printer.hpp"
 #include "porting.h"
 #include "parser.h"
 #include "parser_message.h"
 #include "misc_string.h"
 #include "csql_grammar_scan.h"
+#include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "language_support.h"
 #include "object_print.h"
@@ -47,6 +49,8 @@
 #include "virtual_object.h"
 #include "set_object.h"
 #include "dbi.h"
+#include "string_buffer.hpp"
+#include <malloc.h>
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2511,99 +2515,112 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
 PARSER_VARCHAR *
 pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
 {
-  PARSER_VARCHAR *temp = NULL, *result = NULL, *elem;
+  PARSER_VARCHAR *temp = NULL, *result = NULL;
   int i, size = 0;
   DB_VALUE element;
   int error = NO_ERROR;
-  PT_NODE foo;
   unsigned int save_custom = parser->custom_print;
 
+/* *INDENT-OFF* */
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+  string_buffer sb{
+    [&parser] (mem::block& block, size_t len)
+    {
+      size_t dim = block.dim ? block.dim : 1;
+      for (; dim < block.dim + len; dim *= 2); //calc next power of 2 >= b.dim
+        mem::block b{dim, (char*) parser_alloc (parser, block.dim + len)};
+      memcpy (b.ptr, block.ptr, block.dim);
+      block = std::move (b);
+    },
+    [](mem::block& block){} //no need to deallocate for parser_context
+  };
+#else
+  string_buffer sb;
+#endif
+/* *INDENT-ON* */
+
+  db_value_printer printer (sb);
   if (val == NULL)
     {
       return NULL;
     }
 
-  memset (&foo, 0, sizeof (foo));
-
   /* set custom_print here so describe_data() will know to pad bit strings to full bytes */
   parser->custom_print = parser->custom_print | PT_PAD_BYTE;
-
   switch (DB_VALUE_TYPE (val))
     {
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
-      temp = pt_append_nulstring (parser, NULL, pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
+      sb ("%s", pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
       /* fall thru */
     case DB_TYPE_SEQUENCE:
-      temp = pt_append_nulstring (parser, temp, "{");
+      sb ("{");
 
       size = db_set_size (db_get_set ((DB_VALUE *) val));
       if (size > 0)
 	{
 	  error = db_set_get (db_get_set ((DB_VALUE *) val), 0, &element);
-	  elem = describe_value (parser, NULL, &element);
-	  temp = pt_append_varchar (parser, temp, elem);
+	  printer.describe_value (&element);
 	  for (i = 1; i < size; i++)
 	    {
 	      error = db_set_get (db_get_set ((DB_VALUE *) val), i, &element);
-	      temp = pt_append_nulstring (parser, temp, ", ");
-	      elem = describe_value (parser, NULL, &element);
-	      temp = pt_append_varchar (parser, temp, elem);
+	      sb (", ");
+	      printer.describe_value (&element);
 	    }
 	}
-      temp = pt_append_nulstring (parser, temp, "}");
-      result = temp;
+      sb ("}");
       break;
 
     case DB_TYPE_OBJECT:
       /* no printable representation!, should not get here */
-      result = pt_append_nulstring (parser, NULL, "NULL");
+      sb ("NULL");
       break;
 
     case DB_TYPE_MONETARY:
       /* This is handled explicitly because describe_value will add a currency symbol, and it isn't needed here. */
-      result = pt_append_varchar (parser, NULL, describe_money (parser, NULL, DB_GET_MONETARY ((DB_VALUE *) val)));
+      printer.describe_money (DB_GET_MONETARY ((DB_VALUE *) val));
       break;
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       /* csql & everyone else get X'some_hex_string' */
-      result = describe_value (parser, NULL, val);
+      printer.describe_value (val);
       break;
 
     case DB_TYPE_DATE:
       /* csql & everyone else want DATE'mm/dd/yyyy' */
-      result = describe_value (parser, NULL, val);
+      printer.describe_value (val);
       break;
 
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
       /* csql & everyone else get time 'hh:mi:ss' */
-      result = describe_value (parser, NULL, val);
+      printer.describe_value (val);
       break;
 
     case DB_TYPE_UTIME:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
       /* everyone else gets csql's utime format */
-      result = describe_value (parser, NULL, val);
-
+      printer.describe_value (val);
       break;
 
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMETZ:
     case DB_TYPE_DATETIMELTZ:
       /* everyone else gets csql's utime format */
-      result = describe_value (parser, NULL, val);
+      printer.describe_value (val);
       break;
 
     default:
-      result = describe_value (parser, NULL, val);
+      printer.describe_value (val);
       break;
     }
+
   /* restore custom print */
   parser->custom_print = save_custom;
+  result = pt_append_nulstring (parser, NULL, sb.get_buffer ());
   return result;
 }
 
@@ -16430,10 +16447,10 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  switch (p->type_enum)
 	    {
 	    case PT_TYPE_FLOAT:
-	      OBJ_SPRINT_DB_FLOAT (s, p->info.value.data_value.f);
+	      sprintf (s, db_value_printer::DECIMAL_FORMAT, DB_FLOAT_DECIMAL_PRECISION, p->info.value.data_value.f);
 	      break;
 	    case PT_TYPE_DOUBLE:
-	      OBJ_SPRINT_DB_DOUBLE (s, p->info.value.data_value.d);
+	      sprintf (s, db_value_printer::DECIMAL_FORMAT, DB_DOUBLE_DECIMAL_PRECISION, p->info.value.data_value.d);
 	      break;
 	    case PT_TYPE_NUMERIC:
 	      strcpy (s, (const char *) p->info.value.data_value.str->bytes);
