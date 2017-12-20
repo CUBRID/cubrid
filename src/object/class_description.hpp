@@ -17,6 +17,10 @@
  *
  */
 
+/*
+ * class_description.hpp
+ */
+
 #ifndef _CLASS_DESCRIPTION_HPP_
 #define _CLASS_DESCRIPTION_HPP_
 

@@ -17,6 +17,10 @@
  *
  */
 
+/*
+ * msgcat_help.hpp
+ */
+
 #ifndef _MSGCAT_HELP_HPP_
 #define _MSGCAT_HELP_HPP_
 

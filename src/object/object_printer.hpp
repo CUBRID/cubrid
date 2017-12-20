@@ -17,8 +17,9 @@
  *
  */
 
-/* parser specific, object_print related code
-*/
+/*
+ * object_printer.hpp - parser specific, object_print related code
+ */
 
 #ifndef _OBJECT_PRINTER_HPP_
 #define _OBJECT_PRINTER_HPP_

@@ -16,7 +16,10 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/* format db values
+/*
+ * db_value_printer.hpp
+ *
+ * format db values
  * common things (server & client) extracted from object_print
  */
 

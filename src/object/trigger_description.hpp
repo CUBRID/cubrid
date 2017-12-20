@@ -17,6 +17,10 @@
  *
  */
 
+/*
+ * trigger_description.hpp
+ */
+
 #ifndef _TRIGGER_DESCRIPTION_HPP_
 #define _TRIGGER_DESCRIPTION_HPP_
 

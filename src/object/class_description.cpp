@@ -17,6 +17,10 @@
  *
  */
 
+/*
+ * class_description.cpp
+ */
+
 #include "class_description.hpp"
 
 #include "authenticate.h"

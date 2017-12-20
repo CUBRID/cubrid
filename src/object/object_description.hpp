@@ -17,7 +17,10 @@
  *
  */
 
-/* Structure contains information about an instance.
+/*
+ * object_description.hpp
+ *
+ * Structure contains information about an instance.
  * extracted from object_print and improved with constructor & destructor
  */
 

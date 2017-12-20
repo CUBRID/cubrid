@@ -17,6 +17,10 @@
  *
  */
 
+/*
+ * trigger_description.cpp
+ */
+
 #include "trigger_description.hpp"
 
 #include "dbi.h"

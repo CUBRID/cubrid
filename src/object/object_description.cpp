@@ -16,6 +16,11 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
+
+/*
+ * object_description.cpp
+ */
+
 #include "object_description.hpp"
 #include "authenticate.h"
 #include "class_object.h"

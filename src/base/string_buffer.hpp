@@ -16,7 +16,10 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/* String Buffer: collects formatted text (printf-like syntax) in a fixed size buffer
+/*
+ * string_buffer.hpp
+ *
+ * - collects formatted text (printf-like syntax) in a fixed size buffer
  * - useful to build a formatted string in successive function calls without dynamic memory allocation
  * - if the provided buffer is too small then the len() method can be used to find necessary size
  * (similar with snprintf() behavior)

@@ -16,7 +16,8 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/* Memory Management Functionality
+/*
+ * mem_block.hpp - Memory Management Functionality
  */
 
 #ifndef _MEM_BLOCK_HPP_

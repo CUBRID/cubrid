@@ -17,8 +17,9 @@
  *
  */
 
-/* Utility structures and functions extracted from object_print
-*/
+/*
+ * object_print_util.hpp - Utility structures and functions extracted from object_print
+ */
 
 #ifndef _OBJECT_PRINT_UTIL_HPP_
 #define _OBJECT_PRINT_UTIL_HPP_
