@@ -6885,17 +6885,8 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	    }
 	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
 	    {
-	      if (domain->json_validator == NULL)
-		{
-		  value->data.json.schema_raw = NULL;
-		}
-	      else
-		{
-		  char *s;
-
-		  s = db_private_strdup (NULL, db_json_get_schema_raw_from_validator (domain->json_validator));
-		  value->data.json.schema_raw = s;
-		}
+	      /* TODO find if schema_raw set here is ever used */
+	      value->data.json.schema_raw = NULL;
 	    }
 	}
       else
