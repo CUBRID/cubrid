@@ -1383,7 +1383,6 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, const JSON_DOC &d
 	{
 	  i++;
 	  bool is_number = false;
-	  bool found_special_char = false;
 	  token.clear();
 
 	  // get current token between "/"
