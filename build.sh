@@ -30,12 +30,11 @@ script_dir=$(dirname $(readlink -f $0))
 build_target="x86_64"
 build_mode="release"
 source_dir=`pwd`
-default_java_dir="/usr/java/default"
+default_java_dir="/usr/lib/jvm/java"
 java_dir=""
 configure_options=""
 # default build_dir = "$source_dir/build_${build_target}_${build_mode}"
 build_dir=""
-install_dir=""
 prefix_dir=""
 output_dir=""
 build_args="all"
@@ -141,13 +140,13 @@ function build_initialize ()
 function build_clean ()
 {
   print_check "Cleaning packaging directory"
-  if [ -d $install_dir ]; then
-    if [ "$install_dir" = "/" ]; then
+  if [ -d $prefix_dir ]; then
+    if [ "$prefix_dir" = "/" ]; then
       print_fatal "Do not set root dir as install directory"
     fi
     
-    print_info "All files in $install_dir is removing"
-    rm -rf $install_dir/*
+    print_info "All files in $prefix_dir is removing"
+    rm -rf $prefix_dir/*
   fi
   print_result "OK"
 
@@ -295,8 +294,8 @@ function build_package ()
 	fi
       ;;
       tarball|shell|cci|rpm)
-	if [ ! -d "$install_dir" -o ! -d "$prefix_dir" ]; then
-	  print_fatal "Installed directory or prefix directory not found"
+	if [ ! -d "$prefix_dir" ]; then
+	  print_fatal "Prefix directory not found"
 	fi
 
 	if [ "$package" = "cci" ]; then
@@ -442,11 +441,9 @@ function get_options ()
   # convert paths to absolute path
   [ ! -d "$build_dir" ] && mkdir -p $build_dir
   build_dir=$(readlink -f $build_dir)
-  install_dir="$build_dir/_install"
-  [ ! -d "$install_dir" ] && mkdir -p $install_dir
 
   if [ "x$prefix_dir" = "x" ]; then
-    prefix_dir="$install_dir/$product_name"
+    prefix_dir="$build_dir/_install/$product_name"
   else
     [ ! -d "$prefix_dir" ] && mkdir -p $prefix_dir
     prefix_dir=$(readlink -f $prefix_dir)
