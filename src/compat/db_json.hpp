@@ -61,12 +61,19 @@ enum DB_JSON_TYPE
   DB_JSON_BOOL,
 };
 
+enum class JSON_PATH_TYPE
+{
+  JSON_PATH_SQL_JSON,
+  JSON_PATH_POINTER,
+  JSON_PATH_EMPTY
+};
+
 /* C functions */
 bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (JSON_DOC *document, const char *raw_path,
+int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path,
 					JSON_DOC *&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
@@ -84,13 +91,14 @@ void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 
-int db_json_convert_rapidjsonpath_to_mysqlpath (char *raw_path, const JSON_DOC &doc, std::string &converted_path);
-int db_json_convert_mysqlpath_to_rapidjsonpath (char *raw_path, const JSON_DOC &doc, std::string &converted_path);
+int db_json_convert_pointer_to_sql_path (const char *pointer_path, const JSON_DOC &doc,
+    std::string &sql_path_out, bool &path_has_effect);
+int db_json_convert_sql_path_to_pointer (const char *sql_path, const JSON_DOC &doc, std::string &json_pointer_out);
 int db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
-int db_json_replace_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
-int db_json_set_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
-int db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, char *raw_path);
-int db_json_array_append_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
+int db_json_replace_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path);
+int db_json_set_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path);
+int db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_path);
+int db_json_array_append_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC *doc, char *raw_path);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
