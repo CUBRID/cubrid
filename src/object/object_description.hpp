@@ -14,22 +14,36 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
  */
 
 /*
- * string_buffer.cpp
+ * object_description.hpp
+ *
+ * Structure contains information about an instance.
+ * extracted from object_print and improved with constructor & destructor
  */
 
-#include "string_buffer.hpp"
-#include <memory.h>
+#ifndef _OBJECT_DESCRIPTION_HPP_
+#define _OBJECT_DESCRIPTION_HPP_
 
-void string_buffer::add_bytes (size_t len, void *bytes)
+#if defined(SERVER_MODE)
+#error Does not belong to server module
+#endif //defined(SERVER_MODE)
+
+struct db_object;
+
+struct object_description
 {
-  if (bytes && m_len + len + 1 > dim)
-    {
-      extend (m_len + len + 1 - dim);
-    }
-  memcpy (ptr + m_len, bytes, len);
-  m_len += len;
-  ptr[m_len] = 0;
-}
+  char *classname;
+  char *oid;
+  char **attributes;                //ToDo: refactor as std::vector<char*>
+  char **shared;                    //ToDo: looks like not used anywhere, remove it?
+
+  object_description ();            //former obj_print_make_obj_help()
+  ~object_description ();           //former help_free_obj()
+
+  int init (struct db_object *op); //former help_obj()
+};
+
+#endif // _OBJECT_DESCRIPTION_HPP_

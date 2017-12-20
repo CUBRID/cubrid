@@ -23,9 +23,10 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
+  ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
-  ${COMPAT_DIR}/db_json.cpp
+  ${COMPAT_DIR}/db_value_printer.cpp
   )
 
 set(THREAD_SOURCES
@@ -68,6 +69,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
+  ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/tz_support.c
@@ -80,6 +82,8 @@ set (BASE_HEADERS
   ${BASE_DIR}/contiguous_memory_buffer.hpp
   ${BASE_DIR}/db_private_allocator.hpp
   ${BASE_DIR}/extensible_array.hpp
+  ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/string_buffer.hpp
   )
 
 set(EXECUTABLE_SOURCES

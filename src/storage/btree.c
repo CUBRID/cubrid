@@ -4451,7 +4451,7 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
  *   key(in):
  */
 void
-btree_dump_key (FILE * fp, DB_VALUE * key)
+btree_dump_key (THREAD_ENTRY * thread_p, FILE * fp, DB_VALUE * key)
 {
   DB_TYPE key_type = DB_VALUE_DOMAIN_TYPE (key);
   PR_TYPE *pr_type = PR_TYPE_FROM_ID (key_type);
@@ -4462,7 +4462,7 @@ btree_dump_key (FILE * fp, DB_VALUE * key)
     {
 #if 1
       fprintf (fp, " ");
-      (*(pr_type->fptrfunc)) (fp, key);
+      (*(pr_type->fptrfunc)) ((thread_entry *) thread_p, fp, key);
       fprintf (fp, " ");
 
 #else /* debug routine - DO NOT DELETE ME */
@@ -4556,7 +4556,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, REC
   fprintf (fp, "Key_Len: %d Ovfl_Page: {%d , %d} ", key_len, leaf_record.ovfl.volid, leaf_record.ovfl.pageid);
 
   fprintf (fp, "Key: ");
-  btree_dump_key (fp, &key);
+  btree_dump_key (thread_p, fp, &key);
 
   btree_clear_key_value (&clear_key, &key);
 
@@ -4799,7 +4799,7 @@ btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
     {
       key_len = btree_get_disk_size_of_key (&key);
       fprintf (fp, "Key_Len: %d  Key: ", key_len);
-      btree_dump_key (fp, &key);
+      btree_dump_key (thread_p, fp, &key);
     }
   else
     {
@@ -18252,7 +18252,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
 
   if (key && obj_oid)
     {
-      keyval = pr_valstring (key);
+      keyval = pr_valstring ((thread_entry *) thread_p, key);
       if (keyval)
 	{
 	  snprintf (oid_msg_buf, OID_MSG_BUF_SIZE, "(OID: %d|%d|%d)", obj_oid->volid, obj_oid->pageid, obj_oid->slotid);
@@ -18265,7 +18265,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
 
   if (keyval)
     {
-      free_and_init (keyval);
+      db_private_free (thread_p, keyval);
     }
   if (class_name)
     {
@@ -18392,7 +18392,7 @@ btree_set_unknown_key_error (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * ke
       severity = ER_ERROR_SEVERITY;
     }
 
-  err_key = pr_valstring (key);
+  err_key = pr_valstring ((thread_entry *) thread_p, key);
   pr_type = PR_TYPE_FROM_ID (DB_VALUE_DOMAIN_TYPE (key));
 
   er_set (severity, ARG_FILE_LINE, ER_BTREE_UNKNOWN_KEY, 5, (err_key != NULL) ? err_key : "_NULL_KEY",
@@ -18403,7 +18403,7 @@ btree_set_unknown_key_error (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * ke
 
   if (err_key != NULL)
     {
-      free_and_init (err_key);
+      db_private_free (thread_p, err_key);
     }
 }
 
@@ -21932,11 +21932,11 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
     {
       char *val_print = NULL;
 
-      val_print = pr_valstring (keyval);
+      val_print = pr_valstring ((thread_entry *) thread_p, keyval);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, fk_name, (val_print ? val_print : "unknown value"));
       if (val_print)
 	{
-	  free_and_init (val_print);
+	  db_private_free (thread_p, val_print);
 	}
       ret = ER_FK_INVALID;
       goto exit_on_error;
@@ -26010,7 +26010,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   /* Free allocated resources. */
   if (insert_helper.printed_key != NULL)
     {
-      free_and_init (insert_helper.printed_key);
+      db_private_free (thread_p, insert_helper.printed_key);
     }
 
 #if defined (SERVER_MODE)
@@ -26173,7 +26173,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   if (insert_helper->log_operations && insert_helper->printed_key == NULL)
     {
       /* This is postponed here to make sure midxkey domain was initialized. */
-      insert_helper->printed_key = pr_valstring (key);
+      insert_helper->printed_key = pr_valstring ((thread_entry *) thread_p, key);
       (void) SHA1Compute ((unsigned char *) insert_helper->printed_key, strlen (insert_helper->printed_key),
 			  &insert_helper->printed_key_sha1);
     }
@@ -27671,12 +27671,12 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	  /* Unique constraint violation. */
 	  if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
 	    {
-	      char *keyval = pr_valstring (key);
+	      char *keyval = pr_valstring ((thread_entry *) thread_p, key);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNIQUE_VIOLATION_WITHKEY, 1,
 		      (keyval == NULL) ? "(null)" : keyval);
 	      if (keyval != NULL)
 		{
-		  free_and_init (keyval);
+		  db_private_free (thread_p, keyval);
 		}
 	      return ER_UNIQUE_VIOLATION_WITHKEY;
 	    }
@@ -27744,12 +27744,12 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	  /* Not multi-update operation or there would be more than two objects visible. Unique constraint violation. */
 	  if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
 	    {
-	      char *keyval = pr_valstring (key);
+	      char *keyval = pr_valstring ((thread_entry *) thread_p, key);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNIQUE_VIOLATION_WITHKEY, 1,
 		      (keyval == NULL) ? "(null)" : keyval);
 	      if (keyval != NULL)
 		{
-		  free_and_init (keyval);
+		  db_private_free (thread_p, keyval);
 		}
 	      return ER_UNIQUE_VIOLATION_WITHKEY;
 	    }
@@ -29006,7 +29006,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 		  (void) btree_read_record (thread_p, &btid_int_for_debug, rcv->pgptr, &update_record, &key,
 					    &leaf_rec_info, node_type, &clear_key, &offset_after_key, PEEK_KEY_VALUE,
 					    NULL);
-		  printed_key = pr_valstring (&key);
+		  printed_key = pr_valstring ((thread_entry *) thread_p, &key);
 		  btree_clear_key_value (&clear_key, &key);
 
 		  (void) btree_unpack_object (update_record.data, &btid_int_for_debug, node_type, &update_record,
@@ -29022,7 +29022,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 				 printed_key != NULL ? printed_key : "unknown", update_record.length);
 		  if (printed_key != NULL)
 		    {
-		      free_and_init (printed_key);
+		      db_private_free (thread_p, printed_key);
 		    }
 		}
 	      else
@@ -29109,7 +29109,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 	      DB_MAKE_NULL (&key);
 	      (void) btree_read_record (thread_p, &btid_int_for_debug, rcv->pgptr, &update_record, &key, &leaf_rec_info,
 					node_type, &clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
-	      printed_key = pr_valstring (&key);
+	      printed_key = pr_valstring ((thread_entry *) thread_p, &key);
 	      btree_clear_key_value (&clear_key, &key);
 	    }
 
@@ -29120,7 +29120,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 			 printed_key != NULL ? printed_key : "unknown", rv_debug_id, update_record.length);
 	  if (printed_key != NULL)
 	    {
-	      free_and_init (printed_key);
+	      db_private_free (thread_p, printed_key);
 	    }
 	}
       else
@@ -29589,7 +29589,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
 
   if (delete_helper.printed_key != NULL)
     {
-      free_and_init (delete_helper.printed_key);
+      db_private_free (thread_p, delete_helper.printed_key);
     }
 
   if (buffered_key != NULL)
@@ -29739,7 +29739,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   if (delete_helper->log_operations)
     {
       /* Key must be printed. */
-      delete_helper->printed_key = pr_valstring (key);
+      delete_helper->printed_key = pr_valstring ((thread_entry *) thread_p, key);
       (void) SHA1Compute ((unsigned char *) delete_helper->printed_key, strlen (delete_helper->printed_key),
 			  &delete_helper->printed_key_sha1);
     }

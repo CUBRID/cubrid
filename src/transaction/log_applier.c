@@ -56,6 +56,8 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
+#include "mem_block.hpp"
+#include "string_buffer.hpp"
 
 #if defined(AIX)
 #include <procinfo.h>
@@ -441,7 +443,6 @@ static int la_delete_ha_apply_info (void);
 
 static bool la_ignore_on_error (int errid);
 static bool la_retry_on_error (int errid);
-static int la_help_sprint_object (MOP mop, char *buffer, int max_length);
 
 static int la_init_recdes_pool (int page_size, int num_recdes);
 static RECDES *la_assign_recdes_from_pool (void);
@@ -2247,103 +2248,6 @@ la_retry_on_error (int errid)
     }
 
   return false;
-}
-
-static int
-la_help_sprint_object (MOP mop, char *buffer, int max_length)
-{
-  int error = NO_ERROR;
-  int i;
-  char *p, *last_p;
-  MOP class_mop;
-  SM_CLASS *class_;
-  SM_CLASS_CONSTRAINT *cons;
-  SM_ATTRIBUTE *attr;
-  DB_VALUE value;
-
-  p = buffer;
-  last_p = buffer + max_length;
-
-  if (mop->object == NULL)
-    {
-      return 0;
-    }
-
-  class_mop = mop->class_mop;
-  if (class_mop == NULL)
-    {
-      return 0;
-    }
-
-  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT);
-  if (error != NO_ERROR)
-    {
-      return 0;
-    }
-
-  cons = classobj_find_class_primary_key (class_);
-  if (cons == NULL)
-    {
-      return 0;
-    }
-
-  if (cons->attributes[1] != NULL)
-    {
-      /* multi-column key */
-      if (p >= last_p)
-	{
-	  goto end;
-	}
-      p += snprintf (p, max_length - (p - buffer), "{");
-      for (i = 0; ((attr = cons->attributes[i]) != NULL); i++)
-	{
-	  if (i != 0)
-	    {
-	      if (p >= last_p)
-		{
-		  goto end;
-		}
-	      p += snprintf (p, max_length - (p - buffer), ", ");
-	    }
-
-	  if (obj_get (mop, attr->header.name, &value) == NO_ERROR)
-	    {
-	      if (p >= last_p)
-		{
-		  pr_clear_value (&value);
-		  goto end;
-		}
-	      p += help_sprint_value (&value, p, max_length - (p - buffer));
-
-	      pr_clear_value (&value);
-	    }
-	}
-
-      if (p >= last_p)
-	{
-	  goto end;
-	}
-      p += snprintf (p, max_length - (p - buffer), "}");
-    }
-  else
-    {
-      /* single-column key */
-      attr = cons->attributes[0];
-      if (attr == NULL)
-	{
-	  assert (false);
-	  return 0;
-	}
-
-      if (obj_get (mop, attr->header.name, &value) == NO_ERROR)
-	{
-	  p += help_sprint_value (&value, p, max_length - (p - buffer));
-	  pr_clear_value (&value);
-	}
-    }
-
-end:
-  return (p - buffer);
 }
 
 /*
@@ -4719,6 +4623,8 @@ la_flush_repl_items (bool immediate)
   char pkey_str[256];
   char buf[LINE_MAX];
 
+  string_buffer sb;
+
   if (la_Info.num_unflushed == 0)
     {
       return NO_ERROR;
@@ -4749,7 +4655,9 @@ la_flush_repl_items (bool immediate)
 		  server_err_msg = flush_err->error_msg;
 		}
 
-	      help_sprint_value (&flush_err->pkey_value, pkey_str, sizeof (pkey_str) - 1);
+	      sb.clear ();
+	      help_sprint_value (&flush_err->pkey_value, sb);
+	      snprintf (pkey_str, sizeof (pkey_str) - 1, sb.get_buffer ());
 
 	      if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
 		{
@@ -4908,11 +4816,12 @@ la_apply_delete_log (LA_ITEM * item)
 {
   DB_OBJECT *class_obj;
   MOBJ mclass;
-  int error;
   char buf[256];
   char sql_log_err[LINE_MAX];
 
-  error = la_flush_repl_items (false);
+  string_buffer sb;
+
+  int error = la_flush_repl_items (false);
   if (error != NO_ERROR)
     {
       return error;
@@ -4934,9 +4843,10 @@ la_apply_delete_log (LA_ITEM * item)
 	{
 	  if (sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item)) != NO_ERROR)
 	    {
-	      help_sprint_value (&item->key, buf, 255);
+	      sb.clear ();
+	      help_sprint_value (&item->key, sb);
 	      snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s",
-			item->class_name, buf);
+			item->class_name, sb.get_buffer ());
 
 	      er_stack_push ();
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
@@ -4954,14 +4864,15 @@ la_apply_delete_log (LA_ITEM * item)
 
   if (error != NO_ERROR)
     {
-      help_sprint_value (la_get_item_pk_value (item), buf, 255);
+      sb.clear ();
+      help_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_delete : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, buf);
+		    item->class_name, sb.get_buffer ());
 #endif
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_DELETE, 4, item->class_name, buf, error,
-	      "internal client error.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_DELETE, 4, item->class_name, sb.get_buffer (),
+	      error, "internal client error.");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -4993,8 +4904,9 @@ la_apply_update_log (LA_ITEM * item)
   DB_OBJECT *class_obj;
   MOBJ mclass;
   DB_OTMPL *inst_tp = NULL;
-  char buf[255];
   char sql_log_err[LINE_MAX];
+
+  string_buffer sb;
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5101,9 +5013,10 @@ la_apply_update_log (LA_ITEM * item)
 
       if (sql_logging_failed == true)
 	{
-	  help_sprint_value (la_get_item_pk_value (item), buf, 255);
+	  sb.clear ();
+	  help_sprint_value (la_get_item_pk_value (item), sb);
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
-		    buf);
+		    sb.get_buffer ());
 
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
@@ -5114,14 +5027,15 @@ la_apply_update_log (LA_ITEM * item)
 end:
   if (error != NO_ERROR)
     {
-      help_sprint_value (la_get_item_pk_value (item), buf, 255);
+      sb.clear ();
+      help_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_update : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, buf);
+		    item->class_name, sb.get_buffer ());
 #endif
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_UPDATE, 4, item->class_name, buf, error,
-	      "internal client error.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_UPDATE, 4, item->class_name, sb.get_buffer (),
+	      error, "internal client error.");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -5175,7 +5089,8 @@ la_apply_insert_log (LA_ITEM * item)
   RECDES *recdes;
   DB_OTMPL *inst_tp = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
-  char buf[255];
+
+  string_buffer sb;
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5281,9 +5196,10 @@ la_apply_insert_log (LA_ITEM * item)
 
       if (sql_logging_failed == true)
 	{
-	  help_sprint_value (la_get_item_pk_value (item), buf, 255);
+	  sb.clear ();
+	  help_sprint_value (la_get_item_pk_value (item), sb);
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
-		    buf);
+		    sb.get_buffer ());
 
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
@@ -5294,14 +5210,15 @@ la_apply_insert_log (LA_ITEM * item)
 end:
   if (error != NO_ERROR)
     {
-      help_sprint_value (la_get_item_pk_value (item), buf, 255);
+      sb.clear ();
+      help_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_insert : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, buf);
+		    item->class_name, sb.get_buffer ());
 #endif
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_INSERT, 4, item->class_name, buf, error,
-	      "internal client error.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_INSERT, 4, item->class_name, sb.get_buffer (),
+	      error, "internal client error.");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -5689,6 +5606,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
   error = la_lock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, la_Info.log_path);
   assert_release (error == NO_ERROR);
 
+  string_buffer sb;
+
   item = apply->head;
   while (item)
     {
@@ -5757,8 +5676,9 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	      assert (er_errid () != NO_ERROR);
 	      errid = er_errid ();
 
-	      help_sprint_value (la_get_item_pk_value (item), buf, 255);
-	      sprintf (error_string, "[%s,%s] %s", item->class_name, buf, db_error_string (1));
+	      sb.clear ();
+	      help_sprint_value (la_get_item_pk_value (item), sb);
+	      sprintf (error_string, "[%s,%s] %s", item->class_name, sb.get_buffer (), db_error_string (1));
 	      er_log_debug (ARG_FILE_LINE, "Internal system failure: %s", error_string);
 
 	      if (errid == ER_NET_CANT_CONNECT_SERVER || errid == ER_OBJ_NO_CONNECT)
