@@ -9015,7 +9015,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   time_t restore_start_time, restore_end_time;
   char time_val[CTIME_MAX];
   int loop_cnt = 0;
-  char lgat_tmpname[PATH_MAX];	/* active log temp name */
+  char tmp_logfiles_from_backup[PATH_MAX];
+  char *volume_name_p;
   struct stat stat_buf;
   int error_code = NO_ERROR, success = NO_ERROR;
   bool printtoc;
@@ -9025,9 +9026,10 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
   start_level = try_level;
+
   memset (&session_storage, 0, sizeof (FILEIO_BACKUP_SESSION));
   memset (verbose_to_volname, 0, PATH_MAX);
-  memset (lgat_tmpname, 0, PATH_MAX);
+  memset (tmp_logfiles_from_backup, 0, PATH_MAX);
 
   LOG_CS_ENTER (thread_p);
 
@@ -9229,11 +9231,17 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		  strcpy (verbose_to_volname, to_volname);
 		}
 
-	      if (to_volid == LOG_DBLOG_ACTIVE_VOLID)
+	      if (to_volid == LOG_DBLOG_ACTIVE_VOLID || to_volid == LOG_DBLOG_INFO_VOLID
+		  || to_volid == LOG_DBLOG_ARCHIVE_VOLID)
 		{
 		  /* rename _lgat to _lgat_tmp name */
-		  fileio_make_log_active_temp_name (lgat_tmpname, (FILEIO_BACKUP_LEVEL) r_args->level, to_volname);
-		  strcpy (to_volname, lgat_tmpname);
+		  fileio_make_temp_log_files_from_backup (tmp_logfiles_from_backup, to_volid,
+							  (FILEIO_BACKUP_LEVEL) r_args->level, to_volname);
+		  volume_name_p = tmp_logfiles_from_backup;
+		}
+	      else
+		{
+		  volume_name_p = to_volname;
 		}
 
 	      restore_in_progress = true;
@@ -9305,8 +9313,36 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		}
 
 	      success =
-		fileio_restore_volume (thread_p, session, to_volname, verbose_to_volname, prev_volname, page_bitmap,
+		fileio_restore_volume (thread_p, session, volume_name_p, verbose_to_volname, prev_volname, page_bitmap,
 				       remember_pages);
+
+	      if (success != NO_ERROR)
+		{
+		  break;
+		}
+
+	      if (volume_name_p == tmp_logfiles_from_backup)
+		{
+		  /* rename temp logfiles if the current file does not exist */
+		  if (stat (to_volname, &stat_buf) != 0 && stat (tmp_logfiles_from_backup, &stat_buf) == 0)
+		    {
+		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID && lgat_vdes != NULL_VOLDES)
+			{
+			  fileio_dismount (thread_p, lgat_vdes);
+			  lgat_vdes = NULL_VOLDES;
+			}
+
+		      os_rename_file (tmp_logfiles_from_backup, to_volname);
+		    }
+		  else
+		    {
+		      unlink (tmp_logfiles_from_backup);
+		    }
+
+		  tmp_logfiles_from_backup[0] = '\0';
+		}
+
+	      volume_name_p = NULL;
 	    }
 	  else if (another_vol == 0)
 	    {
@@ -9357,20 +9393,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
       fileio_write_backup_info_entries (backup_volinfo_fp, FILEIO_SECOND_BACKUP_VOL_INFO);
       fclose (backup_volinfo_fp);
     }
-
-  /* rename logactive tmp to logactive */
-  if (stat (log_Name_active, &stat_buf) != 0 && lgat_tmpname[0] != '\0' && stat (lgat_tmpname, &stat_buf) == 0)
-    {
-      if (lgat_vdes != NULL_VOLDES)
-	{
-	  fileio_dismount (thread_p, lgat_vdes);
-	  lgat_vdes = NULL_VOLDES;
-	}
-
-      os_rename_file (lgat_tmpname, log_Name_active);
-    }
-
-  unlink (lgat_tmpname);
 
   if (session != NULL)
     {
@@ -9447,9 +9469,9 @@ error:
       logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "logpb_restore");
     }
 
-  if (lgat_tmpname[0] != '\0')
+  if (tmp_logfiles_from_backup[0] != '\0')
     {
-      unlink (lgat_tmpname);
+      unlink (tmp_logfiles_from_backup);
     }
 
   return error_code;
