@@ -40,6 +40,7 @@
 #include "chartype.h"
 #include "parser.h"
 #include "parser_message.h"
+#include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "intl_support.h"
 #include "error_manager.h"
@@ -57,6 +58,8 @@
 #include "object_print.h"
 #include "show_meta.h"
 #include "db.h"
+#include "object_printer.hpp"
+#include "string_buffer.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -9003,8 +9006,6 @@ static char *
 pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 {
   DB_OBJECT *class_op;
-  CLASS_HELP *class_schema = NULL;
-  PARSER_VARCHAR *buffer;
   int is_class = 0;
 
   /* look up class in all schema's */
@@ -9027,20 +9028,43 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	}
       return NULL;
     }
-  if (!is_class)
+  else if (!is_class)
     {
       PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A,
 		   table_name->info.name.original, pt_show_misc_type (PT_CLASS));
     }
 
-  class_schema = obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
-  if (class_schema == NULL)
+/* *INDENT-OFF* */
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+  string_buffer sb{
+    [&parser] (mem::block& block, size_t len)
     {
-      int error;
+      size_t dim = block.dim ? block.dim : 1;
 
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      // calc next power of 2 >= b.dim
+      for (; dim < block.dim + len; dim *= 2)
+	;
+
+      mem::block b{dim, (char*) parser_alloc (parser, block.dim + len)};
+      memcpy (b.ptr, block.ptr, block.dim);
+      block = std::move (b);
+    },
+    [](mem::block& block){} //no need to deallocate for parser_context
+  };
+#else
+  string_buffer sb;
+#endif
+/* *INDENT-ON* */
+
+  object_printer obj_print (sb);
+  obj_print.describe_class (class_op);
+
+  if (sb.len () == 0)
+    {
+      int error = er_errid ();
+
       assert (error != NO_ERROR);
+
       if (error == ER_AU_SELECT_FAILURE)
 	{
 	  PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
@@ -9050,16 +9074,9 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	{
 	  PT_ERRORc (parser, table_name, er_msg ());
 	}
-      return NULL;
     }
 
-  buffer = obj_print_describe_class (parser, class_schema, class_op);
-
-  if (class_schema != NULL)
-    {
-      obj_print_help_free_class (class_schema);
-    }
-  return ((char *) pt_get_varchar_bytes (buffer));
+  return sb.move_ptr ();
 }
 
 /*
