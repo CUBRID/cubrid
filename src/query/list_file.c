@@ -40,6 +40,7 @@
 #include "object_print.h"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
+#include "thread.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -260,7 +261,7 @@ static int qfile_compare_equal_db_value_array (const void *key1, const void *key
 static int qfile_assign_list_cache (void);
 static QFILE_LIST_CACHE_ENTRY *qfile_allocate_list_cache_entry (int req_size);
 static int qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args);
-static int qfile_print_list_cache_entry (FILE * fp, const void *key, void *data, void *args);
+static int qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args);
 static void qfile_add_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTRY * lent);
 static void qfile_delete_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTRY * lent);
 static int qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args);
@@ -5193,7 +5194,7 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
  *   args(in)   :
  */
 static int
-qfile_print_list_cache_entry (FILE * fp, const void *key, void *data, void *args)
+qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args)
 {
   QFILE_LIST_CACHE_ENTRY *ent = (QFILE_LIST_CACHE_ENTRY *) data;
   int i;
@@ -5217,7 +5218,7 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data, void *args
   for (i = 0; i < ent->param_values.size; i++)
     {
       fprintf (fp, " ");
-      help_fprint_value (fp, &ent->param_values.vals[i]);
+      help_fprint_value ((thread_entry *) thread_p, fp, &ent->param_values.vals[i]);
     }
 
   fprintf (fp, " ]\n");
@@ -5314,7 +5315,7 @@ qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp)
       if (mht_count (qfile_List_cache.list_hts[i]) > 0)
 	{
 	  fprintf (fp, "\nlist_hts[%d] %p\n", i, (void *) qfile_List_cache.list_hts[i]);
-	  (void) mht_dump (fp, qfile_List_cache.list_hts[i], true, qfile_print_list_cache_entry, NULL);
+	  (void) mht_dump (thread_p, fp, qfile_List_cache.list_hts[i], true, qfile_print_list_cache_entry, NULL);
 	}
     }
 
@@ -5494,7 +5495,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 
 	      if (lent->param_values.size > 0)
 		{
-		  s = pr_valstring (&lent->param_values.vals[0]);
+		  s = pr_valstring ((thread_entry *) thread_p, &lent->param_values.vals[0]);
 		}
 
 	      er_log_debug (ARG_FILE_LINE,
@@ -5502,7 +5503,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 			    lent->param_values.size, s ? s : "(null)");
 	      if (s)
 		{
-		  free_and_init (s);
+		  db_private_free (thread_p, s);
 		}
 	    }
 	}
@@ -6115,12 +6116,13 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
     {
       char *s;
 
-      s = ((lent->param_values.size > 0) ? pr_valstring (&lent->param_values.vals[0]) : NULL);
+      s =
+	((lent->param_values.size > 0) ? pr_valstring ((thread_entry *) thread_p, &lent->param_values.vals[0]) : NULL);
       er_log_debug (ARG_FILE_LINE, "ls_update_list_cache_ent: mht_rem failed for param_values { %d %s ...}\n",
 		    lent->param_values.size, s ? s : "(null)");
       if (s)
 	{
-	  free_and_init (s);
+	  db_private_free (thread_p, s);
 	}
       (void) qfile_delete_list_cache_entry (thread_p, lent, &tran_index);
       lent = NULL;

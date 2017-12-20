@@ -5591,7 +5591,7 @@ fileio_make_log_active_name (char *log_active_name_p, const char *log_path_p, co
 }
 
 /*
- * fileio_make_log_active_temp_name () - Build the name of volumes
+ * fileio_make_temp_log_files_from_backup () - Build the name of volumes
  *   return: void
  *   logactive_name(out):
  *   level(in):
@@ -5602,9 +5602,23 @@ fileio_make_log_active_name (char *log_active_name_p, const char *log_path_p, co
  *       DB_MAX_PATH_LENGTH length.
  */
 void
-fileio_make_log_active_temp_name (char *log_active_name_p, FILEIO_BACKUP_LEVEL level, const char *active_name_p)
+fileio_make_temp_log_files_from_backup (char *temp_log_name, VOLID to_volid, FILEIO_BACKUP_LEVEL level,
+					const char *base_log_name)
 {
-  sprintf (log_active_name_p, "%s_%03d_tmp", active_name_p, level);
+  switch (to_volid)
+    {
+    case LOG_DBLOG_ACTIVE_VOLID:
+      sprintf (temp_log_name, "%s_%03d_tmp", base_log_name, level);
+      break;
+    case LOG_DBLOG_INFO_VOLID:
+      sprintf (temp_log_name, "%s_%03d_tmp", base_log_name, level);
+      break;
+    case LOG_DBLOG_ARCHIVE_VOLID:
+      sprintf (temp_log_name, "%s_%03d_tmp", base_log_name, level);
+      break;
+    default:
+      break;
+    }
 }
 
 /*

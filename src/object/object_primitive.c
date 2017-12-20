@@ -32,7 +32,9 @@
 #include <string.h>
 #include <assert.h>
 
+#include "mem_block.hpp"
 #include "object_primitive.h"
+#include "string_buffer.hpp"
 
 #include "system_parameter.h"
 #include "set_object.h"
@@ -42,6 +44,9 @@
 #include "tz_support.h"
 #include "file_io.h"
 #include "db_json.hpp"
+#include "db_private_allocator.hpp"
+#include "thread.h"
+#include <utility>
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
@@ -10405,101 +10410,67 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  */
 
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of
  * the pr_type vector for the appropriate type.
- *    return: a freshly-malloc'ed string with a printed rep of "val" in it
+ *    return: a freshly db_private_realloc()'ed string with a printed rep of "val" in it
  *    val(in): some DB_VALUE
  * Note:
- *    The caller is responsible for eventually freeing the memory via free_and_init.
+ *    The caller is responsible for eventually freeing the memory using db_private_free()
  *
  *    This is really just a debugging helper; it probably doesn't do enough
  *    serious formatting for external use.  Use it to get printed DB_VALUE
  *    representations into error messages and the like.
  */
 char *
-pr_valstring (DB_VALUE * val)
+pr_valstring (thread_entry * threade, DB_VALUE * val)
 {
-  int str_size;
-  char *str;
-  PR_TYPE *pr_type;
-  DB_TYPE dbval_type;
-
-  const char null_str[] = "(null)";
-  const char NULL_str[] = "NULL";
+/* *INDENT-OFF* */
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+  string_buffer sb {
+    [&threade] (mem::block& block, size_t len)
+    {
+      block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
+      block.dim += len;
+    },
+    [&threade] (mem::block& block)
+    {
+      db_private_free (threade, block.ptr);
+      block = {};
+    }
+  };
+#else
+  string_buffer sb{&mem::private_realloc, &mem::private_dealloc};
+#endif
+/* *INDENT-ON* */
 
   if (val == NULL)
     {
       /* space with terminating NULL */
-      str = (char *) malloc (sizeof (null_str) + 1);
-      if (str)
-	{
-	  strcpy (str, null_str);
-	}
-      return str;
+      sb ("(null)");
+      return (char *) sb.get_buffer ();
     }
 
   if (DB_IS_NULL (val))
     {
       /* space with terminating NULL */
-      str = (char *) malloc (sizeof (NULL_str) + 1);
-      if (str)
-	{
-	  strcpy (str, NULL_str);
-	}
-      return str;
+      sb ("NULL");
+      return (char *) sb.get_buffer ();
     }
 
-  dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-  pr_type = PR_TYPE_FROM_ID (dbval_type);
+  DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
+  PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
 
   if (pr_type == NULL)
     {
       return NULL;
     }
 
-  /* 
-   * Guess a size; if we're wrong, we'll learn about it later and be told
-   * how big to make the actual buffer.  Most things are pretty small, so
-   * don't worry about this too much.
-   */
-  str_size = 32;
-
-  str = (char *) malloc (str_size);
-  if (str == NULL)
-    {
-      return NULL;
-    }
-
-  str_size = (*(pr_type->sptrfunc)) (val, str, str_size);
-  if (str_size < 0)
-    {
-      /* 
-       * We didn't allocate enough slop.  However, the sprintf function
-       * was kind enough to tell us how much room we really needed, so
-       * we can reallocate and try again.
-       */
-      char *old_str;
-      old_str = str;
-      str_size = -str_size;
-      str_size++;		/* for terminating NULL */
-      str = (char *) realloc (str, str_size);
-      if (str == NULL)
-	{
-	  free_and_init (old_str);
-	  return NULL;
-	}
-      if ((*pr_type->sptrfunc) (val, str, str_size) < 0)
-	{
-	  free_and_init (str);
-	  return NULL;
-	}
-
-      str[str_size - 1] = 0;	/* set terminating NULL */
-    }
-
-  return str;
+  (*(pr_type->sptrfunc)) (val, sb);
+  return sb.move_ptr ();	//caller should use db_private_free() to deallocate it
 }
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /*
  * pr_complete_enum_value - Sets both index and string of a enum value in case
