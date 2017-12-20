@@ -389,7 +389,7 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id,
  *   bind_index(in):
  */
 void
-event_log_bind_values (FILE * log_fp, int tran_index, int bind_index)
+event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, int bind_index)
 {
   LOG_TDES *tdes;
   int i, indent = 2;
@@ -409,12 +409,12 @@ event_log_bind_values (FILE * log_fp, int tran_index, int bind_index)
 
   for (i = 0; i < tdes->bind_history[bind_index].size; i++)
     {
-      val_str = pr_valstring (&tdes->bind_history[bind_index].vals[i]);
+      val_str = pr_valstring ((thread_entry *) thread_p, &tdes->bind_history[bind_index].vals[i]);
       fprintf (log_fp, "%*cbind: %s\n", indent, ' ', (val_str == NULL) ? "(null)" : val_str);
 
       if (val_str != NULL)
 	{
-	  free_and_init (val_str);
+	  db_private_free (thread_p, val_str);
 	}
     }
 }

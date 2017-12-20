@@ -46,6 +46,9 @@
 #include "environment_variable.h"
 #include "network_interface_cl.h"
 #include "locator_cl.h"
+#include "db_value_printer.hpp"
+#include "mem_block.hpp"
+#include "string_buffer.hpp"
 
 #define CHKSUM_DEFAULT_LIST_SIZE	10
 #define CHKSUM_MIN_CHUNK_SIZE		100
@@ -1158,6 +1161,9 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_
     }
 
   col_cnt = pk_col_cnt;
+
+  string_buffer sb;
+  db_value_printer printer (sb);
   while (col_cnt > 0)
     {
       if (col_cnt < pk_col_cnt)
@@ -1172,8 +1178,6 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_
 	    {
 	      buffer = pt_append_nulstring (parser, buffer, " AND ");
 	    }
-
-	  value = describe_value (parser, NULL, &values[i]);
 
 	  buffer = pt_append_nulstring (parser, buffer, db_attribute_name (pk_attrs[i]));
 
@@ -1191,7 +1195,9 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_
 	      buffer = pt_append_nulstring (parser, buffer, "=");
 	    }
 
-	  buffer = pt_append_varchar (parser, buffer, value);
+	  sb.clear ();
+	  printer.describe_value (&values[i]);
+	  buffer = pt_append_nulstring (parser, buffer, sb.get_buffer ());
 	}
 
       buffer = pt_append_nulstring (parser, buffer, ")");

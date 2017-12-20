@@ -5024,7 +5024,7 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
-      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
@@ -5070,7 +5070,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
-      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
@@ -5110,7 +5110,7 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
-      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', TO_MSEC (thread_p->event_stats.temp_expand_time));
