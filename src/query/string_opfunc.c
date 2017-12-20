@@ -3219,23 +3219,6 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return DB_MAKE_NULL (result);
 	}
 
-      int path_conversion_error_code = NO_ERROR;
-      std::string converted_path;
-
-      path_conversion_error_code = db_json_convert_mysqlpath_to_rapidjsonpath (DB_PULL_STRING (arg[i]),
-									       *new_doc, converted_path);
-
-      if (path_conversion_error_code == ER_JSON_PATH_NO_EFFECT)
-	{
-	  continue;
-	}
-      else if (path_conversion_error_code != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, path_conversion_error_code, 0);
-	  db_json_delete_doc (new_doc);
-	  return path_conversion_error_code;
-	}
-
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
@@ -3243,11 +3226,11 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
-							db_json_insert_func, new_doc, (char *) converted_path.c_str ());
+							db_json_insert_func, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 
 	case DB_TYPE_JSON:
-	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, (char *) converted_path.c_str ());
+	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 	case DB_TYPE_NULL:
 	  error_code = db_json_insert_func ((JSON_DOC *) NULL, new_doc, DB_PULL_STRING (arg[i]));
@@ -3315,33 +3298,15 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return DB_MAKE_NULL (result);
 	}
 
-      int path_conversion_error_code = NO_ERROR;
-      std::string converted_path;
-
-      path_conversion_error_code = db_json_convert_mysqlpath_to_rapidjsonpath (DB_PULL_STRING (arg[i]),
-									       *new_doc, converted_path);
-
-      if (path_conversion_error_code == ER_JSON_PATH_NO_EFFECT)
-	{
-	  continue;
-	}
-      else if (path_conversion_error_code != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, path_conversion_error_code, 0);
-	  db_json_delete_doc (new_doc);
-	  return path_conversion_error_code;
-	}
-
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
 	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
-							db_json_replace_func, new_doc,
-							(char *) converted_path.c_str ());
+							db_json_replace_func, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 
 	case DB_TYPE_JSON:
-	  error_code = db_json_replace_func (arg[i + 1]->data.json.document, new_doc, (char *) converted_path.c_str ());
+	  error_code = db_json_replace_func (arg[i + 1]->data.json.document, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 	case DB_TYPE_NULL:
 	  db_json_delete_doc (new_doc);
@@ -3406,32 +3371,15 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return DB_MAKE_NULL (result);
 	}
 
-      int path_conversion_error_code = NO_ERROR;
-      std::string converted_path;
-
-      path_conversion_error_code = db_json_convert_mysqlpath_to_rapidjsonpath (DB_PULL_STRING (arg[i]),
-									       *new_doc, converted_path);
-
-      if (path_conversion_error_code == ER_JSON_PATH_NO_EFFECT)
-	{
-	  continue;
-	}
-      else if (path_conversion_error_code != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, path_conversion_error_code, 0);
-	  db_json_delete_doc (new_doc);
-	  return path_conversion_error_code;
-	}
-
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
 	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
-							db_json_set_func, new_doc, (char *) converted_path.c_str ());
+							db_json_set_func, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 
 	case DB_TYPE_JSON:
-	  error_code = db_json_set_func (arg[i + 1]->data.json.document, new_doc, (char *) converted_path.c_str ());
+	  error_code = db_json_set_func (arg[i + 1]->data.json.document, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 	case DB_TYPE_NULL:
 	  db_json_delete_doc (new_doc);
@@ -3461,8 +3409,7 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
   JSON_DOC *result_json = NULL;
-  int path_conversion_error_code = NO_ERROR;
-  std::string converted_path;
+  std::string path;
   char *str;
 
   if (num_args > 2)
@@ -3493,27 +3440,15 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   if (num_args == 1 || DB_IS_NULL (arg[1]))
     {
-      converted_path = "";
+      path = "";
     }
   else
     {
-      path_conversion_error_code = db_json_convert_mysqlpath_to_rapidjsonpath (DB_PULL_STRING (arg[1]),
-									       *new_doc, converted_path);
-
-      if (path_conversion_error_code == ER_JSON_PATH_NO_EFFECT)
-	{
-	  return DB_MAKE_NULL (result);
-	}
-      else if (path_conversion_error_code != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, path_conversion_error_code, 0);
-	  db_json_delete_doc (new_doc);
-	  return path_conversion_error_code;
-	}
+      path = DB_PULL_STRING (arg[1]);
     }
 
   result_json = db_json_allocate_doc ();
-  error_code = db_json_keys_func (*new_doc, result_json, (char *) converted_path.c_str ());
+  error_code = db_json_keys_func (*new_doc, result_json, path.c_str ());
 
   str = db_json_get_raw_json_body_from_document (result_json);
   db_make_json (result, str, result_json, true);
@@ -3566,24 +3501,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return DB_MAKE_NULL (result);
 	}
 
-      int path_conversion_error_code = NO_ERROR;
-      std::string converted_path;
-
-      path_conversion_error_code = db_json_convert_mysqlpath_to_rapidjsonpath (DB_PULL_STRING (arg[i]),
-									       *new_doc, converted_path);
-
-      if (path_conversion_error_code == ER_JSON_PATH_NO_EFFECT)
-	{
-	  continue;
-	}
-      else if (path_conversion_error_code != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, path_conversion_error_code, 0);
-	  db_json_delete_doc (new_doc);
-	  return path_conversion_error_code;
-	}
-
-      error_code = db_json_remove_func (new_doc, (char *) converted_path.c_str ());
+      error_code = db_json_remove_func (new_doc, DB_PULL_STRING (arg[i]));
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -3637,34 +3555,15 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return DB_MAKE_NULL (result);
 	}
 
-      int path_conversion_error_code = NO_ERROR;
-      std::string converted_path;
-
-      path_conversion_error_code = db_json_convert_mysqlpath_to_rapidjsonpath (DB_PULL_STRING (arg[i]),
-									       *new_doc, converted_path);
-
-      if (path_conversion_error_code == ER_JSON_PATH_NO_EFFECT)
-	{
-	  continue;
-	}
-      else if (path_conversion_error_code != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, path_conversion_error_code, 0);
-	  db_json_delete_doc (new_doc);
-	  return path_conversion_error_code;
-	}
-
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
 	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
-							db_json_array_append_func, new_doc,
-							(char *) converted_path.c_str ());
+							db_json_array_append_func, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 
 	case DB_TYPE_JSON:
-	  error_code =
-	    db_json_array_append_func (arg[i + 1]->data.json.document, new_doc, (char *) converted_path.c_str ());
+	  error_code = db_json_array_append_func (arg[i + 1]->data.json.document, new_doc, DB_PULL_STRING (arg[i + 1]));
 	  break;
 
 	case DB_TYPE_NULL:
