@@ -84,11 +84,11 @@ macro(_EXPAND_EXTERNAL_DEPENDENCY depender prefix_dependee)
   message(STATUS "${depender} depends on external project ${prefix_dependee}")
   target_include_directories(${depender} PRIVATE ${${prefix_dependee}_INCLUDES})
   target_link_libraries(${depender} PRIVATE ${${prefix_dependee}_LIBS})
-  if (EXISTS ${${prefix_dependee}_TARGET})
+  if (TARGET ${${prefix_dependee}_TARGET})
     add_dependencies(${depender} ${${prefix_dependee}_TARGET})
   else(TARGET ${${prefix_dependee}_TARGET})
-    message(STATUS "target ${${prefix_dependee}_TARGET} doesn't exist")
-  endif(EXISTS ${${prefix_dependee}_TARGET})
+    message(STATUS "target ${prefix_dependee}_TARGET=${${prefix_dependee}_TARGET} doesn't exist")
+  endif(TARGET ${${prefix_dependee}_TARGET})
 endmacro(_EXPAND_EXTERNAL_DEPENDENCY)
 
 function(target_external_dependencies depender)
@@ -1082,9 +1082,9 @@ list(APPEND EP_LIBS ${LIBLZO_LIBS})
 #                use gpg-error headers located in:
 #                  ${WITH_EXTERNAL_HEADERS_PATH}
 #                  ${WITH_LIBGPG_ERROR_ROOT_PATH}/include
+set(LIBGPG_ERROR_TARGET libgpg-error)
 if(UNIX)
   if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
-    set(LIBGPG_ERROR_TARGET libgpg-error)
     externalproject_add(${LIBGPG_ERROR_TARGET}
       URL               ${WITH_LIBGPG_ERROR_URL}
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
@@ -1093,7 +1093,6 @@ if(UNIX)
       )
     set(LIBGPG_ERROR_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgpg-error.a)
     set(LIBGPG_ERROR_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBGPG_ERROR_TARGET})
   elseif(WITH_LIBGPG_ERROR STREQUAL "SYSTEM")
     find_library(LIBGPG_ERROR_LIBS NAMES libgpg-error.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/lib REQUIRED)
     find_path(LIBGPG_ERROR_INCLUDES NAMES gpg-error.h gpgrt.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/include REQUIRED)
@@ -1101,9 +1100,22 @@ if(UNIX)
     message(STATUS "Found gpg-error library: ${LIBGPG_ERROR_LIBS}")
     message(STATUS "Found gpg-error headers: ${LIBGPG_ERROR_INCLUDES}")
   endif()
-endif(UNIX)
+elseif(WIN32)
+  # use bundled
+  set (LIBGPG_ERROR_DIR ${WINDOWS_EXTERNAL_DIR}/gpg-error)
+  set (LIBGPG_ERROR_LIBS ${LIBGPG_ERROR_DIR}/lib/gpg-error.lib)
+  set (LIBGPG_ERROR_INCLUDES ${LIBGPG_ERROR_DIR}/include)
+  SET (LIBGPG_ERROR_DLL ${LIBGPG_ERROR_DIR}/bin/gpg-error.dll)
+  add_custom_target(${LIBGPG_ERROR_TARGET}
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LIBGPG_ERROR_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/"
+      COMMAND ${CMAKE_COMMAND} -E copy ${LIBGPG_ERROR_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/
+    )
+endif()
 list(APPEND EP_INCLUDES ${LIBGPG_ERROR_INCLUDES})
 list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
+if (TARGET ${LIBGPG_ERROR_TARGET})
+  list(APPEND EP_TARGETS ${LIBGPG_ERROR_TARGET})
+endif(TARGET ${LIBGPG_ERROR_TARGET})
 
 # WITH_LIBGCRYPT can have multiple values with different meanings
 # on Linux:
@@ -1114,9 +1126,8 @@ list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
 #                use gcrypt headers located in:
 #                  ${WITH_EXTERNAL_HEADERS_PATH}
 #                  ${WITH_LIBGCRYPT_ROOT_PATH}/include
+set(LIBGCRYPT_TARGET libgcrypt)
 if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
-  set(LIBGCRYPT_TARGET libgcrypt)
-  list(APPEND EP_TARGETS ${LIBGCRYPT_TARGET})
   if(UNIX)
     if(TARGET ${LIBGPG_ERROR_TARGET})
       set(WITH_LIBGPG_ERROR_PREFIX "--with-gpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external")
@@ -1128,20 +1139,16 @@ if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
 
-    if(TARGET ${LIBGPG_ERROR_TARGET})
-      add_dependencies(${LIBGCRYPT_TARGET} ${LIBGPG_ERROR_TARGET})
-    endif()
-
     set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
     set(LIBGCRYPT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
   else(UNIX)
-    set(LIBGCRYPT_LIBS ${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgcrypt.lib)
-    set(LIBGCRYPT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
+    set(LIBGCRYPT_DIR ${WINDOWS_EXTERNAL_DIR}/gcrypt)
+    set(LIBGCRYPT_LIBS ${LIBGCRYPT_DIR}/lib/gcrypt.lib)
+    set(LIBGCRYPT_INCLUDES ${LIBGCRYPT_DIR}/include)
+    set(LIBGCRYPT_DLL ${LIBGCRYPT_DIR}/bin/gcrypt.dll)
     add_custom_target(libgcrypt
-      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DIR}/dll/x64/libgpg-error-0.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libgpg-error-0.dll"
-      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DIR}/dll/x64/libgpg-error-0.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libgpg-error-0.dll
-      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DIR}/dll/x64/libgcrypt.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libgcrypt.dll"
-      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DIR}/dll/x64/libgcrypt.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libgcrypt.dll
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LIBGCRYPT_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}"
+      COMMAND ${CMAKE_COMMAND} -E copy ${LIBGCRYPT_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}
     )
   endif(UNIX)
 elseif(WITH_LIBGCRYPT STREQUAL "SYSTEM")
@@ -1155,7 +1162,12 @@ elseif(WITH_LIBGCRYPT STREQUAL "SYSTEM")
 endif()
 list(APPEND EP_INCLUDES ${LIBGCRYPT_INCLUDES})
 list(APPEND EP_LIBS ${LIBGCRYPT_LIBS})
-
+if (TARGET ${LIBGCRYPT_TARGET})
+  list(APPEND EP_TARGETS ${LIBGCRYPT_TARGET})
+  if(TARGET ${LIBGPG_ERROR_TARGET})
+    add_dependencies(${LIBGCRYPT_TARGET} ${LIBGPG_ERROR_TARGET})
+  endif(TARGET ${LIBGPG_ERROR_TARGET})
+endif(TARGET ${LIBGCRYPT_TARGET})
 
 # For JVM libraries
 if(WIN32)
