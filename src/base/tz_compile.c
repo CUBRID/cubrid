@@ -71,11 +71,11 @@ typedef enum
 {
   /* file types */
   TZF_COUNTRIES = 0,		/* tabbed country list (ISO3166) */
-  TZF_ZONES,													       /* tabbed time zones */
-  TZF_RULES,													       /* daylight saving rules */
-  TZF_BACKWARD,													       /* time zone aliases for backward compatibility */
+  TZF_ZONES,			/* tabbed time zones */
+  TZF_RULES,			/* daylight saving rules */
+  TZF_BACKWARD,			/* time zone aliases for backward compatibility */
 #if defined(WINDOWS)
-  TZF_LEAP,													       /* leap data (leap seconds) */
+  TZF_LEAP,			/* leap data (leap seconds) */
   TZF_WINDOWS_IANA_ZONES_MAP
 #else
   TZF_LEAP
@@ -2282,7 +2282,7 @@ tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, const char *str)
       /* This is a fixed day of month, store it as such */
       dest->change_on.type = TZ_DS_TYPE_FIXED;
       dest->change_on.day_of_month = (unsigned char) day_num;
-      dest->change_on.day_of_week = TZ_WEEK_DAY_COUNT;								       /* invalid value */
+      dest->change_on.day_of_week = TZ_WEEK_DAY_COUNT;	/* invalid value */
     }
   else if (type == TZ_DS_TYPE_VAR_SMALLER)
     {
@@ -2608,7 +2608,7 @@ tzc_index_raw_data_w_static (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
   for (i = 0; i < tzd_raw->country_count; i++)
     {
       tzd_raw->countries[i].id = -1;
-      tzd_raw->countries[i].is_used = false;									       /* explicitly initialize all */
+      tzd_raw->countries[i].is_used = false;	/* explicitly initialize all */
     }
   for (i = 0; i < tzd_raw->zone_count; i++)
     {
@@ -2617,7 +2617,7 @@ tzc_index_raw_data_w_static (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
     }
   for (i = 0; i < tzd_raw->ruleset_count; i++)
     {
-      tzd_raw->ds_rulesets[i].is_used = false;									       /* explicitly initialize all */
+      tzd_raw->ds_rulesets[i].is_used = false;	/* explicitly initialize all */
     }
 
   /* implementation */
@@ -3856,7 +3856,7 @@ str_read_day_var (const char *str, const int month, int *type, int *day, int *bo
       goto exit;
     }
 
-  str_cursor += 2;												       /* skip the '>=' operator */
+  str_cursor += 2;		/* skip the '>=' operator */
 
   *day = day_num;
   if (tz_str_read_number (str_cursor, str_end, true, false, &day_num, &str_cursor) != NO_ERROR)
@@ -4029,7 +4029,7 @@ comp_func_raw_offset_rules (const void *arg1, const void *arg2)
     {
       return 1;
     }
-  assert (false);												       /* can't have two time-overlapping offset rules */
+  assert (false);		/* can't have two time-overlapping offset rules */
 
   return 0;
 }
