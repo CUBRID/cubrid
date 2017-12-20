@@ -71,11 +71,11 @@ typedef enum
 {
   /* file types */
   TZF_COUNTRIES = 0,		/* tabbed country list (ISO3166) */
-  TZF_ZONES,			/* tabbed time zones */
-  TZF_RULES,			/* daylight saving rules */
-  TZF_BACKWARD,			/* time zone aliases for backward compatibility */
+  TZF_ZONES,													       /* tabbed time zones */
+  TZF_RULES,													       /* daylight saving rules */
+  TZF_BACKWARD,													       /* time zone aliases for backward compatibility */
 #if defined(WINDOWS)
-  TZF_LEAP,			/* leap data (leap seconds) */
+  TZF_LEAP,													       /* leap data (leap seconds) */
   TZF_WINDOWS_IANA_ZONES_MAP
 #else
   TZF_LEAP
@@ -437,8 +437,8 @@ static int comp_func_tz_names (const void *arg1, const void *arg2);
 
 static void print_seconds_as_time_hms_var (int seconds);
 
-static void tzc_get_timezones_dot_c_filepath (size_t size, char * timezones_dot_c_file_path);
-static int tzc_export_timezone_dot_c (const TZ_DATA * tzd, const char * tz_C_filepath);
+static void tzc_get_timezones_dot_c_filepath (size_t size, char *timezones_dot_c_file_path);
+static int tzc_export_timezone_dot_c (const TZ_DATA * tzd, const char *tz_C_filepath);
 
 static int tzc_load_raw_data (TZ_RAW_DATA * tzd_raw, const char *input_folder);
 static int tzc_import_old_data (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode);
@@ -618,7 +618,7 @@ exit:
  */
 int
 timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, char *database_name,
-                       const char * timezones_dot_c_filepath, char *checksum)
+		       const char *timezones_dot_c_filepath, char *checksum)
 {
   int err_status = NO_ERROR;
   TZ_RAW_DATA tzd_raw;
@@ -2282,7 +2282,7 @@ tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, const char *str)
       /* This is a fixed day of month, store it as such */
       dest->change_on.type = TZ_DS_TYPE_FIXED;
       dest->change_on.day_of_month = (unsigned char) day_num;
-      dest->change_on.day_of_week = TZ_WEEK_DAY_COUNT;	/* invalid value */
+      dest->change_on.day_of_week = TZ_WEEK_DAY_COUNT;								       /* invalid value */
     }
   else if (type == TZ_DS_TYPE_VAR_SMALLER)
     {
@@ -2608,7 +2608,7 @@ tzc_index_raw_data_w_static (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
   for (i = 0; i < tzd_raw->country_count; i++)
     {
       tzd_raw->countries[i].id = -1;
-      tzd_raw->countries[i].is_used = false;	/* explicitly initialize all */
+      tzd_raw->countries[i].is_used = false;									       /* explicitly initialize all */
     }
   for (i = 0; i < tzd_raw->zone_count; i++)
     {
@@ -2617,7 +2617,7 @@ tzc_index_raw_data_w_static (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
     }
   for (i = 0; i < tzd_raw->ruleset_count; i++)
     {
-      tzd_raw->ds_rulesets[i].is_used = false;	/* explicitly initialize all */
+      tzd_raw->ds_rulesets[i].is_used = false;									       /* explicitly initialize all */
     }
 
   /* implementation */
@@ -3856,7 +3856,7 @@ str_read_day_var (const char *str, const int month, int *type, int *day, int *bo
       goto exit;
     }
 
-  str_cursor += 2;		/* skip the '>=' operator */
+  str_cursor += 2;												       /* skip the '>=' operator */
 
   *day = day_num;
   if (tz_str_read_number (str_cursor, str_end, true, false, &day_num, &str_cursor) != NO_ERROR)
@@ -4029,7 +4029,7 @@ comp_func_raw_offset_rules (const void *arg1, const void *arg2)
     {
       return 1;
     }
-  assert (false);		/* can't have two time-overlapping offset rules */
+  assert (false);												       /* can't have two time-overlapping offset rules */
 
   return 0;
 }
@@ -4181,7 +4181,7 @@ print_seconds_as_time_hms_var (int seconds)
  * timezones_dot_c_file_path (out) : output file path
  */
 static void
-tzc_get_timezones_dot_c_filepath (size_t size, char * timezones_dot_c_file_path)
+tzc_get_timezones_dot_c_filepath (size_t size, char *timezones_dot_c_file_path)
 {
   char tz_cub_path[PATH_MAX] = { 0 };
 
@@ -4197,7 +4197,7 @@ tzc_get_timezones_dot_c_filepath (size_t size, char * timezones_dot_c_file_path)
  * tz_C_filepath(in): timezones.c file path
  */
 static int
-tzc_export_timezone_dot_c (const TZ_DATA * tzd, const char * timezones_dot_c_filepath)
+tzc_export_timezone_dot_c (const TZ_DATA * tzd, const char *timezones_dot_c_filepath)
 {
   int err_status = NO_ERROR;
   TZ_OFFSET_RULE *offrule = NULL;
