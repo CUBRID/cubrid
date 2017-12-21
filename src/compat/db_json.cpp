@@ -480,7 +480,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
     }
 
   JSON_POINTER p (json_pointer.c_str());
-  JSON_VALUE *resulting_json;
+  const JSON_VALUE *resulting_json;
 
   if (!p.IsValid ())
     {
@@ -489,7 +489,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
       return ER_JSON_INVALID_PATH;
     }
 
-  resulting_json = const_cast<JSON_VALUE *> (p.Get (*document));
+  resulting_json = p.Get (*document);
 
   if (resulting_json != NULL)
     {
@@ -1418,7 +1418,7 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, const JSON_DOC &d
   // starting the conversion of path
   for (i = 0; i < pointer_path_length; ++i)
     {
-      JSON_VALUE *resulting_json_parent;
+      const JSON_VALUE *resulting_json_parent;
       JSON_POINTER p (pointer_path_string.substr (0, i).c_str());
 
       if (pointer_path_string[i] == '/')
@@ -1446,7 +1446,7 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, const JSON_DOC &d
 	      return ER_JSON_INVALID_PATH;
 	    }
 
-	  resulting_json_parent = const_cast<JSON_VALUE *> (reinterpret_cast<const JSON_VALUE *> (p.Get (doc)));
+	  resulting_json_parent = p.Get (doc);
 
 	  if (resulting_json_parent == NULL)
 	    {
@@ -1642,7 +1642,7 @@ int
 db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
 {
   JSON_POINTER p ("");
-  JSON_VALUE *head = const_cast<JSON_VALUE *> (reinterpret_cast<const JSON_VALUE *> (p.Get (doc)));
+  const JSON_VALUE *head = p.Get (doc);
   std::vector<std::string> paths;
 
   db_json_get_paths_helper (*head, "$", paths);
@@ -1674,7 +1674,7 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_
     }
 
   JSON_POINTER p (json_pointer.c_str());
-  JSON_VALUE *head = (JSON_VALUE *)p.Get (doc);
+  const JSON_VALUE *head = p.Get (doc);
   std::string key;
 
   if (head->IsObject())
