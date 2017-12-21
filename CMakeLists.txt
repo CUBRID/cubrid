@@ -970,9 +970,9 @@ list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 # on Linux:
 # * "EXTERNAL" - (default) builds git ncurses library using ${WITH_LIBNCURSES_GIT_REPOSITORY} repository and uses the library created by the build
 # * "SYSTEM"   - uses ncurses installed in the system (for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html)
+set(LIBNCURSES_TARGET libncurses)
 if(UNIX)
   if(WITH_LIBNCURSES STREQUAL "EXTERNAL")
-    set(LIBNCURSES_TARGET libncurses)
     externalproject_add(${LIBNCURSES_TARGET}
       GIT_REPOSITORY    ${WITH_LIBNCURSES_GIT_REPOSITORY}
       GIT_TAG           ${WITH_LIBNCURSES_GIT_TAG}
