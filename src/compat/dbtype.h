@@ -533,12 +533,8 @@ typedef enum
   DB_TYPE_DATETIMETZ = 38,
   DB_TYPE_DATETIMELTZ = 39,
   DB_TYPE_JSON = 40,
-  /* Disabled types */
-#if 0
-  DB_TYPE_TIMETZ = 41,		/* internal use only - RESERVED */
-  DB_TYPE_TIMELTZ = 42,		/* internal use only - RESERVED */
-#endif
-  /* end of disabled types */
+
+  /* aliases */
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
   DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
