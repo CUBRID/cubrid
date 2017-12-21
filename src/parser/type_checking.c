@@ -15500,8 +15500,16 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		DB_BIGINT itmp;
 		DB_VALUE *other;
 
-		time = *DB_GET_TIME (arg1);
-		other = arg2;
+		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIME)
+		  {
+		    time = *DB_GET_TIME (arg1);
+		    other = arg2;
+		  }
+		else
+		  {
+		    time = *DB_GET_TIME (arg2);
+		    other = arg1;
+		  }
 
 		switch (DB_VALUE_TYPE (other))
 		  {

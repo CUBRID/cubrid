@@ -549,7 +549,6 @@ static int ldr_date_elem (LDR_CONTEXT * context, const char *str, int len, DB_VA
 static int ldr_date_db_date (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 static int ldr_time_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
 static int ldr_time_db_time (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
-static int ldr_timeltz_db_timeltz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 static int ldr_timestamp_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
 static int ldr_timestamp_db_timestamp (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 static int ldr_timestamptz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);

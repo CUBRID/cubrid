@@ -238,8 +238,6 @@ static void add_res_data_datetimetz (T_NET_BUF * net_buf, short yr, short mon, s
 				     short ms, char *tz_str, unsigned char ext_type, int *net_size);
 static void add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss, unsigned char ext_type,
 			       int *net_size);
-static void add_res_data_timetz (T_NET_BUF * net_buf, short hh, short mm, short ss, char *tz_str,
-				 unsigned char ext_type, int *net_size);
 static void add_res_data_date (T_NET_BUF * net_buf, short yr, short mon, short day, unsigned char ext_type,
 			       int *net_size);
 static void add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj, unsigned char ext_type, int *net_size);
@@ -6640,37 +6638,6 @@ add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss, unsigned c
   if (net_size)
     {
       *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + NET_SIZE_TIME;
-    }
-}
-
-static void
-add_res_data_timetz (T_NET_BUF * net_buf, short hh, short mm, short ss, char *tz_str, unsigned char ext_type,
-		     int *net_size)
-{
-  int tz_size;
-
-  tz_size = strlen (tz_str);
-
-  if (ext_type)
-    {
-      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_TIME + tz_size + 1, NULL);
-      net_buf_cp_cas_type_and_charset (net_buf, ext_type, CAS_SCHEMA_DEFAULT_CHARSET);
-    }
-  else
-    {
-      net_buf_cp_int (net_buf, NET_SIZE_TIME + tz_size + 1, NULL);
-    }
-
-  net_buf_cp_short (net_buf, hh);
-  net_buf_cp_short (net_buf, mm);
-  net_buf_cp_short (net_buf, ss);
-
-  net_buf_cp_str (net_buf, tz_str, tz_size);
-  net_buf_cp_byte (net_buf, '\0');
-
-  if (net_size)
-    {
-      *net_size = (NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + NET_SIZE_TIME + tz_size + 1);
     }
 }
 
