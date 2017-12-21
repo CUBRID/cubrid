@@ -304,7 +304,7 @@ struct double_write_buffer
   unsigned int num_pages;	/* The total number of pages in DWB - power of 2. */
   unsigned int num_block_pages;	/* The number of pages in a block - power of 2. */
   unsigned int log2_num_block_pages;	/* Logarithm from block number of pages. */
-  unsigned int blocks_flush_counter;	/* The blocks flush counter. */
+  volatile unsigned int blocks_flush_counter;	/* The blocks flush counter. */
   volatile unsigned int next_block_to_flush;	/* Next block to flush */
 
   DWB_CHECKSUM_INFO *checksum_info;	/* The checksum info. */
@@ -359,6 +359,7 @@ STATIC_INLINE void dwb_adjust_write_buffer_values (unsigned int *p_double_write_
 STATIC_INLINE int dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_signal_waiting_thread (void *data) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_set_status_resumed (void *data) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLOCK * dwb_block)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slots,
@@ -1929,6 +1930,27 @@ dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_fl
 }
 
 /*
+* dwb_set_status_resumed () - Set status resumed.
+*
+* return   : Error code.
+* data (in): The thread entry.
+*/
+STATIC_INLINE int
+dwb_set_status_resumed (void *data)
+{
+#if defined (SERVER_MODE)
+  THREAD_ENTRY *woken_thread_p = (THREAD_ENTRY *) data;
+  if (woken_thread_p)
+    {
+      thread_lock_entry (woken_thread_p);
+      woken_thread_p->resume_status = THREAD_DWB_QUEUE_RESUMED;
+      thread_unlock_entry (woken_thread_p);
+    }
+#endif
+  return NO_ERROR;
+}
+
+/*
  * dwb_wait_for_block_completion () - Wait for DWB block to complete.
  *
  * return   : Error code.
@@ -1946,6 +1968,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   TSCTIMEVAL tv_diff;
   UINT64 oldest_time;
   bool is_perf_tracking = false;
+  UINT64 current_position_with_flags;
 
   assert (thread_p != NULL && block_no < DWB_NUM_TOTAL_BLOCKS);
 
@@ -1961,7 +1984,8 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   thread_lock_entry (thread_p);
 
   /* Check again after acquiring mutexes. */
-  if (!DWB_IS_BLOCK_WRITE_STARTED (ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL), block_no))
+  current_position_with_flags = ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL);
+  if (!DWB_IS_BLOCK_WRITE_STARTED (current_position_with_flags, block_no))
     {
       thread_unlock_entry (thread_p);
       pthread_mutex_unlock (&dwb_block->mutex);
@@ -2005,7 +2029,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
       if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
 	{
 	  /* timeout, remove the entry from queue */
-	  dwb_remove_wait_queue_entry (&dwb_block->wait_queue, &dwb_block->mutex, thread_p, NULL);
+	  dwb_remove_wait_queue_entry (&dwb_block->wait_queue, &dwb_block->mutex, thread_p, dwb_set_status_resumed);
 	  return r;
 	}
       else if (thread_p->resume_status != THREAD_DWB_QUEUE_RESUMED)
@@ -2079,11 +2103,8 @@ STATIC_INLINE void
 dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLOCK * dwb_block)
 {
   assert (dwb_block != NULL);
-  if ((DWB_WAIT_QUEUE_ENTRY volatile *) (dwb_block->wait_queue.head) != NULL)
-    {
-      /* There are blocked threads. Destroy the wait queue and release the blocked threads. */
-      dwb_signal_waiting_threads (&dwb_block->wait_queue, &dwb_block->mutex);
-    }
+  /* There are blocked threads. Destroy the wait queue and release the blocked threads. */
+  dwb_signal_waiting_threads (&dwb_block->wait_queue, &dwb_block->mutex);
 }
 
 /*
@@ -2095,11 +2116,8 @@ dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLOCK * dwb_block)
 STATIC_INLINE void
 dwb_signal_structure_modificated (THREAD_ENTRY * thread_p)
 {
-  if ((DWB_WAIT_QUEUE_ENTRY volatile *) (double_Write_Buffer.wait_queue.head) != NULL)
-    {
-      /* There are blocked threads. Destroy the wait queue and release the blocked threads. */
-      dwb_signal_waiting_threads (&double_Write_Buffer.wait_queue, &double_Write_Buffer.mutex);
-    }
+  /* There are blocked threads. Destroy the wait queue and release the blocked threads. */
+  dwb_signal_waiting_threads (&double_Write_Buffer.wait_queue, &double_Write_Buffer.mutex);
 }
 
 /*
@@ -2569,6 +2587,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   UINT64 oldest_time;
   bool is_perf_tracking = false;
   int num_pages;
+  unsigned int current_block_to_flush, next_block_to_flush;
   bool update_flush_block_helper_stat;
 
   assert (block != NULL && block->count_wb_pages > 0 && dwb_is_created ());
@@ -2745,7 +2764,13 @@ reset_bit_position:
     }
 
   /* Advance flushing to next block. */
-  double_Write_Buffer.next_block_to_flush = DWB_GET_NEXT_BLOCK_NO (double_Write_Buffer.next_block_to_flush);
+  current_block_to_flush = double_Write_Buffer.next_block_to_flush;
+  next_block_to_flush = DWB_GET_NEXT_BLOCK_NO (current_block_to_flush);
+  if (!ATOMIC_CAS_32 (&double_Write_Buffer.next_block_to_flush, current_block_to_flush, next_block_to_flush))
+    {
+      /* I'm the only thread that can advance next block to flush. */
+      assert_release (false);
+    }
 
   /* Release locked threads, if any. */
   dwb_signal_block_completion (thread_p, block);
@@ -3831,7 +3856,7 @@ dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
 {
   UINT64 intial_position_with_flags, current_position_with_flags, prev_position_with_flags, intial_block_version,
     current_block_version;
-  unsigned int intial_block_no, current_block_no = DWB_NUM_TOTAL_BLOCKS, flush_block_no;
+  unsigned int intial_block_no, current_block_no = DWB_NUM_TOTAL_BLOCKS;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage = NULL;
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
@@ -3899,8 +3924,9 @@ start:
 
   /* Check whether the initial block was flushed */
 check_flushed_blocks:
-  flush_block_no = double_Write_Buffer.next_block_to_flush;
-  if (double_Write_Buffer.blocks_flush_counter > 0 && flush_block_no == intial_block_no)
+  if ((ATOMIC_INC_32 (&double_Write_Buffer.blocks_flush_counter, 0) > 0)
+      && (ATOMIC_INC_32 (&double_Write_Buffer.next_block_to_flush, 0) == intial_block_no)
+      && (ATOMIC_INC_32 (&double_Write_Buffer.blocks[intial_block_no].count_wb_pages, 0) == DWB_BLOCK_NUM_PAGES))
     {
       /* The intial block is currently flushing, wait for it. */
       error_code = dwb_wait_for_block_completion (thread_p, intial_block_no);
@@ -3915,7 +3941,7 @@ check_flushed_blocks:
 	  if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "Error %d while waiting for flushing block=%d having version %lld \n",
-			     error_code, flush_block_no, double_Write_Buffer.blocks[flush_block_no].version);
+			     error_code, intial_block_no, double_Write_Buffer.blocks[intial_block_no].version);
 	    }
 
 	  return error_code;
