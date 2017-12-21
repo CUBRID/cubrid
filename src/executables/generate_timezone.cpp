@@ -38,13 +38,10 @@ usage (void)
 int
 main (int argc, char ** argv)
 {
-  er_init (NULL, er_exit_ask::ER_NEVER_EXIT);
-
   // check args
   if (argc != 3)
     {
       usage ();
-      er_final (er_final_code::ER_ALL_FINAL);
       return EXIT_FAILURE;
     }
 
@@ -57,12 +54,10 @@ main (int argc, char ** argv)
       != NO_ERROR)
     {
       assert (false);
-      er_final (er_final_code::ER_ALL_FINAL);
       return EXIT_FAILURE;
     }
   else
     {
-      er_final (er_final_code::ER_ALL_FINAL);
       return EXIT_SUCCESS;
     }
 }
