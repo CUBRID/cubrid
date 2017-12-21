@@ -1084,7 +1084,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_ADDTIME:
       num = 0;
 
-      /* 16 overloads */
+      /* 12 overloads */
 
       /* arg1 */
       sig.arg1_type.is_generic = false;
@@ -1196,28 +1196,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* arg1 */
       sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
-      /* arg2 */
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_TIME;
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_TIMELTZ;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
-      /* arg2 */
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_TIME;
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_TIMETZ;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_TIME;
       /* arg2 */
       sig.arg2_type.is_generic = true;
@@ -1225,28 +1203,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_TIME;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
-      /* arg2 */
-      sig.arg2_type.is_generic = true;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_TIMETZ;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
-      /* arg2 */
-      sig.arg2_type.is_generic = true;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_TIMELTZ;
       def->overloads[num++] = sig;
 
       /* arg1 */
@@ -1731,7 +1687,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_MINUS:
       num = 0;
 
-      /* six overloads */
+      /* 4 overloads */
 
       sig.arg1_type.is_generic = true;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
@@ -1765,22 +1721,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.return_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
       def->overloads[num++] = sig;
 
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_TIMELTZ;
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_BIGINT;
-      def->overloads[num++] = sig;
-
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_TIMETZ;
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_BIGINT;
-      def->overloads[num++] = sig;
-
       def->overloads_count = num;
       break;
 
@@ -1790,7 +1730,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_TIMETOSEC:
       num = 0;
 
-      /* four overloads */
+      /* 2 overloads */
 
       sig.arg1_type.is_generic = true;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING_VARYING;
@@ -1800,18 +1740,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_TIME;
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_INTEGER;
       def->overloads[num++] = sig;
@@ -2924,7 +2852,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_TIMEDIFF:
       num = 0;
 
-      /* 5 overloads */
+      /* 3 overloads */
 
       /* arg1 */
       sig.arg1_type.is_generic = true;
@@ -2954,29 +2882,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* arg2 */
       sig.arg2_type.is_generic = false;
       sig.arg2_type.val.type = PT_TYPE_TIME;
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_TIME;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
-      /* arg2 */
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_TIMELTZ;
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_TIME;
-      def->overloads[num++] = sig;
-
-
-      /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
-      /* arg2 */
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_TIMETZ;
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_TIME;
@@ -4367,7 +4272,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_WIDTH_BUCKET:
       num = 0;
 
-      /* 12 overloads */
+      /* 10 overloads */
 
       /* generic number */
       sig.arg1_type.is_generic = true;
@@ -4510,36 +4415,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       sig.arg2_type.is_generic = false;
       sig.arg2_type.val.type = PT_TYPE_TIMESTAMPTZ;	/* between */
-
-      sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
-
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-
-      def->overloads[num++] = sig;
-
-      /* time with local timezone */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
-
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_TIMELTZ;	/* between */
-
-      sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
-
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-
-      def->overloads[num++] = sig;
-
-      /* time with timezone */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
-
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_TIMETZ;	/* between */
 
       sig.arg3_type.is_generic = false;
       sig.arg3_type.val.type = PT_TYPE_DOUBLE;
@@ -4827,44 +4702,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_DATETIMETZ;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-
-    case PT_TO_TIME_TZ:
-      num = 0;
-
-      /* two overloads */
-
-      /* arg1 */
-      sig.arg1_type.is_generic = true;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
-      /* arg2 */
-      sig.arg2_type.is_generic = true;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
-      /* arg3 */
-      sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_TIMETZ;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.is_generic = true;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
-      /* arg2 */
-      sig.arg2_type.is_generic = true;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
-      /* arg3 */
-      sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_TIMETZ;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -7074,7 +6911,6 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_FROM_TZ:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
     case PT_UTC_TIMESTAMP:
     case PT_CRC32:
     case PT_SCHEMA_DEF:
@@ -9137,7 +8973,6 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_SLEEP:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
     case PT_CRC32:
     case PT_DISK_SIZE:
     case PT_SCHEMA_DEF:
@@ -9728,7 +9563,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		    {
 		      node->type_enum = PT_TYPE_INTEGER;
 		    }
-		  else if (arg1_type == PT_TYPE_TIME || arg1_type == PT_TYPE_TIMELTZ || arg1_type == PT_TYPE_TIMETZ)
+		  else if (arg1_type == PT_TYPE_TIME)
 		    {
 		      incompatible_extract_type = true;
 		    }
@@ -9794,8 +9629,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		    {
 		      node->type_enum = PT_TYPE_INTEGER;
 		    }
-		  else if (arg1_type == PT_TYPE_DATE || arg1_type == PT_TYPE_TIME || arg1_type == PT_TYPE_TIMELTZ
-			   || arg1_type == PT_TYPE_TIMETZ || arg1_type == PT_TYPE_TIMESTAMP
+		  else if (arg1_type == PT_TYPE_DATE || arg1_type == PT_TYPE_TIME || arg1_type == PT_TYPE_TIMESTAMP
 			   || arg1_type == PT_TYPE_TIMESTAMPLTZ || arg1_type == PT_TYPE_TIMESTAMPTZ)
 		    {
 		      incompatible_extract_type = true;
@@ -9835,8 +9669,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TIMEDIFF:
 	  if (PT_IS_DATE_TIME_TYPE (arg1_type) && PT_IS_DATE_TIME_TYPE (arg2_type))
 	    {
-	      if (arg1_type == PT_TYPE_TIME || arg1_type == PT_TYPE_TIMELTZ || arg1_type == PT_TYPE_TIMETZ
-		  || arg1_type == PT_TYPE_DATE)
+	      if (arg1_type == PT_TYPE_TIME || arg1_type == PT_TYPE_DATE)
 		{
 		  if (arg2_type != arg1_type)
 		    {
@@ -9846,8 +9679,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      else
 		{
 		  /* arg1_type is PT_TYPE_DATETIME or PT_TYPE_TIMESTAMP. */
-		  if (arg2_type == PT_TYPE_TIME || arg2_type == PT_TYPE_TIMELTZ || arg2_type == PT_TYPE_TIMETZ
-		      || arg2_type == PT_TYPE_DATE)
+		  if (arg2_type == PT_TYPE_TIME || arg2_type == PT_TYPE_DATE)
 		    {
 		      node->type_enum = PT_TYPE_NONE;
 		    }
@@ -11027,8 +10859,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_DATETIMELTZ:
 	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMELTZ:
-	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_NUMERIC:
 	      common_type = arg2_type;
 	      break;
@@ -11059,8 +10889,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_DATETIMELTZ:
 	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMELTZ:
-	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_NUMERIC:
 	      common_type = arg2_type;
 	      break;
@@ -11095,8 +10923,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_DATETIMELTZ:
 	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMELTZ:
-	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_NUMERIC:
 	      common_type = arg2_type;
 	      break;
@@ -11349,74 +11175,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_TIME:
 	      common_type = PT_TYPE_TIME;
 	      break;
-	    case PT_TYPE_TIMELTZ:
-	    case PT_TYPE_TIMETZ:
-	      common_type = arg2_type;
-	      break;
-	    default:
-	      common_type = PT_TYPE_NONE;
-	      break;
-	    }
-	  break;
-
-	case PT_TYPE_TIMELTZ:
-	  switch (arg2_type)
-	    {
-	    case PT_TYPE_SMALLINT:
-	    case PT_TYPE_INTEGER:
-	    case PT_TYPE_BIGINT:
-	      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
-		{
-		  common_type = PT_TYPE_TIMELTZ;
-		}
-	      else
-		{
-		  common_type = arg2_type;
-		}
-	      break;
-	    case PT_TYPE_CHAR:
-	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
-	    case PT_TYPE_ENUMERATION:
-	    case PT_TYPE_TIME:
-	      common_type = PT_TYPE_TIMELTZ;
-	      break;
-	    case PT_TYPE_TIMELTZ:
-	    case PT_TYPE_TIMETZ:
-	      common_type = PT_TYPE_TIMETZ;
-	      break;
-	    default:
-	      common_type = PT_TYPE_NONE;
-	      break;
-	    }
-	  break;
-
-	case PT_TYPE_TIMETZ:
-	  switch (arg2_type)
-	    {
-	    case PT_TYPE_SMALLINT:
-	    case PT_TYPE_INTEGER:
-	    case PT_TYPE_BIGINT:
-	      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
-		{
-		  common_type = PT_TYPE_TIMETZ;
-		}
-	      else
-		{
-		  common_type = arg2_type;
-		}
-	      break;
-	    case PT_TYPE_CHAR:
-	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
-	    case PT_TYPE_ENUMERATION:
-	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMELTZ:
-	    case PT_TYPE_TIMETZ:
-	      common_type = PT_TYPE_TIMETZ;
-	      break;
 	    default:
 	      common_type = PT_TYPE_NONE;
 	      break;
@@ -11466,8 +11224,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    {
 	    case PT_TYPE_DATE:
 	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMELTZ:
-	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_TIMESTAMP:
 	    case PT_TYPE_TIMESTAMPLTZ:
 	    case PT_TYPE_TIMESTAMPTZ:
@@ -11492,8 +11248,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    {
 	    case PT_TYPE_DATE:
 	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMELTZ:
-	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_TIMESTAMP:
 	    case PT_TYPE_TIMESTAMPLTZ:
 	    case PT_TYPE_TIMESTAMPTZ:
@@ -11518,8 +11272,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    {
 	    case PT_TYPE_DATE:
 	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMELTZ:
-	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_TIMESTAMP:
 	    case PT_TYPE_TIMESTAMPLTZ:
 	    case PT_TYPE_TIMESTAMPTZ:
@@ -11541,8 +11293,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    {
 	    case PT_TYPE_DATE:
 	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMELTZ:
-	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_TIMESTAMP:
 	    case PT_TYPE_TIMESTAMPLTZ:
 	    case PT_TYPE_TIMESTAMPTZ:
@@ -12866,10 +12616,6 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
       break;
     case PT_TYPE_TIME:
       precision = TP_TIME_AS_CHAR_LENGTH;
-      break;
-    case PT_TYPE_TIMELTZ:
-    case PT_TYPE_TIMETZ:
-      precision = TP_TIMETZ_AS_CHAR_LENGTH;
       break;
     case PT_TYPE_DATE:
       precision = TP_DATE_AS_CHAR_LENGTH;
@@ -15748,23 +15494,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_TIME:
-	    case DB_TYPE_TIMELTZ:
 	      {
 		DB_TIME time, result_time;
 		int hour, minute, second;
 		DB_BIGINT itmp;
 		DB_VALUE *other;
 
-		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIME || DB_VALUE_TYPE (arg1) == DB_TYPE_TIMELTZ)
-		  {
-		    time = *DB_GET_TIME (arg1);
-		    other = arg2;
-		  }
-		else
-		  {
-		    time = *DB_GET_TIME (arg2);
-		    other = arg1;
-		  }
+		time = *DB_GET_TIME (arg1);
+		other = arg2;
 
 		switch (DB_VALUE_TYPE (other))
 		  {
@@ -15794,71 +15531,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		    result_time = (itmp + time) % 86400;
 		  }
 		db_time_decode (&result_time, &hour, &minute, &second);
-		if (typ == DB_TYPE_TIME)
-		  {
-		    db_make_time (result, hour, minute, second);
-		  }
-		else
-		  {
-		    db_make_timeltz (result, &result_time);
-		  }
-	      }
-	      break;
-
-	    case DB_TYPE_TIMETZ:
-	      {
-		DB_TIMETZ *time_tz_p, time_tz_res, time_tz_fixed;
-		DB_TIME time, result_time;
-		DB_BIGINT itmp;
-		DB_VALUE *other;
-
-		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIMETZ)
-		  {
-		    time_tz_p = DB_GET_TIMETZ (arg1);
-		    other = arg2;
-		  }
-		else
-		  {
-		    time_tz_p = DB_GET_TIMETZ (arg2);
-		    other = arg1;
-		  }
-
-		switch (DB_VALUE_TYPE (other))
-		  {
-		  case DB_TYPE_INTEGER:
-		    itmp = DB_GET_INTEGER (other);	/* SECONDS_OF_ONE_DAY */
-		    break;
-		  case DB_TYPE_SMALLINT:
-		    itmp = DB_GET_SHORT (other);	/* SECONDS_OF_ONE_DAY */
-		    break;
-		  case DB_TYPE_BIGINT:
-		    itmp = DB_GET_BIGINT (other);	/* SECONDS_OF_ONE_DAY */
-		    break;
-		  default:
-		    return 0;
-		  }
-
-		time = time_tz_p->time;
-		if (itmp < 0)
-		  {
-		    DB_TIME uother = (DB_TIME) ((-itmp) % 86400);
-		    if (time < uother)
-		      {
-			time += 86400;
-		      }
-		    result_time = time - uother;
-		  }
-		else
-		  {
-		    result_time = (itmp + time) % 86400;
-		  }
-		time_tz_res.time = result_time;
-		time_tz_res.tz_id = time_tz_p->tz_id;
-		if (tz_timetz_fix_zone (&time_tz_res, &time_tz_fixed) != NO_ERROR)
-		  {
-		    return 0;
-		  }
-		db_make_timetz (result, &time_tz_fixed);
+		db_make_time (result, hour, minute, second);
 	      }
 	      break;
 
@@ -16351,64 +16024,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		    bi1 = (DB_BIGINT) (*d1);
 		    bi2 = (DB_BIGINT) (*d2);
 		  }
-		else if (typ1 == DB_TYPE_TIME || typ1 == DB_TYPE_TIMELTZ)
+		else if (typ1 == DB_TYPE_TIME)
 		  {
 		    DB_TIME *t1, *t2;
 
 		    t1 = DB_GET_TIME (arg1);
 		    t2 = DB_GET_TIME (arg2);
 
-		    if (typ1 == DB_TYPE_TIMELTZ)
-		      {
-			TZ_ID ses_tz_id1, ses_tz_id2;
-			DB_TIME t1_local, t2_local;
-
-			error = tz_create_session_tzid_for_time (t1, true, &ses_tz_id1);
-			if (error != NO_ERROR)
-			  {
-			    return 0;
-			  }
-
-			error = tz_create_session_tzid_for_time (t2, true, &ses_tz_id2);
-			if (error != NO_ERROR)
-			  {
-			    return 0;
-			  }
-
-			error = tz_utc_timetz_to_local (t1, &ses_tz_id1, &t1_local);
-			if (error != NO_ERROR)
-			  {
-			    return 0;
-			  }
-
-			error = tz_utc_timetz_to_local (t2, &ses_tz_id2, &t2_local);
-			if (error != NO_ERROR)
-			  {
-			    return 0;
-			  }
-
-			bi1 = (DB_BIGINT) (t1_local);
-			bi2 = (DB_BIGINT) (t2_local);
-		      }
-		    else
-		      {
-			bi1 = (DB_BIGINT) (*t1);
-			bi2 = (DB_BIGINT) (*t2);
-		      }
-		  }
-		else if (typ1 == DB_TYPE_TIMETZ)
-		  {
-		    DB_TIMETZ *t_tz1, *t_tz2;
-		    int day1, day2;
-
-		    t_tz1 = DB_GET_TIMETZ (arg1);
-		    t_tz2 = DB_GET_TIMETZ (arg2);
-
-		    day1 = get_day_from_timetz (t_tz1);
-		    day2 = get_day_from_timetz (t_tz2);
-
-		    bi1 = (DB_BIGINT) (t_tz1->time) + day1 * SECONDS_OF_ONE_DAY;
-		    bi2 = (DB_BIGINT) (t_tz2->time) + day2 * SECONDS_OF_ONE_DAY;
+		    bi1 = (DB_BIGINT) (*t1);
+		    bi2 = (DB_BIGINT) (*t2);
 		  }
 		else if (typ1 == DB_TYPE_TIMESTAMP || typ1 == DB_TYPE_TIMESTAMPLTZ)
 		  {
@@ -16532,11 +16156,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_TIME:
-	    case DB_TYPE_TIMELTZ:
-	    case DB_TYPE_TIMETZ:
 	      {
 		DB_TIME time, result_time;
-		DB_TIMETZ time_tz, time_tz_fixed;
 		int hour, minute, second;
 		DB_BIGINT bi = 0, ubi = 0;
 
@@ -16559,15 +16180,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		assert (typ == DB_VALUE_TYPE (arg1));
 
-		if (typ == DB_TYPE_TIMETZ)
-		  {
-		    time_tz = *DB_GET_TIMETZ (arg1);
-		    time = time_tz.time;
-		  }
-		else
-		  {
-		    time = *DB_GET_TIME (arg1);
-		  }
+		time = *DB_GET_TIME (arg1);
 
 		if (time < (DB_TIME) (ubi % 86400))
 		  {
@@ -16576,26 +16189,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		result_time = time - (bi % 86400);
 
 		db_time_decode (&result_time, &hour, &minute, &second);
-		if (typ == DB_TYPE_TIMETZ)
-		  {
-		    db_time_encode (&result_time, hour, minute, second);
-		    time_tz.time = result_time;
-		    /* keep time_tz.tz_id from arg1 */
-		    if (tz_timetz_fix_zone (&time_tz, &time_tz_fixed) != NO_ERROR)
-		      {
-			return 0;
-		      }
-		    db_make_timetz (result, &time_tz_fixed);
-		  }
-		else if (typ == DB_TYPE_TIMELTZ)
-		  {
-		    db_time_encode (&result_time, hour, minute, second);
-		    db_make_timeltz (result, &result_time);
-		  }
-		else
-		  {
-		    db_make_time (result, hour, minute, second);
-		  }
+		db_make_time (result, hour, minute, second);
 	      }
 	      break;
 
@@ -19456,19 +19050,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       break;
 
-    case PT_TO_TIME_TZ:
-      error = db_to_time (arg1, arg2, arg3, DB_TYPE_TIMETZ, result);
-      if (error < 0)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      else
-	{
-	  return 1;
-	}
-      break;
-
     case PT_UTC_TIMESTAMP:
       {
 	DB_TIME time;
@@ -20281,14 +19862,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		   && op != PT_CASE && op != PT_TO_CHAR && op != PT_TO_NUMBER && op != PT_TO_DATE && op != PT_TO_TIME
 		   && op != PT_TO_TIMESTAMP && op != PT_TO_DATETIME && op != PT_NULLIF && op != PT_COALESCE
 		   && op != PT_NVL && op != PT_NVL2 && op != PT_DECODE && op != PT_IFNULL && op != PT_TO_DATETIME_TZ
-		   && op != PT_TO_TIMESTAMP_TZ && op != PT_TO_TIME_TZ)
+		   && op != PT_TO_TIMESTAMP_TZ)
 	       || (opd2 && (opd2->type_enum == PT_TYPE_NA || opd2->type_enum == PT_TYPE_NULL)
 		   && op != PT_CASE && op != PT_TO_CHAR && op != PT_TO_NUMBER && op != PT_TO_DATE && op != PT_TO_TIME
 		   && op != PT_TO_TIMESTAMP && op != PT_TO_DATETIME && op != PT_BETWEEN && op != PT_NOT_BETWEEN
 		   && op != PT_SYS_CONNECT_BY_PATH && op != PT_NULLIF && op != PT_COALESCE && op != PT_NVL
 		   && op != PT_NVL2 && op != PT_DECODE && op != PT_IFNULL && op != PT_IF
-		   && (op != PT_RANGE || !opd2->or_next) && op != PT_TO_DATETIME_TZ && op != PT_TO_TIMESTAMP_TZ
-		   && op != PT_TO_TIME_TZ)
+		   && (op != PT_RANGE || !opd2->or_next) && op != PT_TO_DATETIME_TZ && op != PT_TO_TIMESTAMP_TZ)
 	       || (opd3 && (opd3->type_enum == PT_TYPE_NA || opd3->type_enum == PT_TYPE_NULL)
 		   && op != PT_BETWEEN && op != PT_NOT_BETWEEN && op != PT_NVL2 && op != PT_IF)
 	       || (opd2 && opd3 && op == PT_IF && (opd2->type_enum == PT_TYPE_NA || opd2->type_enum == PT_TYPE_NULL)

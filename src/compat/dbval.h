@@ -59,7 +59,6 @@
 #undef DB_GET_MIDXKEY
 #undef DB_GET_ELO
 #undef DB_GET_TIME
-#undef DB_GET_TIMETZ
 #undef DB_GET_DATE
 #undef DB_GET_TIMESTAMP
 #undef DB_GET_TIMESTAMPTZ
@@ -277,13 +276,8 @@
        (DB_ELO *) (&((v)->data.elo)))
 
 #define DB_GET_TIME(v) \
-      (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIME		\
-	       || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIMELTZ), \
+      (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIME), \
        (DB_TIME *) (&(v)->data.time))
-
-#define DB_GET_TIMETZ(v) \
-    (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIMETZ), \
-     (DB_TIMETZ *) (&(v)->data.timetz))
 
 #define DB_GET_DATE(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_DATE), \
@@ -424,7 +418,6 @@
 #define db_get_elo(v) DB_GET_ELO(v)
 #define db_pull_elo(v) DB_PULL_ELO(v)
 #define db_get_time(v) DB_GET_TIME(v)
-#define db_get_timetz(v) DB_GET_TIMETZ(v)
 #define db_get_date(v) DB_GET_DATE(v)
 #define db_get_timestamp(v) DB_GET_TIMESTAMP(v)
 #define db_get_timestamptz(v) DB_GET_TIMESTAMPTZ(v)

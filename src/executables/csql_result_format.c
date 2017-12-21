@@ -1503,36 +1503,6 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	  }
 	break;
       }
-    case DB_TYPE_TIMETZ:
-      {
-	char buf[TIMETZ_BUF_SIZE];
-	DB_TIMETZ *time_tz = DB_GET_TIMETZ (value);
-	if (db_timetz_to_string (buf, sizeof (buf), &(time_tz->time), &time_tz->tz_id))
-	  {
-	    result = duplicate_string (buf);
-	  }
-
-	if (result)
-	  {
-	    len = strlen (result);
-	  }
-      }
-      break;
-    case DB_TYPE_TIMELTZ:
-      {
-	char buf[TIMETZ_BUF_SIZE];
-
-	if (db_timeltz_to_string (buf, sizeof (buf), DB_GET_TIME (value)))
-	  {
-	    result = duplicate_string (buf);
-	  }
-
-	if (result)
-	  {
-	    len = strlen (result);
-	  }
-      }
-      break;
     case DB_TYPE_MONETARY:
       {
 	char *leading_str = NULL;
@@ -1551,16 +1521,13 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	      }
 	  }
 
-	result =
-	  (DB_GET_MONETARY (value) == NULL) ? NULL : double_to_string ((DB_GET_MONETARY (value))->amount,
-								       default_monetary_profile.fieldwidth,
-								       default_monetary_profile.decimalplaces,
-								       default_monetary_profile.leadingsign,
-								       leading_str, trailing_str,
-								       default_monetary_profile.leadingzeros,
-								       default_monetary_profile.trailingzeros,
-								       default_monetary_profile.commas,
-								       DOUBLE_FORMAT_DECIMAL);
+	result = ((DB_GET_MONETARY (value) == NULL)
+		  ? NULL : double_to_string ((DB_GET_MONETARY (value))->amount, default_monetary_profile.fieldwidth,
+					     default_monetary_profile.decimalplaces,
+					     default_monetary_profile.leadingsign, leading_str, trailing_str,
+					     default_monetary_profile.leadingzeros,
+					     default_monetary_profile.trailingzeros, default_monetary_profile.commas,
+					     DOUBLE_FORMAT_DECIMAL));
 
 	if (result)
 	  {

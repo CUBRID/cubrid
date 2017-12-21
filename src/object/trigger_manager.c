@@ -4540,15 +4540,7 @@ value_as_boolean (DB_VALUE * value)
       status = (DB_GET_DOUBLE (value) == 0) ? false : true;
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       status = (*DB_GET_TIME (value) == 0) ? false : true;
-      break;
-    case DB_TYPE_TIMETZ:
-      {
-	DB_TIMETZ *time_tz = DB_GET_TIMETZ (value);
-
-	status = (time_tz->time == 0) ? false : true;
-      }
       break;
     case DB_TYPE_UTIME:
     case DB_TYPE_TIMESTAMPLTZ:

@@ -327,8 +327,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-    case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -415,13 +413,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       value->data.time = DB_TIME_MIN;
-      value->domain.general_info.is_null = 0;
-      break;
-    case DB_TYPE_TIMETZ:
-      value->data.timetz.time = DB_TIME_MIN;
-      value->data.timetz.tz_id = *tz_get_utc_tz_id ();
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_TIMESTAMP:
@@ -588,13 +580,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       value->data.time = DB_TIME_MAX;
-      value->domain.general_info.is_null = 0;
-      break;
-    case DB_TYPE_TIMETZ:
-      value->data.timetz.time = DB_TIME_MAX;
-      value->data.timetz.tz_id = *tz_get_utc_tz_id ();
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_TIMESTAMP:
@@ -767,13 +753,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       db_make_sequence (value, db_seq_create (NULL, NULL, 0));
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       value->data.time = DB_TIME_MIN;
-      value->domain.general_info.is_null = 0;
-      break;
-    case DB_TYPE_TIMETZ:
-      value->data.timetz.time = DB_TIME_MIN;
-      value->data.timetz.tz_id = *tz_get_utc_tz_id ();
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_TIMESTAMP:
@@ -2188,63 +2168,6 @@ db_make_time (DB_VALUE * value, const int hour, const int min, const int sec)
 }
 
 /*
- * db_make_timetz() -
- * return :
- * value(out) :
- * hour(in):
- * min(in):
- * sec(in):
- */
-int
-db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value)
-{
-  CHECK_1ARG_ERROR (value);
-
-  value->domain.general_info.type = DB_TYPE_TIMETZ;
-  value->need_clear = false;
-  if (timetz_value)
-    {
-      value->data.timetz.time = timetz_value->time;
-      value->data.timetz.tz_id = timetz_value->tz_id;
-      value->domain.general_info.is_null = 0;
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * db_make_timeltz() -
- * return :
- * value(out) :
- * hour(in):
- * min(in):
- * sec(in):
- */
-int
-db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value)
-{
-  CHECK_1ARG_ERROR (value);
-
-  value->domain.general_info.type = DB_TYPE_TIMELTZ;
-  value->need_clear = false;
-  if (time_value)
-    {
-      value->data.time = *time_value;
-      value->domain.general_info.is_null = 0;
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * db_value_put_encoded_time() -
  * return :
  * value(out):
@@ -3120,26 +3043,10 @@ DB_TIME *
 db_get_time (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
-  assert (value->domain.general_info.type == DB_TYPE_TIME || value->domain.general_info.type == DB_TYPE_TIMELTZ);
+  assert (value->domain.general_info.type == DB_TYPE_TIME);
 
   return ((DB_TIME *) (&value->data.time));
 }
-
-/*
- * db_get_timetz() -
- * return :
- * value(in):
- */
-DB_TIMETZ *
-db_get_timetz (const DB_VALUE * value)
-{
-  CHECK_1ARG_NULL (value);
-
-  assert (value->domain.general_info.type == DB_TYPE_TIMETZ);
-
-  return ((DB_TIMETZ *) (&value->data.timetz));
-}
-
 
 /*
  * db_get_timestamp() -
@@ -3547,8 +3454,6 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-    case DB_TYPE_TIMELTZ:
     case DB_TYPE_UTIME:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -3590,7 +3495,11 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_TABLE:
       result = NULL;
       break;
+
       /* NO DEFAULT CASE!!!!! ALL TYPES MUST GET HANDLED HERE! */
+    default:
+      assert (0);
+      break;
     }
 
   return result;
@@ -6512,39 +6421,6 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	    }
 	  buffer_p = valcnv_append_string (buffer_p, line);
 	  break;
-
-	case DB_TYPE_TIMETZ:
-	  {
-	    DB_TIMETZ *time_tz;
-
-	    time_tz = DB_GET_TIMETZ (value_p);
-	    cnt = db_timetz_to_string (line, VALCNV_TOO_BIG_TO_MATTER, &time_tz->time, &time_tz->tz_id);
-	    if (cnt == 0)
-	      {
-		return NULL;
-	      }
-	    buffer_p = valcnv_append_string (buffer_p, line);
-	    break;
-	  }
-
-	case DB_TYPE_TIMELTZ:
-	  {
-	    TZ_ID tz_id;
-	    DB_TIME *time;
-
-	    time = DB_GET_TIME (value_p);
-	    if (tz_create_session_tzid_for_time (time, true, &tz_id) != NO_ERROR)
-	      {
-		return NULL;
-	      }
-	    cnt = db_timetz_to_string (line, VALCNV_TOO_BIG_TO_MATTER, time, &tz_id);
-	    if (cnt == 0)
-	      {
-		return NULL;
-	      }
-	    buffer_p = valcnv_append_string (buffer_p, line);
-	    break;
-	  }
 
 	case DB_TYPE_TIMESTAMP:
 	  cnt = db_timestamp_to_string (line, VALCNV_TOO_BIG_TO_MATTER, DB_GET_TIMESTAMP (value_p));

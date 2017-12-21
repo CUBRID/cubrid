@@ -1116,10 +1116,6 @@ qdump_data_type_string (DB_TYPE type)
       return "CLOB";
     case DB_TYPE_TIME:
       return "TIME";
-    case DB_TYPE_TIMETZ:
-      return "TIMETZ";
-    case DB_TYPE_TIMELTZ:
-      return "TIMELTZ";
     case DB_TYPE_TIMESTAMP:
       return "TIMESTAMP";
     case DB_TYPE_TIMESTAMPTZ:

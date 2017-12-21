@@ -166,9 +166,6 @@ typedef void JSON_VALIDATOR;
 /* This constant defines the default precision of DB_TYPE_TIME. */
 #define DB_TIME_PRECISION      8
 
-/* This constant defines the default precision of DB_TIMETZ_PRECISION. */
-#define DB_TIMETZ_PRECISION   DB_TIME_PRECISION
-
 /* This constant defines the default precision of DB_TYPE_DATE. */
 #define DB_DATE_PRECISION      10
 
@@ -255,12 +252,6 @@ typedef void JSON_VALIDATOR;
 
 #define DB_MAKE_TIME(value, hour, minute, second) \
     db_make_time(value, hour, minute, second)
-
-#define DB_MAKE_TIMETZ(value, timetz_value) \
-    db_make_timetz(value, timetz_value)
-
-#define DB_MAKE_TIMELTZ(value, time_value) \
-    db_make_timeltz(value, time_value)
 
 #define DB_MAKE_ENCODED_TIME(value, time_value) \
     db_value_put_encoded_time(value, time_value)
@@ -399,8 +390,6 @@ typedef void JSON_VALIDATOR;
 #define DB_GET_ELO(value)               db_get_elo(value)
 
 #define DB_GET_TIME(value)              db_get_time(value)
-
-#define DB_GET_TIMETZ(value)		db_get_timetz(value)
 
 #define DB_GET_DATE(value)              db_get_date(value)
 
@@ -545,8 +534,10 @@ typedef enum
   DB_TYPE_DATETIMELTZ = 39,
   DB_TYPE_JSON = 40,
   /* Disabled types */
+#if 0
   DB_TYPE_TIMETZ = 41,		/* internal use only - RESERVED */
   DB_TYPE_TIMELTZ = 42,		/* internal use only - RESERVED */
+#endif
   /* end of disabled types */
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
@@ -588,12 +579,6 @@ typedef INT64 DB_BIGINT;
 typedef unsigned int DB_TIME;
 
 typedef unsigned int TZ_ID;
-typedef struct db_timetz DB_TIMETZ;
-struct db_timetz
-{
-  DB_TIME time;
-  TZ_ID tz_id;			/* zone id */
-};
 
 /* Structure used for the representation of universal times.
    These are compatible with the Unix time_t definition. */
@@ -904,7 +889,6 @@ union db_data
   void *p;
   DB_OBJECT *op;
   DB_TIME time;
-  DB_TIMETZ timetz;
   DB_DATE date;
   DB_TIMESTAMP utime;
   DB_TIMESTAMPTZ timestamptz;
@@ -1154,8 +1138,6 @@ extern "C"
   extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
   extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
   extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
-  extern int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value);
-  extern int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value);
   extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
   extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
   extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
@@ -1279,7 +1261,6 @@ extern "C"
   extern DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value);
   extern DB_C_POINTER db_get_pointer (const DB_VALUE * value);
   extern DB_TIME *db_get_time (const DB_VALUE * value);
-  extern DB_TIMETZ *db_get_timetz (const DB_VALUE * value);
   extern DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value);
   extern DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value);
   extern DB_DATETIME *db_get_datetime (const DB_VALUE * value);

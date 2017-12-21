@@ -421,8 +421,7 @@ unsigned char qo_type_qualifiers[] = {
   _INT + _NUM,			/* DB_TYPE_TIMESTAMPLTZ */
   _INT + _NUM,			/* DB_TYPE_DATETIMETZ */
   _INT + _NUM,			/* DB_TYPE_DATETIMELTZ */
-  _INT + _NUM,			/* DB_TYPE_TIMETZ */
-  _INT + _NUM			/* DB_TYPE_TIMELTZ */
+  0				/* DB_TYPE_JSON */
 };
 
 /* Structural equivalence classes for expressions */

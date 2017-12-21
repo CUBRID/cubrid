@@ -913,11 +913,7 @@ pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser, PT_NODE * order, 
 
   if (PT_IS_DATE_TIME_TYPE (type1) && PT_IS_DATE_TIME_TYPE (type2))
     {
-      if ((type1 == PT_TYPE_TIME && type2 != PT_TYPE_TIME) || (type1 != PT_TYPE_TIME && type2 == PT_TYPE_TIME)
-	  || (type1 == PT_TYPE_TIMELTZ && type2 != PT_TYPE_TIMELTZ) || (type1 != PT_TYPE_TIMELTZ
-									&& type2 == PT_TYPE_TIMELTZ)
-	  || (type1 == PT_TYPE_TIMETZ && type2 != PT_TYPE_TIMETZ) || (type1 != PT_TYPE_TIMETZ
-								      && type2 == PT_TYPE_TIMETZ))
+      if ((type1 == PT_TYPE_TIME && type2 != PT_TYPE_TIME) || (type1 != PT_TYPE_TIME && type2 == PT_TYPE_TIME))
 	{
 	  return false;
 	}
@@ -1056,8 +1052,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
@@ -1071,8 +1065,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMELTZ:
-    case PT_TYPE_TIMETZ:
       switch (cast_type)
 	{
 	case PT_TYPE_INTEGER:
@@ -1194,8 +1186,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_NUMERIC:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -1238,8 +1228,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_VARBIT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -5434,7 +5422,6 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_NEW_TIME:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
     case PT_UTC_TIMESTAMP:
     case PT_CONV_TZ:
       break;
@@ -5890,8 +5877,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_SMALLINT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -5949,8 +5934,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_SMALLINT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -15017,7 +15000,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_FROM_TZ:
 	case PT_TO_DATETIME_TZ:
 	case PT_TO_TIMESTAMP_TZ:
-	case PT_TO_TIME_TZ:
 	case PT_CONV_TZ:
 	  /* valid expression, nothing to do */
 	  break;

@@ -277,16 +277,11 @@ typedef enum tp_match
    || ((typeid) == DB_TYPE_TIMESTAMP) || TP_IS_DATE_WITH_TZ_TYPE (typeid))
 
 #define TP_IS_DATE_OR_TIME_TYPE(typeid) \
-  (((typeid) == DB_TYPE_TIME) || ((typeid) == DB_TYPE_TIMETZ) \
-   || ((typeid) == DB_TYPE_TIMELTZ) || TP_IS_DATE_TYPE(typeid))
+  (((typeid) == DB_TYPE_TIME) || TP_IS_DATE_TYPE(typeid))
 
 #define TP_IS_FLOATING_NUMBER_TYPE(typeid) \
   (((typeid) == DB_TYPE_FLOAT) || ((typeid) == DB_TYPE_DOUBLE) \
    || ((typeid) == DB_TYPE_NUMERIC) || ((typeid) == DB_TYPE_MONETARY))
-
-#define TP_IS_DATE_OR_TIME_TYPE_WITH_TZ(typeid) \
-  (TP_IS_DATE_WITH_TZ_TYPE (typeid) || ((typeid) == DB_TYPE_TIMETZ) \
-   || ((typeid) == DB_TYPE_TIMELTZ ))
 
 /*
  * Precision for non-parameterized predefined types
@@ -339,7 +334,6 @@ typedef enum tp_match
 
 #define TP_TIME_PRECISION	      6
 #define TP_TIME_AS_CHAR_LENGTH	      11
-#define TP_TIMETZ_AS_CHAR_LENGTH      64
 
 #define TP_DATE_PRECISION	      8
 #define TP_DATE_AS_CHAR_LENGTH	      10
@@ -383,8 +377,7 @@ typedef enum tp_match
   ((dom) ? (dom)->collation_flag: TP_DOMAIN_COLL_NORMAL)
 
 #define TP_TYPE_NOT_SUPPORT_COVERING(typeid) \
-   ((typeid) == DB_TYPE_TIMESTAMPTZ || (typeid) == DB_TYPE_DATETIMETZ ||\
-    (typeid) == DB_TYPE_TIMETZ)
+   ((typeid) == DB_TYPE_TIMESTAMPTZ || (typeid) == DB_TYPE_DATETIMETZ)
 
 
 /*

@@ -350,8 +350,6 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_DATETIMETZ,	/* 38 */
   CCI_U_TYPE_DATETIMELTZ,	/* 39 */
   CCI_U_TYPE_STRING,		/* 40 */
-  CCI_U_TYPE_TIMETZ,		/* 41 */
-  CCI_U_TYPE_TIMETZ		/* 42 */
 };
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -3395,12 +3393,6 @@ ux_set_utype_for_enum (char u_type)
 }
 
 void
-ux_set_utype_for_timetz (char u_type)
-{
-  cas_u_type[DB_TYPE_TIMETZ] = u_type;
-}
-
-void
 ux_set_utype_for_timestamptz (char u_type)
 {
   cas_u_type[DB_TYPE_TIMESTAMPTZ] = u_type;
@@ -3410,12 +3402,6 @@ void
 ux_set_utype_for_datetimetz (char u_type)
 {
   cas_u_type[DB_TYPE_DATETIMETZ] = u_type;
-}
-
-void
-ux_set_utype_for_timeltz (char u_type)
-{
-  cas_u_type[DB_TYPE_TIMELTZ] = u_type;
 }
 
 void
@@ -3866,10 +3852,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	{
 	  type = CCI_U_TYPE_TIMESTAMPTZ;
 	}
-      else if (desired_type == DB_TYPE_TIMETZ || desired_type == DB_TYPE_TIMELTZ)
-	{
-	  type = CCI_U_TYPE_TIMETZ;
-	}
     }
 
   net_arg_get_size (&data_size, net_value);
@@ -4115,37 +4097,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	short hh, mm, ss;
 	net_arg_get_time (&hh, &mm, &ss, net_value);
 	err_code = db_make_time (&db_val, hh, mm, ss);
-      }
-      break;
-    case CCI_U_TYPE_TIMETZ:
-      {
-	short hh, mm, ss;
-	DB_TIME time;
-	DB_TIMETZ time_tz;
-	TZ_REGION ses_tz_region;
-	char *tz_str_p;
-	int tz_size;
-
-	net_arg_get_timetz (&hh, &mm, &ss, &tz_str_p, &tz_size, net_value);
-	if (tz_size > CCI_TZ_SIZE)
-	  {
-	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
-	  }
-
-	err_code = db_time_encode (&time, hh, mm, ss);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	tz_get_session_tz_region (&ses_tz_region);
-
-	err_code = tz_create_timetz (&time, tz_str_p, tz_size, &ses_tz_region, &time_tz, NULL);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-	err_code = db_make_timetz (&db_val, &time_tz);
       }
       break;
     case CCI_U_TYPE_TIMESTAMP:
@@ -4702,62 +4653,6 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	time = db_get_time (val);
 	db_time_decode (time, &hour, &minute, &second);
 	add_res_data_time (net_buf, (short) hour, (short) minute, (short) second, ext_col_type, &data_size);
-      }
-      break;
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
-      {
-	DB_TIME time_local, time_utc;
-	TZ_ID tz_id;
-	DB_TIMETZ *time_tz;
-	int err;
-	int hour, minute, second;
-	char tz_str[CCI_TZ_SIZE + 1];
-
-	if (db_value_type (val) == DB_TYPE_TIMELTZ)
-	  {
-	    time_utc = *db_get_time (val);
-	    err = tz_create_session_tzid_for_time (&time_utc, true, &tz_id);
-	    if (err != NO_ERROR)
-	      {
-		net_buf_cp_int (net_buf, -1, NULL);
-		data_size = NET_SIZE_INT;
-		break;
-	      }
-	  }
-	else
-	  {
-	    time_tz = db_get_timetz (val);
-	    time_utc = time_tz->time;
-	    tz_id = time_tz->tz_id;
-	  }
-
-	err = tz_utc_timetz_to_local (&time_utc, &tz_id, &time_local);
-	if (err != NO_ERROR)
-	  {
-	    net_buf_cp_int (net_buf, -1, NULL);
-	    data_size = NET_SIZE_INT;
-	    break;
-	  }
-
-	if (tz_id_to_str (&tz_id, tz_str, CCI_TZ_SIZE) < 0)
-	  {
-	    net_buf_cp_int (net_buf, -1, NULL);
-	    data_size = NET_SIZE_INT;
-	    break;
-	  }
-
-	db_time_decode (&time_local, &hour, &minute, &second);
-	if (client_support_tz == true)
-	  {
-	    add_res_data_timetz (net_buf, (short) hour, (short) minute, (short) second, tz_str, ext_col_type,
-				 &data_size);
-	  }
-	else
-	  {
-	    add_res_data_time (net_buf, (short) hour, (short) minute, (short) second, ext_col_type, &data_size);
-
-	  }
       }
       break;
     case DB_TYPE_TIMESTAMP:
