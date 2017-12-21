@@ -127,7 +127,7 @@ static DAEMON_THREAD_MONITOR thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INI
 static DAEMON_THREAD_MONITOR thread_Page_maintenance_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_post_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
-static void thread_stop_oob_handler_thread ();
+static void thread_stop_oob_handler_thread (void);
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
 static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2);
@@ -378,9 +378,6 @@ thread_initialize_manager (size_t & total_thread_count)
   int daemon_index;
   int shutdown_sequence;
   size_t size;
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr;
-#endif /* not HPUX */
 
   assert (NUM_NORMAL_TRANS >= 10);
   assert (thread_Manager.initialized == false);
@@ -447,7 +444,7 @@ thread_initialize_manager (size_t & total_thread_count)
   thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
   thread_Daemons[daemon_index++].daemon_function = thread_log_clock_thread;
 
-  /* Leave these three daemons at the end. These are to be shutdown latest */
+  /* Leave these five daemons at the end. These are to be shutdown latest */
   /* Initialize page buffer maintenance daemon */
   thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_MAINTENANCE;
   thread_Daemons[daemon_index].daemon_monitor = &thread_Page_maintenance_thread;
@@ -838,7 +835,7 @@ thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2)
  * thread_stop_oob_handler_thread () -
  */
 static void
-thread_stop_oob_handler_thread ()
+thread_stop_oob_handler_thread (void)
 {
   THREAD_ENTRY *thread_p;
 
@@ -980,6 +977,7 @@ int
 thread_return_transaction_entry (THREAD_ENTRY * entry_p)
 {
   int i, error = NO_ERROR;
+
   for (i = 0; i < THREAD_TS_COUNT; i++)
     {
       if (entry_p->tran_entries[i] != NULL)
@@ -1002,7 +1000,7 @@ thread_return_transaction_entry (THREAD_ENTRY * entry_p)
 int
 thread_return_all_transactions_entries (void)
 {
-  int error = NO_ERROR, i;
+  int error = NO_ERROR;
 
   if (!thread_Manager.initialized)
     {
@@ -1791,11 +1789,8 @@ thread_num_total_threads (void)
 void
 thread_dump_threads (void)
 {
-  const char *status[] = {
-    "dead", "free", "run", "wait", "check"
-  };
+  const char *status[] = { "dead", "free", "run", "wait", "check" };
   THREAD_ENTRY *thread_p;
-  int i;
 
   for (thread_p = thread_iterate (cubthread::get_main_entry ()); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {

@@ -18,7 +18,7 @@
  */
 
 /*
- * thread_manager.hpp - implementation for tracker for all thread resources
+ * thread_manager.cpp - implementation for tracker for all thread resources
  */
 
 #include "thread_manager.hpp"
@@ -344,14 +344,17 @@ namespace cubthread
 #if defined (SERVER_MODE)
     std::unique_lock<std::mutex> lock_guard (m_entries_mutex);
     std::size_t running_count = 0;
+
     for (auto wp_iter = m_worker_pools.cbegin (); wp_iter != m_worker_pools.cend (); ++wp_iter)
       {
 	running_count += (*wp_iter)->get_running_count ();
       }
+
     for (auto daemon_iter = m_daemons.cbegin (); daemon_iter != m_daemons.cend (); ++daemon_iter)
       {
 	++running_count;
       }
+
     return running_count;
 #else // not SERVER_MODE = SA_MODE
     return 1;   // this
@@ -391,8 +394,6 @@ namespace cubthread
   void
   initialize (entry *&my_entry)
   {
-    std::size_t starting_index = 0;
-
     assert (my_entry == NULL);
 
     if (Manager == NULL)
@@ -470,6 +471,7 @@ namespace cubthread
   get_main_entry (void)
   {
     assert (Main_entry_p != NULL);
+
     return Main_entry_p;
   }
 
@@ -477,6 +479,7 @@ namespace cubthread
   get_manager (void)
   {
     assert (Manager != NULL);
+
     return Manager;
   }
 

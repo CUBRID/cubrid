@@ -18,7 +18,7 @@
  */
 
 /*
- * lock_free.h : Lock-free structures interface.
+ * lockfree_circular_queue.hpp : Lock-free structures interface.
  */
 
 #ifndef _LOCKFREE_CIRCULAR_QUEUE_HPP_
