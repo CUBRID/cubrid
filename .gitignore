@@ -46,12 +46,13 @@ libedit.pc
 *.pch
 
 # Libraries
-*.lib
+# *.lib # we have external dependencies
 *.a
 *.la
 *.lo
 
 # Shared objects (inc. Windows DLLs)
+# *.dll # we have external dependencies
 *.so
 *.so.*
 *.dylib
@@ -172,7 +173,7 @@ x86
 *.ncb
 *.suo
 *.ilk
-*.pdb
+# *.pdb # we have external dependencies
 /win/install/CUBRID_Debug_Win32/
 /win/install/CUBRID_Release_Win32/
 /win/install/CUBRID_Debug_x86/
