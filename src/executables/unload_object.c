@@ -1541,7 +1541,7 @@ process_value (DB_VALUE * value)
 	  }
 	else
 	  {
-	    ref_oid = WS_OID (DB_GET_OBJECT (value));
+	    ref_oid = WS_OID (db_get_object (value));
 	  }
 
 	if (required_class_only || (ref_oid == (OID *) 0) || (OID_EQ (ref_oid, &null_oid)) || datafile_per_class)

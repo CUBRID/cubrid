@@ -453,11 +453,11 @@ process_value (DB_VALUE * value)
 
 	if (DB_VALUE_TYPE (value) == DB_TYPE_OID)
 	  {
-	    ref_oid = DB_GET_OID (value);
+	    ref_oid = db_get_oid (value);
 	  }
 	else
 	  {
-	    ref_oid = WS_OID (DB_GET_OBJECT (value));
+	    ref_oid = WS_OID (db_get_object (value));
 	  }
 
 	if (OID_ISNULL (ref_oid))

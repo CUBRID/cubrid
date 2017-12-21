@@ -3852,7 +3852,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
       grantor = NULL;
       if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value))
 	{
-	  grantor = DB_GET_OBJECT (&value);
+	  grantor = db_get_object (&value);
 	  if (WS_IS_DELETED (grantor))
 	    {
 	      grantor = NULL;
@@ -3870,7 +3870,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 
 	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value))
 	    {
-	      class_ = DB_GET_OBJECT (&value);
+	      class_ = db_get_object (&value);
 	      if (WS_IS_DELETED (class_))
 		{
 		  class_ = NULL;
@@ -5524,7 +5524,7 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
   db_make_null (returnval);
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
-      classmop = sm_find_class (DB_GET_STRING (class_));
+      classmop = sm_find_class (db_get_string (class_));
       if (classmop != NULL)
 	{
 	  user = au_get_class_owner (classmop);
@@ -5574,7 +5574,7 @@ au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
 
-      classmop = sm_find_class (DB_GET_STRING (class_));
+      classmop = sm_find_class (db_get_string (class_));
       if (classmop != NULL)
 	{
 	  error = au_check_authorization (classmop, (DB_AUTH) db_get_int (auth));
@@ -7007,7 +7007,7 @@ au_export_users (FILE * outfp)
 		       * copy password string using malloc
 		       * to be consistent with encrypt_password
 		       */
-		      str = DB_GET_STRING (&value);
+		      str = db_get_string (&value);
 		      if (IS_ENCODED_DES (str))
 			{
 			  /* strip off the prefix so its readable */

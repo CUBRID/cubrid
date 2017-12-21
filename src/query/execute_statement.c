@@ -4341,7 +4341,7 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  error = make_cst_item_value (obj, DB_GET_STRING (&db_val), ret_val);
+  error = make_cst_item_value (obj, db_get_string (&db_val), ret_val);
   pr_clear_value (&db_val);
   if (error != NO_ERROR)
     {
@@ -4864,7 +4864,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  cost = DB_GET_STRING (&val2);
+	  cost = db_get_string (&val2);
 	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, (int) cost[0]);
 	  break;
 	default:

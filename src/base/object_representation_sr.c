@@ -1433,13 +1433,13 @@ or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 	  error = set_get_element_nocopy (properties, i, &value);
 	  if (error == NO_ERROR)
 	    {
-	      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || DB_GET_STRING (&value) == NULL)
+	      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || db_get_string (&value) == NULL)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		}
 	      else
 		{
-		  prop_name = DB_GET_STRING (&value);
+		  prop_name = db_get_string (&value);
 		  if (strcmp (name, prop_name) == 0)
 		    {
 		      if ((i + 1) >= max)
@@ -1495,7 +1495,7 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * in
   index->fk->next = NULL;
   index->fk->fkname = strdup (fkname);
 
-  args = classobj_decompose_property_oid (DB_GET_STRING (&val), &pageid, &slotid, &volid);
+  args = classobj_decompose_property_oid (db_get_string (&val), &pageid, &slotid, &volid);
   if (args != 3)
     {
       return;
@@ -1510,7 +1510,7 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * in
       return;
     }
 
-  args = classobj_decompose_property_oid (DB_GET_STRING (&val), &volid, &fileid, &pageid);
+  args = classobj_decompose_property_oid (db_get_string (&val), &volid, &fileid, &pageid);
 
   if (args != 3)
     {
@@ -1570,7 +1570,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      args = classobj_decompose_property_oid (DB_GET_STRING (&val), &pageid, &slotid, &volid);
+      args = classobj_decompose_property_oid (db_get_string (&val), &pageid, &slotid, &volid);
 
       if (args != 3)
 	{
@@ -1588,7 +1588,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      args = classobj_decompose_property_oid (DB_GET_STRING (&val), &volid, &fileid, &pageid);
+      args = classobj_decompose_property_oid (db_get_string (&val), &volid, &fileid, &pageid);
 
       if (args != 3)
 	{
@@ -1619,7 +1619,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  free_and_init (fk);
 	  return;
 	}
-      fkname = DB_GET_STRING (&val);
+      fkname = db_get_string (&val);
       fk->fkname = strdup (fkname);
 
       if (i == 0)
@@ -1745,16 +1745,16 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  filter_predicate->pred_string = strdup (DB_GET_STRING (&val1));
+  filter_predicate->pred_string = strdup (db_get_string (&val1));
   if (filter_predicate->pred_string == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      strlen (DB_GET_STRING (&val1)) * sizeof (char));
+	      strlen (db_get_string (&val1)) * sizeof (char));
       goto err;
     }
 
-  buffer = DB_GET_STRING (&val2);
+  buffer = db_get_string (&val2);
   buffer_len = DB_GET_STRING_SIZE (&val2);
   filter_predicate->pred_stream = (char *) malloc (buffer_len * sizeof (char));
   if (filter_predicate->pred_stream == NULL)
@@ -1952,15 +1952,15 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			      goto next_child;
 			    }
 
-			  if (strcmp (DB_GET_STRING (&avalue), SM_FILTER_INDEX_ID) == 0)
+			  if (strcmp (db_get_string (&avalue), SM_FILTER_INDEX_ID) == 0)
 			    {
 			      flag = 0x01;
 			    }
-			  else if (strcmp (DB_GET_STRING (&avalue), SM_FUNCTION_INDEX_ID) == 0)
+			  else if (strcmp (db_get_string (&avalue), SM_FUNCTION_INDEX_ID) == 0)
 			    {
 			      flag = 0x02;
 			    }
-			  else if (strcmp (DB_GET_STRING (&avalue), SM_PREFIX_INDEX_ID) == 0)
+			  else if (strcmp (db_get_string (&avalue), SM_PREFIX_INDEX_ID) == 0)
 			    {
 			      flag = 0x03;
 			    }
@@ -2151,12 +2151,12 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       return;
     }
 
-  if (DB_VALUE_TYPE (&id_val) != DB_TYPE_STRING || DB_GET_STRING (&id_val) == NULL)
+  if (DB_VALUE_TYPE (&id_val) != DB_TYPE_STRING || db_get_string (&id_val) == NULL)
     {
       return;
     }
 
-  args = classobj_decompose_property_oid (DB_GET_STRING (&id_val), &volid, &fileid, &pageid);
+  args = classobj_decompose_property_oid (db_get_string (&id_val), &volid, &fileid, &pageid);
 
   if (args != 3)
     {
@@ -2264,7 +2264,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 	      error = set_get_element_nocopy (property_vars[i].seq, j, &cons_name_val);
 	      if (error == NO_ERROR)
 		{
-		  cons_name = DB_GET_STRING (&cons_name_val);
+		  cons_name = db_get_string (&cons_name_val);
 		}
 
 	      error = set_get_element_nocopy (property_vars[i].seq, j + 1, &ids_val);
@@ -2560,7 +2560,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		      DB_TYPE db_value_type_local = db_value_type (&def_expr_format);
 		      assert (db_value_type_local == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type_local));
 #endif
-		      def_expr_format_str = DB_GET_STRING (&def_expr_format);
+		      def_expr_format_str = db_get_string (&def_expr_format);
 		      att->default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
 		      att->current_default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
 		    }
@@ -3432,7 +3432,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  goto error_exit;
 	}
 
-      prop_name = DB_GET_STRING (&value);
+      prop_name = db_get_string (&value);
       if (prop_name == NULL)
 	{
 	  goto error_exit;
@@ -3464,7 +3464,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	      goto error_exit;
 	    }
 
-	  if (strcmp (constraint_name, DB_GET_STRING (&uvalue)) != 0)
+	  if (strcmp (constraint_name, db_get_string (&uvalue)) != 0)
 	    {
 	      continue;
 	    }
@@ -3491,7 +3491,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  else if (DB_VALUE_TYPE (&cvalue) == DB_TYPE_STRING)
 	    {
 	      /* strdup, caller shall free it */
-	      char *cvalue_string = DB_GET_STRING (&cvalue);
+	      char *cvalue_string = db_get_string (&cvalue);
 	      comment = strdup (cvalue_string);
 	    }
 	  else
@@ -3994,15 +3994,15 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       goto error;
     }
 
-  fi_info->expr_string = strdup (DB_GET_STRING (&val1));
+  fi_info->expr_string = strdup (db_get_string (&val1));
   if (fi_info->expr_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      strlen (DB_GET_STRING (&val1)) * sizeof (char));
+	      strlen (db_get_string (&val1)) * sizeof (char));
       goto error;
     }
 
-  buffer = DB_GET_STRING (&val);
+  buffer = db_get_string (&val);
   fi_info->expr_stream_size = DB_GET_STRING_SIZE (&val);
   fi_info->expr_stream = (char *) malloc (fi_info->expr_stream_size);
   if (fi_info->expr_stream == NULL)

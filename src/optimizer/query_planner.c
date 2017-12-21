@@ -4821,7 +4821,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
-      plan_string = DB_GET_STRING (plan);
+      plan_string = db_get_string (plan);
       break;
     default:
       plan_string = "unknown";
@@ -4833,7 +4833,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
-      cost_string = DB_GET_STRING (cost);
+      cost_string = db_get_string (cost);
       break;
     default:
       cost_string = "d";
