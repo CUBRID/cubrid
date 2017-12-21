@@ -1535,10 +1535,6 @@ db_json_normalize_path (std::string &path_string)
   // trim leading spaces
   auto first_non_space = std::find_if_not (path_string.begin(), path_string.end(), db_json_isspace);
   path_string.erase (path_string.begin(), first_non_space);
-
-  // trim trailing spaces
-  auto last_non_space = std::find_if_not (path_string.rbegin(), path_string.rend(), db_json_isspace);
-  path_string.erase (last_non_space.base(), path_string.end());
 }
 
 /*
