@@ -1939,14 +1939,21 @@ STATIC_INLINE int
 dwb_set_status_resumed (void *data)
 {
 #if defined (SERVER_MODE)
-  THREAD_ENTRY *woken_thread_p = (THREAD_ENTRY *) data;
-  if (woken_thread_p)
+  DWB_WAIT_QUEUE_ENTRY * queue_entry = (DWB_WAIT_QUEUE_ENTRY *)data;
+  THREAD_ENTRY *woken_thread_p;
+
+  if (queue_entry != NULL)
+  {
+    woken_thread_p = (THREAD_ENTRY *) queue_entry->data;
+    if (woken_thread_p != NULL)
     {
       thread_lock_entry (woken_thread_p);
       woken_thread_p->resume_status = THREAD_DWB_QUEUE_RESUMED;
       thread_unlock_entry (woken_thread_p);
     }
+  }
 #endif
+  
   return NO_ERROR;
 }
 
