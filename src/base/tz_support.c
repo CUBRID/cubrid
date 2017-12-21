@@ -1627,58 +1627,6 @@ tz_datetimeltz_to_local (const DB_DATETIME * dt_ltz, DB_DATETIME * dt_local)
 }
 
 /*
- * tz_utc_timetz_to_local () - 
- *
- * Return: error code
- * time_utc(in): object containing time value (in UTC reference)
- * tz_id(in): TZ_ID encoded value
- * time_local(out): object containing time value (adjusted to timezone contained in tz_id)
- *
- */
-int
-tz_utc_timetz_to_local (const DB_TIME * time_utc, const TZ_ID * tz_id, DB_TIME * time_local)
-{
-  int err = NO_ERROR;
-  DB_DATETIME dt_utc, dt_local;
-
-  dt_utc.date = tz_get_current_date ();
-  dt_utc.time = (*time_utc) * 1000;
-
-  err = tz_utc_datetimetz_to_local (&dt_utc, tz_id, &dt_local);
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-  *time_local = dt_local.time / 1000;
-
-  return err;
-}
-
-/*
- * tz_timeltz_to_local () - 
- *
- * Return: error code
- * time_ltz(in): object containing time value (in UTC reference) representing a time in session time zone
- * time_local(out): object containing time value adjusted to session timezone
- *
- */
-int
-tz_timeltz_to_local (const DB_TIME * time_ltz, DB_TIME * time_local)
-{
-  TZ_ID ses_tz_id;
-  int error = NO_ERROR;
-
-  error = tz_create_session_tzid_for_time (time_ltz, true, &ses_tz_id);
-
-  if (error != NO_ERROR)
-    {
-      return NO_ERROR;
-    }
-
-  return tz_utc_timetz_to_local (time_ltz, &ses_tz_id, time_local);
-}
-
-/*
  * tz_zone_info_to_str () - Print a timezone decoded information into a string
  *
  * Return: print characters

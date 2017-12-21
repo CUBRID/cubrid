@@ -179,8 +179,6 @@ extern "C"
   extern int tz_create_datetimetz_from_ses (const DB_DATETIME * dt, DB_DATETIMETZ * dt_tz);
   extern int tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc, const TZ_ID * tz_id, DB_DATETIME * dt_local);
   extern int tz_datetimeltz_to_local (const DB_DATETIME * dt_ltz, DB_DATETIME * dt_local);
-  extern int tz_utc_timetz_to_local (const DB_TIME * time_utc, const TZ_ID * tz_id, DB_TIME * time_local);
-  extern int tz_timeltz_to_local (const DB_TIME * time_ltz, DB_TIME * time_local);
   extern int tz_id_to_str (const TZ_ID * tz_id, char *tz_str, const int tz_str_size);
   extern int tz_datetimetz_fix_zone (const DB_DATETIMETZ * src_dt_tz, DB_DATETIMETZ * dest_dt_tz);
   extern int tz_timestamptz_fix_zone (const DB_TIMESTAMPTZ * src_ts_tz, DB_TIMESTAMPTZ * dest_ts_tz);
