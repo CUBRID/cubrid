@@ -140,7 +140,17 @@ static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 static void db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path,
 				      std::vector<std::string> &paths);
 static void db_json_normalize_path (std::string &path_string);
+static bool db_json_isspace (const unsigned char &ch);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
+STATIC_INLINE void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
+    std::unordered_map<std::string, std::string> &special_chars);
+
+static std::vector<std::pair<std::string, std::string> > uri_fragment_conversions =
+{
+  std::make_pair ("~", "~0"),
+  std::make_pair ("/", "~1"),
+  std::make_pair (" ", "%20")
+};
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -1381,6 +1391,32 @@ db_json_get_path_type (std::string &path_string)
 }
 
 /*
+* db_json_build_path_special_chars ()
+* json_path_type (in)
+* special_chars (out)
+* rapid json pointer supports URI Fragment Representation
+* https://tools.ietf.org/html/rfc3986
+* we need a map in order to know how to escape special characters
+* example from sql_path to pointer_path: $."/a" -> #/~1a
+*/
+STATIC_INLINE void
+db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
+				  std::unordered_map<std::string, std::string> &special_chars)
+{
+  for (auto it = uri_fragment_conversions.begin(); it != uri_fragment_conversions.end(); ++it)
+    {
+      if (json_path_type == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
+	{
+	  special_chars.insert (*it);
+	}
+      else
+	{
+	  special_chars.insert (std::make_pair (it->second, it->first));
+	}
+    }
+}
+
+/*
 * db_json_convert_pointer_to_sql_path ()
 * pointer_path (in)
 * doc (in)
@@ -1410,10 +1446,8 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, const JSON_DOC &d
   unsigned int start_index;
   unsigned int pointer_path_length = pointer_path_string.length();
   std::unordered_map<std::string, std::string> special_chars;
-  special_chars.insert (std::make_pair ("~0", "~"));
-  special_chars.insert (std::make_pair ("~1", "/"));
-  special_chars.insert (std::make_pair ("%20", " "));
-  special_chars.insert (std::make_pair ("%E2%82%AC", "€"));
+
+  db_json_build_path_special_chars (json_path_type, special_chars);
 
   // starting the conversion of path
   for (i = 0; i < pointer_path_length; ++i)
@@ -1468,13 +1502,13 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, const JSON_DOC &d
 	  else
 	    {
 	      result += ".\"";
-	      for (auto &pair : special_chars)
+	      for (auto it = special_chars.begin(); it != special_chars.end(); ++it)
 		{
 		  size_t pos = 0;
-		  while ((pos = token.find (pair.first, pos)) != std::string::npos)
+		  while ((pos = token.find (it->first, pos)) != std::string::npos)
 		    {
-		      token.replace (pos, pair.first.length(), pair.second);
-		      pos += pair.second.length();
+		      token.replace (pos, it->first.length(), it->second);
+		      pos += it->second.length();
 		    }
 		}
 	      result += token;
@@ -1489,21 +1523,21 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, const JSON_DOC &d
   return NO_ERROR;
 }
 
+static bool
+db_json_isspace (const unsigned char &ch)
+{
+  return std::isspace (ch) != 0;
+}
+
 static void
 db_json_normalize_path (std::string &path_string)
 {
   // trim leading spaces
-  auto first_non_space = std::find_if_not (path_string.begin(), path_string.end(), [] (unsigned char c)
-  {
-    return std::isspace (c);
-  });
+  auto first_non_space = std::find_if_not (path_string.begin(), path_string.end(), db_json_isspace);
   path_string.erase (path_string.begin(), first_non_space);
 
   // trim trailing spaces
-  auto last_non_space = std::find_if_not (path_string.rbegin(), path_string.rend(), [] (unsigned char c)
-  {
-    return std::isspace (c);
-  });
+  auto last_non_space = std::find_if_not (path_string.rbegin(), path_string.rend(), db_json_isspace);
   path_string.erase (last_non_space.base(), path_string.end());
 }
 
@@ -1530,15 +1564,14 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, const JSON_DOC &doc, 
     }
 
   std::string result;
+  std::string one_char_string;
   unsigned int i;
   unsigned int start_index;
   unsigned int sql_path_length = sql_path_string.length();
   char delimiter;
-  std::unordered_map<char, std::string> special_chars;
-  special_chars.insert (std::make_pair ('~', "~0"));
-  special_chars.insert (std::make_pair ('/', "~1"));
-  special_chars.insert (std::make_pair (' ', "%20"));
-  special_chars.insert (std::make_pair ('€', "%E2%82%AC"));
+  std::unordered_map<std::string, std::string> special_chars;
+
+  db_json_build_path_special_chars (json_path_type, special_chars);
 
   // starting the conversion of path
   // skip .[" characters and append to result the token between these separators
@@ -1567,10 +1600,11 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, const JSON_DOC &doc, 
 	      // iterate until last quotes
 	      while (i < sql_path_length && sql_path_string[i] != '\"')
 		{
+		  one_char_string = sql_path_string[i];
 		  // if found a special character append using its correspondent from map
-		  if (special_chars.find (sql_path_string[i]) != special_chars.end())
+		  if (special_chars.find (one_char_string) != special_chars.end())
 		    {
-		      result += special_chars[sql_path_string[i]];
+		      result += special_chars[one_char_string];
 		      if (result[0] != '#')
 			{
 			  result = "#" + result;
@@ -1649,10 +1683,10 @@ db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
 
   result_json->SetArray();
 
-  for (auto &s : paths)
+  for (auto it = paths.begin(); it != paths.end(); ++it)
     {
       JSON_VALUE val;
-      val.SetString (s.c_str(), result_json->GetAllocator());
+      val.SetString (it->c_str(), result_json->GetAllocator());
       result_json->PushBack (val, result_json->GetAllocator());
     }
 
