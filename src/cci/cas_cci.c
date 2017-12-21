@@ -5114,8 +5114,6 @@ dbg_u_type_str (T_CCI_U_TYPE utype)
       return "CCI_U_TYPE_DATE";
     case CCI_U_TYPE_TIME:
       return "CCI_U_TYPE_TIME";
-    case CCI_U_TYPE_TIMETZ:
-      return "CCI_U_TYPE_TIMETZ";
     case CCI_U_TYPE_TIMESTAMP:
       return "CCI_U_TYPE_TIMESTAMP";
     case CCI_U_TYPE_TIMESTAMPTZ:
