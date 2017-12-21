@@ -2442,6 +2442,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
   bool is_perf_tracking = false;
   int count_writes = 0;
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
+  bool can_flush_volume = false;
 
   assert (block != NULL && p_dwb_ordered_slots != NULL);
 
@@ -2469,6 +2470,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	    {
 	      assert_release (current_flush_volume_info->vdes == vol_fd);
 	      current_flush_volume_info->all_pages_written = true;
+	      can_flush_volume = true;
 	    }
 
 	  volid = vpid->volid;
@@ -2506,7 +2508,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 1);
 	  count_writes++;
 
-	  if ((count_writes >= prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
+	  if (((count_writes >= prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH)) || (can_flush_volume == true))
 	      && (thread_is_dwb_flush_block_helper_thread_available ()))
 	    {
 	      if (double_Write_Buffer.helper_flush_block == NULL)
@@ -2518,6 +2520,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	      /* Add statistics. */
 	      perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
 	      count_writes = 0;
+	      can_flush_volume = false;
 	    }
 #endif
 	}
