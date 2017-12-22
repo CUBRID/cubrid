@@ -252,6 +252,7 @@ struct flush_volume_info
   int vdes;			/* The volume descriptor. */
   int num_pages;		/* The number of pages to flush in volume. */
   volatile bool all_pages_written;	/* True, if all pages written. */
+  volatile int flushed_status;
 };
 
 /* DWB block. */
@@ -1939,21 +1940,21 @@ STATIC_INLINE int
 dwb_set_status_resumed (void *data)
 {
 #if defined (SERVER_MODE)
-  DWB_WAIT_QUEUE_ENTRY * queue_entry = (DWB_WAIT_QUEUE_ENTRY *)data;
+  DWB_WAIT_QUEUE_ENTRY *queue_entry = (DWB_WAIT_QUEUE_ENTRY *) data;
   THREAD_ENTRY *woken_thread_p;
 
   if (queue_entry != NULL)
-  {
-    woken_thread_p = (THREAD_ENTRY *) queue_entry->data;
-    if (woken_thread_p != NULL)
     {
-      thread_lock_entry (woken_thread_p);
-      woken_thread_p->resume_status = THREAD_DWB_QUEUE_RESUMED;
-      thread_unlock_entry (woken_thread_p);
+      woken_thread_p = (THREAD_ENTRY *) queue_entry->data;
+      if (woken_thread_p != NULL)
+	{
+	  thread_lock_entry (woken_thread_p);
+	  woken_thread_p->resume_status = THREAD_DWB_QUEUE_RESUMED;
+	  thread_unlock_entry (woken_thread_p);
+	}
     }
-  }
 #endif
-  
+
   return NO_ERROR;
 }
 
@@ -2414,6 +2415,7 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, 
       flush_new_volume_info->vdes = vol_fd;
       flush_new_volume_info->num_pages = 0;
       flush_new_volume_info->all_pages_written = false;
+      flush_new_volume_info->flushed_status = 0;
 
       ATOMIC_INC_32 (&block->count_flush_volumes_info, 1);
       assert (block->count_flush_volumes_info < block->max_to_flush_vdes);
@@ -2726,6 +2728,12 @@ retry:
   for (i = 0; i < block->count_flush_volumes_info; i++)
     {
       assert (block->flush_volumes_info[i].vdes != NULL_VOLDES);
+
+      if (!ATOMIC_CAS_32 (&block->flush_volumes_info[i].flushed_status, 0, 2))
+	{
+	  /* Flushed by helper. */
+	  continue;
+	}
       num_pages = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
 
       if (num_pages == 0)
@@ -4041,6 +4049,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   int num_pages, num_pages2;
   DWB_BLOCK *block;
   bool found;
+  int flushed_status, iter;
 
 start:
   block = double_Write_Buffer.helper_flush_block;
@@ -4049,8 +4058,30 @@ start:
       found = false;
       for (i = 0; i < block->count_flush_volumes_info; i++)
 	{
+	  iter = 0;
 	  do
 	    {
+	      if (iter == 0)
+		{
+		try_again:
+		  flushed_status = block->flush_volumes_info[i].flushed_status;
+		  if (flushed_status == 2)
+		    {
+		      /* Flushed by other thread. */
+		      break;
+		    }
+		  else if (flushed_status == 0)
+		    {
+		      if (!ATOMIC_CAS_32 (&block->flush_volumes_info[i].flushed_status, 0, 1))
+			{
+			  /* Try again. */
+			  goto try_again;
+			}
+		    }
+		}
+
+	      /* I'm the flusher of the volume. */
+	      assert_release (block->flush_volumes_info[i].flushed_status == 1);
 	      num_pages = ATOMIC_INC_32 (&block->flush_volumes_info[i].num_pages, 0);
 	      if (num_pages == 0)
 		{
@@ -4061,23 +4092,19 @@ start:
 	      if ((num_pages < (prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH) / 2))
 		  && (block->flush_volumes_info[i].all_pages_written == false))
 		{
+		  /* Not enough pages, check the other volumes and retry. */
+		  found = true;
 		  break;
 		}
 
 	      /* Reset the number of pages in volume. */
 	      num_pages2 = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
-	      if (num_pages2 >= num_pages)
-		{
-		  /* The volume pages already flushed into double write buffer volume. */
-		  (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, false);
-		  found = true;
-		}
-	      else
-		{
-		  /* Flushed by DWB block flusher. */
-		  assert (num_pages2 == 0);
-		  break;
-		}
+	      assert_release (num_pages2 >= num_pages);
+
+	      /* Flush the volume. */
+	      (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, false);
+	      found = true;
+	      iter++;
 	    }
 	  while (true);
 	}
