@@ -13002,6 +13002,86 @@ bool pt_check_json_object_arg_list(parser_node* arg_list_head)
   return is_valid;
 }
 
+namespace JsonObj // json_object(key, val[, key, val...]) specific functions
+{
+  int f0(parser_node* arg) //expect key name
+  {
+    if(!arg)
+      {
+        return MAXINT; //OK - final state
+      }
+    return (pt_is_json_object_name(arg->type_enum) ? 1 : -1);
+  }
+
+  int f1(parser_node* arg) //expect val
+  {
+    if(!arg)
+      {
+        return -1; //KO - not final state
+      }
+    if (!pt_is_json_value_type(arg->type_enum))
+      {
+        if (/*can't cast(t,v) to any json value type*/0)
+        {
+          return -1; // KO - invalid type for value
+        }
+      }
+    return 0; //OK, change state
+  }
+}
+
+namespace JsonArr //json_array() specific functions
+{
+  int f0(parser_node* arg) //expect val
+  {
+    if(!arg)
+      {
+        return MAXINT; //OK - final state
+      }
+    if (!pt_is_json_value_type(arg->type_enum))
+      {
+        if (/*can't cast(t,v) to any json value type*/0)
+        {
+          return -1; // KO - invalid type for value
+        }
+      }
+    return 0; //OK, change state
+  }
+}
+
+#include <vector>
+
+namespace func_arg_type
+{
+  std::vector<int(*)(parser_node*)> arr[] = {
+    {0, 0},
+    //...
+    {JsonArr::f0},              //F_JSON_ARRAY
+    {JsonObj::f0, JsonObj::f1}, //F_JSON_OBJECT
+    //F_JSON_CONTAINS
+    //...
+  };
+
+  bool check(parser_node *node)
+  {
+    assert(node->node_type == PT_FUNCTION); // designed for PT_FUNCTION node type
+    return true;
+  }
+}
+
+#if 1 // variadic X-macro
+#define LST()                     \
+  X(O)                            \
+  X(A, JsonArr::f0)               \
+  X(B, JsonObj::f0, JsonObj::f1)  \
+
+#define X(x, ...) { __VA_ARGS__ },
+
+std::vector<int(*)(parser_node*)> arr2[] = {
+  LST()
+};
+#endif
+
 /*
  * pt_eval_function_type () -
  *   return: returns a node of the same type.
