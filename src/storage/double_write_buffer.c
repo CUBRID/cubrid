@@ -2731,6 +2731,15 @@ retry:
     {
       assert (block->flush_volumes_info[i].vdes != NULL_VOLDES);
 
+#if defined (SERVER_MODE)
+      if ((block->flush_volumes_info[i].num_pages > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
+	  && (thread_dwb_flush_block_helper_thread_is_running ()))
+	{
+	  /* Big volume, let it for flush helper. */
+	  continue;
+	}
+#endif
+
       if (!ATOMIC_CAS_32 (&block->flush_volumes_info[i].flushed_status, 0, 2))
 	{
 	  /* Flushed by helper. */
