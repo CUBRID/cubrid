@@ -2462,6 +2462,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
    */
   volid = NULL_VOLID;
   assert (block->count_wb_pages < ordered_slots_length);
+  assert (block->count_flush_volumes_info == 0);
   for (i = 0; i < block->count_wb_pages; i++)
     {
       vpid = &p_dwb_ordered_slots[i].vpid;
@@ -2683,6 +2684,7 @@ retry:
 	  double_Write_Buffer.helper_flush_block = NULL;
 	}
     }
+  ATOMIC_TAS_32 (&block->count_flush_volumes_info, 0);
 
   if (update_flush_block_helper_stat)
     {
@@ -2749,7 +2751,6 @@ retry:
     {
       perfmon_db_flushed_block_volumes (thread_p, block->count_flush_volumes_info);
     }
-  block->count_flush_volumes_info = 0;
 
   if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
     {
