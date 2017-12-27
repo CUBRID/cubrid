@@ -7,7 +7,8 @@ pipeline {
           agent {
             docker {
               image 'cubridci/cubridci:develop'
-              args  '-v ${WORKSPACE}=/home'
+              label 'linux'
+              alwaysPull true
             }
             
           }
@@ -34,12 +35,6 @@ pipeline {
             echo 'Testing...'
             dir(path: 'reports') {
               deleteDir()
-            }
-            dir(path: 'cubrid-testtools') {
-	      git 'https://github.com/CUBRID/cubrid-testtools'
-            }
-            dir(path: 'cubrid-testcases') {
-	      git 'https://github.com/CUBRID/cubrid-testcases'
             }
             sh '/entrypoint.sh test || echo "$? failed"'
           }
@@ -79,7 +74,8 @@ pipeline {
           agent {
             docker {
               image 'cubridci/cubridci:develop'
-              args  '-v ${WORKSPACE}=/home'
+              label 'linux'
+              alwaysPull true
             }
             
           }
@@ -106,12 +102,6 @@ pipeline {
             echo 'Testing...'
             dir(path: 'reports') {
               deleteDir()
-            }
-            dir(path: 'cubrid-testtools') {
-	      git 'https://github.com/CUBRID/cubrid-testtools'
-            }
-            dir(path: 'cubrid-testcases') {
-	      git 'https://github.com/CUBRID/cubrid-testcases'
             }
             sh '/entrypoint.sh test || echo "$? failed"'
           }
