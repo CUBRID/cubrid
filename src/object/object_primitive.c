@@ -10429,19 +10429,19 @@ pr_valstring (thread_entry * threade, DB_VALUE * val)
 /* *INDENT-OFF* */
 #if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb {
-    [&threade] (mem::block& block, size_t len)
+    [&threade] (mem::block &block, size_t len)
     {
       block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
       block.dim += len;
     },
-    [&threade] (mem::block& block)
+    [&threade] (mem::block &block)
     {
       db_private_free (threade, block.ptr);
       block = {};
     }
   };
 #else
-  string_buffer sb{&mem::private_realloc, &mem::private_dealloc};
+  string_buffer sb {&mem::private_realloc, &mem::private_dealloc};
 #endif
 /* *INDENT-ON* */
 
@@ -10449,14 +10449,14 @@ pr_valstring (thread_entry * threade, DB_VALUE * val)
     {
       /* space with terminating NULL */
       sb ("(null)");
-      return (char *) sb.get_buffer ();
+      return sb.move_ptr ();
     }
 
   if (DB_IS_NULL (val))
     {
       /* space with terminating NULL */
       sb ("NULL");
-      return (char *) sb.get_buffer ();
+      return sb.move_ptr ();
     }
 
   DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
