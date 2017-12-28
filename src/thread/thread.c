@@ -4067,8 +4067,9 @@ thread_dwb_flush_block_thread_is_running (void)
 }
 
 /*
-* thread_is_dwb_flush_block_thread_available () -
-*   return:
+* thread_is_dwb_flush_block_thread_available () - Check whether flush block thread is available
+*
+*   return: true, if flush block thread is available
 */
 bool
 thread_is_dwb_flush_block_thread_available (void)
@@ -4154,8 +4155,9 @@ thread_dwb_flush_block_helper_thread_is_running (void)
 }
 
 /*
-* thread_is_dwb_flush_block_helper_thread_available () -
-*   return:
+* thread_is_dwb_flush_block_helper_thread_available () - Check whether flush block helper thread is available
+*
+*   return: true, if flush block helper thread is available
 */
 bool
 thread_is_dwb_flush_block_helper_thread_available (void)
@@ -4228,7 +4230,7 @@ thread_dwb_flush_block_helper_thread (void *arg_p)
 }
 
 /*
- * thread_dwb_flush_block_thread_is_running () - Check whether checksum thread is running
+ * thread_dwb_checksum_computation_thread_is_running () - Check whether checksum computation thread is running
  *
  *   return: true, if checksum thread is running
  */
@@ -4239,7 +4241,7 @@ thread_dwb_checksum_computation_thread_is_running (void)
 }
 
 /*
- * thread_is_dwb_flush_block_thread_available () -
+ * thread_is_dwb_checksum_computation_thread_available () - Check whether checksum computation thread is available
  *   return:
  */
 bool
