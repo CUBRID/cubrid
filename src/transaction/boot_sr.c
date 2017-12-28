@@ -2465,7 +2465,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   /* Load and recover data pages before log recovery */
   error_code = dwb_load_and_recover_pages (thread_p, boot_Dwb_path, dwb_prefix);
-  if (error_code != NULL)
+  if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
