@@ -2344,17 +2344,29 @@ _er_log_debug_internal (const char *file_name, const int line_no, const char *fm
 }
 
 /*
+ * er_get_ermsg_from_area_error -
+ *   return: ermsg string from the flatten error area
+ *   buffer(in): flatten error area
+ */
+char *
+er_get_ermsg_from_area_error (char *buffer)
+{
+  assert (buffer != NULL);
+
+  return buffer + (OR_INT_SIZE * 3);
+}
+
+/*
  * er_get_area_error - Flatten error information into an area
  *   return: packed error information that can be transmitted to the client
  *   length(out): length of the flatten area (set as a side effect)
  *
- * Note: The returned area must be freed by the caller using free_and_init.
- *       This function is used for Client/Server transfering of errors.
+ * Note: This function is used for Client/Server transfering of errors.
  */
-void *
-er_get_area_error (void *buffer, int *length)
+char *
+er_get_area_error (char *buffer, int *length)
 {
-  int len;
+  int len, max_msglen;
   char *ptr;
   const char *msg;
   ER_MSG *er_entry_p;
@@ -2370,19 +2382,26 @@ er_get_area_error (void *buffer, int *length)
 
   /* Now copy the information */
   msg = er_entry_p->msg_area ? er_entry_p->msg_area : "(null)";
-  len = (OR_INT_SIZE * 3) + strlen (msg) + 1;
-  *length = len = (*length > len) ? len : *length;
 
-  ptr = (char *) buffer;
+  len = (OR_INT_SIZE * 3) + strlen (msg) + 1;
+  len = MIN (len, *length);
+  *length = len;
+  max_msglen = len - (OR_INT_SIZE * 3) - 1;
+
+  ptr = buffer;
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_INT (ptr, (int) (er_entry_p->err_id));
   ptr += OR_INT_SIZE;
+
   OR_PUT_INT (ptr, (int) (er_entry_p->severity));
   ptr += OR_INT_SIZE;
+
   OR_PUT_INT (ptr, len);
   ptr += OR_INT_SIZE;
-  len -= OR_INT_SIZE * 3;
-  strncpy (ptr, msg, --len /* <= strlen(msg) */ );
-  *(ptr + len) = '\0';		/* bullet proofing */
+
+  strncpy (ptr, msg, max_msglen);
+  *(ptr + max_msglen) = '\0';	/* bullet proofing */
 
   return buffer;
 }
@@ -2396,7 +2415,7 @@ er_get_area_error (void *buffer, int *length)
  *       which is the last error found in the server.
  */
 int
-er_set_area_error (void *server_area)
+er_set_area_error (char *server_area)
 {
   char *ptr;
   int err_id, severity, length, r;
@@ -2418,13 +2437,20 @@ er_set_area_error (void *server_area)
       return NO_ERROR;
     }
 
-  ptr = (char *) server_area;
+  ptr = server_area;
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   err_id = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
+  assert (err_id <= NO_ERROR && ER_LAST_ERROR < err_id);
+
   severity = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
+  assert (ER_FATAL_ERROR_SEVERITY <= severity && severity <= ER_MAX_SEVERITY);
+
   length = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
+  assert (0 <= length);
 
   er_entry_p->err_id = ((err_id >= 0 || err_id <= ER_LAST_ERROR) ? -1 : err_id);
   er_entry_p->severity = severity;
