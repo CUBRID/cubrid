@@ -3554,7 +3554,6 @@ end:
  *   prev_chkpt_redo_lsa(in): Redo_LSA of previous checkpoint
  *   smallest_lsa(out): Smallest LSA of a dirty buffer in buffer pool
  *   flushed_page_cnt(out): The number of flushed pages
- *   all_sync (out): true, if everything synchronized
  *
  * Note: The function flushes and dirty unfixed page whose LSA is smaller that the last_chkpt_lsa, 
  *       it returns the smallest_lsa from the remaining dirty buffers which were not flushed.
@@ -3562,7 +3561,7 @@ end:
  */
 int
 pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa, const LOG_LSA * prev_chkpt_redo_lsa,
-			LOG_LSA * smallest_lsa, int *flushed_page_cnt, bool * all_sync)
+			LOG_LSA * smallest_lsa, int *flushed_page_cnt)
 {
   PGBUF_BCB *bufptr;
   int bufid;
@@ -3577,9 +3576,6 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : flush_upto_LSA:%d, prev_chkpt_redo_LSA:%d\n",
 		flush_upto_lsa->pageid, (prev_chkpt_redo_lsa ? prev_chkpt_redo_lsa->pageid : -1));
-
-  assert (all_sync != NULL);
-  *all_sync = true;
 
   if (flushed_page_cnt != NULL)
     {
@@ -3680,11 +3676,6 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
       error = pgbuf_flush_chkpt_seq_list (thread_p, seq_flusher, prev_chkpt_redo_lsa, smallest_lsa);
       flushed_page_cnt_local += seq_flusher->flushed_pages;
-    }
-
-  if (error == NO_ERROR)
-    {
-      error = dwb_flush_force (thread_p, all_sync);
     }
 
 #if defined (SERVER_MODE)
