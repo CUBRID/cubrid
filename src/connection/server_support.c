@@ -1041,8 +1041,9 @@ css_process_new_client (SOCKET master_fd)
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
   CSS_CONN_ENTRY temp_conn;
-  void *area;
-  char buffer[1024];
+  char *area;
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
   int length = 1024;
 
   /* receive new socket descriptor from the master */
@@ -1051,6 +1052,8 @@ css_process_new_client (SOCKET master_fd)
     {
       return;
     }
+
+  buffer = OR_ALIGNED_BUF_START (a_buffer);
 
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
     {
@@ -1067,7 +1070,7 @@ css_process_new_client (SOCKET master_fd)
       area = er_get_area_error (buffer, &length);
 
       temp_conn.db_error = ER_INACCESSIBLE_IP;
-      css_send_error (&temp_conn, rid, (const char *) area, length);
+      css_send_error (&temp_conn, rid, area, length);
       css_shutdown_conn (&temp_conn);
       css_dealloc_conn_rmutex (&temp_conn);
       er_clear ();
@@ -1091,7 +1094,7 @@ css_process_new_client (SOCKET master_fd)
       area = er_get_area_error (buffer, &length);
 
       temp_conn.db_error = ER_CSS_CLIENTS_EXCEEDED;
-      css_send_error (&temp_conn, rid, (const char *) area, length);
+      css_send_error (&temp_conn, rid, area, length);
       css_shutdown_conn (&temp_conn);
       css_dealloc_conn_rmutex (&temp_conn);
       er_clear ();
@@ -1254,8 +1257,11 @@ css_process_new_connection_request (void)
   int reason, buffer_size, rc;
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
-  char *buffer[1024];
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
   int length = 1024, r;
+  CSS_CONN_ENTRY new_conn;
+  char *error_string;
 
   NET_HEADER header = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -1263,11 +1269,10 @@ css_process_new_connection_request (void)
 
   if (!IS_INVALID_SOCKET (new_fd))
     {
+      buffer = OR_ALIGNED_BUF_START (a_buffer);
+
       if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
 	{
-	  CSS_CONN_ENTRY new_conn;
-	  void *error_string;
-
 	  css_initialize_conn (&new_conn, new_fd);
 	  r = rmutex_initialize (&new_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
 	  assert (r == NO_ERROR);
@@ -1280,7 +1285,7 @@ css_process_new_connection_request (void)
 
 	  error_string = er_get_area_error (buffer, &length);
 	  new_conn.db_error = ER_INACCESSIBLE_IP;
-	  css_send_error (&new_conn, rid, (const char *) error_string, length);
+	  css_send_error (&new_conn, rid, error_string, length);
 	  css_shutdown_conn (&new_conn);
 	  css_dealloc_conn_rmutex (&new_conn);
 
@@ -1295,9 +1300,6 @@ css_process_new_connection_request (void)
 	   * all pre-allocated connection entries are being used now.
 	   * create a new entry and send error message throuth it.
 	   */
-	  CSS_CONN_ENTRY new_conn;
-	  void *error_string;
-
 	  css_initialize_conn (&new_conn, new_fd);
 	  r = rmutex_initialize (&new_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
 	  assert (r == NO_ERROR);
@@ -1310,7 +1312,7 @@ css_process_new_connection_request (void)
 
 	  error_string = er_get_area_error (buffer, &length);
 	  new_conn.db_error = ER_CSS_CLIENTS_EXCEEDED;
-	  css_send_error (&new_conn, rid, (const char *) error_string, length);
+	  css_send_error (&new_conn, rid, error_string, length);
 	  css_shutdown_conn (&new_conn);
 	  css_dealloc_conn_rmutex (&new_conn);
 
@@ -2241,7 +2243,7 @@ css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid)
 
   if (css_return_queued_error (conn, CSS_RID_FROM_EID (eid), &error_buffer, &error_size, &rc))
     {
-      errid = er_set_area_error ((void *) error_buffer);
+      errid = er_set_area_error (error_buffer);
       free_and_init (error_buffer);
     }
   return errid;
