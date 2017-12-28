@@ -2535,6 +2535,12 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 #endif
 	}
     }
+
+  if (current_flush_volume_info)
+    {
+      current_flush_volume_info->all_pages_written = true;
+    }
+
   /* Add statistics. */
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
 
@@ -2684,7 +2690,6 @@ retry:
 	  double_Write_Buffer.helper_flush_block = NULL;
 	}
     }
-  ATOMIC_TAS_32 (&block->count_flush_volumes_info, 0);
 
   if (update_flush_block_helper_stat)
     {
@@ -2697,6 +2702,7 @@ retry:
 	}
     }
 #endif
+  ATOMIC_TAS_32 (&block->count_flush_volumes_info, 0);
 
   /* First, write and flush the double write file buffer. */
   if (fileio_write_pages (thread_p, double_Write_Buffer.vdes, block->write_buffer, 0, block->count_wb_pages,
