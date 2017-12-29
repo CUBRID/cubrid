@@ -4115,7 +4115,7 @@ start:
 		  break;
 		}
 
-	      if ((num_pages < (prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH) / 2))
+	      if ((num_pages < prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
 		  && (block->flush_volumes_info[i].all_pages_written == false))
 		{
 		  /* Not enough pages, check the other volumes and retry. */
