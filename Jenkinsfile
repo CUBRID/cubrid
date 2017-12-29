@@ -8,6 +8,7 @@ pipeline {
             docker {
               image 'cubridci/cubridci:develop'
               label 'linux'
+              args '-u root -v ${WORKSPACE}:/home'
               alwaysPull true
             }
             
@@ -75,6 +76,7 @@ pipeline {
             docker {
               image 'cubridci/cubridci:develop'
               label 'linux'
+              args '-u root -v ${WORKSPACE}:/home'
               alwaysPull true
             }
             
