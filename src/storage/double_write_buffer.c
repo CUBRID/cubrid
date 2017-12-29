@@ -4037,15 +4037,16 @@ check_flushed_blocks:
   prev_position_with_flags = current_position_with_flags;
   goto check_flushed_blocks;
 
-#if defined (SERVER_MODE)
-retry:
-  if (double_Write_Buffer.helper_flush_block != NULL)
-    {
-      /* Be sure that the block was written on disk. */
-      thread_sleep (1);
-      goto retry;
-    }
-#endif
+  /* Temporary disabled. */
+//#if defined (SERVER_MODE)
+//retry:
+//  if (double_Write_Buffer.helper_flush_block != NULL)
+//    {
+//      /* Be sure that the block was written on disk. */
+//      thread_sleep (1);
+//      goto retry;
+//    }
+//#endif
 
 end:
   *all_sync = true;
