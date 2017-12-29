@@ -4067,11 +4067,21 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   DWB_BLOCK *block;
   bool found;
   int flushed_status, iter;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 oldest_time;
+  bool is_perf_tracking = false;
 
 start:
   block = double_Write_Buffer.helper_flush_block;
   if (block != NULL)
     {
+      is_perf_tracking = perfmon_is_perf_tracking ();
+      if (is_perf_tracking)
+	{
+	  tsc_getticks (&start_tick);
+	}
+
       found = false;
       for (i = 0; i < block->count_flush_volumes_info; i++)
 	{
@@ -4113,6 +4123,34 @@ start:
 		  found = true;
 		  break;
 		}
+	      else if (block->flush_volumes_info[i].all_pages_written == false)
+		{
+		  if (is_perf_tracking)
+		    {
+		      tsc_getticks (&end_tick);
+		      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+		      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+		      if (oldest_time > 0)
+			{
+			  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_HELPER_BIG_VOLUME_CHANGES_TIME_COUNTERS,
+					    oldest_time);
+			}
+		    }
+		}
+	      else
+		{
+		  if (is_perf_tracking)
+		    {
+		      tsc_getticks (&end_tick);
+		      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+		      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+		      if (oldest_time > 0)
+			{
+			  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_HELPER_SMALL_VOLUME_CHANGES_TIME_COUNTERS,
+					    oldest_time);
+			}
+		    }
+		}
 
 	      /* Reset the number of pages in volume. */
 	      num_pages2 = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
@@ -4135,6 +4173,17 @@ start:
       /* Be sure that the helper flush block was not changed by other thread. */
       assert (block == double_Write_Buffer.helper_flush_block);
       double_Write_Buffer.helper_flush_block = NULL;
+
+      if (is_perf_tracking)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+	  if (oldest_time > 0)
+	    {
+	      perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS, oldest_time);
+	    }
+	}
     }
 
   return NO_ERROR;
