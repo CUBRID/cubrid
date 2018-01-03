@@ -82,9 +82,9 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
 	}
     }
 
-    size_t len () const
+    size_t len () const //current content length, not including ending '\0' (similar with strlen(...))
     {
-      return m_len; //current content length
+      return m_len;
     }
 
     inline void operator+= (const char ch);                       //add a single char
@@ -94,7 +94,7 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
     template<typename... Args> inline int operator() (Args &&... args); //add with printf format
 
   private:
-    size_t m_len;                                                 //current content length
+    size_t m_len;                                                 //current content length not including ending '\0'
 
     string_buffer (const string_buffer &) = delete;               //copy ctor
     string_buffer (string_buffer &&) = delete;                    //move ctor
@@ -106,17 +106,17 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
 
 void string_buffer::operator+= (const char ch)
 {
-  if (dim < m_len + 2)
+  if (dim == 0)
     {
-      if (dim == 0)
-	{
-	  extend (2); //2 new bytes needed: ch + '\0'
-	}
-      else
-	{
-	  assert (ptr[m_len] == '\0');
-	  extend (1);
-	}
+      extend (2); //2 new bytes needed: ch + '\0'
+    }
+  else
+ 	{
+      assert (ptr[m_len] == '\0');
+      if (dim <= m_len+1) //m_len+1 is the current number of chars including ending '\0'
+        {
+          extend (1);
+        }
     }
   ptr[m_len] = ch;
   ptr[++m_len] = '\0';
