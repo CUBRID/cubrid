@@ -1,7 +1,7 @@
 defaults: &defaults
   working_directory: /home
   docker:
-    - image: cubridci/cubridci
+    - image: cubridci/cubridci:develop
 
 test_defaults: &test_defaults
   steps:
@@ -30,7 +30,7 @@ jobs:
           path: cubrid
       - run:
           name: Build
-          command: /entrypoint.sh build
+          command: scl enable devtoolset-6 -- /entrypoint.sh build
       - persist_to_workspace:
           root: .
           paths:

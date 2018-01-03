@@ -16,7 +16,10 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/* String Buffer: collects formatted text (printf-like syntax) in a fixed size buffer
+/*
+ * string_buffer.hpp
+ *
+ * - collects formatted text (printf-like syntax) in a fixed size buffer
  * - useful to build a formatted string in successive function calls without dynamic memory allocation
  * - if the provided buffer is too small then the len() method can be used to find necessary size
  * (similar with snprintf() behavior)
@@ -24,69 +27,106 @@
  * operator() instead of a named method (see below)
  *
  * Usage:
- *   char buffer[1024] = {0};
- *   string_buffer sb(sizeof(buffer), buffer);
+ *   string_buffer sb; //uses default_realloc & default_dealloc by default
  *   sb("simple text");                                   // <=> sb.add_with_format("simple text")
  *   sb("format i=%d f=%lf s=\"%s\"", 1, 2.3, "4567890");
- *   if(sb.len() >= sizeof(buffer)) // buffer capacity exceeded
- *     {
- *       // provide a bigger buffer or fail
- *     }
- *   printf(buffer); // => i=1 f=2.3 s="4567890"
+ *   printf(sb.get_buffer()); // => i=1 f=2.3 s="4567890"
  */
 
 #ifndef _STRING_BUFFER_HPP_
 #define _STRING_BUFFER_HPP_
 
-#if defined (LINIX)
-#include <stddef.h> //size_t on Linux
-#endif /* LUNUX */
+#include "mem_block.hpp"
 
+#include <assert.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <functional>
 
-#if 0 //!!! snprintf() != _sprintf_p() when buffer capacity is exceeded !!! (disabled until further testing)
-#ifdef _WIN32
-#define snprintf                                                                                                       \
-  _sprintf_p // snprintf() on Windows doesn't support positional parms but there is a similar function; snprintf_p();  \
-// on Linux supports positional parms by default
-#endif
-#endif
-
-class string_buffer //collect formatted text (printf-like syntax)
+class string_buffer: public mem::block_ext //collect formatted text (printf-like syntax)
 {
-    char *m_buf;  // pointer to a memory buffer (not owned)
-    size_t m_dim; // dimension|capacity of the buffer
-    size_t m_len; // current length of the buffer content
   public:
-    string_buffer (size_t capacity = 0, char *buffer = 0);
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+    string_buffer () = default;                                    //default ctor
+#else
+    string_buffer ()
+      : mem::block_ext ()
+      , m_len (0)
+    {}
+#endif
 
-    size_t len ()
+    ~string_buffer ()
     {
-      return m_len;
+      m_len = 0; //dtor
     }
+
+    string_buffer (std::function<void (block &b, size_t n)> extend, std::function<void (block &b)> dealloc)
+      : mem::block_ext {extend, dealloc}
+      , m_len {0}
+    {
+    }
+
+    using mem::block_ext::move_ptr;
+
+    const char *get_buffer () const
+    {
+      return this->ptr;
+    }
+
     void clear ()
     {
-      m_len = 0;
-      m_buf[0] = '\0';
-    }
-
-    void set_buffer (size_t capacity, char *buffer); // associate with a new buffer[capacity]
-
-    void operator() (size_t len, void *bytes); // add "len" bytes to internal buffer; "bytes" can have '\0' in the middle
-    void operator+= (const char ch);
-
-    template<size_t Size, typename... Args> void operator() (const char (&format)[Size], Args &&... args)
-    {
-      int len = snprintf (m_buf + m_len, m_len < m_dim ? m_dim - m_len : 0, format, args...);
-      if (len >= 0)
+      if (ptr)
 	{
-	  if (m_dim <= m_len + len)
-	    {
-	      // WRN not enough space in buffer
-	    }
-	  m_len += len;
+	  m_len = 0;
+	  ptr[m_len] = '\0';
 	}
     }
+
+    size_t len () const
+    {
+      return m_len; //current content length
+    }
+
+    inline void operator+= (const char ch);                       //add a single char
+
+    void add_bytes (size_t len, void *bytes);                     //add "len" bytes (can have '\0' in the middle)
+
+    template<typename... Args> inline void operator() (Args &&... args); //add with printf format
+
+  private:
+    size_t m_len;                                                 //current content length
+
+    string_buffer (const string_buffer &) = delete;               //copy ctor
+    string_buffer (string_buffer &&) = delete;                    //move ctor
+    void operator= (const string_buffer &) = delete;              //copy assign
+    void operator= (string_buffer &&) = delete;                   //move assign
 };
+
+//implementation for small (inline) methods
+
+void string_buffer::operator+= (const char ch)
+{
+  if (dim < m_len + 2)
+    {
+      extend (1);
+    }
+  ptr[m_len] = ch;
+  ptr[++m_len] = '\0';
+}
+
+template<typename... Args> void string_buffer::operator() (Args &&... args)
+{
+  int len = snprintf (NULL, 0, std::forward<Args> (args)...);
+
+  assert (len >= 0);
+
+  if (dim <= m_len + size_t (len) + 1)
+    {
+      extend (m_len + size_t (len) + 1 - dim); //ask to extend to fit at least additional len chars
+    }
+
+  snprintf (ptr + m_len, dim - m_len, std::forward<Args> (args)...);
+  m_len += len;
+}
 
 #endif /* _STRING_BUFFER_HPP_ */

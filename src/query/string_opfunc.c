@@ -17260,7 +17260,7 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
   switch (DB_VALUE_TYPE (src_value))
     {
     case DB_TYPE_NUMERIC:
-      numeric_db_value_print ((DB_VALUE *) src_value, tmp_str);
+      numeric_db_value_print (src_value, tmp_str);
       cs = (char *) db_private_alloc (NULL, strlen (tmp_str) + 1);
       if (cs == NULL)
 	{
@@ -26727,7 +26727,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  num_p_str = numeric_db_value_print ((DB_VALUE *) num, str_buf);
+	  num_p_str = numeric_db_value_print (num, str_buf);
 	  /* set the decimal point to '\0' to bypass end_ptr check, make it looks like we already trucated out the
 	   * fractional part, as we do to float. */
 	  for (i = 0; num_p_str[i] != '\0'; ++i)

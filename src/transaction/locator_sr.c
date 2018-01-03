@@ -126,7 +126,7 @@ static int locator_defence_drop_class_name_entry (const void *name, void *ent, v
 static int locator_force_drop_class_name_entry (const void *name, void *ent, void *args);
 static int locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, LOG_LSA * savep_lsa);
 static int locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa);
-static int locator_print_class_name (FILE * outfp, const void *key, void *ent, void *args);
+static int locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key, void *ent, void *args);
 static int locator_check_class_on_heap (const void *name, void *ent, void *args);
 static SCAN_CODE locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * assign,
 						 OID * class_oid, OID * oid, int chn, LOCK lock_mode,
@@ -1706,7 +1706,7 @@ locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa)
  * Note:Print an entry of the classname memory hash table.
  */
 static int
-locator_print_class_name (FILE * outfp, const void *key, void *ent, void *args)
+locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key, void *ent, void *args)
 {
   LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) ent;
   int *class_no_p = (int *) args;
@@ -1783,7 +1783,7 @@ locator_dump_class_names (THREAD_ENTRY * thread_p, FILE * out_fp)
 #endif
 
   class_no = 1;			/* init */
-  (void) mht_dump (out_fp, locator_Mht_classnames, false, locator_print_class_name, &class_no);
+  (void) mht_dump (thread_p, out_fp, locator_Mht_classnames, false, locator_print_class_name, &class_no);
 
 #if defined(NDEBUG)		/* skip at debug build */
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
@@ -4119,13 +4119,13 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	    {
 	      char *val_print = NULL;
 
-	      val_print = pr_valstring (key_dbvalue);
+	      val_print = pr_valstring ((thread_entry *) thread_p, key_dbvalue);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, index->fk->fkname,
 		      (val_print ? val_print : "unknown value"));
 	      error_code = ER_FK_INVALID;
 	      if (val_print)
 		{
-		  free_and_init (val_print);
+		  db_private_free (thread_p, val_print);
 		}
 
 	      if (key_dbvalue == &dbvalue)
@@ -9367,7 +9367,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 		    {
 		      char *key_dmp;
 
-		      key_dmp = pr_valstring (key);
+		      key_dmp = pr_valstring ((thread_entry *) thread_p, key);
 
 		      if (!OID_ISNULL (class_oid))
 			{
@@ -9386,7 +9386,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 
 		      if (key_dmp)
 			{
-			  free_and_init (key_dmp);
+			  db_private_free (thread_p, key_dmp);
 			}
 
 		      if (classname)
@@ -9817,7 +9817,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 			{
 			  char *key_dmp;
 
-			  key_dmp = pr_valstring (key);
+			  key_dmp = pr_valstring ((thread_entry *) thread_p, key);
 			  if (!OID_ISNULL (class_oid))
 			    {
 			      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
@@ -9835,7 +9835,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 
 			  if (key_dmp)
 			    {
-			      free_and_init (key_dmp);
+			      db_private_free (thread_p, key_dmp);
 			    }
 
 			  if (classname)
