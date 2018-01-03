@@ -50,7 +50,7 @@ const char db_value_printer::DECIMAL_FORMAT[] = "%#.*g";
 namespace
 {
   //--------------------------------------------------------------------------------
-  string_buffer &describe_bit_string (string_buffer &buf, const db_value *value,
+  void describe_bit_string (string_buffer &buf, const db_value *value,
 				      bool pad_byte) //DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
   {
     unsigned char *bstring;
@@ -61,7 +61,7 @@ namespace
     bstring = (unsigned char *) db_get_string (value);
     if (bstring == NULL)
       {
-	return buf;
+	return;
       }
 
     nibble_length = ((db_get_string_length (value) + 3) / 4);
@@ -85,12 +85,10 @@ namespace
 	    buf += tmp[0];
 	  }
       }
-
-    return buf;
   }
 
   //--------------------------------------------------------------------------------
-  string_buffer &describe_real (string_buffer &buf, double value, int precision)
+  void describe_real (string_buffer &buf, double value, int precision)
   {
     char tbuf[24];
 
@@ -100,8 +98,6 @@ namespace
 	snprintf (tbuf, sizeof (tbuf), db_value_printer::DECIMAL_FORMAT, precision, (value > 0 ? FLT_MAX : -FLT_MAX));
       }
     buf (tbuf);
-
-    return buf;
   }
 }//namespace
 
