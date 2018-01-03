@@ -70,6 +70,12 @@ namespace mem
 	, ptr { (char *)ptr}
       {}
 
+      virtual ~block()
+      {
+        dim = 0;
+        ptr = NULL;
+      }
+
       bool is_valid ()
       {
 	return (dim != 0 && ptr != NULL);
