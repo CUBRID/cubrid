@@ -3898,6 +3898,7 @@ dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
   int error_code = NO_ERROR;
   DWB_SLOT *dwb_slot = NULL;
   unsigned int count_added_pages = 0, max_pages_to_add = 0, initial_num_pages = 0;
+  DWB_BLOCK * initial_block;
 
   assert (all_sync != NULL);
 
@@ -4046,17 +4047,17 @@ check_flushed_blocks:
 
   prev_position_with_flags = current_position_with_flags;
   goto check_flushed_blocks;
-
-  /* Temporary disabled. */
-//#if defined (SERVER_MODE)
-//retry:
-//  if (double_Write_Buffer.helper_flush_block != NULL)
-//    {
-//      /* Be sure that the block was written on disk. */
-//      thread_sleep (1);
-//      goto retry;
-//    }
-//#endif
+  
+  initial_block = &double_Write_Buffer.blocks[intial_block_no];
+#if defined (SERVER_MODE)    
+retry:
+  if (double_Write_Buffer.helper_flush_block == initial_block)
+    {
+      /* Wait for flush helper to finish. */
+      thread_sleep (1);
+      goto retry;
+    }
+#endif
 
 end:
   *all_sync = true;
