@@ -189,81 +189,81 @@ void db_value_printer::describe_value (const db_value *value)
 	case DB_TYPE_DATE:
 	  m_buf ("date '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 
 	case DB_TYPE_JSON:
 	  m_buf ("json '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 
 	case DB_TYPE_TIME:
 	  m_buf ("time '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_TIMETZ:
 	  m_buf ("timetz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_TIMELTZ:
 	  m_buf ("timeltz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_UTIME:
 	  m_buf ("timestamp '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_TIMESTAMPTZ:
 	  m_buf ("timestamptz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
 	  m_buf ("timestampltz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_DATETIME:
 	  m_buf ("datetime '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_DATETIMETZ:
 	  m_buf ("datetimetz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_DATETIMELTZ:
 	  m_buf ("datetimeltz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  m_buf ("N'");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  m_buf ("X'");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_BLOB:
 	  m_buf ("BLOB'");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_CLOB:
 	  m_buf ("CLOB'");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	default:
 	  describe_data (value);
@@ -348,7 +348,7 @@ void db_value_printer::describe_data (const db_value *value)
 	  if (pos < end)
 	    {
 	      m_buf.add_bytes (pos - src + 1, src);
-	      m_buf ("'");
+	      m_buf += '\'';
 	    }
 	  /* If not, copy the remaining part of the buffer */
 	  else
@@ -549,7 +549,7 @@ void db_value_printer::describe_midxkey (const db_midxkey *midxkey, int help_Max
 
   assert (midxkey != NULL);
 
-  m_buf ("{");
+  m_buf +='{';
   size = midxkey->ncolumns;
   if (help_Max_set_elements == 0 || help_Max_set_elements > size)
     {
@@ -579,7 +579,7 @@ void db_value_printer::describe_midxkey (const db_midxkey *midxkey, int help_Max
     {
       m_buf (". . .");
     }
-  m_buf ("}");
+  m_buf += '}';
 }
 
 //--------------------------------------------------------------------------------
@@ -590,7 +590,7 @@ void db_value_printer::describe_set (const db_collection *set, int help_Max_set_
 
   assert (set != NULL);
 
-  m_buf ("{");
+  m_buf += '{';
   size = set_size ((DB_COLLECTION *)set);
   if (help_Max_set_elements == 0 || help_Max_set_elements > size)
     {
@@ -615,5 +615,5 @@ void db_value_printer::describe_set (const db_collection *set, int help_Max_set_
     {
       m_buf (". . .");
     }
-  m_buf ("}");
+  m_buf += '}';
 }
