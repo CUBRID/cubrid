@@ -91,7 +91,7 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
 
     void add_bytes (size_t len, void *bytes);                     //add "len" bytes (can have '\0' in the middle)
 
-    template<typename... Args> inline void operator() (Args &&... args); //add with printf format
+    template<typename... Args> inline int operator() (Args &&... args); //add with printf format
 
   private:
     size_t m_len;                                                 //current content length
@@ -114,7 +114,7 @@ void string_buffer::operator+= (const char ch)
   ptr[++m_len] = '\0';
 }
 
-template<typename... Args> void string_buffer::operator() (Args &&... args)
+template<typename... Args> int string_buffer::operator() (Args &&... args)
 {
   int len = snprintf (NULL, 0, std::forward<Args> (args)...);
 
@@ -127,6 +127,7 @@ template<typename... Args> void string_buffer::operator() (Args &&... args)
 
   snprintf (ptr + m_len, dim - m_len, std::forward<Args> (args)...);
   m_len += len;
+  return len;
 }
 
 #endif /* _STRING_BUFFER_HPP_ */
