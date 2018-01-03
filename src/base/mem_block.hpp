@@ -101,14 +101,14 @@ namespace mem
     block x{dim, new char[dim]};
     memcpy (x.ptr, b.ptr, b.dim);
 
-    delete b.ptr;
+    delete [] b.ptr;
 
     b = std::move (x);
   }
 
   inline void default_dealloc (block &b)
   {
-    delete b.ptr;
+    delete [] b.ptr;
     b = {};
   }
 
