@@ -176,7 +176,7 @@ static PT_NODE *pt_make_sort_spec_with_number (PARSER_CONTEXT * parser, const in
 static PT_NODE *pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *table_name);
 static PT_NODE *pt_make_dummy_query_check_table (PARSER_CONTEXT * parser, const char *table_name);
 static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name);
-static void pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer &strbuf);
+static void pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf);
 static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_for, DB_VALUE * upper_limit,
 						bool * has_limit);
 static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val);
@@ -9003,7 +9003,7 @@ error:
  * strbuf(out)   : string of create table.
  */
 static void
-pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer &strbuf)
+pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf)
 {
   DB_OBJECT *class_op;
   int is_class = 0;
@@ -9097,7 +9097,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 /* *INDENT-ON* */
 
   pt_help_show_create_table (parser, table_name, strbuf);
-  if (strbuf.len() == 0)
+  if (strbuf.len () == 0)
     {
       return NULL;
     }
@@ -9115,7 +9115,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
    *      FROM db_root
    */
   pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
-  pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer(), "CREATE TABLE");
+  pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
 
   (void) pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
   return select;
