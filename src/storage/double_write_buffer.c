@@ -246,13 +246,22 @@ struct dwb_checksum_info
   unsigned int num_checksum_elements_in_block;	/* The number of checksum elements in each block */
 };
 
+
+/* Flush volume status. */
+typedef enum
+{
+  VOLUME_NOT_FLUSHED,
+  VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD,
+  VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD
+} FLUSH_VOLUME_STATUS;
+
 typedef struct flush_volume_info FLUSH_VOLUME_INFO;
 struct flush_volume_info
 {
   int vdes;			/* The volume descriptor. */
   int num_pages;		/* The number of pages to flush in volume. */
   volatile bool all_pages_written;	/* True, if all pages written. */
-  volatile int flushed_status;
+  volatile FLUSH_VOLUME_STATUS flushed_status;	/* Flush status. */
 };
 
 /* DWB block. */
@@ -2415,7 +2424,7 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, 
       flush_new_volume_info->vdes = vol_fd;
       flush_new_volume_info->num_pages = 0;
       flush_new_volume_info->all_pages_written = false;
-      flush_new_volume_info->flushed_status = 0;
+      flush_new_volume_info->flushed_status = VOLUME_NOT_FLUSHED;
 
       ATOMIC_INC_32 (&block->count_flush_volumes_info, 1);
       assert (block->count_flush_volumes_info < block->max_to_flush_vdes);
@@ -2737,7 +2746,8 @@ retry:
     {
       assert (block->flush_volumes_info[i].vdes != NULL_VOLDES);
 
-      if (!ATOMIC_CAS_32 (&block->flush_volumes_info[i].flushed_status, 0, 2))
+      if (!ATOMIC_CAS_32
+	  (&block->flush_volumes_info[i].flushed_status, VOLUME_NOT_FLUSHED, VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD))
 	{
 	  /* Flushed by helper. */
 	  continue;
@@ -4064,10 +4074,10 @@ int
 dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 {
   unsigned int i;
-  int num_pages, num_pages2;
+  int num_pages, num_pages2, iter;
   DWB_BLOCK *block;
   bool found;
-  int flushed_status, iter;
+  FLUSH_VOLUME_STATUS flushed_status;
   TSC_TICKS start_tick, start_tick2, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 oldest_time;
@@ -4094,14 +4104,16 @@ start:
 		{
 		try_again:
 		  flushed_status = block->flush_volumes_info[i].flushed_status;
-		  if (flushed_status == 2)
+		  if (flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD)
 		    {
 		      /* Flushed by other thread. */
 		      break;
 		    }
-		  else if (flushed_status == 0)
+		  else if (flushed_status == VOLUME_NOT_FLUSHED)
 		    {
-		      if (!ATOMIC_CAS_32 (&block->flush_volumes_info[i].flushed_status, 0, 1))
+		      if (!ATOMIC_CAS_32
+			  (&block->flush_volumes_info[i].flushed_status, VOLUME_NOT_FLUSHED,
+			   VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD))
 			{
 			  /* Try again. */
 			  goto try_again;
@@ -4110,7 +4122,7 @@ start:
 		}
 
 	      /* I'm the flusher of the volume. */
-	      assert_release (block->flush_volumes_info[i].flushed_status == 1);
+	      assert_release (block->flush_volumes_info[i].flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD);
 	      num_pages = ATOMIC_INC_32 (&block->flush_volumes_info[i].num_pages, 0);
 	      if (num_pages == 0)
 		{
