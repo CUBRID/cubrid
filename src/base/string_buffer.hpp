@@ -108,7 +108,7 @@ void string_buffer::operator+= (const char ch)
 {
   if (dim < m_len + 2)
     {
-      extend (1);
+      extend (2);
     }
   ptr[m_len] = ch;
   ptr[++m_len] = '\0';
