@@ -200,7 +200,8 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  return INVALID_SOCKET;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
 # elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
@@ -210,7 +211,8 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  return INVALID_SOCKET;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
 # elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
@@ -219,7 +221,8 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, &ht_data) == -1)
 	{
-	  return INVALID_SOCKET;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
 # else
@@ -233,7 +236,8 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  return INVALID_SOCKET;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
       pthread_mutex_unlock (&gethostbyname_lock);

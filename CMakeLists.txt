@@ -195,10 +195,19 @@ if(VERSION_MATCHES_LENGTH GREATER 3)
 else(VERSION_MATCHES_LENGTH GREATER 3)
   find_package(Git)
   if(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
-    execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
-      OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
-      ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
-      WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    if(GIT_VERSION VERSION_GREATER 1.7.6)
+      execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+        OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
+        ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    else(GIT_VERSION VERSION_GREATER 1.7.6)
+      # TODO: Below wc command could be failed on Windows platform
+      execute_process(COMMAND ${GIT_EXECUTABLE} log --oneline
+        COMMAND wc -l
+        OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
+        ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    endif(GIT_VERSION VERSION_GREATER 1.7.6)
     if(git_result)
       message(FATAL_ERROR "Could not get count information from Git")
     endif(git_result)
@@ -641,6 +650,7 @@ if(GCRYPT_LIBRARIES)
 endif(GCRYPT_LIBRARIES)
 
 if(UNIX)
+
   include(FindThreads)
 endif(UNIX)
 

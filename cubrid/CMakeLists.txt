@@ -16,8 +16,6 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-message("======== cubrid/CMakeLists.txt")
-
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
   ${COMPAT_DIR}/cnvlex.c
@@ -293,7 +291,6 @@ endif(UNIX)
 add_dependencies(cubrid ${EP_TARGETS})
 
 if(AT_LEAST_ONE_UNIT_TEST)
-  message("    ==== add cubrid static libs for unit tests (WIN only)")
   if (WIN32)
   # in order to avoid adding all the functions used by unit tests in def file, it is more convenient to build a static
   # lib too. more compile time, but less head-ache

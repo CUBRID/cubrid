@@ -1975,12 +1975,13 @@ exit_on_error:
 static int
 boot_make_session_server_key (void)
 {
+  int err;
   UINT32 t;
   unsigned char ip[4];
 
   t = (UINT32) time (NULL);
   memcpy (boot_Server_session_key, &t, sizeof (UINT32));
-  int err = css_hostname_to_ip (boot_Host_name, ip);
+  err = css_hostname_to_ip (boot_Host_name, ip);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
