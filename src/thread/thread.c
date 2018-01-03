@@ -4110,6 +4110,10 @@ thread_dwb_flush_block_thread (void *arg_p)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
   int rv;
+  TSC_TICKS start_tick, end_tick;
+  UINT64 oldest_time;
+  TSCTIMEVAL tv_diff;
+  bool is_perf_tracking;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finish */
@@ -4126,7 +4130,23 @@ thread_dwb_flush_block_thread (void *arg_p)
 
   while (!tsd_ptr->shutdown)
     {
+      is_perf_tracking = perfmon_is_perf_tracking ();
+      if (is_perf_tracking)
+	{
+	  tsc_getticks (&start_tick);
+	}
       (void) thread_daemon_timedwait (&thread_Dwb_flush_block_thread, THREAD_DWB_FLUSH_BLOCK_WAKEUP_TIME_MSEC);
+
+      if (is_perf_tracking)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+	  if (oldest_time > 0)
+	    {
+	      perfmon_add_stat (tsd_ptr, PSTAT_DWB_FLUSH_BLOCK_COND_WAIT, oldest_time);
+	    }
+	}
 
       if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
 	{

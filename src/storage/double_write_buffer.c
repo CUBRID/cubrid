@@ -3898,9 +3898,19 @@ dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
   int error_code = NO_ERROR;
   DWB_SLOT *dwb_slot = NULL;
   unsigned int count_added_pages = 0, max_pages_to_add = 0, initial_num_pages = 0;
-  DWB_BLOCK * initial_block;
+  DWB_BLOCK *initial_block;
+  TSC_TICKS start_tick, end_tick;
+  UINT64 oldest_time;
+  TSCTIMEVAL tv_diff;
+  bool is_perf_tracking;
 
   assert (all_sync != NULL);
+
+  is_perf_tracking = perfmon_is_perf_tracking ();
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
 
   *all_sync = false;
 start:
@@ -4047,9 +4057,9 @@ check_flushed_blocks:
 
   prev_position_with_flags = current_position_with_flags;
   goto check_flushed_blocks;
-  
+
   initial_block = &double_Write_Buffer.blocks[intial_block_no];
-#if defined (SERVER_MODE)    
+#if defined (SERVER_MODE)
 retry:
   if (double_Write_Buffer.helper_flush_block == initial_block)
     {
@@ -4061,6 +4071,17 @@ retry:
 
 end:
   *all_sync = true;
+
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (oldest_time > 0)
+	{
+	  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS, oldest_time);
+	}
+    }
 
   return NO_ERROR;
 }
