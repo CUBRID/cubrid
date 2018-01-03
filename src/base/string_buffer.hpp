@@ -108,15 +108,15 @@ void string_buffer::operator+= (const char ch)
 {
   if (dim < m_len + 2)
     {
-      if(dim == 0)
-        {
-          extend (2); //2 new bytes needed: ch + '\0'
-        }
+      if (dim == 0)
+	{
+	  extend (2); //2 new bytes needed: ch + '\0'
+	}
       else
-        {
-          assert (ptr[m_len] == '\0');
-          extend (1);
-        }
+	{
+	  assert (ptr[m_len] == '\0');
+	  extend (1);
+	}
     }
   ptr[m_len] = ch;
   ptr[++m_len] = '\0';

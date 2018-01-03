@@ -72,8 +72,8 @@ namespace mem
 
       virtual ~block()
       {
-        dim = 0;
-        ptr = NULL;
+	dim = 0;
+	ptr = NULL;
       }
 
       bool is_valid ()
