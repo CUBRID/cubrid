@@ -43,7 +43,8 @@ namespace mem
       block ()
 	: dim {0}
 	, ptr {NULL}
-      {}
+      {
+      }
 
       block (block &&b)             //move ctor
 	: dim {b.dim}
@@ -67,10 +68,11 @@ namespace mem
 
       block (size_t dim, void *ptr)
 	: dim {dim}
-	, ptr { (char *)ptr}
-      {}
+	, ptr { (char *) ptr}
+      {
+      }
 
-      virtual ~block()
+      virtual ~block ()
       {
 	dim = 0;
 	ptr = NULL;

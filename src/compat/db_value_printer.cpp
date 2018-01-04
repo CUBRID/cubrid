@@ -50,8 +50,8 @@ const char db_value_printer::DECIMAL_FORMAT[] = "%#.*g";
 namespace
 {
   //--------------------------------------------------------------------------------
-  void describe_bit_string (string_buffer &buf, const db_value *value,
-				      bool pad_byte) //DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
+  // DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
+  void describe_bit_string (string_buffer &buf, const db_value *value, bool pad_byte)
   {
     unsigned char *bstring;
     int nibble_length, nibbles, count;
@@ -333,14 +333,16 @@ void db_value_printer::describe_data (const db_value *value)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
       /* Copy string into buf providing for any embedded quotes. Strings may have embedded NULL characters and
-          * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
-          * character and the second byte of the multibyte character. */
+       * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
+       * character and the second byte of the multibyte character.
+       */
       src = db_get_string (value);
       end = src + db_get_string_size (value);
       while (src < end)
 	{
 	  /* Find the position of the next quote or the end of the string, whichever comes first.  This loop is
-	      * done in place of strchr in case the string has an embedded NULL. */
+	   * done in place of strchr in case the string has an embedded NULL.
+	   */
 	  for (pos = src; pos && pos < end && (*pos) != '\''; pos++)
 	    ;
 
@@ -382,7 +384,8 @@ void db_value_printer::describe_data (const db_value *value)
 #endif //#if defined(SERVER_MODE)
       break;
     /* If we are on the server, fall thru to the oid case The value is probably nonsense, but that is safe to do.
-     * This case should simply not occur. */
+     * This case should simply not occur.
+     */
 
     case DB_TYPE_OID:
       oid = (OID *) db_get_oid (value);
@@ -549,7 +552,7 @@ void db_value_printer::describe_midxkey (const db_midxkey *midxkey, int help_Max
 
   assert (midxkey != NULL);
 
-  m_buf +='{';
+  m_buf += '{';
   size = midxkey->ncolumns;
   if (help_Max_set_elements == 0 || help_Max_set_elements > size)
     {

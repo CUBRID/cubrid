@@ -82,8 +82,9 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
 	}
     }
 
-    size_t len () const //current content length, not including ending '\0' (similar with strlen(...))
+    size_t len () const
     {
+      // current content length, not including ending '\0' (similar with strlen(...))
       return m_len;
     }
 
@@ -108,16 +109,19 @@ void string_buffer::operator+= (const char ch)
 {
   if (dim == 0)
     {
-      extend (2); //2 new bytes needed: ch + '\0'
+      extend (2); // 2 new bytes needed: ch + '\0'
     }
   else
- 	{
+    {
       assert (ptr[m_len] == '\0');
-      if (dim <= m_len+1) //m_len+1 is the current number of chars including ending '\0'
-        {
-          extend (1);
-        }
+
+      // (m_len + 1) is the current number of chars including ending '\0'
+      if (dim <= m_len + 1)
+	{
+	  extend (1);
+	}
     }
+
   ptr[m_len] = ch;
   ptr[++m_len] = '\0';
 }
@@ -135,6 +139,7 @@ template<typename... Args> int string_buffer::operator() (Args &&... args)
 
   snprintf (ptr + m_len, dim - m_len, std::forward<Args> (args)...);
   m_len += len;
+
   return len;
 }
 

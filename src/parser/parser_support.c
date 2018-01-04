@@ -9076,7 +9076,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 
 /* *INDENT-OFF* */
 #if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
-  string_buffer strbuf{
+  string_buffer strbuf {
     [&parser] (mem::block& block, size_t len)
     {
       size_t dim = block.dim ? block.dim : 1;
@@ -9085,7 +9085,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
       for (; dim < block.dim + len; dim *= 2)
         ;
 
-      mem::block b{dim, (char*) parser_alloc (parser, block.dim + len)};
+      mem::block b{dim, (char *) parser_alloc (parser, block.dim + len)};
       memcpy (b.ptr, block.ptr, block.dim);
       block = std::move (b);
     },
