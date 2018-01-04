@@ -3263,6 +3263,7 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   if (num_args < 3)
     {
+      assert_release (false);
       return DB_MAKE_NULL (result);
     }
 
@@ -3288,6 +3289,10 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
     case DB_TYPE_JSON:
       new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
       break;
+    default:
+      db_json_delete_doc (new_doc);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
     }
 
   for (i = 1; i < num_args; i += 2)
@@ -3339,6 +3344,7 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   if (num_args < 3)
     {
+      assert_release (false);
       return DB_MAKE_NULL (result);
     }
 
@@ -3350,6 +3356,9 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
     {
     case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
       error_code = db_json_get_json_from_str (DB_PULL_STRING (arg[0]), new_doc);
       if (error_code != NO_ERROR)
 	{
@@ -3361,6 +3370,13 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
     case DB_TYPE_JSON:
       new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
       break;
+    case DB_TYPE_NULL:
+      db_json_delete_doc (new_doc);
+      return DB_MAKE_NULL (result);
+    default:
+      db_json_delete_doc (new_doc);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
     }
 
   for (i = 1; i < num_args; i += 2)
@@ -3374,6 +3390,9 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
 							db_json_set_func, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
@@ -3414,6 +3433,7 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   if (num_args > 2)
     {
+      assert_release (false);
       return DB_MAKE_NULL (result);
     }
 

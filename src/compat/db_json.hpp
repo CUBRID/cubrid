@@ -37,12 +37,6 @@ typedef void JSON_VALIDATOR;
 #if defined (__cplusplus)
 
 #include <functional>
-#include <sstream>
-#include <vector>
-#include <unordered_map>
-#include <algorithm>
-#include <cctype>
-#include <locale>
 #include "thread.h"
 
 /*
@@ -91,9 +85,6 @@ void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 
-int db_json_convert_pointer_to_sql_path (const char *pointer_path, const JSON_DOC &doc,
-    std::string &sql_path_out, bool &path_has_effect);
-int db_json_convert_sql_path_to_pointer (const char *sql_path, const JSON_DOC &doc, std::string &json_pointer_out);
 int db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path);
 int db_json_replace_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path);
 int db_json_set_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path);
