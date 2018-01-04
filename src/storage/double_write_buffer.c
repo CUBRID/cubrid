@@ -2533,9 +2533,9 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	      if (double_Write_Buffer.helper_flush_block == NULL)
 		{
 		  double_Write_Buffer.helper_flush_block = block;
+		  thread_wakeup_dwb_flush_helper_block_thread ();
 		}
 
-	      thread_wakeup_dwb_flush_helper_block_thread ();
 	      /* Add statistics. */
 	      perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
 	      count_writes = 0;
@@ -2548,6 +2548,13 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
   if (current_flush_volume_info)
     {
       current_flush_volume_info->all_pages_written = true;
+#if defined (SERVER_MODE)
+      if (double_Write_Buffer.helper_flush_block == NULL)
+	{
+	  double_Write_Buffer.helper_flush_block = block;
+	  thread_wakeup_dwb_flush_helper_block_thread ();
+	}
+#endif
     }
 
   /* Add statistics. */
@@ -2616,7 +2623,9 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   bool is_perf_tracking = false;
   int num_pages;
   unsigned int current_block_to_flush, next_block_to_flush;
+#if defined (SERVER_MODE)
   bool update_flush_block_helper_stat;
+#endif
 
   assert (block != NULL && block->count_wb_pages > 0 && dwb_is_created ());
 
@@ -4220,6 +4229,12 @@ start:
 	  if (oldest_time > 0)
 	    {
 	      perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS, oldest_time);
+	    }
+
+	  if (double_Write_Buffer.helper_flush_block != NULL)
+	    {
+	      /* New data available for flush. */
+	      goto start;
 	    }
 	}
     }

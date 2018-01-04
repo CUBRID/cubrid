@@ -4213,7 +4213,7 @@ thread_wakeup_dwb_flush_helper_block_thread (void)
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_dwb_flush_block_helper_thread (void *arg_p)
 {
-#define THREAD_DWB_FLUSH_BLOCK_HELPER_WAKEUP_TIME_MSEC 20
+#define THREAD_DWB_FLUSH_BLOCK_HELPER_WAKEUP_TIME_MSEC 10
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
