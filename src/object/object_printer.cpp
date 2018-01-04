@@ -1016,7 +1016,7 @@ void object_printer::describe_class (struct db_object *class_op)
 	    }
 	}
 
-      m_buf (")");
+      m_buf += ')';
     }
 
   /* reuse_oid flag */
@@ -1026,11 +1026,11 @@ void object_printer::describe_class (struct db_object *class_op)
 
       if (class_descr.collation != NULL)
 	{
-	  m_buf (",");
+	  m_buf += ',';
 	}
       else
 	{
-	  m_buf (" ");
+	  m_buf += ' ';
 	}
     }
 

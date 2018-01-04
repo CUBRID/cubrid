@@ -50,8 +50,8 @@ const char db_value_printer::DECIMAL_FORMAT[] = "%#.*g";
 namespace
 {
   //--------------------------------------------------------------------------------
-  string_buffer &describe_bit_string (string_buffer &buf, const db_value *value,
-				      bool pad_byte) //DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
+  // DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
+  void describe_bit_string (string_buffer &buf, const db_value *value, bool pad_byte)
   {
     unsigned char *bstring;
     int nibble_length, nibbles, count;
@@ -61,7 +61,7 @@ namespace
     bstring = (unsigned char *) db_get_string (value);
     if (bstring == NULL)
       {
-	return buf;
+	return;
       }
 
     nibble_length = ((db_get_string_length (value) + 3) / 4);
@@ -85,12 +85,10 @@ namespace
 	    buf += tmp[0];
 	  }
       }
-
-    return buf;
   }
 
   //--------------------------------------------------------------------------------
-  string_buffer &describe_real (string_buffer &buf, double value, int precision)
+  void describe_real (string_buffer &buf, double value, int precision)
   {
     char tbuf[24];
 
@@ -100,8 +98,6 @@ namespace
 	snprintf (tbuf, sizeof (tbuf), db_value_printer::DECIMAL_FORMAT, precision, (value > 0 ? FLT_MAX : -FLT_MAX));
       }
     buf (tbuf);
-
-    return buf;
   }
 }//namespace
 
@@ -193,81 +189,81 @@ void db_value_printer::describe_value (const db_value *value)
 	case DB_TYPE_DATE:
 	  m_buf ("date '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 
 	case DB_TYPE_JSON:
 	  m_buf ("json '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 
 	case DB_TYPE_TIME:
 	  m_buf ("time '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_TIMETZ:
 	  m_buf ("timetz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_TIMELTZ:
 	  m_buf ("timeltz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_UTIME:
 	  m_buf ("timestamp '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_TIMESTAMPTZ:
 	  m_buf ("timestamptz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
 	  m_buf ("timestampltz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_DATETIME:
 	  m_buf ("datetime '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_DATETIMETZ:
 	  m_buf ("datetimetz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_DATETIMELTZ:
 	  m_buf ("datetimeltz '");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  m_buf ("N'");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  m_buf ("X'");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_BLOB:
 	  m_buf ("BLOB'");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	case DB_TYPE_CLOB:
 	  m_buf ("CLOB'");
 	  describe_data (value);
-	  m_buf ("'");
+	  m_buf += '\'';
 	  break;
 	default:
 	  describe_data (value);
@@ -288,7 +284,6 @@ void db_value_printer::describe_data (const db_value *value)
   char *src, *pos, *end;
   double d;
   char line[1025];
-  int length;
 
   if (DB_IS_NULL (value))
     {
@@ -338,28 +333,29 @@ void db_value_printer::describe_data (const db_value *value)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
       /* Copy string into buf providing for any embedded quotes. Strings may have embedded NULL characters and
-          * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
-          * character and the second byte of the multibyte character. */
+       * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
+       * character and the second byte of the multibyte character.
+       */
       src = db_get_string (value);
       end = src + db_get_string_size (value);
       while (src < end)
 	{
 	  /* Find the position of the next quote or the end of the string, whichever comes first.  This loop is
-	      * done in place of strchr in case the string has an embedded NULL. */
+	   * done in place of strchr in case the string has an embedded NULL.
+	   */
 	  for (pos = src; pos && pos < end && (*pos) != '\''; pos++)
 	    ;
 
 	  /* If pos < end, then a quote was found.  If so, copy the partial buffer and duplicate the quote */
 	  if (pos < end)
 	    {
-	      length = CAST_STRLEN (pos - src + 1);
-	      m_buf.add_bytes (length, src);
-	      m_buf ("'");
+	      m_buf.add_bytes (pos - src + 1, src);
+	      m_buf += '\'';
 	    }
 	  /* If not, copy the remaining part of the buffer */
 	  else
 	    {
-	      m_buf.add_bytes (CAST_STRLEN (end - src), src);
+	      m_buf.add_bytes (end - src, src);
 	    }
 
 	  /* advance src to just beyond the point where we left off */
@@ -388,7 +384,8 @@ void db_value_printer::describe_data (const db_value *value)
 #endif //#if defined(SERVER_MODE)
       break;
     /* If we are on the server, fall thru to the oid case The value is probably nonsense, but that is safe to do.
-     * This case should simply not occur. */
+     * This case should simply not occur.
+     */
 
     case DB_TYPE_OID:
       oid = (OID *) db_get_oid (value);
@@ -555,7 +552,7 @@ void db_value_printer::describe_midxkey (const db_midxkey *midxkey, int help_Max
 
   assert (midxkey != NULL);
 
-  m_buf ("{");
+  m_buf += '{';
   size = midxkey->ncolumns;
   if (help_Max_set_elements == 0 || help_Max_set_elements > size)
     {
@@ -585,7 +582,7 @@ void db_value_printer::describe_midxkey (const db_midxkey *midxkey, int help_Max
     {
       m_buf (". . .");
     }
-  m_buf ("}");
+  m_buf += '}';
 }
 
 //--------------------------------------------------------------------------------
@@ -596,7 +593,7 @@ void db_value_printer::describe_set (const db_collection *set, int help_Max_set_
 
   assert (set != NULL);
 
-  m_buf ("{");
+  m_buf += '{';
   size = set_size ((DB_COLLECTION *)set);
   if (help_Max_set_elements == 0 || help_Max_set_elements > size)
     {
@@ -621,5 +618,5 @@ void db_value_printer::describe_set (const db_collection *set, int help_Max_set_
     {
       m_buf (". . .");
     }
-  m_buf ("}");
+  m_buf += '}';
 }
