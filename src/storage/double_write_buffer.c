@@ -259,7 +259,7 @@ typedef struct flush_volume_info FLUSH_VOLUME_INFO;
 struct flush_volume_info
 {
   int vdes;			/* The volume descriptor. */
-  int num_pages;		/* The number of pages to flush in volume. */
+  volatile int num_pages;	/* The number of pages to flush in volume. */
   volatile bool all_pages_written;	/* True, if all pages written. */
   volatile FLUSH_VOLUME_STATUS flushed_status;	/* Flush status. */
 };
@@ -2530,9 +2530,8 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  if (((count_writes >= prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH)) || (can_flush_volume == true))
 	      && (thread_is_dwb_flush_block_helper_thread_available ()))
 	    {
-	      if (double_Write_Buffer.helper_flush_block == NULL)
+	      if (ATOMIC_CAS_ADDR (&double_Write_Buffer.helper_flush_block, (DWB_BLOCK *) NULL, block))
 		{
-		  double_Write_Buffer.helper_flush_block = block;
 		  thread_wakeup_dwb_flush_helper_block_thread ();
 		}
 
@@ -2549,10 +2548,13 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
     {
       current_flush_volume_info->all_pages_written = true;
 #if defined (SERVER_MODE)
-      if (double_Write_Buffer.helper_flush_block == NULL)
+      if ((double_Write_Buffer.helper_flush_block == NULL) && (current_flush_volume_info->num_pages > 0))
 	{
-	  double_Write_Buffer.helper_flush_block = block;
-	  thread_wakeup_dwb_flush_helper_block_thread ();
+	  /* If helper_flush_block is NULL, it means that the flush helper thread does not run and was not woken yet. */
+	  if (ATOMIC_CAS_ADDR (&double_Write_Buffer.helper_flush_block, (DWB_BLOCK *) NULL, block))
+	    {
+	      thread_wakeup_dwb_flush_helper_block_thread ();
+	    }
 	}
 #endif
     }
@@ -2705,9 +2707,10 @@ retry:
 					     false);
 		}
 	    }
-	  double_Write_Buffer.helper_flush_block = NULL;
+	  (void) ATOMIC_TAS_ADDR (&double_Write_Buffer.helper_flush_block, (DWB_BLOCK *) NULL);
 	}
     }
+  assert (double_Write_Buffer.helper_flush_block == NULL);
 
   if (update_flush_block_helper_stat)
     {
@@ -4115,7 +4118,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   bool is_perf_tracking = false;
 
 start:
-  block = double_Write_Buffer.helper_flush_block;
+  block = (DWB_BLOCK *) double_Write_Buffer.helper_flush_block;
   if (block != NULL)
     {
       is_perf_tracking = perfmon_is_perf_tracking ();
@@ -4219,7 +4222,7 @@ start:
 
       /* Be sure that the helper flush block was not changed by other thread. */
       assert (block == double_Write_Buffer.helper_flush_block);
-      double_Write_Buffer.helper_flush_block = NULL;
+      (void) ATOMIC_TAS_ADDR (&double_Write_Buffer.helper_flush_block, (DWB_BLOCK *) NULL);
 
       if (is_perf_tracking)
 	{
