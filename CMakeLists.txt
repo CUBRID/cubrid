@@ -125,10 +125,6 @@ set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-erro
 # gcrypt library sources URL
 set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.5.6.tar.bz2")
 
-# ncurses library git properties
-set(WITH_LIBNCURSES_GIT_REPOSITORY "https://github.com/mirror/ncurses.git")
-set(WITH_LIBNCURSES_GIT_TAG "v6.0")
-
 # rapidjson library git properties
 set(WITH_RAPIDJSON_GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git")
 set(WITH_RAPIDJSON_GIT_TAG "v1.1.0")
@@ -144,17 +140,7 @@ set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editlin
 set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: EXTERNAL)")
 set(WITH_LIBGPG_ERROR "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: EXTERNAL)")
 set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: EXTERNAL)")
-
-# NCURSES - gcc 4.7+ systems: EXTERNAL, Otherwise: SYSTEM
-if(UNIX)
-  if(CMAKE_COMPILER_IS_GNUCC)
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
-      set(WITH_LIBNCURSES   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with ncurses library (default: EXTERNAL)")
-    else(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
-      set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
-    endif(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.7)
-  endif(CMAKE_COMPILER_IS_GNUCC)
-endif(UNIX)
+set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
@@ -978,30 +964,10 @@ list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 
 # WITH_LIBNCURSES can have multiple values with different meanings
 # on Linux:
-# * "EXTERNAL" - (default) builds git ncurses library using ${WITH_LIBNCURSES_GIT_REPOSITORY} repository and uses the library created by the build
 # * "SYSTEM"   - uses ncurses installed in the system (for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html)
 set(LIBNCURSES_TARGET libncurses)
 if(UNIX)
-  if(WITH_LIBNCURSES STREQUAL "EXTERNAL")
-    externalproject_add(${LIBNCURSES_TARGET}
-      GIT_REPOSITORY    ${WITH_LIBNCURSES_GIT_REPOSITORY}
-      GIT_TAG           ${WITH_LIBNCURSES_GIT_TAG}
-      UPDATE_COMMAND    ""
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} "CPPFLAGS=${CPPFLAGS} -P -fPIC" --with-normal --without-debug --without-ada --with-cxx-binding --with-termlib=tinfo
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBNCURSES ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libncurses.a)
-    set(LIBTINFO ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libtinfo.a)
-
-    set(CURSES_FOUND TRUE)
-    set(CURSES_LIBRARIES ${LIBNCURSES};${LIBTINFO})
-    set(CURSES_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/include/ncurses)
-    set(CURSES_HAVE_CURSES_H ${CURSES_INCLUDE_DIR}/curses.h)
-    set(CURSES_HAVE_NCURSES_H ${CURSES_INCLUDE_DIR}/ncurses.h)
-
-    list(APPEND EP_TARGETS ${LIBNCURSES_TARGET})
-  elseif(WITH_LIBNCURSES STREQUAL "SYSTEM")
+  if(WITH_LIBNCURSES STREQUAL "SYSTEM")
     include(FindCurses)
     find_package(Curses REQUIRED)
     CHECK_LIBRARY_EXISTS("${CURSES_LIBRARIES}" wtimeout "" HAS_WTIMEOUT)
@@ -1019,7 +985,9 @@ if(UNIX)
     if (NOT HAS_TIMEOUT)
       message(FATAL_ERROR "ncurses library does not have wtimeout")
     endif (NOT HAS_TIMEOUT)
-  endif()
+  else(WITH_LIBNCURSES STREQUAL "SYSTEM")
+    message(FATAL_ERROR "Invalid WITH_LIBNCURSES option value ${WITH_LIBNCURSES}")
+  endif(WITH_LIBNCURSES STREQUAL "SYSTEM")
 endif(UNIX)
 
 # WITH_LIBEDIT can have multiple values with different meanings
