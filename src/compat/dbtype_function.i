@@ -24,15 +24,7 @@
 
 #include "dbtype_def.h"
 
-  typedef enum
-  {
-    SMALL_STRING,
-    MEDIUM_STRING,
-    LARGE_STRING
-  } STRING_STYLE;
-
-#if !defined (_DBTYPE_FUNCTION_H_) // todo: replace with !NO_INLINE_DBTYPE_FUNCTION
-
+#if !defined (_NO_INLINE_DBTYPE_FUNCTION_)
 // copied from porting.h
 #if defined (__GNUC__) && defined (NDEBUG)
 #define ALWAYS_INLINE always_inline

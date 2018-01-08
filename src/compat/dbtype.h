@@ -34,9 +34,15 @@
 #include "system_parameter.h"
 #include "dbdef.h"
 #include "error_manager.h"
-
 #include "system.h"
 #include "dbtype_def.h"
+
+typedef enum
+{
+  SMALL_STRING,
+  MEDIUM_STRING,
+  LARGE_STRING
+} STRING_STYLE;
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
@@ -262,6 +268,78 @@
 	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
 
 #define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
+
+  /* Macros from dbval.h */
+
+#define DB_NEED_CLEAR(v) \
+      ((!DB_IS_NULL(v) \
+	&& ((v)->need_clear == true \
+	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) \
+		 && (v)->data.ch.info.compressed_need_clear != 0))))
+
+#define DB_GET_COMPRESSED_STRING(v) \
+      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) \
+	? NULL : (v)->data.ch.medium.compressed_buf)
+
+
+#define DB_GET_STRING_PRECISION(v) \
+    ((v)->domain.char_info.length)
+
+#define DB_GET_ENUMERATION(v) \
+      ((v)->data.enumeration)
+#define DB_GET_ENUM_ELEM_SHORT(elem) \
+      ((elem)->short_val)
+#define DB_GET_ENUM_ELEM_DBCHAR(elem) \
+      ((elem)->str_val)
+#define DB_GET_ENUM_ELEM_STRING(elem) \
+      ((elem)->str_val.medium.buf)
+#define DB_GET_ENUM_ELEM_STRING_SIZE(elem) \
+      ((elem)->str_val.medium.size)
+
+#define DB_GET_ENUM_ELEM_CODESET(elem) \
+      ((elem)->str_val.info.codeset)
+
+#define DB_SET_ENUM_ELEM_CODESET(elem, cs) \
+      ((elem)->str_val.info.codeset = (cs))
+
+#define DB_SET_ENUM_ELEM_SHORT(elem, sv) \
+      ((elem)->short_val = (sv))
+#define DB_SET_ENUM_ELEM_STRING(elem, str) \
+      ((elem)->str_val.medium.buf = (str),  \
+       (elem)->str_val.info.style = MEDIUM_STRING)
+#define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
+      ((elem)->str_val.medium.size = (sz))
+
+#define DB_PULL_SEQUENCE(v) db_get_set(v)
+
+#define DB_GET_STRING_SAFE(v) \
+      ((DB_IS_NULL (v) \
+	|| DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? "" \
+       : ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
+	  (v)->data.ch.medium.buf))
+
+#define DB_GET_NUMERIC_PRECISION(val) \
+    ((val)->domain.numeric_info.precision)
+
+#define DB_GET_NUMERIC_SCALE(val) \
+    ((val)->domain.numeric_info.scale)
+
+#define DB_GET_STRING_PRECISION(v) \
+    ((v)->domain.char_info.length)
+
+#define DB_GET_BIT_PRECISION(v) \
+    ((v)->domain.char_info.length)
+
+#define DB_GET_JSON_SCHEMA(v) \
+	((v)->data.json.schema_raw)
+
+#define db_get_json_schema(v) DB_GET_JSON_SCHEMA(v)
+#define DB_GET_JSON_RAW_BODY(v) db_get_json_raw_body(v)
 
 #ifdef __cplusplus
 extern "C"
