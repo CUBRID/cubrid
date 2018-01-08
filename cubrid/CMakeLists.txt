@@ -26,7 +26,6 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_json.cpp
-  ${COMPAT_DIR}/dbtype_function.c
   )
 
 set(COMPAT_HEADERS

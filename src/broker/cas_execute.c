@@ -69,7 +69,6 @@
 #include "schema_manager.h"
 
 #include "dbi.h"
-
 #include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)

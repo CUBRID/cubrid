@@ -5072,3 +5072,39 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
 
   return NO_ERROR;
 }
+
+bool
+db_is_json_value_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NULL:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_JSON:
+    case DB_TYPE_NUMERIC:
+      return true;
+    default:
+      return false;
+    }
+}
+
+bool
+db_is_json_doc_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_JSON:
+      return true;
+    default:
+      return false;
+    }
+}

@@ -24,15 +24,156 @@
 
 #include "dbtype_def.h"
 
-#if !defined (_DBTYPE_FUNCTION_H_)
-#if defined (__cplusplus) || defined (__GNUC__)
-#define DB_MACRO_INLINE static inline
-#elif _MSC_VER >= 1000
-#define DB_MACRO_INLINE __forceinline static
-#endif
+  typedef enum
+  {
+    SMALL_STRING,
+    MEDIUM_STRING,
+    LARGE_STRING
+  } STRING_STYLE;
+
+#if !defined (_DBTYPE_FUNCTION_H_) // todo: replace with !NO_INLINE_DBTYPE_FUNCTION
+
+// copied from porting.h
+#if defined (__GNUC__) && defined (NDEBUG)
+#define ALWAYS_INLINE always_inline
 #else
-#define DB_MACRO_INLINE
+#define ALWAYS_INLINE
 #endif
+
+#if defined (__cplusplus) || defined (__GNUC__)
+#define STATIC_INLINE static inline
+#define INLINE inline
+#elif _MSC_VER >= 1000
+#define STATIC_INLINE __forceinline static
+#define INLINE __forceinline
+#else
+/* TODO: we have several cases of using INLINE/STATIC_INLINE and adding function definition in headers. This won't
+ * work. */
+#define STATIC_INLINE static
+#define INLINE
+#endif
+// end of porting.h copy
+
+  STATIC_INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_COLLECTION *db_get_set (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_POINTER db_get_pointer (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_TIME *db_get_time (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_TIMETZ *db_get_timetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_DATETIME *db_get_datetime (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_DATETIMETZ *db_get_datetimetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_DATE *db_get_date (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_MONETARY *db_get_monetary (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_get_error (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_ELO *db_get_elo (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_NUMERIC db_get_numeric (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_BIT db_get_bit (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_C_CHAR db_get_method_error_msg (void) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_get_string_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_get_string_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_get_enum_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_get_enum_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE OID *db_get_oid (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_TYPE db_value_type (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_value_precision (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_value_scale (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE JSON_DOC *db_get_json_document (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE char *db_get_json_raw_body (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+
+  STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
+				     const int size) __attribute__ ((ALWAYS_INLINE));
+
+  STATIC_INLINE int db_make_null (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_int (DB_VALUE * value, const int num) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_float (DB_VALUE * value, const DB_C_FLOAT num) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_object (DB_VALUE * value, DB_C_OBJECT * obj) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_error (DB_VALUE * value, const int errcode) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str,
+				 const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
+				    const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
+				  const int char_str_byte_size, const int codeset, const int collation_id)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+				     const int char_str_byte_size, const int codeset, const int collation_id)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
+				   const int nchar_str_byte_size, const int codeset, const int collation_id)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+				      const int nchar_str_byte_size, const int codeset, const int collation_id)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
+					 unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
+
+  STATIC_INLINE int db_make_string (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_string_copy (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
+
+  STATIC_INLINE int db_make_oid (DB_VALUE * value, const OID * oid) __attribute__ ((ALWAYS_INLINE));
+
+  STATIC_INLINE int db_make_set (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_multiset (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_sequence (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_collection (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
+
+  STATIC_INLINE int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo) __attribute__ ((ALWAYS_INLINE));
+
+  STATIC_INLINE int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second)
+    __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int db_make_date (DB_VALUE * value, const int month, const int day, const int year)
+    __attribute__ ((ALWAYS_INLINE));
+
+  STATIC_INLINE int db_make_json (DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool need_clear)
+    __attribute__ ((ALWAYS_INLINE));
+
+  STATIC_INLINE int db_get_compressed_size (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
+					       int compressed_size, bool compressed_need_clear)
+    __attribute__ ((ALWAYS_INLINE));
+
+  STATIC_INLINE bool db_value_is_null (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE DB_TYPE db_value_domain_type (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+#endif // !NO_INLINE_DBTYPE_FUNCTION
 
 #include <assert.h>
 
@@ -41,7 +182,7 @@
  * return :
  * value(in):
  */
-DB_MACRO_INLINE int
+int
 db_get_int (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -57,7 +198,7 @@ db_get_int (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE short
+short
 db_get_short (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -73,7 +214,7 @@ db_get_short (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_BIGINT
+DB_BIGINT
 db_get_bigint (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -89,7 +230,7 @@ db_get_bigint (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE char *
+char *
 db_get_string (const DB_VALUE * value)
 {
   char *str = NULL;
@@ -123,7 +264,7 @@ db_get_string (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE float
+float
 db_get_float (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -139,7 +280,7 @@ db_get_float (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE double
+double
 db_get_double (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -155,7 +296,7 @@ db_get_double (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_OBJECT *
+DB_OBJECT *
 db_get_object (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -176,7 +317,7 @@ db_get_object (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_SET *
+DB_SET *
 db_get_set (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -197,7 +338,7 @@ db_get_set (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_MIDXKEY *
+DB_MIDXKEY *
 db_get_midxkey (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -218,7 +359,7 @@ db_get_midxkey (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE void *
+void *
 db_get_pointer (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -239,7 +380,7 @@ db_get_pointer (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_TIME *
+DB_TIME *
 db_get_time (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -247,7 +388,8 @@ db_get_time (const DB_VALUE * value)
 #endif
   assert (value->domain.general_info.type == DB_TYPE_TIME || value->domain.general_info.type == DB_TYPE_TIMELTZ);
 
-  return ((DB_TIME *) (&value->data.time));
+  // todo: Assess how to better handle const types, here we should return explicit values, not pointers. Same for below.
+  return (DB_TIME *) (&value->data.time);
 }
 
 /*
@@ -255,7 +397,7 @@ db_get_time (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_TIMETZ *
+DB_TIMETZ *
 db_get_timetz (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -272,7 +414,7 @@ db_get_timetz (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_TIMESTAMP *
+DB_TIMESTAMP *
 db_get_timestamp (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -289,7 +431,7 @@ db_get_timestamp (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_TIMESTAMPTZ *
+DB_TIMESTAMPTZ *
 db_get_timestamptz (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -305,7 +447,7 @@ db_get_timestamptz (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_DATETIME *
+DB_DATETIME *
 db_get_datetime (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -322,7 +464,7 @@ db_get_datetime (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_DATETIMETZ *
+DB_DATETIMETZ *
 db_get_datetimetz (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -338,7 +480,7 @@ db_get_datetimetz (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_DATE *
+DB_DATE *
 db_get_date (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -354,7 +496,7 @@ db_get_date (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_MONETARY *
+DB_MONETARY *
 db_get_monetary (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -370,7 +512,7 @@ db_get_monetary (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE int
+int
 db_get_error (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -386,7 +528,7 @@ db_get_error (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_ELO *
+DB_ELO *
 db_get_elo (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -402,7 +544,7 @@ db_get_elo (const DB_VALUE * value)
     }
   else
     {
-      return (DB_ELO *) (&value->data.elo);
+      return ((DB_ELO *) (&value->data.elo));
     }
 }
 
@@ -411,7 +553,7 @@ db_get_elo (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_C_NUMERIC
+DB_C_NUMERIC
 db_get_numeric (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -424,7 +566,7 @@ db_get_numeric (const DB_VALUE * value)
     }
   else
     {
-      return (DB_C_NUMERIC) value->data.num.d.buf;
+      return (DB_C_NUMERIC) (value->data.num.d.buf);
     }
 }
 
@@ -434,7 +576,7 @@ db_get_numeric (const DB_VALUE * value)
  * value(in):
  * length(out):
  */
-DB_MACRO_INLINE char *
+char *
 db_get_bit (const DB_VALUE * value, int *length)
 {
   char *str = NULL;
@@ -479,7 +621,7 @@ db_get_bit (const DB_VALUE * value, int *length)
  * value(in):
  * length(out):
  */
-DB_MACRO_INLINE char *
+char *
 db_get_char (const DB_VALUE * value, int *length)
 {
   char *str = NULL;
@@ -526,7 +668,7 @@ db_get_char (const DB_VALUE * value, int *length)
  * value(in):
  * length(out):
  */
-DB_MACRO_INLINE char *
+char *
 db_get_nchar (const DB_VALUE * value, int *length)
 {
   return db_get_char (value, length);
@@ -537,7 +679,7 @@ db_get_nchar (const DB_VALUE * value, int *length)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE int
+int
 db_get_string_size (const DB_VALUE * value)
 {
   int size = 0;
@@ -572,7 +714,7 @@ db_get_string_size (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE unsigned short
+unsigned short
 db_get_enum_short (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -588,7 +730,7 @@ db_get_enum_short (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE char *
+char *
 db_get_enum_string (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -606,7 +748,7 @@ db_get_enum_string (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE int
+int
 db_get_enum_string_size (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -621,7 +763,7 @@ db_get_enum_string_size (const DB_VALUE * value)
  * db_get_method_error_msg() -
  * return :
  */
-DB_MACRO_INLINE char *
+char *
 db_get_method_error_msg (void)
 {
 #if !defined(SERVER_MODE)
@@ -636,7 +778,7 @@ db_get_method_error_msg (void)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE DB_RESULTSET
+DB_RESULTSET
 db_get_resultset (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -652,7 +794,7 @@ db_get_resultset (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE int
+int
 db_get_string_codeset (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -667,7 +809,7 @@ db_get_string_codeset (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE int
+int
 db_get_string_collation (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -681,7 +823,7 @@ db_get_string_collation (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE int
+int
 db_get_enum_codeset (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -696,7 +838,7 @@ db_get_enum_codeset (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE int
+int
 db_get_enum_collation (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -711,7 +853,7 @@ db_get_enum_collation (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_MACRO_INLINE OID *
+OID *
 db_get_oid (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -719,7 +861,7 @@ db_get_oid (const DB_VALUE * value)
 #endif
   assert (value->domain.general_info.type == DB_TYPE_OID);
 
-  return (OID *) (&value->data.oid);
+  return ((OID *) (&value->data.oid));
 }
 
 /*
@@ -727,11 +869,18 @@ db_get_oid (const DB_VALUE * value)
  * return     : DB_TYPE of value's domain or DB_TYPE_NULL
  * value(in)  : Pointer to a DB_VALUE
  */
-DB_MACRO_INLINE DB_TYPE
+DB_TYPE
 db_value_type (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
   CHECK_1ARG_UNKNOWN (value);
+#else
+	if (value == NULL)
+	{
+		// todo: Should this ever happen?
+		assert(false);
+		return DB_TYPE_NULL;
+	}
 #endif
   if (value->domain.general_info.is_null)
     {
@@ -748,11 +897,18 @@ db_value_type (const DB_VALUE * value)
  * return     : precision of given value.
  * value(in)  : Pointer to a DB_VALUE.
  */
-DB_MACRO_INLINE int
+int
 db_value_precision (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
   CHECK_1ARG_ZERO (value);
+#else
+	if (value == NULL)
+		{
+			// todo : Should this ever happen?
+			assert(false);
+			return 0;
+		}
 #endif
   switch (value->domain.general_info.type)
     {
@@ -801,11 +957,18 @@ db_value_precision (const DB_VALUE * value)
  * return     : scale of given value.
  * value(in)  : Pointer to a DB_VALUE.
  */
-DB_MACRO_INLINE int
+int
 db_value_scale (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
   CHECK_1ARG_ZERO (value);
+#else
+	if (value == NULL)
+	{
+		// todo: Should this ever happen?
+		assert(false);
+		return 0;
+	}
 #endif
 
   if (value->domain.general_info.type == DB_TYPE_NUMERIC
@@ -821,7 +984,7 @@ db_value_scale (const DB_VALUE * value)
     }
 }
 
-DB_MACRO_INLINE JSON_DOC *
+JSON_DOC *
 db_get_json_document (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -831,6 +994,16 @@ db_get_json_document (const DB_VALUE * value)
   assert (value->domain.general_info.type == DB_TYPE_JSON);
 
   return value->data.json.document;
+}
+
+char *
+db_get_json_raw_body(const DB_VALUE * value)
+{
+#if defined(API_ACTIVE_CHECKS)
+	CHECK_1ARG_ZERO(value);
+#endif
+
+	return value->data.json.json_body;
 }
 
 /***********************************************************/
@@ -845,7 +1018,7 @@ db_get_json_document (const DB_VALUE * value)
  * str(in):
  * size(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -874,7 +1047,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
  * return :
  * value(out) :
  */
-DB_MACRO_INLINE int
+int
 db_make_null (DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -893,7 +1066,7 @@ db_make_null (DB_VALUE * value)
  * value(out) :
  * num(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_int (DB_VALUE * value, const int num)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -913,7 +1086,7 @@ db_make_int (DB_VALUE * value, const int num)
  * value(out) :
  * num(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_float (DB_VALUE * value, const float num)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -933,7 +1106,7 @@ db_make_float (DB_VALUE * value, const float num)
  * value(out) :
  * num(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_double (DB_VALUE * value, const double num)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -953,7 +1126,7 @@ db_make_double (DB_VALUE * value, const double num)
  * value(out) :
  * obj(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_object (DB_VALUE * value, DB_OBJECT * obj)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -981,7 +1154,7 @@ db_make_object (DB_VALUE * value, DB_OBJECT * obj)
  * value(out) :
  * midxkey(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
 {
   int error = NO_ERROR;
@@ -1019,7 +1192,7 @@ db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
  * min(in):
  * sec(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1049,7 +1222,7 @@ db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value)
  * min(in):
  * sec(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1076,7 +1249,7 @@ db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value)
  * value(out):
  * timeval(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_timestamp (DB_VALUE * value, const DB_TIMESTAMP timeval)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1096,7 +1269,7 @@ db_make_timestamp (DB_VALUE * value, const DB_TIMESTAMP timeval)
  * value(out):
  * timeval(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_timestampltz (DB_VALUE * value, const DB_TIMESTAMP ts_val)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1116,7 +1289,7 @@ db_make_timestampltz (DB_VALUE * value, const DB_TIMESTAMP ts_val)
  * value(out):
  * timeval(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_timestamptz (DB_VALUE * value, const DB_TIMESTAMPTZ * ts_tz_val)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1143,7 +1316,7 @@ db_make_timestamptz (DB_VALUE * value, const DB_TIMESTAMPTZ * ts_tz_val)
  * value(out):
  * date(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1170,7 +1343,7 @@ db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime)
  * value(out):
  * date(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1197,7 +1370,7 @@ db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime)
  * value(out):
  * date(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1225,7 +1398,7 @@ db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz)
  * type(in):
  * amount(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount)
 {
 
@@ -1289,7 +1462,7 @@ db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount)
  * value(out) :
  * ptr(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_pointer (DB_VALUE * value, void *ptr)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1316,7 +1489,7 @@ db_make_pointer (DB_VALUE * value, void *ptr)
  * value(out):
  * errcode(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_error (DB_VALUE * value, const int errcode)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1339,7 +1512,7 @@ db_make_error (DB_VALUE * value, const int errcode)
  * errcode(in):
  * errmsg(in);
  */
-DB_MACRO_INLINE int
+int
 db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1371,7 +1544,7 @@ db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg)
  * value(out) :
  * num(in) :
  */
-DB_MACRO_INLINE int
+int
 db_make_short (DB_VALUE * value, const short num)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1391,7 +1564,7 @@ db_make_short (DB_VALUE * value, const short num)
  * value(out) :
  * num(in) :
  */
-DB_MACRO_INLINE int
+int
 db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1413,7 +1586,7 @@ db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
  * precision(in):
  * scale(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
 {
   int error = NO_ERROR;
@@ -1446,7 +1619,7 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
  * bit_str(in):
  * bit_str_bit_size(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size)
 {
   int error;
@@ -1471,7 +1644,7 @@ db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, con
  * bit_str(in):
  * bit_str_bit_size(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size)
 {
   int error;
@@ -1497,7 +1670,7 @@ db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_s
  * str(in):
  * char_str_byte_size(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
 	      const int char_str_byte_size, const int codeset, const int collation_id)
 {
@@ -1522,7 +1695,7 @@ db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
  * str(in):
  * char_str_byte_size(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_varchar (DB_VALUE * value, const int max_char_length,
 		 const DB_C_CHAR str, const int char_str_byte_size, const int codeset, const int collation_id)
 {
@@ -1547,7 +1720,7 @@ db_make_varchar (DB_VALUE * value, const int max_char_length,
  * str(in):
  * nchar_str_byte_size(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
 	       const int nchar_str_byte_size, const int codeset, const int collation_id)
 {
@@ -1572,7 +1745,7 @@ db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
  * str(in):
  * nchar_str_byte_size(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_varnchar (DB_VALUE * value, const int max_nchar_length,
 		  const DB_C_NCHAR str, const int nchar_str_byte_size, const int codeset, const int collation_id)
 {
@@ -1599,7 +1772,7 @@ db_make_varnchar (DB_VALUE * value, const int max_nchar_length,
  * codeset(in):
  * collation_id(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str,
 		     int size, unsigned char codeset, const int collation_id)
 {
@@ -1629,7 +1802,7 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str,
  * value(out):
  * handle(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1649,7 +1822,7 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
  * value(out):
  * oid(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_oid (DB_VALUE * value, const OID * oid)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1671,7 +1844,7 @@ db_make_oid (DB_VALUE * value, const OID * oid)
  * value(out) :
  * str(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_string (DB_VALUE * value, const char *str)
 {
   int error;
@@ -1702,7 +1875,7 @@ db_make_string (DB_VALUE * value, const char *str)
  * value(out) :
  * str(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_string_copy (DB_VALUE * value, const char *str)
 {
   int error;
@@ -1725,7 +1898,7 @@ db_make_string_copy (DB_VALUE * value, const char *str)
  * value(out) :
  * set(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_set (DB_VALUE * value, DB_SET * set)
 {
   int error = NO_ERROR;
@@ -1762,7 +1935,7 @@ db_make_set (DB_VALUE * value, DB_SET * set)
  * value(out) :
  * set(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_multiset (DB_VALUE * value, DB_SET * set)
 {
   int error = NO_ERROR;
@@ -1799,7 +1972,7 @@ db_make_multiset (DB_VALUE * value, DB_SET * set)
  * value(out) :
  * set(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_sequence (DB_VALUE * value, DB_SET * set)
 {
   int error = NO_ERROR;
@@ -1836,7 +2009,7 @@ db_make_sequence (DB_VALUE * value, DB_SET * set)
  * value(out) :
  * col(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_collection (DB_VALUE * value, DB_COLLECTION * col)
 {
   int error = NO_ERROR;
@@ -1872,7 +2045,7 @@ db_make_collection (DB_VALUE * value, DB_COLLECTION * col)
  * type(in):
  * elo(in):`
  */
-DB_MACRO_INLINE int
+int
 db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1902,7 +2075,7 @@ db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo)
  * min(in):
  * sec(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_time (DB_VALUE * value, const int hour, const int min, const int sec)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1922,7 +2095,7 @@ db_make_time (DB_VALUE * value, const int hour, const int min, const int sec)
  * day(in):
  * year(in):
  */
-DB_MACRO_INLINE int
+int
 db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -1934,7 +2107,31 @@ db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
   return db_date_encode (&value->data.date, mon, day, year);
 }
 
-DB_MACRO_INLINE int
+int
+db_make_json(DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool need_clear)
+{
+#if defined(API_ACTIVE_CHECKS)
+	CHECK_1ARG_ERROR (value);
+#else
+	if (value == NULL)
+		{
+			/* todo: Should this happen? */
+			assert(false);
+			return ER_FAILED;
+		}
+#endif
+	
+	value->domain.general_info.type = DB_TYPE_JSON;
+	value->domain.general_info.is_null = 0;
+	value->data.json.json_body = json_body;
+	value->data.json.document = json_document;
+	value->data.json.schema_raw = NULL;
+	value->need_clear = need_clear;
+	
+	return NO_ERROR;
+}
+
+int
 db_get_compressed_size (DB_VALUE * value)
 {
   DB_TYPE type;
@@ -1960,7 +2157,7 @@ db_get_compressed_size (DB_VALUE * value)
 *  compressed_size(in)       :
 *  compressed_need_clear(in) :
 */
-DB_MACRO_INLINE void
+void
 db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size, bool compressed_need_clear)
 {
   DB_TYPE type;
@@ -1986,7 +2183,7 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
 * return :
 * value(in) :
 */
-DB_MACRO_INLINE bool
+bool
 db_value_is_null (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
@@ -2004,51 +2201,20 @@ db_value_is_null (const DB_VALUE * value)
 * return     : DB_TYPE of value's domain
 * value(in)  : Pointer to a DB_VALUE
 */
-DB_MACRO_INLINE DB_TYPE
+DB_TYPE
 db_value_domain_type (const DB_VALUE * value)
 {
 #if defined(API_ACTIVE_CHECKS)
   CHECK_1ARG_UNKNOWN (value);
+#else
+
+	if (value == NULL)
+		{
+			// todo: does this ever happen?
+			assert(false);
+			return DB_TYPE_UNKNOWN;
+		}
 #endif
-  if (value == NULL)
-    return DB_TYPE_UNKNOWN;
 
   return (DB_TYPE) value->domain.general_info.type;
-
-}
-
-DB_MACRO_INLINE bool
-db_is_json_value_type (DB_TYPE type)
-{
-  switch (type)
-    {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_NULL:
-    case DB_TYPE_INTEGER:
-    case DB_TYPE_DOUBLE:
-    case DB_TYPE_JSON:
-    case DB_TYPE_NUMERIC:
-      return true;
-    default:
-      return false;
-    }
-}
-
-DB_MACRO_INLINE bool
-db_is_json_doc_type (DB_TYPE type)
-{
-  switch (type)
-    {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_JSON:
-      return true;
-    default:
-      return false;
-    }
 }

@@ -54,7 +54,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
   ${COMPAT_DIR}/db_json.cpp
-  #${COMPAT_DIR}/dbtype_function.c 
+  ${COMPAT_DIR}/dbtype_function.c 
   )
 
 set(COMPAT_SOURCES_C

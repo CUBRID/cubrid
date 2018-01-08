@@ -162,8 +162,8 @@ extern char db_Program_name[];
     error = NO_ERROR;                                                        \
   }
 #endif /* !SA_MODE */
-#endif	/* CHECK_MODIFICATION_NO_RETURN */								   /********************************************************/
-  /* Argument checking macros from db.h */
+#endif /* CHECK_MODIFICATION_NO_RETURN */
+
 #define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
   do {                                                                         \
     if((obj) == NULL) {                                                        \
@@ -229,8 +229,6 @@ extern char db_Program_name[];
 
 #define CHECK_1ARG_UNKNOWN(obj1)        \
   CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
-
-  /********************************************************/
 
 extern int db_init (const char *program, int print_version, const char *dbname, const char *db_path,
 		    const char *vol_path, const char *log_path, const char *lob_path, const char *host_name,

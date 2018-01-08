@@ -537,13 +537,6 @@ extern "C"
 #define DB_ROW_COUNT_NOT_SET			-2
 
   /******************************************/
-  typedef enum
-  {
-    SMALL_STRING,
-    MEDIUM_STRING,
-    LARGE_STRING
-  } STRING_STYLE;
-
   /*
    * DB_MAX_IDENTIFIER_LENGTH -
    * This constant defines the maximum length of an identifier
@@ -1418,6 +1411,11 @@ extern "C"
   /********************************************************/
   /* From object_representation.h */
 
+  /*    TODO: remove all db_set engine aliases such as db_set/DB_SET or db_collation/DB_COLLATION
+   *    and keep only one.
+   */
+
+
   /*
    * SETOBJ
    *    This is the primitive set object header.
@@ -1484,7 +1482,7 @@ extern "C"
 
   extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
-/* Macros from dbval.h */
+  /* Macros from dbval.h */
 
 #define DB_NEED_CLEAR(v) \
       ((!DB_IS_NULL(v) \
@@ -1550,23 +1548,11 @@ extern "C"
 #define DB_GET_BIT_PRECISION(v) \
     ((v)->domain.char_info.length)
 
-/* From merge */
 #define DB_GET_JSON_SCHEMA(v) \
-      ((v)->data.json.schema_raw)
-#define DB_GET_JSON_RAW_BODY(v) \
-      ((v)->data.json.json_body)
+	((v)->data.json.schema_raw)
 
 #define db_get_json_schema(v) DB_GET_JSON_SCHEMA(v)
-#define db_get_json_raw_body(v) DB_GET_JSON_RAW_BODY(v)
-
-#define db_make_json(v, j, d, cl) \
-    ((v)->domain.general_info.type = DB_TYPE_JSON, \
-     (v)->data.json.json_body = (j), \
-     (v)->data.json.document = (d), \
-     (v)->domain.general_info.is_null = 0, \
-     (v)->need_clear = (cl), \
-     (v)->data.json.schema_raw = NULL, \
-     NO_ERROR)
+#define DB_GET_JSON_RAW_BODY(v) db_get_json_raw_body(v)
 
 #ifdef __cplusplus
 }
