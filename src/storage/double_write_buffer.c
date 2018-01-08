@@ -4112,7 +4112,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   DWB_BLOCK *block;
   bool found;
   FLUSH_VOLUME_STATUS flushed_status;
-  TSC_TICKS start_tick, start_tick2, end_tick;
+  TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 oldest_time;
   bool is_perf_tracking = false;
@@ -4125,7 +4125,6 @@ start:
       if (is_perf_tracking)
 	{
 	  tsc_getticks (&start_tick);
-	  start_tick2 = start_tick;
 	}
 
       found = false;
@@ -4170,36 +4169,6 @@ start:
 		  /* Not enough pages, check the other volumes and retry. */
 		  found = true;
 		  break;
-		}
-	      else if (block->flush_volumes_info[i].all_pages_written == false)
-		{
-		  if (is_perf_tracking)
-		    {
-		      tsc_getticks (&end_tick);
-		      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick2);
-		      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-		      if (oldest_time > 0)
-			{
-			  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_HELPER_BIG_VOLUME_CHANGES_TIME_COUNTERS,
-					    oldest_time);
-			}
-		      start_tick2 = end_tick;
-		    }
-		}
-	      else
-		{
-		  if (is_perf_tracking)
-		    {
-		      tsc_getticks (&end_tick);
-		      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick2);
-		      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-		      if (oldest_time > 0)
-			{
-			  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_HELPER_SMALL_VOLUME_CHANGES_TIME_COUNTERS,
-					    oldest_time);
-			}
-		      start_tick2 = end_tick;
-		    }
 		}
 
 	      /* Reset the number of pages in volume. */
