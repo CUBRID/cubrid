@@ -4108,7 +4108,7 @@ int
 dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 {
   unsigned int i;
-  int num_pages, num_pages2, iter;
+  int num_pages, num_pages2, iter, num_pages_to_sync;
   DWB_BLOCK *block;
   bool found;
   FLUSH_VOLUME_STATUS flushed_status;
@@ -4116,8 +4116,10 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   TSCTIMEVAL tv_diff;
   UINT64 oldest_time;
   bool is_perf_tracking = false;
+  FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
 
 start:
+  num_pages_to_sync = prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH);
   block = (DWB_BLOCK *) double_Write_Buffer.helper_flush_block;
   if (block != NULL)
     {
@@ -4130,13 +4132,14 @@ start:
       found = false;
       for (i = 0; i < block->count_flush_volumes_info; i++)
 	{
+	  current_flush_volume_info = &block->flush_volumes_info[i];
 	  iter = 0;
 	  do
 	    {
 	      if (iter == 0)
 		{
 		try_again:
-		  flushed_status = block->flush_volumes_info[i].flushed_status;
+		  flushed_status = current_flush_volume_info->flushed_status;
 		  if (flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD)
 		    {
 		      /* Flushed by other thread. */
@@ -4144,9 +4147,8 @@ start:
 		    }
 		  else if (flushed_status == VOLUME_NOT_FLUSHED)
 		    {
-		      if (!ATOMIC_CAS_32
-			  (&block->flush_volumes_info[i].flushed_status, VOLUME_NOT_FLUSHED,
-			   VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD))
+		      if (!ATOMIC_CAS_32 (&current_flush_volume_info->flushed_status, VOLUME_NOT_FLUSHED,
+					  VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD))
 			{
 			  /* Try again. */
 			  goto try_again;
@@ -4155,16 +4157,16 @@ start:
 		}
 
 	      /* I'm the flusher of the volume. */
-	      assert_release (block->flush_volumes_info[i].flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD);
-	      num_pages = ATOMIC_INC_32 (&block->flush_volumes_info[i].num_pages, 0);
+	      assert_release (current_flush_volume_info->flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD);
+	      num_pages = ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0);
 	      if (num_pages == 0)
 		{
 		  /* This volume is already flushed. */
 		  break;
 		}
 
-	      if ((num_pages < prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
-		  && (block->flush_volumes_info[i].all_pages_written == false))
+	      if ((num_pages < num_pages_to_sync) && (iter == 0)
+		  && (current_flush_volume_info->all_pages_written == false))
 		{
 		  /* Not enough pages, check the other volumes and retry. */
 		  found = true;
@@ -4172,11 +4174,11 @@ start:
 		}
 
 	      /* Reset the number of pages in volume. */
-	      num_pages2 = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
+	      num_pages2 = ATOMIC_TAS_32 (&current_flush_volume_info->num_pages, 0);
 	      assert_release (num_pages2 >= num_pages);
 
 	      /* Flush the volume. */
-	      (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, false);
+	      (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, false);
 	      found = true;
 	      iter++;
 	    }
