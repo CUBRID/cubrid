@@ -1204,6 +1204,7 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
 
   doc_type = db_json_get_type_of_value (doc);
   val_type = db_json_get_type_of_value (value);
+  result = false;
 
   if (doc_type == val_type)
     {
@@ -1223,7 +1224,7 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
 	{
 	  for (JSON_VALUE::ConstValueIterator itr_val = value->Begin (); itr_val != value->End (); ++itr_val)
 	    {
-	      bool res;
+	      bool res = false;
 
 	      result = false;
 	      for (JSON_VALUE::ConstValueIterator itr_doc = doc->Begin (); itr_doc != doc->End (); ++itr_doc)
