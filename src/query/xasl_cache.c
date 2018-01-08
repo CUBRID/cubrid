@@ -789,8 +789,8 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
       if (*rt_check)
 	{
 	  /* We need to recompile. */
-          /* first, mark as deleted, actual delete will occur at xcache_unfix by last unfixer */
-          xcache_entry_mark_deleted (thread_p, *xcache_entry);
+	  /* first, mark as deleted, actual delete will occur at xcache_unfix by last unfixer */
+	  xcache_entry_mark_deleted (thread_p, *xcache_entry);
 	  xcache_unfix (thread_p, *xcache_entry);
 	  *xcache_entry = NULL;
 
