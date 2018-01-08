@@ -1568,6 +1568,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_ENUMERATION:
+    case DB_TYPE_JSON:
       retval = tp_domain_construct (domain_type, (DB_OBJECT *) 0, 0, 0, (TP_DOMAIN *) 0);
       break;
 
@@ -1602,10 +1603,6 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_ELO:
       /* obsolete. */
       assert (false);
-      break;
-
-    case DB_TYPE_JSON:
-      retval = &tp_Json_domain;
       break;
     }
 
