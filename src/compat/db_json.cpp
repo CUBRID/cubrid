@@ -1204,7 +1204,7 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
 
   doc_type = db_json_get_type_of_value (doc);
   val_type = db_json_get_type_of_value (value);
-  result = false;
+  result = true;
 
   if (doc_type == val_type)
     {
