@@ -37,13 +37,6 @@
 #include "system.h"
 #include "dbtype_def.h"
 
-typedef enum
-{
-  SMALL_STRING,
-  MEDIUM_STRING,
-  LARGE_STRING
-} STRING_STYLE;
-
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 #define db_set db_collection

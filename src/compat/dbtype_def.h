@@ -61,6 +61,13 @@ extern "C"
   typedef void JSON_VALIDATOR;
 #endif
 
+  typedef enum
+  {
+    SMALL_STRING,
+    MEDIUM_STRING,
+    LARGE_STRING
+  } STRING_STYLE;
+
   /******************************************/
   /* From cubrid_api.h */
   typedef enum
