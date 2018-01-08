@@ -427,10 +427,6 @@ hb_type_to_str (HB_PROC_TYPE type)
     {
       return "applylogdb";
     }
-  else if (type == HB_PTYPE_PREFETCHLOGDB)
-    {
-      return "prefetchlogdb";
-    }
   else
     {
       return "";
@@ -547,10 +543,6 @@ hb_pack_server_name (const char *server_name, int *name_length, const char *log_
       else if (type == HB_PTYPE_APPLYLOGDB)
 	{
 	  packed_name[0] = '%';
-	}
-      else if (type == HB_PTYPE_PREFETCHLOGDB)
-	{
-	  packed_name[0] = '_';
 	}
       else
 	{

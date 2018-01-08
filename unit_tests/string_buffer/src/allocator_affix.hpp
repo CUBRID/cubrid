@@ -22,15 +22,12 @@
  * use Prefix & Suffix for human readable text to ease memory reading: "type=MyClass"..."end of type=MyClass"
  * use Prefix & Suffix to store information & statistics (creation timestamp, source code file & line, access count...)
  */
-#ifndef _ALLOCATOR_AFFIX_HPP_
+#if !defined(_ALLOCATOR_AFFIX_HPP_)
 #define _ALLOCATOR_AFFIX_HPP_
 
-#include "allocator_block.hpp"
+#include "mem_block.hpp"
 #include <new>
-
-#if defined (LINUX)
-#include <stddef.h> //size_t on Linux
-#endif /* LUNUX */
+#include <stddef.h>
 
 namespace allocator
 {
@@ -47,9 +44,9 @@ namespace allocator
       {
       }
 
-      block allocate (size_t size)
+      mem::block allocate (size_t size)
       {
-	block b = m_a.allocate (m_prefix_len + size + m_suffix_len);
+	mem::block b = m_a.allocate (m_prefix_len + size + m_suffix_len);
 	if (!b.is_valid ())
 	  return {0, 0};
 	new (b.ptr) Prefix;                       //placement new to initialize Prefix memory
@@ -57,14 +54,14 @@ namespace allocator
 	return {size, b.ptr + m_prefix_len};
       }
 
-      void deallocate (block b)
+      void deallocate (mem::block b)
       {
 	//check if Prefix & Suffix are unchanged!
 	//...
-	_a.deallocate ({m_prefix_len + b.dim + m_suffix_len, b.ptr - m_prefix_len});
+	m_a.deallocate ({m_prefix_len + b.dim + m_suffix_len, b.ptr - m_prefix_len});
       }
 
-      unsigned check (block b)
+      unsigned check (const mem::block &b)
       {
 	Prefix pfx;
 	Suffix sfx;
@@ -87,4 +84,4 @@ namespace allocator
       }
   };
 } // namespace allocator
-#endif /* _ALLOCATOR_AFFIX_HPP_ */
+#endif //!defined(_ALLOCATOR_AFFIX_HPP_)

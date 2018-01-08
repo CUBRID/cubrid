@@ -294,8 +294,6 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
 	"   Copylogdb %s (pid %d, state %s)\n"
 #define HA_APPLYLOG_PROCESS_FORMAT_STRING        \
 	"   Applylogdb %s (pid %d, state %s)\n"
-#define HA_PREFETCHLOG_PROCESS_FORMAT_STRING        \
-        "   Prefetchlogdb %s (pid %d, state %s)\n"
 #define HA_PROCESS_EXEC_PATH_FORMAT_STRING       \
         "    - exec-path [%s] \n"
 #define HA_PROCESS_ARGV_FORMAT_STRING            \
@@ -1808,7 +1806,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
   else
     {
 #ifdef HAVE_GETHOSTBYNAME_R
-# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+#if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
       struct hostent *hp, hent;
       int herr;
       char buf[1024];
@@ -1819,7 +1817,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+#elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
       int herr;
       char buf[1024];
@@ -1830,7 +1828,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+#elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
       struct hostent_data ht_data;
 
@@ -1840,9 +1838,9 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
-# else
-#   error "HAVE_GETHOSTBYNAME_R"
-# endif
+#else
+#error "HAVE_GETHOSTBYNAME_R"
+#endif
 #else /* HAVE_GETHOSTBYNAME_R */
       struct hostent *hp;
       int r;
@@ -5703,11 +5701,6 @@ hb_get_process_info_string (char **str, bool verbose_yn)
 	    snprintf (p, MAX ((last - p), 0), HA_APPLYLOG_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
 		      hb_process_state_string (proc->type, proc->state));
 	  break;
-	case HB_PTYPE_PREFETCHLOGDB:
-	  p +=
-	    snprintf (p, MAX ((last - p), 0), HA_PREFETCHLOG_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
-		      hb_process_state_string (proc->type, proc->state));
-	  break;
 	default:
 	  break;
 	}
@@ -5814,7 +5807,7 @@ hb_kill_all_heartbeat_process (char **str)
   rv = pthread_mutex_lock (&hb_Resource->lock);
   for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
-      if (proc->type == HB_PTYPE_APPLYLOGDB || proc->type == HB_PTYPE_COPYLOGDB || proc->type == HB_PTYPE_PREFETCHLOGDB)
+      if (proc->type == HB_PTYPE_APPLYLOGDB || proc->type == HB_PTYPE_COPYLOGDB)
 	{
 	  size = sizeof (pid_t) * (count + 1);
 	  pids = (pid_t *) realloc (pids, size);

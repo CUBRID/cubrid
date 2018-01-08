@@ -126,7 +126,7 @@ static int locator_defence_drop_class_name_entry (const void *name, void *ent, v
 static int locator_force_drop_class_name_entry (const void *name, void *ent, void *args);
 static int locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, LOG_LSA * savep_lsa);
 static int locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa);
-static int locator_print_class_name (FILE * outfp, const void *key, void *ent, void *args);
+static int locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key, void *ent, void *args);
 static int locator_check_class_on_heap (const void *name, void *ent, void *args);
 static SCAN_CODE locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * assign,
 						 OID * class_oid, OID * oid, int chn, LOCK lock_mode,
@@ -1706,7 +1706,7 @@ locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa)
  * Note:Print an entry of the classname memory hash table.
  */
 static int
-locator_print_class_name (FILE * outfp, const void *key, void *ent, void *args)
+locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key, void *ent, void *args)
 {
   LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) ent;
   int *class_no_p = (int *) args;
@@ -1783,7 +1783,7 @@ locator_dump_class_names (THREAD_ENTRY * thread_p, FILE * out_fp)
 #endif
 
   class_no = 1;			/* init */
-  (void) mht_dump (out_fp, locator_Mht_classnames, false, locator_print_class_name, &class_no);
+  (void) mht_dump (thread_p, out_fp, locator_Mht_classnames, false, locator_print_class_name, &class_no);
 
 #if defined(NDEBUG)		/* skip at debug build */
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
@@ -4119,13 +4119,13 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	    {
 	      char *val_print = NULL;
 
-	      val_print = pr_valstring (key_dbvalue);
+	      val_print = pr_valstring ((thread_entry *) thread_p, key_dbvalue);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, index->fk->fkname,
 		      (val_print ? val_print : "unknown value"));
 	      error_code = ER_FK_INVALID;
 	      if (val_print)
 		{
-		  free_and_init (val_print);
+		  db_private_free (thread_p, val_print);
 		}
 
 	      if (key_dbvalue == &dbvalue)
@@ -9367,7 +9367,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 		    {
 		      char *key_dmp;
 
-		      key_dmp = pr_valstring (key);
+		      key_dmp = pr_valstring ((thread_entry *) thread_p, key);
 
 		      if (!OID_ISNULL (class_oid))
 			{
@@ -9386,7 +9386,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 
 		      if (key_dmp)
 			{
-			  free_and_init (key_dmp);
+			  db_private_free (thread_p, key_dmp);
 			}
 
 		      if (classname)
@@ -9817,7 +9817,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 			{
 			  char *key_dmp;
 
-			  key_dmp = pr_valstring (key);
+			  key_dmp = pr_valstring ((thread_entry *) thread_p, key);
 			  if (!OID_ISNULL (class_oid))
 			    {
 			      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
@@ -9835,7 +9835,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 
 			  if (key_dmp)
 			    {
-			      free_and_init (key_dmp);
+			      db_private_free (thread_p, key_dmp);
 			    }
 
 			  if (classname)
@@ -11699,101 +11699,6 @@ end:
   heap_attrinfo_end (thread_p, &attr_info);
 
   return error_code;
-}
-
-int
-xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes, bool update_last_reprid)
-{
-  int error = NO_ERROR;
-  int i = 0;
-  REPR_ID last_repr_id;
-  RECDES classrec;
-  HEAP_SCANCACHE scan;
-  HEAP_CACHE_ATTRINFO attr_info;
-  HEAP_IDX_ELEMENTS_INFO idx_info;
-
-  if (heap_scancache_quick_start_root_hfid (thread_p, &scan) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (heap_get_class_record (thread_p, class_oid, &classrec, &scan, PEEK) != S_SUCCESS)
-    {
-      heap_scancache_end (thread_p, &scan);
-      return ER_FAILED;
-    }
-
-  if (heap_attrinfo_start_with_index (thread_p, class_oid, &classrec, &attr_info, &idx_info) < 0)
-    {
-      heap_scancache_end (thread_p, &scan);
-      return ER_FAILED;
-    }
-
-  /**
-   * if we prefetch for update or delete,
-   * we don't need to update last representation id
-   */
-  if (update_last_reprid)
-    {
-      last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
-      if (last_repr_id == 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1, last_repr_id);
-	  error = ER_CT_INVALID_REPRID;
-	  goto free_and_return;
-	}
-
-      or_replace_rep_id (recdes, last_repr_id);
-    }
-
-  if (idx_info.num_btids <= 0)
-    {
-      goto free_and_return;
-    }
-
-  for (i = 0; i < idx_info.num_btids; i++)
-    {
-      error = locator_prefetch_index_page (thread_p, class_oid, &classrec, recdes, i, &attr_info);
-      if (error != NO_ERROR)
-	{
-	  goto free_and_return;
-	}
-    }
-
-free_and_return:
-  heap_attrinfo_end (thread_p, &attr_info);
-  heap_scancache_end (thread_p, &scan);
-
-  return error;
-}
-
-int
-xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid, DB_VALUE * key_value)
-{
-  int error = NO_ERROR;
-  OID unique_oid;
-  RECDES recdes;
-  HEAP_SCANCACHE scan;
-
-  if (xbtree_find_unique (thread_p, btid, S_SELECT, key_value, class_oid, &unique_oid, true) == BTREE_KEY_FOUND)
-    {
-      if (heap_scancache_quick_start (&scan) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      if (heap_get_visible_version (thread_p, &unique_oid, class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
-	{
-	  heap_scancache_end (thread_p, &scan);
-	  return ER_FAILED;
-	}
-
-      error = xlocator_prefetch_repl_insert (thread_p, class_oid, &recdes, false);
-
-      heap_scancache_end (thread_p, &scan);
-    }
-
-  return error;
 }
 
 /*

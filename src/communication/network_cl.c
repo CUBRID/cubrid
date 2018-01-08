@@ -214,14 +214,17 @@ set_server_error (int error)
 static void
 return_error_to_server (char *host, unsigned int eid)
 {
-  void *area;
-  char buffer[1024];
+  char *area;
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
   int length = 1024;
+
+  buffer = OR_ALIGNED_BUF_START (a_buffer);
 
   area = er_get_area_error (buffer, &length);
   if (area != NULL)
     {
-      css_send_error_to_server (host, eid, (char *) area, length);
+      css_send_error_to_server (host, eid, area, length);
     }
 }
 

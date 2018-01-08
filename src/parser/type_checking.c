@@ -16834,42 +16834,64 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_INTEGER:
 	      {
-		int i1, i2, itmp;
+		/* NOTE that we need volatile to prevent optimizer from generating division expression as 
+		 * multiplication.
+		 */
+		volatile int i1, i2, itmp;
 
 		i1 = DB_GET_INT (arg1);
 		i2 = DB_GET_INT (arg2);
 		itmp = i1 * i2;
 		if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
-		  goto overflow;
+		  {
+		    goto overflow;
+		  }
 		else
-		  db_make_int (result, itmp);
+		  {
+		    db_make_int (result, itmp);
+		  }
 		break;
 	      }
 
 	    case DB_TYPE_BIGINT:
 	      {
-		DB_BIGINT bi1, bi2, bitmp;
+		/* NOTE that we need volatile to prevent optimizer from generating division expression as 
+		 * multiplication.
+		 */
+		volatile DB_BIGINT bi1, bi2, bitmp;
+
 		bi1 = DB_GET_BIGINT (arg1);
 		bi2 = DB_GET_BIGINT (arg2);
 		bitmp = bi1 * bi2;
 		if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
-		  goto overflow;
+		  {
+		    goto overflow;
+		  }
 		else
-		  db_make_bigint (result, bitmp);
+		  {
+		    db_make_bigint (result, bitmp);
+		  }
 		break;
 	      }
 
 	    case DB_TYPE_SHORT:
 	      {
-		short s1, s2, stmp;
+		/* NOTE that we need volatile to prevent optimizer from generating division expression as 
+		 * multiplication.
+		 */
+		volatile short s1, s2, stmp;
 
 		s1 = DB_GET_SHORT (arg1);
 		s2 = DB_GET_SHORT (arg2);
 		stmp = s1 * s2;
 		if (OR_CHECK_MULT_OVERFLOW (s1, s2, stmp))
-		  goto overflow;
+		  {
+		    goto overflow;
+		  }
 		else
-		  db_make_short (result, stmp);
+		  {
+		    db_make_short (result, stmp);
+		  }
 		break;
 	      }
 
@@ -16879,9 +16901,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		ftmp = DB_GET_FLOAT (arg1) * DB_GET_FLOAT (arg2);
 		if (OR_CHECK_FLOAT_OVERFLOW (ftmp))
-		  goto overflow;
+		  {
+		    goto overflow;
+		  }
 		else
-		  db_make_float (result, ftmp);
+		  {
+		    db_make_float (result, ftmp);
+		  }
 		break;
 	      }
 
@@ -16891,9 +16917,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		dtmp = DB_GET_DOUBLE (arg1) * DB_GET_DOUBLE (arg2);
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-		  goto overflow;
+		  {
+		    goto overflow;
+		  }
 		else
-		  db_make_double (result, dtmp);
+		  {
+		    db_make_double (result, dtmp);
+		  }
 		break;
 	      }
 
@@ -16922,9 +16952,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		dtmp = DB_GET_MONETARY (arg1)->amount * DB_GET_MONETARY (arg2)->amount;
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-		  goto overflow;
+		  {
+		    goto overflow;
+		  }
 		else
-		  DB_MAKE_MONETARY (result, dtmp);
+		  {
+		    DB_MAKE_MONETARY (result, dtmp);
+		  }
 		break;
 	      }
 	      break;
@@ -17459,20 +17493,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_LEAST:
-      cmp_result = tp_value_compare (arg1, arg2, 1, 0);
-      if (cmp_result == DB_EQ || cmp_result == DB_LT)
+      error = db_least_or_greatest (arg1, arg2, result, true);
+      if (error != NO_ERROR)
 	{
-	  pr_clone_value ((DB_VALUE *) arg1, result);
-	}
-      else if (cmp_result == DB_GT)
-	{
-	  pr_clone_value ((DB_VALUE *) arg2, result);
-	}
-      else
-	{
-	  assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
-	  db_make_null (result);
-	  return 1;
+	  ASSERT_ERROR ();
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
 
       if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
@@ -17485,20 +17511,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       return 1;
 
     case PT_GREATEST:
-      cmp_result = tp_value_compare (arg1, arg2, 1, 0);
-      if (cmp_result == DB_EQ || cmp_result == DB_GT)
+      error = db_least_or_greatest (arg1, arg2, result, false);
+      if (error != NO_ERROR)
 	{
-	  pr_clone_value ((DB_VALUE *) arg1, result);
-	}
-      else if (cmp_result == DB_LT)
-	{
-	  pr_clone_value ((DB_VALUE *) arg2, result);
-	}
-      else
-	{
-	  assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
-	  db_make_null (result);
-	  return 1;
+	  ASSERT_ERROR ();
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
 
       if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)

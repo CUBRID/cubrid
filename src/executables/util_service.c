@@ -85,7 +85,6 @@ typedef enum
   INFO,
   SC_COPYLOGDB,
   SC_APPLYLOGDB,
-  SC_PREFETCHLOGDB,
   GET_SHARID,
   TEST,
   REPLICATION
@@ -197,7 +196,6 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_INFO       "info"
 #define COMMAND_TYPE_COPYLOGDB  "copylogdb"
 #define COMMAND_TYPE_APPLYLOGDB "applylogdb"
-#define COMMAND_TYPE_PREFETCHLOGDB "prefetchlogdb"
 #define COMMAND_TYPE_GETID      "getid"
 #define COMMAND_TYPE_TEST       "test"
 #define COMMAND_TYPE_REPLICATION	"replication"
@@ -218,7 +216,6 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {INFO, COMMAND_TYPE_INFO, MASK_BROKER},
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
   {SC_APPLYLOGDB, COMMAND_TYPE_APPLYLOGDB, MASK_HEARTBEAT},
-  {SC_PREFETCHLOGDB, COMMAND_TYPE_PREFETCHLOGDB, MASK_HEARTBEAT},
   {GET_SHARID, COMMAND_TYPE_GETID, MASK_BROKER},
   {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
   {REPLICATION, COMMAND_TYPE_REPLICATION, MASK_HEARTBEAT},
@@ -299,11 +296,6 @@ static int us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, co
 static int us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				  const char *remote_host);
 
-static int us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name,
-				      const char *node_name, const char *remote_host);
-static int us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
-				     const char *remote_host);
-
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int us_hb_utils_start (dynamic_array * pids, HA_CONF * ha_conf, const char *db_name, const char *node_name);
 static int us_hb_utils_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name);
@@ -319,8 +311,6 @@ static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const c
 				    const char *remote_host);
 static int us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				     const char *remote_host);
-static int us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-					const char *remote_host);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int us_hb_process_server (int command_type, HA_CONF * ha_conf, const char *db_name);
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -376,9 +366,6 @@ command_string (int command_type)
       break;
     case SC_APPLYLOGDB:
       command = PRINT_CMD_APPLYLOGDB;
-      break;
-    case SC_PREFETCHLOGDB:
-      command = PRINT_CMD_PREFETCHLOGDB;
       break;
     case TEST:
       command = PRINT_CMD_TEST;
@@ -2402,15 +2389,6 @@ ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
 		       argv[4],	/* --max-mem-size=SIZE */
 		       argv[5]);	/* database-name */
     }
-  else if (type == HB_PTYPE_PREFETCHLOGDB)
-    {
-      (void) snprintf (args, size, "%s %s %s %s %s ",	/* prefetchlogdb */
-		       argv[0],	/* UTIL_ADMIN_NAME : cub_admin */
-		       argv[1],	/* UTIL_PREFETCHLOGDB : prefetchlogdb */
-		       argv[2],	/* -L, --log-path=PATH */
-		       argv[3],	/* PATH */
-		       argv[4]);	/* database-name */
-    }
   else
     {
       assert (false);
@@ -2959,271 +2937,6 @@ ret:
   return status;
 }
 
-static int
-us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-			   const char *remote_host)
-{
-  int status = NO_ERROR;
-  int pid;
-  int i, j, num_nodes;
-  int num_db_found = 0, num_node_found = 0;
-  HA_NODE_CONF *nc;
-  char log_path[PATH_MAX], db_host[PATH_MAX];
-  char **dbs;
-
-  num_nodes = ha_conf->num_node_conf;
-  dbs = ha_conf->db_names;
-  nc = ha_conf->node_conf;
-
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, UTIL_PREFETCHLOGDB, PRINT_CMD_START);
-
-  for (i = 0; dbs[i] != NULL; i++)
-    {
-      if (db_name != NULL && strcmp (dbs[i], db_name) != 0)
-	{
-	  continue;
-	}
-      num_db_found++;
-
-      for (j = 0; j < num_nodes; j++)
-	{
-	  if (node_name != NULL && strcmp (nc[j].node_name, node_name) != 0)
-	    {
-	      continue;
-	    }
-
-	  if (remote_host == NULL)
-	    {
-	      if (util_is_localhost (nc[j].node_name))
-		{
-		  continue;
-		}
-	    }
-	  else
-	    {
-	      if (node_name != NULL && strcmp (node_name, remote_host) == 0)
-		{
-		  continue;
-		}
-	    }
-
-	  num_node_found++;
-
-	  log_path[0] = db_host[0] = '\0';
-	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i], "localhost");
-	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base, dbs[i], nc[j].node_name);
-
-	  if (log_path[0] != '\0' && db_host[0] != '\0')
-	    {
-	      char pfl_args[HB_MAX_SZ_PROC_ARGS];
-	      const char *pfl_argv[] = {
-		UTIL_ADMIN_NAME, UTIL_PREFETCHLOGDB, "-L",
-		log_path, db_host, NULL
-	      };
-
-	      status = ha_argv_to_args (pfl_args, sizeof (pfl_args), pfl_argv, HB_PTYPE_PREFETCHLOGDB);
-	      if (status != NO_ERROR)
-		{
-		  goto ret;
-		}
-
-	      if (remote_host == NULL)
-		{
-		  if (ha_is_registered (pfl_args, NULL))
-		    {
-		      continue;
-		    }
-
-		  status = proc_execute (UTIL_ADMIN_NAME, pfl_argv, false, false, false, &pid);
-		  if (status != NO_ERROR)
-		    {
-		      goto ret;
-		    }
-
-		  if (out_ap && da_add (out_ap, &pid) != NO_ERROR)
-		    {
-		      status = ER_GENERIC_ERROR;
-		      goto ret;
-		    }
-		}
-	      else
-		{
-		  const char *commdb_argv[] = {
-		    UTIL_COMMDB_NAME,
-		    COMMDB_HA_START_UTIL_PROCESS, pfl_args,
-		    COMMDB_HOST, remote_host,
-		    NULL,
-		  };
-		  status = proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, &pid);
-		  if (status != NO_ERROR)
-		    {
-		      goto ret;
-		    }
-
-		  if (out_ap && (da_add (out_ap, pfl_args) != NO_ERROR))
-		    {
-		      status = ER_GENERIC_ERROR;
-		      goto ret;
-		    }
-		}
-	    }
-	  else
-	    {
-	      status = ER_GENERIC_ERROR;
-	      goto ret;
-	    }
-	}
-    }
-
-  if (db_name != NULL && num_db_found == 0)
-    {
-      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
-      status = ER_GENERIC_ERROR;
-      goto ret;
-    }
-
-  if (node_name != NULL && num_node_found == 0)
-    {
-      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
-      status = ER_GENERIC_ERROR;
-    }
-
-ret:
-  print_result (UTIL_PREFETCHLOGDB, status, START);
-  return status;
-}
-
-static int
-us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name, const char *remote_host)
-{
-  int status = NO_ERROR;
-  int i, j, num_nodes;
-  int num_db_found = 0, num_node_found = 0;
-  HA_NODE_CONF *nc;
-  char log_path[PATH_MAX], db_host[PATH_MAX];
-  char **dbs;
-  int wait_time = 0;
-
-  num_nodes = ha_conf->num_node_conf;
-  dbs = ha_conf->db_names;
-  nc = ha_conf->node_conf;
-
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, UTIL_PREFETCHLOGDB, PRINT_CMD_STOP);
-
-  for (i = 0; dbs[i] != NULL; i++)
-    {
-      if (db_name != NULL && strcmp (dbs[i], db_name) != 0)
-	{
-	  continue;
-	}
-      num_db_found++;
-
-      for (j = 0; j < num_nodes; j++)
-	{
-	  if (node_name != NULL && strcmp (nc[j].node_name, node_name) != 0)
-	    {
-	      continue;
-	    }
-
-	  if (remote_host == NULL)
-	    {
-	      if (util_is_localhost (nc[j].node_name))
-		{
-		  continue;
-		}
-	    }
-	  else
-	    {
-	      if (node_name != NULL && strcmp (node_name, remote_host) == 0)
-		{
-		  continue;
-		}
-	    }
-	  num_node_found++;
-
-	  log_path[0] = db_host[0] = '\0';
-	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i], "localhost");
-	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base, dbs[i], nc[j].node_name);
-
-	  if (log_path[0] != '\0' && db_host[0] != '\0')
-	    {
-	      char pfl_args[HB_MAX_SZ_PROC_ARGS];
-	      const char *pfl_argv[] = {
-		UTIL_ADMIN_NAME, UTIL_PREFETCHLOGDB,
-		"-L", log_path, db_host, NULL
-	      };
-
-	      status = ha_argv_to_args (pfl_args, sizeof (pfl_args), pfl_argv, HB_PTYPE_PREFETCHLOGDB);
-	      if (status != NO_ERROR)
-		{
-		  goto ret;
-		}
-
-	      if (remote_host != NULL || ha_is_registered (pfl_args, remote_host))
-		{
-		  const char *commdb_argv[HB_MAX_SZ_PROC_ARGS] = {
-		    UTIL_COMMDB_NAME, COMMDB_HA_DEREG_BY_ARGS, pfl_args, NULL, NULL,	/* -h hostname */
-		    NULL
-		  };
-
-		  if (remote_host != NULL)
-		    {
-		      commdb_argv[3] = COMMDB_HOST;	/* -h */
-		      commdb_argv[4] = remote_host;	/* hostname */
-		      commdb_argv[5] = NULL;
-		    }
-
-		  status = proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, NULL);
-		  if (remote_host != NULL && status != NO_ERROR)
-		    {
-		      goto ret;
-		    }
-
-		  wait_time = 0;
-		  do
-		    {
-		      if (ha_is_registered (pfl_args, remote_host) == false)
-			{
-			  status = NO_ERROR;
-			  break;
-			}
-
-		      sleep (3);
-		      wait_time += 3;
-		    }
-		  while (wait_time < US_HB_DEREG_WAIT_TIME_IN_SEC);
-		}
-	    }
-	  else
-	    {
-	      status = ER_GENERIC_ERROR;
-	      goto ret;
-	    }
-	}
-    }
-
-  if (db_name != NULL && num_db_found == 0)
-    {
-      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
-      status = ER_GENERIC_ERROR;
-      goto ret;
-    }
-
-  if (node_name != NULL && num_node_found == 0)
-    {
-      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
-      status = ER_GENERIC_ERROR;
-    }
-
-ret:
-  print_result (UTIL_PREFETCHLOGDB, status, STOP);
-  return status;
-}
-
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
 us_hb_utils_start (dynamic_array * pids, HA_CONF * ha_conf, const char *db_name, const char *node_name)
@@ -3373,15 +3086,6 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
       goto ret;
     }
 
-  if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE))
-    {
-      status = us_hb_prefetchlogdb_start (pids, ha_conf, db_name, NULL, NULL);
-      if (status != NO_ERROR)
-	{
-	  goto ret;
-	}
-    }
-
   sleep (HB_START_WAITING_TIME_IN_SECS);
   if (check_result == true)
     {
@@ -3492,15 +3196,6 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
   if (status != NO_ERROR)
     {
       goto ret;
-    }
-
-  if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE))
-    {
-      status = us_hb_prefetchlogdb_stop (ha_conf, db_name, NULL, NULL);
-      if (status != NO_ERROR)
-	{
-	  goto ret;
-	}
     }
 
   status = us_hb_server_stop (ha_conf, db_name);
@@ -3659,90 +3354,6 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_na
 
     case STOP:
       status = us_hb_applylogdb_stop (ha_conf, db_name, node_name, remote_host);
-      break;
-
-    default:
-      status = ER_GENERIC_ERROR;
-      break;
-    }
-
-ret:
-  if (pids)
-    {
-      da_destroy (pids);
-    }
-  if (args)
-    {
-      da_destroy (args);
-    }
-
-  return status;
-}
-
-static int
-us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-			     const char *remote_host)
-{
-  int status = NO_ERROR;
-  int i, pid;
-  dynamic_array *pids = NULL;
-  dynamic_array *args = NULL;
-  char arg[PATH_MAX];
-
-  switch (command_type)
-    {
-    case START:
-      if (remote_host == NULL)
-	{
-	  pids = da_create (100, sizeof (int));
-	  if (pids == NULL)
-	    {
-	      status = ER_GENERIC_ERROR;
-	      goto ret;
-	    }
-
-	  status = us_hb_prefetchlogdb_start (pids, ha_conf, db_name, node_name, remote_host);
-
-	  sleep (HB_START_WAITING_TIME_IN_SECS);
-	  for (i = 0; i < da_size (pids); i++)
-	    {
-	      da_get (pids, i, &pid);
-	      if (is_terminated_process (pid))
-		{
-		  (void) us_hb_prefetchlogdb_stop (ha_conf, db_name, node_name, remote_host);
-
-		  status = ER_GENERIC_ERROR;
-		  break;
-		}
-	    }
-	}
-      else
-	{
-	  args = da_create (100, sizeof (arg));
-	  if (args == NULL)
-	    {
-	      status = ER_GENERIC_ERROR;
-	      goto ret;
-	    }
-
-	  status = us_hb_prefetchlogdb_start (args, ha_conf, db_name, node_name, remote_host);
-
-	  sleep (HB_START_WAITING_TIME_IN_SECS);
-	  for (i = 0; i < da_size (args); i++)
-	    {
-	      da_get (args, i, arg);
-	      if (ha_is_registered (arg, remote_host) == false)
-		{
-		  (void) us_hb_prefetchlogdb_stop (ha_conf, db_name, node_name, remote_host);
-		  status = ER_GENERIC_ERROR;
-		  break;
-		}
-	    }
-	}
-      break;
-
-    case STOP:
-      status = us_hb_prefetchlogdb_stop (ha_conf, db_name, node_name, remote_host);
       break;
 
     default:
@@ -4514,9 +4125,6 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
     case SC_APPLYLOGDB:
       status = us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
       break;
-    case SC_PREFETCHLOGDB:
-      status = us_hb_process_prefetchlogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
-      break;
     }
 
 ret:
@@ -4582,25 +4190,12 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
 		    {
 		      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
 		    }
-		  else if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE))
-		    {
-		      status = us_hb_process_prefetchlogdb (START, ha_conf, NULL, node_name, NULL);
-		      if (status != NO_ERROR)
-			{
-			  (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
-			  (void) us_hb_process_applylogdb (STOP, ha_conf, NULL, node_name, NULL);
-			}
-		    }
 		}
 	    }
 	  else
 	    {
 	      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
 	      (void) us_hb_process_applylogdb (STOP, ha_conf, NULL, node_name, NULL);
-	      if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE))
-		{
-		  (void) us_hb_process_prefetchlogdb (STOP, ha_conf, NULL, node_name, NULL);
-		}
 	      status = NO_ERROR;
 	    }
 	}
@@ -4674,10 +4269,6 @@ process_heartbeat (int command_type, int argc, const char **argv)
     case SC_COPYLOGDB:
     case SC_APPLYLOGDB:
       status = process_heartbeat_util (&ha_conf, command_type, argc, argv);
-      break;
-    case SC_PREFETCHLOGDB:
-      status = ER_GENERIC_ERROR;
-      print_result (PRINT_HEARTBEAT_NAME, status, command_type);
       break;
     case REPLICATION:
       status = process_heartbeat_replication (&ha_conf, argc, argv);

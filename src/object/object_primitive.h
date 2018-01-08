@@ -36,6 +36,13 @@
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #endif
+#if defined (SERVER_MODE) || defined (SA_MODE)
+struct thread_entry;
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
+
+#ifdef __cplusplus
+class string_buffer;
+#endif
 
 /*
  * PR_TYPE
@@ -52,9 +59,14 @@ typedef struct pr_type
   int disksize;
   int alignment;
   /* print dbvalue to file */
-  void (*fptrfunc) (FILE * fp, const DB_VALUE * value);
+  void (*fptrfunc) (struct thread_entry * thread_p, FILE * fp, const DB_VALUE * value);
   /* print dbvalue to buffer */
-  int (*sptrfunc) (const DB_VALUE * value, char *buffer, int buflen);
+#ifdef __cplusplus
+  void (*sptrfunc) (const DB_VALUE * value, string_buffer & sb);
+#else
+  void *sptrfunc;
+#endif
+
   /* initialize memory */
   void (*initmem) (void *memptr, struct tp_domain * domain);
   /* initialize DB_VALUE */
@@ -348,8 +360,10 @@ extern char *pr_copy_string (const char *str);
 extern void pr_free_string (char *str);
 #endif
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
-extern char *pr_valstring (DB_VALUE *);
+extern char *pr_valstring (struct thread_entry *, DB_VALUE *);
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /* area init */
 extern int pr_area_init (void);

@@ -16,16 +16,15 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-message("======== cubrid/CMakeLists.txt")
-
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
   ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
+  ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
-  ${COMPAT_DIR}/db_json.cpp
+  ${COMPAT_DIR}/db_value_printer.cpp
   )
 
 set(THREAD_SOURCES
@@ -68,6 +67,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
+  ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/tz_support.c
@@ -80,6 +80,8 @@ set (BASE_HEADERS
   ${BASE_DIR}/contiguous_memory_buffer.hpp
   ${BASE_DIR}/db_private_allocator.hpp
   ${BASE_DIR}/extensible_array.hpp
+  ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/string_buffer.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -289,7 +291,6 @@ endif(UNIX)
 add_dependencies(cubrid ${EP_TARGETS})
 
 if(AT_LEAST_ONE_UNIT_TEST)
-  message("    ==== add cubrid static libs for unit tests (WIN only)")
   if (WIN32)
   # in order to avoid adding all the functions used by unit tests in def file, it is more convenient to build a static
   # lib too. more compile time, but less head-ache

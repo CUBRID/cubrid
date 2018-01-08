@@ -556,7 +556,7 @@ css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid)
 
   if (css_return_queued_error (entry->conn, CSS_RID_FROM_EID (eid), &error_buffer, &error_size, &rc))
     {
-      errid = er_set_area_error ((void *) error_buffer);
+      errid = er_set_area_error (error_buffer);
       free_and_init (error_buffer);
     }
   return errid;

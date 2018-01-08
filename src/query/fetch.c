@@ -3174,35 +3174,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
     case T_LEAST:
       {
-	int cmp_result;
+	int error;
 	TP_DOMAIN *target_domain;
-	bool can_compare = false;
 
-	cmp_result = tp_value_compare_with_error (peek_left, peek_right, 1, 0, &can_compare);
-	if (cmp_result == DB_EQ || cmp_result == DB_LT)
-	  {
-	    pr_clone_value (peek_left, arithptr->value);
-	  }
-	else if (cmp_result == DB_GT)
-	  {
-	    pr_clone_value (peek_right, arithptr->value);
-	  }
-	else if (cmp_result == DB_UNK && can_compare == false)
+	error = db_least_or_greatest (peek_left, peek_right, arithptr->value, true);
+	if (error != NO_ERROR)
 	  {
 	    goto error;
-	  }
-	else
-	  {
-	    if (DB_IS_NULL (peek_right) || DB_IS_NULL (peek_left))
-	      {
-		pr_clear_value (arithptr->value);
-		PRIM_SET_NULL (arithptr->value);
-	      }
-	    else
-	      {
-		assert_release (false);
-	      }
-	    break;
 	  }
 
 	target_domain = regu_var->domain;
@@ -3227,35 +3205,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
     case T_GREATEST:
       {
-	int cmp_result;
+	int error;
 	TP_DOMAIN *target_domain;
-	bool can_compare = false;
 
-	cmp_result = tp_value_compare_with_error (peek_left, peek_right, 1, 0, &can_compare);
-	if (cmp_result == DB_EQ || cmp_result == DB_GT)
-	  {
-	    pr_clone_value (peek_left, arithptr->value);
-	  }
-	else if (cmp_result == DB_LT)
-	  {
-	    pr_clone_value (peek_right, arithptr->value);
-	  }
-	else if (cmp_result == DB_UNK && can_compare == false)
+	error = db_least_or_greatest (peek_left, peek_right, arithptr->value, false);
+	if (error != NO_ERROR)
 	  {
 	    goto error;
-	  }
-	else
-	  {
-	    if (DB_IS_NULL (peek_right) || DB_IS_NULL (peek_left))
-	      {
-		pr_clear_value (arithptr->value);
-		PRIM_SET_NULL (arithptr->value);
-	      }
-	    else
-	      {
-		assert_release (false);
-	      }
-	    break;
 	  }
 
 	target_domain = regu_var->domain;

@@ -32,7 +32,9 @@
 #include <string.h>
 #include <assert.h>
 
+#include "mem_block.hpp"
 #include "object_primitive.h"
+#include "string_buffer.hpp"
 
 #include "system_parameter.h"
 #include "set_object.h"
@@ -42,6 +44,9 @@
 #include "tz_support.h"
 #include "file_io.h"
 #include "db_json.hpp"
+#include "db_private_allocator.hpp"
+#include "thread.h"
+#include <utility>
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
@@ -10405,101 +10410,67 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  */
 
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of
  * the pr_type vector for the appropriate type.
- *    return: a freshly-malloc'ed string with a printed rep of "val" in it
+ *    return: a freshly db_private_realloc()'ed string with a printed rep of "val" in it
  *    val(in): some DB_VALUE
  * Note:
- *    The caller is responsible for eventually freeing the memory via free_and_init.
+ *    The caller is responsible for eventually freeing the memory using db_private_free()
  *
  *    This is really just a debugging helper; it probably doesn't do enough
  *    serious formatting for external use.  Use it to get printed DB_VALUE
  *    representations into error messages and the like.
  */
 char *
-pr_valstring (DB_VALUE * val)
+pr_valstring (thread_entry * threade, DB_VALUE * val)
 {
-  int str_size;
-  char *str;
-  PR_TYPE *pr_type;
-  DB_TYPE dbval_type;
-
-  const char null_str[] = "(null)";
-  const char NULL_str[] = "NULL";
+/* *INDENT-OFF* */
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+  string_buffer sb {
+    [&threade] (mem::block &block, size_t len)
+    {
+      block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
+      block.dim += len;
+    },
+    [&threade] (mem::block &block)
+    {
+      db_private_free (threade, block.ptr);
+      block = {};
+    }
+  };
+#else
+  string_buffer sb {&mem::private_realloc, &mem::private_dealloc};
+#endif
+/* *INDENT-ON* */
 
   if (val == NULL)
     {
       /* space with terminating NULL */
-      str = (char *) malloc (sizeof (null_str) + 1);
-      if (str)
-	{
-	  strcpy (str, null_str);
-	}
-      return str;
+      sb ("(null)");
+      return sb.move_ptr ();
     }
 
   if (DB_IS_NULL (val))
     {
       /* space with terminating NULL */
-      str = (char *) malloc (sizeof (NULL_str) + 1);
-      if (str)
-	{
-	  strcpy (str, NULL_str);
-	}
-      return str;
+      sb ("NULL");
+      return sb.move_ptr ();
     }
 
-  dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-  pr_type = PR_TYPE_FROM_ID (dbval_type);
+  DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
+  PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
 
   if (pr_type == NULL)
     {
       return NULL;
     }
 
-  /* 
-   * Guess a size; if we're wrong, we'll learn about it later and be told
-   * how big to make the actual buffer.  Most things are pretty small, so
-   * don't worry about this too much.
-   */
-  str_size = 32;
-
-  str = (char *) malloc (str_size);
-  if (str == NULL)
-    {
-      return NULL;
-    }
-
-  str_size = (*(pr_type->sptrfunc)) (val, str, str_size);
-  if (str_size < 0)
-    {
-      /* 
-       * We didn't allocate enough slop.  However, the sprintf function
-       * was kind enough to tell us how much room we really needed, so
-       * we can reallocate and try again.
-       */
-      char *old_str;
-      old_str = str;
-      str_size = -str_size;
-      str_size++;		/* for terminating NULL */
-      str = (char *) realloc (str, str_size);
-      if (str == NULL)
-	{
-	  free_and_init (old_str);
-	  return NULL;
-	}
-      if ((*pr_type->sptrfunc) (val, str, str_size) < 0)
-	{
-	  free_and_init (str);
-	  return NULL;
-	}
-
-      str[str_size - 1] = 0;	/* set terminating NULL */
-    }
-
-  return str;
+  (*(pr_type->sptrfunc)) (val, sb);
+  return sb.move_ptr ();	//caller should use db_private_free() to deallocate it
 }
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /*
  * pr_complete_enum_value - Sets both index and string of a enum value in case
@@ -17234,7 +17205,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      return 0;
 	    }
 	  db_make_string (&json_body_value, json->json_body);
-	  json_body_length = mr_data_lengthval_string (&json_body_value, 1);
+	  json_body_length = mr_data_lengthval_string (&json_body_value, disk);
 
 	  if (json->schema_raw != NULL)
 	    {
@@ -17245,7 +17216,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      db_make_string (&schema_raw_value, "");
 	    }
 
-	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, 1);
+	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, disk);
 
 	  return json_body_length + schema_raw_length;
 	}
@@ -17306,6 +17277,18 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 	{
 	  or_advance (buf, size);
 	}
+      return;
+    }
+
+  if (size < 0)
+    {
+      assert (false);
+      return;
+    }
+
+  if (size == 0)
+    {
+      mr_initmem_json (memptr, domain);
       return;
     }
 
@@ -17419,6 +17402,9 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
   unsigned int json_body_length;
   unsigned int raw_schema_length;
 
+  db_make_null (&json_body);
+  db_make_null (&schema_raw);
+
   if (!disk)
     {
       return tp_Json.size;
@@ -17456,10 +17442,27 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
   int rc = NO_ERROR;
   DB_VALUE json_body, schema_raw;
 
+  db_make_null (&json_body);
+  db_make_null (&schema_raw);
+
   if (value->data.json.json_body == NULL || DB_IS_NULL (value))
     {
       assert (false);
       return ER_FAILED;
+    }
+
+  if (buf->error_abort)
+    {
+      int estimated_length = mr_data_lengthval_json (value, true);
+
+      if ((ptrdiff_t) estimated_length > ((ptrdiff_t) (buf->endptr - buf->ptr)))
+	{
+	  /* this will make string_data_writeval jump because
+	   * of buffer overflow, leaking memory in the process,
+	   * we need to take care of it here
+	   */
+	  or_overflow (buf);
+	}
     }
 
   db_make_string (&json_body, value->data.json.json_body);
@@ -17484,6 +17487,7 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
     {
       goto exit;
     }
+
 
 exit:
   pr_clear_value (&json_body);
@@ -17560,25 +17564,15 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   OR_BUF first_buf, second_buf;
   int first_uncomp_length, first_comp_length;
   int second_uncomp_length, second_comp_length;
-  int strc, rc;
+  int rc;
   char *first_json_body, *second_json_body;
+  DB_VALUE json1, json2;
+  JSON_DOC *doc1 = NULL, *doc2 = NULL;
 
   DB_VALUE_COMPARE_RESULT res = DB_UNK;
 
   first = (char *) mem1;
   second = (char *) mem2;
-
-  first_uncomp_length = OR_GET_BYTE (first);
-  second_uncomp_length = OR_GET_BYTE (second);
-
-  if (first_uncomp_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
-      && second_uncomp_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
-    {
-      first += OR_BYTE_SIZE;
-      second += OR_BYTE_SIZE;
-
-      return (strcmp (first, second) == 0) ? DB_EQ : DB_UNK;
-    }
 
   or_init (&first_buf, first, 0);
   or_init (&second_buf, second, 0);
@@ -17601,7 +17595,19 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
       goto cleanup;
     }
 
-  res = (strcmp (first_json_body, second_json_body) == 0 ? DB_EQ : DB_UNK);
+  rc = db_json_get_json_from_str (first_json_body, doc1);
+  assert (rc == NO_ERROR && doc1 != NULL);
+  rc = db_json_get_json_from_str (second_json_body, doc2);
+  assert (rc == NO_ERROR && doc2 != NULL);
+
+  db_make_json (&json1, first_json_body, doc1, true);
+  db_make_json (&json2, second_json_body, doc2, true);
+
+  res = mr_cmpval_json (&json1, &json2, do_coercion, total_order, 0, 0);
+  pr_clear_value (&json1);
+  pr_clear_value (&json2);
+
+  return res;
 
 cleanup:
   db_private_free (NULL, first_json_body);
@@ -17610,17 +17616,96 @@ cleanup:
   return res;
 }
 
+/* when total_order is true,
+ * we force to string uncomparable types.
+ * this is because "order by" uses total_order=true
+ * and we don't want to fail. The standard says that
+ * only scalar and nulls are comparable.
+ * 
+ * we only return DB_UNK when either one is null and
+ * total_order is false
+ */
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  bool res = db_json_are_docs_equal (DB_GET_JSON_DOCUMENT (value1), DB_GET_JSON_DOCUMENT (value2));
+  JSON_DOC *doc1 = NULL, *doc2 = NULL;
+  DB_JSON_TYPE type1 = DB_JSON_UNKNOWN;
+  DB_JSON_TYPE type2 = DB_JSON_UNKNOWN;
+  DB_VALUE scalar_value1, scalar_value2;
+  DB_VALUE_COMPARE_RESULT cmp_result;
+  bool is_value1_null = true, is_value2_null = true;
+  int error_code;
 
-  if (res)
+  doc1 = DB_GET_JSON_DOCUMENT (value1);
+  doc2 = DB_GET_JSON_DOCUMENT (value2);
+
+  is_value1_null = DB_IS_NULL (value1) || ((type1 = db_json_get_type (doc1)) == DB_JSON_NULL);
+  is_value2_null = DB_IS_NULL (value2) || ((type2 = db_json_get_type (doc2)) == DB_JSON_NULL);
+
+  if (is_value1_null || is_value2_null)
     {
-      return DB_EQ;
+      if (!total_order)
+	{
+	  return DB_UNK;
+	}
+
+      if (is_value1_null && is_value2_null)
+	{
+	  return DB_EQ;
+	}
+
+      return is_value1_null ? DB_LT : DB_GT;
+    }
+
+  /* db_json_get_type shouldn't return DB_JSON_UNKNOWN, this represents a bug */
+  assert (type1 != DB_JSON_UNKNOWN && type2 != DB_JSON_UNKNOWN);
+
+  DB_MAKE_NULL (&scalar_value1);
+  DB_MAKE_NULL (&scalar_value2);
+
+  if (db_json_doc_is_uncomparable (doc1) || db_json_doc_is_uncomparable (doc2))
+    {
+      /* force string comp */
+      char *str1 = NULL, *str2 = NULL;
+
+      str1 = db_json_get_raw_json_body_from_document (doc1);
+      str2 = db_json_get_raw_json_body_from_document (doc2);
+
+      DB_MAKE_STRING (&scalar_value1, str1);
+      DB_MAKE_STRING (&scalar_value2, str2);
+      scalar_value1.need_clear = true;
+      scalar_value2.need_clear = true;
     }
   else
     {
-      return DB_UNK;
+      /* This is not according to standard, in SQL/JSON standard
+       * different types should not be compared, but rather throw
+       * an error. We chose to also compare different scalar types
+       * even when total_order is false.
+       */
+      error_code = db_convert_json_into_scalar (value1, &scalar_value1);
+      if (error_code != NO_ERROR)
+	{
+	  /* this shouldn't happen */
+	  assert (false);
+	  pr_clear_value (&scalar_value1);
+	  return DB_UNK;
+	}
+
+      error_code = db_convert_json_into_scalar (value2, &scalar_value2);
+      if (error_code != NO_ERROR)
+	{
+	  /* this shouldn't happen */
+	  assert (false);
+	  pr_clear_value (&scalar_value1);
+	  pr_clear_value (&scalar_value2);
+	  return DB_UNK;
+	}
     }
+
+  cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+
+  pr_clear_value (&scalar_value1);
+  pr_clear_value (&scalar_value2);
+  return cmp_result;
 }

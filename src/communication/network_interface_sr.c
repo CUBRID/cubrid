@@ -159,9 +159,11 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   LOG_TDES *tdes;
   int errid;
   bool flag_abort = false;
-  void *area;
-  char buffer[1024];
+  char *area;
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
   int length = 1024;
+
   CSS_CONN_ENTRY *conn;
 
   assert (thread_p != NULL);
@@ -193,11 +195,12 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
       conn->reset_on_commit = true;
     }
 
+  buffer = OR_ALIGNED_BUF_START (a_buffer);
   area = er_get_area_error (buffer, &length);
   if (area != NULL)
     {
       conn->db_error = errid;
-      css_send_error_to_client (conn, rid, (char *) area, length);
+      css_send_error_to_client (conn, rid, area, length);
       conn->db_error = 0;
     }
 
@@ -5024,7 +5027,7 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
-      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
@@ -5070,7 +5073,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
-      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
@@ -5110,7 +5113,7 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
-      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', TO_MSEC (thread_p->event_stats.temp_expand_time));
@@ -9166,82 +9169,6 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     {
       free_and_init (data_reply);
     }
-}
-
-
-void
-slocator_prefetch_repl_insert (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int error = NO_ERROR;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr = NULL;
-  OID class_oid;
-  RECDES *recdes = NULL;
-
-  css_inc_prefetcher_thread_count (thread_p);
-
-  ptr = or_pack_int (reply, error);
-
-  /* 
-   * This is for asynchronouse working.
-   * Regardless of whethea or not the processing of the actual work is done,
-   * we will send the client a response.
-   */
-  error = css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  ptr = or_unpack_oid (request, &class_oid);
-  ptr = or_unpack_recdes (ptr, &recdes);
-
-  xlocator_prefetch_repl_insert (thread_p, &class_oid, recdes, true);
-
-  if (recdes != NULL)
-    {
-      free_and_init (recdes);
-    }
-
-end:
-  css_dec_prefetcher_thread_count (thread_p);
-}
-
-void
-slocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int error = NO_ERROR;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr = NULL;
-  OID class_oid;
-  BTID btid;
-  DB_VALUE key_value;
-
-  css_inc_prefetcher_thread_count (thread_p);
-
-  ptr = or_pack_int (reply, error);
-
-  /* 
-   * This is for asynchronouse working.
-   * Regardless of whethea or not the processing of the actual work is done,
-   * we will send the client a response.
-   */
-  error = css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  ptr = or_unpack_btid (request, &btid);
-  ptr = or_unpack_oid (ptr, &class_oid);
-  ptr = or_unpack_mem_value (ptr, &key_value);
-
-  xlocator_prefetch_repl_update_or_delete (thread_p, &btid, &class_oid, &key_value);
-
-end:
-  css_dec_prefetcher_thread_count (thread_p);
 }
 
 /*

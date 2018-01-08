@@ -4771,7 +4771,7 @@ sm_print (MOP classmop)
  */
 
 const char *
-sm_ch_name (MOBJ clobj)
+sm_ch_name (const MOBJ clobj)
 {
   SM_CLASS_HEADER *header;
   const char *ch_name = NULL;
