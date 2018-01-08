@@ -373,6 +373,15 @@ JSON_PRIVATE_ALLOCATOR::Free (void *ptr)
   db_private_free (NULL, ptr);
 }
 
+/*
+* db_json_doc_to_value ()
+* doc (in)
+* value (out)
+* We need this cast in order to use the overloaded methods
+* JSON_DOC is derived from GenericDocument which also extends GenericValue
+* Yet JSON_DOC and JSON_VALUE are two different classes because they are templatized and their type is not known
+* at compile time
+*/
 STATIC_INLINE JSON_VALUE *
 db_json_doc_to_value (const JSON_DOC *doc)
 {
@@ -776,7 +785,7 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
     }
 
   JSON_POINTER p (json_pointer_string.c_str());
-  JSON_VALUE val, *resulting_json, *resulting_json_parent;
+  JSON_VALUE *val, *resulting_json, *resulting_json_parent;
 
   if (!p.IsValid ())
     {
@@ -793,11 +802,11 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
 
   if (value != NULL)
     {
-      val.CopyFrom (*value, doc->GetAllocator ());
+      val = db_json_doc_to_value (value);
     }
   else
     {
-      val.SetNull ();
+      val->SetNull ();
     }
 
 
@@ -813,11 +822,11 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
     {
       if (resulting_json_parent->IsObject ())
 	{
-	  p.Set (*doc, val, doc->GetAllocator ());
+	  p.Set (*doc, *val, doc->GetAllocator ());
 	}
       else if (resulting_json_parent->IsArray ())
 	{
-	  resulting_json_parent->PushBack (val, doc->GetAllocator ());
+	  resulting_json_parent->PushBack (*val, doc->GetAllocator ());
 	}
       else
 	{
@@ -827,7 +836,7 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC *doc, char *raw_path)
 	  value_aux.PushBack (*resulting_json_parent, doc->GetAllocator ());
 	  resulting_json_parent->Swap (value_aux);
 
-	  resulting_json_parent->PushBack (val, doc->GetAllocator ());
+	  resulting_json_parent->PushBack (*val, doc->GetAllocator ());
 	}
     }
 
