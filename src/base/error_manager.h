@@ -274,8 +274,9 @@ extern "C"
   extern void _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...);
 #define er_log_debug(...) if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG)) _er_log_debug(__VA_ARGS__)
 
-  extern void *er_get_area_error (void *buffer, int *length);
-  extern int er_set_area_error (void *server_area);
+  extern char *er_get_ermsg_from_area_error (char *buffer);
+  extern char *er_get_area_error (char *buffer, int *length);
+  extern int er_set_area_error (char *server_area);
   extern int er_stack_push (void);
   extern int er_stack_push_if_exists (void);
   extern int er_stack_pop (void);

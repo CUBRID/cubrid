@@ -5217,7 +5217,8 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 static int
 qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
 {
-  short s1, stmp;
+  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
+  volatile short s1, stmp;
 
   s1 = DB_GET_SHORT (short_val_p);
   stmp = s1 * s2;
@@ -5236,7 +5237,8 @@ qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
 static int
 qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
 {
-  int i1, itmp;
+  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
+  volatile int i1, itmp;
 
   i1 = DB_GET_INT (int_val_p);
   itmp = i1 * i2;
@@ -5254,7 +5256,8 @@ qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
 static int
 qdata_multiply_bigint (DB_VALUE * bigint_val_p, DB_BIGINT bi2, DB_VALUE * result_p)
 {
-  DB_BIGINT bi1, bitmp;
+  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
+  volatile DB_BIGINT bi1, bitmp;
 
   bi1 = DB_GET_BIGINT (bigint_val_p);
   bitmp = bi1 * bi2;

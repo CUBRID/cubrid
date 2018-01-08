@@ -67,6 +67,9 @@
 #if defined (SA_MODE)
 #include "connection_support.h"
 #endif /* defined (SA_MODE) */
+#include "db_value_printer.hpp"
+#include "mem_block.hpp"
+#include "string_buffer.hpp"
 
 #if !defined(SERVER_MODE)
 
@@ -6405,27 +6408,19 @@ log_hexa_dump (FILE * out_fp, int length, void *data)
 static void
 log_repl_data_dump (FILE * out_fp, int length, void *data)
 {
-#if 0
-  /* fixme */
-  char *ptr;
+  char *ptr = (char *) data;
   char *class_name;
   DB_VALUE value;
-  PARSER_VARCHAR *buf;
-  PARSER_CONTEXT *parser;
 
-  ptr = (char *) data;
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_mem_value (ptr, &value);
 
-  parser = parser_create_parser ();
-  if (parser != NULL)
-    {
-      buf = describe_value (parser, NULL, &value);
-      fprintf (out_fp, "C[%s] K[%s]\n", class_name, pt_get_varchar_bytes (buf));
-      parser_free_parser (parser);
-    }
+  string_buffer sb;
+  db_value_printer printer (sb);
+
+  printer.describe_value (&value);
+  fprintf (out_fp, "C[%s] K[%s]\n", class_name, sb.get_buffer ());
   pr_clear_value (&value);
-#endif
 }
 
 static void

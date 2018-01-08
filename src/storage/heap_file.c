@@ -733,8 +733,6 @@ static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * c
 					  ATTR_ID * values_id);
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
 
-static void heap_stats_dump_bestspace_information (FILE * out_fp);
-static int heap_stats_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore);
 static unsigned int heap_hash_vpid (const void *key_vpid, unsigned int htsize);
 static int heap_compare_vpid (const void *key_vpid1, const void *key_vpid2);
 static unsigned int heap_hash_hfid (const void *key_hfid, unsigned int htsize);
@@ -921,47 +919,6 @@ heap_compare_hfid (const void *key_hfid1, const void *key_hfid2)
   const HFID *hfid2 = (HFID *) key_hfid2;
 
   return HFID_EQ (hfid1, hfid2);
-}
-
-/*
- * heap_stats_dump_bestspace_information () -
- *   return:
- *
- *     out_fp(in/out):
- */
-static void
-heap_stats_dump_bestspace_information (FILE * out_fp)
-{
-  int rc;
-
-  rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
-
-  mht_dump (out_fp, heap_Bestspace->hfid_ht, false, heap_stats_print_hash_entry, NULL);
-  mht_dump (out_fp, heap_Bestspace->vpid_ht, false, heap_stats_print_hash_entry, NULL);
-
-  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
-}
-
-/*
- * heap_stats_print_hash_entry()- Print the entry
- *                              Will be used by mht_dump() function
- *  return:
- *
- *   outfp(in):
- *   key(in):
- *   ent(in):
- *   ignore(in):
- */
-static int
-heap_stats_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore)
-{
-  HEAP_STATS_ENTRY *entry = (HEAP_STATS_ENTRY *) ent;
-
-  fprintf (outfp, "HFID:Volid = %6d, Fileid = %6d, Header-pageid = %6d,VPID = %4d|%4d, freespace = %6d\n",
-	   entry->hfid.vfid.volid, entry->hfid.vfid.fileid, entry->hfid.hpgid, entry->best.vpid.volid,
-	   entry->best.vpid.pageid, entry->best.freespace);
-
-  return true;
 }
 
 /*

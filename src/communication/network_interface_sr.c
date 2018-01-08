@@ -159,9 +159,11 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   LOG_TDES *tdes;
   int errid;
   bool flag_abort = false;
-  void *area;
-  char buffer[1024];
+  char *area;
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
   int length = 1024;
+
   CSS_CONN_ENTRY *conn;
 
   assert (thread_p != NULL);
@@ -193,11 +195,12 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
       conn->reset_on_commit = true;
     }
 
+  buffer = OR_ALIGNED_BUF_START (a_buffer);
   area = er_get_area_error (buffer, &length);
   if (area != NULL)
     {
       conn->db_error = errid;
-      css_send_error_to_client (conn, rid, (char *) area, length);
+      css_send_error_to_client (conn, rid, area, length);
       conn->db_error = 0;
     }
 
@@ -5024,7 +5027,7 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
-      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
@@ -5070,7 +5073,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
-      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
@@ -5110,7 +5113,7 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
-      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', TO_MSEC (thread_p->event_stats.temp_expand_time));
