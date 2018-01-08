@@ -789,6 +789,8 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
       if (*rt_check)
 	{
 	  /* We need to recompile. */
+          /* first, mark as deleted, actual delete will occur at xcache_unfix by last unfixer */
+          xcache_entry_mark_deleted (thread_p, *xcache_entry);
 	  xcache_unfix (thread_p, *xcache_entry);
 	  *xcache_entry = NULL;
 
@@ -822,12 +824,13 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
   int oid_index;
   int lock_result;
   bool use_xasl_clone = false;
+  bool recompile_due_to_threshold = false;
 
   assert (xid != NULL);
   assert (xcache_entry != NULL && *xcache_entry == NULL);
   assert (xclone != NULL);
 
-  error_code = xcache_find_sha1 (thread_p, &xid->sha1, xcache_entry, NULL);
+  error_code = xcache_find_sha1 (thread_p, &xid->sha1, xcache_entry, &recompile_due_to_threshold);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
