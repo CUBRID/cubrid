@@ -2458,7 +2458,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
   TSCTIMEVAL tv_diff;
   UINT64 oldest_time;
   bool is_perf_tracking = false;
-  int count_writes = 0;
+  int count_writes = 0, num_pages_to_sync;
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
   bool can_flush_volume = false;
 
@@ -2472,6 +2472,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
   volid = NULL_VOLID;
   assert (block->count_wb_pages < ordered_slots_length);
   assert (block->count_flush_volumes_info == 0);
+  num_pages_to_sync = prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH);
   for (i = 0; i < block->count_wb_pages; i++)
     {
       vpid = &p_dwb_ordered_slots[i].vpid;
@@ -2527,7 +2528,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 1);
 	  count_writes++;
 
-	  if (((count_writes >= prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH)) || (can_flush_volume == true))
+	  if (((count_writes >= num_pages_to_sync) || (can_flush_volume == true))
 	      && (thread_is_dwb_flush_block_helper_thread_available ()))
 	    {
 	      if (ATOMIC_CAS_ADDR (&double_Write_Buffer.helper_flush_block, (DWB_BLOCK *) NULL, block))
