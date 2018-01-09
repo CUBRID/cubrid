@@ -45,7 +45,6 @@
 #include "file_io.h"
 #include "db_json.hpp"
 #include "db_private_allocator.hpp"
-#include "thread.h"
 #include <utility>
 
 #if !defined (SERVER_MODE)
@@ -10424,7 +10423,7 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  *    representations into error messages and the like.
  */
 char *
-pr_valstring (thread_entry * threade, DB_VALUE * val)
+pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
 {
 /* *INDENT-OFF* */
 #if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7

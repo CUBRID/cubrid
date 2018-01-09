@@ -29,6 +29,7 @@
 #include <assert.h>
 
 #include "lock_free.h"
+#include "thread.h"
 #include "vacuum.h"
 
 #define strlen(s1) ((int) strlen(s1))

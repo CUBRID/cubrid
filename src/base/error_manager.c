@@ -79,11 +79,10 @@
 #include "transaction_cl.h"
 #endif /* !SERVER_MODE */
 #include "stack_dump.h"
-
 #if defined (LINUX)
 #include "memory_hash.h"
 #endif /* defined (LINUX) */
-
+#include "thread_compat.hpp"
 #if defined (WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -1160,7 +1159,11 @@ er_final (ER_FINAL_CODE do_global_final)
   ER_MSG *er_entry_p;
   int i;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p != NULL)
@@ -1251,7 +1254,11 @@ er_clear (void)
   ER_MSG *er_entry_p;
   char *buf;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
@@ -1418,7 +1425,12 @@ er_print_callstack (const char *file_name, const int line_no, const char *fmt, .
   ER_MSG *er_entry_p;
   static bool doing_er_start = false;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
+
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
     {
@@ -1526,7 +1538,12 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
       return ER_FAILED;
     }
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
+
   er_entry_p = er_get_er_entry (thread_p);
 
   /* 
@@ -2256,7 +2273,12 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
       return;
     }
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
+
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
     {
@@ -2314,7 +2336,12 @@ _er_log_debug_internal (const char *file_name, const int line_no, const char *fm
       return;
     }
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
+
   er_entry_p = er_get_er_entry (thread_p);
 
   out = (er_Msglog_fh != NULL) ? er_Msglog_fh : stderr;
@@ -2422,7 +2449,11 @@ er_set_area_error (char *server_area)
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
@@ -2537,7 +2568,11 @@ er_stack_push (void)
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
@@ -2562,7 +2597,11 @@ er_stack_push_if_exists (void)
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
@@ -2595,7 +2634,11 @@ er_stack_pop (void)
   ER_MSG *popped_er_entry_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
 
@@ -2633,7 +2676,11 @@ er_stack_clear (void)
   ER_MSG *save_stack;
   ER_MSG *er_entry_p, *er_entry_buffer_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   er_entry_buffer_p = er_get_er_entry_buffer_ptr (thread_p);
@@ -2675,7 +2722,11 @@ er_restore_last_error (void)
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL || er_entry_p->stack == NULL)
@@ -2706,7 +2757,11 @@ er_stack_clearall (void)
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   for (er_entry_p = er_get_er_entry (thread_p); er_entry_p != NULL && er_entry_p->stack != NULL;
        er_entry_p = er_get_er_entry (thread_p))
@@ -3334,10 +3389,12 @@ er_emergency (THREAD_ENTRY * thread_p, const char *file, int line, const char *f
   char buf[32];
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)

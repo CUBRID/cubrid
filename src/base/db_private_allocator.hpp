@@ -123,6 +123,10 @@ bool operator!= (const db_private_allocator<T> &, const db_private_allocator<U> 
 /* Implementation                                                       */
 /************************************************************************/
 
+#if defined (SERVER_MODE)
+#include "thread.h"
+#endif // SERVER_MODE
+
 template<typename T>
 inline
 db_private_allocator<T>::db_private_allocator (THREAD_ENTRY *thread_p) :
