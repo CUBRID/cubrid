@@ -34,7 +34,6 @@
 #include "system_parameter.h"
 #include "dbdef.h"
 #include "error_manager.h"
-
 #include "system.h"
 #include "dbtype_def.h"
 
@@ -263,6 +262,78 @@
 
 #define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
 
+  /* Macros from dbval.h */
+
+#define DB_NEED_CLEAR(v) \
+      ((!DB_IS_NULL(v) \
+	&& ((v)->need_clear == true \
+	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) \
+		 && (v)->data.ch.info.compressed_need_clear != 0))))
+
+#define DB_GET_COMPRESSED_STRING(v) \
+      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) \
+	? NULL : (v)->data.ch.medium.compressed_buf)
+
+
+#define DB_GET_STRING_PRECISION(v) \
+    ((v)->domain.char_info.length)
+
+#define DB_GET_ENUMERATION(v) \
+      ((v)->data.enumeration)
+#define DB_GET_ENUM_ELEM_SHORT(elem) \
+      ((elem)->short_val)
+#define DB_GET_ENUM_ELEM_DBCHAR(elem) \
+      ((elem)->str_val)
+#define DB_GET_ENUM_ELEM_STRING(elem) \
+      ((elem)->str_val.medium.buf)
+#define DB_GET_ENUM_ELEM_STRING_SIZE(elem) \
+      ((elem)->str_val.medium.size)
+
+#define DB_GET_ENUM_ELEM_CODESET(elem) \
+      ((elem)->str_val.info.codeset)
+
+#define DB_SET_ENUM_ELEM_CODESET(elem, cs) \
+      ((elem)->str_val.info.codeset = (cs))
+
+#define DB_SET_ENUM_ELEM_SHORT(elem, sv) \
+      ((elem)->short_val = (sv))
+#define DB_SET_ENUM_ELEM_STRING(elem, str) \
+      ((elem)->str_val.medium.buf = (str),  \
+       (elem)->str_val.info.style = MEDIUM_STRING)
+#define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
+      ((elem)->str_val.medium.size = (sz))
+
+#define DB_PULL_SEQUENCE(v) db_get_set(v)
+
+#define DB_GET_STRING_SAFE(v) \
+      ((DB_IS_NULL (v) \
+	|| DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? "" \
+       : ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
+	  (v)->data.ch.medium.buf))
+
+#define DB_GET_NUMERIC_PRECISION(val) \
+    ((val)->domain.numeric_info.precision)
+
+#define DB_GET_NUMERIC_SCALE(val) \
+    ((val)->domain.numeric_info.scale)
+
+#define DB_GET_STRING_PRECISION(v) \
+    ((v)->domain.char_info.length)
+
+#define DB_GET_BIT_PRECISION(v) \
+    ((v)->domain.char_info.length)
+
+#define DB_GET_JSON_SCHEMA(v) \
+	((v)->data.json.schema_raw)
+
+#define db_get_json_schema(v) DB_GET_JSON_SCHEMA(v)
+#define DB_GET_JSON_RAW_BODY(v) db_get_json_raw_body(v)
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -402,131 +473,13 @@ extern "C"
   extern int db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst);
   extern int db_init_db_json_pointers (DB_JSON * val);
   extern int db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest);
+  extern bool db_is_json_value_type (DB_TYPE type);
+  extern bool db_is_json_doc_type (DB_TYPE type);
 
 /* Use the inline version of the functions. */
-  static inline int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_COLLECTION *db_get_set (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_POINTER db_get_pointer (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_TIME *db_get_time (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_TIMETZ *db_get_timetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_DATETIME *db_get_datetime (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_DATETIMETZ *db_get_datetimetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_DATE *db_get_date (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_MONETARY *db_get_monetary (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_get_error (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_ELO *db_get_elo (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_NUMERIC db_get_numeric (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_BIT db_get_bit (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_C_CHAR db_get_method_error_msg (void) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_get_string_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_get_string_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_get_enum_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_get_enum_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline OID *db_get_oid (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_TYPE db_value_type (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_value_precision (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_value_scale (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline JSON_DOC *db_get_json_document (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-
-  static inline int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
-				     const int size) __attribute__ ((ALWAYS_INLINE));
-
-  static inline int db_make_null (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_int (DB_VALUE * value, const int num) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_float (DB_VALUE * value, const DB_C_FLOAT num) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_object (DB_VALUE * value, DB_C_OBJECT * obj) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_error (DB_VALUE * value, const int errcode) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str,
-				 const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
-				    const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
-				  const int char_str_byte_size, const int codeset, const int collation_id)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
-				     const int char_str_byte_size, const int codeset, const int collation_id)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
-				   const int nchar_str_byte_size, const int codeset, const int collation_id)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
-				      const int nchar_str_byte_size, const int codeset, const int collation_id)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
-					 unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
-
-  static inline int db_make_string (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_string_copy (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
-
-  static inline int db_make_oid (DB_VALUE * value, const OID * oid) __attribute__ ((ALWAYS_INLINE));
-
-  static inline int db_make_set (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_multiset (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_sequence (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_collection (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
-
-  static inline int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo) __attribute__ ((ALWAYS_INLINE));
-
-  static inline int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second)
-    __attribute__ ((ALWAYS_INLINE));
-  static inline int db_make_date (DB_VALUE * value, const int month, const int day, const int year)
-    __attribute__ ((ALWAYS_INLINE));
-
-  static inline int db_get_compressed_size (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
-					       int compressed_size, bool compressed_need_clear)
-    __attribute__ ((ALWAYS_INLINE));
-
-  static inline bool db_value_is_null (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-  static inline DB_TYPE db_value_domain_type (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-
-  static inline bool db_is_json_value_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
-  static inline bool db_is_json_doc_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
-
 #include "dbtype_function.i"
 #ifdef __cplusplus
 }
 #endif
-
 
 #endif				/* _DBTYPE_H_ */

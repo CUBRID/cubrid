@@ -5712,7 +5712,7 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TY
 	    }
 	  else if (typ == DB_TYPE_OBJECT)
 	    {
-	      if (DB_GET_OBJECT (db_value) && WS_ISVID (DB_GET_OBJECT (db_value)))
+	      if (db_get_object (db_value) && WS_ISVID (db_get_object (db_value)))
 		{
 		  if (regu_make_constant_vid (db_value, &dbvalptr) != NO_ERROR)
 		    {

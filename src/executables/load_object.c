@@ -1509,7 +1509,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       /* fall through */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      ptr = DB_GET_STRING (value);
+      ptr = db_get_string (value);
 
       len = db_get_string_size (value);
       if (len < 0)

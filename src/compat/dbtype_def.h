@@ -36,6 +36,7 @@ extern "C"
 {
 #endif
 
+/* todo: Decide what we do about this!! */
 #ifdef __cplusplus
   typedef bool need_clear_type;
 #else
@@ -59,6 +60,13 @@ extern "C"
   typedef void JSON_DOC;
   typedef void JSON_VALIDATOR;
 #endif
+
+  typedef enum
+  {
+    SMALL_STRING,
+    MEDIUM_STRING,
+    LARGE_STRING
+  } STRING_STYLE;
 
   /******************************************/
   /* From cubrid_api.h */
@@ -157,6 +165,95 @@ extern "C"
 
     CUBRID_MAX_STMT_TYPE
   } CUBRID_STMT_TYPE;
+
+      /********************************************************/
+  /* From intl_support.h */
+
+  enum intl_codeset
+  {
+    INTL_CODESET_ERROR = -2,
+    INTL_CODESET_NONE = -1,
+    INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
+    INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
+    INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
+    INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
+    INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
+    INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+
+    INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
+
+    INTL_CODESET_LAST = INTL_CODESET_UTF8
+  };
+  typedef enum intl_codeset INTL_CODESET;
+
+  extern int intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
+  extern int intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
+
+  /********************************************************/
+  /* From object_accessor.h */
+  extern char *obj_Method_error_msg;
+
+  /********************************************************/
+  /* From storage_common.h */
+  /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
+
+#define NULL_VOLID  (-1)	/* Value of an invalid volume identifier */
+#define NULL_SECTID (-1)	/* Value of an invalid sector identifier */
+#define NULL_PAGEID (-1)	/* Value of an invalid page identifier */
+#define NULL_SLOTID (-1)	/* Value of an invalid slot identifier */
+#define NULL_OFFSET (-1)	/* Value of an invalid offset */
+#define NULL_FILEID (-1)	/* Value of an invalid file identifier */
+
+#define VOLID_MAX       SHRT_MAX
+#define PAGEID_MAX      INT_MAX
+#define SECTID_MAX      INT_MAX
+#define PGLENGTH_MAX    SHRT_MAX
+#define VOL_MAX_NPAGES(page_size) \
+  ((sizeof(off_t) == 4) ? (INT_MAX / (page_size)) : INT_MAX)
+
+#define LOGPAGEID_MAX   0x7fffffffffffLL	/* 6 bytes length */
+
+  /********************************************************/
+  /* From oid.h */
+#define OID_ISNULL(oidp)        ((oidp)->pageid == NULL_PAGEID)
+
+  /********************************************************/
+  /* From object_domain.h */
+  /*
+   * We probably should make this 0 rather than -1 so that we can more easily
+   * represent precisions with unsigned integers.  Zero is not a valid
+   * precision.
+   */
+#define TP_FLOATING_PRECISION_VALUE -1
+  /********************************************************/
+  /* From language_support.h */
+
+  enum
+  {
+    LANG_COLL_ISO_BINARY = 0,
+    LANG_COLL_UTF8_BINARY = 1,
+    LANG_COLL_ISO_EN_CS = 2,
+    LANG_COLL_ISO_EN_CI = 3,
+    LANG_COLL_UTF8_EN_CS = 4,
+    LANG_COLL_UTF8_EN_CI = 5,
+    LANG_COLL_UTF8_TR_CS = 6,
+    LANG_COLL_UTF8_KO_CS = 7,
+    LANG_COLL_EUCKR_BINARY = 8,
+    LANG_COLL_BINARY = 9
+  };
+
+#define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
+  ? LANG_COLL_UTF8_BINARY :					 \
+  (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
+  (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
+    LANG_COLL_BINARY)))
+
+
+  /* collation and charset do be used by system : */
+#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
+
+  extern INTL_CODESET lang_charset (void);
+#define LANG_SYS_CODESET  lang_charset()
 
   /******************************************/
   /* From dbdef.h */
@@ -537,13 +634,6 @@ extern "C"
 #define DB_ROW_COUNT_NOT_SET			-2
 
   /******************************************/
-  typedef enum
-  {
-    SMALL_STRING,
-    MEDIUM_STRING,
-    LARGE_STRING
-  } STRING_STYLE;
-
   /*
    * DB_MAX_IDENTIFIER_LENGTH -
    * This constant defines the maximum length of an identifier
@@ -929,7 +1019,6 @@ extern "C"
   typedef DB_COLLECTION DB_SEQ;
   typedef DB_COLLECTION DB_SET;
 
-
   enum special_column_type
   {
     MIN_COLUMN = 0,
@@ -970,44 +1059,6 @@ extern "C"
     int32_t pageid;		/* Page identifier */
     short volid;		/* Volume identifier where the page resides */
   };
-#define VPID_INITIALIZER \
-  { NULL_PAGEID, NULL_VOLID }
-
-#define VPID_AS_ARGS(vpidp) (vpidp)->volid, (vpidp)->pageid
-
-/* Set a vpid with values of volid and pageid */
-#define VPID_SET(vpid_ptr, volid_value, pageid_value)	      \
-  do {							      \
-    (vpid_ptr)->volid  = (volid_value);			      \
-    (vpid_ptr)->pageid = (pageid_value);		      \
-  } while(0)
-
-/* Set the vpid to an invalid one */
-#define VPID_SET_NULL(vpid_ptr) VPID_SET(vpid_ptr, NULL_VOLID, NULL_PAGEID)
-
-/* copy a VPID */
-#define  VPID_COPY(dest_ptr, src_ptr)                      \
-  do {							   \
-    *(dest_ptr) = *(src_ptr);				   \
-  } while (0)
-
-/* vpid1 == vpid2 ? */
-#define VPID_EQ(vpid_ptr1, vpid_ptr2)                         \
-  ((vpid_ptr1) == (vpid_ptr2) ||                              \
-   ((vpid_ptr1)->pageid == (vpid_ptr2)->pageid &&             \
-    (vpid_ptr1)->volid  == (vpid_ptr2)->volid))
-
-/* Is vpid NULL ? */
-#define VPID_ISNULL(vpid_ptr) ((vpid_ptr)->pageid == NULL_PAGEID)
-
-  typedef struct vsid VSID;	/* REAL SECTOR IDENTIFIER */
-  struct vsid
-  {
-    int32_t sectid;		/* Sector identifier */
-    short volid;		/* Volume identifier where the sector resides */
-  };
-#define VSID_INITIALIZER { NULL_SECTID, NULL_VOLID }
-#define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->sectid
 
   typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
   struct vfid
@@ -1019,6 +1070,45 @@ extern "C"
   { NULL_FILEID, NULL_VOLID }
 
 #define VFID_AS_ARGS(vfidp) (vfidp)->volid, (vfidp)->fileid
+
+#define VPID_INITIALIZER \
+  { NULL_PAGEID, NULL_VOLID }
+
+#define VPID_AS_ARGS(vpidp) (vpidp)->volid, (vpidp)->pageid
+
+  /* Set a vpid with values of volid and pageid */
+#define VPID_SET(vpid_ptr, volid_value, pageid_value)	      \
+  do {							      \
+    (vpid_ptr)->volid  = (volid_value);			      \
+    (vpid_ptr)->pageid = (pageid_value);		      \
+  } while(0)
+
+  /* Set the vpid to an invalid one */
+#define VPID_SET_NULL(vpid_ptr) VPID_SET(vpid_ptr, NULL_VOLID, NULL_PAGEID)
+
+  /* copy a VPID */
+#define  VPID_COPY(dest_ptr, src_ptr)                      \
+  do {							   \
+    *(dest_ptr) = *(src_ptr);				   \
+  } while (0)
+
+  /* vpid1 == vpid2 ? */
+#define VPID_EQ(vpid_ptr1, vpid_ptr2)                         \
+  ((vpid_ptr1) == (vpid_ptr2) ||                              \
+   ((vpid_ptr1)->pageid == (vpid_ptr2)->pageid &&             \
+    (vpid_ptr1)->volid  == (vpid_ptr2)->volid))
+
+  /* Is vpid NULL ? */
+#define VPID_ISNULL(vpid_ptr) ((vpid_ptr)->pageid == NULL_PAGEID)
+
+  typedef struct vsid VSID;	/* REAL SECTOR IDENTIFIER */
+  struct vsid
+  {
+    int32_t sectid;		/* Sector identifier */
+    short volid;		/* Volume identifier where the sector resides */
+  };
+#define VSID_INITIALIZER { NULL_SECTID, NULL_VOLID }
+#define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->sectid
 
   typedef struct db_elo DB_ELO;
 
@@ -1321,102 +1411,18 @@ extern "C"
     V_ERROR = -1
   } DB_LOGICAL;
 
-    /********************************************************/
-  /* From intl_support.h */
-
-  enum intl_codeset
-  {
-    INTL_CODESET_ERROR = -2,
-    INTL_CODESET_NONE = -1,
-    INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
-    INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
-    INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
-    INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
-    INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
-    INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
-
-    INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
-
-    INTL_CODESET_LAST = INTL_CODESET_UTF8
-  };
-  typedef enum intl_codeset INTL_CODESET;
-
-  extern int intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
-  extern int intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
-
-  /********************************************************/
-  /* From object_accessor.h */
-  extern char *obj_Method_error_msg;
-
-  /********************************************************/
-  /* From storage_common.h */
-  /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
-
-#define NULL_VOLID  (-1)	/* Value of an invalid volume identifier */
-#define NULL_SECTID (-1)	/* Value of an invalid sector identifier */
-#define NULL_PAGEID (-1)	/* Value of an invalid page identifier */
-#define NULL_SLOTID (-1)	/* Value of an invalid slot identifier */
-#define NULL_OFFSET (-1)	/* Value of an invalid offset */
-#define NULL_FILEID (-1)	/* Value of an invalid file identifier */
-
-#define VOLID_MAX       SHRT_MAX
-#define PAGEID_MAX      INT_MAX
-#define SECTID_MAX      INT_MAX
-#define PGLENGTH_MAX    SHRT_MAX
-#define VOL_MAX_NPAGES(page_size) \
-  ((sizeof(off_t) == 4) ? (INT_MAX / (page_size)) : INT_MAX)
-
-#define LOGPAGEID_MAX   0x7fffffffffffLL	/* 6 bytes length */
-
-  /********************************************************/
-  /* From oid.h */
-#define OID_ISNULL(oidp)        ((oidp)->pageid == NULL_PAGEID)
-
-  /********************************************************/
-  /* From object_domain.h */
-  /*
-   * We probably should make this 0 rather than -1 so that we can more easily
-   * represent precisions with unsigned integers.  Zero is not a valid
-   * precision.
-   */
-#define TP_FLOATING_PRECISION_VALUE -1
   /********************************************************/
   /* From object_primitive.h */
 
   extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
 
   /********************************************************/
-  /* From language_support.h */
-
-  enum
-  {
-    LANG_COLL_ISO_BINARY = 0,
-    LANG_COLL_UTF8_BINARY = 1,
-    LANG_COLL_ISO_EN_CS = 2,
-    LANG_COLL_ISO_EN_CI = 3,
-    LANG_COLL_UTF8_EN_CS = 4,
-    LANG_COLL_UTF8_EN_CI = 5,
-    LANG_COLL_UTF8_TR_CS = 6,
-    LANG_COLL_UTF8_KO_CS = 7,
-    LANG_COLL_EUCKR_BINARY = 8,
-    LANG_COLL_BINARY = 9
-  };
-
-#define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
-  ? LANG_COLL_UTF8_BINARY :					 \
-  (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
-  (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
-    LANG_COLL_BINARY)))
-
-
-  /* collation and charset do be used by system : */
-#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
-
-  extern INTL_CODESET lang_charset (void);
-#define LANG_SYS_CODESET  lang_charset()
-
-  /********************************************************/
   /* From object_representation.h */
+
+  /*    TODO: remove all db_set engine aliases such as db_set/DB_SET or db_collation/DB_COLLATION
+   *    and keep only one.
+   */
+
 
   /*
    * SETOBJ
@@ -1483,90 +1489,6 @@ extern "C"
   extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 
   extern int valcnv_convert_value_to_string (DB_VALUE * value);
-
-/* Macros from dbval.h */
-
-#define DB_NEED_CLEAR(v) \
-      ((!DB_IS_NULL(v) \
-	&& ((v)->need_clear == true \
-	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) \
-		 && (v)->data.ch.info.compressed_need_clear != 0))))
-
-#define DB_GET_COMPRESSED_STRING(v) \
-      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) \
-	? NULL : (v)->data.ch.medium.compressed_buf)
-
-
-#define DB_GET_STRING_PRECISION(v) \
-    ((v)->domain.char_info.length)
-
-#define DB_GET_ENUMERATION(v) \
-      ((v)->data.enumeration)
-#define DB_GET_ENUM_ELEM_SHORT(elem) \
-      ((elem)->short_val)
-#define DB_GET_ENUM_ELEM_DBCHAR(elem) \
-      ((elem)->str_val)
-#define DB_GET_ENUM_ELEM_STRING(elem) \
-      ((elem)->str_val.medium.buf)
-#define DB_GET_ENUM_ELEM_STRING_SIZE(elem) \
-      ((elem)->str_val.medium.size)
-
-#define DB_GET_ENUM_ELEM_CODESET(elem) \
-      ((elem)->str_val.info.codeset)
-
-#define DB_SET_ENUM_ELEM_CODESET(elem, cs) \
-      ((elem)->str_val.info.codeset = (cs))
-
-#define DB_SET_ENUM_ELEM_SHORT(elem, sv) \
-      ((elem)->short_val = (sv))
-#define DB_SET_ENUM_ELEM_STRING(elem, str) \
-      ((elem)->str_val.medium.buf = (str),  \
-       (elem)->str_val.info.style = MEDIUM_STRING)
-#define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
-      ((elem)->str_val.medium.size = (sz))
-
-#define DB_PULL_SEQUENCE(v) db_get_set(v)
-
-#define DB_GET_STRING_SAFE(v) \
-      ((DB_IS_NULL (v) \
-	|| DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? "" \
-       : ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
-	  (v)->data.ch.medium.buf))
-
-#define DB_GET_NUMERIC_PRECISION(val) \
-    ((val)->domain.numeric_info.precision)
-
-#define DB_GET_NUMERIC_SCALE(val) \
-    ((val)->domain.numeric_info.scale)
-
-#define DB_GET_STRING_PRECISION(v) \
-    ((v)->domain.char_info.length)
-
-#define DB_GET_BIT_PRECISION(v) \
-    ((v)->domain.char_info.length)
-
-/* From merge */
-#define DB_GET_JSON_SCHEMA(v) \
-      ((v)->data.json.schema_raw)
-#define DB_GET_JSON_RAW_BODY(v) \
-      ((v)->data.json.json_body)
-
-#define db_get_json_schema(v) DB_GET_JSON_SCHEMA(v)
-#define db_get_json_raw_body(v) DB_GET_JSON_RAW_BODY(v)
-
-#define db_make_json(v, j, d, cl) \
-    ((v)->domain.general_info.type = DB_TYPE_JSON, \
-     (v)->data.json.json_body = (j), \
-     (v)->data.json.document = (d), \
-     (v)->domain.general_info.is_null = 0, \
-     (v)->need_clear = (cl), \
-     (v)->data.json.schema_raw = NULL, \
-     NO_ERROR)
 
 #ifdef __cplusplus
 }

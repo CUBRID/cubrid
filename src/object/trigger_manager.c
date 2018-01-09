@@ -3161,7 +3161,7 @@ trigger_table_find (const char *name, DB_OBJECT ** trigger_p)
       if (error == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value) && DB_GET_STRING (&value) != NULL
-	      && COMPARE_TRIGGER_NAMES (DB_GET_STRING (&value), name) == 0)
+	      && COMPARE_TRIGGER_NAMES (db_get_string (&value), name) == 0)
 	    {
 	      found = i;
 	    }
@@ -3354,7 +3354,7 @@ trigger_table_drop (const char *name)
       if (error == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value) && DB_GET_STRING (&value) != NULL
-	      && COMPARE_TRIGGER_NAMES (DB_GET_STRING (&value), name) == 0)
+	      && COMPARE_TRIGGER_NAMES (db_get_string (&value), name) == 0)
 	    {
 	      found = i;
 	    }

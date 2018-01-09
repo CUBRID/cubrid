@@ -2442,7 +2442,7 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo, OR_PARTITION * mast
     }
 
   assert (DB_VALUE_TYPE (&val) == DB_TYPE_CHAR);
-  expr_stream = DB_GET_STRING (&val);
+  expr_stream = db_get_string (&val);
   stream_len = DB_GET_STRING_SIZE (&val);
 
   /* unpack partition expression */

@@ -34,6 +34,7 @@
 #include "object_domain.h"	/* for TP_DOMAIN */
 #include "locator.h"		/* for LC_OIDSET */
 #include "area_alloc.h"
+#include "dbtype.h"
 
 #if !defined (SERVER_MODE)
 #include "parser.h"		/* for PT_OP_TYPE */

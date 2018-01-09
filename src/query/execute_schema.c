@@ -5074,7 +5074,7 @@ do_get_partition_keycol (char *keycol, MOP class_)
       return error;
     }
 
-  keyname_str = DB_GET_STRING (&keyname);
+  keyname_str = db_get_string (&keyname);
   strncpy (keycol, keyname_str, DB_MAX_IDENTIFIER_LENGTH);
   error = NO_ERROR;
 

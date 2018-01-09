@@ -4886,7 +4886,7 @@ tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
   int status = NO_ERROR;
   int str_len;
 
-  strp = DB_GET_STRING (src);
+  strp = db_get_string (src);
   if (strp == NULL)
     {
       return ER_FAILED;

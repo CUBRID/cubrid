@@ -21,8 +21,8 @@
  *  dbtype_function.h - Holds declarations for API functions.
  */
 
-#ifndef _DBTYPE_FUNCTION_H_
-#define _DBTYPE_FUNCTION_H_
+#ifndef _NO_INLINE_DBTYPE_FUNCTION_
+#define _NO_INLINE_DBTYPE_FUNCTION_
 
 #include "dbtype_def.h"
 
@@ -391,6 +391,9 @@ extern "C"
 
   extern int db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst);
   extern int db_init_db_json_pointers (DB_JSON * val);
+  extern int db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest);
+  extern bool db_is_json_value_type (DB_TYPE type);
+  extern bool db_is_json_doc_type (DB_TYPE type);
 
   extern int db_get_int (const DB_VALUE * value);
   extern DB_C_SHORT db_get_short (const DB_VALUE * value);
@@ -431,6 +434,7 @@ extern "C"
   extern int db_value_precision (const DB_VALUE * value);
   extern int db_value_scale (const DB_VALUE * value);
   extern JSON_DOC *db_get_json_document (const DB_VALUE * value);
+  extern char *db_get_json_raw_body (const DB_VALUE * value);
 
   extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
 			      const int size);
@@ -490,12 +494,10 @@ extern "C"
   extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 					int compressed_size, bool compressed_need_clear);
 
-  extern int db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest);
-  extern bool db_is_json_value_type (DB_TYPE type);
-  extern bool db_is_json_doc_type (DB_TYPE type);
+  extern int db_make_json (DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool need_clear);
 
 #ifdef __cplusplus
 }
 #endif				/* C++ */
 
-#endif				/* _DBTYPE_FUNCTION_H_ */
+#endif				/* _NO_INLINE_DBTYPE_FUNCTION_ */
