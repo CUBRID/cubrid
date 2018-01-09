@@ -4163,15 +4163,17 @@ start:
 	      num_pages = ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0);
 	      if (num_pages == 0)
 		{
-		  /* This volume is already flushed. */
+		  assert ((current_flush_volume_info->all_pages_written == true) || (found == true));
+		  /* This volume is flushed, but may require other flushes if not all its pages were written. */
 		  break;
 		}
 
+	      /* The volume must be flush by me. */
+	      found = true;
 	      if ((num_pages < num_pages_to_sync) && (iter == 0)
 		  && (current_flush_volume_info->all_pages_written == false))
 		{
 		  /* Not enough pages, check the other volumes and retry. */
-		  found = true;
 		  break;
 		}
 
@@ -4181,7 +4183,6 @@ start:
 
 	      /* Flush the volume. */
 	      (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, false);
-	      found = true;
 	      iter++;
 	    }
 	  while (true);
