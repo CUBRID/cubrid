@@ -349,6 +349,8 @@ extern "C"
 
   extern int db_date_encode (DB_DATE * date, int month, int day, int year);
   extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
+  extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
+  extern void db_time_decode (DB_TIME * timeval, int *hourp, int *minutep, int *secondp);
   /********************************************************/
 
   extern DB_VALUE *db_value_create (void);
