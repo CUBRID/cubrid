@@ -2630,6 +2630,9 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 #if defined (SERVER_MODE)
   bool update_flush_block_helper_stat;
 #endif
+#if !defined (NDEBUG)
+  DWB_BLOCK *saved_helper_flush_block = NULL;
+#endif
 
   assert (block != NULL && block->count_wb_pages > 0 && dwb_is_created ());
 
@@ -2684,6 +2687,10 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	}
     }
 
+#if !defined (NDEBUG)
+  saved_helper_flush_block = (DWB_BLOCK *) double_Write_Buffer.helper_flush_block;
+#endif
+
 #if defined (SERVER_MODE)
   update_flush_block_helper_stat = false;
 retry:
@@ -2713,6 +2720,17 @@ retry:
 	}
     }
   assert (double_Write_Buffer.helper_flush_block == NULL);
+
+#if !defined (NDEBUG)
+  if (saved_helper_flush_block)
+    {
+      for (i = 0; i < saved_helper_flush_block->count_flush_volumes_info; i++)
+	{
+	  assert ((saved_helper_flush_block->flush_volumes_info[i].all_pages_written == true)
+		  && ((saved_helper_flush_block->flush_volumes_info[i].num_pages == 0)));
+	}
+    }
+#endif
 
   if (update_flush_block_helper_stat)
     {
@@ -4163,8 +4181,13 @@ start:
 	      num_pages = ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0);
 	      if (num_pages == 0)
 		{
-		  assert ((current_flush_volume_info->all_pages_written == true) || (found == true));
-		  /* This volume is flushed, but may require other flushes if not all its pages were written. */
+		  if ((current_flush_volume_info->all_pages_written == false))
+		    {
+		      /* I'm the flusher, but pages not written yet. Check the other volumes and retry. */
+		      found == true;
+		    }
+
+		  /* This volume was flushed, but may require other flushes if not all its pages were written. */
 		  break;
 		}
 
