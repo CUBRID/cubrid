@@ -47,11 +47,13 @@
 #include "cnvlex.h"
 #include "cnverr.h"
 #if defined(SERVER_MODE)
-#include "thread.h"
 #include "critical_section.h"
 #endif
 #include "db_date.h"
 #include "dbval.h"		/* this must be the last header file included!!! */
+#if defined (SERVER_MODE)
+#include "thread.h"
+#endif // SERVER_MODE
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

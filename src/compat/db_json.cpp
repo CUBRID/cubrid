@@ -1223,7 +1223,7 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
 	{
 	  for (JSON_VALUE::ConstValueIterator itr_val = value->Begin (); itr_val != value->End (); ++itr_val)
 	    {
-	      bool res;
+	      bool res = false;
 
 	      result = false;
 	      for (JSON_VALUE::ConstValueIterator itr_doc = doc->Begin (); itr_doc != doc->End (); ++itr_doc)
@@ -1245,6 +1245,7 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
 	}
       else if (doc_type == DB_JSON_OBJECT)
 	{
+	  result = true; // empty json value is considered included: json_contains('{"a":1}', '{}') => true
 	  JSON_VALUE::ConstMemberIterator itr_val;
 
 	  for (itr_val = value->MemberBegin (); itr_val != value->MemberEnd (); ++itr_val)

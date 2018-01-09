@@ -28,31 +28,38 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include <signal.h>
-#include <assert.h>
-
-#include "storage_common.h"
-#include "log_comm.h"
-#include "porting.h"
 #include "boot.h"
-#include "release_string.h"
-#include "file_io.h"
-#include "rb_tree.h"
+#include "config.h"
 #include "connection_globals.h"
-#include "recovery.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "critical_section.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "es.h"
-#include "mvcc.h"
-#include "critical_section.h"
-#include "thread.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "file_io.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "lock_free.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "lock_manager.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "log_comm.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "mvcc.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "porting.h"
+#include "rb_tree.h"
+#include "recovery.h"
+#include "release_string.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
+#include <assert.h>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
+#include <signal.h>
 
 /************************************************************************/
 /* Section shared with client... TODO: remove any code accessing log    */
@@ -791,9 +798,10 @@ extern int logtb_collect_local_clients (int **local_client_pids);
 /* TODO: Vacuum workers never hold CSECT_LOG lock. Investigate any possible
  *	 unwanted consequences.
  * NOTE: It is considered that a vacuum worker holds a "shared" lock.
+ * TODO: remove vacuum code from LOG_CS_OWN
  */
 #define LOG_CS_OWN(thread_p) \
-  (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p) \
+  (vacuum_is_process_log_for_vacuum (thread_p) \
    || csect_check_own (thread_p, CSECT_LOG) >= 1)
 #define LOG_CS_OWN_WRITE_MODE(thread_p) \
   (csect_check_own (thread_p, CSECT_LOG) == 1)
@@ -2066,8 +2074,8 @@ extern char log_Name_removed_archive[];
 #define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
 #define LOG_THREAD_TRAN_ARGS(thread_p) \
   THREAD_GET_CURRENT_ENTRY_INDEX (thread_p), \
-  VACUUM_IS_THREAD_VACUUM (thread_p) && (thread_p)->vacuum_worker != NULL ? \
-  VACUUM_GET_WORKER_TDES (thread_p)->trid : LOG_FIND_CURRENT_TDES (thread_p)->trid
+  vacuum_is_thread_vacuum (thread_p) && vacuum_get_vacuum_worker (thread_p) != NULL ? \
+  vacuum_get_worker_tdes (thread_p)->trid : LOG_FIND_CURRENT_TDES (thread_p)->trid
 #endif /* SERVER_MODE */
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
@@ -2289,7 +2297,7 @@ extern char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
-STATIC_INLINE int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
@@ -2387,35 +2395,6 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
-
-/************************************************************************/
-/* Inline functions:                                                    */
-/************************************************************************/
-
-/*
- * logtb_find_current_wait_msecs - find waiting times for current transaction
- *
- * return : wait_msecs...
- *
- * Note: Find the waiting time for the current transaction.
- */
-STATIC_INLINE int
-logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
-    {
-      return tdes->wait_msecs;
-    }
-  else
-    {
-      return 0;
-    }
-}
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

@@ -42,9 +42,10 @@
 #include "lock_free.h"
 #include "mvcc.h"
 #if defined(SERVER_MODE)
-#include "thread.h"
+#include "thread_compat.hpp"
 #include "connection_error.h"
 #endif /* SERVER_MODE */
+#include "thread.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -480,7 +481,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
   if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
       /* Vacuum workers do not rollback their heap changes and don't need to keep track of saved space. */
-      assert (VACUUM_WORKER_STATE_IS_EXECUTE (thread_p) || space < 0);
+      assert (vacuum_worker_state_is_execute (thread_p) || space < 0);
       return NO_ERROR;
     }
 

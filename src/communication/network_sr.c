@@ -56,6 +56,7 @@
 //#if defined(WINDOWS)
 #include "tcp.h"
 //#endif /* WINDOWS */
+#include "thread_manager.hpp"
 
 enum net_req_act
 {
@@ -1232,31 +1233,33 @@ loop:
   return NO_ERROR;
 }
 
-void remzi_listen_and_send ()
-{  
+void
+remzi_listen_and_send ()
+{
   int listen_sockfd, error_code, sock;
   char message[] = "HELLO";
-  CSS_CONN_ENTRY * conn;
+  CSS_CONN_ENTRY *conn;
 
   error_code = css_tcp_master_open (15015, &listen_sockfd);
   assert (error_code == NO_ERROR);
-  
+
   sock = css_master_accept (listen_sockfd);
-  conn = css_make_conn(sock);
-  
+  conn = css_make_conn (sock);
+
   css_net_send (conn, (char *) &message, sizeof (message), -1);
   printf ("sent=%s\n", message);
 }
 
-void remzi_connect_and_recv ()
+void
+remzi_connect_and_recv ()
 {
   int sock = css_tcp_client_open ("localhost", 15015), rc;
   char buffer[1024];
   int size = 1024;
-  
+
   rc = css_net_recv (sock, buffer, &size, 5000);
   assert (rc == NO_ERRORS);
-  
+
   printf ("received=%s\n", buffer);
 }
 
@@ -1275,6 +1278,7 @@ net_server_start (const char *server_name)
   char *packed_name;
   int r, status = 0;
   CHECK_ARGS check_coll_and_timezone = { true, true };
+  THREAD_ENTRY *thread_p = NULL;
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
@@ -1314,12 +1318,9 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
-  if (thread_initialize_manager () != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");
-      status = -1;
-      goto end;
-    }
+
+  cubthread::initialize (thread_p);
+  assert (thread_p == thread_get_thread_entry_info ());
 
   if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
@@ -1334,8 +1335,7 @@ net_server_start (const char *server_name)
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
-  if (boot_restart_server (thread_get_thread_entry_info (), true, server_name, false, &check_coll_and_timezone,
-			   NULL) != NO_ERROR)
+  if (boot_restart_server (thread_p, true, server_name, false, &check_coll_and_timezone, NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -1346,13 +1346,13 @@ net_server_start (const char *server_name)
       css_init_job_queue ();
 
       if (strcmp (server_name, "send") == 0)
-        {
-          remzi_listen_and_send ();
-        }
+	{
+	  remzi_listen_and_send ();
+	}
       else if (strcmp (server_name, "recv") == 0)
-        {
-          remzi_connect_and_recv ();
-        }
+	{
+	  remzi_connect_and_recv ();
+	}
       r = css_init (packed_name, name_length, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
       free_and_init (packed_name);
 
@@ -1391,7 +1391,7 @@ net_server_start (const char *server_name)
       status = 2;
     }
 
-  thread_final_manager ();
+  cubthread::finalize ();
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();
 
