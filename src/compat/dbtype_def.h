@@ -17,7 +17,6 @@
  *
  */
 
-
 /*
  * dbtype_def.h - Definitions related to the memory representations of database
  * attribute values. This is an application interface file. It should contain
