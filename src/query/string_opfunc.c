@@ -3306,6 +3306,9 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
 							db_json_replace_func, new_doc, DB_PULL_STRING (arg[i]));
 	  break;
@@ -3469,6 +3472,12 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   result_json = db_json_allocate_doc ();
   error_code = db_json_keys_func (*new_doc, result_json, path.c_str ());
+
+  if (error_code != NO_ERROR)
+    {
+      db_json_delete_doc (result_json);
+      return error_code;
+    }
 
   str = db_json_get_raw_json_body_from_document (result_json);
   db_make_json (result, str, result_json, true);
