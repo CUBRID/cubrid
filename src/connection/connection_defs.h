@@ -28,9 +28,21 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
+#include "boot.h"
+#if defined(SERVER_MODE)
+#include "connection_list_sr.h"
+#include "critical_section.h"
+#endif
+#include "error_manager.h"
+#include "memory_alloc.h"
+#include "porting.h"
+#include "thread_compat.hpp"
+
 #if defined(WINDOWS)
 #include <dos.h>
+#endif // WINDOWS
+#include <stdio.h>
+#if defined(WINDOWS)
 #include <process.h>
 #else
 #include <poll.h>
@@ -38,16 +50,6 @@
 #if !defined(WINDOWS) && defined(SERVER_MODE)
 #include <pthread.h>
 #endif /* !WINDOWS && SERVER_MODE */
-
-#include "porting.h"
-#include "memory_alloc.h"
-#include "error_manager.h"
-#if defined(SERVER_MODE)
-#include "connection_list_sr.h"
-#include "critical_section.h"
-#endif
-#include "thread.h"
-#include "boot.h"
 
 #define NUM_MASTER_CHANNEL 1
 

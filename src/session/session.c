@@ -47,6 +47,7 @@
 #include "lock_free.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#include "thread.h"
 
 
 

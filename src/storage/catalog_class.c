@@ -40,7 +40,7 @@
 #include "query_dump.h"
 #include "db_date.h"
 #include "dbtype.h"
-
+#include "thread.h"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
 
