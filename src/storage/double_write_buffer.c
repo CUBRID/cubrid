@@ -4184,7 +4184,7 @@ start:
 		  if ((current_flush_volume_info->all_pages_written == false))
 		    {
 		      /* I'm the flusher, but pages not written yet. Check the other volumes and retry. */
-		      found == true;
+		      found = true;
 		    }
 
 		  /* This volume was flushed, but may require other flushes if not all its pages were written. */
