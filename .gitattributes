@@ -1,1 +1,7 @@
-﻿*.msg text eol=lf
+﻿*		text=auto
+*.msg	text eol=lf
+*.c*	text eol=lf
+*.h*	text eol=lf
+*.gdb	text eol=lf
+*.txt	text eol=lf
+*.conf	text eol=lf
