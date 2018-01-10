@@ -236,7 +236,7 @@ namespace cubthread
       }
     else
       {
-	// I am the one that set from false to true; it is my responsibility to stop workers and free queue
+	// I am the one that set from false to true; it is my responsibility to stop workers and retire all tasks
       }
     for (std::size_t i = 0; i < m_max_workers; i++)
       {
@@ -245,9 +245,12 @@ namespace cubthread
 	    m_threads[i].join ();
 	  }
       }
-    // delete all tasks from queue
-    delete_circular_queue_pointers (m_work_queue);
-    m_stopped = true;
+    // retire all tasks from queue
+    task_type *task = NULL;
+    while (m_work_queue.consume (task))
+      {
+	task->retire ();
+      }
   }
 
   template <typename Context>
