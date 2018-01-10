@@ -29,12 +29,13 @@
 
 #include "config.h"
 
+
+#include "dbtype_def.h"
 #include "error_manager.h"
 #include "object_representation.h"
 #include "object_domain.h"	/* for TP_DOMAIN */
 #include "locator.h"		/* for LC_OIDSET */
 #include "area_alloc.h"
-#include "dbtype.h"
 
 #if !defined (SERVER_MODE)
 #include "parser.h"		/* for PT_OP_TYPE */

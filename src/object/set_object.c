@@ -30,13 +30,11 @@
 #include <stdio.h>
 #include <assert.h>
 
-
-#include "dbtype.h"
-
 #include "set_object.h"
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_print.h"
+#include "dbtype.h"
 
 
 #if !defined(SERVER_MODE)

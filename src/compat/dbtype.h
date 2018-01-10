@@ -36,6 +36,7 @@
 #include "error_manager.h"
 #include "system.h"
 #include "dbtype_def.h"
+#include "elo.h"
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
@@ -339,11 +340,11 @@ extern "C"
 {
 #endif
 
-  extern DB_TYPE setobj_type (COL * set);
+  //extern DB_TYPE setobj_type (COL * set);
   /********************************************************/
   /* From elo.h */
 
-  extern void elo_init_structure (DB_ELO * elo);
+
   /********************************************************/
   /* From db_date.h */
 
@@ -477,6 +478,9 @@ extern "C"
   extern int db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest);
   extern bool db_is_json_value_type (DB_TYPE type);
   extern bool db_is_json_doc_type (DB_TYPE type);
+
+  /* Prerequisites for dbtype_function.i */
+  extern DB_TYPE setobj_type (COL * set);
 
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"

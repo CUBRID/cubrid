@@ -256,11 +256,10 @@ extern "C"
 {
 #endif
 
-  extern DB_TYPE setobj_type (COL * set);
+  //extern DB_TYPE setobj_type (COL * set);
   /********************************************************/
   /* From elo.h */
 
-  extern void elo_init_structure (DB_ELO * elo);
   /********************************************************/
   /* From db_date.h */
 
