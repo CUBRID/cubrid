@@ -16596,6 +16596,7 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 		      PT_ERRORmf (parser, val, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 				  pt_short_print (parser, val));
 		    }
+		  parser_free_tree (parser, result);
 		  val->next = save_next;
 		  goto end_error;
 		}
@@ -16623,6 +16624,7 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   return NO_ERROR;
 
 end_error:
+  pr_clear_value (&eval_value);
   if (temp != NULL && free_temp)
     {
       /* free temp */
@@ -16632,7 +16634,6 @@ end_error:
     {
       return er_errid ();
     }
-  pr_clear_value (&eval_value);
   return ER_FAILED;
 }
 
