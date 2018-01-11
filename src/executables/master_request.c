@@ -113,6 +113,8 @@ static void css_process_ha_start_util_process (CSS_CONN_ENTRY * conn, unsigned s
 
 static void css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name);
 
+static void css_process_get_hb_node_type (CSS_CONN_ENTRY *conn);
+
 /*
  * css_send_command_to_server()
  *   return: none
@@ -895,6 +897,12 @@ css_process_change_ha_mode (CSS_CONN_ENTRY * conn)
 #if !defined(WINDOWS)
   hb_resource_receive_changemode (conn);
 #endif
+}
+
+static void
+css_process_get_hb_node_type (CSS_CONN_ENTRY *conn)
+{
+  css_send_heartbeat_data (conn, (char *) &hb_Cluster->state, sizeof (int));
 }
 
 /*
@@ -2034,6 +2042,9 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 	case SERVER_GET_EOF:
 	  css_process_get_eof (conn);
 	  break;
+        case SERVER_GET_HB_NODE_TYPE:
+          css_process_get_hb_node_type (conn);
+          break;
 	default:
 	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive unexpected request. (request:%d).\n", request);
 	  break;

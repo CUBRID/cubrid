@@ -108,6 +108,9 @@ static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
 
+/* current server state (slave, master, replica) sent in by the cub_master process */
+static hb_node_state heartbeat_Node_state = HB_NSTATE_UNKNOWN;
+
 typedef struct job_queue JOB_QUEUE;
 struct job_queue
 {
@@ -217,6 +220,7 @@ static void css_process_new_client (SOCKET master_fd);
 static void css_process_get_server_ha_mode_request (SOCKET master_fd);
 static void css_process_change_server_ha_mode_request (SOCKET master_fd);
 static void css_process_get_eof_request (SOCKET master_fd);
+static void css_get_hb_node_state_from_master ();
 
 static void css_close_connection_to_master (void);
 static int css_reestablish_connection_to_master (void);
@@ -1203,6 +1207,26 @@ css_process_get_eof_request (SOCKET master_fd)
 #endif
 }
 
+int
+css_refresh_hb_node_state_from_master ()
+{
+#if !defined (WINDOWS)
+  hb_node_state state = HB_NSTATE_UNKNOWN;
+  int error = NO_ERRORS;
+  
+  error = css_send_heartbeat_request (css_Master_conn, SERVER_GET_HB_NODE_TYPE);
+  if (error != NO_ERRORS)
+    {
+      return error;
+    }
+
+  state = (hb_node_state) css_get_master_request (css_Master_conn->fd);
+  heartbeat_Node_state = state;
+  
+  return NO_ERRORS;
+#endif
+}
+
 /*
  * css_close_connection_to_master() -
  *   return:
@@ -1899,6 +1923,26 @@ css_init (char *server_name, int name_length, int port_id)
 	      fprintf (stderr, "failed to heartbeat register.\n");
 	      goto shutdown;
 	    }
+
+          status = css_refresh_hb_node_state_from_master ();
+          if (status != NO_ERROR)
+	    {
+	      fprintf (stderr, "failed to heartbeat register.\n");
+	      goto shutdown;
+	    }
+	    
+          if (css_get_hb_node_state() == HB_NSTATE_MASTER)
+            {
+              fprintf (stdout, "i'm master\n");
+            }
+          else if (css_get_hb_node_state() == HB_NSTATE_SLAVE)
+            {
+              fprintf (stdout, "i'm slave\n");
+            }
+          else
+            {
+              assert (false);
+            }
 	}
 #endif
 
@@ -2756,6 +2800,12 @@ void
 css_unset_ha_repl_delayed (void)
 {
   ha_Repl_delay_detected = false;
+}
+
+hb_node_state 
+css_get_hb_node_state (void)
+{
+  return heartbeat_Node_state;
 }
 
 /*

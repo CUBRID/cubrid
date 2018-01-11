@@ -30,8 +30,11 @@
 #include "connection_defs.h"
 #include "connection_sr.h"
 #include "thread_compat.hpp"
+#include "master_heartbeat.h"
 
 #define CSS_NUM_JOB_QUEUE 10	/* # of job queues */
+
+typedef enum HB_NODE_STATE hb_node_state;
 
 extern void css_block_all_active_conn (unsigned short stop_phase);
 extern void css_broadcast_shutdown_thread (void);
@@ -84,5 +87,6 @@ extern int css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int wh
 extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout,
 				       bool heartbeat);
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
-
+hb_node_state css_get_hb_node_state (void);
+int css_refresh_hb_node_state_from_master (void);
 #endif /* _SERVER_SUPPORT_H_ */
