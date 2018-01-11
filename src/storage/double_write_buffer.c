@@ -4193,8 +4193,7 @@ start:
 
 	      /* The volume must be flush by me. */
 	      found = true;
-	      if ((num_pages < num_pages_to_sync) && (iter == 0)
-		  && (current_flush_volume_info->all_pages_written == false))
+	      if ((num_pages < num_pages_to_sync) && (current_flush_volume_info->all_pages_written == false))
 		{
 		  /* Not enough pages, check the other volumes and retry. */
 		  break;
