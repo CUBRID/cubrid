@@ -4137,6 +4137,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   UINT64 oldest_time;
   bool is_perf_tracking = false;
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
+  int count_flush_volumes_info;
 
 start:
   num_pages_to_sync = prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH);
@@ -4150,7 +4151,8 @@ start:
 	}
 
       found = false;
-      for (i = 0; i < block->count_flush_volumes_info; i++)
+      count_flush_volumes_info = block->count_flush_volumes_info;
+      for (i = 0; i < count_flush_volumes_info; i++)
 	{
 	  current_flush_volume_info = &block->flush_volumes_info[i];
 	  iter = 0;
@@ -4210,11 +4212,20 @@ start:
 	  while (true);
 	}
 
-      if (found)
+      if (found || (count_flush_volumes_info != block->count_flush_volumes_info))
 	{
 	  /* Try again. */
 	  goto start;
 	}
+
+#if !defined (NDEBUG)
+      for (i = 0; i < count_flush_volumes_info; i++)
+	{
+	  current_flush_volume_info = &block->flush_volumes_info[i];
+	  assert ((current_flush_volume_info->all_pages_written == true)
+		  && (current_flush_volume_info->flushed_status != VOLUME_NOT_FLUSHED));
+	}
+#endif
 
       /* Be sure that the helper flush block was not changed by other thread. */
       assert (block == double_Write_Buffer.helper_flush_block);
