@@ -8566,7 +8566,10 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		    }
 		  else
 		    {
-		      c = DB_GT;
+		      if (mul1->min_max_val.type == MIN_COLUMN)
+			c = DB_LT;
+		      else
+			c = DB_GT;
 		    }
 		}
 	      else if (mul2->min_max_val.position == i)
@@ -17228,7 +17231,6 @@ static void
 mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
   DB_VALUE json_body, schema_raw;
-  const char *schema_str;
   DB_JSON *json;
 
   json = (DB_JSON *) memptr;
