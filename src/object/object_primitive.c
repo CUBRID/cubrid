@@ -8566,15 +8566,12 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		    }
 		  else
 		    {
-		      if (mul1->min_max_val.type == MIN_COLUMN)
-			c = DB_LT;
-		      else
-			c = DB_GT;
+		      c = mul1->min_max_val.type == MIN_COLUMN ? DB_LT : DB_GT;
 		    }
 		}
 	      else if (mul2->min_max_val.position == i)
 		{
-		  c = DB_LT;
+		  c = mul2->min_max_val.type == MIN_COLUMN ? DB_GT : DB_LT;
 		}
 	      else
 		{
