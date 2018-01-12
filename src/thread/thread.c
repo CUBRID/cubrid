@@ -1669,13 +1669,15 @@ thread_belongs_to (THREAD_ENTRY * thread_p, int tran_index, int client_id)
       && thread_p->status != TS_CHECK)
     {
       conn_p = thread_p->conn_entry;
-      if (tran_index == NULL_TRAN_INDEX && (conn_p != NULL && conn_p->client_id == client_id))
+      if (tran_index == NULL_TRAN_INDEX)
 	{
-	  does_belong = true;
+	  // exact match client ID is required
+	  does_belong = conn_p != NULL && conn_p->client_id == client_id;
 	}
-      else if (tran_index == thread_p->tran_index && (conn_p == NULL || conn_p->client_id == client_id))
+      else if (tran_index == thread_p->tran_index)
 	{
-	  does_belong = true;
+	  // match client ID or null connection
+	  does_belong = conn_p == NULL || conn_p->client_id == client_id;
 	}
     }
   pthread_mutex_unlock (&thread_p->tran_index_lock);
@@ -1696,7 +1698,8 @@ thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id)
 {
   int n = 0;
 
-  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
+  for (THREAD_ENTRY * thread_p = thread_Manager.thread_array;
+       thread_p < thread_Manager.thread_array + thread_Manager.num_workers; thread_p++)
     {
       if (thread_p == caller)
 	{

@@ -134,6 +134,11 @@ extern int (*css_Connect_handler) (CSS_CONN_ENTRY *);
 extern CSS_THREAD_FN css_Request_handler;
 extern CSS_THREAD_FN css_Connection_error_handler;
 
+#define CSS_LOG(msg_arg, ...) \
+  if (prm_get_bool_value (PRM_ID_CONNECTION_LOGGING)) _er_log_debug (ARG_FILE_LINE, msg_arg "\n", __VA_ARGS__)
+#define CSS_LOG_STACK(msg_arg, ...) \
+  if (prm_get_bool_value (PRM_ID_CONNECTION_LOGGING)) er_print_callstack (ARG_FILE_LINE, msg_arg "\n", __VA_ARGS__)
+
 extern int css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern int css_init_conn_list (void);
