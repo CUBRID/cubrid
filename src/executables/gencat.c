@@ -400,14 +400,23 @@ get_line (int fd)
     {
       for (; bptr < bend && cptr < cend; ++cptr, ++bptr)
 	{
-	  if (*bptr == '\n' || (bptr + 1 < bend && *bptr == '\r' && *(bptr + 1) == '\n'))
+	  if (*bptr == '\n')
 	    {
 	      *cptr = '\0';
 	      ++bptr;
 	      return (curline);
 	    }
-	  else
-	    *cptr = *bptr;
+          else if (bptr + 1 < bend && *bptr == '\r' && *(bptr + 1) == '\n')
+            {
+              *cptr = '\0';
+              ++bptr;
+              ++bptr;
+              return (curline);
+            }
+          else
+            {
+              *cptr = *bptr;
+            }
 	}
       if (cptr == cend)
 	{
