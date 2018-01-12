@@ -193,6 +193,8 @@ namespace lockfree
 #endif // DEBUG_LFCQ
   };
 
+  template <class T>
+  void delete_circular_queue_pointers (circular_queue<T *> &queue);
 } // namespace lockfree
 
 #include "base_flag.hpp"
@@ -631,6 +633,17 @@ namespace lockfree
   }
 #endif // DEBUG_LFCQ
 
+  template <class T>
+  void
+  delete_circular_queue_pointers (circular_queue<T *> &queue)
+  {
+    // do avoid producing new pointers
+    T *t_ptr = NULL;
+    while (queue.consume (t_ptr))
+      {
+	delete t_ptr;
+      }
+  }
 }  // namespace lockfree
 
 #endif // !_LOCKFREE_CIRCULAR_QUEUE_HPP_

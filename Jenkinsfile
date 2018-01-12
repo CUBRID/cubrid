@@ -21,19 +21,23 @@ pipeline {
             TEST_REPORT = 'reports'
           }
           steps {
+            script {
+              currentBuild.displayName = sh(returnStdout: true, script: './build.sh -v').trim()
+            }
+
             echo 'Checking out...'
             dir(path: 'cubridmanager') {
               git 'https://github.com/CUBRID/cubrid-manager-server'
             }
             
             echo 'Building...'
-	    sh 'scl enable devtoolset-6 -- /entrypoint.sh build'
+            sh 'scl enable devtoolset-6 -- /entrypoint.sh build'
 
             echo 'Packing...'
             dir(path: 'packages') {
               deleteDir()
             }
-	    sh 'scl enable devtoolset-6 -- /entrypoint.sh dist -o packages'
+            sh 'scl enable devtoolset-6 -- /entrypoint.sh dist -o packages'
 
             echo 'Testing...'
             dir(path: 'reports') {
@@ -68,13 +72,13 @@ pipeline {
             }
             
             echo 'Building...'
-	    sh 'scl enable devtoolset-6 -- /entrypoint.sh build -m debug'
+            sh 'scl enable devtoolset-6 -- /entrypoint.sh build -m debug'
             
             echo 'Packing...'
             dir(path: 'packages') {
               deleteDir()
             }
-	    sh 'scl enable devtoolset-6 -- /entrypoint.sh dist -m debug -o packages'
+            sh 'scl enable devtoolset-6 -- /entrypoint.sh dist -m debug -o packages'
 
             echo 'Testing...'
             dir(path: 'reports') {
@@ -106,7 +110,7 @@ pipeline {
             dir(path: 'packages') {
               deleteDir()
             }
-	    bat 'win/build.bat /out packages'
+            bat 'win/build.bat /out packages'
           }
           post {
             always {
@@ -123,7 +127,7 @@ pipeline {
       build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "$JOB_NAME")],
             propagate: false
       emailext replyTo: '$DEFAULT_REPLYTO', to: '$DEFAULT_RECIPIENTS',
-	       subject: '$DEFAULT_SUBJECT', body: '''${JELLY_SCRIPT,template="html"}'''
+               subject: '$DEFAULT_SUBJECT', body: '''${JELLY_SCRIPT,template="html"}'''
     }
   }
 }

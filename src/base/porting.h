@@ -548,6 +548,7 @@ extern int rand_r (unsigned int *seedp);
 extern double round (double d);
 #endif /* !_MSC_VER || _MSC_VER < 1800 */
 
+/* Maybe replace this with std::mutex */
 typedef struct
 {
   CRITICAL_SECTION cs;
