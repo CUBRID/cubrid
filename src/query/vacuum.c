@@ -2977,7 +2977,7 @@ restart:
 	}
 #endif // SA_MODE
 
-      if (vacuum_check_data_buffer () && vacuum_check_finished_queue ())
+      if (vacuum_check_data_buffer () || vacuum_check_finished_queue ())
 	{
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  goto restart;
