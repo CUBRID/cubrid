@@ -16627,7 +16627,6 @@ end_error:
   pr_clear_value (&eval_value);
   if (temp != NULL && free_temp)
     {
-      /* free temp */
       parser_free_tree (parser, temp);
     }
   if (er_errid () != NO_ERROR)
