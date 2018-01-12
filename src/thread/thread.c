@@ -480,12 +480,6 @@ thread_initialize_manager (size_t & total_thread_count)
   assert (daemon_index == thread_Manager.num_daemons);
 
 #if defined(WINDOWS)
-  r = pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
-      return ER_CSS_PTHREAD_MUTEX_INIT;
-    }
   thread_initialize_sync_object ();
 #endif /* WINDOWS */
 
