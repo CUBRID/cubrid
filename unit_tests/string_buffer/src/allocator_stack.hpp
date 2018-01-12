@@ -25,11 +25,8 @@
 #ifndef _ALLOCATOR_STACK_HPP_
 #define _ALLOCATOR_STACK_HPP_
 
-#include "allocator_block.hpp"
-
-#if defined (LINUX)
-#include <stddef.h> //size_t on Linux
-#endif /* LINUX */
+#include "mem_block.hpp"
+#include <stddef.h>
 
 namespace allocator
 {
@@ -62,18 +59,18 @@ namespace allocator
 	m_stop = m_ptr + size;
       }
 
-      block allocate (size_t size)
+      mem::block allocate (size_t size)
       {
 	//round to next aligned?! natural allignment
 	//...
 	if (m_start + size > m_stop) //not enough free memory available
 	  {
-	    return {0, 0};
+	    return {};
 	  }
-	return {size, (m_start += size, m_start - size)};
+	return mem::block{size, (m_start += size, m_start - size)};
       }
 
-      void deallocate (block b)
+      void deallocate (mem::block b)
       {
 	//assert(owns(blk));
 	if ((char *) b.ptr + b.dim == m_start) // last allocated block
@@ -82,7 +79,7 @@ namespace allocator
 	  }
       }
 
-      bool owns (block b)
+      bool owns (mem::block b)
       {
 	return (m_ptr <= b.ptr && b.ptr + b.dim <= m_stop);
       }
@@ -91,8 +88,8 @@ namespace allocator
       {
 	return size_t (m_stop - m_start);
       }
-
-      block realloc (block b, size_t size) //fit additional size bytes; extend block if possible
+#if 0 //bSolo: unused for now and creates problems on gcc 4.4.7
+      mem::block realloc (mem::block b, size_t size) //fit additional size bytes; extend block if possible
       {
 	if (b.ptr + b.dim == m_start && b.ptr + b.dim + size <= m_stop) //last allocated block & enough space to extend
 	  {
@@ -102,6 +99,7 @@ namespace allocator
 	  }
 	return {0, 0};
       }
+#endif
   };
 } // namespace allocator
 

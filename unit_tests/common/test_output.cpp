@@ -29,7 +29,7 @@
 namespace test_common
 {
 
-std::mutex stc_cout_mutex;    // global
+static std::mutex stc_cout_mutex;    // global
 void
 sync_cout (const std::string &str)
 {

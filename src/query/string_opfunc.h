@@ -30,14 +30,13 @@
 /* todo(rem) this doesn't belong to query module */
 
 #include "config.h"
-
-#include "intl_support.h"
 #include "dbtype_def.h"
-#include "numeric_opfunc.h"
-#include "regex38a.h"
+#include "intl_support.h"
 #include "language_support.h"
+#include "numeric_opfunc.h"
 #include "object_domain.h"
-#include "thread.h"
+#include "regex38a.h"
+#include "thread_compat.hpp"
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))

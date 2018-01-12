@@ -15,50 +15,21 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+
+/*
+ * string_buffer.cpp
+ */
+
 #include "string_buffer.hpp"
 #include <memory.h>
 
-string_buffer::string_buffer (size_t capacity, char *buffer)
-  : m_buf (buffer)
-  , m_dim (capacity)
-  , m_len (0)
+void string_buffer::add_bytes (size_t len, void *bytes)
 {
-  if (buffer)
+  if (bytes && m_len + len + 1 > dim)
     {
-      m_buf[0] = '\0';
+      extend (m_len + len + 1 - dim);
     }
-}
-
-void string_buffer::set_buffer (size_t capacity, char *buffer)
-{
-  m_buf = buffer;
-  m_dim = capacity;
-  if (m_buf)
-    {
-      m_buf[0] = '\0';
-    }
-  m_len = 0;
-}
-
-void string_buffer::operator() (size_t len, void *bytes)
-{
-  if (bytes && m_len + len < m_dim)
-    {
-      memcpy (m_buf + m_len, bytes, len);
-      m_buf[m_len += len] = 0;
-    }
-  else
-    {
-      m_len += len;
-    }
-}
-
-void string_buffer::operator+= (const char ch)
-{
-  if (m_len + 1 < m_dim) // include also ending '\0'
-    {
-      m_buf[m_len] = ch;
-      m_buf[m_len + 1] = '\0';
-    }
-  ++m_len;
+  memcpy (ptr + m_len, bytes, len);
+  m_len += len;
+  ptr[m_len] = 0;
 }

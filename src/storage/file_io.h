@@ -29,20 +29,17 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "dbtype_def.h"
+#include "lzoconf.h"
+#include "lzo1x.h"
+#include "memory_hash.h"
+#include "porting.h"
+#include "release_string.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
 #include <stdio.h>
 #include <time.h>
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "thread.h"
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-#include "porting.h"
-#include "storage_common.h"
-#include "release_string.h"
-#include "dbtype_def.h"
-#include "memory_hash.h"
-#include "lzoconf.h"
-#include "lzo1x.h"
 
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
 
@@ -456,8 +453,8 @@ extern void fileio_make_volume_ext_given_name (char *volext_fullname, const char
 extern void fileio_make_volume_temp_name (char *voltmp_fullname, const char *tmp_path, const char *tmp_name,
 					  VOLID volid);
 extern void fileio_make_log_active_name (char *logactive_name, const char *log_path, const char *dbname);
-extern void fileio_make_log_active_temp_name (char *logactive_tmpname, FILEIO_BACKUP_LEVEL level,
-					      const char *active_name);
+extern void fileio_make_temp_log_files_from_backup (char *temp_log_name, VOLID volid, FILEIO_BACKUP_LEVEL level,
+						    const char *base_log_name);
 extern void fileio_make_log_archive_name (char *logarchive_name, const char *log_path, const char *dbname, int arvnum);
 extern void fileio_make_removed_log_archive_name (char *logarchive_name, const char *log_path, const char *dbname);
 extern void fileio_make_log_archive_temp_name (char *log_archive_temp_name_p, const char *log_path_p,

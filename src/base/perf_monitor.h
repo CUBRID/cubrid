@@ -27,25 +27,25 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-
+#if defined (SERVER_MODE)
+#include "connection_defs.h"
+#include "dbtype_def.h"
+#endif /* SERVER_MODE */
 #include "memory_alloc.h"
 #include "storage_common.h"
-
 #if defined (SERVER_MODE)
-#include "dbtype_def.h"
-#include "connection_defs.h"
-#endif /* SERVER_MODE */
-
 #include "thread.h"
+#else
+#include "thread_compat.hpp"
+#endif
+#include "tsc_timer.h"
 
-#include <time.h>
+#include <assert.h>
+#include <stdio.h>
 #if !defined(WINDOWS)
 #include <sys/time.h>
 #endif /* WINDOWS */
-
-#include "tsc_timer.h"
-#include <assert.h>
+#include <time.h>
 
 /* EXPORTED GLOBAL DEFINITIONS */
 #define MAX_DIAG_DATA_VALUE     0xfffffffffffffLL

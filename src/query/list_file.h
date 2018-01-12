@@ -27,22 +27,21 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include <stdio.h>
-
+#include "config.h"
 #include "dbtype_def.h"
-#include "storage_common.h"
-#include "system_parameter.h"
 #include "external_sort.h"
-#include "xasl.h"
 #include "log_comm.h"
 #include "object_domain.h"
-#include "thread.h"
+#include "storage_common.h"
+#include "system_parameter.h"
+#include "thread_compat.hpp"
+#include "xasl.h"
+
+#include <stdio.h>
 
 extern int qfile_Is_list_cache_disabled;
 

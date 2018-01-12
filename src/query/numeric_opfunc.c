@@ -45,9 +45,6 @@
 #include <cmath>
 #endif
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "thread.h"
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -3832,7 +3829,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
  * Note: returns the null-terminated string form of val
  */
 char *
-numeric_db_value_print (DB_VALUE * val, char *buf)
+numeric_db_value_print (const DB_VALUE * val, char *buf)
 {
   char temp[80];
   int nbuf;
@@ -3850,7 +3847,7 @@ numeric_db_value_print (DB_VALUE * val, char *buf)
     }
 
   /* Retrieve raw decimal string */
-  numeric_coerce_num_to_dec_str (db_get_numeric (val), temp);
+  numeric_coerce_num_to_dec_str (db_get_numeric ((DB_VALUE *) val), temp); // todo: without cast?
 
   /* Remove the extra padded zeroes and add the decimal point */
   nbuf = 0;

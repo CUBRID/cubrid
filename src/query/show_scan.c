@@ -481,10 +481,10 @@ showstmt_array_end_scan (THREAD_ENTRY * thread_p, void **ptr)
  *   arg_cnt(in):
  *   ptr(in/out):
  */
-#if defined(SERVER_MODE)
-extern int
+int
 thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
+#if defined(SERVER_MODE)
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   const int num_cols = 26;
   THREAD_ENTRY *thrd, *next_thrd;
@@ -493,9 +493,10 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
   int ival;
   INT64 i64val;
   CSS_CONN_ENTRY *conn_entry = NULL;
-  char buf[1024];
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
+  char *area;
   int buf_len;
-  void *area;
   HL_HEAPID private_heap_id;
   void *query_entry;
   LK_ENTRY *lockwait;
@@ -505,16 +506,16 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
 
   *ptr = NULL;
 
-  ctx = showstmt_alloc_array_context (thread_p, thread_get_total_num_of_threads (), num_cols);
+  ctx = showstmt_alloc_array_context (thread_p, thread_num_total_threads (), num_cols);
   if (ctx == NULL)
     {
       error = er_errid ();
       return error;
     }
 
-  for (i = 0; i < thread_get_total_num_of_threads (); i++)
+  for (i = 0; i < thread_num_total_threads (); i++)
     {
-      thrd = thread_get_entry_from_index (i);
+      thrd = thread_find_entry_by_index (i);
 
       vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
       if (vals == NULL)
@@ -529,7 +530,7 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Jobq_index */
-      if (0 < thrd->index && thrd->index <= thread_get_total_num_of_workers ())
+      if (0 < thrd->index && thrd->index <= thread_num_worker_threads ())
 	{
 	  db_make_int (&vals[idx], thrd->index % CSS_NUM_JOB_QUEUE);
 	}
@@ -621,12 +622,18 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Last_error_msg */
+      buffer = OR_ALIGNED_BUF_START (a_buffer);
+      buf_len = 1024;
+
       if (ival != NO_ERROR)
 	{
-	  buf_len = 1024;
-	  area = er_get_area_error (buf, &buf_len);
-	  ((char *) (area))[255] = '\0';	/* truncate msg */
-	  error = db_make_string_copy (&vals[idx], (const char *) area);
+	  char *ermsg;
+
+	  area = er_get_area_error (buffer, &buf_len);
+	  ermsg = er_get_ermsg_from_area_error (area);
+	  ermsg[255] = '\0';	/* truncate msg */
+
+	  error = db_make_string_copy (&vals[idx], ermsg);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -639,11 +646,14 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Private_heap_id */
+      buffer = OR_ALIGNED_BUF_START (a_buffer);
+      buf_len = 1024;
+
       private_heap_id = thrd->private_heap_id;
       if (private_heap_id != 0)
 	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) private_heap_id);
-	  error = db_make_string_copy (&vals[idx], buf);
+	  snprintf (buffer, buf_len, "0x%08" PRIx64, (UINT64) private_heap_id);
+	  error = db_make_string_copy (&vals[idx], buffer);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -656,11 +666,14 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Query_entry */
+      buffer = OR_ALIGNED_BUF_START (a_buffer);
+      buf_len = 1024;
+
       query_entry = thrd->query_entry;
       if (query_entry != NULL)
 	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) query_entry);
-	  error = db_make_string_copy (&vals[idx], buf);
+	  snprintf (buffer, buf_len, "0x%08" PRIx64, (UINT64) query_entry);
+	  error = db_make_string_copy (&vals[idx], buffer);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -688,14 +701,17 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       db_make_int (&vals[idx], thrd->wait_for_latch_promote);
       idx++;
 
+      buffer = OR_ALIGNED_BUF_START (a_buffer);
+      buf_len = 1024;
+
       lockwait = (LK_ENTRY *) thrd->lockwait;
       if (lockwait != NULL)
 	{
 	  /* lockwait_blocked_mode */
-	  strncpy (buf, LOCK_TO_LOCKMODE_STRING (lockwait->blocked_mode), sizeof (buf));
-	  buf[sizeof (buf) - 1] = '\0';
-	  trim (buf);
-	  error = db_make_string_copy (&vals[idx], buf);
+	  strncpy (buffer, LOCK_TO_LOCKMODE_STRING (lockwait->blocked_mode), buf_len);
+	  buffer[buf_len - 1] = '\0';
+	  trim (buffer);
+	  error = db_make_string_copy (&vals[idx], buffer);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -791,5 +807,7 @@ exit_on_error:
     }
 
   return error;
+#else // not SERVER_MODE
+  return NO_ERROR;
+#endif // not SERVER_MODE
 }
-#endif /* defined(SERVER_MODE) */

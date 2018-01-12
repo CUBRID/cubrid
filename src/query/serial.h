@@ -32,7 +32,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
-#include "thread.h"
+#include "thread_compat.hpp"
 #include "storage_common.h"
 
 extern int xserial_get_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * oid_p,

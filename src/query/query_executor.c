@@ -68,8 +68,8 @@
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
-
 #include "db_json.hpp"
+#include "thread.h"
 
 #include "dbtype.h"
 

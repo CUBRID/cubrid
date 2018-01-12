@@ -1077,7 +1077,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 	  {
 	    if (error_area != NULL)
 	      {
-		er_set_area_error ((void *) error_area);
+		er_set_area_error (error_area);
 		free_and_init (error_area);
 	      }
 	  }

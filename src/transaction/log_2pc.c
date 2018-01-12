@@ -44,7 +44,7 @@
 #include "system_parameter.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
-#include "thread.h"
+#include "thread_compat.hpp"
 #endif /* SERVER_MODE */
 #if !defined(WINDOWS)
 #include "tcp.h"		/* for css_gethostid */

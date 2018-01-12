@@ -40,6 +40,7 @@
 #include "chartype.h"
 #include "parser.h"
 #include "parser_message.h"
+#include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "intl_support.h"
 #include "error_manager.h"
@@ -57,6 +58,8 @@
 #include "object_print.h"
 #include "show_meta.h"
 #include "db.h"
+#include "object_printer.hpp"
+#include "string_buffer.hpp"
 #include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -174,7 +177,7 @@ static PT_NODE *pt_make_sort_spec_with_number (PARSER_CONTEXT * parser, const in
 static PT_NODE *pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *table_name);
 static PT_NODE *pt_make_dummy_query_check_table (PARSER_CONTEXT * parser, const char *table_name);
 static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name);
-static char *pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name);
+static void pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf);
 static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_for, DB_VALUE * upper_limit,
 						bool * has_limit);
 static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val);
@@ -8996,16 +8999,14 @@ error:
 
 /*
  * pt_help_show_create_table() help to generate create table string.
- * return string of create table.
- * parser(in) : Parser context
+ * parser(in)    : Parser context
  * table_name(in): table name node
+ * strbuf(out)   : string of create table.
  */
-static char *
-pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
+static void
+pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf)
 {
   DB_OBJECT *class_op;
-  CLASS_HELP *class_schema = NULL;
-  PARSER_VARCHAR *buffer;
   int is_class = 0;
 
   /* look up class in all schema's */
@@ -9016,7 +9017,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	{
 	  PT_ERRORc (parser, table_name, er_msg ());
 	}
-      return NULL;
+      return;
     }
 
   is_class = db_is_class (class_op);
@@ -9026,22 +9027,23 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	{
 	  PT_ERRORc (parser, table_name, er_msg ());
 	}
-      return NULL;
+      return;
     }
-  if (!is_class)
+  else if (!is_class)
     {
       PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A,
 		   table_name->info.name.original, pt_show_misc_type (PT_CLASS));
     }
 
-  class_schema = obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
-  if (class_schema == NULL)
-    {
-      int error;
+  object_printer obj_print (strbuf);
+  obj_print.describe_class (class_op);
 
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+  if (strbuf.len () == 0)
+    {
+      int error = er_errid ();
+
       assert (error != NO_ERROR);
+
       if (error == ER_AU_SELECT_FAILURE)
 	{
 	  PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
@@ -9051,16 +9053,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	{
 	  PT_ERRORc (parser, table_name, er_msg ());
 	}
-      return NULL;
     }
-
-  buffer = obj_print_describe_class (parser, class_schema, class_op);
-
-  if (class_schema != NULL)
-    {
-      obj_print_help_free_class (class_schema);
-    }
-  return ((char *) pt_get_varchar_bytes (buffer));
 }
 
 /*
@@ -9078,13 +9071,34 @@ PT_NODE *
 pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 {
   PT_NODE *select;
-  char *create_str;
 
   assert (table_name != NULL);
   assert (table_name->node_type == PT_NAME);
 
-  create_str = pt_help_show_create_table (parser, table_name);
-  if (create_str == NULL)
+/* *INDENT-OFF* */
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+  string_buffer strbuf {
+    [&parser] (mem::block& block, size_t len)
+    {
+      size_t dim = block.dim ? block.dim : 1;
+
+      // calc next power of 2 >= b.dim
+      for (; dim < block.dim + len; dim *= 2)
+        ;
+
+      mem::block b{dim, (char *) parser_alloc (parser, block.dim + len)};
+      memcpy (b.ptr, block.ptr, block.dim);
+      block = std::move (b);
+    },
+    [](mem::block& block){} //no need to deallocate for parser_context
+  };
+#else
+  string_buffer strbuf;
+#endif
+/* *INDENT-ON* */
+
+  pt_help_show_create_table (parser, table_name, strbuf);
+  if (strbuf.len () == 0)
     {
       return NULL;
     }
@@ -9102,7 +9116,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
    *      FROM db_root
    */
   pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
-  pt_add_string_col_to_sel_list (parser, select, create_str, "CREATE TABLE");
+  pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
 
   (void) pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
   return select;

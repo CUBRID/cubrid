@@ -9580,7 +9580,7 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
       lock_event_log_lock_info (thread_p, log_fp, entry);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
-      event_log_bind_values (log_fp, tran_index, entry->bind_index_in_tran);
+      event_log_bind_values (thread_p, log_fp, tran_index, entry->bind_index_in_tran);
 
       fprintf (log_fp, "\n");
 
@@ -9603,7 +9603,7 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
       lock_event_log_lock_info (thread_p, log_fp, entry);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
-      event_log_bind_values (log_fp, tran_index, entry->bind_index_in_tran);
+      event_log_bind_values (thread_p, log_fp, tran_index, entry->bind_index_in_tran);
 
       fprintf (log_fp, "\n");
     }
@@ -9637,7 +9637,7 @@ lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * 
   lock_event_log_lock_info (thread_p, log_fp, entry);
 
   event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
-  event_log_bind_values (log_fp, entry->tran_index, entry->bind_index_in_tran);
+  event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
 
   CLEAR_EMULATE_THREAD (thread_p);
 
@@ -9690,7 +9690,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 	  lock_event_log_lock_info (thread_p, log_fp, entry);
 
 	  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
-	  event_log_bind_values (log_fp, entry->tran_index, entry->bind_index_in_tran);
+	  event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
 
 	  CLEAR_EMULATE_THREAD (thread_p);
 
@@ -9719,7 +9719,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 	  lock_event_log_lock_info (thread_p, log_fp, entry);
 
 	  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
-	  event_log_bind_values (log_fp, entry->tran_index, entry->bind_index_in_tran);
+	  event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
 
 	  CLEAR_EMULATE_THREAD (thread_p);
 
