@@ -54,6 +54,7 @@ without_cmserver=""
 
 function print_check ()
 {
+  [ -n "$print_version_only" ] && return
   echo ""
   last_checking_msg="$@"
   echo "  $last_checking_msg..."
@@ -61,6 +62,7 @@ function print_check ()
 
 function print_result ()
 {
+  [ -n "$print_version_only" ] && return
   [ -n "$last_checking_msg" ] && echo -n "  "
   echo "  [$@] $last_checking_msg."
   last_checking_msg=""
@@ -68,6 +70,7 @@ function print_result ()
 
 function print_info ()
 {
+  [ -n "$print_version_only" ] && return
   [ -n "$last_checking_msg" ] && echo -n "  "
   echo "  [INFO] $@"
 }
@@ -129,8 +132,15 @@ function build_initialize ()
     extra_version=0000-unknown
     serial_number=0000
   fi
+
   print_info "version: $version ($major_version.$minor_version.$patch_version.$extra_version)"
   version="$major_version.$minor_version.$patch_version.$extra_version"
+
+  if [ $print_version_only -eq 1 ]; then
+    echo $version
+    exit 0
+  fi
+
   # old style version string (digital only version string) for legacy codes
   build_number="$major_version.$minor_version.$patch_version.$serial_number"
   print_result "OK"
@@ -398,7 +408,7 @@ function show_usage ()
 
 function get_options ()
 {
-  while getopts ":t:m:is:b:p:o:aj:c:z:h" opt; do
+  while getopts ":t:m:is:b:p:o:aj:c:z:vh" opt; do
     case $opt in
       t ) build_target="$OPTARG" ;;
       m ) build_mode="$OPTARG" ;;
@@ -419,6 +429,7 @@ function get_options ()
 	  packages="$packages $optval"
 	done
       ;;
+      v ) print_version_only=1 ;;
       h|\?|* ) show_usage; exit 1;;
     esac
   done
