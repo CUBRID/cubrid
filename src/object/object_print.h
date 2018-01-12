@@ -26,6 +26,8 @@
 
 #ident "$Id$"
 
+#include <stdio.h>
+
 #include "dbtype_def.h"
 #include "thread_compat.hpp"
 

@@ -27,7 +27,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_value_printer.cpp
   )
 set(COMPAT_SOURCES_C
-  ${COMPAT_DIR}/dbtype_function.c
+  #${COMPAT_DIR}/dbtype_function.c
   )
 set (COMPAT_HEADERS  
   ${COMPAT_DIR}/dbtype_def.h

@@ -761,7 +761,6 @@ help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
 #else
   string_buffer sb{&mem::private_realloc, &mem::private_dealloc};
 #endif
-		  codeset = DB_GET_ENUM_CODESET (value);
 /* *INDENT-ON* */
 
   db_value_printer printer (sb);

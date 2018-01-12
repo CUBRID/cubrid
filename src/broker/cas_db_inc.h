@@ -28,7 +28,7 @@
 #ident "$Id$"
 
 #include "dbi.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 /*#include "db.h"*/
 extern int db_get_connect_status (void);
 extern void db_set_connect_status (int status);
