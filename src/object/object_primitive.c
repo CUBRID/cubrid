@@ -8499,7 +8499,16 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	      /* val 1 bound, val 2 unbound */
 	      if (mul2->min_max_val.position == i)
 		{
-		  c = mul2->min_max_val.type == MIN_COLUMN ? DB_GT : DB_LT;
+		  /* safeguard */
+		  assert (mul2->min_max_val.type == MIN_COLUMN || mul2->min_max_val.type == MAX_COLUMN);
+		  if (mul2->min_max_val.type == MIN_COLUMN)
+		    {
+		      c = DB_GT;
+		    }
+		  else
+		    {
+		      c = DB_LT;
+		    }
 		}
 	      else
 		{
@@ -8511,7 +8520,16 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	      /* val 1 unbound, val 2 bound */
 	      if (mul1->min_max_val.position == i)
 		{
-		  c = mul1->min_max_val.type == MIN_COLUMN ? DB_LT : DB_GT;
+		  /* safeguard */
+		  assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
+		  if (mul1->min_max_val.type == MIN_COLUMN)
+		    {
+		      c = DB_LT;
+		    }
+		  else
+		    {
+		      c = DB_GT;
+		    }
 		}
 	      else
 		{
@@ -8543,12 +8561,28 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		    }
 		  else
 		    {
-		      c = DB_GT;
+		      assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
+		      if (mul1->min_max_val.type == MIN_COLUMN)
+			{
+			  c = DB_LT;
+			}
+		      else
+			{
+			  c = DB_GT;
+			}
 		    }
 		}
 	      else if (mul2->min_max_val.position == i)
 		{
-		  c = DB_LT;
+		  assert (mul2->min_max_val.type == MIN_COLUMN || mul2->min_max_val.type == MAX_COLUMN);
+		  if (mul2->min_max_val.type == MIN_COLUMN)
+		    {
+		      c = DB_GT;
+		    }
+		  else
+		    {
+		      c = DB_LT;
+		    }
 		}
 	      else
 		{
