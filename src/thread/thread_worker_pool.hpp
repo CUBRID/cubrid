@@ -35,9 +35,8 @@ namespace cubthread
 {
 
   // forward definition
-  class task;
   template <typename Context>
-  class contextual_task;
+  class task;
 
   // cubtread::worker_pool<Context>
   //
@@ -57,8 +56,8 @@ namespace cubthread
   //    // define the thread context; for CUBRID, that is usually cubthread::entry
   //    class custom_context { ... };
   //
-  //    // then define the contextual_task
-  //    class custom_task : public contextual_task<custom_context>
+  //    // then define the task
+  //    class custom_task : public task<custom_context>
   //    {
   //      void execute (Context &) override { ... }
   //      void create_context (void) override { ... }
@@ -87,7 +86,7 @@ namespace cubthread
   class worker_pool
   {
     public:
-      typedef contextual_task<Context> task_type;
+      typedef task<Context> task_type;
 
       worker_pool (std::size_t pool_size, std::size_t work_queue_size);
       ~worker_pool ();

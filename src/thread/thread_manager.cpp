@@ -57,6 +57,7 @@ namespace cubthread
     , m_all_entries (NULL)
     , m_entry_dispatcher (NULL)
     , m_available_entries_count (max_threads)
+    , m_entry_manager (new entry_manager (*this))
   {
     if (m_max_threads > 0)
       {
@@ -140,7 +141,7 @@ namespace cubthread
     else
       {
 	exec_p->set_manager (this);
-	return create_and_track_resource (m_daemons, 1, looper_arg, exec_p);
+	return create_and_track_resource (m_daemons, 1, looper_arg, m_entry_manager, exec_p);
       }
 #else // not SERVER_MODE = SA_MODE
     assert (false);

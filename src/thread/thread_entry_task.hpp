@@ -42,7 +42,7 @@ namespace cubthread
   // cubthread::entry_task
   //
   //  description:
-  //    entry_task class a specialization of contextual_task using entry as Context; see thread_task.hpp
+  //    entry_task class a specialization of task using entry as Context; see thread_task.hpp
   //    class is friend of cubthread::manager and cannot be used directly with cubthread::daemon or
   //      cubthread::worker_pool
   //
@@ -56,17 +56,17 @@ namespace cubthread
   //     2.2. pass it to a worker pool to be executed once
   //        see thread_manager.hpp, thread_daemon.hpp and thread_worker_pool.hpp for more details
   //
-  class entry_task : public contextual_task<entry>
+  class entry_task : public task<entry>
   {
     public:
 
       entry_task ()
-	: contextual_task<entry> ()
+	: task<entry> ()
 	, m_manager_p (NULL)
       {
       }
 
-      // contextual_task implementation for create_context, retire_context
+      // task implementation for create_context, retire_context
       entry &create_context (void) // NO_GCC_44: override
       {
 	return *m_manager_p->claim_entry ();
@@ -89,6 +89,39 @@ namespace cubthread
       entry_task (const entry_task &other);
 
       manager *m_manager_p;
+  };
+
+  class entry_manager : public context_manager<entry>
+  {
+    public:
+      entry_manager (manager &manager_arg)
+	: m_manager (manager_arg)
+      {
+      }
+
+      entry &create_context (void) override
+      {
+	entry &context = *m_manager.claim_entry ();
+	on_create (context);
+	return context;
+      }
+
+      void retire_context (entry &context) final
+      {
+	on_retire (context);
+	m_manager.retire_entry (context);
+      }
+
+    protected:
+      virtual void on_create (entry &)
+      {
+      }
+      virtual void on_retire (entry &)
+      {
+      }
+
+    private:
+      manager &m_manager;
   };
 
 } // namespace cubthread
