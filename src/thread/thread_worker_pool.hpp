@@ -27,9 +27,7 @@
 #include "lockfree_circular_queue.hpp"
 #include "resource_shared_pool.hpp"
 
-#if defined (NO_GCC_44)
 #include <atomic>
-#endif // no GCC 4.4
 #include <mutex>
 #include <thread>
 
@@ -151,7 +149,7 @@ namespace cubthread
       resource_shared_pool<std::thread> m_thread_dispatcher;
 
       // set to true when stopped
-      bool m_stopped;
+      std::atomic<bool> m_stopped;
   };
 
 } // namespace cubthread
@@ -182,6 +180,7 @@ namespace cubthread
   {
     // not safe to destroy running pools
     assert (m_stopped);
+    assert (m_work_queue.is_empty ());
     delete[] m_threads;
   }
 
@@ -230,11 +229,17 @@ namespace cubthread
   void
   worker_pool<Context>::stop (void)
   {
-    if (m_stopped)
+    if (m_stopped.exchange (true))
       {
 	// already stopped
 	return;
       }
+    else
+      {
+	// I am responsible with stopping threads
+      }
+
+    // join all threads
     for (std::size_t i = 0; i < m_max_workers; i++)
       {
 	if (m_threads[i].joinable ())
@@ -242,7 +247,13 @@ namespace cubthread
 	    m_threads[i].join ();
 	  }
       }
-    m_stopped = true;
+
+    // retire all tasks that have not been executed
+    task_type *task = NULL;
+    while (m_work_queue.consume (task))
+      {
+	task->retire ();
+      }
   }
 
   template <typename Context>

@@ -97,6 +97,7 @@ namespace cubthread
 	  {
 	    retire_context (*m_own_context);
 	  }
+	delete this;
       }
 
       // create own context
