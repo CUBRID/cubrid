@@ -1345,6 +1345,7 @@ net_server_start (const char *server_name)
       packed_name = css_pack_server_name (server_name, &name_length);
       css_init_job_queue ();
 
+#if 0
       if (strcmp (server_name, "send") == 0)
 	{
 	  remzi_listen_and_send ();
@@ -1353,6 +1354,7 @@ net_server_start (const char *server_name)
 	{
 	  remzi_connect_and_recv ();
 	}
+#endif
       r = css_init (packed_name, name_length, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
       free_and_init (packed_name);
 

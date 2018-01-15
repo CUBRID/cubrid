@@ -999,6 +999,30 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_GET_EOF:
       css_process_get_eof_request (master_fd);
       break;
+    case SERVER_CHANGE_HB_NODE_TYPE:
+      {
+        int rc;
+        rc = css_refresh_hb_node_state_from_master ();
+        if (rc != NO_ERRORS)
+          {
+            assert (false);
+            return 0;
+          }
+
+        if (css_get_hb_node_state() == HB_NSTATE_MASTER)
+            {
+              fprintf (stderr, "i'm master\n");
+            }
+        else if (css_get_hb_node_state() == HB_NSTATE_SLAVE)
+          {
+            fprintf (stderr, "i'm slave\n");
+          }
+        else
+          {
+            fprintf (stderr, "i'm %d\n", css_get_hb_node_state());
+          }
+      }
+      break;
 #endif
     default:
       /* master do not respond */
@@ -1214,15 +1238,15 @@ css_refresh_hb_node_state_from_master ()
   hb_node_state state = HB_NSTATE_UNKNOWN;
   int error = NO_ERRORS;
   
-  error = css_send_heartbeat_request (css_Master_conn, SERVER_GET_HB_NODE_TYPE);
+  error = css_receive_heartbeat_data (css_Master_conn, (char *) &state, sizeof (unsigned short));
   if (error != NO_ERRORS)
     {
       return error;
     }
-
-  state = (hb_node_state) css_get_master_request (css_Pipe_to_master);
+    
+  assert (state > HB_NSTATE_UNKNOWN && state < HB_NSTATE_MAX);
+    
   heartbeat_Node_state = state;
-  
   return NO_ERRORS;
 #endif
 }
@@ -1923,26 +1947,6 @@ css_init (char *server_name, int name_length, int port_id)
 	      fprintf (stderr, "failed to heartbeat register.\n");
 	      goto shutdown;
 	    }
-
-         /* status = css_refresh_hb_node_state_from_master ();
-          if (status != NO_ERRORS)
-	    {
-	      fprintf (stderr, "failed to heartbeat register.\n");
-	      goto shutdown;
-	    }
-	    
-          if (css_get_hb_node_state() == HB_NSTATE_MASTER)
-            {
-              fprintf (stderr, "i'm master\n");
-            }
-          else if (css_get_hb_node_state() == HB_NSTATE_SLAVE)
-            {
-              fprintf (stderr, "i'm slave\n");
-            }
-          else
-            {
-              fprintf (stderr, "i'm %d\n", css_get_hb_node_state());
-            }*/
 	}
 #endif
 

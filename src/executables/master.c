@@ -475,6 +475,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 #else /* ! WINDOWS */
 	  /* accept a request from a new server */
 	  css_accept_new_request (conn, rid, server_name, name_length);
+          css_send_to_my_server_hb_state ();
 #endif /* ! WINDOWS */
 	}
     }

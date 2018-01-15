@@ -113,8 +113,6 @@ static void css_process_ha_start_util_process (CSS_CONN_ENTRY * conn, unsigned s
 
 static void css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name);
 
-static void css_process_get_hb_node_type (CSS_CONN_ENTRY *conn);
-
 /*
  * css_send_command_to_server()
  *   return: none
@@ -897,12 +895,6 @@ css_process_change_ha_mode (CSS_CONN_ENTRY * conn)
 #if !defined(WINDOWS)
   hb_resource_receive_changemode (conn);
 #endif
-}
-
-static void
-css_process_get_hb_node_type (CSS_CONN_ENTRY *conn)
-{
-  css_send_heartbeat_data (conn, (char *) &hb_Cluster->state, sizeof (int));
 }
 
 /*
@@ -2042,9 +2034,6 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 	case SERVER_GET_EOF:
 	  css_process_get_eof (conn);
 	  break;
-        case SERVER_GET_HB_NODE_TYPE:
-          css_process_get_hb_node_type (conn);
-          break;
 	default:
 	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive unexpected request. (request:%d).\n", request);
 	  break;
@@ -2060,4 +2049,32 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 #endif
 
   return;
+}
+
+int
+css_send_to_my_server_hb_state ()
+{
+  SOCKET_QUEUE_ENTRY *entry = NULL;
+  int rc = NO_ERRORS;
+  
+  entry = css_return_entry_of_server (hb_Cluster->myself->host_name, css_Master_socket_anchor);
+  
+  if (entry == NULL || IS_INVALID_SOCKET (entry->fd))
+    {
+      return ER_FAILED;
+    }
+
+  rc = css_send_heartbeat_request (entry->conn_ptr, SERVER_CHANGE_HB_NODE_TYPE);
+  if (rc != NO_ERRORS)
+    {
+      return ER_FAILED;
+    }
+
+  rc = css_send_heartbeat_data (entry->conn_ptr, (char *) &hb_Cluster->myself->state, sizeof (unsigned short));
+  if (rc != NO_ERRORS)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
