@@ -428,12 +428,12 @@ get_line (int fd)
 	}
       if (bptr == bend)
 	{
-          char last_char_prev_buf = 0;
+	  char last_char_prev_buf = 0;
 
-          if (bptr > buf)
-            {
-              last_char_prev_buf = *(bptr - 1);
-            }
+	  if (bptr > buf)
+	    {
+	      last_char_prev_buf = *(bptr - 1);
+	    }
 
 	  buflen = read (fd, buf, BUFSIZ);
 	  if (buflen <= 0)
@@ -448,17 +448,17 @@ get_line (int fd)
 	  bend = buf + buflen;
 	  bptr = buf;
 
-          /* special case : <CR><LF> is split at buffer bound */
-          if (last_char_prev_buf == '\r' && *bptr == '\n')
-            {
-              if (cptr > curline)
-                {
-                  cptr--;
-                }
-              *cptr = '\0';
-              ++bptr;
-              return (curline);
-            }
+	  /* special case : <CR><LF> is split at buffer bound */
+	  if (last_char_prev_buf == '\r' && *bptr == '\n')
+	    {
+	      if (cptr > curline)
+		{
+		  cptr--;
+		}
+	      *cptr = '\0';
+	      ++bptr;
+	      return (curline);
+	    }
 	}
     }
 }
