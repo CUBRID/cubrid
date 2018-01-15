@@ -1220,7 +1220,7 @@ css_refresh_hb_node_state_from_master ()
       return error;
     }
 
-  state = (hb_node_state) css_get_master_request (css_Master_conn->fd);
+  state = (hb_node_state) css_get_master_request (css_Pipe_to_master);
   heartbeat_Node_state = state;
   
   return NO_ERRORS;
@@ -1924,8 +1924,8 @@ css_init (char *server_name, int name_length, int port_id)
 	      goto shutdown;
 	    }
 
-          status = css_refresh_hb_node_state_from_master ();
-          if (status != NO_ERROR)
+         /* status = css_refresh_hb_node_state_from_master ();
+          if (status != NO_ERRORS)
 	    {
 	      fprintf (stderr, "failed to heartbeat register.\n");
 	      goto shutdown;
@@ -1933,16 +1933,16 @@ css_init (char *server_name, int name_length, int port_id)
 	    
           if (css_get_hb_node_state() == HB_NSTATE_MASTER)
             {
-              fprintf (stdout, "i'm master\n");
+              fprintf (stderr, "i'm master\n");
             }
           else if (css_get_hb_node_state() == HB_NSTATE_SLAVE)
             {
-              fprintf (stdout, "i'm slave\n");
+              fprintf (stderr, "i'm slave\n");
             }
           else
             {
-              assert (false);
-            }
+              fprintf (stderr, "i'm %d\n", css_get_hb_node_state());
+            }*/
 	}
 #endif
 
