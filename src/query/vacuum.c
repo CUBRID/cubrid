@@ -678,13 +678,6 @@ static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
 #endif /* NDEBUG */
 
 /* *INDENT-OFF* */
-// VACUUM_WORKER resource pool
-resource_shared_pool<VACUUM_WORKER> *vacuum_Workers_context_pool = NULL;
-// master daemon thread
-cubthread::daemon *vacuum_Master_daemon = NULL;
-// worker thread pool
-cubthread::entry_workpool *vacuum_Worker_threads = NULL;
-
 void
 vacuum_init_thread_context (cubthread::entry & context, THREAD_TYPE type, VACUUM_WORKER * worker)
 {
@@ -697,34 +690,31 @@ vacuum_init_thread_context (cubthread::entry & context, THREAD_TYPE type, VACUUM
   context.status = TS_RUN;
 }
 
-class vacuum_master_task : public cubthread::entry_task
+// class vacuum_master_context_manager
+//
+//  description:
+//    extend entry_manager to override context custruction and retirement
+//
+class vacuum_master_context_manager : public cubthread::entry_manager
 {
 public:
-  void execute (cubthread::entry & thread_ref) // NO_GCC_44: final
-  {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-        // wait for boot to finish
-        return;
-      }
-    vacuum_process_vacuum_data (&thread_ref);
-  }
+  vacuum_master_context_manager () = default;
+  ~vacuum_master_context_manager() = default;
 
-  cubthread::entry & create_context (void) // NO_GCC_44: override
+private:
+  void on_create (cubthread::entry & context) final
   {
-    cubthread::entry &context = cubthread::entry_task::create_context ();
-
     // set vacuum master in execute state
     assert (vacuum_Master.state == VACUUM_WORKER_STATE_RECOVERY || vacuum_Master.state == VACUUM_WORKER_STATE_EXECUTE);
     vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;
 
     vacuum_init_thread_context (context, TT_VACUUM_MASTER, &vacuum_Master);
-
-    return context;
   }
 
-  void retire_context (cubthread::entry & context) // NO_GCC_44: override
+  void on_retire (cubthread::entry & context) final
   {
+    vacuum_finalize (&context);    // todo: is this the rightful place?
+
     if (context.vacuum_worker != NULL)
       {
         assert (context.vacuum_worker == &vacuum_Master);
@@ -734,18 +724,96 @@ public:
       {
         assert (false);
       }
-
-    cubthread::entry_task::retire_context (context);
   }
 
-  void retire (void) // NO_GCC_44: override
+  void on_recycle (cubthread::entry &) final
   {
-    vacuum_finalize (get_own_context ());
-
-    cubthread::entry_task::retire ();
   }
 };
 
+// class vacuum_master_task
+//
+//  description:
+//    vacuum master task
+//
+class vacuum_master_task : public cubthread::entry_task
+{
+public:
+  void execute (cubthread::entry & thread_ref) final
+  {
+    if (!BO_IS_SERVER_RESTARTED ())
+      {
+        // wait for boot to finish
+        return;
+      }
+    vacuum_process_vacuum_data (&thread_ref);
+  }
+};
+
+// class vacuum_worker_context_manager
+//
+//  description:
+//    extern entry manager to override construction/retirement of vacuum worker context
+//
+class vacuum_worker_context_manager : public cubthread::entry_manager
+{
+public:
+  vacuum_worker_context_manager (void)
+    : cubthread::entry_manager ()
+  {
+    m_pool = new resource_shared_pool<VACUUM_WORKER> (vacuum_Workers, VACUUM_MAX_WORKER_COUNT);
+  }
+
+  ~vacuum_worker_context_manager (void)
+  {
+    delete m_pool;
+  }
+  
+private:
+#if defined (SA_MODE)
+  // find a proper way to do this
+  friend void vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
+                                const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
+#endif // SA_MODE
+
+  void on_create (cubthread::entry & context) final
+  {
+    vacuum_init_thread_context (context, TT_VACUUM_WORKER, m_pool->claim ());
+
+    if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
+      {
+        assert (false);
+      }
+  }
+
+  void on_retire (cubthread::entry & context) final
+  {
+    if (context.vacuum_worker != NULL)
+      {
+        context.vacuum_worker->state = VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE;
+        m_pool->retire (*context.vacuum_worker);
+        context.vacuum_worker = NULL;
+      }
+    else
+      {
+        assert (false);
+      }
+  }
+
+  void on_recycle (cubthread::entry & entry) final
+  {
+    // nothing for now
+  }
+
+  // members
+  resource_shared_pool<VACUUM_WORKER>* m_pool;
+};
+
+// class vacuum_worker_task
+//
+//  description:
+//    vacuum worker task
+//
 class vacuum_worker_task : public cubthread::entry_task
 {
 public:
@@ -757,43 +825,13 @@ public:
   {
   }
 
-  void execute (cubthread::entry & thread_ref) // NO_GCC_44: override
+  void execute (cubthread::entry & thread_ref) final
   {
 #if defined (SERVER_MODE)
     // safe-guard - check interrupt is always false
     assert (!thread_ref.check_interrupt);
 #endif // SERVER_MODE
     vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_partial_block);
-  }
-
-  cubthread::entry & create_context (void) // NO_GCC_44: override
-  {
-    cubthread::entry &context = cubthread::entry_task::create_context ();
-
-    vacuum_init_thread_context (context, TT_VACUUM_WORKER, vacuum_Workers_context_pool->claim ());
-
-    if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
-      {
-        assert (false);
-      }
-
-    return context;
-  }
-
-  void retire_context (cubthread::entry & context) // NO_GCC_44: override
-  {
-    if (context.vacuum_worker != NULL)
-      {
-        context.vacuum_worker->state = VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE;
-        vacuum_Workers_context_pool->retire (*context.vacuum_worker);
-        context.vacuum_worker = NULL;
-      }
-    else
-      {
-        assert (false);
-      }
-
-    cubthread::entry_task::retire_context (context);
   }
 
 private:
@@ -803,6 +841,15 @@ private:
   BLOCK_LOG_BUFFER m_block_log_buffer;
   bool m_partial_block;
 };
+
+// vacuum master globals
+static cubthread::daemon *vacuum_Master_daemon = NULL;                       // daemon thread
+static vacuum_master_context_manager *vacuum_Master_context_manager = NULL;  // context manager
+
+// vacuum worker globals
+static cubthread::entry_workpool *vacuum_Worker_threads = NULL;                // thread pool
+static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;    // context manager
+
 /* *INDENT-ON* */
 
 /*
@@ -1043,21 +1090,25 @@ vacuum_boot (THREAD_ENTRY * thread_p)
       return error_code;
     }
 
-  vacuum_Workers_context_pool = new resource_shared_pool < VACUUM_WORKER > (vacuum_Workers, VACUUM_MAX_WORKER_COUNT);
-
-  /* create worker pool */
+  // create context managers
+  vacuum_Master_context_manager = new vacuum_master_context_manager ();
+  vacuum_Worker_context_manager = new vacuum_worker_context_manager ();
 
 #if defined (SERVER_MODE)
-  /* get thread manager */
+
+  // get thread manager
   auto thread_manager = cubthread::get_manager ();
 
+  // create thread pool
   vacuum_Worker_threads =
-    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), VACUUM_JOB_QUEUE_CAPACITY);
+    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
+					VACUUM_JOB_QUEUE_CAPACITY, vacuum_Worker_context_manager);
   assert (vacuum_Worker_threads != NULL);
 
+  // create vacuum master thread
   auto interval_time = std::chrono::milliseconds (prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL));
-  vacuum_Master_daemon = thread_manager->create_daemon (cubthread::looper (interval_time), new vacuum_master_task ());
-
+  vacuum_Master_daemon = thread_manager->create_daemon (cubthread::looper (interval_time),
+							new vacuum_master_task (), vacuum_Master_context_manager);
 #endif /* SERVER_MODE */
 
   vacuum_Is_booted = true;
@@ -1091,8 +1142,8 @@ vacuum_stop (THREAD_ENTRY * thread_p)
       thread_manager->destroy_daemon (vacuum_Master_daemon);
     }
 
-  delete vacuum_Workers_context_pool;
-  vacuum_Workers_context_pool = NULL;
+  delete vacuum_Master_context_manager;
+  delete vacuum_Worker_context_manager;
 
   // all resources should be freed
 
@@ -2698,7 +2749,7 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
 {
 #if defined (SA_MODE)
   // we need a smarter thread manager that can do this automatically
-  VACUUM_WORKER *worker_p = vacuum_Workers_context_pool->claim ();
+  VACUUM_WORKER *worker_p = vacuum_Worker_context_manager->m_pool->claim ();
   THREAD_TYPE save_type = THREAD_TYPE::TT_NONE;
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == THREAD_TYPE::TT_VACUUM_MASTER);
@@ -2708,7 +2759,7 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
 #if defined (SA_MODE)
   vacuum_convert_thread_to_master (thread_p, save_type);
   assert (save_type == THREAD_TYPE::TT_VACUUM_WORKER);
-  vacuum_Workers_context_pool->retire (*worker_p);
+  vacuum_Worker_context_manager->m_pool->retire (*worker_p);
 #endif // SA_MODE
 }
 

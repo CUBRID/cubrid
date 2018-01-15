@@ -29,7 +29,6 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 #include "thread_task.hpp"
-#include "thread_manager.hpp"
 
 #include <cassert>
 
@@ -42,7 +41,7 @@ namespace cubthread
   // cubthread::entry_task
   //
   //  description:
-  //    entry_task class a specialization of task using entry as Context; see thread_task.hpp
+  //    entry_task class is a cubthread::task specialization using entry as Context; see thread_task.hpp
   //    class is friend of cubthread::manager and cannot be used directly with cubthread::daemon or
   //      cubthread::worker_pool
   //
@@ -60,68 +59,48 @@ namespace cubthread
   {
     public:
 
-      entry_task ()
-	: task<entry> ()
-	, m_manager_p (NULL)
-      {
-      }
-
-      // task implementation for create_context, retire_context
-      entry &create_context (void) // NO_GCC_44: override
-      {
-	return *m_manager_p->claim_entry ();
-      }
-      void retire_context (entry &context) // NO_GCC_44: override
-      {
-	m_manager_p->retire_entry (context);
-      }
-
-      // inheritor should implement execute_with_context
-
-      void set_manager (manager *manager_p)
-      {
-	assert (m_manager_p == NULL);
-	m_manager_p = manager_p;
-      }
+      entry_task () = default;
 
     private:
       // disable copy constructor
       entry_task (const entry_task &other);
-
-      manager *m_manager_p;
   };
 
+  // cubthread::entry_manager
+  //
+  //  description:
+  //    entry_manager abstract class is a cubthread::context_manager specialization using entry as Context.
+  //    the entry pool is managed by thread_manager. entry_manager acts as an base for specialized context managers
+  //    that may need to do additional operations on entry contexts during create, retire and recycle context
+  //    operations.
+  //
+  //  how to use:
+  //    create a context manager derived from entry manager and override on_create, on_retire and on_recycle functions.
+  //    create worker pools or daemons using derived context manager
+  //
   class entry_manager : public context_manager<entry>
   {
     public:
-      entry_manager (manager &manager_arg)
-	: m_manager (manager_arg)
-      {
-      }
+      entry_manager (void) = default;
 
-      entry &create_context (void) override
-      {
-	entry &context = *m_manager.claim_entry ();
-	on_create (context);
-	return context;
-      }
-
-      void retire_context (entry &context) final
-      {
-	on_retire (context);
-	m_manager.retire_entry (context);
-      }
+      entry &create_context (void) final;
+      void retire_context (entry &context) final;
+      void recycle_context (entry &context) final;
 
     protected:
-      virtual void on_create (entry &)
-      {
-      }
-      virtual void on_retire (entry &)
-      {
-      }
 
-    private:
-      manager &m_manager;
+      virtual void on_create (entry &)    // manipulate entry after claim and before any execution
+      {
+	// does nothing by default
+      }
+      virtual void on_retire (entry &)    // manipulate entry before retire; should mirror on_create
+      {
+	// does nothing by default
+      }
+      virtual void on_recycle (entry &)   // manipulate entry between execution cycles
+      {
+	// does nothing by default
+      }
   };
 
 } // namespace cubthread

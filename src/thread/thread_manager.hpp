@@ -103,7 +103,8 @@ namespace cubthread
 
       // create a entry_workpool with pool_size number of threads
       // note: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
-      entry_workpool *create_worker_pool (size_t pool_size, size_t work_queue_size);
+      entry_workpool *create_worker_pool (size_t pool_size, size_t work_queue_size,
+					  entry_manager *context_manager = NULL);
 
       // destroy worker pool
       void destroy_worker_pool (entry_workpool *&worker_pool_arg);
@@ -131,7 +132,8 @@ namespace cubthread
       //////////////////////////////////////////////////////////////////////////
 
       // create daemon thread
-      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p);
+      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p,
+			     entry_manager *context_manager = NULL);
 
       // destroy daemon thread
       void destroy_daemon (daemon *&daemon_arg);
@@ -165,7 +167,6 @@ namespace cubthread
     private:
 
       // define friend classes/functions to access claim_entry/retire_entry functions
-      friend class entry_task;
       friend class entry_manager;
       friend void initialize (entry *&my_entry);
       friend void finalize (void);

@@ -26,6 +26,7 @@
 
 #include "lockfree_circular_queue.hpp"
 #include "resource_shared_pool.hpp"
+#include "thread_task.hpp"
 
 #include <atomic>
 #include <mutex>
@@ -33,11 +34,6 @@
 
 namespace cubthread
 {
-
-  // forward definition
-  template <typename Context>
-  class task;
-
   // cubtread::worker_pool<Context>
   //
   //  templates
@@ -86,9 +82,10 @@ namespace cubthread
   class worker_pool
   {
     public:
-      typedef task<Context> task_type;
+      using task_type = task<Context>;
+      using context_manager_type = context_manager<Context>;
 
-      worker_pool (std::size_t pool_size, std::size_t work_queue_size);
+      worker_pool (std::size_t pool_size, std::size_t work_queue_size, context_manager_type *context_mgr);
       ~worker_pool ();
 
       // try to execute task; executes only if there is an available thread; otherwise returns false
@@ -142,6 +139,9 @@ namespace cubthread
       // work queue to store tasks that cannot be immediately executed
       lockfree::circular_queue<task_type *> m_work_queue;
 
+      // thread context manager
+      context_manager_type &m_context_manager;
+
       // thread objects
       std::thread *m_threads;
 
@@ -164,10 +164,12 @@ namespace cubthread
 {
 
   template <typename Context>
-  worker_pool<Context>::worker_pool (std::size_t pool_size, std::size_t work_queue_size)
+  worker_pool<Context>::worker_pool (std::size_t pool_size, std::size_t work_queue_size,
+				     context_manager_type *context_mgr)
     : m_max_workers (pool_size)
     , m_worker_count (0)
     , m_work_queue (work_queue_size)
+    , m_context_manager (*context_mgr)
     , m_threads (new std::thread[m_max_workers])
     , m_thread_dispatcher (m_threads, m_max_workers)
     , m_stopped (false)
@@ -292,34 +294,33 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::run (worker_pool<Context> &pool, std::thread &thread_arg, task_type *work_arg)
+  worker_pool<Context>::run (worker_pool<Context> &pool, std::thread &thread_arg, task_type *task_arg)
   {
     // create context for task execution
-    Context &context = work_arg->create_context ();
-    task_type *prev_work = NULL;
+    Context &context = pool.m_context_manager.create_context ();
+    bool first_loop = true;
 
     // loop as long as pool is running and there are tasks in queue
+    task_type *task_p = task_arg;
     do
       {
-	// retire previous task, if any
-	if (prev_work != NULL)
+	if (!first_loop)
 	  {
-	    prev_work->retire ();
+	    // make sure context can be reused
+	    pool.m_context_manager.recycle_context (context);
 	  }
 
 	// execute current task
-	work_arg->execute (context);
-
-	// current task becomes previous
-	prev_work = work_arg;
+	task_p->execute (context);
+	// and retire it
+	task_p->retire ();
 
 	// consume another task
       }
-    while (pool.is_running() && pool.m_work_queue.consume (work_arg));
+    while (pool.is_running() && pool.m_work_queue.consume (task_p));
 
-    // no more tasks; so retire context and then retire task
-    work_arg->retire_context (context);
-    work_arg->retire ();
+    // retire thread context
+    pool.m_context_manager.retire_context (context);
 
     // end of run; deregister worker
     pool.deregister_worker (thread_arg);
