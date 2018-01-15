@@ -35,6 +35,7 @@
 #include "boot_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
+#include "thread.h"
 
 #define SQUARE(n) ((n)*(n))
 

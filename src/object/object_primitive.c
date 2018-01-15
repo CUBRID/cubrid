@@ -45,7 +45,6 @@
 #include "file_io.h"
 #include "db_json.hpp"
 #include "db_private_allocator.hpp"
-#include "thread.h"
 #include <utility>
 
 #if !defined (SERVER_MODE)
@@ -8523,7 +8522,16 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	      /* val 1 bound, val 2 unbound */
 	      if (mul2->min_max_val.position == i)
 		{
-		  c = mul2->min_max_val.type == MIN_COLUMN ? DB_GT : DB_LT;
+		  /* safeguard */
+		  assert (mul2->min_max_val.type == MIN_COLUMN || mul2->min_max_val.type == MAX_COLUMN);
+		  if (mul2->min_max_val.type == MIN_COLUMN)
+		    {
+		      c = DB_GT;
+		    }
+		  else
+		    {
+		      c = DB_LT;
+		    }
 		}
 	      else
 		{
@@ -8535,7 +8543,16 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	      /* val 1 unbound, val 2 bound */
 	      if (mul1->min_max_val.position == i)
 		{
-		  c = mul1->min_max_val.type == MIN_COLUMN ? DB_LT : DB_GT;
+		  /* safeguard */
+		  assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
+		  if (mul1->min_max_val.type == MIN_COLUMN)
+		    {
+		      c = DB_LT;
+		    }
+		  else
+		    {
+		      c = DB_GT;
+		    }
 		}
 	      else
 		{
@@ -8567,12 +8584,28 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		    }
 		  else
 		    {
-		      c = DB_GT;
+		      assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
+		      if (mul1->min_max_val.type == MIN_COLUMN)
+			{
+			  c = DB_LT;
+			}
+		      else
+			{
+			  c = DB_GT;
+			}
 		    }
 		}
 	      else if (mul2->min_max_val.position == i)
 		{
-		  c = DB_LT;
+		  assert (mul2->min_max_val.type == MIN_COLUMN || mul2->min_max_val.type == MAX_COLUMN);
+		  if (mul2->min_max_val.type == MIN_COLUMN)
+		    {
+		      c = DB_GT;
+		    }
+		  else
+		    {
+		      c = DB_LT;
+		    }
 		}
 	      else
 		{
@@ -10424,7 +10457,7 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  *    representations into error messages and the like.
  */
 char *
-pr_valstring (thread_entry * threade, DB_VALUE * val)
+pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
 {
 /* *INDENT-OFF* */
 #if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
@@ -17229,7 +17262,6 @@ static void
 mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
   DB_VALUE json_body, schema_raw;
-  const char *schema_str;
   DB_JSON *json;
 
   json = (DB_JSON *) memptr;

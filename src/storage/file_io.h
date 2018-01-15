@@ -29,20 +29,17 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "dbtype.h"
+#include "lzo/lzoconf.h"
+#include "lzo/lzo1x.h"
+#include "memory_hash.h"
+#include "porting.h"
+#include "release_string.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
 #include <stdio.h>
 #include <time.h>
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "thread.h"
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-#include "porting.h"
-#include "storage_common.h"
-#include "release_string.h"
-#include "dbtype.h"
-#include "memory_hash.h"
-#include "lzo/lzoconf.h"
-#include "lzo/lzo1x.h"
 
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
 

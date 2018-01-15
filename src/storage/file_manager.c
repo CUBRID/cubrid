@@ -52,12 +52,11 @@
 #include "bit.h"
 #include "util_func.h"
 #include "vacuum.h"
-
 #include "critical_section.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-
+#include "thread.h"
 #if !defined (SERVER_MODE)
 #include "transaction_cl.h"
 #endif

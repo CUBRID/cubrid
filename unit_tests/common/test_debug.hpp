@@ -24,18 +24,20 @@
 #ifndef _TEST_DEBUG_HPP_
 #define _TEST_DEBUG_HPP_
 
+#include <cstdlib>
+
 namespace test_common
 {
 
 // crash on release too
-inline void
-custom_assert (bool cond)
-{
-  if (!cond)
-    {
-      abort ();
-    }
-}
+  inline void
+  custom_assert (bool cond)
+  {
+    if (!cond)
+      {
+	std::abort ();
+      }
+  }
 
 } // namespace test_common
 

@@ -29,8 +29,7 @@
 #ident "$Id$"
 
 #include "error_manager.h"
-
-#include "thread.h"
+#include "thread_compat.hpp"
 
 #if !defined(NDEBUG)
 #define FI_INSERTED(code) 		fi_test_on(code)

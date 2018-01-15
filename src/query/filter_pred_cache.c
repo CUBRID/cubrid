@@ -28,6 +28,7 @@
 #include "query_executor.h"
 #include "stream_to_xasl.h"
 #include "system_parameter.h"
+#include "thread.h"
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent

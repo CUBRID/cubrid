@@ -39,8 +39,8 @@
 #include "object_primitive.h"
 #include "query_dump.h"
 #include "db_date.h"
-/* this must be the last header file included!!! */
 #include "dbval.h"
+#include "thread.h"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
 

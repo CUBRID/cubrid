@@ -37,10 +37,10 @@
 #include "session.h"
 #include "filter_pred_cache.h"
 #include "md5.h"
-
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+#include "thread.h"
 
 #if !defined (SERVER_MODE)
 
@@ -1467,7 +1467,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	    {
 	      char *s;
 
-	      s = (params.size > 0) ? pr_valstring ((thread_entry *) thread_p, &params.vals[0]) : NULL;
+	      s = (params.size > 0) ? pr_valstring (thread_p, &params.vals[0]) : NULL;
 	      er_log_debug (ARG_FILE_LINE,
 			    "xqmgr_execute_query: ls_update_xasl failed "
 			    "xasl_id { sha1 { %08x | %08x | %08x | %08x | %08x } time_stored { %d sec %d usec } } "

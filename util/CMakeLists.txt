@@ -314,6 +314,10 @@ if(UNIX)
   set(UNITTESTS_AREA_SOURCES
     ${EXECUTABLES_DIR}/unittests_area.c
     )
+  SET_SOURCE_FILES_PROPERTIES(
+    ${UNITTESTS_AREA_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
   add_executable(unittests_area ${UNITTESTS_AREA_SOURCES})
   target_compile_definitions(unittests_area PRIVATE SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_area PRIVATE ${EP_INCLUDES})

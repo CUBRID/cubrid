@@ -5156,7 +5156,7 @@ db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_
   if (result_doc != NULL)
     {
       int error_code;
-      bool has_member;
+      bool has_member = false;
 
       assert (value->domain.general_info.type == DB_TYPE_JSON);
 
