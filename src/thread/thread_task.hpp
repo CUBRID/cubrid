@@ -93,11 +93,12 @@ namespace cubthread
       // implementation of task's retire function.
       virtual void retire (void)
       {
-	retire_own_context ();
-	delete this;
+	if (m_own_context != NULL)
+	  {
+	    retire_context (*m_own_context);
+	  }
       }
 
-    protected:
       // create own context
       void create_own_context (void)
       {
@@ -108,14 +109,6 @@ namespace cubthread
       context_type *get_own_context (void)
       {
 	return m_own_context;
-      }
-
-      void retire_own_context (void)
-      {
-	if (m_own_context != NULL)
-	  {
-	    retire_context (*m_own_context);
-	  }
       }
 
     private:
