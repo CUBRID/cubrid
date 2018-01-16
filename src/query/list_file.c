@@ -762,8 +762,8 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 	{
 	  if (type2 != DB_TYPE_NULL && (list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
 	    {
-	      if (type1 == type2 && ((pr_is_string_type (type1) && pr_is_variable_type (type1))
-                || (type1 == DB_TYPE_JSON)))
+	      if (type1 == type2
+		  && ((pr_is_string_type (type1) && pr_is_variable_type (type1)) || (type1 == DB_TYPE_JSON)))
 		{
 		  /* OK for variable string types with different precision or json types */
 		}
