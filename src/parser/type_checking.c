@@ -13008,22 +13008,22 @@ namespace JsonObj // json_object(key, val[, key, val...]) specific functions
   {
     if(!arg)
       {
-        return MAXINT; //OK - final state
+        return -1; //OK - final state
       }
-    return (pt_is_json_object_name(arg->type_enum) ? 1 : -1);
+    return (pt_is_json_object_name(arg->type_enum) ? 1 : -2);
   }
 
   int f1(parser_node* arg) //expect val
   {
     if(!arg)
       {
-        return -1; //KO - not final state
+        return -2; //KO - not final state
       }
     if (!pt_is_json_value_type(arg->type_enum))
       {
         if (/*can't cast(t,v) to any json value type*/0)
         {
-          return -1; // KO - invalid type for value
+          return -3; // KO - invalid type for value
         }
       }
     return 0; //OK, change state
@@ -13051,36 +13051,18 @@ namespace JsonArr //json_array() specific functions
 
 #include <vector>
 
-namespace func_arg_type
-{
-  std::vector<int(*)(parser_node*)> arr[] = {
-    {0, 0},
-    //...
-    {JsonArr::f0},              //F_JSON_ARRAY
-    {JsonObj::f0, JsonObj::f1}, //F_JSON_OBJECT
-    //F_JSON_CONTAINS
-    //...
-  };
-
-  bool check(parser_node *node)
-  {
-    assert(node->node_type == PT_FUNCTION); // designed for PT_FUNCTION node type
-    return true;
-  }
-}
-
-#if 1 // variadic X-macro
-#define LST()                     \
-  X(O)                            \
-  X(A, JsonArr::f0)               \
-  X(B, JsonObj::f0, JsonObj::f1)  \
-
-#define X(x, ...) { __VA_ARGS__ },
-
-std::vector<int(*)(parser_node*)> arr2[] = {
-  LST()
+#define X(id, ...) #id,
+char* func_type_str[] = {
+  #include "func_type.x"
 };
-#endif
+#undef X
+
+#define X(id, ...) { __VA_ARGS__ },
+std::vector<int(*)(parser_node*)> func_type_transitions[] = {
+  #include "func_type.x"
+};
+#undef X
+
 
 /*
  * pt_eval_function_type () -
@@ -13104,6 +13086,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   is_agg_function = pt_is_aggregate_function (parser, node);
   arg_list = node->info.function.arg_list;
   fcode = node->info.function.function_type;
+  printf("fcode=%d %s\n", fcode, func_type_str[fcode-PT_MIN]);
 
   if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM && fcode != PT_ROW_NUMBER && fcode != PT_RANK
       && fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK)
@@ -13314,7 +13297,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	PT_NODE *arg = arg_list;
 	unsigned int index = 0;
-
+#if 0
 	while (arg)
 	  {
 	    if (index % 2 == 0)
@@ -13346,6 +13329,28 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_JSON;
 	  }
+#else
+        std::vector<int(*)(parser_node*)>& v = func_type_transitions[fcode-PT_MIN];
+        int st = 0;
+        for(PT_NODE *arg = arg_list; st>=0; arg = arg->next)
+          {
+            assert(st < v.size());
+            assert(v[st] != NULL);
+            st = v[st](arg);
+            if(arg == NULL)
+              break;
+          }
+        //if(st != MAXINT) //ERR: not in final state
+        if(st == -1) //OK final state
+          {
+            printf("OK st=-1 final state\n");
+            arg_type = PT_TYPE_JSON;
+          }
+        else
+          {
+            printf("ERR st!=-1 not final state\n");
+          }
+#endif
       }
       break;
 

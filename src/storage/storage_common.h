@@ -1103,6 +1103,14 @@ typedef enum
   PT_PERCENTILE_DISC
 } FUNC_TYPE;
 
+#define X(id, ...) _##id,
+enum FUNC_TYPE2 //this would become FUNC_TYPE
+{
+  //_0 = 899, //to force following values to start from 900
+  #include "func_type.x"
+};
+#undef X
+
 /************************************************************************/
 /* QUERY                                                                */
 /************************************************************************/
