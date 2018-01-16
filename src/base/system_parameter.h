@@ -403,8 +403,10 @@ enum param_id
 
   PRM_ID_JSON_LOG_ALLOCATIONS,
 
+  PRM_ID_CONNECTION_LOGGING,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_JSON_LOG_ALLOCATIONS
+  PRM_LAST_ID = PRM_ID_CONNECTION_LOGGING
 };
 typedef enum param_id PARAM_ID;
 

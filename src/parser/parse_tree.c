@@ -899,7 +899,10 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
     {
       db_value_clear (&node->info.value.db_value);
     }
-
+  if (node->node_type == PT_INSERT_VALUE && node->info.insert_value.is_evaluated)
+    {
+      db_value_clear (&node->info.insert_value.value);
+    }
   /* 
    * Always set the node type to maximum.  This may
    * keep us from doing bad things to the free list if we try to free
