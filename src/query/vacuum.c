@@ -771,7 +771,7 @@ public:
   
 private:
 #if defined (SA_MODE)
-  // find a proper way to do this
+  // find a proper way to do this; SA_MODE claim vacuum worker
   friend void vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
                                 const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
 #endif // SA_MODE
