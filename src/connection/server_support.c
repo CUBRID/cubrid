@@ -109,7 +109,7 @@ static bool ha_Repl_delay_detected = false;
 static int ha_Server_num_of_hosts = 0;
 
 /* current server state (slave, master, replica) sent in by the cub_master process */
-static hb_node_state heartbeat_Node_state = HB_NSTATE_UNKNOWN;
+static HB_NODE_STATE_TYPE heartbeat_Node_state = HB_NSTATE_UNKNOWN;
 
 typedef struct job_queue JOB_QUEUE;
 struct job_queue
@@ -1001,26 +1001,21 @@ css_process_master_request (SOCKET master_fd)
       break;
     case SERVER_CHANGE_HB_NODE_TYPE:
       {
-        int rc;
-        rc = css_refresh_hb_node_state_from_master ();
-        if (rc != NO_ERRORS)
-          {
-            assert (false);
-            return 0;
-          }
+	int rc;
+	const char *last_state, *current_state;
 
-        if (css_get_hb_node_state() == HB_NSTATE_MASTER)
-            {
-              fprintf (stderr, "i'm master\n");
-            }
-        else if (css_get_hb_node_state() == HB_NSTATE_SLAVE)
-          {
-            fprintf (stderr, "i'm slave\n");
-          }
-        else
-          {
-            fprintf (stderr, "i'm %d\n", css_get_hb_node_state());
-          }
+	last_state = hb_node_state_string (css_get_hb_node_state ());
+
+	rc = css_refresh_hb_node_state_from_master ();
+	if (rc != NO_ERRORS)
+	  {
+	    assert (false);
+	    return 0;
+	  }
+
+	current_state = hb_node_state_string (css_get_hb_node_state ());
+	er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "server promoted/demoted from %s to %s\n",
+		      last_state, current_state);
       }
       break;
 #endif
@@ -1235,17 +1230,17 @@ int
 css_refresh_hb_node_state_from_master ()
 {
 #if !defined (WINDOWS)
-  hb_node_state state = HB_NSTATE_UNKNOWN;
+  HB_NODE_STATE_TYPE state = HB_NSTATE_UNKNOWN;
   int error = NO_ERRORS;
-  
-  error = css_receive_heartbeat_data (css_Master_conn, (char *) &state, sizeof (unsigned short));
+
+  error = css_receive_heartbeat_data (css_Master_conn, (char *) &state, sizeof (HB_NODE_STATE_TYPE));
   if (error != NO_ERRORS)
     {
       return error;
     }
-    
+
   assert (state > HB_NSTATE_UNKNOWN && state < HB_NSTATE_MAX);
-    
+
   heartbeat_Node_state = state;
   return NO_ERRORS;
 #endif
@@ -2806,7 +2801,7 @@ css_unset_ha_repl_delayed (void)
   ha_Repl_delay_detected = false;
 }
 
-hb_node_state 
+HB_NODE_STATE_TYPE
 css_get_hb_node_state (void)
 {
   return heartbeat_Node_state;

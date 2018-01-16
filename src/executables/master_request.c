@@ -2056,9 +2056,15 @@ css_send_to_my_server_hb_state ()
 {
   SOCKET_QUEUE_ENTRY *entry = NULL;
   int rc = NO_ERRORS;
-  
-  entry = css_return_entry_of_server (hb_Cluster->myself->host_name, css_Master_socket_anchor);
-  
+
+  for (entry = css_Master_socket_anchor; entry; entry = entry->next)
+    {
+      if (entry->name && (IS_MASTER_CONN_NAME_HA_SERVER (entry->name)))
+	{
+	  break;
+	}
+    }
+
   if (entry == NULL || IS_INVALID_SOCKET (entry->fd))
     {
       return ER_FAILED;
@@ -2070,7 +2076,7 @@ css_send_to_my_server_hb_state ()
       return ER_FAILED;
     }
 
-  rc = css_send_heartbeat_data (entry->conn_ptr, (char *) &hb_Cluster->myself->state, sizeof (unsigned short));
+  rc = css_send_heartbeat_data (entry->conn_ptr, (char *) &hb_Cluster->state, sizeof (HB_NODE_STATE_TYPE));
   if (rc != NO_ERRORS)
     {
       return ER_FAILED;

@@ -225,7 +225,6 @@ static void hb_cluster_cleanup (void);
 static void hb_kill_process (pid_t * pids, int count);
 
 /* process command */
-static const char *hb_node_state_string (int nstate);
 static const char *hb_process_state_string (unsigned char ptype, int pstate);
 static const char *hb_ping_result_string (int ping_result);
 
@@ -913,6 +912,11 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 	  free_and_init (arg);
 	}
 
+      rv = css_send_to_my_server_hb_state ();
+      assert (rv == NO_ERROR);
+
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sent hb state to server. (state=%d). \n", hb_Cluster->state);
+
       return;
     }
 
@@ -1055,6 +1059,11 @@ ping_check_cancel:
     {
       MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, "Failover cancelled by ping check");
       hb_Cluster->state = HB_NSTATE_SLAVE;
+
+      rv = css_send_to_my_server_hb_state ();
+      assert (rv == NO_ERROR);
+
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sent hb state to server. (state=%d). \n", hb_Cluster->state);
     }
   hb_cluster_request_heartbeat_to_all ();
 
@@ -1125,6 +1134,11 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   error =
     hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL, prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
+
+  rv = css_send_to_my_server_hb_state ();
+  assert (rv == NO_ERROR);
+
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sent hb state to server. (state=%d). \n", hb_Cluster->state);
 
   if (arg)
     {
@@ -1230,6 +1244,12 @@ hb_cluster_job_demote (HB_JOB_ARG * arg)
       assert (false);
       free_and_init (arg);
     }
+
+  rv = css_send_to_my_server_hb_state ();
+  assert (rv == NO_ERROR);
+
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sent hb state to server. (state=%d). \n", hb_Cluster->state);
+
   return;
 }
 
@@ -1339,6 +1359,12 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
     {
       free_and_init (arg);
     }
+
+  error = css_send_to_my_server_hb_state ();
+  assert (error == NO_ERROR);
+
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sent hb state to server. (state=%d). \n", hb_Cluster->state);
+
   return;
 }
 
@@ -1618,7 +1644,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
   char error_string[LINE_MAX] = "";
   char *p;
 
-  int state;
+  int state = 0;		/* HB_NODE_STATE_TYPE */
   bool is_state_changed = false;
 
   hbp_header = (HBP_HEADER *) (buffer);
@@ -1661,7 +1687,9 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 	p = (char *) (hbp_header + 1);
 	or_unpack_int (p, &state);
 
-	if (state < 0 || state >= HB_NSTATE_MAX)
+	HB_NODE_STATE_TYPE hb_state = (HB_NODE_STATE_TYPE) state;
+
+	if (hb_state < HB_NSTATE_UNKNOWN || hb_state >= HB_NSTATE_MAX)
 	  {
 	    MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive heartbeat have unknown state. " "(state:%u).\n", state);
 	    pthread_mutex_unlock (&hb_Cluster->lock);
@@ -1720,12 +1748,12 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 	node = hb_return_node_by_name_except_me (hbp_header->orig_host_name);
 	if (node)
 	  {
-	    if (node->state == HB_NSTATE_MASTER && node->state != (unsigned short) state)
+	    if (node->state == HB_NSTATE_MASTER && node->state != hb_state)
 	      {
 		is_state_changed = true;
 	      }
 
-	    node->state = (unsigned short) state;
+	    node->state = hb_state;
 	    node->heartbeat_gap = MAX (0, (node->heartbeat_gap - 1));
 	    gettimeofday (&node->last_recv_hbtime, NULL);
 	  }
@@ -4633,6 +4661,10 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 
   pthread_mutex_unlock (&hb_Cluster->lock);
 
+#if 0
+  rv = css_send_to_my_server_hb_state ();
+  assert (rv == NO_ERROR);
+#endif
   return NO_ERROR;
 }
 
@@ -5024,6 +5056,11 @@ hb_cluster_cleanup (void)
   rv = pthread_mutex_lock (&hb_Cluster->lock);
   hb_Cluster->state = HB_NSTATE_UNKNOWN;
 
+#if 0
+  rv = css_send_to_my_server_hb_state ();
+  assert (rv == NO_ERROR);
+#endif
+
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
       if (strcmp (hb_Cluster->host_name, node->host_name) == 0)
@@ -5067,35 +5104,6 @@ hb_cluster_shutdown_and_cleanup (void)
 {
   hb_cluster_job_shutdown ();
   hb_cluster_cleanup ();
-}
-
-
-/*
- * hb_node_state_string -
- *   return: node state sring
- *
- *   nstate(in):
- */
-const char *
-hb_node_state_string (int nstate)
-{
-  switch (nstate)
-    {
-    case HB_NSTATE_UNKNOWN:
-      return HB_NSTATE_UNKNOWN_STR;
-    case HB_NSTATE_SLAVE:
-      return HB_NSTATE_SLAVE_STR;
-    case HB_NSTATE_TO_BE_MASTER:
-      return HB_NSTATE_TO_BE_MASTER_STR;
-    case HB_NSTATE_TO_BE_SLAVE:
-      return HB_NSTATE_TO_BE_SLAVE_STR;
-    case HB_NSTATE_MASTER:
-      return HB_NSTATE_MASTER_STR;
-    case HB_NSTATE_REPLICA:
-      return HB_NSTATE_REPLICA_STR;
-    }
-
-  return "invalid";
 }
 
 /*

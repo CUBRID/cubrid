@@ -63,26 +63,6 @@ enum HB_CLUSTER_JOB
   HB_CJOB_MAX
 };
 
-/* heartbeat node state */
-enum HB_NODE_STATE
-{
-  HB_NSTATE_UNKNOWN = 0,
-  HB_NSTATE_SLAVE = 1,
-  HB_NSTATE_TO_BE_MASTER = 2,
-  HB_NSTATE_TO_BE_SLAVE = 3,
-  HB_NSTATE_MASTER = 4,
-  HB_NSTATE_REPLICA = 5,
-  HB_NSTATE_MAX
-};
-#define HB_NSTATE_UNKNOWN_STR   "unknown"
-#define HB_NSTATE_SLAVE_STR     "slave"
-#define HB_NSTATE_TO_BE_MASTER_STR    "to-be-master"
-#define HB_NSTATE_TO_BE_SLAVE_STR "to-be-slave"
-#define HB_NSTATE_MASTER_STR    "master"
-#define HB_NSTATE_REPLICA_STR   "replica"
-
-#define HB_NSTATE_STR_SZ        (32)
-
 /* heartbeat resource jobs */
 enum HB_RESOURCE_JOB
 {
@@ -215,7 +195,7 @@ struct hb_node_entry
 
   char host_name[MAXHOSTNAMELEN];
   unsigned short priority;
-  unsigned short state;
+  HB_NODE_STATE_TYPE state;
   short score;
   short heartbeat_gap;
 
@@ -255,7 +235,7 @@ struct hb_cluster
 
   SOCKET sfd;
 
-  unsigned int state;
+  HB_NODE_STATE_TYPE state;
   char group_id[HB_MAX_GROUP_ID_LEN];
   char host_name[MAXHOSTNAMELEN];
 
@@ -318,7 +298,7 @@ struct hb_resource
 {
   pthread_mutex_t lock;
 
-  unsigned int state;		/* mode/state */
+  HB_NODE_STATE_TYPE state;	/* mode/state */
 
   int num_procs;
   HB_PROC_ENTRY *procs;
@@ -435,4 +415,5 @@ extern void hb_disable_er_log (int reason, const char *msg_fmt, ...);
 
 extern int hb_return_proc_state_by_fd (int sfd);
 extern bool hb_is_hang_process (int sfd);
+
 #endif /* _MASTER_HEARTBEAT_H_ */
