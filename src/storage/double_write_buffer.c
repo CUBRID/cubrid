@@ -281,6 +281,7 @@ struct double_write_block
 
   unsigned int block_no;	/* The block number. */
   volatile UINT64 version;	/* The block version. */
+  volatile bool all_pages_written;	/* True, if all pages are written */
 };
 
 /* Slots hash entry. */
@@ -1423,6 +1424,7 @@ dwb_initialize_block (DWB_BLOCK * block, unsigned int block_no, unsigned int cou
   block->count_wb_pages = count_wb_pages;
   block->block_no = block_no;
   block->version = 0;
+  block->all_pages_written = false;
 }
 
 /*
@@ -2561,6 +2563,8 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 #endif
     }
 
+  block->all_pages_written = true;
+
   /* Add statistics. */
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
 
@@ -2744,6 +2748,7 @@ retry:
     }
 #endif
   ATOMIC_TAS_32 (&block->count_flush_volumes_info, 0);
+  block->all_pages_written = false;
 
   /* First, write and flush the double write file buffer. */
   if (fileio_write_pages (thread_p, double_Write_Buffer.vdes, block->write_buffer, 0, block->count_wb_pages,
@@ -4137,7 +4142,8 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   UINT64 oldest_time;
   bool is_perf_tracking = false;
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
-  int count_flush_volumes_info;
+  unsigned int count_flush_volumes_info;
+  bool all_block_pages_written = false;
 
 start:
   num_pages_to_sync = prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH);
@@ -4152,6 +4158,7 @@ start:
 
       found = false;
       count_flush_volumes_info = block->count_flush_volumes_info;
+      all_block_pages_written = block->all_pages_written;
       for (i = 0; i < count_flush_volumes_info; i++)
 	{
 	  current_flush_volume_info = &block->flush_volumes_info[i];
@@ -4212,7 +4219,7 @@ start:
 	  while (true);
 	}
 
-      if (found || (count_flush_volumes_info != block->count_flush_volumes_info))
+      if (found || (count_flush_volumes_info != block->count_flush_volumes_info) || (all_block_pages_written == false))
 	{
 	  /* Try again. */
 	  goto start;
