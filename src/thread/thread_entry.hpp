@@ -24,9 +24,7 @@
 #ifndef _THREAD_ENTRY_HPP_
 #define _THREAD_ENTRY_HPP_
 
-//#include "adjustable_array.h"
-//#include "connection_defs.h"
-#include "error_manager.h"  // for ER_MSG
+#include "ERROR_MANAGER.H"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
@@ -35,6 +33,11 @@
 struct adj_array;
 // from connection_defs.h
 struct css_conn_entry;
+// from error_manager
+namespace cuberr
+{
+  class context;
+}
 // from fault_injection.h
 struct fi_test_item;
 // from log_compress.h
@@ -218,7 +221,13 @@ namespace cubthread
 #endif
 
     private:
+      // todo: remove me
+      friend cuberr::context &cuberr::get_context (void);
+
       void clear_resources (void);
+
+      // error manager context
+      cuberr::context &m_error;
 
       // TODO: move all members her
       bool m_cleared;

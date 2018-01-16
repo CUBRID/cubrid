@@ -24,6 +24,7 @@
 #include "thread_entry.hpp"
 
 #include "adjustable_array.h"
+#include "error_manager.h"
 #include "fault_injection.h"
 #include "log_compress.h"
 #include "memory_alloc.h"
@@ -99,6 +100,7 @@ namespace cubthread
     , fi_test_array (NULL)
     , count_private_allocators (0)
 #endif /* DEBUG */
+    , m_error (er_create_context ())
     , m_cleared (false)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)

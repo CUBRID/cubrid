@@ -176,66 +176,6 @@ typedef void (*PTR_FNERLOG) (int err_id);
 #define ASSERT_NO_ERROR() \
   assert (er_errid () == NO_ERROR);
 
-/*
- * Definition of error message structure. One structure is defined for each
- * thread of execution. Note message areas are stored in the structure for
- * multi-threading purposes.
- */
-typedef struct er_copy_area ER_COPY_AREA;
-struct er_copy_area
-{
-  int err_id;			/* error identifier of the current message */
-  int severity;			/* warning, error, FATAL error, etc... */
-  int length_msg;		/* length of the message */
-  char area[1];			/* actualy, more than one */
-};
-
-typedef union er_va_arg ER_VA_ARG;
-union er_va_arg
-{
-  int int_value;		/* holders for the values that we actually */
-  void *pointer_value;		/* retrieve from the va_list. */
-  double double_value;
-  long double longdouble_value;
-  const char *string_value;
-  long long longlong_value;
-};
-
-typedef struct er_spec ER_SPEC;
-struct er_spec
-{
-  int width;			/* minimum width of field */
-  char code;			/* what to retrieve from the va_list int, long, double, long double or char */
-  char spec[10];		/* buffer to hold the actual sprintf code */
-};
-
-typedef struct er_fmt ER_FMT;
-struct er_fmt
-{
-  int err_id;			/* The int associated with the msg */
-  char *fmt;			/* A printf-style format for the msg */
-  ER_SPEC *spec;		/* Pointer to real array; points to spec_buf if nspecs < DIM(spec_buf) */
-  int fmt_length;		/* The strlen() of fmt */
-  int must_free;		/* TRUE if fmt must be free_and_initd */
-  int nspecs;			/* The number of format specs in fmt */
-  int spec_top;			/* The capacity of spec */
-  ER_SPEC spec_buf[16];		/* Array of format specs for args */
-};
-
-typedef struct er_msg ER_MSG;
-struct er_msg
-{
-  int err_id;			/* Error identifier of the current message */
-  int severity;			/* Warning, Error, FATAL Error, etc... */
-  const char *file_name;	/* File where the error is set */
-  int line_no;			/* Line in the file where the error is set */
-  int msg_area_size;		/* Size of the message area */
-  char *msg_area;		/* Pointer to message area */
-  ER_MSG *stack;		/* Stack to previous error messages */
-  ER_VA_ARG *args;		/* Array of va_list entries */
-  int nargs;			/* Length of array */
-};
-
 #ifdef __cplusplus
 extern "C"
 {
@@ -294,4 +234,16 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+#ifdef __cplusplus
+// c++ only
+namespace cuberr
+{
+  // just forward definition. all implementation is hidden
+  class context;
+  context& create_context (void);
+  void destroy_context (context& er_ctx);
+}  // namespace cuberr
+#endif // c++
+
 #endif				/* _ERROR_MANAGER_H_ */
