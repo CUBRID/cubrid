@@ -136,7 +136,7 @@ function build_initialize ()
   print_info "version: $version ($major_version.$minor_version.$patch_version.$extra_version)"
   version="$major_version.$minor_version.$patch_version.$extra_version"
 
-  if [ $print_version_only -eq 1 ]; then
+  if [[ "$print_version_only" -eq 1 ]]; then
     echo $version
     exit 0
   fi
