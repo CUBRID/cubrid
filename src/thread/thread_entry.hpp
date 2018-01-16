@@ -24,7 +24,7 @@
 #ifndef _THREAD_ENTRY_HPP_
 #define _THREAD_ENTRY_HPP_
 
-#include "ERROR_MANAGER.H"
+#include "error_manager.h"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 

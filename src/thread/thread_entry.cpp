@@ -100,7 +100,7 @@ namespace cubthread
     , fi_test_array (NULL)
     , count_private_allocators (0)
 #endif /* DEBUG */
-    , m_error (er_create_context ())
+    , m_error (cuberr::create_context ())
     , m_cleared (false)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)

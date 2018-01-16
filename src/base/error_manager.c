@@ -71,8 +71,10 @@
 #include "message_catalog.h"
 #include "release_string.h"
 #include "environment_variable.h"
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread.h"
+#endif // SERVER_MODE or SA_MODE
+#if defined (SERVER_MODE)
 #include "critical_section.h"
 #include "log_impl.h"
 #else /* SERVER_MODE */
@@ -107,16 +109,7 @@ struct er_copy_area
   char area[1];			/* actualy, more than one */
 };
 
-typedef union er_va_arg ER_VA_ARG;
-union er_va_arg
-{
-  int int_value;		/* holders for the values that we actually */
-  void *pointer_value;		/* retrieve from the va_list. */
-  double double_value;
-  long double longdouble_value;
-  const char *string_value;
-  long long longlong_value;
-};
+
 
 typedef struct er_spec ER_SPEC;
 struct er_spec
@@ -139,30 +132,7 @@ struct er_fmt
   ER_SPEC spec_buf[16];		/* Array of format specs for args */
 };
 
-typedef struct er_messages ER_MSG;
-struct er_messages
-{
-  int err_id;			/* Error identifier of the current message */
-  int severity;			/* Warning, Error, FATAL Error, etc... */
-  const char *file_name;	/* File where the error is set */
-  int line_no;			/* Line in the file where the error is set */
-  int msg_area_size;		/* Size of the message area */
-  char *msg_area;		/* Pointer to message area */
-  ER_MSG *stack;		/* Stack to previous error messages */
-  ER_VA_ARG *args;		/* Array of va_list entries */
-  int nargs;			/* Length of array */
-
-    er_messages ():err_id (NO_ERROR), severity (ER_WARNING_SEVERITY), file_name (NULL), line_no (-1), msg_area_size (0),
-    msg_area (NULL), stack (NULL), args (NULL), nargs (0)
-  {
-  }
-
-   ~er_messages ()
-  {
-    // todo: remove me
-
-  }
-};
+// ER_MSG
 
 /* *INDENT-OFF* */
 namespace cuberr
@@ -187,6 +157,20 @@ namespace cuberr
     ER_MSG m_all_errors;
     ER_MSG *m_crt_error_p;
     char m_msgbuf[ER_EMERGENCY_BUF_SIZE];
+  };
+
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+  static context Context;
+#endif // !SERVER_MODE and !SA_MODE
+
+  context& create_context (void)
+  {
+    return *new context ();
+  }
+
+  void destroy_context (context& er_ctx)
+  {
+    delete &er_ctx;
   }
 
   context& get_context (void)
@@ -196,6 +180,8 @@ namespace cuberr
     cubthread::entry* thread_p = thread_get_thread_entry_info ();
     assert (thread_p != NULL);
     return thread_p->m_error;
+#else // !SERVER_MODE and !SA_MODE
+    return Context;
 #endif // SERVER_MODE or SA_MODE
   }
 } // namespace cuberr
@@ -377,7 +363,7 @@ static ER_FMT er_Fmt_list[(-ER_LAST_ERROR) + 1];
 static int er_Fmt_msg_fail_count = -ER_LAST_ERROR;
 static int er_Errid_not_initialized = 0;
 #if !defined (SERVER_MODE)
-static ER_MSG ermsg_Buf = { 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0 };
+static ER_MSG ermsg_Buf;
 static ER_MSG *er_Msg = NULL;
 static char er_emergency_buf[ER_EMERGENCY_BUF_SIZE];	/* message when all else fails */
 static er_log_handler_t er_Handler = NULL;
@@ -1350,6 +1336,26 @@ er_final (ER_FINAL_CODE do_global_final)
 #endif
 
       er_call_stack_final ();
+    }
+}
+
+/*
+ * er_msg_clear () - clear error message from ER_MSG
+ *
+ * return      : void
+ * ermsg (out) : output cleared/initialized ER_MSG
+ */
+void
+er_msg_clear (ER_MSG & ermsg)
+{
+  ermsg.err_id = NO_ERROR;
+  ermsg.severity = ER_WARNING_SEVERITY;
+  ermsg.file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
+  ermsg.line_no = -1;
+  if (ermsg.msg_area != NULL)
+    {
+      // empty string
+      ermsg.msg_area[0] = '\0';
     }
 }
 
@@ -3809,36 +3815,3 @@ er_vsprintf (THREAD_ENTRY * thread_p, ER_FMT * fmt, va_list * ap)
 
   return NO_ERROR;
 }
-
-/*
- * er_msg_clear () - clear error message from ER_MSG
- *
- * return      : void
- * ermsg (out) : output cleared/initialized ER_MSG
- */
-void
-er_msg_clear (ER_MSG & ermsg)
-{
-  ermsg.err_id = NO_ERROR;
-  ermsg.severity = ER_WARNING_SEVERITY;
-  ermsg.file_name = er_Cached_msg[ER_ER_UNKNOWN_FILE];
-  ermsg.line_no = -1;
-  if (ermsg.msg_area != NULL)
-    {
-      // empty string
-      ermsg.msg_area[0] = '\0';
-    }
-}
-
-void
-er_msg_release (ER_MSG & ermsg)
-{
-  // free all content
-  if (ermsg.msg_area != NULL)
-    {
-      er_free_msg_area (NULL, msg_area);
-    }
-}
-
-
-/* *INDENT-ON* */
