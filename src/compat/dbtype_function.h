@@ -432,9 +432,6 @@ extern "C"
   extern JSON_DOC *db_get_json_document (const DB_VALUE * value);
   extern char *db_get_json_raw_body (const DB_VALUE * value);
 
-  extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
-			      const int size);
-
   extern int db_make_null (DB_VALUE * value);
   extern int db_make_int (DB_VALUE * value, const int num);
   extern int db_make_float (DB_VALUE * value, const DB_C_FLOAT num);
