@@ -167,7 +167,7 @@ namespace cubthread
 /* Template implementation                                              */
 /************************************************************************/
 
-#define THREAD_WP_LOG(func, msg, ...) if (m_log) _er_log_debug (func ": " msg "\n", __VA_ARGS__)
+#define THREAD_WP_LOG(func, msg, ...) if (m_log) _er_log_debug (ARG_FILE_LINE, func ": " msg "\n", __VA_ARGS__)
 
 namespace cubthread
 {
