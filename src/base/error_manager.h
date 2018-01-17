@@ -291,12 +291,7 @@ extern "C"
   extern bool er_has_error (void);
   extern void er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...);
 
-#define ER_LOG(...) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
-
 #ifdef __cplusplus
-
-// c++ only
-#define ER_LOG_FUNC(msg, ...) _er_log_debug (ARG_FILE_LINE, __FUNCTION__ ": " msg "\n", __VA_ARGS__)
 }
 #endif
 #endif				/* _ERROR_MANAGER_H_ */

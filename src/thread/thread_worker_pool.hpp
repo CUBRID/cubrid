@@ -167,7 +167,7 @@ namespace cubthread
 /* Template implementation                                              */
 /************************************************************************/
 
-#define THREAD_WP_LOG(msg, ...) if (m_log) ER_LOG_FUNC (msg, __VA_ARGS__)
+#define THREAD_WP_LOG(func, msg, ...) if (m_log) _er_log_debug (func ": " msg "\n", __VA_ARGS__)
 
 namespace cubthread
 {
@@ -208,7 +208,7 @@ namespace cubthread
       }
     else
       {
-        THREAD_WP_LOG ("drop task = %p", work_arg);
+        THREAD_WP_LOG ("try_execute", "drop task = %p", work_arg);
       }
     return false;
   }
@@ -235,7 +235,7 @@ namespace cubthread
   void
   worker_pool<Context>::push_execute (std::thread &thread_arg, task_type *work_arg)
   {
-    THREAD_WP_LOG ("thread = %zu, task = %p", get_thread_index (thread_arg), work_arg);
+    THREAD_WP_LOG ("push_execute", "thread = %zu, task = %p", get_thread_index (thread_arg), work_arg);
 
     thread_arg = std::thread (worker_pool<Context>::run,
 			      std::ref (*this),
@@ -250,12 +250,12 @@ namespace cubthread
     if (m_stopped.exchange (true))
       {
 	// already stopped
-        THREAD_WP_LOG ("already stopped");
+        THREAD_WP_LOG ("stop", "already stopped");
 	return;
       }
     else
       {
-        THREAD_WP_LOG ("stopping");
+        THREAD_WP_LOG ("stop", "stopping");
 	// I am responsible with stopping threads
       }
 
@@ -265,11 +265,11 @@ namespace cubthread
 	if (m_threads[i].joinable ())
 	  {
 	    m_threads[i].join ();
-            THREAD_WP_LOG ("joined thread = %zu", i);
+            THREAD_WP_LOG ("stop", "joined thread = %zu", i);
 	  }
         else
           {
-            THREAD_WP_LOG ("not joinable thread = %zu", i)
+            THREAD_WP_LOG ("stop", "not joinable thread = %zu", i)
           }
       }
 
@@ -277,7 +277,7 @@ namespace cubthread
     task_type *task = NULL;
     while (m_work_queue.consume (task))
       {
-        THREAD_WP_LOG ("retire without execution task = %p", task);
+        THREAD_WP_LOG ("stop", "retire without execution task = %p", task);
 	task->retire ();
       }
   }
@@ -320,7 +320,7 @@ namespace cubthread
   void
   worker_pool<Context>::run (worker_pool<Context> &pool, std::thread &thread_arg, task_type *task_arg)
   {
-#define THREAD_WP_STATIC_LOG(msg, ...) if (pool.m_log) ER_LOG_FUNC (msg, __VA_ARGS__)
+#define THREAD_WP_STATIC_LOG(msg, ...) if (pool.m_log) ER_LOG_FUNC ("run: " msg, __VA_ARGS__)
 
     // create context for task execution
     Context &context = pool.m_context_manager.create_context ();
@@ -370,7 +370,7 @@ namespace cubthread
     if (thread_p == NULL)
       {
 	// no threads available
-        THREAD_WP_LOG ("no threads available");
+        THREAD_WP_LOG ("register_worker", "no threads available");
 	return NULL;
       }
 
@@ -386,7 +386,7 @@ namespace cubthread
     (void) ATOMIC_INC (&m_worker_count, 1);
 #endif
 
-    THREAD_WP_LOG ("thread = %zu", get_thread_index (*thread_p));
+    THREAD_WP_LOG ("register_worker", "thread = %zu", get_thread_index (*thread_p));
     return thread_p;
   }
 
@@ -394,7 +394,7 @@ namespace cubthread
   inline void
   worker_pool<Context>::deregister_worker (std::thread &thread_arg)
   {
-    THREAD_WP_LOG ("thread = %zu", get_thread_index (thread_arg));
+    THREAD_WP_LOG ("deregister_worker", "thread = %zu", get_thread_index (thread_arg));
     m_thread_dispatcher.retire (thread_arg);
 #if defined (NO_GCC_44)
     --m_worker_count;
