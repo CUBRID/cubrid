@@ -250,12 +250,12 @@ namespace cubthread
     if (m_stopped.exchange (true))
       {
 	// already stopped
-        THREAD_WP_LOG ("stop", "already stopped");
+        THREAD_WP_LOG ("stop", "stop was %s", "true");
 	return;
       }
     else
       {
-        THREAD_WP_LOG ("stop", "stopping");
+        THREAD_WP_LOG ("stop", "stop was %s", "false");
 	// I am responsible with stopping threads
       }
 
@@ -269,7 +269,7 @@ namespace cubthread
 	  }
         else
           {
-            THREAD_WP_LOG ("stop", "not joinable thread = %zu", i)
+            THREAD_WP_LOG ("stop", "not joinable thread = %zu", i);
           }
       }
 
@@ -320,7 +320,7 @@ namespace cubthread
   void
   worker_pool<Context>::run (worker_pool<Context> &pool, std::thread &thread_arg, task_type *task_arg)
   {
-#define THREAD_WP_STATIC_LOG(msg, ...) if (pool.m_log) er_log_debug (ARG_FILE_LINE, "run: " msg, __VA_ARGS__)
+#define THREAD_WP_STATIC_LOG(msg, ...) if (pool.m_log) _er_log_debug (ARG_FILE_LINE, "run: " msg, __VA_ARGS__)
 
     // create context for task execution
     Context &context = pool.m_context_manager.create_context ();
@@ -330,8 +330,8 @@ namespace cubthread
     task_type *task_p = task_arg;
     do
       {
-        THREAD_WP_STATIC_LOG ("loop on thread = %zu, context = %p, task = %p", get_thread_index (thread_arg), &context,
-                              task_p);
+        THREAD_WP_STATIC_LOG ("loop on thread = %zu, context = %p, task = %p", pool.get_thread_index (thread_arg),
+                              &context, task_p);
 
 	if (!first_loop)
 	  {
@@ -348,7 +348,7 @@ namespace cubthread
       }
     while (pool.is_running() && pool.m_work_queue.consume (task_p));
 
-    THREAD_WP_STATIC_LOG ("stop on thread = %zu, context = %p", get_thread_index (thread_arg), &context);
+    THREAD_WP_STATIC_LOG ("stop on thread = %zu, context = %p", pool.get_thread_index (thread_arg), &context);
 
     // retire thread context
     pool.m_context_manager.retire_context (context);
@@ -370,7 +370,7 @@ namespace cubthread
     if (thread_p == NULL)
       {
 	// no threads available
-        THREAD_WP_LOG ("register_worker", "no threads available");
+        THREAD_WP_LOG ("register_worker", "thread_p = %p", NULL);
 	return NULL;
       }
 
@@ -394,7 +394,8 @@ namespace cubthread
   inline void
   worker_pool<Context>::deregister_worker (std::thread &thread_arg)
   {
-    THREAD_WP_LOG ("deregister_worker", "thread = %zu", get_thread_index (thread_arg));
+    // THREAD_WP_LOG ("deregister_worker", "thread = %zu", get_thread_index (thread_arg));
+    // no logging here; no thread & error context
     m_thread_dispatcher.retire (thread_arg);
 #if defined (NO_GCC_44)
     --m_worker_count;

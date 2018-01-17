@@ -7948,7 +7948,7 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
   save_type = thread_p->type;
   thread_p->type = TT_VACUUM_WORKER;
   thread_p->vacuum_worker = worker;
-  if (vacuum_worker_allocate_resources (thread_p, thread_p->vacuum_worker) != NULL)
+  if (vacuum_worker_allocate_resources (thread_p, thread_p->vacuum_worker) != NO_ERROR)
     {
       assert_release (false);
     }
