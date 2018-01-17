@@ -2563,8 +2563,6 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 #endif
     }
 
-  block->all_pages_written = true;
-
   /* Add statistics. */
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
 
@@ -2631,6 +2629,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   bool is_perf_tracking = false;
   int num_pages;
   unsigned int current_block_to_flush, next_block_to_flush;
+  int max_pages_to_sync;
 #if defined (SERVER_MODE)
   bool update_flush_block_helper_stat;
 #endif
@@ -2778,10 +2777,27 @@ retry:
       goto end;
     }
 
+  max_pages_to_sync = prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH) / 2;
   /* Now, flush only the volumes having pages in current block. */
   for (i = 0; i < block->count_flush_volumes_info; i++)
     {
       assert (block->flush_volumes_info[i].vdes != NULL_VOLDES);
+
+      num_pages = ATOMIC_INC_32 (&block->flush_volumes_info[i].num_pages, 0);
+      if (num_pages == 0)
+	{
+	  /* Flushed by helper. */
+	  continue;
+	}
+
+#if defined (SERVER_MODE)
+      if ((num_pages > max_pages_to_sync) && thread_is_dwb_flush_block_helper_thread_available ())
+	{
+	  /* Let the helper thread to flush volumes having many pages. */
+	  assert (double_Write_Buffer.helper_flush_block != NULL);
+	  continue;
+	}
+#endif
 
       if (!ATOMIC_CAS_32
 	  (&block->flush_volumes_info[i].flushed_status, VOLUME_NOT_FLUSHED, VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD))
@@ -2789,16 +2805,15 @@ retry:
 	  /* Flushed by helper. */
 	  continue;
 	}
-      num_pages = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
 
-      if (num_pages == 0)
-	{
-	  /* Flushed by helper. */
-	  continue;
-	}
+      num_pages = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
+      assert (num_pages != 0);
 
       (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, false);
     }
+
+  /* Allow to flush helper to finish */
+  block->all_pages_written = true;
 
   if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_FLUSHED_BLOCK_VOLUMES))
     {
