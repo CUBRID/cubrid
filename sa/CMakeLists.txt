@@ -224,6 +224,7 @@ set(JSP_SOURCES
 
 set(THREAD_SOURCES
   ${THREAD_DIR}/thread_entry.cpp
+  ${THREAD_DIR}/thread_entry_task.cpp
   ${THREAD_DIR}/thread_manager.cpp
   )
 set(THREAD_HEADERS

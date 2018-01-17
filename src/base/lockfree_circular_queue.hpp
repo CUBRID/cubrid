@@ -65,6 +65,9 @@ namespace lockfree
       inline bool is_full () const;               // is query full?
 
       inline bool consume (T &element);               // consume one element from queue; returns false on fail
+      // IMPORTANT!
+      //   Element argument may change even if consume fails.
+      //   Using its value after failed consumption is not safe.
       inline bool produce (const T &element);         // produce an element to queue; returns false on fail
       inline void force_produce (const T &element);   // force produce (loop until successful)
       // note:
