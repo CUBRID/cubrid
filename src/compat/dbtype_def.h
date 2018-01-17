@@ -193,25 +193,6 @@ extern "C"
   extern char *obj_Method_error_msg;
 
   /********************************************************/
-  /* From storage_common.h */
-  /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
-
-#define NULL_VOLID  (-1)	/* Value of an invalid volume identifier */
-#define NULL_SECTID (-1)	/* Value of an invalid sector identifier */
-#define NULL_PAGEID (-1)	/* Value of an invalid page identifier */
-#define NULL_SLOTID (-1)	/* Value of an invalid slot identifier */
-#define NULL_OFFSET (-1)	/* Value of an invalid offset */
-#define NULL_FILEID (-1)	/* Value of an invalid file identifier */
-
-#define VOLID_MAX       SHRT_MAX
-#define PAGEID_MAX      INT_MAX
-#define SECTID_MAX      INT_MAX
-#define PGLENGTH_MAX    SHRT_MAX
-#define VOL_MAX_NPAGES(page_size) \
-  ((sizeof(off_t) == 4) ? (INT_MAX / (page_size)) : INT_MAX)
-
-#define LOGPAGEID_MAX   0x7fffffffffffLL	/* 6 bytes length */
-
   /********************************************************/
   /* From oid.h */
 #define OID_ISNULL(oidp)        ((oidp)->pageid == NULL_PAGEID)
