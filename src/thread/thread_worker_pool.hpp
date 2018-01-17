@@ -320,6 +320,8 @@ namespace cubthread
   void
   worker_pool<Context>::run (worker_pool<Context> &pool, std::thread &thread_arg, task_type *task_arg)
   {
+#define THREAD_WP_STATIC_LOG(msg, ...) if (pool.m_log) ER_LOG_FUNC (msg, __VA_ARGS__)
+
     // create context for task execution
     Context &context = pool.m_context_manager.create_context ();
     bool first_loop = true;
@@ -328,8 +330,8 @@ namespace cubthread
     task_type *task_p = task_arg;
     do
       {
-        THREAD_WP_LOG ("loop on thread = %zu, context = %p, task = %p", get_thread_index (thread_arg), &context,
-                       task_p);
+        THREAD_WP_STATIC_LOG ("loop on thread = %zu, context = %p, task = %p", get_thread_index (thread_arg), &context,
+                              task_p);
 
 	if (!first_loop)
 	  {
@@ -346,13 +348,15 @@ namespace cubthread
       }
     while (pool.is_running() && pool.m_work_queue.consume (task_p));
 
-    THREAD_WP_LOG ("stop on thread = %zu, context = %p", get_thread_index (thread_arg), &context);
+    THREAD_WP_STATIC_LOG ("stop on thread = %zu, context = %p", get_thread_index (thread_arg), &context);
 
     // retire thread context
     pool.m_context_manager.retire_context (context);
 
     // end of run; deregister worker
     pool.deregister_worker (thread_arg);
+
+#undef THREAD_WP_STATIC_LOG
   }
 
   template <typename Context>
@@ -407,5 +411,7 @@ namespace cubthread
     assert (index >= 0 && index < m_max_workers);
     return index;
   }
+
+#undef THREAD_WP_LOG
 
 } // namespace cubthread
