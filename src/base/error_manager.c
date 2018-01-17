@@ -63,6 +63,7 @@
 
 #include "error_manager.h"
 
+#include "error_context.hpp"
 #include "porting.h"
 #include "chartype.h"
 #include "memory_alloc.h"
@@ -132,62 +133,7 @@ struct er_fmt
   ER_SPEC spec_buf[16];		/* Array of format specs for args */
 };
 
-// ER_MSG
-
-/* *INDENT-OFF* */
-namespace cuberr
-{
-  class context
-  {
-  public:
-    context ()
-      : m_all_errors ()
-      , m_crt_error_p (NULL)
-      , m_msgbuf ()
-    {
-      std::memset (m_msgbuf, 0, sizeof (m_msgbuf));
-    }
-
-    ~context ()
-    {
-      // free m_all_errors
-    }
-
-  private:
-    ER_MSG m_all_errors;
-    ER_MSG *m_crt_error_p;
-    char m_msgbuf[ER_EMERGENCY_BUF_SIZE];
-  };
-
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
-  static context Context;
-#endif // !SERVER_MODE and !SA_MODE
-
-  context& create_context (void)
-  {
-    return *new context ();
-  }
-
-  void destroy_context (context& er_ctx)
-  {
-    delete &er_ctx;
-  }
-
-  context& get_context (void)
-  {
-    // todo: remove me and all my references
-#if defined (SERVER_MODE) || defined (SA_MODE)
-    cubthread::entry* thread_p = thread_get_thread_entry_info ();
-    assert (thread_p != NULL);
-    return thread_p->m_error;
-#else // !SERVER_MODE and !SA_MODE
-    return Context;
-#endif // SERVER_MODE or SA_MODE
-  }
-} // namespace cuberr
-
-using namespace cuberr; // until we add everything under cuberr
-/* *INDENT-ON* */
+using namespace cuberr;		// until we add everything under cuberr
 
 #if defined(WINDOWS)
 #define LOG_ALERT 0
@@ -1075,8 +1021,9 @@ er_file_backup (FILE * fp, const char *path)
  *       system when a fatal error condition is set, is defined.
  * NOTE: To re-find er entry by er_get_er_entry should be followed.
  */
+// todo: output interface
 static int
-er_start (THREAD_ENTRY * thread_p)
+er_start (THREAD_ENTRY * thread_p = NULL)
 {
   ER_MSG *er_entry_p, *er_entry_buffer_p;
   int status = NO_ERROR;
@@ -1087,6 +1034,7 @@ er_start (THREAD_ENTRY * thread_p)
 
   if (er_Hasalready_initiated == false)
     {
+      assert (false);
       (void) er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK));
       if (er_Hasalready_initiated == false)
 	{

@@ -45,8 +45,6 @@
 #define ARG_FILE_LINE           __FILE__, __LINE__
 #define NULL_LEVEL              0
 
-#define ER_EMERGENCY_BUF_SIZE (256)
-
 /* Shorthand for simple warnings and errors */
 #define ERROR0(error, code) \
   do \
@@ -133,54 +131,6 @@ typedef enum er_final_code
   ER_THREAD_FINAL = 0,
   ER_ALL_FINAL = 1
 } ER_FINAL_CODE;
-
-typedef union er_va_arg ER_VA_ARG;
-union er_va_arg
-{
-  int int_value;		/* holders for the values that we actually */
-  void *pointer_value;		/* retrieve from the va_list. */
-  double double_value;
-  long double longdouble_value;
-  const char *string_value;
-  long long longlong_value;
-};
-
-typedef struct er_messages ER_MSG;
-struct er_messages
-{
-  int err_id;			/* Error identifier of the current message */
-  int severity;			/* Warning, Error, FATAL Error, etc... */
-  const char *file_name;	/* File where the error is set */
-  int line_no;			/* Line in the file where the error is set */
-  int msg_area_size;		/* Size of the message area */
-  char *msg_area;		/* Pointer to message area */
-  ER_MSG *stack;		/* Stack to previous error messages */
-  ER_VA_ARG *args;		/* Array of va_list entries */
-  int nargs;			/* Length of array */
-
-
-#ifdef __cplusplus
-  /* *INDENT-OFF* */
-  er_messages ()
-    : err_id (NO_ERROR)
-    , severity (ER_WARNING_SEVERITY)
-    , file_name (NULL)
-    , line_no (-1)
-    , msg_area_size (0)
-    , msg_area (NULL)
-    , stack (NULL)
-    , args (NULL)
-    , nargs (0)
-  {
-  }
-
-   ~er_messages ()
-  {
-    // todo: remove me
-  }
-  /* *INDENT-ON* */
-#endif				// c++
-};
 
 typedef void (*PTR_FNERLOG) (int err_id);
 
@@ -282,19 +232,5 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#ifdef __cplusplus
-/* *INDENT-OFF* */
-// c++ only
-namespace cuberr
-{
-  // just forward definition. all implementation is hidden
-  class context;
-  context& create_context (void);
-  void destroy_context (context& er_ctx);
-  context& get_context (void);
-}  // namespace cuberr
-/* *INDENT-ON* */
-#endif				// c++
 
 #endif				/* _ERROR_MANAGER_H_ */

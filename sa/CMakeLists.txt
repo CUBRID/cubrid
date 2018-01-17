@@ -72,6 +72,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/md5.c
   ${BASE_DIR}/base64.c
+  ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/language_support.c
   ${BASE_DIR}/locale_support.c
@@ -106,6 +107,11 @@ set(BASE_SOURCES
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   )
+set(BASE_HEADERS
+  ${BASE_DIR}/error_code.h
+  ${BASE_DIR}/error_context.hpp
+  ${BASE_DIR}/error_manager.h
+)
 
 set(HEAPLAYER_SOURCES
   ${HEAPLAYERS_DIR}/customheaps.cpp
@@ -369,6 +375,7 @@ add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
+  ${BASE_HEADERS}
   ${HEAPLAYER_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}

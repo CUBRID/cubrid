@@ -24,7 +24,7 @@
 #ifndef _THREAD_ENTRY_HPP_
 #define _THREAD_ENTRY_HPP_
 
-#include "error_manager.h"
+#include "error_context.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
@@ -220,14 +220,17 @@ namespace cubthread
       int count_private_allocators;
 #endif
 
+      cuberr::context &get_error_context (void)
+      {
+	return m_error;
+      }
+
     private:
-      // todo: remove me
-      friend cuberr::context &cuberr::get_context (void);
 
       void clear_resources (void);
 
       // error manager context
-      cuberr::context &m_error;
+      cuberr::context m_error;
 
       // TODO: move all members her
       bool m_cleared;

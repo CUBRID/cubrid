@@ -68,6 +68,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/dynamic_array.c
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/environment_variable.c
+  ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fixed_alloc.c
@@ -99,6 +100,11 @@ set(BASE_SOURCES
   ${BASE_DIR}/variable_string.c
   ${BASE_DIR}/xml_parser.c
   )
+set(BASE_HEADERS
+  ${BASE_DIR}/error_code.h
+  ${BASE_DIR}/error_context.hpp
+  ${BASE_DIR}/error_manager.h
+)
 
 set(HEAPLAYER_SOURCES
   ${HEAPLAYERS_DIR}/customheaps.cpp
@@ -309,6 +315,7 @@ add_library(cubridcs SHARED
   ${EXECUTABLE_SOURCES}
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
+  ${BASE_HEADERS}
   ${HEAPLAYER_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
