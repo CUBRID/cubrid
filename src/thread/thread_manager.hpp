@@ -104,7 +104,7 @@ namespace cubthread
       // create a entry_workpool with pool_size number of threads
       // note: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
       entry_workpool *create_worker_pool (size_t pool_size, size_t work_queue_size,
-					  entry_manager *context_manager = NULL);
+					  entry_manager *context_manager = NULL, bool debug_logging = false);
 
       // destroy worker pool
       void destroy_worker_pool (entry_workpool *&worker_pool_arg);

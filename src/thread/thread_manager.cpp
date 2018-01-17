@@ -112,7 +112,8 @@ namespace cubthread
   }
 
   entry_workpool *
-  manager::create_worker_pool (size_t pool_size, size_t work_queue_size, entry_manager *context_manager)
+  manager::create_worker_pool (size_t pool_size, size_t work_queue_size, entry_manager *context_manager,
+                               bool debug_logging)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
@@ -125,7 +126,8 @@ namespace cubthread
 	  {
 	    context_manager = m_entry_manager;
 	  }
-	return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size, context_manager);
+	return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size, context_manager,
+                                          debug_logging);
       }
 #else // not SERVER_MODE = SA_MODE
     return NULL;
