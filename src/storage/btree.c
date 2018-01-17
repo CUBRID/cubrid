@@ -14766,7 +14766,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 		    {		/* CASE 1, 2 */
 		      if (dp->is_desc != true)
 			{	/* CASE 1 */
-			  ;	/* nop */
+			  minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
 			}
 		      else
 			{	/* CASE 2 */
@@ -14781,7 +14781,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 			}
 		      else
 			{	/* CASE 4 */
-			  ;	/* nop */
+			  minmax = BTREE_COERCE_KEY_WITH_MIN_VALUE;
 			}
 		    }
 		}
@@ -14791,7 +14791,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 		    {		/* CASE 1, 2 */
 		      if (dp->is_desc != true)
 			{	/* CASE 1 */
-			  ;	/* nop */
+			  minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
 			}
 		      else
 			{	/* CASE 2 */
@@ -14806,18 +14806,15 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 			}
 		      else
 			{	/* CASE 4 */
-			  ;	/* nop */
+			  minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
 			}
 		    }
 		}
 
 	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
 		{
-		  if (dsize < keysize)
-		    {
-		      midxkey->min_max_val.position = dsize;
-		      midxkey->min_max_val.type = MIN_COLUMN;
-		    }
+		  midxkey->min_max_val.position = dsize;
+		  midxkey->min_max_val.type = MIN_COLUMN;
 		}
 	      else if (minmax == BTREE_COERCE_KEY_WITH_MAX_VALUE)
 		{
