@@ -15728,7 +15728,12 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 
 	      allow_null_in_midxkey = false;	/* init */
 
-	      assert_release (bts->key_range.num_index_term == 1);
+	      /*
+	       *  assert_release (bts->key_range.num_index_term == 1);
+	       *  todo: We need to understand what this part of the code does, as it is quite ambiguous.
+	       *        Also, it should cover the other cases for bts->key_range.num_index_term as well.
+	       *        This needs thoroughly checking.
+	       */
 
 	      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 		{
@@ -15766,7 +15771,6 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	      pr_clear_value (&ep);
 	    }
 	}
-
 
       /* 
        * Only in case that key_range_satisfied is true,
