@@ -47,6 +47,8 @@
 #endif /* defined (SA_MODE) */
 #include "util_func.h"
 
+#include <atomic>
+
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
  * wouldn't bring a significant difference).
@@ -254,9 +256,8 @@ struct vacuum_data
   int log_block_npages;		/* The number of pages in a log block. */
 
   bool is_loaded;		/* True if vacuum data is loaded. */
-  bool shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or executing
-				 * new jobs.
-				 */
+  std::atomic<bool> shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or
+                                         * executing new jobs. */
   bool is_archive_removal_safe;	/* Set to true after keep_from_log_pageid is updated. */
 
   /* Job cursor for vacuum master to avoid going again through jobs already generated */
@@ -2754,6 +2755,11 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == THREAD_TYPE::TT_VACUUM_MASTER);
 #endif // SA_MODE
+  if (vacuum_Data.shutdown_requested)
+    {
+      // stop pushing tasks; worker pool may be stopped already
+      return;
+    }
   cubthread::get_manager ()->push_task (*thread_p, vacuum_Worker_threads,
 					new vacuum_worker_task (data_entry, log_buffer, is_partial_block));
 #if defined (SA_MODE)
@@ -2919,7 +2925,7 @@ restart:
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs in page %d|%d from index %d.",
 		 vacuum_Data.vpid_job_cursor.volid, vacuum_Data.vpid_job_cursor.pageid, data_index);
 
-  while (!cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
+  while (!cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads) && !vacuum_Data.shutdown_requested)
     {
       assert (data_index >= 0);
       if (data_index >= data_page->index_free)
