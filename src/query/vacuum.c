@@ -271,26 +271,31 @@ struct vacuum_data
 #if defined (SA_MODE)
   bool is_vacuum_complete;
 #endif				/* SA_MODE */
-};
-static VACUUM_DATA vacuum_Data = {
-  VFID_INITIALIZER,		/* vacuum_data_file */
-  VACUUM_NULL_LOG_BLOCKID,	/* last_blockid */
-  NULL_PAGEID,			/* keep_from_log_pageid */
-  MVCCID_NULL,			/* oldest_unvacuumed_mvccid */
-  NULL,				/* first_page */
-  NULL,				/* last_page */
-  0,				/* page_data_max_count */
-  0,				/* log_block_npages */
-  false,			/* is_loaded */
-  false,			/* shutdown_requested */
-  false,			/* is_archive_removal_safe */
-  VPID_INITIALIZER,		/* vpid_job_cursor */
-  0,				/* blockid_job_cursor */
-  LSA_INITIALIZER		/* recovery_lsa */
+
+  /* *INDENT-OFF* */
+  vacuum_data ()
+    : vacuum_data_file (VFID_INITIALIZER)
+    , last_blockid (VACUUM_NULL_LOG_BLOCKID)
+    , keep_from_log_pageid (NULL_PAGEID)
+    , oldest_unvacuumed_mvccid (MVCCID_NULL)
+    , first_page (NULL)
+    , last_page (NULL)
+    , page_data_max_count (0)
+    , log_block_npages (0)
+    , is_loaded (false)
+    , shutdown_requested (false)
+    , is_archive_removal_safe (false)
+    , vpid_job_cursor (VPID_INITIALIZER)
+    , blockid_job_cursor (0)
+    , recovery_lsa (LSA_INITIALIZER)
 #if defined (SA_MODE)
-    , false			/* is_vacuum_complete. */
-#endif /* SA_MODE */
+    , is_vacuum_complete (false)
+#endif // SA_MODE
+  {
+  }
+  /* *INDENT-ON* */
 };
+static VACUUM_DATA vacuum_Data;
 
 /* vacuum data load */
 typedef struct vacuum_data_load VACUUM_DATA_LOAD;
