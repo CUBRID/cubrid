@@ -784,7 +784,7 @@ export_serial (FILE * outfp)
 	}
       fprintf (outfp, ";\n");
       fprintf (outfp, "call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
-               db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
+	       db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
 
       db_value_clear (&diff_value);
       db_value_clear (&answer_value);

@@ -113,6 +113,13 @@ typedef struct tp_domain
   JSON_VALIDATOR *json_validator;	/* schema validator if type is json */
 } TP_DOMAIN;
 
+  /*
+   * We probably should make this 0 rather than -1 so that we can more easily
+   * represent precisions with unsigned integers.  Zero is not a valid
+   * precision.
+   */
+#define TP_FLOATING_PRECISION_VALUE -1
+
 /*
  * TP_ALLOC_CONTEXT
  *    This structure is used in places where the storage allocation of
