@@ -27,4 +27,5 @@
 #include "error_manager.h"
 #include "elo.h"
 #include "set_object.h"
+#include "language_support.h"
 #include "dbtype_function.i"

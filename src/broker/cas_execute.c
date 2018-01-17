@@ -67,6 +67,7 @@
 #include "trigger_manager.h"
 #include "system_parameter.h"
 #include "schema_manager.h"
+#include "object_representation.h"
 
 #include "dbi.h"
 #include "dbtype.h"

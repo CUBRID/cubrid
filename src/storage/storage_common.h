@@ -40,7 +40,6 @@
 #include "dbtype_def.h"
 #include "sha1.h"
 
-  /* From storage_common.h */
   /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
 
 #define NULL_VOLID  (-1)	/* Value of an invalid volume identifier */

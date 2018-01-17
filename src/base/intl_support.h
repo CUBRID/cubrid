@@ -174,10 +174,29 @@ typedef enum intl_utf8_validity INTL_UTF8_VALIDITY;
 /* map of lengths of UTF-8 characters */
 extern const unsigned char *const intl_Len_utf8_char;
 
+enum intl_codeset
+{
+  INTL_CODESET_ERROR = -2,
+  INTL_CODESET_NONE = -1,
+  INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
+  INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
+  INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
+  INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
+  INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
+  INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+
+  INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
+
+  INTL_CODESET_LAST = INTL_CODESET_UTF8
+};
+typedef enum intl_codeset INTL_CODESET;
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+  extern int intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
+  extern int intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
 
   extern int intl_tolower_iso8859 (unsigned char *s, int length);
   extern int intl_toupper_iso8859 (unsigned char *s, int length);
