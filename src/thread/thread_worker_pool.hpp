@@ -320,7 +320,7 @@ namespace cubthread
   void
   worker_pool<Context>::run (worker_pool<Context> &pool, std::thread &thread_arg, task_type *task_arg)
   {
-#define THREAD_WP_STATIC_LOG(msg, ...) if (pool.m_log) ER_LOG_FUNC ("run: " msg, __VA_ARGS__)
+#define THREAD_WP_STATIC_LOG(msg, ...) if (pool.m_log) er_log_debug (ARG_FILE_LINE, "run: " msg, __VA_ARGS__)
 
     // create context for task execution
     Context &context = pool.m_context_manager.create_context ();
