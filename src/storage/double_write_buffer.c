@@ -4219,13 +4219,26 @@ start:
 	  while (true);
 	}
 
-      if (found || (count_flush_volumes_info != block->count_flush_volumes_info) || (all_block_pages_written == false))
+      if (found)
 	{
 	  /* Try again. */
 	  goto start;
 	}
+      else if (all_block_pages_written == false)
+	{
+	  /* Check again if all pages were written. */
+	  if (block->all_pages_written == false)
+	    {
+	      /* Not all pages were written and no volume available for flush yet. */
+#if defined (SERVER_MODE)
+	      thread_sleep (1);
+#endif
+	    }
+	  goto start;
+	}
 
 #if !defined (NDEBUG)
+      assert (count_flush_volumes_info == block->count_flush_volumes_info);
       for (i = 0; i < count_flush_volumes_info; i++)
 	{
 	  current_flush_volume_info = &block->flush_volumes_info[i];
