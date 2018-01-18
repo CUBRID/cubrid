@@ -5,6 +5,8 @@
 #include "thread_entry_task.hpp"
 #include "thread_looper.hpp"
 
+master_replication_channel *master_replication_channel::singleton = NULL;
+
 class master_server_loop : public cubthread::entry_task
 {
   public:
@@ -25,7 +27,13 @@ class master_server_loop : public cubthread::entry_task
 	    {
 	      if (channel->test_for_events (i, POLLIN) != 0)
 		{
-		  //channel->recv ()
+                  #define MAX_LENGTH 100
+                    char buffer [MAX_LENGTH];
+                    int recv_length;
+                    channel->recv (channel->get_poll_fd_of_slave(i).fd, buffer, recv_length, replication_channel::get_max_timeout());
+                    buffer[recv_length] = '\0';
+                    fprintf (stderr, "received=%s\n", buffer);
+                  #undef MAX_LENGTH
 		}
 	    }
 
@@ -86,12 +94,39 @@ int master_replication_channel::get_number_of_slaves()
 
 short master_replication_channel::test_for_events (int slave_index, short flag)
 {
-  if (slave_index >= m_current_number_of_connected_slaves)
-    {
-      return 0;
-    }
+  assert (slave_index >= 0 && slave_index < m_current_number_of_connected_slaves);
 
   return slave_fds[slave_index].revents & POLLIN;
+}
+
+POLL_FD &master_replication_channel::get_poll_fd_of_slave (int slave_index)
+{
+  assert (slave_index >= 0 && slave_index < m_current_number_of_connected_slaves);
+
+  return slave_fds[slave_index];
+}
+
+void master_replication_channel::init ()
+{
+  if (singleton == NULL)
+    {
+      std::lock_guard<std::mutex> guard (replication_channel::singleton_mutex);
+      if (singleton == NULL)
+        {
+          singleton = new master_replication_channel ();
+        }
+    }
+}
+
+void master_replication_channel::reset_singleton()
+{
+  delete singleton;
+  singleton = NULL;
+}
+
+master_replication_channel *master_replication_channel::get_channel ()
+{
+  return singleton;
 }
 
 master_replication_channel::~master_replication_channel ()
