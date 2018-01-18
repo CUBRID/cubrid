@@ -242,6 +242,9 @@ static BOOL WINAPI ctrl_sig_handler (DWORD ctrl_event);
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 
+static void
+css_process_new_slave (SOCKET master_fd);
+
 /*
  * css_make_job_entry () -
  *   return:
@@ -1014,9 +1017,35 @@ css_process_master_request (SOCKET master_fd)
 	  }
 
 	current_state = hb_node_state_string (css_get_hb_node_state ());
+
+        assert (strcmp (current_state, last_state) != 0);
 	er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "server promoted/demoted from %s to %s\n",
 		      last_state, current_state);
+
+        switch (css_get_hb_node_state ())
+          {
+            HB_NSTATE_SLAVE:
+              master_replication_channel::reset_singleton ();
+              slave_replication_channel::reset_singleton ();
+              slave_replication_channel::init (hb_Cluster->master->host_name, css_Master_server_name, css_Master_port_id);
+
+              rc = slave_replication_channel::get_channel ()->connect_to_master ();
+              assert (rc == NO_ERRORS);
+
+              break;
+            HB_NSTATE_MASTER:
+              master_replication_channel::reset_singleton ();
+              slave_replication_channel::reset_singleton ();
+
+              master_replication_channel::init ();
+              break;
+            default:
+              break;
+          }
       }
+      break;
+    case SERVER_CONNECT_NEW_SLAVE:
+      css_process_new_slave (master_fd);
       break;
 #endif
     default:
@@ -3429,3 +3458,22 @@ xacl_reload (THREAD_ENTRY * thread_p)
   return css_set_accessible_ip_info ();
 }
 #endif
+
+static void
+css_process_new_slave (SOCKET master_fd)
+{
+  SOCKET new_fd;
+  unsigned short rid;
+
+  /* receive new socket descriptor from the master */
+  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  if (IS_INVALID_SOCKET (new_fd))
+    {
+      return;
+    }
+  
+  assert (css_get_hb_node_state () == HB_NSTATE_MASTER &&
+          master_replication_channel::get_channel () != NULL);
+  
+  master_replication_channel::get_channel ()->add_slave_connection (new_fd);
+}
