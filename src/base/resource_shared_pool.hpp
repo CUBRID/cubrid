@@ -30,30 +30,32 @@ template <class T>
 class resource_shared_pool
 {
 public:
-  resource_shared_pool (size_t size)
+  resource_shared_pool (size_t size, allow_claimed_on_destruction = false)
     : m_size (size)
     , m_free_stack_size (size)
     , m_mutex ()
+    , m_allow_claimed_on_destruction (allow_claimed_on_destruction)
   {
     m_resources = new T [size];
     m_own_resources = m_resources;
     populate_free_stack ();
   }
 
-  resource_shared_pool (T * resources, size_t size)
+  resource_shared_pool (T * resources, size_t size, allow_claimed_on_destruction = false)
     : m_size (size)
     , m_free_stack_size (size)
     , m_mutex ()
     , m_resources (resources)
     , m_own_resources (NULL)
     , m_free_stack (NULL)
+    , m_allow_claimed_on_destruction (allow_claimed_on_destruction)
   {
     populate_free_stack ();
   }
 
   ~resource_shared_pool ()
   {
-    assert (m_free_stack_size == m_size);
+    assert (m_allow_claimed_on_destruction || m_free_stack_size == m_size);
     delete [] m_free_stack;
     delete [] m_own_resources;
   }
@@ -100,6 +102,8 @@ private:
   T * m_resources;
   T * m_own_resources;
   T ** m_free_stack;
+
+  bool m_allow_claimed_on_destruction;
 };
 
 #endif // _RESOURCE_SHARED_POOL_HPP_

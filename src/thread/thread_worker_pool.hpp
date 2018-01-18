@@ -186,7 +186,7 @@ namespace cubthread
     , m_work_queue (work_queue_size)
     , m_context_manager (*context_mgr)
     , m_threads (new std::thread[m_max_workers])
-    , m_thread_dispatcher (m_threads, m_max_workers)
+    , m_thread_dispatcher (m_threads, m_max_workers, true)
     , m_context_pointers (NULL)
     , m_stopped (false)
     , m_log (debug_log)
