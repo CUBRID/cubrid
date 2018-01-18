@@ -57,8 +57,8 @@ int slave_replication_channel::connect_to_master()
 
   length = master_server_name.length ();
 
-  if (css_common_connect (master_conn_entry,&request_id, master_hostname.c_str (),
-                          SERVER_REQUEST_CONNECT_NEW_SLAVE, master_server_name.c_str (), length, css_Service_id))
+  if (css_common_connect (master_conn_entry, &request_id, master_hostname.c_str (),
+                          SERVER_REQUEST_CONNECT_NEW_SLAVE, master_server_name.c_str (), length, css_Service_id) == NULL)
     {
       return REQUEST_REFUSED;
     }
