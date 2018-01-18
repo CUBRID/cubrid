@@ -430,7 +430,7 @@ target_include_directories(cubridsa PRIVATE
   ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
   ${JAVA_INC}
   )
-target_link_libraries(cubridsa PRIVATE
+target_link_libraries(cubridsa LINK_PRIVATE
     cas
   )
 if(UNIX)

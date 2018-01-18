@@ -33,7 +33,7 @@ add_executable(gen_timezone
   ${GEN_TIMEZONES_SOURCES}
   )
 
-target_link_libraries (gen_timezone PRIVATE cubridsa)
+target_link_libraries (gen_timezone LINK_PRIVATE cubridsa)
 target_compile_definitions (gen_timezone PRIVATE SA_MODE)
 
 # run executable

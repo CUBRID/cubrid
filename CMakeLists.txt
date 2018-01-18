@@ -92,7 +92,7 @@ macro(_EXPAND_EXTERNAL_DEPENDENCY depender prefix_dependee)
 
   set(DEPENDEE_LIBS_DIR ${${prefix_dependee}_LIBS})
   if(DEFINED DEPENDEE_LIBS_DIR)
-    target_link_libraries(${depender} PRIVATE ${DEPENDEE_LIBS_DIR})
+    target_link_libraries(${depender} LINK_PRIVATE ${DEPENDEE_LIBS_DIR})
   else()
     message(WARNING "libraries directory variable(${prefix_dependee}_LIBS) is not set for target ${prefix_dependee}")
   endif()
