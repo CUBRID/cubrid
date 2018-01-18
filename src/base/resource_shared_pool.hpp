@@ -30,7 +30,7 @@ template <class T>
 class resource_shared_pool
 {
 public:
-  resource_shared_pool (size_t size, allow_claimed_on_destruction = false)
+  resource_shared_pool (size_t size, bool allow_claimed_on_destruction = false)
     : m_size (size)
     , m_free_stack_size (size)
     , m_mutex ()
@@ -41,7 +41,7 @@ public:
     populate_free_stack ();
   }
 
-  resource_shared_pool (T * resources, size_t size, allow_claimed_on_destruction = false)
+  resource_shared_pool (T * resources, size_t size, bool allow_claimed_on_destruction = false)
     : m_size (size)
     , m_free_stack_size (size)
     , m_mutex ()
