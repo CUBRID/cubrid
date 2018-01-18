@@ -24,9 +24,11 @@
 #ifndef _ERROR_CONTEXT_HPP_
 #define _ERROR_CONTEXT_HPP_
 
+#include <cstddef>
+
 #include <stack>
 
-const size_t ER_EMERGENCY_BUF_SIZE = 256;
+const std::size_t ER_EMERGENCY_BUF_SIZE = 256;
 
 // legacy structures
 typedef union er_va_arg ER_VA_ARG;
@@ -58,7 +60,7 @@ struct er_message
     int severity;			/* Warning, Error, FATAL Error, etc... */
     const char *file_name;	/* File where the error is set */
     int line_no;			/* Line in the file where the error is set */
-    int msg_area_size;		/* Size of the message area */
+    std::size_t msg_area_size;		/* Size of the message area */
     char *msg_area;		/* Pointer to message area */
     ER_VA_ARG *args;		/* Array of va_list entries */
     int nargs;			/* Length of array */

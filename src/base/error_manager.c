@@ -40,7 +40,9 @@
 #include "message_catalog.h"
 //#include "object_representation.h"
 //#include "porting.h"
-//#include "release_string.h"
+#if !defined (WINDOWS)
+#include "release_string.h"
+#endif // not WINDOWS
 #include "system_parameter.h"
 #if defined (SERVER_MODE)
 #include "log_impl.h"
@@ -1419,7 +1421,8 @@ end:
 
   if (need_stack_pop)
     {
-      tl_context.pop_error_stack (er_message ());
+      er_message temp;
+      tl_context.pop_error_stack (temp);
     }
 
   return ret_val;
@@ -2067,7 +2070,8 @@ void
 er_stack_pop (void)
 {
   // pop error stack and let it be destroyed
-  context::get_thread_local_context ().pop_error_stack (er_message ());
+  er_message temp;
+  context::get_thread_local_context ().pop_error_stack (temp);
 }
 
 /*
