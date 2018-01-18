@@ -23,6 +23,7 @@
  */
 #include "vacuum.h"
 
+#include "base_flag.hpp"
 #include "boot_sr.h"
 #include "btree.h"
 #include "dbtype.h"
@@ -1105,12 +1106,17 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   // get thread manager
   auto thread_manager = cubthread::get_manager ();
 
+  // get logging flag for vacuum worker pool
+  bool log_vacuum_worker_pool =
+    flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_THREAD_LOGGING_FLAG), THREAD_LOG_WORKER_POOL_VACUUM)
+    || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
+
   // create thread pool
   vacuum_Worker_threads =
     thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
 					VACUUM_JOB_QUEUE_CAPACITY,
                                         vacuum_Worker_context_manager,
-                                        true);
+                                        log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
   // create vacuum master thread
