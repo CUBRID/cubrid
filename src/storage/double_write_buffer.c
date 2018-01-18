@@ -2812,7 +2812,7 @@ retry:
       (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, false);
     }
 
-  /* Allow to flush helper to finish */
+  /* Allow to flush helper to finish. */
   block->all_pages_written = true;
 
   if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_FLUSHED_BLOCK_VOLUMES))
@@ -4148,9 +4148,8 @@ int
 dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 {
   unsigned int i;
-  int num_pages, num_pages2, iter, num_pages_to_sync;
+  int num_pages, num_pages2, num_pages_to_sync;
   DWB_BLOCK *block;
-  bool found;
   FLUSH_VOLUME_STATUS flushed_status;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -4158,7 +4157,9 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   bool is_perf_tracking = false;
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
   unsigned int count_flush_volumes_info;
-  bool all_block_pages_written = false;
+  bool all_block_pages_written = false, need_wait;
+  unsigned int start_flush_volume = 0;
+  int first_partial_flushed_volume = -1;
 
 start:
   num_pages_to_sync = prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH);
@@ -4171,85 +4172,130 @@ start:
 	  tsc_getticks (&start_tick);
 	}
 
-      found = false;
       count_flush_volumes_info = block->count_flush_volumes_info;
       all_block_pages_written = block->all_pages_written;
-      for (i = 0; i < count_flush_volumes_info; i++)
+      need_wait = false;
+      first_partial_flushed_volume = -1;
+      for (i = start_flush_volume; i < count_flush_volumes_info; i++)
 	{
 	  current_flush_volume_info = &block->flush_volumes_info[i];
-	  iter = 0;
-	  do
+
+	try_again:
+	  flushed_status = current_flush_volume_info->flushed_status;
+	  if (flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD)
 	    {
-	      if (iter == 0)
+	      /* Flushed by other thread. */
+	      continue;
+	    }
+	  else if (flushed_status == VOLUME_NOT_FLUSHED)
+	    {
+	      if (!ATOMIC_CAS_32 (&current_flush_volume_info->flushed_status, VOLUME_NOT_FLUSHED,
+				  VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD))
 		{
-		try_again:
-		  flushed_status = current_flush_volume_info->flushed_status;
-		  if (flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD)
-		    {
-		      /* Flushed by other thread. */
-		      break;
-		    }
-		  else if (flushed_status == VOLUME_NOT_FLUSHED)
-		    {
-		      if (!ATOMIC_CAS_32 (&current_flush_volume_info->flushed_status, VOLUME_NOT_FLUSHED,
-					  VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD))
-			{
-			  /* Try again. */
-			  goto try_again;
-			}
-		    }
+		  /* Try again. */
+		  goto try_again;
 		}
+	    }
 
-	      /* I'm the flusher of the volume. */
-	      assert_release (current_flush_volume_info->flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD);
-	      num_pages = ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0);
-	      if (num_pages == 0)
+	  /* I'm the flusher of the volume. */
+	  assert_release (current_flush_volume_info->flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD);
+	  num_pages = ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0);
+	  if (num_pages < num_pages_to_sync)
+	    {
+	      if (current_flush_volume_info->all_pages_written == true)
 		{
-		  if ((current_flush_volume_info->all_pages_written == false))
+		  if (num_pages == 0)
 		    {
-		      /* I'm the flusher, but pages not written yet. Check the other volumes and retry. */
-		      found = true;
+		      /* Already flushed. */
+		      continue;
 		    }
 
-		  /* This volume was flushed, but may require other flushes if not all its pages were written. */
-		  break;
+		  /* Needs flushing. */
 		}
-
-	      /* The volume must be flush by me. */
-	      found = true;
-	      if ((num_pages < num_pages_to_sync) && (current_flush_volume_info->all_pages_written == false))
+	      else
 		{
 		  /* Not enough pages, check the other volumes and retry. */
+		  assert (all_block_pages_written == false);
+                  if (first_partial_flushed_volume == -1)
+                    {
+                      first_partial_flushed_volume = i;
+                    }
+		  
+		  need_wait = true;
 		  break;
 		}
-
-	      /* Reset the number of pages in volume. */
-	      num_pages2 = ATOMIC_TAS_32 (&current_flush_volume_info->num_pages, 0);
-	      assert_release (num_pages2 >= num_pages);
-
-	      /* Flush the volume. */
-	      (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, false);
-	      iter++;
 	    }
-	  while (true);
+	  else if (current_flush_volume_info->all_pages_written == false)
+	    {
+	      if (first_partial_flushed_volume == -1)
+		{
+		  first_partial_flushed_volume = i;
+		}
+	    }
+
+	  /* Reset the number of pages in volume. */
+	  num_pages2 = ATOMIC_TAS_32 (&current_flush_volume_info->num_pages, 0);
+	  assert_release (num_pages2 >= num_pages);
+
+	  /*
+	   * Flush the volume. If not all volume pages are available now, continue with next volume, if any,
+	   * and then resume the current one.
+	   */
+	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, false);
 	}
 
-      if (found)
+      /* Set next volume to flush. */
+      if (first_partial_flushed_volume != -1)
 	{
-	  /* Try again. */
+          assert ((first_partial_flushed_volume >= 0) && ((unsigned int) first_partial_flushed_volume < count_flush_volumes_info));
+	  /* Continue with partial flushed volume. */
+	  start_flush_volume = first_partial_flushed_volume;
+	}
+      else
+	{
+	  /* Continue with the next volume. */
+	  start_flush_volume = count_flush_volumes_info;
+	}
+
+      if (count_flush_volumes_info != block->count_flush_volumes_info)
+	{
+	  /* Do not wait since a new volume arrived. */
 	  goto start;
 	}
-      else if (all_block_pages_written == false)
+
+      if ((need_wait == false) && (all_block_pages_written == false))
 	{
-	  /* Check again if all pages were written. */
-	  if (block->all_pages_written == false)
+          /* Not all pages written yet, check wether we need to wait for them. */
+	  if (first_partial_flushed_volume != -1)
+	    {
+	      current_flush_volume_info = &block->flush_volumes_info[first_partial_flushed_volume];
+	      if ((ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0) < num_pages_to_sync)
+		  && (current_flush_volume_info->all_pages_written == false))
+		{
+		  need_wait = true;
+		}
+              else
+                {
+                  goto start;
+                } 
+	    }
+	  else if (block->all_pages_written == false)
 	    {
 	      /* Not all pages were written and no volume available for flush yet. */
-#if defined (SERVER_MODE)
-	      thread_sleep (1);
-#endif
+	      need_wait = true;
 	    }
-	  goto start;
+	  else
+	    {
+	      goto start;
+	    }
+	}
+
+      if (need_wait == true)
+	{
+#if defined (SERVER_MODE)
+	  thread_sleep (1);
+#endif
+          goto start;
 	}
 
 #if !defined (NDEBUG)
