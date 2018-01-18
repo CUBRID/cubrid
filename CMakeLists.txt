@@ -997,15 +997,11 @@ if(WIN32)
 endif(WIN32)
 
 # rapidjson
-ExternalProject_Add(rapidjson
-
+externalproject_add(rapidjson
   # tried URL but archive gets downloaded every time. URL_MD5 may help
-  GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git"
-  GIT_TAG "v1.1.0"
-
+  URL https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz
   # don't install
   INSTALL_COMMAND ""
-
   # don't build test, doc and examples
   CMAKE_CACHE_ARGS -DRAPIDJSON_BUILD_TESTS:string=off
                    -DRAPIDJSON_BUILD_DOC:string=off
