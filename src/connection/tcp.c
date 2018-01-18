@@ -1071,7 +1071,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
  *   rid(in):
  */
 bool
-css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
+css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request_for_server)
 {
   int request;
   unsigned short req_id;
@@ -1081,7 +1081,7 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
   static struct cmsghdr *cmptr = NULL;
 #endif /* LINUX || AIX */
 
-  request = htonl (SERVER_START_NEW_CLIENT);
+  request = htonl (request_for_server);
   if (send (server_fd, (char *) &request, sizeof (int), 0) < 0)
     {
       /* Master->Server link down. remove old link, and try again. */
