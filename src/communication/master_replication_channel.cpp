@@ -18,26 +18,23 @@ class master_server_loop : public cubthread::entry_task
     {
       int rc, num_of_fds;
 
-      while (channel->get_is_loop_running())
-	{
-	  num_of_fds = channel->get_number_of_slaves ();
-	  rc = channel->poll_for_requests();
+      num_of_fds = channel->get_number_of_slaves ();
+      rc = channel->poll_for_requests();
 
-	  for (int i = 0; i < num_of_fds; i++)
-	    {
-	      if (channel->test_for_events (i, POLLIN) != 0)
-		{
-                  #define MAX_LENGTH 100
-                    char buffer [MAX_LENGTH];
-                    int recv_length;
-                    channel->recv (channel->get_poll_fd_of_slave(i).fd, buffer, recv_length, replication_channel::get_max_timeout());
-                    buffer[recv_length] = '\0';
-                    fprintf (stderr, "received=%s\n", buffer);
-                  #undef MAX_LENGTH
-		}
-	    }
+      for (int i = 0; i < num_of_fds; i++)
+        {
+          if (channel->test_for_events (i, POLLIN) != 0)
+            {
+              #define MAX_LENGTH 100
+                char buffer [MAX_LENGTH];
+                int recv_length;
+                channel->recv (channel->get_poll_fd_of_slave(i).fd, buffer, recv_length, replication_channel::get_max_timeout());
+                buffer[recv_length] = '\0';
+                fprintf (stderr, "received=%s\n", buffer);
+              #undef MAX_LENGTH
+            }
+        }
 
-	}
     }
 
     void retire ()
@@ -48,8 +45,7 @@ class master_server_loop : public cubthread::entry_task
     master_replication_channel *channel;
 };
 
-master_replication_channel::master_replication_channel () : m_current_number_of_connected_slaves (0),
-  is_loop_running (true)
+master_replication_channel::master_replication_channel () : m_current_number_of_connected_slaves (0)
 {
   /* start communication daemon thread */
   cubthread::manager *session_manager = cubthread::get_manager ();
@@ -75,16 +71,6 @@ int master_replication_channel::add_slave_connection (int sock_fd)
 int master_replication_channel::poll_for_requests()
 {
   return poll (slave_fds, m_current_number_of_connected_slaves, TCP_MAX_TIMEOUT_IN_MS);
-}
-
-bool master_replication_channel::get_is_loop_running ()
-{
-  return is_loop_running;
-}
-
-void master_replication_channel::stop_loop ()
-{
-  is_loop_running = false;
 }
 
 int master_replication_channel::get_number_of_slaves()
@@ -131,4 +117,5 @@ master_replication_channel *master_replication_channel::get_channel ()
 
 master_replication_channel::~master_replication_channel ()
 {
+  cubthread::get_manager()->destroy_daemon (master_loop_daemon);
 }

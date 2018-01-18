@@ -18,8 +18,6 @@ class master_replication_channel : public replication_channel
   public:
     int add_slave_connection (int sock_fd);
     int poll_for_requests ();
-    bool get_is_loop_running ();
-    void stop_loop ();
     int get_number_of_slaves ();
     short test_for_events (int slave_index, short flag);
     POLL_FD &get_poll_fd_of_slave (int slave_index);
@@ -30,7 +28,6 @@ class master_replication_channel : public replication_channel
   private:
     POLL_FD slave_fds [MAX_SLAVE_CONNECTIONS];
     int m_current_number_of_connected_slaves;
-    bool is_loop_running;
     cubthread::daemon *master_loop_daemon;
 
     static master_replication_channel *singleton;
