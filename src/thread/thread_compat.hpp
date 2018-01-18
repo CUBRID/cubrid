@@ -28,7 +28,7 @@
 #define _THREAD_COMPAT_HPP_
 
 // forward definition for THREAD_ENTRY
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 #ifndef _THREAD_ENTRY_HPP_
 namespace cubthread
 {
@@ -36,24 +36,6 @@ namespace cubthread
 } // namespace cubthread
 typedef cubthread::entry THREAD_ENTRY;
 #endif // _THREAD_ENTRY_HPP_
-#elif defined (SA_MODE)
-#if defined (__cplusplus)
-// we have the grammar module on stand-alone that is compiled with C and cannot comprehend namespaces. since it doesn't
-// really use thread module, should fall to #else case
-#ifndef _THREAD_ENTRY_HPP_
-// forward definition for THREAD_ENTRY
-namespace cubthread
-{
-  class entry;
-} // namespace cubthread
-typedef cubthread::entry THREAD_ENTRY;
-#endif // _THREAD_ENTRY_HPP_
-#else // not C++
-typedef void THREAD_ENTRY;
-#endif // not C++
-#else // not SERVER_MODE and not SA_MODE
-typedef void THREAD_ENTRY;
-#endif // not SERVER_MODE and not SA_MODE
 
 // system parameter flags for thread logging
 // manager flags
@@ -65,5 +47,10 @@ const int THREAD_LOG_WORKER_POOL_ALL = 0xFF00;    // reserved for thread worker 
 
 const int THREAD_LOG_DAEMON_VACUUM = 0x10000;
 const int THREAD_LOG_DAEMON_ALL = 0xFFFF0000;     // reserved for thread daemons
+
+#else // not SERVER_MODE and not SA_MODE-C++
+// client or SA_MODE annoying grammars
+typedef void THREAD_ENTRY;
+#endif // not SERVER_MODE and not SA_MODE
 
 #endif // _THREAD_COMPAT_HPP_
