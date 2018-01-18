@@ -2,6 +2,7 @@
 #define _REPLICATION_CHANNEL_HPP
 
 #include <string>
+#include <mutex>
 
 enum class slave_requests
 {
@@ -19,9 +20,10 @@ class replication_channel
     int recv (int sock_fd, char *buffer, int &received_length, int timeout);
     int connect_to (const char *hostname, int port);
 
-    const int &get_max_timeout ();
+    static const int &get_max_timeout ();
   protected:
     static const int TCP_MAX_TIMEOUT_IN_MS;
+    static std::mutex singleton_mutex;
   private:
 };
 

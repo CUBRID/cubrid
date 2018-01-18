@@ -12,7 +12,9 @@
 #endif /* WINDOWS */
 
 #define MAX_CHANNEL_THREADS 16 /* TODO set this accordingly, maybe make it dynamic */
+
 const int replication_channel::TCP_MAX_TIMEOUT_IN_MS = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
+std::mutex replication_channel::singleton_mutex;
 
 replication_channel::replication_channel ()
 {
