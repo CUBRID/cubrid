@@ -402,6 +402,7 @@ namespace cubthread
     Main_entry_p->status = TS_RUN;
     Main_entry_p->resume_status = THREAD_RESUME_NONE;
     Main_entry_p->tran_index = 0;	/* system transaction */
+    Main_entry_p->get_error_context ().register_thread_local ();
 
 #if defined (SERVER_MODE)
     thread_set_thread_entry_info (Main_entry_p);
@@ -417,6 +418,7 @@ namespace cubthread
   void
   finalize (void)
   {
+    Main_entry_p->get_error_context ().deregister_thread_local ();
     delete Main_entry_p;
     Main_entry_p = NULL;
 

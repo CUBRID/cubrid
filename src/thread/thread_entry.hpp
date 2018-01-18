@@ -33,11 +33,6 @@
 struct adj_array;
 // from connection_defs.h
 struct css_conn_entry;
-// from error_manager
-namespace cuberr
-{
-  class context;
-}
 // from fault_injection.h
 struct fi_test_item;
 // from log_compress.h

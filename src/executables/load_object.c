@@ -1816,7 +1816,7 @@ er_filter_errid (bool ignore_warning)
 
   if (filter_ignore_errors[0])
     {
-      if (ignore_warning && er_severity () == ER_WARNING_SEVERITY)
+      if (ignore_warning && er_get_severity () == ER_WARNING_SEVERITY)
 	{
 	  goto clear_errid;
 	}

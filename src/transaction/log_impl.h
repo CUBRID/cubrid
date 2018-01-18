@@ -2287,6 +2287,8 @@ extern char *logtb_find_client_hostname (int tran_index);
 extern void logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active);
 extern int logtb_find_client_name_host_pid (int tran_index, char **client_prog_name, char **client_user_name,
 					    char **client_host_name, int *client_pid);
+extern int logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, char **client_user_name,
+						 char **client_host_name, int *client_pid);
 extern int logtb_find_current_client_name_host_pid (char **client_prog_name, char **client_user_name,
 						    char **client_host_name, int *client_pid);
 extern int logtb_get_client_ids (int tran_index, LOG_CLIENTIDS * client_info);

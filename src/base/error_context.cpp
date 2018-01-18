@@ -28,64 +28,277 @@
 
 #include <cstring>
 
-er_messages::er_messages ()
+er_message::er_message ()
   : err_id (NO_ERROR)
   , severity (ER_WARNING_SEVERITY)
   , file_name (NULL)
   , line_no (-1)
-  , msg_area_size (0)
-  , msg_area (NULL)
-  , stack (NULL)
+  , msg_area_size (sizeof (msg_buffer))
+  , msg_area (msg_buffer)
   , args (NULL)
   , nargs (0)
+  , msg_buffer {'\0'}
 {
+  //
 }
 
-er_messages::~er_messages ()
+/*
+er_message::er_message (er_message && other)
+  : err_id (other.err_id)
+  , severity (other.severity)
+  , file_name (other.file_name)
+  , line_no (other.line_no)
+  , msg_area_size (other.msg_area_size)
+  , msg_area (NULL)
+  , args (other.args)
+  , nargs (other.nargs)
 {
-  while (stack != NULL)
+  // msg area
+  if (msg_area_size <= sizeof (msg_buffer))
     {
-      delete pop_stack ();
-    }
-}
-
-ER_MSG *
-er_messages::pop_stack (void)
-{
-  if (stack != NULL)
-    {
-      ER_MSG *popped = stack;
-      stack = stack->stack;
-      return popped;
+      // copy buffer
+      msg_area = msg_buffer;
+      std::memcpy (msg_buffer, other.msg_buffer, msg_area_size);
     }
   else
     {
-      return NULL;
+      // move msg_area pointer
+      assert (other.msg_area == other.msg_buffer);
+      msg_area = other.msg_area;
+      other.msg_area = NULL;
     }
+
+  // args are always dynamically allocated
+  other.args = NULL;
+}
+*/
+
+er_message::~er_message ()
+{
+  clear_msg_area ();
+
+  // free args
+}
+
+void er_message::swap (er_message &other)
+{
+  std::swap (this->err_id, other.err_id);
+  std::swap (this->severity, other.severity);
+  std::swap (this->file_name, other.file_name);
+  std::swap (this->line_no, other.line_no);
+
+  // msg_area
+  const std::size_t bufsize = sizeof (this->msg_buffer);
+  if (this->msg_area_size <= bufsize && other.msg_area_size <= bufsize)
+    {
+      assert (this->msg_area_size == bufsize && other.msg_area_size == bufsize);
+
+      // swap buffer contexts
+      char aux_buffer[bufsize];
+      std::memcpy (aux_buffer, this->msg_buffer, bufsize);
+      std::memcpy (this->msg_buffer, other.msg_buffer, bufsize);
+      std::memcpy (other.msg_buffer, aux_buffer, bufsize);
+    }
+  else if (this->msg_area_size > bufsize && other.msg_area_size > bufsize)
+    {
+      /* swap pointers */
+      std::swap (this->msg_area, other.msg_area);
+      std::swap (this->msg_area_size, other.msg_area_size);
+    }
+  else if (this->msg_area_size <= bufsize)
+    {
+      assert (this->msg_area_size == bufsize);
+      assert (other.msg_area_size > bufsize);
+
+      // copy this buffer to other
+      std::memcpy (other.msg_buffer, this->msg_buffer, bufsize);
+      // move msg_area pointer from other to this
+      this->msg_area = other.msg_area;
+      other.msg_area = other.msg_buffer;
+      // swap area size
+      std::swap (this->msg_area_size, other.msg_area_size);
+    }
+  else
+    {
+      assert (this->msg_area_size > bufsize);
+      assert (other.msg_area_size == bufsize);
+
+      // copy other buffer to this
+      std::memcpy (this->msg_buffer, other.msg_buffer, bufsize);
+      // move msg_area pointer from this to other
+      other.msg_area = this->msg_area;
+      this->msg_area = this->msg_buffer;
+      // swap area size
+      std::swap (this->msg_area_size, other.msg_area_size);
+    }
+
+  // swap args, nargs
+  std::swap (this->args, other.args);
+  std::swap (this->nargs, other.nargs);
+}
+
+void
+er_message::clear_error ()
+{
+  err_id = NO_ERROR;
+  severity = ER_WARNING_SEVERITY;
+  file_name = NULL;
+  line_no = -1;
+  msg_area[0] = '\0';
+}
+
+void
+er_message::set_error (int error_id_arg, int error_severity_arg, const char *filename_arg, int line_no_arg)
+{
+  if (error_id_arg >= ER_FAILED || error_id_arg <= ER_LAST_ERROR)
+    {
+      assert (false);		/* invalid error id */
+      error_id_arg = ER_FAILED;	/* invalid error id handling */
+    }
+  err_id = error_id_arg;
+  severity = error_severity_arg;
+  file_name = filename_arg;
+  line_no = line_no_arg;
+}
+
+void
+er_message::clear_msg_area (void)
+{
+  if (msg_area != msg_buffer)
+    {
+      delete msg_area;
+
+      msg_area = msg_buffer;
+      msg_area_size = sizeof (msg_buffer);
+    }
+}
+
+void
+er_message::reserve (std::size_t size)
+{
+  if (msg_area_size >= size)
+    {
+      // no need to resize
+      return;
+    }
+  std::size_t new_size = msg_area_size;
+  while (new_size < size)
+    {
+      new_size *= 2;
+    }
+  clear_msg_area ();
+
+  msg_area = new char[new_size];
+  msg_area_size = new_size;
 }
 
 namespace cuberr
 {
   thread_local context *tl_Context_p = NULL;
 
-  context::context ()
-    : m_all_errors ()
-    , m_crt_error_p (m_all_errors)
-    , m_msgbuf ()
+  context::context (void)
+    : m_base_level ()
+    , m_stack ()
   {
-    std::memset (m_msgbuf, 0, sizeof (m_msgbuf));
   }
 
-  const ER_MSG &
-  context::get_crt_error (void)
+  context::~context (void)
   {
-    return m_crt_error_p;
+    if (tl_Context_p == this)
+      {
+	assert (false);
+	deregister_thread_local ();
+      }
+  }
+
+  er_message &
+  context::get_current_error_level (void)
+  {
+    if (m_stack.empty ())
+      {
+	return m_base_level;
+      }
+    else
+      {
+	return m_stack.top ();
+      }
+  }
+
+  void
+  context::register_thread_local (void)
+  {
+    assert (tl_Context_p == NULL);
+    tl_Context_p = this;
+  }
+
+  void
+  context::deregister_thread_local (void)
+  {
+    assert (m_stack.empty ());
+
+    clear_all_levels ();
+
+    assert (tl_Context_p == this);
+    tl_Context_p = NULL;
+  }
+
+  void
+  context::clear_current_error_level (void)
+  {
+    get_current_error_level ().clear_error ();
+  }
+
+  er_message &
+  context::push_error_stack (void)
+  {
+    m_stack.emplace ();
+    return get_current_error_level ();
+  }
+
+  void
+  context::pop_error_stack (er_message &popped)
+  {
+    if (m_stack.empty ())
+      {
+	assert (false);
+	return;
+      }
+    popped.swap (m_stack.top ());
+    m_stack.pop ();
+  }
+
+  bool
+  context::has_error_stack (void)
+  {
+    return !m_stack.empty ();
+  }
+
+  void
+  context::clear_all_levels (void)
+  {
+    clear_stack ();
+    m_base_level.clear_error ();
+    m_base_level.clear_msg_area ();
+  }
+
+  void
+  context::clear_stack (void)
+  {
+    // clear stack by swapping; I hope this works
+    std::stack<er_message> ().swap (m_stack);
   }
 
   cuberr::context &
-  context::get_context (void)
+  context::get_thread_local_context (void)
   {
     return *tl_Context_p; // crashes if null!
   }
+
+  er_message &
+  context::get_thread_local_error (void)
+  {
+    return get_thread_local_context ().get_current_error_level ();
+  }
+
 
 } // namespace cuberr

@@ -185,9 +185,6 @@ extern "C"
   extern void er_set_print_property (int print_console);
 
   extern void er_final (ER_FINAL_CODE do_global_final);
-#if defined(ENABLE_UNUSED_FUNCTION)
-  extern PTR_FNERLOG er_fnerlog (int severity, PTR_FNERLOG new_fnlog);
-#endif
   extern void er_clear (void);
   extern void er_set (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...);
   extern void er_set_with_file (int severity, const char *file_name, const int line_no, int err_id, FILE * fp,
@@ -200,14 +197,9 @@ extern "C"
 
   extern int er_errid (void);
   extern int er_errid_if_has_error (void);
-  extern int er_severity (void);
-#if defined(ENABLE_UNUSED_FUNCTION)
-  extern int er_nlevels (void);
-  extern const char *er_file_line (int *line_no);
-#endif
+  extern int er_get_severity (void);
   extern const char *er_msg (void);
   extern void er_all (int *err_id, int *severity, int *nlevels, int *line_no, const char **file_name, const char **msg);
-  extern void er_print (void);
 
   extern void _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...);
 #define er_log_debug(...) if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG)) _er_log_debug(__VA_ARGS__)
@@ -215,10 +207,10 @@ extern "C"
   extern char *er_get_ermsg_from_area_error (char *buffer);
   extern char *er_get_area_error (char *buffer, int *length);
   extern int er_set_area_error (char *server_area);
-  extern int er_stack_push (void);
-  extern int er_stack_push_if_exists (void);
-  extern int er_stack_pop (void);
-  extern void er_stack_clear (void);
+  extern void er_stack_push (void);
+  extern void er_stack_push_if_exists (void);
+  extern void er_stack_pop (void);
+  extern void er_stack_pop_and_keep_error (void);
   extern void er_restore_last_error (void);
   extern void er_stack_clearall (void);
   extern void *db_default_malloc_handler (void *arg, const char *filename, int line_no, size_t size);

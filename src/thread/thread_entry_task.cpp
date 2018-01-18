@@ -38,9 +38,12 @@ namespace cubthread
   entry_manager::create_context (void)
   {
     entry &context = *get_manager ()->claim_entry ();
+
     // for backward compatibility
     context.tid = pthread_self ();
     context.type = TT_WORKER;
+
+    context.get_error_context ().register_thread_local ();
 
     // TODO: daemon type
 
@@ -54,7 +57,7 @@ namespace cubthread
     on_retire (context);
 
     // clear error messages
-    er_clear ();
+    context.get_error_context ().deregister_thread_local ();
 
     // for backward compatibility
     context.tid = (pthread_t) 0;

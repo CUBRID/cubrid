@@ -24,6 +24,8 @@
 #ifndef _ERROR_CONTEXT_HPP_
 #define _ERROR_CONTEXT_HPP_
 
+#include <stack>
+
 const size_t ER_EMERGENCY_BUF_SIZE = 256;
 
 // legacy structures
@@ -38,22 +40,33 @@ union er_va_arg
   long long longlong_value;
 };
 
-typedef struct er_messages ER_MSG;
-struct er_messages
+typedef struct er_message ER_MSG;
+struct er_message
 {
-  int err_id;			/* Error identifier of the current message */
-  int severity;			/* Warning, Error, FATAL Error, etc... */
-  const char *file_name;	/* File where the error is set */
-  int line_no;			/* Line in the file where the error is set */
-  int msg_area_size;		/* Size of the message area */
-  char *msg_area;		/* Pointer to message area */
-  ER_MSG *stack;		/* Stack to previous error messages */
-  ER_VA_ARG *args;		/* Array of va_list entries */
-  int nargs;			/* Length of array */
-  er_messages ();
-  ~er_messages ();
+  public:
+    er_message ();
+    ~er_message ();
 
-  ER_MSG *pop_stack (void);
+    void swap (er_message &other);
+
+    void clear_error (void);
+    void set_error (int error_id, int error_severity, const char *filename, int line_no);
+    void reserve (std::size_t size);
+    void clear_msg_area (void);
+
+    int err_id;			/* Error identifier of the current message */
+    int severity;			/* Warning, Error, FATAL Error, etc... */
+    const char *file_name;	/* File where the error is set */
+    int line_no;			/* Line in the file where the error is set */
+    int msg_area_size;		/* Size of the message area */
+    char *msg_area;		/* Pointer to message area */
+    ER_VA_ARG *args;		/* Array of va_list entries */
+    int nargs;			/* Length of array */
+    char msg_buffer[ER_EMERGENCY_BUF_SIZE];   // message buffer
+
+  private:
+    // not copy constructible
+    er_message (er_message &);
 };
 
 namespace cuberr
@@ -63,16 +76,27 @@ namespace cuberr
     public:
       context ();
 
-      ~context () = default;
+      ~context ();
 
-      const ER_MSG &get_crt_error (void);
+      er_message &get_current_error_level (void);
 
-      static context &get_context (void);
+      void register_thread_local (void);
+      void deregister_thread_local (void);
+
+      void clear_current_error_level (void);
+      er_message &push_error_stack (void);
+      void pop_error_stack (er_message &popped);  // caller will destroy popped
+      bool has_error_stack (void);
+
+      static context &get_thread_local_context (void);
+      static er_message &get_thread_local_error (void);
 
     private:
-      ER_MSG m_all_errors;
-      ER_MSG &m_crt_error_p;
-      char m_msgbuf[ER_EMERGENCY_BUF_SIZE];
+      void clear_all_levels (void);
+      void clear_stack (void);
+
+      er_message m_base_level;
+      std::stack<er_message> m_stack;
   };
 } // namespace cuberr
 
