@@ -90,8 +90,6 @@ namespace cubthread
       // note: this must not be called concurrently
 
     private:
-      using context_stop_func_type = void (*) (void);
-
       template <typename Context>
       static void loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
 			task<Context> *exec_arg);     // daemon thread loop function
