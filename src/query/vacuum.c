@@ -257,8 +257,10 @@ struct vacuum_data
   int log_block_npages;		/* The number of pages in a log block. */
 
   bool is_loaded;		/* True if vacuum data is loaded. */
+  /* *INDENT-OFF*/
   std::atomic<bool> shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or
                                          * executing new jobs. */
+  /* INDENT-ON* */
   bool is_archive_removal_safe;	/* Set to true after keep_from_log_pageid is updated. */
 
   /* Job cursor for vacuum master to avoid going again through jobs already generated */
@@ -1107,9 +1109,11 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   auto thread_manager = cubthread::get_manager ();
 
   // get logging flag for vacuum worker pool
+  /* *INDENT-OFF* */
   bool log_vacuum_worker_pool =
     flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_THREAD_LOGGING_FLAG), THREAD_LOG_WORKER_POOL_VACUUM)
     || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
+  /* *INDENT-ON* */
 
   // create thread pool
   vacuum_Worker_threads =
