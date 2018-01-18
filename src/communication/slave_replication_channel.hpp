@@ -4,12 +4,17 @@
 #include "replication_channel.hpp"
 #include "connection_defs.h"
 
+namespace cubthread
+{
+  class daemon;
+};
+
 class slave_replication_channel : public replication_channel
 {
 public:
 
   int connect_to_master ();
-  int get_master_comm_sock_fd ();
+  CSS_CONN_ENTRY *get_master_conn_entry ();
   
   static void init (const std::string &hostname, const std::string &server_name, int port);
   static void reset_singleton();
@@ -20,6 +25,7 @@ private:
   int master_port, master_comm_sock_fd;
   unsigned short request_id;
   CSS_CONN_ENTRY *master_conn_entry;
+  cubthread::daemon *slave_dummy;
 
   static slave_replication_channel *singleton;
   

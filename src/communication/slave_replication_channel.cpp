@@ -2,15 +2,43 @@
 
 #include "connection_globals.h"
 #include "connection_sr.h"
+#include "thread_manager.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_looper.hpp"
 
 slave_replication_channel *slave_replication_channel::singleton = NULL;
+
+class slave_dummy_send_msg : public cubthread::entry_task
+{
+  public:
+    slave_dummy_send_msg (slave_replication_channel *ch) : channel (ch)
+    {
+    }
+
+    void execute (cubthread::entry &context)
+    {
+      channel->send (channel->get_master_conn_entry()->fd, "hello", replication_channel::get_max_timeout());
+    }
+
+    void retire ()
+    {
+
+    }
+  private:
+    slave_replication_channel *channel;
+};
 
 slave_replication_channel::slave_replication_channel(const std::string& hostname, const std::string &master_server_name, int port) : master_hostname (hostname),
                                                                                                                                      master_server_name (master_server_name),
                                                                                                                                      master_port (port)
 {
+  cubthread::manager *session_manager = cubthread::get_manager ();
+  
   master_conn_entry = css_make_conn (-1);
   request_id = -1;
+  
+  slave_dummy = session_manager->create_daemon (cubthread::looper (std::chrono::seconds (1)),
+		       new slave_dummy_send_msg (this));
 }
 
 slave_replication_channel::~slave_replication_channel()
@@ -38,9 +66,9 @@ int slave_replication_channel::connect_to_master()
   return NO_ERRORS;
 }
 
-int slave_replication_channel::get_master_comm_sock_fd ()
+CSS_CONN_ENTRY *slave_replication_channel::get_master_conn_entry ()
 {
-  return master_comm_sock_fd;
+  return master_conn_entry;
 }
 
 void slave_replication_channel::init (const std::string &hostname, const std::string &server_name, int port)
