@@ -153,6 +153,14 @@ namespace cubthread
   }
 
   void
+  entry::interrupt_execution (void)
+  {
+    shutdown = true;
+
+    // migrate thread code here
+  }
+
+  void
   entry::request_lock_free_transactions (void)
   {
 #if defined (SERVER_MODE)

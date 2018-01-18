@@ -57,6 +57,9 @@ namespace cubthread
   //              task_p->retire (); // this will delete task_p
   //            }
   //
+  // NOTE: to use tasks with worker pools, Context should have interrupt_execution () method defined.
+  //       For long execution tasks, it is recommended to check the interrupt condition regularly.
+  //
   template <typename Context>
   class task
   {

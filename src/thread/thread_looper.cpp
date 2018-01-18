@@ -93,10 +93,10 @@ namespace cubthread
     m_period_index = 0;
   }
 
-  void
+  bool
   looper::stop (void)
   {
-    m_stop = true;
+    return m_stop.exchange (true);
   }
 
   bool

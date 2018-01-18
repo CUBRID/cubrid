@@ -85,7 +85,7 @@ namespace cubthread
 #if defined (SERVER_MODE)
     for (auto iter = tracker.begin (); iter != tracker.end (); iter = tracker.erase (iter))
       {
-	(*iter)->stop ();
+	(*iter)->stop_execution ();
 	delete *iter;
       }
 #endif // SERVER_MODE
@@ -172,7 +172,7 @@ namespace cubthread
 	    (void) tracker.erase (iter);
 
 	    // stop resource and delete
-	    res->stop ();
+	    res->stop_execution ();
 	    delete res;
 	    res = NULL;
 

@@ -86,10 +86,11 @@ namespace cubthread
       ~daemon();
 
       void wakeup (void);     // wakeup daemon thread
-      void stop (void);       // stop daemon thread from looping and join it
+      void stop_execution (void);       // stop_execution daemon thread from looping and join it
       // note: this must not be called concurrently
 
     private:
+      using context_stop_func_type = void (*) (void);
 
       template <typename Context>
       static void loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
@@ -100,6 +101,8 @@ namespace cubthread
       waiter m_waiter;        // thread waiter
       looper m_looper;        // thread looper
       std::thread m_thread;   // the actual daemon thread
+
+      // todo: m_log
   };
 
   /************************************************************************/

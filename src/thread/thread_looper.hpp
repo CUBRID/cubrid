@@ -25,6 +25,7 @@
 #define _THREAD_LOOPER_HPP_
 
 #include <array>
+#include <atomic>
 #include <chrono>
 
 #include <cassert>
@@ -99,7 +100,7 @@ namespace cubthread
       void reset (void);
 
       // stop looping; no waits after this
-      void stop (void);
+      bool stop (void);
 
       // is looper stopped
       bool is_stopped (void) const;
@@ -122,7 +123,7 @@ namespace cubthread
       delta_time m_periods[MAX_PERIODS];    // period array
 
       std::size_t m_period_index;           // current period index
-      bool m_stop;                          // when true, loop is stopped; no waits
+      std::atomic<bool> m_stop;             // when true, loop is stopped; no waits
   };
 
   /************************************************************************/
