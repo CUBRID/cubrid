@@ -313,9 +313,10 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 	}
       query_p->query_id = ++tran_entry_p->query_id_generator;
 
-      usable = session_is_queryid_available (thread_p, query_p->query_id, &hint_query_id);
+      usable = session_is_queryid_idle (thread_p, query_p->query_id, &hint_query_id);
       if (usable == true)
 	{
+	  /* it is usable */
 	  break;
 	}
 

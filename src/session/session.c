@@ -2621,14 +2621,14 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id
 }
 
 /*
- * session_is_queryid_available () - search for a query entry
- * return : true if the given query_id is inactive, false otherwise
+ * session_is_queryid_idle () - search for a idle query entry among the holable results
+ * return : true if the given query_id is idle, false otherwise
  * thread_p (in) :
  * query_id (in) : query id
  * max_query_id_uses (out): max query id among the active ones. caller may use it as a hint
  */
 bool
-session_is_queryid_available (THREAD_ENTRY * thread_p, const QUERY_ID query_id, QUERY_ID * max_query_id_uses)
+session_is_queryid_idle (THREAD_ENTRY * thread_p, const QUERY_ID query_id, QUERY_ID * max_query_id_uses)
 {
   SESSION_STATE *state_p = NULL;
   SESSION_QUERY_ENTRY *sentry_p = NULL;
