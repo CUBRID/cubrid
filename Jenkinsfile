@@ -5,6 +5,12 @@ pipeline {
     pollSCM('H 1 * * *')
   }
 
+  environment {
+    CM_BRANCH = 'develop'
+    OUTPUT_DIR = 'packages'
+    TEST_REPORT = 'reports'
+  }
+
   stages {
     stage('Build and Test') {
       parallel {
@@ -18,7 +24,6 @@ pipeline {
           }
           environment {
             MAKEFLAGS = '-j'
-            TEST_REPORT = 'reports'
           }
           steps {
             script {
@@ -27,28 +32,22 @@ pipeline {
 
             echo 'Checking out...'
             dir(path: 'cubridmanager') {
-              git 'https://github.com/CUBRID/cubrid-manager-server'
+              git branch: "${CM_BRANCH}", url: 'https://github.com/CUBRID/cubrid-manager-server'
             }
-            
+
             echo 'Building...'
             sh 'scl enable devtoolset-6 -- /entrypoint.sh build'
 
             echo 'Packing...'
-            dir(path: 'packages') {
-              deleteDir()
-            }
-            sh 'scl enable devtoolset-6 -- /entrypoint.sh dist -o packages'
+            sh "scl enable devtoolset-6 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
 
             echo 'Testing...'
-            dir(path: 'reports') {
-              deleteDir()
-            }
             sh '/entrypoint.sh test || echo "$? failed"'
           }
           post {
             always {
-              archiveArtifacts 'packages/*'
-              junit 'reports/*.xml'
+              archiveArtifacts "${OUTPUT_DIR}/*"
+              junit "${TEST_REPORT}/*.xml"
             }
           }
         }
@@ -63,33 +62,26 @@ pipeline {
           }
           environment {
             MAKEFLAGS = '-j'
-            TEST_REPORT = 'reports'
           }
           steps {
             echo 'Checking out...'
             dir(path: 'cubridmanager') {
-              git 'https://github.com/CUBRID/cubrid-manager-server'
+              git branch: "${CM_BRANCH}", url: 'https://github.com/CUBRID/cubrid-manager-server'
             }
-            
+
             echo 'Building...'
             sh 'scl enable devtoolset-6 -- /entrypoint.sh build -m debug'
             
             echo 'Packing...'
-            dir(path: 'packages') {
-              deleteDir()
-            }
-            sh 'scl enable devtoolset-6 -- /entrypoint.sh dist -m debug -o packages'
+            sh "scl enable devtoolset-6 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
 
             echo 'Testing...'
-            dir(path: 'reports') {
-              deleteDir()
-            }
             sh '/entrypoint.sh test || echo "$? failed"'
           }
           post {
             always {
-              archiveArtifacts 'packages/*'
-              junit 'reports/*.xml'
+              archiveArtifacts "${OUTPUT_DIR}/*"
+              junit "${TEST_REPORT}/*.xml"
             }
           }
         }
@@ -103,18 +95,18 @@ pipeline {
           steps {
             echo 'Checking out...'
             dir(path: 'cubridmanager') {
-              git 'https://github.com/CUBRID/cubrid-manager-server'
+              git branch: "${CM_BRANCH}", url: 'https://github.com/CUBRID/cubrid-manager-server'
             }
-            
+
             echo 'Building...'
-            dir(path: 'packages') {
-              deleteDir()
-            }
-            bat 'win/build.bat /out packages'
+            bat "win/build.bat build"
+
+            echo 'Packing...'
+            bat "win/build.bat /out ${OUTPUT_DIR} dist"
           }
           post {
             always {
-              archiveArtifacts 'packages/*'
+              archiveArtifacts "${OUTPUT_DIR}/*"
             }
           }
         }
@@ -124,7 +116,7 @@ pipeline {
 
   post {
     always {
-      build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "$JOB_NAME")],
+      build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
             propagate: false
       emailext replyTo: '$DEFAULT_REPLYTO', to: '$DEFAULT_RECIPIENTS',
                subject: '$DEFAULT_SUBJECT', body: '''${JELLY_SCRIPT,template="html"}'''
