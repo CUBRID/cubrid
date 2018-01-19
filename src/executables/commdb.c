@@ -1245,6 +1245,8 @@ main (int argc, char **argv)
       return EXIT_FAILURE;
     }
 
+  ER_SAFE_INIT (NULL, ER_NEVER_EXIT);
+
   if (argc == 1)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
@@ -1373,8 +1375,6 @@ main (int argc, char **argv)
 	  goto usage;
 	}
     }
-
-  ER_SAFE_INIT (NULL, ER_NEVER_EXIT);
 
   if (COMMDB_CMD_ALLOWED_ON_REMOTE () == true && commdb_Arg_host_name != NULL)
     {

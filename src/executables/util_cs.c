@@ -212,7 +212,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
@@ -426,7 +426,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
@@ -712,7 +712,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
@@ -897,7 +897,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
@@ -1112,7 +1112,7 @@ acldb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
@@ -1201,7 +1201,7 @@ lockdb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
@@ -1672,7 +1672,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   error = db_restart_ex (arg->command_name, database_name, username, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (error != NO_ERROR)
@@ -1859,7 +1859,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (db_login ("DBA", dba_password) != NO_ERROR)
@@ -2079,7 +2079,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
@@ -2180,7 +2180,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
@@ -2312,7 +2312,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
@@ -2488,7 +2488,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -2658,7 +2658,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_LOG_COPIER);
@@ -2864,7 +2864,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s_%s.err", database_name, arg->command_name,
 	    basename (log_path_base));
   free (log_path_base);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_LOG_APPLIER);
@@ -3188,7 +3188,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   is_Sigint_caught = false;
 #if defined(WINDOWS)
@@ -3531,7 +3531,7 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
 #if defined(SA_MODE)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
   sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "no");

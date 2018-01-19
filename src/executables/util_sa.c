@@ -585,7 +585,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
@@ -728,7 +728,7 @@ deletedb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   if (check_database_name (database_name))
     {
@@ -957,7 +957,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   if (restart_arg.printtoc)
     {
@@ -1054,7 +1054,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", src_db_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
@@ -1134,7 +1134,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   db = cfg_find_db (db_name);
   if (db != NULL)
@@ -1267,7 +1267,7 @@ copydb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", src_db_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   if (check_database_name (src_db_name) || check_new_database_name (dest_db_name))
     {
@@ -1364,7 +1364,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
@@ -1483,7 +1483,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
@@ -1690,7 +1690,7 @@ patchdb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   if (boot_emergency_patch (db_name, recreate_log, 0, db_locale, NULL) != NO_ERROR)
     {
@@ -1923,7 +1923,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
       host_name = host_name_buf;
     }
 
-  ER_SAFE_INIT (NULL, ER_NEVER_EXIT);
+  er_init (NULL, ER_NEVER_EXIT);
 
   /* get the database directory information in write mode */
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
@@ -2099,7 +2099,7 @@ genlocale (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s.err", arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   if (locale_get_cfg_locales (&lf, &count_loc, false) != NO_ERROR)
     {
@@ -2604,7 +2604,7 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
@@ -3782,7 +3782,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
 
   if (restart_arg.printtoc)
     {
@@ -3978,7 +3978,7 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
     {
       snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s.err", arg->command_name);
     }
-  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
+  er_init (er_msg_file, ER_NEVER_EXIT);
   er_inited = true;
 
   memset (checksum, 0, sizeof (checksum));
