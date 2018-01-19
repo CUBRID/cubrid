@@ -226,10 +226,22 @@ extern "C"
 #endif
 
 #ifdef __cplusplus
+
+#if defined (SERVER_MODE) || !defined (WINDOWS)
+// not dll linkage
+#define CUBERR_MANAGER_DLL
+#elif defined (CS_MODE) || defined (SA_MODE)
+// Windows CS_MODE or SA_MODE - export
+#define CUBERR_MANAGER_DLL __declspec( dllexport )
+#else				// Windows, not CS_MODE and not SA_MODE
+// import
+#define CUBERR_MANAGER_DLL __declspec( dllimport )
+#endif				// Windows, not CS_MODE and not SA_MODE
+
 /* *INDENT-OFF* */
 namespace cuberr
 {
-  class manager
+  class CUBERR_MANAGER_DLL manager
   {
   public:
     manager (const char * msg_file, er_exit_ask exit_arg);
