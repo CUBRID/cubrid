@@ -109,7 +109,7 @@ void er_message::swap (er_message &other)
       std::swap (this->msg_area, other.msg_area);
       std::swap (this->msg_area_size, other.msg_area_size);
     }
-  else if (this->msg_area_size <= bufsize)
+  else if (this->msg_area_size > bufsize)
     {
       assert (this->msg_area_size == bufsize);
       assert (other.msg_area_size > bufsize);
@@ -135,6 +135,10 @@ void er_message::swap (er_message &other)
       // swap area size
       std::swap (this->msg_area_size, other.msg_area_size);
     }
+
+  assert ((this->msg_area_size == bufsize) == (this->msg_area == this->msg_buffer));
+  assert ((other.msg_area_size == bufsize) == (other.msg_area == other.msg_buffer));
+  assert (this->msg_area != other.msg_area);
 
   // swap args, nargs
   std::swap (this->args, other.args);
