@@ -46,18 +46,18 @@
 #include <pthread.h>
 #endif
 
-#include "dbi.h"
-#include "error_context.h"
-#include "porting.h"
-#include "tcp.h"
-#include "object_representation.h"
 #include "connection_cl.h"
+#include "dbi.h"
+#include "environment_variable.h"
+#include "error_context.hpp"
+#include "heartbeat.h"
 #include "master_util.h"
 #include "master_heartbeat.h"
 #include "master_request.h"
-#include "heartbeat.h"
 #include "message_catalog.h"
-#include "environment_variable.h"
+#include "object_representation.h"
+#include "porting.h"
+#include "tcp.h"
 #include "utility.h"
 
 #define HB_INFO_STR_MAX         8192
