@@ -329,7 +329,7 @@ static int er_Print_to_console = ER_DO_NOT_PRINT;
 
 #if !defined (SERVER_MODE)
 // requires own context
-static context er_Singleton_context;
+static context *er_Singleton_context_p;
 #endif // not SERVER_MODE
 
 static void er_event_sigpipe_handler (int sig);
@@ -679,12 +679,6 @@ er_init (const char *msglog_filename, int exit_ask)
       er_final (ER_ALL_FINAL);
     }
 
-#if !defined (SERVER_MODE)
-  // we need to register a context
-  er_Singleton_context.register_thread_local ();
-  // SERVER_MODE should have already one
-#endif // not SERVER_MODE
-
   for (i = 0; i < (int) DIM (er_Builtin_msg); i++)
     {
       if (er_Cached_msg[i] && er_Cached_msg[i] != er_Builtin_msg[i])
@@ -733,6 +727,14 @@ er_init (const char *msglog_filename, int exit_ask)
       return ER_FAILED;
     }
 
+  er_Hasalready_initiated = true;
+#if !defined (SERVER_MODE)
+  // we need to register a context
+  er_Singleton_context_p = new context ();
+  er_Singleton_context_p->register_thread_local ();
+  // SERVER_MODE should have already one
+#endif // not SERVER_MODE
+
   switch (exit_ask)
     {
     case ER_EXIT_ASK:
@@ -779,7 +781,7 @@ er_init (const char *msglog_filename, int exit_ask)
       er_Msglog_filename = NULL;
     }
 
-  er_Hasalready_initiated = true;
+
 
   /* 
    * Install event handler
@@ -1076,7 +1078,9 @@ er_final (ER_FINAL_CODE do_global_final)
 #endif
 
 #if !defined (SERVER_MODE)
-      er_Singleton_context.deregister_thread_local ();
+      er_Singleton_context_p->deregister_thread_local ();
+      delete er_Singleton_context_p;
+      er_Singleton_context_p = NULL;
 #endif // not SERVER_MODE
     }
   else
