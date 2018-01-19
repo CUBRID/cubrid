@@ -200,17 +200,22 @@ namespace cuberr
 {
   thread_local context *tl_Context_p = NULL;
 
-  context::context (void)
+  context::context (bool automatic_registation)
     : m_base_level ()
     , m_stack ()
+    , m_automatic_registration (automatic_registation)
   {
+    if (automatic_registation)
+      {
+	register_thread_local ();
+      }
   }
 
   context::~context (void)
   {
     if (tl_Context_p == this)
       {
-	assert (false);
+	assert (m_automatic_registration);
 	deregister_thread_local ();
       }
   }

@@ -47,6 +47,7 @@
 #endif
 
 #include "dbi.h"
+#include "error_context.h"
 #include "porting.h"
 #include "tcp.h"
 #include "object_representation.h"
@@ -4268,6 +4269,9 @@ hb_thread_cluster_worker (void *arg)
 #endif
 {
   HB_JOB_ENTRY *job;
+  /* *INDENT-OFF* */
+  cuberr::context er_context (true);
+  /* *INDENT-ON* */
 
 #if defined (HB_VERBOSE_DEBUG)
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "thread started. (thread:{%s}, tid:%d).\n", __func__, THREAD_ID ());
@@ -4317,6 +4321,10 @@ hb_thread_cluster_reader (void *arg)
 
   struct sockaddr_in from;
   socklen_t from_len;
+
+  /* *INDENT-OFF* */
+  cuberr::context er_context (true);
+  /* *INDENT-ON* */
 
 #if defined (HB_VERBOSE_DEBUG)
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "thread started. (thread:{%s}, tid:%d).\n", __func__, THREAD_ID ());
@@ -4371,6 +4379,9 @@ hb_thread_resource_worker (void *arg)
 #endif
 {
   HB_JOB_ENTRY *job;
+  /* *INDENT-OFF* */
+  cuberr::context er_context (true);
+  /* *INDENT-ON* */
 
 #if defined (HB_VERBOSE_DEBUG)
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "thread started. (thread:{%s}, tid:%d).\n", __func__, THREAD_ID ());
@@ -4415,6 +4426,10 @@ hb_thread_check_disk_failure (void *arg)
   int rv, error;
   int interval;
   INT64 remaining_time_msecs = 0;
+  /* *INDENT-OFF* */
+  cuberr::context er_context (true);
+  /* *INDENT-ON* */
+
 #if defined (HB_VERBOSE_DEBUG)
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "thread started. (thread:{%s}, tid:%d).\n", __func__, THREAD_ID ());
 #endif

@@ -76,7 +76,7 @@ namespace cuberr
   class context
   {
     public:
-      context ();
+      context (bool automatic_registation = false);
 
       ~context ();
 
@@ -99,6 +99,7 @@ namespace cuberr
 
       er_message m_base_level;
       std::stack<er_message> m_stack;
+      bool m_automatic_registration;
   };
 } // namespace cuberr
 
