@@ -32,6 +32,15 @@
 
 #include <cstring>
 
+#define LOG_ME true
+
+#define ERROR_CONTEXT_LOG(...) if (LOG_ME) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+
+#define ERMSG_MSG "{ %p: errid=%d, sev=%d, fname=%s, line=%d, msg_area=%p(%s)_size=%zu, msgbuf=%p(%s), args=%p_n=%d }"
+#define ERMSG_ARGS(em) &(em), (em).err_id, (em).severity, (em).file_name, (em).line_no, (em).msg_area, (em).msg_area, \
+                       (em).msg_area_size, (em).msg_buffer, (em).msg_buffer, (em).args, (em).nargs
+#define ERMSG_LOG(text, var) ERROR_CONTEXT_LOG (text #var " = " ERMSG_MSG, ERMSG_ARGS (var))
+
 er_message::er_message ()
   : err_id (NO_ERROR)
   , severity (ER_WARNING_SEVERITY)
@@ -44,38 +53,8 @@ er_message::er_message ()
   , msg_buffer {'\0'}
 {
   //
+  ERMSG_LOG ("constructed ", *this);
 }
-
-/*
-er_message::er_message (er_message && other)
-  : err_id (other.err_id)
-  , severity (other.severity)
-  , file_name (other.file_name)
-  , line_no (other.line_no)
-  , msg_area_size (other.msg_area_size)
-  , msg_area (NULL)
-  , args (other.args)
-  , nargs (other.nargs)
-{
-  // msg area
-  if (msg_area_size <= sizeof (msg_buffer))
-    {
-      // copy buffer
-      msg_area = msg_buffer;
-      std::memcpy (msg_buffer, other.msg_buffer, msg_area_size);
-    }
-  else
-    {
-      // move msg_area pointer
-      assert (other.msg_area == other.msg_buffer);
-      msg_area = other.msg_area;
-      other.msg_area = NULL;
-    }
-
-  // args are always dynamically allocated
-  other.args = NULL;
-}
-*/
 
 er_message::~er_message ()
 {
@@ -86,6 +65,9 @@ er_message::~er_message ()
 
 void er_message::swap (er_message &other)
 {
+  ERMSG_LOG ("before_swap", *this);
+  ERMSG_LOG ("before_swap", other);
+
   std::swap (this->err_id, other.err_id);
   std::swap (this->severity, other.severity);
   std::swap (this->file_name, other.file_name);
@@ -143,6 +125,9 @@ void er_message::swap (er_message &other)
   // swap args, nargs
   std::swap (this->args, other.args);
   std::swap (this->nargs, other.nargs);
+
+  ERMSG_LOG ("after_swap", *this);
+  ERMSG_LOG ("after_swap", other);
 }
 
 void
@@ -174,6 +159,8 @@ er_message::clear_msg_area (void)
 {
   if (msg_area != msg_buffer)
     {
+      _er_log_debug (ARG_FILE_LINE, "clear_msg_area - delete msg_area = %p, size = %d", msg_area, msg_area_size);
+
       delete msg_area;
 
       msg_area = msg_buffer;
@@ -189,6 +176,9 @@ er_message::reserve (std::size_t size)
       // no need to resize
       return;
     }
+
+  ERMSG_LOG ("before_resize", *this);
+
   std::size_t new_size = msg_area_size;
   while (new_size < size)
     {
@@ -198,6 +188,8 @@ er_message::reserve (std::size_t size)
 
   msg_area = new char[new_size];
   msg_area_size = new_size;
+
+  ERMSG_LOG ("after_resize", *this);
 }
 
 namespace cuberr

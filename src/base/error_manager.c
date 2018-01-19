@@ -38,8 +38,6 @@
 #include "environment_variable.h"
 #include "memory_alloc.h"
 #include "message_catalog.h"
-//#include "object_representation.h"
-//#include "porting.h"
 #if !defined (WINDOWS)
 #include "release_string.h"
 #endif // not WINDOWS
@@ -51,9 +49,6 @@
 #include "transaction_cl.h"
 #endif /* !SERVER_MODE */
 #include "stack_dump.h"
-#if defined (WINDOWS)
-//#include "wintcp.h"
-#endif /* WINDOWS */
 
 // c++ headers
 #include <cassert>

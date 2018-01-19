@@ -837,6 +837,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
+  // reload error manager
+  if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
+    {
+      assert_release (false);
+      goto error;
+    }
+
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   /* initialize the "areas" memory manager, requires prm_ */
