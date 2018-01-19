@@ -13002,53 +13002,7 @@ bool pt_check_json_object_arg_list(parser_node* arg_list_head)
   return is_valid;
 }
 
-namespace JsonObj // json_object(key, val[, key, val...]) specific functions
-{
-  int f0(parser_node* arg) //expect key name
-  {
-    if(!arg)
-      {
-        return -1; //OK - final state
-      }
-    return (pt_is_json_object_name(arg->type_enum) ? 1 : -2);
-  }
-
-  int f1(parser_node* arg) //expect val
-  {
-    if(!arg)
-      {
-        return -2; //KO - not final state
-      }
-    if (!pt_is_json_value_type(arg->type_enum))
-      {
-        if (/*can't cast(t,v) to any json value type*/0)
-        {
-          return -3; // KO - invalid type for value
-        }
-      }
-    return 0; //OK, change state
-  }
-}
-
-namespace JsonArr //json_array() specific functions
-{
-  int f0(parser_node* arg) //expect val
-  {
-    if(!arg)
-      {
-        return MAXINT; //OK - final state
-      }
-    if (!pt_is_json_value_type(arg->type_enum))
-      {
-        if (/*can't cast(t,v) to any json value type*/0)
-        {
-          return -1; // KO - invalid type for value
-        }
-      }
-    return 0; //OK, change state
-  }
-}
-
+#include "func_type.hpp"
 #include <vector>
 
 #define X(id, ...) #id,
@@ -13058,11 +13012,10 @@ char* func_type_str[] = {
 #undef X
 
 #define X(id, ...) { __VA_ARGS__ },
-std::vector<int(*)(parser_node*)> func_type_transitions[] = {
+std::vector<int(*)(parser_context*, parser_node*&)> func_type_transitions[] = {
   #include "func_type.x"
 };
 #undef X
-
 
 /*
  * pt_eval_function_type () -
@@ -13292,12 +13245,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_OBJECT:
       {
-	PT_TYPE_ENUM unsupported_type;
-	bool is_supported = false;
-
 	PT_NODE *arg = arg_list;
-	unsigned int index = 0;
 #if 0
+	PT_TYPE_ENUM unsupported_type;
+	unsigned int index = 0;
+	bool is_supported = false;
 	while (arg)
 	  {
 	    if (index % 2 == 0)
@@ -13330,17 +13282,22 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    arg_type = PT_TYPE_JSON;
 	  }
 #else
-        std::vector<int(*)(parser_node*)>& v = func_type_transitions[fcode-PT_MIN];
+        printf("%s\n", parser_print_tree_list(parser, arg_list));
+        std::vector<int(*)(parser_context*, parser_node*&)>& v = func_type_transitions[fcode-PT_MIN];
         int st = 0;
-        for(PT_NODE *arg = arg_list; st>=0; arg = arg->next)
+        for(PT_NODE *arg = arg_list, *prev = NULL; st>=0; prev = arg, arg = arg->next)
           {
             assert(st < v.size());
             assert(v[st] != NULL);
-            st = v[st](arg);
+            parser_node* old_node = arg;
+            st = v[st](parser, arg);
             if(arg == NULL)
               break;
+            if (arg != old_node && prev) // arg node was changed => update linked list
+              {
+                prev ->next = arg;
+              }
           }
-        //if(st != MAXINT) //ERR: not in final state
         if(st == -1) //OK final state
           {
             printf("OK st=-1 final state\n");

@@ -144,6 +144,7 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/xasl_generation.c
   ${PARSER_DIR}/scanner_support.c
   ${PARSER_DIR}/view_transform.c
+  ${PARSER_DIR}/func_type.cpp
   )
 
 set(OPTIMIZER_SOURCES
