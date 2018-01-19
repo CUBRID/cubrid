@@ -240,6 +240,7 @@ namespace cuberr
 
 // to use in C units instead of er_init; makes sure that er_final is called before exiting scope
 // NOTE - cuberr_manager variable is created. it may cause naming conflicts
+// NOTE - if used after jumps, expect "crosses initialization" errors
 #define ER_SAFE_INIT(msg_file, exit_arg) cuberr::manager cuberr_manager (msg_file, exit_arg)
 #endif				// c++
 

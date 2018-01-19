@@ -327,8 +327,6 @@ static bool er_Isa_null_device = false;
 static int er_Exit_ask = ER_EXIT_DEFAULT;
 static int er_Print_to_console = ER_DO_NOT_PRINT;
 
-// context
-static context er_Emergency_context;	// protect access by critical section!
 #if !defined (SERVER_MODE)
 // requires own context
 static context er_Singleton_context;
@@ -681,6 +679,12 @@ er_init (const char *msglog_filename, int exit_ask)
       er_final (ER_ALL_FINAL);
     }
 
+#if !defined (SERVER_MODE)
+  // we need to register a context
+  er_Singleton_context.register_thread_local ();
+  // SERVER_MODE should have already one
+#endif // not SERVER_MODE
+
   for (i = 0; i < (int) DIM (er_Builtin_msg); i++)
     {
       if (er_Cached_msg[i] && er_Cached_msg[i] != er_Builtin_msg[i])
@@ -728,8 +732,6 @@ er_init (const char *msglog_filename, int exit_ask)
     {
       return ER_FAILED;
     }
-
-  er_Emergency_context.register_thread_local ();
 
   switch (exit_ask)
     {
@@ -900,14 +902,7 @@ er_init (const char *msglog_filename, int exit_ask)
       status = ER_FAILED;
     }
 
-  er_Emergency_context.deregister_thread_local ();
-
   ER_CSECT_EXIT_LOG_FILE ();
-
-#if !defined (SERVER_MODE)
-  // we need to register a context
-  er_Singleton_context.register_thread_local ();
-#endif // not SERVER_MODE
 
   return NO_ERROR;
 }
