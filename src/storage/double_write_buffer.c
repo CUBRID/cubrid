@@ -2799,6 +2799,13 @@ retry:
 	}
 #endif
 
+      if (ATOMIC_INC_32 (&block->wait_queue.count, 0) != 0)
+	{
+	  assert (double_Write_Buffer.helper_flush_block != NULL);
+	  /* Let the helper thread to flush volumes since other threads are waiting for me. */
+	  break;
+	}
+
       if (!ATOMIC_CAS_32
 	  (&block->flush_volumes_info[i].flushed_status, VOLUME_NOT_FLUSHED, VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD))
 	{
@@ -4216,11 +4223,11 @@ start:
 		{
 		  /* Not enough pages, check the other volumes and retry. */
 		  assert (all_block_pages_written == false);
-                  if (first_partial_flushed_volume == -1)
-                    {
-                      first_partial_flushed_volume = i;
-                    }
-		  
+		  if (first_partial_flushed_volume == -1)
+		    {
+		      first_partial_flushed_volume = i;
+		    }
+
 		  need_wait = true;
 		  break;
 		}
@@ -4247,7 +4254,8 @@ start:
       /* Set next volume to flush. */
       if (first_partial_flushed_volume != -1)
 	{
-          assert ((first_partial_flushed_volume >= 0) && ((unsigned int) first_partial_flushed_volume < count_flush_volumes_info));
+	  assert ((first_partial_flushed_volume >= 0)
+		  && ((unsigned int) first_partial_flushed_volume < count_flush_volumes_info));
 	  /* Continue with partial flushed volume. */
 	  start_flush_volume = first_partial_flushed_volume;
 	}
@@ -4265,7 +4273,7 @@ start:
 
       if ((need_wait == false) && (all_block_pages_written == false))
 	{
-          /* Not all pages written yet, check wether we need to wait for them. */
+	  /* Not all pages written yet, check wether we need to wait for them. */
 	  if (first_partial_flushed_volume != -1)
 	    {
 	      current_flush_volume_info = &block->flush_volumes_info[first_partial_flushed_volume];
@@ -4274,10 +4282,10 @@ start:
 		{
 		  need_wait = true;
 		}
-              else
-                {
-                  goto start;
-                } 
+	      else
+		{
+		  goto start;
+		}
 	    }
 	  else if (block->all_pages_written == false)
 	    {
@@ -4295,7 +4303,7 @@ start:
 #if defined (SERVER_MODE)
 	  thread_sleep (1);
 #endif
-          goto start;
+	  goto start;
 	}
 
 #if !defined (NDEBUG)
