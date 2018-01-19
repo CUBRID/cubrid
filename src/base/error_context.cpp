@@ -25,6 +25,10 @@
 
 #include "error_code.h"
 #include "error_manager.h"
+#if defined (SERVER_MODE)
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
+#endif // SERVER_MODE
 
 #include <cstring>
 
@@ -291,7 +295,20 @@ namespace cuberr
   cuberr::context &
   context::get_thread_local_context (void)
   {
-    return *tl_Context_p; // crashes if null!
+    if (tl_Context_p == NULL)
+      {
+	assert (false);
+	static context emergency_context;
+#if defined (SERVER_MODE)
+	auto thread_mgr_p = cubthread::get_manager ();
+	if (thread_mgr_p != NULL)
+	  {
+	    return thread_mgr_p->get_entry ().get_error_context ();
+	  }
+#endif // SERVER_MODE
+	return emergency_context;
+      }
+    return *tl_Context_p;
   }
 
   er_message &

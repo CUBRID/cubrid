@@ -94,6 +94,11 @@
 #include <unistd.h>
 #endif /* !WINDOWS */
 
+// todo: remove me
+#if defined (SERVER_MODE)
+#include "thread.h"
+#endif // SERVER_MODE
+
 /*
  * Definition of error message structure. One structure is defined for each
  * thread of execution. Note message areas are stored in the structure for
@@ -1078,6 +1083,13 @@ er_final (ER_FINAL_CODE do_global_final)
 #if !defined (SERVER_MODE)
       er_Singleton_context.deregister_thread_local ();
 #endif // not SERVER_MODE
+    }
+  else
+    {
+#if defined (SERVER_MODE)
+      // todo: remove me; temporary code due to old thread.c
+      thread_get_thread_entry_info ()->get_error_context ().deregister_thread_local ();
+#endif // SERVER_MODE
     }
 }
 

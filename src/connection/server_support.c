@@ -1640,6 +1640,7 @@ css_oob_handler_thread (void *arg)
 
   thread_set_thread_entry_info (thrd_entry);
   thrd_entry->status = TS_RUN;
+  thrd_entry->get_error_context ().register_thread_local ();
 
 #if !defined(WINDOWS)
   sigemptyset (&sigurg_mask);
@@ -1663,6 +1664,7 @@ css_oob_handler_thread (void *arg)
 #endif /* WINDOWS */
     }
   thrd_entry->status = TS_DEAD;
+  thrd_entry->get_error_context ().deregister_thread_local ();
 
 #if defined(WINDOWS)
   return 0;

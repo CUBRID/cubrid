@@ -321,6 +321,7 @@ thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_SETSPECIFIC, 0);
       return ER_CSS_PTHREAD_SETSPECIFIC;
     }
+
   return r;
 }
 
@@ -2025,6 +2026,8 @@ thread_worker (void *arg_p)
   tsd_ptr->type = TT_WORKER;	/* not defined yet */
   tsd_ptr->status = TS_FREE;	/* set thread stat as free */
 
+  tsd_ptr->get_error_context ().register_thread_local ();
+
   /* during server is active */
   while (!tsd_ptr->shutdown)
     {
@@ -2142,18 +2145,8 @@ thread_deadlock_detect_thread (void *arg_p)
   int lockwait_count;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finish */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-
-  thread_Deadlock_detect_thread.is_available = true;
-  thread_Deadlock_detect_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Deadlock_detect_thread, tsd_ptr, TT_DAEMON);
 
   /* during server is active */
   while (!tsd_ptr->shutdown)
@@ -2252,17 +2245,7 @@ thread_session_control_thread (void *arg_p)
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  thread_Session_control_thread.is_available = true;
-  thread_Session_control_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Session_control_thread, tsd_ptr, TT_DAEMON);
 
   while (!tsd_ptr->shutdown)
     {
@@ -2326,17 +2309,8 @@ thread_checkpoint_thread (void *arg_p)
   };
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finish */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  thread_Checkpoint_thread.is_available = true;
-  thread_Checkpoint_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Checkpoint_thread, tsd_ptr, TT_DAEMON);
 
   /* during server is active */
   while (!tsd_ptr->shutdown)
@@ -2400,18 +2374,8 @@ thread_purge_archive_logs_thread (void *arg_p)
   };
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finish */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-
-  thread_Purge_archive_logs_thread.is_available = true;
-  thread_Purge_archive_logs_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Purge_archive_logs_thread, tsd_ptr, TT_DAEMON);
 
   /* during server is active */
   while (!tsd_ptr->shutdown)
@@ -2536,18 +2500,8 @@ thread_check_ha_delay_info_thread (void *arg_p)
 #endif
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-
-  thread_Check_ha_delay_info_thread.is_running = true;
-  thread_Check_ha_delay_info_thread.is_available = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Check_ha_delay_info_thread, tsd_ptr, TT_DAEMON);
 
   while (!tsd_ptr->shutdown)
     {
@@ -2918,18 +2872,7 @@ thread_flush_control_thread (void *arg_p)
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-
-  thread_Flush_control_thread.is_available = true;
-  thread_Flush_control_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Flush_control_thread, tsd_ptr, TT_DAEMON);
 
   rv = fileio_flush_control_initialize ();
   if (rv != NO_ERROR)
@@ -3030,18 +2973,8 @@ thread_log_flush_thread (void *arg_p)
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-
-  thread_Log_flush_thread.is_available = true;
-  thread_Log_flush_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Log_flush_thread, tsd_ptr, TT_DAEMON);
 
   gettimeofday (&wakeup_time, NULL);
   total_elapsed_time = 0;
@@ -3195,15 +3128,7 @@ thread_log_clock_thread (void *arg_p)
 #endif /* HAVE_ATOMIC_BUILTINS */
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  thread_Log_clock_thread.is_available = true;
-  thread_Log_clock_thread.is_running = true;
+  thread_daemon_start (&thread_Log_clock_thread, tsd_ptr, TT_DAEMON);
 
   while (!tsd_ptr->shutdown)
     {
@@ -3274,17 +3199,8 @@ thread_auto_volume_expansion_thread (void *arg_p)
   struct timespec to = { 0, 0 };
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finish */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-
-  thread_Auto_volume_expansion_thread.is_available = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Auto_volume_expansion_thread, tsd_ptr, TT_DAEMON);
 
   while (!tsd_ptr->shutdown)
     {
@@ -5412,6 +5328,7 @@ thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p, TH
   thread_set_thread_entry_info (thread_p);	/* save TSD */
   thread_p->type = thread_type;	/* daemon thread */
   thread_p->status = TS_RUN;	/* set thread stat as RUN */
+  thread_p->get_error_context ().register_thread_local ();
 
   daemon->is_running = true;
   daemon->is_available = true;
