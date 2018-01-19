@@ -1374,7 +1374,7 @@ main (int argc, char **argv)
 	}
     }
 
-  er_init (NULL, ER_NEVER_EXIT);
+  ER_SAFE_INIT (NULL, ER_NEVER_EXIT);
 
   if (COMMDB_CMD_ALLOWED_ON_REMOTE () == true && commdb_Arg_host_name != NULL)
     {

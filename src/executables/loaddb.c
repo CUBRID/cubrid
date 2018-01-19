@@ -636,7 +636,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   /* error message log file */
   sprintf (log_file_name, "%s_%s.err", Volume, arg->command_name);
-  er_init (log_file_name, ER_NEVER_EXIT);
+  ER_SAFE_INIT (log_file_name, ER_NEVER_EXIT);
 
   if (Index_file[0] != '\0' && prm_get_integer_value (PRM_ID_SR_NBUFFERS) < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
     {
@@ -1047,6 +1047,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   (void) db_shutdown ();
 
   free_ignoreclasslist ();
+
   return (status);
 
 error_return:

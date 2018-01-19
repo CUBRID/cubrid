@@ -2779,6 +2779,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
 error:
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+  er_final (ER_ALL_FINAL);
   csql_exit (EXIT_FAILURE);
   return EXIT_FAILURE;		/* won't get here really */
 }

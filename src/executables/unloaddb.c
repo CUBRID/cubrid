@@ -150,7 +150,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, exec_name);
-  er_init (er_msg_file, ER_NEVER_EXIT);
+  ER_SAFE_INIT (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 

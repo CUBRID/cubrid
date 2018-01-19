@@ -1022,6 +1022,12 @@ er_final (ER_FINAL_CODE do_global_final)
   FILE *fh = NULL;
   int i = 0;
 
+  if (!er_Hasalready_initiated)
+    {
+      // not initialized
+      return;
+    }
+
   if (do_global_final == ER_ALL_FINAL)
     {
 #if defined (SERVER_MODE)
@@ -3057,3 +3063,21 @@ er_is_error_severity (er_severity severity)
       return false;
     }
 }
+
+/* *INDENT-OFF* */
+namespace cuberr
+{
+  manager::manager (const char * msg_file, er_exit_ask exit_arg)
+  {
+    if (er_init (msg_file, exit_arg) != NO_ERROR)
+      {
+        assert_release (false);
+      }
+  }
+
+  manager::~manager (void)
+  {
+    er_final (ER_ALL_FINAL);
+  }
+} // namespace cuberr
+/* *INDENT-ON* */

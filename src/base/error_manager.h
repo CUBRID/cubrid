@@ -225,4 +225,22 @@ extern "C"
 }
 #endif
 
+#ifdef __cplusplus
+/* *INDENT-OFF* */
+namespace cuberr
+{
+  class manager
+  {
+  public:
+    manager (const char * msg_file, er_exit_ask exit_arg);
+    ~manager (void);
+  };
+} // namespace cuberr
+/* *INDENT-ON* */
+
+// to use in C units instead of er_init; makes sure that er_final is called before exiting scope
+// NOTE - cuberr_manager variable is created. it may cause naming conflicts
+#define ER_SAFE_INIT(msg_file, exit_arg) cuberr::manager cuberr_manager (msg_file, exit_arg)
+#endif				// c++
+
 #endif				/* _ERROR_MANAGER_H_ */
