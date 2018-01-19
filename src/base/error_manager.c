@@ -329,10 +329,10 @@ static int er_Print_to_console = ER_DO_NOT_PRINT;
 
 // context
 static context er_Emergency_context;	// protect access by critical section!
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#if !defined (SERVER_MODE)
 // requires own context
 static context er_Singleton_context;
-#endif // not SERVER_MODE and not SA_MODE = CS_MODE
+#endif // not SERVER_MODE
 
 static void er_event_sigpipe_handler (int sig);
 static void er_event (void);
@@ -904,10 +904,10 @@ er_init (const char *msglog_filename, int exit_ask)
 
   ER_CSECT_EXIT_LOG_FILE ();
 
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#if !defined (SERVER_MODE)
   // we need to register a context
   er_Singleton_context.register_thread_local ();
-#endif // not SERVER_MODE and not SA_MODE
+#endif // not SERVER_MODE
 
   return NO_ERROR;
 }
@@ -1074,9 +1074,9 @@ er_final (ER_FINAL_CODE do_global_final)
       ER_CSECT_EXIT_LOG_FILE ();
 #endif
 
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#if !defined (SERVER_MODE)
       er_Singleton_context.deregister_thread_local ();
-#endif // not SERVER_MODE and not SA_MODE = CS_MODE
+#endif // not SERVER_MODE
     }
 }
 
