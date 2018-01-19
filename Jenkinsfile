@@ -6,7 +6,6 @@ pipeline {
   }
 
   environment {
-    CM_BRANCH = 'develop'
     OUTPUT_DIR = 'packages'
     TEST_REPORT = 'reports'
   }
@@ -28,11 +27,6 @@ pipeline {
           steps {
             script {
               currentBuild.displayName = sh(returnStdout: true, script: './build.sh -v').trim()
-            }
-
-            echo 'Checking out...'
-            dir(path: 'cubridmanager') {
-              git branch: "${CM_BRANCH}", url: 'https://github.com/CUBRID/cubrid-manager-server'
             }
 
             echo 'Building...'
@@ -64,11 +58,6 @@ pipeline {
             MAKEFLAGS = '-j'
           }
           steps {
-            echo 'Checking out...'
-            dir(path: 'cubridmanager') {
-              git branch: "${CM_BRANCH}", url: 'https://github.com/CUBRID/cubrid-manager-server'
-            }
-
             echo 'Building...'
             sh 'scl enable devtoolset-6 -- /entrypoint.sh build -m debug'
             
@@ -93,11 +82,6 @@ pipeline {
             }
           }
           steps {
-            echo 'Checking out...'
-            dir(path: 'cubridmanager') {
-              git branch: "${CM_BRANCH}", url: 'https://github.com/CUBRID/cubrid-manager-server'
-            }
-
             echo 'Building...'
             bat "win/build.bat build"
 
