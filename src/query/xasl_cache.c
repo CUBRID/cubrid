@@ -183,9 +183,9 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 
 
 /* Recompile threshold */
-#define XCACHE_RT_TIMEDIFF_IN_SEC	10	/* 10 minutes */
+#define XCACHE_RT_TIMEDIFF_IN_SEC	360	/* 10 minutes */
 #define XCACHE_RT_MAX_THRESHOLD		10000	/* 10k pages */
-#define XCACHE_RT_FACTOR		5	/* 10x or 0.1x cardinal change */
+#define XCACHE_RT_FACTOR		10	/* 10x or 0.1x cardinal change */
 
 /* Logging macro's */
 #define xcache_check_logging() (xcache_Log = prm_get_bool_value (PRM_ID_XASL_CACHE_LOGGING))
@@ -2264,6 +2264,10 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 
   if ((xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_RECOMPILED_REQUESTED) != 0)
     {
+      xcache_log ("Unexpected flag found (recompile requested). Maybe the client preparing the XASL crashed !?: \n"
+		  XCACHE_LOG_ENTRY_TEXT ("entry") XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_ENTRY_ARGS (xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
+
       xcache_entry_set_request_recompile_flag (thread_p, xcache_entry, false);
     }
 
