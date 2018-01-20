@@ -920,7 +920,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
     {
       error_code =
 	xcache_find_sha1 (thread_p, &context->sha1, XASL_CACHE_SEARCH_FOR_PREPARE, &cache_entry_p,
-                          &recompile_due_to_threshold);
+			  &recompile_due_to_threshold);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
