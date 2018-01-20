@@ -124,11 +124,19 @@ struct xasl_cache_ent
   bool initialized;
 };
 
+enum
+{
+  XASL_CACHE_SEARCH_FOR_EXECUTE = 0,
+  XASL_CACHE_SEARCH_FOR_PREPARE = 1,
+
+  XASL_CACHE_SEARCH_GENERIC = XASL_CACHE_SEARCH_FOR_EXECUTE
+};
+
 extern int xcache_initialize (THREAD_ENTRY * thread_p);
 extern void xcache_finalize (THREAD_ENTRY * thread_p);
 
-extern int xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENTRY ** xcache_entry,
-			     bool * rt_check);
+extern int xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const int search_mode,
+			     XASL_CACHE_ENTRY ** xcache_entry, bool * rt_check);
 extern int xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry,
 				XASL_CLONE * xclone);
 extern void xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);

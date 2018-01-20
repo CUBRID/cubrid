@@ -1822,7 +1822,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
     }
 
   *xasl_entry = NULL;
-  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, xasl_entry, NULL);
+  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, XASL_CACHE_SEARCH_GENERIC, xasl_entry, NULL);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
