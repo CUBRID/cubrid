@@ -2082,9 +2082,9 @@ css_send_to_my_server_hb_state ()
       return ER_FAILED;
     }
 
-  if (hb_Cluster->state == HB_NSTATE_SLAVE)
+  if (hb_Cluster->state == HB_NSTATE_SLAVE && hb_Cluster->master != NULL)
     {
-      int master_hostname_length = hb_Cluster->master != NULL ? strlen (hb_Cluster->master->host_name) : 0;
+      int master_hostname_length = strlen (hb_Cluster->master->host_name);
 
       assert (master_hostname_length != 0);
       char master_hostname[sizeof (int) + master_hostname_length];
